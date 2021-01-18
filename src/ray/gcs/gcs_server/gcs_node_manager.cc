@@ -33,7 +33,6 @@ void GcsNodeManager::HandleRegisterNode(const rpc::RegisterNodeRequest &request,
   NodeID node_id = NodeID::FromBinary(request.node_info().node_id());
   RAY_LOG(INFO) << "Registering node info, node id = " << node_id
                 << ", address = " << request.node_info().node_manager_address();
-  AddNode(std::make_shared<rpc::GcsNodeInfo>(request.node_info()));
   auto on_done = [this, node_id, request, reply,
                   send_reply_callback](const Status &status) {
     RAY_CHECK_OK(status);
@@ -41,6 +40,7 @@ void GcsNodeManager::HandleRegisterNode(const rpc::RegisterNodeRequest &request,
                   << ", address = " << request.node_info().node_manager_address();
     RAY_CHECK_OK(gcs_pub_sub_->Publish(NODE_CHANNEL, node_id.Hex(),
                                        request.node_info().SerializeAsString(), nullptr));
+    AddNode(std::make_shared<rpc::GcsNodeInfo>(request.node_info()));
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
   RAY_CHECK_OK(
@@ -57,13 +57,17 @@ void GcsNodeManager::HandleUnregisterNode(const rpc::UnregisterNodeRequest &requ
     node->set_state(rpc::GcsNodeInfo::DEAD);
     node->set_timestamp(current_sys_time_ms());
     AddDeadNodeToCache(node);
+    auto node_info_delta = std::make_shared<rpc::GcsNodeInfo>();
+    node_info_delta->set_node_id(node->node_id());
+    node_info_delta->set_state(node->state());
+    node_info_delta->set_timestamp(node->timestamp());
 
-    auto on_done = [this, node_id, node, reply,
+    auto on_done = [this, node_id, node_info_delta, reply,
                     send_reply_callback](const Status &status) {
-      auto on_done = [this, node_id, node, reply,
+      auto on_done = [this, node_id, node_info_delta, reply,
                       send_reply_callback](const Status &status) {
-        RAY_CHECK_OK(gcs_pub_sub_->Publish(NODE_CHANNEL, node_id.Hex(),
-                                           node->SerializeAsString(), nullptr));
+        RAY_CHECK_OK(gcs_pub_sub_->Publish(
+            NODE_CHANNEL, node_id.Hex(), node_info_delta->SerializeAsString(), nullptr));
         GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
         RAY_LOG(INFO) << "Finished unregistering node info, node id = " << node_id;
       };
@@ -179,10 +183,15 @@ void GcsNodeManager::OnNodeFailure(const NodeID &node_id) {
     node->set_state(rpc::GcsNodeInfo::DEAD);
     node->set_timestamp(current_sys_time_ms());
     AddDeadNodeToCache(node);
-    auto on_done = [this, node_id, node](const Status &status) {
-      auto on_done = [this, node_id, node](const Status &status) {
-        RAY_CHECK_OK(gcs_pub_sub_->Publish(NODE_CHANNEL, node_id.Hex(),
-                                           node->SerializeAsString(), nullptr));
+    auto node_info_delta = std::make_shared<rpc::GcsNodeInfo>();
+    node_info_delta->set_node_id(node->node_id());
+    node_info_delta->set_state(node->state());
+    node_info_delta->set_timestamp(node->timestamp());
+
+    auto on_done = [this, node_id, node_info_delta](const Status &status) {
+      auto on_done = [this, node_id, node_info_delta](const Status &status) {
+        RAY_CHECK_OK(gcs_pub_sub_->Publish(
+            NODE_CHANNEL, node_id.Hex(), node_info_delta->SerializeAsString(), nullptr));
       };
       RAY_CHECK_OK(gcs_table_storage_->NodeResourceTable().Delete(node_id, on_done));
     };

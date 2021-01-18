@@ -8,12 +8,12 @@ import starlette.responses
 import ray
 from ray.exceptions import RayTaskError
 from ray.serve.constants import LongPollKey
-from ray.serve.context import TaskContext
 from ray.util import metrics
-from ray.serve.utils import _get_logger, get_random_letters
-from ray.serve.http_util import Response
+from ray.serve.utils import _get_logger
+from ray.serve.http_util import Response, build_starlette_request
 from ray.serve.long_poll import LongPollAsyncClient
-from ray.serve.router import Router, RequestMetadata
+from ray.serve.router import Router
+from ray.serve.handle import DEFAULT
 
 logger = _get_logger()
 
@@ -22,10 +22,16 @@ class HTTPProxy:
     """This class is meant to be instantiated and run by an ASGI HTTP server.
 
     >>> import uvicorn
-    >>> uvicorn.run(HTTPProxy(kv_store_actor_handle, router_handle))
+    >>> uvicorn.run(HTTPProxy(controller_name))
     """
 
     def __init__(self, controller_name):
+        # Set the controller name so that serve.connect() will connect to the
+        # controller instance this proxy is running in.
+        ray.serve.api._set_internal_replica_context(None, None,
+                                                    controller_name)
+        self.client = ray.serve.connect()
+
         controller = ray.get_actor(controller_name)
         self.route_table = {}  # Should be updated via long polling.
         self.router = Router(controller)
@@ -34,8 +40,8 @@ class HTTPProxy:
         })
 
         self.request_counter = metrics.Count(
-            "num_http_requests",
-            description="The number of HTTP requests processed",
+            "serve_num_http_requests",
+            description="The number of HTTP requests processed.",
             tag_keys=("route", ))
 
     async def setup(self):
@@ -113,33 +119,24 @@ class HTTPProxy:
         http_body_bytes = await self.receive_http_body(scope, receive, send)
 
         headers = {k.decode(): v.decode() for k, v in scope["headers"]}
-        request_metadata = RequestMetadata(
-            get_random_letters(10),  # Used for debugging.
-            endpoint_name,
-            TaskContext.Web,
-            http_method=scope["method"].upper(),
-            call_method=headers.get("X-SERVE-CALL-METHOD".lower(), "__call__"),
-            shard_key=headers.get("X-SERVE-SHARD-KEY".lower(), None),
-        )
 
-        ref = await self.router.assign_request(request_metadata, scope,
-                                               http_body_bytes)
-        result = await ref
+        handle = self.client.get_handle(
+            endpoint_name, sync=False).options(
+                method_name=headers.get("X-SERVE-CALL-METHOD".lower(),
+                                        DEFAULT.VALUE),
+                shard_key=headers.get("X-SERVE-SHARD-KEY".lower(),
+                                      DEFAULT.VALUE),
+                http_method=scope["method"].upper(),
+                http_headers=headers)
+
+        request = build_starlette_request(scope, http_body_bytes)
+        object_ref = await handle.remote(request)
+        result = await object_ref
 
         if isinstance(result, RayTaskError):
             error_message = "Task Error. Traceback: {}.".format(result)
             await error_sender(error_message, 500)
         elif isinstance(result, starlette.responses.Response):
-            if isinstance(result, starlette.responses.StreamingResponse):
-                raise TypeError("Starlette StreamingResponse returned by "
-                                f"backend for endpoint {endpoint_name}. "
-                                "StreamingResponse is unserializable and not "
-                                "supported by Ray Serve.  Consider using "
-                                "another Starlette response type such as "
-                                "Response, HTMLResponse, PlainTextResponse, "
-                                "or JSONResponse.  If support for "
-                                "StreamingResponse is desired, please let "
-                                "the Ray team know by making a Github issue!")
             await result(scope, receive, send)
         else:
             await Response(result).send(scope, receive, send)
@@ -157,6 +154,8 @@ class HTTPProxyActor:
         self.host = host
         self.port = port
 
+        self.setup_complete = asyncio.Event()
+
         self.app = HTTPProxy(controller_name)
         await self.app.setup()
 
@@ -166,10 +165,25 @@ class HTTPProxyActor:
                                               **middleware.options)
 
         # Start running the HTTP server on the event loop.
-        asyncio.get_event_loop().create_task(self.run())
+        # This task should be running forever. We track it in case of failure.
+        self.running_task = asyncio.get_event_loop().create_task(self.run())
 
-    def ready(self):
-        return True
+    async def ready(self):
+        """Returns when HTTP proxy is ready to serve traffic.
+        Or throw exception when it is not able to serve traffic.
+        """
+        done_set, _ = await asyncio.wait(
+            [
+                # Either the HTTP setup has completed.
+                # The event is set inside self.run.
+                self.setup_complete.wait(),
+                # Or self.run errored.
+                self.running_task,
+            ],
+            return_when=asyncio.FIRST_COMPLETED)
+
+        # Return None, or re-throw the exception from self.running_task.
+        return await done_set.pop()
 
     async def run(self):
         sock = socket.socket()
@@ -195,4 +209,6 @@ class HTTPProxyActor:
         # because the existing implementation fails if it isn't running in
         # the main thread and uvicorn doesn't expose a way to configure it.
         server.install_signal_handlers = lambda: None
+
+        self.setup_complete.set()
         await server.serve(sockets=[sock])

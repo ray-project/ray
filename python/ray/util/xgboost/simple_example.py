@@ -31,7 +31,7 @@ def main():
         train_set,
         evals=[(test_set, "eval")],
         evals_result=evals_result,
-        ray_params=RayParams(max_actor_restarts=1),
+        ray_params=RayParams(max_actor_restarts=1, num_actors=1),
         verbose_eval=False)
 
     bst.save_model("simple.xgb")

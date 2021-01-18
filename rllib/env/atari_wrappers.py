@@ -1,7 +1,7 @@
 from ray.rllib.env.wrappers.atari_wrappers import is_atari, \
     get_wrapper_by_cls, MonitorEnv, NoopResetEnv, ClipRewardEnv, \
     FireResetEnv, EpisodicLifeEnv, MaxAndSkipEnv, WarpFrame, FrameStack, \
-    ScaledFloatFrame, wrap_deepmind
+    FrameStackTrajectoryView, ScaledFloatFrame, wrap_deepmind
 from ray.rllib.utils.deprecation import deprecation_warning
 
 deprecation_warning(
@@ -20,5 +20,6 @@ EpisodicLifeEnv = EpisodicLifeEnv
 MaxAndSkipEnv = MaxAndSkipEnv
 WarpFrame = WarpFrame
 FrameStack = FrameStack
+FrameStackTrajectoryView = FrameStackTrajectoryView
 ScaledFloatFrame = ScaledFloatFrame
 wrap_deepmind = wrap_deepmind

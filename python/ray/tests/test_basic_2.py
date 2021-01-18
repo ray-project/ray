@@ -16,7 +16,7 @@ from ray.exceptions import GetTimeoutError
 from ray.exceptions import RayTaskError
 
 if client_test_enabled():
-    from ray.experimental.client import ray
+    from ray.util.client import ray
 else:
     import ray
 
@@ -651,4 +651,5 @@ def test_get_correct_node_ip():
 
 if __name__ == "__main__":
     import pytest
+    # Skip test_basic_2_client_mode for now- the test suite is breaking.
     sys.exit(pytest.main(["-v", __file__]))

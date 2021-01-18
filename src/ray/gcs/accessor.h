@@ -33,12 +33,6 @@ class ActorInfoAccessor {
  public:
   virtual ~ActorInfoAccessor() = default;
 
-  /// Get all actor specification from GCS synchronously.
-  ///
-  /// \param actor_table_data_list The container to hold the actor specification.
-  /// \return Status
-  virtual Status GetAll(std::vector<rpc::ActorTableData> *actor_table_data_list) = 0;
-
   /// Get actor specification from GCS asynchronously.
   ///
   /// \param actor_id The ID of actor to look up in the GCS.
@@ -208,23 +202,6 @@ class TaskInfoAccessor {
   virtual Status AsyncGet(const TaskID &task_id,
                           const OptionalItemCallback<rpc::TaskTableData> &callback) = 0;
 
-  /// Subscribe asynchronously to the event that the given task is added in GCS.
-  ///
-  /// \param task_id The ID of the task to be subscribed to.
-  /// \param subscribe Callback that will be called each time when the task is updated.
-  /// \param done Callback that will be called when subscription is complete.
-  /// \return Status
-  virtual Status AsyncSubscribe(
-      const TaskID &task_id,
-      const SubscribeCallback<TaskID, rpc::TaskTableData> &subscribe,
-      const StatusCallback &done) = 0;
-
-  /// Cancel subscription to a task asynchronously.
-  ///
-  /// \param task_id The ID of the task to be unsubscribed to.
-  /// \return Status
-  virtual Status AsyncUnsubscribe(const TaskID &task_id) = 0;
-
   /// Add a task lease to GCS asynchronously.
   ///
   /// \param data_ptr The task lease that will be added to GCS.
@@ -279,12 +256,6 @@ class TaskInfoAccessor {
   ///
   /// \param is_pubsub_server_restarted Whether pubsub server is restarted.
   virtual void AsyncResubscribe(bool is_pubsub_server_restarted) = 0;
-
-  /// Check if the specified task is unsubscribed.
-  ///
-  /// \param task_id The ID of the task.
-  /// \return Whether the specified task is unsubscribed.
-  virtual bool IsTaskUnsubscribed(const TaskID &task_id) = 0;
 
   /// Check if the specified task lease is unsubscribed.
   ///
@@ -692,7 +663,7 @@ class WorkerInfoAccessor {
   /// \param done Callback that will be called when subscription is complete.
   /// \return Status
   virtual Status AsyncSubscribeToWorkerFailures(
-      const SubscribeCallback<WorkerID, rpc::WorkerTableData> &subscribe,
+      const ItemCallback<rpc::WorkerTableData> &subscribe,
       const StatusCallback &done) = 0;
 
   /// Report a worker failure to GCS asynchronously.

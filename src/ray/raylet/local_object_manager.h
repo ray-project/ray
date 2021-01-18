@@ -24,6 +24,7 @@
 #include "ray/object_manager/common.h"
 #include "ray/raylet/worker_pool.h"
 #include "ray/rpc/worker/core_worker_client_pool.h"
+#include "src/ray/protobuf/node_manager.pb.h"
 
 namespace ray {
 
@@ -117,6 +118,11 @@ class LocalObjectManager {
   /// \return True if spilling is still in progress. False otherwise.
   bool IsSpillingInProgress();
 
+  /// Populate object spilling stats.
+  ///
+  /// \param Output parameter.
+  void FillObjectSpillingStats(rpc::GetNodeStatsReply *reply) const;
+
  private:
   FRIEND_TEST(LocalObjectManagerTest, TestSpillObjectsOfSize);
   FRIEND_TEST(LocalObjectManagerTest,
@@ -186,6 +192,11 @@ class LocalObjectManager {
   // These objects will be released once spilling is complete and the URL is
   // written to the object directory.
   absl::flat_hash_map<ObjectID, std::unique_ptr<RayObject>> objects_pending_spill_;
+
+  /// Objects that were spilled on this node but that are being restored.
+  /// The field is used to dedup the same restore request while restoration is in
+  /// progress.
+  absl::flat_hash_set<ObjectID> objects_pending_restore_;
 
   /// The time that we last sent a FreeObjects request to other nodes for
   /// objects that have gone out of scope in the application.

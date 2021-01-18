@@ -321,6 +321,47 @@ TEST_F(ReferenceCountTest, TestReferenceStats) {
   ASSERT_EQ(stats2.object_refs(0).call_site(), "file2.py:43");
 }
 
+// Tests fetching of locality data from reference table.
+TEST_F(ReferenceCountTest, TestGetLocalityData) {
+  ObjectID obj1 = ObjectID::FromRandom();
+  ObjectID obj2 = ObjectID::FromRandom();
+  NodeID node1 = NodeID::FromRandom();
+  NodeID node2 = NodeID::FromRandom();
+  rpc::Address address;
+  address.set_ip_address("1234");
+
+  // Owned object with defined object size and pinned node location should return valid
+  // locality data.
+  int64_t object_size = 100;
+  rc->AddOwnedObject(obj1, {}, address, "file2.py:42", object_size, false,
+                     absl::optional<NodeID>(node1));
+  auto locality_data_obj1 = rc->GetLocalityData(obj1);
+  ASSERT_TRUE(locality_data_obj1.has_value());
+  ASSERT_EQ(locality_data_obj1->object_size, object_size);
+  ASSERT_EQ(locality_data_obj1->nodes_containing_object,
+            absl::flat_hash_set<NodeID>{node1});
+
+  // Fetching locality data for an object that doesn't have a reference in the table
+  // should return a null optional.
+  auto locality_data_obj2_not_exist = rc->GetLocalityData(obj2);
+  ASSERT_FALSE(locality_data_obj2_not_exist.has_value());
+
+  // Fetching locality data for an object that doesn't have a pinned node location
+  // defined should return a null optional.
+  rc->AddLocalReference(obj2, "file.py:43");
+  rc->UpdateObjectSize(obj2, 200);
+  auto locality_data_obj2_no_pinned_raylet = rc->GetLocalityData(obj2);
+  ASSERT_FALSE(locality_data_obj2_no_pinned_raylet.has_value());
+  rc->RemoveLocalReference(obj2, nullptr);
+
+  // Fetching locality data for an object that doesn't have an object size defined
+  // should return a null optional.
+  rc->AddOwnedObject(obj2, {}, address, "file2.py:43", -1, false,
+                     absl::optional<NodeID>(node2));
+  auto locality_data_obj2_no_object_size = rc->GetLocalityData(obj2);
+  ASSERT_FALSE(locality_data_obj2_no_object_size.has_value());
+}
+
 // Tests that we can get the owner address correctly for objects that we own,
 // objects that we borrowed via a serialized object ID, and objects whose
 // origin we do not know.
@@ -2065,6 +2106,16 @@ TEST_F(ReferenceCountTest, TestFree) {
   ASSERT_TRUE(pinned_at.IsNil());
   rc->RemoveLocalReference(id, nullptr);
   ASSERT_FALSE(rc->IsPlasmaObjectFreed(id));
+}
+
+TEST_F(ReferenceCountTest, TestRemoveOwnedObject) {
+  ObjectID id = ObjectID::FromRandom();
+
+  // Test remove owned object.
+  rc->AddOwnedObject(id, {}, rpc::Address(), "", 0, false);
+  ASSERT_TRUE(rc->HasReference(id));
+  rc->RemoveOwnedObject(id);
+  ASSERT_FALSE(rc->HasReference(id));
 }
 
 }  // namespace ray

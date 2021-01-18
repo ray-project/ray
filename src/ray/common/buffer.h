@@ -17,7 +17,9 @@
 #include <cstdint>
 #include <cstdio>
 
-#include "arrow/buffer.h"
+#include <functional>
+#include <memory>
+
 #include "ray/common/status.h"
 #include "ray/thirdparty/aligned_alloc.h"
 
@@ -117,17 +119,70 @@ class LocalMemoryBuffer : public Buffer {
   uint8_t *buffer_ = NULL;
 };
 
+/// Represents a byte buffer in shared memory.
+class SharedMemoryBuffer : public Buffer {
+ public:
+  /// Constructor.
+  ///
+  /// By default when initializing a SharedMemoryBuffer with a data pointer and a length,
+  /// it just assigns the pointer and length without coping the data content. This is
+  /// for performance reasons. In this case the buffer cannot ensure data validity. It
+  /// instead relies on the lifetime passed in data pointer.
+  ///
+  /// \param data The data pointer to the passed-in buffer.
+  /// \param size The size of the passed in buffer.
+  SharedMemoryBuffer(uint8_t *data, size_t size) {
+    data_ = data;
+    size_ = size;
+  }
+
+  /// Make a slice.
+  SharedMemoryBuffer(const std::shared_ptr<Buffer> &buffer, int64_t offset, int64_t size)
+      : size_(size), parent_(buffer) {
+    data_ = buffer->Data() + offset;
+    RAY_CHECK(size_ <= parent_->Size());
+  }
+
+  static std::shared_ptr<SharedMemoryBuffer> Slice(const std::shared_ptr<Buffer> &buffer,
+                                                   int64_t offset, int64_t size) {
+    return std::make_shared<SharedMemoryBuffer>(buffer, offset, size);
+  }
+
+  uint8_t *Data() const override { return data_; }
+
+  size_t Size() const override { return size_; }
+
+  bool OwnsData() const override { return false; }
+
+  bool IsPlasmaBuffer() const override { return true; }
+
+  ~SharedMemoryBuffer() = default;
+
+ private:
+  /// Disable copy constructor and assignment, as default copy will
+  /// cause invalid data_.
+  SharedMemoryBuffer &operator=(const LocalMemoryBuffer &) = delete;
+  SharedMemoryBuffer(const LocalMemoryBuffer &) = delete;
+
+  /// Pointer to the data.
+  uint8_t *data_;
+  /// Size of the buffer.
+  size_t size_;
+  /// Keep the parent where the buffer is sliced from.
+  std::shared_ptr<Buffer> parent_;
+};
+
 /// Represents a byte buffer for plasma object. This can be used to hold the
 /// reference to a plasma object (via the underlying plasma::PlasmaBuffer).
 class PlasmaBuffer : public Buffer {
  public:
-  PlasmaBuffer(std::shared_ptr<arrow::Buffer> buffer,
+  PlasmaBuffer(std::shared_ptr<Buffer> buffer,
                std::function<void(PlasmaBuffer *)> on_delete = nullptr)
       : buffer_(buffer), on_delete_(on_delete) {}
 
-  uint8_t *Data() const override { return const_cast<uint8_t *>(buffer_->data()); }
+  uint8_t *Data() const override { return buffer_->Data(); }
 
-  size_t Size() const override { return buffer_->size(); }
+  size_t Size() const override { return buffer_->Size(); }
 
   bool OwnsData() const override { return true; }
 
@@ -140,9 +195,9 @@ class PlasmaBuffer : public Buffer {
   };
 
  private:
-  /// shared_ptr to arrow buffer which can potentially hold a reference
+  /// shared_ptr to a buffer which can potentially hold a reference
   /// for the object (when it's a plasma::PlasmaBuffer).
-  std::shared_ptr<arrow::Buffer> buffer_;
+  std::shared_ptr<Buffer> buffer_;
   /// Callback to run on destruction.
   std::function<void(PlasmaBuffer *)> on_delete_;
 };

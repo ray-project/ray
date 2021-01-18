@@ -162,14 +162,13 @@ bool LocalObjectManager::SpillObjectsOfSize(int64_t num_bytes_to_spill) {
         spill_time_total_s_ += (now - std::max(start_time, last_spill_finish_ns_)) / 1e9;
         if (now - last_spill_log_ns_ > 1e9) {
           last_spill_log_ns_ = now;
-          // TODO(ekl) logging at error level until we add a better UX indicator.
-          RAY_LOG(ERROR) << "Spilled "
-                         << static_cast<int>(spilled_bytes_total_ / (1024 * 1024))
-                         << " MiB, " << spilled_objects_total_
-                         << " objects, write throughput "
-                         << static_cast<int>(spilled_bytes_total_ / (1024 * 1024) /
-                                             spill_time_total_s_)
-                         << " MiB/s";
+          RAY_LOG(INFO) << "Spilled "
+                        << static_cast<int>(spilled_bytes_total_ / (1024 * 1024))
+                        << " MiB, " << spilled_objects_total_
+                        << " objects, write throughput "
+                        << static_cast<int>(spilled_bytes_total_ / (1024 * 1024) /
+                                            spill_time_total_s_)
+                        << " MiB/s";
         }
         last_spill_finish_ns_ = now;
       }
@@ -303,6 +302,10 @@ void LocalObjectManager::AsyncRestoreSpilledObject(
     std::function<void(const ray::Status &)> callback) {
   RAY_LOG(DEBUG) << "Restoring spilled object " << object_id << " from URL "
                  << object_url;
+  if (objects_pending_restore_.count(object_id) > 0) {
+    // If the same object is restoring, we dedup here.
+    return;
+  }
   io_worker_pool_.PopRestoreWorker([this, object_id, object_url, callback](
                                        std::shared_ptr<WorkerInterface> io_worker) {
     auto start_time = absl::GetCurrentTimeNanos();
@@ -310,11 +313,14 @@ void LocalObjectManager::AsyncRestoreSpilledObject(
     rpc::RestoreSpilledObjectsRequest request;
     request.add_spilled_objects_url(std::move(object_url));
     request.add_object_ids_to_restore(object_id.Binary());
+    RAY_CHECK(objects_pending_restore_.emplace(object_id).second)
+        << "Object dedupe wasn't done properly. Please report if you see this issue.";
     io_worker->rpc_client()->RestoreSpilledObjects(
         request,
         [this, start_time, object_id, callback, io_worker](
             const ray::Status &status, const rpc::RestoreSpilledObjectsReply &r) {
           io_worker_pool_.PushRestoreWorker(io_worker);
+          objects_pending_restore_.erase(object_id);
           if (!status.ok()) {
             RAY_LOG(ERROR) << "Failed to send restore spilled object request: "
                            << status.ToString();
@@ -330,14 +336,13 @@ void LocalObjectManager::AsyncRestoreSpilledObject(
                 (now - std::max(start_time, last_restore_finish_ns_)) / 1e9;
             if (now - last_restore_log_ns_ > 1e9) {
               last_restore_log_ns_ = now;
-              // TODO(ekl) logging at error level until we add a better UX indicator.
-              RAY_LOG(ERROR) << "Restored "
-                             << static_cast<int>(restored_bytes_total_ / (1024 * 1024))
-                             << " MiB, " << restored_objects_total_
-                             << " objects, read throughput "
-                             << static_cast<int>(restored_bytes_total_ / (1024 * 1024) /
-                                                 restore_time_total_s_)
-                             << " MiB/s";
+              RAY_LOG(INFO) << "Restored "
+                            << static_cast<int>(restored_bytes_total_ / (1024 * 1024))
+                            << " MiB, " << restored_objects_total_
+                            << " objects, read throughput "
+                            << static_cast<int>(restored_bytes_total_ / (1024 * 1024) /
+                                                restore_time_total_s_)
+                            << " MiB/s";
             }
             last_restore_finish_ns_ = now;
           }
@@ -412,6 +417,16 @@ void LocalObjectManager::DeleteSpilledObjects(std::vector<std::string> &urls_to_
               }
             });
       });
+}
+
+void LocalObjectManager::FillObjectSpillingStats(rpc::GetNodeStatsReply *reply) const {
+  auto stats = reply->mutable_store_stats();
+  stats->set_spill_time_total_s(spill_time_total_s_);
+  stats->set_spilled_bytes_total(spilled_bytes_total_);
+  stats->set_spilled_objects_total(spilled_objects_total_);
+  stats->set_restore_time_total_s(restore_time_total_s_);
+  stats->set_restored_bytes_total(restored_bytes_total_);
+  stats->set_restored_objects_total(restored_objects_total_);
 }
 
 };  // namespace raylet

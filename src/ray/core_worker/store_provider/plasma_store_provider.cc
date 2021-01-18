@@ -85,13 +85,13 @@ Status CoreWorkerPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &meta
                                              const rpc::Address &owner_address,
                                              std::shared_ptr<Buffer> *data) {
   Status status;
-  std::shared_ptr<arrow::Buffer> arrow_buffer;
+  std::shared_ptr<Buffer> plasma_buffer;
   uint64_t retry_with_request_id = 0;
   {
     std::lock_guard<std::mutex> guard(store_client_mutex_);
     status = store_client_.Create(
         object_id, owner_address, data_size, metadata ? metadata->Data() : nullptr,
-        metadata ? metadata->Size() : 0, &retry_with_request_id, &arrow_buffer,
+        metadata ? metadata->Size() : 0, &retry_with_request_id, &plasma_buffer,
         /*device_num=*/0);
   }
 
@@ -104,7 +104,7 @@ Status CoreWorkerPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &meta
                      << retry_with_request_id;
       status = store_client_.RetryCreate(object_id, retry_with_request_id,
                                          metadata ? metadata->Data() : nullptr,
-                                         &retry_with_request_id, &arrow_buffer);
+                                         &retry_with_request_id, &plasma_buffer);
     }
   }
 
@@ -129,7 +129,7 @@ Status CoreWorkerPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &meta
     status = Status::OK();
   } else {
     RAY_RETURN_NOT_OK(status);
-    *data = std::make_shared<PlasmaBuffer>(PlasmaBuffer(arrow_buffer));
+    *data = std::make_shared<PlasmaBuffer>(PlasmaBuffer(plasma_buffer));
   }
   return status;
 }
@@ -173,7 +173,7 @@ Status CoreWorkerPlasmaStoreProvider::FetchAndGetFromPlasmaStore(
       const auto &object_id = batch_ids[i];
       std::shared_ptr<PlasmaBuffer> data = nullptr;
       std::shared_ptr<PlasmaBuffer> metadata = nullptr;
-      if (plasma_results[i].data && plasma_results[i].data->size()) {
+      if (plasma_results[i].data && plasma_results[i].data->Size()) {
         // We track the set of active data buffers in active_buffers_. On destruction,
         // the buffer entry will be removed from the set via callback.
         std::shared_ptr<BufferTracker> tracker = buffer_tracker_;
@@ -190,7 +190,7 @@ Status CoreWorkerPlasmaStoreProvider::FetchAndGetFromPlasmaStore(
           tracker->active_buffers_[std::make_pair(object_id, data.get())] = call_site;
         }
       }
-      if (plasma_results[i].metadata && plasma_results[i].metadata->size()) {
+      if (plasma_results[i].metadata && plasma_results[i].metadata->Size()) {
         metadata = std::make_shared<PlasmaBuffer>(plasma_results[i].metadata);
       }
       const auto result_object =

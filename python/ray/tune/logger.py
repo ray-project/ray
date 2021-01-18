@@ -704,10 +704,10 @@ class TBXLoggerCallback(LoggerCallback):
 
 
 # Maintain backwards compatibility.
-from ray.tune.integration.mlflow import MLFlowLogger as _MLFlowLogger  # noqa: E402, E501
-MLFlowLogger = _MLFlowLogger
+from ray.tune.integration.mlflow import MLflowLogger as _MLflowLogger  # noqa: E402, E501
+MLflowLogger = _MLflowLogger
 # The capital L is a typo, but needs to remain for backwards compatibility.
-MLFLowLogger = _MLFlowLogger
+MLFLowLogger = _MLflowLogger
 
 
 def pretty_print(result):

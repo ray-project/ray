@@ -3,7 +3,8 @@ import gym
 
 from ray.rllib.models.tf.misc import normc_initializer
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
-from ray.rllib.utils.framework import get_activation_fn, try_import_tf
+from ray.rllib.models.utils import get_activation_fn
+from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.typing import Dict, TensorType, List, ModelConfigDict
 
 tf1, tf, tfv = try_import_tf()
@@ -32,7 +33,6 @@ class FullyConnectedNetwork(TFModelV2):
             num_outputs = num_outputs // 2
             self.log_std_var = tf.Variable(
                 [0.0] * num_outputs, dtype=tf.float32, name="log_std")
-            self.register_variables([self.log_std_var])
 
         # We are using obs_flat, so take the flattened shape as input.
         inputs = tf.keras.layers.Input(
@@ -114,7 +114,6 @@ class FullyConnectedNetwork(TFModelV2):
         self.base_model = tf.keras.Model(
             inputs, [(logits_out
                       if logits_out is not None else last_layer), value_out])
-        self.register_variables(self.base_model.variables)
 
     def forward(self, input_dict: Dict[str, TensorType],
                 state: List[TensorType],

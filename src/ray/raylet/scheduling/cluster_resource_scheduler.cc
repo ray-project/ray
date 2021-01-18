@@ -14,6 +14,9 @@
 
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 
+#include "ray/common/grpc_util.h"
+#include "ray/common/ray_config.h"
+
 namespace ray {
 
 ClusterResourceScheduler::ClusterResourceScheduler(
@@ -53,6 +56,44 @@ void ClusterResourceScheduler::AddOrUpdateNode(int64_t node_id,
     // This node exists, so update its resources.
     it->second = Node(node_resources);
   }
+}
+
+bool ClusterResourceScheduler::UpdateNode(const std::string &node_id_string,
+                                          const rpc::ResourcesData &resource_data) {
+  auto node_id = string_to_int_map_.Insert(node_id_string);
+  if (!nodes_.contains(node_id)) {
+    return false;
+  }
+
+  auto resources_total = MapFromProtobuf(resource_data.resources_total());
+  auto resources_available = MapFromProtobuf(resource_data.resources_available());
+  NodeResources node_resources = ResourceMapToNodeResources(
+      string_to_int_map_, resources_total, resources_available);
+  NodeResources local_view;
+  RAY_CHECK(GetNodeResources(node_id, &local_view));
+
+  if (resource_data.resources_total_size() > 0) {
+    for (size_t i = 0; i < node_resources.predefined_resources.size(); ++i) {
+      local_view.predefined_resources[i].total =
+          node_resources.predefined_resources[i].total;
+    }
+    for (auto &entry : node_resources.custom_resources) {
+      local_view.custom_resources[entry.first].total = entry.second.total;
+    }
+  }
+
+  if (resource_data.resources_available_changed()) {
+    for (size_t i = 0; i < node_resources.predefined_resources.size(); ++i) {
+      local_view.predefined_resources[i].available =
+          node_resources.predefined_resources[i].available;
+    }
+    for (auto &entry : node_resources.custom_resources) {
+      local_view.custom_resources[entry.first].available = entry.second.available;
+    }
+  }
+
+  AddOrUpdateNode(node_id, local_view);
+  return true;
 }
 
 bool ClusterResourceScheduler::RemoveNode(int64_t node_id) {
@@ -174,6 +215,10 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(const TaskRequest &task
                                                          bool actor_creation,
                                                          int64_t *total_violations,
                                                          bool *is_infeasible) {
+  // NOTE: We need to set `is_infeasible` to false in advance to avoid `is_infeasible` not
+  // being set.
+  *is_infeasible = false;
+
   // Minimum number of soft violations across all nodes that can schedule the request.
   // We will pick the node with the smallest number of soft violations.
   int64_t min_violations = INT_MAX;
@@ -318,6 +363,12 @@ bool ClusterResourceScheduler::GetNodeResources(int64_t node_id,
   } else {
     return false;
   }
+}
+
+const NodeResources &ClusterResourceScheduler::GetLocalNodeResources() const {
+  const auto &node_it = nodes_.find(local_node_id_);
+  RAY_CHECK(node_it != nodes_.end());
+  return node_it->second.GetLocalView();
 }
 
 int64_t ClusterResourceScheduler::NumNodes() { return nodes_.size(); }
@@ -879,7 +930,7 @@ bool ClusterResourceScheduler::AllocateRemoteTaskResources(
   return SubtractRemoteNodeAvailableResources(node_id, task_request);
 }
 
-void ClusterResourceScheduler::FreeLocalTaskResources(
+void ClusterResourceScheduler::ReleaseWorkerResources(
     std::shared_ptr<TaskResourceInstances> task_allocation) {
   if (task_allocation == nullptr || task_allocation->IsEmpty()) {
     return;
@@ -888,7 +939,7 @@ void ClusterResourceScheduler::FreeLocalTaskResources(
   UpdateLocalAvailableResourcesFromResourceInstances();
 }
 
-void ClusterResourceScheduler::UpdateLastReportResourcesFromGcs(
+void ClusterResourceScheduler::UpdateLastResourceUsage(
     std::shared_ptr<SchedulingResources> gcs_resources) {
   NodeResources node_resources = ResourceMapToNodeResources(
       string_to_int_map_, gcs_resources->GetTotalResources().GetResourceMap(),
@@ -897,7 +948,6 @@ void ClusterResourceScheduler::UpdateLastReportResourcesFromGcs(
 }
 
 void ClusterResourceScheduler::FillResourceUsage(
-    bool light_report_resource_usage_enabled,
     std::shared_ptr<rpc::ResourcesData> resources_data) {
   NodeResources resources;
 
@@ -912,77 +962,47 @@ void ClusterResourceScheduler::FillResourceUsage(
     last_report_resources_.reset(new NodeResources(node_resources));
   }
 
-  if (light_report_resource_usage_enabled) {
-    // Reset all local views for remote nodes. This is needed in case tasks that
-    // we spilled back to a remote node were not actually scheduled on the
-    // node. Then, the remote node's resource availability may not change and
-    // so it may not send us another update.
-    for (auto &node : nodes_) {
-      if (node.first != local_node_id_) {
-        node.second.ResetLocalView();
-      }
+  // Reset all local views for remote nodes. This is needed in case tasks that
+  // we spilled back to a remote node were not actually scheduled on the
+  // node. Then, the remote node's resource availability may not change and
+  // so it may not send us another update.
+  for (auto &node : nodes_) {
+    if (node.first != local_node_id_) {
+      node.second.ResetLocalView();
     }
+  }
 
-    for (int i = 0; i < PredefinedResources_MAX; i++) {
-      const auto &label = ResourceEnumToString((PredefinedResources)i);
-      const auto &capacity = resources.predefined_resources[i];
-      const auto &last_capacity = last_report_resources_->predefined_resources[i];
-      // Note: available may be negative, but only report positive to GCS.
-      if (capacity.available != last_capacity.available && capacity.available > 0) {
-        resources_data->set_resources_available_changed(true);
-        (*resources_data->mutable_resources_available())[label] =
-            capacity.available.Double();
-      }
-      if (capacity.total != last_capacity.total) {
-        (*resources_data->mutable_resources_total())[label] = capacity.total.Double();
-      }
+  for (int i = 0; i < PredefinedResources_MAX; i++) {
+    const auto &label = ResourceEnumToString((PredefinedResources)i);
+    const auto &capacity = resources.predefined_resources[i];
+    const auto &last_capacity = last_report_resources_->predefined_resources[i];
+    // Note: available may be negative, but only report positive to GCS.
+    if (capacity.available != last_capacity.available && capacity.available > 0) {
+      resources_data->set_resources_available_changed(true);
+      (*resources_data->mutable_resources_available())[label] =
+          capacity.available.Double();
     }
-    for (auto it = resources.custom_resources.begin();
-         it != resources.custom_resources.end(); it++) {
-      uint64_t custom_id = it->first;
-      const auto &capacity = it->second;
-      const auto &last_capacity = last_report_resources_->custom_resources[custom_id];
-      const auto &label = string_to_int_map_.Get(custom_id);
-      // Note: available may be negative, but only report positive to GCS.
-      if (capacity.available != last_capacity.available && capacity.available > 0) {
-        resources_data->set_resources_available_changed(true);
-        (*resources_data->mutable_resources_available())[label] =
-            capacity.available.Double();
-      }
-      if (capacity.total != last_capacity.total) {
-        (*resources_data->mutable_resources_total())[label] = capacity.total.Double();
-      }
+    if (capacity.total != last_capacity.total) {
+      (*resources_data->mutable_resources_total())[label] = capacity.total.Double();
     }
-    if (resources != *last_report_resources_.get()) {
-      last_report_resources_.reset(new NodeResources(resources));
+  }
+  for (const auto &it : resources.custom_resources) {
+    uint64_t custom_id = it.first;
+    const auto &capacity = it.second;
+    const auto &last_capacity = last_report_resources_->custom_resources[custom_id];
+    const auto &label = string_to_int_map_.Get(custom_id);
+    // Note: available may be negative, but only report positive to GCS.
+    if (capacity.available != last_capacity.available && capacity.available > 0) {
+      resources_data->set_resources_available_changed(true);
+      (*resources_data->mutable_resources_available())[label] =
+          capacity.available.Double();
     }
-  } else {
-    for (int i = 0; i < PredefinedResources_MAX; i++) {
-      const auto &label = ResourceEnumToString((PredefinedResources)i);
-      const auto &capacity = resources.predefined_resources[i];
-      // Note: available may be negative, but only report positive to GCS.
-      if (capacity.available > 0) {
-        (*resources_data->mutable_resources_available())[label] =
-            capacity.available.Double();
-      }
-      if (capacity.total != 0) {
-        (*resources_data->mutable_resources_total())[label] = capacity.total.Double();
-      }
+    if (capacity.total != last_capacity.total) {
+      (*resources_data->mutable_resources_total())[label] = capacity.total.Double();
     }
-    for (auto it = resources.custom_resources.begin();
-         it != resources.custom_resources.end(); it++) {
-      uint64_t custom_id = it->first;
-      const auto &capacity = it->second;
-      const auto &label = string_to_int_map_.Get(custom_id);
-      // Note: available may be negative, but only report positive to GCS.
-      if (capacity.available > 0) {
-        (*resources_data->mutable_resources_available())[label] =
-            capacity.available.Double();
-      }
-      if (capacity.total != 0) {
-        (*resources_data->mutable_resources_total())[label] = capacity.total.Double();
-      }
-    }
+  }
+  if (resources != *last_report_resources_.get()) {
+    last_report_resources_.reset(new NodeResources(resources));
   }
 }
 

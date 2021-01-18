@@ -2,14 +2,10 @@ package io.ray.streaming.runtime.config.types;
 
 public enum ContextBackendType {
 
-  /**
-   * Memory type
-   */
+  /** Memory type */
   MEMORY("memory", 0),
 
-  /**
-   * Local File
-   */
+  /** Local File */
   LOCAL_FILE("local_file", 1);
 
   private String name;
