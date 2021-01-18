@@ -16,11 +16,9 @@ public class SourceStreamTask extends StreamTask {
 
   private final SourceProcessor sourceProcessor;
 
-
-  /**
-   * The pending barrier ID to be triggered.
-   */
+  /** The pending barrier ID to be triggered. */
   private final AtomicReference<Long> pendingBarrier = new AtomicReference<>();
+
   private long lastCheckpointId = 0;
 
   /**
@@ -33,8 +31,7 @@ public class SourceStreamTask extends StreamTask {
   }
 
   @Override
-  protected void init() {
-  }
+  protected void init() {}
 
   @Override
   public void run() {
@@ -50,15 +47,19 @@ public class SourceStreamTask extends StreamTask {
           // Important: because cp maybe timeout, master will use the old checkpoint id again
           if (pendingBarrier.compareAndSet(barrierId, null)) {
             // source fetcher only have outputPoints
-            LOG.info("Start to do checkpoint {}, worker name is {}.",
-                barrierId, jobWorker.getWorkerContext().getWorkerName());
+            LOG.info(
+                "Start to do checkpoint {}, worker name is {}.",
+                barrierId,
+                jobWorker.getWorkerContext().getWorkerName());
 
             doCheckpoint(barrierId, null);
 
             LOG.info("Finish to do checkpoint {}.", barrierId);
           } else {
             // pendingCheckpointId has modify, should not happen
-            LOG.warn("Pending checkpointId modify unexpected, expect={}, now={}.", barrierId,
+            LOG.warn(
+                "Pending checkpointId modify unexpected, expect={}, now={}.",
+                barrierId,
                 pendingBarrier.get());
           }
         }
@@ -66,8 +67,8 @@ public class SourceStreamTask extends StreamTask {
         sourceProcessor.fetch();
       }
     } catch (Throwable e) {
-      if (e instanceof ChannelInterruptException ||
-          ExceptionUtils.getRootCause(e) instanceof ChannelInterruptException) {
+      if (e instanceof ChannelInterruptException
+          || ExceptionUtils.getRootCause(e) instanceof ChannelInterruptException) {
         LOG.info("queue has stopped.");
       } else {
         // occur error, need to rollback

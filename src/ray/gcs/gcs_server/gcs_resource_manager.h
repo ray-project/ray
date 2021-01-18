@@ -37,9 +37,11 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
  public:
   /// Create a GcsResourceManager.
   ///
+  /// \param main_io_service The main event loop.
   /// \param gcs_pub_sub GCS message publisher.
   /// \param gcs_table_storage GCS table external storage accessor.
-  explicit GcsResourceManager(std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
+  explicit GcsResourceManager(boost::asio::io_service &main_io_service,
+                              std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
                               std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage);
 
   virtual ~GcsResourceManager() {}
@@ -65,26 +67,36 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
       rpc::GetAllAvailableResourcesReply *reply,
       rpc::SendReplyCallback send_reply_callback) override;
 
+  /// Handle report resource usage rpc come from raylet.
+  void HandleReportResourceUsage(const rpc::ReportResourceUsageRequest &request,
+                                 rpc::ReportResourceUsageReply *reply,
+                                 rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Handle get all resource usage rpc request.
+  void HandleGetAllResourceUsage(const rpc::GetAllResourceUsageRequest &request,
+                                 rpc::GetAllResourceUsageReply *reply,
+                                 rpc::SendReplyCallback send_reply_callback) override;
+
   /// Get the resources of all nodes in the cluster.
   ///
   /// \return The resources of all nodes in the cluster.
-  const absl::flat_hash_map<NodeID, ResourceSet> &GetClusterResources() const;
+  const absl::flat_hash_map<NodeID, SchedulingResources> &GetClusterResources() const;
 
   /// Handle a node registration.
   ///
-  /// \param node_id The specified node id.
-  void OnNodeAdd(const NodeID &node_id);
+  /// \param node The specified node to add.
+  void OnNodeAdd(const rpc::GcsNodeInfo &node);
 
   /// Handle a node death.
   ///
   /// \param node_id The specified node id.
   void OnNodeDead(const NodeID &node_id);
 
-  /// Update the resources of the specified node.
+  /// Set the available resources of the specified node.
   ///
   /// \param node_id Id of a node.
-  /// \param resources Resources of a node.
-  void UpdateResources(const NodeID &node_id, const ResourceSet &resources);
+  /// \param resources Available resources of a node.
+  void SetAvailableResources(const NodeID &node_id, const ResourceSet &resources);
 
   /// Acquire resources from the specified node. It will deduct directly from the node
   /// resources.
@@ -110,15 +122,54 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
 
   std::string DebugString() const;
 
+  /// Update the total resources and available resources of the specified node.
+  ///
+  /// \param node_id Id of a node.
+  /// \param changed_resources Changed resources of a node.
+  void UpdateResourceCapacity(
+      const NodeID &node_id,
+      const std::unordered_map<std::string, double> &changed_resources);
+
+  /// Update resource usage of given node.
+  ///
+  /// \param node_id Node id.
+  /// \param request Request containing resource usage.
+  void UpdateNodeResourceUsage(const NodeID node_id,
+                               const rpc::ReportResourceUsageRequest &request);
+
+  /// Update the placement group load information so that it will be reported through
+  /// heartbeat.
+  ///
+  /// \param placement_group_load placement group load protobuf.
+  void UpdatePlacementGroupLoad(
+      const std::shared_ptr<rpc::PlacementGroupLoad> placement_group_load);
+
  private:
+  /// Delete the scheduling resources of the specified node.
+  ///
+  /// \param node_id Id of a node.
+  /// \param deleted_resources Deleted resources of a node.
+  void DeleteResources(const NodeID &node_id,
+                       const std::vector<std::string> &deleted_resources);
+
+  /// Send any buffered resource usage as a single publish.
+  void SendBatchedResourceUsage();
+
+  /// A timer that ticks every raylet_report_resources_period_milliseconds.
+  boost::asio::deadline_timer resource_timer_;
+  /// Newest resource usage of all nodes.
+  absl::flat_hash_map<NodeID, rpc::ResourcesData> node_resource_usages_;
+  /// A buffer containing resource usage received from node managers in the last tick.
+  absl::flat_hash_map<NodeID, rpc::ResourcesData> resources_buffer_;
+
   /// A publisher for publishing gcs messages.
   std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub_;
   /// Storage for GCS tables.
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
-  /// Cluster resources.
-  absl::flat_hash_map<NodeID, rpc::ResourceMap> cluster_resources_;
-  /// Map from node id to the resources of the node.
-  absl::flat_hash_map<NodeID, ResourceSet> cluster_scheduling_resources_;
+  /// Map from node id to the scheduling resources of the node.
+  absl::flat_hash_map<NodeID, SchedulingResources> cluster_scheduling_resources_;
+  /// Placement group load information that is used for autoscaler.
+  absl::optional<std::shared_ptr<rpc::PlacementGroupLoad>> placement_group_load_;
 
   /// Debug info.
   enum CountType {
@@ -126,7 +177,9 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
     UPDATE_RESOURCES_REQUEST = 1,
     DELETE_RESOURCES_REQUEST = 2,
     GET_ALL_AVAILABLE_RESOURCES_REQUEST = 3,
-    CountType_MAX = 4,
+    REPORT_RESOURCE_USAGE_REQUEST = 4,
+    GET_ALL_RESOURCE_USAGE_REQUEST = 5,
+    CountType_MAX = 6,
   };
   uint64_t counts_[CountType::CountType_MAX] = {0};
 };

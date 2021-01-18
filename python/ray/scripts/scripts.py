@@ -6,7 +6,6 @@ import logging
 import os
 import subprocess
 import sys
-from telnetlib import Telnet
 import time
 import urllib
 import urllib.parse
@@ -20,6 +19,9 @@ from ray.autoscaler._private.commands import (
     attach_cluster, exec_cluster, create_or_update_cluster, monitor_cluster,
     rsync, teardown_cluster, get_head_node_ip, kill_node, get_worker_node_ips,
     debug_status, RUN_ENV_TYPES)
+from ray.autoscaler._private.util import DEBUG_AUTOSCALING_ERROR, \
+    DEBUG_AUTOSCALING_STATUS
+from ray.state import GlobalState
 import ray.ray_constants as ray_constants
 import ray.utils
 
@@ -172,8 +174,7 @@ def continue_debug_session():
                         ray.experimental.internal_kv._internal_kv_del(key)
                         return
                     host, port = session["pdb_address"].split(":")
-                    with Telnet(host, int(port)) as tn:
-                        tn.interact()
+                    ray.util.rpdb.connect_pdb_client(host, int(port))
                     ray.experimental.internal_kv._internal_kv_del(key)
                     continue_debug_session()
                     return
@@ -215,8 +216,7 @@ def debug(address):
                 ray.experimental.internal_kv._internal_kv_get(
                     active_sessions[index]))
             host, port = session["pdb_address"].split(":")
-            with Telnet(host, int(port)) as tn:
-                tn.interact()
+            ray.util.rpdb.connect_pdb_client(host, int(port))
 
 
 @cli.command()
@@ -281,6 +281,13 @@ def debug(address):
     required=False,
     help="a comma-separated list of open ports for workers to bind on. "
     "Overrides '--min-worker-port' and '--max-worker-port'.")
+@click.option(
+    "--ray-client-server-port",
+    required=False,
+    type=int,
+    default=None,
+    help="the port number the ray client server will bind on. If not set, "
+    "the ray client server will not be started.")
 @click.option(
     "--memory",
     required=False,
@@ -418,9 +425,10 @@ def debug(address):
 @add_click_options(logging_options)
 def start(node_ip_address, address, port, redis_password, redis_shard_ports,
           object_manager_port, node_manager_port, gcs_server_port,
-          min_worker_port, max_worker_port, worker_port_list, memory,
-          object_store_memory, redis_max_memory, num_cpus, num_gpus, resources,
-          head, include_dashboard, dashboard_host, dashboard_port, block,
+          min_worker_port, max_worker_port, worker_port_list,
+          ray_client_server_port, memory, object_store_memory,
+          redis_max_memory, num_cpus, num_gpus, resources, head,
+          include_dashboard, dashboard_host, dashboard_port, block,
           plasma_directory, autoscaling_config, no_redirect_worker_output,
           no_redirect_output, plasma_store_socket_name, raylet_socket_name,
           temp_dir, java_worker_options, system_config, lru_evict,
@@ -462,6 +470,7 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
         min_worker_port=min_worker_port,
         max_worker_port=max_worker_port,
         worker_port_list=worker_port_list,
+        ray_client_server_port=ray_client_server_port,
         object_manager_port=object_manager_port,
         node_manager_port=node_manager_port,
         gcs_server_port=gcs_server_port,
@@ -701,6 +710,7 @@ def stop(force, verbose, log_style, log_color):
         ["plasma_store", True],
         ["gcs_server", True],
         ["monitor.py", False],
+        ["ray.util.client.server", False],
         ["redis-server", False],
         ["default_worker.py", False],  # Python worker.
         ["ray::", True],  # Python worker. TODO(mehrdadn): Fix for Windows
@@ -1356,9 +1366,12 @@ def memory(address, redis_password):
     """Print object references held in a Ray cluster."""
     if not address:
         address = services.get_ray_address_to_use_or_die()
-    logger.info(f"Connecting to Ray instance at {address}.")
-    ray.init(address=address, _redis_password=redis_password)
-    print(ray.internal.internal_api.memory_summary())
+    state = GlobalState()
+    state._initialize_global_state(address, redis_password)
+    raylet = state.node_table()[0]
+    print(
+        ray.internal.internal_api.memory_summary(raylet["NodeManagerAddress"],
+                                                 raylet["NodeManagerPort"]))
 
 
 @cli.command()
@@ -1367,13 +1380,21 @@ def memory(address, redis_password):
     required=False,
     type=str,
     help="Override the address to connect to.")
-def status(address):
+@click.option(
+    "--redis_password",
+    required=False,
+    type=str,
+    default=ray_constants.REDIS_DEFAULT_PASSWORD,
+    help="Connect to ray with redis_password.")
+def status(address, redis_password):
     """Print cluster status, including autoscaling info."""
     if not address:
         address = services.get_ray_address_to_use_or_die()
-    logger.info(f"Connecting to Ray instance at {address}.")
-    ray.init(address=address)
-    print(debug_status())
+    redis_client = ray._private.services.create_redis_client(
+        address, redis_password)
+    status = redis_client.hget(DEBUG_AUTOSCALING_STATUS, "value")
+    error = redis_client.hget(DEBUG_AUTOSCALING_ERROR, "value")
+    print(debug_status(status, error))
 
 
 @cli.command(hidden=True)

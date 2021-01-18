@@ -59,17 +59,11 @@ class MockWorker : public WorkerInterface {
     RAY_CHECK(false) << "Method unused";
     return false;
   }
-  void MarkBlocked() { RAY_CHECK(false) << "Method unused"; }
-  void MarkUnblocked() { RAY_CHECK(false) << "Method unused"; }
-  bool IsBlocked() const {
-    RAY_CHECK(false) << "Method unused";
-    return false;
-  }
+  void MarkBlocked() { blocked_ = true; }
+  void MarkUnblocked() { blocked_ = false; }
+  bool IsBlocked() const { return blocked_; }
 
-  Process GetProcess() const {
-    RAY_CHECK(false) << "Method unused";
-    return Process::CreateNewDummy();
-  }
+  Process GetProcess() const { return Process::CreateNewDummy(); }
   void SetProcess(Process proc) { RAY_CHECK(false) << "Method unused"; }
   Language GetLanguage() const {
     RAY_CHECK(false) << "Method unused";
@@ -161,20 +155,12 @@ class MockWorker : public WorkerInterface {
 
   void ClearLifetimeAllocatedInstances() { lifetime_allocated_instances_ = nullptr; }
 
-  void SetBorrowedCPUInstances(std::vector<double> &cpu_instances) {
-    borrowed_cpu_instances_ = cpu_instances;
-  }
-
   const BundleID &GetBundleId() const {
     RAY_CHECK(false) << "Method unused";
     return bundle_id_;
   }
 
-  void SetBundleId(const BundleID &bundle_id) { RAY_CHECK(false) << "Method unused"; }
-
-  std::vector<double> &GetBorrowedCPUInstances() { return borrowed_cpu_instances_; }
-
-  void ClearBorrowedCPUInstances() { RAY_CHECK(false) << "Method unused"; }
+  void SetBundleId(const BundleID &bundle_id) { bundle_id_ = bundle_id; }
 
   Task &GetAssignedTask() {
     RAY_CHECK(false) << "Method unused";
@@ -201,6 +187,7 @@ class MockWorker : public WorkerInterface {
   std::vector<double> borrowed_cpu_instances_;
   bool is_detached_actor_;
   BundleID bundle_id_;
+  bool blocked_ = false;
 };
 
 }  // namespace raylet

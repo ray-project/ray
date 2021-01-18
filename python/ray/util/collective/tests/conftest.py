@@ -5,12 +5,22 @@ import ray
 from ray.util.collective.const import get_nccl_store_name
 
 
+# TODO (Hao): remove this clean_up function as it sometimes crashes Ray.
 def clean_up():
     group_names = ["default", "test", "123?34!", "default2", "random"]
     group_names.extend([str(i) for i in range(10)])
-    for group_name in group_names:
+    max_world_size = 4
+    p2p_group_names = []
+    for name in group_names:
+        for i in range(max_world_size):
+            for j in range(max_world_size):
+                if i <= j:
+                    p2p_group_name = name + "_" + str(i) + "_" + str(j)
+                    p2p_group_names.append(p2p_group_name)
+    all_names = group_names + p2p_group_names
+    for group_name in all_names:
+        store_name = get_nccl_store_name(group_name)
         try:
-            store_name = get_nccl_store_name(group_name)
             actor = ray.get_actor(store_name)
         except ValueError:
             actor = None

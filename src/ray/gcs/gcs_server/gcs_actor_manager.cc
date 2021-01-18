@@ -213,63 +213,6 @@ void GcsActorManager::HandleGetNamedActorInfo(
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   ++counts_[CountType::GET_NAMED_ACTOR_INFO_REQUEST];
 }
-void GcsActorManager::HandleRegisterActorInfo(
-    const rpc::RegisterActorInfoRequest &request, rpc::RegisterActorInfoReply *reply,
-    rpc::SendReplyCallback send_reply_callback) {
-  ActorID actor_id = ActorID::FromBinary(request.actor_table_data().actor_id());
-  RAY_LOG(DEBUG) << "Registering actor info, job id = " << actor_id.JobId()
-                 << ", actor id = " << actor_id;
-  const auto &actor_table_data = request.actor_table_data();
-  auto on_done = [this, actor_id, actor_table_data, reply,
-                  send_reply_callback](const Status &status) {
-    if (!status.ok()) {
-      RAY_LOG(ERROR) << "Failed to register actor info: " << status.ToString()
-                     << ", job id = " << actor_id.JobId() << ", actor id = " << actor_id;
-    } else {
-      RAY_CHECK_OK(gcs_pub_sub_->Publish(ACTOR_CHANNEL, actor_id.Hex(),
-                                         actor_table_data.SerializeAsString(), nullptr));
-      RAY_LOG(DEBUG) << "Finished registering actor info, job id = " << actor_id.JobId()
-                     << ", actor id = " << actor_id;
-    }
-    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
-  };
-
-  Status status =
-      gcs_table_storage_->ActorTable().Put(actor_id, actor_table_data, on_done);
-  if (!status.ok()) {
-    on_done(status);
-  }
-  ++counts_[CountType::REGISTER_ACTOR_INFO_REQUEST];
-}
-
-void GcsActorManager::HandleUpdateActorInfo(const rpc::UpdateActorInfoRequest &request,
-                                            rpc::UpdateActorInfoReply *reply,
-                                            rpc::SendReplyCallback send_reply_callback) {
-  ActorID actor_id = ActorID::FromBinary(request.actor_id());
-  RAY_LOG(DEBUG) << "Updating actor info, job id = " << actor_id.JobId()
-                 << ", actor id = " << actor_id;
-  const auto &actor_table_data = request.actor_table_data();
-  auto on_done = [this, actor_id, actor_table_data, reply,
-                  send_reply_callback](const Status &status) {
-    if (!status.ok()) {
-      RAY_LOG(ERROR) << "Failed to update actor info: " << status.ToString()
-                     << ", job id = " << actor_id.JobId() << ", actor id = " << actor_id;
-    } else {
-      RAY_CHECK_OK(gcs_pub_sub_->Publish(ACTOR_CHANNEL, actor_id.Hex(),
-                                         actor_table_data.SerializeAsString(), nullptr));
-      RAY_LOG(DEBUG) << "Finished updating actor info, job id = " << actor_id.JobId()
-                     << ", actor id = " << actor_id;
-    }
-    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
-  };
-
-  Status status =
-      gcs_table_storage_->ActorTable().Put(actor_id, actor_table_data, on_done);
-  if (!status.ok()) {
-    on_done(status);
-  }
-  ++counts_[CountType::UPDATE_ACTOR_INFO_REQUEST];
-}
 
 Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &request,
                                       RegisterActorCallback success_callback) {
@@ -341,6 +284,9 @@ Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &requ
           // the actor state to DEAD to avoid race condition.
           return;
         }
+        RAY_CHECK_OK(gcs_pub_sub_->Publish(ACTOR_CHANNEL, actor->GetActorID().Hex(),
+                                           actor->GetActorTableData().SerializeAsString(),
+                                           nullptr));
         // Invoke all callbacks for all registration requests of this actor (duplicated
         // requests are included) and remove all of them from
         // actor_to_register_callbacks_.
@@ -1015,10 +961,6 @@ std::string GcsActorManager::DebugString() const {
          << ", GetActorInfo request count: " << counts_[CountType::GET_ACTOR_INFO_REQUEST]
          << ", GetNamedActorInfo request count: "
          << counts_[CountType::GET_NAMED_ACTOR_INFO_REQUEST]
-         << ", RegisterActorInfo request count: "
-         << counts_[CountType::REGISTER_ACTOR_INFO_REQUEST]
-         << ", UpdateActorInfo request count: "
-         << counts_[CountType::UPDATE_ACTOR_INFO_REQUEST]
          << ", Registered actors count: " << registered_actors_.size()
          << ", Destroyed actors count: " << destroyed_actors_.size()
          << ", Named actors count: " << named_actors_.size()

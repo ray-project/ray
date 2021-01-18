@@ -279,8 +279,7 @@ def get_address_info_from_redis_helper(redis_address,
 def get_address_info_from_redis(redis_address,
                                 node_ip_address,
                                 num_retries=5,
-                                redis_password=None,
-                                no_warning=False):
+                                redis_password=None):
     counter = 0
     while True:
         try:
@@ -291,11 +290,10 @@ def get_address_info_from_redis(redis_address,
                 raise
             # Some of the information may not be in Redis yet, so wait a little
             # bit.
-            if not no_warning:
-                logger.warning(
-                    "Some processes that the driver needs to connect to have "
-                    "not registered with Redis, so retrying. Have you run "
-                    "'ray start' on this node?")
+            logger.warning(
+                "Some processes that the driver needs to connect to have "
+                "not registered with Redis, so retrying. Have you run "
+                "'ray start' on this node?")
             time.sleep(1)
         counter += 1
 
@@ -375,7 +373,7 @@ def address_to_ip(address):
     return ":".join([ip_address] + address_parts[1:])
 
 
-def get_node_ip_address(address="8.8.8.8:53"):
+def node_ip_address_from_perspective(address):
     """IP address by which the local node can be reached *from* the `address`.
 
     Args:
@@ -385,9 +383,6 @@ def get_node_ip_address(address="8.8.8.8:53"):
     Returns:
         The IP address by which the local node can be reached from the address.
     """
-    if ray.worker._global_node is not None:
-        return ray.worker._global_node.node_ip_address
-
     ip_address, port = address.split(":")
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
@@ -409,6 +404,12 @@ def get_node_ip_address(address="8.8.8.8:53"):
         s.close()
 
     return node_ip_address
+
+
+def get_node_ip_address(address="8.8.8.8:53"):
+    if ray.worker._global_node is not None:
+        return ray.worker._global_node.node_ip_address
+    return node_ip_address_from_perspective(address)
 
 
 def create_redis_client(redis_address, password=None):
@@ -1618,12 +1619,13 @@ def determine_plasma_store_config(object_store_memory,
                 logger.warning(
                     "WARNING: The object store is using {} instead of "
                     "/dev/shm because /dev/shm has only {} bytes available. "
-                    "This may slow down performance! You may be able to free "
-                    "up space by deleting files in /dev/shm or terminating "
-                    "any running plasma_store_server processes. If you are "
-                    "inside a Docker container, you may need to pass an "
-                    "argument with the flag '--shm-size' to 'docker run'.".
-                    format(ray.utils.get_user_temp_dir(), shm_avail))
+                    "This will harm performance! You may be able to free up "
+                    "space by deleting files in /dev/shm. If you are inside a "
+                    "Docker container, you can increase /dev/shm size by "
+                    "passing '--shm-size=Xgb' to 'docker run' (or add it to "
+                    "the run_options list in a Ray cluster config). Make sure "
+                    "to set this to more than 2gb.".format(
+                        ray.utils.get_user_temp_dir(), shm_avail))
         else:
             plasma_directory = ray.utils.get_user_temp_dir()
 
@@ -1808,6 +1810,41 @@ def start_monitor(redis_address,
     process_info = start_ray_process(
         command,
         ray_constants.PROCESS_TYPE_MONITOR,
+        stdout_file=stdout_file,
+        stderr_file=stderr_file,
+        fate_share=fate_share)
+    return process_info
+
+
+def start_ray_client_server(redis_address,
+                            ray_client_server_port,
+                            stdout_file=None,
+                            stderr_file=None,
+                            redis_password=None,
+                            fate_share=None):
+    """Run the server process of the Ray client.
+
+    Args:
+        ray_client_server_port (int): Port the Ray client server listens on.
+        stdout_file: A file handle opened for writing to redirect stdout to. If
+            no redirection should happen, then this should be None.
+        stderr_file: A file handle opened for writing to redirect stderr to. If
+            no redirection should happen, then this should be None.
+        redis_password (str): The password of the redis server.
+
+    Returns:
+        ProcessInfo for the process that was started.
+    """
+    command = [
+        sys.executable, "-m", "ray.util.client.server",
+        "--redis-address=" + str(redis_address),
+        "--port=" + str(ray_client_server_port)
+    ]
+    if redis_password:
+        command.append("--redis-password=" + redis_password)
+    process_info = start_ray_process(
+        command,
+        ray_constants.PROCESS_TYPE_RAY_CLIENT_SERVER,
         stdout_file=stdout_file,
         stderr_file=stderr_file,
         fate_share=fate_share)

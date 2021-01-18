@@ -19,7 +19,7 @@ from ray import ray_constants
 from ray.test_utils import (format_web_url, wait_for_condition,
                             wait_until_server_available, run_string_as_driver,
                             wait_until_succeeded_without_exception)
-from ray.autoscaler._private.util import (DEBUG_AUTOSCALING_STATUS,
+from ray.autoscaler._private.util import (DEBUG_AUTOSCALING_STATUS_LEGACY,
                                           DEBUG_AUTOSCALING_ERROR)
 import ray.new_dashboard.consts as dashboard_consts
 import ray.new_dashboard.utils as dashboard_utils
@@ -137,6 +137,11 @@ def test_basic(ray_start_with_dashboard):
         assert agent_proc.pid == agent_pid
         time.sleep(1)
 
+    # The agent should be dead if raylet exits.
+    raylet_proc.kill()
+    raylet_proc.wait()
+    agent_proc.wait(5)
+
     # Check redis keys are set.
     logger.info("Check redis keys are set.")
     dashboard_address = client.get(dashboard_consts.REDIS_KEY_DASHBOARD)
@@ -203,10 +208,10 @@ def test_http_get(enable_test_module, ray_start_with_dashboard):
 
     target_url = webui_url + "/test/dump"
 
-    timeout_seconds = 10
+    timeout_seconds = 30
     start_time = time.time()
     while True:
-        time.sleep(1)
+        time.sleep(3)
         try:
             response = requests.get(webui_url + "/test/http_get?url=" +
                                     target_url)
@@ -453,11 +458,14 @@ def test_get_cluster_status(ray_start_with_dashboard):
     def get_cluster_status():
         response = requests.get(f"{webui_url}/api/cluster_status")
         response.raise_for_status()
+        print(response.json())
         assert response.json()["result"]
         assert "autoscalingStatus" in response.json()["data"]
         assert response.json()["data"]["autoscalingStatus"] is None
         assert "autoscalingError" in response.json()["data"]
         assert response.json()["data"]["autoscalingError"] is None
+        assert "clusterStatus" in response.json()["data"]
+        assert "loadMetricsReport" in response.json()["data"]["clusterStatus"]
 
     wait_until_succeeded_without_exception(get_cluster_status,
                                            (requests.RequestException, ))
@@ -473,7 +481,7 @@ def test_get_cluster_status(ray_start_with_dashboard):
         port=int(address[1]),
         password=ray_constants.REDIS_DEFAULT_PASSWORD)
 
-    client.hset(DEBUG_AUTOSCALING_STATUS, "value", "hello")
+    client.hset(DEBUG_AUTOSCALING_STATUS_LEGACY, "value", "hello")
     client.hset(DEBUG_AUTOSCALING_ERROR, "value", "world")
 
     response = requests.get(f"{webui_url}/api/cluster_status")
@@ -483,6 +491,8 @@ def test_get_cluster_status(ray_start_with_dashboard):
     assert response.json()["data"]["autoscalingStatus"] == "hello"
     assert "autoscalingError" in response.json()["data"]
     assert response.json()["data"]["autoscalingError"] == "world"
+    assert "clusterStatus" in response.json()["data"]
+    assert "loadMetricsReport" in response.json()["data"]["clusterStatus"]
 
 
 def test_immutable_types():

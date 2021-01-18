@@ -14,7 +14,8 @@ from ray.test_utils import (generate_system_config_map, get_other_nodes,
                             get_error_message)
 import ray.cluster_utils
 from ray._raylet import PlacementGroupID
-from ray.util.placement_group import (PlacementGroup,
+from ray.util.placement_group import (PlacementGroup, placement_group,
+                                      remove_placement_group,
                                       get_current_placement_group)
 
 
@@ -1254,6 +1255,59 @@ def test_create_placement_group_during_gcs_server_restart(
 
     for i in range(0, 100):
         ray.get(placement_groups[i].ready())
+
+
+@pytest.mark.parametrize(
+    "ray_start_cluster_head", [
+        generate_system_config_map(
+            num_heartbeats_timeout=20, ping_gcs_rpc_server_max_retries=60)
+    ],
+    indirect=True)
+def test_placement_group_wait_api(ray_start_cluster_head):
+    cluster = ray_start_cluster_head
+    cluster.add_node(num_cpus=2)
+    cluster.add_node(num_cpus=2)
+    cluster.wait_for_nodes()
+
+    # Create placement group 1 successfully.
+    placement_group1 = ray.util.placement_group([{"CPU": 1}, {"CPU": 1}])
+    assert placement_group1.wait(10)
+
+    # Restart gcs server.
+    cluster.head_node.kill_gcs_server()
+    cluster.head_node.start_gcs_server()
+
+    # Create placement group 2 successfully.
+    placement_group2 = ray.util.placement_group([{"CPU": 1}, {"CPU": 1}])
+    assert placement_group2.wait(10)
+
+    # Remove placement group 1.
+    ray.util.remove_placement_group(placement_group1)
+
+    # Wait for placement group 1 after it is removed.
+    with pytest.raises(Exception):
+        placement_group1.wait(10)
+
+
+def test_schedule_placement_groups_at_the_same_time():
+    ray.init(num_cpus=4)
+
+    pgs = [placement_group([{"CPU": 2}]) for _ in range(6)]
+
+    wait_pgs = {pg.ready(): pg for pg in pgs}
+
+    def is_all_placement_group_removed():
+        ready, _ = ray.wait(list(wait_pgs.keys()), timeout=0.5)
+        if ready:
+            ready_pg = wait_pgs[ready[0]]
+            remove_placement_group(ready_pg)
+            del wait_pgs[ready[0]]
+
+        if len(wait_pgs) == 0:
+            return True
+        return False
+
+    wait_for_condition(is_all_placement_group_removed)
 
 
 if __name__ == "__main__":

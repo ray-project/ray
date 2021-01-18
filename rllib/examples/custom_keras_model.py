@@ -11,6 +11,7 @@ from ray.rllib.models import ModelCatalog
 from ray.rllib.models.tf.misc import normc_initializer
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.models.tf.visionnet import VisionNetwork as MyVisionNetwork
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.framework import try_import_tf
 
 tf1, tf, tfv = try_import_tf()
@@ -47,7 +48,6 @@ class MyKerasModel(TFModelV2):
             activation=None,
             kernel_initializer=normc_initializer(0.01))(layer_1)
         self.base_model = tf.keras.Model(self.inputs, [layer_out, value_out])
-        self.register_variables(self.base_model.variables)
 
     def forward(self, input_dict, state, seq_lens):
         model_out, self._value_out = self.base_model(input_dict["obs"])
@@ -83,7 +83,6 @@ class MyKerasQModel(DistributionalQTFModel):
             activation=tf.nn.relu,
             kernel_initializer=normc_initializer(1.0))(layer_1)
         self.base_model = tf.keras.Model(self.inputs, layer_out)
-        self.register_variables(self.base_model.variables)
 
     # Implement the core forward method
     def forward(self, input_dict, state, seq_lens):
@@ -107,8 +106,8 @@ if __name__ == "__main__":
     # Tests https://github.com/ray-project/ray/issues/7293
     def check_has_custom_metric(result):
         r = result["result"]["info"]["learner"]
-        if "default_policy" in r:
-            r = r["default_policy"]
+        if DEFAULT_POLICY_ID in r:
+            r = r[DEFAULT_POLICY_ID]
         assert r["model"]["foo"] == 42, result
 
     if args.run == "DQN":

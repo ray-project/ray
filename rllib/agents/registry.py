@@ -40,6 +40,11 @@ def _import_bc():
     return marwil.BCTrainer
 
 
+def _import_cql():
+    from ray.rllib.agents import cql
+    return cql.CQLTrainer
+
+
 def _import_ddpg():
     from ray.rllib.agents import ddpg
     return ddpg.DDPGTrainer
@@ -128,6 +133,7 @@ ALGORITHMS = {
     "APPO": _import_appo,
     "ARS": _import_ars,
     "BC": _import_bc,
+    "CQL": _import_cql,
     "ES": _import_es,
     "DDPG": _import_ddpg,
     "DDPPO": _import_ddppo,

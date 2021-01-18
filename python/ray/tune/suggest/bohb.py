@@ -3,7 +3,7 @@
 import copy
 import logging
 import math
-from typing import Dict, Optional, Union
+from typing import Dict, List, Optional, Union
 
 import ConfigSpace
 from ray.tune.result import DEFAULT_METRIC
@@ -15,8 +15,7 @@ from ray.tune.suggest import Searcher
 from ray.tune.suggest.suggestion import UNRESOLVED_SEARCH_SPACE, \
     UNDEFINED_METRIC_MODE, UNDEFINED_SEARCH_SPACE
 from ray.tune.suggest.variant_generator import parse_spec_vars
-from ray.tune.utils import flatten_dict
-from ray.tune.utils.util import unflatten_dict
+from ray.tune.utils.util import flatten_dict, unflatten_dict
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +50,11 @@ class TuneBOHB(Searcher):
             per default.
         mode (str): One of {min, max}. Determines whether objective is
             minimizing or maximizing the metric attribute.
+        points_to_evaluate (list): Initial parameter suggestions to be run
+            first. This is for when you already have some good parameters
+            you want to run first to help the algorithm make better suggestions
+            for future parameters. Needs to be a list of dicts containing the
+            configurations.
         seed (int): Optional random seed to initialize the random number
             generator. Setting this should lead to identical initial
             configurations at each run.
@@ -107,6 +111,7 @@ class TuneBOHB(Searcher):
                  max_concurrent: int = 10,
                  metric: Optional[str] = None,
                  mode: Optional[str] = None,
+                 points_to_evaluate: Optional[List[Dict]] = None,
                  seed: Optional[int] = None):
         from hpbandster.optimizers.config_generators.bohb import BOHB
         assert BOHB is not None, """HpBandSter must be installed!
@@ -132,6 +137,8 @@ class TuneBOHB(Searcher):
 
         self._space = space
         self._seed = seed
+
+        self._points_to_evaluate = points_to_evaluate
 
         super(TuneBOHB, self).__init__(metric=self._metric, mode=mode)
 
@@ -185,8 +192,11 @@ class TuneBOHB(Searcher):
                     mode=self._mode))
 
         if len(self.running) < self._max_concurrent:
-            # This parameter is not used in hpbandster implementation.
-            config, info = self.bohber.get_config(None)
+            if self._points_to_evaluate:
+                config = self._points_to_evaluate.pop(0)
+            else:
+                # This parameter is not used in hpbandster implementation.
+                config, info = self.bohber.get_config(None)
             self.trial_to_params[trial_id] = copy.deepcopy(config)
             self.running.add(trial_id)
             return unflatten_dict(config)
@@ -227,13 +237,16 @@ class TuneBOHB(Searcher):
 
     @staticmethod
     def convert_search_space(spec: Dict) -> ConfigSpace.ConfigurationSpace:
-        spec = flatten_dict(spec, prevent_delimiter=True)
         resolved_vars, domain_vars, grid_vars = parse_spec_vars(spec)
 
         if grid_vars:
             raise ValueError(
                 "Grid search parameters cannot be automatically converted "
                 "to a TuneBOHB search space.")
+
+        # Flatten and resolve again after checking for grid search.
+        spec = flatten_dict(spec, prevent_delimiter=True)
+        resolved_vars, domain_vars, grid_vars = parse_spec_vars(spec)
 
         def resolve_value(par: str, domain: Domain
                           ) -> ConfigSpace.hyperparameters.Hyperparameter:
@@ -270,7 +283,15 @@ class TuneBOHB(Searcher):
                         log=False)
 
             elif isinstance(domain, Integer):
-                if isinstance(sampler, Uniform):
+                if isinstance(sampler, LogUniform):
+                    lower = domain.lower
+                    upper = domain.upper
+                    if quantize:
+                        lower = math.ceil(domain.lower / quantize) * quantize
+                        upper = math.floor(domain.upper / quantize) * quantize
+                    return ConfigSpace.UniformIntegerHyperparameter(
+                        par, lower=lower, upper=upper, q=quantize, log=True)
+                elif isinstance(sampler, Uniform):
                     lower = domain.lower
                     upper = domain.upper
                     if quantize:

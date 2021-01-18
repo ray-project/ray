@@ -18,9 +18,7 @@
 
 package io.ray.streaming.state.serialization;
 
-/**
- * Key Map Serialization and Deserialization.
- */
+/** Key Map Serialization and Deserialization. */
 public interface KeyMapStoreSerializer<K, S, T> {
 
   byte[] serializeKey(K key);
@@ -32,5 +30,4 @@ public interface KeyMapStoreSerializer<K, S, T> {
   byte[] serializeUValue(T uv);
 
   T deserializeUValue(byte[] uvArray);
-
 }

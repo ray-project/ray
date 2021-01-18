@@ -32,10 +32,12 @@
 #include "ray/raylet/scheduling/scheduling_ids.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/raylet/scheduling/cluster_task_manager.h"
+#include "ray/raylet/scheduling/old_cluster_resource_scheduler.h"
+#include "ray/raylet/scheduling/cluster_task_manager_interface.h"
 #include "ray/raylet/scheduling_policy.h"
 #include "ray/raylet/scheduling_queue.h"
 #include "ray/raylet/reconstruction_policy.h"
-#include "ray/raylet/task_dependency_manager.h"
+#include "ray/raylet/dependency_manager.h"
 #include "ray/raylet/worker_pool.h"
 #include "ray/rpc/worker/core_worker_client_pool.h"
 #include "ray/util/ordered_set.h"
@@ -104,9 +106,14 @@ struct NodeManagerConfig {
   std::unordered_map<std::string, std::string> raylet_config;
   // The time between record metrics in milliseconds, or -1 to disable.
   uint64_t record_metrics_period_ms;
+  // The number if max io workers.
+  int max_io_workers;
+  // The minimum object size that can be spilled by each spill operation.
+  int64_t min_spilling_size;
 };
 
-class NodeManager : public rpc::NodeManagerServiceHandler {
+class NodeManager : public rpc::NodeManagerServiceHandler,
+                    public ClusterTaskManagerInterface {
  public:
   /// Create a node manager.
   ///
@@ -115,7 +122,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   NodeManager(boost::asio::io_service &io_service, const NodeID &self_node_id,
               const NodeManagerConfig &config, ObjectManager &object_manager,
               std::shared_ptr<gcs::GcsClient> gcs_client,
-              std::shared_ptr<ObjectDirectoryInterface> object_directory_);
+              std::shared_ptr<ObjectDirectoryInterface> object_directory_,
+              std::function<bool(const ObjectID &)> is_plasma_object_spillable);
 
   /// Process a new client connection.
   ///
@@ -174,9 +182,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   void NodeAdded(const GcsNodeInfo &data);
 
   /// Handler for the removal of a GCS node.
-  /// \param node_info Data associated with the removed node.
+  /// \param node_id Id of the removed node.
   /// \return Void.
-  void NodeRemoved(const GcsNodeInfo &node_info);
+  void NodeRemoved(const NodeID &node_id);
 
   /// Handler for the addition or updation of a resource in the GCS
   /// \param node_id ID of the node that created or updated resources.
@@ -220,11 +228,12 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param id The ID of the node manager that sent the resources data.
   /// \param data The resources data including load information.
   /// \return Void.
-  void ResourceUsageAdded(const NodeID &id, const rpc::ResourcesData &data);
+  void UpdateResourceUsage(const NodeID &id, const rpc::ResourcesData &data);
+
   /// Handler for a resource usage batch notification from the GCS
   ///
   /// \param resource_usage_batch The batch of resource usage data.
-  void ResourceUsageBatchAdded(const ResourceUsageBatchData &resource_usage_batch);
+  void ResourceUsageBatchReceived(const ResourceUsageBatchData &resource_usage_batch);
 
   /// Methods for task scheduling.
 
@@ -234,18 +243,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param task The task in question.
   /// \return Void.
   void EnqueuePlaceableTask(const Task &task);
-  /// This will treat a task removed from the local queue as if it had been
-  /// executed and failed. This is done by looping over the task return IDs and
-  /// for each ID storing an object that represents a failure in the object
-  /// store. When clients retrieve these objects, they will raise
-  /// application-level exceptions. State for the task will be cleaned up as if
-  /// it were any other task that had been assigned, executed, and removed from
-  /// the local queue.
-  ///
-  /// \param task The task to fail.
-  /// \param error_type The type of the error that caused this task to fail.
-  /// \return Void.
-  void TreatTaskAsFailed(const Task &task, const ErrorType &error_type);
   /// Mark the specified objects as failed with the given error type.
   ///
   /// \param error_type The type of the error that caused this task to fail.
@@ -296,28 +293,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// resource_map argument.
   /// \return Void.
   void ScheduleTasks(std::unordered_map<NodeID, SchedulingResources> &resource_map);
-
-  /// Make a placement decision for the resource_map and subtract original resources so
-  /// that the node is ready to commit (create) placement group resources.
-  ///
-  /// \param resource_map A mapping from node manager ID to an estimate of the
-  /// resources available to that node manager. Scheduling decisions will only
-  /// consider the local node manager and the node managers in the keys of the
-  /// resource_map argument.
-  /// \param bundle_spec Specification of bundle that will be prepared.
-  /// \return True is resources were successfully prepared. False otherwise.
-  bool PrepareBundle(std::unordered_map<NodeID, SchedulingResources> &resource_map,
-                     const BundleSpecification &bundle_spec);
-
-  /// Make a placement decision for the resource_map.
-  ///
-  /// \param resource_map A mapping from node manager ID to an estimate of the
-  /// resources available to that node manager. Scheduling decisions will only
-  /// consider the local node manager and the node managers in the keys of the
-  /// resource_map argument.
-  /// \param bundle_spec Specification of bundle that will be prepared.
-  void CommitBundle(std::unordered_map<NodeID, SchedulingResources> &resource_map,
-                    const BundleSpecification &bundle_spec);
 
   /// Handle a task whose return value(s) must be reconstructed.
   ///
@@ -397,7 +372,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// arrive after the worker lease has been returned to the node manager.
   ///
   /// \param worker Shared ptr to the worker, or nullptr if lost.
-  void HandleDirectCallTaskBlocked(const std::shared_ptr<WorkerInterface> &worker);
+  void HandleDirectCallTaskBlocked(const std::shared_ptr<WorkerInterface> &worker,
+                                   bool release_resources);
 
   /// Handle a direct call task that is unblocked. Note that this callback may
   /// arrive after the worker lease has been returned to the node manager.
@@ -458,6 +434,13 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param message_data A pointer to the message data.
   /// \return Void.
   void ProcessSubmitTaskMessage(const uint8_t *message_data);
+
+  /// Process client message of NotifyDirectCallTaskBlocked
+  ///
+  /// \param message_data A pointer to the message data.
+  /// \return Void.
+  void ProcessDirectCallTaskBlocked(const std::shared_ptr<ClientConnection> &client,
+                                    const uint8_t *message_data);
 
   /// Process client message of RegisterClientRequest
   ///
@@ -633,13 +616,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// Dispatch tasks to available workers.
   void DispatchScheduledTasksToWorkers();
 
-  /// For the pending task at the head of tasks_to_schedule_, return a node
-  /// in the system (local or remote) that has enough resources available to
-  /// run the task, if any such node exist.
-  /// Repeat the process as long as we can schedule a task.
-  /// NEW SCHEDULER_FUNCTION
-  void ScheduleAndDispatch();
-
   /// Whether a task is an actor creation task.
   bool IsActorCreationTask(const TaskID &task_id);
 
@@ -648,6 +624,128 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param bundle_spec: Specification of bundle whose resources will be returned.
   /// \return Whether the resource is returned successfully.
   bool ReturnBundleResources(const BundleSpecification &bundle_spec);
+
+  /// Publish the infeasible task error to GCS so that drivers can subscribe to it and
+  /// print.
+  ///
+  /// \param task Task that is infeasible
+  void PublishInfeasibleTaskError(const Task &task) const;
+
+  std::unordered_map<SchedulingClass, ordered_set<TaskID>> MakeTasksByClass(
+      const std::vector<Task> &tasks) const;
+
+  ///////////////////////////////////////////////////////////////////////////////////////
+  //////////////////// Begin of the override methods of ClusterTaskManager //////////////
+  // The following methods are defined in node_manager.task.cc instead of node_manager.cc
+
+  /// Return the resources that were being used by this worker.
+  void ReleaseWorkerResources(std::shared_ptr<WorkerInterface> worker) override;
+
+  /// When a task is blocked in ray.get or ray.wait, the worker who is executing the task
+  /// should give up the CPU resources allocated for the running task for the time being
+  /// and the worker itself should also be marked as blocked.
+  ///
+  /// \param worker The worker who will give up the CPU resources.
+  /// \return true if the cpu resources of the specified worker are released successfully,
+  /// else false.
+  bool ReleaseCpuResourcesFromUnblockedWorker(
+      std::shared_ptr<WorkerInterface> worker) override;
+
+  /// When a task is no longer blocked in a ray.get or ray.wait, the CPU resources that
+  /// the worker gave up should be returned to it.
+  ///
+  /// \param worker The blocked worker.
+  /// \return true if the cpu resources are returned back to the specified worker, else
+  /// false.
+  bool ReturnCpuResourcesToBlockedWorker(
+      std::shared_ptr<WorkerInterface> worker) override;
+
+  // Schedule and dispatch tasks.
+  void ScheduleAndDispatchTasks() override;
+
+  /// Move tasks from waiting to ready for dispatch. Called when a task's
+  /// dependencies are resolved.
+  ///
+  /// \param readyIds: The tasks which are now ready to be dispatched.
+  void TasksUnblocked(const std::vector<TaskID> &ready_ids) override;
+
+  /// Populate the relevant parts of the heartbeat table. This is intended for
+  /// sending raylet <-> gcs heartbeats. In particular, this should fill in
+  /// resource_load and resource_load_by_shape.
+  ///
+  /// \param Output parameter. `resource_load` and `resource_load_by_shape` are the only
+  /// fields used.
+  void FillResourceUsage(std::shared_ptr<rpc::ResourcesData> data) override;
+
+  /// Populate the list of pending or infeasible actor tasks for node stats.
+  ///
+  /// \param Output parameter.
+  void FillPendingActorInfo(rpc::GetNodeStatsReply *reply) const override;
+
+  /// Return the finished task and relase the worker resources.
+  /// This method will be removed and can be replaced by `ReleaseWorkerResources` directly
+  /// once we remove the legacy scheduler.
+  ///
+  /// \param worker: The worker which was running the task.
+  /// \param task: Output parameter.
+  void TaskFinished(std::shared_ptr<WorkerInterface> worker, Task *task) override;
+
+  /// Return worker resources.
+  /// This method will be removed and can be replaced by `ReleaseWorkerResources` directly
+  /// once we remove the legacy scheduler.
+  ///
+  /// \param worker: The worker which was running the task.
+  void ReturnWorkerResources(std::shared_ptr<WorkerInterface> worker) override;
+
+  /// Attempt to cancel an already queued task.
+  ///
+  /// \param task_id: The id of the task to remove.
+  ///
+  /// \return True if task was successfully removed. This function will return
+  /// false if the task is already running.
+  bool CancelTask(const TaskID &task_id) override;
+
+  /// Queue task and schedule. This hanppens when processing the worker lease request.
+  ///
+  /// \param task: The incoming task to be queued and scheduled.
+  /// \param reply: The reply of the lease request.
+  /// \param send_reply_callback: The function used during dispatching.
+  void QueueAndScheduleTask(const Task &task, rpc::RequestWorkerLeaseReply *reply,
+                            rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Schedule infeasible tasks.
+  void ScheduleInfeasibleTasks() override;
+
+  /// Return if any tasks are pending resource acquisition.
+  ///
+  /// \param[in] exemplar An example task that is deadlocking.
+  /// \param[in] num_pending_actor_creation Number of pending actor creation tasks.
+  /// \param[in] num_pending_tasks Number of pending tasks.
+  /// \param[in] any_pending True if there's any pending exemplar.
+  /// \return True if any progress is any tasks are pending.
+  bool AnyPendingTasks(Task *exemplar, bool *any_pending, int *num_pending_actor_creation,
+                       int *num_pending_tasks) const override;
+
+  /// Handle the resource usage updated event of the specified node.
+  ///
+  /// \param node_id ID of the node which resources are updated.
+  /// \param resource_data The node resources.
+  void OnNodeResourceUsageUpdated(const NodeID &node_id,
+                                  const rpc::ResourcesData &resource_data) override;
+
+  /// Handle the object missing event.
+  ///
+  /// \param object_id ID of the missing object.
+  /// \param waiting_task_ids IDs of tasks that are waitting for the specified missing
+  /// object.
+  void OnObjectMissing(const ObjectID &object_id,
+                       const std::vector<TaskID> &waiting_task_ids) override;
+
+  /// The helper to dump the debug state of the cluster task manater.
+  std::string DebugStr() const override;
+
+  //////////////////// End of the Override of ClusterTaskManager //////////////////////
+  ///////////////////////////////////////////////////////////////////////////////////////
 
   /// ID of this node.
   NodeID self_node_id_;
@@ -688,8 +786,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// The time that the last heartbeat was sent at. Used to make sure we are
   /// keeping up with heartbeats.
   uint64_t last_heartbeat_at_ms_;
-  /// Only the changed part will be included in resource usage if this is true.
-  const bool light_report_resource_usage_enabled_;
   /// The time that the last debug string was logged to the console.
   uint64_t last_debug_dump_at_ms_;
   /// The number of heartbeats that we should wait before sending the
@@ -710,8 +806,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   SchedulingPolicy scheduling_policy_;
   /// The reconstruction policy for deciding when to re-execute a task.
   ReconstructionPolicy reconstruction_policy_;
-  /// A manager to make waiting tasks's missing object dependencies available.
-  TaskDependencyManager task_dependency_manager_;
+  /// A manager to resolve objects needed by queued tasks and workers that
+  /// called `ray.get` or `ray.wait`.
+  DependencyManager dependency_manager_;
 
   std::unique_ptr<AgentManager> agent_manager_;
 
@@ -747,9 +844,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// lease on.
   absl::flat_hash_map<WorkerID, std::vector<WorkerID>> leased_workers_by_owner_;
 
-  /// Whether new schedule is enabled.
-  const bool new_scheduler_enabled_;
-
   /// Whether to report the worker's backlog size in the GCS heartbeat.
   const bool report_worker_backlog_;
 
@@ -761,18 +855,22 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// on all local workers of this raylet.
   bool should_local_gc_ = false;
 
-  /// The last time local GC was triggered.
+  /// The last time local gc was run.
   int64_t last_local_gc_ns_ = 0;
 
   /// The interval in nanoseconds between local GC automatic triggers.
-  const int64_t local_gc_interval_ns_ = 10 * 60 * 1e9;
+  const int64_t local_gc_interval_ns_;
+
+  /// The min interval in nanoseconds between local GC runs (auto + memory pressure
+  /// triggered).
+  const int64_t local_gc_min_interval_ns_;
 
   /// These two classes make up the new scheduler. ClusterResourceScheduler is
   /// responsible for maintaining a view of the cluster state w.r.t resource
   /// usage. ClusterTaskManager is responsible for queuing, spilling back, and
   /// dispatching tasks.
-  std::shared_ptr<ClusterResourceScheduler> new_resource_scheduler_;
-  std::shared_ptr<ClusterTaskManager> cluster_task_manager_;
+  std::shared_ptr<ClusterResourceSchedulerInterface> cluster_resource_scheduler_;
+  std::shared_ptr<ClusterTaskManagerInterface> cluster_task_manager_;
 
   absl::flat_hash_map<ObjectID, std::unique_ptr<RayObject>> pinned_objects_;
 

@@ -8,8 +8,7 @@ from ray.tune.sample import Categorical, Domain, Float, Integer, LogUniform, \
 from ray.tune.suggest.suggestion import UNRESOLVED_SEARCH_SPACE, \
     UNDEFINED_METRIC_MODE, UNDEFINED_SEARCH_SPACE
 from ray.tune.suggest.variant_generator import parse_spec_vars
-from ray.tune.utils import flatten_dict
-from ray.tune.utils.util import unflatten_dict
+from ray.tune.utils.util import flatten_dict, unflatten_dict
 
 try:
     import nevergrad as ng
@@ -53,9 +52,9 @@ class NevergradSearch(Searcher):
             minimizing or maximizing the metric attribute.
         points_to_evaluate (list): Initial parameter suggestions to be run
             first. This is for when you already have some good parameters
-            you want hyperopt to run first to help the TPE algorithm
-            make better suggestions for future parameters. Needs to be
-            a list of dict of hyperopt-named variables.
+            you want to run first to help the algorithm make better suggestions
+            for future parameters. Needs to be a list of dicts containing the
+            configurations.
         use_early_stopped_trials: Deprecated.
         max_concurrent: Deprecated.
 
@@ -113,8 +112,8 @@ class NevergradSearch(Searcher):
                  space: Optional[Union[Dict, Parameter]] = None,
                  metric: Optional[str] = None,
                  mode: Optional[str] = None,
-                 max_concurrent: Optional[int] = None,
                  points_to_evaluate: Optional[List[Dict]] = None,
+                 max_concurrent: Optional[int] = None,
                  **kwargs):
         assert ng is not None, """Nevergrad must be installed!
             You can install Nevergrad with the command:
@@ -133,9 +132,9 @@ class NevergradSearch(Searcher):
             self._points_to_evaluate = None
         elif not isinstance(points_to_evaluate, Sequence):
             raise ValueError(
-                f"Invalid object type passed for `points_to_evaluate`: "
-                "{type(points_to_evaluate)}. "
-                f"Please pass a list of points (dictionaries) instead.")
+                "Invalid object type passed for `points_to_evaluate`: "
+                f"{type(points_to_evaluate)}. "
+                "Please pass a list of points (dictionaries) instead.")
         else:
             self._points_to_evaluate = list(points_to_evaluate)
 
@@ -148,7 +147,7 @@ class NevergradSearch(Searcher):
                 space = self.convert_search_space(space)
 
         if isinstance(optimizer, Optimizer):
-            if space is not None or isinstance(space, list):
+            if space is not None and not isinstance(space, list):
                 raise ValueError(
                     "If you pass a configured optimizer to Nevergrad, either "
                     "pass a list of parameter names or None as the `space` "
@@ -204,6 +203,12 @@ class NevergradSearch(Searcher):
             raise ValueError("len(parameters_names) must match optimizer "
                              "dimension for non-instrumented optimizers")
 
+        if self._points_to_evaluate:
+            # Nevergrad is LIFO, so we add the points to evaluate in reverse
+            # order.
+            for i in range(len(self._points_to_evaluate) - 1, -1, -1):
+                self._nevergrad_opt.suggest(self._points_to_evaluate[i])
+
     def set_search_properties(self, metric: Optional[str], mode: Optional[str],
                               config: Dict) -> bool:
         if self._nevergrad_opt or self._space:
@@ -235,10 +240,6 @@ class NevergradSearch(Searcher):
             if len(self._live_trial_mapping) >= self.max_concurrent:
                 return None
 
-        if self._points_to_evaluate is not None:
-            if len(self._points_to_evaluate) > 0:
-                point_to_evaluate = self._points_to_evaluate.pop(0)
-                self._nevergrad_opt.suggest(point_to_evaluate)
         suggested_config = self._nevergrad_opt.ask()
 
         self._live_trial_mapping[trial_id] = suggested_config
@@ -285,13 +286,16 @@ class NevergradSearch(Searcher):
 
     @staticmethod
     def convert_search_space(spec: Dict) -> Parameter:
-        spec = flatten_dict(spec, prevent_delimiter=True)
         resolved_vars, domain_vars, grid_vars = parse_spec_vars(spec)
 
         if grid_vars:
             raise ValueError(
                 "Grid search parameters cannot be automatically converted "
                 "to a Nevergrad search space.")
+
+        # Flatten and resolve again after checking for grid search.
+        spec = flatten_dict(spec, prevent_delimiter=True)
+        resolved_vars, domain_vars, grid_vars = parse_spec_vars(spec)
 
         def resolve_value(domain: Domain) -> Parameter:
             sampler = domain.get_sampler()
@@ -308,16 +312,23 @@ class NevergradSearch(Searcher):
                         exponent=sampler.base)
                 return ng.p.Scalar(lower=domain.lower, upper=domain.upper)
 
-            if isinstance(domain, Integer):
+            elif isinstance(domain, Integer):
+                if isinstance(sampler, LogUniform):
+                    return ng.p.Log(
+                        lower=domain.lower,
+                        upper=domain.upper,
+                        exponent=sampler.base).set_integer_casting()
                 return ng.p.Scalar(
                     lower=domain.lower,
                     upper=domain.upper).set_integer_casting()
 
-            if isinstance(domain, Categorical):
+            elif isinstance(domain, Categorical):
                 return ng.p.Choice(choices=domain.categories)
 
-            raise ValueError("SkOpt does not support parameters of type "
-                             "`{}`".format(type(domain).__name__))
+            raise ValueError("Nevergrad does not support parameters of type "
+                             "`{}` with samplers of type `{}`".format(
+                                 type(domain).__name__,
+                                 type(domain.sampler).__name__))
 
         # Parameter name is e.g. "a/b/c" for nested dicts
         space = {
