@@ -159,8 +159,8 @@ Process WorkerPool::StartWorkerProcess(
     return Process();
   }
   // Either there are no workers pending registration or the worker start is being forced.
-  RAY_LOG(DEBUG) << "Starting new worker process, current pool has "
-                 << state.idle.size() << " workers";
+  RAY_LOG(DEBUG) << "Starting new worker process, current pool has " << state.idle.size()
+                 << " workers";
 
   int workers_to_start = 1;
   if (dynamic_options.empty()) {
@@ -783,8 +783,8 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
       }
     }
   } else if (task_spec.IsActorTask()) {
-      // Code path of actor task.
-      RAY_CHECK(false) << "Direct call shouldn't reach here.";
+    // Code path of actor task.
+    RAY_CHECK(false) << "Direct call shouldn't reach here.";
   } else {
     // Code path of normal task or actor creation task without dynamic worker options.
     // Find an available worker which is already assigned to this job.
