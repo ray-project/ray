@@ -182,9 +182,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   void NodeAdded(const GcsNodeInfo &data);
 
   /// Handler for the removal of a GCS node.
-  /// \param node_info Data associated with the removed node.
+  /// \param node_id Id of the removed node.
   /// \return Void.
-  void NodeRemoved(const GcsNodeInfo &node_info);
+  void NodeRemoved(const NodeID &node_id);
 
   /// Handler for the addition or updation of a resource in the GCS
   /// \param node_id ID of the node that created or updated resources.
