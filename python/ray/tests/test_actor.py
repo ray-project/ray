@@ -860,6 +860,25 @@ def test_get_non_existing_named_actor(ray_start_regular_shared):
         _ = ray.get_actor("non_existing_actor")
 
 
+def test_wrapped_actor_handle(ray_start_regular_shared):
+    @ray.remote
+    class B:
+        def doit(self):
+            return 2
+
+    @ray.remote
+    class A:
+        def __init__(self):
+            self.b = B.remote()
+
+        def get_actor_ref(self):
+            return [self.b]
+
+    a = A.remote()
+    b_list = ray.get(a.get_actor_ref.remote())
+    assert ray.get(b_list[0].doit.remote()) == 2
+
+
 @pytest.mark.skip(
     "This test is just used to print the latency of creating 100 actors.")
 def test_actor_creation_latency(ray_start_regular_shared):

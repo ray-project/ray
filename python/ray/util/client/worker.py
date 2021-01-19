@@ -89,7 +89,12 @@ class Worker:
             data = self.data_client.ConnectionInfo()
         except grpc.RpcError as e:
             raise e.details()
-        return {"num_clients": data.num_clients}
+        return {
+            "num_clients": data.num_clients,
+            "python_version": data.python_version,
+            "ray_version": data.ray_version,
+            "ray_commit": data.ray_commit,
+        }
 
     def get(self, vals, *, timeout: Optional[float] = None) -> Any:
         to_get = []

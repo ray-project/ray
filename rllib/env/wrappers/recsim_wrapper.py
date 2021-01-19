@@ -5,12 +5,11 @@ Source: https://github.com/google-research/recsim
 """
 
 from collections import OrderedDict
-from typing import List
-
 import gym
-import numpy as np
 from gym import spaces
+import numpy as np
 from recsim.environments import interest_evolution
+from typing import List
 
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.tune.registry import register_env

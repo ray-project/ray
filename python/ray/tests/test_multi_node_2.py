@@ -75,9 +75,13 @@ def setup_monitor(address):
 def verify_load_metrics(monitor, expected_resource_usage=None, timeout=30):
     request_resources(num_cpus=42)
 
+    # Disable event clearing for test.
+    monitor.event_summarizer.clear = lambda *a: None
+
     while True:
         monitor.update_load_metrics()
         monitor.update_resource_requests()
+        monitor.update_event_summary()
         resource_usage = monitor.load_metrics._get_resource_usage()
 
         # Check resource request propagation.
@@ -112,6 +116,9 @@ def verify_load_metrics(monitor, expected_resource_usage=None, timeout=30):
         if timeout <= 0:
             raise ValueError("Timeout. {} != {}".format(
                 resource_usage, expected_resource_usage))
+
+    # Sanity check we emitted a resize event.
+    assert any("Resized to" in x for x in monitor.event_summarizer.summary())
 
     return resource_usage
 

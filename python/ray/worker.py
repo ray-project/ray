@@ -14,8 +14,10 @@ import sys
 import threading
 import time
 import traceback
+from typing import Any, Dict, List, Iterator
 
 # Ray modules
+from ray.autoscaler._private.constants import AUTOSCALER_EVENTS
 import ray.cloudpickle as pickle
 import ray.gcs_utils
 import ray.memory_monitor as memory_monitor
@@ -925,25 +927,93 @@ def print_to_stdstream(data):
     print_worker_logs(data, print_file)
 
 
-def print_worker_logs(data, print_file):
-    def color_for(data):
+# Start time of this process, used for relative time logs.
+t0 = time.time()
+autoscaler_log_fyi_printed = False
+
+
+def filter_autoscaler_events(lines: List[str]) -> Iterator[str]:
+    """Given raw log lines from the monitor, return only autoscaler events.
+
+    Autoscaler events are denoted by the ":event_summary:" magic token.
+    """
+    global autoscaler_log_fyi_printed
+
+    if not AUTOSCALER_EVENTS:
+        return
+
+    # Print out autoscaler events only, ignoring other messages.
+    for line in lines:
+        if ":event_summary:" in line:
+            if not autoscaler_log_fyi_printed:
+                yield ("Tip: use `ray status` to view detailed "
+                       "autoscaling status. To disable autoscaler event "
+                       "messages, you can set AUTOSCALER_EVENTS=0.")
+                autoscaler_log_fyi_printed = True
+            # The event text immediately follows the ":event_summary:"
+            # magic token.
+            yield line.split(":event_summary:")[1]
+
+
+def time_string() -> str:
+    """Return the relative time from the start of this job.
+
+    For example, 15m30s.
+    """
+    delta = time.time() - t0
+    hours = 0
+    minutes = 0
+    while delta > 3600:
+        hours += 1
+        delta -= 3600
+    while delta > 60:
+        minutes += 1
+        delta -= 60
+    output = ""
+    if hours:
+        output += "{}h".format(hours)
+    if minutes:
+        output += "{}m".format(minutes)
+    output += "{}s".format(int(delta))
+    return output
+
+
+def print_worker_logs(data: Dict[str, str], print_file: Any):
+    def prefix_for(data: Dict[str, str]) -> str:
+        """The PID prefix for this log line."""
+        if data["pid"] in ["autoscaler", "raylet"]:
+            return ""
+        else:
+            return "pid="
+
+    def color_for(data: Dict[str, str]) -> str:
+        """The color for this log line."""
         if data["pid"] == "raylet":
             return colorama.Fore.YELLOW
+        elif data["pid"] == "autoscaler":
+            return colorama.Style.BRIGHT + colorama.Fore.CYAN
         else:
             return colorama.Fore.CYAN
 
+    if data["pid"] == "autoscaler":
+        pid = "{} +{}".format(data["pid"], time_string())
+        lines = filter_autoscaler_events(data["lines"])
+    else:
+        pid = data["pid"]
+        lines = data["lines"]
+
     if data["ip"] == data["localhost"]:
-        for line in data["lines"]:
+        for line in lines:
             print(
-                "{}{}(pid={}){} {}".format(colorama.Style.DIM, color_for(data),
-                                           data["pid"],
-                                           colorama.Style.RESET_ALL, line),
+                "{}{}({}{}){} {}".format(colorama.Style.DIM, color_for(data),
+                                         prefix_for(data), pid,
+                                         colorama.Style.RESET_ALL, line),
                 file=print_file)
     else:
-        for line in data["lines"]:
+        for line in lines:
             print(
-                "{}{}(pid={}, ip={}){} {}".format(
-                    colorama.Style.DIM, color_for(data), data["pid"],
+                "{}{}({}{}, ip={}){} {}".format(
+                    colorama.Style.DIM, color_for(data), prefix_for(data), pid,
                     data["ip"], colorama.Style.RESET_ALL, line),
                 file=print_file)
 

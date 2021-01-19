@@ -3,7 +3,6 @@ import logging
 import numpy as np
 
 import ray
-from ray.rllib.agents.a3c.a3c_torch_policy import apply_grad_clipping
 import ray.rllib.agents.impala.vtrace_torch as vtrace
 from ray.rllib.models.torch.torch_action_dist import TorchCategorical
 from ray.rllib.policy.policy_template import build_policy_class
@@ -11,8 +10,8 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy import LearningRateSchedule, \
     EntropyCoeffSchedule
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.torch_ops import explained_variance, global_norm, \
-    sequence_mask
+from ray.rllib.utils.torch_ops import apply_grad_clipping, \
+    explained_variance, global_norm, sequence_mask
 
 torch, nn = try_import_torch()
 
