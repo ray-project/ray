@@ -15,7 +15,7 @@ on CPU only machine.  Changing tree_method to hist.
 ```
 
 This is _not_ an error. This is due to the checkpoints being loaded on the
-XGBoost driver, and since the driver lives on the main node (which has no
+XGBoost driver, and since the driver lives on the head node (which has no
 GPU), XGBoost warns that it can't use the GPU. Training still happened using
 the GPUs.
 """

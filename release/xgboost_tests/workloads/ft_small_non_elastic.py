@@ -8,7 +8,7 @@ Test owner: krfricke
 
 Acceptance criteria: Should run through and report final results. Intermediate
 output should show that training halts wenn an actor dies and continues only
-when all four actors are available again.
+when all four actors are available again. We may want to automate these checks.
 
 Notes: This test seems to be somewhat flaky. This might be due to
 race conditions in handling dead actors. This is likely a problem of

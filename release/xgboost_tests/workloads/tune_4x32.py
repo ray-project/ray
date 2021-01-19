@@ -1,12 +1,13 @@
 """Moderate Ray Tune run (4 trials, 32 actors).
 
-This training run will start 4 Ray Tune Trials, each starting 32 actors.
+This training run will start 4 Ray Tune trials, each starting 32 actors.
 The cluster comprises 32 nodes.
 
 Test owner: krfricke
 
 Acceptance criteria: Should run through and report final results, as well
-as the Ray Tune results table. No trials should error.
+as the Ray Tune results table. No trials should error. All trials should
+run in parallel.
 """
 import ray
 from ray import tune
