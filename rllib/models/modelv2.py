@@ -203,9 +203,12 @@ class ModelV2:
         restored = input_dict.copy()
         restored["obs"] = restore_original_dimensions(
             input_dict["obs"], self.obs_space, self.framework)
-        if len(input_dict["obs"].shape) > 2:
-            restored["obs_flat"] = flatten(input_dict["obs"], self.framework)
-        else:
+        try:
+            if len(input_dict["obs"].shape) > 2:
+                restored["obs_flat"] = flatten(input_dict["obs"], self.framework)
+            else:
+                restored["obs_flat"] = input_dict["obs"]
+        except AttributeError:
             restored["obs_flat"] = input_dict["obs"]
         with self.context():
             res = self.forward(restored, state or [], seq_lens)
@@ -216,10 +219,10 @@ class ModelV2:
                 "got {}".format(res))
         outputs, state = res
 
-        try:
-            shape = outputs.shape
-        except AttributeError:
-            raise ValueError("Output is not a tensor: {}".format(outputs))
+        #try:
+        #   shape = outputs.shape
+        #except AttributeError:
+        #    raise ValueError("Output is not a tensor: {}".format(outputs))
         #else:
         #    if len(shape) != 2 or int(shape[1]) != self.num_outputs:
         #        raise ValueError(

@@ -5,6 +5,7 @@ from typing import Dict, List, Optional, Tuple
 
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
+from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.spaces.simplex import Simplex
@@ -157,8 +158,9 @@ class SACTFModel(TFModelV2):
         if self.discrete:
             input_space = obs_space
         else:
+            orig_space = getattr(obs_space, "original_space", obs_space)
             input_space = gym.spaces.Tuple(
-                (obs_space.spaces if isinstance(obs_space, gym.spaces.Tuple)
+                (orig_space.spaces if isinstance(orig_space, gym.spaces.Tuple)
                  else [obs_space]) + [action_space])
         model = ModelCatalog.get_model_v2(input_space, action_space, num_outputs, q_model_config, framework="tf", name=name)
         return model
@@ -183,7 +185,7 @@ class SACTFModel(TFModelV2):
         """
         # Continuous case -> concat actions to model_out.
         if actions is not None:
-            input_dict = {"obs": tf.concat([model_out, actions], 1)}
+            input_dict = {"obs": force_list(model_out) + [actions]}
         # Discrete case -> return q-vals for all actions.
         else:
             input_dict = {"obs": model_out}
@@ -210,7 +212,7 @@ class SACTFModel(TFModelV2):
         """
         # Continuous case -> concat actions to model_out.
         if actions is not None:
-            input_dict = {"obs": tf.concat([model_out, actions], 1)}
+            input_dict = {"obs": force_list(model_out) + [actions]}
         # Discrete case -> return q-vals for all actions.
         else:
             input_dict = {"obs": model_out}

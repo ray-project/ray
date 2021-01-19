@@ -48,6 +48,7 @@ class ComplexInputNetwork(TFModelV2):
                     "conv_filters": model_config.get(
                         "conv_filters", get_filter_config(component.shape)),
                     "conv_activation": model_config.get("conv_activation"),
+                    "post_fcnet_hiddens": [],
                 }
                 cnn = ModelCatalog.get_model_v2(
                     component,

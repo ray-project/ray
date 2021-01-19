@@ -26,6 +26,7 @@ class VisionNetwork(TFModelV2):
 
         activation = get_activation_fn(
             self.model_config.get("conv_activation"), framework="tf")
+        post_fcnet_hiddens = model_config.get("post_fcnet_hiddens", [])
         post_fcnet_activation = get_activation_fn(
             model_config.get("post_fcnet_activation"), framework="tf")
         filters = self.model_config["conv_filters"]
@@ -67,7 +68,7 @@ class VisionNetwork(TFModelV2):
         # No final linear: Last layer is a Conv2D and uses num_outputs.
         if no_final_linear and num_outputs:
             last_layer = tf.keras.layers.Conv2D(
-                out_size if model_config["post_fcnet_hiddens"] else num_outputs,
+                out_size if post_fcnet_hiddens else num_outputs,
                 kernel,
                 strides=(stride, stride),
                 activation=activation,
@@ -75,13 +76,12 @@ class VisionNetwork(TFModelV2):
                 data_format="channels_last",
                 name="conv_out")(last_layer)
             # Add (optional) post-fc-stack after last Conv2D layer.
-            for i, out_size in enumerate(model_config["post_fcnet_hiddens"][:-1] + ([num_outputs] if model_config["post_fcnet_hiddens"] else [])):
+            for i, out_size in enumerate(post_fcnet_hiddens[:-1] + ([num_outputs] if post_fcnet_hiddens else [])):
                 last_layer = tf.keras.layers.Dense(
                     out_size,
                     name="post_fcnet_{}".format(i),
                     activation=post_fcnet_activation,
                     kernel_initializer=normc_initializer(1.0))(last_layer)
-            logits_out = last_layer
 
         # Finish network normally (w/o overriding last layer size with
         # `num_outputs`), then add another linear one of size `num_outputs`.
@@ -98,46 +98,58 @@ class VisionNetwork(TFModelV2):
             # num_outputs defined. Use that to create an exact
             # `num_output`-sized (1,1)-Conv2D.
             if num_outputs:
-                logits_out = tf.keras.layers.Conv2D(
-                    num_outputs, [1, 1],
-                    activation=None,
-                    padding="same",
-                    data_format="channels_last",
-                    name="conv_out")(last_layer)
+                if post_fcnet_hiddens:
+                    last_cnn = last_layer = tf.keras.layers.Conv2D(
+                        post_fcnet_hiddens[0],
+                        [1, 1],
+                        activation=post_fcnet_activation,
+                        padding="same",
+                        data_format="channels_last",
+                        name="conv_out")(last_layer)
+                    # Add (optional) post-fc-stack after last Conv2D layer.
+                    for i, out_size in enumerate(
+                            post_fcnet_hiddens[1:] + [num_outputs]):
+                        last_layer = tf.keras.layers.Dense(
+                            out_size,
+                            name="post_fcnet_{}".format(i + 1),
+                            activation=post_fcnet_activation if i < len(post_fcnet_hiddens) - 1 else None,
+                            kernel_initializer=normc_initializer(1.0))(
+                            last_layer)
+                else:
+                    last_cnn = last_layer = tf.keras.layers.Conv2D(
+                        num_outputs,
+                        [1, 1],
+                        activation=None,
+                        padding="same",
+                        data_format="channels_last",
+                        name="conv_out")(last_layer)
 
-                if logits_out.shape[1] != 1 or logits_out.shape[2] != 1:
+                if last_cnn.shape[1] != 1 or last_cnn.shape[2] != 1:
                     raise ValueError(
                         "Given `conv_filters` ({}) do not result in a [B, 1, "
                         "1, {} (`num_outputs`)] shape (but in {})! Please "
                         "adjust your Conv2D stack such that the dims 1 and 2 "
                         "are both 1.".format(self.model_config["conv_filters"],
                                              self.num_outputs,
-                                             list(logits_out.shape)))
-                ## Add (optional) post-fc-stack after last Conv2D layer.
-                #for i, out_size in enumerate(model_config["post_fcnet_hiddens"][:-1] + ([num_outputs] if model_config["post_fcnet_hiddens"] else [])):
-                #    last_layer = tf.keras.layers.Dense(
-                #        out_size,
-                #        name="post_fcnet_{}".format(i),
-                #        activation=post_fcnet_activation,
-                #        kernel_initializer=normc_initializer(1.0))(last_layer)
+                                             list(last_cnn.shape)))
 
             # num_outputs not known -> Flatten, then set self.num_outputs
             # to the resulting number of nodes.
             else:
                 self.last_layer_is_flattened = True
-                logits_out = tf.keras.layers.Flatten(
+                last_layer = tf.keras.layers.Flatten(
                     data_format="channels_last")(last_layer)
-                self.num_outputs = logits_out.shape[1]
 
-
-        # Build (optional) post FC stack.
-        #post_fc_stack_input_space = Box(
-        #    float("-inf"), float("inf"), shape=(), dtype=np.float32)
-        #self.post_fc_stack = ModelCatalog.get_model_v2(
-        #    post_fc_stack_input_space, action_space, num_outputs,
-        #    post_fc_config, framework="tf", name="post_fc_stack")
-
-
+                # Add (optional) post-fc-stack after last Conv2D layer.
+                for i, out_size in enumerate(post_fcnet_hiddens):
+                    last_layer = tf.keras.layers.Dense(
+                        out_size,
+                        name="post_fcnet_{}".format(i),
+                        activation=post_fcnet_activation,
+                        kernel_initializer=normc_initializer(1.0))(
+                        last_layer)
+                self.num_outputs = last_layer.shape[1]
+        logits_out = last_layer
 
         # Build the value layers
         if vf_share_layers:
