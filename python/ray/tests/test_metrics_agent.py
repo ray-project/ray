@@ -243,10 +243,6 @@ def test_custom_metrics_default_tags(metric_mock):
         })
     histogram._metric = metric_mock
 
-    # Check default tags.
-    histogram.record(4)
-    metric_mock.record.assert_called_with(4, tags={"b": "b"})
-
     # Check specifying non-default tags.
     histogram.record(10, tags={"a": "a"})
     metric_mock.record.assert_called_with(10, tags={"a": "a", "b": "b"})
@@ -301,7 +297,8 @@ def test_metrics_override_shouldnt_warn(ray_start_regular, log_pubsub):
             assert "Attempt to register measure" not in line
 
 
-def test_custom_metrics_missing_tag(ray_start_regular_shared):
+def test_custom_metrics_validation(ray_start_regular_shared):
+    # Missing tag(s) from tag_keys.
     metric = Count("name", tag_keys=("a", "b"))
     metric.set_default_tags({"a": "1"})
 
@@ -314,8 +311,7 @@ def test_custom_metrics_missing_tag(ray_start_regular_shared):
     with pytest.raises(ValueError):
         metric.record(1.0, {"a": "2"})
 
-
-def test_custom_metrics_extra_tag(ray_start_regular_shared):
+    # Extra tag not in tag_keys.
     metric = Count("name", tag_keys=("a", ))
     with pytest.raises(ValueError):
         metric.record(1.0, {"a": "1", "b": "2"})
