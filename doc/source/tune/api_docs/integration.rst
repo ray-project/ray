@@ -32,7 +32,7 @@ Kubernetes (tune.integration.kubernetes)
 
 .. autofunction:: ray.tune.integration.kubernetes.NamespacedKubernetesSyncer
 
-.. _tune-integration-mlflow
+.. _tune-integration-mlflow:
 
 MLflow (tune.integration.mlflow)
 -------------------------------
