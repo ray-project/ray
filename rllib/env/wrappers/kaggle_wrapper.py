@@ -5,8 +5,10 @@ Source: https://github.com/Kaggle/kaggle-environments
 
 from copy import deepcopy
 from typing import Any, Dict, Optional, Tuple
-
-import kaggle_environments
+try:
+    import kaggle_environments
+except ImportError:
+    pass
 import numpy as np
 from gym.spaces import Box
 from gym.spaces import Dict as DictSpace

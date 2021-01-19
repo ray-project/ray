@@ -130,7 +130,6 @@ __all__ = [
     "util",
     "wait",
     "LOCAL_MODE",
-    "PYTHON_MODE",
     "SCRIPT_MODE",
     "WORKER_MODE",
 ]

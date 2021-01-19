@@ -266,7 +266,7 @@ def test_custom_metrics_edge_cases(metric_mock):
         Count("")
 
     # The tag keys must be a tuple type.
-    with pytest.raises(ValueError):
+    with pytest.raises(TypeError):
         Count("name", tag_keys=("a"))
 
 
@@ -315,6 +315,24 @@ def test_custom_metrics_validation(ray_start_regular_shared):
     metric = Count("name", tag_keys=("a", ))
     with pytest.raises(ValueError):
         metric.record(1.0, {"a": "1", "b": "2"})
+
+    # tag_keys must be tuple.
+    with pytest.raises(TypeError):
+        Count("name", tag_keys="a")
+    # tag_keys must be strs.
+    with pytest.raises(TypeError):
+        Count("name", tag_keys=(1, ))
+
+    metric = Count("name", tag_keys=("a", ))
+    # Set default tag that isn't in tag_keys.
+    with pytest.raises(ValueError):
+        metric.set_default_tags({"a": "1", "c": "2"})
+    # Default tag value must be str.
+    with pytest.raises(TypeError):
+        metric.set_default_tags({"a": 1})
+    # Tag value must be str.
+    with pytest.raises(TypeError):
+        metric.record(1.0, {"a": 1})
 
 
 if __name__ == "__main__":

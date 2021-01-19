@@ -422,6 +422,13 @@ def debug(address):
     default=None,
     help="the port to use to expose Ray metrics through a "
     "Prometheus endpoint.")
+@click.option(
+    "--no-monitor",
+    is_flag=True,
+    hidden=True,
+    default=False,
+    help="If True, the ray autoscaler monitor for this cluster will not be "
+    "started.")
 @add_click_options(logging_options)
 def start(node_ip_address, address, port, redis_password, redis_shard_ports,
           object_manager_port, node_manager_port, gcs_server_port,
@@ -432,8 +439,8 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
           plasma_directory, autoscaling_config, no_redirect_worker_output,
           no_redirect_output, plasma_store_socket_name, raylet_socket_name,
           temp_dir, java_worker_options, system_config, lru_evict,
-          enable_object_reconstruction, metrics_export_port, log_style,
-          log_color, verbose):
+          enable_object_reconstruction, metrics_export_port, no_monitor,
+          log_style, log_color, verbose):
     """Start Ray processes manually on the local machine."""
     cli_logger.configure(log_style, log_color, verbose)
     if gcs_server_port and not head:
@@ -494,7 +501,8 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
         _system_config=system_config,
         lru_evict=lru_evict,
         enable_object_reconstruction=enable_object_reconstruction,
-        metrics_export_port=metrics_export_port)
+        metrics_export_port=metrics_export_port,
+        no_monitor=no_monitor)
     if head:
         # Use default if port is none, allocate an available port if port is 0
         if port is None:
