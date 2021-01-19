@@ -192,7 +192,10 @@ class JobProcessor:
                         cmd_index, url, filename)
 
     async def _unzip_package(self, filename, path):
-        unzip_cmd = f"unzip -o -d {path} {filename}"
+        python = self._get_current_python()
+        code = f"import shutil; " \
+               f"shutil.unpack_archive({repr(filename)}, {repr(path)})"
+        unzip_cmd = f"{python} -c {repr(code)}"
         await self._check_call_cmd(unzip_cmd)
 
     @staticmethod

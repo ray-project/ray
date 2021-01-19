@@ -50,6 +50,7 @@ TEST_PYTHON_JOB = {
 
 TEST_PYTHON_JOB_CODE = """
 import os
+import sys
 import ray
 import time
 
@@ -62,6 +63,8 @@ class Actor:
     def foo(self, x):
         print("worker job dir {}".format(os.environ["RAY_JOB_DIR"]))
         print("worker cwd {}".format(os.getcwd()))
+        assert os.path.samefile(os.environ["RAY_JOB_DIR"], os.getcwd())
+        assert os.environ["RAY_JOB_DIR"] in sys.path
         return "Actor {}: {}".format(self._index, x)
 
 
@@ -69,6 +72,8 @@ def main():
     actors = []
     print("driver job dir {}".format(os.environ["RAY_JOB_DIR"]))
     print("driver cwd {}".format(os.getcwd()))
+    assert os.path.samefile(os.environ["RAY_JOB_DIR"], os.getcwd())
+    assert os.environ["RAY_JOB_DIR"] in sys.path
     for x in range(2):
         actors.append(Actor.remote(x))
 
@@ -326,7 +331,7 @@ def test_submit_job(disable_aiohttp_cache, enable_test_module,
             logger.info(ex)
             return False
 
-    wait_for_condition(_check_running, timeout=20)
+    wait_for_condition(_check_running, timeout=30)
 
 
 def test_get_job_info(disable_aiohttp_cache, ray_start_with_dashboard):
