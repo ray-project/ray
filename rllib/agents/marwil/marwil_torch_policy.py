@@ -48,16 +48,17 @@ def marwil_loss(policy, model, dist_class, train_batch):
     advantages = train_batch[Postprocessing.ADVANTAGES]
     actions = train_batch[SampleBatch.ACTIONS]
 
-    # Value loss.
-    policy.v_loss = 0.5 * torch.mean(torch.pow(state_values - advantages, 2.0))
-
-    # Policy loss.
     # Advantage estimation.
     adv = advantages - state_values
+    adv_squared = torch.mean(torch.pow(adv, 2.0))
+
+    # Value loss.
+    policy.v_loss = 0.5 * adv_squared
+
+    # Policy loss.
     # Update averaged advantage norm.
-    policy.ma_adv_norm.add_(
-        1e-6 * (torch.mean(torch.pow(adv, 2.0)) - policy.ma_adv_norm))
-    # #xponentially weighted advantages.
+    policy.ma_adv_norm.add_(1e-6 * (adv_squared - policy.ma_adv_norm))
+    # Exponentially weighted advantages.
     exp_advs = torch.exp(policy.config["beta"] *
                          (adv / (1e-8 + torch.pow(policy.ma_adv_norm, 0.5))))
     # log\pi_\theta(a|s)
