@@ -398,7 +398,7 @@ class PreparePythonEnviron(JobProcessor):
             logger.info("[%s] Skip pip check on %s", job_id, path)
             return
         python = self._get_virtualenv_python(path)
-        output = await self._check_output_cmd("{} -m pip check".format(python))
+        output = await self._check_output_cmd(f"{python} -m pip check")
         output = output.strip()
         if "no broken" not in output.lower():
             raise JobFatalError(f"pip check on {path} failed:\n{output}")
