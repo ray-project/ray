@@ -56,19 +56,7 @@ def build_sac_model(policy: Policy, obs_space: gym.spaces.Space,
             `policy.target_model`.
     """
     # With separate state-preprocessor (before obs+action concat).
-    #if config["use_state_preprocessor"]:
-    #    num_outputs = 256  # Flatten last Conv2D to this many nodes.
-    # No separate state-preprocessor: concat obs+actions right away.
-    #else:
     num_outputs = int(np.product(obs_space.shape))
-    # No state preprocessor: fcnet_hiddens should be empty.
-    #if config["model"]["fcnet_hiddens"]:
-    #    logger.warning(
-    #        "When not using a state-preprocessor with SAC, `fcnet_hiddens`"
-    #        " will be set to an empty list! Any hidden layer sizes are "
-    #        "defined via `policy_model.fcnet_hiddens` and "
-    #        "`Q_model.fcnet_hiddens`.")
-    #    config["model"]["fcnet_hiddens"] = []
 
     # Force-ignore any additionally provided hidden layer sizes.
     # Everything should be configured using SAC's "Q_model" and "policy_model"

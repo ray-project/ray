@@ -729,10 +729,11 @@ class ModelCatalog:
 
         # Tuple space, where at least one sub-space is image.
         # -> Complex input model.
-        space_to_check = input_space if not hasattr(input_space, "original_space") else input_space.original_space
+        space_to_check = input_space if not hasattr(
+            input_space, "original_space") else input_space.original_space
         if isinstance(space_to_check, Tuple) and any(
-                isinstance(s, Box) and len(s.shape) >= 2 for s in
-                space_to_check.spaces):
+                isinstance(s, Box) and len(s.shape) >= 2
+                for s in space_to_check.spaces):
             return ComplexNet
 
         # Single, flattenable/one-hot-abe space -> Simple FCNet.

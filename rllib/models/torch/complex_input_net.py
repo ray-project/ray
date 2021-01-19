@@ -1,6 +1,7 @@
 from gym.spaces import Discrete, Tuple
 
-#from ray.rllib.examples.models.impala_vision_nets import TorchImpalaVisionNet
+# TODO (sven): add IMPALA-style option.
+# from ray.rllib.examples.models.impala_vision_nets import TorchImpalaVisionNet
 from ray.rllib.models.torch.misc import normc_initializer as \
     torch_normc_initializer, SlimFC
 from ray.rllib.models.catalog import ModelCatalog
@@ -9,7 +10,6 @@ from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.models.utils import get_filter_config
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
-
 
 torch, nn = try_import_torch()
 
@@ -54,13 +54,14 @@ class ComplexInputNetwork(TorchModelV2, nn.Module):
                         model_config=config,
                         framework="torch",
                         name="cnn_{}".format(i))
-                else:
-                    cnn = TorchImpalaVisionNet(
-                        component,
-                        action_space,
-                        num_outputs=None,
-                        model_config=config,
-                        name="cnn_{}".format(i))
+                # TODO (sven): add IMPALA-style option.
+                # else:
+                #    cnn = TorchImpalaVisionNet(
+                #        component,
+                #        action_space,
+                #        num_outputs=None,
+                #        model_config=config,
+                #        name="cnn_{}".format(i))
 
                 concat_size += cnn.num_outputs
                 self.cnns[i] = cnn

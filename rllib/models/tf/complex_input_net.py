@@ -35,8 +35,8 @@ class ComplexInputNetwork(TFModelV2):
         assert isinstance(original_space, (Tuple)), \
             "`obs_space.original_space` must be Tuple!"
 
-        super().__init__(original_space, action_space, num_outputs, model_config,
-                         name)
+        super().__init__(original_space, action_space, num_outputs,
+                         model_config, name)
 
         # Build the CNN(s) given obs_space's image components.
         self.cnns = {}
@@ -72,9 +72,19 @@ class ComplexInputNetwork(TFModelV2):
         # Optional post-concat FC-stack.
         post_fc_stack_config = {
             "fcnet_hiddens": model_config.get("post_fcnet_hiddens", []),
-            "fcnet_activation": model_config.get("post_fcnet_activation", "relu")
+            "fcnet_activation": model_config.get("post_fcnet_activation",
+                                                 "relu")
         }
-        self.post_fc_stack = ModelCatalog.get_model_v2(Box(float("-inf"), float("inf"), shape=(concat_size, ), dtype=np.float32), self.action_space, None, post_fc_stack_config, framework="tf", name="post_fc_stack")
+        self.post_fc_stack = ModelCatalog.get_model_v2(
+            Box(float("-inf"),
+                float("inf"),
+                shape=(concat_size, ),
+                dtype=np.float32),
+            self.action_space,
+            None,
+            post_fc_stack_config,
+            framework="tf",
+            name="post_fc_stack")
 
         # Actions and value heads.
         self.logits_and_value_model = None
@@ -126,5 +136,6 @@ class ComplexInputNetwork(TFModelV2):
     @override(ModelV2)
     def value_function(self):
         return self._value_out
+
 
 # __sphinx_doc_end__

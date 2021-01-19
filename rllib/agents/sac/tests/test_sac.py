@@ -53,7 +53,7 @@ class SimpleEnv(Env):
 class TestSAC(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init(local_mode=True)#TODO
+        ray.init()
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -74,16 +74,19 @@ class TestSAC(unittest.TestCase):
         image_space = Box(-1.0, 1.0, shape=(84, 84, 3))
         simple_space = Box(-1.0, 1.0, shape=(3, ))
 
-        for _ in framework_iterator(config, frameworks="tf"):#TODO
+        for _ in framework_iterator(config):
             # Test for different env types (discrete w/ and w/o image, + cont).
             for env in [
-                RandomEnv, "MsPacmanNoFrameskip-v4", "CartPole-v0",
+                    RandomEnv,
+                    "MsPacmanNoFrameskip-v4",
+                    "CartPole-v0",
             ]:
                 print("Env={}".format(env))
                 if env == RandomEnv:
                     config["env_config"] = {
-                        "observation_space": Tuple([
-                            simple_space, Discrete(2), image_space]),
+                        "observation_space": Tuple(
+                            [simple_space,
+                             Discrete(2), image_space]),
                         "action_space": Box(-1.0, 1.0, shape=(1, )),
                     }
                 else:

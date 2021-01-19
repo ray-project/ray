@@ -1,7 +1,7 @@
 import gym
 from gym.spaces import Box, Discrete
 import numpy as np
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
@@ -17,12 +17,18 @@ tf1, tf, tfv = try_import_tf()
 class SACTFModel(TFModelV2):
     """Extension of the standard TFModelV2 for SAC.
 
-    #TODO: fix comment, no more wrapping.
-    Instances of this Model get created via wrapping this class around another
-    default- or custom model (inside
-    rllib/agents/sac/sac_tf_policy.py::build_sac_model). Doing so simply adds
-    this class' methods (`get_q_values`, etc..) to the wrapped model, such that
-    the wrapped model can be used by the SAC algorithm.
+    To customize, do one of the following:
+    - sub-class SACTFModel and override one or more of its methods.
+    - Use SAC's `Q_model` and `policy_model` keys to tweak the default model
+      behaviors (e.g. fcnet_hiddens, conv_filters, etc..).
+    - Use SAC's `Q_model->custom_model` and `policy_model->custom_model` keys
+      to specify your own custom Q-model(s) and policy-models, which will be
+      created within this SACTFModel (see `build_policy_model` and
+      `build_q_model`.
+
+    Note: It is not recommended to override the `forward` method for SAC. This
+    would lead to shared weights (between policy and Q-nets), which will then
+    not be optimized by either of the critic- or actor-optimizers!
 
     Data flow:
         `obs` -> forward() (should stay a noop method!) -> `model_out`
@@ -39,21 +45,16 @@ class SACTFModel(TFModelV2):
                  name: str,
                  policy_model_config: ModelConfigDict = None,
                  q_model_config: ModelConfigDict = None,
-                 #actor_hidden_activation: str = "relu",
-                 #actor_hiddens: Tuple[int] = (256, 256),
-                 #critic_hidden_activation: str = "relu",
-                 #critic_hiddens: Tuple[int] = (256, 256),
                  twin_q: bool = False,
                  initial_alpha: float = 1.0,
                  target_entropy: Optional[float] = None):
         """Initialize a SACTFModel instance.
 
         Args:
-            #actor_hidden_activation (str): Activation for the actor network.
-            #actor_hiddens (list): Hidden layers sizes for the actor network.
-            #critic_hidden_activation (str): Activation for the critic network.
-            #critic_hiddens (list): Hidden layers sizes for the critic network.
-            TODO
+            policy_model_config (ModelConfigDict): The config dict for the
+                policy network.
+            q_model_config (ModelConfigDict): The config dict for the
+                Q-network(s) (2 if twin_q=True).
             twin_q (bool): Build twin Q networks (Q-net and target) for more
                 stable Q-learning.
             initial_alpha (float): The initial value for the to-be-optimized
@@ -87,12 +88,12 @@ class SACTFModel(TFModelV2):
         self.action_model = self.build_policy_model(
             self.obs_space, action_outs, policy_model_config, "policy_model")
 
-        self.q_net = self.build_q_net(
-            self.obs_space, self.action_space, q_outs, q_model_config, "q")
+        self.q_net = self.build_q_model(self.obs_space, self.action_space,
+                                        q_outs, q_model_config, "q")
         if twin_q:
-            self.twin_q_net = self.build_q_net(
-                self.obs_space, self.action_space, q_outs, q_model_config,
-                "twin_q")
+            self.twin_q_net = self.build_q_model(self.obs_space,
+                                                 self.action_space, q_outs,
+                                                 q_model_config, "twin_q")
         else:
             self.twin_q_net = None
 
@@ -123,7 +124,8 @@ class SACTFModel(TFModelV2):
         """
         return input_dict["obs"], state
 
-    def build_policy_model(self, obs_space, num_outputs, policy_model_config, name):
+    def build_policy_model(self, obs_space, num_outputs, policy_model_config,
+                           name):
         """Builds the policy model used by this SAC.
 
         Override this method in a sub-class of SACTFModel to implement your
@@ -137,10 +139,17 @@ class SACTFModel(TFModelV2):
         Returns:
             TFModelV2: The TFModelV2 policy sub-model.
         """
-        model = ModelCatalog.get_model_v2(obs_space, self.action_space, num_outputs, policy_model_config, framework="tf", name=name)
+        model = ModelCatalog.get_model_v2(
+            obs_space,
+            self.action_space,
+            num_outputs,
+            policy_model_config,
+            framework="tf",
+            name=name)
         return model
 
-    def build_q_net(self, obs_space, action_space, num_outputs, q_model_config, name):
+    def build_q_model(self, obs_space, action_space, num_outputs,
+                      q_model_config, name):
         """Builds one of the (twin) Q-nets used by this SAC.
 
         Override this method in a sub-class of SACTFModel to implement your
@@ -159,10 +168,16 @@ class SACTFModel(TFModelV2):
             input_space = obs_space
         else:
             orig_space = getattr(obs_space, "original_space", obs_space)
-            input_space = gym.spaces.Tuple(
-                (orig_space.spaces if isinstance(orig_space, gym.spaces.Tuple)
-                 else [obs_space]) + [action_space])
-        model = ModelCatalog.get_model_v2(input_space, action_space, num_outputs, q_model_config, framework="tf", name=name)
+            input_space = gym.spaces.Tuple((orig_space.spaces if isinstance(
+                orig_space, gym.spaces.Tuple) else [obs_space]) +
+                                           [action_space])
+        model = ModelCatalog.get_model_v2(
+            input_space,
+            action_space,
+            num_outputs,
+            q_model_config,
+            framework="tf",
+            name=name)
         return model
 
     def get_q_values(self,

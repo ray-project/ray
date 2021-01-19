@@ -205,7 +205,8 @@ class ModelV2:
             input_dict["obs"], self.obs_space, self.framework)
         try:
             if len(input_dict["obs"].shape) > 2:
-                restored["obs_flat"] = flatten(input_dict["obs"], self.framework)
+                restored["obs_flat"] = flatten(input_dict["obs"],
+                                               self.framework)
             else:
                 restored["obs_flat"] = input_dict["obs"]
         except AttributeError:
@@ -219,15 +220,6 @@ class ModelV2:
                 "got {}".format(res))
         outputs, state = res
 
-        #try:
-        #   shape = outputs.shape
-        #except AttributeError:
-        #    raise ValueError("Output is not a tensor: {}".format(outputs))
-        #else:
-        #    if len(shape) != 2 or int(shape[1]) != self.num_outputs:
-        #        raise ValueError(
-        #            "Expected output shape of [None, {}], got {}".format(
-        #                self.num_outputs, shape))
         if not isinstance(state, list):
             raise ValueError("State output is not a list: {}".format(state))
 

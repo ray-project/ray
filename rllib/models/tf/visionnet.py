@@ -76,7 +76,10 @@ class VisionNetwork(TFModelV2):
                 data_format="channels_last",
                 name="conv_out")(last_layer)
             # Add (optional) post-fc-stack after last Conv2D layer.
-            for i, out_size in enumerate(post_fcnet_hiddens[:-1] + ([num_outputs] if post_fcnet_hiddens else [])):
+            layer_sizes = post_fcnet_hiddens[:-1] + ([num_outputs]
+                                                     if post_fcnet_hiddens else
+                                                     [])
+            for i, out_size in enumerate(layer_sizes):
                 last_layer = tf.keras.layers.Dense(
                     out_size,
                     name="post_fcnet_{}".format(i),
@@ -100,25 +103,24 @@ class VisionNetwork(TFModelV2):
             if num_outputs:
                 if post_fcnet_hiddens:
                     last_cnn = last_layer = tf.keras.layers.Conv2D(
-                        post_fcnet_hiddens[0],
-                        [1, 1],
+                        post_fcnet_hiddens[0], [1, 1],
                         activation=post_fcnet_activation,
                         padding="same",
                         data_format="channels_last",
                         name="conv_out")(last_layer)
                     # Add (optional) post-fc-stack after last Conv2D layer.
-                    for i, out_size in enumerate(
-                            post_fcnet_hiddens[1:] + [num_outputs]):
+                    for i, out_size in enumerate(post_fcnet_hiddens[1:] +
+                                                 [num_outputs]):
                         last_layer = tf.keras.layers.Dense(
                             out_size,
                             name="post_fcnet_{}".format(i + 1),
-                            activation=post_fcnet_activation if i < len(post_fcnet_hiddens) - 1 else None,
+                            activation=post_fcnet_activation
+                            if i < len(post_fcnet_hiddens) - 1 else None,
                             kernel_initializer=normc_initializer(1.0))(
-                            last_layer)
+                                last_layer)
                 else:
                     last_cnn = last_layer = tf.keras.layers.Conv2D(
-                        num_outputs,
-                        [1, 1],
+                        num_outputs, [1, 1],
                         activation=None,
                         padding="same",
                         data_format="channels_last",
@@ -146,8 +148,7 @@ class VisionNetwork(TFModelV2):
                         out_size,
                         name="post_fcnet_{}".format(i),
                         activation=post_fcnet_activation,
-                        kernel_initializer=normc_initializer(1.0))(
-                        last_layer)
+                        kernel_initializer=normc_initializer(1.0))(last_layer)
                 self.num_outputs = last_layer.shape[1]
         logits_out = last_layer
 
