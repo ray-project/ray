@@ -110,7 +110,7 @@ class NodeProvider:
         return find_node_id()
 
     def create_node(self, node_config: Dict[str, Any], tags: Dict[str, str],
-                    count: int) -> None:
+                    count: int) -> Any:
         """Creates a number of nodes within the namespace."""
         raise NotImplementedError
 
