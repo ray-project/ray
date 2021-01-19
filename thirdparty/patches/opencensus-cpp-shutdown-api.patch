@@ -1,12 +1,17 @@
 diff --git opencensus/stats/internal/delta_producer.cc opencensus/stats/internal/delta_producer.cc
-index c61b4d9..b3e4ef2 100644
+index c61b4d9..e38c952 100644
 --- opencensus/stats/internal/delta_producer.cc
 +++ opencensus/stats/internal/delta_producer.cc
-@@ -75,6 +75,20 @@ DeltaProducer* DeltaProducer::Get() {
+@@ -75,6 +75,25 @@ DeltaProducer* DeltaProducer::Get() {
    return global_delta_producer;
  }
  
 +void DeltaProducer::Shutdown() {
++  // NOTE(simon): Shutdown is skipped because the global singleton thread
++  // cannot be restarted after ray.shutdown() followed by ray.init().
++  // See https://github.com/ray-project/ray/issues/13532
++  return;
++
 +  {
 +    absl::MutexLock l(&mu_);
 +    if (!thread_started_) {
@@ -23,19 +28,20 @@ index c61b4d9..b3e4ef2 100644
  void DeltaProducer::AddMeasure() {
    delta_mu_.Lock();
    absl::MutexLock harvester_lock(&harvester_mu_);
-@@ -115,7 +129,10 @@ void DeltaProducer::Flush() {
+@@ -115,7 +134,11 @@ void DeltaProducer::Flush() {
  }
  
  DeltaProducer::DeltaProducer()
 -    : harvester_thread_(&DeltaProducer::RunHarvesterLoop, this) {}
 +    : harvester_thread_(&DeltaProducer::RunHarvesterLoop, this) {
++  harvester_thread_.detach();
 +  absl::MutexLock l(&mu_);
 +  thread_started_ = true;
 +}
  
  void DeltaProducer::SwapDeltas() {
    ABSL_ASSERT(last_delta_.delta().empty() && "Last delta was not consumed.");
-@@ -131,11 +148,19 @@ void DeltaProducer::RunHarvesterLoop() {
+@@ -131,11 +154,19 @@ void DeltaProducer::RunHarvesterLoop() {
    absl::Time next_harvest_time = absl::Now() + harvest_interval_;
    while (true) {
      const absl::Time now = absl::Now();
@@ -82,10 +88,10 @@ index 2cff522..c8e2e95 100644
  
  }  // namespace stats
 diff --git opencensus/stats/internal/stats_exporter.cc opencensus/stats/internal/stats_exporter.cc
-index 43ddbc7..37b4ae1 100644
+index 43ddbc7..685249c 100644
 --- opencensus/stats/internal/stats_exporter.cc
 +++ opencensus/stats/internal/stats_exporter.cc
-@@ -95,25 +95,52 @@ void StatsExporterImpl::ClearHandlersForTesting() {
+@@ -95,25 +95,57 @@ void StatsExporterImpl::ClearHandlersForTesting() {
  }
  
  void StatsExporterImpl::StartExportThread() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
@@ -105,6 +111,11 @@ index 43ddbc7..37b4ae1 100644
 +  // Join loop thread when shutdown.
 +  if (t_.joinable()) {
 +    t_.join();
++  }
++  {
++    absl::MutexLock l(&mu_);
++    handlers_.clear();
++    views_.clear();
 +  }
  }
  
