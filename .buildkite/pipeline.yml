@@ -1,6 +1,23 @@
 - label: "Ray Core Tests (:buildkite: Experimental)"
   commands:
+  - bash src/ray/test/run_object_manager_tests.sh
   - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only -- //:all -rllib/...
-- label: "Ray Dashboard Tests"
+- label: "Ray Core Tests (ASAN)"
+  commands:
+  - bazel test --config=ci --config=asan --config=asan-buildkite $(./scripts/bazel_export_options) --build_tests_only -- //:all
+- label: "Ray Dashboard + Serve Tests"
   commands:
   - bazel test --config=ci $(./scripts/bazel_export_options) python/ray/new_dashboard/...
+  - bazel test --config=ci $(./scripts/bazel_export_options) python/ray/serve/...
+- label: "Ray Core Python (Small & Large)"
+  commands:
+  - bazel test --config=ci $(./scripts/bazel_export_options) --test_tag_filters=-kubernetes,-jenkins_only,-medium_size_python_tests_a_to_j,-medium_size_python_tests_k_to_z python/ray/tests/...
+- label: "Ray Core Python (Medium A-J)"
+  commands:
+  - bazel test --config=ci $(./scripts/bazel_export_options) --test_tag_filters=-kubernetes,-jenkins_only,medium_size_python_tests_a_to_j python/ray/tests/...
+- label: "Ray Core Python (Medium K-Z)"
+  commands:
+  - bazel test --config=ci $(./scripts/bazel_export_options) --test_tag_filters=-kubernetes,-jenkins_only,medium_size_python_tests_k_to_z python/ray/tests/...
+- label: "Ray Core Python (Client)"
+  commands:
+  - bazel test --config=ci $(./scripts/bazel_export_options) --test_tag_filters=-kubernetes,-jenkins_only,client_tests --test_env=RAY_CLIENT_MODE=1 python/ray/tests/...
