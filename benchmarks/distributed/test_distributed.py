@@ -31,6 +31,7 @@ def test_nodes():
 def test_max_actors():
     # TODO (Alex): Dynamically set this based on number of cores
     cpus_per_actor = 0.25
+
     @ray.remote(num_cpus=cpus_per_actor)
     class Actor:
         def foo(self):
@@ -128,7 +129,9 @@ assert len(ray.nodes()) == TEST_NUM_NODES, "Wrong number of nodes in cluster " +
 cluster_resources = ray.cluster_resources()
 
 available_resources = ray.available_resources()
-assert available_resources == cluster_resources, str(available_resources) + " != " + str(cluster_resources)
+assert available_resources == cluster_resources, (
+    str(available_resources) + " != " + str(cluster_resources)
+)
 print("Done launching nodes")
 
 actor_start = perf_counter()
@@ -139,7 +142,9 @@ sleep(1)
 assert len(ray.nodes()) == TEST_NUM_NODES, "Wrong number of nodes in cluster " + len(
     ray.nodes()
 )
-assert available_resources == cluster_resources, str(available_resources) + " != " + str(cluster_resources)
+assert available_resources == cluster_resources, (
+    str(available_resources) + " != " + str(cluster_resources)
+)
 print("Done testing actors")
 
 task_start = perf_counter()
@@ -147,10 +152,12 @@ test_max_running_tasks()
 task_end = perf_counter()
 
 sleep(1)
-assert len(ray.nodes()) == TEST_NUM_NODES, "Wrong number of nodes in cluster " + str(len(
-    ray.nodes()
-))
-assert available_resources == cluster_resources, str(available_resources) + " != " + str(cluster_resources)
+assert len(ray.nodes()) == TEST_NUM_NODES, "Wrong number of nodes in cluster " + str(
+    len(ray.nodes())
+)
+assert available_resources == cluster_resources, (
+    str(available_resources) + " != " + str(cluster_resources)
+)
 print("Done testing tasks")
 
 pg_start = perf_counter()
@@ -161,7 +168,9 @@ sleep(1)
 assert len(ray.nodes()) == TEST_NUM_NODES, "Wrong number of nodes in cluster " + len(
     ray.nodes()
 )
-assert available_resources == cluster_resources, str(available_resources) + " != " + str(cluster_resources)
+assert available_resources == cluster_resources, (
+    str(available_resources) + " != " + str(cluster_resources)
+)
 print("Done testing placement groups")
 
 launch_start = perf_counter()

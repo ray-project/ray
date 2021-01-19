@@ -13,6 +13,7 @@ MAX_RAY_GET_ARGS = 10000
 MAX_QUEUED_TASKS = 1_000_000
 MAX_RAY_GET_SIZE = 100 * 2 ** 30
 
+
 def test_many_args():
     @ray.remote
     def sum_args(*args):
