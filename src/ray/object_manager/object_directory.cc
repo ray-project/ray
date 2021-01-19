@@ -38,6 +38,10 @@ bool UpdateObjectLocations(const std::vector<rpc::ObjectLocationChange> &locatio
   // addition or deletion.
   bool isUpdated = false;
   for (const auto &update : location_updates) {
+    // The size can be 0 if the update was a deletion. This assumes that an
+    // object's size is always greater than 0.
+    // TODO(swang): If that's not the case, we should use a flag to check
+    // whether the size is set instead.
     if (update.size() > 0) {
       *object_size = update.size();
     }
