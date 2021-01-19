@@ -357,13 +357,13 @@ def _configure_subnet(config):
     ec2 = _resource("ec2", config)
     use_internal_ips = config["provider"].get("use_internal_ips", False)
 
-    # If head or worker security group is specified, we filter down to subnets
+    # If head or worker security group is specified, filter down to subnets
     # belonging to the same VPC as the security group.
     filters = _vpc_filter_from_sg(config)
     try:
         candidate_subnets = ec2.subnets.filter(Filters=filters)
         subnets = sorted(
-            (s for s in ec2.subnets.all() if s.state == "available" and (
+            (s for s in candidate_subnets if s.state == "available" and (
                 use_internal_ips or s.map_public_ip_on_launch)),
             reverse=True,  # sort from Z-A
             key=lambda subnet: subnet.availability_zone)
@@ -422,11 +422,30 @@ def _vpc_filter_from_sg(config):
     """Returns a filter that restricts resources to ones with the same vpc-id
     as the security groups specified in config's head_node and worker_node
     fields.
-    
-    If neither head nor worker specifies a security group, returns an empty 
+
+    If neither head nor worker specifies a security group, returns an empty
     filter.
     """
-    return []
+    head_sg_ids = config["head_node"].get("SecurityGroupIds", [])
+    worker_sg_ids = config["worker_nodes"].get("SecurityGroupIds", [])
+    sg_ids = head_sg_ids + worker_sg_ids
+    sg_ids = list(set(sg_ids))
+
+    ec2 = _resource("ec2", config)
+    filters = [{"Name": "group-id", "Values": sg_ids}]
+    security_groups = ec2.security_groups.filter(Filters=filters)
+    vpc_ids = [sg.vpc_id for sg in security_groups]
+    vpc_ids = list(set(vpc_ids))
+
+    multiple_vpc_msg = "All security groups specified in the cluster config "\
+        "should belong to the same VPC."
+    cli_logger.doassert(len(vpc_ids) <= 1, multiple_vpc_msg)
+    assert len(vpc_ids) <= 1, multiple_vpc_msg
+
+    if vpc_ids:
+        return [{"Name": "vpc-id", "Values": vpc_ids}]
+    else:
+        return []
 
 
 def _configure_security_group(config):
