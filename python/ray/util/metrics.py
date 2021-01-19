@@ -38,8 +38,12 @@ class Metric:
         self._metric = None
 
         if not isinstance(self._tag_keys, tuple):
-            raise ValueError("tag_keys should be a tuple type, got: "
-                             f"{type(self._tag_keys)}")
+            raise TypeError("tag_keys should be a tuple type, got: "
+                            f"{type(self._tag_keys)}")
+
+        for key in self._tag_keys:
+            if not isinstance(key, str):
+                raise TypeError(f"Tag keys must be str, got {type(key)}.")
 
     def set_default_tags(self, default_tags: Dict[str, str]):
         """Set default tags of metrics.
@@ -59,6 +63,12 @@ class Metric:
         Returns:
             Metric: it returns the instance itself.
         """
+        for key, val in default_tags.items():
+            if key not in self._tag_keys:
+                raise ValueError(f"Unrecognized tag key {key}.")
+            if not isinstance(val, str):
+                raise TypeError(f"Tag values must be str, got {type(val)}.")
+
         self._default_tags = default_tags
         return self
 
@@ -69,6 +79,12 @@ class Metric:
             value(float): The value to be recorded as a metric point.
         """
         assert self._metric is not None
+        if tags is not None:
+            for val in tags.values():
+                if not isinstance(val, str):
+                    raise TypeError(
+                        f"Tag values must be str, got {type(val)}.")
+
         default_tag_copy = self._default_tags.copy()
         default_tag_copy.update(tags or {})
         self._metric.record(value, tags=default_tag_copy)
