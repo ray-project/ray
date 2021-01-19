@@ -357,7 +357,11 @@ def _configure_subnet(config):
     ec2 = _resource("ec2", config)
     use_internal_ips = config["provider"].get("use_internal_ips", False)
 
+    # If head or worker security group is specified, we filter down to subnets
+    # belonging to the same VPC as the security group.
+    filters = _vpc_filter_from_sg(config)
     try:
+        candidate_subnets = ec2.subnets.filter(Filters=filters)
         subnets = sorted(
             (s for s in ec2.subnets.all() if s.state == "available" and (
                 use_internal_ips or s.map_public_ip_on_launch)),
@@ -412,6 +416,17 @@ def _configure_subnet(config):
         _set_config_info(workers_subnet_src="config")
 
     return config
+
+
+def _vpc_filter_from_sg(config):
+    """Returns a filter that restricts resources to ones with the same vpc-id
+    as the security groups specified in config's head_node and worker_node
+    fields.
+    
+    If neither head nor worker specifies a security group, returns an empty 
+    filter.
+    """
+    return []
 
 
 def _configure_security_group(config):
