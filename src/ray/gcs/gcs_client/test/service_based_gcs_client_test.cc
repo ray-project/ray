@@ -1216,7 +1216,7 @@ TEST_F(ServiceBasedGcsClientTest, TestTaskTableResubscribe) {
 TEST_F(ServiceBasedGcsClientTest, TestWorkerTableResubscribe) {
   // Subscribe to all unexpected failure of workers from GCS.
   std::atomic<int> worker_failure_count(0);
-  auto on_subscribe = [&worker_failure_count](const rpc::WorkerTableData &result) {
+  auto on_subscribe = [&worker_failure_count](const rpc::WorkerDeltaData &result) {
     ++worker_failure_count;
   };
   ASSERT_TRUE(SubscribeToWorkerFailures(on_subscribe));

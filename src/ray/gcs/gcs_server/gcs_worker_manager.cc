@@ -54,7 +54,7 @@ void GcsWorkerManager::HandleReportWorkerFailure(
       stats::UnintentionalWorkerFailures.Record(1);
       // Only publish worker_id and raylet_id in address as they are the only fields used
       // by sub clients.
-      auto worker_failure_delta = std::make_shared<WorkerDeltaData>();
+      auto worker_failure_delta = std::make_shared<rpc::WorkerDeltaData>();
       worker_failure_delta->set_worker_id(
           worker_failure_data->worker_address().worker_id());
       worker_failure_delta->set_raylet_id(

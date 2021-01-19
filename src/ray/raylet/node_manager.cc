@@ -295,7 +295,7 @@ ray::Status NodeManager::RegisterGcs() {
   // in their rpc::Address to the ID of a failed raylet.
   const auto &worker_failure_handler =
       [this](const rpc::WorkerDeltaData &worker_failure_data) {
-        HandleUnexpectedWorkerFailure(worker_failure_data.worker_address());
+        HandleUnexpectedWorkerFailure(worker_failure_data);
       };
   RAY_CHECK_OK(gcs_client_->Workers().AsyncSubscribeToWorkerFailures(
       worker_failure_handler, /*done_callback=*/nullptr));
@@ -794,9 +794,9 @@ void NodeManager::NodeRemoved(const GcsNodeInfo &node_info) {
 
   // Clean up workers that were owned by processes that were on the failed
   // node.
-  rpc::Address address;
-  address.set_raylet_id(node_info.node_id());
-  HandleUnexpectedWorkerFailure(address);
+  rpc::WorkerDeltaData data;
+  data.set_raylet_id(node_info.node_id());
+  HandleUnexpectedWorkerFailure(data);
 }
 
 void NodeManager::HandleUnexpectedWorkerFailure(const rpc::WorkerDeltaData &data) {
