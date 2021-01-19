@@ -614,15 +614,14 @@ class StartJavaDriver(JobProcessor):
                                        self._job_info.jvm_options()):
             pairs.append(("ray.job.jvm-options." + str(i), jvm_option))
 
-        code_search_path = os.path.join(job_package_dir, "*")
-        pairs.append(("ray.job.code-search-path", code_search_path))
+        pairs.append(("ray.job.code-search-path", job_package_dir))
         command = ["java"] + COMMON_JVM_OPTIONS + [
             "-D{}={}".format(*pair) for pair in pairs
         ]
 
         # Add ray jars path to java classpath
         ray_jars = ":".join(
-            [os.path.join(get_ray_jars_dir(), "*"), code_search_path])
+            [os.path.join(get_ray_jars_dir(), "*"), job_package_dir])
         options = self._job_info.jvm_options()
         cp_index = -1
         for i in range(len(options)):
