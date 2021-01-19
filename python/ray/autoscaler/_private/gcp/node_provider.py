@@ -7,7 +7,7 @@ from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME, TAG_RAY_NODE_NAME
 from ray.autoscaler._private.gcp.config import bootstrap_gcp
 from ray.autoscaler._private.gcp.config import MAX_POLLS, POLL_INTERVAL, \
-        construct_clients_from_provider_config
+    construct_clients_from_provider_config
 
 logger = logging.getLogger(__name__)
 
@@ -158,7 +158,7 @@ class GCPNodeProvider(NodeProvider):
 
             return ip
 
-    def create_node(self, base_config, tags, count):
+    def create_node(self, base_config, tags, count) -> None:
         with self.lock:
             labels = tags  # gcp uses "labels" instead of aws "tags"
             project_id = self.provider_config["project_id"]
@@ -195,13 +195,9 @@ class GCPNodeProvider(NodeProvider):
                         })).execute() for i in range(count)
             ]
 
-            results = [
+            for operation in operations:
                 wait_for_compute_zone_operation(self.compute, project_id,
                                                 operation, availability_zone)
-                for operation in operations
-            ]
-
-            return results
 
     def terminate_node(self, node_id):
         with self.lock:
