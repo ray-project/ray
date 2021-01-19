@@ -73,9 +73,8 @@ class BackendReplica:
             self.start()
         elif self._state == ReplicaState.RUNNING:
             # Fetch actor handles for all backend replicas in the system.
-            # All of these backend_replicas are guaranteed to already exist
-            # because they would not be written to a checkpoint in
-            # until they were created.
+            # The actors must exist if this class was checkpointed in the
+            # RUNNING state.
             self._actor_handle = ray.get_actor(self._actor_name)
         elif self._state == ReplicaState.STOPPING:
             self.stop()
@@ -311,7 +310,7 @@ class BackendState:
         if backend_tag not in self._backend_metadata:
             return None
 
-        new_goal, existing_goal = self._set_backend_goal(backend_tag, None)
+        new_goal_id, existing_goal_id = self._set_backend_goal(backend_tag, None)
 
         # Scale its replicas down to 0.
         self.scale_backend_replicas(backend_tag, force_kill)
@@ -320,8 +319,6 @@ class BackendState:
         del self._backend_metadata[backend_tag]
         del self._target_replicas[backend_tag]
 
-        new_goal_id, existing_goal_id = self._set_backend_goal(
-            backend_tag, None)
 
         self._checkpoint()
         if existing_goal_id is not None:
@@ -462,8 +459,7 @@ class BackendState:
                     or replica_state_dict[ReplicaState.STARTING] \
                     or replica_state_dict[ReplicaState.RUNNING]
 
-                if not len(list_to_use):
-                    assert False, replica_state_dict
+                assert len(list_to_use), replica_state_dict
                 replica_to_stop = list_to_use.pop()
 
                 graceful_timeout_s = (backend_info.backend_config.
