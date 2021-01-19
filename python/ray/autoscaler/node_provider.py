@@ -111,7 +111,10 @@ class NodeProvider:
 
     def create_node(self, node_config: Dict[str, Any], tags: Dict[str, str],
                     count: int) -> Any:
-        """Creates a number of nodes within the namespace."""
+        """Creates a number of nodes within the namespace.
+
+        Optionally returns information about the created nodes.
+        """
         raise NotImplementedError
 
     def set_node_tags(self, node_id: str, tags: Dict[str, str]) -> None:

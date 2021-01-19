@@ -239,10 +239,10 @@ class AWSNodeProvider(NodeProvider):
                     }],
                 )
 
-    def create_node(self, node_config, tags, count):
+    def create_node(self, node_config, tags, count) -> Dict[str, Any]:
         """Creates instances.
 
-        Returns dict mapping instance id to instance object for the created
+        Returns dict mapping instance id to ec2.Instance object for the created
         instances.
         """
         tags = copy.deepcopy(tags)
@@ -312,6 +312,8 @@ class AWSNodeProvider(NodeProvider):
 
         all_created_nodes = reused_nodes_dict
         all_created_nodes.update(created_nodes_dict)
+        import pdb
+        pdb.set_trace()
         return all_created_nodes
 
     def _create_node(self, node_config, tags, count):
