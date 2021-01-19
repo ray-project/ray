@@ -232,7 +232,8 @@ class StatsCollector(dashboard_utils.DashboardHeadModule):
                 if actor_table_data["state"] != "DEPENDENCIES_UNREADY":
                     actor_id = actor_id.decode("UTF-8")[len("ACTOR:"):]
                     actor_table_data_copy = dict(DataSource.actors[actor_id])
-                    keys = ("state", "address", "numRestarts", "timestamp", "pid")
+                    keys = ("state", "address", "numRestarts", "timestamp",
+                            "pid")
                     for k in keys:
                         actor_table_data_copy[k] = actor_table_data[k]
                     actor_table_data = actor_table_data_copy
