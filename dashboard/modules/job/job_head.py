@@ -55,8 +55,8 @@ class JobHead(dashboard_utils.DashboardHeadModule):
             job_consts.REDIS_KEY_JOB_COUNTER)
         job_id_int = int(counter_str)
         if job_id_int & (1 << 31):
-            raise Exception("Job id overflow: %s".format(
-                ray.JobID.from_int(job_id_int)))
+            raise Exception(
+                f"Job id overflow: {ray.JobID.from_int(job_id_int)}")
         job_id_int |= (1 << 31)
         return ray.JobID.from_int(job_id_int)
 
@@ -78,8 +78,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
             logger.info("Failed to submit job %s", job_id.hex())
             return dashboard_utils.rest_response(
                 success=False,
-                message="Failed to submit job: {}".format(
-                    reply.status.message),
+                message=f"Failed to submit job: {reply.status.message}",
                 job_id=job_id.hex())
 
     @routes.delete("/jobs/{job_id}")
@@ -95,7 +94,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
             logger.info("Failed to drop job %s", job_id)
             return dashboard_utils.rest_response(
                 success=False,
-                message="Failed to drop job: {}".format(reply.status.message),
+                message=f"Failed to drop job: {reply.status.message}",
                 job_id=job_id)
 
     @routes.get("/jobs")
@@ -116,18 +115,9 @@ class JobHead(dashboard_utils.DashboardHeadModule):
                 success=True,
                 message="All job states fetched.",
                 states=all_job_state)
-        elif view == "update":
-            all_job_update = [{
-                k: v[k]
-                for k in ("jobId", "jobUpdate", "timestamp")
-            } for v in DataSource.jobs.values()]
-            return dashboard_utils.rest_response(
-                success=True,
-                message="All job update fetched.",
-                states=all_job_update)
         else:
             return dashboard_utils.rest_response(
-                success=False, message="Unknown view {}".format(view))
+                success=False, message=f"Unknown view {view}")
 
     @routes.get("/jobs/{job_id}")
     @dashboard_utils.aiohttp_cache
@@ -151,17 +141,9 @@ class JobHead(dashboard_utils.DashboardHeadModule):
             }
             return dashboard_utils.rest_response(
                 success=True, message="Job state fetched.", **job_state)
-        elif view == "update":
-            job_info = DataSource.jobs.get(job_id, {})
-            job_update = {
-                k: job_info[k]
-                for k in ("jobId", "jobUpdate", "timestamp") if k in job_info
-            }
-            return dashboard_utils.rest_response(
-                success=True, message="Job update fetched.", **job_update)
         else:
             return dashboard_utils.rest_response(
-                success=False, message="Unknown view {}".format(view))
+                success=False, message=f"Unknown view {view}")
 
     async def _update_jobs(self):
         # Subscribe job channel.

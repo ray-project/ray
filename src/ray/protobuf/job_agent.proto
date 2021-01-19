@@ -33,7 +33,7 @@ message InitializeJobEnvReply {
   string error_message = 2;
   // The driver pid of job.
   int32 driver_pid = 3;
-  // The driver cmmand line.
+  // The driver command line.
   string driver_cmdline = 4;
 }
 
