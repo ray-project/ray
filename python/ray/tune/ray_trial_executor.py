@@ -16,7 +16,6 @@ from ray import ray_constants
 from ray.resource_spec import ResourceSpec
 from ray.tune.durable_trainable import DurableTrainable
 from ray.tune.error import AbortTrialExecution, TuneError
-from ray.tune.function_runner import FunctionRunner
 from ray.tune.logger import NoopLogger
 from ray.tune.result import TRIAL_INFO, STDOUT_FILE, STDERR_FILE
 from ray.tune.resources import Resources
@@ -246,14 +245,13 @@ class RayTrialExecutor(TrialExecutor):
 
         return None
 
-    def _setup_remote_runner(self, trial, reuse_allowed):
+    def _setup_remote_runner(self, trial):
         trial.init_logdir()
         # We checkpoint metadata here to try mitigating logdir duplication
         self.try_checkpoint_metadata(trial)
         logger_creator = partial(noop_logger_creator, logdir=trial.logdir)
 
-        if (self._reuse_actors and reuse_allowed
-                and self._cached_actor is not None):
+        if (self._reuse_actors and self._cached_actor is not None):
             logger.debug("Trial %s: Reusing cached runner %s", trial,
                          self._cached_actor)
             existing_runner = self._cached_actor
@@ -378,14 +376,7 @@ class RayTrialExecutor(TrialExecutor):
         """
         prior_status = trial.status
         if runner is None:
-            # We reuse actors when there is previously instantiated state on
-            # the actor. Function API calls are also supported when there is
-            # no checkpoint to continue from.
-            # TODO: Check preconditions - why is previous state needed?
-            reuse_allowed = checkpoint is not None or trial.has_checkpoint() \
-                            or issubclass(trial.get_trainable_cls(),
-                                          FunctionRunner)
-            runner = self._setup_remote_runner(trial, reuse_allowed)
+            runner = self._setup_remote_runner(trial)
             if not runner:
                 return False
         trial.set_runner(runner)
