@@ -216,7 +216,7 @@ class BackendState:
             LongPollKey.REPLICA_HANDLES, {
                 backend_tag: list(replica_dict.values())
                 for backend_tag, replica_dict in self.get_replica_handles()
-.items()
+                .items()
             })
 
     def get_backend_configs(self) -> Dict[BackendTag, BackendConfig]:
@@ -472,7 +472,16 @@ class BackendState:
 
         for backend_tag in all_tags:
             desired_num_replicas = self._target_replicas.get(backend_tag)
-            existing_info = self._replicas.get(backend_tag).get(ReplicaState.RUNNING, [])
+            state_dict = self._replicas.get(backend_tag, {})
+            existing_info = state_dict.get(ReplicaState.RUNNING, [])
+            
+            # If we have pending ops, the current goal is *not* ready
+            if (state_dict.get(ReplicaState.SHOULD_START)
+                    or state_dict.get(ReplicaState.STARTING)
+                    or state_dict.get(ReplicaState.SHOULD_STOP)
+                    or state_dict.get(ReplicaState.STOPPING)):
+                continue
+
             # TODO(ilr): FIX
             # Check for deleting
             if (not desired_num_replicas or
