@@ -125,9 +125,12 @@ class LogMonitor:
         log_file_paths = glob.glob(f"{self.logs_dir}/worker*[.out|.err]")
         # segfaults and other serious errors are logged here
         raylet_err_paths = glob.glob(f"{self.logs_dir}/raylet*.err")
+        # monitor logs are needed to report autoscaler events
+        monitor_log_paths = glob.glob(f"{self.logs_dir}/monitor.log")
         # If gcs server restarts, there can be multiple log files.
         gcs_err_path = glob.glob(f"{self.logs_dir}/gcs_server*.err")
-        for file_path in log_file_paths + raylet_err_paths + gcs_err_path:
+        for file_path in (log_file_paths + raylet_err_paths + gcs_err_path +
+                          monitor_log_paths):
             if os.path.isfile(
                     file_path) and file_path not in self.log_filenames:
                 job_match = JOB_LOG_PATTERN.match(file_path)
@@ -246,6 +249,8 @@ class LogMonitor:
                     file_info.worker_pid = "raylet"
                 elif "/gcs_server" in file_info.filename:
                     file_info.worker_pid = "gcs_server"
+                elif "/monitor" in file_info.filename:
+                    file_info.worker_pid = "autoscaler"
 
             # Record the current position in the file.
             file_info.file_position = file_info.file_handle.tell()

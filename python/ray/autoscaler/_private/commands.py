@@ -20,14 +20,13 @@ except ImportError:  # py2
     from pipes import quote
 
 import ray
-from ray.experimental.internal_kv import _internal_kv_get
+from ray.experimental.internal_kv import _internal_kv_put
 import ray._private.services as services
 from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler._private.constants import \
     AUTOSCALER_RESOURCE_REQUEST_CHANNEL
 from ray.autoscaler._private.util import validate_config, hash_runtime_conf, \
-    hash_launch_conf, prepare_config, DEBUG_AUTOSCALING_ERROR, \
-    DEBUG_AUTOSCALING_STATUS
+    hash_launch_conf, prepare_config
 from ray.autoscaler._private.providers import _get_node_provider, \
     _NODE_PROVIDERS, _PROVIDER_PRETTY_NAMES
 from ray.autoscaler.tags import TAG_RAY_NODE_KIND, TAG_RAY_LAUNCH_CONFIG, \
@@ -90,10 +89,8 @@ def try_reload_log_state(provider_config: Dict[str, Any],
         return reload_log_state(log_state)
 
 
-def debug_status() -> str:
+def debug_status(status, error) -> str:
     """Return a debug string for the autoscaler."""
-    status = _internal_kv_get(DEBUG_AUTOSCALING_STATUS)
-    error = _internal_kv_get(DEBUG_AUTOSCALING_ERROR)
     if not status:
         status = "No cluster status."
     else:
@@ -129,13 +126,15 @@ def request_resources(num_cpus: Optional[int] = None,
     """
     if not ray.is_initialized():
         raise RuntimeError("Ray is not initialized yet")
-    r = _redis()
     to_request = []
     if num_cpus:
         to_request += [{"CPU": 1}] * num_cpus
     if bundles:
         to_request += bundles
-    r.publish(AUTOSCALER_RESOURCE_REQUEST_CHANNEL, json.dumps(to_request))
+    _internal_kv_put(
+        AUTOSCALER_RESOURCE_REQUEST_CHANNEL,
+        json.dumps(to_request),
+        overwrite=True)
 
 
 def create_or_update_cluster(config_file: str,
