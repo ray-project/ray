@@ -484,31 +484,7 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id) {
         created_actors_.erase(node_it);
       }
     } else {
-      // The actor has not been created yet. It is either being scheduled or is
-      // pending scheduling.
-      auto canceled_actor_id =
-          gcs_actor_scheduler_->CancelOnWorker(actor->GetNodeID(), actor->GetWorkerID());
-      if (!canceled_actor_id.IsNil()) {
-        // The actor was being scheduled and has now been canceled.
-        RAY_CHECK(canceled_actor_id == actor_id);
-      } else {
-        auto pending_it =
-            std::find_if(pending_actors_.begin(), pending_actors_.end(),
-                         [actor_id](const std::shared_ptr<GcsActor> &actor) {
-                           return actor->GetActorID() == actor_id;
-                         });
-
-        // The actor was pending scheduling. Remove it from the queue.
-        if (pending_it != pending_actors_.end()) {
-          pending_actors_.erase(pending_it);
-        } else {
-          // When actor creation request of this actor id is pending in raylet,
-          // it doesn't responds, and the actor should be still in leasing state.
-          // NOTE: We will cancel outstanding lease request by calling
-          // `raylet_client->CancelWorkerLease`.
-          gcs_actor_scheduler_->CancelOnLeasing(node_id, actor_id, task_id);
-        }
-      }
+      CancelActorInScheduling(actor, task_id);
     }
   }
 
@@ -968,22 +944,19 @@ void GcsActorManager::NotifyCoreWorkerToKillActor(const std::shared_ptr<GcsActor
 void GcsActorManager::KillActor(const ActorID &actor_id, bool force_kill) {
   RAY_LOG(DEBUG) << "Killing actor, job id = " << actor_id.JobId()
                  << ", actor id = " << actor_id << ", force_kill = " << force_kill;
-  auto it = registered_actors_.find(actor_id);
+  const auto &it = registered_actors_.find(actor_id);
   if (it == registered_actors_.end()) {
     RAY_LOG(INFO) << "Tried to kill actor that does not exist " << actor_id;
     return;
   }
 
   const auto &actor = it->second;
-
-  // The actor is already dead, most likely due to process or node failure.
   if (actor->GetState() == rpc::ActorTableData::DEAD ||
       actor->GetState() == rpc::ActorTableData::DEPENDENCIES_UNREADY) {
     return;
   }
 
-  // The actor is still alive or pending creation. Clean up all remaining
-  // state.
+  // The actor is still alive or pending creation.
   const auto &node_id = actor->GetNodeID();
   const auto &worker_id = actor->GetWorkerID();
   auto node_it = created_actors_.find(node_id);
@@ -992,26 +965,8 @@ void GcsActorManager::KillActor(const ActorID &actor_id, bool force_kill) {
     // it.
     NotifyCoreWorkerToKillActor(actor, force_kill);
   } else {
-    // The actor has not been created yet. It is either being scheduled or is
-    // pending scheduling.
-    auto canceled_actor_id =
-        gcs_actor_scheduler_->CancelOnWorker(actor->GetNodeID(), actor->GetWorkerID());
-    if (canceled_actor_id.IsNil()) {
-      auto pending_it = std::find_if(pending_actors_.begin(), pending_actors_.end(),
-                                     [actor_id](const std::shared_ptr<GcsActor> &actor) {
-                                       return actor->GetActorID() == actor_id;
-                                     });
-
-      // When actor creation request of this actor id is pending in raylet,
-      // it doesn't responds, and the actor should be still in leasing state.
-      // NOTE: We will cancel outstanding lease request by calling
-      // `raylet_client->CancelWorkerLease`.
-      if (pending_it == pending_actors_.end()) {
-        const auto &task_id = actor->GetCreationTaskSpecification().TaskId();
-        gcs_actor_scheduler_->CancelOnLeasing(node_id, actor_id, task_id);
-      }
-    }
-
+    const auto &task_id = actor->GetCreationTaskSpecification().TaskId();
+    CancelActorInScheduling(actor, task_id);
     ReconstructActor(actor_id, /*need_reschedule=*/true);
   }
 }
@@ -1027,6 +982,36 @@ void GcsActorManager::AddDestroyedActorToCache(const std::shared_ptr<GcsActor> &
   destroyed_actors_.emplace(actor->GetActorID(), actor);
   sorted_destroyed_actor_list_.emplace_back(
       actor->GetActorID(), (int64_t)actor->GetActorTableData().timestamp());
+}
+
+void GcsActorManager::CancelActorInScheduling(const std::shared_ptr<GcsActor> &actor,
+                                              const TaskID &task_id) {
+  const auto &actor_id = actor->GetActorID();
+  const auto &node_id = actor->GetNodeID();
+  // The actor has not been created yet. It is either being scheduled or is
+  // pending scheduling.
+  auto canceled_actor_id =
+      gcs_actor_scheduler_->CancelOnWorker(actor->GetNodeID(), actor->GetWorkerID());
+  if (!canceled_actor_id.IsNil()) {
+    // The actor was being scheduled and has now been canceled.
+    RAY_CHECK(canceled_actor_id == actor_id);
+  } else {
+    auto pending_it = std::find_if(pending_actors_.begin(), pending_actors_.end(),
+                                   [actor_id](const std::shared_ptr<GcsActor> &actor) {
+                                     return actor->GetActorID() == actor_id;
+                                   });
+
+    // The actor was pending scheduling. Remove it from the queue.
+    if (pending_it != pending_actors_.end()) {
+      pending_actors_.erase(pending_it);
+    } else {
+      // When actor creation request of this actor id is pending in raylet,
+      // it doesn't responds, and the actor should be still in leasing state.
+      // NOTE: We will cancel outstanding lease request by calling
+      // `raylet_client->CancelWorkerLease`.
+      gcs_actor_scheduler_->CancelOnLeasing(node_id, actor_id, task_id);
+    }
+  }
 }
 
 std::string GcsActorManager::DebugString() const {

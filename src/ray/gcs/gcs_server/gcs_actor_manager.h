@@ -369,6 +369,13 @@ class GcsActorManager : public rpc::ActorInfoHandler {
     return actor_delta;
   }
 
+  /// Cancel actor which is either being scheduled or is pending scheduling.
+  ///
+  /// \param actor The actor to be cancelled.
+  /// \param task_id The id of actor creation task to be cancelled.
+  void CancelActorInScheduling(const std::shared_ptr<GcsActor> &actor,
+                               const TaskID &task_id);
+
   /// Callbacks of pending `RegisterActor` requests.
   /// Maps actor ID to actor registration callbacks, which is used to filter duplicated
   /// messages from a driver/worker caused by some network problems.
