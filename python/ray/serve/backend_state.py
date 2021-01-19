@@ -53,7 +53,19 @@ class BackendReplica:
         self._shutdown_obj_ref = None
         self._state = ReplicaState.SHOULD_START
 
-    def recover_from_checkpoint(self):
+    def __get_state__(self):
+        clean_dict = self.__dict__.copy()
+        del clean_dict["_actor_handle"]
+        del clean_dict["_startup_obj_ref"]
+        del clean_dict["_shutdown_obj_ref"]
+        return clean_dict
+
+    def __set_state__(self, d):
+        self.__dict__ = d
+        self.recover_from_checkpoint()
+
+
+    def _recover_from_checkpoint(self):
         if self._state == ReplicaState.STARTING:
             # We do not need to pass in the class here because the actor
             # creation has already been started if this class was checkpointed
