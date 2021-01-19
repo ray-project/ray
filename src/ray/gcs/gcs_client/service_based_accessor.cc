@@ -1369,11 +1369,11 @@ ServiceBasedWorkerInfoAccessor::ServiceBasedWorkerInfoAccessor(
     : client_impl_(client_impl) {}
 
 Status ServiceBasedWorkerInfoAccessor::AsyncSubscribeToWorkerFailures(
-    const ItemCallback<rpc::WorkerTableData> &subscribe, const StatusCallback &done) {
+    const ItemCallback<rpc::WorkerDeltaData> &subscribe, const StatusCallback &done) {
   RAY_CHECK(subscribe != nullptr);
   subscribe_operation_ = [this, subscribe](const StatusCallback &done) {
     auto on_subscribe = [subscribe](const std::string &id, const std::string &data) {
-      rpc::WorkerTableData worker_failure_data;
+      rpc::WorkerDeltaData worker_failure_data;
       worker_failure_data.ParseFromString(data);
       subscribe(worker_failure_data);
     };

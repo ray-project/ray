@@ -294,7 +294,7 @@ ray::Status NodeManager::RegisterGcs() {
   // node failure. These workers can be identified by comparing the raylet_id
   // in their rpc::Address to the ID of a failed raylet.
   const auto &worker_failure_handler =
-      [this](const rpc::WorkerTableData &worker_failure_data) {
+      [this](const rpc::WorkerDeltaData &worker_failure_data) {
         HandleUnexpectedWorkerFailure(worker_failure_data.worker_address());
       };
   RAY_CHECK_OK(gcs_client_->Workers().AsyncSubscribeToWorkerFailures(
@@ -799,9 +799,9 @@ void NodeManager::NodeRemoved(const GcsNodeInfo &node_info) {
   HandleUnexpectedWorkerFailure(address);
 }
 
-void NodeManager::HandleUnexpectedWorkerFailure(const rpc::Address &address) {
-  const WorkerID worker_id = WorkerID::FromBinary(address.worker_id());
-  const NodeID node_id = NodeID::FromBinary(address.raylet_id());
+void NodeManager::HandleUnexpectedWorkerFailure(const rpc::WorkerDeltaData &data) {
+  const WorkerID worker_id = WorkerID::FromBinary(data.worker_id());
+  const NodeID node_id = NodeID::FromBinary(data.raylet_id());
   if (!worker_id.IsNil()) {
     RAY_LOG(DEBUG) << "Worker " << worker_id << " failed";
     failed_workers_cache_.insert(worker_id);

@@ -417,7 +417,7 @@ class ServiceBasedWorkerInfoAccessor : public WorkerInfoAccessor {
   virtual ~ServiceBasedWorkerInfoAccessor() = default;
 
   Status AsyncSubscribeToWorkerFailures(
-      const ItemCallback<rpc::WorkerTableData> &subscribe,
+      const ItemCallback<rpc::WorkerDeltaData> &subscribe,
       const StatusCallback &done) override;
 
   Status AsyncReportWorkerFailure(const std::shared_ptr<rpc::WorkerTableData> &data_ptr,
