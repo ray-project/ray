@@ -69,44 +69,44 @@ void mysum(void* c_, const void* a_, const void* b_, int n) {
 
 
 // wrap C++ function with NumPy array IO
-pybind11::array py_allreduce(const std::shared_ptr<gloo::Context>& context, pybind11::array_t<double, pybind11::array::c_style | pybind11::array::forcecast> array, ReduceOp reduceop = ReduceOp::SUM )
-{
-    // check input dimensions
-    if ( array.ndim()     != 2 )
-        throw std::runtime_error("Input should be 2-D NumPy array");
-    if ( array.shape()[1] != 2 )
-        throw std::runtime_error("Input should have size [N,2]");
+// pybind11::array py_allreduce(const std::shared_ptr<gloo::Context>& context, pybind11::array_t<double, pybind11::array::c_style | pybind11::array::forcecast> array, ReduceOp reduceop = ReduceOp::SUM )
+// {
+//     // check input dimensions
+//     if ( array.ndim()     != 2 )
+//         throw std::runtime_error("Input should be 2-D NumPy array");
+//     if ( array.shape()[1] != 2 )
+//         throw std::runtime_error("Input should have size [N,2]");
 
-    // allocate std::vector (to pass to the C++ function)
-    std::vector<double*> inputArray(array.size());
+//     // allocate std::vector (to pass to the C++ function)
+//     std::vector<double*> inputArray(array.size());
 
-    // copy py::array -> std::vector
-    std::memcpy(inputArray.data(), array.data(), array.size()*sizeof(double));
+//     // copy py::array -> std::vector
+//     std::memcpy(inputArray.data(), array.data(), array.size()*sizeof(double));
 
-    // // call pure C++ function
-    // std::vector<double> result = length(inputArray);
+//     // // call pure C++ function
+//     // std::vector<double> result = length(inputArray);
 
-    // Configure AllreduceOptions struct and call allreduec function
-    gloo::AllreduceOptions opts_(context);
-    opts_.setInputs(inputArray, 1);
-    opts_.setOutputs(inputArray, 1);
-    opts_.setAlgorithm(gloo::AllreduceOptions::Algorithm::RING);
-    // void (*fn)(void*, const void*, const void*, int) = &mysum;
-    gloo::ReduceOptions::Func fn = toFunction(reduceop)
-    opts_.setReduceFunction(fn);
-    gloo::allreduce(opts_);
+//     // Configure AllreduceOptions struct and call allreduec function
+//     gloo::AllreduceOptions opts_(context);
+//     opts_.setInputs(inputArray, 1);
+//     opts_.setOutputs(inputArray, 1);
+//     opts_.setAlgorithm(gloo::AllreduceOptions::Algorithm::RING);
+//     // void (*fn)(void*, const void*, const void*, int) = &mysum;
+//     gloo::ReduceOptions::Func fn = toFunction(reduceop)
+//     opts_.setReduceFunction(fn);
+//     gloo::allreduce(opts_);
 
-    ssize_t ndim = 2;
-    std::vector<ssize_t> shape = {array.shape()[0], 3};
-    std::vector<ssize_t> strides = {sizeof(double) * 3, sizeof(double)};
+//     ssize_t ndim = 2;
+//     std::vector<ssize_t> shape = {array.shape()[0], 3};
+//     std::vector<ssize_t> strides = {sizeof(double) * 3, sizeof(double)};
 
-    // return 2-D NumPy array
-    return pybind11::array(pybind11::buffer_info(
-        result.data(),                           /* data as contiguous array  */
-        sizeof(double),                          /* size of one scalar        */
-        pybind11::format_descriptor<double>::format(), /* data type                 */
-        ndim,                                    /* number of dimensions      */
-        shape,                                   /* shape of the matrix       */
-        strides                                  /* strides for each axis     */
-    ));
-}
+//     // return 2-D NumPy array
+//     return pybind11::array(pybind11::buffer_info(
+//         result.data(),                           /* data as contiguous array  */
+//         sizeof(double),                          /* size of one scalar        */
+//         pybind11::format_descriptor<double>::format(), /* data type                 */
+//         ndim,                                    /* number of dimensions      */
+//         shape,                                   /* shape of the matrix       */
+//         strides                                  /* strides for each axis     */
+//     ));
+// }
