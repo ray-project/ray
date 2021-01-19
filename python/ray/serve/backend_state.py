@@ -44,6 +44,7 @@ class BackendReplica:
     def __init__(self, controller_name: str, detached: bool,
                  replica_tag: ReplicaTag, backend_tag: BackendTag):
         self._actor_name = format_actor_name(replica_tag, controller_name)
+        self._controller_name = controller_name
         self._detached = detached
         self._replica_tag = replica_tag
         self._backend_tag = backend_tag
@@ -130,7 +131,7 @@ class BackendReplica:
         self._shutdown_obj_ref = kill_actor.remote(
             self._actor_name, self._graceful_shutdown_timeout_s)
 
-    async def check_stopped(self):
+    def check_stopped(self):
         if self._state == ReplicaState.STOPPED:
             return True
         assert self._state == ReplicaState.STOPPING
@@ -162,7 +163,7 @@ class BackendState:
         self._replicas: Dict[BackendTag, Dict[ReplicaState, List[
             BackendReplica]]] = defaultdict(lambda: defaultdict(list))
         self._backend_metadata: Dict[BackendTag, BackendInfo] = dict()
-        self._target_replicas: Dict[BackendTag, int] = dict()
+        self._target_replicas: Dict[BackendTag, int] = defaultdict(int)
         self._goals: Dict[BackendTag, GoalId] = dict()
 
         # Un-Checkpointed state.
@@ -205,7 +206,7 @@ class BackendState:
         self._long_poll_host.notify_changed(
             LongPollKey.REPLICA_HANDLES, {
                 backend_tag: list(replica_dict.values())
-                for backend_tag, replica_dict in self.get_replica_handles()
+                for backend_tag, replica_dict in self.get_replica_handles().items()
             })
 
     def get_backend_configs(self) -> Dict[BackendTag, BackendConfig]:
@@ -253,6 +254,8 @@ class BackendState:
             self._backend_metadata[backend_tag] = backend_info
             self._target_replicas[
                 backend_tag] = backend_info.backend_config.num_replicas
+        else:
+            self._target_replicas[backend_tag] = 0
 
         self._goals[backend_tag] = new_goal
 
@@ -282,8 +285,7 @@ class BackendState:
             backend_tag, backend_info)
 
         try:
-            self.scale_backend_replicas(backend_tag,
-                                        backend_config.num_replicas)
+            self.scale_backend_replicas(backend_tag)
         except RayServeException as e:
             del self._backend_metadata[backend_tag]
             raise e
@@ -305,14 +307,15 @@ class BackendState:
         if backend_tag not in self._backend_metadata:
             return None
 
+        new_goal, existing_goal = self._set_backend_goal(backend_tag, None)
+
         # Scale its replicas down to 0.
-        self.scale_backend_replicas(backend_tag, 0, force_kill)
+        self.scale_backend_replicas(backend_tag, force_kill)
 
         # Remove the backend's metadata.
         del self._backend_metadata[backend_tag]
         del self._target_replicas[backend_tag]
 
-        new_goal, existing_goal = self._set_backend_goal(backend_tag, None)
 
         self._checkpoint()
         if existing_goal is not None:
@@ -335,7 +338,7 @@ class BackendState:
             backend_tag, self._backend_metadata[backend_tag])
 
         # Scale the replicas with the new configuration.
-        self.scale_backend_replicas(backend_tag, updated_config.num_replicas)
+        self.scale_backend_replicas(backend_tag)
 
         # NOTE(edoakes): we must write a checkpoint before pushing the
         # update to avoid inconsistent state if we crash after pushing the
@@ -385,7 +388,6 @@ class BackendState:
     def scale_backend_replicas(
             self,
             backend_tag: BackendTag,
-            num_replicas: int,
             force_kill: bool = False,
     ) -> None:
         """Scale the given backend to the number of replicas.
@@ -397,15 +399,21 @@ class BackendState:
         inconsistencies with starting/stopping a replica and then crashing
         before writing a checkpoint.
         """
-
+        num_replicas = self._target_replicas.get(backend_tag, 0) 
+        
         logger.debug("Scaling backend '{}' to {} replicas".format(
             backend_tag, num_replicas))
         assert (backend_tag in self._backend_metadata
                 ), "Backend {} is not registered.".format(backend_tag)
         assert num_replicas >= 0, ("Number of replicas must be"
                                    " greater than or equal to 0.")
-
-        current_num_replicas = self._target_replicas[backend_tag]
+        
+        current_num_replicas = sum([len(self._replicas[backend_tag][ReplicaState.SHOULD_START]), 
+        len(self._replicas[backend_tag][ReplicaState.STARTING]),
+        len(self._replicas[backend_tag][ReplicaState.RUNNING]),
+        -len(self._replicas[backend_tag][ReplicaState.SHOULD_STOP]),
+        -len(self._replicas[backend_tag][ReplicaState.STOPPING]),
+        -len(self._replicas[backend_tag][ReplicaState.STOPPED])])
 
         delta_num_replicas = num_replicas - current_num_replicas
 
@@ -446,6 +454,8 @@ class BackendState:
                     or replica_state_dict[ReplicaState.STARTING] \
                     or replica_state_dict[ReplicaState.RUNNING]
 
+                if not len(list_to_use):
+                    assert False, replica_state_dict
                 replica_to_stop = list_to_use.pop()
 
                 graceful_timeout_s = (backend_info.backend_config.
@@ -461,8 +471,9 @@ class BackendState:
                                ) -> List[Tuple[ReplicaState, BackendTag]]:
         replicas = []
         for backend_tag, state_to_replica_dict in self._replicas.items():
-            replicas.extend((replica, backend_tag)
-                            for replica in state_to_replica_dict.pop(state))
+            if state in state_to_replica_dict:
+                replicas.extend((replica, backend_tag)
+                                for replica in state_to_replica_dict.pop(state))
 
         return replicas
 
@@ -473,7 +484,7 @@ class BackendState:
 
         for backend_tag in all_tags:
             desired_num_replicas = self._target_replicas.get(backend_tag)
-            existing_info = self._replicas.get(backend_tag)
+            existing_info = self._replicas.get(backend_tag).get(ReplicaState.RUNNING, [])
             # TODO(ilr): FIX
             # Check for deleting
             if (not desired_num_replicas or
@@ -494,7 +505,7 @@ class BackendState:
         for replica_state, backend_tag in self._pop_replicas_of_state(
                 ReplicaState.SHOULD_START):
             replica_state.start(
-                self._backend_metadata[backend_tag].backend_info)
+                self._backend_metadata[backend_tag])
             self._replicas[backend_tag][ReplicaState.STARTING].append(
                 replica_state)
 
@@ -509,7 +520,6 @@ class BackendState:
         for replica_state, backend_tag in self._pop_replicas_of_state(
                 ReplicaState.STARTING):
             if replica_state.check_started():
-                replica_state.set_state(ReplicaState.RUNNING)
                 self._replicas[backend_tag][ReplicaState.RUNNING].append(
                     replica_state)
                 transition_triggered = True
