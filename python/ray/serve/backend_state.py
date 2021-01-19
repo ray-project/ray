@@ -147,7 +147,7 @@ class BackendReplica:
             return True
         return False
 
-    def get_handle(self):
+    def get_actor_handle(self):
         assert self._state == ReplicaState.RUNNING, (
             f"State must be {ReplicaState.RUNNING}, *not* {self._state}")
         return self._actor_handle
@@ -200,11 +200,11 @@ class BackendState:
         self._long_poll_host.notify_changed(LongPollKey.BACKEND_CONFIGS,
                                             self.get_backend_configs())
 
-    def get_replica_handles(
+    def get_running_replica_handles(
             self) -> Dict[BackendTag, Dict[ReplicaTag, ActorHandle]]:
         return {
             backend_tag: {
-                backend_replica._replica_tag: backend_replica.get_handle()
+                backend_replica._replica_tag: backend_replica.get_actor_handle()
                 for backend_replica in state_to_replica_dict[
                     ReplicaState.RUNNING]
             }
@@ -215,7 +215,7 @@ class BackendState:
         self._long_poll_host.notify_changed(
             LongPollKey.REPLICA_HANDLES, {
                 backend_tag: list(replica_dict.values())
-                for backend_tag, replica_dict in self.get_replica_handles()
+                for backend_tag, replica_dict in self.get_running_replica_handles()
                 .items()
             })
 

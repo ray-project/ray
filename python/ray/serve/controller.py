@@ -118,7 +118,7 @@ class ServeController:
     def _all_replica_handles(
             self) -> Dict[BackendTag, Dict[ReplicaTag, ActorHandle]]:
         """Used for testing."""
-        return self.backend_state.get_replica_handles()
+        return self.backend_state.get_running_replica_handles()
 
     def get_all_backends(self) -> Dict[BackendTag, BackendConfig]:
         """Returns a dictionary of backend tag to backend config."""
@@ -235,7 +235,7 @@ class ServeController:
         async with self.write_lock:
             for proxy in self.http_state.get_http_proxy_handles().values():
                 ray.kill(proxy, no_restart=True)
-            for replica_dict in self.backend_state.get_replica_handles(
+            for replica_dict in self.backend_state.get_running_replica_handles(
             ).values():
                 for replica in replica_dict.values():
                     ray.kill(replica, no_restart=True)
