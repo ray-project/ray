@@ -92,7 +92,7 @@ class TestExplorations(unittest.TestCase):
         do_test_explorations(
             a3c.A2CTrainer,
             "CartPole-v0",
-            a3c.DEFAULT_CONFIG,
+            a3c.a2c.A2C_DEFAULT_CONFIG,
             np.array([0.0, 0.1, 0.0, 0.0]),
             prev_a=np.array(1))
 

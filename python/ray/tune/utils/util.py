@@ -563,7 +563,8 @@ def create_logdir(dirname: str, local_dir: str):
         dirname (str): Dirname to create in `local_dir`
         local_dir (str): Root directory for the log dir
 
-    Returns: full path to the newly created logdir.
+    Returns:
+        full path to the newly created logdir.
     """
     local_dir = os.path.expanduser(local_dir)
     logdir = os.path.join(local_dir, dirname)

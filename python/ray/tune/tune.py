@@ -160,10 +160,11 @@ def run(
         config (dict): Algorithm-specific configuration for Tune variant
             generation (e.g. env, hyperparams). Defaults to empty dict.
             Custom search algorithms may ignore this.
-        resources_per_trial (dict): Machine resources to allocate per trial,
-            e.g. ``{"cpu": 64, "gpu": 8}``. Note that GPUs will not be
+        resources_per_trial (dict|Callable): Machine resources to allocate per
+            trial, e.g. ``{"cpu": 64, "gpu": 8}``. Note that GPUs will not be
             assigned unless you specify them here. Defaults to 1 CPU and 0
-            GPUs in ``Trainable.default_resource_request()``.
+            GPUs in ``Trainable.default_resource_request()``. This can also
+            be a function returning a placement group.
         num_samples (int): Number of times to sample from the
             hyperparameter space. Defaults to 1. If `grid_search` is
             provided as an argument, the grid will be repeated
