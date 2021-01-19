@@ -163,7 +163,8 @@ class PullManager {
   uint64_t next_req_id_ = 1;
 
   /// The currently active pull requests. Each request is a bundle of objects
-  /// that must be made local.
+  /// that must be made local. The key is the ID that was assigned to that
+  /// request, which can be used by the caller to cancel the request.
   std::map<uint64_t, std::vector<rpc::ObjectReference>> pull_request_bundles_;
 
   /// The total number of bytes that we are currently pulling. This is the

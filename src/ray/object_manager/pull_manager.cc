@@ -1,7 +1,6 @@
 #include "ray/object_manager/pull_manager.h"
 
 #include "ray/common/common_protocol.h"
-#include "ray/object_manager/plasma/plasma_allocator.h"
 
 namespace ray {
 
@@ -60,6 +59,9 @@ bool PullManager::ActivateNextPullBundleRequest(
     const auto it = object_pull_requests_.find(obj_id);
     RAY_CHECK(it != object_pull_requests_.end());
     if (!it->second.object_size_set) {
+      // NOTE(swang): The size could be 0 if we haven't received size
+      // information yet. If we receive the size later on, we will update the
+      // total bytes being pulled then.
       RAY_LOG(DEBUG) << "No size for " << obj_id << ", canceling activation for pull "
                      << next_request_it->first;
       return false;
@@ -75,9 +77,6 @@ bool PullManager::ActivateNextPullBundleRequest(
       RAY_LOG(DEBUG) << "Activating pull for object " << obj_id;
       // This is the first bundle request in the queue to require this object.
       // Add the size to the number of bytes being pulled.
-      // NOTE(swang): The size could be 0 if we haven't received size
-      // information yet. If we receive the size later on, we will update the
-      // total bytes being pulled then.
       auto it = object_pull_requests_.find(obj_id);
       RAY_CHECK(it != object_pull_requests_.end());
       num_bytes_being_pulled_ += it->second.object_size;
@@ -129,6 +128,7 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) 
     RAY_LOG(DEBUG) << "Updating pulls based on available memory: " << num_bytes_available;
   }
   num_bytes_available_ = num_bytes_available;
+  uint64_t prev_highest_req_id_being_pulled = highest_req_id_being_pulled_;
 
   std::unordered_set<ObjectID> object_ids_to_pull;
   // While there is available capacity, activate the next pull request.
@@ -173,14 +173,13 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) 
     DeactivatePullBundleRequest(last_request_it, &object_ids_to_cancel);
   }
 
-  for (auto &obj_id : object_ids_to_pull) {
-    if (object_ids_to_cancel.count(obj_id) == 0) {
-      // We should begin pulling this object.
-      // NOTE(swang): We could also just wait for the next tick to pull the
-      // objects, but this would add a delay of up to one tick for any bundles
-      // of multiple objects, even when we are not under memory pressure.
-      TryToMakeObjectLocal(obj_id);
-    }
+  if (highest_req_id_being_pulled_ > prev_highest_req_id_being_pulled) {
+    // There are newly activated requests. Start pulling objects for the newly
+    // activated requests.
+    // NOTE(swang): We could also just wait for the next timer tick to pull the
+    // objects, but this would add a delay of up to one tick for any bundles of
+    // multiple objects, even when we are not under memory pressure.
+    Tick();
   }
 }
 

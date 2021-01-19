@@ -209,7 +209,6 @@ uint64_t ObjectManager::Pull(const std::vector<rpc::ObjectReference> &object_ref
   const auto &callback = [this](const ObjectID &object_id,
                                 const std::unordered_set<NodeID> &client_ids,
                                 const std::string &spilled_url, size_t object_size) {
-    // TODO
     pull_manager_->OnLocationChange(object_id, client_ids, spilled_url, object_size);
   };
 
