@@ -32,7 +32,7 @@ DOCKER_HUB_DESCRIPTION = {
 PY_MATRIX = {
     "-py36" : "3.6.12",
     "-py37" : "3.7.7",
-    "-py38" : "3.8.7"
+    "-py38" : "3.8.6"
 }
 
 def _merge_build():
