@@ -1,9 +1,7 @@
 import asyncio
 from collections import defaultdict
 from enum import Enum
-import time
-from typing import Dict, Any, List, Optional, Set, Tuple
-from uuid import uuid4
+from typing import Dict, List, Optional, Tuple
 
 import ray
 import ray.cloudpickle as pickle
@@ -72,7 +70,8 @@ class BackendReplica:
     def start(self, backend_info: Optional[BackendInfo]):
         assert self._state in {
             ReplicaState.SHOULD_START, ReplicaState.STARTING
-        }
+        }, (f"State must be {ReplicaState.SHOULD_START} or "
+            f"{ReplicaState.STARTING}, *not* {self._state}")
         try:
             self._actor_handle = ray.get_actor(self._actor_name)
         except ValueError:
@@ -93,7 +92,8 @@ class BackendReplica:
     def check_started(self):
         if self._state == ReplicaState.RUNNING:
             return True
-        assert self._state == ReplicaState.STARTING
+        assert self._state == ReplicaState.STARTING, (
+            f"State must be {ReplicaState.STARTING}, *not* {self._state}")
         ready, _ = ray.wait([self._startup_obj_ref], timeout=0)
         if len(ready) == 1:
             self._state = ReplicaState.RUNNING
@@ -109,7 +109,10 @@ class BackendReplica:
         #  SHOULD_START -> SHOULD_STOP -> STOPPING
         # This means that the replica_handle may not have been created.
 
-        assert self._state in {ReplicaState.SHOULD_STOP, ReplicaState.STOPPING}
+        assert self._state in {
+            ReplicaState.SHOULD_STOP, ReplicaState.STOPPING
+        }, (f"State must be {ReplicaState.SHOULD_STOP} or "
+            f"{ReplicaState.STOPPING}, *not* {self._state}")
         # TODO(edoakes): this can be done without using an asyncio future.
         @ray.remote
         def kill_actor(actor_name, graceful_shutdown_timeout_s):
@@ -129,21 +132,24 @@ class BackendReplica:
                              f"{graceful_shutdown_timeout_s}s, force-killing.")
             ray.kill(replica, no_restart=True)
 
+        self._state = ReplicaState.STOPPING
         self._shutdown_obj_ref = kill_actor.remote(
             self._actor_name, self._graceful_shutdown_timeout_s)
 
     def check_stopped(self):
         if self._state == ReplicaState.STOPPED:
             return True
-        assert self._state == ReplicaState.STOPPING
-        ready, _ = ray.wait(self._shutdown_obj_ref, timeout=0)
+        assert self._state == ReplicaState.STOPPING, (
+            f"State must be {ReplicaState.STOPPING}, *not* {self._state}")
+        ready, _ = ray.wait([self._shutdown_obj_ref], timeout=0)
         if len(ready) == 1:
             self._state = ReplicaState.STOPPED
             return True
         return False
 
     def get_handle(self):
-        assert self._state == ReplicaState.RUNNING
+        assert self._state == ReplicaState.RUNNING, (
+            f"State must be {ReplicaState.RUNNING}, *not* {self._state}")
         return self._actor_handle
 
 
@@ -209,7 +215,8 @@ class BackendState:
         self._long_poll_host.notify_changed(
             LongPollKey.REPLICA_HANDLES, {
                 backend_tag: list(replica_dict.values())
-                for backend_tag, replica_dict in self.get_replica_handles().items()
+                for backend_tag, replica_dict in self.get_replica_handles()
+.items()
             })
 
     def get_backend_configs(self) -> Dict[BackendTag, BackendConfig]:
@@ -291,9 +298,6 @@ class BackendState:
         # Remove the backend's metadata.
         del self._backend_metadata[backend_tag]
         del self._target_replicas[backend_tag]
-
-        # Add the intention to remove the backend from the routers.
-        self.backends_to_remove.append(backend_tag)
 
         new_goal_id, existing_goal_id = self._set_backend_goal(
             backend_tag, None)
@@ -380,21 +384,23 @@ class BackendState:
         inconsistencies with starting/stopping a replica and then crashing
         before writing a checkpoint.
         """
-        num_replicas = self._target_replicas.get(backend_tag, 0) 
-        
+        num_replicas = self._target_replicas.get(backend_tag, 0)
+
         logger.debug("Scaling backend '{}' to {} replicas".format(
             backend_tag, num_replicas))
         assert (backend_tag in self._backend_metadata
                 ), "Backend {} is not registered.".format(backend_tag)
         assert num_replicas >= 0, ("Number of replicas must be"
                                    " greater than or equal to 0.")
-        
-        current_num_replicas = sum([len(self._replicas[backend_tag][ReplicaState.SHOULD_START]), 
-        len(self._replicas[backend_tag][ReplicaState.STARTING]),
-        len(self._replicas[backend_tag][ReplicaState.RUNNING]),
-        -len(self._replicas[backend_tag][ReplicaState.SHOULD_STOP]),
-        -len(self._replicas[backend_tag][ReplicaState.STOPPING]),
-        -len(self._replicas[backend_tag][ReplicaState.STOPPED])])
+
+        current_num_replicas = sum([
+            len(self._replicas[backend_tag][ReplicaState.SHOULD_START]),
+            len(self._replicas[backend_tag][ReplicaState.STARTING]),
+            len(self._replicas[backend_tag][ReplicaState.RUNNING]),
+            -len(self._replicas[backend_tag][ReplicaState.SHOULD_STOP]),
+            -len(self._replicas[backend_tag][ReplicaState.STOPPING]),
+            -len(self._replicas[backend_tag][ReplicaState.STOPPED])
+        ])
 
         delta_num_replicas = num_replicas - current_num_replicas
 
@@ -453,8 +459,9 @@ class BackendState:
         replicas = []
         for backend_tag, state_to_replica_dict in self._replicas.items():
             if state in state_to_replica_dict:
-                replicas.extend((replica, backend_tag)
-                                for replica in state_to_replica_dict.pop(state))
+                replicas.extend(
+                    (replica, backend_tag)
+                    for replica in state_to_replica_dict.pop(state))
 
         return replicas
 
@@ -485,8 +492,7 @@ class BackendState:
 
         for replica_state, backend_tag in self._pop_replicas_of_state(
                 ReplicaState.SHOULD_START):
-            replica_state.start(
-                self._backend_metadata[backend_tag])
+            replica_state.start(self._backend_metadata[backend_tag])
             self._replicas[backend_tag][ReplicaState.STARTING].append(
                 replica_state)
 
