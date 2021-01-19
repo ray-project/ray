@@ -53,7 +53,6 @@ class CNNPlusFCConcatModel(TFModelV2):
                     name="cnn_{}".format(i))
                 concat_size += cnn.num_outputs
                 self.cnns[i] = cnn
-                self.register_variables(cnn.variables())
             # Discrete inputs -> One-hot encode.
             elif isinstance(component, Discrete):
                 concat_size += component.n
@@ -82,7 +81,6 @@ class CNNPlusFCConcatModel(TFModelV2):
                 kernel_initializer=normc_initializer(0.01))(concat_layer)
             self.logits_and_value_model = tf.keras.models.Model(
                 concat_layer, [logits_layer, value_layer])
-            self.register_variables(self.logits_and_value_model.variables)
         else:
             self.num_outputs = concat_size
 

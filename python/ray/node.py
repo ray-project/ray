@@ -779,7 +779,8 @@ class Node:
 
         self.start_gcs_server()
 
-        self.start_monitor()
+        if not self._ray_params.no_monitor:
+            self.start_monitor()
 
         if self._ray_params.ray_client_server_port:
             self.start_ray_client_server()
