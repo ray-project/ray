@@ -18,8 +18,8 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy import EntropyCoeffSchedule, \
     LearningRateSchedule
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.torch_ops import convert_to_torch_tensor, \
-    explained_variance, sequence_mask
+from ray.rllib.utils.torch_ops import apply_grad_clipping, \
+    convert_to_torch_tensor, explained_variance, sequence_mask
 from ray.rllib.utils.typing import TensorType, TrainerConfigDict
 
 torch, nn = try_import_torch()
@@ -170,23 +170,6 @@ def vf_preds_fetches(
     return {
         SampleBatch.VF_PREDS: policy.model.value_function(),
     }
-
-
-def apply_grad_clipping(policy, optimizer, loss):
-    info = {}
-    if policy.config["grad_clip"]:
-        for param_group in optimizer.param_groups:
-            # Make sure we only pass params with grad != None into torch
-            # clip_grad_norm_. Would fail otherwise.
-            params = list(
-                filter(lambda p: p.grad is not None, param_group["params"]))
-            if params:
-                grad_gnorm = nn.utils.clip_grad_norm_(
-                    params, policy.config["grad_clip"])
-                if isinstance(grad_gnorm, torch.Tensor):
-                    grad_gnorm = grad_gnorm.cpu().numpy()
-                info["grad_gnorm"] = grad_gnorm
-    return info
 
 
 class KLCoeffMixin:
