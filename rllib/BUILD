@@ -436,13 +436,13 @@ py_test(
     srcs = ["agents/a3c/tests/test_a3c.py"]
 )
 
-## APEXTrainer (DQN)
-#py_test(
-#    name = "test_apex_dqn",
-#    tags = ["agents_dir"],
-#    size = "large",
-#    srcs = ["agents/dqn/tests/test_apex_dqn.py"]
-#)
+# APEXTrainer (DQN)
+py_test(
+    name = "test_apex_dqn",
+    tags = ["agents_dir"],
+    size = "medium",
+    srcs = ["agents/dqn/tests/test_apex_dqn.py"]
+)
 
 # APEXDDPGTrainer
 py_test(
