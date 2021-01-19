@@ -303,7 +303,11 @@ void GcsActorScheduler::HandleWorkerLeasedReply(
   if (worker_address.raylet_id().empty()) {
     // The worker did not succeed in the lease, but the specified node returned a new
     // node, and then try again on the new node.
-    RAY_CHECK(!retry_at_raylet_address.raylet_id().empty());
+    if (retry_at_raylet_address.raylet_id().empty()) {
+      RAY_LOG(INFO) << "HandleWorkerLeasedReply empty......";
+      return;
+    }
+
     auto spill_back_node_id = NodeID::FromBinary(retry_at_raylet_address.raylet_id());
     auto maybe_spill_back_node = gcs_node_manager_.GetAliveNode(spill_back_node_id);
     if (maybe_spill_back_node.has_value()) {
