@@ -258,14 +258,7 @@ class RayTrialExecutor(TrialExecutor):
             self._cached_actor = None
             trial.set_runner(existing_runner)
 
-            trial_config = copy.deepcopy(trial.config)
-            trial_config[TRIAL_INFO] = TrialInfo(trial)
-
-            stdout_file, stderr_file = trial.log_to_file
-            trial_config[STDOUT_FILE] = stdout_file
-            trial_config[STDERR_FILE] = stderr_file
-
-            if not self.reset_trial(trial, trial_config, trial.experiment_tag,
+            if not self.reset_trial(trial, trial.config, trial.experiment_tag,
                                     logger_creator):
                 raise AbortTrialExecution(
                     "Trainable runner reuse requires reset_config() to be "
@@ -519,11 +512,20 @@ class RayTrialExecutor(TrialExecutor):
         trial.set_experiment_tag(new_experiment_tag)
         trial.set_config(new_config)
         trainable = trial.runner
+
+        # Pass magic variables
+        extra_config = copy.deepcopy(new_config)
+        extra_config[TRIAL_INFO] = TrialInfo(trial)
+
+        stdout_file, stderr_file = trial.log_to_file
+        extra_config[STDOUT_FILE] = stdout_file
+        extra_config[STDERR_FILE] = stderr_file
+
         with self._change_working_directory(trial):
             with warn_if_slow("reset"):
                 try:
                     reset_val = ray.get(
-                        trainable.reset.remote(new_config, logger_creator),
+                        trainable.reset.remote(extra_config, logger_creator),
                         timeout=DEFAULT_GET_TIMEOUT)
                 except GetTimeoutError:
                     logger.exception("Trial %s: reset timed out.", trial)
