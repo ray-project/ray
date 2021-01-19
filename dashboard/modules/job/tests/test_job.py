@@ -9,6 +9,7 @@ import zipfile
 import hashlib
 import shutil
 import traceback
+import subprocess
 
 import ray
 from ray.utils import hex_to_binary
@@ -18,6 +19,7 @@ from ray.test_utils import (
     wait_until_server_available,
     wait_for_condition,
 )
+import ray.new_dashboard.modules.job.md5sum as md5sum
 import pytest
 
 logger = logging.getLogger(__name__)
@@ -126,6 +128,12 @@ def _get_python_job(web_url,
     if java_dependency_md5:
         job["dependencies"]["java"][0]["md5"] = java_dependency_md5
     return job
+
+
+def test_md5sum():
+    cmd = [sys.executable, md5sum.__file__, md5sum.__file__]
+    r = subprocess.check_output(cmd)
+    assert r.split()[0].strip() == b"7d9c76a4fa26506dea45624656eb55a3"
 
 
 @pytest.mark.parametrize(
