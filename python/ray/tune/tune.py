@@ -425,6 +425,7 @@ def run(
 
     try:
         runner.checkpoint(force=True)
+        runner.wait_for_checkpoint(force_upload=True)
     except Exception as e:
         logger.warning(f"Trial Runner checkpointing failed: {str(e)}")
 

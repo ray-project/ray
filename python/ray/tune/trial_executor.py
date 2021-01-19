@@ -68,7 +68,7 @@ class TrialExecutor:
 
     def get_checkpoints(self):
         """Returns a copy of mapping of the trial ID to pickled metadata."""
-        for trial in self._trials_to_cache:
+        for trial in list(self._trials_to_cache):
             self._cached_trial_state[trial.trial_id] = trial.get_json_state()
         self._trials_to_cache.clear()
         return self._cached_trial_state

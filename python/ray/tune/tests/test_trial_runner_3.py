@@ -388,6 +388,7 @@ class TrialRunnerTest3(unittest.TestCase):
             runner.step()
 
         runner.checkpoint(force=True)
+        runner.wait_for_checkpoint(force_upload=True)
 
         assert trials[0].status == Trial.ERROR
         del runner
@@ -417,6 +418,7 @@ class TrialRunnerTest3(unittest.TestCase):
             runner.step()
 
         runner.checkpoint(force=True)
+        runner.wait_for_checkpoint(force_upload=True)
 
         assert trials[0].status == Trial.ERROR
         del runner

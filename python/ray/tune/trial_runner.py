@@ -1,3 +1,4 @@
+import threading
 from typing import Optional
 
 import click
@@ -193,6 +194,8 @@ class TrialRunner:
             self.checkpoint_file = os.path.join(
                 self._local_checkpoint_dir,
                 TrialRunner.CKPT_FILE_TMPL.format(self._session_str))
+        self._checkpoint_thread = None
+        self._checkpoint_finished = threading.Event()
 
         self._callbacks = CallbackList(callbacks or [])
 
@@ -271,36 +274,73 @@ class TrialRunner:
         """
         if not self._local_checkpoint_dir:
             return
+
+        if self._checkpoint_thread and force:
+            # Checkpoint forced, but a thread is already running.
+            # In this case, wait until the checkpoint finished and
+            # then directly schedule a new one.
+            self._checkpoint_thread.join()
+
+        if self._checkpoint_finished.is_set():
+            print(f"Checkpoint detected {time.time()}")
+            self._checkpoint_thread.join()
+            self._checkpoint_thread = None
+            self._checkpoint_finished.clear()
+
+            self._syncer.sync_up_if_needed()
+
+            # Only update checkpoint time after all operations finished
+            self._last_checkpoint_time = time.time()
+            print(f"Checkpointing finished {time.time()}")
+            return self._local_checkpoint_dir
+
+        if self._checkpoint_thread:
+            return
+
         now = time.time()
         if now - self._last_checkpoint_time < self._checkpoint_period and (
                 not force):
             return
-        runner_state = {
-            "checkpoints": list(
-                self.trial_executor.get_checkpoints().values()),
-            "runner_data": self.__getstate__(),
-            "stats": {
-                "start_time": self._start_time,
-                "timestamp": self._last_checkpoint_time
+
+        def write_checkpoint():
+            runner_state = {
+                "checkpoints": list(
+                    self.trial_executor.get_checkpoints().values()),
+                "runner_data": self.__getstate__(),
+                "stats": {
+                    "start_time": self._start_time,
+                    "timestamp": self._last_checkpoint_time
+                }
             }
-        }
-        tmp_file_name = os.path.join(self._local_checkpoint_dir,
-                                     ".tmp_checkpoint")
-        with open(tmp_file_name, "w") as f:
-            json.dump(runner_state, f, indent=2, cls=TuneFunctionEncoder)
+            tmp_file_name = os.path.join(self._local_checkpoint_dir,
+                                         ".tmp_checkpoint")
+            with open(tmp_file_name, "w") as f:
+                json.dump(runner_state, f, indent=2, cls=TuneFunctionEncoder)
 
-        os.replace(tmp_file_name, self.checkpoint_file)
-        self._search_alg.save_to_dir(
-            self._local_checkpoint_dir, session_str=self._session_str)
+            os.replace(tmp_file_name, self.checkpoint_file)
+            self._search_alg.save_to_dir(
+                self._local_checkpoint_dir, session_str=self._session_str)
 
-        if force:
-            self._syncer.sync_up()
-        else:
-            self._syncer.sync_up_if_needed()
+            self._checkpoint_finished.set()
 
-        # Only update checkpoint time after all operations finished
-        self._last_checkpoint_time = time.time()
-        return self._local_checkpoint_dir
+        self._checkpoint_thread = threading.Thread(target=write_checkpoint)
+        self._checkpoint_thread.setDaemon(True)
+        self._checkpoint_thread.start()
+
+    def wait_for_checkpoint(self, force_upload=False):
+        """Wait until the experiment checkpointing thread finished.
+
+        Args:
+            force_upload: If True, will always sync the checkpoint directory
+                to cloud storage, if specified.
+        """
+        if self._checkpoint_thread:
+            self._checkpoint_thread.join()
+
+            if force_upload:
+                self._syncer.sync_up()
+            else:
+                self._syncer.sync_up_if_needed()
 
     def resume(self, run_errored_only=False):
         """Resumes all checkpointed trials from previous run.
@@ -1030,7 +1070,8 @@ class TrialRunner:
         for k in [
                 "_trials", "_stop_queue", "_server", "_search_alg",
                 "_scheduler_alg", "_pending_trial_queue_times",
-                "trial_executor", "_syncer", "_callbacks"
+                "trial_executor", "_syncer", "_callbacks",
+                "_checkpoint_thread", "_checkpoint_finished"
         ]:
             del state[k]
         state["launch_web_server"] = bool(self._server)
