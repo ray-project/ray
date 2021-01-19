@@ -742,7 +742,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// object.
   void OnObjectMissing(const ObjectID &object_id,
                        const std::vector<TaskID> &waiting_task_ids) override;
-
+  /// Disconnect a client.
+  ///
+  /// \param client The client that sent the message.
+  /// \param disconnect_type The reason to disconnect the specified client.
+  /// \return Void.
   void DisconnectClient(
       const std::shared_ptr<ClientConnection> &client,
       rpc::WorkerExitType disconnect_type = rpc::WorkerExitType::SYSTEM_ERROR_EXIT);

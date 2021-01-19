@@ -35,7 +35,7 @@ enum MessageType:int {
   RegisterClientReply,
   // Send the worker's gRPC port to the raylet.
   AnnounceWorkerPort,
-  // Notify the raylet that this client is disconnecting unexpectedly.
+  // Notify the raylet that this client is disconnecting.
   // This is sent from a worker to a raylet.
   DisconnectClient,
   // Tell a worker to execute a task. This is sent from a raylet to a
