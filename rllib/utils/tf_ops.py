@@ -102,9 +102,8 @@ def minimize_and_clip(optimizer, objective, var_list, clip_val=10.0):
         grads_and_vars = optimizer.compute_gradients(
             objective, var_list=var_list)
 
-    return [
-        (tf.clip_by_norm(g, clip_val) if clip_val is not None else g, v) for
-        (g, v) in grads_and_vars if g is not None]
+    return [(tf.clip_by_norm(g, clip_val) if clip_val is not None else g, v)
+            for (g, v) in grads_and_vars if g is not None]
 
 
 def make_tf_callable(session_or_none, dynamic_shape=False):
