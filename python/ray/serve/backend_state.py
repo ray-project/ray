@@ -1,6 +1,7 @@
 import asyncio
 from collections import defaultdict
 from enum import Enum
+import time
 from typing import Dict, List, Optional, Tuple
 
 import ray
@@ -113,36 +114,44 @@ class BackendReplica:
             ReplicaState.SHOULD_STOP, ReplicaState.STOPPING
         }, (f"State must be {ReplicaState.SHOULD_STOP} or "
             f"{ReplicaState.STOPPING}, *not* {self._state}")
-        # TODO(edoakes): this can be done without using an asyncio future.
-        @ray.remote
-        def kill_actor(actor_name, graceful_shutdown_timeout_s):
+
+        def drain_actor(actor_name):
             # NOTE: the replicas may already be stopped if we failed
             # after stopping them but before writing a checkpoint.
             try:
                 replica = ray.get_actor(actor_name)
             except ValueError:
-                return
-
-            ready, _ = ray.wait(
-                [replica.drain_pending_queries.remote()],
-                timeout=graceful_shutdown_timeout_s)
-            if len(ready) == 0:
-                # Graceful period passed, kill it forcefully.
-                logger.debug(f"{actor_name} did not shutdown after "
-                             f"{graceful_shutdown_timeout_s}s, force-killing.")
-            ray.kill(replica, no_restart=True)
+                return None
+            return replica.drain_pending_queries.remote()
 
         self._state = ReplicaState.STOPPING
-        self._shutdown_obj_ref = kill_actor.remote(
-            self._actor_name, self._graceful_shutdown_timeout_s)
+        self._shutdown_obj_ref = drain_actor(
+            self._actor_name)
+        self._shutdown_deadline = time.time() + self._graceful_shutdown_timeout_s
 
     def check_stopped(self):
         if self._state == ReplicaState.STOPPED:
             return True
         assert self._state == ReplicaState.STOPPING, (
             f"State must be {ReplicaState.STOPPING}, *not* {self._state}")
+
+        try:
+            replica = ray.get_actor(self._actor_name)
+        except ValueError:
+            self._state = ReplicaState.STOPPED
+            return True
+
+
         ready, _ = ray.wait([self._shutdown_obj_ref], timeout=0)
-        if len(ready) == 1:
+        timeout_passed = time.time() > self._shutdown_deadline
+
+        if len(ready) == 1 or timeout_passed:
+            if timeout_passed:
+                # Graceful period passed, kill it forcefully.
+                logger.debug(f"{self._actor_name} did not shutdown after "
+                            f"{self._graceful_shutdown_timeout_s}s, force-killing.")
+
+            ray.kill(replica, no_restart=True)
             self._state = ReplicaState.STOPPED
             return True
         return False
