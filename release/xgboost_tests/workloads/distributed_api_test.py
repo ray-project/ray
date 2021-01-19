@@ -1,3 +1,14 @@
+"""Distributed XGBoost API test
+
+This test runs unit tests on a distributed cluster. This will confirm that
+XGBoost API features like custom metrics/objectives work with remote
+trainables.
+
+Test owner: krfricke
+
+Acceptance criteria: Unit tests should pass (requires pytest).
+"""
+
 import ray
 
 from xgboost_ray.tests.test_xgboost_api import XGBoostAPITest

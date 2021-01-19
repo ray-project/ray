@@ -1,3 +1,13 @@
+"""Small Ray Tune run (4 trials, 4 actors).
+
+This training run will start 4 Ray Tune Trials, each starting 4 actors.
+The cluster comprises 4 nodes.
+
+Test owner: krfricke
+
+Acceptance criteria: Should run through and report final results, as well
+as the Ray Tune results table. No trials should error.
+"""
 import ray
 from ray import tune
 

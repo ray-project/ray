@@ -1,3 +1,11 @@
+"""Moderate cluster training
+
+This training run will start 32 workers on 32 nodes (including head node).
+
+Test owner: krfricke
+
+Acceptance criteria: Should run through and report final results.
+"""
 import ray
 from xgboost_ray import RayParams
 
