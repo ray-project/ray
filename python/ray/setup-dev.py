@@ -1,7 +1,5 @@
 #!/usr/bin/env python
-"""This script allows you to develop Ray Python code without needing to compile
-Ray.
-See https://docs.ray.io/en/master/development.html#building-ray-python-only"""
+"""This script allows you to develop RLlib without needing to compile Ray."""
 
 import argparse
 import click
@@ -66,7 +64,6 @@ if __name__ == "__main__":
     do_link("rllib", force=args.yes, local_path="../../../rllib")
     do_link("tune", force=args.yes)
     do_link("autoscaler", force=args.yes)
-    do_link("operator", force=args.yes)
     do_link("cloudpickle", force=args.yes)
     do_link("scripts", force=args.yes)
     do_link("internal", force=args.yes)

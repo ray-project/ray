@@ -915,13 +915,13 @@ cdef class CoreWorker:
                             CObjectID *c_object_id, shared_ptr[CBuffer] *data):
         if object_ref is None:
             with nogil:
-                check_status(CCoreWorkerProcess.GetCoreWorker().CreateOwned(
+                check_status(CCoreWorkerProcess.GetCoreWorker().Create(
                              metadata, data_size, contained_ids,
                              c_object_id, data))
         else:
             c_object_id[0] = object_ref.native()
             with nogil:
-                check_status(CCoreWorkerProcess.GetCoreWorker().CreateExisting(
+                check_status(CCoreWorkerProcess.GetCoreWorker().Create(
                             metadata, data_size, c_object_id[0],
                             CCoreWorkerProcess.GetCoreWorker().GetRpcAddress(),
                             data))
@@ -933,7 +933,7 @@ cdef class CoreWorker:
         return data.get() == NULL
 
     def put_file_like_object(
-            self, metadata, data_size, file_like, ObjectRef object_ref):
+            self, metadata, data_size, file_like, ObjectRef object_ref=None):
         """Directly create a new Plasma Store object from a file like
         object. This avoids extra memory copy.
 
@@ -971,9 +971,8 @@ cdef class CoreWorker:
             # Using custom object refs is not supported because we
             # can't track their lifecycle, so we don't pin the object
             # in this case.
-            check_status(
-                CCoreWorkerProcess.GetCoreWorker().SealExisting(
-                            c_object_id, pin_object=False))
+            check_status(CCoreWorkerProcess.GetCoreWorker().Seal(
+                         c_object_id, pin_object=False))
 
     def put_serialized_object(self, serialized_object,
                               ObjectRef object_ref=None,
@@ -1008,18 +1007,12 @@ cdef class CoreWorker:
                         c_object_id_vector, c_object_id))
             else:
                 with nogil:
-                    if object_ref is None:
-                        check_status(
-                            CCoreWorkerProcess.GetCoreWorker().SealOwned(
-                                        c_object_id,
-                                        pin_object))
-                    else:
-                        # Using custom object refs is not supported because we
-                        # can't track their lifecycle, so we don't pin the
-                        # object in this case.
-                        check_status(
-                            CCoreWorkerProcess.GetCoreWorker().SealExisting(
-                                        c_object_id, pin_object=False))
+                    # Using custom object refs is not supported because we
+                    # can't track their lifecycle, so we don't pin the object
+                    # in this case.
+                    check_status(CCoreWorkerProcess.GetCoreWorker().Seal(
+                                    c_object_id,
+                                    pin_object and object_ref is None))
 
         return c_object_id.Binary()
 

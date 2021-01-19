@@ -21,7 +21,7 @@ head_node:
 
 initialization_commands: []
 setup_commands:
-    - sudo apt-get install build-essential libssl-dev git -y
+    - apt-get install build-essential libssl-dev git -y
     - 'rm -r wrk || true && git clone https://github.com/wg/wrk.git wrk && cd wrk && make -j && cp wrk /usr/local/bin'
     - ray install-nightly
 head_setup_commands: []

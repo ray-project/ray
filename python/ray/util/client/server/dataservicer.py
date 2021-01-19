@@ -1,7 +1,5 @@
-import ray
 import logging
 import grpc
-import sys
 
 from typing import TYPE_CHECKING
 from threading import Lock
@@ -53,12 +51,7 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                     with self._clients_lock:
                         cur_num_clients = self._num_clients
                     info = ray_client_pb2.ConnectionInfoResponse(
-                        num_clients=cur_num_clients,
-                        python_version="{}.{}.{}".format(
-                            sys.version_info[0], sys.version_info[1],
-                            sys.version_info[2]),
-                        ray_version=ray.__version__,
-                        ray_commit=ray.__commit__)
+                        num_clients=cur_num_clients)
                     resp = ray_client_pb2.DataResponse(connection_info=info)
                 else:
                     raise Exception(f"Unreachable code: Request type "

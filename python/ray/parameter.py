@@ -95,8 +95,6 @@ class RayParams:
         metrics_agent_port(int): The port to bind metrics agent.
         metrics_export_port(int): The port at which metrics are exposed
             through a Prometheus endpoint.
-        no_monitor(bool): If True, the ray autoscaler monitor for this cluster
-            will not be started.
         _system_config (dict): Configuration for overriding RayConfig
             defaults. Used to set system configuration and for experimental Ray
             core feature flags.
@@ -152,7 +150,6 @@ class RayParams:
                  enable_object_reconstruction=False,
                  metrics_agent_port=None,
                  metrics_export_port=None,
-                 no_monitor=False,
                  lru_evict=False):
         self.object_ref_seed = object_ref_seed
         self.redis_address = redis_address
@@ -193,7 +190,6 @@ class RayParams:
         self.java_worker_options = java_worker_options
         self.metrics_agent_port = metrics_agent_port
         self.metrics_export_port = metrics_export_port
-        self.no_monitor = no_monitor
         self.start_initial_python_workers_for_first_job = (
             start_initial_python_workers_for_first_job)
         self._system_config = _system_config or {}

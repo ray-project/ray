@@ -3,8 +3,6 @@ import logging
 import json
 from numbers import Number
 # For compatibility under py2 to consider unicode as str
-from typing import Optional
-
 from six import string_types
 
 import ray
@@ -17,7 +15,7 @@ class Resources(
         namedtuple("Resources", [
             "cpu", "gpu", "memory", "object_store_memory", "extra_cpu",
             "extra_gpu", "extra_memory", "extra_object_store_memory",
-            "custom_resources", "extra_custom_resources", "has_placement_group"
+            "custom_resources", "extra_custom_resources"
         ])):
     """Ray resources required to schedule a trial.
 
@@ -40,8 +38,6 @@ class Resources(
         extra_custom_resources (dict): Extra custom resources to reserve in
             case the trial needs to launch additional Ray actors that use
             any of these custom resources.
-        has_placement_group (bool): Bool indicating if the trial also
-            has an associated placement group.
 
     """
 
@@ -57,8 +53,7 @@ class Resources(
                 extra_memory=0,
                 extra_object_store_memory=0,
                 custom_resources=None,
-                extra_custom_resources=None,
-                has_placement_group=False):
+                extra_custom_resources=None):
         custom_resources = custom_resources or {}
         extra_custom_resources = extra_custom_resources or {}
         leftovers = set(custom_resources) ^ set(extra_custom_resources)
@@ -97,7 +92,7 @@ class Resources(
         return super(Resources, cls).__new__(
             cls, cpu, gpu, memory, object_store_memory, extra_cpu, extra_gpu,
             extra_memory, extra_object_store_memory, custom_resources,
-            extra_custom_resources, has_placement_group)
+            extra_custom_resources)
 
     def summary_string(self):
         summary = "{} CPUs, {} GPUs".format(self.cpu + self.extra_cpu,
@@ -176,22 +171,11 @@ class Resources(
         return resources_to_json(self)
 
 
-class PlacementGroupFactory:
-    """Wrapper class to identify placement group factory methods."""
-
-    def __init__(self, factory):
-        self._factory = factory
-
-    def __call__(self, *args, **kwargs):
-        return self._factory(*args, **kwargs)
-
-
-def json_to_resources(data: Optional[str]):
+def json_to_resources(data):
     if data is None or data == "null":
         return None
     if isinstance(data, string_types):
         data = json.loads(data)
-
     for k in data:
         if k in ["driver_cpu_limit", "driver_gpu_limit"]:
             raise TuneError(
@@ -209,7 +193,7 @@ def json_to_resources(data: Optional[str]):
         data.get("extra_custom_resources"))
 
 
-def resources_to_json(resources: Optional[Resources]):
+def resources_to_json(resources):
     if resources is None:
         return None
     return {

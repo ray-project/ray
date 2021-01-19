@@ -598,8 +598,7 @@ class DockerCommandRunner(CommandRunnerInterface):
             shutdown_after_run=False,
     ):
         if run_env == "auto":
-            run_env = "host" if (not bool(cmd)
-                                 or cmd.find("docker") == 0) else "docker"
+            run_env = "host" if cmd.find("docker") == 0 else "docker"
 
         if environment_variables:
             cmd = _with_environment_variables(cmd, environment_variables)

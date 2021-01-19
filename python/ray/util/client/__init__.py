@@ -24,8 +24,7 @@ class RayAPIStub:
     def connect(self,
                 conn_str: str,
                 secure: bool = False,
-                metadata: List[Tuple[str, str]] = None,
-                connection_retries: int = 3) -> Dict[str, Any]:
+                metadata: List[Tuple[str, str]] = None) -> Dict[str, Any]:
         """Connect the Ray Client to a server.
 
         Args:
@@ -51,10 +50,7 @@ class RayAPIStub:
 
         try:
             self.client_worker = Worker(
-                conn_str,
-                secure=secure,
-                metadata=metadata,
-                connection_retries=connection_retries)
+                conn_str, secure=secure, metadata=metadata)
             self.api.worker = self.client_worker
             return self.client_worker.connection_info()
         except Exception:

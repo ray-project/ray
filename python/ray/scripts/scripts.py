@@ -19,9 +19,6 @@ from ray.autoscaler._private.commands import (
     attach_cluster, exec_cluster, create_or_update_cluster, monitor_cluster,
     rsync, teardown_cluster, get_head_node_ip, kill_node, get_worker_node_ips,
     debug_status, RUN_ENV_TYPES)
-from ray.autoscaler._private.util import DEBUG_AUTOSCALING_ERROR, \
-    DEBUG_AUTOSCALING_STATUS
-from ray.state import GlobalState
 import ray.ray_constants as ray_constants
 import ray.utils
 
@@ -285,7 +282,7 @@ def debug(address):
     "--ray-client-server-port",
     required=False,
     type=int,
-    default=None,
+    default=10001,
     help="the port number the ray client server will bind on. If not set, "
     "the ray client server will not be started.")
 @click.option(
@@ -422,13 +419,6 @@ def debug(address):
     default=None,
     help="the port to use to expose Ray metrics through a "
     "Prometheus endpoint.")
-@click.option(
-    "--no-monitor",
-    is_flag=True,
-    hidden=True,
-    default=False,
-    help="If True, the ray autoscaler monitor for this cluster will not be "
-    "started.")
 @add_click_options(logging_options)
 def start(node_ip_address, address, port, redis_password, redis_shard_ports,
           object_manager_port, node_manager_port, gcs_server_port,
@@ -439,8 +429,8 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
           plasma_directory, autoscaling_config, no_redirect_worker_output,
           no_redirect_output, plasma_store_socket_name, raylet_socket_name,
           temp_dir, java_worker_options, system_config, lru_evict,
-          enable_object_reconstruction, metrics_export_port, no_monitor,
-          log_style, log_color, verbose):
+          enable_object_reconstruction, metrics_export_port, log_style,
+          log_color, verbose):
     """Start Ray processes manually on the local machine."""
     cli_logger.configure(log_style, log_color, verbose)
     if gcs_server_port and not head:
@@ -501,8 +491,7 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
         _system_config=system_config,
         lru_evict=lru_evict,
         enable_object_reconstruction=enable_object_reconstruction,
-        metrics_export_port=metrics_export_port,
-        no_monitor=no_monitor)
+        metrics_export_port=metrics_export_port)
     if head:
         # Use default if port is none, allocate an available port if port is 0
         if port is None:
@@ -1374,12 +1363,9 @@ def memory(address, redis_password):
     """Print object references held in a Ray cluster."""
     if not address:
         address = services.get_ray_address_to_use_or_die()
-    state = GlobalState()
-    state._initialize_global_state(address, redis_password)
-    raylet = state.node_table()[0]
-    print(
-        ray.internal.internal_api.memory_summary(raylet["NodeManagerAddress"],
-                                                 raylet["NodeManagerPort"]))
+    logger.info(f"Connecting to Ray instance at {address}.")
+    ray.init(address=address, _redis_password=redis_password)
+    print(ray.internal.internal_api.memory_summary())
 
 
 @cli.command()
@@ -1388,21 +1374,13 @@ def memory(address, redis_password):
     required=False,
     type=str,
     help="Override the address to connect to.")
-@click.option(
-    "--redis_password",
-    required=False,
-    type=str,
-    default=ray_constants.REDIS_DEFAULT_PASSWORD,
-    help="Connect to ray with redis_password.")
-def status(address, redis_password):
+def status(address):
     """Print cluster status, including autoscaling info."""
     if not address:
         address = services.get_ray_address_to_use_or_die()
-    redis_client = ray._private.services.create_redis_client(
-        address, redis_password)
-    status = redis_client.hget(DEBUG_AUTOSCALING_STATUS, "value")
-    error = redis_client.hget(DEBUG_AUTOSCALING_ERROR, "value")
-    print(debug_status(status, error))
+    logger.info(f"Connecting to Ray instance at {address}.")
+    ray.init(address=address)
+    print(debug_status())
 
 
 @cli.command(hidden=True)

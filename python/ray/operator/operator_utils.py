@@ -1,7 +1,7 @@
 import copy
 import logging
 import os
-from typing import Any, Dict, Iterator
+from typing import Any, Dict, Iterator, List
 
 from kubernetes.watch import Watch
 
@@ -39,6 +39,15 @@ PROVIDER_CONFIG = {
 
 root_logger = logging.getLogger("ray")
 root_logger.setLevel(logging.getLevelName("DEBUG"))
+"""
+ownerReferences:
+  - apiVersion: apps/v1
+    controller: true
+    blockOwnerDeletion: true
+    kind: ReplicaSet
+    name: my-repset
+    uid: d9607e19-f88f-11e6-a518-42010a800195
+"""
 
 
 def config_path(cluster_name: str) -> str:
@@ -59,17 +68,23 @@ def cluster_cr_stream() -> Iterator:
 def cr_to_config(cluster_resource: Dict[str, Any]) -> Dict[str, Any]:
     """Convert RayCluster custom resource to a ray cluster config for use by the
     autoscaler."""
-    config = translate(cluster_resource["spec"], dictionary=CONFIG_FIELDS)
-    config["available_node_types"] = get_node_types(cluster_resource)
-    config["cluster_name"] = cluster_resource["metadata"]["name"]
+    cr_spec = cluster_resource["spec"]
+    cr_meta = cluster_resource["metadata"]
+    config = translate(cr_spec, dictionary=CONFIG_FIELDS)
+    pod_types = cr_spec["podTypes"]
+    config["available_node_types"] = get_node_types(
+        pod_types, cluster_name=cr_meta["name"], cluster_uid=cr_meta["uid"])
+    config["cluster_name"] = cr_meta["name"]
     config["provider"] = PROVIDER_CONFIG
     return config
 
 
-def get_node_types(cluster_resource: Dict[str, Any]) -> Dict[str, Any]:
-    cluster_owner_reference = get_cluster_owner_reference(cluster_resource)
+def get_node_types(pod_types: List[Dict[str, Any]], cluster_name: str,
+                   cluster_uid: str) -> Dict[str, Any]:
+    cluster_owner_reference = get_cluster_owner_reference(
+        cluster_name, cluster_uid)
     node_types = {}
-    for pod_type in cluster_resource["spec"]["podTypes"]:
+    for pod_type in pod_types:
         name = pod_type["name"]
         pod_type_copy = copy.deepcopy(pod_type)
         pod_type_copy.pop("name")
@@ -82,15 +97,15 @@ def get_node_types(cluster_resource: Dict[str, Any]) -> Dict[str, Any]:
     return node_types
 
 
-def get_cluster_owner_reference(
-        cluster_resource: Dict[str, Any]) -> Dict[str, Any]:
+def get_cluster_owner_reference(cluster_name: str,
+                                cluster_uid: str) -> Dict[str, Any]:
     return {
-        "apiVersion": cluster_resource["apiVersion"],
-        "kind": cluster_resource["kind"],
-        "blockOwnerDeletion": True,
+        "apiVersion": "apps/v1",
         "controller": True,
-        "name": cluster_resource["metadata"]["name"],
-        "uid": cluster_resource["metadata"]["uid"]
+        "blockOwnerDeletion": True,
+        "kind": "RayCluster",
+        "name": cluster_name,
+        "uid": cluster_uid
     }
 
 

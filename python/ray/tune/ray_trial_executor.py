@@ -7,10 +7,8 @@ import random
 import time
 import traceback
 from contextlib import contextmanager
-from typing import List, Optional
 
 import ray
-from ray.actor import ActorHandle
 from ray.exceptions import GetTimeoutError
 from ray import ray_constants
 from ray.resource_spec import ResourceSpec
@@ -20,12 +18,10 @@ from ray.tune.function_runner import FunctionRunner
 from ray.tune.logger import NoopLogger
 from ray.tune.result import TRIAL_INFO, STDOUT_FILE, STDERR_FILE
 from ray.tune.resources import Resources
-from ray.tune.utils.placement_groups import PlacementGroupManager
 from ray.tune.utils.trainable import TrainableUtil
 from ray.tune.trial import Trial, Checkpoint, Location, TrialInfo
 from ray.tune.trial_executor import TrialExecutor
 from ray.tune.utils import warn_if_slow
-from ray.util.placement_group import PlacementGroup, remove_placement_group
 
 logger = logging.getLogger(__name__)
 
@@ -92,14 +88,11 @@ class _TrialCleanup:
             is passed, cleanup will kick in and remove futures.
     """
 
-    def __init__(self, threshold: int = TRIAL_CLEANUP_THRESHOLD):
+    def __init__(self, threshold=TRIAL_CLEANUP_THRESHOLD):
         self.threshold = threshold
         self._cleanup_map = {}
 
-    def add(self,
-            trial: Trial,
-            actor: ActorHandle,
-            placement_group: Optional[PlacementGroup] = None):
+    def add(self, trial, actor):
         """Adds a trial actor to be stopped.
 
         If the number of futures exceeds the threshold, the cleanup mechanism
@@ -108,20 +101,15 @@ class _TrialCleanup:
         Args:
             trial (Trial): The trial corresponding to the future.
             actor (ActorHandle): Handle to the trainable to be stopped.
-            placement_group (PlacementGroup): Placement group to stop.
         """
         future = actor.stop.remote()
-
-        if placement_group:
-            remove_placement_group(placement_group)
-        else:
-            actor.__ray_terminate__.remote()
+        actor.__ray_terminate__.remote()
 
         self._cleanup_map[future] = trial
         if len(self._cleanup_map) > self.threshold:
             self.cleanup(partial=True)
 
-    def cleanup(self, partial: bool = True):
+    def cleanup(self, partial=True):
         """Waits for cleanup to finish.
 
         If partial=False, all futures are expected to return. If a future
@@ -153,10 +141,10 @@ class RayTrialExecutor(TrialExecutor):
     """An implementation of TrialExecutor based on Ray."""
 
     def __init__(self,
-                 queue_trials: bool = False,
-                 reuse_actors: bool = False,
-                 ray_auto_init: Optional[bool] = None,
-                 refresh_period: Optional[float] = None):
+                 queue_trials=False,
+                 reuse_actors=False,
+                 ray_auto_init=None,
+                 refresh_period=None):
         if ray_auto_init is None:
             if os.environ.get("TUNE_DISABLE_AUTO_INIT") == "1":
                 logger.info("'TUNE_DISABLE_AUTO_INIT=1' detected.")
@@ -180,9 +168,6 @@ class RayTrialExecutor(TrialExecutor):
 
         self._avail_resources = Resources(cpu=0, gpu=0)
         self._committed_resources = Resources(cpu=0, gpu=0)
-        self._pg_manager = PlacementGroupManager()
-        self._staged_trials = set()
-
         self._resources_initialized = False
 
         if refresh_period is None:
@@ -202,49 +187,6 @@ class RayTrialExecutor(TrialExecutor):
 
         if ray.is_initialized():
             self._update_avail_resources()
-
-    def in_staging_grace_period(self) -> bool:
-        """Returns True if trials have recently been staged."""
-        return self._pg_manager.in_staging_grace_period()
-
-    def stage_and_update_status(self, trials: List[Trial]):
-        """Check and update statuses of scheduled placement groups.
-
-        Stages placement groups of all trials.
-        """
-        for trial in trials:
-            if trial.status != Trial.PENDING:
-                continue
-            if not trial.uses_placement_groups:
-                continue
-            if trial in self._staged_trials:
-                continue
-            if self._pg_manager.trial_in_use(trial):
-                continue
-
-            if not self._pg_manager.stage_trial_pg(
-                    trial.placement_group_factory):
-                # Break if we reached the limit of pending placement groups.
-                break
-
-            self._staged_trials.add(trial)
-
-        self._pg_manager.update_status()
-
-    def get_staged_trial(self):
-        """Get a trial whose placement group was successfully staged.
-
-        Can also return None if no trial is available.
-
-        Returns:
-            Trial object or None.
-
-        """
-        for trial in self._staged_trials:
-            if self._pg_manager.has_ready(trial.placement_group_factory):
-                return trial
-
-        return None
 
     def _setup_remote_runner(self, trial, reuse_allowed):
         trial.init_logdir()
@@ -270,31 +212,16 @@ class RayTrialExecutor(TrialExecutor):
             logger.debug("Cannot reuse cached runner {} for new trial".format(
                 self._cached_actor))
             with self._change_working_directory(trial):
-                pg = self._pg_manager.clean_trial_placement_group(trial)
-
-                self._trial_cleanup.add(
-                    trial, actor=self._cached_actor, placement_group=pg)
+                self._trial_cleanup.add(trial, actor=self._cached_actor)
             self._cached_actor = None
 
         _actor_cls = _class_cache.get(trial.get_trainable_cls())
-        if trial.uses_placement_groups:
-            if not self._pg_manager.has_ready(trial.placement_group_factory):
-                if trial not in self._staged_trials:
-                    if self._pg_manager.stage_trial_pg(
-                            trial.placement_group_factory):
-                        self._staged_trials.add(trial)
-                return None
-            else:
-                full_actor_class = self._pg_manager.get_full_actor_cls(
-                    trial, _actor_cls)
-        else:
-            full_actor_class = _actor_cls.options(
-                num_cpus=trial.resources.cpu,
-                num_gpus=trial.resources.gpu,
-                memory=trial.resources.memory or None,
-                object_store_memory=trial.resources.object_store_memory
-                or None,
-                resources=trial.resources.custom_resources)
+        full_actor_class = _actor_cls.options(
+            num_cpus=trial.resources.cpu,
+            num_gpus=trial.resources.gpu,
+            memory=trial.resources.memory or None,
+            object_store_memory=trial.resources.object_store_memory or None,
+            resources=trial.resources.custom_resources)
         # Clear the Trial's location (to be updated later on result)
         # since we don't know where the remote runner is placed.
         trial.set_location(Location())
@@ -358,8 +285,7 @@ class RayTrialExecutor(TrialExecutor):
         trial_item = self._find_item(self._running, trial)
         assert len(trial_item) < 2, trial_item
 
-    def _start_trial(self, trial, checkpoint=None, runner=None,
-                     train=True) -> bool:
+    def _start_trial(self, trial, checkpoint=None, runner=None, train=True):
         """Starts trial and restores last result if trial was paused.
 
         Args:
@@ -370,9 +296,6 @@ class RayTrialExecutor(TrialExecutor):
             runner (Trainable): The remote runner to use. This can be the
                 cached actor. If None, a new runner is created.
             train (bool): Whether or not to start training.
-
-        Returns:
-            True if trial was started successfully, False otherwise.
 
         See `RayTrialExecutor.restore` for possible errors raised.
         """
@@ -386,8 +309,6 @@ class RayTrialExecutor(TrialExecutor):
                             or issubclass(trial.get_trainable_cls(),
                                           FunctionRunner)
             runner = self._setup_remote_runner(trial, reuse_allowed)
-            if not runner:
-                return False
         trial.set_runner(runner)
         self.restore(trial, checkpoint)
         self.set_status(trial, Trial.RUNNING)
@@ -399,7 +320,6 @@ class RayTrialExecutor(TrialExecutor):
             self._running[previous_run[0]] = trial
         elif train and not trial.is_restoring:
             self._train(trial)
-        return True
 
     def _stop_trial(self, trial, error=False, error_msg=None):
         """Stops this trial.
@@ -424,17 +344,15 @@ class RayTrialExecutor(TrialExecutor):
                     self._cached_actor = trial.runner
                 else:
                     logger.debug("Trial %s: Destroying actor.", trial)
-                    pg = self._pg_manager.clean_trial_placement_group(trial)
                     with self._change_working_directory(trial):
-                        self._trial_cleanup.add(
-                            trial, actor=trial.runner, placement_group=pg)
+                        self._trial_cleanup.add(trial, actor=trial.runner)
         except Exception:
             logger.exception("Trial %s: Error stopping runner.", trial)
             self.set_status(trial, Trial.ERROR)
         finally:
             trial.set_runner(None)
 
-    def start_trial(self, trial, checkpoint=None, train=True) -> bool:
+    def start_trial(self, trial, checkpoint=None, train=True):
         """Starts the trial.
 
         Will not return resources if trial repeatedly fails on start.
@@ -444,21 +362,16 @@ class RayTrialExecutor(TrialExecutor):
             checkpoint (Checkpoint): A Python object or path storing the state
                 of trial.
             train (bool): Whether or not to start training.
-
-        Returns:
-            True if trial was started successfully, False otherwise.
         """
-        if not trial.uses_placement_groups:
-            self._commit_resources(trial.resources)
+        self._commit_resources(trial.resources)
         try:
-            return self._start_trial(trial, checkpoint, train=train)
+            self._start_trial(trial, checkpoint, train=train)
         except AbortTrialExecution:
             logger.exception("Trial %s: Error starting runner, aborting!",
                              trial)
             time.sleep(2)
             error_msg = traceback.format_exc()
             self._stop_trial(trial, error=True, error_msg=error_msg)
-            return False
         except Exception:
             logger.exception("Trial %s: Unexpected error starting runner.",
                              trial)
@@ -467,7 +380,6 @@ class RayTrialExecutor(TrialExecutor):
             self._stop_trial(trial, error=True, error_msg=error_msg)
             # Note that we don't return the resources, since they may
             # have been lost. TODO(ujvl): is this the right thing to do?
-            return False
 
     def _find_item(self, dictionary, item):
         out = [rid for rid, t in dictionary.items() if t is item]
@@ -479,8 +391,7 @@ class RayTrialExecutor(TrialExecutor):
         self._stop_trial(trial, error=error, error_msg=error_msg)
         if prior_status == Trial.RUNNING:
             logger.debug("Trial %s: Returning resources.", trial)
-            if not trial.uses_placement_groups:
-                self._return_resources(trial.resources)
+            self._return_resources(trial.resources)
             out = self._find_item(self._running, trial)
             for result_id in out:
                 self._running.pop(result_id)
@@ -567,9 +478,7 @@ class RayTrialExecutor(TrialExecutor):
                         return trial
         return None
 
-    def get_next_available_trial(self, timeout: Optional[float] = None):
-        if not self._running:
-            return None
+    def get_next_available_trial(self):
         shuffled_results = list(self._running.keys())
         random.shuffle(shuffled_results)
         # Note: We shuffle the results because `ray.wait` by default returns
@@ -577,10 +486,7 @@ class RayTrialExecutor(TrialExecutor):
         # trials (i.e. trials that run remotely) also get fairly reported.
         # See https://github.com/ray-project/ray/issues/4211 for details.
         start = time.time()
-        ready, _ = ray.wait(shuffled_results, timeout=timeout)
-        if not ready:
-            return None
-        result_id = ready[0]
+        [result_id], _ = ray.wait(shuffled_results)
         wait_time = time.time() - start
         if wait_time > NONTRIVIAL_WAIT_TIME_THRESHOLD_S:
             self._last_nontrivial_wait = time.time()
@@ -634,9 +540,6 @@ class RayTrialExecutor(TrialExecutor):
             custom_resources=custom_resources)
 
     def _return_resources(self, resources):
-        if resources.has_placement_group:
-            return
-
         committed = self._committed_resources
 
         all_keys = set(resources.custom_resources).union(
@@ -708,9 +611,6 @@ class RayTrialExecutor(TrialExecutor):
         has exceeded self._refresh_period. This also assumes that the
         cluster is not resizing very frequently.
         """
-        if resources.has_placement_group:
-            return self._pg_manager.can_stage()
-
         self._update_avail_resources()
         currently_available = Resources.subtract(self._avail_resources,
                                                  self._committed_resources)
