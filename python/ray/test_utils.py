@@ -370,6 +370,13 @@ def put_object(obj, use_ray_put):
         return _put.remote(obj)
 
 
+def put_unpinned_object(obj):
+    value = ray.worker.global_worker.get_serialization_context().serialize(obj)
+    return ray.ObjectRef(
+        ray.worker.global_worker.core_worker.put_serialized_object(
+            value, pin_object=False))
+
+
 def wait_until_server_available(address,
                                 timeout_ms=5000,
                                 retry_interval_ms=100):

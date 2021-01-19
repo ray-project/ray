@@ -202,23 +202,6 @@ class TaskInfoAccessor {
   virtual Status AsyncGet(const TaskID &task_id,
                           const OptionalItemCallback<rpc::TaskTableData> &callback) = 0;
 
-  /// Subscribe asynchronously to the event that the given task is added in GCS.
-  ///
-  /// \param task_id The ID of the task to be subscribed to.
-  /// \param subscribe Callback that will be called each time when the task is updated.
-  /// \param done Callback that will be called when subscription is complete.
-  /// \return Status
-  virtual Status AsyncSubscribe(
-      const TaskID &task_id,
-      const SubscribeCallback<TaskID, rpc::TaskTableData> &subscribe,
-      const StatusCallback &done) = 0;
-
-  /// Cancel subscription to a task asynchronously.
-  ///
-  /// \param task_id The ID of the task to be unsubscribed to.
-  /// \return Status
-  virtual Status AsyncUnsubscribe(const TaskID &task_id) = 0;
-
   /// Add a task lease to GCS asynchronously.
   ///
   /// \param data_ptr The task lease that will be added to GCS.
@@ -273,12 +256,6 @@ class TaskInfoAccessor {
   ///
   /// \param is_pubsub_server_restarted Whether pubsub server is restarted.
   virtual void AsyncResubscribe(bool is_pubsub_server_restarted) = 0;
-
-  /// Check if the specified task is unsubscribed.
-  ///
-  /// \param task_id The ID of the task.
-  /// \return Whether the specified task is unsubscribed.
-  virtual bool IsTaskUnsubscribed(const TaskID &task_id) = 0;
 
   /// Check if the specified task lease is unsubscribed.
   ///

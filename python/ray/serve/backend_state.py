@@ -2,12 +2,13 @@ import asyncio
 from collections import defaultdict
 from enum import Enum
 import time
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, Any, List, Optional, Set, Tuple
 from uuid import uuid4
 
 import ray
 import ray.cloudpickle as pickle
 from ray.actor import ActorHandle
+from ray.serve.async_goal_manager import AsyncGoalManager
 from ray.serve.backend_worker import create_backend_replica
 from ray.serve.common import (
     BackendInfo,
@@ -154,17 +155,19 @@ class BackendState:
     """
 
     def __init__(self, controller_name: str, detached: bool,
-                 kv_store: RayInternalKVStore, long_poll_host: LongPollHost):
+                 kv_store: RayInternalKVStore, long_poll_host: LongPollHost,
+                 goal_manager: AsyncGoalManager):
         self._controller_name = controller_name
         self._detached = detached
         self._kv_store = kv_store
         self._long_poll_host = long_poll_host
+        self._goal_manager = goal_manager
 
         self._replicas: Dict[BackendTag, Dict[ReplicaState, List[
             BackendReplica]]] = defaultdict(lambda: defaultdict(list))
         self._backend_metadata: Dict[BackendTag, BackendInfo] = dict()
         self._target_replicas: Dict[BackendTag, int] = defaultdict(int)
-        self._goals: Dict[BackendTag, GoalId] = dict()
+        self.backend_goals: Dict[BackendTag, GoalId] = dict()
 
         # Un-Checkpointed state.
         self.pending_goals: Dict[GoalId, asyncio.Event] = dict()
@@ -172,10 +175,10 @@ class BackendState:
         checkpoint = self._kv_store.get(CHECKPOINT_KEY)
         if checkpoint is not None:
             (self._replicas, self._backend_metadata, self._target_replicas,
-             self._goals, pending_goal_ids) = pickle.loads(checkpoint)
+             self.backend_goals, pending_goal_ids) = pickle.loads(checkpoint)
 
             for goal_id in pending_goal_ids:
-                self._create_goal(goal_id)
+                self._goal_manager.create_goal(goal_id)
 
         self._notify_backend_configs_changed()
         self._notify_replica_handles_changed()
@@ -184,8 +187,8 @@ class BackendState:
         self._kv_store.put(
             CHECKPOINT_KEY,
             pickle.dumps((self._replicas, self._backend_metadata,
-                          self._target_replicas, self._goals,
-                          list(self.pending_goals.keys()))))
+                          self._target_replicas, self.backend_goals,
+                          self._goal_manager.get_pending_goal_ids())))
 
     def _notify_backend_configs_changed(self) -> None:
         self._long_poll_host.notify_changed(LongPollKey.BACKEND_CONFIGS,
@@ -218,37 +221,10 @@ class BackendState:
     def get_backend(self, backend_tag: BackendTag) -> Optional[BackendInfo]:
         return self._backend_metadata.get(backend_tag)
 
-    def num_pending_goals(self) -> int:
-        return len(self.pending_goals)
-
-    async def wait_for_goal(self, goal_id: GoalId) -> bool:
-        start = time.time()
-        if goal_id not in self.pending_goals:
-            logger.debug(f"Goal {goal_id} not found")
-            return True
-        event = self.pending_goals[goal_id]
-        await event.wait()
-        logger.debug(
-            f"Waiting for goal {goal_id} took {time.time() - start} seconds")
-        return True
-
-    def _complete_goal(self, goal_id: GoalId) -> None:
-        logger.debug(f"Completing goal {goal_id}")
-        event = self.pending_goals.pop(goal_id, None)
-        if event:
-            event.set()
-
-    def _create_goal(self, goal_id: Optional[GoalId] = None) -> GoalId:
-        if goal_id is None:
-            goal_id = uuid4()
-        event = asyncio.Event()
-        self.pending_goals[goal_id] = event
-        return goal_id
-
     def _set_backend_goal(self, backend_tag: BackendTag,
-                          backend_info: Optional[BackendInfo]) -> None:
-        existing_goal = self._goals.get(backend_tag)
-        new_goal = self._create_goal()
+                          backend_info: BackendInfo) -> None:
+        existing_goal_id = self.backend_goals.get(backend_tag)
+        new_goal_id = self._goal_manager.create_goal()
 
         if backend_info is not None:
             self._backend_metadata[backend_tag] = backend_info
@@ -257,9 +233,9 @@ class BackendState:
         else:
             self._target_replicas[backend_tag] = 0
 
-        self._goals[backend_tag] = new_goal
+        self.backend_goals[backend_tag] = new_goal_id
 
-        return new_goal, existing_goal
+        return new_goal_id, existing_goal_id
 
     def create_backend(self, backend_tag: BackendTag,
                        backend_config: BackendConfig,
@@ -281,7 +257,7 @@ class BackendState:
             backend_config=backend_config,
             replica_config=replica_config)
 
-        new_goal, existing_goal = self._set_backend_goal(
+        new_goal_id, existing_goal_id = self._set_backend_goal(
             backend_tag, backend_info)
 
         try:
@@ -296,9 +272,9 @@ class BackendState:
         self._checkpoint()
         self._notify_backend_configs_changed()
 
-        if existing_goal is not None:
-            self._complete_goal(existing_goal)
-        return new_goal
+        if existing_goal_id is not None:
+            self._goal_manager.complete_goal(existing_goal_id)
+        return new_goal_id
 
     def delete_backend(self, backend_tag: BackendTag,
                        force_kill: bool = False) -> Optional[GoalId]:
@@ -316,11 +292,16 @@ class BackendState:
         del self._backend_metadata[backend_tag]
         del self._target_replicas[backend_tag]
 
+        # Add the intention to remove the backend from the routers.
+        self.backends_to_remove.append(backend_tag)
+
+        new_goal_id, existing_goal_id = self._set_backend_goal(
+            backend_tag, None)
 
         self._checkpoint()
-        if existing_goal is not None:
-            self._complete_goal(existing_goal)
-        return new_goal
+        if existing_goal_id is not None:
+            self._goal_manager.complete_goal(existing_goal_id)
+        return new_goal_id
 
     def update_backend_config(self, backend_tag: BackendTag,
                               config_options: BackendConfig):
@@ -334,7 +315,7 @@ class BackendState:
         updated_config._validate_complete()
         self._backend_metadata[backend_tag].backend_config = updated_config
 
-        new_goal, existing_goal = self._set_backend_goal(
+        new_goal_id, existing_goal_id = self._set_backend_goal(
             backend_tag, self._backend_metadata[backend_tag])
 
         # Scale the replicas with the new configuration.
@@ -344,15 +325,15 @@ class BackendState:
         # update to avoid inconsistent state if we crash after pushing the
         # update.
         self._checkpoint()
-        if existing_goal is not None:
-            self._complete_goal(existing_goal)
+        if existing_goal_id is not None:
+            self._goal_manager.complete_goal(existing_goal_id)
 
         # Inform the routers and backend replicas about config changes.
         # TODO(edoakes): this should only happen if we change something other
         # than num_replicas.
         self._notify_backend_configs_changed()
 
-        return new_goal
+        return new_goal_id
 
     def _start_backend_replica(self, backend_tag: BackendTag,
                                replica_tag: ReplicaTag) -> ActorHandle:
@@ -490,17 +471,17 @@ class BackendState:
             if (not desired_num_replicas or
                     desired_num_replicas == 0) and \
                     (not existing_info or len(existing_info) == 0):
-                completed_goals.append(self._goals.get(backend_tag))
+                completed_goals.append(self.backend_goals.get(backend_tag))
 
             # Check for a non-zero number of backends
             if (desired_num_replicas and existing_info) \
                     and desired_num_replicas == len(existing_info):
-                completed_goals.append(self._goals.get(backend_tag))
+                completed_goals.append(self.backend_goals.get(backend_tag))
         return [goal for goal in completed_goals if goal]
 
     async def update(self) -> bool:
         for goal_id in self._completed_goals():
-            self._complete_goal(goal_id)
+            self._goal_manager.complete_goal(goal_id)
 
         for replica_state, backend_tag in self._pop_replicas_of_state(
                 ReplicaState.SHOULD_START):

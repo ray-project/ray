@@ -120,8 +120,6 @@ class ServiceBasedActorInfoAccessor : public ActorInfoAccessor {
       GUARDED_BY(mutex_);
 
   ServiceBasedGcsClient *client_impl_;
-
-  Sequencer<ActorID> sequencer_;
 };
 
 /// \class ServiceBasedNodeInfoAccessor
@@ -180,13 +178,6 @@ class ServiceBasedNodeInfoAccessor : public NodeInfoAccessor {
   /// Save the fetch data operation in this function, so we can call it again when GCS
   /// server restarts from a failure.
   FetchDataOperation fetch_node_data_operation_;
-
-  // Mutex to protect the cached_resource_usage_ field.
-  absl::Mutex mutex_;
-
-  /// Save the resource usage data, so we can resend it again when GCS server restarts
-  /// from a failure.
-  rpc::ReportResourceUsageRequest cached_resource_usage_ GUARDED_BY(mutex_);
 
   void HandleNotification(const rpc::GcsNodeInfo &node_info);
 
@@ -282,12 +273,6 @@ class ServiceBasedTaskInfoAccessor : public TaskInfoAccessor {
   Status AsyncGet(const TaskID &task_id,
                   const OptionalItemCallback<rpc::TaskTableData> &callback) override;
 
-  Status AsyncSubscribe(const TaskID &task_id,
-                        const SubscribeCallback<TaskID, rpc::TaskTableData> &subscribe,
-                        const StatusCallback &done) override;
-
-  Status AsyncUnsubscribe(const TaskID &task_id) override;
-
   Status AsyncAddTaskLease(const std::shared_ptr<rpc::TaskLeaseData> &data_ptr,
                            const StatusCallback &callback) override;
 
@@ -308,19 +293,15 @@ class ServiceBasedTaskInfoAccessor : public TaskInfoAccessor {
 
   void AsyncResubscribe(bool is_pubsub_server_restarted) override;
 
-  bool IsTaskUnsubscribed(const TaskID &task_id) override;
-
   bool IsTaskLeaseUnsubscribed(const TaskID &task_id) override;
 
  private:
   /// Save the subscribe operations, so we can call them again when PubSub
   /// server restarts from a failure.
-  std::unordered_map<TaskID, SubscribeOperation> subscribe_task_operations_;
   std::unordered_map<TaskID, SubscribeOperation> subscribe_task_lease_operations_;
 
   /// Save the fetch data operation in this function, so we can call it again when GCS
   /// server restarts from a failure.
-  std::unordered_map<TaskID, FetchDataOperation> fetch_task_data_operations_;
   std::unordered_map<TaskID, FetchDataOperation> fetch_task_lease_data_operations_;
 
   ServiceBasedGcsClient *client_impl_;
