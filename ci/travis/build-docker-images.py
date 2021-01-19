@@ -29,6 +29,11 @@ DOCKER_HUB_DESCRIPTION = {
         "https://hub.docker.com/repository/docker/rayproject/ray-ml")
 }
 
+PY_MATRIX = {
+    "-py36" : "3.6.12",
+    "-py37" : "3.7.7",
+    "-py38" : "3.8.7"
+}
 
 def _merge_build():
     return os.environ.get("TRAVIS_PULL_REQUEST").lower() == "false"
@@ -81,51 +86,55 @@ def _docker_affected():
 def _build_cpu_gpu_images(image_name, no_cache=True) -> List[str]:
     built_images = []
     for gpu in ["-cpu", "-gpu"]:
-        build_args = {}
-        if image_name == "base-deps":
-            build_args["BASE_IMAGE"] = (
-                "nvidia/cuda:10.1-cudnn7-runtime-ubuntu18.04"
-                if gpu == "-gpu" else "ubuntu:focal")
-        else:
-            build_args["GPU"] = gpu
-
-        if "ray" in image_name:
-            build_args["WHEEL_PATH"] = f".whl/{_get_wheel_name()}"
-
-        tagged_name = f"rayproject/{image_name}:nightly{gpu}"
-        for i in range(2):
-            output = DOCKER_CLIENT.api.build(
-                path=os.path.join(_get_root_dir(), "docker", image_name),
-                tag=tagged_name,
-                nocache=no_cache,
-                buildargs=build_args)
-
-            full_output = ""
-            try:
-                start = datetime.datetime.now()
-                current_iter = start
-                for line in output:
-                    if datetime.datetime.now(
-                    ) - current_iter >= datetime.timedelta(minutes=5):
-                        current_iter = datetime.datetime.now()
-                        elapsed = datetime.datetime.now() - start
-                        print(f"Still building {tagged_name} after "
-                              f"{elapsed.seconds} seconds")
-                    full_output += line.decode("utf-8")
-            except Exception as e:
-                print(f"FAILURE with error {e}")
-
-            if len(DOCKER_CLIENT.api.images(tagged_name)) == 0:
-                print(f"ERROR building: {tagged_name} & error below:")
-                print(full_output)
-                if (i == 1):
-                    raise Exception("FAILED TO BUILD IMAGE")
-                print("TRYING AGAIN")
+        for py_name, py_version in PY_MATRIX.items():
+            build_args = {}
+            if image_name == "base-deps":
+                build_args["BASE_IMAGE"] = (
+                    "nvidia/cuda:10.1-cudnn7-runtime-ubuntu18.04"
+                    if gpu == "-gpu" else "ubuntu:focal")
             else:
-                break
+                # NOTE(ilr) This is a bit of an abuse of the name "GPU"
+                build_args["GPU"] = f"{py_name}{gpu}"
 
-        print("BUILT: ", tagged_name)
-        built_images.append(tagged_name)
+            if image_name in ["ray", "ray-deps"]:
+                build_args["WHEEL_PATH"] = f".whl/{_get_wheel_name()}"
+
+            build_args["PYTHON_VERSION"] = py_version
+
+            tagged_name = f"rayproject/{image_name}:nightly{py_name}{gpu}"
+            for i in range(2):
+                output = DOCKER_CLIENT.api.build(
+                    path=os.path.join(_get_root_dir(), "docker", image_name),
+                    tag=tagged_name,
+                    nocache=no_cache,
+                    buildargs=build_args)
+
+                full_output = ""
+                try:
+                    start = datetime.datetime.now()
+                    current_iter = start
+                    for line in output:
+                        if datetime.datetime.now(
+                        ) - current_iter >= datetime.timedelta(minutes=5):
+                            current_iter = datetime.datetime.now()
+                            elapsed = datetime.datetime.now() - start
+                            print(f"Still building {tagged_name} after "
+                                f"{elapsed.seconds} seconds")
+                        full_output += line.decode("utf-8")
+                except Exception as e:
+                    print(f"FAILURE with error {e}")
+
+                if len(DOCKER_CLIENT.api.images(tagged_name)) == 0:
+                    print(f"ERROR building: {tagged_name} & error below:")
+                    print(full_output)
+                    if (i == 1):
+                        raise Exception("FAILED TO BUILD IMAGE")
+                    print("TRYING AGAIN")
+                else:
+                    break
+
+            print("BUILT: ", tagged_name)
+            built_images.append(tagged_name)
     return built_images
 
 
