@@ -268,7 +268,7 @@ def test_custom_metrics_edge_cases(metric_mock):
         Count("")
 
     # The tag keys must be a tuple type.
-    with pytest.raises(ValueError):
+    with pytest.raises(TypeError):
         Count("name", tag_keys=("a"))
 
 
