@@ -5,7 +5,6 @@ from ray.rllib.agents.trainer import Trainer, COMMON_CONFIG
 
 
 class TestTrainer(unittest.TestCase):
-
     def test_validate_config_idempotent(self):
         """
         Asserts that validate_config run multiple
