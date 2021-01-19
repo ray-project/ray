@@ -113,10 +113,10 @@ class TestPPO(unittest.TestCase):
         config["lr"] = 0.0003
         config["observation_filter"] = "MeanStdFilter"
         config["num_sgd_iter"] = 6
-        config["vf_share_layers"] = True
         config["vf_loss_coeff"] = 0.01
         config["model"]["fcnet_hiddens"] = [32]
         config["model"]["fcnet_activation"] = "linear"
+        config["model"]["vf_share_layers"] = True
 
         trainer = ppo.PPOTrainer(config=config, env="CartPole-v0")
         num_iterations = 200
@@ -181,7 +181,7 @@ class TestPPO(unittest.TestCase):
         config["model"]["fcnet_hiddens"] = [10]
         config["model"]["fcnet_activation"] = "linear"
         config["model"]["free_log_std"] = True
-        config["vf_share_layers"] = True
+        config["model"]["vf_share_layers"] = True
 
         for fw, sess in framework_iterator(config, session=True):
             trainer = ppo.PPOTrainer(config=config, env="CartPole-v0")
@@ -232,7 +232,7 @@ class TestPPO(unittest.TestCase):
         config["gamma"] = 0.99
         config["model"]["fcnet_hiddens"] = [10]
         config["model"]["fcnet_activation"] = "linear"
-        config["vf_share_layers"] = True
+        config["model"]["vf_share_layers"] = True
 
         for fw, sess in framework_iterator(config, session=True):
             trainer = ppo.PPOTrainer(config=config, env="CartPole-v0")

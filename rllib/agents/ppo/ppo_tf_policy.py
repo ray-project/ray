@@ -17,6 +17,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import LearningRateSchedule, \
     EntropyCoeffSchedule
 from ray.rllib.policy.tf_policy_template import build_tf_policy
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.utils.framework import try_import_tf, get_variable
 from ray.rllib.utils.tf_ops import explained_variance, make_tf_callable
 from ray.rllib.utils.typing import AgentID, LocalOptimizer, ModelGradients, \
@@ -354,8 +355,23 @@ def setup_config(policy: Policy, obs_space: gym.spaces.Space,
         action_space (gym.spaces.Space): The Policy's action space.
         config (TrainerConfigDict): The Policy's config.
     """
-    # Auto set the model option for VF layer sharing.
-    config["model"]["vf_share_layers"] = config["vf_share_layers"]
+    # Setting `vf_share_layers` in the top-level config is deprecated.
+    # It's confusing as some users might (correctly!) set it in their
+    # model config and then won't notice that it's silently overwritten
+    # here.
+    if config["vf_share_layers"] != DEPRECATED_VALUE:
+        deprecation_warning(
+            old="config[vf_share_layers]",
+            new="config[model][vf_share_layers]",
+            error=False,
+        )
+        config["model"]["vf_share_layers"] = config["vf_share_layers"]
+
+    # If vf_share_layers is True, inform about the need to tune vf_loss_coeff.
+    if config.get("model", {}).get("vf_share_layers") is True:
+        logger.info(
+            "`vf_share_layers=True` in your model. "
+            "Therefore, remember to tune the value of `vf_loss_coeff`!")
 
 
 def setup_mixins(policy: Policy, obs_space: gym.spaces.Space,

@@ -129,7 +129,8 @@ ppo-tf-atari:
         num_envs_per_worker: 5
         batch_mode: truncate_episodes
         observation_filter: NoFilter
-        vf_share_layers: true
+        model:
+            vf_share_layers: true
         num_gpus: 1
 
 # Expect roughly 1000 reward after 1h on 1GPU
