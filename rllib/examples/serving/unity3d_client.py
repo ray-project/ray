@@ -31,7 +31,7 @@ $ python unity3d_client.py --inference-mode=local --game [path to game binary]
 import argparse
 
 from ray.rllib.env.policy_client import PolicyClient
-from ray.rllib.env.unity3d_env import Unity3DEnv
+from ray.rllib.env.wrappers.unity3d_env import Unity3DEnv
 
 SERVER_ADDRESS = "localhost"
 SERVER_PORT = 9900
