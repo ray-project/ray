@@ -578,7 +578,7 @@ def test_http_proxy(enable_test_module, set_http_proxy, shutdown_only):
     webui_url = address_info["webui_url"]
     webui_url = format_web_url(webui_url)
 
-    timeout_seconds = 15
+    timeout_seconds = 10
     start_time = time.time()
     while True:
         time.sleep(1)

@@ -26,7 +26,6 @@ from aiohttp.frozenlist import FrozenList
 from aiohttp.typedefs import PathLike
 from aiohttp.web import RouteDef
 from google.protobuf.json_format import MessageToDict
-from grpc.experimental import aio as aiogrpc
 
 import ray.new_dashboard.consts as dashboard_consts
 from ray.ray_constants import env_bool
@@ -684,24 +683,3 @@ def async_loop_forever(interval_seconds):
         return _looper
 
     return _wrapper
-
-
-def create_insecure_channel(address,
-                            options=None,
-                            compression=None,
-                            interceptors=None):
-    """Disable the http proxy when create channel"""
-    # disable http proxy
-    if options is not None:
-        need_add = True
-        for k, v in options:
-            if k == "grpc.enable_http_proxy":
-                need_add = False
-                break
-        if need_add:
-            options = (*options, ("grpc.enable_http_proxy", 0))
-    else:
-        options = (("grpc.enable_http_proxy", 0), )
-
-    return aiogrpc.insecure_channel(address, options, compression,
-                                    interceptors)
