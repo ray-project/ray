@@ -35,7 +35,7 @@ Kubernetes (tune.integration.kubernetes)
 .. _tune-integration-mlflow:
 
 MLflow (tune.integration.mlflow)
--------------------------------
+--------------------------------
 
 :ref:`See also here <tune-mlflow>`.
 
