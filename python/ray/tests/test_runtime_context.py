@@ -64,6 +64,36 @@ def test_was_current_actor_reconstructed(shutdown_only):
     ray.get(f.remote())
 
 
+def test_get_context_dict(ray_start_regular):
+    context_dict = ray.get_runtime_context().get()
+    assert context_dict["node_id"] is not None
+    assert context_dict["job_id"] is not None
+    assert "actor_id" not in context_dict
+    assert "task_id" not in context_dict
+
+    @ray.remote
+    class Actor:
+        def check(self, node_id, job_id):
+            context_dict = ray.get_runtime_context().get()
+            assert context_dict["node_id"] == node_id
+            assert context_dict["job_id"] == job_id
+            assert context_dict["actor_id"] is not None
+            assert context_dict["task_id"] is not None
+
+    a = Actor.remote()
+    ray.get(a.check.remote(context_dict["node_id"], context_dict["job_id"]))
+
+    @ray.remote
+    def task(node_id, job_id):
+        context_dict = ray.get_runtime_context().get()
+        assert context_dict["node_id"] == node_id
+        assert context_dict["job_id"] == job_id
+        assert context_dict["task_id"] is not None
+        assert "actor_id" not in context_dict
+
+    ray.get(task.remote(context_dict["node_id"], context_dict["job_id"]))
+
+
 if __name__ == "__main__":
     import pytest
     sys.exit(pytest.main(["-v", __file__]))

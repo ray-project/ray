@@ -107,7 +107,6 @@ class RNNSpyModel(RecurrentNetwork):
             [inputs, seq_lens, state_in_h, state_in_c],
             [logits, value_out, state_out_h, state_out_c])
         self.base_model.summary()
-        self.register_variables(self.base_model.variables)
 
     @override(RecurrentNetwork)
     def forward_rnn(self, inputs, state, seq_lens):

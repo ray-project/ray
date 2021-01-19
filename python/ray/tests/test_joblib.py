@@ -2,6 +2,7 @@ import joblib
 import sys
 import time
 import os
+import pytest
 
 import pickle
 import numpy as np
@@ -77,6 +78,7 @@ the accuracy), which results in longer test time.
 """
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_sklearn_benchmarks(ray_start_cluster_2_nodes):
     ESTIMATORS = {
         "CART": DecisionTreeClassifier(),

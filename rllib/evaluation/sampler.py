@@ -18,7 +18,8 @@ from ray.rllib.evaluation.rollout_metrics import RolloutMetrics
 from ray.rllib.evaluation.sample_batch_builder import \
     MultiAgentSampleBatchBuilder
 from ray.rllib.env.base_env import BaseEnv, ASYNC_RESET_RETURN
-from ray.rllib.env.atari_wrappers import get_wrapper_by_cls, MonitorEnv
+from ray.rllib.env.wrappers.atari_wrappers import get_wrapper_by_cls, \
+    MonitorEnv
 from ray.rllib.models.preprocessors import Preprocessor
 from ray.rllib.offline import InputReader
 from ray.rllib.policy.policy import clip_action, Policy
