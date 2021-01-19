@@ -2417,8 +2417,8 @@ Healthy:
  20 m4.4xlarge
 Pending:
  m4.4xlarge, 2 launching
- 1.2.3.4: m4.4xlarge, waiting_for_ssh
- 1.2.3.5: m4.4xlarge, waiting_for_ssh
+ 1.2.3.4: m4.4xlarge, waiting-for-ssh
+ 1.2.3.5: m4.4xlarge, waiting-for-ssh
 Recent failures:
  (no failures)
 
