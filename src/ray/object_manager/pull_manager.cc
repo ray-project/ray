@@ -9,7 +9,7 @@ PullManager::PullManager(
     const std::function<void(const ObjectID &, const NodeID &)> send_pull_request,
     const RestoreSpilledObjectCallback restore_spilled_object,
     const std::function<double()> get_time, int pull_timeout_ms,
-    size_t num_bytes_available)
+    size_t num_bytes_available, std::function<void()> object_store_full_callback)
     : self_node_id_(self_node_id),
       object_is_local_(object_is_local),
       send_pull_request_(send_pull_request),
@@ -17,6 +17,7 @@ PullManager::PullManager(
       get_time_(get_time),
       pull_timeout_ms_(pull_timeout_ms),
       num_bytes_available_(num_bytes_available),
+      object_store_full_callback_(object_store_full_callback),
       gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()) {}
 
 uint64_t PullManager::Pull(const std::vector<rpc::ObjectReference> &object_ref_bundle,
@@ -49,8 +50,8 @@ uint64_t PullManager::Pull(const std::vector<rpc::ObjectReference> &object_ref_b
 }
 
 bool PullManager::ActivateNextPullBundleRequest(
-    std::map<uint64_t, std::vector<rpc::ObjectReference>>::iterator next_request_it,
-    std::unordered_set<ObjectID> *object_ids_to_pull) {
+    const std::map<uint64_t, std::vector<rpc::ObjectReference>>::iterator
+        &next_request_it) {
   // Check that we have sizes for all of the objects in the bundle. If not, we
   // should not activate the bundle, since it may put us over the available
   // capacity.
@@ -80,8 +81,6 @@ bool PullManager::ActivateNextPullBundleRequest(
       auto it = object_pull_requests_.find(obj_id);
       RAY_CHECK(it != object_pull_requests_.end());
       num_bytes_being_pulled_ += it->second.object_size;
-
-      object_ids_to_pull->insert(obj_id);
     }
   }
 
@@ -92,8 +91,7 @@ bool PullManager::ActivateNextPullBundleRequest(
 }
 
 void PullManager::DeactivatePullBundleRequest(
-    std::map<uint64_t, std::vector<rpc::ObjectReference>>::iterator request_it,
-    std::unordered_set<ObjectID> *object_ids_to_cancel) {
+    const std::map<uint64_t, std::vector<rpc::ObjectReference>>::iterator &request_it) {
   for (const auto &ref : request_it->second) {
     auto obj_id = ObjectRefToId(ref);
     RAY_CHECK(active_object_pull_requests_[obj_id].erase(request_it->first));
@@ -103,9 +101,6 @@ void PullManager::DeactivatePullBundleRequest(
       RAY_CHECK(it != object_pull_requests_.end());
       num_bytes_being_pulled_ -= it->second.object_size;
       active_object_pull_requests_.erase(obj_id);
-      if (object_ids_to_cancel) {
-        object_ids_to_cancel->insert(obj_id);
-      }
     }
   }
 
@@ -121,9 +116,6 @@ void PullManager::DeactivatePullBundleRequest(
 }
 
 void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) {
-  // TODO(swang): We could return an error for requests whose total size is
-  // larger than the capacity of the memory store. This would hang right now.
-
   if (num_bytes_available_ != num_bytes_available) {
     RAY_LOG(DEBUG) << "Updating pulls based on available memory: " << num_bytes_available;
   }
@@ -153,7 +145,7 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) 
                    << " num bytes available: " << num_bytes_available_;
     // There is another pull bundle request that we could try, and there is
     // enough space. Activate the next pull bundle request in the queue.
-    if (!ActivateNextPullBundleRequest(next_request_it, &object_ids_to_pull)) {
+    if (!ActivateNextPullBundleRequest(next_request_it)) {
       // This pull bundle request could not be activated, due to lack of object
       // size information. Wait until we have object size information before
       // activating this pull bundle.
@@ -170,8 +162,10 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) 
                    << " num bytes available: " << num_bytes_available_;
     const auto last_request_it = pull_request_bundles_.find(highest_req_id_being_pulled_);
     RAY_CHECK(last_request_it != pull_request_bundles_.end());
-    DeactivatePullBundleRequest(last_request_it, &object_ids_to_cancel);
+    DeactivatePullBundleRequest(last_request_it);
   }
+
+  TriggerOutOfMemoryHandlingIfNeeded();
 
   if (highest_req_id_being_pulled_ > prev_highest_req_id_being_pulled) {
     // There are newly activated requests. Start pulling objects for the newly
@@ -181,6 +175,51 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) 
     // multiple objects, even when we are not under memory pressure.
     Tick();
   }
+}
+
+void PullManager::TriggerOutOfMemoryHandlingIfNeeded() {
+  if (pull_request_bundles_.empty()) {
+    // No requests queued.
+    return;
+  }
+
+  const auto head = pull_request_bundles_.begin();
+  if (highest_req_id_being_pulled_ >= head->first) {
+    // At least one request is being actively pulled, so there is currently
+    // enough space.
+    return;
+  }
+
+  // No requests are being pulled. Check whether this is because we don't have
+  // object size information yet.
+  size_t num_bytes_needed = 0;
+  for (const auto &ref : head->second) {
+    auto obj_id = ObjectRefToId(ref);
+    const auto it = object_pull_requests_.find(obj_id);
+    RAY_CHECK(it != object_pull_requests_.end());
+    if (!it->second.object_size_set) {
+      // We're not pulling the first request because we don't have size
+      // information. Wait for the size information before triggering OOM
+      return;
+    }
+    num_bytes_needed += it->second.object_size;
+  }
+
+  // The first request in the queue is not being pulled due to lack of space.
+  // Trigger out-of-memory handling to try to make room.
+  // TODO(swang): This can hang if no room can be made. We should return an
+  // error for requests whose total size is larger than the capacity of the
+  // memory store.
+  RAY_LOG(WARNING)
+      << "There is not enough memory to pull objects needed by a queued task or "
+         "a worker blocked in ray.get or ray.wait. "
+      << "Need " << num_bytes_needed << " bytes, but only " << num_bytes_available_
+      << " bytes are available on this node. "
+      << "This job may hang if no memory can be freed through garbage collection or "
+         "object spilling. See "
+         "https://docs.ray.io/en/master/memory-management.html for more information. "
+         "Please file a GitHub issue if you see this message repeat.";
+  object_store_full_callback_();
 }
 
 std::vector<ObjectID> PullManager::CancelPull(uint64_t request_id) {

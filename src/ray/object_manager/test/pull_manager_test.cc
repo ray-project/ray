@@ -17,25 +17,34 @@ class PullManagerTestWithCapacity {
         object_is_local_(false),
         num_send_pull_request_calls_(0),
         num_restore_spilled_object_calls_(0),
+        num_object_store_full_calls_(0),
         fake_time_(0),
-        pull_manager_(
-            self_node_id_, [this](const ObjectID &object_id) { return object_is_local_; },
-            [this](const ObjectID &object_id, const NodeID &node_id) {
-              num_send_pull_request_calls_++;
-            },
-            [this](const ObjectID &, const std::string &,
-                   std::function<void(const ray::Status &)> callback) {
-              num_restore_spilled_object_calls_++;
-              restore_object_callback_ = callback;
-            },
-            [this]() { return fake_time_; }, 10000, num_available_bytes) {}
+        pull_manager_(self_node_id_,
+                      [this](const ObjectID &object_id) { return object_is_local_; },
+                      [this](const ObjectID &object_id, const NodeID &node_id) {
+                        num_send_pull_request_calls_++;
+                      },
+                      [this](const ObjectID &, const std::string &,
+                             std::function<void(const ray::Status &)> callback) {
+                        num_restore_spilled_object_calls_++;
+                        restore_object_callback_ = callback;
+                      },
+                      [this]() { return fake_time_; }, 10000, num_available_bytes,
+                      [this]() { num_object_store_full_calls_++; }) {}
 
-  // TODO: Check no memory leaks.
+  void AssertNoLeaks() {
+    ASSERT_TRUE(pull_manager_.pull_request_bundles_.empty());
+    ASSERT_TRUE(pull_manager_.object_pull_requests_.empty());
+    ASSERT_TRUE(pull_manager_.active_object_pull_requests_.empty());
+    // Most tests should not throw OOM.
+    ASSERT_EQ(num_object_store_full_calls_, 0);
+  }
 
   NodeID self_node_id_;
   bool object_is_local_;
   int num_send_pull_request_calls_;
   int num_restore_spilled_object_calls_;
+  int num_object_store_full_calls_;
   std::function<void(const ray::Status &)> restore_object_callback_;
   double fake_time_;
   PullManager pull_manager_;
@@ -105,7 +114,8 @@ TEST_F(PullManagerTest, TestStaleSubscription) {
   // Now we're getting a notification about an object that was already cancelled.
   ASSERT_EQ(num_send_pull_request_calls_, 0);
   ASSERT_EQ(num_restore_spilled_object_calls_, 0);
-  AssertNumActiveRequestsEquals(0);
+
+  AssertNoLeaks();
 }
 
 TEST_F(PullManagerTest, TestRestoreSpilledObject) {
@@ -142,7 +152,8 @@ TEST_F(PullManagerTest, TestRestoreSpilledObject) {
 
   auto objects_to_cancel = pull_manager_.CancelPull(req_id);
   ASSERT_EQ(objects_to_cancel, ObjectRefsToIds(refs));
-  AssertNumActiveRequestsEquals(0);
+
+  AssertNoLeaks();
 }
 
 TEST_F(PullManagerTest, TestRestoreObjectFailed) {
@@ -151,7 +162,7 @@ TEST_F(PullManagerTest, TestRestoreObjectFailed) {
   rpc::Address addr1;
   AssertNumActiveRequestsEquals(0);
   std::vector<rpc::ObjectReference> objects_to_locate;
-  pull_manager_.Pull(refs, &objects_to_locate);
+  auto req_id = pull_manager_.Pull(refs, &objects_to_locate);
   ASSERT_EQ(ObjectRefsToIds(objects_to_locate), ObjectRefsToIds(refs));
 
   std::unordered_set<NodeID> client_ids;
@@ -193,6 +204,9 @@ TEST_F(PullManagerTest, TestRestoreObjectFailed) {
   // before sending another one.
   ASSERT_EQ(num_send_pull_request_calls_, 1);
   ASSERT_EQ(num_restore_spilled_object_calls_, 2);
+
+  pull_manager_.CancelPull(req_id);
+  AssertNoLeaks();
 }
 
 TEST_F(PullManagerTest, TestManyUpdates) {
@@ -218,7 +232,8 @@ TEST_F(PullManagerTest, TestManyUpdates) {
 
   auto objects_to_cancel = pull_manager_.CancelPull(req_id);
   ASSERT_EQ(objects_to_cancel, ObjectRefsToIds(refs));
-  AssertNumActiveRequestsEquals(0);
+
+  AssertNoLeaks();
 }
 
 TEST_F(PullManagerTest, TestRetryTimer) {
@@ -264,7 +279,8 @@ TEST_F(PullManagerTest, TestRetryTimer) {
 
   auto objects_to_cancel = pull_manager_.CancelPull(req_id);
   ASSERT_EQ(objects_to_cancel, ObjectRefsToIds(refs));
-  AssertNumActiveRequestsEquals(0);
+
+  AssertNoLeaks();
 }
 
 TEST_F(PullManagerTest, TestBasic) {
@@ -305,6 +321,8 @@ TEST_F(PullManagerTest, TestBasic) {
     pull_manager_.OnLocationChange(oids[i], client_ids, "", 0);
   }
   ASSERT_EQ(num_send_pull_request_calls_, 0);
+
+  AssertNoLeaks();
 }
 
 TEST_F(PullManagerTest, TestDeduplicateBundles) {
@@ -353,6 +371,8 @@ TEST_F(PullManagerTest, TestDeduplicateBundles) {
     pull_manager_.OnLocationChange(oids[i], client_ids, "", 0);
   }
   ASSERT_EQ(num_send_pull_request_calls_, 0);
+
+  AssertNoLeaks();
 }
 
 TEST_F(PullManagerWithAdmissionControlTest, TestBasic) {
@@ -378,8 +398,10 @@ TEST_F(PullManagerWithAdmissionControlTest, TestBasic) {
   ASSERT_TRUE(IsUnderCapacity(oids.size() * object_size));
 
   // Reduce the available memory.
+  ASSERT_EQ(num_object_store_full_calls_, 0);
   pull_manager_.UpdatePullsBasedOnAvailableMemory(oids.size() * object_size - 1);
   AssertNumActiveRequestsEquals(0);
+  ASSERT_EQ(num_object_store_full_calls_, 1);
   // No new pull requests after the next tick.
   fake_time_ += 10;
   auto prev_pull_requests = num_send_pull_request_calls_;
@@ -395,8 +417,12 @@ TEST_F(PullManagerWithAdmissionControlTest, TestBasic) {
   ASSERT_TRUE(IsUnderCapacity(oids.size() * object_size));
   ASSERT_EQ(num_send_pull_request_calls_, prev_pull_requests + oids.size());
 
+  // OOM was not triggered a second time.
+  ASSERT_EQ(num_object_store_full_calls_, 1);
+  num_object_store_full_calls_ = 0;
+
   pull_manager_.CancelPull(req_id);
-  AssertNumActiveRequestsEquals(0);
+  AssertNoLeaks();
 }
 
 TEST_F(PullManagerWithAdmissionControlTest, TestQueue) {
@@ -442,7 +468,19 @@ TEST_F(PullManagerWithAdmissionControlTest, TestQueue) {
       ASSERT_FALSE(IsUnderCapacity((num_requests_expected + 1) * num_oids_per_request *
                                    object_size));
     }
+    // Check that OOM was triggered.
+    if (num_requests_expected == 0) {
+      ASSERT_EQ(num_object_store_full_calls_, 1);
+    } else {
+      ASSERT_EQ(num_object_store_full_calls_, 0);
+    }
+    num_object_store_full_calls_ = 0;
   }
+
+  for (auto req_id : req_ids) {
+    pull_manager_.CancelPull(req_id);
+  }
+  AssertNoLeaks();
 }
 
 TEST_F(PullManagerWithAdmissionControlTest, TestCancel) {
@@ -507,6 +545,8 @@ TEST_F(PullManagerWithAdmissionControlTest, TestCancel) {
 
   // As many new requests as possible are activated when one is canceled.
   test_cancel({1, 2, 1, 1, 1}, 3, 1, 2, 3);
+
+  AssertNoLeaks();
 }
 
 }  // namespace ray

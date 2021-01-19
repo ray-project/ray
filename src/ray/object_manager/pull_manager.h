@@ -41,7 +41,7 @@ class PullManager {
       const std::function<void(const ObjectID &, const NodeID &)> send_pull_request,
       const RestoreSpilledObjectCallback restore_spilled_object,
       const std::function<double()> get_time, int pull_timeout_ms,
-      size_t num_bytes_available);
+      size_t num_bytes_available, std::function<void()> object_store_full_callback);
 
   /// Add a new pull request for a bundle of objects. The objects in the
   /// request will get pulled once:
@@ -141,14 +141,18 @@ class PullManager {
   /// Activate the next pull request in the queue. This will start pulls for
   /// any objects in the request that are not already being pulled.
   bool ActivateNextPullBundleRequest(
-      std::map<uint64_t, std::vector<rpc::ObjectReference>>::iterator next_request_it,
-      std::unordered_set<ObjectID> *object_ids_to_pull);
+      const std::map<uint64_t, std::vector<rpc::ObjectReference>>::iterator
+          &next_request_it);
 
   /// Deactivate a pull request in the queue. This cancels any pull or restore
   /// operations for the object.
   void DeactivatePullBundleRequest(
-      std::map<uint64_t, std::vector<rpc::ObjectReference>>::iterator request_it,
-      std::unordered_set<ObjectID> *object_ids_to_cancel = nullptr);
+      const std::map<uint64_t, std::vector<rpc::ObjectReference>>::iterator &request_it);
+
+  /// Trigger out-of-memory handling if the first request in the queue needs
+  /// more space than the bytes available. This is needed to make room for the
+  /// request.
+  void TriggerOutOfMemoryHandlingIfNeeded();
 
   /// See the constructor's arguments.
   NodeID self_node_id_;
@@ -177,6 +181,8 @@ class PullManager {
   /// pulling.
   size_t num_bytes_available_;
 
+  std::function<void()> object_store_full_callback_;
+
   /// A pointer to the highest request ID whose objects we are currently
   /// pulling. We always pull a contiguous prefix of the active pull requests.
   /// This means that all requests with a lower ID are either already canceled
@@ -198,6 +204,7 @@ class PullManager {
   std::mt19937_64 gen_;
 
   friend class PullManagerTest;
+  friend class PullManagerTestWithCapacity;
   friend class PullManagerWithAdmissionControlTest;
 };
 }  // namespace ray
