@@ -1105,7 +1105,10 @@ def test_kill_pending_actor_with_no_restart_true():
 
     # Kill actor with `no_restart=True`.
     actor = PendingActor.remote()
-    # TODO(ffbin): The raylet doesn't guarantee the order when dealing with RequestWorkerLease and CancelWorkerLease. If we kill the actor immediately after creating the actor, we may not be able to clean up the request cached by the raylet.
+    # TODO(ffbin): The raylet doesn't guarantee the order when dealing with
+    # RequestWorkerLease and CancelWorkerLease. If we kill the actor
+    # immediately after creating the actor, we may not be able to clean up
+    # the request cached by the raylet.
     # See https://github.com/ray-project/ray/issues/13545 for details.
     time.sleep(1)
     ray.kill(actor, no_restart=True)
@@ -1137,7 +1140,10 @@ def test_kill_pending_actor_with_no_restart_false():
 
     # Kill actor with `no_restart=False`.
     actor = PendingActor.remote()
-    # TODO(ffbin): The raylet doesn't guarantee the order when dealing with RequestWorkerLease and CancelWorkerLease. If we kill the actor immediately after creating the actor, we may not be able to clean up the request cached by the raylet.
+    # TODO(ffbin): The raylet doesn't guarantee the order when dealing with
+    # RequestWorkerLease and CancelWorkerLease. If we kill the actor
+    # immediately after creating the actor, we may not be able to clean up
+    # the request cached by the raylet.
     # See https://github.com/ray-project/ray/issues/13545 for details.
     time.sleep(1)
     ray.kill(actor, no_restart=False)
@@ -1155,6 +1161,7 @@ def test_kill_pending_actor_with_no_restart_false():
 
     # Kill actor again and actor is dead, so the infeasible task queue length is 0.
     ray.kill(actor, no_restart=False)
+
     def condition2():
         message = global_state_accessor.get_all_resource_usage()
         resource_usages = ray.gcs_utils.ResourceUsageBatchData.FromString(
