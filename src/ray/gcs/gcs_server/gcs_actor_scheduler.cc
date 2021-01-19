@@ -301,13 +301,17 @@ void GcsActorScheduler::HandleWorkerLeasedReply(
   const auto &retry_at_raylet_address = reply.retry_at_raylet_address();
   const auto &worker_address = reply.worker_address();
   if (worker_address.raylet_id().empty()) {
-    // The worker did not succeed in the lease, but the specified node returned a new
-    // node, and then try again on the new node.
+    // Actor creation task has been cancelled. It is triggered by `ray.kill`. If the
+    // number of remaining restarts of the actor is not equal to 0, GCS will reschedule
+    // the actor, so it return directly here.
     if (retry_at_raylet_address.raylet_id().empty()) {
-      RAY_LOG(INFO) << "HandleWorkerLeasedReply empty......";
+      RAY_LOG(DEBUG) << "Actor " << actor->GetActorID()
+                     << " creation task has been cancelled.";
       return;
     }
 
+    // The worker did not succeed in the lease, but the specified node returned a new
+    // node, and then try again on the new node.
     auto spill_back_node_id = NodeID::FromBinary(retry_at_raylet_address.raylet_id());
     auto maybe_spill_back_node = gcs_node_manager_.GetAliveNode(spill_back_node_id);
     if (maybe_spill_back_node.has_value()) {
