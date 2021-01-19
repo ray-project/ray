@@ -267,7 +267,7 @@ class WorkerSet:
                 lambda ioctx: ShuffledInput(MixedInput(config["input"], ioctx),
                                             config["shuffle_buffer_size"]))
         elif "d4rl" in config["input"]:
-            env_name = config["input"].split('.')[1]
+            env_name = config["input"].split(".")[1]
             input_creator = (lambda ioctx: D4RLReader(env_name, ioctx))
         else:
             input_creator = (
