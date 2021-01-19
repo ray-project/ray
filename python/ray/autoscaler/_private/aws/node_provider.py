@@ -312,8 +312,6 @@ class AWSNodeProvider(NodeProvider):
 
         all_created_nodes = reused_nodes_dict
         all_created_nodes.update(created_nodes_dict)
-        import pdb
-        pdb.set_trace()
         return all_created_nodes
 
     def _create_node(self, node_config, tags, count):
