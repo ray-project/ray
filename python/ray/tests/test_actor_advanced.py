@@ -1159,7 +1159,8 @@ def test_kill_pending_actor_with_no_restart_false():
     # Actor restarts, so the infeasible task queue length is 1.
     wait_for_condition(condition1, timeout=10)
 
-    # Kill actor again and actor is dead, so the infeasible task queue length is 0.
+    # Kill actor again and actor is dead,
+    # so the infeasible task queue length is 0.
     ray.kill(actor, no_restart=False)
 
     def condition2():
