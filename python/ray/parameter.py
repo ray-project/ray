@@ -210,7 +210,6 @@ class RayParams:
                 raise Exception(
                     "Object pinning cannot be enabled if using LRU eviction.")
             self._system_config["object_pinning_enabled"] = False
-            self._system_config["object_store_full_max_retries"] = -1
             self._system_config["free_objects_period_milliseconds"] = 1000
 
         # Set the internal config options for object reconstruction.
