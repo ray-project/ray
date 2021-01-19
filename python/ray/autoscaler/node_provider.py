@@ -113,7 +113,7 @@ class NodeProvider:
                     count: int) -> Optional[Dict[str, Any]]:
         """Creates a number of nodes within the namespace.
 
-        Optionally returns mapping from created node ids to node metadata.
+        Optionally returns a mapping from created node ids to node metadata.
         """
         raise NotImplementedError
 
