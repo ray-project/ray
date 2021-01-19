@@ -210,15 +210,18 @@ void PullManager::TriggerOutOfMemoryHandlingIfNeeded() {
   // TODO(swang): This can hang if no room can be made. We should return an
   // error for requests whose total size is larger than the capacity of the
   // memory store.
-  RAY_LOG(WARNING)
-      << "There is not enough memory to pull objects needed by a queued task or "
-         "a worker blocked in ray.get or ray.wait. "
-      << "Need " << num_bytes_needed << " bytes, but only " << num_bytes_available_
-      << " bytes are available on this node. "
-      << "This job may hang if no memory can be freed through garbage collection or "
-         "object spilling. See "
-         "https://docs.ray.io/en/master/memory-management.html for more information. "
-         "Please file a GitHub issue if you see this message repeat.";
+  if (get_time_() - last_oom_reported_ms_ > 1000) {
+    RAY_LOG(WARNING)
+        << "There is not enough memory to pull objects needed by a queued task or "
+           "a worker blocked in ray.get or ray.wait. "
+        << "Need " << num_bytes_needed << " bytes, but only " << num_bytes_available_
+        << " bytes are available on this node. "
+        << "This job may hang if no memory can be freed through garbage collection or "
+           "object spilling. See "
+           "https://docs.ray.io/en/master/memory-management.html for more information. "
+           "Please file a GitHub issue if you see this message repeatedly.";
+    last_oom_reported_ms_ = get_time_();
+  }
   object_store_full_callback_();
 }
 

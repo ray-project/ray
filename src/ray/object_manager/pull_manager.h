@@ -181,7 +181,13 @@ class PullManager {
   /// pulling.
   size_t num_bytes_available_;
 
+  /// Triggered when the first request in the queue can't be pulled due to
+  /// out-of-memory. This callback should try to make more bytes available.
   std::function<void()> object_store_full_callback_;
+
+  /// The last time OOM was reported. Track this so we don't spam warnings when
+  /// the object store is full.
+  uint64_t last_oom_reported_ms_ = 0;
 
   /// A pointer to the highest request ID whose objects we are currently
   /// pulling. We always pull a contiguous prefix of the active pull requests.
