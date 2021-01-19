@@ -13,6 +13,7 @@ from urllib.parse import urlparse
 
 import async_timeout
 import ray.new_dashboard.modules.job.job_consts as job_consts
+import ray.new_dashboard.modules.job.md5sum as md5sum
 import ray.new_dashboard.utils as dashboard_utils
 from ray.core.generated import job_agent_pb2
 from ray.core.generated import job_agent_pb2_grpc
@@ -529,6 +530,7 @@ class PrepareJavaEnviron(JobProcessor):
         java_shared_library_dir = job_consts.JAVA_SHARED_LIBRARY_DIR.format(
             temp_dir=temp_dir)
         os.makedirs(java_shared_library_dir, exist_ok=True)
+        python = self._get_current_python()
         dependencies = self._job_info.java_dependency_list()
         for d in dependencies:
             url_path = urlparse(d.url).path
@@ -546,8 +548,8 @@ class PrepareJavaEnviron(JobProcessor):
                 await self._download_package(self._http_session, d.url,
                                              download_filename)
                 if d.md5:
-                    calc_md5_cmd = f"md5sum {download_filename}"
-                    output = await self._check_output_cmd(calc_md5_cmd)
+                    cmd = f"{python} {md5sum.__file__} {download_filename}"
+                    output = await self._check_output_cmd(cmd)
                     calc_md5 = output.split()[0]
                     if calc_md5.lower() != d.md5.lower():
                         raise Exception(f"Downloaded file {download_filename} "
