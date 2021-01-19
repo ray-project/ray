@@ -1,3 +1,5 @@
+from typing import Optional
+
 import click
 from datetime import datetime
 import json
@@ -20,6 +22,7 @@ from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.suggest import BasicVariantGenerator
 from ray.tune.utils import warn_if_slow, flatten_dict, env_integer
 from ray.tune.utils.log import Verbosity, has_verbosity
+from ray.tune.utils.placement_groups import TUNE_MAX_PENDING_TRIALS_PG
 from ray.tune.utils.serialization import TuneFunctionDecoder, \
     TuneFunctionEncoder
 from ray.tune.web_server import TuneServer
@@ -108,6 +111,11 @@ class TrialRunner:
         self._search_alg = search_alg or BasicVariantGenerator()
         self._scheduler_alg = scheduler or FIFOScheduler()
         self.trial_executor = trial_executor or RayTrialExecutor()
+        self._pending_trial_queue_times = {}
+
+        # Setting this to 0 still allows adding one new (pending) trial,
+        # but it will prevent us from trying to fill the trial list
+        self._max_pending_trials = 0  # Can be updated in `self.add_trial()`
 
         self._metric = metric
 
@@ -142,6 +150,7 @@ class TrialRunner:
         self._trials = []
         self._cached_trial_decisions = {}
         self._queued_trial_decisions = {}
+
         self._stop_queue = []
         self._should_stop_experiment = False  # used by TuneServer
         self._local_checkpoint_dir = local_checkpoint_dir
@@ -349,18 +358,50 @@ class TrialRunner:
         with warn_if_slow("callbacks.on_step_begin"):
             self._callbacks.on_step_begin(
                 iteration=self._iteration, trials=self._trials)
+
+        # This will contain the next trial to start
         next_trial = self._get_next_trial()  # blocking
-        if next_trial is not None:
+
+        # Create pending trials
+        num_pending_trials = len(
+            [t for t in self._trials if t.status == Trial.PENDING])
+        while num_pending_trials < self._max_pending_trials:
+            if not self._update_trial_queue(blocking=False):
+                break
+            num_pending_trials += 1
+
+        # Update status of staged placement groups
+        self.trial_executor.stage_and_update_status(self._trials)
+
+        def _start_trial(trial: Trial) -> bool:
+            """Helper function to start trial and call callbacks"""
             with warn_if_slow("start_trial"):
-                self.trial_executor.start_trial(next_trial)
-                self._callbacks.on_trial_start(
-                    iteration=self._iteration,
-                    trials=self._trials,
-                    trial=next_trial)
-        elif self.trial_executor.get_running_trials():
-            self._process_events()  # blocking
-        else:
-            self.trial_executor.on_no_available_trials(self)
+                if self.trial_executor.start_trial(trial):
+                    self._callbacks.on_trial_start(
+                        iteration=self._iteration,
+                        trials=self._trials,
+                        trial=trial)
+                    return True
+                return False
+
+        may_handle_events = True
+        if next_trial is not None:
+            if _start_trial(next_trial):
+                may_handle_events = False
+            else:
+                next_trial = self.trial_executor.get_staged_trial()
+                if next_trial is not None:
+                    if _start_trial(next_trial):
+                        may_handle_events = False
+
+        if may_handle_events:
+            if self.trial_executor.get_running_trials():
+                timeout = None
+                if self.trial_executor.in_staging_grace_period():
+                    timeout = 0.1
+                self._process_events(timeout=timeout)  # blocking
+            else:
+                self.trial_executor.on_no_available_trials(self)
 
         self._stop_experiment_if_needed()
 
@@ -410,6 +451,9 @@ class TrialRunner:
         Args:
             trial (Trial): Trial to queue.
         """
+        if trial.uses_placement_groups:
+            self._max_pending_trials = TUNE_MAX_PENDING_TRIALS_PG
+
         self._trials.append(trial)
         with warn_if_slow("scheduler.on_trial_add"):
             self._scheduler_alg.on_trial_add(self, trial)
@@ -462,7 +506,7 @@ class TrialRunner:
                 logger.debug("Running trial {}".format(trial))
         return trial
 
-    def _process_events(self):
+    def _process_events(self, timeout: Optional[float] = None):
         with warn_if_slow("get_next_failed_trial"):
             failed_trial = self.trial_executor.get_next_failed_trial()
         if failed_trial:
@@ -475,8 +519,10 @@ class TrialRunner:
         else:
             # TODO(ujvl): Consider combining get_next_available_trial and
             #  fetch_result functionality so that we don't timeout on fetch.
-            trial = self.trial_executor.get_next_available_trial()  # blocking
-
+            trial = self.trial_executor.get_next_available_trial(
+                timeout=timeout)  # blocking
+            if not trial:
+                return
             if trial.is_restoring:
                 with warn_if_slow("process_trial_restore"):
                     self._process_trial_restore(trial)
@@ -882,7 +928,8 @@ class TrialRunner:
         with warn_if_slow("scheduler.on_trial_add"):
             self._scheduler_alg.on_trial_add(self, trial)
 
-    def _update_trial_queue(self, blocking=False, timeout=600):
+    def _update_trial_queue(self, blocking: bool = False,
+                            timeout: int = 600) -> bool:
         """Adds next trials to queue if possible.
 
         Note that the timeout is currently unexposed to the user.
@@ -891,6 +938,9 @@ class TrialRunner:
             blocking (bool): Blocks until either a trial is available
                 or is_finished (timeout or search algorithm finishes).
             timeout (int): Seconds before blocking times out.
+
+        Returns:
+            Boolean indicating if a new trial was created or not.
         """
         trial = self._search_alg.next_trial()
         if blocking and not trial:
@@ -906,6 +956,9 @@ class TrialRunner:
 
         if trial:
             self.add_trial(trial)
+            return True
+
+        return False
 
     def request_stop_trial(self, trial):
         self._stop_queue.append(trial)
@@ -974,7 +1027,8 @@ class TrialRunner:
         state = self.__dict__.copy()
         for k in [
                 "_trials", "_stop_queue", "_server", "_search_alg",
-                "_scheduler_alg", "trial_executor", "_syncer", "_callbacks"
+                "_scheduler_alg", "_pending_trial_queue_times",
+                "trial_executor", "_syncer", "_callbacks"
         ]:
             del state[k]
         state["launch_web_server"] = bool(self._server)

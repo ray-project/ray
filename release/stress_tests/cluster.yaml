@@ -89,7 +89,7 @@ setup_commands:
     - pip install terminado
     - pip install boto3==1.4.8 cython==0.29.0
     # - cd ray/python; git checkout master; git pull; pip install -e . --verbose
-    - "pip install https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-1.2.0.dev0-cp38-cp38-manylinux2014_x86_64.whl"
+    - "pip install https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp38-cp38-manylinux2014_x86_64.whl"
 # Custom commands that will be run on the head node after common setup.
 head_setup_commands: []
 

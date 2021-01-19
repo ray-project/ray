@@ -1,4 +1,3 @@
-import asyncio
 import pytest
 from typing import Optional, Tuple
 from unittest.mock import patch, Mock
@@ -24,36 +23,13 @@ def generate_mock_backend_info(
 def mock_backend_state_inputs() -> Tuple[BackendState, Mock, Mock]:
     with patch(
             "ray.serve.kv_store.RayInternalKVStore") as mock_kv_store, patch(
-                "ray.serve.long_poll.LongPollHost") as mock_long_poll:
+                "ray.serve.long_poll.LongPollHost") as mock_long_poll, patch(
+                    "ray.serve.async_goal_manager.AsyncGoalManager"
+                ) as mock_goal_manager:
         mock_kv_store.get = Mock(return_value=None)
         backend_state = BackendState("name", True, mock_kv_store,
-                                     mock_long_poll)
-        yield backend_state, mock_kv_store, mock_long_poll
-
-
-@pytest.mark.asyncio
-async def test_wait_for_goals(mock_backend_state_inputs):
-    backend_state = mock_backend_state_inputs[0]
-
-    # Check empty goal
-    assert await backend_state.wait_for_goal(None)
-
-    goal_id = backend_state._create_goal()
-    waiting = asyncio.create_task(backend_state.wait_for_goal(goal_id))
-
-    assert not waiting.done(), "Unfinished task should not be done"
-    backend_state._complete_goal(goal_id)
-
-    assert await waiting
-
-    # Test double waiting is okay
-    assert await backend_state.wait_for_goal(goal_id)
-
-
-@pytest.mark.asyncio
-async def test_recreate_and_wait_for_goals():
-    pass
-    # Ensure that futures are recreated on startup
+                                     mock_long_poll, mock_goal_manager)
+        yield backend_state, mock_kv_store, mock_long_poll, mock_goal_manager
 
 
 def test_completed_goals_deleted_backend(mock_backend_state_inputs):
@@ -62,16 +38,16 @@ def test_completed_goals_deleted_backend(mock_backend_state_inputs):
     backend_state.backends[b1] = None
     backend_state.backend_replicas[b1] = {}
     result_uuid_b1 = uuid4()
-    backend_state.goals[b1] = result_uuid_b1
+    backend_state.backend_goals[b1] = result_uuid_b1
 
     assert backend_state._completed_goals() == [result_uuid_b1]
 
-    backend_state.goals = {}
+    backend_state.backend_goals = {}
 
     b2 = "backend_two"
     backend_state.backends[b2] = None
     result_uuid_b2 = uuid4()
-    backend_state.goals[b2] = result_uuid_b2
+    backend_state.backend_goals[b2] = result_uuid_b2
 
     assert backend_state._completed_goals() == [result_uuid_b2]
 
@@ -87,7 +63,7 @@ def test_completed_goals_delta_backend(mock_backend_state_inputs):
 
     backend_state.backends[b1] = generate_mock_backend_info(30)
     result_uuid = uuid4()
-    backend_state.goals[b1] = result_uuid
+    backend_state.backend_goals[b1] = result_uuid
     assert len(backend_state._completed_goals()) == 0
 
     backend_state.backend_replicas[b1] = {i: i for i in range(30)}
@@ -101,7 +77,7 @@ def test_completed_goals_created_backend(mock_backend_state_inputs):
     b1 = "backend_one"
     backend_state.backends[b1] = generate_mock_backend_info()
     result_uuid = uuid4()
-    backend_state.goals[b1] = result_uuid
+    backend_state.backend_goals[b1] = result_uuid
 
     assert len(backend_state._completed_goals()) == 0
 
