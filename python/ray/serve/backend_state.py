@@ -474,7 +474,7 @@ class BackendState:
             desired_num_replicas = self._target_replicas.get(backend_tag)
             state_dict = self._replicas.get(backend_tag, {})
             existing_info = state_dict.get(ReplicaState.RUNNING, [])
-            
+
             # If we have pending ops, the current goal is *not* ready
             if (state_dict.get(ReplicaState.SHOULD_START)
                     or state_dict.get(ReplicaState.STARTING)
