@@ -275,7 +275,6 @@ class TrialRunner:
         if now - self._last_checkpoint_time < self._checkpoint_period and (
                 not force):
             return
-        self._last_checkpoint_time = now
         runner_state = {
             "checkpoints": list(
                 self.trial_executor.get_checkpoints().values()),
@@ -298,6 +297,9 @@ class TrialRunner:
             self._syncer.sync_up()
         else:
             self._syncer.sync_up_if_needed()
+
+        # Only update checkpoint time after all operations finished
+        self._last_checkpoint_time = time.time()
         return self._local_checkpoint_dir
 
     def resume(self, run_errored_only=False):
