@@ -17,9 +17,9 @@ NAMESPACE = "test-k8s-operator-examples"
 
 
 def retry_until_true(f):
-    # Retry 30 times with 1 second delay between attempts.
+    # Retry 60 times with 1 second delay between attempts.
     def f_with_retries(*args, **kwargs):
-        for _ in range(30):
+        for _ in range(60):
             if f(*args, **kwargs):
                 return
             else:
@@ -147,4 +147,4 @@ class KubernetesOperatorTest(unittest.TestCase):
 
 if __name__ == "__main__":
     kubernetes.config.load_kube_config()
-    sys.exit(pytest.main(["-vs", __file__]))
+    sys.exit(pytest.main(["-v", __file__]))
