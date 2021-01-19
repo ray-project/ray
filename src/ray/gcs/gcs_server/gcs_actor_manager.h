@@ -190,9 +190,9 @@ class GcsActorManager : public rpc::ActorInfoHandler {
                              rpc::GetAllActorInfoReply *reply,
                              rpc::SendReplyCallback send_reply_callback) override;
 
-  void HandleDestroyActor(const rpc::DestroyActorRequest &request,
-                          rpc::DestroyActorReply *reply,
-                          rpc::SendReplyCallback send_reply_callback) override;
+  void HandleKillActorViaGcs(const rpc::KillActorViaGcsRequest &request,
+                             rpc::KillActorViaGcsReply *reply,
+                             rpc::SendReplyCallback send_reply_callback) override;
 
   /// Register actor asynchronously.
   ///
@@ -340,8 +340,17 @@ class GcsActorManager : public rpc::ActorInfoHandler {
 
   /// Kill the specified actor.
   ///
+  /// \param actor_id ID of the actor to kill.
+  /// \param force_kill Whether to force kill an actor by killing the worker.
+  void KillActor(const ActorID &actor_id, bool force_kill);
+
+  /// Notify CoreWorker to kill the specified actor.
+  ///
   /// \param actor The actor to be killed.
-  void KillActor(const std::shared_ptr<GcsActor> &actor);
+  /// \param force_kill Whether to force kill an actor by killing the worker.
+  /// \param no_restart If set to true, the killed actor will not be restarted anymore.
+  void NotifyCoreWorkerToKillActor(const std::shared_ptr<GcsActor> &actor,
+                                   bool force_kill = true, bool no_restart = true);
 
   /// Add the destroyed actor to the cache. If the cache is full, one actor is randomly
   /// evicted.
@@ -417,7 +426,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
     GET_ACTOR_INFO_REQUEST = 2,
     GET_NAMED_ACTOR_INFO_REQUEST = 3,
     GET_ALL_ACTOR_INFO_REQUEST = 4,
-    DESTROY_ACTOR_REQUEST = 5,
+    KILL_ACTOR_REQUEST = 5,
     CountType_MAX = 6,
   };
   uint64_t counts_[CountType::CountType_MAX] = {0};

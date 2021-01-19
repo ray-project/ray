@@ -1629,11 +1629,8 @@ Status CoreWorker::KillActor(const ActorID &actor_id, bool force_kill, bool no_r
     return Status::Invalid(stream.str());
   }
 
-  if (no_restart) {
-    RAY_CHECK_OK(gcs_client_->Actors().AsyncDestroyActor(actor_id, nullptr));
-  } else {
-    direct_actor_submitter_->KillActor(actor_id, force_kill, no_restart);
-  }
+  RAY_CHECK_OK(
+      gcs_client_->Actors().AsyncKillActor(actor_id, force_kill, no_restart, nullptr));
   return Status::OK();
 }
 

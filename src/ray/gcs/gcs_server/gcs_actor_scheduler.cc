@@ -132,8 +132,9 @@ void GcsActorScheduler::CancelOnLeasing(const NodeID &node_id, const ActorID &ac
   // NOTE: This method will cancel the outstanding lease request and remove leasing
   // information from the internal state.
   auto node_it = node_to_actors_when_leasing_.find(node_id);
-  RAY_CHECK(node_it != node_to_actors_when_leasing_.end());
-  node_it->second.erase(actor_id);
+  if (node_it != node_to_actors_when_leasing_.end()) {
+    node_it->second.erase(actor_id);
+  }
 
   const auto &alive_nodes = gcs_node_manager_.GetAllAliveNodes();
   const auto &iter = alive_nodes.find(node_id);
@@ -298,7 +299,11 @@ void GcsActorScheduler::HandleWorkerLeasedReply(
   if (worker_address.raylet_id().empty()) {
     // The worker did not succeed in the lease, but the specified node returned a new
     // node, and then try again on the new node.
-    RAY_CHECK(!retry_at_raylet_address.raylet_id().empty());
+    if (retry_at_raylet_address.raylet_id().empty()) {
+      RAY_LOG(INFO) << "HandleWorkerLeasedReply empty......";
+      return;
+    }
+
     auto spill_back_node_id = NodeID::FromBinary(retry_at_raylet_address.raylet_id());
     auto maybe_spill_back_node = gcs_node_manager_.GetAliveNode(spill_back_node_id);
     if (maybe_spill_back_node.has_value()) {
