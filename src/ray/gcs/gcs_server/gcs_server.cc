@@ -326,7 +326,7 @@ void GcsServer::InstallEventListeners() {
         auto worker_id = WorkerID::FromBinary(worker_address.worker_id());
         auto node_id = NodeID::FromBinary(worker_address.raylet_id());
         gcs_actor_manager_->OnWorkerDead(node_id, worker_id,
-                                         worker_failure_data->intentional_disconnect());
+                                         worker_failure_data->exit_type());
       });
 
   // Install job event listeners.
