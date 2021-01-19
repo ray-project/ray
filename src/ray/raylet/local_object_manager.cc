@@ -265,7 +265,7 @@ void LocalObjectManager::AddSpilledUrls(
     // releasing the object to make sure that the spilled object can
     // be retrieved by other raylets.
     RAY_CHECK_OK(object_info_accessor_.AsyncAddSpilledUrl(
-        object_id, object_url,
+        object_id, object_url, self_node_id_,
         [this, object_id, object_url, callback, num_remaining](Status status) {
           RAY_CHECK_OK(status);
           // Unpin the object.
@@ -298,14 +298,28 @@ void LocalObjectManager::AddSpilledUrls(
 }
 
 void LocalObjectManager::AsyncRestoreSpilledObject(
-    const ObjectID &object_id, const std::string &object_url,
+    const ObjectID &object_id, const NodeID &node_id,
     std::function<void(const ray::Status &)> callback) {
-  RAY_LOG(DEBUG) << "Restoring spilled object " << object_id << " from URL "
-                 << object_url;
   if (objects_pending_restore_.count(object_id) > 0) {
     // If the same object is restoring, we dedup here.
     return;
   }
+
+  if (!spilled_objects_url_.contains(object_id)) {
+    // If the object is not spilled locally, send a request to a remote node that spilled
+    // the object.
+    RAY_LOG(DEBUG) << "Send a object restoration request of id: " << object_id
+                   << " to a remote node: " << node_id;
+    restore_object_from_remote_node_(object_id, node_id);
+    return;
+  }
+
+  // Restore the object.
+  RAY_CHECK(node_id == self_node_id_);
+  const std::string &object_url = spilled_objects_url_[object_id];
+  RAY_LOG(DEBUG) << "Restoring spilled object " << object_id << " from URL "
+                 << object_url;
+
   io_worker_pool_.PopRestoreWorker([this, object_id, object_url, callback](
                                        std::shared_ptr<WorkerInterface> io_worker) {
     auto start_time = absl::GetCurrentTimeNanos();

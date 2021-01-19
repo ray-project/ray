@@ -336,6 +336,7 @@ class ServiceBasedObjectInfoAccessor : public ObjectInfoAccessor {
                           const StatusCallback &callback) override;
 
   Status AsyncAddSpilledUrl(const ObjectID &object_id, const std::string &spilled_url,
+                            const NodeID &node_id,
                             const StatusCallback &callback) override;
 
   Status AsyncRemoveLocation(const ObjectID &object_id, const NodeID &node_id,

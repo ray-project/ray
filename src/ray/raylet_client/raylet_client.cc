@@ -310,6 +310,14 @@ void raylet::RayletClient::RequestObjectSpillage(
   grpc_client_->RequestObjectSpillage(request, callback);
 }
 
+void raylet::RayletClient::RestoreSpilledObject(
+    const ObjectID &object_id,
+    const rpc::ClientCallback<rpc::RestoreSpilledObjectReply> &callback) {
+  rpc::RestoreSpilledObjectRequest request;
+  request.set_object_id(object_id.Binary());
+  grpc_client_->RestoreSpilledObject(request, callback);
+}
+
 Status raylet::RayletClient::ReturnWorker(int worker_port, const WorkerID &worker_id,
                                           bool disconnect_worker) {
   rpc::ReturnWorkerRequest request;

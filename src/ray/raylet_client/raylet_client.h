@@ -332,6 +332,11 @@ class RayletClient : public RayletClientInterface {
       const ObjectID &object_id,
       const rpc::ClientCallback<rpc::RequestObjectSpillageReply> &callback);
 
+  /// TODO-SANG Update the description.
+  void RestoreSpilledObject(
+      const ObjectID &object_id,
+      const rpc::ClientCallback<rpc::RestoreSpilledObjectReply> &callback);
+
   /// Implements WorkerLeaseInterface.
   void RequestWorkerLease(
       const ray::TaskSpecification &resource_spec,

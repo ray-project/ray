@@ -28,6 +28,7 @@
 #include "ray/common/task/scheduling_resources.h"
 #include "ray/object_manager/object_manager.h"
 #include "ray/raylet/agent_manager.h"
+#include "ray/raylet_client/raylet_client.h"
 #include "ray/raylet/local_object_manager.h"
 #include "ray/raylet/scheduling/scheduling_ids.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
@@ -601,6 +602,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
                                    rpc::RequestObjectSpillageReply *reply,
                                    rpc::SendReplyCallback send_reply_callback) override;
 
+  /// Handle a `RestoreSpilledObject` request.
+  void HandleRestoreSpilledObject(const rpc::RestoreSpilledObjectRequest &request,
+                                  rpc::RestoreSpilledObjectReply *reply,
+                                  rpc::SendReplyCallback send_reply_callback) override;
+
   /// Handle a `ReleaseUnusedBundles` request.
   void HandleReleaseUnusedBundles(const rpc::ReleaseUnusedBundlesRequest &request,
                                   rpc::ReleaseUnusedBundlesReply *reply,
@@ -630,6 +636,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   ///
   /// \param task Task that is infeasible
   void PublishInfeasibleTaskError(const Task &task) const;
+
+  // TODO-SANG
+  void SendSpilledObjectRestorationRequestToRemoteNode(const ObjectID &object_id,
+                                                       const NodeID &node_id);
 
   std::unordered_map<SchedulingClass, ordered_set<TaskID>> MakeTasksByClass(
       const std::vector<Task> &tasks) const;

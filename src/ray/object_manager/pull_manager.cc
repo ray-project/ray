@@ -65,7 +65,8 @@ std::vector<ObjectID> PullManager::CancelPull(uint64_t request_id) {
 
 void PullManager::OnLocationChange(const ObjectID &object_id,
                                    const std::unordered_set<NodeID> &client_ids,
-                                   const std::string &spilled_url) {
+                                   const std::string &spilled_url,
+                                   const NodeID &spilled_node_id) {
   // Exit if the Pull request has already been fulfilled or canceled.
   auto it = object_pull_requests_.find(object_id);
   if (it == object_pull_requests_.end()) {
@@ -77,6 +78,7 @@ void PullManager::OnLocationChange(const ObjectID &object_id,
   // before.
   it->second.client_locations = std::vector<NodeID>(client_ids.begin(), client_ids.end());
   it->second.spilled_url = spilled_url;
+  it->second.spilled_node_id = spilled_node_id;
   RAY_LOG(DEBUG) << "OnLocationChange " << spilled_url << " num clients "
                  << client_ids.size();
 
@@ -96,10 +98,21 @@ void PullManager::TryToMakeObjectLocal(const ObjectID &object_id) {
     return;
   }
 
+  // New object locations were found, so begin trying to pull from a
+  // client. This will be called every time a new client location
+  // appears.
+  bool did_pull = PullFromRandomLocation(object_id);
+  if (did_pull) {
+    UpdateRetryTimer(request);
+    return;
+  }
+
+  // If we cannot pull, try restoring objects from the external storage.
   if (!request.spilled_url.empty()) {
-    // Try to restore the spilled object.
+    RAY_CHECK(!request.spilled_node_id.IsNil());
+    // Try to restore the spilled object from a local or remote node.
     restore_spilled_object_(
-        object_id, request.spilled_url, [this, object_id](const ray::Status &status) {
+        object_id, request.spilled_node_id, [this, object_id](const ray::Status &status) {
           bool did_pull = true;
           // Fall back to fetching from another object manager.
           if (!status.ok()) {
@@ -112,14 +125,6 @@ void PullManager::TryToMakeObjectLocal(const ObjectID &object_id) {
           }
         });
     UpdateRetryTimer(request);
-  } else {
-    // New object locations were found, so begin trying to pull from a
-    // client. This will be called every time a new client location
-    // appears.
-    bool did_pull = PullFromRandomLocation(object_id);
-    if (did_pull) {
-      UpdateRetryTimer(request);
-    }
   }
 }
 

@@ -58,9 +58,11 @@ class PullManager {
   /// necessarily a super or subset of the previously available nodes.
   /// \param spilled_url The location of the object if it was spilled. If
   /// non-empty, the object may no longer be on any node.
+  /// \param spilled_node_id The node id of the object if it was spilled. If Nil, the
+  /// object may no longer be on any node.
   void OnLocationChange(const ObjectID &object_id,
                         const std::unordered_set<NodeID> &client_ids,
-                        const std::string &spilled_url);
+                        const std::string &spilled_url, const NodeID &spilled_node_id);
 
   /// Cancel an existing pull request.
   ///
@@ -87,6 +89,7 @@ class PullManager {
           bundle_request_ids() {}
     std::vector<NodeID> client_locations;
     std::string spilled_url;
+    NodeID spilled_node_id;
     double next_pull_time;
     uint8_t num_retries;
     absl::flat_hash_set<uint64_t> bundle_request_ids;

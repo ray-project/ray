@@ -240,7 +240,7 @@ class LocalObjectManagerTest : public ::testing::Test {
   LocalObjectManagerTest()
       : owner_client(std::make_shared<MockWorkerClient>()),
         client_pool([&](const rpc::Address &addr) { return owner_client; }),
-        manager(io_service_, free_objects_batch_size,
+        manager(NodeID::FromRandom(), free_objects_batch_size,
                 /*free_objects_period_ms=*/1000, worker_pool, object_table, client_pool,
                 /*object_pinning_enabled=*/true,
                 /*automatic_object_delete_enabled=*/true,
@@ -317,7 +317,7 @@ TEST_F(LocalObjectManagerTest, TestRestoreSpilledObject) {
   EXPECT_CALL(worker_pool, PushRestoreWorker(_));
   // Subsequent calls should be deduped, so that only one callback should be fired.
   for (int i = 0; i < 10; i++) {
-    manager.AsyncRestoreSpilledObject(object_id, object_url, [&](const Status &status) {
+    manager.AsyncRestoreSpilledObject(object_id, [&](const Status &status) {
       ASSERT_TRUE(status.ok());
       num_times_fired++;
     });
