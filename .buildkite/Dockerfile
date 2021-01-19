@@ -7,6 +7,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=America/Los_Angeles
 ENV BUILDKITE=true
 ENV CI=true
+ENV PYTHON=3.6
 
 RUN apt-get update -qq
 RUN apt-get install -y -qq \
@@ -25,4 +26,4 @@ WORKDIR /ray
 # Below should be re-run each time
 COPY . .
 RUN ./ci/travis/ci.sh init
-RUN ./ci/travis/ci.sh build
+RUN bash --login -i ./ci/travis/ci.sh build

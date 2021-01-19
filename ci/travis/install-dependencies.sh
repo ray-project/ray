@@ -216,8 +216,10 @@ install_upgrade_pip() {
 }
 
 install_node() {
-  if [ "${OSTYPE}" = msys ]; then
+  if [ "${OSTYPE}" = msys ] ; then
     { echo "WARNING: Skipping running Node.js due to incompatibilities with Windows"; } 2> /dev/null
+  elif [ -n "${BUILDKITE-}" ] ; then
+    { echo "WARNING: Skipping running Node.js on buildkite because it's already there"; } 2> /dev/null
   else
     # Install the latest version of Node.js in order to build the dashboard.
     (
