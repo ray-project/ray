@@ -11,7 +11,7 @@ ServerPickler dumps ray objects from the server into the appropriate stubs.
 ClientUnpickler loads stubs from the client and finds their associated handle
 in the server instance.
 """
-import cloudpickle
+import ray.cloudpickle as cloudpickle
 import io
 import sys
 import ray

@@ -21,7 +21,7 @@ ClientPickler dumps things from the client into the appropriate stubs
 ServerUnpickler loads stubs from the server into their client counterparts.
 """
 
-import cloudpickle
+import ray.cloudpickle as cloudpickle
 import io
 import sys
 
