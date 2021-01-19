@@ -199,8 +199,8 @@ def test_basic_custom_metrics(metric_mock):
     # -- Count --
     count = Count("count", tag_keys=("a", ))
     count._metric = metric_mock
-    count.record(1)
-    metric_mock.record.assert_called_with(1, tags={})
+    count.record(1, {"a": "1"})
+    metric_mock.record.assert_called_with(1, tags={"a": "1"})
 
     # -- Gauge --
     gauge = Gauge("gauge", description="gauge")
@@ -212,11 +212,6 @@ def test_basic_custom_metrics(metric_mock):
     histogram = Histogram(
         "hist", description="hist", boundaries=[1.0, 3.0], tag_keys=("a", "b"))
     histogram._metric = metric_mock
-    histogram.record(4)
-    metric_mock.record.assert_called_with(4, tags={})
-    tags = {"a": "3"}
-    histogram.record(10, tags=tags)
-    metric_mock.record.assert_called_with(10, tags=tags)
     tags = {"a": "10", "b": "b"}
     histogram.record(8, tags=tags)
     metric_mock.record.assert_called_with(8, tags=tags)
