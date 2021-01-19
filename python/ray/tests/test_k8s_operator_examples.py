@@ -17,12 +17,14 @@ NAMESPACE = "test-k8s-operator-examples"
 
 
 def retry_until_true(f):
+    # Retry 30 times with 1 second delay between attempts.
     def f_with_retries(*args, **kwargs):
-        while True:
+        for _ in range(30):
             if f(*args, **kwargs):
-                break
+                return
             else:
                 time.sleep(1)
+        pytest.fail("The condition wasn't met before the timeout expired.")
 
     return f_with_retries
 
@@ -39,16 +41,12 @@ def wait_for_pods(n):
 
 @retry_until_true
 def wait_for_logs():
-    """Check if logs indicate presence of 1 node of type "head" and 2 nodes of
-    type "worker"."""
+    """Check if logs indicate presence of nodes of types "head-node" and
+    "worker-nodes" in the "example-cluster" cluster."""
     cmd = f"kubectl -n {NAMESPACE} logs ray-operator-pod"\
         "| grep ^example-cluster: | tail -n 100"
     log_tail = subprocess.check_output(cmd, shell=True).decode()
-    # Normalize log to make this less sensitive to changes in logging output.
-    stripped_log_tail = "".join(
-        [ch.lower() for ch in log_tail if ch.isalnum()])
-    return ("headnode1" in stripped_log_tail) and (
-        "workernodes2" in stripped_log_tail)
+    return ("head-node" in log_tail) and ("worker-nodes" in log_tail)
 
 
 def operator_configs_directory():
@@ -60,10 +58,6 @@ def operator_configs_directory():
 
 def get_operator_config_path(file_name):
     return os.path.join(operator_configs_directory(), file_name)
-
-
-def fill_image_field(pod_config):
-    pod_config["spec"]["containers"][0]["image"] = IMAGE
 
 
 class KubernetesOperatorTest(unittest.TestCase):
@@ -91,12 +85,11 @@ class KubernetesOperatorTest(unittest.TestCase):
             # Fill image fields
             podTypes = example_cluster_config["spec"]["podTypes"]
             podTypes2 = example_cluster2_config["spec"]["podTypes"]
-
             pod_configs = ([operator_config[-1]] + [
                 podType["podConfig"] for podType in podTypes
             ] + [podType["podConfig"] for podType in podTypes2])
             for pod_config in pod_configs:
-                fill_image_field(pod_config)
+                pod_config["spec"]["containers"][0]["image"] = IMAGE
 
             # Dump to temporary files
             yaml.dump(example_cluster_config, example_cluster_file)
@@ -154,4 +147,4 @@ class KubernetesOperatorTest(unittest.TestCase):
 
 if __name__ == "__main__":
     kubernetes.config.load_kube_config()
-    sys.exit(pytest.main(["-v", __file__]))
+    sys.exit(pytest.main(["-vs", __file__]))
