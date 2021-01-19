@@ -48,18 +48,6 @@ bool RemoveWorker(
   return worker_pool.erase(worker) > 0;
 }
 
-// A helper function to fill job id for string.
-std::string FillJobId(std::string path_tmpl, const ray::JobID &job_id) {
-  // replace job_id
-  auto pos = path_tmpl.find(kWorkerCommandJobIdPlaceholder);
-  if (pos == std::string::npos) {
-    return path_tmpl;
-  } else {
-    path_tmpl.replace(pos, strlen(kWorkerCommandJobIdPlaceholder), job_id.Hex());
-    return path_tmpl;
-  }
-}
-
 }  // namespace
 
 namespace ray {
@@ -235,12 +223,6 @@ Process WorkerPool::StartWorkerProcess(
       switch (language) {
       case Language::JAVA:
         for (auto &entry : raylet_config_) {
-          if (entry.first == "job_python_path_template") {
-            continue;
-          }
-          if (entry.first == "job_dir_template") {
-            continue;
-          }
           std::string arg;
           arg.append("-Dray.raylet.config.");
           arg.append(entry.first);
@@ -283,12 +265,14 @@ Process WorkerPool::StartWorkerProcess(
                                   RayConfig::instance().object_spilling_config());
   }
 
-  if (language == Language::PYTHON) {
-    if (job_id.IsSubmittedFromDashboard()) {
-      std::string path_tmpl = RayConfig::instance().job_python_path_template();
-      std::string path = FillJobId(path_tmpl, job_id);
-      worker_command_args[0] = path;
+  std::string cwd;
+  if (job_config) {
+    if (language == Language::PYTHON && job_id.IsSubmittedFromDashboard()) {
+      // Use python worker executable from job config to make Python worker
+      // run in virtualenv.
+      worker_command_args[0] = job_config->python_worker_executable();
     }
+    cwd = job_config->worker_cwd();
   }
 
   ProcessEnvironment env;
@@ -304,12 +288,10 @@ Process WorkerPool::StartWorkerProcess(
   for (const auto &pair : override_environment_variables) {
     env[pair.first] = pair.second;
   }
-  const std::string job_dir = FillJobId(raylet_config_["job_dir_template"], job_id);
   env.emplace("RAY_JOB_ID", job_id.Hex());
-  env.emplace("RAY_JOB_DIR", job_dir);
   // Start a process and measure the startup time.
   auto start = std::chrono::high_resolution_clock::now();
-  Process proc = StartProcess(worker_command_args, env, job_dir);
+  Process proc = StartProcess(worker_command_args, env, cwd);
   auto end = std::chrono::high_resolution_clock::now();
   auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
   stats::ProcessStartupTimeMs.Record(duration.count());

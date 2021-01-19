@@ -371,8 +371,3 @@ RAY_CONFIG(bool, automatic_object_deletion_enabled, true)
 /// Whether to enable locality-aware leasing. If enabled, then Ray will consider task
 /// dependency locality when choosing a worker for leasing.
 RAY_CONFIG(bool, locality_aware_leasing_enabled, true)
-
-/// The string template of python executable path
-RAY_CONFIG(std::string, job_python_path_template, "")
-/// The string template of job dir
-RAY_CONFIG(std::string, job_dir_template, "")

@@ -42,7 +42,7 @@ TEST_PYTHON_JOB = {
         "java": [{
             "name": "spark",
             "version": "2.1",
-            "url": "http://xxx/yyy.jar",
+            "url": "<invalid url>",
             "md5": "<md5 hex>"
         }]
     }
@@ -178,7 +178,7 @@ def test_submit_job_with_invalid_url(disable_aiohttp_cache, enable_test_module,
             assert result["result"] is True, resp.text
             job_info = result["data"]["detail"]["jobInfo"]
             assert job_info["state"] == "FAILED", job_info["failErrorMessage"]
-            assert "ClientConnectorError" in job_info["failErrorMessage"]
+            assert "InvalidURL" in job_info["failErrorMessage"]
             return True
         except Exception as ex:
             logger.info(ex)

@@ -252,7 +252,7 @@ class JobProcessor:
 
     async def _start_driver(self, cmd, stdout, stderr, env):
         job_id = self._job_info.job_id()
-        job_dir = job_consts.DOWNLOAD_PACKAGE_UNZIP_DIR.format(
+        job_package_dir = job_consts.DOWNLOAD_PACKAGE_UNZIP_DIR.format(
             temp_dir=self._job_info.temp_dir(), job_id=job_id)
         proc = await asyncio.create_subprocess_shell(
             cmd,
@@ -262,9 +262,9 @@ class JobProcessor:
                 **os.environ,
                 **env,
                 "CMDLINE": cmd,
-                "RAY_JOB_DIR": job_dir,
+                "RAY_JOB_DIR": job_package_dir,
             },
-            cwd=job_dir,
+            cwd=job_package_dir,
         )
         proc.cmdline = cmd
         logger.info("[%s] Start driver cmd %s with pid %s", job_id, repr(cmd),
@@ -444,10 +444,10 @@ ray.shutdown()
         self._redis_address = redis_address
         self._redis_password = redis_password
 
-    def _gen_driver_code(self):
+    def _gen_driver_code(self, python_executable):
         temp_dir = self._job_info.temp_dir()
         job_id = self._job_info.job_id()
-        package_dir = job_consts.DOWNLOAD_PACKAGE_UNZIP_DIR.format(
+        job_package_dir = job_consts.DOWNLOAD_PACKAGE_UNZIP_DIR.format(
             temp_dir=temp_dir, job_id=job_id)
         driver_entry_file = job_consts.JOB_DRIVER_ENTRY_FILE.format(
             temp_dir=temp_dir, job_id=job_id, uuid=uuid.uuid4())
@@ -456,10 +456,12 @@ ray.shutdown()
         # Per job config
         job_config_items = {
             "worker_env": self._job_info.env(),
+            "worker_cwd": job_package_dir,
             "num_java_workers_per_process": self._job_info.
             num_java_workers_per_process(),
             "jvm_options": COMMON_JVM_OPTIONS + self._job_info.jvm_options(),
-            "code_search_path": [package_dir],
+            "code_search_path": [job_package_dir],
+            "python_worker_executable": python_executable,
         }
 
         # User may set the config in ray.conf, in this case,
@@ -483,7 +485,7 @@ ray.shutdown()
         driver_code = self._template.format(
             job_id=repr(hex_to_binary(job_id)),
             job_config_args=job_config_args,
-            import_path=repr(package_dir),
+            import_path=repr(job_package_dir),
             redis_address=repr(ip + ":" + str(port)),
             redis_password=repr(self._redis_password),
             driver_entry=self._job_info.driver_entry(),
@@ -499,12 +501,15 @@ ray.shutdown()
         virtualenv_path = job_consts.PYTHON_VIRTUAL_ENV_DIR.format(
             temp_dir=temp_dir, job_id=job_id)
         python = self._get_virtualenv_python(virtualenv_path)
-        driver_file = self._gen_driver_code()
+        driver_file = self._gen_driver_code(python)
         driver_cmd = f"{python} -u {driver_file}"
         stdout_file, stderr_file = self._new_log_files(log_dir,
                                                        f"driver-{job_id}")
+        job_package_dir = job_consts.DOWNLOAD_PACKAGE_UNZIP_DIR.format(
+            temp_dir=temp_dir, job_id=job_id)
+        env = dict(self._job_info.env(), RAY_JOB_DIR=job_package_dir)
         return await self._start_driver(driver_cmd, stdout_file, stderr_file,
-                                        self._job_info.env())
+                                        env)
 
 
 class PrepareJavaEnviron(JobProcessor):
@@ -515,9 +520,9 @@ class PrepareJavaEnviron(JobProcessor):
     async def run(self):
         temp_dir = self._job_info.temp_dir()
         job_id = self._job_info.job_id()
-        unzip_dir = job_consts.DOWNLOAD_PACKAGE_UNZIP_DIR.format(
+        job_package_dir = job_consts.DOWNLOAD_PACKAGE_UNZIP_DIR.format(
             temp_dir=temp_dir, job_id=job_id)
-        os.makedirs(unzip_dir, exist_ok=True)
+        os.makedirs(job_package_dir, exist_ok=True)
         java_shared_library_dir = job_consts.JAVA_SHARED_LIBRARY_DIR.format(
             temp_dir=temp_dir)
         os.makedirs(java_shared_library_dir, exist_ok=True)
@@ -530,7 +535,8 @@ class PrepareJavaEnviron(JobProcessor):
             cached_filename = os.path.join(java_shared_library_dir,
                                            basename_with_md5)
             # The full path of file in job unzip dir.
-            download_filename = os.path.join(unzip_dir, basename_from_url)
+            download_filename = os.path.join(job_package_dir,
+                                             basename_from_url)
             # Download jar and cache to shared dir.
             if not os.path.exists(cached_filename):
                 logger.info("[%s] Cache miss: %s", job_id, cached_filename)
@@ -569,6 +575,11 @@ class StartJavaDriver(JobProcessor):
         Returns:
             The command string for starting Java worker.
         """
+        temp_dir = self._job_info.temp_dir()
+        job_id = self._job_info.job_id()
+        job_package_dir = job_consts.DOWNLOAD_PACKAGE_UNZIP_DIR.format(
+            temp_dir=temp_dir, job_id=job_id)
+
         pairs = []
         ip, port = self._redis_address
         redis_address = ip + ":" + str(port)
@@ -589,8 +600,10 @@ class StartJavaDriver(JobProcessor):
         pairs.append(("ray.logging.dir", self._log_dir))
 
         # Per job config
-        for key, value in self._job_info.env().items():
+        env = dict(self._job_info.env(), RAY_JOB_DIR=job_package_dir)
+        for key, value in env.items():
             pairs.append(("ray.job.worker-env." + key, value))
+        pairs.append(("ray.job.worker-cwd", job_package_dir))
         if self._job_info.num_java_workers_per_process() is not None:
             pairs.append(("ray.job.num-java-workers-per-process",
                           self._job_info.num_java_workers_per_process()))
@@ -598,11 +611,7 @@ class StartJavaDriver(JobProcessor):
                                        self._job_info.jvm_options()):
             pairs.append(("ray.job.jvm-options." + str(i), jvm_option))
 
-        temp_dir = self._job_info.temp_dir()
-        job_id = self._job_info.job_id()
-        job_dir = job_consts.DOWNLOAD_PACKAGE_UNZIP_DIR.format(
-            temp_dir=temp_dir, job_id=job_id)
-        code_search_path = os.path.join(job_dir, "*")
+        code_search_path = os.path.join(job_package_dir, "*")
         pairs.append(("ray.job.code-search-path", code_search_path))
         command = ["java"] + COMMON_JVM_OPTIONS + [
             "-D{}={}".format(*pair) for pair in pairs

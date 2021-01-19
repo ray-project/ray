@@ -57,6 +57,7 @@ public class RayConfig {
 
   public final List<String> jvmOptionsForJavaWorker;
   public final Map<String, String> workerEnv;
+  public final String workerCwd;
 
   private void validate() {
     if (workerMode == WorkerType.WORKER) {
@@ -116,6 +117,11 @@ public class RayConfig {
     }
     workerEnv = workerEnvBuilder.build();
     updateSessionDir(null);
+
+    // Worker current working directory.
+    if (config.hasPath("ray.job.worker-cwd")) {
+      workerCwd = config.getString("ray.job.worker-cwd");
+    }
 
     // Object store socket name.
     if (config.hasPath("ray.object-store.socket-name")) {
