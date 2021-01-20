@@ -1095,4 +1095,5 @@ def test_actor_resource_demand(shutdown_only):
 
 if __name__ == "__main__":
     import pytest
+    # Test suite is timing out. Disable on windows for now.
     sys.exit(pytest.main(["-v", __file__]))

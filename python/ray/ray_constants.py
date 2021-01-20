@@ -19,7 +19,7 @@ def env_bool(key, default):
     return default
 
 
-ID_SIZE = 20
+ID_SIZE = 28
 
 # The default maximum number of bytes to allocate to the object store unless
 # overridden by the user.
@@ -160,6 +160,7 @@ LOGGING_ROTATE_BACKUP_COUNT = 50  # backupCount
 # Constants used to define the different process types.
 PROCESS_TYPE_REAPER = "reaper"
 PROCESS_TYPE_MONITOR = "monitor"
+PROCESS_TYPE_RAY_CLIENT_SERVER = "ray_client_server"
 PROCESS_TYPE_LOG_MONITOR = "log_monitor"
 # TODO(sang): Delete it.
 PROCESS_TYPE_REPORTER = "reporter"

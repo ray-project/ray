@@ -27,7 +27,9 @@ if __name__ == "__main__":
     configs = {
         "PPO": {
             "num_sgd_iter": 5,
-            "vf_share_layers": True,
+            "model": {
+                "vf_share_layers": True,
+            },
             "vf_loss_coeff": 0.0001,
         },
         "IMPALA": {
@@ -59,7 +61,7 @@ if __name__ == "__main__":
         "episode_reward_mean": args.stop_reward,
     }
 
-    results = tune.run(args.run, config=config, stop=stop, verbose=1)
+    results = tune.run(args.run, config=config, stop=stop, verbose=2)
 
     if args.as_test:
         check_learning_achieved(results, args.stop_reward)

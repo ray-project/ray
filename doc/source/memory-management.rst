@@ -18,7 +18,7 @@ Ray system memory: this is memory used internally by Ray
 
 Application memory: this is memory used by your application
   - **Worker heap**: memory used by your application (e.g., in Python code or TensorFlow), best measured as the *resident set size (RSS)* of your application minus its *shared memory usage (SHR)* in commands such as ``top``. The reason you need to subtract *SHR* is that object store shared memory is reported by the OS as shared with each worker. Not subtracting *SHR* will result in double counting memory usage.
-  - **Object store memory**: memory used when your application creates objects in the objects store via ``ray.put`` and when returning values from remote functions. Objects are reference counted and evicted when they fall out of scope. There is an object store server running on each node.
+  - **Object store memory**: memory used when your application creates objects in the object store via ``ray.put`` and when returning values from remote functions. Objects are reference counted and evicted when they fall out of scope. There is an object store server running on each node.
   - **Object store shared memory**: memory used when your application reads objects via ``ray.get``. Note that if an object is already present on the node, this does not cause additional allocations. This allows large objects to be efficiently shared among many actors and tasks.
 
 ObjectRef Reference Counting
@@ -214,6 +214,54 @@ To enable LRU eviction when the object store is full, initialize ray with the ``
 .. code-block:: bash
 
   ray start --lru-evict
+
+Object Spilling
+---------------
+
+Ray 1.2.0+ has *beta* support for spilling objects to external storage once the capacity
+of the object store is used up. Please file a `GitHub issue <https://github.com/ray-project/ray/issues/>`__
+if you encounter any problems with this new feature. Eventually, object spilling will be
+enabled by default, but for now you need to enable it manually:
+
+To enable object spilling to the local filesystem (single node clusters only):
+
+.. code-block:: python
+
+    ray.init(
+        _system_config={
+            "automatic_object_spilling_enabled": True,
+            "object_spilling_config": json.dumps(
+                {"type": "filesystem", "params": {"directory_path": "/tmp/spill"}},
+            )
+        },
+    )
+
+To enable object spilling to remote storage (any URI supported by `smart_open <https://pypi.org/project/smart-open/>`__):
+
+.. code-block:: python
+
+    ray.init(
+        _system_config={
+            "automatic_object_spilling_enabled": True,
+            "max_io_workers": 4,  # More IO workers for remote storage.
+            "min_spilling_size": 100 * 1024 * 1024,  # Spill at least 100MB at a time.
+            "object_spilling_config": json.dumps(
+                {"type": "smart_open", "params": {"uri": "s3:///bucket/path"}},
+            )
+        },
+    )
+
+When spilling is happening, the following INFO level messages will be printed to the raylet logs (e.g., ``/tmp/ray/session_latest/logs/raylet.out``)::
+
+  local_object_manager.cc:166: Spilled 50 MiB, 1 objects, write throughput 230 MiB/s
+  local_object_manager.cc:334: Restored 50 MiB, 1 objects, read throughput 505 MiB/s
+
+You can also view cluster-wide spill stats by using the ``ray memory`` command::
+
+  --- Aggregate object store stats across all nodes ---
+  Plasma memory usage 50 MiB, 1 objects, 50.0% full
+  Spilled 200 MiB, 4 objects, avg write throughput 570 MiB/s
+  Restored 150 MiB, 3 objects, avg read throughput 1361 MiB/s
 
 Memory Aware Scheduling
 ~~~~~~~~~~~~~~~~~~~~~~~

@@ -2,9 +2,12 @@ import gc
 
 import numpy as np
 import requests
+import pytest
 
 import ray
+from ray.exceptions import GetTimeoutError
 from ray import serve
+from ray.test_utils import SignalActor
 
 
 def test_np_in_composed_model(serve_instance):
@@ -15,7 +18,7 @@ def test_np_in_composed_model(serve_instance):
     # in cloudpickle _from_numpy_buffer
 
     def sum_model(request):
-        return np.sum(request.args["data"])
+        return np.sum(request.query_params["data"])
 
     class ComposedModel:
         def __init__(self):
@@ -42,7 +45,7 @@ def test_backend_worker_memory_growth(serve_instance):
     # https://github.com/ray-project/ray/issues/12395
     client = serve_instance
 
-    def gc_unreachable_objects(flask_request):
+    def gc_unreachable_objects(starlette_request):
         gc.set_debug(gc.DEBUG_SAVEALL)
         gc.collect()
         return len(gc.garbage)
@@ -63,7 +66,33 @@ def test_backend_worker_memory_growth(serve_instance):
         assert num_unreachable_objects == 0
 
 
+def test_ref_in_handle_input(serve_instance):
+    client = serve_instance
+    # https://github.com/ray-project/ray/issues/12593
+
+    unblock_worker_signal = SignalActor.remote()
+
+    async def blocked_by_ref(serve_request):
+        data = await serve_request.body()
+        assert not isinstance(data, ray.ObjectRef)
+
+    client.create_backend("ref", blocked_by_ref)
+    client.create_endpoint("ref", backend="ref")
+    handle = client.get_handle("ref")
+
+    # Pass in a ref that's not ready yet
+    ref = unblock_worker_signal.wait.remote()
+    worker_result = handle.remote(ref)
+
+    # Worker shouldn't execute the request
+    with pytest.raises(GetTimeoutError):
+        ray.get(worker_result, timeout=1)
+
+    # Now unblock the worker
+    unblock_worker_signal.send.remote()
+    ray.get(worker_result)
+
+
 if __name__ == "__main__":
     import sys
-    import pytest
     sys.exit(pytest.main(["-v", "-s", __file__]))

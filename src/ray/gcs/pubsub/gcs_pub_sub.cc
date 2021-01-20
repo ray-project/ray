@@ -53,6 +53,7 @@ Status GcsPubSub::Unsubscribe(const std::string &channel_name, const std::string
   auto channel = channels_.find(pattern);
   RAY_CHECK(channel != channels_.end());
   channel->second.command_queue.push_back(Command());
+  total_commands_queued_++;
 
   // Process the first command on the queue, if possible.
   return ExecuteCommandIfPossible(channel->first, channel->second);
@@ -74,6 +75,7 @@ Status GcsPubSub::SubscribeInternal(const std::string &channel_name,
 
   // Add the SUBSCRIBE command to the queue.
   channel->second.command_queue.push_back(Command(subscribe, done, is_sub_or_unsub_all));
+  total_commands_queued_++;
 
   // Process the first command on the queue, if possible.
   return ExecuteCommandIfPossible(channel->first, channel->second);
@@ -152,6 +154,7 @@ Status GcsPubSub::ExecuteCommandIfPossible(const std::string &channel_key,
     }
     channel.pending_reply = true;
     channel.command_queue.pop_front();
+    total_commands_queued_--;
   } else if (!command.is_subscribe && channel.callback_index != -1) {
     // The next command is UNSUBSCRIBE and we are currently subscribed, so we
     // can execute the command. The reply for will be received through the
@@ -163,6 +166,7 @@ Status GcsPubSub::ExecuteCommandIfPossible(const std::string &channel_key,
     }
     channel.pending_reply = true;
     channel.command_queue.pop_front();
+    total_commands_queued_--;
   } else if (!channel.pending_reply) {
     // There is no in-flight command, but the next command to execute is not
     // runnable. The caller must have sent a command out-of-order.
@@ -191,6 +195,15 @@ bool GcsPubSub::IsUnsubscribed(const std::string &channel, const std::string &id
 
   absl::MutexLock lock(&mutex_);
   return !channels_.contains(pattern);
+}
+
+std::string GcsPubSub::DebugString() const {
+  absl::MutexLock lock(&mutex_);
+  std::ostringstream stream;
+  stream << "GcsPubSub:";
+  stream << "\n- num channels subscribed to: " << channels_.size();
+  stream << "\n- total commands queued: " << total_commands_queued_;
+  return stream.str();
 }
 
 }  // namespace gcs

@@ -47,9 +47,6 @@ RAY_CONFIG(uint64_t, num_heartbeats_warning, 5)
 
 /// The duration between reporting resources sent by the raylets.
 RAY_CONFIG(int64_t, raylet_report_resources_period_milliseconds, 100)
-/// Whether to report resource usage lightly. When it is enalbed, only changed part,
-/// like should_global_gc or changed resources, will be included in the message.
-RAY_CONFIG(bool, light_report_resource_usage_enabled, true)
 
 /// The duration between dumping debug info to logs, or -1 to disable.
 RAY_CONFIG(int64_t, debug_dump_period_milliseconds, 10000)
@@ -113,7 +110,7 @@ RAY_CONFIG(bool, lineage_pinning_enabled, false)
 /// only to work with direct calls. Once direct calls are becoming
 /// the default, this scheduler will also become the default.
 RAY_CONFIG(bool, new_scheduler_enabled,
-           getenv("RAY_ENABLE_NEW_SCHEDULER") != nullptr &&
+           getenv("RAY_ENABLE_NEW_SCHEDULER") == nullptr ||
                getenv("RAY_ENABLE_NEW_SCHEDULER") == std::string("1"))
 
 // The max allowed size in bytes of a return object from direct actor calls.
@@ -241,18 +238,17 @@ RAY_CONFIG(uint32_t, maximum_gcs_dead_node_cached_count, 1000)
 /// The interval at which the gcs server will print debug info.
 RAY_CONFIG(int64_t, gcs_dump_debug_log_interval_minutes, 1)
 
-/// Maximum number of times to retry putting an object when the plasma store is full.
-/// Can be set to -1 to enable unlimited retries.
-RAY_CONFIG(int32_t, object_store_full_max_retries, 5)
 /// Duration to sleep after failing to put an object in plasma because it is full.
-/// This will be exponentially increased for each retry.
-RAY_CONFIG(uint32_t, object_store_full_initial_delay_ms, 1000)
+RAY_CONFIG(uint32_t, object_store_full_delay_ms, 10)
 
 /// The amount of time to wait between logging plasma space usage debug messages.
 RAY_CONFIG(uint64_t, object_store_usage_log_interval_s, 10 * 60)
 
 /// The amount of time between automatic local Python GC triggers.
 RAY_CONFIG(uint64_t, local_gc_interval_s, 10 * 60)
+
+/// The min amount of time between local GCs (whether auto or mem pressure triggered).
+RAY_CONFIG(uint64_t, local_gc_min_interval_s, 10)
 
 /// Duration to wait between retries for failed tasks.
 RAY_CONFIG(uint32_t, task_retry_delay_ms, 5000)
@@ -266,8 +262,15 @@ RAY_CONFIG(int64_t, ping_gcs_rpc_server_interval_milliseconds, 1000)
 /// Maximum number of times to retry ping gcs rpc server when gcs server restarts.
 RAY_CONFIG(int32_t, ping_gcs_rpc_server_max_retries, 1)
 
+/// Minimum interval between reconnecting gcs rpc server when gcs server restarts.
+RAY_CONFIG(int32_t, minimum_gcs_reconnect_interval_milliseconds, 5000)
+
 /// Whether start the Plasma Store as a Raylet thread.
 RAY_CONFIG(bool, plasma_store_as_thread, false)
+
+/// Whether to release worker CPUs during plasma fetches.
+/// See https://github.com/ray-project/ray/issues/12912 for further discussion.
+RAY_CONFIG(bool, release_resources_during_plasma_fetch, false)
 
 /// The interval at which the gcs client will check if the address of gcs service has
 /// changed. When the address changed, we will resubscribe again.
@@ -279,7 +282,7 @@ RAY_CONFIG(int64_t, metrics_report_batch_size, 100)
 /// Whether or not we enable metrics collection.
 RAY_CONFIG(int64_t, enable_metrics_collection, true)
 
-/// Whether start the Plasma Store as a Raylet thread.
+/// Whether put small objects in the local memory store.
 RAY_CONFIG(bool, put_small_object_in_memory_store, false)
 
 /// Maximum number of tasks that can be in flight between an owner and a worker for which
@@ -354,3 +357,11 @@ RAY_CONFIG(int64_t, min_spilling_size, 100 * 1024 * 1024)
 /// When it is true, manual (force) spilling is not available.
 /// TODO(sang): Fix it.
 RAY_CONFIG(bool, automatic_object_deletion_enabled, true)
+
+/// Grace period until we throw the OOM error to the application in seconds.
+RAY_CONFIG(int64_t, oom_grace_period_s, 10)
+
+/* Configuration parameters for locality-aware scheduling. */
+/// Whether to enable locality-aware leasing. If enabled, then Ray will consider task
+/// dependency locality when choosing a worker for leasing.
+RAY_CONFIG(bool, locality_aware_leasing_enabled, true)

@@ -2,18 +2,17 @@ import json
 import pathlib
 import platform
 from pprint import pformat
+import sys
 import time
 from unittest.mock import MagicMock
 
-import requests
 import pytest
-from prometheus_client.parser import text_string_to_metric_families
 
 import ray
 from ray.ray_constants import PROMETHEUS_SERVICE_DISCOVERY_FILE
 from ray.metrics_agent import PrometheusServiceDiscoveryWriter
 from ray.util.metrics import Count, Histogram, Gauge
-from ray.test_utils import wait_for_condition, SignalActor
+from ray.test_utils import wait_for_condition, SignalActor, fetch_prometheus
 
 
 def test_prometheus_file_based_service_discovery(ray_start_cluster):
@@ -110,33 +109,11 @@ def _setup_cluster_for_test(ray_start_cluster):
     cluster.shutdown()
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_metrics_export_end_to_end(_setup_cluster_for_test):
     TEST_TIMEOUT_S = 20
 
     prom_addresses = _setup_cluster_for_test
-
-    # Make sure we can ping Prometheus endpoints.
-    def fetch_prometheus(prom_addresses):
-        components_dict = {}
-        metric_names = set()
-        metric_samples = []
-        for address in prom_addresses:
-            if address not in components_dict:
-                components_dict[address] = set()
-            try:
-                response = requests.get(f"http://{address}/metrics")
-            except requests.exceptions.ConnectionError:
-                continue
-
-            for line in response.text.split("\n"):
-                for family in text_string_to_metric_families(line):
-                    for sample in family.samples:
-                        metric_names.add(sample.name)
-                        metric_samples.append(sample)
-                        if "Component" in sample.labels:
-                            components_dict[address].add(
-                                sample.labels["Component"])
-        return components_dict, metric_names, metric_samples
 
     def test_cases():
         components_dict, metric_names, metric_samples = fetch_prometheus(
@@ -157,6 +134,9 @@ def test_metrics_export_end_to_end(_setup_cluster_for_test):
         # Make sure our user defined metrics exist
         for metric_name in ["test_counter", "test_histogram"]:
             assert any(metric_name in full_name for full_name in metric_names)
+
+        # Make sure GCS server metrics are recorded.
+        assert "ray_outbound_heartbeat_size_kb_sum" in metric_names
 
         # Make sure the numeric value is correct
         test_counter_sample = [
@@ -219,8 +199,8 @@ def test_basic_custom_metrics(metric_mock):
     # -- Count --
     count = Count("count", tag_keys=("a", ))
     count._metric = metric_mock
-    count.record(1)
-    metric_mock.record.assert_called_with(1, tags={})
+    count.record(1, {"a": "1"})
+    metric_mock.record.assert_called_with(1, tags={"a": "1"})
 
     # -- Gauge --
     gauge = Gauge("gauge", description="gauge")
@@ -232,11 +212,6 @@ def test_basic_custom_metrics(metric_mock):
     histogram = Histogram(
         "hist", description="hist", boundaries=[1.0, 3.0], tag_keys=("a", "b"))
     histogram._metric = metric_mock
-    histogram.record(4)
-    metric_mock.record.assert_called_with(4, tags={})
-    tags = {"a": "3"}
-    histogram.record(10, tags=tags)
-    metric_mock.record.assert_called_with(10, tags=tags)
     tags = {"a": "10", "b": "b"}
     histogram.record(8, tags=tags)
     metric_mock.record.assert_called_with(8, tags=tags)
@@ -263,10 +238,6 @@ def test_custom_metrics_default_tags(metric_mock):
         })
     histogram._metric = metric_mock
 
-    # Check default tags.
-    histogram.record(4)
-    metric_mock.record.assert_called_with(4, tags={"b": "b"})
-
     # Check specifying non-default tags.
     histogram.record(10, tags={"a": "a"})
     metric_mock.record.assert_called_with(10, tags={"a": "a", "b": "b"})
@@ -290,7 +261,7 @@ def test_custom_metrics_edge_cases(metric_mock):
         Count("")
 
     # The tag keys must be a tuple type.
-    with pytest.raises(ValueError):
+    with pytest.raises(TypeError):
         Count("name", tag_keys=("a"))
 
 
@@ -321,6 +292,45 @@ def test_metrics_override_shouldnt_warn(ray_start_regular, log_pubsub):
             assert "Attempt to register measure" not in line
 
 
+def test_custom_metrics_validation(ray_start_regular_shared):
+    # Missing tag(s) from tag_keys.
+    metric = Count("name", tag_keys=("a", "b"))
+    metric.set_default_tags({"a": "1"})
+
+    metric.record(1.0, {"b": "2"})
+    metric.record(1.0, {"a": "1", "b": "2"})
+
+    with pytest.raises(ValueError):
+        metric.record(1.0)
+
+    with pytest.raises(ValueError):
+        metric.record(1.0, {"a": "2"})
+
+    # Extra tag not in tag_keys.
+    metric = Count("name", tag_keys=("a", ))
+    with pytest.raises(ValueError):
+        metric.record(1.0, {"a": "1", "b": "2"})
+
+    # tag_keys must be tuple.
+    with pytest.raises(TypeError):
+        Count("name", tag_keys="a")
+    # tag_keys must be strs.
+    with pytest.raises(TypeError):
+        Count("name", tag_keys=(1, ))
+
+    metric = Count("name", tag_keys=("a", ))
+    # Set default tag that isn't in tag_keys.
+    with pytest.raises(ValueError):
+        metric.set_default_tags({"a": "1", "c": "2"})
+    # Default tag value must be str.
+    with pytest.raises(TypeError):
+        metric.set_default_tags({"a": 1})
+    # Tag value must be str.
+    with pytest.raises(TypeError):
+        metric.record(1.0, {"a": 1})
+
+
 if __name__ == "__main__":
     import sys
+    # Test suite is timing out. Disable on windows for now.
     sys.exit(pytest.main(["-v", __file__]))

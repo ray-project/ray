@@ -38,6 +38,7 @@ GlobalStateAccessor::GlobalStateAccessor(const std::string &redis_address,
 
   std::promise<bool> promise;
   thread_io_service_.reset(new std::thread([this, &promise] {
+    SetThreadName("global.accessor");
     std::unique_ptr<boost::asio::io_service::work> work(
         new boost::asio::io_service::work(*io_service_));
     promise.set_value(true);
@@ -178,7 +179,7 @@ std::string GlobalStateAccessor::GetInternalConfig() {
 std::unique_ptr<std::string> GlobalStateAccessor::GetAllResourceUsage() {
   std::unique_ptr<std::string> resource_batch_data;
   std::promise<bool> promise;
-  RAY_CHECK_OK(gcs_client_->Nodes().AsyncGetAllResourceUsage(
+  RAY_CHECK_OK(gcs_client_->NodeResources().AsyncGetAllResourceUsage(
       TransformForItemCallback<rpc::ResourceUsageBatchData>(resource_batch_data,
                                                             promise)));
   promise.get_future().get();
@@ -225,7 +226,7 @@ std::vector<std::string> GlobalStateAccessor::GetAllWorkerInfo() {
 }
 
 bool GlobalStateAccessor::AddWorkerInfo(const std::string &serialized_string) {
-  auto data_ptr = std::make_shared<WorkerTableData>();
+  auto data_ptr = std::make_shared<rpc::WorkerTableData>();
   data_ptr->ParseFromString(serialized_string);
   std::promise<bool> promise;
   RAY_CHECK_OK(

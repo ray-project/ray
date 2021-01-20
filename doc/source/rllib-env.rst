@@ -5,7 +5,7 @@ RLlib works with several different types of environments, including `OpenAI Gym 
 
 .. tip::
 
-    Not all environments work with all algorithms. Check out the algorithm `feature compatibility matrix <rllib-algorithms.html#feature-compatibility-matrix>`__ for more information.
+    Not all environments work with all algorithms. Check out the `algorithm overview <rllib-algorithms.html#available-algorithms-overview>`__ for more information.
 
 .. image:: rllib-envs.svg
 

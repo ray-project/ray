@@ -335,6 +335,14 @@ class SquashedGaussian(TFActionDistribution):
             axis=-1)
         return log_prob
 
+    @override(ActionDistribution)
+    def entropy(self) -> TensorType:
+        raise ValueError("Entropy not defined for SquashedGaussian!")
+
+    @override(ActionDistribution)
+    def kl(self, other: ActionDistribution) -> TensorType:
+        raise ValueError("KL not defined for SquashedGaussian!")
+
     def _squash(self, raw_values: TensorType) -> TensorType:
         # Returned values are within [low, high] (including `low` and `high`).
         squashed = ((tf.math.tanh(raw_values) + 1.0) / 2.0) * \

@@ -87,14 +87,14 @@ class TestDistributions(unittest.TestCase):
         batch_size = 10000
         num_categories = 4
         # Create categorical distribution with n categories.
-        inputs_space = Box(-1.0, 2.0, shape=(batch_size, num_categories))
+        inputs_space = Box(
+            -1.0, 2.0, shape=(batch_size, num_categories), dtype=np.float32)
         values_space = Box(
             0, num_categories - 1, shape=(batch_size, ), dtype=np.int32)
 
         inputs = inputs_space.sample()
 
-        for fw, sess in framework_iterator(
-                session=True, frameworks=("jax", "tf", "tf2", "torch")):
+        for fw, sess in framework_iterator(session=True):
             # Create the correct distribution object.
             cls = JAXCategorical if fw == "jax" else Categorical if \
                 fw != "torch" else TorchCategorical
@@ -217,8 +217,7 @@ class TestDistributions(unittest.TestCase):
         input_space = Box(-2.0, 2.0, shape=(2000, 10))
         low, high = -2.0, 1.0
 
-        for fw, sess in framework_iterator(
-                frameworks=("torch", "tf", "tfe"), session=True):
+        for fw, sess in framework_iterator(session=True):
             cls = SquashedGaussian if fw != "torch" else TorchSquashedGaussian
 
             # Do a stability test using extreme NN outputs to see whether
@@ -309,8 +308,7 @@ class TestDistributions(unittest.TestCase):
         """Tests the DiagGaussian ActionDistribution for all frameworks."""
         input_space = Box(-2.0, 1.0, shape=(2000, 10))
 
-        for fw, sess in framework_iterator(
-                frameworks=("torch", "tf", "tfe"), session=True):
+        for fw, sess in framework_iterator(session=True):
             cls = DiagGaussian if fw != "torch" else TorchDiagGaussian
 
             # Do a stability test using extreme NN outputs to see whether

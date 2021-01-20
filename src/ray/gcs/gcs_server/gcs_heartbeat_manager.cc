@@ -28,6 +28,7 @@ GcsHeartbeatManager::GcsHeartbeatManager(
       num_heartbeats_timeout_(RayConfig::instance().num_heartbeats_timeout()),
       detect_timer_(io_service) {
   io_service_thread_.reset(new std::thread([this] {
+    SetThreadName("heartbeat");
     /// The asio work to keep io_service_ alive.
     boost::asio::io_service::work io_service_work_(io_service_);
     io_service_.run();
