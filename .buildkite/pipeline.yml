@@ -34,7 +34,7 @@
 - label: "Core Python (Medium K-Z)"
   commands:
   - bazel test --config=ci $(./scripts/bazel_export_options)
-      --test_tag_filters=-kubernetes,-jenkins_only,medium_size_python_tests_k_to_z,-python/ray/tests:test_multi_node
+      --test_tag_filters=-kubernetes,-jenkins_only,medium_size_python_tests_k_to_z
       python/ray/tests/...
 - label: "Core Python (Client)"
   commands:
@@ -42,7 +42,3 @@
       --test_tag_filters=-kubernetes,-jenkins_only,client_tests
       --test_env=RAY_CLIENT_MODE=1
       python/ray/tests/...
-- label: "Core Flaky"
-  commands:
-  - bazel test --config=ci $(./scripts/bazel_export_options)
-      python/ray/tests:test_multi_node

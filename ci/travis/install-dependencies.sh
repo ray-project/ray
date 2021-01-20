@@ -35,7 +35,7 @@ install_bazel() {
 }
 
 install_base() {
-  if [ -n "${BUILDKITE}" ]; then
+  if [ -n "${BUILDKITE-}" ]; then
     echo "Skipping install_base in Buildkite"
     return
   fi

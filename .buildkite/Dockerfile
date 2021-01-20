@@ -19,9 +19,11 @@ RUN apt-get install -y -qq \
     language-pack-en tmux cmake \
     libgtk2.0-dev zlib1g-dev libgl1-mesa-dev
 
+# System conf for tests
 RUN locale -a
 ENV LC_ALL=en_US.utf8
 ENV LANG=en_US.utf8
+RUN echo "ulimit -c 0" >> /root/.bashrc
 
 # Setup Bazel caches
 RUN (echo "build --remote_cache=${REMOTE_CACHE_URL}" >> /root/.bazelrc); \
