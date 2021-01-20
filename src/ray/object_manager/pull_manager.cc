@@ -128,7 +128,7 @@ void PullManager::TryToMakeObjectLocal(const ObjectID &object_id) {
     // Q: Maybe we shouldn't update the timer and rate limit the restore requests within a
     // restore_spilled_object_ callback? Otherwise it can hurt the performance as spilling
     // wouldn't be done quickly, and the retry timer will keep increasing retry interval.
-    UpdateRetryTimer(request);
+    // UpdateRetryTimer(request);
   }
 }
 
