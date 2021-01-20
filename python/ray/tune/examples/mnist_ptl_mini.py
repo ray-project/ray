@@ -1,7 +1,7 @@
 import torch
 from torch.nn import functional as F
 import pytorch_lightning as pl
-from pl_bolts.datamodules import MNISTDataModule
+from pl_bolts.datamodules.mnist_datamodule import MNISTDataModule
 import os
 from ray.tune.integration.pytorch_lightning import TuneReportCallback
 
