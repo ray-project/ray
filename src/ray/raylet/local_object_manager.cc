@@ -308,7 +308,7 @@ void LocalObjectManager::AsyncRestoreSpilledObject(
   if (!spilled_objects_url_.contains(object_id)) {
     // If the object is not spilled locally, send a request to a remote node that spilled
     // the object.
-    RAY_LOG(ERROR) << "Send a object restoration request of id: " << object_id
+    RAY_LOG(DEBUG) << "Send a object restoration request of id: " << object_id
                    << " to a remote node: " << node_id;
     restore_object_from_remote_node_(object_id, node_id);
     return;
@@ -335,7 +335,7 @@ void LocalObjectManager::AsyncRestoreSpilledObject(
           io_worker_pool_.PushRestoreWorker(io_worker);
           objects_pending_restore_.erase(object_id);
           if (!status.ok()) {
-            RAY_LOG(DEBUG) << "Failed to send restore spilled object request: "
+            RAY_LOG(ERROR) << "Failed to send restore spilled object request: "
                            << status.ToString();
           } else {
             auto now = absl::GetCurrentTimeNanos();
