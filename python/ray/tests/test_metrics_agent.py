@@ -81,6 +81,8 @@ def _setup_cluster_for_test(ray_start_cluster):
     def f():
         counter = Count("test_counter", description="desc")
         counter.record(1)
+        counter = ray.get(ray.put(counter))  # Test serialization.
+        counter.record(1)
         ray.get(worker_should_exit.wait.remote())
 
     @ray.remote
@@ -88,6 +90,7 @@ def _setup_cluster_for_test(ray_start_cluster):
         async def ping(self):
             histogram = Histogram(
                 "test_histogram", description="desc", boundaries=[0.1, 1.6])
+            histogram = ray.get(ray.put(histogram))  # Test serialization.
             histogram.record(1.5)
             ray.get(worker_should_exit.wait.remote())
 
@@ -142,7 +145,7 @@ def test_metrics_export_end_to_end(_setup_cluster_for_test):
         test_counter_sample = [
             m for m in metric_samples if "test_counter" in m.name
         ][0]
-        assert test_counter_sample.value == 1.0
+        assert test_counter_sample.value == 2.0
 
         # Make sure the numeric value is correct
         test_histogram_samples = [
@@ -178,7 +181,7 @@ def test_metrics_export_end_to_end(_setup_cluster_for_test):
         )
     except RuntimeError:
         print(
-            f"The compoenents are {pformat(fetch_prometheus(prom_addresses))}")
+            f"The components are {pformat(fetch_prometheus(prom_addresses))}")
         test_cases()  # Should fail assert
 
 
