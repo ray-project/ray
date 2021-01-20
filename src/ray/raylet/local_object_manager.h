@@ -252,7 +252,7 @@ class LocalObjectManager {
   /// Return true if unpinned, meaning we can safely spill the object. False otherwise.
   std::function<bool(const ray::ObjectID &)> is_plasma_object_spillable_;
 
-  /// TODO-SANG fill it up.
+  /// Callback to restore object of object id from a remote node of node id.
   std::function<void(const ObjectID &, const NodeID &)> restore_object_from_remote_node_;
 
   ///

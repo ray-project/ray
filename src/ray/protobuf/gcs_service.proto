@@ -272,7 +272,7 @@ message AddObjectLocationRequest {
   // The spilled URL that will be added to GCS Service. Either this or the node
   // ID should be set.
   string spilled_url = 3;
-  // TODO-SANG Fill it up.
+  // The node id that spills the object to the external storage. Only an owner of the object spills the object.
   bytes spilled_node_id = 4;
 }
 

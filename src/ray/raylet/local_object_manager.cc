@@ -308,14 +308,13 @@ void LocalObjectManager::AsyncRestoreSpilledObject(
   if (!spilled_objects_url_.contains(object_id)) {
     // If the object is not spilled locally, send a request to a remote node that spilled
     // the object.
-    RAY_LOG(DEBUG) << "Send a object restoration request of id: " << object_id
+    RAY_LOG(ERROR) << "Send a object restoration request of id: " << object_id
                    << " to a remote node: " << node_id;
     restore_object_from_remote_node_(object_id, node_id);
     return;
   }
 
   // Restore the object.
-  RAY_CHECK(node_id == self_node_id_);
   const std::string &object_url = spilled_objects_url_[object_id];
   RAY_LOG(DEBUG) << "Restoring spilled object " << object_id << " from URL "
                  << object_url;

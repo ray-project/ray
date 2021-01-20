@@ -84,12 +84,16 @@ class MockIOWorkerClient : public rpc::CoreWorkerClientInterface {
     restore_callbacks.push_back(callback);
   }
 
-  void ReplyRestoreObjects(int64_t bytes_restored, Status status = Status::OK()) {
+  bool ReplyRestoreObjects(int64_t bytes_restored, Status status = Status::OK()) {
     rpc::RestoreSpilledObjectsReply reply;
     reply.set_bytes_restored_total(bytes_restored);
+    if (restore_callbacks.size() == 0) {
+      return false;
+    };
     auto callback = restore_callbacks.front();
     callback(status, reply);
     restore_callbacks.pop_front();
+    return true;
   }
 
   void DeleteSpilledObjects(
@@ -178,6 +182,7 @@ class MockObjectInfoAccessor : public gcs::ObjectInfoAccessor {
                                         const gcs::StatusCallback &callback));
 
   Status AsyncAddSpilledUrl(const ObjectID &object_id, const std::string &spilled_url,
+                            const NodeID &spilled_node_id,
                             const gcs::StatusCallback &callback) {
     object_urls[object_id] = spilled_url;
     callbacks.push_back(callback);
@@ -240,7 +245,8 @@ class LocalObjectManagerTest : public ::testing::Test {
   LocalObjectManagerTest()
       : owner_client(std::make_shared<MockWorkerClient>()),
         client_pool([&](const rpc::Address &addr) { return owner_client; }),
-        manager(NodeID::FromRandom(), free_objects_batch_size,
+        manager_node_id_(NodeID::FromRandom()),
+        manager(manager_node_id_, free_objects_batch_size,
                 /*free_objects_period_ms=*/1000, worker_pool, object_table, client_pool,
                 /*object_pinning_enabled=*/true,
                 /*automatic_object_delete_enabled=*/true,
@@ -254,12 +260,23 @@ class LocalObjectManagerTest : public ::testing::Test {
                 /*is_plasma_object_spillable=*/
                 [&](const ray::ObjectID &object_id) {
                   return unevictable_objects_.count(object_id) == 0;
+                },
+                /*restore_object_from_remote_node=*/
+                [&](const ObjectID &object_id, const NodeID &node_id) {
+                  if (remote_node_set_restore_requested_.count(node_id) == 0) {
+                    remote_node_set_restore_requested_.emplace(
+                        node_id, std::unordered_set<ObjectID>());
+                  }
+                  remote_node_set_restore_requested_[node_id].emplace(object_id);
                 }),
         unpins(std::make_shared<std::unordered_map<ObjectID, int>>()) {
     RayConfig::instance().initialize({{"object_spilling_config", "mock_config"}});
   }
 
-  void TearDown() { unevictable_objects_.clear(); }
+  void TearDown() {
+    unevictable_objects_.clear();
+    remote_node_set_restore_requested_.clear();
+  }
 
   std::string BuildURL(const std::string url, int offset = 0, int num_objects = 1) {
     return url + "?" + "num_objects=" + std::to_string(num_objects) +
@@ -272,7 +289,10 @@ class LocalObjectManagerTest : public ::testing::Test {
   rpc::CoreWorkerClientPool client_pool;
   MockIOWorkerPool worker_pool;
   MockObjectInfoAccessor object_table;
+  NodeID manager_node_id_;
   LocalObjectManager manager;
+  std::unordered_map<NodeID, std::unordered_set<ObjectID>>
+      remote_node_set_restore_requested_;
 
   std::unordered_set<ObjectID> freed;
   // This hashmap is incremented when objects are unpinned by destroying their
@@ -311,19 +331,62 @@ TEST_F(LocalObjectManagerTest, TestPin) {
 }
 
 TEST_F(LocalObjectManagerTest, TestRestoreSpilledObject) {
-  ObjectID object_id = ObjectID::FromRandom();
-  std::string object_url("url");
+  // First, spill objects.
+  std::vector<ObjectID> object_ids;
+  std::vector<std::unique_ptr<RayObject>> objects;
+
+  for (size_t i = 0; i < free_objects_batch_size; i++) {
+    ObjectID object_id = ObjectID::FromRandom();
+    object_ids.push_back(object_id);
+    auto data_buffer = std::make_shared<MockObjectBuffer>(0, object_id, unpins);
+    std::unique_ptr<RayObject> object(
+        new RayObject(data_buffer, nullptr, std::vector<ObjectID>()));
+    objects.push_back(std::move(object));
+  }
+  manager.PinObjects(object_ids, std::move(objects));
+
+  manager.SpillObjects(object_ids,
+                       [&](const Status &status) mutable { ASSERT_TRUE(status.ok()); });
+  std::vector<std::string> urls;
+  for (size_t i = 0; i < object_ids.size(); i++) {
+    urls.push_back(BuildURL("url" + std::to_string(i)));
+  }
+  ASSERT_TRUE(worker_pool.io_worker_client->ReplySpillObjects(urls));
+  for (size_t i = 0; i < object_ids.size(); i++) {
+    ASSERT_TRUE(object_table.ReplyAsyncAddSpilledUrl());
+  }
+
+  // Then try restoring objects from local.
+  ObjectID object_id = object_ids[0];
   int num_times_fired = 0;
   EXPECT_CALL(worker_pool, PushRestoreWorker(_));
   // Subsequent calls should be deduped, so that only one callback should be fired.
   for (int i = 0; i < 10; i++) {
-    manager.AsyncRestoreSpilledObject(object_id, [&](const Status &status) {
-      ASSERT_TRUE(status.ok());
-      num_times_fired++;
-    });
+    manager.AsyncRestoreSpilledObject(object_id, manager_node_id_,
+                                      [&](const Status &status) {
+                                        ASSERT_TRUE(status.ok());
+                                        num_times_fired++;
+                                      });
   }
-  worker_pool.io_worker_client->ReplyRestoreObjects(10);
+  ASSERT_TRUE(worker_pool.io_worker_client->ReplyRestoreObjects(10));
   ASSERT_EQ(num_times_fired, 1);
+
+  // If the object wasn't spilled on the current node, it should request restoration to
+  // remote nodes.
+  ObjectID remote_object_id = ObjectID::FromRandom();
+  NodeID remote_node_id = NodeID::FromRandom();
+  manager.AsyncRestoreSpilledObject(remote_object_id, remote_node_id,
+                                    [&](const Status &status) {
+                                      ASSERT_TRUE(status.ok());
+                                      num_times_fired++;
+                                    });
+  // Make sure the callback wasn't called.
+  ASSERT_EQ(num_times_fired, 1);
+  // Make sure the remote call was invoked.
+  ASSERT_FALSE(worker_pool.io_worker_client->ReplyRestoreObjects(10));
+  ASSERT_TRUE(remote_node_set_restore_requested_.count(remote_node_id) > 0);
+  ASSERT_TRUE(remote_node_set_restore_requested_[remote_node_id].count(remote_object_id) >
+              0);
 }
 
 TEST_F(LocalObjectManagerTest, TestExplicitSpill) {

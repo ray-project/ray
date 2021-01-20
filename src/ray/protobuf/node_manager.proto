@@ -232,7 +232,7 @@ service NodeManagerService {
   // Ask the raylet to spill an object to external storage.
   rpc RequestObjectSpillage(RequestObjectSpillageRequest)
       returns (RequestObjectSpillageReply);
-  // TODO-SANG Fill it up.
+  // Ask the raylet to restore the object from the external storage.
   rpc RestoreSpilledObject(RestoreSpilledObjectRequest)
       returns (RestoreSpilledObjectReply);
   // This method is only used by GCS, and the purpose is to release bundles

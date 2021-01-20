@@ -109,21 +109,25 @@ void PullManager::TryToMakeObjectLocal(const ObjectID &object_id) {
 
   // If we cannot pull, try restoring objects from the external storage.
   if (!request.spilled_url.empty()) {
-    RAY_CHECK(!request.spilled_node_id.IsNil());
+    const auto spilled_node_id = request.spilled_node_id;
+    RAY_CHECK(!spilled_node_id.IsNil());
     // Try to restore the spilled object from a local or remote node.
     restore_spilled_object_(
-        object_id, request.spilled_node_id, [this, object_id](const ray::Status &status) {
-          bool did_pull = true;
-          // Fall back to fetching from another object manager.
+        object_id, spilled_node_id,
+        [object_id, spilled_node_id](const ray::Status &status) {
           if (!status.ok()) {
-            did_pull = PullFromRandomLocation(object_id);
-          }
-          if (!did_pull) {
-            RAY_LOG(WARNING) << "Object restoration failed and the object could not be "
-                                "found on any other nodes. Object id: "
-                             << object_id;
+            RAY_LOG(WARNING)
+                << "Object restoration request to a remote failed and the object could "
+                   "not be "
+                   "found on any other nodes. It could be because the remote node that "
+                   "spilled the object has crashed or the network request has failed. "
+                   "Please check the log of node of id: "
+                << spilled_node_id << " Object id: " << object_id;
           }
         });
+    // Q: Maybe we shouldn't update the timer and rate limit the restore requests within a
+    // restore_spilled_object_ callback? Otherwise it can hurt the performance as spilling
+    // wouldn't be done quickly, and the retry timer will keep increasing retry interval.
     UpdateRetryTimer(request);
   }
 }

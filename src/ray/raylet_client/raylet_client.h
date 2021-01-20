@@ -332,7 +332,8 @@ class RayletClient : public RayletClientInterface {
       const ObjectID &object_id,
       const rpc::ClientCallback<rpc::RequestObjectSpillageReply> &callback);
 
-  /// TODO-SANG Update the description.
+  /// Ask the raylet to restore the object of a given id.
+  /// \param object_id Object id that the remote raylet needs to restore.
   void RestoreSpilledObject(
       const ObjectID &object_id,
       const rpc::ClientCallback<rpc::RestoreSpilledObjectReply> &callback);

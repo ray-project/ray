@@ -193,7 +193,7 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   void OnPlacementGroupCreationSuccess(
       const std::shared_ptr<GcsPlacementGroup> &placement_group);
 
-  /// TODO-SANG Fill it up.
+  /// Remove the placement group of a given id.
   void RemovePlacementGroup(const PlacementGroupID &placement_group_id,
                             StatusCallback on_placement_group_removed);
 
