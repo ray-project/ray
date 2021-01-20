@@ -308,8 +308,10 @@ def build_eager_tf_policy(name,
         @override(Policy)
         def learn_on_batch(self, postprocessed_batch):
             # Callback handling.
+            learn_stats = {}
             self.callbacks.on_learn_on_batch(
-                policy=self, train_batch=postprocessed_batch)
+                policy=self, train_batch=postprocessed_batch,
+                result=learn_stats)
 
             pad_batch_to_sequences_of_same_size(
                 postprocessed_batch,
@@ -321,7 +323,9 @@ def build_eager_tf_policy(name,
 
             self._is_training = True
             postprocessed_batch["is_training"] = True
-            return self._learn_on_batch_eager(postprocessed_batch)
+            stats = self._learn_on_batch_eager(postprocessed_batch)
+            stats.update({"custom_metrics": learn_stats})
+            return stats
 
         @convert_eager_inputs
         @convert_eager_outputs

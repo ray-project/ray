@@ -59,6 +59,12 @@ class MyCallbacks(DefaultCallbacks):
         # you can mutate the result dict to add new fields to return
         result["callback_ok"] = True
 
+    def on_learn_on_batch(self, *, policy: Policy, train_batch: SampleBatch, result: dict, **kwargs) -> None:
+        print()
+        print("trainer.train() result: {} -> rewards: {}".format(
+            policy, train_batch["dones"]))
+        result["same_as_dones"] = train_batch["dones"]
+
     def on_postprocess_trajectory(
             self, *, worker: RolloutWorker, episode: MultiAgentEpisode,
             agent_id: str, policy_id: str, policies: Dict[str, Policy],
@@ -73,7 +79,7 @@ class MyCallbacks(DefaultCallbacks):
 if __name__ == "__main__":
     args = parser.parse_args()
 
-    ray.init()
+    ray.init(local_mode=True)#TODO
     trials = tune.run(
         "PG",
         stop={

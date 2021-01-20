@@ -6,6 +6,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.evaluation import MultiAgentEpisode
 from ray.rllib.utils.annotations import PublicAPI
 from ray.rllib.utils.deprecation import deprecation_warning
+from ray.rllib.utils.tf_run_builder import TFRunBuilder
 from ray.rllib.utils.typing import AgentID, PolicyID
 from ray.util.debug import log_once
 
@@ -188,7 +189,7 @@ class DefaultCallbacks:
             })
 
     def on_learn_on_batch(self, *, policy: Policy, train_batch: SampleBatch,
-                          **kwargs) -> None:
+                          result: dict, **kwargs) -> None:
         """Called at the beginning of Policy.learn_on_batch().
 
         Note: This is called before 0-padding via
@@ -198,6 +199,7 @@ class DefaultCallbacks:
             policy (Policy): Reference to the current Policy object.
             train_batch (SampleBatch): SampleBatch to be trained on. You can
                 mutate this object to modify the samples generated.
+            result (dict): A results dict to add custom metrics to.
             kwargs: Forward compatibility placeholder.
         """
 
