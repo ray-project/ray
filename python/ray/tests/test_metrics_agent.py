@@ -199,8 +199,8 @@ def test_basic_custom_metrics(metric_mock):
     # -- Count --
     count = Count("count", tag_keys=("a", ))
     count._metric = metric_mock
-    count.record(1)
-    metric_mock.record.assert_called_with(1, tags={})
+    count.record(1, {"a": "1"})
+    metric_mock.record.assert_called_with(1, tags={"a": "1"})
 
     # -- Gauge --
     gauge = Gauge("gauge", description="gauge")
@@ -212,11 +212,6 @@ def test_basic_custom_metrics(metric_mock):
     histogram = Histogram(
         "hist", description="hist", boundaries=[1.0, 3.0], tag_keys=("a", "b"))
     histogram._metric = metric_mock
-    histogram.record(4)
-    metric_mock.record.assert_called_with(4, tags={})
-    tags = {"a": "3"}
-    histogram.record(10, tags=tags)
-    metric_mock.record.assert_called_with(10, tags=tags)
     tags = {"a": "10", "b": "b"}
     histogram.record(8, tags=tags)
     metric_mock.record.assert_called_with(8, tags=tags)
@@ -242,10 +237,6 @@ def test_custom_metrics_default_tags(metric_mock):
             "b": "b"
         })
     histogram._metric = metric_mock
-
-    # Check default tags.
-    histogram.record(4)
-    metric_mock.record.assert_called_with(4, tags={"b": "b"})
 
     # Check specifying non-default tags.
     histogram.record(10, tags={"a": "a"})
@@ -301,17 +292,40 @@ def test_metrics_override_shouldnt_warn(ray_start_regular, log_pubsub):
             assert "Attempt to register measure" not in line
 
 
-def test_custom_metrics_tag_validation(ray_start_regular_shared):
+def test_custom_metrics_validation(ray_start_regular_shared):
+    # Missing tag(s) from tag_keys.
+    metric = Count("name", tag_keys=("a", "b"))
+    metric.set_default_tags({"a": "1"})
+
+    metric.record(1.0, {"b": "2"})
+    metric.record(1.0, {"a": "1", "b": "2"})
+
+    with pytest.raises(ValueError):
+        metric.record(1.0)
+
+    with pytest.raises(ValueError):
+        metric.record(1.0, {"a": "2"})
+
+    # Extra tag not in tag_keys.
+    metric = Count("name", tag_keys=("a", ))
+    with pytest.raises(ValueError):
+        metric.record(1.0, {"a": "1", "b": "2"})
+
+    # tag_keys must be tuple.
     with pytest.raises(TypeError):
         Count("name", tag_keys="a")
+    # tag_keys must be strs.
     with pytest.raises(TypeError):
         Count("name", tag_keys=(1, ))
 
     metric = Count("name", tag_keys=("a", ))
+    # Set default tag that isn't in tag_keys.
     with pytest.raises(ValueError):
         metric.set_default_tags({"a": "1", "c": "2"})
+    # Default tag value must be str.
     with pytest.raises(TypeError):
         metric.set_default_tags({"a": 1})
+    # Tag value must be str.
     with pytest.raises(TypeError):
         metric.record(1.0, {"a": 1})
 
