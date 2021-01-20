@@ -71,10 +71,12 @@ def train_ray(path,
 
     start = time.time()
     evals_result = {}
+    additional_results = {}
     bst = train(
         config,
         dtrain,
         evals_result=evals_result,
+        additional_results=additional_results,
         num_boost_round=num_boost_rounds,
         ray_params=ray_params or RayParams(
             max_actor_restarts=2,
@@ -89,4 +91,4 @@ def train_ray(path,
     bst.save_model("benchmark_{}.xgb".format("cpu" if not use_gpu else "gpu"))
     print("Final training error: {:.4f}".format(
         evals_result["train"]["error"][-1]))
-    return bst, taken
+    return bst, additional_results, taken
