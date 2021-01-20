@@ -141,6 +141,6 @@ def test_multi_node_metrics_export_port_discovery(ray_start_cluster):
 
 
 if __name__ == "__main__":
-    import sys
     import pytest
+    import sys
     sys.exit(pytest.main(["-v", __file__]))

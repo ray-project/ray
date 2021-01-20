@@ -128,12 +128,15 @@ bool ObjectManager::IsPlasmaObjectSpillable(const ObjectID &object_id) {
   return false;
 }
 
-void ObjectManager::RunRpcService() { rpc_service_.run(); }
+void ObjectManager::RunRpcService(int index) {
+  SetThreadName("rpc.obj.mgr." + std::to_string(index));
+  rpc_service_.run();
+}
 
 void ObjectManager::StartRpcService() {
   rpc_threads_.resize(config_.rpc_service_threads_number);
   for (int i = 0; i < config_.rpc_service_threads_number; i++) {
-    rpc_threads_[i] = std::thread(&ObjectManager::RunRpcService, this);
+    rpc_threads_[i] = std::thread(&ObjectManager::RunRpcService, this, i);
   }
   object_manager_server_.RegisterService(object_manager_service_);
   object_manager_server_.Run();

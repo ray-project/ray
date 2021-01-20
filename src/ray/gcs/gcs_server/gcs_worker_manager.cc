@@ -28,7 +28,7 @@ void GcsWorkerManager::HandleReportWorkerFailure(
   log_stream << "Reporting worker failure, worker id = " << worker_id
              << ", node id = " << node_id
              << ", address = " << worker_address.ip_address();
-  if (request.worker_failure().intentional_disconnect()) {
+  if (request.worker_failure().exit_type() == rpc::WorkerExitType::INTENDED_EXIT) {
     RAY_LOG(INFO) << log_stream.str();
   } else {
     RAY_LOG(WARNING) << log_stream.str()
@@ -52,8 +52,15 @@ void GcsWorkerManager::HandleReportWorkerFailure(
                      << ", address = " << worker_address.ip_address();
     } else {
       stats::UnintentionalWorkerFailures.Record(1);
+      // Only publish worker_id and raylet_id in address as they are the only fields used
+      // by sub clients.
+      auto worker_failure_delta = std::make_shared<rpc::WorkerDeltaData>();
+      worker_failure_delta->set_worker_id(
+          worker_failure_data->worker_address().worker_id());
+      worker_failure_delta->set_raylet_id(
+          worker_failure_data->worker_address().raylet_id());
       RAY_CHECK_OK(gcs_pub_sub_->Publish(WORKER_CHANNEL, worker_id.Hex(),
-                                         worker_failure_data->SerializeAsString(),
+                                         worker_failure_delta->SerializeAsString(),
                                          nullptr));
     }
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
