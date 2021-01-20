@@ -86,10 +86,12 @@ class Worker:
                 try:
                     # Let gRPC wait for us to see if the channel becomes ready.
                     # If it throws, we couldn't connect.
-                    grpc.channel_ready_future(self.channel).result(timeout=timeout)
+                    grpc.channel_ready_future(
+                        self.channel).result(timeout=timeout)
                     # The HTTP2 channel is ready. Wrap the channel with the
                     # RayletDriverStub, allowing for unary requests.
-                    self.server = ray_client_pb2_grpc.RayletDriverStub(self.channel)
+                    self.server = ray_client_pb2_grpc.RayletDriverStub(
+                        self.channel)
                     connection_state = CONN_STATE_SERVICER
                 except grpc.FutureTimeoutError:
                     logger.debug(
@@ -106,8 +108,10 @@ class Worker:
                     if e.code() == grpc.StatusCode.UNAVAILABLE:
                         # UNAVAILABLE is gRPC's retryable error, so we do that here.
                         logger.info(
-                            f"Ray client server unavailable, retrying in {timeout}s...")
-                        logger.debug(f"Received when checking init: {e.details()}")
+                            f"Ray client server unavailable, retrying in {timeout}s..."
+                        )
+                        logger.debug(
+                            f"Received when checking init: {e.details()}")
                         time.sleep(timeout)
                     else:
                         # Any other gRPC error gets a reraise
@@ -129,8 +133,7 @@ class Worker:
         # If we made it through the loop without ray_ready it means we've used
         # up our retries and should error back to the user.
         if not ray_ready:
-            raise ConnectionError(
-                "ray client connection timeout")
+            raise ConnectionError("ray client connection timeout")
 
         # Initialize the streams to finish protocol negotiation.
         self.data_client = DataClient(self.channel, self._client_id,

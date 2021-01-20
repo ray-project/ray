@@ -10,7 +10,7 @@ from ray.util.client.common import ClientObjectRef
 from ray.util.client.ray_client_helpers import ray_start_client_server
 
 
-def test_num_clients(shutdown_only):
+def test_num_clients(ray_start_regular_shared):
     # Tests num clients reporting; useful if you want to build an app that
     # load balances clients between Ray client servers.
     server = ray_client_server.serve("localhost:50051")
@@ -35,8 +35,10 @@ def test_num_clients(shutdown_only):
         assert isinstance(info3["ray_version"], str), info3
         assert isinstance(info3["ray_commit"], str), info3
         assert isinstance(info3["python_version"], str), info3
+        api3.disconnect()
     finally:
         server.stop(0)
+        time.sleep(1)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
@@ -380,8 +382,7 @@ def test_startup_retry(ray_start_regular_shared):
         ray_client.connect("localhost:50051", connection_retries=1)
 
     def run_server():
-        time.sleep(2)
-        ray_client_server.serve("localhost:50051")
+        server = ray_client_server.serve("localhost:50051")
         time.sleep(5)
         server.stop(0)
 
