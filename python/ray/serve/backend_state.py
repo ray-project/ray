@@ -287,11 +287,6 @@ class BackendState:
         new_goal_id, existing_goal_id = self._set_backend_goal(
             backend_tag, backend_info)
 
-        try:
-            self.scale_backend_replicas(backend_tag)
-        except RayServeException as e:
-            del self._backend_metadata[backend_tag]
-            raise e
 
         # NOTE(edoakes): we must write a checkpoint before starting new
         # or pushing the updated config to avoid inconsistent state if we
@@ -311,14 +306,8 @@ class BackendState:
             return None
 
         new_goal_id, existing_goal_id = self._set_backend_goal(backend_tag, None)
-
-        # Scale its replicas down to 0.
-        self.scale_backend_replicas(backend_tag, force_kill)
-
-        # Remove the backend's metadata.
-        del self._backend_metadata[backend_tag]
-        del self._target_replicas[backend_tag]
-
+        if force_kill:
+            self._backend_metadata[backend_tag].backend_config.experimental_graceful_shutdown_timeout_s = 0
 
         self._checkpoint()
         if existing_goal_id is not None:
@@ -339,9 +328,6 @@ class BackendState:
 
         new_goal_id, existing_goal_id = self._set_backend_goal(
             backend_tag, self._backend_metadata[backend_tag])
-
-        # Scale the replicas with the new configuration.
-        self.scale_backend_replicas(backend_tag)
 
         # NOTE(edoakes): we must write a checkpoint before pushing the
         # update to avoid inconsistent state if we crash after pushing the
@@ -391,8 +377,7 @@ class BackendState:
     def scale_backend_replicas(
             self,
             backend_tag: BackendTag,
-            force_kill: bool = False,
-    ) -> None:
+    ) -> bool:
         """Scale the given backend to the number of replicas.
 
         NOTE: this does not actually start or stop the replicas, but instead
@@ -415,15 +400,15 @@ class BackendState:
             len(self._replicas[backend_tag][ReplicaState.SHOULD_START]),
             len(self._replicas[backend_tag][ReplicaState.STARTING]),
             len(self._replicas[backend_tag][ReplicaState.RUNNING]),
-            -len(self._replicas[backend_tag][ReplicaState.SHOULD_STOP]),
-            -len(self._replicas[backend_tag][ReplicaState.STOPPING]),
-            -len(self._replicas[backend_tag][ReplicaState.STOPPED])
         ])
 
         delta_num_replicas = num_replicas - current_num_replicas
 
         backend_info: BackendInfo = self._backend_metadata[backend_tag]
-        if delta_num_replicas > 0:
+        if delta_num_replicas == 0:
+            return False
+
+        elif delta_num_replicas > 0:
             can_schedule = try_schedule_resources_on_nodes(requirements=[
                 backend_info.replica_config.resource_dict
                 for _ in range(delta_num_replicas)
@@ -464,12 +449,28 @@ class BackendState:
 
                 graceful_timeout_s = (backend_info.backend_config.
                                       experimental_graceful_shutdown_timeout_s)
-                if force_kill:
-                    graceful_timeout_s = 0
 
                 replica_to_stop.set_should_stop(graceful_timeout_s)
                 self._replicas[backend_tag][ReplicaState.SHOULD_STOP].append(
                     replica_to_stop)
+
+        return True
+
+    def scale_all_backends(self):
+        checkpoint_needed = False
+        for backend_tag, num_replicas in list(self._target_replicas.items()):
+            try:
+                checkpoint_needed = (checkpoint_needed or self.scale_backend_replicas(backend_tag))
+            except RayServeException as e:
+                del self._backend_metadata[backend_tag]
+                del self._target_replicas[backend_tag]
+                raise e
+            if num_replicas == 0:
+                del self._backend_metadata[backend_tag]
+                del self._target_replicas[backend_tag]
+        
+        if checkpoint_needed:
+            self._checkpoint()
 
     def _pop_replicas_of_state(self, state: ReplicaState
                                ) -> List[Tuple[ReplicaState, BackendTag]]:
@@ -513,6 +514,8 @@ class BackendState:
         return [goal for goal in completed_goals if goal]
 
     async def update(self) -> bool:
+        self.scale_all_backends()
+
         for goal_id in self._completed_goals():
             self._goal_manager.complete_goal(goal_id)
 
