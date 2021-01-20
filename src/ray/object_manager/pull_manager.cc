@@ -210,7 +210,7 @@ void PullManager::TriggerOutOfMemoryHandlingIfNeeded() {
   // TODO(swang): This can hang if no room can be made. We should return an
   // error for requests whose total size is larger than the capacity of the
   // memory store.
-  if (get_time_() - last_oom_reported_ms_ > 1000) {
+  if (get_time_() - last_oom_reported_ms_ > 30000) {
     RAY_LOG(WARNING)
         << "There is not enough memory to pull objects needed by a queued task or "
            "a worker blocked in ray.get or ray.wait. "
