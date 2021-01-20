@@ -68,8 +68,11 @@ class TrainOneStep:
             else:
                 info = self.workers.local_worker().learn_on_batch(batch)
                 metrics.info[LEARNER_INFO] = get_learner_stats(info)
+            metrics.info["custom_metrics"] = info.get("custom_metrics", {})
             learn_timer.push_units_processed(batch.count)
         metrics.counters[STEPS_TRAINED_COUNTER] += batch.count
+        # Update weights - after learning on the local worker - on all remote
+        # workers.
         if self.workers.remote_workers():
             with metrics.timers[WORKER_UPDATE_TIMER]:
                 weights = ray.put(self.workers.local_worker().get_weights(

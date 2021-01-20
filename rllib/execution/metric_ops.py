@@ -85,8 +85,7 @@ class CollectMetrics:
         self.episode_history.extend(orig_episodes)
         self.episode_history = self.episode_history[-self.min_history:]
         res = summarize_episodes(episodes, orig_episodes)
-        # Update `custom_metrics` key in res with incoming stats.
-
+        #TODO: Update `custom_metrics` key in res with incoming stats.
 
         # Add in iterator metrics.
         metrics = _get_shared_metrics()
