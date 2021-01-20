@@ -15,7 +15,7 @@ import docker
 print = functools.partial(print, file=sys.stderr, flush=True)
 DOCKER_USERNAME = "raytravisbot"
 DOCKER_CLIENT = None
-PYTHON_WHL_VERSION = "cp37m"
+PYTHON_WHL_VERSION = "cp3"
 
 DOCKER_HUB_DESCRIPTION = {
     "base-deps": ("Internal Image, refer to "
@@ -57,13 +57,18 @@ def _get_root_dir():
     return os.path.join(_get_curr_dir(), "../../")
 
 
-def _get_wheel_name():
-    matches = glob.glob(
-        f"{_get_root_dir()}/.whl/*{PYTHON_WHL_VERSION}-manylinux*")
-    assert len(matches) == 1, (
-        f"Found ({len(matches)}) matches "
-        f"'*{PYTHON_WHL_VERSION}-manylinux*' instead of 1")
-    return os.path.basename(matches[0])
+def _get_wheel_name(minor_version_number):
+    if minor_version_number:
+        matches = glob.glob(
+            f"{_get_root_dir()}/.whl/*{PYTHON_WHL_VERSION}{minor_version_number}*-manylinux*")
+        assert len(matches) == 1, (
+            f"Found ({len(matches)}) matches "
+            f"'*{PYTHON_WHL_VERSION}{minor_version_number}*-manylinux*' instead of 1")
+        return os.path.basename(matches[0])
+    else:
+        matches =  glob.glob(
+            f"{_get_root_dir()}/.whl/*{PYTHON_WHL_VERSION}-manylinux*")
+        return [os.path.basename(i) for i in matches]
 
 
 def _docker_affected():
@@ -97,7 +102,9 @@ def _build_cpu_gpu_images(image_name, no_cache=True) -> List[str]:
                 build_args["GPU"] = f"{py_name}{gpu}"
 
             if image_name in ["ray", "ray-deps"]:
-                build_args["WHEEL_PATH"] = f".whl/{_get_wheel_name()}"
+                # I.e. "-py36"[-1] == 6
+                minor_number = py_name[-1]
+                build_args["WHEEL_PATH"] = f".whl/{_get_wheel_name(minor_number)}"
 
             build_args["PYTHON_VERSION"] = py_version
 
@@ -140,14 +147,15 @@ def _build_cpu_gpu_images(image_name, no_cache=True) -> List[str]:
 
 def copy_wheels():
     root_dir = _get_root_dir()
-    wheel = _get_wheel_name()
-    source = os.path.join(root_dir, ".whl", wheel)
-    ray_dst = os.path.join(root_dir, "docker/ray/.whl/")
-    ray_dep_dst = os.path.join(root_dir, "docker/ray-deps/.whl/")
-    os.makedirs(ray_dst, exist_ok=True)
-    shutil.copy(source, ray_dst)
-    os.makedirs(ray_dep_dst, exist_ok=True)
-    shutil.copy(source, ray_dep_dst)
+    wheels = _get_wheel_name(None)
+    for wheel in wheels:
+        source = os.path.join(root_dir, ".whl", wheel)
+        ray_dst = os.path.join(root_dir, "docker/ray/.whl/")
+        ray_dep_dst = os.path.join(root_dir, "docker/ray-deps/.whl/")
+        os.makedirs(ray_dst, exist_ok=True)
+        shutil.copy(source, ray_dst)
+        os.makedirs(ray_dep_dst, exist_ok=True)
+        shutil.copy(source, ray_dep_dst)
 
 
 def build_or_pull_base_images(is_docker_affected: bool) -> List[str]:
