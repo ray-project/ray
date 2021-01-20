@@ -201,7 +201,7 @@ class Gauge(Metric):
                                    self._tag_keys)
 
     def __reduce__(self):
-        deserializer = Count
+        deserializer = Gauge
         serialized_data = (self._name, self._description, self._tag_keys)
         return deserializer, serialized_data
 
