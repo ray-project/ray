@@ -23,11 +23,17 @@ class HorovodRayAccelerator(HorovodAccelerator):
     def setup(self, model):
         self.trainer.use_horovod = True
         settings = RayExecutor.create_settings(timeout_s=30)
+        num_hosts = self.trainer.num_nodes
+        use_gpu = self.trainer.on_gpu
+        if use_gpu:
+            num_slots = self.trainer.num_gpus
+        else:
+            num_slots = self.trainer.num_processes
         self.executor = RayExecutor(
             settings,
-            num_hosts=self.trainer.num_nodes,
-            num_slots=self.trainer.num_processes // self.trainer.num_nodes,
-            use_gpu=self.trainer.on_gpu)
+            num_hosts=num_hosts,
+            num_slots=num_slots,
+            use_gpu=use_gpu)
         self.trainer.model = model
         self.executor.start(executable_cls=get_executable_cls())
 

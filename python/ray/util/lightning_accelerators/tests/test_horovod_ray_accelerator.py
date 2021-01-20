@@ -1,4 +1,6 @@
 import os
+import sys
+
 import numpy as np
 import torch
 import pytest
@@ -36,6 +38,7 @@ def ray_start_2_cpus():
     yield address_info
     ray.shutdown()
 
+
 @pytest.fixture
 def ray_start_2_gpus():
     address_info = ray.init(num_cpus=2, num_gpus=2)
@@ -44,9 +47,11 @@ def ray_start_2_gpus():
     finally:
         ray.shutdown()
 
+
 @pytest.fixture
 def seed():
     pl.seed_everything(0)
+
 
 class LinearDataset(torch.utils.data.Dataset):
     """y = a * x + b"""
@@ -63,16 +68,21 @@ class LinearDataset(torch.utils.data.Dataset):
     def __len__(self):
         return len(self.x)
 
+
 class PTL_Module(pl.LightningModule):
-    def __init__(self, lr=1e-2, hidden_size=1, data_size=10, val_size=10,
+    def __init__(self,
+                 lr=1e-2,
+                 hidden_size=1,
+                 data_size=10,
+                 val_size=10,
                  batch_size=2):
         super().__init__()
         self.save_hyperparameters()
         self.lr = lr
-        self.data_size=data_size
-        self.val_size=val_size
-        self.hidden_size=hidden_size
-        self.batch_size=batch_size
+        self.data_size = data_size
+        self.val_size = val_size
+        self.hidden_size = hidden_size
+        self.batch_size = batch_size
         self.layer = torch.nn.Linear(1, hidden_size)
 
     def forward(self, x):
@@ -107,8 +117,7 @@ class PTL_Module(pl.LightningModule):
             batch_size=self.batch_size,
         )
         self.val_loader = torch.utils.data.DataLoader(
-            val_dataset,
-            batch_size=self.batch_size)
+            val_dataset, batch_size=self.batch_size)
         self.loss = torch.nn.MSELoss()
 
     def train_dataloader(self):
@@ -124,9 +133,13 @@ class PTL_Module(pl.LightningModule):
         return torch.utils.data.DataLoader(test_dataset, batch_size=2)
 
 
-def get_trainer(dir, num_processes=2, gpus=0, max_epochs=1,
+def get_trainer(dir,
+                num_processes=2,
+                gpus=0,
+                max_epochs=1,
                 limit_train_batches=10,
-                limit_val_batches=10, progress_bar_refresh_rate=0):
+                limit_val_batches=10,
+                progress_bar_refresh_rate=0):
     accelerator = HorovodRayAccelerator()
     trainer = pl.Trainer(
         default_root_dir=dir,
@@ -137,10 +150,10 @@ def get_trainer(dir, num_processes=2, gpus=0, max_epochs=1,
         limit_val_batches=limit_val_batches,
         progress_bar_refresh_rate=progress_bar_refresh_rate,
         checkpoint_callback=True,
-        accelerator=accelerator
-    )
+        accelerator=accelerator)
     assert False, trainer.distributed_backend
     return trainer
+
 
 def train_test(trainer, model):
     initial_values = initial_values = torch.tensor(
@@ -152,6 +165,7 @@ def train_test(trainer, model):
     # Check that the model is actually changed post-training.
     assert torch.norm(initial_values - post_train_values) > 0.1
 
+
 @pytest.mark.parametrize("num_processes", [1, 2])
 def test_train(tmpdir, ray_start_2_cpus, seed, num_processes):
     model = PTL_Module()
@@ -159,14 +173,67 @@ def test_train(tmpdir, ray_start_2_cpus, seed, num_processes):
     trainer = get_trainer(tmpdir, num_processes=num_processes)
     train_test(trainer, model)
 
-@pytest.mark.parametrize("num_processes", [1, 2])
-def test_load(tmpdir, ray_start_2_cpus, seed, num_processes):
+
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="Horovod is not "
+    "supported on "
+    "Windows")
+@pytest.mark.skipif(
+    not _nccl_available(), reason="test requires Horovod with NCCL support")
+@pytest.mark.skipif(
+    torch.cuda.device_count() < 2, reason="test requires multi-GPU machine")
+@pytest.mark.parametrize("num_gpus", [1, 2])
+def test_train_gpu(tmpdir, ray_start_2_gpus, seed, num_gpus):
     model = PTL_Module()
-    trainer = get_trainer(tmpdir, num_processes=num_processes)
+    trainer = get_trainer(tmpdir, gpus=num_gpus)
+    train_test(trainer, model)
+
+
+def load_test(trainer, model):
     trainer.fit(model)
     trained_model = PTL_Module.load_from_checkpoint(
         trainer.checkpoint_callback.best_model_path)
     assert trained_model is not None, 'loading model failed'
+
+
+@pytest.mark.parametrize("num_processes", [1, 2])
+def test_load(tmpdir, ray_start_2_cpus, seed, num_processes):
+    model = PTL_Module()
+    trainer = get_trainer(tmpdir, num_processes=num_processes)
+    load_test(trainer, model)
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="Horovod is not "
+    "supported on "
+    "Windows")
+@pytest.mark.skipif(
+    not _nccl_available(), reason="test requires Horovod with NCCL support")
+@pytest.mark.skipif(
+    torch.cuda.device_count() < 2, reason="test requires multi-GPU machine")
+@pytest.mark.parametrize("num_gpus", [1, 2])
+def test_load_gpu(tmpdir, ray_start_2_gpus, seed, num_gpus):
+    model = PTL_Module()
+    trainer = get_trainer(tmpdir, gpus=num_gpus)
+    load_test(trainer, model)
+
+
+def predict_test(trainer, model, dm):
+    trainer.fit(model, dm)
+    test_loader = dm.test_dataloader()
+    acc = pl.metrics.Accuracy()
+    for batch in test_loader:
+        x, y = batch
+        with torch.no_grad():
+            y_hat = model(x)
+        y_hat = y_hat.cpu()
+        acc.update(y_hat, y)
+    average_acc = acc.compute()
+    assert average_acc >= 0.5, f"This model is expected to get > {0.5} in " \
+                               f"test set (it got {average_acc})"
+
 
 @pytest.mark.parametrize("num_processes", [1, 2])
 def test_predict(tmpdir, ray_start_2_cpus, seed, num_processes):
@@ -179,39 +246,29 @@ def test_predict(tmpdir, ray_start_2_cpus, seed, num_processes):
     model = LightningMNISTClassifier(config, tmpdir)
     dm = MNISTDataModule(
         data_dir=tmpdir, num_workers=1, batch_size=config["batch_size"])
-        #seed=0)
-    trainer = get_trainer(tmpdir, limit_train_batches=10, max_epochs=1,
-                          progress_bar_refresh_rate=1, num_processes=num_processes)
-    trainer.fit(model, dm)
-    test_loader = dm.test_dataloader()
-    acc = pl.metrics.Accuracy()
-    for batch in test_loader:
-        x, y = batch
-        with torch.no_grad():
-            y_hat = model(x)
-        y_hat = y_hat.cpu()
-        acc.update(y_hat, y)
-    average_acc = acc.compute()
-    assert average_acc >= 0.5, f"This model is expected to get > {0.5} in " \
-                      f"test set (it got {average_acc})"
+    trainer = get_trainer(
+        tmpdir,
+        limit_train_batches=10,
+        max_epochs=1,
+        num_processes=num_processes)
+    predict_test(trainer, model, dm)
 
 
-# @mock.patch('pytorch_lightning.accelerators.horovod_ray_accelerator.get_executable_cls')
-# @pytest.mark.skipif(platform.system() == "Windows", reason="Horovod is not supported on Windows")
-# @pytest.mark.skipif(not _nccl_available(), reason="test requires Horovod with NCCL support")
-# @pytest.mark.skipif(torch.cuda.device_count() < 2, reason="test requires multi-GPU machine")
-# def test_horovod_multi_gpu(mock_executable_cls, tmpdir, ray_start_2_gpus):
-#     """Test Horovod with multi-GPU support."""
-#     mock_executable_cls.return_value = create_mock_executable()
-#     trainer_options = dict(
-#         default_root_dir=tmpdir,
-#         max_epochs=1,
-#         limit_train_batches=10,
-#         limit_val_batches=10,
-#         gpus=2,
-#         distributed_backend='horovod_ray',
-#         progress_bar_refresh_rate=0
-#     )
-#
-#     model = EvalModelTemplate()
-#     tpipes.run_model_test(trainer_options, model)
+@pytest.mark.skipif(
+    not _nccl_available(), reason="test requires Horovod with NCCL support")
+@pytest.mark.skipif(
+    torch.cuda.device_count() < 2, reason="test requires multi-GPU machine")
+@pytest.mark.parametrize("num_gpus", [1, 2])
+def test_predict_gpu(tmpdir, ray_start_2_gpus, seed, num_gpus):
+    config = {
+        "layer_1": 32,
+        "layer_2": 32,
+        "lr": 1e-2,
+        "batch_size": 32,
+    }
+    model = LightningMNISTClassifier(config, tmpdir)
+    dm = MNISTDataModule(
+        data_dir=tmpdir, num_workers=1, batch_size=config["batch_size"])
+    trainer = get_trainer(
+        tmpdir, limit_train_batches=10, max_epochs=1, gpus=num_gpus)
+    predict_test(trainer, model, dm)
