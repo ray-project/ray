@@ -335,7 +335,7 @@ void LocalObjectManager::AsyncRestoreSpilledObject(
           io_worker_pool_.PushRestoreWorker(io_worker);
           objects_pending_restore_.erase(object_id);
           if (!status.ok()) {
-            RAY_LOG(ERROR) << "Failed to send restore spilled object request: "
+            RAY_LOG(DEBUG) << "Failed to send restore spilled object request: "
                            << status.ToString();
           } else {
             auto now = absl::GetCurrentTimeNanos();
