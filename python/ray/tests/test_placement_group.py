@@ -1310,5 +1310,87 @@ def test_schedule_placement_groups_at_the_same_time():
     wait_for_condition(is_all_placement_group_removed)
 
 
+def test_detached_placement_group(ray_start_cluster):
+    cluster = ray_start_cluster
+    for _ in range(2):
+        cluster.add_node(num_cpus=3)
+    ray.init(address=cluster.address)
+
+    # Test actors first.
+    @ray.remote(num_cpus=1)
+    class NestedActor:
+        def ready(self):
+            return True
+
+    @ray.remote(num_cpus=1)
+    class Actor:
+        def __init__(self):
+            self.actors = []
+
+        def ready(self):
+            return True
+
+        def schedule_nested_actor_with_undetached_pg(self):
+            # Create placement group which is undetached.
+            pg = ray.util.placement_group(
+                [{"CPU": 1} for _ in range(2)],
+                strategy="STRICT_SPREAD", name="undetached_pg")
+            ray.get(pg.ready())
+            # Schedule nested actor with the placement group.
+            for bundle_index in range(2):
+                actor = NestedActor.options(placement_group=pg,
+                                            placement_group_bundle_index=bundle_index,
+                                            lifetime="detached").remote()
+                ray.get(actor.ready.remote())
+                self.actors.append(actor)
+
+        def schedule_nested_actor_with_detached_pg(self):
+            # Create placement group which is detached.
+            pg = ray.util.placement_group(
+                [{"CPU": 1} for _ in range(2)],
+                strategy="STRICT_SPREAD",lifetime="detached", name="detached_pg")
+            ray.get(pg.ready())
+            # Schedule nested actor with the placement group.
+            for bundle_index in range(2):
+                actor = NestedActor.options(placement_group=pg,
+                                            placement_group_bundle_index=bundle_index,
+                                            lifetime="detached").remote()
+                ray.get(actor.ready.remote())
+                self.actors.append(actor)
+
+    a = Actor.options(lifetime="detached").remote()
+    ray.get(a.ready.remote())
+    # 1 parent actor and 4 children actor.
+    ray.get(a.schedule_nested_actor_with_undetached_pg.remote())
+    ray.get(a.schedule_nested_actor_with_detached_pg.remote())
+
+    # Kill an actor and wait until it is killed.
+    ray.kill(a)
+    with pytest.raises(ray.exceptions.RayActorError):
+        ray.get(a.ready.remote())
+
+    # Make sure the undetached placement group will destroy and detached will alive.
+    placement_group_table = ray.util.placement_group_table()
+    assert len(placement_group_table) == 2
+    for _, placement_group_data in placement_group_table.items():
+        assert placement_group_data["name"] in ["undetached_pg", "detached_pg"]
+        if (placement_group_data["name"] == "undetached_pg") :
+            assert placement_group_data["state"] == "REMOVED"
+        if (placement_group_data["name"] == "detached_pg") :
+            assert placement_group_data["state"] == "CREATED"
+
+    # We should have 3 dead actors and 2 alive actors.
+    assert len(ray.actors()) == 5
+    alive_actors = 0
+    dead_actors = 0
+    for actor_info in ray.actors().values():
+        if (actor_info["State"] == ray.gcs_utils.ActorTableData.DEAD):
+            dead_actors += 1
+        if (actor_info["State"] == ray.gcs_utils.ActorTableData.ALIVE):
+            alive_actors += 1
+    assert alive_actors == 2
+    assert dead_actors == 3
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
