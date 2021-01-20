@@ -9,6 +9,8 @@ ENV TZ=America/Los_Angeles
 ENV BUILDKITE=true
 ENV CI=true
 ENV PYTHON=3.6
+ENV RAY_USE_RANDOM_PORTS=1
+ENV RAY_DEFAULT_BUILD=1
 
 RUN apt-get update -qq
 RUN apt-get install -y -qq \
