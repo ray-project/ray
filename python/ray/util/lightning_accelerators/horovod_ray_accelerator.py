@@ -18,7 +18,7 @@ def get_executable_cls():
 class HorovodRayAccelerator(HorovodAccelerator):
     def __init__(self, trainer=None, cluster_environment=None):
         super().__init__(trainer, cluster_environment)
-        self.nickname = 'horovod_ray'
+        self.nickname = "horovod_ray"
 
     def setup(self, model):
         self.trainer.use_horovod = True
