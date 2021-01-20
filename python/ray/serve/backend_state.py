@@ -18,7 +18,6 @@ from ray.serve.common import (
 )
 from ray.serve.config import BackendConfig, ReplicaConfig
 from ray.serve.constants import LongPollKey
-from ray.serve.exceptions import RayServeException
 from ray.serve.kv_store import RayInternalKVStore
 from ray.serve.long_poll import LongPollHost
 from ray.serve.utils import (format_actor_name, get_random_letters, logger,
@@ -50,21 +49,21 @@ class BackendReplica:
         self._backend_tag = backend_tag
         self._actor_handle = None
         self._startup_obj_ref = None
-        self._shutdown_obj_ref = None
+        self._drain_obj_ref = None
         self._state = ReplicaState.SHOULD_START
 
     def __get_state__(self):
         clean_dict = self.__dict__.copy()
         del clean_dict["_actor_handle"]
         del clean_dict["_startup_obj_ref"]
-        del clean_dict["_shutdown_obj_ref"]
+        del clean_dict["_drain_obj_ref"]
         return clean_dict
 
     def __set_state__(self, d):
         self.__dict__ = d
         self._actor_handle = None
         self._startup_obj_ref = None
-        self._shutdown_obj_ref = None
+        self._drain_obj_ref = None
         self._recover_from_checkpoint()
 
     def _recover_from_checkpoint(self):
@@ -138,7 +137,7 @@ class BackendReplica:
             return replica.drain_pending_queries.remote()
 
         self._state = ReplicaState.STOPPING
-        self._shutdown_obj_ref = drain_actor(self._actor_name)
+        self._drain_obj_ref = drain_actor(self._actor_name)
         self._shutdown_deadline = time.time(
         ) + self._graceful_shutdown_timeout_s
 
@@ -154,7 +153,7 @@ class BackendReplica:
             self._state = ReplicaState.STOPPED
             return True
 
-        ready, _ = ray.wait([self._shutdown_obj_ref], timeout=0)
+        ready, _ = ray.wait([self._drain_obj_ref], timeout=0)
         timeout_passed = time.time() > self._shutdown_deadline
 
         if len(ready) == 1 or timeout_passed:
@@ -421,10 +420,11 @@ class BackendState:
 
             if _RESOURCE_CHECK_ENABLED and not all(can_schedule):
                 num_possible = sum(can_schedule)
-                raise RayServeException(
+                logger.error(
                     "Cannot scale backend {} to {} replicas. Ray Serve tried "
                     "to add {} replicas but the resources only allows {} "
-                    "to be added. To fix this, consider scaling to replica to "
+                    "to be added. This is not a problem if the cluster is "
+                    "autoscaling. To fix this, consider scaling to replica to "
                     "{} or add more resources to the cluster. You can check "
                     "avaiable resources with ray.nodes().".format(
                         backend_tag, num_replicas, delta_num_replicas,
@@ -464,15 +464,8 @@ class BackendState:
     def scale_all_backends(self):
         checkpoint_needed = False
         for backend_tag, num_replicas in list(self._target_replicas.items()):
-            try:
-                checkpoint_needed = (checkpoint_needed or
-                                     self.scale_backend_replicas(backend_tag))
-            except RayServeException as e:
-                del self._backend_metadata[backend_tag]
-                del self._target_replicas[backend_tag]
-                self._goal_manager.complete_goal(
-                    self.backend_goals.pop(backend_tag, None))
-                raise e
+            checkpoint_needed = (checkpoint_needed
+                                 or self.scale_backend_replicas(backend_tag))
             if num_replicas == 0:
                 del self._backend_metadata[backend_tag]
                 del self._target_replicas[backend_tag]
