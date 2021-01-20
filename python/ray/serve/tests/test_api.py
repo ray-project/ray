@@ -682,7 +682,9 @@ def test_endpoint_input_validation(serve_instance):
         client.create_endpoint("endpoint", backend=2)
     client.create_endpoint("endpoint", backend="backend")
 
-# This error is now just printed because it is run in the control loop, not in the API path.
+
+# This error is only printed because creation is run in the control loop, not
+# in the API path.
 @pytest.mark.skip()
 def test_create_infeasible_error(serve_instance):
     client = serve_instance

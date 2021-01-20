@@ -62,8 +62,10 @@ class BackendReplica:
 
     def __set_state__(self, d):
         self.__dict__ = d
-        self.recover_from_checkpoint()
-
+        self._actor_handle = None
+        self._startup_obj_ref = None
+        self._shutdown_obj_ref = None
+        self._recover_from_checkpoint()
 
     def _recover_from_checkpoint(self):
         if self._state == ReplicaState.STARTING:
@@ -136,9 +138,9 @@ class BackendReplica:
             return replica.drain_pending_queries.remote()
 
         self._state = ReplicaState.STOPPING
-        self._shutdown_obj_ref = drain_actor(
-            self._actor_name)
-        self._shutdown_deadline = time.time() + self._graceful_shutdown_timeout_s
+        self._shutdown_obj_ref = drain_actor(self._actor_name)
+        self._shutdown_deadline = time.time(
+        ) + self._graceful_shutdown_timeout_s
 
     def check_stopped(self):
         if self._state == ReplicaState.STOPPED:
@@ -152,15 +154,15 @@ class BackendReplica:
             self._state = ReplicaState.STOPPED
             return True
 
-
         ready, _ = ray.wait([self._shutdown_obj_ref], timeout=0)
         timeout_passed = time.time() > self._shutdown_deadline
 
         if len(ready) == 1 or timeout_passed:
             if timeout_passed:
                 # Graceful period passed, kill it forcefully.
-                logger.debug(f"{self._actor_name} did not shutdown after "
-                            f"{self._graceful_shutdown_timeout_s}s, force-killing.")
+                logger.debug(
+                    f"{self._actor_name} did not shutdown after "
+                    f"{self._graceful_shutdown_timeout_s}s, force-killing.")
 
             ray.kill(replica, no_restart=True)
             self._state = ReplicaState.STOPPED
@@ -224,7 +226,8 @@ class BackendState:
             self) -> Dict[BackendTag, Dict[ReplicaTag, ActorHandle]]:
         return {
             backend_tag: {
-                backend_replica._replica_tag: backend_replica.get_actor_handle()
+                backend_replica._replica_tag:
+                backend_replica.get_actor_handle()
                 for backend_replica in state_to_replica_dict[
                     ReplicaState.RUNNING]
             }
@@ -235,8 +238,8 @@ class BackendState:
         self._long_poll_host.notify_changed(
             LongPollKey.REPLICA_HANDLES, {
                 backend_tag: list(replica_dict.values())
-                for backend_tag, replica_dict in self.get_running_replica_handles()
-                .items()
+                for backend_tag, replica_dict in
+                self.get_running_replica_handles().items()
             })
 
     def get_backend_configs(self) -> Dict[BackendTag, BackendConfig]:
@@ -287,7 +290,6 @@ class BackendState:
         new_goal_id, existing_goal_id = self._set_backend_goal(
             backend_tag, backend_info)
 
-
         # NOTE(edoakes): we must write a checkpoint before starting new
         # or pushing the updated config to avoid inconsistent state if we
         # crash while making the change.
@@ -305,9 +307,12 @@ class BackendState:
         if backend_tag not in self._backend_metadata:
             return None
 
-        new_goal_id, existing_goal_id = self._set_backend_goal(backend_tag, None)
+        new_goal_id, existing_goal_id = self._set_backend_goal(
+            backend_tag, None)
         if force_kill:
-            self._backend_metadata[backend_tag].backend_config.experimental_graceful_shutdown_timeout_s = 0
+            self._backend_metadata[
+                backend_tag].backend_config.\
+                    experimental_graceful_shutdown_timeout_s = 0
 
         self._checkpoint()
         if existing_goal_id is not None:
@@ -460,16 +465,18 @@ class BackendState:
         checkpoint_needed = False
         for backend_tag, num_replicas in list(self._target_replicas.items()):
             try:
-                checkpoint_needed = (checkpoint_needed or self.scale_backend_replicas(backend_tag))
+                checkpoint_needed = (checkpoint_needed or
+                                     self.scale_backend_replicas(backend_tag))
             except RayServeException as e:
                 del self._backend_metadata[backend_tag]
                 del self._target_replicas[backend_tag]
-                self._goal_manager.complete_goal(self.backend_goals.pop(backend_tag, None))
+                self._goal_manager.complete_goal(
+                    self.backend_goals.pop(backend_tag, None))
                 raise e
             if num_replicas == 0:
                 del self._backend_metadata[backend_tag]
                 del self._target_replicas[backend_tag]
-        
+
         if checkpoint_needed:
             self._checkpoint()
 
@@ -506,12 +513,14 @@ class BackendState:
             if (not desired_num_replicas or
                     desired_num_replicas == 0) and \
                     (not existing_info or len(existing_info) == 0):
-                completed_goals.append(self.backend_goals.pop(backend_tag, None))
+                completed_goals.append(
+                    self.backend_goals.pop(backend_tag, None))
 
             # Check for a non-zero number of backends
             if (desired_num_replicas and existing_info) \
                     and desired_num_replicas == len(existing_info):
-                completed_goals.append(self.backend_goals.pop(backend_tag, None))
+                completed_goals.append(
+                    self.backend_goals.pop(backend_tag, None))
         return [goal for goal in completed_goals if goal]
 
     async def update(self) -> bool:
