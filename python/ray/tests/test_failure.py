@@ -1023,9 +1023,6 @@ def test_connect_with_disconnected_node(shutdown_only):
     "ray_start_cluster_head", [{
         "num_cpus": 5,
         "object_store_memory": 10**8,
-        "_system_config": {
-            "object_store_full_max_retries": 0
-        }
     }],
     indirect=True)
 def test_parallel_actor_fill_plasma_retry(ray_start_cluster_head):
@@ -1042,10 +1039,7 @@ def test_parallel_actor_fill_plasma_retry(ray_start_cluster_head):
 
 
 def test_fill_object_store_exception(shutdown_only):
-    ray.init(
-        num_cpus=2,
-        object_store_memory=10**8,
-        _system_config={"object_store_full_max_retries": 0})
+    ray.init(num_cpus=2, object_store_memory=10**8)
 
     @ray.remote
     def expensive_task():

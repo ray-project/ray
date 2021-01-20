@@ -52,7 +52,7 @@ wheel="https://s3-us-west-2.amazonaws.com/ray-wheels/$ray_branch/$commit/ray-$ra
 
 # Serve load testing tool
 cur_dir=$(pwd)
-cd /tmp && rm -rf wrk && git clone https://github.com/wg/wrk.git wrk && cd wrk && make -j && cp wrk /usr/local/bin
+cd /tmp && rm -rf wrk && git clone https://github.com/wg/wrk.git wrk && cd wrk && make -j && sudo cp wrk /usr/local/bin
 cd "$cur_dir" || exit
 
 pip install --upgrade pip

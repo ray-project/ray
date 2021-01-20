@@ -1,0 +1,33 @@
+cluster_name: ray-tune-scalability-tests
+
+min_workers: 15
+max_workers: 15
+initial_workers: 15
+
+target_utilization_fraction: 0.8
+idle_timeout_minutes: 15
+
+docker:
+    image: anyscale/ray:nightly
+    container_name: ray_container
+    pull_before_run: true
+
+provider:
+    type: aws
+    region: us-west-2
+    availability_zone: us-west-2a
+    cache_stopped_nodes: false
+
+auth:
+    ssh_user: ubuntu
+
+head_node:
+    # 64 CPUs
+    InstanceType: m5.16xlarge
+
+worker_nodes:
+    # 64 CPUs
+    InstanceType: m5.16xlarge
+
+setup_commands:
+    - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl

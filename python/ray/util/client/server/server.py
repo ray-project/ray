@@ -38,6 +38,28 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         self.registered_actor_classes = {}
         self._current_function_stub = None
 
+    def KVPut(self, request, context=None) -> ray_client_pb2.KVPutResponse:
+        with disable_client_hook():
+            already_exists = ray.experimental.internal_kv._internal_kv_put(
+                request.key, request.value, overwrite=request.overwrite)
+        return ray_client_pb2.KVPutResponse(already_exists=already_exists)
+
+    def KVGet(self, request, context=None) -> ray_client_pb2.KVGetResponse:
+        with disable_client_hook():
+            value = ray.experimental.internal_kv._internal_kv_get(request.key)
+        return ray_client_pb2.KVGetResponse(value=value)
+
+    def KVDel(self, request, context=None) -> ray_client_pb2.KVDelResponse:
+        with disable_client_hook():
+            ray.experimental.internal_kv._internal_kv_del(request.key)
+        return ray_client_pb2.KVDelResponse()
+
+    def KVList(self, request, context=None) -> ray_client_pb2.KVListResponse:
+        with disable_client_hook():
+            keys = ray.experimental.internal_kv._internal_kv_list(
+                request.prefix)
+        return ray_client_pb2.KVListResponse(keys=keys)
+
     def ClusterInfo(self, request,
                     context=None) -> ray_client_pb2.ClusterInfoResponse:
         resp = ray_client_pb2.ClusterInfoResponse()
@@ -61,6 +83,15 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             resp.resource_table.CopyFrom(
                 ray_client_pb2.ClusterInfoResponse.ResourceTable(
                     table=float_resources))
+        elif request.type == ray_client_pb2.ClusterInfoType.RUNTIME_CONTEXT:
+            ctx = ray_client_pb2.ClusterInfoResponse.RuntimeContext()
+            with disable_client_hook():
+                rtc = ray.get_runtime_context()
+                ctx.job_id = rtc.job_id.binary()
+                ctx.node_id = rtc.node_id.binary()
+                ctx.capture_client_tasks = \
+                    rtc.should_capture_child_tasks_in_placement_group
+            resp.runtime_context.CopyFrom(ctx)
         else:
             with disable_client_hook():
                 resp.json = self._return_debug_cluster_info(request, context)
@@ -239,8 +270,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                 result.valid = True
                 return result
         except Exception as e:
-            logger.error(f"Caught schedule exception {e}")
-            raise e
+            logger.debug(f"Caught schedule exception, returning: {e}")
             return ray_client_pb2.ClientTaskTicket(
                 valid=False, error=cloudpickle.dumps(e))
 

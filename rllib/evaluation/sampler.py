@@ -17,15 +17,16 @@ from ray.rllib.evaluation.episode import MultiAgentEpisode
 from ray.rllib.evaluation.rollout_metrics import RolloutMetrics
 from ray.rllib.evaluation.sample_batch_builder import \
     MultiAgentSampleBatchBuilder
+from ray.rllib.env.base_env import BaseEnv, ASYNC_RESET_RETURN
+from ray.rllib.env.wrappers.atari_wrappers import get_wrapper_by_cls, \
+    MonitorEnv
+from ray.rllib.models.preprocessors import Preprocessor
+from ray.rllib.offline import InputReader
 from ray.rllib.policy.policy import clip_action, Policy
 from ray.rllib.policy.tf_policy import TFPolicy
-from ray.rllib.models.preprocessors import Preprocessor
-from ray.rllib.utils.filter import Filter
-from ray.rllib.env.base_env import BaseEnv, ASYNC_RESET_RETURN
-from ray.rllib.env.atari_wrappers import get_wrapper_by_cls, MonitorEnv
-from ray.rllib.offline import InputReader
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.debug import summarize
+from ray.rllib.utils.filter import Filter
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.spaces.space_utils import flatten_to_single_ndarray, \
     unbatch
@@ -828,13 +829,13 @@ def _process_observations(
         for agent_id, raw_obs in agent_obs.items():
             assert agent_id != "__all__"
             policy_id: PolicyID = episode.policy_for(agent_id)
-            prep_obs: EnvObsType = _get_or_raise(preprocessors,
-                                                 policy_id).transform(raw_obs)
+            prepr = _get_or_raise(preprocessors, policy_id)
+            prep_obs: EnvObsType = prepr.transform(raw_obs)
             if log_once("prep_obs"):
                 logger.info("Preprocessed obs: {}".format(summarize(prep_obs)))
 
-            filtered_obs: EnvObsType = _get_or_raise(obs_filters,
-                                                     policy_id)(prep_obs)
+            filter = _get_or_raise(obs_filters, policy_id)
+            filtered_obs: EnvObsType = filter(prep_obs)
             if log_once("filtered_obs"):
                 logger.info("Filtered obs: {}".format(summarize(filtered_obs)))
 

@@ -1,7 +1,9 @@
 # coding: utf-8
 import unittest
+from unittest.mock import patch
 
 import ray
+from ray import tune
 from ray.rllib import _register_all
 from ray.tune import Trainable
 from ray.tune.ray_trial_executor import RayTrialExecutor
@@ -11,6 +13,7 @@ from ray.tune.suggest import BasicVariantGenerator
 from ray.tune.trial import Trial, Checkpoint
 from ray.tune.resources import Resources
 from ray.cluster_utils import Cluster
+from ray.util import placement_group
 
 
 class RayTrialExecutorTest(unittest.TestCase):
@@ -35,7 +38,7 @@ class RayTrialExecutorTest(unittest.TestCase):
         trial = Trial("__fake")
         self.trial_executor.start_trial(trial)
         self.assertEqual(Trial.RUNNING, trial.status)
-        trial.last_result = self.trial_executor.fetch_result(trial)
+        trial.last_result = self.trial_executor.fetch_result(trial)[-1]
         checkpoint = self.trial_executor.save(trial, Checkpoint.PERSISTENT)
         self.assertEqual(checkpoint, trial.saving_to)
         self.assertEqual(trial.checkpoint.value, None)
@@ -48,7 +51,7 @@ class RayTrialExecutorTest(unittest.TestCase):
         trial = Trial("__fake")
         self.trial_executor.start_trial(trial)
         self.assertEqual(Trial.RUNNING, trial.status)
-        trial.last_result = self.trial_executor.fetch_result(trial)
+        trial.last_result = self.trial_executor.fetch_result(trial)[-1]
         self.trial_executor.save(trial, Checkpoint.PERSISTENT)
         self.process_trial_save(trial)
         self.trial_executor.restore(trial)
@@ -71,7 +74,7 @@ class RayTrialExecutorTest(unittest.TestCase):
         """Tests that pause checkpoint does not replace restore checkpoint."""
         trial = Trial("__fake")
         self.trial_executor.start_trial(trial)
-        trial.last_result = self.trial_executor.fetch_result(trial)
+        trial.last_result = self.trial_executor.fetch_result(trial)[-1]
         # Save
         checkpoint = self.trial_executor.save(trial, Checkpoint.PERSISTENT)
         self.assertEqual(Trial.RUNNING, trial.status)
@@ -80,7 +83,7 @@ class RayTrialExecutorTest(unittest.TestCase):
         self.process_trial_save(trial)
         # Train
         self.trial_executor.continue_training(trial)
-        trial.last_result = self.trial_executor.fetch_result(trial)
+        trial.last_result = self.trial_executor.fetch_result(trial)[-1]
         # Pause
         self.trial_executor.pause_trial(trial)
         self.assertEqual(Trial.PAUSED, trial.status)
@@ -114,23 +117,40 @@ class RayTrialExecutorTest(unittest.TestCase):
         self.trial_executor.stop_trial(trial)
         self.assertEqual(Trial.TERMINATED, trial.status)
 
-    def testPauseUnpause(self):
+    def _testPauseUnpause(self, result_buffer_length):
         """Tests that unpausing works for trials being processed."""
-        trial = Trial("__fake")
-        self.trial_executor.start_trial(trial)
-        self.assertEqual(Trial.RUNNING, trial.status)
-        trial.last_result = self.trial_executor.fetch_result(trial)
-        self.assertEqual(trial.last_result.get(TRAINING_ITERATION), 1)
-        self.trial_executor.pause_trial(trial)
-        self.assertEqual(Trial.PAUSED, trial.status)
-        self.trial_executor.unpause_trial(trial)
-        self.assertEqual(Trial.PENDING, trial.status)
-        self.trial_executor.start_trial(trial)
-        self.assertEqual(Trial.RUNNING, trial.status)
-        trial.last_result = self.trial_executor.fetch_result(trial)
-        self.assertEqual(trial.last_result.get(TRAINING_ITERATION), 2)
-        self.trial_executor.stop_trial(trial)
-        self.assertEqual(Trial.TERMINATED, trial.status)
+        with patch(
+                "ray.tune.ray_trial_executor.TUNE_RESULT_BUFFER_LENGTH",
+                result_buffer_length
+        ), patch("ray.tune.ray_trial_executor.TUNE_RESULT_BUFFER_MIN_TIME_S",
+                 1):
+            base = max(result_buffer_length, 1)
+
+            trial = Trial("__fake")
+            self.trial_executor.start_trial(trial)
+            self.assertEqual(Trial.RUNNING, trial.status)
+            trial.last_result = self.trial_executor.fetch_result(trial)[-1]
+            self.assertEqual(trial.last_result.get(TRAINING_ITERATION), base)
+            self.trial_executor.pause_trial(trial)
+            self.assertEqual(Trial.PAUSED, trial.status)
+            self.trial_executor.unpause_trial(trial)
+            self.assertEqual(Trial.PENDING, trial.status)
+            self.trial_executor.start_trial(trial)
+            self.assertEqual(Trial.RUNNING, trial.status)
+            trial.last_result = self.trial_executor.fetch_result(trial)[-1]
+            self.assertEqual(
+                trial.last_result.get(TRAINING_ITERATION), base * 2)
+            self.trial_executor.stop_trial(trial)
+            self.assertEqual(Trial.TERMINATED, trial.status)
+
+    def testPauseUnpauseNoBuffer(self):
+        self._testPauseUnpause(0)
+
+    def testPauseUnpauseTrivialBuffer(self):
+        self._testPauseUnpause(1)
+
+    def testPauseUnpauseActualBuffer(self):
+        self._testPauseUnpause(8)
 
     def testNoResetTrial(self):
         """Tests that reset handles NotImplemented properly."""
@@ -182,7 +202,7 @@ class RayTrialExecutorTest(unittest.TestCase):
     def process_trial_save(self, trial):
         """Simulates trial runner save."""
         checkpoint = trial.saving_to
-        checkpoint_value = self.trial_executor.fetch_result(trial)
+        checkpoint_value = self.trial_executor.fetch_result(trial)[-1]
         checkpoint.value = checkpoint_value
         trial.on_checkpoint(checkpoint)
 
@@ -250,6 +270,87 @@ class RayExecutorQueueTest(unittest.TestCase):
         cpu_only_trial3 = create_trial(1, 0)
         self.assertFalse(
             self.trial_executor.has_resources(cpu_only_trial3.resources))
+
+
+class RayExecutorPlacementGroupTest(unittest.TestCase):
+    def setUp(self):
+        self.head_cpus = 8
+        self.head_gpus = 4
+        self.head_custom = 16
+
+        self.cluster = Cluster(
+            initialize_head=True,
+            connect=True,
+            head_node_args={
+                "num_cpus": self.head_cpus,
+                "num_gpus": self.head_gpus,
+                "resources": {
+                    "custom": self.head_custom
+                },
+                "_system_config": {
+                    "num_heartbeats_timeout": 10
+                }
+            })
+        # Pytest doesn't play nicely with imports
+        _register_all()
+
+    def tearDown(self):
+        ray.shutdown()
+        self.cluster.shutdown()
+        _register_all()  # re-register the evicted objects
+
+    def testResourcesAvailableNoPlacementGroup(self):
+        def train(config):
+            tune.report(metric=0, resources=ray.available_resources())
+
+        out = tune.run(
+            train,
+            resources_per_trial={
+                "cpu": 1,
+                "gpu": 1,
+                "custom_resources": {
+                    "custom": 3
+                },
+                "extra_cpu": 3,
+                "extra_gpu": 1,
+                "extra_custom_resources": {
+                    "custom": 4
+                },
+            })
+
+        # Only `cpu`, `gpu`, and `custom_resources` will be "really" reserved,
+        # the extra_* will just be internally reserved by Tune.
+        self.assertDictEqual({
+            key: val
+            for key, val in out.trials[0].last_result["resources"].items()
+            if key in ["CPU", "GPU", "custom"]
+        }, {
+            "CPU": self.head_cpus - 1.0,
+            "GPU": self.head_gpus - 1.0,
+            "custom": self.head_custom - 3.0
+        })
+
+    def testResourcesAvailableWithPlacementGroup(self):
+        def train(config):
+            tune.report(metric=0, resources=ray.available_resources())
+
+        def placement_group_factory():
+            head_bundle = {"CPU": 1, "GPU": 0, "custom": 4}
+            child_bundle = {"CPU": 2, "GPU": 1, "custom": 3}
+
+            return placement_group([head_bundle, child_bundle, child_bundle])
+
+        out = tune.run(train, resources_per_trial=placement_group_factory)
+
+        self.assertDictEqual({
+            key: val
+            for key, val in out.trials[0].last_result["resources"].items()
+            if key in ["CPU", "GPU", "custom"]
+        }, {
+            "CPU": self.head_cpus - 5.0,
+            "GPU": self.head_gpus - 2.0,
+            "custom": self.head_custom - 10.0
+        })
 
 
 class LocalModeExecutorTest(RayTrialExecutorTest):

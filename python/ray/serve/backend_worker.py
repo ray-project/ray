@@ -6,6 +6,8 @@ from itertools import groupby
 from typing import Union, List, Any, Callable, Type
 import time
 
+import starlette.responses
+
 import ray
 from ray.actor import ActorHandle
 from ray.async_compat import sync_to_async
@@ -16,7 +18,7 @@ from ray.serve.exceptions import RayServeException
 from ray.util import metrics
 from ray.serve.config import BackendConfig
 from ray.serve.long_poll import LongPollAsyncClient
-from ray.serve.router import Query
+from ray.serve.router import Query, RequestMetadata
 from ray.serve.constants import (
     BACKEND_RECONFIGURE_METHOD,
     DEFAULT_LATENCY_BUCKET_MS,
@@ -93,7 +95,11 @@ class BatchQueue:
 
 
 def create_backend_replica(func_or_class: Union[Callable, Type[Callable]]):
-    """Creates a replica class wrapping the provided function or class."""
+    """Creates a replica class wrapping the provided function or class.
+
+    This approach is picked over inheritance to avoid conflict between user
+    provided class and the RayServeReplica class.
+    """
 
     if inspect.isfunction(func_or_class):
         is_function = True
@@ -122,8 +128,15 @@ def create_backend_replica(func_or_class: Union[Callable, Type[Callable]]):
                                            is_function, controller_handle)
 
         @ray.method(num_returns=2)
-        async def handle_request(self, request):
-            return await self.backend.handle_request(request)
+        async def handle_request(
+                self,
+                request_metadata: RequestMetadata,
+                *request_args,
+                **request_kwargs,
+        ):
+            # Directly receive input because it might contain an ObjectRef.
+            query = Query(request_args, request_kwargs, request_metadata)
+            return await self.backend.handle_request(query)
 
         def ready(self):
             pass
@@ -145,10 +158,6 @@ def wrap_to_ray_error(exception: Exception) -> RayTaskError:
     except Exception as e:
         traceback_str = ray.utils.format_error_message(traceback.format_exc())
         return ray.exceptions.RayTaskError(str(e), traceback_str, e.__class__)
-
-
-def ensure_async(func: Callable) -> Callable:
-    return sync_to_async(func)
 
 
 class RayServeReplica:
@@ -251,15 +260,46 @@ class RayServeReplica:
             return self.callable
         return getattr(self.callable, method_name)
 
+    async def ensure_serializable_response(self, response: Any) -> Any:
+        if isinstance(response, starlette.responses.StreamingResponse):
+            # response contains a generator/iterator which is not serializable.
+            # Exhaust the generator/iterator and store the results in a buffer.
+            body_buffer = []
+
+            async def mock_send(message):
+                assert message["type"] in {
+                    "http.response.start", "http.response.body"
+                }
+                if (message["type"] == "http.response.body"):
+                    body_buffer.append(message["body"])
+
+            async def mock_receive():
+                # This is called in a tight loop in response() just to check
+                # for an http disconnect.  So rather than return immediately
+                # we should suspend execution to avoid wasting CPU cycles.
+                never_set_event = asyncio.Event()
+                await never_set_event.wait()
+
+            await response(scope=None, receive=mock_receive, send=mock_send)
+            content = b"".join(body_buffer)
+            return starlette.responses.Response(
+                content,
+                status_code=response.status_code,
+                headers=response.headers,
+                media_type=response.media_type)
+        else:
+            return response
+
     async def invoke_single(self, request_item: Query) -> Any:
         logger.debug("Replica {} started executing request {}".format(
             self.replica_tag, request_item.metadata.request_id))
-        method_to_call = ensure_async(self.get_runner_method(request_item))
+        method_to_call = sync_to_async(self.get_runner_method(request_item))
         arg = parse_request_item(request_item)
 
         start = time.time()
         try:
             result = await method_to_call(arg)
+            result = await self.ensure_serializable_response(result)
             self.request_counter.record(1)
         except Exception as e:
             import os
@@ -296,7 +336,7 @@ class RayServeReplica:
 
             self.request_counter.record(batch_size)
 
-            call_method = ensure_async(call_methods.pop())
+            call_method = sync_to_async(call_methods.pop())
             result_list = await call_method(args)
 
             if not isinstance(result_list, Iterable) or isinstance(
@@ -317,6 +357,9 @@ class RayServeReplica:
                                  "results with length equal to the batch size"
                                  ".".format(batch_size, len(result_list)))
                 raise RayServeException(error_message)
+            for i, result in enumerate(result_list):
+                result_list[i] = (await
+                                  self.ensure_serializable_response(result))
         except Exception as e:
             wrapped_exception = wrap_to_ray_error(e)
             self.error_counter.record(1)
@@ -394,11 +437,7 @@ class RayServeReplica:
                                     self.config.batch_wait_timeout)
         self.reconfigure(self.config.user_config)
 
-    async def handle_request(self,
-                             request: Union[Query, bytes]) -> asyncio.Future:
-        if isinstance(request, bytes):
-            request = Query.ray_deserialize(request)
-
+    async def handle_request(self, request: Query) -> asyncio.Future:
         request.tick_enter_replica = time.time()
         logger.debug("Replica {} received request {}".format(
             self.replica_tag, request.metadata.request_id))
