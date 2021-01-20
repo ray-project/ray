@@ -61,6 +61,7 @@ class GcsPlacementGroup {
         placement_group_spec.creator_job_dead());
     placement_group_table_data_.set_creator_actor_dead(
         placement_group_spec.creator_actor_dead());
+    placement_group_table_data_.set_is_detached(placement_group_spec.is_detached());
   }
 
   /// Get the immutable PlacementGroupTableData of this placement group.
@@ -109,6 +110,9 @@ class GcsPlacementGroup {
 
   /// Return True if the placement group is removable. False otherwise.
   bool IsPlacementGroupRemovable() const;
+
+  /// Returns whether or not this is a detached placement group.
+  bool IsDetached() const;
 
  private:
   /// The placement_group meta data which contains the task specification as well as the

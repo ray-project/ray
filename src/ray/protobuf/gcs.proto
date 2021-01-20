@@ -191,6 +191,8 @@ message PlacementGroupTableData {
   bool creator_job_dead = 8;
   // Whether or not if the creator actor is dead.
   bool creator_actor_dead = 9;
+  // Whether the placement group is persistent.
+  bool is_detached = 10;
 }
 
 message ScheduleData {

@@ -101,6 +101,8 @@ bool GcsPlacementGroup::IsPlacementGroupRemovable() const {
          placement_group_table_data_.creator_actor_dead();
 }
 
+bool GcsPlacementGroup::IsDetached() const { return placement_group_table_data_.is_detached(); }
+
 /////////////////////////////////////////////////////////////////////////////////////////
 
 GcsPlacementGroupManager::GcsPlacementGroupManager(
@@ -509,7 +511,7 @@ void GcsPlacementGroupManager::CleanPlacementGroupIfNeededWhenActorDead(
       continue;
     }
     placement_group->MarkCreatorActorDead();
-    if (placement_group->IsPlacementGroupRemovable()) {
+    if (!placement_group->IsDetached() && placement_group->IsPlacementGroupRemovable()) {
       RemovePlacementGroup(placement_group->GetPlacementGroupID(), [](Status status) {});
     }
   }
