@@ -16,7 +16,7 @@ RUN apt-get update -qq
 RUN apt-get install -y -qq \
     curl python-is-python3 git build-essential \
     sudo unzip apt-utils dialog tzdata wget \
-    language-pack-en tmux cmake \
+    language-pack-en tmux cmake gdb vim htop \
     libgtk2.0-dev zlib1g-dev libgl1-mesa-dev
 
 # System conf for tests
