@@ -183,7 +183,7 @@ def test_metrics_export_end_to_end(_setup_cluster_for_test):
 
 
 def test_metrics_after_restart(shutdown_only):
-    # Test that metrics infrastructure is correctly cleaned up upon 
+    # Test that metrics infrastructure is correctly cleaned up upon
     # shutting down a Ray cluster.
     ray.init()
     ray.shutdown()
