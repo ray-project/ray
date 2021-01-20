@@ -3,18 +3,13 @@
   - bash src/ray/test/run_object_manager_tests.sh
   - bazel test --config=ci $(./scripts/bazel_export_options)
       --build_tests_only
-      //:all -rllib/...
+      -- //:all -rllib/...
 
 - label: "Core Tests (ASAN)"
   commands:
-  - bazel build --config=ci --config=asan $(./scripts/bazel_export_options)
-      --build_tests_only
-      --config=asan-buildkite
-      //:all
   - bazel test --config=ci --config=asan $(./scripts/bazel_export_options)
       --build_tests_only
       --config=asan-buildkite
-      --jobs=1
       //:all
 
 - label: "Dashboard + Serve Tests"

@@ -35,6 +35,11 @@ install_bazel() {
 }
 
 install_base() {
+  if [ -n "${BUILDKITE}" ]; then
+    echo "Skipping install_base in Buildkite"
+    return
+  fi
+
   case "${OSTYPE}" in
     linux*)
       # Expired apt key error: https://github.com/bazelbuild/bazel/issues/11470#issuecomment-633205152
