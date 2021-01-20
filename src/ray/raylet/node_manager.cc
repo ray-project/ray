@@ -299,8 +299,8 @@ ray::Status NodeManager::RegisterGcs() {
   // node failure. These workers can be identified by comparing the raylet_id
   // in their rpc::Address to the ID of a failed raylet.
   const auto &worker_failure_handler =
-      [this](const rpc::WorkerTableData &worker_failure_data) {
-        HandleUnexpectedWorkerFailure(worker_failure_data.worker_address());
+      [this](const rpc::WorkerDeltaData &worker_failure_data) {
+        HandleUnexpectedWorkerFailure(worker_failure_data);
       };
   RAY_CHECK_OK(gcs_client_->Workers().AsyncSubscribeToWorkerFailures(
       worker_failure_handler, /*done_callback=*/nullptr));
@@ -716,14 +716,14 @@ void NodeManager::NodeRemoved(const NodeID &node_id) {
 
   // Clean up workers that were owned by processes that were on the failed
   // node.
-  rpc::Address address;
-  address.set_raylet_id(node_id.Binary());
-  HandleUnexpectedWorkerFailure(address);
+  rpc::WorkerDeltaData data;
+  data.set_raylet_id(node_id.Binary());
+  HandleUnexpectedWorkerFailure(data);
 }
 
-void NodeManager::HandleUnexpectedWorkerFailure(const rpc::Address &address) {
-  const WorkerID worker_id = WorkerID::FromBinary(address.worker_id());
-  const NodeID node_id = NodeID::FromBinary(address.raylet_id());
+void NodeManager::HandleUnexpectedWorkerFailure(const rpc::WorkerDeltaData &data) {
+  const WorkerID worker_id = WorkerID::FromBinary(data.worker_id());
+  const NodeID node_id = NodeID::FromBinary(data.raylet_id());
   if (!worker_id.IsNil()) {
     RAY_LOG(DEBUG) << "Worker " << worker_id << " failed";
     failed_workers_cache_.insert(worker_id);
