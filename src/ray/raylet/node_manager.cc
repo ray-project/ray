@@ -452,7 +452,7 @@ void NodeManager::Heartbeat() {
 void NodeManager::ReportResourceUsage() {
   auto resources_data = std::make_shared<rpc::ResourcesData>();
   resources_data->set_node_id(self_node_id_.Binary());
-  // Update local chche from gcs remote cache, this is needed when gcs restart.
+  // Update local cache from gcs remote cache, this is needed when gcs restart.
   // We should always keep the cache view consistent.
   cluster_resource_scheduler_->UpdateLastResourceUsage(
       gcs_client_->NodeResources().GetLastResourceUsage());
