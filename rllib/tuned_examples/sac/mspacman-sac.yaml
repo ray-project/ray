@@ -14,11 +14,11 @@ mspacman-sac-tf:
         # state-preprocessor=Our default Atari Conv2D-net.
         use_state_preprocessor: true
         Q_model:
-            hidden_activation: relu
-            hidden_layer_sizes: [512]
+            fcnet_hiddens: [512]
+            fcnet_activation: relu
         policy_model:
-            hidden_activation: relu
-            hidden_layer_sizes: [512]
+            fcnet_hiddens: [512]
+            fcnet_activation: relu
         # Do hard syncs.
         # Soft-syncs seem to work less reliably for discrete action spaces.
         tau: 1.0
