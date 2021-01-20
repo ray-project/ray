@@ -435,9 +435,6 @@ matrix:
       script:
         - . ./ci/travis/ci.sh test_cpp
 script:
-  # raylet integration tests (core_worker_tests included in bazel tests below)
-  - ./ci/suppress_output bash src/ray/test/run_object_manager_tests.sh
-
   # cc bazel tests (w/o RLlib)
   - ./ci/suppress_output bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only -- //:all -rllib/...
 
