@@ -379,8 +379,14 @@ TEST_F(LocalObjectManagerTest, TestRestoreSpilledObject) {
                                         num_times_fired++;
                                       });
   }
-<<<<<<< HEAD
-  ASSERT_TRUE(worker_pool.io_worker_client->ReplyRestoreObjects(10));
+  ASSERT_EQ(num_times_fired, 0);
+
+  // When restore workers are pushed, the request should be dedupped.
+  for (int i = 0; i < 10; i++) {
+    worker_pool.RestoreWorkerPushed();
+    ASSERT_EQ(num_times_fired, 0);
+  }
+  worker_pool.io_worker_client->ReplyRestoreObjects(10);
   ASSERT_EQ(num_times_fired, 1);
 
   // If the object wasn't spilled on the current node, it should request restoration to
@@ -393,16 +399,6 @@ TEST_F(LocalObjectManagerTest, TestRestoreSpilledObject) {
                                       num_times_fired++;
                                     });
   // Make sure the callback wasn't called.
-=======
-  ASSERT_EQ(num_times_fired, 0);
-
-  // When restore workers are pushed, the request should be dedupped.
-  for (int i = 0; i < 10; i++) {
-    worker_pool.RestoreWorkerPushed();
-    ASSERT_EQ(num_times_fired, 0);
-  }
-  worker_pool.io_worker_client->ReplyRestoreObjects(10);
->>>>>>> master
   ASSERT_EQ(num_times_fired, 1);
   // Make sure the remote call was invoked.
   ASSERT_FALSE(worker_pool.io_worker_client->ReplyRestoreObjects(10));
