@@ -387,6 +387,7 @@ TEST_F(LocalObjectManagerTest, TestRestoreSpilledObject) {
     ASSERT_EQ(num_times_fired, 0);
   }
   worker_pool.io_worker_client->ReplyRestoreObjects(10);
+  // The restore should've been invoked.
   ASSERT_EQ(num_times_fired, 1);
 
   // If the object wasn't spilled on the current node, it should request restoration to
@@ -398,13 +399,12 @@ TEST_F(LocalObjectManagerTest, TestRestoreSpilledObject) {
                                       ASSERT_TRUE(status.ok());
                                       num_times_fired++;
                                     });
-  // Make sure the callback wasn't called.
-  ASSERT_EQ(num_times_fired, 1);
   // Make sure the remote call was invoked.
   ASSERT_FALSE(worker_pool.io_worker_client->ReplyRestoreObjects(10));
   ASSERT_TRUE(remote_node_set_restore_requested_.count(remote_node_id) > 0);
   ASSERT_TRUE(remote_node_set_restore_requested_[remote_node_id].count(remote_object_id) >
               0);
+  ASSERT_EQ(num_times_fired, 2);
 }
 
 TEST_F(LocalObjectManagerTest, TestExplicitSpill) {

@@ -98,37 +98,35 @@ void PullManager::TryToMakeObjectLocal(const ObjectID &object_id) {
     return;
   }
 
-  // New object locations were found, so begin trying to pull from a
-  // client. This will be called every time a new client location
-  // appears.
+  // This will be called every time a new client location appears.
+  // If the object is restored from the external storage in a remote node, the client location will appear, and it will guarantee to pull it from that node.
   bool did_pull = PullFromRandomLocation(object_id);
   if (did_pull) {
+    // New object locations were found, so begin trying to pull from a
+    // client. 
     UpdateRetryTimer(request);
     return;
   }
 
-  // If we cannot pull, try restoring objects from the external storage.
+  // If we cannot pull, it means all objects have been evicted, so try restoring objects from the external storage.
+  // If the object was spilled on the current node, the callback will restore the object from the local external storage (e.g., disk).
+  // Otherwise, it will send a request to a remote node that spilled the object.
   if (!request.spilled_url.empty()) {
     const auto spilled_node_id = request.spilled_node_id;
     RAY_CHECK(!spilled_node_id.IsNil());
-    // Try to restore the spilled object from a local or remote node.
     restore_spilled_object_(
         object_id, spilled_node_id,
         [object_id, spilled_node_id](const ray::Status &status) {
           if (!status.ok()) {
             RAY_LOG(WARNING)
-                << "Object restoration request to a remote failed and the object could "
+                << "Object restoration failed and the object could "
                    "not be "
-                   "found on any other nodes. It could be because the remote node that "
-                   "spilled the object has crashed or the network request has failed. "
+                   "found on any other nodes. This can happen if the location where the object was spilled is unreachable. This job may hang if the object is permanently unreachable. "
                    "Please check the log of node of id: "
                 << spilled_node_id << " Object id: " << object_id;
           }
         });
-    // Q: Maybe we shouldn't update the timer and rate limit the restore requests within a
-    // restore_spilled_object_ callback? Otherwise it can hurt the performance as spilling
-    // wouldn't be done quickly, and the retry timer will keep increasing retry interval.
-    // UpdateRetryTimer(request);
+    // We shouldn't update the timer here because restoration takes some time, and since we retry pull requests with exponential backoff, the delay could be large.
   }
 }
 

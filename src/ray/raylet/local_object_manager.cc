@@ -311,6 +311,7 @@ void LocalObjectManager::AsyncRestoreSpilledObject(
     RAY_LOG(DEBUG) << "Send a object restoration request of id: " << object_id
                    << " to a remote node: " << node_id;
     restore_object_from_remote_node_(object_id, node_id);
+    callback(Status::OK());
     return;
   }
 
