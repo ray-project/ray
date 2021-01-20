@@ -306,6 +306,8 @@ void LocalObjectManager::AsyncRestoreSpilledObject(
     // If the same object is restoring, we dedup here.
     return;
   }
+  RAY_CHECK(objects_pending_restore_.emplace(object_id).second)
+      << "Object dedupe wasn't done properly. Please report if you see this issue.";
   io_worker_pool_.PopRestoreWorker([this, object_id, object_url, callback](
                                        std::shared_ptr<WorkerInterface> io_worker) {
     auto start_time = absl::GetCurrentTimeNanos();
@@ -313,8 +315,6 @@ void LocalObjectManager::AsyncRestoreSpilledObject(
     rpc::RestoreSpilledObjectsRequest request;
     request.add_spilled_objects_url(std::move(object_url));
     request.add_object_ids_to_restore(object_id.Binary());
-    RAY_CHECK(objects_pending_restore_.emplace(object_id).second)
-        << "Object dedupe wasn't done properly. Please report if you see this issue.";
     io_worker->rpc_client()->RestoreSpilledObjects(
         request,
         [this, start_time, object_id, callback, io_worker](

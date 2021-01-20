@@ -8,7 +8,6 @@ from typing import Dict, List, Tuple, Type, Union
 
 import ray
 import ray.experimental.tf_utils
-from ray.rllib.agents.a3c.a3c_torch_policy import apply_grad_clipping
 from ray.rllib.agents.sac.sac_tf_policy import postprocess_trajectory, \
     validate_spaces
 from ray.rllib.agents.sac.sac_torch_policy import _get_dist_class, stats, \
@@ -22,7 +21,8 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.typing import LocalOptimizer, TensorType, \
     TrainerConfigDict
-from ray.rllib.utils.torch_ops import convert_to_torch_tensor
+from ray.rllib.utils.torch_ops import apply_grad_clipping, \
+    convert_to_torch_tensor
 
 torch, nn = try_import_torch()
 F = nn.functional

@@ -73,8 +73,7 @@ DEFAULT_CONFIG = with_common_config({
     "timesteps_per_iteration": 100,
 
     # === Replay buffer ===
-    # Size of the replay buffer. Note that if async_updates is set, then
-    # each worker will have a replay buffer of this size.
+    # Size of the replay buffer (in time steps).
     "buffer_size": int(1e6),
     # If True prioritized replay buffer will be used.
     "prioritized_replay": False,
@@ -104,9 +103,7 @@ DEFAULT_CONFIG = with_common_config({
     # Update the replay buffer with this many samples at once. Note that this
     # setting applies per-worker if num_workers > 1.
     "rollout_fragment_length": 1,
-    # Size of a batched sampled from replay buffer for training. Note that
-    # if async_updates is set, then each worker returns gradients for a
-    # batch of this size.
+    # Size of a batched sampled from replay buffer for training.
     "train_batch_size": 256,
     # Update the target network every `target_network_update_freq` steps.
     "target_network_update_freq": 0,

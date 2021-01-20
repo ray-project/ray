@@ -51,8 +51,8 @@ if __name__ == "__main__":
                 "cnn_shape": cnn_shape_torch if args.torch else cnn_shape,
             },
             "max_seq_len": 20,
+            "vf_share_layers": True,
         },
-        "vf_share_layers": True,
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
         "num_workers": 0,  # no parallelism
