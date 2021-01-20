@@ -9,7 +9,6 @@ from typing import Dict, List, Optional, Tuple, Type, Union
 
 import ray
 import ray.experimental.tf_utils
-from ray.rllib.agents.a3c.a3c_torch_policy import apply_grad_clipping
 from ray.rllib.agents.sac.sac_tf_policy import build_sac_model, \
     postprocess_trajectory, validate_spaces
 from ray.rllib.agents.dqn.dqn_tf_policy import PRIO_WEIGHTS
@@ -23,7 +22,7 @@ from ray.rllib.models.torch.torch_action_dist import (
     TorchCategorical, TorchSquashedGaussian, TorchDiagGaussian, TorchBeta)
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.spaces.simplex import Simplex
-from ray.rllib.utils.torch_ops import huber_loss
+from ray.rllib.utils.torch_ops import apply_grad_clipping, huber_loss
 from ray.rllib.utils.typing import LocalOptimizer, TensorType, \
     TrainerConfigDict
 

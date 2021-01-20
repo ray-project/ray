@@ -261,7 +261,7 @@ ray::Status NodeManager::RegisterGcs() {
       NodeAdded(data);
     } else {
       RAY_CHECK(data.state() == GcsNodeInfo::DEAD);
-      NodeRemoved(data);
+      NodeRemoved(node_id);
     }
   };
 
@@ -693,10 +693,9 @@ void NodeManager::NodeAdded(const GcsNodeInfo &node_info) {
       }));
 }
 
-void NodeManager::NodeRemoved(const GcsNodeInfo &node_info) {
+void NodeManager::NodeRemoved(const NodeID &node_id) {
   // TODO(swang): If we receive a notification for our own death, clean up and
   // exit immediately.
-  const NodeID node_id = NodeID::FromBinary(node_info.node_id());
   RAY_LOG(DEBUG) << "[NodeRemoved] Received callback from node id " << node_id;
 
   RAY_CHECK(node_id != self_node_id_)
@@ -730,7 +729,7 @@ void NodeManager::NodeRemoved(const GcsNodeInfo &node_info) {
   // Clean up workers that were owned by processes that were on the failed
   // node.
   rpc::Address address;
-  address.set_raylet_id(node_info.node_id());
+  address.set_raylet_id(node_id.Binary());
   HandleUnexpectedWorkerFailure(address);
 }
 

@@ -3,6 +3,7 @@ import unittest
 from unittest.mock import patch
 
 import ray
+from ray import tune
 from ray.rllib import _register_all
 from ray.tune import Trainable
 from ray.tune.ray_trial_executor import RayTrialExecutor
@@ -12,6 +13,7 @@ from ray.tune.suggest import BasicVariantGenerator
 from ray.tune.trial import Trial, Checkpoint
 from ray.tune.resources import Resources
 from ray.cluster_utils import Cluster
+from ray.util import placement_group
 
 
 class RayTrialExecutorTest(unittest.TestCase):
@@ -268,6 +270,87 @@ class RayExecutorQueueTest(unittest.TestCase):
         cpu_only_trial3 = create_trial(1, 0)
         self.assertFalse(
             self.trial_executor.has_resources(cpu_only_trial3.resources))
+
+
+class RayExecutorPlacementGroupTest(unittest.TestCase):
+    def setUp(self):
+        self.head_cpus = 8
+        self.head_gpus = 4
+        self.head_custom = 16
+
+        self.cluster = Cluster(
+            initialize_head=True,
+            connect=True,
+            head_node_args={
+                "num_cpus": self.head_cpus,
+                "num_gpus": self.head_gpus,
+                "resources": {
+                    "custom": self.head_custom
+                },
+                "_system_config": {
+                    "num_heartbeats_timeout": 10
+                }
+            })
+        # Pytest doesn't play nicely with imports
+        _register_all()
+
+    def tearDown(self):
+        ray.shutdown()
+        self.cluster.shutdown()
+        _register_all()  # re-register the evicted objects
+
+    def testResourcesAvailableNoPlacementGroup(self):
+        def train(config):
+            tune.report(metric=0, resources=ray.available_resources())
+
+        out = tune.run(
+            train,
+            resources_per_trial={
+                "cpu": 1,
+                "gpu": 1,
+                "custom_resources": {
+                    "custom": 3
+                },
+                "extra_cpu": 3,
+                "extra_gpu": 1,
+                "extra_custom_resources": {
+                    "custom": 4
+                },
+            })
+
+        # Only `cpu`, `gpu`, and `custom_resources` will be "really" reserved,
+        # the extra_* will just be internally reserved by Tune.
+        self.assertDictEqual({
+            key: val
+            for key, val in out.trials[0].last_result["resources"].items()
+            if key in ["CPU", "GPU", "custom"]
+        }, {
+            "CPU": self.head_cpus - 1.0,
+            "GPU": self.head_gpus - 1.0,
+            "custom": self.head_custom - 3.0
+        })
+
+    def testResourcesAvailableWithPlacementGroup(self):
+        def train(config):
+            tune.report(metric=0, resources=ray.available_resources())
+
+        def placement_group_factory():
+            head_bundle = {"CPU": 1, "GPU": 0, "custom": 4}
+            child_bundle = {"CPU": 2, "GPU": 1, "custom": 3}
+
+            return placement_group([head_bundle, child_bundle, child_bundle])
+
+        out = tune.run(train, resources_per_trial=placement_group_factory)
+
+        self.assertDictEqual({
+            key: val
+            for key, val in out.trials[0].last_result["resources"].items()
+            if key in ["CPU", "GPU", "custom"]
+        }, {
+            "CPU": self.head_cpus - 5.0,
+            "GPU": self.head_gpus - 2.0,
+            "custom": self.head_custom - 10.0
+        })
 
 
 class LocalModeExecutorTest(RayTrialExecutorTest):
