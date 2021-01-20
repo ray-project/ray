@@ -233,9 +233,11 @@ class StatsCollector(dashboard_utils.DashboardHeadModule):
                 # Update actors.
                 DataSource.actors[actor_id] = actor_table_data
                 # Update node actors.
-                node_actors = dict(DataSource.node_actors.get(node_id, {}))
-                node_actors[actor_id] = actor_table_data
-                DataSource.node_actors[node_id] = node_actors
+                if node_id != "f" * 56:
+                    # Update only when node_id is not Nil.
+                    node_actors = dict(DataSource.node_actors.get(node_id, {}))
+                    node_actors[actor_id] = actor_table_data
+                    DataSource.node_actors[node_id] = node_actors
                 # Update job actors.
                 job_actors = dict(DataSource.job_actors.get(job_id, {}))
                 job_actors[actor_id] = actor_table_data
