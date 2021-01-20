@@ -3,6 +3,8 @@ import numpy as np
 import torch
 import pytest
 import ray
+from pl_bolts.datamodules import MNISTDataModule
+from ray.tune.examples.mnist_ptl_mini import LightningMNISTClassifier
 from ray.util.lightning_accelerators import HorovodRayAccelerator
 import pytorch_lightning as pl
 
@@ -31,10 +33,8 @@ def _nccl_available():
 @pytest.fixture
 def ray_start_2_cpus():
     address_info = ray.init(num_cpus=2)
-    try:
-        yield address_info
-    finally:
-        ray.shutdown()
+    yield address_info
+    ray.shutdown()
 
 @pytest.fixture
 def ray_start_2_gpus():
@@ -64,16 +64,16 @@ class LinearDataset(torch.utils.data.Dataset):
         return len(self.x)
 
 class PTL_Module(pl.LightningModule):
-    def __init__(self, lr=0.1, hidden_size=1, data_size=10, val_size=10,
+    def __init__(self, lr=1e-2, hidden_size=1, data_size=10, val_size=10,
                  batch_size=2):
         super().__init__()
+        self.save_hyperparameters()
         self.lr = lr
         self.data_size=data_size
         self.val_size=val_size
         self.hidden_size=hidden_size
         self.batch_size=batch_size
         self.layer = torch.nn.Linear(1, hidden_size)
-        self.rand_int = np.random.randint(10)
 
     def forward(self, x):
         return self.layer.forward(x)
@@ -84,7 +84,9 @@ class PTL_Module(pl.LightningModule):
 
     def training_step(self, batch, batch_idx):
         x, y = batch
+        #print(x, y)
         output = self(x)
+        #print(output)
         loss = self.loss(output, y)
         return loss
 
@@ -116,12 +118,13 @@ class PTL_Module(pl.LightningModule):
         return self.val_loader
 
     def test_dataloader(self):
-        inputs = np.random.randint(0, 10, 10).astype(np.float32)
-        test_dataset = LinearDataset(2, 5, inputs)
+        #inputs = np.random.randint(0, 10, 10).astype(np.float32)
+        inputs = np.arange(0, 10, dtype=np.float32)
+        test_dataset = LinearDataset(2, 5, x=inputs)
         return torch.utils.data.DataLoader(test_dataset, batch_size=2)
 
 
-def get_trainer(dir, num_processes=1, gpus=0, max_epochs=1,
+def get_trainer(dir, num_processes=2, gpus=0, max_epochs=1,
                 limit_train_batches=10,
                 limit_val_batches=10, progress_bar_refresh_rate=0):
     accelerator = HorovodRayAccelerator()
@@ -136,56 +139,61 @@ def get_trainer(dir, num_processes=1, gpus=0, max_epochs=1,
         checkpoint_callback=True,
         accelerator=accelerator
     )
+    assert False, trainer.distributed_backend
     return trainer
 
-def test_train(tmpdir, ray_start_2_cpus, seed):
-    model = PTL_Module()
-    initial_values = torch.tensor(
+def train_test(trainer, model):
+    initial_values = initial_values = torch.tensor(
         [torch.sum(torch.abs(x)) for x in model.parameters()])
-    trainer = get_trainer(tmpdir)
     result = trainer.fit(model)
     post_train_values = torch.tensor(
         [torch.sum(torch.abs(x)) for x in model.parameters()])
-
     assert result == 1, 'trainer failed'
-    # Check that the model is actually changed post-training
+    # Check that the model is actually changed post-training.
     assert torch.norm(initial_values - post_train_values) > 0.1
 
-def test_load(tmpdir, ray_start_2_cpus, seed):
+@pytest.mark.parametrize("num_processes", [1, 2])
+def test_train(tmpdir, ray_start_2_cpus, seed, num_processes):
     model = PTL_Module()
-    trainer = get_trainer(tmpdir)
+
+    trainer = get_trainer(tmpdir, num_processes=num_processes)
+    train_test(trainer, model)
+
+@pytest.mark.parametrize("num_processes", [1, 2])
+def test_load(tmpdir, ray_start_2_cpus, seed, num_processes):
+    model = PTL_Module()
+    trainer = get_trainer(tmpdir, num_processes=num_processes)
     trainer.fit(model)
     trained_model = PTL_Module.load_from_checkpoint(
         trainer.checkpoint_callback.best_model_path)
     assert trained_model is not None, 'loading model failed'
 
-def test_predict(tmpdir, ray_start_2_cpus, seed):
-    model = PTL_Module(data_size=1000)
-    trainer = get_trainer(tmpdir, limit_train_batches=500)
-    trainer.fit(model)
-    test_loaders = model.test_dataloader()
-    if not isinstance(test_loaders, list):
-        test_loaders = [test_loaders]
-
-    for dataloader in test_loaders:
-        # Run prediction on 1 batch.
-        import pdb; pdb.set_trace()
-        batch = next(iter(dataloader))
+@pytest.mark.parametrize("num_processes", [1, 2])
+def test_predict(tmpdir, ray_start_2_cpus, seed, num_processes):
+    config = {
+        "layer_1": 32,
+        "layer_2": 32,
+        "lr": 1e-2,
+        "batch_size": 32,
+    }
+    model = LightningMNISTClassifier(config, tmpdir)
+    dm = MNISTDataModule(
+        data_dir=tmpdir, num_workers=1, batch_size=config["batch_size"])
+        #seed=0)
+    trainer = get_trainer(tmpdir, limit_train_batches=10, max_epochs=1,
+                          progress_bar_refresh_rate=1, num_processes=num_processes)
+    trainer.fit(model, dm)
+    test_loader = dm.test_dataloader()
+    acc = pl.metrics.Accuracy()
+    for batch in test_loader:
         x, y = batch
-        x = x.view(x.size(0), -1)
         with torch.no_grad():
             y_hat = model(x)
         y_hat = y_hat.cpu()
-        # acc
-        labels_hat = torch.argmax(y_hat, dim=1)
-
-        y = y.cpu()
-        acc = torch.sum(y == labels_hat).item() / (len(y) * 1.0)
-        acc = torch.tensor(acc)
-        acc = acc.item()
-
-        assert acc >= 0.5, f"This model is expected to get > {0.5} in " \
-                          f"test set (it got {acc})"
+        acc.update(y_hat, y)
+    average_acc = acc.compute()
+    assert average_acc >= 0.5, f"This model is expected to get > {0.5} in " \
+                      f"test set (it got {average_acc})"
 
 
 # @mock.patch('pytorch_lightning.accelerators.horovod_ray_accelerator.get_executable_cls')
