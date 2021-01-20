@@ -464,6 +464,7 @@ class BackendState:
             except RayServeException as e:
                 del self._backend_metadata[backend_tag]
                 del self._target_replicas[backend_tag]
+                self._goal_manager.complete_goal(self.backend_goals.pop(backend_tag, None))
                 raise e
             if num_replicas == 0:
                 del self._backend_metadata[backend_tag]
@@ -505,12 +506,12 @@ class BackendState:
             if (not desired_num_replicas or
                     desired_num_replicas == 0) and \
                     (not existing_info or len(existing_info) == 0):
-                completed_goals.append(self.backend_goals.get(backend_tag))
+                completed_goals.append(self.backend_goals.pop(backend_tag, None))
 
             # Check for a non-zero number of backends
             if (desired_num_replicas and existing_info) \
                     and desired_num_replicas == len(existing_info):
-                completed_goals.append(self.backend_goals.get(backend_tag))
+                completed_goals.append(self.backend_goals.pop(backend_tag, None))
         return [goal for goal in completed_goals if goal]
 
     async def update(self) -> bool:
