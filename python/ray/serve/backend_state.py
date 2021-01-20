@@ -164,8 +164,8 @@ class BackendReplica:
                     f"{self._graceful_shutdown_timeout_s}s, force-killing.")
 
             ray.kill(replica, no_restart=True)
-            self._state = ReplicaState.STOPPED
-            return True
+            # The next call to `check_stopped` will return True on the `get_actor` call.
+            return False
         return False
 
     def get_actor_handle(self):
