@@ -129,7 +129,6 @@ void PullManager::TryToMakeObjectLocal(const ObjectID &object_id) {
 bool PullManager::PullFromRandomLocation(const ObjectID &object_id) {
   auto it = object_pull_requests_.find(object_id);
   if (it == object_pull_requests_.end()) {
-    RAY_LOG(ERROR) << "pull request in flight " << object_id;
     return false;
   }
 
@@ -137,7 +136,6 @@ bool PullManager::PullFromRandomLocation(const ObjectID &object_id) {
 
   // The timer should never fire if there are no expected client locations.
   if (node_vector.empty()) {
-    RAY_LOG(ERROR) << "no node vector. " << object_id;
     return false;
   }
 

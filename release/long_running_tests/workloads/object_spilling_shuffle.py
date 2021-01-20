@@ -122,7 +122,7 @@ iteration = 1
 delta_sum = 0
 total_bytes = None
 
-while True:
+while iteration < 2:
     print(f"Start the iteration, {iteration}")
     total_rows, delta = run_shuffle()
     print(f"Iteration {iteration} done.")
@@ -130,7 +130,7 @@ while True:
     delta_sum += delta
     total_bytes = total_rows
     assert total_bytes == total_rows
-    iteration += 1
+    # iteration += 1
 
 assert total_bytes is not None
 print(f"Long running shuffle done. Please check if memory usage is steady. "

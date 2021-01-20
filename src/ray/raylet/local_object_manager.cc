@@ -318,7 +318,7 @@ void LocalObjectManager::AsyncRestoreSpilledObject(
 
   RAY_CHECK(objects_pending_restore_.emplace(object_id).second)
       << "Object dedupe wasn't done properly. Please report if you see this issue.";
-  io_worker_pool_.PopRestoreWorker([this, object_id, object_url, callback](
+  io_worker_pool_.PopRestoreWorker([this, object_id, url, callback](
                                        std::shared_ptr<WorkerInterface> io_worker) {
     auto start_time = absl::GetCurrentTimeNanos();
     RAY_LOG(DEBUG) << "Sending restore spilled object request";
@@ -399,7 +399,6 @@ void LocalObjectManager::ProcessSpilledObjectsDeleteQueue(uint32_t max_batch_siz
         url_ref_count_.erase(url_ref_count_it);
         object_urls_to_delete.emplace_back(object_url);
       }
-      RAY_LOG(ERROR) << "[Delete] object of object url " << object_url;
       spilled_objects_url_.erase(spilled_objects_url_it);
       ray::Status status =
           object_info_accessor_.AsyncRemoveLocation(object_id, self_node_id_, nullptr);
