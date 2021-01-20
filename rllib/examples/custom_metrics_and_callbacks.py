@@ -59,11 +59,11 @@ class MyCallbacks(DefaultCallbacks):
         # you can mutate the result dict to add new fields to return
         result["callback_ok"] = True
 
-    def on_learn_on_batch(self, *, policy: Policy, train_batch: SampleBatch, result: dict, **kwargs) -> None:
-        print()
-        print("trainer.train() result: {} -> rewards: {}".format(
-            policy, train_batch["dones"]))
-        result["same_as_dones"] = train_batch["dones"]
+    def on_learn_on_batch(self, *, policy: Policy, train_batch: SampleBatch,
+                          result: dict, **kwargs) -> None:
+        result["sum_actions_in_train_batch"] = np.sum(train_batch["actions"])
+        print("policy.learn_on_batch() result: {} -> sum actions: {}".format(
+            policy, result["sum_actions_in_train_batch"]))
 
     def on_postprocess_trajectory(
             self, *, worker: RolloutWorker, episode: MultiAgentEpisode,
@@ -102,3 +102,7 @@ if __name__ == "__main__":
     assert "pole_angle_max" in custom_metrics
     assert "num_batches_mean" in custom_metrics
     assert "callback_ok" in trials[0].last_result
+
+    info_custom_metrics = trials[0].last_result["info"]["custom_metrics"]
+    print(info_custom_metrics)
+    assert "sum_actions_in_train_batch" in info_custom_metrics
