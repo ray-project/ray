@@ -80,8 +80,6 @@ void GcsObjectManager::HandleAddObjectLocation(
   }
 
   size_t size = request.size();
-  object_to_locations_[object_id].object_size = size;
-
   auto on_done = [this, object_id, node_id, spilled_url, size, reply,
                   send_reply_callback](const Status &status) {
     if (status.ok()) {
@@ -112,6 +110,7 @@ void GcsObjectManager::HandleAddObjectLocation(
   };
 
   absl::MutexLock lock(&mutex_);
+  object_to_locations_[object_id].object_size = size;
   const auto object_data = GenObjectLocationInfo(object_id);
   Status status = gcs_table_storage_->ObjectTable().Put(object_id, object_data, on_done);
   if (!status.ok()) {

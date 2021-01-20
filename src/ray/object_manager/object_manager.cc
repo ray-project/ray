@@ -835,11 +835,13 @@ void ObjectManager::Tick(const boost::system::error_code &e) {
 
   // Request the current available memory from the object
   // store.
-  plasma::plasma_store_runner->GetAvailableMemoryAsync([this](size_t available_memory) {
-    main_service_->post([this, available_memory]() {
-      pull_manager_->UpdatePullsBasedOnAvailableMemory(available_memory);
+  if (plasma::plasma_store_runner) {
+    plasma::plasma_store_runner->GetAvailableMemoryAsync([this](size_t available_memory) {
+      main_service_->post([this, available_memory]() {
+        pull_manager_->UpdatePullsBasedOnAvailableMemory(available_memory);
+      });
     });
-  });
+  }
 
   pull_manager_->Tick();
 
