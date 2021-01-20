@@ -102,7 +102,7 @@ ObjectManager::ObjectManager(asio::io_service &main_service, const NodeID &self_
   pull_manager_.reset(new PullManager(
       self_node_id_, object_is_local, send_pull_request, restore_spilled_object_,
       get_time, config.pull_timeout_ms, available_memory,
-      [this, spill_objects_callback, object_store_full_callback]() {
+      [spill_objects_callback, object_store_full_callback]() {
         // TODO(swang): This copies the out-of-memory handling in the
         // CreateRequestQueue. It would be nice to unify these.
         if (object_store_full_callback) {
