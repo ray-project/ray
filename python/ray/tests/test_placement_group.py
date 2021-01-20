@@ -1333,28 +1333,37 @@ def test_detached_placement_group(ray_start_cluster):
         def schedule_nested_actor_with_undetached_pg(self):
             # Create placement group which is undetached.
             pg = ray.util.placement_group(
-                [{"CPU": 1} for _ in range(2)],
-                strategy="STRICT_SPREAD", name="undetached_pg")
+                [{
+                    "CPU": 1
+                } for _ in range(2)],
+                strategy="STRICT_SPREAD",
+                name="undetached_pg")
             ray.get(pg.ready())
             # Schedule nested actor with the placement group.
             for bundle_index in range(2):
-                actor = NestedActor.options(placement_group=pg,
-                                            placement_group_bundle_index=bundle_index,
-                                            lifetime="detached").remote()
+                actor = NestedActor.options(
+                    placement_group=pg,
+                    placement_group_bundle_index=bundle_index,
+                    lifetime="detached").remote()
                 ray.get(actor.ready.remote())
                 self.actors.append(actor)
 
         def schedule_nested_actor_with_detached_pg(self):
             # Create placement group which is detached.
             pg = ray.util.placement_group(
-                [{"CPU": 1} for _ in range(2)],
-                strategy="STRICT_SPREAD",lifetime="detached", name="detached_pg")
+                [{
+                    "CPU": 1
+                } for _ in range(2)],
+                strategy="STRICT_SPREAD",
+                lifetime="detached",
+                name="detached_pg")
             ray.get(pg.ready())
             # Schedule nested actor with the placement group.
             for bundle_index in range(2):
-                actor = NestedActor.options(placement_group=pg,
-                                            placement_group_bundle_index=bundle_index,
-                                            lifetime="detached").remote()
+                actor = NestedActor.options(
+                    placement_group=pg,
+                    placement_group_bundle_index=bundle_index,
+                    lifetime="detached").remote()
                 ray.get(actor.ready.remote())
                 self.actors.append(actor)
 
@@ -1374,9 +1383,9 @@ def test_detached_placement_group(ray_start_cluster):
     assert len(placement_group_table) == 2
     for _, placement_group_data in placement_group_table.items():
         assert placement_group_data["name"] in ["undetached_pg", "detached_pg"]
-        if (placement_group_data["name"] == "undetached_pg") :
+        if (placement_group_data["name"] == "undetached_pg"):
             assert placement_group_data["state"] == "REMOVED"
-        if (placement_group_data["name"] == "detached_pg") :
+        if (placement_group_data["name"] == "detached_pg"):
             assert placement_group_data["state"] == "CREATED"
 
     # We should have 3 dead actors and 2 alive actors.
