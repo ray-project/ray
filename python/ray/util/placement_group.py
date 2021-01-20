@@ -192,7 +192,7 @@ def placement_group(bundles: List[Dict[str, float]],
         raise ValueError("placement group lifetime must be either `None` or 'detached'")
 
     placement_group_id = worker.core_worker.create_placement_group(
-        name, bundles, strategy, lifetime)
+        name, bundles, strategy, detached)
 
     return PlacementGroup(placement_group_id)
 
