@@ -25,7 +25,8 @@ def NamespacedKubernetesSyncer(namespace):
     Args:
         namespace (str): Kubernetes namespace.
 
-    Returns: A ``KubernetesSyncer`` class to be passed to ``tune.run()``.
+    Returns:
+        A ``KubernetesSyncer`` class to be passed to ``tune.run()``.
 
     Example:
 

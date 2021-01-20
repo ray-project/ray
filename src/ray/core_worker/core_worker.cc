@@ -270,7 +270,8 @@ void CoreWorkerProcess::RunTaskExecutionLoop() {
   } else {
     std::vector<std::thread> worker_threads;
     for (int i = 0; i < instance_->options_.num_workers; i++) {
-      worker_threads.emplace_back([]() {
+      worker_threads.emplace_back([i] {
+        SetThreadName("worker.task" + std::to_string(i));
         auto worker = instance_->CreateWorker();
         worker->RunTaskExecutionLoop();
         instance_->RemoveWorker(worker);
@@ -373,7 +374,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   // Register a callback to monitor removed nodes.
   auto on_node_change = [this](const NodeID &node_id, const rpc::GcsNodeInfo &data) {
     if (data.state() == rpc::GcsNodeInfo::DEAD) {
-      OnNodeRemoved(data);
+      OnNodeRemoved(node_id);
     }
   };
   RAY_CHECK_OK(gcs_client_->Nodes().AsyncSubscribeToNodeChange(on_node_change, nullptr));
@@ -649,12 +650,11 @@ void CoreWorker::RunIOService() {
   sigaddset(&mask, SIGTERM);
   pthread_sigmask(SIG_BLOCK, &mask, NULL);
 #endif
-
+  SetThreadName("worker.io");
   io_service_.run();
 }
 
-void CoreWorker::OnNodeRemoved(const rpc::GcsNodeInfo &node_info) {
-  const auto node_id = NodeID::FromBinary(node_info.node_id());
+void CoreWorker::OnNodeRemoved(const NodeID &node_id) {
   RAY_LOG(INFO) << "Node failure " << node_id;
   const auto lost_objects = reference_counter_->ResetObjectsOnRemovedNode(node_id);
   // Delete the objects from the in-memory store to indicate that they are not

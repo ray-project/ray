@@ -75,6 +75,7 @@ PlasmaStoreRunner::PlasmaStoreRunner(std::string socket_name, int64_t system_mem
 
 void PlasmaStoreRunner::Start(ray::SpillObjectsCallback spill_objects_callback,
                               std::function<void()> object_store_full_callback) {
+  SetThreadName("store.io");
   RAY_LOG(DEBUG) << "starting server listening on " << socket_name_;
   {
     absl::MutexLock lock(&store_runner_mutex_);

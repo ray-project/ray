@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -x 
+set -x
 set -euo pipefail
 
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
@@ -115,6 +115,8 @@ if [ "${CI-}" = true ]; then
     cat <<EOF >> ~/.bazelrc
 build --google_credentials="${translated_path}"
 EOF
+  elif [ -n "${BUILDKITE-}" ]; then
+    echo "Using buildkite secret store to communicate with cache address"
   else
     echo "Using remote build cache in read-only mode." 1>&2
     cat <<EOF >> ~/.bazelrc

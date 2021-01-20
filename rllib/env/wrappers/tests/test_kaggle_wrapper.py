@@ -1,9 +1,7 @@
+from kaggle_environments.utils import structify
 import unittest
 
-from kaggle_environments.utils import structify
-
-from ray.rllib.env.wrappers.kaggle_wrapper import \
-    KaggleFootballMultiAgentEnv
+from ray.rllib.env.wrappers.kaggle_wrapper import KaggleFootballMultiAgentEnv
 
 
 class TestKaggleFootballMultiAgentEnv(unittest.TestCase):
