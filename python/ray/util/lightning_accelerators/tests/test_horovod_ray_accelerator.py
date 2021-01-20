@@ -41,10 +41,8 @@ def ray_start_2_cpus():
 @pytest.fixture
 def ray_start_2_gpus():
     address_info = ray.init(num_cpus=2, num_gpus=2)
-    try:
-        yield address_info
-    finally:
-        ray.shutdown()
+    yield address_info
+    ray.shutdown()
 
 
 @pytest.fixture
