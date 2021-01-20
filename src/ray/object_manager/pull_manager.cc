@@ -99,17 +99,19 @@ void PullManager::TryToMakeObjectLocal(const ObjectID &object_id) {
   }
 
   // This will be called every time a new client location appears.
-  // If the object is restored from the external storage in a remote node, the client location will appear, and it will guarantee to pull it from that node.
+  // If the object is restored from the external storage in a remote node, the client
+  // location will appear, and it will guarantee to pull it from that node.
   bool did_pull = PullFromRandomLocation(object_id);
   if (did_pull) {
     // New object locations were found, so begin trying to pull from a
-    // client. 
+    // client.
     UpdateRetryTimer(request);
     return;
   }
 
-  // If we cannot pull, it means all objects have been evicted, so try restoring objects from the external storage.
-  // If the object was spilled on the current node, the callback will restore the object from the local external storage (e.g., disk).
+  // If we cannot pull, it means all objects have been evicted, so try restoring objects
+  // from the external storage. If the object was spilled on the current node, the
+  // callback will restore the object from the local external storage (e.g., disk).
   // Otherwise, it will send a request to a remote node that spilled the object.
   if (!request.spilled_url.empty()) {
     const auto spilled_node_id = request.spilled_node_id;
@@ -121,12 +123,15 @@ void PullManager::TryToMakeObjectLocal(const ObjectID &object_id) {
             RAY_LOG(WARNING)
                 << "Object restoration failed and the object could "
                    "not be "
-                   "found on any other nodes. This can happen if the location where the object was spilled is unreachable. This job may hang if the object is permanently unreachable. "
+                   "found on any other nodes. This can happen if the location where the "
+                   "object was spilled is unreachable. This job may hang if the object "
+                   "is permanently unreachable. "
                    "Please check the log of node of id: "
                 << spilled_node_id << " Object id: " << object_id;
           }
         });
-    // We shouldn't update the timer here because restoration takes some time, and since we retry pull requests with exponential backoff, the delay could be large.
+    // We shouldn't update the timer here because restoration takes some time, and since
+    // we retry pull requests with exponential backoff, the delay could be large.
   }
 }
 

@@ -520,7 +520,8 @@ void NodeManager::HandleRestoreSpilledObject(
     const rpc::RestoreSpilledObjectRequest &request,
     rpc::RestoreSpilledObjectReply *reply, rpc::SendReplyCallback send_reply_callback) {
   local_object_manager_.AsyncRestoreSpilledObject(
-      ObjectID::FromBinary(request.object_id()), self_node_id_, [send_reply_callback](const Status &status) {
+      ObjectID::FromBinary(request.object_id()), self_node_id_,
+      [send_reply_callback](const Status &status) {
         send_reply_callback(status, nullptr, nullptr);
       });
 }
@@ -2747,8 +2748,8 @@ void NodeManager::SendSpilledObjectRestorationRequestToRemoteNode(
       object_id, [](const ray::Status &status, const rpc::RestoreSpilledObjectReply &r) {
         if (!status.ok()) {
           RAY_LOG(WARNING) << "Failed to send a spilled object restoration request to a "
-                            "remote node. This request will be retried. Error message: "
-                         << status.ToString();
+                              "remote node. This request will be retried. Error message: "
+                           << status.ToString();
         }
       });
 }
