@@ -45,7 +45,6 @@ void declare_AllreduceRing(pybind11::module &m, const std::string &className)
 }
 
 
-
 PYBIND11_MODULE(pygloo, m){
     m.doc() = "binding gloo from c to python"; // optional module docstring
 
@@ -53,14 +52,25 @@ PYBIND11_MODULE(pygloo, m){
 
     m.def("transport_uv_available", &transport_uv_available, "transport_uv_available");
 
+    pybind11::enum_<pygloo::ReduceOp>(m, "ReduceOp", pybind11::arithmetic())
+        .value("SUM", pygloo::ReduceOp::SUM)
+        .value("PRODUCT", pygloo::ReduceOp::PRODUCT)
+        .value("MIN", pygloo::ReduceOp::MIN)
+        .value("MAX", pygloo::ReduceOp::MAX)
+        .value("BAND", pygloo::ReduceOp::BAND)
+        .value("BOR", pygloo::ReduceOp::BOR)
+        .value("BXOR", pygloo::ReduceOp::BXOR)
+        .value("UNUSED", pygloo::ReduceOp::UNUSED)
+        .export_values();
 
     m.def("allgather", &gloo::allgather, "allgather");
     m.def("allgatherv", &gloo::allgatherv, "allgatherv");
 
-    m.def("allreduce", &gloo::allreduce, "allreduce");
+    m.def("allreduce", &pygloo::allreduce, "allreduce", pybind11::arg("context")=nullptr, pybind11::arg("sendbuf")=nullptr, pybind11::arg("recvbuf")=nullptr, pybind11::arg("count")=nullptr, pybind11::arg("datatype") = nullptr, pybind11::arg("reduceop")=pygloo::ReduceOp::SUM);
+
     // declare_AllreduceRing<int>(m, "AllreduceRing");
     // declare_AllreduceRing<float>(m, "AllreduceRing");
-    declare_AllreduceRing<double>(m, "AllreduceRing");
+    // declare_AllreduceRing<double>(m, "AllreduceRing");
 
     pybind11::class_<gloo::AllreduceOptions>(m, "AllreduceOptions")
         .def(pybind11::init<const std::shared_ptr<gloo::Context>&>())
@@ -92,15 +102,6 @@ PYBIND11_MODULE(pygloo, m){
         .def("setTimeout", &gloo::Context::setTimeout)
         .def("getTimeout", &gloo::Context::getTimeout);
 
-
     def_transport_module(m);
     def_rendezvous_module(m);
-
 }
-
-    // if (GLOO_USE_REDIS){
-    //     #include <gloo/rendezvous/redis_store.h>
-    //     pybind11::class_<gloo::rendezvous::RedisStore>(m, "RedisStore" )
-    //         .def(pybind11::init<std::string, int>())
-    //         .def("check", &gloo::rendezvous::RedisStore::check );
-    // }
