@@ -98,18 +98,19 @@ class Worker:
                         f"Couldn't connect in {timeout} seconds, retrying")
             if connection_state == CONN_STATE_SERVICER:
                 try:
-                    # Now the HTTP2 channel is ready, or proxied, but the servicer
-                    # may not be ready. Call is_initialized() and if it throws,
-                    # the servicer is not ready. On success, the `ray_ready`
-                    # result is checked when we fallthrough to the next state
+                    # Now the HTTP2 channel is ready, or proxied, but the
+                    # servicer may not be ready. Call is_initialized() and if
+                    # it throws, the servicer is not ready. On success, the
+                    # `ray_ready` result is checked when we fallthrough to the
+                    # next state
                     ray_ready = self.is_initialized()
                     connection_state = CONN_STATE_RAY_INIT
                 except grpc.RpcError as e:
                     if e.code() == grpc.StatusCode.UNAVAILABLE:
-                        # UNAVAILABLE is gRPC's retryable error, so we do that here.
-                        logger.info(
-                            f"Ray client server unavailable, retrying in {timeout}s..."
-                        )
+                        # UNAVAILABLE is gRPC's retryable error,
+                        # so we do that here.
+                        logger.info("Ray client server unavailable, "
+                                    f"retrying in {timeout}s...")
                         logger.debug(
                             f"Received when checking init: {e.details()}")
                         time.sleep(timeout)
