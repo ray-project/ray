@@ -562,8 +562,8 @@ class Node:
     def _get_cached_port(self,
                          port_name: str,
                          default_port: Optional[int] = None) -> int:
-        """Get a port number from a cache on this node.  
-    
+        """Get a port number from a cache on this node.
+
         Different driver processes on a node should use the same ports for
         some purposes, e.g. exporting metrics.  This method returns a port
         number for the given port name and caches it in a file.  If the
@@ -590,8 +590,8 @@ class Node:
         with open(file_path, "r") as f:
             ports_by_node.update(json.load(f))
 
-        if self.unique_id in ports_by_node and port_name in ports_by_node[self.
-                                                                          unique_id]:
+        if (self.unique_id in ports_by_node
+                and port_name in ports_by_node[self.unique_id]):
             # The port has already been cached at this node, so use it.
             port = int(ports_by_node[self.unique_id][port_name])
         else:
