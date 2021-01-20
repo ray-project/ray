@@ -24,7 +24,6 @@ else:
 def _nccl_available():
     if not HOROVOD_AVAILABLE:
         return False
-
     try:
         return nccl_built()
     except AttributeError:
@@ -102,16 +101,6 @@ def test_train(tmpdir, ray_start_2_cpus, seed, num_processes):
     trainer = get_trainer(tmpdir, num_processes=num_processes)
     train_test(trainer, model)
 
-@pytest.mark.skipif(
-    not _nccl_available(), reason="test requires Horovod with NCCL support")
-@pytest.mark.skipif(
-    torch.cuda.device_count() < 2, reason="test requires multi-GPU machine")
-@pytest.mark.parametrize("num_gpus", [1, 2])
-def test_train_gpu(tmpdir, ray_start_2_gpus, seed, num_gpus):
-    model = get_model()
-    trainer = get_trainer(tmpdir, gpus=num_gpus)
-    train_test(trainer, model)
-
 
 def load_test(trainer, model):
     trainer.fit(model)
@@ -123,17 +112,6 @@ def load_test(trainer, model):
 def test_load(tmpdir, ray_start_2_cpus, seed, num_processes):
     model = get_model()
     trainer = get_trainer(tmpdir, num_processes=num_processes)
-    load_test(trainer, model)
-
-
-@pytest.mark.skipif(
-    not _nccl_available(), reason="test requires Horovod with NCCL support")
-@pytest.mark.skipif(
-    torch.cuda.device_count() < 2, reason="test requires multi-GPU machine")
-@pytest.mark.parametrize("num_gpus", [1, 2])
-def test_load_gpu(tmpdir, ray_start_2_gpus, seed, num_gpus):
-    model = get_model()
-    trainer = get_trainer(tmpdir, gpus=num_gpus)
     load_test(trainer, model)
 
 
@@ -170,6 +148,25 @@ def test_predict(tmpdir, ray_start_2_cpus, seed, num_processes):
         num_processes=num_processes)
     predict_test(trainer, model, dm)
 
+@pytest.mark.skipif(
+    not _nccl_available(), reason="test requires Horovod with NCCL support")
+@pytest.mark.skipif(
+    torch.cuda.device_count() < 2, reason="test requires multi-GPU machine")
+@pytest.mark.parametrize("num_gpus", [1, 2])
+def test_train_gpu(tmpdir, ray_start_2_gpus, seed, num_gpus):
+    model = get_model()
+    trainer = get_trainer(tmpdir, gpus=num_gpus)
+    train_test(trainer, model)
+
+@pytest.mark.skipif(
+    not _nccl_available(), reason="test requires Horovod with NCCL support")
+@pytest.mark.skipif(
+    torch.cuda.device_count() < 2, reason="test requires multi-GPU machine")
+@pytest.mark.parametrize("num_gpus", [1, 2])
+def test_load_gpu(tmpdir, ray_start_2_gpus, seed, num_gpus):
+    model = get_model()
+    trainer = get_trainer(tmpdir, gpus=num_gpus)
+    load_test(trainer, model)
 
 @pytest.mark.skipif(
     not _nccl_available(), reason="test requires Horovod with NCCL support")
