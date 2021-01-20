@@ -393,7 +393,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   ///
   /// \param worker The worker to destroy.
   /// \return Void.
-  void DestroyWorker(std::shared_ptr<WorkerInterface> worker);
+  void DestroyWorker(
+      std::shared_ptr<WorkerInterface> worker,
+      rpc::WorkerExitType disconnect_type = rpc::WorkerExitType::SYSTEM_ERROR_EXIT);
 
   /// When a job finished, loop over all of the queued tasks for that job and
   /// treat them as failed.
@@ -476,10 +478,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// client.
   ///
   /// \param client The client that sent the message.
-  /// \param intentional_disconnect Whether the client was intentionally disconnected.
+  /// \param message_data A pointer to the message data.
   /// \return Void.
   void ProcessDisconnectClientMessage(const std::shared_ptr<ClientConnection> &client,
-                                      bool intentional_disconnect = false);
+                                      const uint8_t *message_data);
 
   /// Process client message of FetchOrReconstruct
   ///
@@ -740,7 +742,14 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// object.
   void OnObjectMissing(const ObjectID &object_id,
                        const std::vector<TaskID> &waiting_task_ids) override;
-
+  /// Disconnect a client.
+  ///
+  /// \param client The client that sent the message.
+  /// \param disconnect_type The reason to disconnect the specified client.
+  /// \return Void.
+  void DisconnectClient(
+      const std::shared_ptr<ClientConnection> &client,
+      rpc::WorkerExitType disconnect_type = rpc::WorkerExitType::SYSTEM_ERROR_EXIT);
   /// The helper to dump the debug state of the cluster task manater.
   std::string DebugStr() const override;
 
