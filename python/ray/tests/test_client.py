@@ -2,6 +2,7 @@ import pytest
 import time
 import sys
 import logging
+import threading
 
 import ray.util.client.server.server as ray_client_server
 from ray.util.client import RayAPIStub
@@ -371,6 +372,24 @@ def test_internal_kv(ray_start_regular_shared):
         assert ray._internal_kv_list("a") == [b"apple"]
         ray._internal_kv_del("apple")
         assert ray._internal_kv_get("apple") == b""
+
+
+def test_startup_retry(ray_start_regular_shared):
+    from ray.util.client import ray as ray_client
+    with pytest.raises(ConnectionError):
+        ray_client.connect("localhost:50051", connection_retries=1)
+
+    def run_server():
+        time.sleep(2)
+        ray_client_server.serve("localhost:50051")
+        time.sleep(5)
+        server.stop(0)
+
+    thread = threading.Thread(target=run_server)
+    thread.start()
+    ray_client.connect("localhost:50051")
+    ray_client.disconnect()
+    thread.join()
 
 
 if __name__ == "__main__":
