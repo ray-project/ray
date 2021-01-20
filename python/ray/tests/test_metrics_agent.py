@@ -182,6 +182,38 @@ def test_metrics_export_end_to_end(_setup_cluster_for_test):
         test_cases()  # Should fail assert
 
 
+def test_metrics_after_restart(shutdown_only):
+    # Test that metrics infrastructure is correctly cleaned up upon 
+    # shutting down a Ray cluster.
+    ray.init()
+    ray.shutdown()
+
+    ray.init()
+    count = Count("test_counter", description="desc")
+    count.record(1)
+
+    # Try to check that the counter exists and has the correct value.
+    def test():
+        try:
+            node_info = ray.nodes()[0]
+            port = node_info["MetricsExportPort"]
+            address = node_info["NodeManagerAddress"]
+            prom_addresses = [f"{address}:{port}"]
+            components_dict, metric_names, metric_samples = fetch_prometheus(
+                prom_addresses)
+            test_counter_samples = [
+                m for m in metric_samples if "test_counter" in m.name
+            ]
+            assert len(test_counter_samples) >= 1
+            assert test_counter_samples[0].value == 1.0
+            return True
+        except AssertionError:
+            return False
+
+    # Metrics might not be exported instantly, so check once in a while.
+    wait_for_condition(test, timeout=30, retry_interval_ms=1000)
+
+
 @pytest.fixture
 def metric_mock():
     mock = MagicMock()
