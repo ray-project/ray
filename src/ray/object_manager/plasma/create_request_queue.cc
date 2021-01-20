@@ -81,18 +81,16 @@ std::pair<PlasmaObject, PlasmaError> CreateRequestQueue::TryRequestImmediately(
 }
 
 bool CreateRequestQueue::ProcessRequest(std::unique_ptr<CreateRequest> &request) {
-  // Return an OOM error to the client if we have hit the maximum number of
-  // retries.
-  // TODO(sang): Delete this logic?
+  // TODO(sang): Delete this logic when lru evict is removed.
   bool evict_if_full = evict_if_full_;
-  if (max_retries_ == 0) {
-    // If we cannot retry, then always evict on the first attempt.
-    evict_if_full = true;
-  } else if (num_retries_ > 0) {
-    // Always try to evict after the first attempt.
+  if (oom_start_time_ns_ != -1) {
+    // If the first attempt fails, we set the evict_if_full true.
+    // We need this logic because if lru_evict flag is on, this is false because we
+    // shouldn't evict objects in the first attempt.
     evict_if_full = true;
   }
-  request->error = request->create_callback(evict_if_full, &request->result);
+  request->error =
+      request->create_callback(/*evict_if_full=*/evict_if_full, &request->result);
   return request->error != PlasmaError::OutOfMemory;
 }
 
@@ -100,21 +98,25 @@ Status CreateRequestQueue::ProcessRequests() {
   while (!queue_.empty()) {
     auto request_it = queue_.begin();
     auto create_ok = ProcessRequest(*request_it);
+    auto now = get_time_();
     if (create_ok) {
       FinishRequest(request_it);
+      // Reset the oom start time since the creation succeeds.
+      oom_start_time_ns_ = -1;
     } else {
       if (trigger_global_gc_) {
         trigger_global_gc_();
       }
 
+      if (oom_start_time_ns_ == -1) {
+        oom_start_time_ns_ = now;
+      }
       if (spill_objects_callback_()) {
         return Status::TransientObjectStoreFull("Waiting for spilling.");
-      } else if (num_retries_ < max_retries_ || max_retries_ == -1) {
+      } else if (now - oom_start_time_ns_ < oom_grace_period_ns_) {
         // We need a grace period since (1) global GC takes a bit of time to
         // kick in, and (2) there is a race between spilling finishing and space
         // actually freeing up in the object store.
-        // If max_retries == -1, we retry infinitely.
-        num_retries_ += 1;
         return Status::ObjectStoreFull("Waiting for grace period.");
       } else {
         // Raise OOM. In this case, the request will be marked as OOM.
@@ -135,9 +137,6 @@ void CreateRequestQueue::FinishRequest(
   RAY_CHECK(it->second == nullptr);
   it->second = std::move(request);
   queue_.erase(request_it);
-
-  // Reset the number of retries since we are no longer trying this request.
-  num_retries_ = 0;
 }
 
 void CreateRequestQueue::RemoveDisconnectedClientRequests(
