@@ -768,6 +768,8 @@ def stop(force, verbose, log_style, log_color):
                     # terminate the entire process group. What to do?
                     proc.terminate()
 
+                proc.wait()
+
                 if force:
                     cli_logger.verbose("Killed `{}` {} ", cf.bold(proc_string),
                                        cf.dimmed("(via SIGKILL)"))

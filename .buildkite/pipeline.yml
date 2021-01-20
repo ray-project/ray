@@ -10,6 +10,7 @@
   - bazel test --config=ci --config=asan $(./scripts/bazel_export_options)
       --build_tests_only
       --config=asan-buildkite
+      --jobs=2
       //:all
 
 - label: "Dashboard + Serve Tests"
