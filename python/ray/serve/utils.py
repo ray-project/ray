@@ -103,7 +103,8 @@ def parse_request_item(request_item):
 def _get_logger():
     logger = logging.getLogger("ray.serve")
     # TODO(simon): Make logging level configurable.
-    if os.environ.get("SERVE_LOG_DEBUG"):
+    log_level = os.environ.get("SERVE_LOG_DEBUG")
+    if log_level and int(log_level):
         logger.setLevel(logging.DEBUG)
     else:
         logger.setLevel(logging.INFO)

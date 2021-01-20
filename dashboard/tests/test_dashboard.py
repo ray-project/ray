@@ -208,10 +208,10 @@ def test_http_get(enable_test_module, ray_start_with_dashboard):
 
     target_url = webui_url + "/test/dump"
 
-    timeout_seconds = 10
+    timeout_seconds = 30
     start_time = time.time()
     while True:
-        time.sleep(1)
+        time.sleep(3)
         try:
             response = requests.get(webui_url + "/test/http_get?url=" +
                                     target_url)

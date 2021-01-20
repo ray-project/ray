@@ -14,6 +14,30 @@ FLOAT_MIN = -3.4e38
 FLOAT_MAX = 3.4e38
 
 
+def apply_grad_clipping(policy, optimizer, loss):
+    """Applies gradient clipping to already computed grads inside `optimizer`.
+
+    Args:
+        policy (TorchPolicy): The TorchPolicy, which calculated `loss`.
+        optimizer (torch.optim.Optimizer): A local torch optimizer object.
+        loss (torch.Tensor): The torch loss tensor.
+    """
+    info = {}
+    if policy.config["grad_clip"]:
+        for param_group in optimizer.param_groups:
+            # Make sure we only pass params with grad != None into torch
+            # clip_grad_norm_. Would fail otherwise.
+            params = list(
+                filter(lambda p: p.grad is not None, param_group["params"]))
+            if params:
+                grad_gnorm = nn.utils.clip_grad_norm_(
+                    params, policy.config["grad_clip"])
+                if isinstance(grad_gnorm, torch.Tensor):
+                    grad_gnorm = grad_gnorm.cpu().numpy()
+                info["grad_gnorm"] = grad_gnorm
+    return info
+
+
 def atanh(x):
     return 0.5 * torch.log((1 + x) / (1 - x))
 

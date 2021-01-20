@@ -190,14 +190,6 @@ class GcsActorManager : public rpc::ActorInfoHandler {
                              rpc::GetAllActorInfoReply *reply,
                              rpc::SendReplyCallback send_reply_callback) override;
 
-  void HandleRegisterActorInfo(const rpc::RegisterActorInfoRequest &request,
-                               rpc::RegisterActorInfoReply *reply,
-                               rpc::SendReplyCallback send_reply_callback) override;
-
-  void HandleUpdateActorInfo(const rpc::UpdateActorInfoRequest &request,
-                             rpc::UpdateActorInfoReply *reply,
-                             rpc::SendReplyCallback send_reply_callback) override;
-
   /// Register actor asynchronously.
   ///
   /// \param request Contains the meta info to create the actor.
@@ -246,10 +238,10 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   ///
   /// \param node_id ID of the node where the dead worker was located.
   /// \param worker_id ID of the dead worker.
-  /// \param intentional_exit Whether the death was intentional. If yes and the
-  /// worker was an actor, we should not attempt to restart the actor.
-  void OnWorkerDead(const NodeID &node_id, const WorkerID &worker_id,
-                    bool intentional_exit = false);
+  /// \param exit_type exit reason of the dead worker.
+  void OnWorkerDead(
+      const NodeID &node_id, const WorkerID &worker_id,
+      const rpc::WorkerExitType disconnect_type = rpc::WorkerExitType::SYSTEM_ERROR_EXIT);
 
   /// Handle actor creation task failure. This should be called when scheduling
   /// an actor creation task is infeasible.
@@ -411,8 +403,6 @@ class GcsActorManager : public rpc::ActorInfoHandler {
     GET_ACTOR_INFO_REQUEST = 2,
     GET_NAMED_ACTOR_INFO_REQUEST = 3,
     GET_ALL_ACTOR_INFO_REQUEST = 4,
-    REGISTER_ACTOR_INFO_REQUEST = 5,
-    UPDATE_ACTOR_INFO_REQUEST = 6,
     CountType_MAX = 10,
   };
   uint64_t counts_[CountType::CountType_MAX] = {0};

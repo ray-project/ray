@@ -38,6 +38,7 @@ GlobalStateAccessor::GlobalStateAccessor(const std::string &redis_address,
 
   std::promise<bool> promise;
   thread_io_service_.reset(new std::thread([this, &promise] {
+    SetThreadName("global.accessor");
     std::unique_ptr<boost::asio::io_service::work> work(
         new boost::asio::io_service::work(*io_service_));
     promise.set_value(true);
