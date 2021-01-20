@@ -1,24 +1,52 @@
-# - label: "Ray Core Tests (:buildkite: Experimental)"
-#   commands:
-#   - bash src/ray/test/run_object_manager_tests.sh
-#   - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only -- //:all -rllib/...
-- label: "Ray Core Tests (ASAN)"
+- label: "Core Tests (:buildkite: Experimental)"
   commands:
-  - bazel test --config=ci --config=asan --config=asan-buildkite $(./scripts/bazel_export_options) --build_tests_only -- //:all
-# - label: "Ray Dashboard + Serve Tests"
-#   commands:
-#   - TORCH_VERSION=1.6 ./ci/travis/install-dependencies.sh
-#   - bazel test --config=ci $(./scripts/bazel_export_options) python/ray/new_dashboard/...
-#   - bazel test --config=ci $(./scripts/bazel_export_options) python/ray/serve/...
-# - label: "Ray Core Python (Small & Large)"
-#   commands:
-#   - bazel test --config=ci $(./scripts/bazel_export_options) --test_tag_filters=-kubernetes,-jenkins_only,-medium_size_python_tests_a_to_j,-medium_size_python_tests_k_to_z python/ray/tests/...
-# - label: "Ray Core Python (Medium A-J)"
-#   commands:
-#   - bazel test --config=ci $(./scripts/bazel_export_options) --test_tag_filters=-kubernetes,-jenkins_only,medium_size_python_tests_a_to_j python/ray/tests/...
-- label: "Ray Core Python (Medium K-Z)"
+  - bash src/ray/test/run_object_manager_tests.sh
+  - bazel test --config=ci $(./scripts/bazel_export_options)
+      --build_tests_only
+      //:all -rllib/...
+
+- label: "Core Tests (ASAN)"
   commands:
-  - bazel test --config=ci $(./scripts/bazel_export_options) --test_tag_filters=-kubernetes,-jenkins_only,medium_size_python_tests_k_to_z python/ray/tests/...
-# - label: "Ray Core Python (Client)"
-#   commands:
-#   - bazel test --config=ci $(./scripts/bazel_export_options) --test_tag_filters=-kubernetes,-jenkins_only,client_tests --test_env=RAY_CLIENT_MODE=1 python/ray/tests/...
+  - bazel build --config=ci --config=asan $(./scripts/bazel_export_options)
+      --build_tests_only
+      --config=asan-buildkite
+      //:all
+  - bazel test --config=ci --config=asan $(./scripts/bazel_export_options)
+      --build_tests_only
+      --config=asan-buildkite
+      --jobs=1
+      //:all
+
+- label: "Dashboard + Serve Tests"
+  commands:
+  - TORCH_VERSION=1.6 ./ci/travis/install-dependencies.sh
+  - bazel test --config=ci $(./scripts/bazel_export_options)
+      python/ray/new_dashboard/...
+  - bazel test --config=ci $(./scripts/bazel_export_options)
+      python/ray/serve/...
+
+- label: "Core Python (Small & Large)"
+  commands:
+  - bazel test --config=ci $(./scripts/bazel_export_options)
+      --test_tag_filters=-kubernetes,-jenkins_only,-medium_size_python_tests_a_to_j,-medium_size_python_tests_k_to_z
+      python/ray/tests/...
+- label: "Core Python (Medium A-J)"
+  commands:
+  - bazel test --config=ci $(./scripts/bazel_export_options)
+      --test_tag_filters=-kubernetes,-jenkins_only,medium_size_python_tests_a_to_j
+      python/ray/tests/...
+- label: "Core Python (Medium K-Z)"
+  commands:
+  - bazel test --config=ci $(./scripts/bazel_export_options)
+      --test_tag_filters=-kubernetes,-jenkins_only,medium_size_python_tests_k_to_z,-python/ray/tests:test_multi_node
+      python/ray/tests/...
+- label: "Core Python (Client)"
+  commands:
+  - bazel test --config=ci $(./scripts/bazel_export_options)
+      --test_tag_filters=-kubernetes,-jenkins_only,client_tests
+      --test_env=RAY_CLIENT_MODE=1
+      python/ray/tests/...
+- label: "Core Flaky"
+  commands:
+  - bazel test --config=ci $(./scripts/bazel_export_options)
+      python/ray/tests:test_multi_node

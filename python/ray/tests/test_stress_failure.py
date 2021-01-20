@@ -20,7 +20,7 @@ def ray_start_reconstruction(request):
         head_node_args={
             "num_cpus": 1,
             "object_store_memory": plasma_store_memory // num_nodes,
-            "redis_max_memory": 10**7,
+            "redis_max_memory": 10**8,
             "_system_config": {
                 "object_timeout_milliseconds": 200
             }
