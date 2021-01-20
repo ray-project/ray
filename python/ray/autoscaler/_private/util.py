@@ -85,13 +85,6 @@ def validate_config(config: Dict[str, Any]) -> None:
         if config["head_node_type"] not in config["available_node_types"]:
             raise ValueError(
                 "`head_node_type` must be one of `available_node_types`.")
-        if "worker_default_node_type" not in config:
-            raise ValueError("You must specify `worker_default_node_type` if "
-                             "`available_node_types is set.")
-        if (config["worker_default_node_type"] not in config[
-                "available_node_types"]):
-            raise ValueError("`worker_default_node_type` must be one of "
-                             "`available_node_types`.")
 
 
 def prepare_config(config):
