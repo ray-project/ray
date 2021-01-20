@@ -223,7 +223,7 @@ void GcsActorManager::HandleKillActorViaGcs(const rpc::KillActorViaGcsRequest &r
   if (no_restart) {
     DestroyActor(actor_id);
   } else {
-    KillActor(actor_id, force_kill);
+    KillActor(actor_id, force_kill, no_restart);
   }
 
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
@@ -942,7 +942,8 @@ void GcsActorManager::NotifyCoreWorkerToKillActor(const std::shared_ptr<GcsActor
   RAY_UNUSED(actor_client->KillActor(request, nullptr));
 }
 
-void GcsActorManager::KillActor(const ActorID &actor_id, bool force_kill) {
+void GcsActorManager::KillActor(const ActorID &actor_id, bool force_kill,
+                                bool no_restart) {
   RAY_LOG(DEBUG) << "Killing actor, job id = " << actor_id.JobId()
                  << ", actor id = " << actor_id << ", force_kill = " << force_kill;
   const auto &it = registered_actors_.find(actor_id);
@@ -964,7 +965,7 @@ void GcsActorManager::KillActor(const ActorID &actor_id, bool force_kill) {
   if (node_it != created_actors_.end() && node_it->second.count(worker_id)) {
     // The actor has already been created. Destroy the process by force-killing
     // it.
-    NotifyCoreWorkerToKillActor(actor, force_kill);
+    NotifyCoreWorkerToKillActor(actor, force_kill, no_restart);
   } else {
     const auto &task_id = actor->GetCreationTaskSpecification().TaskId();
     CancelActorInScheduling(actor, task_id);

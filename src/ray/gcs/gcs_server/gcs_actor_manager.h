@@ -342,7 +342,8 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   ///
   /// \param actor_id ID of the actor to kill.
   /// \param force_kill Whether to force kill an actor by killing the worker.
-  void KillActor(const ActorID &actor_id, bool force_kill);
+  /// \param no_restart If set to true, the killed actor will not be restarted anymore.
+  void KillActor(const ActorID &actor_id, bool force_kill, bool no_restart);
 
   /// Notify CoreWorker to kill the specified actor.
   ///
