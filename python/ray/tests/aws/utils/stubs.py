@@ -35,9 +35,10 @@ def configure_key_pair_default(ec2_client_stub):
 
 
 def configure_subnet_default(ec2_client_stub):
+    describe_no_security_groups(ec2_client_stub)
     ec2_client_stub.add_response(
         "describe_subnets",
-        expected_params={},
+        expected_params={"Filters": ANY},
         service_response={"Subnets": [DEFAULT_SUBNET]})
 
 
