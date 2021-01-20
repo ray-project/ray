@@ -83,6 +83,15 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             resp.resource_table.CopyFrom(
                 ray_client_pb2.ClusterInfoResponse.ResourceTable(
                     table=float_resources))
+        elif request.type == ray_client_pb2.ClusterInfoType.RUNTIME_CONTEXT:
+            ctx = ray_client_pb2.ClusterInfoResponse.RuntimeContext()
+            with disable_client_hook():
+                rtc = ray.get_runtime_context()
+                ctx.job_id = rtc.job_id.binary()
+                ctx.node_id = rtc.node_id.binary()
+                ctx.capture_client_tasks = \
+                    rtc.should_capture_child_tasks_in_placement_group
+            resp.runtime_context.CopyFrom(ctx)
         else:
             with disable_client_hook():
                 resp.json = self._return_debug_cluster_info(request, context)

@@ -350,6 +350,7 @@ void GcsServer::PrintDebugInfo() {
          << gcs_actor_manager_->DebugString() << "\n"
          << gcs_object_manager_->DebugString() << "\n"
          << gcs_placement_group_manager_->DebugString() << "\n"
+         << gcs_pub_sub_->DebugString() << "\n"
          << ((rpc::DefaultTaskInfoHandler *)task_info_handler_.get())->DebugString();
   // TODO(ffbin): We will get the session_dir in the next PR, and write the log to
   // gcs_debug_state.txt.
