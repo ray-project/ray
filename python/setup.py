@@ -92,7 +92,7 @@ ray_files += [
 ]
 
 # If you're adding dependencies for ray extras, please
-# also update the matching section of requirements.txt
+# also update the matching section of requirements/requirements.txt
 # in this directory
 extras = {
     "serve": [
@@ -120,7 +120,7 @@ extras["all"] = list(set(chain.from_iterable(extras.values())))
 
 # These are the main dependencies for users of ray. This list
 # should be carefully curated. If you change it, please reflect
-# the change in the matching section of requirements.txt
+# the change in the matching section of requirements/requirements.txt
 install_requires = [
     # TODO(alex) Pin the version once this PR is
     # included in the stable release.
