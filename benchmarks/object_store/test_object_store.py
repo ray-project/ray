@@ -21,7 +21,7 @@ def scale_to(target):
 def test_object_broadcast():
     scale_to(NUM_NODES)
 
-    @ray.remote(num_cpus=0, resources={"node": 1})
+    @ray.remote(num_cpus=1, resources={"node": 1})
     class Actor:
         def foo(self):
             pass

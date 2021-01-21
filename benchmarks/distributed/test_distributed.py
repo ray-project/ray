@@ -51,12 +51,7 @@ def test_max_running_tasks():
     blocker = Semaphore.remote(0)
     total_resource = ray.cluster_resources()["node"]
 
-    # Use this custom node resource instead of cpus for scheduling to properly
-    # load balance. CPU borrowing could lead to unintuitive load balancing if
-    # we used num_cpus.
-    resource_per_task = total_resource / MAX_RUNNING_TASKS_IN_CLUSTER
-
-    @ray.remote(num_cpus=0, resources={"node": resource_per_task})
+    @ray.remote(num_cpus=0.1)
     def task(counter, blocker):
         sleep(10)
 

@@ -4,15 +4,20 @@
 
 ## Distributed Benchmarks
 
-All distributed tests are run with the maximum number of nodes.
+All distributed tests are run on 64 nodes with 64 cores/node. Maximum number of nodes is achieved by adding 4 core nodes.
 
 | Dimension                                       | Quantity |
 | ---------                                       | -------- |
-| # nodes in cluster (with trivial task workload) | TODO     |
-| # actors in cluster (with trivial workload)     | TODO     |
-| # simultaneously running tasks                  | TODO     |
-| # simultaneously running placement groups       | TODO     |
+| # nodes in cluster (with trivial task workload) | 250+     |
+| # actors in cluster (with trivial workload)     | 10k+     |
+| # simultaneously running tasks                  | 10k+     |
+| # simultaneously running placement groups       | 1k+      |
 
+## Object Store Benchmarks
+
+| Dimension                           | Quantity |
+| ---------                           | -------- |
+| 1 GiB object broadcast (# of nodes) | 50+      |
 
 
 ## Single Node Benchmarks.
