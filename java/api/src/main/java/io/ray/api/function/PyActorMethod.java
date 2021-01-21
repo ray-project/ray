@@ -43,7 +43,8 @@ public class PyActorMethod<R> {
   /**
    * Create a python actor method.
    *
-   * @param methodName The name of this actor method Returns a python actor method.
+   * @param methodName The name of this actor method
+   * @return a python actor method.
    */
   public static PyActorMethod<Object> of(String methodName) {
     return of(methodName, Object.class);
@@ -54,7 +55,8 @@ public class PyActorMethod<R> {
    *
    * @param methodName The name of this actor method
    * @param returnType Class of the return value of this actor method
-   * @param <R> The type of the return value of this actor method Returns a python actor method.
+   * @param <R> The type of the return value of this actor method
+   * @return a python actor method.
    */
   public static <R> PyActorMethod<R> of(String methodName, Class<R> returnType) {
     return new PyActorMethod<>(methodName, returnType);
