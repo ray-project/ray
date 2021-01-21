@@ -632,7 +632,7 @@ class DockerCommandRunner(CommandRunnerInterface):
             self._get_docker_host_mount_location(
                 self.ssh_command_runner.cluster_name), target.lstrip("/"))
 
-        host_mount_location = os.path.dirname(host_destination.rstrip('/'))
+        host_mount_location = os.path.dirname(host_destination.rstrip("/"))
         self.ssh_command_runner.run(
             f"mkdir -p {host_mount_location} && chown -R "
             f"{self.ssh_command_runner.ssh_user} {host_mount_location}",
@@ -657,7 +657,7 @@ class DockerCommandRunner(CommandRunnerInterface):
         host_source = os.path.join(
             self._get_docker_host_mount_location(
                 self.ssh_command_runner.cluster_name), source.lstrip("/"))
-        host_mount_location = os.path.dirname(host_source.rstrip('/'))
+        host_mount_location = os.path.dirname(host_source.rstrip("/"))
         self.ssh_command_runner.run(
             f"mkdir -p {host_mount_location} && chown -R "
             f"{self.ssh_command_runner.ssh_user} {host_mount_location}",
