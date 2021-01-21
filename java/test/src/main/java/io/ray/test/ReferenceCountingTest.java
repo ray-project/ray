@@ -119,7 +119,7 @@ public class ReferenceCountingTest extends BaseTest {
       TestUtils.getRuntime().getObjectStore().getRaw(ImmutableList.of(objectId), Long.MAX_VALUE);
     } else {
       List<Boolean> result =
-          TestUtils.getRuntime().getObjectStore().wait(ImmutableList.of(objectId), 1, 100);
+          TestUtils.getRuntime().getObjectStore().wait(ImmutableList.of(objectId), 1, 100, true);
       Assert.assertFalse(result.get(0));
     }
   }
