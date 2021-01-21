@@ -202,8 +202,10 @@ class StatsCollector(dashboard_utils.DashboardHeadModule):
                         node_id = actor_table_data["address"]["rayletId"]
                         job_actors.setdefault(job_id,
                                               {})[actor_id] = actor_table_data
-                        node_actors.setdefault(node_id,
-                                               {})[actor_id] = actor_table_data
+                        # Update only when node_id is not Nil.
+                        if node_id != stats_collector_consts.NIL_NODE_ID:
+                            node_actors.setdefault(
+                                node_id, {})[actor_id] = actor_table_data
                     DataSource.job_actors.reset(job_actors)
                     DataSource.node_actors.reset(node_actors)
                     logger.info("Received %d actor info from GCS.",
@@ -232,9 +234,8 @@ class StatsCollector(dashboard_utils.DashboardHeadModule):
                 node_id = actor_table_data["address"]["rayletId"]
                 # Update actors.
                 DataSource.actors[actor_id] = actor_table_data
-                # Update node actors.
-                if node_id != "f" * 56:
-                    # Update only when node_id is not Nil.
+                # Update node actors (only when node_id is not Nil).
+                if node_id != stats_collector_consts.NIL_NODE_ID:
                     node_actors = dict(DataSource.node_actors.get(node_id, {}))
                     node_actors[actor_id] = actor_table_data
                     DataSource.node_actors[node_id] = node_actors
