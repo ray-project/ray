@@ -108,8 +108,8 @@ class GcsPlacementGroup {
   /// Mark that the creator actor of this placement group is dead.
   void MarkCreatorActorDead();
 
-  /// Return True if the placement group is removable. False otherwise.
-  bool IsPlacementGroupRemovable() const;
+  /// Return True if the placement group lifetime is done. False otherwise.
+  bool IsPlacementGroupLifetimeDone() const;
 
   /// Returns whether or not this is a detached placement group.
   bool IsDetached() const;
