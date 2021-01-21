@@ -69,19 +69,19 @@ public class ResourceUtil {
     return runtime.totalMemory() - runtime.freeMemory();
   }
 
-  /** @return the total amount of physical memory in bytes. */
+  /** Returns the total amount of physical memory in bytes. */
   public static long getSystemTotalMemory() {
     return osmxb.getTotalPhysicalMemorySize();
   }
 
-  /** @return the used system physical memory in bytes */
+  /** Returns the used system physical memory in bytes */
   public static long getSystemMemoryUsage() {
     long totalMemory = osmxb.getTotalPhysicalMemorySize();
     long freeMemory = osmxb.getFreePhysicalMemorySize();
     return totalMemory - freeMemory;
   }
 
-  /** @return the ratio of used system physical memory. This value is a double in the [0.0,1.0] */
+  /** Returns the ratio of used system physical memory. This value is a double in the [0.0,1.0] */
   public static double getSystemMemoryUsageRatio() {
     double totalMemory = osmxb.getTotalPhysicalMemorySize();
     double freeMemory = osmxb.getFreePhysicalMemorySize();
@@ -89,7 +89,7 @@ public class ResourceUtil {
     return 1 - ratio;
   }
 
-  /** @return the cpu load for current jvm process. This value is a double in the [0.0,1.0] */
+  /** Returns the cpu load for current jvm process. This value is a double in the [0.0,1.0] */
   public static double getProcessCpuUsage() {
     return osmxb.getProcessCpuLoad();
   }
@@ -144,12 +144,12 @@ public class ResourceUtil {
     return cpuUsageFromVsar;
   }
 
-  /** @return the system load average for the last minute */
+  /** Returns the system load average for the last minute */
   public static double getSystemLoadAverage() {
     return osmxb.getSystemLoadAverage();
   }
 
-  /** @return system cpu cores num */
+  /** Returns system cpu cores num */
   public static int getCpuCores() {
     return osmxb.getAvailableProcessors();
   }

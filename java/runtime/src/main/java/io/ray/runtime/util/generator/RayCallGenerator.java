@@ -13,7 +13,7 @@ import org.apache.commons.io.FileUtils;
  */
 public class RayCallGenerator extends BaseGenerator {
 
-  /** @return Whole file content of `RayCall.java`. */
+  /** Returns Whole file content of `RayCall.java`. */
   private String generateRayCallDotJava() {
     sb = new StringBuilder();
 
@@ -68,7 +68,7 @@ public class RayCallGenerator extends BaseGenerator {
     return sb.toString();
   }
 
-  /** @return Whole file content of `ActorCall.java`. */
+  /** Returns Whole file content of `ActorCall.java`. */
   private String generateActorCallDotJava() {
     sb = new StringBuilder();
 
@@ -98,7 +98,7 @@ public class RayCallGenerator extends BaseGenerator {
     return sb.toString();
   }
 
-  /** @return Whole file content of `PyActorCall.java`. */
+  /** Returns Whole file content of `PyActorCall.java`. */
   private String generatePyActorCallDotJava() {
     sb = new StringBuilder();
 

@@ -72,7 +72,7 @@ public class ChannelId {
     return id;
   }
 
-  /** @return a random channel id string */
+  /** Returns a random channel id string */
   public static String genRandomIdStr() {
     StringBuilder sb = new StringBuilder();
     Random random = new Random();

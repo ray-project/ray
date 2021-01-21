@@ -24,17 +24,17 @@ public class RayFunction {
     this.functionDescriptor = functionDescriptor;
   }
 
-  /** @return True if it's a constructor, otherwise it's a method. */
+  /** Returns True if it's a constructor, otherwise it's a method. */
   public boolean isConstructor() {
     return executable instanceof Constructor;
   }
 
-  /** @return The underlying constructor object. */
+  /** Returns The underlying constructor object. */
   public Constructor<?> getConstructor() {
     return (Constructor<?>) executable;
   }
 
-  /** @return The underlying method object. */
+  /** Returns The underlying method object. */
   public Method getMethod() {
     return (Method) executable;
   }
@@ -43,7 +43,7 @@ public class RayFunction {
     return functionDescriptor;
   }
 
-  /** @return Whether this function has a return value. */
+  /** Returns Whether this function has a return value. */
   public boolean hasReturn() {
     if (isConstructor()) {
       return true;
@@ -52,7 +52,7 @@ public class RayFunction {
     }
   }
 
-  /** @return Return type. */
+  /** Returns Return type. */
   public Optional<Class<?>> getReturnType() {
     if (hasReturn()) {
       return Optional.of(((Method) executable).getReturnType());
