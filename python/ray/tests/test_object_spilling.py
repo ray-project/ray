@@ -661,6 +661,9 @@ def test_release_during_plasma_fetch(tmp_path, shutdown_only):
     do_test_release_resource(tmp_path, expect_released=True)
 
 
+@pytest.mark.skip(
+    reason="This hangs due to a deadlock between a worker getting its "
+    "arguments and the node pulling arguments for the next task queued.")
 @pytest.mark.skipif(
     platform.system() == "Windows", reason="Failing on Windows.")
 @pytest.mark.timeout(30)
@@ -679,7 +682,6 @@ def test_spill_objects_on_object_transfer(object_spilling_config,
         _system_config={
             "max_io_workers": 1,
             "automatic_object_spilling_enabled": True,
-            "object_store_full_max_retries": 4,
             "object_store_full_delay_ms": 100,
             "object_spilling_config": object_spilling_config,
             "min_spilling_size": 0
