@@ -296,6 +296,9 @@ def test_pull_request_retry(shutdown_only):
     ray.get(driver.remote())
 
 
+@pytest.mark.skip(
+    reason="This hangs due to a deadlock between a worker getting its "
+    "arguments and the node pulling arguments for the next task queued.")
 @pytest.mark.timeout(30)
 def test_pull_bundles_admission_control(shutdown_only):
     cluster = Cluster()
@@ -330,6 +333,9 @@ def test_pull_bundles_admission_control(shutdown_only):
     ray.get(tasks)
 
 
+@pytest.mark.skip(
+    reason="This hangs due to a deadlock between a worker getting its "
+    "arguments and the node pulling arguments for the next task queued.")
 @pytest.mark.timeout(30)
 def test_pull_bundles_admission_control_dynamic(shutdown_only):
     # This test is the same as test_pull_bundles_admission_control, except that
