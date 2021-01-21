@@ -152,7 +152,6 @@ class VisionNetwork(TFModelV2):
                 lambda x: tf.squeeze(x, axis=[1, 2]))(last_layer)
 
         self.base_model = tf.keras.Model(inputs, [conv_out, value_out])
-        self.register_variables(self.base_model.variables)
 
         # Optional: framestacking obs/new_obs for Atari.
         if self.traj_view_framestacking:

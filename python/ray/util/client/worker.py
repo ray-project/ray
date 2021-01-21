@@ -89,7 +89,12 @@ class Worker:
             data = self.data_client.ConnectionInfo()
         except grpc.RpcError as e:
             raise e.details()
-        return {"num_clients": data.num_clients}
+        return {
+            "num_clients": data.num_clients,
+            "python_version": data.python_version,
+            "ray_version": data.ray_version,
+            "ray_commit": data.ray_commit,
+        }
 
     def get(self, vals, *, timeout: Optional[float] = None) -> Any:
         to_get = []
@@ -278,6 +283,8 @@ class Worker:
             # translate from a proto map to a python dict
             output_dict = {k: v for k, v in resp.resource_table.table.items()}
             return output_dict
+        elif resp.WhichOneof("response_type") == "runtime_context":
+            return resp.runtime_context
         return json.loads(resp.json)
 
     def internal_kv_get(self, key: bytes) -> bytes:
