@@ -1,12 +1,13 @@
 ARG GPU
 FROM rayproject/ray:nightly"$GPU"
+ARG PYTHON_MINOR_VERSION=7
 
 # We have to uninstall wrapt this way for Tensorflow compatibility
 COPY requirements.txt ./
 COPY requirements_ml_docker.txt ./
 COPY requirements_rllib.txt ./
 # Docker image uses Python 3.7
-COPY linux-py3.7-requirements_tune.txt ./requirements_tune.txt
+COPY linux-py3."$PYTHON_MINOR_VERSION"-requirements_tune.txt ./requirements_tune.txt
 
 RUN sudo apt-get update \
     && sudo apt-get install -y gcc \
