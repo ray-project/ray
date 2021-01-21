@@ -45,7 +45,7 @@ def ray_start_2_gpus():
     # This env var is set by Pytorch Lightning.
     # Make sure to reset it after each test.
     #TODO: Upstream to PTL to not set this env var if using Ray.
-    del os.environ["CUDA_VISIBLE_DEVICES"]
+    #del os.environ["CUDA_VISIBLE_DEVICES"]
 
 
 @pytest.fixture

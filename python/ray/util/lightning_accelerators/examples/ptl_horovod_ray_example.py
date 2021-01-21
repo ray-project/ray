@@ -27,11 +27,12 @@ def train_mnist(config,
 
     trainer = pl.Trainer(
         max_epochs=num_epochs,
-        gpus=num_slots * int(use_gpu),
-        num_nodes=num_hosts,
-        num_processes=num_slots,
+        #gpus=num_slots * int(use_gpu),
+        #num_nodes=num_hosts,
+        #num_processes=num_slots,
         callbacks=callbacks,
-        accelerator=HorovodRayAccelerator())
+        accelerator=HorovodRayAccelerator(num_hosts=num_hosts,
+                                          num_slots=num_slots, use_gpu=use_gpu))
     trainer.fit(model, dm)
 
 
