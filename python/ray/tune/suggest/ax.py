@@ -124,8 +124,14 @@ class AxSearch(Searcher):
         assert ax is not None, """Ax must be installed!
             You can install AxSearch with the command:
             `pip install ax-platform sqlalchemy`."""
+        
+        ax_mode_is_min = ax.experiment.optimization_config.objective.minimize 
+        expected_mode = "min" if ax_mode_is_min else "max"
         if mode:
-            assert mode in ["min", "max"], "`mode` must be 'min' or 'max'."
+            assert mode in ["min", "max"], "`mode` must be 'min' or 'max'."         
+            assert mode == expected_mode, "`mode` does not correspond to the one set in `AxClient`."
+            
+        mode = expected_mode
 
         super(AxSearch, self).__init__(
             metric=metric,
@@ -262,7 +268,7 @@ class AxSearch(Searcher):
             oc.metric.name for oc in
             self._ax.experiment.optimization_config.outcome_constraints
         ]
-        metric_dict.update({on: (result[on], 0.0) for on in outcome_names})
+        metric_dict.update({on: (result[on], None) for on in outcome_names})
         self._ax.complete_trial(
             trial_index=ax_trial_index, raw_data=metric_dict)
 
