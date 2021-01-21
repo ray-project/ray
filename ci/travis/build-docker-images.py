@@ -92,7 +92,14 @@ def _build_cpu_gpu_images(image_name, no_cache=True) -> List[str]:
     built_images = []
     for gpu in ["-cpu", "-gpu"]:
         for py_name, py_version in PY_MATRIX.items():
+            if image_name == "ray-ml" and "8" in py_name:
+                print("Skipping Ray-ml for Python 3.8")
+                continue
             build_args = {}
+            build_args["PYTHON_VERSION"] = py_version
+            # I.e. "-py36"[-1] == 6
+            build_args["PYTHON_MINOR_VERSION"] = py_name[-1]
+
             if image_name == "base-deps":
                 build_args["BASE_IMAGE"] = (
                     "nvidia/cuda:10.1-cudnn7-runtime-ubuntu18.04"
@@ -102,11 +109,9 @@ def _build_cpu_gpu_images(image_name, no_cache=True) -> List[str]:
                 build_args["GPU"] = f"{py_name}{gpu}"
 
             if image_name in ["ray", "ray-deps"]:
-                # I.e. "-py36"[-1] == 6
-                minor_number = py_name[-1]
-                build_args["WHEEL_PATH"] = f".whl/{_get_wheel_name(minor_number)}"
+                build_args["WHEEL_PATH"] = f".whl/{_get_wheel_name(build_args["PYTHON_MINOR_VERSION"])}"
 
-            build_args["PYTHON_VERSION"] = py_version
+
 
             tagged_name = f"rayproject/{image_name}:nightly{py_name}{gpu}"
             for i in range(2):
