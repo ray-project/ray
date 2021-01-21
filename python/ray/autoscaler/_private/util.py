@@ -362,8 +362,8 @@ def format_info_string(lm_summary, autoscaler_summary, time=None):
     for node_type, count in autoscaler_summary.pending_launches.items():
         line = f" {node_type}, {count} launching"
         pending_lines.append(line)
-    for ip, node_type in autoscaler_summary.pending_nodes:
-        line = f" {ip}: {node_type}, setting up"
+    for ip, node_type, status in autoscaler_summary.pending_nodes:
+        line = f" {ip}: {node_type}, {status.lower()}"
         pending_lines.append(line)
     if pending_lines:
         pending_report = "\n".join(pending_lines)
