@@ -9,7 +9,7 @@ import io.ray.api.id.ActorId;
  */
 public interface BaseActorHandle {
 
-  /** Returns the id of this actor. */
+  /** @return the id of this actor. */
   ActorId getId();
 
   /**

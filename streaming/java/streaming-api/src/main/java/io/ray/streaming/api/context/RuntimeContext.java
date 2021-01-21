@@ -18,10 +18,10 @@ public interface RuntimeContext {
 
   int getParallelism();
 
-  /** Returns config of current function */
+  /** @return config of current function */
   Map<String, String> getConfig();
 
-  /** Returns config of the job */
+  /** @return config of the job */
   Map<String, String> getJobConfig();
 
   Long getCheckpointId();

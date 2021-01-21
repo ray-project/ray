@@ -44,7 +44,7 @@ public class GlobalStateAccessor {
         "Global state accessor native pointer must not be 0.");
   }
 
-  /** Returns A list of job info with JobInfo protobuf schema. */
+  /** @return A list of job info with JobInfo protobuf schema. */
   public List<byte[]> getAllJobInfo() {
     // Fetch a job list with protobuf bytes format from GCS.
     synchronized (GlobalStateAccessor.class) {
@@ -53,7 +53,7 @@ public class GlobalStateAccessor {
     }
   }
 
-  /** Returns A list of node info with GcsNodeInfo protobuf schema. */
+  /** @return A list of node info with GcsNodeInfo protobuf schema. */
   public List<byte[]> getAllNodeInfo() {
     // Fetch a node list with protobuf bytes format from GCS.
     synchronized (GlobalStateAccessor.class) {
@@ -97,7 +97,7 @@ public class GlobalStateAccessor {
     }
   }
 
-  /** Returns A list of actor info with ActorInfo protobuf schema. */
+  /** @return A list of actor info with ActorInfo protobuf schema. */
   public List<byte[]> getAllActorInfo() {
     // Fetch a actor list with protobuf bytes format from GCS.
     synchronized (GlobalStateAccessor.class) {
@@ -106,7 +106,7 @@ public class GlobalStateAccessor {
     }
   }
 
-  /** Returns An actor info with ActorInfo protobuf schema. */
+  /** @return An actor info with ActorInfo protobuf schema. */
   public byte[] getActorInfo(ActorId actorId) {
     // Fetch an actor with protobuf bytes format from GCS.
     synchronized (GlobalStateAccessor.class) {

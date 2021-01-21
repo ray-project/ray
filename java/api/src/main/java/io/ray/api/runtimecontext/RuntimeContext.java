@@ -17,11 +17,11 @@ public interface RuntimeContext {
    */
   ActorId getCurrentActorId();
 
-  /** Returns true if the current actor was restarted, otherwise false. */
+  /** @return true if the current actor was restarted, otherwise false. */
   boolean wasCurrentActorRestarted();
 
   /**
-   * Return true if Ray is running in single-process mode, false if Ray is running in cluster mode.
+   * @return true if Ray is running in single-process mode, false if Ray is running in cluster mode.
    */
   boolean isSingleProcess();
 

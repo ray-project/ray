@@ -52,8 +52,8 @@ public class ResourceUtil {
   }
 
   /**
-   * Returns jvm heap usage ratio. note that one of the survivor space is not include in total
-   * memory while calculating this ratio.
+   * @return jvm heap usage ratio. note that one of the survivor space is not include in total
+   *     memory while calculating this ratio.
    */
   public static double getJvmHeapUsageRatio() {
     Runtime runtime = Runtime.getRuntime();
@@ -61,27 +61,27 @@ public class ResourceUtil {
   }
 
   /**
-   * Returns jvm heap usage(in bytes). note that this value doesn't include one of the survivor
-   * space.
+   * @return jvm heap usage(in bytes). note that this value doesn't include one of the survivor
+   *     space.
    */
   public static long getJvmHeapUsageInBytes() {
     Runtime runtime = Runtime.getRuntime();
     return runtime.totalMemory() - runtime.freeMemory();
   }
 
-  /** Returns the total amount of physical memory in bytes. */
+  /** @return the total amount of physical memory in bytes. */
   public static long getSystemTotalMemory() {
     return osmxb.getTotalPhysicalMemorySize();
   }
 
-  /** Returns the used system physical memory in bytes */
+  /** @return the used system physical memory in bytes */
   public static long getSystemMemoryUsage() {
     long totalMemory = osmxb.getTotalPhysicalMemorySize();
     long freeMemory = osmxb.getFreePhysicalMemorySize();
     return totalMemory - freeMemory;
   }
 
-  /** Returns the ratio of used system physical memory. This value is a double in the [0.0,1.0] */
+  /** @return the ratio of used system physical memory. This value is a double in the [0.0,1.0] */
   public static double getSystemMemoryUsageRatio() {
     double totalMemory = osmxb.getTotalPhysicalMemorySize();
     double freeMemory = osmxb.getFreePhysicalMemorySize();
@@ -89,14 +89,14 @@ public class ResourceUtil {
     return 1 - ratio;
   }
 
-  /** Returns the cpu load for current jvm process. This value is a double in the [0.0,1.0] */
+  /** @return the cpu load for current jvm process. This value is a double in the [0.0,1.0] */
   public static double getProcessCpuUsage() {
     return osmxb.getProcessCpuLoad();
   }
 
   /**
-   * Returns the system cpu usage. This value is a double in the [0.0,1.0] We will try to use `vsar`
-   * to get cpu usage by default, and use MXBean if any exception raised.
+   * @return the system cpu usage. This value is a double in the [0.0,1.0] We will try to use `vsar`
+   *     to get cpu usage by default, and use MXBean if any exception raised.
    */
   public static double getSystemCpuUsage() {
     double cpuUsage = 0.0;
@@ -109,10 +109,10 @@ public class ResourceUtil {
   }
 
   /**
-   * Returns the "recent cpu usage" for the whole system. This value is a double in the [0.0,1.0]
-   * interval. A value of 0.0 means that all CPUs were idle during the recent period of time
-   * observed, while a value of 1.0 means that all CPUs were actively running 100% of the time
-   * during the recent period being observed
+   * @return the "recent cpu usage" for the whole system. This value is a double in the [0.0,1.0]
+   *     interval. A value of 0.0 means that all CPUs were idle during the recent period of time
+   *     observed, while a value of 1.0 means that all CPUs were actively running 100% of the time
+   *     during the recent period being observed
    */
   public static double getSystemCpuUtilByMXBean() {
     return osmxb.getSystemCpuLoad();
@@ -144,12 +144,12 @@ public class ResourceUtil {
     return cpuUsageFromVsar;
   }
 
-  /** Returnss the system load average for the last minute */
+  /** @return the system load average for the last minute */
   public static double getSystemLoadAverage() {
     return osmxb.getSystemLoadAverage();
   }
 
-  /** Returns system cpu cores num */
+  /** @return system cpu cores num */
   public static int getCpuCores() {
     return osmxb.getAvailableProcessors();
   }
@@ -158,7 +158,8 @@ public class ResourceUtil {
    * Get containers by hostname of address
    *
    * @param containers container list
-   * @param containerHosts container hostname or address set Returns matched containers
+   * @param containerHosts container hostname or address set
+   * @return matched containers
    */
   public static List<Container> getContainersByHostname(
       List<Container> containers, Collection<String> containerHosts) {
@@ -174,7 +175,8 @@ public class ResourceUtil {
   /**
    * Get container by hostname
    *
-   * @param hostName container hostname Returns container
+   * @param hostName container hostname
+   * @return container
    */
   public static Optional<Container> getContainerByHostname(
       List<Container> containers, String hostName) {
@@ -188,7 +190,8 @@ public class ResourceUtil {
   /**
    * Get container by id
    *
-   * @param containerID container id Returns container
+   * @param containerID container id
+   * @return container
    */
   public static Optional<Container> getContainerById(
       List<Container> containers, ContainerId containerID) {

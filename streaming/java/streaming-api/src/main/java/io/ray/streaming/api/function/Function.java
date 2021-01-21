@@ -11,7 +11,7 @@ public interface Function extends Serializable {
    * storage, and load it back when in fail-over through. {@link
    * Function#loadCheckpoint(Serializable)}.
    *
-   * <p>Returns A serializable object which represents function state.
+   * @return A serializable object which represents function state.
    */
   default Serializable saveCheckpoint() {
     return null;

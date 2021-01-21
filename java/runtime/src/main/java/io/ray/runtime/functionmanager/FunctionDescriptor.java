@@ -11,9 +11,9 @@ import java.util.List;
  */
 public interface FunctionDescriptor {
 
-  /** Returns A list of strings represents the functions. */
+  /** @return A list of strings represents the functions. */
   List<String> toList();
 
-  /** Returns The language of the function. */
+  /** @return The language of the function. */
   Language getLanguage();
 }

@@ -26,7 +26,8 @@ public abstract class ObjectStore {
   /**
    * Put a raw object into object store.
    *
-   * @param obj The ray object. Returns Generated ID of the object.
+   * @param obj The ray object.
+   * @return Generated ID of the object.
    */
   public abstract ObjectId putRaw(NativeRayObject obj);
 
@@ -41,7 +42,8 @@ public abstract class ObjectStore {
   /**
    * Serialize and put an object to the object store.
    *
-   * @param object The object to put. Returns Id of the object.
+   * @param object The object to put.
+   * @return Id of the object.
    */
   public ObjectId put(Object object) {
     if (object instanceof NativeRayObject) {
@@ -71,8 +73,8 @@ public abstract class ObjectStore {
    * Get a list of raw objects from the object store.
    *
    * @param objectIds IDs of the objects to get.
-   * @param timeoutMs Timeout in milliseconds, wait infinitely if it's negative. Returns Result list
-   *     of objects data.
+   * @param timeoutMs Timeout in milliseconds, wait infinitely if it's negative.
+   * @return Result list of objects data.
    */
   public abstract List<NativeRayObject> getRaw(List<ObjectId> objectIds, long timeoutMs);
 
@@ -80,7 +82,8 @@ public abstract class ObjectStore {
    * Get a list of objects from the object store.
    *
    * @param ids List of the object ids.
-   * @param <T> Type of these objects. Returns A list of GetResult objects.
+   * @param <T> Type of these objects.
+   * @return A list of GetResult objects.
    */
   @SuppressWarnings("unchecked")
   public <T> List<T> get(List<ObjectId> ids, Class<?> elementType) {
@@ -118,8 +121,8 @@ public abstract class ObjectStore {
    *
    * @param objectIds IDs of the objects to wait for.
    * @param numObjects Number of objects that should appear.
-   * @param timeoutMs Timeout in milliseconds, wait infinitely if it's negative. Returns A bitset
-   *     that indicates each object has appeared or not.
+   * @param timeoutMs Timeout in milliseconds, wait infinitely if it's negative.
+   * @return A bitset that indicates each object has appeared or not.
    */
   public abstract List<Boolean> wait(List<ObjectId> objectIds, int numObjects, long timeoutMs);
 
@@ -129,8 +132,8 @@ public abstract class ObjectStore {
    *
    * @param waitList A list of object references to wait for.
    * @param numReturns The number of objects that should be returned.
-   * @param timeoutMs The maximum time in milliseconds to wait before returning. Returns Two lists,
-   *     one containing locally available objects, one containing the rest.
+   * @param timeoutMs The maximum time in milliseconds to wait before returning.
+   * @return Two lists, one containing locally available objects, one containing the rest.
    */
   public <T> WaitResult<T> wait(List<ObjectRef<T>> waitList, int numReturns, int timeoutMs) {
     Preconditions.checkNotNull(waitList);
@@ -185,7 +188,8 @@ public abstract class ObjectStore {
   /**
    * Promote the given object to the underlying object store, and get the ownership info.
    *
-   * @param objectId The ID of the object to promote Returns the serialized ownership address
+   * @param objectId The ID of the object to promote
+   * @return the serialized ownership address
    */
   public abstract byte[] promoteAndGetOwnershipInfo(ObjectId objectId);
 
