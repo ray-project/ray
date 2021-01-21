@@ -360,11 +360,12 @@ void LocalObjectManager::ProcessSpilledObjectsDeleteQueue(uint32_t max_batch_siz
   while (!spilled_object_pending_delete_.empty() &&
          object_urls_to_delete.size() < max_batch_size) {
     auto &object_id = spilled_object_pending_delete_.front();
-    // If the object is still spilling, do nothing. This will block other entries to be
-    // processed, but it should be fine because the spilling will be eventually done, and
-    // deleting objects is the low priority tasks.
-    // This will instead enable simpler logic after this block.
-    if (objects_pending_spill_.contains(object_id)) {
+    // If the object is still spilling or restoring, do nothing. This will block other
+    // entries to be processed, but it should be fine because the spilling will be
+    // eventually done, and deleting objects is the low priority tasks. This will instead
+    // enable simpler logic after this block.
+    if (objects_pending_spill_.contains(object_id) ||
+        objects_pending_restore_.count(object_id) > 0) {
       break;
     }
 

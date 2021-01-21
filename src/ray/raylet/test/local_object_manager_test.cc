@@ -818,7 +818,7 @@ TEST_F(LocalObjectManagerTest, TestDeleteSpillingObjectsBlocking) {
   for (size_t i = 0; i < free_objects_batch_size; i++) {
     ASSERT_TRUE(owner_client->ReplyObjectEviction());
   }
-  // // Now, deletion queue would process only the first object. Everything else won't be
+  // Now, deletion queue would process only the first object. Everything else won't be
   // deleted although it is out of scope because they are still spilling.
   manager.ProcessSpilledObjectsDeleteQueue(/* max_batch_size */ 30);
   int deleted_urls_size = worker_pool.io_worker_client->ReplyDeleteSpilledObjects();
@@ -838,6 +838,68 @@ TEST_F(LocalObjectManagerTest, TestDeleteSpillingObjectsBlocking) {
   manager.ProcessSpilledObjectsDeleteQueue(/* max_batch_size */ 30);
   deleted_urls_size = worker_pool.io_worker_client->ReplyDeleteSpilledObjects();
   ASSERT_EQ(deleted_urls_size, object_ids_to_spill.size() - 1);
+}
+
+TEST_F(LocalObjectManagerTest, TestDeleteRestoringObjectsBlocking) {
+  // Make sure the object delete queue is blocked when there are restoring objects.
+  rpc::Address owner_address;
+  owner_address.set_worker_id(WorkerID::FromRandom().Binary());
+  std::vector<ObjectID> object_ids;
+  std::vector<std::unique_ptr<RayObject>> objects;
+
+  // Objects are pinned.
+  for (size_t i = 0; i < free_objects_batch_size; i++) {
+    ObjectID object_id = ObjectID::FromRandom();
+    object_ids.push_back(object_id);
+    auto data_buffer = std::make_shared<MockObjectBuffer>(0, object_id, unpins);
+    std::unique_ptr<RayObject> object(
+        new RayObject(data_buffer, nullptr, std::vector<ObjectID>()));
+    objects.push_back(std::move(object));
+  }
+  manager.PinObjects(object_ids, std::move(objects));
+  manager.WaitForObjectFree(owner_address, object_ids);
+
+  // Objects are spilled.
+  std::vector<ObjectID> object_ids_to_spill;
+  int spilled_urls_size = free_objects_batch_size;
+  for (int i = 0; i < spilled_urls_size; i++) {
+    object_ids_to_spill.push_back(object_ids[i]);
+  }
+  manager.SpillObjects(object_ids_to_spill,
+                       [&](const Status &status) mutable { ASSERT_TRUE(status.ok()); });
+  // All of the objects are spilled now.
+  std::vector<std::string> urls;
+  for (size_t i = 0; i < object_ids_to_spill.size(); i++) {
+    urls.push_back(BuildURL("url" + std::to_string(i)));
+  }
+  ASSERT_TRUE(worker_pool.io_worker_client->ReplySpillObjects(urls));
+  for (size_t i = 0; i < object_ids_to_spill.size(); i++) {
+    ASSERT_TRUE(object_table.ReplyAsyncAddSpilledUrl());
+  }
+
+  const auto object_id = object_ids_to_spill[0];
+  const auto object_url = urls[0];
+  // Now the first object is restoring.
+  manager.AsyncRestoreSpilledObject(
+      object_id, object_url, [&](const Status &status) { ASSERT_TRUE(status.ok()); });
+
+  // Every object has gone out of scope.
+  for (size_t i = 0; i < free_objects_batch_size; i++) {
+    ASSERT_TRUE(owner_client->ReplyObjectEviction());
+  }
+  // Now, deletion queue should be blocked because the first object is still restoring.
+  manager.ProcessSpilledObjectsDeleteQueue(/* max_batch_size */ 30);
+  int deleted_urls_size = worker_pool.io_worker_client->ReplyDeleteSpilledObjects();
+  ASSERT_EQ(deleted_urls_size, 0);
+
+  // Now restoration is done.
+  worker_pool.RestoreWorkerPushed();
+  worker_pool.io_worker_client->ReplyRestoreObjects(10);
+
+  // Every object is now deleted.
+  manager.ProcessSpilledObjectsDeleteQueue(/* max_batch_size */ 30);
+  deleted_urls_size = worker_pool.io_worker_client->ReplyDeleteSpilledObjects();
+  ASSERT_EQ(deleted_urls_size, object_ids_to_spill.size());
 }
 
 TEST_F(LocalObjectManagerTest, TestDeleteMaxObjects) {
