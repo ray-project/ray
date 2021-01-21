@@ -214,6 +214,9 @@ class LocalObjectManager {
 
   /// This class is accessed by both the raylet and plasma store threads. The
   /// mutex protects private members that relate to object spilling.
+  /// NOTE(sang): When a node manager and plasma store communicates, they are using the
+  /// io_service->post to minimize the synchronization point. This mutex locks the minimal
+  /// number of fields that need to be accessed synchronously.
   mutable absl::Mutex mutex_;
 
   ///
