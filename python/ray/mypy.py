@@ -92,8 +92,8 @@ def generate_actor_method_type(ctx: AttributeContext, plugin_obj: Plugin):
         actor_method_name)
     if original_method is None:
         ctx.api.fail(
-            f"Actor `{original_cls.name}` does not have method: "
-            f"`{actor_method_name}`", ctx.context)
+            f'Actor "{original_cls.name}" has no method "{actor_method_name}"',
+            ctx.context)
         return ctx.default_attr_type
     original_func_def: FuncDef = original_method.node
 
