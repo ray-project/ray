@@ -1308,7 +1308,7 @@ def test_schedule_placement_groups_at_the_same_time():
         return False
 
     wait_for_condition(is_all_placement_group_removed)
-    
+
     ray.shutdown()
 
 
@@ -1354,7 +1354,8 @@ ray.shutdown()
 
     def assert_alive_num_pg(expected_num_pg):
         alive_num_pg = 0
-        for _, placement_group_info in ray.util.placement_group_table().items():
+        for _, placement_group_info in ray.util.placement_group_table().items(
+        ):
             if placement_group_info["state"] == "CREATED":
                 alive_num_pg += 1
         return alive_num_pg == expected_num_pg
