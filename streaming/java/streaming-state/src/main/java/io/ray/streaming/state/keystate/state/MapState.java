@@ -26,7 +26,8 @@ import java.util.Map.Entry;
 public interface MapState<K, V> extends UnaryState<Map<K, V>> {
 
   /**
-   * @return the current value associated with the given key.
+   * Returns the current value associated with the given key.
+   *
    * @param key The key of the mapping
    * @return The value of the mapping with the given key
    */
@@ -62,7 +63,8 @@ public interface MapState<K, V> extends UnaryState<Map<K, V>> {
   void remove(K key);
 
   /**
-   * @return whether there exists the given mapping.
+   * Returns whether there exists the given mapping.
+   *
    * @param key The key of the mapping
    * @return True if there exists a mapping whose key equals to the given key
    */
@@ -71,7 +73,8 @@ public interface MapState<K, V> extends UnaryState<Map<K, V>> {
   }
 
   /**
-   * @return all the mappings in the state
+   * Returns all the mappings in the state
+   *
    * @return An iterable view of all the key-value pairs in the state.
    */
   default Iterable<Entry<K, V>> entries() {
@@ -79,7 +82,8 @@ public interface MapState<K, V> extends UnaryState<Map<K, V>> {
   }
 
   /**
-   * @return all the keys in the state
+   * Returns all the keys in the state
+   *
    * @return An iterable view of all the keys in the state.
    */
   default Iterable<K> keys() {
@@ -87,7 +91,8 @@ public interface MapState<K, V> extends UnaryState<Map<K, V>> {
   }
 
   /**
-   * @return all the values in the state.
+   * Returns all the values in the state.
+   *
    * @return An iterable view of all the values in the state.
    */
   default Iterable<V> values() {
