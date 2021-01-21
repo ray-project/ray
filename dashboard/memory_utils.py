@@ -7,6 +7,8 @@ from typing import List
 import ray
 
 from ray._raylet import (TaskID, ActorID, JobID)
+from ray.state import GlobalState
+from ray.internal.internal_api import node_stats, store_stats_summary
 import logging
 
 logger = logging.getLogger(__name__)
@@ -155,7 +157,7 @@ class MemoryTableEntry:
         actor_random_bits = object_ref_hex[TASKID_RANDOM_BITS_SIZE:
                                            TASKID_RANDOM_BITS_SIZE +
                                            ACTORID_RANDOM_BITS_SIZE]
-        if (random_bits == "f" * 16 and not actor_random_bits == "f" * 8):
+        if (random_bits == "f" * 16 and not actor_random_bits == "f" * 24):
             return True
         else:
             return False
@@ -325,3 +327,92 @@ def construct_memory_table(workers_stats: List,
     memory_table = MemoryTable(
         memory_table_entries, group_by_type=group_by, sort_by_type=sort_by)
     return memory_table
+
+
+def get_memory_summary(redis_address, redis_password, group_by,
+                       sort_by) -> str:
+    from ray.new_dashboard.modules.stats_collector.stats_collector_head import node_stats_to_dict
+    # Fetch core memory worker stats, store as a dictionary
+    state = GlobalState()
+    state._initialize_global_state(redis_address, redis_password)
+    raylet = state.node_table()[0]
+    stats = node_stats_to_dict(
+        node_stats(raylet["NodeManagerAddress"], raylet["NodeManagerPort"]))
+    assert type(stats) is dict and "coreWorkersStats" in stats
+
+    # Build memory table with "group_by" and "sort_by" parameters
+    group_by, sort_by = get_group_by_type(group_by), get_sorting_type(sort_by)
+    memory_table = construct_memory_table(stats["coreWorkersStats"], group_by,
+                                          sort_by).as_dict()
+    assert "summary" in memory_table and "group" in memory_table
+
+    # Build memory summary
+    memory_summary = ""
+    group_by_label, sort_by_label = group_by.name.lower().replace(
+        "_", " "), sort_by.name.lower().replace("_", " ")
+    summary_labels = [
+        "Memory Used by Objects", "Local Reference Ct", "Pinned in Memory Ct",
+        "Used by Pending Tasks Ct", "Captured in Objects Ct", "Actor Handle Ct"
+    ]
+    object_ref_labels = [
+        "IP Address", "PID", "Type", "Object Ref", "Object Size",
+        "Reference Type", "Call Site"
+    ]
+    memory_summary += f"Grouping by {group_by_label}...\
+        Sorting by {sort_by_label}...\n\n\n\n"
+
+    for key, group in memory_table["group"].items():
+        # Group summary
+        summary = group["summary"]
+        summary["total_object_size"] = str(
+            summary["total_object_size"]) + " MiB"
+        memory_summary += f"--- Summary for {group_by_label}: {key} ---\n"
+        memory_summary += "{:<25}  {:<25}  {:<25}  {:<25}  {:<25}  {:<25}\n".format(
+            *summary_labels)
+        memory_summary += "{:<25}  {:<25}  {:<25}  {:<25}  {:<25}  {:<25}\n\n".format(
+            *summary.values())
+
+        # Memory table per group
+        memory_summary += f"--- Object references for {group_by_label}: {key} ---\n"
+        memory_summary += "{:<14}  {:<8}  {:<8}  {:<39}  {:<14}  {:<22} {:<39}\n".format(
+            *object_ref_labels)
+        for entry in group["entries"]:
+            entry["object_size"] = str(
+                entry["object_size"]
+            ) + " MiB" if entry["object_size"] > -1 else "?"
+            entry["object_ref"] = [
+                entry["object_ref"][i:i + 39]
+                for i in range(0, len(entry["object_ref"]), 39)
+            ]
+            entry["call_site"] = [
+                entry["call_site"][i:i + 39]
+                for i in range(0, len(entry["call_site"]), 39)
+            ]
+            num_lines = max(len(entry["object_ref"]), len(entry["call_site"]))
+            object_ref_values = [
+                entry["node_ip_address"], entry["pid"], entry["type"],
+                entry["object_ref"], entry["object_size"],
+                entry["reference_type"], entry["call_site"]
+            ]
+            for i in range(len(object_ref_values)):
+                if not isinstance(object_ref_values[i], list):
+                    object_ref_values[i] = [object_ref_values[i]]
+                object_ref_values[i].extend(
+                    ["" for x in range(num_lines - len(object_ref_values[i]))])
+            for i in range(num_lines):
+                row = [elem[i] for elem in object_ref_values]
+                memory_summary += "{:<14}  {:<8}  {:<8}  {:39}  {:<14}  {:<22} {:<39}\n".format(
+                    *row)
+            memory_summary += "\n"
+        memory_summary += "\n\n\n"
+
+    return memory_summary
+
+
+def get_store_stats_summary(redis_address, redis_password) -> str:
+    state = GlobalState()
+    state._initialize_global_state(redis_address, redis_password)
+    raylet = state.node_table()[0]
+    stats = node_stats(raylet["NodeManagerAddress"], raylet["NodeManagerPort"])
+    store_summary = store_stats_summary(stats)
+    return store_summary

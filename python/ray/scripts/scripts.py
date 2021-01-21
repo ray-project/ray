@@ -21,12 +21,9 @@ from ray.autoscaler._private.commands import (
     debug_status, RUN_ENV_TYPES)
 from ray.autoscaler._private.util import DEBUG_AUTOSCALING_ERROR, \
     DEBUG_AUTOSCALING_STATUS
-from ray.state import GlobalState
+from ray.new_dashboard.memory_utils import get_memory_summary, get_store_stats_summary, GroupByType, SortingType
 import ray.ray_constants as ray_constants
 import ray.utils
-import ray.new_dashboard.memory_utils as memory_utils
-import ray.new_dashboard.modules.stats_collector.stats_collector_head \
-    as stats_collector
 
 from ray.autoscaler._private.cli_logger import cli_logger, cf
 
@@ -1375,14 +1372,14 @@ def timeline(address):
     help="Connect to ray with redis_password.")
 @click.option(
     "--group-by",
-    type=click.Choice([e.name for e in memory_utils.GroupByType]),
-    default=memory_utils.GroupByType.NODE_ADDRESS.name,
+    type=click.Choice([e.name for e in GroupByType]),
+    default=GroupByType.NODE_ADDRESS.name,
     help="Group object references by a GroupByType \
 (e.g. NODE_ADDRESS or STACK_TRACE).")
 @click.option(
     "--sort-by",
-    type=click.Choice([e.name for e in memory_utils.SortingType]),
-    default=memory_utils.SortingType.OBJECT_SIZE.name,
+    type=click.Choice([e.name for e in SortingType]),
+    default=SortingType.OBJECT_SIZE.name,
     help="Sort object references in ascending order by a SortingType \
 (e.g. PID, OBJECT_SIZE, or REFERENCE_TYPE).")
 def memory(address, redis_password, group_by, sort_by):
@@ -1391,80 +1388,11 @@ def memory(address, redis_password, group_by, sort_by):
         address = services.get_ray_address_to_use_or_die()
     time = datetime.now()
     header = "=" * 8 + f" Object references status: {time} " + "=" * 8
-    state = GlobalState()
-    state._initialize_global_state(address, redis_password)
-    raylet = state.node_table()[0]
-
-    # Fetch core memory worker stats, store as a dictionary
-    stats = ray.internal.internal_api.node_stats(raylet["NodeManagerAddress"],
-                                                 raylet["NodeManagerPort"])
-    store_summary = ray.internal.internal_api.store_stats_summary(stats)
-    stats = stats_collector.node_stats_to_dict(stats)
-
-    # Build memory table with "group_by" and "sort_by" parameters
-    group_by, sort_by = memory_utils.get_group_by_type(
-        group_by), memory_utils.get_sorting_type(sort_by)
-    memory_table = memory_utils.construct_memory_table(
-        stats["coreWorkersStats"], group_by, sort_by).as_dict()
-
-    # Display ObjectRef info for each group
-    group_by_label, sort_by_label = group_by.name.lower().replace(
-        "_", " "), sort_by.name.lower().replace("_", " ")
-    summary_labels = [
-        "Memory Used by Objects", "Local Reference Ct", "Pinned in Memory Ct",
-        "Used by Pending Tasks Ct", "Captured in Objects Ct", "Actor Handle Ct"
-    ]
-    object_ref_labels = [
-        "IP Address", "PID", "Type", "Object Ref", "Object Size",
-        "Reference Type", "Call Site"
-    ]
-    print(header)
-    print(
-        f"Grouping by {group_by_label}... Sorting by {sort_by_label}...\n\n\n")
-    for key, group in memory_table["group"].items():
-        # Group summary
-        summary = group["summary"]
-        summary["total_object_size"] = str(
-            summary["total_object_size"]) + " MiB"
-        print(f"--- Summary for {group_by_label}: {key} ---")
-        print("{:<25}  {:<25}  {:<25}  {:<25}  {:<25}  {:<25}".format(
-            *summary_labels))
-        print("{:<25}  {:<25}  {:<25}  {:<25}  {:<25}  {:<25}\n".format(
-            *summary.values()))
-
-        # Memory table per group
-        print(f"--- Object references for {group_by_label}: {key} ---")
-        print("{:<14}  {:<8}  {:<8}  {:<39}  {:<14}  {:<22} {:<39}".format(
-            *object_ref_labels))
-        for entry in group["entries"]:
-            entry["object_size"] = str(
-                entry["object_size"]
-            ) + " MiB" if entry["object_size"] > -1 else "?"
-            entry["object_ref"] = [
-                entry["object_ref"][i:i + 39]
-                for i in range(0, len(entry["object_ref"]), 39)
-            ]
-            entry["call_site"] = [
-                entry["call_site"][i:i + 39]
-                for i in range(0, len(entry["call_site"]), 39)
-            ]
-            num_lines = max(len(entry["object_ref"]), len(entry["call_site"]))
-            object_ref_values = [
-                entry["node_ip_address"], entry["pid"], entry["type"],
-                entry["object_ref"], entry["object_size"],
-                entry["reference_type"], entry["call_site"]
-            ]
-            for i in range(len(object_ref_values)):
-                if not isinstance(object_ref_values[i], list):
-                    object_ref_values[i] = [object_ref_values[i]]
-                object_ref_values[i].extend(
-                    ["" for x in range(num_lines - len(object_ref_values[i]))])
-            for i in range(num_lines):
-                row = [elem[i] for elem in object_ref_values]
-                print("{:<14}  {:<8}  {:<8}  {:39}  {:<14}  {:<22} {:<39}".
-                      format(*row))
-        print("\n\n")
-    print(store_summary)
+    memory_summary = get_memory_summary(address, redis_password,
+                                                     group_by, sort_by)
+    store_summary = get_store_stats_summary(
+        address, redis_password)
+    print(f"{header}\n{memory_summary}{store_summary}")
 
 
 @cli.command()
