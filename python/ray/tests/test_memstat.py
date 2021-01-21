@@ -24,7 +24,7 @@ ACTOR_TASK_CALL_OBJ = "(actor call)"
 DESER_TASK_ARG = "(deserialize task arg)"
 DESER_ACTOR_TASK_ARG = "(deserialize actor task arg)"
 
-# Group by and sort by parameters. 
+# Group by and sort by parameters.
 NODE_ADDRESS = "node address"
 STACK_TRACE = "stack trace"
 PID = "pid"
@@ -230,9 +230,18 @@ def test_group_by_sort_by(ray_start_regular):
     def f(y):
         from ray.new_dashboard.memory_utils import memory_summary
         x_id = ray.put("HI")
-        info_a = memory_summary(ray_start_regular["redis_address"], group_by="STACK_TRACE", sort_by="REFERENCE_TYPE")
-        info_b = memory_summary(ray_start_regular["redis_address"], group_by="NODE_ADDRESS", sort_by="OBJECT_SIZE")
-        info_c = memory_summary(ray_start_regular["redis_address"], group_by="NODE_ADDRESS", sort_by="PID")
+        info_a = memory_summary(
+            ray_start_regular["redis_address"],
+            group_by="STACK_TRACE",
+            sort_by="REFERENCE_TYPE")
+        info_b = memory_summary(
+            ray_start_regular["redis_address"],
+            group_by="NODE_ADDRESS",
+            sort_by="OBJECT_SIZE")
+        info_c = memory_summary(
+            ray_start_regular["redis_address"],
+            group_by="NODE_ADDRESS",
+            sort_by="PID")
         del x_id
         return info_a, info_b, info_c
 
