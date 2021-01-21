@@ -332,8 +332,8 @@ def construct_memory_table(workers_stats: List,
 
 def get_memory_summary(redis_address, redis_password, group_by,
                        sort_by) -> str:
-    from ray.new_dashboard.modules.stats_collector.\
-        stats_collector_head import node_stats_to_dict
+    from ray.new_dashboard.modules.stats_collector.stats_collector_head\
+         import node_stats_to_dict
     # Fetch core memory worker stats, store as a dictionary
     state = GlobalState()
     state._initialize_global_state(redis_address, redis_password)
@@ -350,8 +350,8 @@ def get_memory_summary(redis_address, redis_password, group_by,
                                           sort_by).as_dict()
     assert "summary" in memory_table and "group" in memory_table
     # Build memory summary
-    memory_summary = ""
-    group_by_label, sort_by_label = group_by.name.lower().replace(
+    mem = ""
+    group_by, sort_by = group_by.name.lower().replace(
         "_", " "), sort_by.name.lower().replace("_", " ")
     summary_labels = [
         "Memory Used by Objects", "Local Reference Ct", "Pinned in Memory Ct",
@@ -361,28 +361,24 @@ def get_memory_summary(redis_address, redis_password, group_by,
         "IP Address", "PID", "Type", "Object Ref", "Object Size",
         "Reference Type", "Call Site"
     ]
-    memory_summary += f"Grouping by {group_by_label}...\
-        Sorting by {sort_by_label}...\n\n\n\n"
+    mem += f"Grouping by {group_by}...\
+        Sorting by {sort_by}...\n\n\n\n"
 
     for key, group in memory_table["group"].items():
         # Group summary
         summary = group["summary"]
         summary["total_object_size"] = str(
             summary["total_object_size"]) + " MiB"
-        memory_summary += f"--- Summary for {group_by_label}:\
-            {key} ---\n"
-
-        memory_summary += "{:<25}  {:<25}  {:<25}  {:<25}  {:<25}\
-              {:<25}\n".format(*summary_labels)
-        memory_summary += "{:<25}  {:<25}  {:<25}  {:<25}  {:<25}\
-              {:<25}\n\n".format(*summary.values())
+        mem += f"--- Summary for {group_by}: {key} ---\n"
+        mem += "{:<25}  {:<25}  {:<25}  {:<25}  {:<25}  {:<25}\n"\
+            .format(*summary_labels)
+        mem += "{:<25}  {:<25}  {:<25}  {:<25}  {:<25}  {:<25}\n\n"\
+            .format(*summary.values())
 
         # Memory table per group
-        memory_summary += f"--- Object references for {group_by_label}:\
-            {key} ---\n"
-
-        memory_summary += "{:<14}  {:<8}  {:<8}  {:<39}  {:<14}  {:<22}\
-              {:<39}\n".format(*object_ref_labels)
+        mem += f"--- Object references for {group_by}: {key} ---\n"
+        mem += "{:<14}  {:<8}  {:<8}  {:<39}  {:<14}  {:<22}  {:<39}\n"\
+            .format(*object_ref_labels)
         for entry in group["entries"]:
             entry["object_size"] = str(
                 entry["object_size"]
@@ -408,11 +404,11 @@ def get_memory_summary(redis_address, redis_password, group_by,
                     ["" for x in range(num_lines - len(object_ref_values[i]))])
             for i in range(num_lines):
                 row = [elem[i] for elem in object_ref_values]
-                memory_summary += "{:<14}  {:<8}  {:<8}  {:39}  {:<14}  {:<22}\
-                      {:<39}\n".format(*row)
-            memory_summary += "\n"
-        memory_summary += "\n\n\n"
-    return memory_summary
+                mem += "{:<14}  {:<8}  {:<8}  {:39}  {:<14}  {:<22} {:<39}\n"\
+                    .format(*row)
+            mem += "\n"
+        mem += "\n\n\n"
+    return mem
 
 
 def get_store_stats_summary(redis_address, redis_password) -> str:
