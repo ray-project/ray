@@ -113,6 +113,7 @@ def test_create_sg_with_custom_inbound_rules_and_name(iam_client_stub,
     ec2_client_stub.assert_no_pending_responses()
 
 
+"""
 def test_subnet_given_head_and_worker_sg(iam_client_stub, ec2_client_stub):
     stubs.configure_iam_role_default(iam_client_stub)
     stubs.configure_key_pair_default(ec2_client_stub)
@@ -143,7 +144,7 @@ def test_subnet_given_only_head_sg(iam_client_stub, ec2_client_stub):
     iam_client_stub.assert_no_pending_responses()
     ec2_client_stub.assert_no_pending_responses()
     pass
-
+"""
 
 if __name__ == "__main__":
     import sys
