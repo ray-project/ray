@@ -34,7 +34,7 @@ public abstract class BaseId implements Serializable {
     return ByteBuffer.wrap(id);
   }
 
-  /** @return true if this id is nil. */
+  /** Returns true if this id is nil. */
   public boolean isNil() {
     if (isNilCache == null) {
       boolean localIsNil = true;
