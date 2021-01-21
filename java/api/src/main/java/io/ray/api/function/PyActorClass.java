@@ -38,7 +38,8 @@ public class PyActorClass {
    * Create a python actor class.
    *
    * @param moduleName The full module name of this actor class
-   * @param className The name of this actor class Returns a python actor class
+   * @param className The name of this actor class
+   * @return a python actor class
    */
   public static PyActorClass of(String moduleName, String className) {
     return new PyActorClass(moduleName, className);

@@ -111,7 +111,7 @@ public final class Metrics {
     /**
      * Creates a metric by sub-class.
      *
-     * <p>Returns a metric
+     * @return a metric
      */
     protected abstract M create();
 
