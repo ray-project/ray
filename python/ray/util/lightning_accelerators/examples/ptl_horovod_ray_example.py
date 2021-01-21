@@ -19,8 +19,7 @@ trainer = pl.Trainer(
     gpus=0,
     # Use 1 machine.
     num_nodes=1,
-    # A total of 4 workers.
-    # Each machine will have num_processes // num_nodes workers.
+    # A total of 4 workers per machine.
     num_processes=4,
     accelerator=HorovodRayAccelerator())
 trainer.fit(model, dm)
