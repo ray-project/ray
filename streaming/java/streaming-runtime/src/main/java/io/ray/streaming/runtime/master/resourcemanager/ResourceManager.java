@@ -10,7 +10,7 @@ public interface ResourceManager extends ResourceAssignStrategy {
   /**
    * Get registered containers, the container list is read-only.
    *
-   * <p>Returns the registered container list
+   * @return the registered container list
    */
   ImmutableList<Container> getRegisteredContainers();
 }

@@ -24,7 +24,7 @@ public class Resources implements Serializable {
   /**
    * Get registered containers, the container list is read-only.
    *
-   * <p>Returns container list.
+   * @return container list.
    */
   public ImmutableList<Container> getRegisteredContainers() {
     return ImmutableList.copyOf(registerContainers);
