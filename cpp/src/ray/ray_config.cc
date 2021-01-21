@@ -13,7 +13,8 @@ std::shared_ptr<RayConfig> RayConfig::GetInstance() {
   return config_;
 }
 
-std::shared_ptr<RayConfig> RayConfig::GetInstance(std::string address, bool local_mode) {
+std::shared_ptr<RayConfig> RayConfig::GetInstance(std::string address, bool local_mode,
+                                                  int min_workers, int max_workers) {
   if (config_ == nullptr) {
     config_ = std::make_shared<RayConfig>();
     config_->redis_ip = address;

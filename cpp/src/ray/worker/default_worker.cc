@@ -13,6 +13,10 @@ int default_worker_main(int argc, char **argv) {
   RAY_CHECK(argc == 8);
 
   auto config = ray::api::RayConfig::GetInstance();
+  if (config->max_workers >= config->num_workers) {
+    return 0;
+  }
+
   config->run_mode = RunMode::CLUSTER;
   config->worker_type = ray::WorkerType::WORKER;
   config->store_socket = std::string(argv[1]);
@@ -25,6 +29,7 @@ int default_worker_main(int argc, char **argv) {
   config->redis_port = std::stoi(redis_address.substr(pos + 1, redis_address.length()));
   config->redis_password = std::string(std::string(argv[5]));
   config->session_dir = std::string(std::string(argv[6]));
+  config->num_workers++;
 
   Ray::Init();
 

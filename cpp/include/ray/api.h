@@ -32,7 +32,7 @@ class Ray {
  public:
   /// Initialize Ray runtime.
   static void Init(std::string address = "", bool local_mode = false, int min_workers = 1,
-                   int max_workers = 1);
+                   int max_workers = 0);
 
   /// Shutdown Ray runtime.
   static void Shutdown();

@@ -57,8 +57,7 @@ void ProcessHelper::RayStart(std::shared_ptr<RayConfig> config,
   std::string redis_ip = config->redis_ip;
   if (!redis_ip.empty()) {
     ConnectRayNode(redis_ip, config->redis_password);
-  }
-  if (config->worker_type == WorkerType::DRIVER && redis_ip.empty()) {
+  } else if (config->worker_type == WorkerType::DRIVER && redis_ip.empty()) {
     redis_ip = "127.0.0.1";
     StartRayNode(config->redis_port, config->redis_password, config->node_manager_port);
   }
@@ -94,7 +93,7 @@ void ProcessHelper::RayStart(std::shared_ptr<RayConfig> config,
   options.raylet_ip_address = "127.0.0.1";
   options.driver_name = "cpp_worker";
   options.ref_counting_enabled = true;
-  options.num_workers = 1;
+  options.num_workers = config->min_workers;
   options.metrics_agent_port = -1;
   options.task_execution_callback = callback;
   CoreWorkerProcess::Initialize(options);
