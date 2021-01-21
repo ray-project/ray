@@ -13,9 +13,9 @@ from typing import Dict, List, Optional, Type, Union
 from ray.rllib.agents.impala import vtrace_tf as vtrace
 from ray.rllib.agents.impala.vtrace_tf_policy import _make_time_major, \
     clip_gradients, choose_optimizer
-from ray.rllib.agents.ppo.ppo_tf_policy import postprocess_ppo_gae
 from ray.rllib.evaluation.episode import MultiAgentEpisode
-from ray.rllib.evaluation.postprocessing import Postprocessing
+from ray.rllib.evaluation.postprocessing import compute_gae_for_sample_batch, \
+    Postprocessing
 from ray.rllib.models.tf.tf_action_dist import Categorical
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -338,8 +338,8 @@ def postprocess_trajectory(
         SampleBatch: The postprocessed, modified SampleBatch (or a new one).
     """
     if not policy.config["vtrace"]:
-        sample_batch = postprocess_ppo_gae(policy, sample_batch,
-                                           other_agent_batches, episode)
+        sample_batch = compute_gae_for_sample_batch(
+            policy, sample_batch, other_agent_batches, episode)
 
     # TODO: (sven) remove this del once we have trajectory view API fully in
     #  place.

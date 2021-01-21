@@ -431,6 +431,10 @@ class Trainable:
         reset actor behavior for the new config."""
         self.config = new_config
 
+        trial_info = new_config.pop(TRIAL_INFO, None)
+        if trial_info:
+            self._trial_info = trial_info
+
         self._result_logger.flush()
         self._result_logger.close()
 
