@@ -9,6 +9,7 @@ import ray
 from ray._raylet import (TaskID, ActorID, JobID)
 from ray.state import GlobalState
 from ray.internal.internal_api import node_stats, store_stats_summary
+from ray.ray_constants import REDIS_DEFAULT_PASSWORD
 import logging
 
 logger = logging.getLogger(__name__)
@@ -157,7 +158,7 @@ class MemoryTableEntry:
         actor_random_bits = object_ref_hex[TASKID_RANDOM_BITS_SIZE:
                                            TASKID_RANDOM_BITS_SIZE +
                                            ACTORID_RANDOM_BITS_SIZE]
-        if (random_bits == "f" * 16 and not actor_random_bits == "f" * 24):
+        if (random_bits == "f" * 8 and not actor_random_bits == "f" * 24):
             return True
         else:
             return False
@@ -331,21 +332,23 @@ def construct_memory_table(workers_stats: List,
 
 def get_memory_summary(redis_address, redis_password, group_by,
                        sort_by) -> str:
-    from ray.new_dashboard.modules.stats_collector.stats_collector_head import node_stats_to_dict
+    from ray.new_dashboard.modules.stats_collector.\
+        stats_collector_head import node_stats_to_dict
     # Fetch core memory worker stats, store as a dictionary
     state = GlobalState()
     state._initialize_global_state(redis_address, redis_password)
-    raylet = state.node_table()[0]
-    stats = node_stats_to_dict(
-        node_stats(raylet["NodeManagerAddress"], raylet["NodeManagerPort"]))
-    assert type(stats) is dict and "coreWorkersStats" in stats
-
+    core_worker_stats = []
+    for raylet in state.node_table():
+        stats = node_stats_to_dict(
+            node_stats(raylet["NodeManagerAddress"],
+                       raylet["NodeManagerPort"]))
+        core_worker_stats.extend(stats["coreWorkersStats"])
+        assert type(stats) is dict and "coreWorkersStats" in stats
     # Build memory table with "group_by" and "sort_by" parameters
     group_by, sort_by = get_group_by_type(group_by), get_sorting_type(sort_by)
-    memory_table = construct_memory_table(stats["coreWorkersStats"], group_by,
+    memory_table = construct_memory_table(core_worker_stats, group_by,
                                           sort_by).as_dict()
     assert "summary" in memory_table and "group" in memory_table
-
     # Build memory summary
     memory_summary = ""
     group_by_label, sort_by_label = group_by.name.lower().replace(
@@ -366,16 +369,20 @@ def get_memory_summary(redis_address, redis_password, group_by,
         summary = group["summary"]
         summary["total_object_size"] = str(
             summary["total_object_size"]) + " MiB"
-        memory_summary += f"--- Summary for {group_by_label}: {key} ---\n"
-        memory_summary += "{:<25}  {:<25}  {:<25}  {:<25}  {:<25}  {:<25}\n".format(
-            *summary_labels)
-        memory_summary += "{:<25}  {:<25}  {:<25}  {:<25}  {:<25}  {:<25}\n\n".format(
-            *summary.values())
+        memory_summary += f"--- Summary for {group_by_label}:\
+            {key} ---\n"
+
+        memory_summary += "{:<25}  {:<25}  {:<25}  {:<25}  {:<25}\
+              {:<25}\n".format(*summary_labels)
+        memory_summary += "{:<25}  {:<25}  {:<25}  {:<25}  {:<25}\
+              {:<25}\n\n".format(*summary.values())
 
         # Memory table per group
-        memory_summary += f"--- Object references for {group_by_label}: {key} ---\n"
-        memory_summary += "{:<14}  {:<8}  {:<8}  {:<39}  {:<14}  {:<22} {:<39}\n".format(
-            *object_ref_labels)
+        memory_summary += f"--- Object references for {group_by_label}:\
+            {key} ---\n"
+
+        memory_summary += "{:<14}  {:<8}  {:<8}  {:<39}  {:<14}  {:<22}\
+              {:<39}\n".format(*object_ref_labels)
         for entry in group["entries"]:
             entry["object_size"] = str(
                 entry["object_size"]
@@ -401,11 +408,10 @@ def get_memory_summary(redis_address, redis_password, group_by,
                     ["" for x in range(num_lines - len(object_ref_values[i]))])
             for i in range(num_lines):
                 row = [elem[i] for elem in object_ref_values]
-                memory_summary += "{:<14}  {:<8}  {:<8}  {:39}  {:<14}  {:<22} {:<39}\n".format(
-                    *row)
+                memory_summary += "{:<14}  {:<8}  {:<8}  {:39}  {:<14}  {:<22}\
+                      {:<39}\n".format(*row)
             memory_summary += "\n"
         memory_summary += "\n\n\n"
-
     return memory_summary
 
 
@@ -416,3 +422,12 @@ def get_store_stats_summary(redis_address, redis_password) -> str:
     stats = node_stats(raylet["NodeManagerAddress"], raylet["NodeManagerPort"])
     store_summary = store_stats_summary(stats)
     return store_summary
+
+
+def memory_summary(redis_address,
+                   redis_password=REDIS_DEFAULT_PASSWORD,
+                   group_by="NODE_ADDRESS",
+                   sort_by="OBJECT_SIZE"):
+    return get_memory_summary(redis_address, redis_password, group_by,
+                              sort_by) + get_store_stats_summary(
+                                  redis_address, redis_password)
