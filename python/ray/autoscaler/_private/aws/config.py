@@ -602,8 +602,8 @@ def _upsert_security_group_rules(conf, security_groups):
     sgids = {sg.id for sg in security_groups.values()}
 
     # Update sgids to include user-specified security groups.
-    # This is necessary if the head node type's security groups are specified
-    # but not the worker's, or vice-versa.
+    # This is necessary if the user specifies the head node type's security
+    # groups but not the worker's, or vice-versa.
     for node_type in NODE_KIND_CONFIG_KEYS.values():
         sgids.update(conf[node_type].get("SecurityGroupIds", []))
 
@@ -624,7 +624,7 @@ def _update_inbound_rules(target_security_group, sgids, config):
 
 
 def _create_default_inbound_rules(sgids, extended_rules=[]):
-    intracluster_rules = _create_default_instracluster_inbound_rules(sgids)
+    intracluster_rules = _create_default_intracluster_inbound_rules(sgids)
     ssh_rules = _create_default_ssh_inbound_rules()
     merged_rules = itertools.chain(
         intracluster_rules,
@@ -634,7 +634,7 @@ def _create_default_inbound_rules(sgids, extended_rules=[]):
     return list(merged_rules)
 
 
-def _create_default_instracluster_inbound_rules(intracluster_sgids):
+def _create_default_intracluster_inbound_rules(intracluster_sgids):
     return [{
         "FromPort": -1,
         "ToPort": -1,
