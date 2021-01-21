@@ -69,9 +69,6 @@ class Worker:
 
         # Retry the connection until the channel responds to something
         # looking like a gRPC connection, though it may be a proxy.
-        #
-        # This is a finite state machine following the progression of states
-        # a connecting client should check and retry for.
         conn_attempts = 0
         timeout = INITIAL_TIMEOUT_SEC
         ray_ready = False
