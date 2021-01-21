@@ -1308,6 +1308,8 @@ def test_schedule_placement_groups_at_the_same_time():
         return False
 
     wait_for_condition(is_all_placement_group_removed)
+    
+    ray.shutdown()
 
 
 def test_detached_placement_group(ray_start_cluster):
