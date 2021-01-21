@@ -33,10 +33,6 @@ logger = logging.getLogger(__name__)
 INITIAL_TIMEOUT_SEC = 5
 MAX_TIMEOUT_SEC = 30
 
-CONN_STATE_CHANNEL = 0
-CONN_STATE_SERVICER = 1
-CONN_STATE_RAY_INIT = 2
-
 
 def backoff(timeout: int) -> int:
     timeout = timeout + 5
@@ -78,57 +74,47 @@ class Worker:
         # a connecting client should check and retry for.
         conn_attempts = 0
         timeout = INITIAL_TIMEOUT_SEC
-        connection_state = CONN_STATE_CHANNEL
         ray_ready = False
         while conn_attempts < connection_retries + 1:
             conn_attempts += 1
-            if connection_state == CONN_STATE_CHANNEL:
-                try:
-                    # Let gRPC wait for us to see if the channel becomes ready.
-                    # If it throws, we couldn't connect.
-                    grpc.channel_ready_future(
-                        self.channel).result(timeout=timeout)
-                    # The HTTP2 channel is ready. Wrap the channel with the
-                    # RayletDriverStub, allowing for unary requests.
-                    self.server = ray_client_pb2_grpc.RayletDriverStub(
-                        self.channel)
-                    connection_state = CONN_STATE_SERVICER
-                except grpc.FutureTimeoutError:
-                    logger.debug(
-                        f"Couldn't connect in {timeout} seconds, retrying")
-            if connection_state == CONN_STATE_SERVICER:
-                try:
-                    # Now the HTTP2 channel is ready, or proxied, but the
-                    # servicer may not be ready. Call is_initialized() and if
-                    # it throws, the servicer is not ready. On success, the
-                    # `ray_ready` result is checked when we fallthrough to the
-                    # next state
-                    ray_ready = self.is_initialized()
-                    connection_state = CONN_STATE_RAY_INIT
-                except grpc.RpcError as e:
-                    if e.code() == grpc.StatusCode.UNAVAILABLE:
-                        # UNAVAILABLE is gRPC's retryable error,
-                        # so we do that here.
-                        logger.info("Ray client server unavailable, "
-                                    f"retrying in {timeout}s...")
-                        logger.debug(
-                            f"Received when checking init: {e.details()}")
-                        time.sleep(timeout)
-                    else:
-                        # Any other gRPC error gets a reraise
-                        raise e
-            if connection_state == CONN_STATE_RAY_INIT:
+            try:
+                # Let gRPC wait for us to see if the channel becomes ready.
+                # If it throws, we couldn't connect.
+                grpc.channel_ready_future(self.channel).result(timeout=timeout)
+                # The HTTP2 channel is ready. Wrap the channel with the
+                # RayletDriverStub, allowing for unary requests.
+                self.server = ray_client_pb2_grpc.RayletDriverStub(
+                    self.channel)
+                # Now the HTTP2 channel is ready, or proxied, but the
+                # servicer may not be ready. Call is_initialized() and if
+                # it throws, the servicer is not ready. On success, the
+                # `ray_ready` result is checked.
+                ray_ready = self.is_initialized()
                 if ray_ready:
                     # Ray is ready! Break out of the retry loop
                     break
-                logger.info("Waiting for Ray to become ready on the server, "
-                            f", retry in {timeout}s...")
-                # ray.init() may be happening on the server now.
-                # Sleep on it and try again.
+                # Ray is not ready yet, wait a timeout
                 time.sleep(timeout)
-                ray_ready = self.is_initialized()
-
+            except grpc.FutureTimeoutError:
+                logger.info(
+                    f"Couldn't connect channel in {timeout} seconds, retrying")
+                # Note that channel_ready_future constitutes its own timeout,
+                # which is why we do not sleep here.
+            except grpc.RpcError as e:
+                if e.code() == grpc.StatusCode.UNAVAILABLE:
+                    # UNAVAILABLE is gRPC's retryable error,
+                    # so we do that here.
+                    logger.info("Ray client server unavailable, "
+                                f"retrying in {timeout}s...")
+                    logger.debug(f"Received when checking init: {e.details()}")
+                    # Ray is not ready yet, wait a timeout
+                    time.sleep(timeout)
+                else:
+                    # Any other gRPC error gets a reraise
+                    raise e
             # Fallthrough, backoff, and retry at the top of the loop
+            logger.info("Waiting for Ray to become ready on the server, "
+                        f"retry in {timeout}s...")
             timeout = backoff(timeout)
 
         # If we made it through the loop without ray_ready it means we've used
