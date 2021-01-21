@@ -42,3 +42,4 @@ class MyActor:
 actor = MyActor.remote()
 int_ref = actor.return_int.remote()
 int_ref = actor.return_int.remote(42)
+int_ref = actor.missing_method.remote()

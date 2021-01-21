@@ -58,9 +58,13 @@ def test_typing_bad():
             '43: error: Too few arguments for "return_int" of "MyActor"',  # noqa: E501
             # int_ref = actor.return_int.remote(42)
             '44: error: Argument 1 to "return_int" of "MyActor" has incompatible type "int"; expected "str"',  # noqa: E501
+            # int_ref = actor.missing_method.remote()
+            '45: error: Actor `MyActor` does not have method: `missing_method`',  # noqa: E501
         ]
         for error in expected_errors:
             assert error in msg
+
+        assert msg.count("error:") == len(expected_errors)
 
 
 if __name__ == "__main__":
