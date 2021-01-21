@@ -8,65 +8,66 @@
 
 namespace pygloo{
 
-typedef void (*ReduceFunc)(void*, const void*, const void*, size_t);
 
-template <
-    typename T,
-    typename std::enable_if<!std::is_integral<T>::value, int>::type = 0>
-ReduceFunc toFunction(const ReduceOp& r) {
-  switch (r) {
-    case ReduceOp::SUM:
-      return ReduceFunc(&gloo::sum<T>);
-    case ReduceOp::PRODUCT:
-      return ReduceFunc(&gloo::product<T>);
-    case ReduceOp::MIN:
-      return ReduceFunc(&gloo::min<T>);
-    case ReduceOp::MAX:
-      return ReduceFunc(&gloo::max<T>);
-    case ReduceOp::BAND:
-      throw std::runtime_error(
-          "Cannot use ReduceOp.BAND with non-integral dtype");
-      break;
-    case ReduceOp::BOR:
-      throw std::runtime_error(
-          "Cannot use ReduceOp.BOR with non-integral dtype");
-      break;
-    case ReduceOp::BXOR:
-      throw std::runtime_error(
-          "Cannot use ReduceOp.BXOR with non-integral dtype");
-      break;
-    case ReduceOp::UNUSED:
-      break;
-  }
 
-  throw std::runtime_error("Unhandled ReduceOp");
+
+template<typename T>
+void allreduce(const std::shared_ptr<gloo::Context> &context,
+  intptr_t sendbuf, intptr_t recvbuf, size_t size, ReduceOp reduceop,
+  gloo::AllreduceOptions::Algorithm algorithm){
+    std::vector<T*> input_ptr;
+    std::vector<T*> output_ptr;
+    input_ptr.emplace_back(reinterpret_cast<T*>(sendbuf));
+    output_ptr.emplace_back(reinterpret_cast<T*>(recvbuf));
+    // Configure AllreduceOptions struct and call allreduec function
+    gloo::AllreduceOptions opts_(context);
+    opts_.setInputs(input_ptr, size);
+    opts_.setOutputs(output_ptr, size);
+    opts_.setAlgorithm(algorithm);
+    // opts_.setAlgorithm(gloo::AllreduceOptions::Algorithm::RING);
+    gloo::ReduceOptions::Func fn = toFunction<T>(reduceop);
+    opts_.setReduceFunction(fn);
+    opts_.setTag(3);
+
+    gloo::allreduce(opts_);
 }
 
 
-void allreduce(const std::shared_ptr<gloo::Context> &context, pybind11::array_t<double, pybind11::array::c_style> &sendbuf,
-        pybind11::array_t<double, pybind11::array::c_style> &recvbuf,
-        size_t count, int datatype, ReduceOp reduceop){
-    auto* sendbuf_ptr = sendbuf.mutable_unchecked<>().mutable_data(0);
-    auto* recvbuf_ptr = recvbuf.mutable_unchecked<>().mutable_data(0);
-    // allocate std::vector (to pass to the C++ function)
-    std::vector<double*> inputBuf(sendbuf.size());
-    std::vector<double*> outputBuf(recvbuf.size());
-
-    for(size_t i=0; i<count; ++i){
-        inputBuf[i] = sendbuf_ptr++;
-        outputBuf[i] = recvbuf_ptr++;
+void allreduce_wrapper(const std::shared_ptr<gloo::Context> &context,
+    intptr_t sendbuf, intptr_t recvbuf, size_t size,
+    glooDataType_t datatype, ReduceOp reduceop,
+    gloo::AllreduceOptions::Algorithm algorithm){
+    switch (datatype){
+    case glooDataType_t::glooInt8:
+        allreduce<int8_t>(context, sendbuf, recvbuf, size, reduceop, algorithm);
+        break;
+    case glooDataType_t::glooUint8:
+        allreduce<uint8_t>(context, sendbuf, recvbuf, size, reduceop, algorithm);
+        break;
+    case glooDataType_t::glooInt32:
+        allreduce<int32_t>(context, sendbuf, recvbuf, size, reduceop, algorithm);
+        break;
+    case glooDataType_t::glooUint32:
+        allreduce<uint32_t>(context, sendbuf, recvbuf, size, reduceop, algorithm);
+        break;
+    case glooDataType_t::glooInt64:
+        allreduce<int64_t>(context, sendbuf, recvbuf, size, reduceop, algorithm);
+        break;
+    case glooDataType_t::glooUint64:
+        allreduce<uint64_t>(context, sendbuf, recvbuf, size, reduceop, algorithm);
+        break;
+    case glooDataType_t::glooFloat16:
+        allreduce<gloo::float16>(context, sendbuf, recvbuf, size, reduceop, algorithm);
+        break;
+    case glooDataType_t::glooFloat32:
+        allreduce<float_t>(context, sendbuf, recvbuf, size, reduceop, algorithm);
+        break;
+    case glooDataType_t::glooFloat64:
+        allreduce<double_t>(context, sendbuf, recvbuf, size, reduceop, algorithm);
+        break;
+    default:
+        throw std::runtime_error("Unhandled dataType");
     }
-
-    // Configure AllreduceOptions struct and call allreduec function
-    gloo::AllreduceOptions opts_(context);
-    opts_.setInputs(inputBuf, 1);
-    opts_.setOutputs(outputBuf, 1);
-    opts_.setAlgorithm(gloo::AllreduceOptions::Algorithm::RING);
-    gloo::ReduceOptions::Func fn = toFunction<double>(reduceop);
-    opts_.setReduceFunction(fn);
-    opts_.setTag(0);
-
-    gloo::allreduce(opts_);
 }
 
 }// pygloo

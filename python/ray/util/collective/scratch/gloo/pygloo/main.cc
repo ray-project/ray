@@ -6,8 +6,6 @@
 
 #include <gloo/allgather.h>
 #include <gloo/allgatherv.h>
-#include <gloo/allreduce.h>
-#include <gloo/allreduce_ring.h>
 #include <gloo/alltoall.h>
 #include <gloo/alltoallv.h>
 #include <gloo/barrier.h>
@@ -31,19 +29,6 @@ bool transport_uv_available(){
     return GLOO_HAVE_TRANSPORT_UV;
 }
 
-template <typename T>
-void declare_AllreduceRing(pybind11::module &m, const std::string &className)
-{
-    using Class = gloo::AllreduceRing<T>;
-    pybind11::class_<Class>(m, className.c_str())
-        .def(pybind11::init<const std::shared_ptr<gloo::Context> &,
-                            const std::vector<T *> &,
-                            const int,
-                            const gloo::ReductionFunction<T> *>())
-    // , pybind11::arg("fn")=gloo::ReductionFunction<T>::sum
-        .def("run", &gloo::AllreduceRing<T>::run, "run");
-}
-
 
 PYBIND11_MODULE(pygloo, m){
     m.doc() = "binding gloo from c to python"; // optional module docstring
@@ -63,14 +48,28 @@ PYBIND11_MODULE(pygloo, m){
         .value("UNUSED", pygloo::ReduceOp::UNUSED)
         .export_values();
 
+    pybind11::enum_<gloo::detail::AllreduceOptionsImpl::Algorithm>(m, "allreduceAlgorithm", pybind11::arithmetic())
+        .value("SUM", gloo::detail::AllreduceOptionsImpl::Algorithm::UNSPECIFIED)
+        .value("RING", gloo::detail::AllreduceOptionsImpl::Algorithm::RING)
+        .value("BCUBE", gloo::detail::AllreduceOptionsImpl::Algorithm::BCUBE)
+        .export_values();
+
+    pybind11::enum_<pygloo::glooDataType_t>(m, "glooDataType_t", pybind11::arithmetic())
+        .value("glooInt8", pygloo::glooDataType_t::glooInt8)
+        .value("glooUint8", pygloo::glooDataType_t::glooUint8)
+        .value("glooInt32", pygloo::glooDataType_t::glooInt32)
+        .value("glooUint32", pygloo::glooDataType_t::glooUint32)
+        .value("glooInt64", pygloo::glooDataType_t::glooInt64)
+        .value("glooFloat16", pygloo::glooDataType_t::glooFloat16)
+        .value("glooFloat32", pygloo::glooDataType_t::glooFloat32)
+        .value("glooFloat64", pygloo::glooDataType_t::glooFloat64)
+        .export_values();
+
     m.def("allgather", &gloo::allgather, "allgather");
     m.def("allgatherv", &gloo::allgatherv, "allgatherv");
 
-    m.def("allreduce", &pygloo::allreduce, "allreduce", pybind11::arg("context")=nullptr, pybind11::arg("sendbuf")=nullptr, pybind11::arg("recvbuf")=nullptr, pybind11::arg("count")=nullptr, pybind11::arg("datatype") = nullptr, pybind11::arg("reduceop")=pygloo::ReduceOp::SUM);
+    m.def("allreduce", &pygloo::allreduce_wrapper, "allreduce", pybind11::arg("context")=nullptr, pybind11::arg("sendbuf")=nullptr, pybind11::arg("recvbuf")=nullptr, pybind11::arg("size")=nullptr, pybind11::arg("datatype") = nullptr, pybind11::arg("reduceop")=pygloo::ReduceOp::SUM, pybind11::arg("algorithm") = gloo::AllreduceOptions::Algorithm::RING);
 
-    // declare_AllreduceRing<int>(m, "AllreduceRing");
-    // declare_AllreduceRing<float>(m, "AllreduceRing");
-    // declare_AllreduceRing<double>(m, "AllreduceRing");
 
     pybind11::class_<gloo::AllreduceOptions>(m, "AllreduceOptions")
         .def(pybind11::init<const std::shared_ptr<gloo::Context>&>())
