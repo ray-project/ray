@@ -820,7 +820,7 @@ TEST_F(SingleNodeTest, TestObjectInterface) {
   ASSERT_EQ(wait_results, std::vector<bool>({true, true, false}));
 
   // Test Delete().
-  // clear the reference held by PlasmaBuffer.
+  // clear the reference held by TrackedBuffer.
   results.clear();
   RAY_CHECK_OK(core_worker.Delete(ids, true));
 

@@ -281,10 +281,11 @@ void ServerConnection::DoAsyncWrites() {
 std::shared_ptr<ClientConnection> ClientConnection::Create(
     ClientHandler &client_handler, MessageHandler &message_handler,
     local_stream_socket &&socket, const std::string &debug_label,
-    const std::vector<std::string> &message_type_enum_names, int64_t error_message_type) {
-  std::shared_ptr<ClientConnection> self(
-      new ClientConnection(message_handler, std::move(socket), debug_label,
-                           message_type_enum_names, error_message_type));
+    const std::vector<std::string> &message_type_enum_names, int64_t error_message_type,
+    const std::vector<uint8_t> &error_message_data) {
+  std::shared_ptr<ClientConnection> self(new ClientConnection(
+      message_handler, std::move(socket), debug_label, message_type_enum_names,
+      error_message_type, error_message_data));
   // Let our manager process our new connection.
   client_handler(*self);
   return self;
@@ -293,13 +294,15 @@ std::shared_ptr<ClientConnection> ClientConnection::Create(
 ClientConnection::ClientConnection(
     MessageHandler &message_handler, local_stream_socket &&socket,
     const std::string &debug_label,
-    const std::vector<std::string> &message_type_enum_names, int64_t error_message_type)
+    const std::vector<std::string> &message_type_enum_names, int64_t error_message_type,
+    const std::vector<uint8_t> &error_message_data)
     : ServerConnection(std::move(socket)),
       registered_(false),
       message_handler_(message_handler),
       debug_label_(debug_label),
       message_type_enum_names_(message_type_enum_names),
-      error_message_type_(error_message_type) {}
+      error_message_type_(error_message_type),
+      error_message_data_(error_message_data) {}
 
 void ClientConnection::Register() {
   RAY_CHECK(!registered_);
@@ -324,6 +327,7 @@ void ClientConnection::ProcessMessageHeader(const boost::system::error_code &err
   if (error) {
     // If there was an error, disconnect the client.
     read_type_ = error_message_type_;
+    read_message_ = error_message_data_;
     read_length_ = 0;
     ProcessMessage(error);
     return;
