@@ -634,7 +634,8 @@ class DockerCommandRunner(CommandRunnerInterface):
 
         host_mount_location = os.path.dirname(host_destination.rstrip('/'))
         self.ssh_command_runner.run(
-            f"mkdir -p {host_mount_location} && chown -R ubuntu {host_mount_location}",
+            f"mkdir -p {host_mount_location} && chown -R "
+            f"{self.ssh_command_runner.ssh_user} {host_mount_location}",
             silent=is_rsync_silent())
 
         self.ssh_command_runner.run_rsync_up(
@@ -658,7 +659,8 @@ class DockerCommandRunner(CommandRunnerInterface):
                 self.ssh_command_runner.cluster_name), source.lstrip("/"))
         host_mount_location = os.path.dirname(host_source.rstrip('/'))
         self.ssh_command_runner.run(
-            f"mkdir -p {host_mount_location} && chown -R ubuntu {host_mount_location}",
+            f"mkdir -p {host_mount_location} && chown -R "
+            f"{self.ssh_command_runner.ssh_user} {host_mount_location}",
             silent=is_rsync_silent())
         if source[-1] == "/":
             source += "."
