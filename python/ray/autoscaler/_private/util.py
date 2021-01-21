@@ -116,7 +116,6 @@ def rewrite_legacy_yaml_to_available_node_types(
             },
         }
         config["head_node_type"] = NODE_TYPE_LEGACY_HEAD
-        config["worker_default_node_type"] = NODE_TYPE_LEGACY_WORKER
 
     return config
 
