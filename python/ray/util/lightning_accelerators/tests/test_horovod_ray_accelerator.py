@@ -52,11 +52,8 @@ def ray_start_2_gpus():
 def seed():
     pl.seed_everything(0)
 
-def get_model(lr=1e-2,
-                 hidden_size=1,
-                 data_size=10,
-                 val_size=10,
-                 batch_size=2):
+
+def get_model(lr=1e-2, hidden_size=1, data_size=10, val_size=10, batch_size=2):
     config = {
         "lr": lr,
         "hidden_size": hidden_size,
@@ -98,6 +95,7 @@ def train_test(trainer, model):
     # Check that the model is actually changed post-training.
     assert torch.norm(initial_values - post_train_values) > 0.1
 
+
 @pytest.mark.parametrize("num_processes", [1, 2])
 def test_train(tmpdir, ray_start_2_cpus, seed, num_processes):
     model = get_model()
@@ -111,6 +109,7 @@ def load_test(trainer, model):
     trained_model = PTL_Module.load_from_checkpoint(
         trainer.checkpoint_callback.best_model_path, config=model.config)
     assert trained_model is not None, 'loading model failed'
+
 
 @pytest.mark.parametrize("num_processes", [1, 2])
 def test_load(tmpdir, ray_start_2_cpus, seed, num_processes):
@@ -152,6 +151,7 @@ def test_predict(tmpdir, ray_start_2_cpus, seed, num_processes):
         num_processes=num_processes)
     predict_test(trainer, model, dm)
 
+
 @pytest.mark.skipif(
     not _nccl_available(), reason="test requires Horovod with NCCL support")
 @pytest.mark.skipif(
@@ -162,6 +162,7 @@ def test_train_gpu(tmpdir, ray_start_2_gpus, seed, num_gpus):
     trainer = get_trainer(tmpdir, gpus=num_gpus)
     train_test(trainer, model)
 
+
 @pytest.mark.skipif(
     not _nccl_available(), reason="test requires Horovod with NCCL support")
 @pytest.mark.skipif(
@@ -171,6 +172,7 @@ def test_load_gpu(tmpdir, ray_start_2_gpus, seed, num_gpus):
     model = get_model()
     trainer = get_trainer(tmpdir, gpus=num_gpus)
     load_test(trainer, model)
+
 
 @pytest.mark.skipif(
     not _nccl_available(), reason="test requires Horovod with NCCL support")
