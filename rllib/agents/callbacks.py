@@ -6,9 +6,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.evaluation import MultiAgentEpisode
 from ray.rllib.utils.annotations import PublicAPI
 from ray.rllib.utils.deprecation import deprecation_warning
-from ray.rllib.utils.tf_run_builder import TFRunBuilder
 from ray.rllib.utils.typing import AgentID, PolicyID
-from ray.util.debug import log_once
 
 if TYPE_CHECKING:
     from ray.rllib.evaluation import RolloutWorker
@@ -57,10 +55,6 @@ class DefaultCallbacks:
             kwargs: Forward compatibility placeholder.
         """
 
-        if env_index is not None:
-            if log_once("callbacks_env_index_deprecated"):
-                deprecation_warning("env_index", "episode.env_id", error=False)
-
         if self.legacy_callbacks.get("on_episode_start"):
             self.legacy_callbacks["on_episode_start"]({
                 "env": base_env,
@@ -89,10 +83,6 @@ class DefaultCallbacks:
                 episode belongs to.
             kwargs: Forward compatibility placeholder.
         """
-
-        if env_index is not None:
-            if log_once("callbacks_env_index_deprecated"):
-                deprecation_warning("env_index", "episode.env_id", error=False)
 
         if self.legacy_callbacks.get("on_episode_step"):
             self.legacy_callbacks["on_episode_step"]({
@@ -124,10 +114,6 @@ class DefaultCallbacks:
                 episode belongs to.
             kwargs: Forward compatibility placeholder.
         """
-
-        if env_index is not None:
-            if log_once("callbacks_env_index_deprecated"):
-                deprecation_warning("env_index", "episode.env_id", error=False)
 
         if self.legacy_callbacks.get("on_episode_end"):
             self.legacy_callbacks["on_episode_end"]({
