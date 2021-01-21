@@ -3,21 +3,20 @@ import ray
 import ray.autoscaler.sdk
 from ray.test_utils import Semaphore
 
-from time import sleep, perf_counter
+from time import perf_counter
 from tqdm import trange, tqdm
-
 
 MAX_ARGS = 10000
 MAX_RETURNS = 3000
 MAX_RAY_GET_ARGS = 10000
 MAX_QUEUED_TASKS = 1_000_000
-MAX_RAY_GET_SIZE = 100 * 2 ** 30
+MAX_RAY_GET_SIZE = 100 * 2**30
 
 
 def test_many_args():
     @ray.remote
     def sum_args(*args):
-        return sum([sum(arg) for arg in args])
+        return sum(sum(arg) for arg in args)
 
     args = [[1 for _ in range(10000)] for _ in range(MAX_ARGS)]
     result = ray.get(sum_args.remote(*args))
@@ -134,7 +133,6 @@ args_end = perf_counter()
 assert ray.cluster_resources() == ray.available_resources()
 print("Finished many args")
 
-
 returns_start = perf_counter()
 test_many_returns()
 returns_end = perf_counter()
@@ -173,4 +171,5 @@ print(f"Many args time: {args_time} ({MAX_ARGS} args)")
 print(f"Many returns time: {returns_time} ({MAX_RETURNS} returns)")
 print(f"Ray.get time: {get_time} ({MAX_RAY_GET_ARGS} args)")
 print(f"Queued task time: {queued_time} ({MAX_QUEUED_TASKS} tasks)")
-print(f"Ray.get large object time: {large_object_time} ({MAX_RAY_GET_SIZE} bytes)")
+print(f"Ray.get large object time: {large_object_time} "
+      f"({MAX_RAY_GET_SIZE} bytes)")

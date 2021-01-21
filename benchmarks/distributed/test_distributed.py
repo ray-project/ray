@@ -38,7 +38,8 @@ def test_max_actors():
             pass
 
     actors = [
-        Actor.remote() for _ in trange(MAX_ACTORS_IN_CLUSTER, desc="Launching actors")
+        Actor.remote()
+        for _ in trange(MAX_ACTORS_IN_CLUSTER, desc="Launching actors")
     ]
 
     for actor in tqdm(actors, desc="Ensuring actors have started"):
@@ -50,7 +51,9 @@ def test_max_running_tasks():
     blocker = Semaphore.remote(0)
     total_resource = ray.cluster_resources()["node"]
 
-    # Use this custom node resource instead of cpus for scheduling to properly loadbalance. CPU borrowing could lead to unintuitive load balancing if we used num_cpus.
+    # Use this custom node resource instead of cpus for scheduling to properly
+    # load balance. CPU borrowing could lead to unintuitive load balancing if
+    # we used num_cpus.
     resource_per_task = total_resource / MAX_RUNNING_TASKS_IN_CLUSTER
 
     @ray.remote(num_cpus=0, resources={"node": resource_per_task})
@@ -66,8 +69,8 @@ def test_max_running_tasks():
         sleep(1)
 
     for _ in trange(
-        MAX_RUNNING_TASKS_IN_CLUSTER, desc="Ensuring all tasks have finished"
-    ):
+            MAX_RUNNING_TASKS_IN_CLUSTER,
+            desc="Ensuring all tasks have finished"):
         done, refs = ray.wait(refs)
         assert ray.get(done[0]) is None
 
@@ -122,16 +125,15 @@ def test_many_placement_groups():
 ray.init(address="auto")
 
 scale_to(TEST_NUM_NODES)
-assert len(ray.nodes()) == TEST_NUM_NODES, "Wrong number of nodes in cluster " + len(
-    ray.nodes()
-)
+assert len(
+    ray.nodes()) == TEST_NUM_NODES, "Wrong number of nodes in cluster " + len(
+        ray.nodes())
 
 cluster_resources = ray.cluster_resources()
 
 available_resources = ray.available_resources()
 assert available_resources == cluster_resources, (
-    str(available_resources) + " != " + str(cluster_resources)
-)
+    str(available_resources) + " != " + str(cluster_resources))
 print("Done launching nodes")
 
 actor_start = perf_counter()
@@ -139,12 +141,11 @@ test_max_actors()
 actor_end = perf_counter()
 
 sleep(1)
-assert len(ray.nodes()) == TEST_NUM_NODES, "Wrong number of nodes in cluster " + len(
-    ray.nodes()
-)
+assert len(
+    ray.nodes()) == TEST_NUM_NODES, "Wrong number of nodes in cluster " + len(
+        ray.nodes())
 assert available_resources == cluster_resources, (
-    str(available_resources) + " != " + str(cluster_resources)
-)
+    str(available_resources) + " != " + str(cluster_resources))
 print("Done testing actors")
 
 task_start = perf_counter()
@@ -152,12 +153,11 @@ test_max_running_tasks()
 task_end = perf_counter()
 
 sleep(1)
-assert len(ray.nodes()) == TEST_NUM_NODES, "Wrong number of nodes in cluster " + str(
-    len(ray.nodes())
-)
+assert len(
+    ray.nodes()) == TEST_NUM_NODES, "Wrong number of nodes in cluster " + str(
+        len(ray.nodes()))
 assert available_resources == cluster_resources, (
-    str(available_resources) + " != " + str(cluster_resources)
-)
+    str(available_resources) + " != " + str(cluster_resources))
 print("Done testing tasks")
 
 pg_start = perf_counter()
@@ -165,12 +165,11 @@ test_many_placement_groups()
 pg_end = perf_counter()
 
 sleep(1)
-assert len(ray.nodes()) == TEST_NUM_NODES, "Wrong number of nodes in cluster " + len(
-    ray.nodes()
-)
+assert len(
+    ray.nodes()) == TEST_NUM_NODES, "Wrong number of nodes in cluster " + len(
+        ray.nodes())
 assert available_resources == cluster_resources, (
-    str(available_resources) + " != " + str(cluster_resources)
-)
+    str(available_resources) + " != " + str(cluster_resources))
 print("Done testing placement groups")
 
 launch_start = perf_counter()
@@ -178,9 +177,9 @@ test_nodes()
 launch_end = perf_counter()
 
 sleep(1)
-assert len(ray.nodes()) == MAX_NUM_NODES, "Wrong number of nodes in cluster " + len(
-    ray.nodes()
-)
+assert len(
+    ray.nodes()) == MAX_NUM_NODES, "Wrong number of nodes in cluster " + len(
+        ray.nodes())
 print("Done.")
 
 actor_time = actor_end - actor_start
@@ -190,5 +189,5 @@ launch_time = launch_end - launch_start
 
 print(f"Actor time: {actor_time} ({MAX_ACTORS_IN_CLUSTER} actors)")
 print(f"Task time: {task_time} ({MAX_RUNNING_TASKS_IN_CLUSTER} tasks)")
-print(f"Placement group time: {pg_time} ({MAX_PLACEMENT_GROUPS} placement groups)")
+print(f"PG time: {pg_time} ({MAX_PLACEMENT_GROUPS} placement groups)")
 print(f"Node launch time: {launch_time} ({MAX_NUM_NODES} nodes)")

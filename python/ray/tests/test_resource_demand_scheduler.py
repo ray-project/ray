@@ -1419,7 +1419,8 @@ class AutoscalingTest(unittest.TestCase):
         assert summary.active_nodes["empty_node"] == 1
         assert len(summary.active_nodes) == 2, summary.active_nodes
 
-        assert summary.pending_nodes == [("172.0.0.3", "p2.xlarge", STATUS_WAITING_FOR_SSH)]
+        assert summary.pending_nodes == [("172.0.0.3", "p2.xlarge",
+                                          STATUS_WAITING_FOR_SSH)]
         assert summary.pending_launches == {"m4.16xlarge": 2}
 
         assert summary.failed_nodes == [("172.0.0.4", "m4.4xlarge")]
