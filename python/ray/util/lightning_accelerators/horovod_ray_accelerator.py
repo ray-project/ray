@@ -16,24 +16,34 @@ def get_executable_cls():
 
 
 class HorovodRayAccelerator(HorovodAccelerator):
-    def __init__(self, trainer=None, cluster_environment=None):
+    def __init__(self, trainer=None, cluster_environment=None, num_hosts=1,
+                 num_slots=1, use_gpu=False):
         super().__init__(trainer, cluster_environment)
         self.nickname = "horovod_ray"
+        self.num_hosts = num_hosts
+        self.num_slots = num_slots
+        self.use_gpu = use_gpu
 
     def setup(self, model):
         self.trainer.use_horovod = True
         settings = RayExecutor.create_settings(timeout_s=30)
-        num_hosts = self.trainer.num_nodes
-        use_gpu = self.trainer.on_gpu
-        if use_gpu:
-            num_slots = self.trainer.num_gpus
-        else:
-            num_slots = self.trainer.num_processes
+        # num_hosts = self.trainer.num_nodes
+        # use_gpu = self.trainer.on_gpu
+        # if use_gpu:
+        #     num_slots = self.trainer.num_gpus
+        # else:
+        #     num_slots = self.trainer.num_processes
+        # self.executor = RayExecutor(
+        #     settings,
+        #     num_hosts=num_hosts,
+        #     num_slots=num_slots,
+        #     use_gpu=use_gpu)
         self.executor = RayExecutor(
             settings,
-            num_hosts=num_hosts,
-            num_slots=num_slots,
-            use_gpu=use_gpu)
+            num_hosts=self.num_hosts,
+            num_slots=self.num_slots,
+            use_gpu=self.use_gpu
+        )
         self.trainer.model = model
         self.executor.start(executable_cls=get_executable_cls())
 

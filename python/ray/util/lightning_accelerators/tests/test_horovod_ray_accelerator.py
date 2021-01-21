@@ -71,10 +71,10 @@ def get_trainer(dir,
                 limit_train_batches=10,
                 limit_val_batches=10,
                 progress_bar_refresh_rate=0):
-    accelerator = HorovodRayAccelerator()
+    accelerator = HorovodRayAccelerator(num_slots=num_processes)
     trainer = pl.Trainer(
         default_root_dir=dir,
-        num_processes=num_processes,
+        #num_processes=num_processes,
         gpus=gpus,
         max_epochs=max_epochs,
         limit_train_batches=limit_train_batches,
