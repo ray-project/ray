@@ -585,7 +585,7 @@ class ActorClass:
             detached = True
         else:
             raise ValueError(
-                "actor lifetime must be either `None` or 'detached'")
+                "actor `lifetime` argument must be either `None` or 'detached'")
 
         if placement_group_capture_child_tasks is None:
             placement_group_capture_child_tasks = (
