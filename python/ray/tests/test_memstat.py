@@ -24,6 +24,13 @@ ACTOR_TASK_CALL_OBJ = "(actor call)"
 DESER_TASK_ARG = "(deserialize task arg)"
 DESER_ACTOR_TASK_ARG = "(deserialize actor task arg)"
 
+# Group by and sort by parameters. 
+NODE_ADDRESS = "node address"
+STACK_TRACE = "stack trace"
+PID = "pid"
+OBJECT_SIZE = "object size"
+REFERENCE_TYPE = "reference type"
+
 
 def data_lines(memory_str):
     for line in memory_str.split("\n"):
@@ -216,6 +223,28 @@ def test_multi_node_stats(shutdown_only):
     info = memory_summary(cluster.address)
     print(info)
     assert count(info, PUT_OBJ) == 2, info
+
+
+def test_group_by_sort_by(ray_start_regular):
+    @ray.remote
+    def f(y):
+        from ray.new_dashboard.memory_utils import memory_summary
+        x_id = ray.put("HI")
+        info_a = memory_summary(ray_start_regular["redis_address"], group_by="STACK_TRACE", sort_by="REFERENCE_TYPE")
+        info_b = memory_summary(ray_start_regular["redis_address"], group_by="NODE_ADDRESS", sort_by="OBJECT_SIZE")
+        info_c = memory_summary(ray_start_regular["redis_address"], group_by="NODE_ADDRESS", sort_by="PID")
+        del x_id
+        return info_a, info_b, info_c
+
+    x_id = f.remote(np.zeros(100000))
+    info_a, info_b, info_c = ray.get(x_id)
+    print(info_c)
+    assert count(info_a, STACK_TRACE) == 7, info_a
+    assert count(info_a, REFERENCE_TYPE) == 1, info_a
+    assert count(info_b, NODE_ADDRESS) == 3, info_b
+    assert count(info_b, OBJECT_SIZE) == 1, info_b
+    assert count(info_c, NODE_ADDRESS) == 3, info_c
+    assert count(info_c, PID) == 1, info_c
 
 
 if __name__ == "__main__":
