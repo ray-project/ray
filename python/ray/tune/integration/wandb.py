@@ -1,5 +1,6 @@
 import os
 import pickle
+from collections.abc import Iterable
 from multiprocessing import Process, Queue
 from numbers import Number
 from typing import Any, Callable, Dict, List, Optional, Tuple
@@ -22,13 +23,17 @@ except ImportError:
 
 WANDB_ENV_VAR = "WANDB_API_KEY"
 _WANDB_QUEUE_END = (None, )
+_VALID_TYPES = (Number, wandb.data_types.Video)
+_VALID_ITERABLE_TYPES = (wandb.data_types.Video)
 
 
 def _is_allowed_type(obj):
     """Return True if type is allowed for logging to wandb"""
     if isinstance(obj, np.ndarray) and obj.size == 1:
         return isinstance(obj.item(), Number)
-    return isinstance(obj, Number)
+    if isinstance(obj, Iterable) and len(obj) > 0:
+        return isinstance(obj[0], _VALID_ITERABLE_TYPES)
+    return isinstance(obj, _VALID_TYPES)
 
 
 def _clean_log(obj: Any):

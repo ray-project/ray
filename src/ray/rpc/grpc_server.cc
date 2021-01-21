@@ -19,6 +19,7 @@
 #include <boost/asio/detail/socket_holder.hpp>
 
 #include "ray/common/ray_config.h"
+#include "ray/util/util.h"
 
 namespace ray {
 namespace rpc {
@@ -101,6 +102,7 @@ void GrpcServer::RegisterService(GrpcService &service) {
 }
 
 void GrpcServer::PollEventsFromCompletionQueue(int index) {
+  SetThreadName("server.poll" + std::to_string(index));
   void *tag;
   bool ok;
 
