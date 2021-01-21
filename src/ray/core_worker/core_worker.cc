@@ -1058,7 +1058,8 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids, const int64_t timeout_m
   return Status::OK();
 }
 
-Status CoreWorker::Contains(const ObjectID &object_id, bool *has_object) {
+Status CoreWorker::Contains(const ObjectID &object_id, bool *has_object,
+                            bool *is_in_plasma) {
   bool found = false;
   bool in_plasma = false;
   found = memory_store_->Contains(object_id, &in_plasma);
@@ -1066,6 +1067,9 @@ Status CoreWorker::Contains(const ObjectID &object_id, bool *has_object) {
     RAY_RETURN_NOT_OK(plasma_store_provider_->Contains(object_id, &found));
   }
   *has_object = found;
+  if (is_in_plasma != nullptr) {
+    *is_in_plasma = found && in_plasma;
+  }
   return Status::OK();
 }
 
@@ -2091,25 +2095,43 @@ void CoreWorker::HandleGetObjectStatus(const rpc::GetObjectStatusRequest &reques
     send_reply_callback(Status::OK(), nullptr, nullptr);
   } else {
     RAY_CHECK(owner_address.worker_id() == request.owner_worker_id());
+    bool is_freed = reference_counter_->IsPlasmaObjectFreed(object_id);
 
-    if (reference_counter_->IsPlasmaObjectFreed(object_id)) {
-      reply->set_status(rpc::GetObjectStatusReply::FREED);
-    } else {
-      reply->set_status(rpc::GetObjectStatusReply::CREATED);
-    }
     // Send the reply once the value has become available. The value is
     // guaranteed to become available eventually because we own the object and
     // its ref count is > 0.
-    // TODO(swang): We could probably just send the object value if it is small
-    // enough and we have it local.
-    memory_store_->GetAsync(object_id,
-                            [send_reply_callback](std::shared_ptr<RayObject> obj) {
-                              send_reply_callback(Status::OK(), nullptr, nullptr);
-                            });
+    memory_store_->GetAsync(object_id, [reply, send_reply_callback,
+                                        is_freed](std::shared_ptr<RayObject> obj) {
+      if (is_freed) {
+        reply->set_status(rpc::GetObjectStatusReply::FREED);
+      } else {
+        // If obj is the concrete object value, it is small, so we
+        // send the object back to the caller in the GetObjectStatus
+        // reply, bypassing a Plasma put and object transfer. If obj
+        // is an indicator that the object is in Plasma, we set an
+        // in_plasma indicator on the message, and the caller will
+        // have to facilitate a Plasma object transfer to get the
+        // object value.
+        auto *object = reply->mutable_object();
+        if (obj->HasData()) {
+          const auto &data = obj->GetData();
+          object->set_data(data->Data(), data->Size());
+        }
+        if (obj->HasMetadata()) {
+          const auto &metadata = obj->GetMetadata();
+          object->set_metadata(metadata->Data(), metadata->Size());
+        }
+        for (const auto &nested_id : obj->GetNestedIds()) {
+          object->add_nested_inlined_ids(nested_id.Binary());
+        }
+        reply->set_status(rpc::GetObjectStatusReply::CREATED);
+      }
+      send_reply_callback(Status::OK(), nullptr, nullptr);
+    });
   }
 
   RemoveLocalReference(object_id);
-}
+}  // namespace ray
 
 void CoreWorker::HandleWaitForActorOutOfScope(
     const rpc::WaitForActorOutOfScopeRequest &request,
