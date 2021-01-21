@@ -228,7 +228,6 @@ matrix:
         - bash ./java/build-jar-multiplatform.sh deploy
       cache: false
 
-    # TODO(simon): MARK. Continue porting form here.
     # RLlib: Learning tests (from rllib/tuned_examples/*.yaml).
     - os: linux
       env:

@@ -128,7 +128,7 @@
   commands:
     - TUNE_TESTING=1 PYTHON=3.7 INSTALL_HOROVOD=1 ./ci/travis/install-dependencies.sh
     # Bcause Python version changed, we need to re-install Ray here
-    - ./ci/travis/ci.sh build
+    - rm -rf ./python/ray/thirdparty_files; ./ci/travis/ci.sh build
     - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=py37 python/ray/tune/...
     - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only python/ray/util/xgboost/...
 
