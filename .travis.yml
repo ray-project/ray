@@ -78,7 +78,9 @@ matrix:
         - . ./ci/travis/ci.sh build
       script:
         # Run all C++ unit tests with ASAN enabled. ASAN adds too much overhead to run Python tests.
-        - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only -- //:all
+        # NOTE: core_worker_test is out-of-date and should already covered by
+        # Python tests.
+        - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only -- //:all -core_worker_test
 
     - os: osx
       osx_image: xcode7

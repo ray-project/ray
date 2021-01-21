@@ -299,7 +299,7 @@ def test_pull_request_retry(shutdown_only):
 @pytest.mark.timeout(30)
 def test_pull_bundles_admission_control(shutdown_only):
     cluster = Cluster()
-    object_size = int(1e7)
+    object_size = int(6e6)
     num_objects = 10
     num_tasks = 10
     # Head node can fit all of the objects at once.
@@ -336,7 +336,7 @@ def test_pull_bundles_admission_control_dynamic(shutdown_only):
     # the object store's capacity starts off higher and is later consumed
     # dynamically by concurrent workers.
     cluster = Cluster()
-    object_size = int(1e7)
+    object_size = int(6e6)
     num_objects = 10
     num_tasks = 10
     # Head node can fit all of the objects at once.
