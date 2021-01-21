@@ -31,3 +31,14 @@ unwrapped_str + 100  # Fail
 
 # Check ObjectRef[T] as args
 f.remote(ref_to_str)  # Fail
+
+
+@ray.remote
+class MyActor:
+    def return_int(self, i: str) -> int:
+        pass
+
+
+actor = MyActor.remote()
+int_ref = actor.return_int.remote()
+int_ref = actor.return_int.remote(42)

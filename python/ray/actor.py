@@ -2,6 +2,7 @@ import inspect
 import logging
 import weakref
 import _thread
+from typing import TypeVar, Generic
 
 import ray.ray_constants as ray_constants
 import ray._raylet
@@ -693,7 +694,6 @@ class ActorClass:
         return actor_handle
 
 
-from typing import TypeVar, Generic
 C = TypeVar("C")
 
 

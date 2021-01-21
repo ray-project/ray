@@ -1,37 +1,25 @@
-import pdb
+from functools import partial
+from typing import List, Optional
 
-from typing import List, Optional, Union, cast
-
-from mypy.fixup import TypeFixer
-from mypy.nodes import (ARG_POS, MDEF, SYMBOL_FUNCBASE_TYPES, Argument, Block,
-                        CallExpr, ClassDef, Expression, FuncDef, JsonDict,
-                        PassStmt, RefExpr, SymbolTableNode, Var)
-from mypy.plugin import (AttributeContext, ClassDefContext, FunctionContext,
-                         MethodContext, Plugin,
+from mypy.nodes import (ARG_POS, MDEF, Argument, Block, ClassDef, FuncDef,
+                        PassStmt, SymbolTableNode, TypeInfo, Var)
+from mypy.plugin import (AttributeContext, ClassDefContext, Plugin,
                          SemanticAnalyzerPluginInterface)
-# from mypy.plugins.common import add_method_to_class
 from mypy.semanal import set_callable_name
-from mypy.semanal_shared import SemanticAnalyzerInterface
-from mypy.typeops import \
-    try_getting_str_literals  # noqa: F401  # Part of public API
-from mypy.types import (CallableType, Instance, NoneType, Overloaded, Type,
-                        TypeType, TypeVarDef, deserialize_type,
-                        get_proper_type)
+from mypy.types import CallableType, Instance, Type, TypeType
 from mypy.typevars import fill_typevars
-from mypy.util import get_unique_redefinition_name
-from ray.actor import ActorClass
 
 
-# Source: modified from mypy's plugin.common
 def add_method_to_class(api: SemanticAnalyzerPluginInterface,
                         cls: ClassDef,
                         name: str,
                         args: List[Argument],
                         return_type: Type,
                         self_type: Optional[Type] = None,
-                        tvar_def: Optional[TypeVarDef] = None,
                         is_static_method: bool = False) -> None:
     """Adds a new method to a class definition.
+
+    Source: modified from mypy's plugin.common
     """
     info = cls.info
 
@@ -43,165 +31,109 @@ def add_method_to_class(api: SemanticAnalyzerPluginInterface,
             cls.defs.body.remove(sym.node)
 
     self_type = self_type or fill_typevars(info)
-    function_type = api.named_type('__builtins__.function')
+    function_type = api.named_type("__builtins__.function")
 
     if not is_static_method:
-        args = [Argument(Var('self'), self_type, None, ARG_POS)] + args
+        args = [Argument(Var("self"), self_type, None, ARG_POS)] + args
     arg_types, arg_names, arg_kinds = [], [], []
     for arg in args:
-        assert arg.type_annotation, 'All arguments must be fully typed.'
+        assert arg.type_annotation, "All arguments must be fully typed."
         arg_types.append(arg.type_annotation)
         arg_names.append(arg.variable.name)
         arg_kinds.append(arg.kind)
 
     signature = CallableType(arg_types, arg_kinds, arg_names, return_type,
                              function_type)
-    if tvar_def:
-        signature.variables = [tvar_def]
-
     func = FuncDef(name, args, Block([PassStmt()]))
     func.info = info
     func.type = set_callable_name(signature, func)
-    func._fullname = info.fullname + '.' + name
+    func._fullname = info.fullname + "." + name
     func.line = info.line
-
-    # NOTE: we would like the plugin generated node to dominate, but we still
-    # need to keep any existing definitions so they get semantically analyzed.
-    if name in info.names:
-        # Get a nice unique name instead.
-        r_name = get_unique_redefinition_name(name, info.names)
-        info.names[r_name] = info.names[name]
+    func.is_static = is_static_method
 
     info.names[name] = SymbolTableNode(MDEF, func, plugin_generated=True)
     info.defn.defs.body.append(func)
 
 
 def plugin(version: str):
-    print("Ray plugin called! ", version)
     return RayActorPlugin
 
 
+def add_remote_method_to_class(ctx: ClassDefContext):
+    actor_handle_def = ctx.api.lookup_fully_qualified_or_none(
+        "ray.actor.ActorHandle")
+    if actor_handle_def is None:
+        return ctx.api.defer()
+    actor_handle_type_info = actor_handle_def.node
+    assert isinstance(actor_handle_type_info, TypeInfo)
+
+    # TODO: Inject signature from __init__ method
+    info = ctx.cls.info
+    method_names = [f.name for f in info.defn.defs.body]
+    assert "__init__" not in method_names, NotImplementedError()
+
+    add_method_to_class(
+        ctx.api,
+        ctx.cls,
+        "remote",
+        args=[],
+        return_type=Instance(
+            actor_handle_type_info,
+            args=[TypeType(Instance(ctx.cls.info, args=[]))]),
+        is_static_method=True)
+
+
+def generate_actor_method_type(ctx: AttributeContext, plugin_obj: Plugin):
+    actor_method_name = ctx.context.name
+    # Retrieve the type argument from actor handle
+    # ActorHandle[Type[UserClass]] -> UserClass
+    original_cls = ctx.type.args[0].item.type
+    original_method: SymbolTableNode = original_cls.names.get(
+        actor_method_name)
+    if original_method is None:
+        ctx.api.fail(f"Can't find actor method {actor_method_name}",
+                     ctx.context)
+    original_func_def: FuncDef = original_method.node
+
+    ray_method_type = Instance(
+        plugin_obj.lookup_fully_qualified("ray.actor.ActorMethod").node,
+        args=[],
+    )
+
+    # Wrap the return type with ObjectRef[T]
+    remote_return_type = original_func_def.type.ret_type
+    if remote_return_type.type.name != "ObjectRef":
+        remote_return_type = Instance(
+            plugin_obj.lookup_fully_qualified("ray._raylet.ObjectRef").node,
+            args=[remote_return_type])
+
+    # Generate the function def for the handle.method.remote(...)
+    remote_node = original_method.copy()
+    remote_signature = remote_node.node
+    remote_signature.arguments[0] = Argument(
+        Var("self"), ray_method_type, None, ARG_POS)
+    remote_signature.type = original_func_def.type.copy_modified(
+        arg_types=[ray_method_type] + original_func_def.type.arg_types[1:],
+        ret_type=remote_return_type,
+    )
+
+    ray_method_type.type.names["remote"] = remote_node
+    return ray_method_type
+
+
 class RayActorPlugin(Plugin):
-    def get_method_hook(self, fullname: str):
-        if fullname.startswith("ray.actor.ActorMethod"):
+    def get_class_decorator_hook(self, fullname: str):
+        """Add type information to Ray actor classes.
 
-            def callback(ctx: MethodContext):
-                print("method_hook called with ", fullname, ctx)
-                return ctx.default_return_type
-
-            return callback
+        This hook performs inplace transform by adding a new method to the user
+        class with signature `.remote(...args_from_init...) -> ActorHandle[Cls]
+        """
+        if fullname == "ray.worker.remote":
+            return add_remote_method_to_class
 
     def get_attribute_hook(self, fullname: str):
+        """Dynamically generate .remote information given handle.method access
+        """
 
         if fullname.startswith("ray.actor.ActorHandle"):
-
-            def callback(ctx: AttributeContext):
-                print("attribute hook called with ", fullname, type(ctx.type))
-
-                trying_to_get = ctx.context.name
-
-                original_actor_cls = ctx.type.args[0].item.type
-                print(original_actor_cls, type(original_actor_cls))
-                actor_cls_names = original_actor_cls.names
-
-                found: Optional[SymbolTableNode] = actor_cls_names.get(
-                    trying_to_get)
-                if found is None:
-                    ctx.api.fail(f"Can't find actor method {trying_to_get}",
-                                 ctx.context)
-
-                method = self.lookup_fully_qualified("ray.actor.ActorMethod")
-                method_type = Instance(method.node, args=[])
-
-                found = found.copy()
-                # TODO: ^ instead of using copy, just create a new def with FuncDef
-                # overwrite the name with .remote()
-                self_arg = found.node.arguments[0]
-                assert self_arg.variable.name == "self"
-                # self_type = method.node
-                self_type = method_type
-                found.node.arguments[0] = Argument(
-                    Var("self"), self_type, None, ARG_POS)
-
-                node_type = found.node.type
-                print(node_type.ret_type)
-                print(node_type.ret_type.type.name)
-                new_ret_type = node_type.ret_type
-                # Prevent double wrapping ObjectRef[ObjectRef[RetType]]
-                # But this is very hacky
-                if node_type.ret_type.type.name != "ObjectRef":
-                    new_ret_type = Instance(
-                        self.lookup_fully_qualified("ray._raylet.ObjectRef")
-                        .node,
-                        args=[node_type.ret_type])
-                found.node.type = node_type.copy_modified(
-                    arg_types=[method_type] + node_type.arg_types[1:],
-                    ret_type=new_ret_type)
-
-                # pdb.set_trace()
-
-                method_type.type.names["remote"] = found
-
-                # print(method_type, type(method_type))
-                # print(method_type.type, type(method_type.type))
-                # print(method_type.type.get_method("remote"))
-
-                return method_type
-                # modify constructure
-                new_out = self.lookup_fully_qualified("b.A").node.get(
-                    "call").type.copy_modified(
-                        arg_types=[], arg_kinds=[], arg_names=[])
-                print(new_out)
-                return new_out
-
-            return callback
-
-    def get_class_decorator_hook(self, fullname: str):
-        if fullname == "ray.worker.remote":
-
-            def callback(ctx: ClassDefContext):
-                print("cls dec called")
-
-                import pdb
-                # pdb.set_trace()
-                # actor_class_name = ctx.cls.fullname
-                # actor_def = ctx.api.lookup_fully_qualified(actor_class_name)
-                actor_cls_def = ctx.api.lookup_fully_qualified_or_none(
-                    "ray.actor.ActorHandle")
-                if actor_cls_def is None:
-                    ctx.api.defer()
-                print(actor_cls_def)
-                print(type(actor_cls_def.node))
-
-                # remote_method = FuncDef("remote", [], body=Block([]))
-                # ctx.cls.defs.body.clear()
-                # ctx.cls.info.names.clear()
-                # new_call_signature = (
-                #     ctx.cls.info.get("call").type.copy_modified(
-                #         arg_types=[], arg_kinds=[], arg_names=[]))
-
-                info = ctx.cls.info
-                method_names = [f.name for f in info.defn.defs.body]
-                assert "__init__" not in method_names, NotImplementedError()
-
-                print(method_names)
-                add_method_to_class(
-                    ctx.api,
-                    ctx.cls,
-                    "remote",
-                    args=[],
-                    return_type=Instance(
-                        actor_cls_def.node,
-                        args=[TypeType(Instance(ctx.cls.info, args=[]))]),
-                    is_static_method=True)
-                ctx.cls.info.get('remote').node.is_static = True
-
-                # ctx.cls.info.get("call").node.arguments[1],
-                # ctx.cls.info.get("call").node.arguments[1],
-                # del info.names["call"]
-                # info.defn.defs.body.pop(0)
-
-                print(ctx.cls.info)
-                print(ctx.cls)
-
-            return callback
+            return partial(generate_actor_method_type, plugin_obj=self)

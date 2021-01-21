@@ -30,3 +30,14 @@ print(h.remote(object_ref_str, 100))
 
 # Make sure the return type is checked.
 xy = ray.get(object_ref_str) + "y"
+
+
+@ray.remote
+class MyActor:
+    def return_int(self, i: str) -> int:
+        pass
+
+
+actor = MyActor.remote()
+int_ref = actor.return_int.remote("42")
+f.remote(int_ref)
