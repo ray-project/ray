@@ -252,6 +252,36 @@ Note that you can anytime remove the placement group to clean up resources.
 
   ray.shutdown()
 
+Placement Group Lifetimes
+---------------
+
+.. tabs::
+  .. group-tab:: Python
+
+    Separately, placement group lifetimes can be decoupled from the job and its creator,
+    allowing a placement group persist even after job exits or creator dead.
+
+    .. code-block:: python
+
+      pg = placement_group([{"CPU": 2}, {"CPU": 2}], strategy="STRICT_SPREAD", lifetime="detached")
+      ray.get(pg.ready())
+
+    The pg will be kept alive even after the driver running above script exits. Therefore 
+    it is possible to get the placement group in a different driver:
+
+    .. code-block:: python
+
+      table = ray.util.placement_group_table()
+      print(len(table))
+
+    Note that the lifetime option is decoupled from the name. If we only specified
+    the name without specifying ``lifetime="detached"``, then the placement group can
+    only be retrieved as long as the original driver is still running.
+
+  .. group-tab:: Java
+
+    Customizing lifetime of an placement group hasn't been implemented in Java yet.
+
 Tips for Using Placement Groups
 -------------------------------
 - Learn the :ref:`lifecycle <ray-placement-group-lifecycle-ref>` of placement groups.
