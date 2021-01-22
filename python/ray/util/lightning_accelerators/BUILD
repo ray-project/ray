@@ -11,6 +11,11 @@ py_test(
     deps = [":accelerator_lib"],
 )
 
+# --------------------------------------------------------------------
+# Tests from the python/ray/util/lightning_accelerators/examples directory.
+# Please keep these sorted alphabetically.
+# --------------------------------------------------------------------
+
 py_test(
     name = "ptl_horovod_ray_example",
     size = "medium",

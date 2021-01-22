@@ -1,32 +1,34 @@
+"""Example using Pytorch Lightning with a Horovod on Ray Accelerator."""
 import os
 import tempfile
 
-import ray
-import torch
-from ray.tune.integration.pytorch_lightning import TuneReportCallback
-from ray.util.lightning_accelerators import HorovodRayAccelerator
-
 import pytorch_lightning as pl
-from pl_bolts.datamodules.mnist_datamodule import MNISTDataModule
-
-from ray import tune
-from ray.tune.examples.mnist_ptl_mini import LightningMNISTClassifier
+import torch
 from torch.utils.data import random_split, DataLoader
 from torchvision.datasets import MNIST
 from torchvision import transforms
 
+import ray
+from ray import tune
+from ray.tune.examples.mnist_ptl_mini import LightningMNISTClassifier
+from ray.tune.integration.pytorch_lightning import TuneReportCallback
+from ray.util.lightning_accelerators import HorovodRayAccelerator
+
 
 class MNISTClassifier(LightningMNISTClassifier):
     def prepare_data(self):
-        self.dataset = MNIST(self.data_dir, train=True, download=True,
-                                transform=transforms.ToTensor())
+        self.dataset = MNIST(
+            self.data_dir,
+            train=True,
+            download=True,
+            transform=transforms.ToTensor())
+
     def train_dataloader(self):
         dataset = self.dataset
         train_length = len(dataset)
         dataset_train, _ = random_split(
             dataset, [train_length - 5000, 5000],
-            generator=torch.Generator().manual_seed(0)
-        )
+            generator=torch.Generator().manual_seed(0))
         loader = DataLoader(
             dataset_train,
             batch_size=self.batch_size,
@@ -42,8 +44,7 @@ class MNISTClassifier(LightningMNISTClassifier):
         train_length = len(dataset)
         _, dataset_val = random_split(
             dataset, [train_length - 5000, 5000],
-            generator=torch.Generator().manual_seed(0)
-        )
+            generator=torch.Generator().manual_seed(0))
         loader = DataLoader(
             dataset_val,
             batch_size=self.batch_size,
@@ -63,20 +64,15 @@ def train_mnist(config,
                 use_gpu=False,
                 callbacks=None):
     model = MNISTClassifier(config, data_dir)
-    # dm = MNISTDataModule(
-    #     data_dir=data_dir, num_workers=1, batch_size=config["batch_size"])
 
     callbacks = callbacks or []
 
     trainer = pl.Trainer(
         max_epochs=num_epochs,
         gpus=int(use_gpu),
-        #gpus=num_slots * int(use_gpu),
-        #num_nodes=num_hosts,
-        #num_processes=num_slots,
         callbacks=callbacks,
-        accelerator=HorovodRayAccelerator(num_hosts=num_hosts,
-                                          num_slots=num_slots, use_gpu=use_gpu))
+        accelerator=HorovodRayAccelerator(
+            num_hosts=num_hosts, num_slots=num_slots, use_gpu=use_gpu))
     trainer.fit(model)
 
 
@@ -186,9 +182,11 @@ if __name__ == "__main__":
         ray.init(address=args.address)
 
     data_dir = os.path.join(tempfile.gettempdir(), "mnist_data_")
-    # Download data
-    MNISTDataModule(data_dir=data_dir).prepare_data()
+
     if args.tune:
+        raise NotImplementedError("Using Tune + Pytorch Lightning with "
+                                  "distributed training is currently not "
+                                  "supported.")
         tune_mnist(data_dir, num_samples, num_epochs, num_hosts, num_slots,
                    use_gpu)
     else:
