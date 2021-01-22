@@ -205,6 +205,7 @@ class AxSearch(Searcher):
         exp = self._ax.experiment
         self._mode = "min" if exp.optimization_config.objective.minimize else "max"
         self._metric = exp.optimization_config.objective.metric.name
+        self._objective_name = exp.optimization_config.objective.metric.name
         self._parameters = list(exp.parameters)
 
         if self._ax._enforce_sequential_optimization:
