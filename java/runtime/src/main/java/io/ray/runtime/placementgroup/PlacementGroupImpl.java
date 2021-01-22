@@ -7,6 +7,7 @@ import io.ray.api.placementgroup.PlacementGroupState;
 import io.ray.api.placementgroup.PlacementStrategy;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 /** The default implementation of `PlacementGroup` interface. */
 public class PlacementGroupImpl implements PlacementGroup {
@@ -30,33 +31,34 @@ public class PlacementGroupImpl implements PlacementGroup {
     this.state = state;
   }
 
+  @Override
   public PlacementGroupId getId() {
     return id;
   }
 
+  @Override
   public String getName() {
     return name;
   }
 
+  @Override
   public List<Map<String, Double>> getBundles() {
     return bundles;
   }
 
+  @Override
   public PlacementStrategy getStrategy() {
     return strategy;
   }
 
+  @Override
   public PlacementGroupState getState() {
     return state;
   }
 
-  /**
-   * Wait for the placement group to be ready within the specified time.
-   *
-   * @param timeoutSeconds Timeout in seconds. Returns True if the placement group is created. False
-   *     otherwise.
-   */
-  public boolean wait(int timeoutSeconds) {
+  @Override
+  public boolean wait(long duration, TimeUnit unit) {
+    int timeoutSeconds = Math.toIntExact(TimeUnit.SECONDS.convert(duration, unit));
     return Ray.internal().waitPlacementGroupReady(id, timeoutSeconds);
   }
 
