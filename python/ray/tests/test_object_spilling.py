@@ -21,6 +21,15 @@ file_system_object_spilling_config = {
         "directory_path": spill_local_path
     }
 }
+# Since we have differet protocol for a local external storage (e.g., fs)
+# and distributed external storage (e.g., S3), we need to test both cases.
+# This mocks the distributed fs with cluster utils.
+mock_distributed_fs_object_spilling_config = {
+    "type": "mock_distributed_fs",
+    "params": {
+        "directory_path": spill_local_path
+    }
+}
 smart_open_object_spilling_config = {
     "type": "smart_open",
     "params": {
@@ -33,13 +42,17 @@ smart_open_object_spilling_config = {
     scope="function",
     params=[
         file_system_object_spilling_config,
+        mock_distributed_fs_object_spilling_config
         # TODO(sang): Add a mock dependency to test S3.
         # smart_open_object_spilling_config,
     ])
-def object_spilling_config(request, tmpdir):
-    if request.param["type"] == "filesystem":
-        request.param["params"]["directory_path"] = str(tmpdir)
-    yield json.dumps(request.param)
+def object_spilling_config(request, tmp_path):
+    if (request.param["type"] == "filesystem"
+            or request.param["type"] == "mock_distributed_fs"):
+        temp_folder = tmp_path / "spill"
+        temp_folder.mkdir()
+        request.param["params"]["directory_path"] = str(temp_folder)
+    yield json.dumps(request.param), temp_folder
 
 
 def test_invalid_config_raises_exception(shutdown_only):
@@ -75,22 +88,16 @@ def test_url_generation_and_parse():
 
 @pytest.mark.skipif(
     platform.system() == "Windows", reason="Failing on Windows.")
-def test_spilling_not_done_for_pinned_object(tmp_path, shutdown_only):
+def test_spilling_not_done_for_pinned_object(object_spilling_config, shutdown_only):
     # Limit our object store to 75 MiB of memory.
-    temp_folder = tmp_path / "spill"
-    temp_folder.mkdir()
+    object_spilling_config, temp_folder = object_spilling_config
     ray.init(
         object_store_memory=75 * 1024 * 1024,
         _system_config={
             "max_io_workers": 4,
             "automatic_object_spilling_enabled": True,
             "object_store_full_delay_ms": 100,
-            "object_spilling_config": json.dumps({
-                "type": "filesystem",
-                "params": {
-                    "directory_path": str(temp_folder)
-                }
-            }),
+            "object_spilling_config": object_spilling_config,
             "min_spilling_size": 0,
         })
     arr = np.random.rand(5 * 1024 * 1024)  # 40 MB
@@ -110,27 +117,25 @@ def test_spilling_not_done_for_pinned_object(tmp_path, shutdown_only):
 
 @pytest.mark.skipif(
     platform.system() == "Windows", reason="Failing on Windows.")
-@pytest.mark.parametrize(
-    "ray_start_cluster_head", [{
-        "num_cpus": 0,
-        "object_store_memory": 75 * 1024 * 1024,
-        "_system_config": {
+def test_spill_remote_object(
+        ray_start_cluster,
+        object_spilling_config):
+    
+    cluster = ray_start_cluster
+    object_spilling_config, _ = object_spilling_config
+    cluster.add_node(
+        num_cpus=0,
+        object_store_memory=75 * 1024 * 1024,
+        _system_config={
             "automatic_object_spilling_enabled": True,
             "object_store_full_delay_ms": 100,
             "max_io_workers": 4,
-            "object_spilling_config": json.dumps({
-                "type": "filesystem",
-                "params": {
-                    "directory_path": "/tmp"
-                }
-            }),
+            "object_spilling_config": object_spilling_config,
             "min_spilling_size": 0,
-        },
-    }],
-    indirect=True)
-def test_spill_remote_object(ray_start_cluster_head):
-    cluster = ray_start_cluster_head
+        })
+    ray.init(address=cluster.address)
     cluster.add_node(object_store_memory=75 * 1024 * 1024)
+    cluster.wait_for_nodes()
 
     @ray.remote
     def put():
@@ -162,6 +167,7 @@ def test_spill_remote_object(ray_start_cluster_head):
     platform.system() == "Windows", reason="Failing on Windows.")
 def test_spill_objects_automatically(object_spilling_config, shutdown_only):
     # Limit our object store to 75 MiB of memory.
+    object_spilling_config, _ = object_spilling_config
     ray.init(
         num_cpus=1,
         object_store_memory=75 * 1024 * 1024,
@@ -197,10 +203,9 @@ def test_spill_objects_automatically(object_spilling_config, shutdown_only):
 
 @pytest.mark.skipif(
     platform.system() == "Windows", reason="Failing on Windows.")
-def test_spill_stats(tmp_path, shutdown_only):
+def test_spill_stats(object_spilling_config, shutdown_only):
     # Limit our object store to 75 MiB of memory.
-    temp_folder = tmp_path / "spill"
-    temp_folder.mkdir()
+    object_spilling_config, _ = object_spilling_config
     ray.init(
         num_cpus=1,
         object_store_memory=100 * 1024 * 1024,
@@ -208,14 +213,7 @@ def test_spill_stats(tmp_path, shutdown_only):
             "automatic_object_spilling_enabled": True,
             "max_io_workers": 100,
             "min_spilling_size": 1,
-            "object_spilling_config": json.dumps(
-                {
-                    "type": "filesystem",
-                    "params": {
-                        "directory_path": str(temp_folder)
-                    }
-                },
-                separators=(",", ":"))
+            "object_spilling_config": object_spilling_config
         },
     )
 
@@ -242,6 +240,7 @@ def test_spill_stats(tmp_path, shutdown_only):
 @pytest.mark.skipif(
     platform.system() == "Windows", reason="Failing on Windows.")
 def test_spill_during_get(object_spilling_config, shutdown_only):
+    object_spilling_config, _ = object_spilling_config
     ray.init(
         num_cpus=4,
         object_store_memory=100 * 1024 * 1024,
@@ -273,6 +272,7 @@ def test_spill_during_get(object_spilling_config, shutdown_only):
 @pytest.mark.skipif(
     platform.system() == "Windows", reason="Failing on Windows.")
 def test_spill_deadlock(object_spilling_config, shutdown_only):
+    object_spilling_config, _ = object_spilling_config
     # Limit our object store to 75 MiB of memory.
     ray.init(
         object_store_memory=75 * 1024 * 1024,
@@ -302,10 +302,9 @@ def test_spill_deadlock(object_spilling_config, shutdown_only):
 
 @pytest.mark.skipif(
     platform.system() == "Windows", reason="Failing on Windows.")
-def test_delete_objects(tmp_path, shutdown_only):
+def test_delete_objects(object_spilling_config, shutdown_only):
     # Limit our object store to 75 MiB of memory.
-    temp_folder = tmp_path / "spill"
-    temp_folder.mkdir()
+    object_spilling_config, temp_folder = object_spilling_config
     ray.init(
         object_store_memory=75 * 1024 * 1024,
         _system_config={
@@ -313,12 +312,7 @@ def test_delete_objects(tmp_path, shutdown_only):
             "min_spilling_size": 0,
             "automatic_object_spilling_enabled": True,
             "object_store_full_delay_ms": 100,
-            "object_spilling_config": json.dumps({
-                "type": "filesystem",
-                "params": {
-                    "directory_path": str(temp_folder)
-                }
-            }),
+            "object_spilling_config": object_spilling_config,
         })
     arr = np.random.rand(1024 * 1024)  # 8 MB data
     replay_buffer = []
@@ -344,10 +338,9 @@ def test_delete_objects(tmp_path, shutdown_only):
 
 @pytest.mark.skipif(
     platform.system() == "Windows", reason="Failing on Windows.")
-def test_delete_objects_delete_while_creating(tmp_path, shutdown_only):
+def test_delete_objects_delete_while_creating(object_spilling_config, shutdown_only):
     # Limit our object store to 75 MiB of memory.
-    temp_folder = tmp_path / "spill"
-    temp_folder.mkdir()
+    object_spilling_config, temp_folder = object_spilling_config
     ray.init(
         object_store_memory=75 * 1024 * 1024,
         _system_config={
@@ -355,12 +348,7 @@ def test_delete_objects_delete_while_creating(tmp_path, shutdown_only):
             "min_spilling_size": 0,
             "automatic_object_spilling_enabled": True,
             "object_store_full_delay_ms": 100,
-            "object_spilling_config": json.dumps({
-                "type": "filesystem",
-                "params": {
-                    "directory_path": str(temp_folder)
-                }
-            }),
+            "object_spilling_config": object_spilling_config,
         })
     arr = np.random.rand(1024 * 1024)  # 8 MB data
     replay_buffer = []
@@ -394,22 +382,16 @@ def test_delete_objects_delete_while_creating(tmp_path, shutdown_only):
 
 @pytest.mark.skipif(
     platform.system() == "Windows", reason="Failing on Windows.")
-def test_delete_objects_on_worker_failure(tmp_path, shutdown_only):
+def test_delete_objects_on_worker_failure(object_spilling_config, shutdown_only):
     # Limit our object store to 75 MiB of memory.
-    temp_folder = tmp_path / "spill"
-    temp_folder.mkdir()
+    object_spilling_config, temp_folder = object_spilling_config
     ray.init(
         object_store_memory=75 * 1024 * 1024,
         _system_config={
             "max_io_workers": 4,
             "automatic_object_spilling_enabled": True,
             "object_store_full_delay_ms": 100,
-            "object_spilling_config": json.dumps({
-                "type": "filesystem",
-                "params": {
-                    "directory_path": str(temp_folder)
-                }
-            }),
+            "object_spilling_config": object_spilling_config,
             "min_spilling_size": 0,
         })
 
@@ -465,10 +447,9 @@ def test_delete_objects_on_worker_failure(tmp_path, shutdown_only):
 
 @pytest.mark.skipif(
     platform.system() == "Windows", reason="Failing on Windows.")
-def test_delete_objects_multi_node(tmp_path, ray_start_cluster):
+def test_delete_objects_multi_node(object_spilling_config, ray_start_cluster):
     # Limit our object store to 75 MiB of memory.
-    temp_folder = tmp_path / "spill"
-    temp_folder.mkdir()
+    object_spilling_config, temp_folder = object_spilling_config
     cluster = ray_start_cluster
     # Head node.
     cluster.add_node(
@@ -479,12 +460,7 @@ def test_delete_objects_multi_node(tmp_path, ray_start_cluster):
             "min_spilling_size": 20 * 1024 * 1024,
             "automatic_object_spilling_enabled": True,
             "object_store_full_delay_ms": 100,
-            "object_spilling_config": json.dumps({
-                "type": "filesystem",
-                "params": {
-                    "directory_path": str(temp_folder)
-                }
-            }),
+            "object_spilling_config": object_spilling_config,
         })
     # Add 2 worker nodes.
     for _ in range(2):
@@ -541,10 +517,9 @@ def test_delete_objects_multi_node(tmp_path, ray_start_cluster):
     wait_for_condition(is_dir_empty)
 
 
-def test_fusion_objects(tmp_path, shutdown_only):
+def test_fusion_objects(object_spilling_config, shutdown_only):
     # Limit our object store to 75 MiB of memory.
-    temp_folder = tmp_path / "spill"
-    temp_folder.mkdir()
+    object_spilling_config, temp_folder = object_spilling_config
     min_spilling_size = 10 * 1024 * 1024
     ray.init(
         object_store_memory=75 * 1024 * 1024,
@@ -552,12 +527,7 @@ def test_fusion_objects(tmp_path, shutdown_only):
             "max_io_workers": 3,
             "automatic_object_spilling_enabled": True,
             "object_store_full_delay_ms": 100,
-            "object_spilling_config": json.dumps({
-                "type": "filesystem",
-                "params": {
-                    "directory_path": str(temp_folder)
-                }
-            }),
+            "object_spilling_config": object_spilling_config,
             "min_spilling_size": min_spilling_size,
         })
     replay_buffer = []
@@ -595,8 +565,8 @@ def test_fusion_objects(tmp_path, shutdown_only):
 
 
 # https://github.com/ray-project/ray/issues/12912
-def do_test_release_resource(tmp_path, expect_released):
-    temp_folder = tmp_path / "spill"
+def do_test_release_resource(object_spilling_config, expect_released):
+    object_spilling_config, temp_folder = object_spilling_config
     ray.init(
         num_cpus=1,
         object_store_memory=75 * 1024 * 1024,
@@ -604,12 +574,7 @@ def do_test_release_resource(tmp_path, expect_released):
             "max_io_workers": 1,
             "release_resources_during_plasma_fetch": expect_released,
             "automatic_object_spilling_enabled": True,
-            "object_spilling_config": json.dumps({
-                "type": "filesystem",
-                "params": {
-                    "directory_path": str(temp_folder)
-                }
-            }),
+            "object_spilling_config": object_spilling_config,
         })
     plasma_obj = ray.put(np.ones(50 * 1024 * 1024, dtype=np.uint8))
     for _ in range(5):
@@ -638,14 +603,14 @@ def do_test_release_resource(tmp_path, expect_released):
 
 @pytest.mark.skipif(
     platform.system() == "Windows", reason="Failing on Windows.")
-def test_no_release_during_plasma_fetch(tmp_path, shutdown_only):
-    do_test_release_resource(tmp_path, expect_released=False)
+def test_no_release_during_plasma_fetch(object_spilling_config, shutdown_only):
+    do_test_release_resource(object_spilling_config, expect_released=False)
 
 
 @pytest.mark.skipif(
     platform.system() == "Windows", reason="Failing on Windows.")
-def test_release_during_plasma_fetch(tmp_path, shutdown_only):
-    do_test_release_resource(tmp_path, expect_released=True)
+def test_release_during_plasma_fetch(object_spilling_config, shutdown_only):
+    do_test_release_resource(object_spilling_config, expect_released=True)
 
 
 if __name__ == "__main__":

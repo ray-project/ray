@@ -345,6 +345,10 @@ def setup_external_storage(config):
         elif storage_type == "smart_open":
             _external_storage = ExternalStorageSmartOpenImpl(
                 **config["params"])
+        elif storage_type == "mock_distributed_fs":
+            # This storage is used to unit test distributed external storages.
+            # TODO(sang): Delete it after introducing the mock S3 test.
+            _external_storage = FileSystemStorage(**config["params"])
         else:
             raise ValueError(f"Unknown external storage type: {storage_type}")
     else:
