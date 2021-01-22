@@ -182,6 +182,10 @@ message RequestObjectSpillageReply {
 message RestoreSpilledObjectRequest {
   // ObjectID to restore.
   bytes object_id = 1;
+  // Object URL where the object is spilled.
+  string object_url = 2;
+  // The node id of a node where the object is spilled.
+  bytes spilled_node_id = 3;
 }
 
 message RestoreSpilledObjectReply {

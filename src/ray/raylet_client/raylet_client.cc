@@ -311,10 +311,14 @@ void raylet::RayletClient::RequestObjectSpillage(
 }
 
 void raylet::RayletClient::RestoreSpilledObject(
-    const ObjectID &object_id,
+    const ObjectID &object_id, const std::string &object_url,
+    const NodeID &spilled_node_id,
     const rpc::ClientCallback<rpc::RestoreSpilledObjectReply> &callback) {
+  RAY_CHECK(!spilled_node_id.IsNil());
   rpc::RestoreSpilledObjectRequest request;
   request.set_object_id(object_id.Binary());
+  request.set_object_url(object_url);
+  request.set_spilled_node_id(spilled_node_id.Binary());
   grpc_client_->RestoreSpilledObject(request, callback);
 }
 

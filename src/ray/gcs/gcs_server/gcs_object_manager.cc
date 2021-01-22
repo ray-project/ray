@@ -91,7 +91,6 @@ void GcsObjectManager::HandleAddObjectLocation(
       }
       if (!spilled_url.empty()) {
         notification.set_spilled_url(spilled_url);
-        RAY_CHECK(!spilled_node_id.IsNil());
         notification.set_spilled_node_id(spilled_node_id.Binary());
       }
       RAY_CHECK_OK(gcs_pub_sub_->Publish(OBJECT_CHANNEL, object_id.Hex(),

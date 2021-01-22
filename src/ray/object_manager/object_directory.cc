@@ -50,7 +50,6 @@ bool UpdateObjectLocations(const std::vector<rpc::ObjectLocationChange> &locatio
     } else {
       RAY_CHECK(!update.spilled_url().empty());
       const auto received_spilled_node_id = NodeID::FromBinary(update.spilled_node_id());
-      RAY_CHECK(!received_spilled_node_id.IsNil());
       RAY_LOG(DEBUG) << "Received object spilled at " << update.spilled_url()
                      << " spilled at " << NodeID::FromBinary(update.spilled_node_id());
       if (update.spilled_url() != *spilled_url) {

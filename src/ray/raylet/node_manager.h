@@ -639,6 +639,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// Send a object restoration request to a remote node of a given node id.
   void SendSpilledObjectRestorationRequestToRemoteNode(const ObjectID &object_id,
+                                                       const std::string &spilled_url,
                                                        const NodeID &node_id);
 
   std::unordered_map<SchedulingClass, ordered_set<TaskID>> MakeTasksByClass(

@@ -98,9 +98,13 @@ void PullManager::TryToMakeObjectLocal(const ObjectID &object_id) {
     return;
   }
 
-  // This will be called every time a new client location appears.
-  // If the object is restored from the external storage in a remote node, the client
-  // location will appear, and it will guarantee to pull it from that node.
+  // We always pull objects from a remote node before
+  // restoring it because of two reasons.
+  // 1. This will help reducing the load of external storages
+  //    or remote node that spilled the object.
+  // 2. Also, if we use multi-node file spilling, the restoration will be
+  //    confirmed by a object location subscription, so we should pull first
+  //    before requesting for object restoration.
   bool did_pull = PullFromRandomLocation(object_id);
   if (did_pull) {
     // New object locations were found, so begin trying to pull from a
@@ -111,15 +115,18 @@ void PullManager::TryToMakeObjectLocal(const ObjectID &object_id) {
 
   // If we cannot pull, it means all objects have been evicted, so try restoring objects
   // from the external storage. If the object was spilled on the current node, the
-  // callback will restore the object from the local external storage (e.g., disk).
+  // callback will restore the object from the local the disk.
   // Otherwise, it will send a request to a remote node that spilled the object.
+  // If external storage is a distributed storage, we always try restoring from it without
+  // sending RPCs.
   if (!request.spilled_url.empty()) {
     const auto spilled_node_id = request.spilled_node_id;
-    RAY_CHECK(!spilled_node_id.IsNil());
     restore_spilled_object_(
-        object_id, spilled_node_id,
-        [object_id, spilled_node_id](const ray::Status &status) {
+        object_id, request.spilled_url, spilled_node_id,
+        [this, object_id, spilled_node_id](const ray::Status &status) {
           if (!status.ok()) {
+            const auto node_id_with_issue =
+                spilled_node_id.IsNil() ? self_node_id_ : spilled_node_id;
             RAY_LOG(WARNING)
                 << "Object restoration failed and the object could "
                    "not be "
@@ -127,7 +134,7 @@ void PullManager::TryToMakeObjectLocal(const ObjectID &object_id) {
                    "object was spilled is unreachable. This job may hang if the object "
                    "is permanently unreachable. "
                    "Please check the log of node of id: "
-                << spilled_node_id << " Object id: " << object_id;
+                << node_id_with_issue << " Object id: " << object_id;
           }
         });
     // We shouldn't update the timer here because restoration takes some time, and since

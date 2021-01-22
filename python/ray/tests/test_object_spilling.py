@@ -38,21 +38,34 @@ smart_open_object_spilling_config = {
 }
 
 
-@pytest.fixture(
-    scope="function",
-    params=[
-        file_system_object_spilling_config,
-        mock_distributed_fs_object_spilling_config
-        # TODO(sang): Add a mock dependency to test S3.
-        # smart_open_object_spilling_config,
-    ])
-def object_spilling_config(request, tmp_path):
+def create_object_spilling_config(request, tmp_path):
     if (request.param["type"] == "filesystem"
             or request.param["type"] == "mock_distributed_fs"):
         temp_folder = tmp_path / "spill"
         temp_folder.mkdir()
         request.param["params"]["directory_path"] = str(temp_folder)
-    yield json.dumps(request.param), temp_folder
+    return json.dumps(request.param), temp_folder
+
+
+@pytest.fixture(
+    scope="function",
+    params=[
+        file_system_object_spilling_config,
+        # TODO(sang): Add a mock dependency to test S3.
+        # smart_open_object_spilling_config,
+    ])
+def object_spilling_config(request, tmp_path):
+    yield create_object_spilling_config(request, tmp_path)
+
+
+@pytest.fixture(
+    scope="function",
+    params=[
+        file_system_object_spilling_config,
+        mock_distributed_fs_object_spilling_config
+    ])
+def multi_node_object_spilling_config(request, tmp_path):
+    yield create_object_spilling_config(request, tmp_path)
 
 
 def test_invalid_config_raises_exception(shutdown_only):
@@ -118,10 +131,10 @@ def test_spilling_not_done_for_pinned_object(object_spilling_config,
 
 @pytest.mark.skipif(
     platform.system() == "Windows", reason="Failing on Windows.")
-def test_spill_remote_object(ray_start_cluster, object_spilling_config):
-
+def test_spill_remote_object(ray_start_cluster,
+                             multi_node_object_spilling_config):
     cluster = ray_start_cluster
-    object_spilling_config, _ = object_spilling_config
+    object_spilling_config, _ = multi_node_object_spilling_config
     cluster.add_node(
         num_cpus=0,
         object_store_memory=75 * 1024 * 1024,
@@ -448,9 +461,10 @@ def test_delete_objects_on_worker_failure(object_spilling_config,
 
 @pytest.mark.skipif(
     platform.system() == "Windows", reason="Failing on Windows.")
-def test_delete_objects_multi_node(object_spilling_config, ray_start_cluster):
+def test_delete_objects_multi_node(multi_node_object_spilling_config,
+                                   ray_start_cluster):
     # Limit our object store to 75 MiB of memory.
-    object_spilling_config, temp_folder = object_spilling_config
+    object_spilling_config, temp_folder = multi_node_object_spilling_config
     cluster = ray_start_cluster
     # Head node.
     cluster.add_node(

@@ -185,7 +185,8 @@ class ObjectDirectory : public ObjectDirectoryInterface {
     std::unordered_set<NodeID> current_object_locations;
     /// The location where this object has been spilled, if any.
     std::string spilled_url = "";
-    // The node id that spills the object to the external storage.
+    // The node id that spills the object to the disk.
+    // It will be Nil if it uses a distributed external storage.
     NodeID spilled_node_id = NodeID::Nil();
     /// This flag will get set to true if received any notification of the object.
     /// It means current_object_locations is up-to-date with GCS. It

@@ -16,6 +16,8 @@
 
 #include <google/protobuf/repeated_field.h>
 
+#include <boost/property_tree/json_parser.hpp>
+#include <boost/property_tree/ptree.hpp>
 #include <functional>
 
 #include "ray/common/id.h"
@@ -24,6 +26,7 @@
 #include "ray/object_manager/common.h"
 #include "ray/raylet/worker_pool.h"
 #include "ray/rpc/worker/core_worker_client_pool.h"
+#include "ray/util/util.h"
 #include "src/ray/protobuf/node_manager.pb.h"
 
 namespace ray {
@@ -40,10 +43,10 @@ class LocalObjectManager {
       gcs::ObjectInfoAccessor &object_info_accessor,
       rpc::CoreWorkerClientPool &owner_client_pool, bool object_pinning_enabled,
       bool automatic_object_deletion_enabled, int max_io_workers,
-      int64_t min_spilling_size,
+      int64_t min_spilling_size, bool is_external_storage_type_fs,
       std::function<void(const std::vector<ObjectID> &)> on_objects_freed,
       std::function<bool(const ray::ObjectID &)> is_plasma_object_spillable,
-      std::function<void(const ObjectID &, const NodeID &)>
+      std::function<void(const ObjectID &, const std::string &, const NodeID &)>
           restore_object_from_remote_node)
       : self_node_id_(node_id),
         free_objects_period_ms_(free_objects_period_ms),
@@ -59,7 +62,8 @@ class LocalObjectManager {
         num_active_workers_(0),
         max_active_workers_(max_io_workers),
         is_plasma_object_spillable_(is_plasma_object_spillable),
-        restore_object_from_remote_node_(restore_object_from_remote_node) {}
+        restore_object_from_remote_node_(restore_object_from_remote_node),
+        is_external_storage_type_fs_(is_external_storage_type_fs) {}
 
   /// Pin objects.
   ///
@@ -94,9 +98,12 @@ class LocalObjectManager {
   /// Restore a spilled object from external storage back into local memory.
   ///
   /// \param object_id The ID of the object to restore.
-  /// \param callback A callback to call when the restoration is done. Status
-  /// will contain the error during restoration, if any.
-  void AsyncRestoreSpilledObject(const ObjectID &object_id, const NodeID &node_id,
+  /// \param object_url The URL where the object is spilled.
+  /// \param node_id The node id of a node which spilled the object. This is Nil if Ray
+  /// uses a distributed external storage. \param callback A callback to call when the
+  /// restoration is done. Status will contain the error during restoration, if any.
+  void AsyncRestoreSpilledObject(const ObjectID &object_id, const std::string &object_url,
+                                 const NodeID &node_id,
                                  std::function<void(const ray::Status &)> callback);
 
   /// Try to clear any objects that have been freed.
@@ -253,7 +260,14 @@ class LocalObjectManager {
   std::function<bool(const ray::ObjectID &)> is_plasma_object_spillable_;
 
   /// Callback to restore object of object id from a remote node of node id.
-  std::function<void(const ObjectID &, const NodeID &)> restore_object_from_remote_node_;
+  std::function<void(const ObjectID &, const std::string &, const NodeID &)>
+      restore_object_from_remote_node_;
+
+  /// Used to decide spilling protocol.
+  /// If it is "filesystem", it restores spilled objects only from an owner node.
+  /// If it is not (meaning it is distributed backend), it always restores objects
+  /// directly from the external storage.
+  bool is_external_storage_type_fs_;
 
   ///
   /// Stats

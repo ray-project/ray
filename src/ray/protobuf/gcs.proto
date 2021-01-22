@@ -407,7 +407,8 @@ message ObjectLocationInfo {
   // For objects that have been spilled to external storage, the URL from which
   // they can be retrieved.
   string spilled_url = 3;
-  // The node id that spills the object to the external storage.
+  // The node id that spills the object to the disk.
+  // It will be Nil if it uses a distributed external storage.
   bytes spilled_node_id = 4;
 }
 
@@ -419,7 +420,8 @@ message ObjectLocationChange {
   // The object has been spilled to this URL. This should be set xor the above
   // fields are set.
   string spilled_url = 3;
-  // The node id that spills the object to the external storage.
+  // The node id that spills the object to the disk.
+  // It will be Nil if it uses a distributed external storage.
   bytes spilled_node_id = 4;
 }
 

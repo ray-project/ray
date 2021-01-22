@@ -268,12 +268,14 @@ class LocalObjectManagerTest : public ::testing::Test {
                     freed.insert(object_id);
                   }
                 },
+                /*is_external_storage_type_fs=*/true,
                 /*is_plasma_object_spillable=*/
                 [&](const ray::ObjectID &object_id) {
                   return unevictable_objects_.count(object_id) == 0;
                 },
                 /*restore_object_from_remote_node=*/
-                [&](const ObjectID &object_id, const NodeID &node_id) {
+                [&](const ObjectID &object_id, const std::string spilled_url,
+                    const NodeID &node_id) {
                   if (remote_node_set_restore_requested_.count(node_id) == 0) {
                     remote_node_set_restore_requested_.emplace(
                         node_id, std::unordered_set<ObjectID>());
