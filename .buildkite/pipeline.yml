@@ -12,13 +12,6 @@
       --config=asan-buildkite
       --jobs=2
       -- //:all -//:core_worker_test
-  # TODO(simon): Fix the failing test on buildkite
-  # - bazel test --config=ci --config=asan $(./scripts/bazel_export_options)
-  #     --build_tests_only
-  #     --config=asan-buildkite
-  #     --jobs=1
-  #     --test_timeout=600
-  #     //:core_worker_test
 
 - label: ":serverless: Dashboard + Serve Tests"
   commands:
