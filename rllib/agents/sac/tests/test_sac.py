@@ -53,7 +53,7 @@ class SimpleEnv(Env):
 class TestSAC(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init()
+        ray.init(local_mode=True)#TODO
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -74,7 +74,7 @@ class TestSAC(unittest.TestCase):
         image_space = Box(-1.0, 1.0, shape=(84, 84, 3))
         simple_space = Box(-1.0, 1.0, shape=(3, ))
 
-        for _ in framework_iterator(config):
+        for _ in framework_iterator(config, frameworks="tf"):#TODO
             # Test for different env types (discrete w/ and w/o image, + cont).
             for env in [
                     RandomEnv,

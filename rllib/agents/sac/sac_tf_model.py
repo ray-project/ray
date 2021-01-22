@@ -256,7 +256,7 @@ class SACTFModel(TFModelV2):
     def policy_variables(self):
         """Return the list of variables for the policy net."""
 
-        return list(self.action_model.variables())
+        return self.action_model.variables()
 
     def q_variables(self):
         """Return the list of variables for Q / twin Q nets."""

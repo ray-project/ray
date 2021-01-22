@@ -13,7 +13,17 @@ tf1, tf, tfv = try_import_tf()
 
 
 class VisionNetwork(TFModelV2):
-    """Generic vision network implemented in ModelV2 API."""
+    """Generic vision network implemented in ModelV2 API.
+
+    An additional post-conv fully connected stack can be added and configured
+    via the config keys:
+    `post_fcnet_hiddens`: Dense layer sizes after the Conv2D stack.
+    `post_fcnet_activation`: Activation function to use for this FC stack.
+
+    Examples:
+
+
+    """
 
     def __init__(self, obs_space: gym.spaces.Space,
                  action_space: gym.spaces.Space, num_outputs: int,
@@ -26,12 +36,15 @@ class VisionNetwork(TFModelV2):
 
         activation = get_activation_fn(
             self.model_config.get("conv_activation"), framework="tf")
-        post_fcnet_hiddens = model_config.get("post_fcnet_hiddens", [])
-        post_fcnet_activation = get_activation_fn(
-            model_config.get("post_fcnet_activation"), framework="tf")
         filters = self.model_config["conv_filters"]
         assert len(filters) > 0,\
             "Must provide at least 1 entry in `conv_filters`!"
+
+        # Post FC net config.
+        post_fcnet_hiddens = model_config.get("post_fcnet_hiddens", [])
+        post_fcnet_activation = get_activation_fn(
+            model_config.get("post_fcnet_activation"), framework="tf")
+
         no_final_linear = self.model_config.get("no_final_linear")
         vf_share_layers = self.model_config.get("vf_share_layers")
         self.traj_view_framestacking = False
@@ -65,7 +78,9 @@ class VisionNetwork(TFModelV2):
 
         out_size, kernel, stride = filters[-1]
 
-        # No final linear: Last layer is a Conv2D and uses num_outputs.
+        # No final linear: Last layer has activation function and exits with
+        # num_outputs nodes (this could be a 1x1 conv or a FC layer, depending
+        # on `post_fcnet_...` settings).
         if no_final_linear and num_outputs:
             last_layer = tf.keras.layers.Conv2D(
                 out_size if post_fcnet_hiddens else num_outputs,
