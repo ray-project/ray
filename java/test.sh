@@ -41,6 +41,15 @@ bazel build //java:gen_maven_deps
 echo "Build test jar."
 bazel build //java:all_tests_deploy.jar
 
+java/generate_jni_header_files.sh
+
+if ! git diff --exit-code -- java src/ray/core_worker/lib/java; then
+  echo "Files are changed after build. Common cases are:"
+  echo "    * Java native methods doesn't match JNI files. You need to either update Java code or JNI code."
+  echo "    * pom_template.xml and pom.xml doesn't match. You need to either update pom_template.xml or pom.xml."
+  exit 1
+fi
+
 # Enable multi-worker feature in Java test
 TEST_ARGS=(-Dray.job.num-java-workers-per-process=10)
 

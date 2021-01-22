@@ -115,7 +115,8 @@ public class DataReader {
   /**
    * Read message from input channels, if timeout, return null.
    *
-   * @param timeoutMillis timeout Returns message or null
+   * @param timeoutMillis timeout
+   * @return message or null
    */
   public ChannelMessage read(long timeoutMillis) {
     if (buf.isEmpty()) {

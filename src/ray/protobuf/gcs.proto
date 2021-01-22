@@ -413,6 +413,8 @@ message ObjectLocationInfo {
   // For objects that have been spilled to external storage, the URL from which
   // they can be retrieved.
   string spilled_url = 3;
+  // The size of the object in bytes.
+  uint64 size = 4;
 }
 
 // A notification message about one object's locations being changed.
@@ -423,6 +425,8 @@ message ObjectLocationChange {
   // The object has been spilled to this URL. This should be set xor the above
   // fields are set.
   string spilled_url = 3;
+  // The size of the object in bytes.
+  uint64 size = 4;
 }
 
 // A notification message about one node's resources being changed.

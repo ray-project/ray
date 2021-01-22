@@ -111,8 +111,9 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "test_k8s_cluster_launcher.py",
+    "test_k8s_operator_examples.py",
   ],
-  size = "small",
+  size = "medium",
   extra_srcs = SRCS,
   deps = ["//:ray_lib"],
   tags = ["kubernetes"]

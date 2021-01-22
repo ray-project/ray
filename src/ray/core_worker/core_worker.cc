@@ -2213,6 +2213,7 @@ void CoreWorker::HandleGetObjectLocationsOwner(
   } else {
     status = Status::ObjectNotFound("Object " + object_id.Hex() + " not found");
   }
+  reply->set_object_size(reference_counter_->GetObjectSize(object_id));
   send_reply_callback(status, nullptr, nullptr);
 }
 
