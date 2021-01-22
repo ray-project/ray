@@ -2,6 +2,8 @@ import os
 from contextlib import contextmanager
 from functools import wraps
 
+RAY_CLIENT_MODE_ATTR = "__ray_client_mode_key__"
+
 client_mode_enabled = os.environ.get("RAY_CLIENT_MODE", "0") == "1"
 
 _client_hook_enabled = True
@@ -56,9 +58,21 @@ def client_mode_convert_function(method):
     RemoteFunction is declared early, in a library and only then is Ray used in
     client mode -- nescessitating a conversion.
     """
+    from ray.util.client import ray
+
     @wraps(method)
     def wrapper(*args, **kwargs):
-        pass
+        global _client_hook_enabled
+        if not client_mode_enabled or not _client_hook_enabled:
+            return method(*args, **kwargs)
+
+        obj = method.__self__
+        key = getattr(obj, RAY_CLIENT_MODE_ATTR, None)
+        if key is None:
+            key = ray._convert_function(obj)
+            setattr(obj, RAY_CLIENT_MODE_ATTR, key)
+        client_func = ray._get_converted(key)
+        return getattr(client_func, method.__name__)(*args, **kwargs)
 
     return wrapper
 
@@ -71,8 +85,20 @@ def client_mode_convert_actor(method):
     ActorClass is declared early, in a library and only then is Ray used in
     client mode -- nescessitating a conversion.
     """
+    from ray.util.client import ray
+
     @wraps(method)
     def wrapper(*args, **kwargs):
-        pass
+        global _client_hook_enabled
+        if not client_mode_enabled or not _client_hook_enabled:
+            return method(*args, **kwargs)
+
+        obj = method.__self__
+        key = getattr(obj, RAY_CLIENT_MODE_ATTR, None)
+        if key is None:
+            key = ray._convert_actor(obj)
+            setattr(obj, RAY_CLIENT_MODE_ATTR, key)
+        client_actor = ray._get_converted(key)
+        return getattr(client_actor, method.__name__)(*args, **kwargs)
 
     return wrapper
