@@ -228,23 +228,18 @@ void LocalObjectManager::SpillObjectsInternal(
         io_worker->rpc_client()->SpillObjects(
             request, [this, objects_to_spill, callback, io_worker](
                          const ray::Status &status, const rpc::SpillObjectsReply &r) {
-              RAY_LOG(ERROR) << "Sang1";
               {
                 absl::MutexLock lock(&mutex_);
                 num_active_workers_ -= 1;
               }
-              RAY_LOG(ERROR) << "Sang2";
               io_worker_pool_.PushSpillWorker(io_worker);
-              RAY_LOG(ERROR) << "Sang3";
               if (!status.ok()) {
-                RAY_LOG(ERROR) << "Error Sang4";
                 for (const auto &object_id : objects_to_spill) {
                   auto it = objects_pending_spill_.find(object_id);
                   RAY_CHECK(it != objects_pending_spill_.end());
                   pinned_objects_.emplace(object_id, std::move(it->second));
                   objects_pending_spill_.erase(it);
                 }
-                RAY_LOG(ERROR) << "Error Sang5";
 
                 RAY_LOG(ERROR) << "Failed to send object spilling request: "
                                << status.ToString();
@@ -252,9 +247,7 @@ void LocalObjectManager::SpillObjectsInternal(
                   callback(status);
                 }
               } else {
-                RAY_LOG(ERROR) << "SUCCESS Sang4";
                 AddSpilledUrls(objects_to_spill, r, callback);
-                RAY_LOG(ERROR) << "SUCCESS Sang5";
               }
             });
       });

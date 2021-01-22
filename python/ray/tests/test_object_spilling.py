@@ -174,9 +174,9 @@ def test_spill_objects_automatically(object_spilling_config, shutdown_only):
         })
     replay_buffer = []
     solution_buffer = []
-    buffer_length = 100
+    buffer_length = 50
 
-    # Create objects of more than 800 MiB.
+    # Create objects of more than 400 MiB.
     for _ in range(buffer_length):
         ref = None
         while ref is None:
@@ -187,7 +187,7 @@ def test_spill_objects_automatically(object_spilling_config, shutdown_only):
             solution_buffer.append(arr)
 
     # randomly sample objects
-    for _ in range(1000):
+    for _ in range(500):
         index = random.choice(list(range(buffer_length)))
         ref = replay_buffer[index]
         solution = solution_buffer[index]
@@ -323,7 +323,7 @@ def test_delete_objects(tmp_path, shutdown_only):
     arr = np.random.rand(1024 * 1024)  # 8 MB data
     replay_buffer = []
 
-    for _ in range(80):
+    for _ in range(40):
         ref = None
         while ref is None:
             ref = ray.put(arr)
@@ -343,8 +343,7 @@ def test_delete_objects(tmp_path, shutdown_only):
 
 
 @pytest.mark.skipif(
-    platform.system() in ["Windows", "Darwin"],
-    reason="Failing on "
+    platform.system() in ["Windows"], reason="Failing on "
     "Windows and Mac.")
 def test_delete_objects_delete_while_creating(tmp_path, shutdown_only):
     # Limit our object store to 75 MiB of memory.
@@ -367,7 +366,7 @@ def test_delete_objects_delete_while_creating(tmp_path, shutdown_only):
     arr = np.random.rand(1024 * 1024)  # 8 MB data
     replay_buffer = []
 
-    for _ in range(80):
+    for _ in range(60):
         ref = None
         while ref is None:
             ref = ray.put(arr)
@@ -377,7 +376,7 @@ def test_delete_objects_delete_while_creating(tmp_path, shutdown_only):
             replay_buffer.pop()
 
     # Do random sampling.
-    for _ in range(200):
+    for _ in range(80):
         ref = random.choice(replay_buffer)
         sample = ray.get(ref, timeout=0)
         assert np.array_equal(sample, arr)
@@ -395,8 +394,7 @@ def test_delete_objects_delete_while_creating(tmp_path, shutdown_only):
 
 
 @pytest.mark.skipif(
-    platform.system() in ["Windows", "Darwin"],
-    reason="Failing on Windows "
+    platform.system() in ["Windows"], reason="Failing on Windows "
     "and Mac.")
 def test_delete_objects_on_worker_failure(tmp_path, shutdown_only):
     # Limit our object store to 75 MiB of memory.
@@ -428,7 +426,7 @@ def test_delete_objects_on_worker_failure(tmp_path, shutdown_only):
             return os.getpid()
 
         def create_objects(self):
-            for _ in range(80):
+            for _ in range(40):
                 ref = None
                 while ref is None:
                     ref = ray.put(arr)
@@ -438,7 +436,7 @@ def test_delete_objects_on_worker_failure(tmp_path, shutdown_only):
                     self.replay_buffer.pop()
 
             # Do random sampling.
-            for _ in range(200):
+            for _ in range(80):
                 ref = random.choice(self.replay_buffer)
                 sample = ray.get(ref, timeout=0)
                 assert np.array_equal(sample, arr)
@@ -506,7 +504,7 @@ def test_delete_objects_multi_node(tmp_path, ray_start_cluster):
             return
 
         def create_objects(self):
-            for _ in range(80):
+            for _ in range(40):
                 ref = None
                 while ref is None:
                     ref = ray.put(arr)
@@ -516,7 +514,7 @@ def test_delete_objects_multi_node(tmp_path, ray_start_cluster):
                     self.replay_buffer.pop()
 
             # Do random sampling.
-            for _ in range(200):
+            for _ in range(80):
                 ref = random.choice(self.replay_buffer)
                 sample = ray.get(ref, timeout=0)
                 assert np.array_equal(sample, arr)
@@ -567,9 +565,9 @@ def test_fusion_objects(tmp_path, shutdown_only):
         })
     replay_buffer = []
     solution_buffer = []
-    buffer_length = 100
+    buffer_length = 50
 
-    # Create objects of more than 800 MiB.
+    # Create objects of more than 400 MiB.
     for _ in range(buffer_length):
         ref = None
         while ref is None:
@@ -581,7 +579,7 @@ def test_fusion_objects(tmp_path, shutdown_only):
 
     print("-----------------------------------")
     # randomly sample objects
-    for _ in range(1000):
+    for _ in range(500):
         index = random.choice(list(range(buffer_length)))
         ref = replay_buffer[index]
         solution = solution_buffer[index]
