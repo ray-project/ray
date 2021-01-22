@@ -342,9 +342,10 @@ def test_delete_objects(tmp_path, shutdown_only):
     wait_for_condition(is_dir_empty)
 
 
-# @pytest.mark.skipif(
-#     platform.system() == "Windows", reason="Failing on Windows.")
-@pytest.mark.skip(reason="Test is flaky.")
+@pytest.mark.skipif(
+    platform.system() in ["Windows", "Darwin"],
+    reason="Failing on "
+    "Windows and Mac.")
 def test_delete_objects_delete_while_creating(tmp_path, shutdown_only):
     # Limit our object store to 75 MiB of memory.
     temp_folder = tmp_path / "spill"
@@ -393,9 +394,10 @@ def test_delete_objects_delete_while_creating(tmp_path, shutdown_only):
     wait_for_condition(is_dir_empty, timeout=1000)
 
 
-# @pytest.mark.skipif(
-#     platform.system() == "Windows", reason="Failing on Windows.")
-@pytest.mark.skip(reason="Test is flaky")
+@pytest.mark.skipif(
+    platform.system() in ["Windows", "Darwin"],
+    reason="Failing on Windows "
+    "and Mac.")
 def test_delete_objects_on_worker_failure(tmp_path, shutdown_only):
     # Limit our object store to 75 MiB of memory.
     temp_folder = tmp_path / "spill"
