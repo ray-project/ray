@@ -49,12 +49,13 @@ class Query:
 class ReplicaSet:
     """Data structure representing a set of replica actor handles"""
 
-    def __init__(self):
+    def __init__(self, backend_tag):
+        self.backend_tag = backend_tag
+
         # NOTE(simon): We have to do this because max_concurrent_queries
         # and the replica handles come from different long poll keys.
         self.max_concurrent_queries: int = 8
         self.in_flight_queries: Dict[ActorHandle, set] = dict()
-
         # The iterator used for load balancing among replicas. Using itertools
         # cycle, we implements a round-robin policy, skipping overloaded
         # replicas.
@@ -64,15 +65,25 @@ class ReplicaSet:
         self.replica_iterator = itertools.cycle(self.in_flight_queries.keys())
 
         # Used to unblock this replica set waiting for free replicas. A newly
-        # added replica or updated max_concurrenty_queries value means the
+        # added replica or updated max_concurrent_queries value means the
         # query that waits on a free replica might be unblocked on.
         self.config_updated_event = asyncio.Event()
+
+        self.num_queued_queries = metrics.Count(
+            "serve_backend_queued_queries",
+            description=("The current number of queries to this backend waiting"
+                         " to be assigned to a replica."),
+            tag_keys=("backend",))
+        self.num_queued_queries.set_default_tags({
+            "backend": self.backend_tag
+        })
+
 
     def set_max_concurrent_queries(self, new_value):
         if new_value != self.max_concurrent_queries:
             self.max_concurrent_queries = new_value
             logger.debug(
-                f"ReplicaSet: chaging max_concurrent_queries to {new_value}")
+                f"ReplicaSet: changing max_concurrent_queries to {new_value}")
             self.config_updated_event.set()
 
     def update_worker_replicas(self, worker_replicas: Iterable[ActorHandle]):
@@ -92,7 +103,7 @@ class ReplicaSet:
             self.config_updated_event.set()
 
     def _try_assign_replica(self, query: Query) -> Optional[ray.ObjectRef]:
-        """Try to assign query to a replica, return the object ref is succeeded
+        """Try to assign query to a replica, return the object ref if succeeded
         or return None if it can't assign this query to any replicas.
         """
         for _ in range(len(self.in_flight_queries.keys())):
@@ -127,6 +138,7 @@ class ReplicaSet:
         and only send a query to available replicas (determined by the backend
         max_concurrent_quries value.)
         """
+        self.num_queued_queries.record(1) 
         assigned_ref = self._try_assign_replica(query)
         while assigned_ref is None:  # Can't assign a replica right now.
             logger.debug("Failed to assign a replica for "
@@ -144,9 +156,10 @@ class ReplicaSet:
                     return_when=asyncio.FIRST_COMPLETED)
                 if self.config_updated_event.is_set():
                     self.config_updated_event.clear()
-            # We are pretty sure a free replica is ready now, let's recurse and
+            # We are pretty sure a free replica is ready now, let's loop and
             # assign this query a replica.
-            assigned_ref = await self.assign_replica(query)
+            assigned_ref = self._try_assign_replica(query)
+        self.num_queued_queries.record(-1) # TODO: replace with manual gauge
         return assigned_ref
 
 
@@ -166,7 +179,13 @@ class Router:
         self.controller = controller_handle
 
         self.endpoint_policies: Dict[str, EndpointPolicy] = dict()
-        self.backend_replicas: Dict[str, ReplicaSet] = defaultdict(ReplicaSet)
+
+        class keydefaultdict(defaultdict):
+            def __missing__(self, key):
+                self[key] = self.default_factory(key)
+                return self[key]
+
+        self.backend_replicas: Dict[str, ReplicaSet] = keydefaultdict(ReplicaSet)
 
         self._pending_endpoints: Dict[str, asyncio.Future] = dict()
 
