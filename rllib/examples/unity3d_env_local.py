@@ -25,7 +25,7 @@ import os
 
 import ray
 from ray import tune
-from ray.rllib.env.unity3d_env import Unity3DEnv
+from ray.rllib.env.wrappers.unity3d_env import Unity3DEnv
 from ray.rllib.utils.test_utils import check_learning_achieved
 
 parser = argparse.ArgumentParser()

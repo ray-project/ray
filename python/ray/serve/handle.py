@@ -6,6 +6,7 @@ from enum import Enum
 
 from ray.serve.utils import get_random_letters
 from ray.util import metrics
+from ray.serve.router import Router
 
 
 @dataclass(frozen=True)
@@ -42,7 +43,7 @@ class RayServeHandle:
     """
 
     def __init__(self,
-                 router,
+                 router: Router,
                  endpoint_name,
                  handle_options: Optional[HandleOptions] = None):
         self.router = router

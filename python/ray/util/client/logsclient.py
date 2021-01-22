@@ -69,7 +69,7 @@ class LogstreamClient:
             msg: The content of the message
         """
         print_file = sys.stderr if level == -2 else sys.stdout
-        print(msg, file=print_file)
+        print(msg, file=print_file, end="")
 
     def set_logstream_level(self, level: int):
         logger.setLevel(level)

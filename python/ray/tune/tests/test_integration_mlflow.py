@@ -4,8 +4,8 @@ from collections import namedtuple
 from unittest.mock import patch
 
 from ray.tune.function_runner import wrap_function
-from ray.tune.integration.mlflow import MLFlowLoggerCallback, MLFlowLogger, \
-    mlflow_mixin, MLFlowTrainableMixin
+from ray.tune.integration.mlflow import MLflowLoggerCallback, MLflowLogger, \
+    mlflow_mixin, MLflowTrainableMixin
 
 
 class MockTrial(
@@ -121,11 +121,11 @@ def clear_env_vars():
         del os.environ["MLFLOW_EXPERIMENT_ID"]
 
 
-class MLFlowTest(unittest.TestCase):
+class MLflowTest(unittest.TestCase):
     @patch("mlflow.tracking.MlflowClient", MockMlflowClient)
     def testMlFlowLoggerCallbackConfig(self):
         # Explicitly pass in all args.
-        logger = MLFlowLoggerCallback(
+        logger = MLflowLoggerCallback(
             tracking_uri="test1",
             registry_uri="test2",
             experiment_name="test_exp")
@@ -136,7 +136,7 @@ class MLFlowTest(unittest.TestCase):
         self.assertEqual(logger.experiment_id, 1)
 
         # Check if client recognizes already existing experiment.
-        logger = MLFlowLoggerCallback(experiment_name="existing_experiment")
+        logger = MLflowLoggerCallback(experiment_name="existing_experiment")
         self.assertListEqual(logger.client.experiment_names,
                              ["existing_experiment"])
         self.assertEqual(logger.experiment_id, 0)
@@ -144,7 +144,7 @@ class MLFlowTest(unittest.TestCase):
         # Pass in experiment name as env var.
         clear_env_vars()
         os.environ["MLFLOW_EXPERIMENT_NAME"] = "test_exp"
-        logger = MLFlowLoggerCallback()
+        logger = MLflowLoggerCallback()
         self.assertListEqual(logger.client.experiment_names,
                              ["existing_experiment", "test_exp"])
         self.assertEqual(logger.experiment_id, 1)
@@ -152,7 +152,7 @@ class MLFlowTest(unittest.TestCase):
         # Pass in existing experiment name as env var.
         clear_env_vars()
         os.environ["MLFLOW_EXPERIMENT_NAME"] = "existing_experiment"
-        logger = MLFlowLoggerCallback()
+        logger = MLflowLoggerCallback()
         self.assertListEqual(logger.client.experiment_names,
                              ["existing_experiment"])
         self.assertEqual(logger.experiment_id, 0)
@@ -160,7 +160,7 @@ class MLFlowTest(unittest.TestCase):
         # Pass in existing experiment id as env var.
         clear_env_vars()
         os.environ["MLFLOW_EXPERIMENT_ID"] = "0"
-        logger = MLFlowLoggerCallback()
+        logger = MLflowLoggerCallback()
         self.assertListEqual(logger.client.experiment_names,
                              ["existing_experiment"])
         self.assertEqual(logger.experiment_id, "0")
@@ -169,13 +169,13 @@ class MLFlowTest(unittest.TestCase):
         clear_env_vars()
         os.environ["MLFLOW_EXPERIMENT_ID"] = "500"
         with self.assertRaises(ValueError):
-            logger = MLFlowLoggerCallback()
+            logger = MLflowLoggerCallback()
 
         # Experiment name env var should take precedence over id env var.
         clear_env_vars()
         os.environ["MLFLOW_EXPERIMENT_NAME"] = "test_exp"
         os.environ["MLFLOW_EXPERIMENT_ID"] = "0"
-        logger = MLFlowLoggerCallback()
+        logger = MLflowLoggerCallback()
         self.assertListEqual(logger.client.experiment_names,
                              ["existing_experiment", "test_exp"])
         self.assertEqual(logger.experiment_id, 1)
@@ -186,7 +186,7 @@ class MLFlowTest(unittest.TestCase):
         trial_config = {"par1": 4, "par2": 9.}
         trial = MockTrial(trial_config, "trial1", 0, "artifact")
 
-        logger = MLFlowLoggerCallback(
+        logger = MLflowLoggerCallback(
             experiment_name="test1", save_artifact=True)
 
         # Check if run is created.
@@ -231,7 +231,7 @@ class MLFlowTest(unittest.TestCase):
 
             # No experiment_id is passed in config, should raise an error.
             with self.assertRaises(ValueError):
-                logger = MLFlowLogger(trial_config, "/tmp", trial)
+                logger = MLflowLogger(trial_config, "/tmp", trial)
 
             trial_config.update({
                 "logger_config": {
@@ -240,7 +240,7 @@ class MLFlowTest(unittest.TestCase):
                 }
             })
             trial = MockTrial(trial_config, "trial2", 1, "artifact")
-            logger = MLFlowLogger(trial_config, "/tmp", trial)
+            logger = MLflowLogger(trial_config, "/tmp", trial)
             experiment_logger = logger._trial_experiment_logger
             client = experiment_logger.client
             self.assertEqual(client.tracking_uri, "test_tracking_uri")
@@ -260,9 +260,9 @@ class MLFlowTest(unittest.TestCase):
         def train_fn(config):
             return 1
 
-        train_fn.__mixins__ = (MLFlowTrainableMixin, )
+        train_fn.__mixins__ = (MLflowTrainableMixin, )
 
-        # No MLFlow config passed in.
+        # No MLflow config passed in.
         with self.assertRaises(ValueError):
             wrapped = wrap_function(train_fn)(trial_config)
 
@@ -288,7 +288,7 @@ class MLFlowTest(unittest.TestCase):
 
         with patch("ray.tune.integration.mlflow._import_mlflow",
                    lambda: client):
-            train_fn.__mixins__ = (MLFlowTrainableMixin, )
+            train_fn.__mixins__ = (MLflowTrainableMixin, )
             wrapped = wrap_function(train_fn)(trial_config)
             client = wrapped._mlflow
             self.assertTupleEqual(client.active_run.run_id, (0, 1))

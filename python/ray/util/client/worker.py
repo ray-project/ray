@@ -29,17 +29,26 @@ from ray.util.client.logsclient import LogstreamClient
 
 logger = logging.getLogger(__name__)
 
+INITIAL_TIMEOUT_SEC = 5
+MAX_TIMEOUT_SEC = 30
+
 
 class Worker:
     def __init__(self,
                  conn_str: str = "",
                  secure: bool = False,
-                 metadata: List[Tuple[str, str]] = None):
+                 metadata: List[Tuple[str, str]] = None,
+                 connection_retries: int = 3):
         """Initializes the worker side grpc client.
 
         Args:
+            conn_str: The host:port connection string for the ray server.
             secure: whether to use SSL secure channel or not.
             metadata: additional metadata passed in the grpc request headers.
+            connection_retries: Number of times to attempt to reconnect to the
+              ray server if it doesn't respond immediately. Setting to 0 tries
+              at least once.  For infinite retries, catch the ConnectionError
+              exception.
         """
         self.metadata = metadata if metadata else []
         self.channel = None
@@ -49,6 +58,22 @@ class Worker:
             self.channel = grpc.secure_channel(conn_str, credentials)
         else:
             self.channel = grpc.insecure_channel(conn_str)
+
+        conn_attempts = 0
+        timeout = INITIAL_TIMEOUT_SEC
+        while conn_attempts < connection_retries + 1:
+            conn_attempts += 1
+            try:
+                grpc.channel_ready_future(self.channel).result(timeout=timeout)
+                break
+            except grpc.FutureTimeoutError:
+                if conn_attempts >= connection_retries:
+                    raise ConnectionError("ray client connection timeout")
+                logger.info(f"Couldn't connect in {timeout} seconds, retrying")
+                timeout = timeout + 5
+                if timeout > MAX_TIMEOUT_SEC:
+                    timeout = MAX_TIMEOUT_SEC
+
         self.server = ray_client_pb2_grpc.RayletDriverStub(self.channel)
 
         self.data_client = DataClient(self.channel, self._client_id,
@@ -58,6 +83,18 @@ class Worker:
         self.log_client = LogstreamClient(self.channel, self.metadata)
         self.log_client.set_logstream_level(logging.INFO)
         self.closed = False
+
+    def connection_info(self):
+        try:
+            data = self.data_client.ConnectionInfo()
+        except grpc.RpcError as e:
+            raise e.details()
+        return {
+            "num_clients": data.num_clients,
+            "python_version": data.python_version,
+            "ray_version": data.ray_version,
+            "ray_commit": data.ray_commit,
+        }
 
     def get(self, vals, *, timeout: Optional[float] = None) -> Any:
         to_get = []
@@ -246,7 +283,29 @@ class Worker:
             # translate from a proto map to a python dict
             output_dict = {k: v for k, v in resp.resource_table.table.items()}
             return output_dict
+        elif resp.WhichOneof("response_type") == "runtime_context":
+            return resp.runtime_context
         return json.loads(resp.json)
+
+    def internal_kv_get(self, key: bytes) -> bytes:
+        req = ray_client_pb2.KVGetRequest(key=key)
+        resp = self.server.KVGet(req, metadata=self.metadata)
+        return resp.value
+
+    def internal_kv_put(self, key: bytes, value: bytes,
+                        overwrite: bool) -> bool:
+        req = ray_client_pb2.KVPutRequest(
+            key=key, value=value, overwrite=overwrite)
+        resp = self.server.KVPut(req, metadata=self.metadata)
+        return resp.already_exists
+
+    def internal_kv_del(self, key: bytes) -> None:
+        req = ray_client_pb2.KVDelRequest(key=key)
+        self.server.KVDel(req, metadata=self.metadata)
+
+    def internal_kv_list(self, prefix: bytes) -> bytes:
+        req = ray_client_pb2.KVListRequest(prefix=prefix)
+        return self.server.KVList(req, metadata=self.metadata).keys
 
     def is_initialized(self) -> bool:
         if self.server is not None:

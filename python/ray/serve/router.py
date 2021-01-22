@@ -112,9 +112,12 @@ class ReplicaSet:
                    ) >= self.max_concurrent_queries:
                 # This replica is overloaded, try next one
                 continue
+
             logger.debug(f"Assigned query {query.metadata.request_id} "
                          f"to replica {replica}.")
-            tracker_ref, user_ref = replica.handle_request.remote(query)
+            # Directly passing args because it might contain an ObjectRef.
+            tracker_ref, user_ref = replica.handle_request.remote(
+                query.metadata, *query.args, **query.kwargs)
             self.in_flight_queries[replica].add(tracker_ref)
             return user_ref
         return None

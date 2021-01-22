@@ -132,9 +132,9 @@ class NevergradSearch(Searcher):
             self._points_to_evaluate = None
         elif not isinstance(points_to_evaluate, Sequence):
             raise ValueError(
-                f"Invalid object type passed for `points_to_evaluate`: "
-                "{type(points_to_evaluate)}. "
-                f"Please pass a list of points (dictionaries) instead.")
+                "Invalid object type passed for `points_to_evaluate`: "
+                f"{type(points_to_evaluate)}. "
+                "Please pass a list of points (dictionaries) instead.")
         else:
             self._points_to_evaluate = list(points_to_evaluate)
 

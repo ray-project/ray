@@ -30,7 +30,7 @@ worker_nodes:
 
 setup_commands:
   - apt-get install -y libglib2.0-0 libcudnn7=7.6.5.32-1+cuda10.1
-  - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-1.2.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl
+  - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl
 
 # Command to start ray on the head node. You don't need to change this.
 head_start_ray_commands:

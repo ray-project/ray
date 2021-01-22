@@ -64,10 +64,13 @@ configuration option limits the maximum possible batch size sent to the backend.
 
 .. note::
     Ray Serve performs *opportunistic batching*. When a replica is free to evaluate
-    the next batch, Ray Serve will look at the pending queries and take
-    ``max(number_of_pending_queries, max_batch_size)`` queries to form a batch.
-    You can provide :mod:`batch_wait_timeout <ray.serve.BackendConfig>` to override
-    this behavior to wait for a full batch to arrive before executing (under a timeout).
+    the next batch, Ray Serve will look at the pending queries and try to take
+    :mod:`max_batch_size <ray.serve.BackendConfig>` queries to form a batch.
+    If the batch has less than ``max_batch_size`` queries, the backend will
+    wait for :mod:`batch_wait_timeout <ray.serve.BackendConfig>`
+    seconds to wait for a full batch to arrive. The default wait is ``0s`` to
+    minimize query latency. You can increase the timeout to improve throughput
+    and increase utilization at the cost of some additional latency.
 
 .. literalinclude:: ../../../../python/ray/serve/examples/doc/tutorial_batch.py
     :start-after: __doc_deploy_begin__

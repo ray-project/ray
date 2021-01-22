@@ -240,7 +240,6 @@ class DictSpyModel(TFModelV2):
         self.num_outputs = num_outputs or 64
         out = tf.keras.layers.Dense(self.num_outputs)(input_)
         self._main_layer = tf.keras.models.Model([input_], [out])
-        self.register_variables(self._main_layer.variables)
 
     def forward(self, input_dict, state, seq_lens):
         def spy(pos, front_cam, task):
@@ -282,7 +281,6 @@ class TupleSpyModel(TFModelV2):
         self.num_outputs = num_outputs or 64
         out = tf.keras.layers.Dense(self.num_outputs)(input_)
         self._main_layer = tf.keras.models.Model([input_], [out])
-        self.register_variables(self._main_layer.variables)
 
     def forward(self, input_dict, state, seq_lens):
         def spy(pos, cam, task):

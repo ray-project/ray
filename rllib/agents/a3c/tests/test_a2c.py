@@ -25,7 +25,6 @@ class TestA2C(unittest.TestCase):
 
         # Test against all frameworks.
         for fw in framework_iterator(config):
-            config["sample_async"] = fw in ["tf", "tfe", "tf2"]
             for env in ["PongDeterministic-v0"]:
                 trainer = a3c.A2CTrainer(config=config, env=env)
                 for i in range(num_iterations):
