@@ -45,8 +45,9 @@ public class NativeObjectStore extends ObjectStore {
   }
 
   @Override
-  public List<Boolean> wait(List<ObjectId> objectIds, int numObjects, long timeoutMs) {
-    return nativeWait(toBinaryList(objectIds), numObjects, timeoutMs);
+  public List<Boolean> wait(
+      List<ObjectId> objectIds, int numObjects, long timeoutMs, boolean fetchLocal) {
+    return nativeWait(toBinaryList(objectIds), numObjects, timeoutMs, fetchLocal);
   }
 
   @Override
@@ -113,7 +114,7 @@ public class NativeObjectStore extends ObjectStore {
   private static native List<NativeRayObject> nativeGet(List<byte[]> ids, long timeoutMs);
 
   private static native List<Boolean> nativeWait(
-      List<byte[]> objectIds, int numObjects, long timeoutMs);
+      List<byte[]> objectIds, int numObjects, long timeoutMs, boolean fetchLocal);
 
   private static native void nativeDelete(List<byte[]> objectIds, boolean localOnly);
 

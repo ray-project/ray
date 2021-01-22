@@ -150,7 +150,7 @@ class MockIOWorkerPool : public IOWorkerPoolInterface {
 
   void PopRestoreWorker(
       std::function<void(std::shared_ptr<WorkerInterface>)> callback) override {
-    callback(io_worker);
+    restoration_callbacks.push_back(callback);
   }
 
   void PopDeleteWorker(
@@ -158,6 +158,17 @@ class MockIOWorkerPool : public IOWorkerPoolInterface {
     callback(io_worker);
   }
 
+  bool RestoreWorkerPushed() {
+    if (restoration_callbacks.size() == 0) {
+      return false;
+    }
+    const auto callback = restoration_callbacks.front();
+    callback(io_worker);
+    restoration_callbacks.pop_front();
+    return true;
+  }
+
+  std::list<std::function<void(std::shared_ptr<WorkerInterface>)>> restoration_callbacks;
   std::shared_ptr<MockIOWorkerClient> io_worker_client =
       std::make_shared<MockIOWorkerClient>();
   std::shared_ptr<WorkerInterface> io_worker =
@@ -174,8 +185,9 @@ class MockObjectInfoAccessor : public gcs::ObjectInfoAccessor {
   MOCK_METHOD1(AsyncGetAll,
                Status(const gcs::MultiItemCallback<rpc::ObjectLocationInfo> &callback));
 
-  MOCK_METHOD3(AsyncAddLocation, Status(const ObjectID &object_id, const NodeID &node_id,
-                                        const gcs::StatusCallback &callback));
+  MOCK_METHOD4(AsyncAddLocation,
+               Status(const ObjectID &object_id, const NodeID &node_id,
+                      size_t object_size, const gcs::StatusCallback &callback));
 
   Status AsyncAddSpilledUrl(const ObjectID &object_id, const std::string &spilled_url,
                             const gcs::StatusCallback &callback) {
@@ -321,6 +333,13 @@ TEST_F(LocalObjectManagerTest, TestRestoreSpilledObject) {
       ASSERT_TRUE(status.ok());
       num_times_fired++;
     });
+  }
+  ASSERT_EQ(num_times_fired, 0);
+
+  // When restore workers are pushed, the request should be dedupped.
+  for (int i = 0; i < 10; i++) {
+    worker_pool.RestoreWorkerPushed();
+    ASSERT_EQ(num_times_fired, 0);
   }
   worker_pool.io_worker_client->ReplyRestoreObjects(10);
   ASSERT_EQ(num_times_fired, 1);

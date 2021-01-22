@@ -542,7 +542,8 @@ void GcsActorManager::CollectStats() const {
 
 void GcsActorManager::OnWorkerDead(const ray::NodeID &node_id,
                                    const ray::WorkerID &worker_id,
-                                   bool intentional_exit) {
+                                   const rpc::WorkerExitType disconnect_type) {
+  bool intentional_exit = disconnect_type == rpc::WorkerExitType::INTENDED_EXIT;
   if (intentional_exit) {
     RAY_LOG(INFO) << "Worker " << worker_id << " on node " << node_id
                   << " intentional exit.";

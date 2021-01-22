@@ -33,6 +33,7 @@
 #include "ray/object_manager/plasma/connection.h"
 #include "ray/object_manager/plasma/create_request_queue.h"
 #include "ray/object_manager/plasma/plasma.h"
+#include "ray/object_manager/plasma/plasma_allocator.h"
 #include "ray/object_manager/plasma/protocol.h"
 #include "ray/object_manager/plasma/quota_aware_policy.h"
 
@@ -208,6 +209,12 @@ class PlasmaStore {
 
   /// Process queued requests to create an object.
   void ProcessCreateRequests();
+
+  void GetAvailableMemory(std::function<void(size_t)> callback) const {
+    size_t available =
+        PlasmaAllocator::GetFootprintLimit() - eviction_policy_.GetPinnedMemoryBytes();
+    callback(available);
+  }
 
  private:
   PlasmaError HandleCreateObjectRequest(const std::shared_ptr<Client> &client,

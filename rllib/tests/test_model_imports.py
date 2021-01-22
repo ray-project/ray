@@ -185,8 +185,9 @@ class TestModelImport(unittest.TestCase):
             "PPO",
             config={
                 "num_workers": 0,
-                "vf_share_layers": True,
-                "model": {}
+                "model": {
+                    "vf_share_layers": True,
+                },
             },
             env="CartPole-v0")
 

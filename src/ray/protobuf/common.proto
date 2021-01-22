@@ -442,3 +442,15 @@ message MetricPoint {
   // [Optional] Unit of the metric.
   string units = 6;
 }
+
+// Type of a worker exit.
+enum WorkerExitType {
+  // Worker exit due to system level failures (i.e. worker crash).
+  SYSTEM_ERROR_EXIT = 0;
+  // Intended, initiated worker exit via raylet API.
+  INTENDED_EXIT = 1;
+  // Worker exit due to resource bundle release.
+  UNUSED_RESOURCE_RELEASED = 2;
+  // Worker exit due to placement group removal.
+  PLACEMENT_GROUP_REMOVED = 3;
+}

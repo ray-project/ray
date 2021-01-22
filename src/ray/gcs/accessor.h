@@ -297,7 +297,7 @@ class ObjectInfoAccessor {
   /// \param callback Callback that will be called after object has been added to GCS.
   /// \return Status
   virtual Status AsyncAddLocation(const ObjectID &object_id, const NodeID &node_id,
-                                  const StatusCallback &callback) = 0;
+                                  size_t object_size, const StatusCallback &callback) = 0;
 
   /// Add spilled location of object to GCS asynchronously.
   ///
@@ -657,13 +657,14 @@ class WorkerInfoAccessor {
   virtual ~WorkerInfoAccessor() = default;
 
   /// Subscribe to all unexpected failure of workers from GCS asynchronously.
-  /// Note that this does not include workers that failed due to node failure.
+  /// Note that this does not include workers that failed due to node failure
+  /// and only fileds in WorkerDeltaData would be published.
   ///
   /// \param subscribe Callback that will be called each time when a worker failed.
   /// \param done Callback that will be called when subscription is complete.
   /// \return Status
   virtual Status AsyncSubscribeToWorkerFailures(
-      const ItemCallback<rpc::WorkerTableData> &subscribe,
+      const ItemCallback<rpc::WorkerDeltaData> &subscribe,
       const StatusCallback &done) = 0;
 
   /// Report a worker failure to GCS asynchronously.

@@ -75,8 +75,9 @@ class DashboardAgent(object):
         logger.info("Dashboard agent grpc address: %s:%s", self.ip,
                     self.grpc_port)
         self.aioredis_client = None
+        options = (("grpc.enable_http_proxy", 0), )
         self.aiogrpc_raylet_channel = aiogrpc.insecure_channel(
-            f"{self.ip}:{self.node_manager_port}")
+            f"{self.ip}:{self.node_manager_port}", options=options)
         self.http_session = None
 
     def _load_modules(self):

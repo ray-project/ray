@@ -38,8 +38,12 @@ class Metric:
         self._metric = None
 
         if not isinstance(self._tag_keys, tuple):
-            raise ValueError("tag_keys should be a tuple type, got: "
-                             f"{type(self._tag_keys)}")
+            raise TypeError("tag_keys should be a tuple type, got: "
+                            f"{type(self._tag_keys)}")
+
+        for key in self._tag_keys:
+            if not isinstance(key, str):
+                raise TypeError(f"Tag keys must be str, got {type(key)}.")
 
     def set_default_tags(self, default_tags: Dict[str, str]):
         """Set default tags of metrics.
@@ -59,19 +63,46 @@ class Metric:
         Returns:
             Metric: it returns the instance itself.
         """
+        for key, val in default_tags.items():
+            if key not in self._tag_keys:
+                raise ValueError(f"Unrecognized tag key {key}.")
+            if not isinstance(val, str):
+                raise TypeError(f"Tag values must be str, got {type(val)}.")
+
         self._default_tags = default_tags
         return self
 
     def record(self, value: float, tags: dict = None) -> None:
         """Record the metric point of the metric.
 
+        Tags passed in will take precedence over the metric's default tags.
+
         Args:
             value(float): The value to be recorded as a metric point.
         """
         assert self._metric is not None
-        default_tag_copy = self._default_tags.copy()
-        default_tag_copy.update(tags or {})
-        self._metric.record(value, tags=default_tag_copy)
+        if tags is not None:
+            for val in tags.values():
+                if not isinstance(val, str):
+                    raise TypeError(
+                        f"Tag values must be str, got {type(val)}.")
+
+        final_tags = {}
+        tags_copy = tags.copy() if tags else {}
+        for tag_key in self._tag_keys:
+            # Prefer passed tags over default tags.
+            if tags is not None and tag_key in tags:
+                final_tags[tag_key] = tags_copy.pop(tag_key)
+            elif tag_key in self._default_tags:
+                final_tags[tag_key] = self._default_tags[tag_key]
+            else:
+                raise ValueError(f"Missing value for tag key {tag_key}.")
+
+        if len(tags_copy) > 0:
+            raise ValueError(
+                f"Unrecognized tag keys: {list(tags_copy.keys())}.")
+
+        self._metric.record(value, tags=final_tags)
 
     @property
     def info(self) -> Dict[str, Any]:
@@ -140,7 +171,7 @@ class Histogram(Metric):
         if boundaries is None or len(boundaries) == 0:
             raise ValueError(
                 "boundaries argument should be provided when using the "
-                "Histogram class. EX) Histgoram(boundaries=[1.0, 2.0])")
+                "Histogram class. e.g., Histogram(boundaries=[1.0, 2.0])")
         self.boundaries = boundaries
         self._metric = CythonHistogram(self._name, self._description,
                                        self._unit, self.boundaries,

@@ -765,7 +765,7 @@ class StandardAutoscaler:
                 ]
                 is_pending = status in pending_states
                 if is_pending:
-                    pending_nodes.append((ip, node_type))
+                    pending_nodes.append((ip, node_type, status))
                 else:
                     # TODO (Alex): Failed nodes are now immediately killed, so
                     # this list will almost always be empty. We should ideally

@@ -1365,30 +1365,6 @@ cc_library(
     ],
 )
 
-cc_binary(
-    name = "object_manager_test",
-    testonly = 1,
-    srcs = ["src/ray/object_manager/test/object_manager_test.cc"],
-    copts = COPTS,
-    deps = [
-        ":object_manager",
-        "//src/ray/protobuf:common_cc_proto",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-cc_binary(
-    name = "object_manager_stress_test",
-    testonly = 1,
-    srcs = ["src/ray/object_manager/test/object_manager_stress_test.cc"],
-    copts = COPTS,
-    deps = [
-        ":object_manager",
-        "//src/ray/protobuf:common_cc_proto",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
 cc_library(
     name = "platform_shims",
     srcs = [] + select({

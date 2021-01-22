@@ -253,6 +253,11 @@ def mlflow_mixin(func: Callable):
             experiment. All logs from all trials in ``tune.run`` will be
             reported to this experiment. If this is not provided, you must
             provide a valid ``experiment_id``.
+        token (optional, str): A token to use for HTTP authentication when
+            logging to a remote tracking server. This is useful when you
+            want to log to a Databricks server, for example. This value will
+            be used to set the MLFLOW_TRACKING_TOKEN environment variable on
+            all the remote training processes.
 
     Example:
 
@@ -326,6 +331,11 @@ class MLflowTrainableMixin:
                              "key in your `config` dict containing at "
                              "least a `tracking_uri`")
         self._mlflow.set_tracking_uri(tracking_uri)
+
+        # Set the tracking token if one is passed in.
+        tracking_token = mlflow_config.pop("token", None)
+        if tracking_token is not None:
+            os.environ["MLFLOW_TRACKING_TOKEN"] = tracking_token
 
         # First see if experiment_id is passed in.
         experiment_id = mlflow_config.pop("experiment_id", None)
