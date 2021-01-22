@@ -56,6 +56,7 @@ class HorovodRayAccelerator(HorovodAccelerator):
             trainer.fit(ptl_model).
 
     """
+
     def __init__(self,
                  *args,
                  num_hosts=1,

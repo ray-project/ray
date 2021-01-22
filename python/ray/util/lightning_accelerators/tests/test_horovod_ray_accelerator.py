@@ -144,10 +144,7 @@ def test_predict(tmpdir, ray_start_2_cpus, seed, num_slots):
     dm = MNISTDataModule(
         data_dir=tmpdir, num_workers=1, batch_size=config["batch_size"])
     trainer = get_trainer(
-        tmpdir,
-        limit_train_batches=10,
-        max_epochs=1,
-        num_slots=num_slots)
+        tmpdir, limit_train_batches=10, max_epochs=1, num_slots=num_slots)
     predict_test(trainer, model, dm)
 
 
@@ -189,6 +186,9 @@ def test_predict_gpu(tmpdir, ray_start_2_gpus, seed, num_slots):
     dm = MNISTDataModule(
         data_dir=tmpdir, num_workers=1, batch_size=config["batch_size"])
     trainer = get_trainer(
-        tmpdir, limit_train_batches=10, max_epochs=1, num_slots=num_slots,
+        tmpdir,
+        limit_train_batches=10,
+        max_epochs=1,
+        num_slots=num_slots,
         use_gpu=True)
     predict_test(trainer, model, dm)
