@@ -417,7 +417,7 @@ opencv-python==4.5.1.48
     # via
     #   gluoncv
     #   gym
-optuna==2.3.0
+optuna==2.4.0
     # via -r requirements_tune.in
 packaging==20.8
     # via
