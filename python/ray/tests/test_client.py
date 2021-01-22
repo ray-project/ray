@@ -381,17 +381,17 @@ def test_startup_retry(ray_start_regular_shared):
     with pytest.raises(ConnectionError):
         ray_client.connect("localhost:50051", connection_retries=1)
 
-    def run_server():
-        time.sleep(2)
-        server = ray_client_server.serve("localhost:50051")
-        time.sleep(5)
-        server.stop(0)
+    def run_server(result):
+        time.sleep(3)
+        result["server"] = ray_client_server.serve("localhost:50051")
 
-    thread = threading.Thread(target=run_server)
+    result = {}
+    thread = threading.Thread(target=run_server, args=(result,))
     thread.start()
     ray_client.connect("localhost:50051")
     ray_client.disconnect()
     thread.join()
+    result["server"].stop(0)
 
 
 if __name__ == "__main__":
