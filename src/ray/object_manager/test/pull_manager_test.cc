@@ -24,7 +24,7 @@ class PullManagerTestWithCapacity {
                       [this](const ObjectID &object_id, const NodeID &node_id) {
                         num_send_pull_request_calls_++;
                       },
-                      [this](const ObjectID &, const NodeID &,
+                      [this](const ObjectID &, const std::string &, const NodeID &,
                              std::function<void(const ray::Status &)> callback) {
                         num_restore_spilled_object_calls_++;
                         restore_object_callback_ = callback;
@@ -149,7 +149,7 @@ TEST_F(PullManagerTest, TestRestoreSpilledObject) {
   client_ids.insert(node_that_object_spilled);
   fake_time_ += 10.;
   pull_manager_.OnLocationChange(obj1, client_ids, "remote_url/foo/bar",
-                                 node_that_object_spilled);
+                                 node_that_object_spilled, 0);
 
   // Now the pull requests are sent.
   ASSERT_EQ(num_send_pull_request_calls_, 1);
@@ -176,10 +176,8 @@ TEST_F(PullManagerTest, TestRestoreObjectFailed) {
   std::vector<rpc::ObjectReference> objects_to_locate;
   auto req_id = pull_manager_.Pull(refs, &objects_to_locate);
   ASSERT_EQ(ObjectRefsToIds(objects_to_locate), ObjectRefsToIds(refs));
-
   std::unordered_set<NodeID> client_ids;
-  pull_manager_.OnLocationChange(obj1, client_ids, "remote_url/foo/bar", NodeID::Nil(),
-                                 0);
+  pull_manager_.OnLocationChange(obj1, client_ids, "", NodeID::Nil(), 0);
   AssertNumActiveRequestsEquals(1);
 
   // client_ids is empty here, so there's nowhere to pull from.
@@ -189,7 +187,7 @@ TEST_F(PullManagerTest, TestRestoreObjectFailed) {
   // Object is now spilled to a remote node, but the client_ids are still empty.
   const NodeID remote_node_object_spilled = NodeID::FromRandom();
   pull_manager_.OnLocationChange(obj1, client_ids, "remote_url/foo/bar",
-                                 remote_node_object_spilled);
+                                 remote_node_object_spilled, 0);
 
   ASSERT_EQ(num_send_pull_request_calls_, 0);
   ASSERT_EQ(num_restore_spilled_object_calls_, 1);
@@ -199,8 +197,6 @@ TEST_F(PullManagerTest, TestRestoreObjectFailed) {
   // Now the restore request has failed, the remote object shouldn't have been properly
   // restored.
   fake_time_ += 10.0;
-  pull_manager_.OnLocationChange(obj1, client_ids, "remote_url/foo/bar",
-                                 remote_node_object_spilled);
   pull_manager_.OnLocationChange(obj1, client_ids, "remote_url/foo/bar",
                                  remote_node_object_spilled, 0);
 
@@ -213,12 +209,15 @@ TEST_F(PullManagerTest, TestRestoreObjectFailed) {
   // Since it is the second retry, the interval gets doubled.
   fake_time_ += 20.0;
   pull_manager_.OnLocationChange(obj1, client_ids, "remote_url/foo/bar",
-                                 remote_node_object_spilled);
+                                 remote_node_object_spilled, 0);
 
   // Now that we've successfully sent a pull request, we need to wait for the retry period
   // before sending another one.
   ASSERT_EQ(num_send_pull_request_calls_, 1);
   ASSERT_EQ(num_restore_spilled_object_calls_, 2);
+
+  auto objects_to_cancel = pull_manager_.CancelPull(req_id);
+  AssertNoLeaks();
 }
 
 TEST_F(PullManagerTest, TestLoadBalancingRestorationRequest) {
@@ -335,8 +334,6 @@ TEST_F(PullManagerTest, TestBasic) {
   client_ids.insert(NodeID::FromRandom());
   for (size_t i = 0; i < oids.size(); i++) {
     pull_manager_.OnLocationChange(oids[i], client_ids, "", NodeID::Nil(), 0);
-    ASSERT_EQ(num_send_pull_request_calls_, i + 1);
-    ASSERT_EQ(num_restore_spilled_object_calls_, 0);
   }
   ASSERT_EQ(num_send_pull_request_calls_, oids.size());
   ASSERT_EQ(num_restore_spilled_object_calls_, 0);
@@ -383,8 +380,6 @@ TEST_F(PullManagerTest, TestDeduplicateBundles) {
   client_ids.insert(NodeID::FromRandom());
   for (size_t i = 0; i < oids.size(); i++) {
     pull_manager_.OnLocationChange(oids[i], client_ids, "", NodeID::Nil(), 0);
-    ASSERT_EQ(num_send_pull_request_calls_, i + 1);
-    ASSERT_EQ(num_restore_spilled_object_calls_, 0);
   }
   ASSERT_EQ(num_send_pull_request_calls_, oids.size());
   ASSERT_EQ(num_restore_spilled_object_calls_, 0);
@@ -398,7 +393,7 @@ TEST_F(PullManagerTest, TestDeduplicateBundles) {
   fake_time_ += 10;
   num_send_pull_request_calls_ = 0;
   for (size_t i = 0; i < oids.size(); i++) {
-    pull_manager_.OnLocationChange(oids[i], client_ids, "", NodeID::Nil());
+    pull_manager_.OnLocationChange(oids[i], client_ids, "", NodeID::Nil(), 0);
     pull_manager_.OnLocationChange(oids[i], client_ids, "", NodeID::Nil(), 0);
     ASSERT_EQ(num_send_pull_request_calls_, i + 1);
     ASSERT_EQ(num_restore_spilled_object_calls_, 0);
@@ -435,7 +430,7 @@ TEST_F(PullManagerWithAdmissionControlTest, TestBasic) {
   std::unordered_set<NodeID> client_ids;
   client_ids.insert(NodeID::FromRandom());
   for (size_t i = 0; i < oids.size(); i++) {
-    pull_manager_.OnLocationChange(oids[i], client_ids, "", object_size);
+    pull_manager_.OnLocationChange(oids[i], client_ids, "", NodeID::Nil(), object_size);
   }
   ASSERT_EQ(num_send_pull_request_calls_, oids.size());
   ASSERT_EQ(num_restore_spilled_object_calls_, 0);
@@ -451,7 +446,7 @@ TEST_F(PullManagerWithAdmissionControlTest, TestBasic) {
   fake_time_ += 10;
   auto prev_pull_requests = num_send_pull_request_calls_;
   for (size_t i = 0; i < oids.size(); i++) {
-    pull_manager_.OnLocationChange(oids[i], client_ids, "", object_size);
+    pull_manager_.OnLocationChange(oids[i], client_ids, "", NodeID::Nil(), object_size);
     ASSERT_EQ(num_send_pull_request_calls_, prev_pull_requests);
     ASSERT_EQ(num_restore_spilled_object_calls_, 0);
   }
@@ -494,7 +489,7 @@ TEST_F(PullManagerWithAdmissionControlTest, TestQueue) {
   client_ids.insert(NodeID::FromRandom());
   for (auto &oids : bundles) {
     for (size_t i = 0; i < oids.size(); i++) {
-      pull_manager_.OnLocationChange(oids[i], client_ids, "", object_size);
+      pull_manager_.OnLocationChange(oids[i], client_ids, "", NodeID::Nil(), object_size);
     }
   }
 
@@ -545,7 +540,7 @@ TEST_F(PullManagerWithAdmissionControlTest, TestCancel) {
       req_ids.push_back(req_id);
     }
     for (size_t i = 0; i < object_sizes.size(); i++) {
-      pull_manager_.OnLocationChange(oids[i], {}, "", object_sizes[i]);
+      pull_manager_.OnLocationChange(oids[i], {}, "", NodeID::Nil(), object_sizes[i]);
     }
     AssertNumActiveRequestsEquals(num_active_requests_expected_before);
     pull_manager_.CancelPull(req_ids[cancel_idx]);
@@ -553,14 +548,14 @@ TEST_F(PullManagerWithAdmissionControlTest, TestCancel) {
 
     // Request is really canceled.
     pull_manager_.OnLocationChange(oids[cancel_idx], {NodeID::FromRandom()}, "",
-                                   object_sizes[cancel_idx]);
+                                   NodeID::Nil(), object_sizes[cancel_idx]);
     ASSERT_EQ(num_send_pull_request_calls_, 0);
 
     // The expected number of requests at the head of the queue are pulled.
     int num_active = 0;
     for (size_t i = 0; i < refs.size() && num_active < num_active_requests_expected_after;
          i++) {
-      pull_manager_.OnLocationChange(oids[i], {NodeID::FromRandom()}, "",
+      pull_manager_.OnLocationChange(oids[i], {NodeID::FromRandom()}, "", NodeID::Nil(),
                                      object_sizes[i]);
       if (i != cancel_idx) {
         num_active++;

@@ -264,12 +264,13 @@ class LocalObjectManagerTest : public ::testing::Test {
                 /*automatic_object_delete_enabled=*/true,
                 /*max_io_workers=*/2,
                 /*min_spilling_size=*/0,
+                /*is_external_storage_type_fs=*/true,
+                /*on_objects_freed=*/
                 [&](const std::vector<ObjectID> &object_ids) {
                   for (const auto &object_id : object_ids) {
                     freed.insert(object_id);
                   }
                 },
-                /*is_external_storage_type_fs=*/true,
                 /*is_plasma_object_spillable=*/
                 [&](const ray::ObjectID &object_id) {
                   return unevictable_objects_.count(object_id) == 0;
@@ -372,11 +373,12 @@ TEST_F(LocalObjectManagerTest, TestRestoreSpilledObject) {
 
   // Then try restoring objects from local.
   ObjectID object_id = object_ids[0];
+  const auto url = urls[0];
   int num_times_fired = 0;
   EXPECT_CALL(worker_pool, PushRestoreWorker(_));
   // Subsequent calls should be deduped, so that only one callback should be fired.
   for (int i = 0; i < 10; i++) {
-    manager.AsyncRestoreSpilledObject(object_id, manager_node_id_,
+    manager.AsyncRestoreSpilledObject(object_id, url, NodeID::Nil(),
                                       [&](const Status &status) {
                                         ASSERT_TRUE(status.ok());
                                         num_times_fired++;
@@ -396,8 +398,9 @@ TEST_F(LocalObjectManagerTest, TestRestoreSpilledObject) {
   // If the object wasn't spilled on the current node, it should request restoration to
   // remote nodes.
   ObjectID remote_object_id = ObjectID::FromRandom();
+  const auto remote_object_url = BuildURL("remote_url");
   NodeID remote_node_id = NodeID::FromRandom();
-  manager.AsyncRestoreSpilledObject(remote_object_id, remote_node_id,
+  manager.AsyncRestoreSpilledObject(remote_object_id, remote_object_url, remote_node_id,
                                     [&](const Status &status) {
                                       ASSERT_TRUE(status.ok());
                                       num_times_fired++;

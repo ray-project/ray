@@ -527,11 +527,11 @@ void NodeManager::HandleRestoreSpilledObject(
   const auto object_id = ObjectID::FromBinary(request.object_id());
   const auto spilled_node_id = NodeID::FromBinary(request.spilled_node_id());
   const auto object_url = request.object_url();
-  RAY_LOG(DEBUG) << "Restore spilled object request received. Object id: " << object_id
-                 << " spilled_node_id: " << spilled_node_id
-                 << " object url: " << object_url;
   RAY_CHECK(spilled_node_id == self_node_id_);
-  local_object_manager_.AsyncRestoreSpilledObject(object_id, object_url, spilled_node_id,
+  RAY_LOG(DEBUG) << "Restore spilled object request received. Object id: " << object_id
+                 << " spilled_node_id: " << self_node_id_
+                 << " object url: " << object_url;
+  local_object_manager_.AsyncRestoreSpilledObject(object_id, object_url, NodeID::Nil(),
                                                   nullptr);
   // Just reply right away. The caller will keep hitting this RPC endpoint until
   // restoration succeeds, so we can safely reply here without waiting for the

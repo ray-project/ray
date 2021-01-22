@@ -309,7 +309,7 @@ void LocalObjectManager::AsyncRestoreSpilledObject(
     return;
   }
 
-  if (!node_id.IsNil() && spilled_objects_url_.count(object_id) == 0) {
+  if (!node_id.IsNil()) {
     // If we know where this object was spilled, and the current node is not that one,
     // send a RPC to a remote node that spilled the object to restore it.
     RAY_LOG(DEBUG) << "Send a object restoration request of id: " << object_id
@@ -327,6 +327,7 @@ void LocalObjectManager::AsyncRestoreSpilledObject(
   // Restore the object.
   RAY_LOG(DEBUG) << "Restoring spilled object " << object_id << " from URL "
                  << object_url;
+  RAY_CHECK(spilled_objects_url_.count(object_id) > 0);
 
   RAY_CHECK(objects_pending_restore_.emplace(object_id).second)
       << "Object dedupe wasn't done properly. Please report if you see this issue.";
