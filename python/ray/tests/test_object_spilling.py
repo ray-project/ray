@@ -88,7 +88,8 @@ def test_url_generation_and_parse():
 
 @pytest.mark.skipif(
     platform.system() == "Windows", reason="Failing on Windows.")
-def test_spilling_not_done_for_pinned_object(object_spilling_config, shutdown_only):
+def test_spilling_not_done_for_pinned_object(object_spilling_config,
+                                             shutdown_only):
     # Limit our object store to 75 MiB of memory.
     object_spilling_config, temp_folder = object_spilling_config
     ray.init(
@@ -117,10 +118,8 @@ def test_spilling_not_done_for_pinned_object(object_spilling_config, shutdown_on
 
 @pytest.mark.skipif(
     platform.system() == "Windows", reason="Failing on Windows.")
-def test_spill_remote_object(
-        ray_start_cluster,
-        object_spilling_config):
-    
+def test_spill_remote_object(ray_start_cluster, object_spilling_config):
+
     cluster = ray_start_cluster
     object_spilling_config, _ = object_spilling_config
     cluster.add_node(
@@ -338,7 +337,8 @@ def test_delete_objects(object_spilling_config, shutdown_only):
 
 @pytest.mark.skipif(
     platform.system() == "Windows", reason="Failing on Windows.")
-def test_delete_objects_delete_while_creating(object_spilling_config, shutdown_only):
+def test_delete_objects_delete_while_creating(object_spilling_config,
+                                              shutdown_only):
     # Limit our object store to 75 MiB of memory.
     object_spilling_config, temp_folder = object_spilling_config
     ray.init(
@@ -382,7 +382,8 @@ def test_delete_objects_delete_while_creating(object_spilling_config, shutdown_o
 
 @pytest.mark.skipif(
     platform.system() == "Windows", reason="Failing on Windows.")
-def test_delete_objects_on_worker_failure(object_spilling_config, shutdown_only):
+def test_delete_objects_on_worker_failure(object_spilling_config,
+                                          shutdown_only):
     # Limit our object store to 75 MiB of memory.
     object_spilling_config, temp_folder = object_spilling_config
     ray.init(
