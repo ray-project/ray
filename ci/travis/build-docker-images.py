@@ -92,9 +92,6 @@ def _build_cpu_gpu_images(image_name, no_cache=True) -> List[str]:
     built_images = []
     for gpu in ["-cpu", "-gpu"]:
         for py_name, py_version in PY_MATRIX.items():
-            if image_name == "ray-ml" and "8" in py_name:
-                print("Skipping Ray-ml for Python 3.8")
-                continue
             build_args = {}
             build_args["PYTHON_VERSION"] = py_version
             # I.e. "-py36"[-1] == 6
@@ -109,7 +106,7 @@ def _build_cpu_gpu_images(image_name, no_cache=True) -> List[str]:
                 build_args["GPU"] = f"{py_name}{gpu}"
 
             if image_name in ["ray", "ray-deps"]:
-                build_args["WHEEL_PATH"] = f".whl/{_get_wheel_name(build_args["PYTHON_MINOR_VERSION"])}"
+                build_args["WHEEL_PATH"] = f".whl/{_get_wheel_name(build_args['PYTHON_MINOR_VERSION'])}"
 
 
 
@@ -261,31 +258,50 @@ def push_and_tag_images(push_base_images: bool):
         image_list.extend(["base-deps", "ray-deps"])
 
     for image in image_list:
-        full_image = f"rayproject/{image}"
+        for py_version in PY_MATRIX.keys():
+            full_image = f"rayproject/{image}"
 
-        # Generate <IMAGE_NAME>:nightly from nightly-cpu
-        DOCKER_CLIENT.api.tag(
-            image=f"{full_image}:nightly-cpu",
-            repository=full_image,
-            tag="nightly")
-
-        for arch_tag in ["-cpu", "-gpu", ""]:
-            full_arch_tag = f"nightly{arch_tag}"
-            # Do not tag release builds because they are no longer up to date
-            # after the branch cut.
-            if not _release_build():
-                # Tag and push rayproject/<image>:nightly<arch_tag>
-                docker_push(full_image, full_arch_tag)
-
-            # Ex: specific_tag == "1.0.1" or "<sha>" or "<date>"
-            specific_tag = get_new_tag(
-                full_arch_tag, date_tag if "-deps" in image else sha_tag)
-            # Tag and push rayproject/<image>:<sha/date><arch_tag>
+            # Tag "nightly-py3x" from "nightly-py3x-cpu"
             DOCKER_CLIENT.api.tag(
-                image=f"{full_image}:{full_arch_tag}",
+                image=f"{full_image}:nightly{py_version}-cpu",
                 repository=full_image,
-                tag=specific_tag)
-            docker_push(full_image, specific_tag)
+                tag=f"nightly{py_version}")
+
+            for arch_tag in ["-cpu", "-gpu", ""]:
+                full_arch_tag = f"nightly{py_version}{arch_tag}"
+                # Do not tag release builds because they are no longer up to date
+                # after the branch cut.
+                if not _release_build():
+                    # Tag and push rayproject/<image>:nightly<arch_tag>
+                    docker_push(full_image, full_arch_tag)
+
+                # Ex: specific_tag == "1.0.1" or "<sha>" or "<date>"
+                specific_tag = get_new_tag(
+                    full_arch_tag, date_tag if "-deps" in image else sha_tag)
+
+                # Tag and push rayproject/<image>:<sha/date><py_tag><arch_tag>
+                DOCKER_CLIENT.api.tag(
+                    image=f"{full_image}:{full_arch_tag}",
+                    repository=full_image,
+                    tag=specific_tag)
+                docker_push(full_image, specific_tag)
+            
+                if "-py37" in py_version:
+                    non_python_specific_tag = specific_tag.replace("-py37", "")
+                    DOCKER_CLIENT.api.tag(
+                        image=f"{full_image}:{full_arch_tag}",
+                        repository=full_image,
+                        tag=non_python_specific_tag
+                    )
+                    docker_push(full_image, non_python_specific_tag)
+
+                    non_python_nightly_tag = full_arch_tag.replace("-py37", "")
+                    DOCKER_CLIENT.api.tag(
+                        image=f"{full_image}:{full_arch_tag}",
+                        repository=full_image,
+                        tag=non_python_nightly_tag
+                    )
+                    docker_push(full_image, non_python_nightly_tag)
 
 
 # Push infra here:
