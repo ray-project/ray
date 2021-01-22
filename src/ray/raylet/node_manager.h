@@ -761,6 +761,16 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   void DisconnectClient(
       const std::shared_ptr<ClientConnection> &client,
       rpc::WorkerExitType disconnect_type = rpc::WorkerExitType::SYSTEM_ERROR_EXIT);
+
+  void FillNormalTaskResourceUsage(
+      const std::shared_ptr<rpc::ResourcesData> &resources_data);
+
+  std::shared_ptr<std::unordered_map<std::string, double>> GetResourcesUsedByNormalTask()
+      const;
+
+  std::shared_ptr<std::unordered_map<std::string, double>> GetNormalTaskResourcesChanged(
+      std::shared_ptr<std::unordered_map<std::string, double>> resources) const;
+
   /// The helper to dump the debug state of the cluster task manater.
   std::string DebugStr() const override;
 
@@ -925,6 +935,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// Managers all bundle-related operations.
   std::shared_ptr<PlacementGroupResourceManager> placement_group_resource_manager_;
+
+  /// Cached resources, used to compare with newest one in light heartbeat mode.
+  std::shared_ptr<std::unordered_map<std::string, double>>
+      last_report_normal_task_resources_;
 };
 
 }  // namespace raylet

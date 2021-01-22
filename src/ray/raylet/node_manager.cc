@@ -15,6 +15,7 @@
 #include "ray/raylet/node_manager.h"
 
 #include <cctype>
+#include <cmath>
 #include <fstream>
 #include <memory>
 
@@ -458,6 +459,7 @@ void NodeManager::ReportResourceUsage() {
       gcs_client_->NodeResources().GetLastResourceUsage());
   cluster_resource_scheduler_->FillResourceUsage(resources_data);
   cluster_task_manager_->FillResourceUsage(resources_data);
+  FillNormalTaskResourceUsage(resources_data);
 
   // Set the global gc bit on the outgoing heartbeat message.
   if (should_global_gc_) {
@@ -477,7 +479,8 @@ void NodeManager::ReportResourceUsage() {
 
   if (resources_data->resources_total_size() > 0 ||
       resources_data->resources_available_changed() ||
-      resources_data->resource_load_changed() || resources_data->should_global_gc()) {
+      resources_data->resource_load_changed() || resources_data->should_global_gc() ||
+      resources_data->resources_normal_task_changed()) {
     RAY_CHECK_OK(gcs_client_->NodeResources().AsyncReportResourceUsage(resources_data,
                                                                        /*done*/ nullptr));
   }
@@ -2764,6 +2767,82 @@ void NodeManager::SendSpilledObjectRestorationRequestToRemoteNode(
                            << status.ToString();
         }
       });
+}
+
+void NodeManager::FillNormalTaskResourceUsage(
+    const std::shared_ptr<rpc::ResourcesData> &resources_data) {
+  auto resources = GetResourcesUsedByNormalTask();
+  if (resources) {
+    auto resources_changed = GetNormalTaskResourcesChanged(resources);
+    if (!resources_changed->empty()) {
+      last_report_normal_task_resources_ = resources;
+
+      resources_data->set_resources_normal_task_changed(true);
+      for (const auto &iter : *resources_changed) {
+        (*resources_data->mutable_resources_normal_task())[iter.first] = iter.second;
+      }
+    }
+  }
+}
+
+std::shared_ptr<std::unordered_map<std::string, double>>
+NodeManager::GetResourcesUsedByNormalTask() const {
+  auto resources = std::make_shared<std::unordered_map<std::string, double>>();
+  if (!RayConfig::instance().new_scheduler_enabled()) {
+    return resources;
+  }
+
+  auto cluster_resource_scheduler =
+      std::dynamic_pointer_cast<ClusterResourceScheduler>(cluster_resource_scheduler_);
+  for (const auto &iter : leased_workers_) {
+    const auto &leased_worker = iter.second;
+    if (leased_worker->GetActorId().IsNil()) {
+      const auto &allocated_instances = leased_worker->GetAllocatedInstances();
+      const auto &predefined_resources = allocated_instances->predefined_resources;
+      for (size_t res_idx = 0; res_idx < predefined_resources.size(); res_idx++) {
+        for (size_t inst_idx = 0; inst_idx < predefined_resources[res_idx].size();
+             inst_idx++) {
+          if (predefined_resources[res_idx][inst_idx] > 0.) {
+            const auto &resource_name =
+                cluster_resource_scheduler->GetResourceNameFromIndex(res_idx);
+            (*resources)[resource_name] +=
+                predefined_resources[res_idx][inst_idx].Double();
+          }
+        }
+      }
+      auto custom_resources = allocated_instances->custom_resources;
+      for (auto it = custom_resources.begin(); it != custom_resources.end(); ++it) {
+        for (size_t inst_idx = 0; inst_idx < it->second.size(); inst_idx++) {
+          if (it->second[inst_idx] > 0.) {
+            const auto &resource_name =
+                cluster_resource_scheduler->GetResourceNameFromIndex(it->first);
+            (*resources)[resource_name] += it->second[inst_idx].Double();
+          }
+        }
+      }
+    }
+  }
+  return resources;
+}
+
+std::shared_ptr<std::unordered_map<std::string, double>>
+NodeManager::GetNormalTaskResourcesChanged(
+    std::shared_ptr<std::unordered_map<std::string, double>> resources) const {
+  RAY_CHECK(resources);
+  if (nullptr == last_report_normal_task_resources_) {
+    return resources;
+  }
+
+  auto resources_changed = std::make_shared<std::unordered_map<std::string, double>>();
+  for (const auto &resource : *resources) {
+    const auto &iter = last_report_normal_task_resources_->find(resource.first);
+    if (iter == last_report_normal_task_resources_->end()) {
+      (*resources_changed)[resource.first] = resource.second;
+    } else if (fabs(resource.second - iter->second) > 1e-6) {
+      (*resources_changed)[resource.first] = resource.second - iter->second;
+    }
+  }
+  return resources_changed;
 }
 
 }  // namespace raylet
