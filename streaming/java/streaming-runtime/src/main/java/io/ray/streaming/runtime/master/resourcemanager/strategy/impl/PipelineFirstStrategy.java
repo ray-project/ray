@@ -42,8 +42,8 @@ public class PipelineFirstStrategy implements ResourceAssignStrategy {
    * Assign resource to each execution vertex in the given execution graph.
    *
    * @param containers registered containers
-   * @param executionGraph execution graph Returns allocating map, key is container ID, value is
-   *     list of vertextId, and contains vertices
+   * @param executionGraph execution graph
+   * @return allocating map, key is container ID, value is list of vertextId, and contains vertices
    */
   @Override
   public ResourceAssignmentView assignResource(
@@ -133,7 +133,8 @@ public class PipelineFirstStrategy implements ResourceAssignStrategy {
    * Find a container which matches required resource
    *
    * @param requiredResource required resource
-   * @param containers registered containers Returns container that matches the required resource
+   * @param containers registered containers
+   * @return container that matches the required resource
    */
   private Container findMatchedContainer(
       Map<String, Double> requiredResource, List<Container> containers) {
@@ -159,7 +160,8 @@ public class PipelineFirstStrategy implements ResourceAssignStrategy {
    * Check if current container has enough resource
    *
    * @param requiredResource required resource
-   * @param container container Returns true if matches, false else
+   * @param container container
+   * @return true if matches, false else
    */
   private boolean hasEnoughResource(Map<String, Double> requiredResource, Container container) {
     LOG.info("Check resource for index: {}, container: {}", currentContainerIndex, container);
@@ -200,7 +202,8 @@ public class PipelineFirstStrategy implements ResourceAssignStrategy {
   /**
    * Forward to next container
    *
-   * @param containers registered container list Returns next container in the list
+   * @param containers registered container list
+   * @return next container in the list
    */
   private Container forwardToNextContainer(List<Container> containers) {
     this.currentContainerIndex = (this.currentContainerIndex + 1) % containers.size();
@@ -210,7 +213,8 @@ public class PipelineFirstStrategy implements ResourceAssignStrategy {
   /**
    * Get current container
    *
-   * @param containers registered container Returns current container to allocate actor
+   * @param containers registered container
+   * @return current container to allocate actor
    */
   private Container getCurrentContainer(List<Container> containers) {
     return containers.get(currentContainerIndex);

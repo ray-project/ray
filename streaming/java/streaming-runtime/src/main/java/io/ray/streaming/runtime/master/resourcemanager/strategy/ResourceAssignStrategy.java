@@ -13,7 +13,8 @@ public interface ResourceAssignStrategy {
    * Assign {@link Container} for {@link ExecutionVertex}
    *
    * @param containers registered container
-   * @param executionGraph execution graph Returns allocating view
+   * @param executionGraph execution graph
+   * @return allocating view
    */
   ResourceAssignmentView assignResource(List<Container> containers, ExecutionGraph executionGraph);
 

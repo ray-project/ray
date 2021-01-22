@@ -196,6 +196,8 @@ class EvictionPolicy {
   /// Returns debugging information for this eviction policy.
   virtual std::string DebugString() const;
 
+  int64_t GetPinnedMemoryBytes() const { return pinned_memory_bytes_; }
+
  protected:
   /// Returns the size of the object
   int64_t GetObjectSize(const ObjectID &object_id) const;

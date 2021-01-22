@@ -85,13 +85,6 @@ def validate_config(config: Dict[str, Any]) -> None:
         if config["head_node_type"] not in config["available_node_types"]:
             raise ValueError(
                 "`head_node_type` must be one of `available_node_types`.")
-        if "worker_default_node_type" not in config:
-            raise ValueError("You must specify `worker_default_node_type` if "
-                             "`available_node_types is set.")
-        if (config["worker_default_node_type"] not in config[
-                "available_node_types"]):
-            raise ValueError("`worker_default_node_type` must be one of "
-                             "`available_node_types`.")
 
 
 def prepare_config(config):
@@ -123,7 +116,6 @@ def rewrite_legacy_yaml_to_available_node_types(
             },
         }
         config["head_node_type"] = NODE_TYPE_LEGACY_HEAD
-        config["worker_default_node_type"] = NODE_TYPE_LEGACY_WORKER
 
     return config
 
@@ -362,8 +354,8 @@ def format_info_string(lm_summary, autoscaler_summary, time=None):
     for node_type, count in autoscaler_summary.pending_launches.items():
         line = f" {node_type}, {count} launching"
         pending_lines.append(line)
-    for ip, node_type in autoscaler_summary.pending_nodes:
-        line = f" {ip}: {node_type}, setting up"
+    for ip, node_type, status in autoscaler_summary.pending_nodes:
+        line = f" {ip}: {node_type}, {status.lower()}"
         pending_lines.append(line)
     if pending_lines:
         pending_report = "\n".join(pending_lines)

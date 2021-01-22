@@ -323,7 +323,7 @@ class ServiceBasedObjectInfoAccessor : public ObjectInfoAccessor {
   Status AsyncGetAll(const MultiItemCallback<rpc::ObjectLocationInfo> &callback) override;
 
   Status AsyncAddLocation(const ObjectID &object_id, const NodeID &node_id,
-                          const StatusCallback &callback) override;
+                          size_t object_size, const StatusCallback &callback) override;
 
   Status AsyncAddSpilledUrl(const ObjectID &object_id, const std::string &spilled_url,
                             const StatusCallback &callback) override;

@@ -65,6 +65,7 @@ class GcsObjectManager : public rpc::ObjectInfoHandler {
   struct LocationSet {
     absl::flat_hash_set<NodeID> locations;
     std::string spilled_url = "";
+    size_t object_size = 0;
   };
 
   /// Add a location of objects.
