@@ -76,6 +76,7 @@ def client_mode_convert_function(method):
 
     return wrapper
 
+
 def client_mode_convert_actor(method):
     """Decorator to convert an ActorClass call into a client call
 

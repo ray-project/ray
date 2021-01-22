@@ -390,31 +390,35 @@ class Worker:
         key = uuid.uuid4().hex
         md = actor.__ray_metadata__
         cls = md.modified_class
-        self._converted[key] = ClientActorClass(cls, options={
-            "max_restarts": md.max_restarts,
-            "max_task_retries": md.max_task_retries,
-            "num_cpus": md.num_cpus,
-            "num_gpus": md.num_gpus,
-            "memory": md.memory,
-            "object_store_memory": md.object_store_memory,
-            "resources": md.resources,
-            "accelerator_type": md.accelerator_type,
-        })
+        self._converted[key] = ClientActorClass(
+            cls,
+            options={
+                "max_restarts": md.max_restarts,
+                "max_task_retries": md.max_task_retries,
+                "num_cpus": md.num_cpus,
+                "num_gpus": md.num_gpus,
+                "memory": md.memory,
+                "object_store_memory": md.object_store_memory,
+                "resources": md.resources,
+                "accelerator_type": md.accelerator_type,
+            })
 
     def _convert_function(self, func: "RemoteFunction") -> str:
         """Register a ClientRemoteFunc for the ActorClass and return a UUID"""
         key = uuid.uuid4().hex
         f = func._function
-        self._converted[key] = ClientRemoteFunc(f, options={
-            "num_cpus": func._num_cpus,
-            "num_gpus": func._num_gpus,
-            "max_calls": func._max_calls,
-            "max_retries": func._max_retries,
-            "resources": func._resources,
-            "accelerator_type": func._accelerator_type,
-            "num_returns": func._num_returns,
-            "memory": func._memory
-        })
+        self._converted[key] = ClientRemoteFunc(
+            f,
+            options={
+                "num_cpus": func._num_cpus,
+                "num_gpus": func._num_gpus,
+                "max_calls": func._max_calls,
+                "max_retries": func._max_retries,
+                "resources": func._resources,
+                "accelerator_type": func._accelerator_type,
+                "num_returns": func._num_returns,
+                "memory": func._memory
+            })
 
     def _get_converted(self, key: str) -> "ClientStub":
         """Given a UUID, return the converted object"""
