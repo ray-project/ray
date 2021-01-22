@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import patch
 
-from ray.rllib.env.unity3d_env import Unity3DEnv
+from ray.rllib.env.wrappers.unity3d_env import Unity3DEnv
 
 
 @patch("mlagents_envs.environment.UnityEnvironment")
