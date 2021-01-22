@@ -643,7 +643,6 @@ cdef c_vector[c_string] spill_objects_handler(
                 "spill_objects_error",
                 traceback.format_exc() + exception_str,
                 job_id=None)
-            return_urls.clear()
         return return_urls
 
 

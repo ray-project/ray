@@ -17,6 +17,7 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "ray/common/constants.h"
+#include "ray/common/test_util.h"
 #include "ray/raylet/node_manager.h"
 #include "ray/util/process.h"
 
@@ -195,11 +196,23 @@ class WorkerPoolTest : public ::testing::Test {
     ASSERT_EQ(worker_pool_->NumWorkerProcessesStarting(), expected_worker_process_count);
   }
 
+  bool WaitForConditionWithIoService(std::function<bool()> callback) {
+    // Wait for the condition while it keeps running the io service's callback
+    // synchronously.
+    return WaitForCondition(
+        [this, callback]() {
+          io_service_.run_one();
+          return callback();
+        },
+        timeout_ms_.count());
+  }
+
  protected:
   boost::asio::io_service io_service_;
   std::unique_ptr<WorkerPoolMock> worker_pool_;
   int64_t error_message_type_;
   rpc::ClientCallManager client_call_manager_;
+  const std::chrono::milliseconds timeout_ms_{2000};
 
  private:
   void HandleNewClient(ClientConnection &){};
@@ -534,8 +547,11 @@ TEST_F(WorkerPoolTest, HandleIOWorkersPushPop) {
   worker_pool_->PopSpillWorker(spill_worker_callback);
   worker_pool_->PopSpillWorker(spill_worker_callback);
   worker_pool_->PopRestoreWorker(restore_worker_callback);
-  ASSERT_EQ(spill_pushed_worker.size(), 0);
-  ASSERT_EQ(restore_pushed_worker.size(), 0);
+  // This is a hack to invoke all callbacks synchronously.
+  ASSERT_TRUE(WaitForConditionWithIoService(
+      [&spill_pushed_worker]() { return spill_pushed_worker.size() == 0; }));
+  ASSERT_TRUE(WaitForConditionWithIoService(
+      [&restore_pushed_worker]() { return restore_pushed_worker.size() == 0; }));
 
   // Create some workers.
   std::unordered_set<std::shared_ptr<WorkerInterface>> spill_workers;
@@ -546,9 +562,11 @@ TEST_F(WorkerPoolTest, HandleIOWorkersPushPop) {
   for (const auto &worker : spill_workers) {
     worker_pool_->PushSpillWorker(worker);
   }
-  ASSERT_EQ(spill_pushed_worker.size(), 2);
+  ASSERT_TRUE(WaitForConditionWithIoService(
+      [&spill_pushed_worker]() { return spill_pushed_worker.size() == 2; }));
   // Restore workers haven't pushed yet.
-  ASSERT_EQ(restore_pushed_worker.size(), 0);
+  ASSERT_TRUE(WaitForConditionWithIoService(
+      [&restore_pushed_worker]() { return restore_pushed_worker.size() == 0; }));
 
   // Create a new idle worker.
   spill_workers.insert(CreateSpillWorker(Process::CreateNewDummy()));
@@ -560,7 +578,8 @@ TEST_F(WorkerPoolTest, HandleIOWorkersPushPop) {
   for (size_t i = 0; i < spill_workers.size(); i++) {
     worker_pool_->PopSpillWorker(spill_worker_callback);
   }
-  ASSERT_EQ(spill_pushed_worker.size(), 3);
+  ASSERT_TRUE(WaitForConditionWithIoService(
+      [&spill_pushed_worker]() { return spill_pushed_worker.size() == 3; }));
 
   // At the same time push an idle worker to the restore worker pool.
   std::unordered_set<std::shared_ptr<WorkerInterface>> restore_workers;
@@ -568,7 +587,8 @@ TEST_F(WorkerPoolTest, HandleIOWorkersPushPop) {
   for (const auto &worker : restore_workers) {
     worker_pool_->PushRestoreWorker(worker);
   }
-  ASSERT_EQ(restore_pushed_worker.size(), 1);
+  ASSERT_TRUE(WaitForConditionWithIoService(
+      [&restore_pushed_worker]() { return restore_pushed_worker.size() == 1; }));
 }
 
 TEST_F(WorkerPoolTest, MaxIOWorkerSimpleTest) {
@@ -684,6 +704,8 @@ TEST_F(WorkerPoolTest, MaxSpillRestoreWorkersIntegrationTest) {
             started_spill_processes[started_spill_processes.size() - 1]);
         worker_pool_->OnWorkerStarted(spill_worker);
         worker_pool_->PushSpillWorker(spill_worker);
+        ASSERT_EQ(worker_pool_->GetRegisteredWorker(spill_worker->Connection()),
+                  spill_worker);
         started_spill_processes.pop_back();
       }
       // Push restore worker if there's a process.

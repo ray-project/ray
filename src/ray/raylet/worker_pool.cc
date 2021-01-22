@@ -517,12 +517,27 @@ Status WorkerPool::RegisterDriver(const std::shared_ptr<WorkerInterface> &driver
 
 std::shared_ptr<WorkerInterface> WorkerPool::GetRegisteredWorker(
     const std::shared_ptr<ClientConnection> &connection) const {
+  // Get workers if exists.
   for (const auto &entry : states_by_lang_) {
     auto worker = GetWorker(entry.second.registered_workers, connection);
     if (worker != nullptr) {
       return worker;
     }
+
+    // Get IO workers if exists.
+    auto &restore_worker_state = entry.second.restore_io_worker_state;
+    worker = GetWorker(restore_worker_state.registered_io_workers, connection);
+    if (worker != nullptr) {
+      return worker;
+    }
+    auto &spill_worker_state = entry.second.spill_io_worker_state;
+    worker = GetWorker(spill_worker_state.registered_io_workers, connection);
+    if (worker != nullptr) {
+      return worker;
+    }
   }
+
+  // If no worker found, return a nullptr.
   return nullptr;
 }
 
@@ -1053,7 +1068,7 @@ std::string WorkerPool::DebugString() const {
 }
 
 WorkerPool::IOWorkerState &WorkerPool::GetIOWorkerStateFromWorkerType(
-    const rpc::WorkerType &worker_type, WorkerPool::State &state) const {
+    const rpc::WorkerType worker_type, WorkerPool::State &state) {
   RAY_CHECK(worker_type != rpc::WorkerType::WORKER)
       << worker_type << " type cannot be used to retrieve io_worker_state";
   if (worker_type == rpc::WorkerType::SPILL_WORKER) {

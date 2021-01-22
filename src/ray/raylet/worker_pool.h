@@ -444,8 +444,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   ///
   /// \param worker_type IO Worker Type.
   /// \param state Worker pool internal state.
-  IOWorkerState &GetIOWorkerStateFromWorkerType(const rpc::WorkerType &worker_type,
-                                                State &state) const;
+  IOWorkerState &GetIOWorkerStateFromWorkerType(const rpc::WorkerType worker_type,
+                                                State &state);
 
   /// Push IOWorker (e.g., spill worker and restore worker) based on the given
   /// worker_type.
