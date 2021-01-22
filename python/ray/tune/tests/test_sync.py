@@ -161,7 +161,7 @@ class TestSyncFunctionality(unittest.TestCase):
         tmpdir = tempfile.mkdtemp()
 
         def trainable(config):
-            for i in range(10):
+            for i in range(9):
                 time.sleep(1)
                 tune.report(score=i)
 
@@ -187,7 +187,7 @@ class TestSyncFunctionality(unittest.TestCase):
             sync_config=sync_config,
         ).trials
 
-        self.assertEqual(mock.call_count, 12)
+        self.assertEqual(mock.call_count, 6)
         shutil.rmtree(tmpdir)
 
     def testClusterSyncFunction(self):

@@ -281,8 +281,16 @@ class TrialRunner:
             # then directly schedule a new one.
             self._checkpoint_thread.join()
 
-        if self._checkpoint_finished.is_set():
-            print(f"Checkpoint detected {time.time()}")
+        if self._checkpoint_thread and \
+           not self._checkpoint_thread.is_alive() and \
+           not self._checkpoint_finished.is_set():
+
+            raise RuntimeError(
+                "Checkpoint thread finished but the stop event was not "
+                "set. This indicates that the checkpointing operation "
+                "failed. Please check the logs to find out what went wrong.")
+
+        elif self._checkpoint_finished.is_set():
             self._checkpoint_thread.join()
             self._checkpoint_thread = None
             self._checkpoint_finished.clear()
@@ -291,7 +299,6 @@ class TrialRunner:
 
             # Only update checkpoint time after all operations finished
             self._last_checkpoint_time = time.time()
-            print(f"Checkpointing finished {time.time()}")
             return self._local_checkpoint_dir
 
         if self._checkpoint_thread:
@@ -337,10 +344,17 @@ class TrialRunner:
         if self._checkpoint_thread:
             self._checkpoint_thread.join()
 
-            if force_upload:
-                self._syncer.sync_up()
-            else:
-                self._syncer.sync_up_if_needed()
+            if not self._checkpoint_finished.is_set():
+                raise RuntimeError(
+                    "Checkpoint thread finished but the stop event was not "
+                    "set. This indicates that the checkpointing operation "
+                    "failed. Please check the logs to find out what went "
+                    "wrong.")
+
+        if force_upload:
+            self._syncer.sync_up()
+        else:
+            self._syncer.sync_up_if_needed()
 
     def resume(self, run_errored_only=False):
         """Resumes all checkpointed trials from previous run.
