@@ -76,7 +76,8 @@ class PullManager {
   /// object may no longer be on any node.
   void OnLocationChange(const ObjectID &object_id,
                         const std::unordered_set<NodeID> &client_ids,
-                        const std::string &spilled_url, const NodeID &spilled_node_id, size_t object_size);
+                        const std::string &spilled_url, const NodeID &spilled_node_id,
+                        size_t object_size);
 
   /// Cancel an existing pull request.
   ///

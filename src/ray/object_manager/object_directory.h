@@ -41,9 +41,9 @@ struct RemoteConnectionInfo {
 };
 
 /// Callback for object location notifications.
-using OnLocationsFound = std::function<void(const ray::ObjectID &object_id,
-                                            const std::unordered_set<ray::NodeID> &,
-                                            const std::string &, const NodeID &, size_t object_size)>;
+using OnLocationsFound = std::function<void(
+    const ray::ObjectID &object_id, const std::unordered_set<ray::NodeID> &,
+    const std::string &, const NodeID &, size_t object_size)>;
 
 class ObjectDirectoryInterface {
  public:

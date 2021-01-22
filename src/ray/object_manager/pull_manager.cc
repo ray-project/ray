@@ -259,7 +259,8 @@ std::vector<ObjectID> PullManager::CancelPull(uint64_t request_id) {
 
 void PullManager::OnLocationChange(const ObjectID &object_id,
                                    const std::unordered_set<NodeID> &client_ids,
-                                   const std::string &spilled_url, const NodeID &spilled_node_id, size_t object_size) {
+                                   const std::string &spilled_url,
+                                   const NodeID &spilled_node_id, size_t object_size) {
   // Exit if the Pull request has already been fulfilled or canceled.
   auto it = object_pull_requests_.find(object_id);
   if (it == object_pull_requests_.end()) {

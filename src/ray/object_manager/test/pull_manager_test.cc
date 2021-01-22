@@ -136,7 +136,8 @@ TEST_F(PullManagerTest, TestRestoreSpilledObject) {
 
   NodeID node_that_object_spilled = NodeID::FromRandom();
   fake_time_ += 10.;
-  pull_manager_.OnLocationChange(obj1, client_ids, "remote_url/foo/bar", node_that_object_spilled, 0);
+  pull_manager_.OnLocationChange(obj1, client_ids, "remote_url/foo/bar",
+                                 node_that_object_spilled, 0);
 
   // The behavior is supposed to be to always restore the spilled object if possible (even
   // if it exists elsewhere in the cluster).
@@ -157,7 +158,8 @@ TEST_F(PullManagerTest, TestRestoreSpilledObject) {
   // Don't restore an object if it's local.
   object_is_local_ = true;
   num_restore_spilled_object_calls_ = 0;
-  pull_manager_.OnLocationChange(obj1, client_ids, "remote_url/foo/bar", NodeID::FromRandom(), 0);
+  pull_manager_.OnLocationChange(obj1, client_ids, "remote_url/foo/bar",
+                                 NodeID::FromRandom(), 0);
   ASSERT_EQ(num_restore_spilled_object_calls_, 0);
 
   auto objects_to_cancel = pull_manager_.CancelPull(req_id);
@@ -176,7 +178,8 @@ TEST_F(PullManagerTest, TestRestoreObjectFailed) {
   ASSERT_EQ(ObjectRefsToIds(objects_to_locate), ObjectRefsToIds(refs));
 
   std::unordered_set<NodeID> client_ids;
-  pull_manager_.OnLocationChange(obj1, client_ids, "remote_url/foo/bar", NodeID::Nil(), 0);
+  pull_manager_.OnLocationChange(obj1, client_ids, "remote_url/foo/bar", NodeID::Nil(),
+                                 0);
   AssertNumActiveRequestsEquals(1);
 
   // client_ids is empty here, so there's nowhere to pull from.
@@ -198,7 +201,8 @@ TEST_F(PullManagerTest, TestRestoreObjectFailed) {
   fake_time_ += 10.0;
   pull_manager_.OnLocationChange(obj1, client_ids, "remote_url/foo/bar",
                                  remote_node_object_spilled);
-  pull_manager_.OnLocationChange(obj1, client_ids, "remote_url/foo/bar", remote_node_object_spilled, 0);
+  pull_manager_.OnLocationChange(obj1, client_ids, "remote_url/foo/bar",
+                                 remote_node_object_spilled, 0);
 
   ASSERT_EQ(num_send_pull_request_calls_, 0);
   ASSERT_EQ(num_restore_spilled_object_calls_, 2);

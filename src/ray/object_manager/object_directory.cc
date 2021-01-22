@@ -32,8 +32,7 @@ using ray::rpc::ObjectTableData;
 bool UpdateObjectLocations(const std::vector<rpc::ObjectLocationChange> &location_updates,
                            std::shared_ptr<gcs::GcsClient> gcs_client,
                            std::unordered_set<NodeID> *node_ids, std::string *spilled_url,
-                           NodeID *spilled_node_id,
-                           size_t *object_size) {
+                           NodeID *spilled_node_id, size_t *object_size) {
   // location_updates contains the updates of locations of the object.
   // with GcsChangeMode, we can determine whether the update mode is
   // addition or deletion.
@@ -132,14 +131,17 @@ void ObjectDirectory::HandleNodeRemoved(const NodeID &node_id) {
       // If the subscribed object has the removed node as a location, update
       // its locations with an empty update so that the location will be removed.
       UpdateObjectLocations({}, gcs_client_, &listener.second.current_object_locations,
-                            &listener.second.spilled_url, &listener.second.spilled_node_id, &listener.second.object_size);
+                            &listener.second.spilled_url,
+                            &listener.second.spilled_node_id,
+                            &listener.second.object_size);
       // Re-call all the subscribed callbacks for the object, since its
       // locations have changed.
       for (const auto &callback_pair : listener.second.callbacks) {
         // It is safe to call the callback directly since this is already running
         // in the subscription callback stack.
         callback_pair.second(object_id, listener.second.current_object_locations,
-                             listener.second.spilled_url, listener.second.spilled_node_id, listener.second.object_size);
+                             listener.second.spilled_url, listener.second.spilled_node_id,
+                             listener.second.object_size);
       }
     }
   }
@@ -169,7 +171,8 @@ ray::Status ObjectDirectory::SubscribeObjectLocations(const UniqueID &callback_i
           // Update entries for this object.
           if (!UpdateObjectLocations(object_notifications, gcs_client_,
                                      &it->second.current_object_locations,
-                                     &it->second.spilled_url, &it->second.spilled_node_id, &it->second.object_size)) {
+                                     &it->second.spilled_url, &it->second.spilled_node_id,
+                                     &it->second.object_size)) {
             return;
           }
           // Copy the callbacks so that the callbacks can unsubscribe without interrupting
@@ -183,7 +186,8 @@ ray::Status ObjectDirectory::SubscribeObjectLocations(const UniqueID &callback_i
             // It is safe to call the callback directly since this is already running
             // in the subscription callback stack.
             callback_pair.second(object_id, it->second.current_object_locations,
-                                 it->second.spilled_url, it->second.spilled_node_id, it->second.object_size);
+                                 it->second.spilled_url, it->second.spilled_node_id,
+                                 it->second.object_size);
           }
         };
     status = gcs_client_->Objects().AsyncSubscribeToLocations(
@@ -203,9 +207,10 @@ ray::Status ObjectDirectory::SubscribeObjectLocations(const UniqueID &callback_i
     auto &spilled_url = listener_state.spilled_url;
     auto &spilled_node_id = listener_state.spilled_node_id;
     auto object_size = it->second.object_size;
-    io_service_.post([callback, locations, spilled_url, object_size, object_id, spilled_node_id]() {
-      callback(object_id, locations, spilled_url, spilled_node_id, object_size);
-    });
+    io_service_.post(
+        [callback, locations, spilled_url, object_size, object_id, spilled_node_id]() {
+          callback(object_id, locations, spilled_url, spilled_node_id, object_size);
+        });
   }
   return status;
 }
@@ -239,9 +244,10 @@ ray::Status ObjectDirectory::LookupLocations(const ObjectID &object_id,
     auto &spilled_url = it->second.spilled_url;
     auto &spilled_node_id = it->second.spilled_node_id;
     auto object_size = it->second.object_size;
-    io_service_.post([callback, object_id, spilled_url, locations, object_size, spilled_node_id]() {
-      callback(object_id, locations, spilled_url, spilled_node_id, object_size);
-    });
+    io_service_.post(
+        [callback, object_id, spilled_url, locations, object_size, spilled_node_id]() {
+          callback(object_id, locations, spilled_url, spilled_node_id, object_size);
+        });
   } else {
     // We do not have any locations cached due to a concurrent
     // SubscribeObjectLocations call, so look up the object's locations
