@@ -541,8 +541,8 @@ def test_delete_objects_multi_node(tmp_path, ray_start_cluster):
     # The multi node deletion should work.
     wait_for_condition(is_dir_empty)
 
-@pytest.mark.skipif(
-    platform.system() == "Windows", reason="Flaky on Windows.")
+
+@pytest.mark.skipif(platform.system() == "Windows", reason="Flaky on Windows.")
 def test_fusion_objects(tmp_path, shutdown_only):
     # Limit our object store to 75 MiB of memory.
     temp_folder = tmp_path / "spill"
