@@ -59,9 +59,14 @@ public interface RayRuntime {
    * @param waitList A list of ObjectRef to wait for.
    * @param numReturns The number of objects that should be returned.
    * @param timeoutMs The maximum time in milliseconds to wait before returning.
+   * @param fetchLocal If true, wait for the object to be downloaded onto the local node before
+   *     returning it as ready. If false, ray.wait() will not trigger fetching of objects to the
+   *     local node and will return immediately once the object is available anywhere in the
+   *     cluster.
    * @return Two lists, one containing locally available objects, one containing the rest.
    */
-  <T> WaitResult<T> wait(List<ObjectRef<T>> waitList, int numReturns, int timeoutMs);
+  <T> WaitResult<T> wait(
+      List<ObjectRef<T>> waitList, int numReturns, int timeoutMs, boolean fetchLocal);
 
   /**
    * Free a list of objects from Plasma Store.
