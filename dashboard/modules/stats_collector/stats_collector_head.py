@@ -71,7 +71,8 @@ class StatsCollector(dashboard_utils.DashboardHeadModule):
             node_id, node_info = change.new
             address = "{}:{}".format(node_info["nodeManagerAddress"],
                                      int(node_info["nodeManagerPort"]))
-            channel = aiogrpc.insecure_channel(address)
+            options = (("grpc.enable_http_proxy", 0), )
+            channel = aiogrpc.insecure_channel(address, options=options)
             stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
             self._stubs[node_id] = stub
 
