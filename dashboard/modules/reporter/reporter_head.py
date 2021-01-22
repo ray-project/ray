@@ -76,10 +76,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
 
             payload = {
                 "min_workers": cfg["min_workers"],
-                "max_workers": cfg["max_workers"],
-                "initial_workers": cfg["initial_workers"],
-                "autoscaling_mode": cfg["autoscaling_mode"],
-                "idle_timeout_minutes": cfg["idle_timeout_minutes"],
+                "max_workers": cfg["max_workers"]
             }
 
             try:
