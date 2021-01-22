@@ -382,6 +382,7 @@ def test_startup_retry(ray_start_regular_shared):
         ray_client.connect("localhost:50051", connection_retries=1)
 
     def run_server():
+        time.sleep(2)
         server = ray_client_server.serve("localhost:50051")
         time.sleep(5)
         server.stop(0)
