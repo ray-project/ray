@@ -16,6 +16,7 @@ class LightningMNISTClassifier(pl.LightningModule):
         self.data_dir = data_dir or os.getcwd()
         self.lr = config["lr"]
         layer_1, layer_2 = config["layer_1"], config["layer_2"]
+        self.batch_size = config["batch_size"]
 
         # mnist images are (1, 28, 28) (channels, width, height)
         self.layer_1 = torch.nn.Linear(28 * 28, layer_1)

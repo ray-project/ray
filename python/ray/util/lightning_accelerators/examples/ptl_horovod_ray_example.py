@@ -2,6 +2,7 @@ import os
 import tempfile
 
 import ray
+import torch
 from ray.tune.integration.pytorch_lightning import TuneReportCallback
 from ray.util.lightning_accelerators import HorovodRayAccelerator
 
@@ -10,6 +11,48 @@ from pl_bolts.datamodules.mnist_datamodule import MNISTDataModule
 
 from ray import tune
 from ray.tune.examples.mnist_ptl_mini import LightningMNISTClassifier
+from torch.utils.data import random_split, DataLoader
+from torchvision.datasets import MNIST
+from torchvision import transforms
+
+
+class MNISTClassifier(LightningMNISTClassifier):
+    def prepare_data(self):
+        self.dataset = MNIST(self.data_dir, train=True, download=True,
+                                transform=transforms.ToTensor())
+    def train_dataloader(self):
+        dataset = self.dataset
+        train_length = len(dataset)
+        dataset_train, _ = random_split(
+            dataset, [train_length - 5000, 5000],
+            generator=torch.Generator().manual_seed(0)
+        )
+        loader = DataLoader(
+            dataset_train,
+            batch_size=self.batch_size,
+            shuffle=True,
+            num_workers=1,
+            drop_last=True,
+            pin_memory=True,
+        )
+        return loader
+
+    def val_dataloader(self):
+        dataset = self.dataset
+        train_length = len(dataset)
+        _, dataset_val = random_split(
+            dataset, [train_length - 5000, 5000],
+            generator=torch.Generator().manual_seed(0)
+        )
+        loader = DataLoader(
+            dataset_val,
+            batch_size=self.batch_size,
+            shuffle=False,
+            num_workers=1,
+            drop_last=True,
+            pin_memory=True,
+        )
+        return loader
 
 
 def train_mnist(config,
@@ -19,21 +62,22 @@ def train_mnist(config,
                 num_slots=4,
                 use_gpu=False,
                 callbacks=None):
-    model = LightningMNISTClassifier(config, data_dir)
-    dm = MNISTDataModule(
-        data_dir=data_dir, num_workers=1, batch_size=config["batch_size"])
+    model = MNISTClassifier(config, data_dir)
+    # dm = MNISTDataModule(
+    #     data_dir=data_dir, num_workers=1, batch_size=config["batch_size"])
 
     callbacks = callbacks or []
 
     trainer = pl.Trainer(
         max_epochs=num_epochs,
+        gpus=int(use_gpu),
         #gpus=num_slots * int(use_gpu),
         #num_nodes=num_hosts,
         #num_processes=num_slots,
         callbacks=callbacks,
         accelerator=HorovodRayAccelerator(num_hosts=num_hosts,
                                           num_slots=num_slots, use_gpu=use_gpu))
-    trainer.fit(model, dm)
+    trainer.fit(model)
 
 
 def tune_mnist(data_dir,
