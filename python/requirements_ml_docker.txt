@@ -1,3 +1,4 @@
 ipython
 tensorflow-gpu
 torch
+pip; python_version > "3.7"
