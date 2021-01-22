@@ -24,8 +24,10 @@ pkg_install_helper() {
 
 install_bazel() {
   if command -v bazel; then
-    echo "Bazel exists, skipping the install"
-    return
+    if [ -n "${BUILDKITE-}" ] then;
+      echo "Bazel exists, skipping the install"
+      return
+    fi
   fi
 
   "${ROOT_DIR}"/install-bazel.sh
@@ -225,8 +227,10 @@ install_upgrade_pip() {
 
 install_node() {
   if command -v node; then
-    echo "Node existed, skipping install";
-    return
+    if [ -n "${BUILDKITE-}" ]; then
+      echo "Node existed, skipping install";
+      return
+    fi
   fi
 
   if [ "${OSTYPE}" = msys ] ; then
