@@ -351,6 +351,9 @@ class TrialRunner:
                     "failed. Please check the logs to find out what went "
                     "wrong.")
 
+            self._checkpoint_thread = None
+            self._checkpoint_finished.clear()
+
         if force_upload:
             self._syncer.sync_up()
         else:

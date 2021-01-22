@@ -528,6 +528,9 @@ class TrialRunnerTest3(unittest.TestCase):
                       for t in runner.get_trials()):
             runner.step()
 
+        # Ensure next step() triggers a new checkpoint
+        runner.wait_for_checkpoint(force_upload=False)
+
         runner.add_trial(
             Trial(
                 "__fake",
@@ -536,6 +539,9 @@ class TrialRunnerTest3(unittest.TestCase):
 
         runner.step()
         runner.step()
+
+        # Wait until checkpointing finished
+        runner.wait_for_checkpoint(force_upload=False)
 
         runner2 = TrialRunner(resume="LOCAL", local_checkpoint_dir=self.tmpdir)
         new_trials = runner2.get_trials()
@@ -642,8 +648,15 @@ class TrialRunnerTest3(unittest.TestCase):
         runner.step()  # Process result
         self.assertFalse(trials[0].has_checkpoint())
         runner.step()  # Process result, dispatch save
+
+        # Ensure next step() triggers a new checkpoint
+        runner.wait_for_checkpoint(force_upload=False)
         runner.step()  # Process save
+
         self.assertTrue(trials[0].has_checkpoint())
+
+        # Wait until checkpointing finished
+        runner.wait_for_checkpoint(force_upload=False)
 
         runner2 = TrialRunner(resume="LOCAL", local_checkpoint_dir=self.tmpdir)
         runner2.step()  # 5: Start trial and dispatch restore
