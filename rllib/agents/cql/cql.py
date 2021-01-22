@@ -15,6 +15,8 @@ CQL_DEFAULT_CONFIG = merge_dicts(
     SAC_CONFIG, {
         # You should override this to point to an offline dataset.
         "input": "sampler",
+        # Offline RL does not need IS estimators
+        "input_evaluation": [],
         # Number of iterations with Behavior Cloning Pretraining
         "bc_iters": 20000,
         # CQL Loss Temperature

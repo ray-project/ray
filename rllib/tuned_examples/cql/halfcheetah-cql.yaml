@@ -5,6 +5,7 @@ halfcheetah_cql:
         episode_reward_mean: 9000
     config:
         # SAC Configs
+        input: d4rl.halfcheetah-medium-v0
         framework: torch
         horizon: 1000
         soft_horizon: false

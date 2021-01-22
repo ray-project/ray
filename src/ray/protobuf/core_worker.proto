@@ -186,6 +186,7 @@ message GetObjectLocationsOwnerRequest {
 
 message GetObjectLocationsOwnerReply {
   repeated bytes node_ids = 1;
+  uint64 object_size = 2;
 }
 
 message KillActorRequest {

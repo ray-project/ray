@@ -185,8 +185,9 @@ class MockObjectInfoAccessor : public gcs::ObjectInfoAccessor {
   MOCK_METHOD1(AsyncGetAll,
                Status(const gcs::MultiItemCallback<rpc::ObjectLocationInfo> &callback));
 
-  MOCK_METHOD3(AsyncAddLocation, Status(const ObjectID &object_id, const NodeID &node_id,
-                                        const gcs::StatusCallback &callback));
+  MOCK_METHOD4(AsyncAddLocation,
+               Status(const ObjectID &object_id, const NodeID &node_id,
+                      size_t object_size, const gcs::StatusCallback &callback));
 
   Status AsyncAddSpilledUrl(const ObjectID &object_id, const std::string &spilled_url,
                             const gcs::StatusCallback &callback) {

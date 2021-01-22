@@ -17,7 +17,7 @@ public class PyActorCreator extends BaseActorCreator<PyActorCreator> {
   /**
    * Create a python actor remotely and return a handle to the created actor.
    *
-   * <p>Returns a handle to the created python actor.
+   * @return a handle to the created python actor.
    */
   public PyActorHandle remote() {
     return Ray.internal().createActor(pyActorClass, args, buildOptions());

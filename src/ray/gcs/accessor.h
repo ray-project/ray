@@ -297,7 +297,7 @@ class ObjectInfoAccessor {
   /// \param callback Callback that will be called after object has been added to GCS.
   /// \return Status
   virtual Status AsyncAddLocation(const ObjectID &object_id, const NodeID &node_id,
-                                  const StatusCallback &callback) = 0;
+                                  size_t object_size, const StatusCallback &callback) = 0;
 
   /// Add spilled location of object to GCS asynchronously.
   ///

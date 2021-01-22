@@ -272,6 +272,8 @@ message AddObjectLocationRequest {
   // The spilled URL that will be added to GCS Service. Either this or the node
   // ID should be set.
   string spilled_url = 3;
+  // The size of the object in bytes.
+  uint64 size = 4;
 }
 
 message AddObjectLocationReply {

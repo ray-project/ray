@@ -25,7 +25,8 @@ public class RemoteCallWorker {
    * Call JobWorker actor to init.
    *
    * @param actor target JobWorker actor
-   * @param context JobWorker's context Returns init result
+   * @param context JobWorker's context
+   * @return init result
    */
   public static ObjectRef<Boolean> initWorker(BaseActorHandle actor, JobWorkerContext context) {
     LOG.info("Call worker to initiate, actor: {}, context: {}.", actor.getId(), context);
@@ -50,7 +51,8 @@ public class RemoteCallWorker {
    * Call JobWorker actor to start.
    *
    * @param actor target JobWorker actor
-   * @param checkpointId checkpoint ID to be rollback Returns start result
+   * @param checkpointId checkpoint ID to be rollback
+   * @return start result
    */
   public static ObjectRef rollback(BaseActorHandle actor, final Long checkpointId) {
     LOG.info("Call worker to start, actor: {}.", actor.getId());
@@ -79,7 +81,8 @@ public class RemoteCallWorker {
   /**
    * Call JobWorker actor to destroy without reconstruction.
    *
-   * @param actor target JobWorker actor Returns destroy result
+   * @param actor target JobWorker actor
+   * @return destroy result
    */
   public static Boolean shutdownWithoutReconstruction(BaseActorHandle actor) {
     LOG.info("Call worker to shutdown without reconstruction, actor is {}.", actor.getId());

@@ -137,8 +137,8 @@ public class JobWorker implements Serializable {
   /**
    * Start worker's stream tasks with specific checkpoint ID.
    *
-   * <p>Returns a {@link CallResult} with {@link ChannelRecoverInfo}, contains {@link
-   * ChannelCreationStatus} of each input queue.
+   * @return a {@link CallResult} with {@link ChannelRecoverInfo}, contains {@link
+   *     ChannelCreationStatus} of each input queue.
    */
   public CallResult<ChannelRecoverInfo> rollback(Long checkpointId, Long startRollbackTs) {
     synchronized (initialStateChangeLock) {

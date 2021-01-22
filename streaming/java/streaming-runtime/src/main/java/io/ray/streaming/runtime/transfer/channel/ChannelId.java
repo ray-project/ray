@@ -86,7 +86,8 @@ public class ChannelId {
    * Generate channel name, which will be {@link ChannelId#ID_LENGTH} character
    *
    * @param fromTaskId upstream task id
-   * @param toTaskId downstream task id Returns channel name
+   * @param toTaskId downstream task id
+   * @return channel name
    */
   public static String genIdStr(int fromTaskId, int toTaskId, long ts) {
     /*
@@ -116,7 +117,8 @@ public class ChannelId {
   }
 
   /**
-   * @param id hex string representation of channel id Returns bytes representation of channel id
+   * @param id hex string representation of channel id
+   * @return bytes representation of channel id
    */
   public static byte[] idStrToBytes(String id) {
     byte[] idBytes = BaseEncoding.base16().decode(id.toUpperCase());
@@ -125,7 +127,8 @@ public class ChannelId {
   }
 
   /**
-   * @param id bytes representation of channel id Returns hex string representation of channel id
+   * @param id bytes representation of channel id
+   * @return hex string representation of channel id
    */
   public static String idBytesToStr(byte[] id) {
     assert id.length == ChannelId.ID_LENGTH;
