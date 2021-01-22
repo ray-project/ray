@@ -352,7 +352,7 @@ def test_delete_objects_delete_while_creating(tmp_path, shutdown_only):
     ray.init(
         object_store_memory=75 * 1024 * 1024,
         _system_config={
-            "max_io_workers": 4,
+            "max_io_workers": 2,
             "min_spilling_size": 0,
             "automatic_object_spilling_enabled": True,
             "object_store_full_delay_ms": 100,
@@ -403,7 +403,7 @@ def test_delete_objects_on_worker_failure(tmp_path, shutdown_only):
     ray.init(
         object_store_memory=75 * 1024 * 1024,
         _system_config={
-            "max_io_workers": 4,
+            "max_io_workers": 2,
             "automatic_object_spilling_enabled": True,
             "object_store_full_delay_ms": 100,
             "object_spilling_config": json.dumps({

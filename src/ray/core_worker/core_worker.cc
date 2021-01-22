@@ -2387,11 +2387,17 @@ void CoreWorker::HandleSpillObjects(const rpc::SpillObjectsRequest &request,
                                     rpc::SendReplyCallback send_reply_callback) {
   if (options_.spill_objects != nullptr) {
     std::vector<ObjectID> object_ids_to_spill;
+    RAY_CHECK(object_ids_to_spill.size() > 0);
     object_ids_to_spill.reserve(request.object_ids_to_spill_size());
     for (const auto &id_binary : request.object_ids_to_spill()) {
       object_ids_to_spill.push_back(ObjectID::FromBinary(id_binary));
     }
     std::vector<std::string> object_urls = options_.spill_objects(object_ids_to_spill);
+    if (object_urls.size() == 0) {
+      send_reply_callback(
+          Status::IOError("Unexpected error happened from the IO worker."), nullptr,
+          nullptr);
+    }
     for (size_t i = 0; i < object_urls.size(); i++) {
       reply->add_spilled_objects_url(std::move(object_urls[i]));
     }
