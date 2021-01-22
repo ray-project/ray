@@ -995,7 +995,7 @@ def print_worker_logs(data: Dict[str, str], print_file: Any):
         else:
             return colorama.Fore.CYAN
 
-    if data["pid"] == "autoscaler" and not data["is_err"]:
+    if data["pid"] == "autoscaler":
         pid = "{} +{}".format(data["pid"], time_string())
         lines = filter_autoscaler_events(data["lines"])
     else:

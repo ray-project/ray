@@ -31,22 +31,24 @@ public interface RayRuntime {
   /**
    * Store an object in the object store.
    *
-   * @param obj The Java object to be stored. Returns A ObjectRef instance that represents the
-   *     in-store object.
+   * @param obj The Java object to be stored.
+   * @return A ObjectRef instance that represents the in-store object.
    */
   <T> ObjectRef<T> put(T obj);
 
   /**
    * Get an object from the object store.
    *
-   * @param objectRef The reference of the object to get. Returns The Java object.
+   * @param objectRef The reference of the object to get.
+   * @return The Java object.
    */
   <T> T get(ObjectRef<T> objectRef);
 
   /**
    * Get a list of objects from the object store.
    *
-   * @param objectRefs The list of object references. Returns A list of Java objects.
+   * @param objectRefs The list of object references.
+   * @return A list of Java objects.
    */
   <T> List<T> get(List<ObjectRef<T>> objectRefs);
 
@@ -56,8 +58,8 @@ public interface RayRuntime {
    *
    * @param waitList A list of ObjectRef to wait for.
    * @param numReturns The number of objects that should be returned.
-   * @param timeoutMs The maximum time in milliseconds to wait before returning. Returns Two lists,
-   *     one containing locally available objects, one containing the rest.
+   * @param timeoutMs The maximum time in milliseconds to wait before returning.
+   * @return Two lists, one containing locally available objects, one containing the rest.
    */
   <T> WaitResult<T> wait(List<ObjectRef<T>> waitList, int numReturns, int timeoutMs);
 
@@ -87,7 +89,8 @@ public interface RayRuntime {
    * name specified.
    *
    * @param name The name of the named actor.
-   * @param global Whether the named actor is global. Returns ActorHandle to the actor.
+   * @param global Whether the named actor is global.
+   * @return ActorHandle to the actor.
    */
   <T extends BaseActorHandle> Optional<T> getActor(String name, boolean global);
 
@@ -104,7 +107,8 @@ public interface RayRuntime {
    *
    * @param func The remote function to run.
    * @param args The arguments of the remote function.
-   * @param options The options for this call. Returns The result object.
+   * @param options The options for this call.
+   * @return The result object.
    */
   ObjectRef call(RayFunc func, Object[] args, CallOptions options);
 
@@ -113,7 +117,8 @@ public interface RayRuntime {
    *
    * @param pyFunction The Python function.
    * @param args Arguments of the function.
-   * @param options The options for this call. Returns The result object.
+   * @param options The options for this call.
+   * @return The result object.
    */
   ObjectRef call(PyFunction pyFunction, Object[] args, CallOptions options);
 
@@ -122,7 +127,8 @@ public interface RayRuntime {
    *
    * @param actor A handle to the actor.
    * @param func The remote function to run, it must be a method of the given actor.
-   * @param args The arguments of the remote function. Returns The result object.
+   * @param args The arguments of the remote function.
+   * @return The result object.
    */
   ObjectRef callActor(ActorHandle<?> actor, RayFunc func, Object[] args);
 
@@ -131,7 +137,8 @@ public interface RayRuntime {
    *
    * @param pyActor A handle to the actor.
    * @param pyActorMethod The actor method.
-   * @param args Arguments of the function. Returns The result object.
+   * @param args Arguments of the function.
+   * @return The result object.
    */
   ObjectRef callActor(PyActorHandle pyActor, PyActorMethod pyActorMethod, Object[] args);
 
@@ -141,7 +148,8 @@ public interface RayRuntime {
    * @param actorFactoryFunc A remote function whose return value is the actor object.
    * @param args The arguments for the remote function.
    * @param <T> The type of the actor object.
-   * @param options The options for creating actor. Returns A handle to the actor.
+   * @param options The options for creating actor.
+   * @return A handle to the actor.
    */
   <T> ActorHandle<T> createActor(
       RayFunc actorFactoryFunc, Object[] args, ActorCreationOptions options);
@@ -151,7 +159,8 @@ public interface RayRuntime {
    *
    * @param pyActorClass The Python actor class.
    * @param args Arguments of the actor constructor.
-   * @param options The options for creating actor. Returns A handle to the actor.
+   * @param options The options for creating actor.
+   * @return A handle to the actor.
    */
   PyActorHandle createActor(PyActorClass pyActorClass, Object[] args, ActorCreationOptions options);
 
@@ -170,14 +179,16 @@ public interface RayRuntime {
   /**
    * Wrap a {@link Runnable} with necessary context capture.
    *
-   * @param runnable The runnable to wrap. Returns The wrapped runnable.
+   * @param runnable The runnable to wrap.
+   * @return The wrapped runnable.
    */
   Runnable wrapRunnable(Runnable runnable);
 
   /**
    * Wrap a {@link Callable} with necessary context capture.
    *
-   * @param callable The callable to wrap. Returns The wrapped callable.
+   * @param callable The callable to wrap.
+   * @return The wrapped callable.
    */
   <T> Callable<T> wrapCallable(Callable<T> callable);
 
@@ -187,14 +198,15 @@ public interface RayRuntime {
   /**
    * Get a placement group by id.
    *
-   * @param id placement group id. Returns The placement group.
+   * @param id placement group id.
+   * @return The placement group.
    */
   PlacementGroup getPlacementGroup(PlacementGroupId id);
 
   /**
    * Get all placement groups in this cluster.
    *
-   * <p>Returns All placement groups.
+   * @return All placement groups.
    */
   List<PlacementGroup> getAllPlacementGroups();
 
@@ -209,8 +221,8 @@ public interface RayRuntime {
    * Wait for the placement group to be ready within the specified time.
    *
    * @param id Id of placement group.
-   * @param timeoutMs Timeout in milliseconds. Returns True if the placement group is created. False
-   *     otherwise.
+   * @param timeoutMs Timeout in milliseconds.
+   * @return True if the placement group is created. False otherwise.
    */
   boolean waitPlacementGroupReady(PlacementGroupId id, int timeoutMs);
 }

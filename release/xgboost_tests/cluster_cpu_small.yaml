@@ -1,0 +1,37 @@
+cluster_name: ray-xgboost-release-cpu-small
+
+min_workers: 3
+max_workers: 3
+initial_workers: 3
+
+target_utilization_fraction: 0.8
+idle_timeout_minutes: 15
+
+docker:
+    image: anyscale/ray:latest
+    container_name: ray_container
+    pull_before_run: true
+
+provider:
+    type: aws
+    region: us-west-2
+    availability_zone: us-west-2a
+    cache_stopped_nodes: false
+
+auth:
+    ssh_user: ubuntu
+
+head_node:
+    # 64 CPUs
+    InstanceType: m5.xlarge
+
+worker_nodes:
+    # 64 CPUs
+    InstanceType: m5.xlarge
+
+setup_commands:
+    - pip install pytest xgboost_ray
+    - sudo mkdir -p /data || true
+    - sudo chown ray:1000 /data || true
+    - rm -rf /data/classification.parquet || true
+    - python ~/release-automation-xgboost_tests/create_test_data.py /data/classification.parquet --seed 1234 --num-rows 1000000 --num-cols 40 --num-partitions 100 --num-classes 2

@@ -126,6 +126,10 @@ void OwnershipBasedObjectDirectory::SubscriptionCallback(
     return;
   }
 
+  if (reply.object_size() > 0) {
+    it->second.object_size = reply.object_size();
+  }
+
   std::unordered_set<NodeID> node_ids;
   for (auto const &node_id : reply.node_ids()) {
     node_ids.emplace(NodeID::FromBinary(node_id));
@@ -142,7 +146,7 @@ void OwnershipBasedObjectDirectory::SubscriptionCallback(
       // It is safe to call the callback directly since this is already running
       // in the subscription callback stack.
       callback_pair.second(object_id, it->second.current_object_locations, "",
-                           NodeID::Nil());
+                           NodeID::Nil(), it->second.object_size);
     }
   }
 
@@ -209,7 +213,7 @@ ray::Status OwnershipBasedObjectDirectory::LookupLocations(
     RAY_LOG(WARNING) << "Object " << object_id << " does not have owner. "
                      << "LookupLocations returns an empty list of locations.";
     io_service_.post([callback, object_id]() {
-      callback(object_id, std::unordered_set<NodeID>(), "", NodeID::Nil());
+      callback(object_id, std::unordered_set<NodeID>(), "", NodeID::Nil(), 0);
     });
     return Status::OK();
   }
@@ -230,7 +234,7 @@ ray::Status OwnershipBasedObjectDirectory::LookupLocations(
           node_ids.emplace(NodeID::FromBinary(node_id));
         }
         FilterRemovedNodes(gcs_client_, &node_ids);
-        callback(object_id, node_ids, "", NodeID::Nil());
+        callback(object_id, node_ids, "", NodeID::Nil(), reply.object_size());
       });
   return Status::OK();
 }

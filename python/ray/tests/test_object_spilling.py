@@ -349,7 +349,7 @@ def test_delete_objects(object_spilling_config, shutdown_only):
 
 
 @pytest.mark.skipif(
-    platform.system() == "Windows", reason="Failing on Windows.")
+    platform.system() == ["Windows"], reason="Failing on Windows.")
 def test_delete_objects_delete_while_creating(object_spilling_config,
                                               shutdown_only):
     # Limit our object store to 75 MiB of memory.
@@ -394,7 +394,7 @@ def test_delete_objects_delete_while_creating(object_spilling_config,
 
 
 @pytest.mark.skipif(
-    platform.system() == "Windows", reason="Failing on Windows.")
+    platform.system() == ["Windows"], reason="Failing on Windows.")
 def test_delete_objects_on_worker_failure(object_spilling_config,
                                           shutdown_only):
     # Limit our object store to 75 MiB of memory.
@@ -532,6 +532,7 @@ def test_delete_objects_multi_node(multi_node_object_spilling_config,
     wait_for_condition(is_dir_empty)
 
 
+@pytest.mark.skipif(platform.system() == "Windows", reason="Flaky on Windows.")
 def test_fusion_objects(object_spilling_config, shutdown_only):
     # Limit our object store to 75 MiB of memory.
     object_spilling_config, temp_folder = object_spilling_config
@@ -626,6 +627,68 @@ def test_no_release_during_plasma_fetch(object_spilling_config, shutdown_only):
     platform.system() == "Windows", reason="Failing on Windows.")
 def test_release_during_plasma_fetch(object_spilling_config, shutdown_only):
     do_test_release_resource(object_spilling_config, expect_released=True)
+
+
+@pytest.mark.skip(
+    reason="This hangs due to a deadlock between a worker getting its "
+    "arguments and the node pulling arguments for the next task queued.")
+@pytest.mark.skipif(
+    platform.system() == "Windows", reason="Failing on Windows.")
+@pytest.mark.timeout(30)
+def test_spill_objects_on_object_transfer(object_spilling_config,
+                                          ray_start_cluster):
+    object_spilling_config, _ = object_spilling_config
+    # This test checks that objects get spilled to make room for transferred
+    # objects.
+    cluster = ray_start_cluster
+    object_size = int(1e7)
+    num_objects = 10
+    num_tasks = 10
+    # Head node can fit all of the objects at once.
+    cluster.add_node(
+        num_cpus=0,
+        object_store_memory=2 * num_tasks * num_objects * object_size,
+        _system_config={
+            "max_io_workers": 1,
+            "automatic_object_spilling_enabled": True,
+            "object_store_full_delay_ms": 100,
+            "object_spilling_config": object_spilling_config,
+            "min_spilling_size": 0
+        })
+    cluster.wait_for_nodes()
+    ray.init(address=cluster.address)
+
+    # Worker node can fit 1 tasks at a time.
+    cluster.add_node(
+        num_cpus=1, object_store_memory=1.5 * num_objects * object_size)
+    cluster.wait_for_nodes()
+
+    @ray.remote
+    def foo(*args):
+        return
+
+    @ray.remote
+    def allocate(*args):
+        return np.zeros(object_size, dtype=np.uint8)
+
+    # Allocate some objects that must be spilled to make room for foo's
+    # arguments.
+    allocated = [allocate.remote() for _ in range(num_objects)]
+    ray.get(allocated)
+    print("done allocating")
+
+    args = []
+    for _ in range(num_tasks):
+        task_args = [
+            ray.put(np.zeros(object_size, dtype=np.uint8))
+            for _ in range(num_objects)
+        ]
+        args.append(task_args)
+
+    # Check that tasks scheduled to the worker node have enough room after
+    # spilling.
+    tasks = [foo.remote(*task_args) for task_args in args]
+    ray.get(tasks)
 
 
 if __name__ == "__main__":

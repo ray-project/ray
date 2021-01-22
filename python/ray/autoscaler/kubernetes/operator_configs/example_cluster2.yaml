@@ -14,8 +14,6 @@ spec:
   idleTimeoutMinutes: 5
   # Specify the pod type for the ray head node (as configured below).
   headPodType: head-node
-  # Specify the default pod type for ray the worker nodes (as configured below).
-  workerDefaultPodType: worker-nodes
   # Specify the allowed pod types for this ray cluster and the resources they provide.
   podTypes:
   - name: head-node

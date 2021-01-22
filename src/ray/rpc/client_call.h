@@ -21,6 +21,7 @@
 #include "absl/synchronization/mutex.h"
 #include "ray/common/grpc_util.h"
 #include "ray/common/status.h"
+#include "ray/util/util.h"
 
 namespace ray {
 namespace rpc {
@@ -226,6 +227,7 @@ class ClientCallManager {
   /// `CompletionQueue`, and dispatches the event to the callbacks via the `ClientCall`
   /// objects.
   void PollEventsFromCompletionQueue(int index) {
+    SetThreadName("client.poll" + std::to_string(index));
     void *got_tag;
     bool ok = false;
     // Keep reading events from the `CompletionQueue` until it's shutdown.

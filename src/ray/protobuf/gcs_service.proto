@@ -275,6 +275,8 @@ message AddObjectLocationRequest {
   // The node id that spills the object to the disk.
   // It will be Nil if it uses a distributed external storage.
   bytes spilled_node_id = 4;
+  // The size of the object in bytes.
+  uint64 size = 5;
 }
 
 message AddObjectLocationReply {

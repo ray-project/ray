@@ -66,6 +66,7 @@ class GcsObjectManager : public rpc::ObjectInfoHandler {
     absl::flat_hash_set<NodeID> locations;
     std::string spilled_url = "";
     NodeID spilled_node_id = NodeID::Nil();
+    size_t object_size = 0;
   };
 
   /// Add a location of objects.

@@ -386,11 +386,17 @@ message WorkerTableData {
   // The UNIX timestamp at which this worker's state was updated.
   int64 timestamp = 3;
   // Whether it's an intentional disconnect, only applies then `is_alive` is false.
-  bool intentional_disconnect = 4;
+  WorkerExitType exit_type = 4;
   // Type of this worker.
   WorkerType worker_type = 5;
   // This is for AddWorker.
   map<string, bytes> worker_info = 6;
+}
+
+// Fields to publish when worker fails.
+message WorkerDeltaData {
+  bytes raylet_id = 1;
+  bytes worker_id = 2;
 }
 
 message ResourceMap {
@@ -410,6 +416,8 @@ message ObjectLocationInfo {
   // The node id that spills the object to the disk.
   // It will be Nil if it uses a distributed external storage.
   bytes spilled_node_id = 4;
+  // The size of the object in bytes.
+  uint64 size = 5;
 }
 
 // A notification message about one object's locations being changed.
@@ -423,6 +431,8 @@ message ObjectLocationChange {
   // The node id that spills the object to the disk.
   // It will be Nil if it uses a distributed external storage.
   bytes spilled_node_id = 4;
+  // The size of the object in bytes.
+  uint64 size = 5;
 }
 
 // A notification message about one node's resources being changed.

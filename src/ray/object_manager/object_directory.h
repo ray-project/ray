@@ -43,7 +43,7 @@ struct RemoteConnectionInfo {
 /// Callback for object location notifications.
 using OnLocationsFound = std::function<void(const ray::ObjectID &object_id,
                                             const std::unordered_set<ray::NodeID> &,
-                                            const std::string &, const NodeID &)>;
+                                            const std::string &, const NodeID &, size_t object_size)>;
 
 class ObjectDirectoryInterface {
  public:
@@ -188,6 +188,8 @@ class ObjectDirectory : public ObjectDirectoryInterface {
     // The node id that spills the object to the disk.
     // It will be Nil if it uses a distributed external storage.
     NodeID spilled_node_id = NodeID::Nil();
+    /// The size of the object.
+    size_t object_size = 0;
     /// This flag will get set to true if received any notification of the object.
     /// It means current_object_locations is up-to-date with GCS. It
     /// should never go back to false once set to true. If this is true, and
