@@ -53,8 +53,8 @@ public class PlacementGroupImpl implements PlacementGroup {
   /**
    * Wait for the placement group to be ready within the specified time.
    *
-   * @param timeoutSeconds Timeout in seconds. Returns True if the placement group is created. False
-   *     otherwise.
+   * @param timeoutSeconds Timeout in seconds.
+   * @return True if the placement group is created. False otherwise.
    */
   public boolean wait(int timeoutSeconds) {
     return Ray.internal().waitPlacementGroupReady(id, timeoutSeconds);
@@ -71,7 +71,8 @@ public class PlacementGroupImpl implements PlacementGroup {
     /**
      * Set the Id of the placement group.
      *
-     * @param id Id of the placement group. Returns self.
+     * @param id Id of the placement group.
+     * @return self.
      */
     public Builder setId(PlacementGroupId id) {
       this.id = id;
@@ -81,7 +82,8 @@ public class PlacementGroupImpl implements PlacementGroup {
     /**
      * Set the name of the placement group.
      *
-     * @param name Name of the placement group. Returns self.
+     * @param name Name of the placement group.
+     * @return self.
      */
     public Builder setName(String name) {
       this.name = name;
@@ -91,7 +93,8 @@ public class PlacementGroupImpl implements PlacementGroup {
     /**
      * Set the bundles of the placement group.
      *
-     * @param bundles the bundles of the placement group. Returns self.
+     * @param bundles the bundles of the placement group.
+     * @return self.
      */
     public Builder setBundles(List<Map<String, Double>> bundles) {
       this.bundles = bundles;
@@ -101,7 +104,8 @@ public class PlacementGroupImpl implements PlacementGroup {
     /**
      * Set the placement strategy of the placement group.
      *
-     * @param strategy the placement strategy of the placement group. Returns self.
+     * @param strategy the placement strategy of the placement group.
+     * @return self.
      */
     public Builder setStrategy(PlacementStrategy strategy) {
       this.strategy = strategy;
@@ -111,7 +115,8 @@ public class PlacementGroupImpl implements PlacementGroup {
     /**
      * Set the placement state of the placement group.
      *
-     * @param state the state of the placement group. Returns self.
+     * @param state the state of the placement group.
+     * @return self.
      */
     public Builder setState(PlacementGroupState state) {
       this.state = state;

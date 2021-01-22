@@ -88,7 +88,7 @@ public class RedisClient {
   /**
    * Return the specified elements of the list stored at the specified key.
    *
-   * <p>Returns Multi bulk reply, specifically a list of elements in the specified range.
+   * @return Multi bulk reply, specifically a list of elements in the specified range.
    */
   public List<byte[]> lrange(byte[] key, long start, long end) {
     try (Jedis jedis = jedisPool.getResource()) {

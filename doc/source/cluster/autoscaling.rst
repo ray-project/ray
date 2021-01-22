@@ -111,9 +111,6 @@ An example of configuring multiple node types is as follows `(full example) <htt
     # Specify the node type of the head node (as configured above).
     head_node_type: cpu_4_ondemand
 
-    # Specify the default type of the worker node (as configured above).
-    worker_default_node_type: cpu_16_spot
-
 
 The above config defines two CPU node types (``cpu_4_ondemand`` and ``cpu_16_spot``), and two GPU types (``gpu_1_ondemand`` and ``gpu_8_ondemand``). Each node type has a name (e.g., ``cpu_4_ondemand``), which has no semantic meaning and is only for debugging. Let's look at the inner fields of the ``gpu_1_ondemand`` node type:
 

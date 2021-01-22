@@ -78,7 +78,9 @@ matrix:
         - . ./ci/travis/ci.sh build
       script:
         # Run all C++ unit tests with ASAN enabled. ASAN adds too much overhead to run Python tests.
-        - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only -- //:all
+        # NOTE: core_worker_test is out-of-date and should already covered by
+        # Python tests.
+        - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only -- //:all -core_worker_test
 
     - os: osx
       osx_image: xcode7
@@ -435,11 +437,10 @@ matrix:
       script:
         - . ./ci/travis/ci.sh test_cpp
 script:
-  # raylet integration tests (core_worker_tests included in bazel tests below)
-  - ./ci/suppress_output bash src/ray/test/run_object_manager_tests.sh
-
   # cc bazel tests (w/o RLlib)
-  - ./ci/suppress_output bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only -- //:all -rllib/...
+  # NOTE: core_worker_test is out-of-date and should already covered by Python
+  # tests.
+  - ./ci/suppress_output bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only -- //:all -rllib/... -core_worker_test
 
   # ray serve tests
   - if [ $RAY_CI_SERVE_AFFECTED == "1" ]; then ./ci/keep_alive bazel test --config=ci $(./scripts/bazel_export_options) --test_tag_filters=-jenkins_only python/ray/serve/...; fi

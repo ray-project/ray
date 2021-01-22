@@ -1,8 +1,7 @@
 #pragma once
 
-#include <memory>
-
 #include <boost/asio.hpp>
+#include <memory>
 
 #include "absl/synchronization/mutex.h"
 #include "ray/object_manager/notification/object_store_notification_manager.h"
@@ -23,6 +22,10 @@ class PlasmaStoreRunner {
   }
   bool IsPlasmaObjectSpillable(const ObjectID &object_id);
 
+  void GetAvailableMemoryAsync(std::function<void(size_t)> callback) const {
+    main_service_.post([this, callback]() { store_->GetAvailableMemory(callback); });
+  }
+
  private:
   void Shutdown();
   absl::Mutex store_runner_mutex_;
@@ -30,7 +33,7 @@ class PlasmaStoreRunner {
   int64_t system_memory_;
   bool hugepages_enabled_;
   std::string plasma_directory_;
-  boost::asio::io_service main_service_;
+  mutable boost::asio::io_service main_service_;
   std::unique_ptr<PlasmaStore> store_;
   std::shared_ptr<ray::ObjectStoreNotificationManager> listener_;
 };
