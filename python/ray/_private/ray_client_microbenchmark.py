@@ -69,9 +69,7 @@ def benchmark_simple_actor(ray):
 
 
 def main():
-    system_config = {"put_small_object_in_memory_store": True}
-    with ray_setup_and_teardown(
-            logging_level=logging.WARNING, _system_config=system_config):
+    with ray_setup_and_teardown(logging_level=logging.WARNING):
         for name, obj in inspect.getmembers(sys.modules[__name__]):
             if not name.startswith("benchmark_"):
                 continue

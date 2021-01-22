@@ -283,7 +283,7 @@ RAY_CONFIG(int64_t, metrics_report_batch_size, 100)
 RAY_CONFIG(int64_t, enable_metrics_collection, true)
 
 /// Whether put small objects in the local memory store.
-RAY_CONFIG(bool, put_small_object_in_memory_store, false)
+RAY_CONFIG(bool, put_small_object_in_memory_store, true)
 
 /// Maximum number of tasks that can be in flight between an owner and a worker for which
 /// the owner has been granted a lease. A value >1 is used when we want to enable
