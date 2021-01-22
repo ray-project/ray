@@ -567,7 +567,7 @@ void WorkerPool::PushIOWorkerInternal(const std::shared_ptr<WorkerInterface> &wo
   } else {
     auto callback = io_worker_state.pending_io_tasks.front();
     io_worker_state.pending_io_tasks.pop();
-    callback(worker);
+    io_service_->post([callback, worker]() { callback(worker); });
   }
 }
 
@@ -585,7 +585,7 @@ void WorkerPool::PopIOWorkerInternal(
   } else {
     auto io_worker = io_worker_state.idle_io_workers.front();
     io_worker_state.idle_io_workers.pop();
-    callback(io_worker);
+    io_service_->post([callback, io_worker]() { callback(io_worker); });
   }
 }
 
