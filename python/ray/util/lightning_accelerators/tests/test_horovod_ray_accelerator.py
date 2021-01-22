@@ -65,18 +65,12 @@ def get_model(lr=1e-2, hidden_size=1, data_size=10, val_size=10, batch_size=2):
 
 
 def get_trainer(dir,
-                num_processes=2,
-                gpus=0,
+                num_slots=2,
+                use_gpu=False,
                 max_epochs=1,
                 limit_train_batches=10,
                 limit_val_batches=10,
                 progress_bar_refresh_rate=0):
-    if gpus > 0:
-        use_gpu = True
-        num_slots = gpus
-    else:
-        use_gpu = False
-        num_slots = num_processes
     accelerator = HorovodRayAccelerator(num_slots=num_slots, use_gpu=use_gpu)
     trainer = pl.Trainer(
         default_root_dir=dir,
@@ -101,11 +95,11 @@ def train_test(trainer, model):
     assert torch.norm(initial_values - post_train_values) > 0.1
 
 
-@pytest.mark.parametrize("num_processes", [1, 2])
-def test_train(tmpdir, ray_start_2_cpus, seed, num_processes):
+@pytest.mark.parametrize("num_slots", [1, 2])
+def test_train(tmpdir, ray_start_2_cpus, seed, num_slots):
     model = get_model()
 
-    trainer = get_trainer(tmpdir, num_processes=num_processes)
+    trainer = get_trainer(tmpdir, num_slots=num_slots)
     train_test(trainer, model)
 
 
@@ -116,10 +110,10 @@ def load_test(trainer, model):
     assert trained_model is not None, 'loading model failed'
 
 
-@pytest.mark.parametrize("num_processes", [1, 2])
-def test_load(tmpdir, ray_start_2_cpus, seed, num_processes):
+@pytest.mark.parametrize("num_slots", [1, 2])
+def test_load(tmpdir, ray_start_2_cpus, seed, num_slots):
     model = get_model()
-    trainer = get_trainer(tmpdir, num_processes=num_processes)
+    trainer = get_trainer(tmpdir, num_slots=num_slots)
     load_test(trainer, model)
 
 
@@ -138,8 +132,8 @@ def predict_test(trainer, model, dm):
                                f"test set (it got {average_acc})"
 
 
-@pytest.mark.parametrize("num_processes", [1, 2])
-def test_predict(tmpdir, ray_start_2_cpus, seed, num_processes):
+@pytest.mark.parametrize("num_slots", [1, 2])
+def test_predict(tmpdir, ray_start_2_cpus, seed, num_slots):
     config = {
         "layer_1": 32,
         "layer_2": 32,
@@ -153,7 +147,7 @@ def test_predict(tmpdir, ray_start_2_cpus, seed, num_processes):
         tmpdir,
         limit_train_batches=10,
         max_epochs=1,
-        num_processes=num_processes)
+        num_slots=num_slots)
     predict_test(trainer, model, dm)
 
 
@@ -161,10 +155,10 @@ def test_predict(tmpdir, ray_start_2_cpus, seed, num_processes):
     not _nccl_available(), reason="test requires Horovod with NCCL support")
 @pytest.mark.skipif(
     torch.cuda.device_count() < 2, reason="test requires multi-GPU machine")
-@pytest.mark.parametrize("num_gpus", [1, 2])
-def test_train_gpu(tmpdir, ray_start_2_gpus, seed, num_gpus):
+@pytest.mark.parametrize("num_slots", [1, 2])
+def test_train_gpu(tmpdir, ray_start_2_gpus, seed, num_slots):
     model = get_model()
-    trainer = get_trainer(tmpdir, gpus=num_gpus)
+    trainer = get_trainer(tmpdir, num_slots=num_slots, use_gpu=True)
     train_test(trainer, model)
 
 
@@ -172,10 +166,10 @@ def test_train_gpu(tmpdir, ray_start_2_gpus, seed, num_gpus):
     not _nccl_available(), reason="test requires Horovod with NCCL support")
 @pytest.mark.skipif(
     torch.cuda.device_count() < 2, reason="test requires multi-GPU machine")
-@pytest.mark.parametrize("num_gpus", [1, 2])
-def test_load_gpu(tmpdir, ray_start_2_gpus, seed, num_gpus):
+@pytest.mark.parametrize("num_slots", [1, 2])
+def test_load_gpu(tmpdir, ray_start_2_gpus, seed, num_slots):
     model = get_model()
-    trainer = get_trainer(tmpdir, gpus=num_gpus)
+    trainer = get_trainer(tmpdir, num_slots=num_slots, use_gpu=True)
     load_test(trainer, model)
 
 
@@ -183,8 +177,8 @@ def test_load_gpu(tmpdir, ray_start_2_gpus, seed, num_gpus):
     not _nccl_available(), reason="test requires Horovod with NCCL support")
 @pytest.mark.skipif(
     torch.cuda.device_count() < 2, reason="test requires multi-GPU machine")
-@pytest.mark.parametrize("num_gpus", [1, 2])
-def test_predict_gpu(tmpdir, ray_start_2_gpus, seed, num_gpus):
+@pytest.mark.parametrize("num_slots", [1, 2])
+def test_predict_gpu(tmpdir, ray_start_2_gpus, seed, num_slots):
     config = {
         "layer_1": 32,
         "layer_2": 32,
@@ -195,5 +189,6 @@ def test_predict_gpu(tmpdir, ray_start_2_gpus, seed, num_gpus):
     dm = MNISTDataModule(
         data_dir=tmpdir, num_workers=1, batch_size=config["batch_size"])
     trainer = get_trainer(
-        tmpdir, limit_train_batches=10, max_epochs=1, gpus=num_gpus)
+        tmpdir, limit_train_batches=10, max_epochs=1, num_slots=num_slots,
+        use_gpu=True)
     predict_test(trainer, model, dm)
