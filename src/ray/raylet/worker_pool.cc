@@ -672,7 +672,7 @@ void WorkerPool::TryKillingIdleWorkers() {
   int64_t now = current_time_ms();
   size_t running_size = 0;
   for (const auto &worker : GetAllRegisteredWorkers()) {
-    if (!worker->IsDead()) {
+    if (!worker->IsDead() && !IsIOWorkerType(worker->GetWorkerType())) {
       running_size++;
     }
   }

@@ -186,7 +186,9 @@ void LocalObjectManager::SpillObjects(const std::vector<ObjectID> &object_ids,
 void LocalObjectManager::SpillObjectsInternal(
     const std::vector<ObjectID> &object_ids,
     std::function<void(const ray::Status &)> callback) {
-  std::vector<ObjectID> objects_to_spill;
+  std::shared_ptr<std::vector<ObjectID>> objects_to_spill =
+      std::make_shared<std::vector<ObjectID>>();
+  ;
   // Filter for the objects that can be spilled.
   for (const auto &id : object_ids) {
     // We should not spill an object that we are not the primary copy for, or
@@ -205,14 +207,14 @@ void LocalObjectManager::SpillObjectsInternal(
     auto it = pinned_objects_.find(id);
     if (it != pinned_objects_.end()) {
       RAY_LOG(DEBUG) << "Spilling object " << id;
-      objects_to_spill.push_back(id);
+      objects_to_spill->push_back(id);
       num_bytes_pending_spill_ += it->second->GetSize();
       objects_pending_spill_[id] = std::move(it->second);
       pinned_objects_.erase(it);
     }
   }
 
-  if (objects_to_spill.empty()) {
+  if (objects_to_spill->empty()) {
     if (callback) {
       callback(Status::Invalid("All objects are already being spilled."));
     }
@@ -221,7 +223,7 @@ void LocalObjectManager::SpillObjectsInternal(
   io_worker_pool_.PopSpillWorker(
       [this, objects_to_spill, callback](std::shared_ptr<WorkerInterface> io_worker) {
         rpc::SpillObjectsRequest request;
-        for (const auto &object_id : objects_to_spill) {
+        for (const auto &object_id : *objects_to_spill) {
           RAY_LOG(DEBUG) << "Sending spill request for object " << object_id;
           request.add_object_ids_to_spill(object_id.Binary());
         }
@@ -235,7 +237,7 @@ void LocalObjectManager::SpillObjectsInternal(
               RAY_CHECK(io_worker != nullptr);
               io_worker_pool_.PushSpillWorker(io_worker);
               if (!status.ok()) {
-                for (const auto &object_id : objects_to_spill) {
+                for (const auto &object_id : *objects_to_spill) {
                   auto it = objects_pending_spill_.find(object_id);
                   RAY_CHECK(it != objects_pending_spill_.end());
                   pinned_objects_.emplace(object_id, std::move(it->second));
@@ -248,7 +250,7 @@ void LocalObjectManager::SpillObjectsInternal(
                   callback(status);
                 }
               } else {
-                AddSpilledUrls(objects_to_spill, r, callback);
+                AddSpilledUrls(*objects_to_spill, r, callback);
               }
             });
       });

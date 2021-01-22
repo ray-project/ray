@@ -73,6 +73,28 @@ def test_url_generation_and_parse():
     assert parsed_result.size == size
 
 
+def assert_spilling_happened(address, spill=True, restore=True):
+    state = ray.state.GlobalState()
+    state._initialize_global_state(address,
+                                   ray.ray_constants.REDIS_DEFAULT_PASSWORD)
+    raylet = state.node_table()[0]
+    memory_summary = ray.internal.internal_api.memory_summary(
+        raylet["NodeManagerAddress"], raylet["NodeManagerPort"])
+    spilled = False
+    restored = False
+    for line in memory_summary.split("\n"):
+        if "Spilled" in line:
+            spilled = True
+            print(line)
+        if "Restored" in line:
+            restored = True
+            print(line)
+    if spill:
+        assert spilled
+    if restore:
+        assert restored
+
+
 @pytest.mark.skipif(
     platform.system() == "Windows", reason="Failing on Windows.")
 def test_spilling_not_done_for_pinned_object(tmp_path, shutdown_only):
@@ -156,13 +178,14 @@ def test_spill_remote_object(ray_start_cluster_head):
 
     # Test passing the spilled object as an arg to another task.
     ray.get(depends.remote(ref))
+    assert_spilling_happened(cluster.address)
 
 
 @pytest.mark.skipif(
     platform.system() == "Windows", reason="Failing on Windows.")
 def test_spill_objects_automatically(object_spilling_config, shutdown_only):
     # Limit our object store to 75 MiB of memory.
-    ray.init(
+    address = ray.init(
         num_cpus=1,
         object_store_memory=75 * 1024 * 1024,
         _system_config={
@@ -193,6 +216,7 @@ def test_spill_objects_automatically(object_spilling_config, shutdown_only):
         solution = solution_buffer[index]
         sample = ray.get(ref, timeout=0)
         assert np.array_equal(sample, solution)
+    assert_spilling_happened(address["redis_address"])
 
 
 @pytest.mark.skipif(
@@ -242,7 +266,7 @@ def test_spill_stats(tmp_path, shutdown_only):
 @pytest.mark.skipif(
     platform.system() == "Windows", reason="Failing on Windows.")
 def test_spill_during_get(object_spilling_config, shutdown_only):
-    ray.init(
+    address = ray.init(
         num_cpus=4,
         object_store_memory=100 * 1024 * 1024,
         _system_config={
@@ -268,13 +292,14 @@ def test_spill_during_get(object_spilling_config, shutdown_only):
     # objects are being created.
     for x in ids:
         print(ray.get(x).shape)
+    assert_spilling_happened(address["redis_address"])
 
 
 @pytest.mark.skipif(
     platform.system() == "Windows", reason="Failing on Windows.")
 def test_spill_deadlock(object_spilling_config, shutdown_only):
     # Limit our object store to 75 MiB of memory.
-    ray.init(
+    address = ray.init(
         object_store_memory=75 * 1024 * 1024,
         _system_config={
             "max_io_workers": 1,
@@ -286,8 +311,8 @@ def test_spill_deadlock(object_spilling_config, shutdown_only):
     arr = np.random.rand(1024 * 1024)  # 8 MB data
     replay_buffer = []
 
-    # Create objects of more than 400 MiB.
-    for _ in range(50):
+    # Create objects of more than 240 MiB.
+    for _ in range(30):
         ref = None
         while ref is None:
             ref = ray.put(arr)
@@ -298,6 +323,7 @@ def test_spill_deadlock(object_spilling_config, shutdown_only):
                 ref = random.choice(replay_buffer)
                 sample = ray.get(ref, timeout=0)
                 assert np.array_equal(sample, arr)
+    assert_spilling_happened(address["redis_address"])
 
 
 @pytest.mark.skipif(
@@ -306,7 +332,7 @@ def test_delete_objects(tmp_path, shutdown_only):
     # Limit our object store to 75 MiB of memory.
     temp_folder = tmp_path / "spill"
     temp_folder.mkdir()
-    ray.init(
+    address = ray.init(
         object_store_memory=75 * 1024 * 1024,
         _system_config={
             "max_io_workers": 1,
@@ -323,7 +349,7 @@ def test_delete_objects(tmp_path, shutdown_only):
     arr = np.random.rand(1024 * 1024)  # 8 MB data
     replay_buffer = []
 
-    for _ in range(40):
+    for _ in range(30):
         ref = None
         while ref is None:
             ref = ray.put(arr)
@@ -340,6 +366,7 @@ def test_delete_objects(tmp_path, shutdown_only):
     del replay_buffer
     del ref
     wait_for_condition(is_dir_empty)
+    assert_spilling_happened(address["redis_address"], restore=False)
 
 
 @pytest.mark.skipif(
@@ -349,7 +376,7 @@ def test_delete_objects_delete_while_creating(tmp_path, shutdown_only):
     # Limit our object store to 75 MiB of memory.
     temp_folder = tmp_path / "spill"
     temp_folder.mkdir()
-    ray.init(
+    address = ray.init(
         object_store_memory=75 * 1024 * 1024,
         _system_config={
             "max_io_workers": 2,
@@ -376,7 +403,7 @@ def test_delete_objects_delete_while_creating(tmp_path, shutdown_only):
             replay_buffer.pop()
 
     # Do random sampling.
-    for _ in range(80):
+    for _ in range(40):
         ref = random.choice(replay_buffer)
         sample = ray.get(ref, timeout=0)
         assert np.array_equal(sample, arr)
@@ -391,6 +418,7 @@ def test_delete_objects_delete_while_creating(tmp_path, shutdown_only):
     del replay_buffer
     del ref
     wait_for_condition(is_dir_empty, timeout=1000)
+    assert_spilling_happened(address["redis_address"])
 
 
 @pytest.mark.skipif(
@@ -400,7 +428,7 @@ def test_delete_objects_on_worker_failure(tmp_path, shutdown_only):
     # Limit our object store to 75 MiB of memory.
     temp_folder = tmp_path / "spill"
     temp_folder.mkdir()
-    ray.init(
+    address = ray.init(
         object_store_memory=75 * 1024 * 1024,
         _system_config={
             "max_io_workers": 2,
@@ -426,7 +454,7 @@ def test_delete_objects_on_worker_failure(tmp_path, shutdown_only):
             return os.getpid()
 
         def create_objects(self):
-            for _ in range(40):
+            for _ in range(30):
                 ref = None
                 while ref is None:
                     ref = ray.put(arr)
@@ -436,12 +464,12 @@ def test_delete_objects_on_worker_failure(tmp_path, shutdown_only):
                     self.replay_buffer.pop()
 
             # Do random sampling.
-            for _ in range(80):
+            for _ in range(40):
                 ref = random.choice(self.replay_buffer)
                 sample = ray.get(ref, timeout=0)
                 assert np.array_equal(sample, arr)
 
-    a = Actor.remote()
+    a = Actor.options(max_restarts=0).remote()
     actor_pid = ray.get(a.get_pid.remote())
     ray.get(a.create_objects.remote())
     os.kill(actor_pid, 9)
@@ -463,6 +491,7 @@ def test_delete_objects_on_worker_failure(tmp_path, shutdown_only):
 
     # After all, make sure all objects are deleted upon worker failures.
     wait_for_condition(is_dir_empty, timeout=1000)
+    assert_spilling_happened(address["redis_address"])
 
 
 @pytest.mark.skipif(
@@ -514,7 +543,7 @@ def test_delete_objects_multi_node(tmp_path, ray_start_cluster):
                     self.replay_buffer.pop()
 
             # Do random sampling.
-            for _ in range(80):
+            for _ in range(40):
                 ref = random.choice(self.replay_buffer)
                 sample = ray.get(ref, timeout=0)
                 assert np.array_equal(sample, arr)
@@ -541,6 +570,7 @@ def test_delete_objects_multi_node(tmp_path, ray_start_cluster):
         wait_for_condition(lambda: wait_until_actor_dead(actor))
     # The multi node deletion should work.
     wait_for_condition(is_dir_empty)
+    assert_spilling_happened(cluster.address)
 
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="Flaky on Windows.")
@@ -549,7 +579,7 @@ def test_fusion_objects(tmp_path, shutdown_only):
     temp_folder = tmp_path / "spill"
     temp_folder.mkdir()
     min_spilling_size = 10 * 1024 * 1024
-    ray.init(
+    address = ray.init(
         object_store_memory=75 * 1024 * 1024,
         _system_config={
             "max_io_workers": 3,
@@ -579,7 +609,7 @@ def test_fusion_objects(tmp_path, shutdown_only):
 
     print("-----------------------------------")
     # randomly sample objects
-    for _ in range(500):
+    for _ in range(200):
         index = random.choice(list(range(buffer_length)))
         ref = replay_buffer[index]
         solution = solution_buffer[index]
@@ -595,12 +625,13 @@ def test_fusion_objects(tmp_path, shutdown_only):
         if file_size >= min_spilling_size:
             is_test_passing = True
     assert is_test_passing
+    assert_spilling_happened(address["redis_address"])
 
 
 # https://github.com/ray-project/ray/issues/12912
 def do_test_release_resource(tmp_path, expect_released):
     temp_folder = tmp_path / "spill"
-    ray.init(
+    address = ray.init(
         num_cpus=1,
         object_store_memory=75 * 1024 * 1024,
         _system_config={
@@ -637,6 +668,7 @@ def do_test_release_resource(tmp_path, expect_released):
         assert ready
     else:
         assert not ready
+    assert_spilling_happened(address["redis_address"], restore=False)
 
 
 @pytest.mark.skipif(
@@ -710,6 +742,7 @@ def test_spill_objects_on_object_transfer(object_spilling_config,
     # spilling.
     tasks = [foo.remote(*task_args) for task_args in args]
     ray.get(tasks)
+    assert_spilling_happened(cluster.address)
 
 
 if __name__ == "__main__":
