@@ -254,10 +254,6 @@
             "type": "string",
             "description": "If using multiple node types, specifies the head node type."
         },
-        "worker_default_node_type": {
-            "type": "string",
-            "description": "If using multiple node types, specifies the default worker node type."
-        },
         "head_node": {
             "type": "object",
             "description": "Provider-specific config for the head node, e.g. instance type."

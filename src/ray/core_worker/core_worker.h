@@ -559,10 +559,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   ///
   /// \param[in] object_id ID of the objects to check for.
   /// \param[out] has_object Whether or not the object is present.
-  /// \param[out] is_in_plasma Whether or not the object is in Plasma.
   /// \return Status.
-  Status Contains(const ObjectID &object_id, bool *has_object,
-                  bool *is_in_plasma = nullptr);
+  Status Contains(const ObjectID &object_id, bool *has_object);
 
   /// Wait for a list of objects to appear in the object store.
   /// Duplicate object ids are supported, and `num_objects` includes duplicate ids in this

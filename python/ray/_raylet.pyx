@@ -898,17 +898,16 @@ cdef class CoreWorker:
 
         return RayObjectsToDataMetadataPairs(results)
 
-    def object_exists(self, ObjectRef object_ref, memory_store_only=False):
+    def object_exists(self, ObjectRef object_ref):
         cdef:
             c_bool has_object
-            c_bool is_in_plasma
             CObjectID c_object_id = object_ref.native()
 
         with nogil:
             check_status(CCoreWorkerProcess.GetCoreWorker().Contains(
-                c_object_id, &has_object, &is_in_plasma))
+                c_object_id, &has_object))
 
-        return has_object and (not memory_store_only or not is_in_plasma)
+        return has_object
 
     cdef _create_put_buffer(self, shared_ptr[CBuffer] &metadata,
                             size_t data_size, ObjectRef object_ref,
