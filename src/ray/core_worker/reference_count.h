@@ -397,6 +397,12 @@ class ReferenceCounter : public ReferenceCounterInterface,
   absl::optional<absl::flat_hash_set<NodeID>> GetObjectLocations(
       const ObjectID &object_id) LOCKS_EXCLUDED(mutex_);
 
+  /// Get an object's size. This will return 0 if the object is out of scope.
+  ///
+  /// \param[in] object_id The object whose size to get.
+  /// \return Object size, or 0 if the object is out of scope.
+  size_t GetObjectSize(const ObjectID &object_id) const;
+
   /// Handle an object has been spilled to external storage.
   ///
   /// This notifies the primary raylet that the object is safe to release and
