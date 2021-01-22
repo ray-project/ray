@@ -182,9 +182,15 @@ def compute_and_clip_gradients(policy: Policy, optimizer: LocalOptimizer,
 
     # Clip by global norm, if necessary.
     if policy.config["grad_clip"] is not None:
+        # Defuse inf gradients (due to super large losses).
         grads = [g for (g, v) in grads_and_vars]
-        policy.grads, _ = tf.clip_by_global_norm(grads,
-                                                 policy.config["grad_clip"])
+        grads, _ = tf.clip_by_global_norm(grads, policy.config["grad_clip"])
+        # If the global_norm is inf -> All grads will be NaN. Stabilize this
+        # here by setting them to 0.0. This will simply ignore destructive loss
+        # calculations.
+        policy.grads = [
+            tf.where(tf.math.is_nan(g), tf.zeros_like(g), g) for g in grads
+        ]
         clipped_grads_and_vars = list(zip(policy.grads, variables))
         return clipped_grads_and_vars
     else:

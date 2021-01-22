@@ -13,6 +13,9 @@ import sys
 import tempfile
 import time
 
+from typing import Optional, Dict
+from collections import defaultdict
+
 import ray
 import ray.ray_constants as ray_constants
 import ray._private.services
@@ -121,18 +124,10 @@ class Node:
 
         self._raylet_ip_address = raylet_ip_address
 
-        self.metrics_agent_port = (ray_params.metrics_agent_port
-                                   or self._get_unused_port()[0])
-        self._metrics_export_port = ray_params.metrics_export_port
-        if self._metrics_export_port is None:
-            self._metrics_export_port = self._get_unused_port()[0]
-
         ray_params.update_if_absent(
             include_log_monitor=True,
             resources={},
             temp_dir=ray.utils.get_ray_temp_dir(),
-            metrics_agent_port=self.metrics_agent_port,
-            metrics_export_port=self._metrics_export_port,
             worker_path=os.path.join(
                 os.path.dirname(os.path.abspath(__file__)),
                 "workers/default_worker.py"))
@@ -189,6 +184,15 @@ class Node:
                 default_prefix="plasma_store")
             self._raylet_socket_name = self._prepare_socket_file(
                 self._ray_params.raylet_socket_name, default_prefix="raylet")
+
+        self.metrics_agent_port = self._get_cached_port(
+            "metrics_agent_port", default_port=ray_params.metrics_agent_port)
+        self._metrics_export_port = self._get_cached_port(
+            "metrics_export_port", default_port=ray_params.metrics_export_port)
+
+        ray_params.update_if_absent(
+            metrics_agent_port=self.metrics_agent_port,
+            metrics_export_port=self._metrics_export_port)
 
         if head:
             ray_params.update_if_absent(num_redis_shards=1)
@@ -554,6 +558,50 @@ class Node:
                 raise OSError("AF_UNIX path length cannot exceed "
                               "{} bytes: {!r}".format(maxlen, result))
         return result
+
+    def _get_cached_port(self,
+                         port_name: str,
+                         default_port: Optional[int] = None) -> int:
+        """Get a port number from a cache on this node.
+
+        Different driver processes on a node should use the same ports for
+        some purposes, e.g. exporting metrics.  This method returns a port
+        number for the given port name and caches it in a file.  If the
+        port isn't already cached, an unused port is generated and cached.
+
+        Args:
+            port_name (str): the name of the port, e.g. metrics_export_port
+            default_port (Optional[int]): The port to return and cache if no
+            port has already been cached for the given port_name.  If None, an
+            unused port is generated and cached.
+        Returns:
+            port (int): the port number.
+        """
+        file_path = os.path.join(self.get_session_dir_path(),
+                                 "ports_by_node.json")
+
+        # Maps a Node.unique_id to a dict that maps port names to port numbers.
+        ports_by_node: Dict[str, Dict[str, int]] = defaultdict(dict)
+
+        if not os.path.exists(file_path):
+            with open(file_path, "w") as f:
+                json.dump({}, f)
+
+        with open(file_path, "r") as f:
+            ports_by_node.update(json.load(f))
+
+        if (self.unique_id in ports_by_node
+                and port_name in ports_by_node[self.unique_id]):
+            # The port has already been cached at this node, so use it.
+            port = int(ports_by_node[self.unique_id][port_name])
+        else:
+            # Pick a new port to use and cache it at this node.
+            port = (default_port or self._get_unused_port()[0])
+            ports_by_node[self.unique_id][port_name] = port
+            with open(file_path, "w") as f:
+                json.dump(ports_by_node, f)
+
+        return port
 
     def start_reaper_process(self):
         """
