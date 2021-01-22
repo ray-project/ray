@@ -1,4 +1,6 @@
-from pytorch_lightning.accelerators.horovod_accelerator import HorovodAccelerator
+import ray
+from pytorch_lightning.accelerators.horovod_accelerator import \
+    HorovodAccelerator
 
 try:
     import horovod.torch as hvd
@@ -63,7 +65,7 @@ class HorovodRayAccelerator(HorovodAccelerator):
                  num_slots=1,
                  use_gpu=False,
                  **kwargs):
-        super().__init__(*args, **kwargs)
+        super().__init__(*args, trainer=None, **kwargs)
         self.nickname = "horovod_ray"
         self.num_hosts = num_hosts
         self.num_slots = num_slots
@@ -81,16 +83,21 @@ class HorovodRayAccelerator(HorovodAccelerator):
         self.executor.start(executable_cls=get_executable_cls())
 
     def train(self):
-        results = self.executor.run(self.train_remote)
+        trainer = self.trainer
+        trainer_ref = ray.put(self.trainer)
+        self.trainer = None
+        results = self.executor.run(self.train_remote, args=[trainer_ref])
         results, state_dict, best_path = results[0]
 
+        self.trainer = trainer
         self.trainer.model.load_state_dict(state_dict)
         if self.trainer.checkpoint_callback:
             self.trainer.checkpoint_callback.best_model_path = best_path
 
         return results
 
-    def train_remote(self):
+    def train_remote(self, trainer_ref):
+        self.trainer = ray.get(trainer_ref)
         hvd.init()
         if self.trainer.on_gpu:
             # Horovod assigns one local GPU per process.

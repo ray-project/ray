@@ -9,11 +9,8 @@ from ray.tune.examples.mnist_ptl_mini import LightningMNISTClassifier
 from ray.util.lightning_accelerators import HorovodRayAccelerator
 import pytorch_lightning as pl
 
-path_here = os.path.abspath(os.path.dirname(__file__))
-path_root = os.path.abspath(os.path.join(path_here, '..', '..'))
-
 try:
-    import horovod
+    import horovod  # noqa: F401
     from horovod.common.util import nccl_built
 except ImportError:
     HOROVOD_AVAILABLE = False
@@ -44,7 +41,7 @@ def ray_start_2_gpus():
     ray.shutdown()
     # This env var is set by Pytorch Lightning.
     # Make sure to reset it after each test.
-    #TODO: Upstream to PTL to not set this env var if using Ray.
+    # TODO: Upstream to PTL to not set this env var if using Ray.
     del os.environ["CUDA_VISIBLE_DEVICES"]
 
 
@@ -90,7 +87,7 @@ def train_test(trainer, model):
     result = trainer.fit(model)
     post_train_values = torch.tensor(
         [torch.sum(torch.abs(x)) for x in model.parameters()])
-    assert result == 1, 'trainer failed'
+    assert result == 1, "trainer failed"
     # Check that the model is actually changed post-training.
     assert torch.norm(initial_values - post_train_values) > 0.1
 
@@ -107,7 +104,7 @@ def load_test(trainer, model):
     trainer.fit(model)
     trained_model = PTL_Module.load_from_checkpoint(
         trainer.checkpoint_callback.best_model_path, config=model.config)
-    assert trained_model is not None, 'loading model failed'
+    assert trained_model is not None, "loading model failed"
 
 
 @pytest.mark.parametrize("num_slots", [1, 2])

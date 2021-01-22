@@ -125,8 +125,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--num-hosts",
         type=int,
-        help=
-        "Number of machines to train on. If using Tune, then each trial will use this many machines.",
+        help="Number of machines to train on. If using Tune, then each "
+        "trial will use this many machines.",
         default=1)
     parser.add_argument(
         "--num-slots",
