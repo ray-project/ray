@@ -38,7 +38,20 @@ def configure_subnet_default(ec2_client_stub):
     describe_no_security_groups(ec2_client_stub)
     ec2_client_stub.add_response(
         "describe_subnets",
-        expected_params={"Filters": ANY},
+        expected_params={"Filters": []},
+        service_response={"Subnets": [DEFAULT_SUBNET]})
+
+
+def configure_subnet_given_sg(ec2_client_stub, security_group):
+    describe_a_security_group(ec2_client_stub, security_group)
+    ec2_client_stub.add_response(
+        "describe_subnets",
+        expected_params={
+            "Filters": [{
+                "Name": "vpc-id",
+                "Values": [security_group["VpcId"]]
+            }]
+        },
         service_response={"Subnets": [DEFAULT_SUBNET]})
 
 
@@ -65,6 +78,18 @@ def describe_no_security_groups(ec2_client_stub):
         "describe_security_groups",
         expected_params={"Filters": ANY},
         service_response={})
+
+
+def describe_a_security_group(ec2_client_stub, security_group):
+    ec2_client_stub.add_response(
+        "describe_security_groups",
+        expected_params={
+            "Filters": [{
+                "Name": "group-id",
+                "Values": [security_group["GroupId"]]
+            }]
+        },
+        service_response={"SecurityGroups": [security_group]})
 
 
 def create_sg_echo(ec2_client_stub, security_group):
