@@ -125,13 +125,8 @@ class AxSearch(Searcher):
             You can install AxSearch with the command:
             `pip install ax-platform sqlalchemy`."""
         
-        ax_mode_is_min = ax.experiment.optimization_config.objective.minimize 
-        expected_mode = "min" if ax_mode_is_min else "max"
         if mode:
-            assert mode in ["min", "max"], "`mode` must be 'min' or 'max'."         
-            assert mode == expected_mode, "`mode` does not correspond to the one set in `AxClient`."
-            
-        mode = expected_mode
+            assert mode in ["min", "max"], "`mode` must be 'min' or 'max'."                     
 
         super(AxSearch, self).__init__(
             metric=metric,
@@ -177,7 +172,7 @@ class AxSearch(Searcher):
             has_experiment = True
         except ValueError:
             has_experiment = False
-
+        
         if not has_experiment:
             if not self._space:
                 raise ValueError(
@@ -190,20 +185,26 @@ class AxSearch(Searcher):
                 objective_name=self._metric,
                 parameter_constraints=self._parameter_constraints,
                 outcome_constraints=self._outcome_constraints,
-                minimize=self._mode != "max")
+                minimize=self._mode != "max"
+            )
         else:
             if any([
                     self._space, self._parameter_constraints,
-                    self._outcome_constraints
+                    self._outcome_constraints, self._mode, self._metric
             ]):
                 raise ValueError(
                     "If you create the Ax experiment yourself, do not pass "
                     "values for these parameters to `AxSearch`: {}.".format([
-                        "space", "parameter_constraints", "outcome_constraints"
+                        "space", 
+                        "parameter_constraints", 
+                        "outcome_constraints",
+                        "mode",
+                        "metric",
                     ]))
 
         exp = self._ax.experiment
-        self._objective_name = exp.optimization_config.objective.metric.name
+        self._mode = "min" if exp.optimization_config.objective.minimize else "max"
+        self._metric = exp.optimization_config.objective.metric.name
         self._parameters = list(exp.parameters)
 
         if self._ax._enforce_sequential_optimization:
