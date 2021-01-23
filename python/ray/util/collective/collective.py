@@ -17,7 +17,7 @@ except ImportError:
     _NCCL_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
-logger.setLevel("DEBUG")
+logger.setLevel("INFO")
 
 def nccl_available():
     return _NCCL_AVAILABLE
@@ -49,7 +49,7 @@ class GroupManager(object):
         if backend == types.Backend.MPI:
             raise NotImplementedError()
         elif backend == types.Backend.NCCL:
-            logger.debug("creating NCCL group: '{}'".format(group_name))
+            logger.debug("Creating NCCL group: '{}'...".format(group_name))
             g = NCCLGroup(world_size, rank, group_name)
             self._name_group_map[group_name] = g
             self._group_name_map[g] = group_name
@@ -233,7 +233,6 @@ def allreduce(tensor, group_name: str = "default", op=types.ReduceOp.SUM):
     Returns:
         None
     """
-    # nccl_util.check_collective_input(tensor)
     _check_single_tensor_input(tensor)
     g = _check_and_get_group(group_name)
     opts = types.AllReduceOptions
@@ -251,7 +250,8 @@ def allreduce_multigpu(tensor_list: list, group_name: str = "default", op=types.
     Returns:
         None
     """
-    # nccl_util.check_collective_input(tensor)
+    if not types.cupy_available():
+        raise RuntimeError("Multigpu calls requires NCCL and Cupy.")
     _check_tensor_list_input(tensor_list)
     g = _check_and_get_group(group_name)
     opts = types.AllReduceOptions
@@ -318,13 +318,14 @@ def reduce_multigpu(tensor_list: list,
     Returns:
         None
     """
-
+    if not types.cupy_available():
+        raise RuntimeError("Multigpu calls requires NCCL and Cupy.")
     _check_tensor_list_input(tensor_list)
     g = _check_and_get_group(group_name)
 
     # check dst rank
     _check_rank_valid(g, dst_rank)
-    _check_rank_index_valid(len(tensor_list), dst_tensor)
+    _check_root_tensor_valid(len(tensor_list), dst_tensor)
     opts = types.ReduceOptions()
     opts.reduceOp = op
     opts.root_rank = dst_rank
@@ -369,12 +370,14 @@ def broadcast_multigpu(tensor_list,
     Returns:
         None
     """
+    if not types.cupy_available():
+        raise RuntimeError("Multigpu calls requires NCCL and Cupy.")
     _check_tensor_list_input(tensor_list)
     g = _check_and_get_group(group_name)
 
     # check src rank
     _check_rank_valid(g, src_rank)
-    _check_rank_index_valid(len(tensor_list), src_tensor)
+    _check_root_tensor_valid(len(tensor_list), src_tensor)
     opts = types.BroadcastOptions()
     opts.root_rank = src_rank
     opts.root_tensor = src_tensor
@@ -420,6 +423,8 @@ def allgather_multigpu(output_tensor_lists: list,
     Returns:
         None
     """
+    if not types.cupy_available():
+        raise RuntimeError("Multigpu calls requires NCCL and Cupy.")
     _check_tensor_lists_input(output_tensor_lists)
     _check_tensor_list_input(input_tensor_list)
     g = _check_and_get_group(group_name)
@@ -474,6 +479,8 @@ def reducescatter_multigpu(output_tensor_list,
     Returns:
         None.
     """
+    if not types.cupy_available():
+        raise RuntimeError("Multigpu calls requires NCCL and Cupy.")
     _check_tensor_lists_input(input_tensor_lists)
     _check_tensor_list_input(output_tensor_list)
     g = _check_and_get_group(group_name)
@@ -499,7 +506,6 @@ def send(tensor, dst_rank: int, group_name: str = "default"):
     if dst_rank == g.rank:
         raise RuntimeError(
             "The destination rank '{}' is self.".format(dst_rank))
-
     opts = types.SendOptions()
     opts.dst_rank = dst_rank
     g.send([tensor], opts)
@@ -523,12 +529,15 @@ def send_multigpu(tensor,
     Returns:
         None
     """
+    if not types.cupy_available():
+        raise RuntimeError("send_multigpu call requires NCCL.")
     _check_single_tensor_input(tensor)
     g = _check_and_get_group(group_name)
     _check_rank_valid(g, dst_rank)
     if dst_rank == g.rank:
-        raise RuntimeError(
-            "The destination rank '{}' is self.".format(dst_rank))
+        raise RuntimeError("The dst_rank '{}' is self. Considering "
+                           "doing GPU to GPU memcpy instead?"
+                           .format(dst_rank))
     opts = types.SendOptions()
     opts.dst_rank = dst_rank
     opts.dst_gpu_index = dst_gpu_index
@@ -575,12 +584,15 @@ def recv_multigpu(tensor,
     Returns:
         None
     """
+    if not types.cupy_available():
+        raise RuntimeError("recv_multigpu call requires NCCL.")
     _check_single_tensor_input(tensor)
     g = _check_and_get_group(group_name)
     _check_rank_valid(g, src_rank)
     if src_rank == g.rank:
-        raise RuntimeError(
-            "The destination rank '{}' is self.".format(src_rank))
+        raise RuntimeError("The dst_rank '{}' is self. Considering "
+                           "doing GPU to GPU memcpy instead?"
+                           .format(src_rank))
     opts = types.RecvOptions()
     opts.src_rank = src_rank
     opts.src_gpu_index = src_gpu_index
@@ -665,15 +677,6 @@ def _check_rank_valid(g, rank: int):
                          "'{}'".format(rank, g.world_size))
 
 
-def _check_rank_index_valid(length, rank_index):
-    """Check the rank_index 0 <= rank_index < length"""
-    if rank_index < 0:
-        raise ValueError("rank_index '{}' is negative.".format(rank_index))
-    if rank_index >= length:
-        raise ValueError("rank_index '{}' is greater than length of inputs"
-                         "'{}'".format(rank_index, length))
-
-
 def _check_tensor_list_input(tensor_list):
     """Check if the input is a list of supported tensor types."""
     if not isinstance(tensor_list, list):
@@ -694,3 +697,12 @@ def _check_tensor_lists_input(tensor_lists):
         raise RuntimeError("Got an empty list of lists of tensors.")
     for t in tensor_lists:
         _check_tensor_list_input(t)
+
+
+def _check_root_tensor_valid(length, root_tensor):
+    """Check the root_tensor device is 0 <= root_tensor < length"""
+    if root_tensor < 0:
+        raise ValueError("root_tensor '{}' is negative.".format(root_tensor))
+    if root_tensor >= length:
+        raise ValueError("root_tensor '{}' is greater than the number of GPUs: "
+                         "'{}'".format(root_tensor, length))

@@ -27,11 +27,7 @@ class Worker:
 
 
 if __name__ == "__main__":
-
-    send = cp.ones((4, ), dtype=cp.float32)
-
     ray.init(address='auto')
-
     num_workers = 2
     workers = []
     init_rets = []
@@ -43,4 +39,4 @@ if __name__ == "__main__":
     results = ray.get([w.compute.remote() for w in workers])
     print(results)
     ray.get([w.destroy.remote() for w in workers])
- #   ray.shutdown()
+    ray.shutdown()

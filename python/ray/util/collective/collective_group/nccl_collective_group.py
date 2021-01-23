@@ -72,9 +72,9 @@ class Rendezvous:
             logger.debug("Successful rendezvous!")
             break
         if not self._store:
-            raise RuntimeError("Unable to meet other processes"
-                               "at the rendezvous store. If you are using"
-                               "P2P communication, please check if tensors"
+            raise RuntimeError("Unable to meet other processes "
+                               "at the rendezvous store. If you are using "
+                               "P2P communication, please check if tensors "
                                "are put in the correct GPU. ")
 
     @property
@@ -114,6 +114,7 @@ class NCCLGroup(BaseGroup):
         super(NCCLGroup, self).__init__(world_size, rank, group_name)
 
         # communicator and stream cache.
+        # TODO (Hao): we need a lock here...
         self._dev_comm_map = {}
         self._dev_streams_map = {}
 
@@ -371,6 +372,7 @@ class NCCLGroup(BaseGroup):
 
         If the communicator is found in cache, return the communicator. If not,
         a communicator and a stream will be created and put in cache.
+        TODO(Hao): this function is not thread-safe now.
 
         Args:
             comm_key (str): the key to query the communicator cache.
@@ -384,6 +386,7 @@ class NCCLGroup(BaseGroup):
         for d in device_list:
             self._used_gpu_indices.add(d)
 
+        # TODO(Hao): lock the _dev_comm_map here.
         if comm_key in self._dev_comm_map:
             return self._dev_comm_map[comm_key]
 
@@ -408,8 +411,6 @@ class NCCLGroup(BaseGroup):
                 streams[i] = cupy.cuda.Stream.null
                 # Stream(non_blocking=True)
         nccl_util.groupEnd()
-
-        # TODO(Dacheng): Consider to add a lock here for `_dev_comm_map`? threading? asyncio?
         self._dev_comm_map[comm_key] = comms
         self._dev_streams_map[comm_key] = streams
         return comms
@@ -421,21 +422,48 @@ class NCCLGroup(BaseGroup):
         # cupy allocate tensors on null streams.
         cupy.cuda.Stream.null.synchronize()
 
-    def _get_nccl_p2p_communicator(self, comm_key, my_gpu_idx, peer_rank):
+    def _get_nccl_p2p_communicator(self, comm_key, my_gpu_idx, peer_rank, peer_gpu_idx):
         """Create or retrieve an NCCL communicator for p2p tasks.
+
+        Note(Hao): this function is not thread-safe now.
 
         Args:
             comm_key (str): communicator key.
-            my_gpu_idx (int): the source gpu index on the current process.
+            my_gpu_idx (int): the gpu index on the current process.
             peer_rank (int): the rank of the destination process.
+            peer_gpu_idx (int): the gpu index on the peer process.
         Returns:
             communicator
         """
+        if not comm_key:
+            raise RuntimeError("Got empty communicator key.")
+
+        # TODO(Hao): lock the _dev_comm_map here.
         if comm_key in self._dev_comm_map:
             return self._dev_comm_map[comm_key]
 
+        # Note (Hao): This is a bit complex so I decide to take a note here.
+        # Here we need to consider three cases:
+        # Case 1: src_rank != dst_rank, hence the send and recv happen on
+        # different process (actors/tasks); each process makes independent
+        # collective calls and manages corresponding communicators.
+        # Case 2: src_rank == dst_rank, src_gpu_idx == dst_gpu_idx; for this
+        # case, we simply throw a RuntimeError;
+        # Case 3: src_rank == dst_rank, src_gpu_idx != dst_gpu_idx, which means
+        # the send and recv will be called on the same process.
+        # We DO NOT support this case for now. We need to scope (1) communicators
+        # creation and (2) send/recv call appropriately using groupStart() and
+        # groupEnd() calls to avoid deadlocks.
+        if self.rank < peer_rank:
+            my_p2p_rank = 0
+        elif self.rank > peer_rank:
+            my_p2p_rank = 1
+        else:
+            raise RuntimeError("Send and recv happens on the same process. ray.util.collective "
+                               "do not support this case as of now. Alternatively, consider "
+                               "doing GPU to GPU memcpy instead?")
+
         group_key = self._generate_group_key(comm_key)
-        my_p2p_rank = 0 if self.rank < peer_rank else 1
         if my_p2p_rank == 0:
             nccl_uid = self._generate_nccl_uid(group_key)
         else:
@@ -443,6 +471,7 @@ class NCCLGroup(BaseGroup):
             rendezvous.meet()
             nccl_uid = rendezvous.get_nccl_id()
 
+        # create the p2p communicators
         with nccl_util.Device(my_gpu_idx):
             comm = nccl_util.create_nccl_communicator(2, nccl_uid, my_p2p_rank)
             stream = cupy.cuda.Stream.null
@@ -458,17 +487,6 @@ class NCCLGroup(BaseGroup):
         the group name, following: [comm_key]@[group_name].
         """
         return comm_key + "@" + self.group_name
-
-    # TODO(Why?)
-    @staticmethod
-    def _parse_p2p_group_key(key):
-        strs = key.split("_")
-        return int(strs[-2].split(".")[0]), int(strs[-1].split(".")[0])
-
-    # @staticmethod
-    # def _parse_p2p_group_key(key):
-    #     strs = key.split("_")
-    #     return int(strs[-2]), int(strs[-1])
 
     @staticmethod
     def _destroy_store(group_key):
@@ -569,12 +587,12 @@ class NCCLGroup(BaseGroup):
                                    nccl_util.get_nccl_runtime_version()))
         _check_gpu_tensors(tensors)
 
-        # we currently only single device to single device send/recv.
+        # we currently only support single device to single device send/recv.
         assert len(tensors) == 1
         my_gpu_idx = nccl_util.get_tensor_device(tensors[0])
         comm_key = _get_comm_key_send_recv(self.rank, my_gpu_idx,
                                            peer_rank, peer_gpu_idx)
-        comms = self._get_nccl_p2p_communicator(comm_key, my_gpu_idx, peer_rank)
+        comms = self._get_nccl_p2p_communicator(comm_key, my_gpu_idx, peer_rank, peer_gpu_idx)
         streams = self._dev_streams_map[comm_key]
 
         # TODO(Hao): sync streams and events
@@ -719,8 +737,8 @@ def _get_comm_key_send_recv(my_rank, my_gpu_idx, peer_rank, peer_gpu_idx):
         lower_key = str(peer_rank) + "_" + str(peer_gpu_idx)
         higher_key = str(my_rank) + "_" + str(my_gpu_idx)
     else:
-        raise RuntimeError("Sending data to the same machine: "
-                           "my_rank: '{}', peer_rank: '{}'."
-                           .format(my_rank, peer_rank))
+        raise RuntimeError("Send and recv happens on the same process. ray.util.collective "
+                           "does not support this case as of now. Alternatively, consider "
+                           "doing GPU to GPU memcpy?")
     comm_key = lower_key + ":" + higher_key
     return comm_key
