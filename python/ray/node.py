@@ -1132,9 +1132,6 @@ class Node:
         if object_spilling_config:
             object_spilling_config = json.loads(object_spilling_config)
             from ray import external_storage
-            # Validate external storage usage.
             storage = external_storage.setup_external_storage(
                 object_spilling_config)
-            # For third party library developers who turned off
-            # log monitor wouldn't want to print messages.
             storage.destroy_external_storage()
