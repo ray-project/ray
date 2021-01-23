@@ -234,7 +234,6 @@ void LocalObjectManager::SpillObjectsInternal(
                 absl::MutexLock lock(&mutex_);
                 num_active_workers_ -= 1;
               }
-              RAY_CHECK(io_worker != nullptr);
               io_worker_pool_.PushSpillWorker(io_worker);
               if (!status.ok()) {
                 for (const auto &object_id : *objects_to_spill) {
@@ -322,7 +321,6 @@ void LocalObjectManager::AsyncRestoreSpilledObject(
         request,
         [this, start_time, object_id, callback, io_worker](
             const ray::Status &status, const rpc::RestoreSpilledObjectsReply &r) {
-          RAY_CHECK(io_worker != nullptr);
           io_worker_pool_.PushRestoreWorker(io_worker);
           objects_pending_restore_.erase(object_id);
           if (!status.ok()) {

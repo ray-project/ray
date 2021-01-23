@@ -79,6 +79,7 @@ class ExternalStorage(metaclass=abc.ABCMeta):
 
     def _get_objects_from_store(self, object_refs):
         worker = ray.worker.global_worker
+        worker.check_connected()
         ray_object_pairs = worker.core_worker.get_objects(
             object_refs,
             worker.current_task_id,
@@ -88,6 +89,7 @@ class ExternalStorage(metaclass=abc.ABCMeta):
 
     def _put_object_to_store(self, metadata, data_size, file_like, object_ref):
         worker = ray.worker.global_worker
+        worker.check_connected()
         worker.core_worker.put_file_like_object(metadata, data_size, file_like,
                                                 object_ref)
 
