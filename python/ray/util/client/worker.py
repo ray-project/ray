@@ -72,7 +72,7 @@ class Worker:
         conn_attempts = 0
         timeout = INITIAL_TIMEOUT_SEC
         ray_ready = False
-        while conn_attempts < connection_retries + 1:
+        while conn_attempts < max(connection_retries, 1):
             conn_attempts += 1
             try:
                 # Let gRPC wait for us to see if the channel becomes ready.

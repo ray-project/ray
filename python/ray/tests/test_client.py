@@ -386,7 +386,7 @@ def test_startup_retry(ray_start_regular_shared):
         result["server"] = ray_client_server.serve("localhost:50051")
 
     result = {}
-    thread = threading.Thread(target=run_server, args=(result,))
+    thread = threading.Thread(target=run_server, args=(result, ))
     thread.start()
     ray_client.connect("localhost:50051")
     ray_client.disconnect()
