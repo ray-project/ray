@@ -49,7 +49,7 @@ bleach==3.2.2
     # via nbconvert
 bokeh==2.2.3
     # via dask
-boto3==1.16.58
+boto3==1.16.59
     # via
     #   -c ../requirements.txt
     #   autogluon.core
