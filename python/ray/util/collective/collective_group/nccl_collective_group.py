@@ -251,9 +251,9 @@ class NCCLGroup(BaseGroup):
         """Allgather tensors across gpus into a list of tensors.
 
         Args:
-            tensor_lists (List[List[Tensor]]): the lists of tensors to store the results.
-            tensors: the list of tensors to allgather across the group. Each
-                     tensor must reside on gpu of the current process.
+            tensor_lists (List[List[Tensor]]): allgathered tensors.
+            tensors: the list of tensors to allgather across the group.
+                     Each tensor must lolcate on a GPU of the process.
             allgather_options: allgather options.
 
         Returns:
@@ -292,8 +292,8 @@ class NCCLGroup(BaseGroup):
         """Reduce the scatter a list of tensors across the group.
 
         Args:
-            tensors (List): the output tensors (could be unspecified), each located
-                            on one GPU of the current process.
+            tensors (List): the output tensors (could be unspecified), each
+                            located on a GPU of the current process.
             tensor_lists (List[List]): the list of tensors to be reduced then
                                        scattered.
             reducescatter_options: reduce-scatter options.
@@ -378,7 +378,8 @@ class NCCLGroup(BaseGroup):
 
         Args:
             comm_key (str): the key to query the communicator cache.
-            device_list (List): a list of GPU devices participating into the collective.
+            device_list (List): a list of GPU devices of the current process
+                                that participates into the collective.
 
         Returns:
             communicator: the NCCL communicator corresponded to the devices.
@@ -452,11 +453,11 @@ class NCCLGroup(BaseGroup):
         # collective calls and manages corresponding communicators.
         # Case 2: src_rank == dst_rank, src_gpu_idx == dst_gpu_idx; for this
         # case, we simply throw a RuntimeError;
-        # Case 3: src_rank == dst_rank, src_gpu_idx != dst_gpu_idx, which means
-        # the send and recv will be called on the same process.
-        # We DO NOT support this case for now. We need to scope (1) communicators
-        # creation and (2) send/recv call appropriately using groupStart() and
-        # groupEnd() calls to avoid deadlocks.
+        # Case 3: src_rank == dst_rank, src_gpu_idx != dst_gpu_idx, which
+        # means the send and recv will be called on the same process. We DO
+        # NOT support this case for now. We need to scope (1) communicators
+        # creation and (2) send/recv call appropriately using groupStart()
+        # and groupEnd() calls to avoid deadlocks.
         if self.rank < peer_rank:
             my_p2p_rank = 0
         elif self.rank > peer_rank:
@@ -723,13 +724,14 @@ def _get_comm_key_from_devices(devices):
 def _get_comm_key_send_recv(my_rank, my_gpu_idx, peer_rank, peer_gpu_idx):
     """Return a key given source and destination ranks for p2p tasks.
 
-    The p2p key is in the format of [min_rank]_[gpu_index]:[max_rank]_[gpu_index].
+    The p2p key is in the following form:
+                [min_rank]_[gpu_index]:[max_rank]_[gpu_index].
 
     Args:
         my_rank (int): the rank of the source process.
-        my_gpu_idx (int): the index of the source gpu on the source process.
+        my_gpu_idx (int): the source gpu index on the process.
         peer_rank (int): the rank of the destination process.
-        peer_gpu_idx (int): the index of the destination gpu on the destination process.
+        peer_gpu_idx (int): the destination gpu index on the process.
 
     Returns:
         comm_key (str): a string key to query the communication cache.
