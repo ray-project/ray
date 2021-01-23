@@ -146,7 +146,7 @@ defusedxml==0.6.0
     # via nbconvert
 dill==0.3.3
     # via autogluon.core
-distributed==2021.1.0
+distributed==2021.1.1
     # via
     #   autogluon.core
     #   dask
