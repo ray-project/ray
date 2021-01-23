@@ -1,7 +1,9 @@
 import abc
 import os
+import traceback
 import urllib
 from collections import namedtuple
+from pathlib import Path
 from typing import List, IO, Tuple
 
 import ray
@@ -176,6 +178,14 @@ class ExternalStorage(metaclass=abc.ABCMeta):
             urls: URLs that store spilled object files.
         """
 
+    @abc.abstractmethod
+    def destroy_external_storage(self):
+        """Destroy external storage when a head node is down.
+
+        NOTE: This is currently working when the cluster is
+        started by ray.init
+        """
+
 
 class NullStorage(ExternalStorage):
     """The class that represents an uninitialized external storage."""
@@ -187,6 +197,9 @@ class NullStorage(ExternalStorage):
         raise NotImplementedError("External storage is not initialized")
 
     def delete_spilled_objects(self, urls: List[str]):
+        raise NotImplementedError("External storage is not initialized")
+
+    def destroy_external_storage(self):
         raise NotImplementedError("External storage is not initialized")
 
 
@@ -242,6 +255,43 @@ class FileSystemStorage(ExternalStorage):
         for url in urls:
             filename = parse_url_with_offset(url.decode()).base_url
             os.remove(os.path.join(self.directory_path, filename))
+
+    def destroy_external_storage(self):
+        # Q: Some users probably don't want to see print here.
+        # Should we disable printing when log_to_driver is False?
+        print("Removing remaining files that are spilled to "
+              f"{self.directory_path}.")
+        try:
+            dir_path = Path(self.directory_path)
+            paths_to_remove = []
+            for path in dir_path.iterdir():
+                path = str(path)
+                if self.prefix in path:
+                    paths_to_remove.append(path)
+            total_files_to_remove = len(paths_to_remove)
+
+            print(f"\nTotal number of files spilled: {total_files_to_remove}\n"
+                  f"Path: {self.directory_path}.")
+            count = 0
+            multiplier = 1
+            for path in paths_to_remove:
+                if count > len(paths_to_remove) * 0.2 * multiplier:
+                    print(f"Removed [{count} / {total_files_to_remove}]")
+                    multiplier += 1
+                try:
+                    os.remove(path)
+                except FileNotFoundError:
+                    # If files are not found, it is probably
+                    # already deleted by ref count protocol.
+                    pass
+                finally:
+                    count += 1
+            print(f"\nRemoved: {total_files_to_remove}\n"
+                  f"Path: {self.directory_path}.")
+        except Exception as e:
+            print("\nThere was an exception while removing the files.\n"
+                  f"Traceback: {traceback.format_exc()}\n"
+                  f"Exception: {e}")
 
 
 class ExternalStorageSmartOpenImpl(ExternalStorage):
@@ -331,6 +381,9 @@ class ExternalStorageSmartOpenImpl(ExternalStorage):
     def delete_spilled_objects(self, urls: List[str]):
         pass
 
+    def destroy_external_storage(self):
+        pass
+
 
 _external_storage = NullStorage()
 
@@ -349,6 +402,7 @@ def setup_external_storage(config):
             raise ValueError(f"Unknown external storage type: {storage_type}")
     else:
         _external_storage = NullStorage()
+    return _external_storage
 
 
 def reset_external_storage():

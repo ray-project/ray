@@ -400,6 +400,9 @@ class Node:
             "metrics_export_port": self._metrics_export_port
         }
 
+    def is_head(self):
+        return self.head
+
     def create_redis_client(self):
         """Create a redis client."""
         return ray._private.services.create_redis_client(
@@ -1123,3 +1126,15 @@ class Node:
             True if any process that wasn't explicitly killed is still alive.
         """
         return not any(self.dead_processes())
+
+    def destroy_external_storage(self):
+        object_spilling_config = self._config.get("object_spilling_config", {})
+        if object_spilling_config:
+            object_spilling_config = json.loads(object_spilling_config)
+            from ray import external_storage
+            # Validate external storage usage.
+            storage = external_storage.setup_external_storage(
+                object_spilling_config)
+            # For third party library developers who turned off
+            # log monitor wouldn't want to print messages.
+            storage.destroy_external_storage()

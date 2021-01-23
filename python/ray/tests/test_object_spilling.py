@@ -3,6 +3,7 @@ import json
 import os
 import random
 import platform
+import subprocess
 import sys
 
 import numpy as np
@@ -10,7 +11,7 @@ import pytest
 import ray
 from ray.external_storage import (create_url_with_offset,
                                   parse_url_with_offset)
-from ray.test_utils import wait_for_condition
+from ray.test_utils import wait_for_condition, run_string_as_driver
 from ray.internal.internal_api import memory_summary
 
 bucket_name = "object-spilling-test"
@@ -185,7 +186,7 @@ def test_spill_objects_automatically(object_spilling_config, shutdown_only):
             ref = ray.put(arr)
             replay_buffer.append(ref)
             solution_buffer.append(arr)
-
+    print("spill done.")
     # randomly sample objects
     for _ in range(1000):
         index = random.choice(list(range(buffer_length)))
@@ -712,6 +713,78 @@ def test_spill_objects_on_object_transfer(object_spilling_config,
     # spilling.
     tasks = [foo.remote(*task_args) for task_args in args]
     ray.get(tasks)
+
+
+@pytest.mark.skipif(
+    platform.system() in ["Windows"], reason="Failing on "
+    "Windows and Mac.")
+def test_file_deleted_when_driver_exits(tmp_path, shutdown_only):
+    # Limit our object store to 75 MiB of memory.
+    temp_folder = tmp_path / "spill"
+    temp_folder.mkdir()
+
+    driver = """
+import json
+import os
+import signal
+import numpy as np
+
+import ray
+
+ray.init(
+    object_store_memory=75 * 1024 * 1024,
+    _system_config={{
+        "max_io_workers": 2,
+        "min_spilling_size": 0,
+        "automatic_object_spilling_enabled": True,
+        "object_store_full_delay_ms": 100,
+        "object_spilling_config": json.dumps({{
+            "type": "filesystem",
+            "params": {{
+                "directory_path": "{temp_dir}"
+            }}
+        }}),
+    }})
+arr = np.random.rand(1024 * 1024)  # 8 MB data
+replay_buffer = []
+
+# Spill lots of objects
+for _ in range(30):
+    ref = None
+    while ref is None:
+        ref = ray.put(arr)
+        replay_buffer.append(ref)
+# Send sigterm to itself.
+signum = {signum}
+sig = None
+if signum == 2:
+    sig = signal.SIGINT
+elif signum == 15:
+    sig = signal.SIGTERM
+os.kill(os.getpid(), sig)
+"""
+
+    def is_dir_empty():
+        num_files = 0
+        for path in temp_folder.iterdir():
+            num_files += 1
+        return num_files == 0
+
+    # Run a driver with sigint.
+    print("Sending sigint...")
+    with pytest.raises(subprocess.CalledProcessError):
+        print(
+            run_string_as_driver(
+                driver.format(temp_dir=str(temp_folder), signum=2)))
+    wait_for_condition(is_dir_empty, timeout=1000)
+
+    # Q: Looks like Sigterm doesn't work with Ray?
+    # print("Sending sigterm...")
+    # # Run a driver with sigterm.
+    # with pytest.raises(subprocess.CalledProcessError):
+    #     print(run_string_as_driver(
+    #         driver.format(temp_dir=str(temp_folder), signum=15)))
+    # wait_for_condition(is_dir_empty, timeout=1000)
 
 
 if __name__ == "__main__":
