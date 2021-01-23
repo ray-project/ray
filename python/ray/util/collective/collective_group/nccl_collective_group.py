@@ -451,13 +451,14 @@ class NCCLGroup(BaseGroup):
         # Case 1: src_rank != dst_rank, hence the send and recv happen on
         # different process (actors/tasks); each process makes independent
         # collective calls and manages corresponding communicators.
-        # Case 2: src_rank == dst_rank, src_gpu_idx == dst_gpu_idx; for this
-        # case, we simply throw a RuntimeError;
+        # Case 2: src_rank == dst_rank, src_gpu_idx == dst_gpu_idx; for
+        # this case, we simply throw a RuntimeError;
         # Case 3: src_rank == dst_rank, src_gpu_idx != dst_gpu_idx, which
-        # means the send and recv will be called on the same process. We DO
-        # NOT support this case for now. We need to scope (1) communicators
-        # creation and (2) send/recv call appropriately using groupStart()
-        # and groupEnd() calls to avoid deadlocks.
+        # means the send and recv will be called on the same process. We
+        # DO NOT support this case for now. We need to properly scope:
+        # (1) communicators creation, and
+        # (2) send/recv calls
+        # using groupStart(（ and groupEnd() calls to avoid deadlocks.
         if self.rank < peer_rank:
             my_p2p_rank = 0
         elif self.rank > peer_rank:
