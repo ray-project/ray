@@ -268,8 +268,9 @@ def get_tensor_device_list(tensors):
 
     """
     if not isinstance(tensors, list):
-        raise RuntimeError("Expect a list of tensors each locates on a GPU device. "
-                           "Got: '{}'.".format(type(tensors)))
+        raise RuntimeError(
+            "Expect a list of tensors each locates on a GPU device. "
+            "Got: '{}'.".format(type(tensors)))
     devices = [0] * len(tensors)
     for i, tensor in enumerate(tensors):
         devices[i] = get_tensor_device(tensor)

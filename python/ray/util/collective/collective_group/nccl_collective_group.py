@@ -14,7 +14,6 @@ from ray.util.collective.types import AllReduceOptions, \
     AllGatherOptions, ReduceScatterOptions, SendOptions, \
     RecvOptions
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -35,9 +34,10 @@ class Rendezvous:
 
     def __init__(self, store_key):
         if not store_key:
-            raise ValueError("Invalid store key. The store key is normally a concatenation of "
-                             "the 'group_name' and the 'communicator key'. See the docstring "
-                             "of `get_nccl_communicator` for more details.")
+            raise ValueError(
+                "Invalid store key. The store key is normally a concatenation of "
+                "the 'group_name' and the 'communicator key'. See the docstring "
+                "of `get_nccl_communicator` for more details.")
         self._store_key = store_key
         self._store_name = None
         self._store = None
@@ -168,6 +168,7 @@ class NCCLGroup(BaseGroup):
         Returns:
             None
         """
+
         def collective_fn(input_tensor, output_tensor, comm, stream):
             comm.allReduce(
                 nccl_util.get_tensor_ptr(input_tensor),
@@ -176,6 +177,7 @@ class NCCLGroup(BaseGroup):
                 nccl_util.get_nccl_tensor_dtype(input_tensor),
                 nccl_util.get_nccl_reduce_op(allreduce_options.reduceOp),
                 stream.ptr)
+
         self._collective(tensors, tensors, collective_fn)
 
     def barrier(self, barrier_options=BarrierOptions()):
@@ -241,8 +243,8 @@ class NCCLGroup(BaseGroup):
                 nccl_util.get_tensor_ptr(input_tensor),
                 nccl_util.get_tensor_ptr(output_tensor),
                 nccl_util.get_tensor_n_elements(input_tensor),
-                nccl_util.get_nccl_tensor_dtype(input_tensor),
-                root_rank, stream.ptr)
+                nccl_util.get_nccl_tensor_dtype(input_tensor), root_rank,
+                stream.ptr)
 
         self._collective(tensors, tensors, collective_fn)
 
@@ -270,8 +272,10 @@ class NCCLGroup(BaseGroup):
                 nccl_util.get_nccl_tensor_dtype(input_tensor), stream.ptr)
 
         _check_inputs_compatibility_for_scatter_gather(tensors, tensor_lists)
-        output_flattened = [_flatten_for_scatter_gather(tensor_list, copy=False)
-                            for tensor_list in tensor_lists]
+        output_flattened = [
+            _flatten_for_scatter_gather(tensor_list, copy=False)
+            for tensor_list in tensor_lists
+        ]
 
         def postprocess_fn(stream):
             # TODO(Hao): designate a copy stream.
@@ -312,8 +316,10 @@ class NCCLGroup(BaseGroup):
                 stream.ptr)
 
         _check_inputs_compatibility_for_scatter_gather(tensors, tensor_lists)
-        input_flattened = [_flatten_for_scatter_gather(tensor_list, copy=False)
-                           for tensor_list in tensor_lists]
+        input_flattened = [
+            _flatten_for_scatter_gather(tensor_list, copy=False)
+            for tensor_list in tensor_lists
+        ]
 
         def preprocess_fn(stream):
             # TODO(Hao): designate a copy stream.
@@ -344,8 +350,8 @@ class NCCLGroup(BaseGroup):
                 nccl_util.get_tensor_n_elements(tensor),
                 nccl_util.get_nccl_tensor_dtype(tensor), peer, stream.ptr)
 
-        self._point2point(tensors, p2p_fn,
-                          send_options.dst_rank, send_options.dst_gpu_index)
+        self._point2point(tensors, p2p_fn, send_options.dst_rank,
+                          send_options.dst_gpu_index)
 
     def recv(self, tensors, recv_options=RecvOptions()):
         """Receive a tensor from a source gpu in the group.
@@ -364,8 +370,8 @@ class NCCLGroup(BaseGroup):
                 nccl_util.get_tensor_n_elements(tensor),
                 nccl_util.get_nccl_tensor_dtype(tensor), peer, stream.ptr)
 
-        self._point2point(tensors, p2p_fn,
-                          recv_options.src_rank, recv_options.src_gpu_index)
+        self._point2point(tensors, p2p_fn, recv_options.src_rank,
+                          recv_options.src_gpu_index)
 
     def _get_nccl_collective_communicator(self, comm_key, device_list):
         """Create or retrieve an NCCL communicator from cache.
@@ -417,12 +423,13 @@ class NCCLGroup(BaseGroup):
 
     @staticmethod
     def _sync_streams():
-        """Let Nccl streams wait for current streams for every device."""
+        """Let NCCL streams wait for current streams for every device."""
         # FIXME: This behavior is different from nccl document. It seems like
         # cupy allocate tensors on null streams.
         cupy.cuda.Stream.null.synchronize()
 
-    def _get_nccl_p2p_communicator(self, comm_key, my_gpu_idx, peer_rank, peer_gpu_idx):
+    def _get_nccl_p2p_communicator(self, comm_key, my_gpu_idx, peer_rank,
+                                   peer_gpu_idx):
         """Create or retrieve an NCCL communicator for p2p tasks.
 
         Note(Hao): this function is not thread-safe now.
@@ -459,9 +466,10 @@ class NCCLGroup(BaseGroup):
         elif self.rank > peer_rank:
             my_p2p_rank = 1
         else:
-            raise RuntimeError("Send and recv happens on the same process. ray.util.collective "
-                               "do not support this case as of now. Alternatively, consider "
-                               "doing GPU to GPU memcpy instead?")
+            raise RuntimeError(
+                "Send and recv happens on the same process. ray.util.collective "
+                "does not support this case as of now. Alternatively, consider "
+                "doing GPU to GPU memcpy?")
 
         group_key = self._generate_group_key(comm_key)
         if my_p2p_rank == 0:
@@ -564,11 +572,7 @@ class NCCLGroup(BaseGroup):
         if postprocess_fn:
             postprocess_fn(streams)
 
-    def _point2point(self,
-                     tensors,
-                     p2p_fn,
-                     peer_rank: int,
-                     peer_gpu_idx: int):
+    def _point2point(self, tensors, p2p_fn, peer_rank: int, peer_gpu_idx: int):
         """A method to encapsulate all peer-to-peer calls (i.e., send/recv).
 
         Args:
@@ -590,9 +594,10 @@ class NCCLGroup(BaseGroup):
         # we currently only support single device to single device send/recv.
         assert len(tensors) == 1
         my_gpu_idx = nccl_util.get_tensor_device(tensors[0])
-        comm_key = _get_comm_key_send_recv(self.rank, my_gpu_idx,
-                                           peer_rank, peer_gpu_idx)
-        comms = self._get_nccl_p2p_communicator(comm_key, my_gpu_idx, peer_rank, peer_gpu_idx)
+        comm_key = _get_comm_key_send_recv(self.rank, my_gpu_idx, peer_rank,
+                                           peer_gpu_idx)
+        comms = self._get_nccl_p2p_communicator(comm_key, my_gpu_idx,
+                                                peer_rank, peer_gpu_idx)
         streams = self._dev_streams_map[comm_key]
 
         # TODO(Hao): sync streams and events
@@ -632,7 +637,8 @@ def _flatten_for_scatter_gather(tensor_list, copy=False):
 def _check_inputs_compatibility_for_scatter_gather(tensors, tensor_lists):
     """Check the compatibility between tensor input and tensor list input."""
     if not tensors or not isinstance(tensors, list):
-        raise RuntimeError("The first argument 'tensors' expects a list of tensors.")
+        raise RuntimeError(
+            "The first argument 'tensors' expects a list of tensors.")
     if not tensor_lists or not isinstance(tensor_lists, list):
         raise RuntimeError("The second argument 'tensor_lists' "
                            "expects a list of tensor list.")
@@ -658,14 +664,16 @@ def _check_inputs_compatibility_for_scatter_gather(tensors, tensor_lists):
             # check dtype
             dt = nccl_util.get_nccl_tensor_dtype(t)
             if dt != dtype:
-                raise RuntimeError("All tensor operands to scatter/gather must "
-                                   "have the same dtype. Got '{}' and '{}'."
-                                   .format(dt, dtype))
+                raise RuntimeError(
+                    "All tensor operands to scatter/gather must "
+                    "have the same dtype. Got '{}' and '{}'.".format(
+                        dt, dtype))
             s = nccl_util.get_tensor_shape(t)
             if s != shape:
-                raise RuntimeError("All tensor operands to scatter/gather must "
-                                   "have the same shape. Got '{}' and '{}'."
-                                   .format(s, shape))
+                raise RuntimeError(
+                    "All tensor operands to scatter/gather must "
+                    "have the same shape. Got '{}' and '{}'.".format(s, shape))
+
 
 def _check_gpu_tensors(tensors):
     """Check all tensors are distributed on different GPUs."""
@@ -673,8 +681,8 @@ def _check_gpu_tensors(tensors):
         raise RuntimeError("'tensors' must be a nonempty list.")
     if len(tensors) > nccl_util.get_num_gpus():
         raise RuntimeError("Tensor list cannot be larger than the number"
-                           "of available GPUs. Got {} > {}."
-                           .format(len(tensors), nccl_util.get_num_gpus()))
+                           "of available GPUs. Got {} > {}.".format(
+                               len(tensors), nccl_util.get_num_gpus()))
     t0 = tensors[0]
     dt = nccl_util.get_nccl_tensor_dtype(t0)
     s = nccl_util.get_tensor_shape(t0)
@@ -737,8 +745,9 @@ def _get_comm_key_send_recv(my_rank, my_gpu_idx, peer_rank, peer_gpu_idx):
         lower_key = str(peer_rank) + "_" + str(peer_gpu_idx)
         higher_key = str(my_rank) + "_" + str(my_gpu_idx)
     else:
-        raise RuntimeError("Send and recv happens on the same process. ray.util.collective "
-                           "does not support this case as of now. Alternatively, consider "
-                           "doing GPU to GPU memcpy?")
+        raise RuntimeError(
+            "Send and recv happens on the same process. ray.util.collective "
+            "does not support this case as of now. Alternatively, consider "
+            "doing GPU to GPU memcpy?")
     comm_key = lower_key + ":" + higher_key
     return comm_key

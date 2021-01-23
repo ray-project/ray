@@ -10,7 +10,6 @@ from ray.util.collective import types
 _GLOO_AVAILABLE = False
 _NCCL_AVAILABLE = True
 
-
 try:
     from ray.util.collective.collective_group import NCCLGroup
 except ImportError:
@@ -18,6 +17,7 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 logger.setLevel("INFO")
+
 
 def nccl_available():
     return _NCCL_AVAILABLE
@@ -240,7 +240,9 @@ def allreduce(tensor, group_name: str = "default", op=types.ReduceOp.SUM):
     g.allreduce([tensor], opts)
 
 
-def allreduce_multigpu(tensor_list: list, group_name: str = "default", op=types.ReduceOp.SUM):
+def allreduce_multigpu(tensor_list: list,
+                       group_name: str = "default",
+                       op=types.ReduceOp.SUM):
     """Collective allrecue a list of tensors across the group.
 
     Args:
@@ -405,7 +407,7 @@ def allgather(tensor_list: list, tensor, group_name: str = "default"):
             "The length of the tensor list operands to allgather "
             "must be equal to world_size.")
     opts = types.AllGatherOptions()
-    g.allgather([tensor_list],[tensor], opts)
+    g.allgather([tensor_list], [tensor], opts)
 
 
 def allgather_multigpu(output_tensor_lists: list,
@@ -536,8 +538,7 @@ def send_multigpu(tensor,
     _check_rank_valid(g, dst_rank)
     if dst_rank == g.rank:
         raise RuntimeError("The dst_rank '{}' is self. Considering "
-                           "doing GPU to GPU memcpy instead?"
-                           .format(dst_rank))
+                           "doing GPU to GPU memcpy instead?".format(dst_rank))
     opts = types.SendOptions()
     opts.dst_rank = dst_rank
     opts.dst_gpu_index = dst_gpu_index
@@ -591,8 +592,7 @@ def recv_multigpu(tensor,
     _check_rank_valid(g, src_rank)
     if src_rank == g.rank:
         raise RuntimeError("The dst_rank '{}' is self. Considering "
-                           "doing GPU to GPU memcpy instead?"
-                           .format(src_rank))
+                           "doing GPU to GPU memcpy instead?".format(src_rank))
     opts = types.RecvOptions()
     opts.src_rank = src_rank
     opts.src_gpu_index = src_gpu_index
@@ -643,9 +643,9 @@ def _check_single_tensor_input(tensor):
     if types.torch_available():
         if isinstance(tensor, types.th.Tensor):
             return
-    raise RuntimeError("Unrecognized tensor type '{}'. Supported types are: "	
+    raise RuntimeError("Unrecognized tensor type '{}'. Supported types are: "
                        "np.ndarray, torch.Tensor, cupy.ndarray.".format(
-                       type(tensor)))
+                           type(tensor)))
 
 
 def _check_backend_availability(backend: types.Backend):
@@ -704,5 +704,6 @@ def _check_root_tensor_valid(length, root_tensor):
     if root_tensor < 0:
         raise ValueError("root_tensor '{}' is negative.".format(root_tensor))
     if root_tensor >= length:
-        raise ValueError("root_tensor '{}' is greater than the number of GPUs: "
-                         "'{}'".format(root_tensor, length))
+        raise ValueError(
+            "root_tensor '{}' is greater than the number of GPUs: "
+            "'{}'".format(root_tensor, length))

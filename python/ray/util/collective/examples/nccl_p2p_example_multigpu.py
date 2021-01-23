@@ -4,6 +4,7 @@ import cupy as cp
 import ray.util.collective as collective
 from cupy.cuda import Device
 
+
 @ray.remote(num_gpus=2)
 class Worker:
     def __init__(self):
@@ -11,7 +12,7 @@ class Worker:
             self.send1 = cp.ones((4, ), dtype=cp.float32)
         with Device(1):
             self.send2 = cp.ones((4, ), dtype=cp.float32) * 2
-        
+
         with Device(0):
             self.recv1 = cp.zeros((4, ), dtype=cp.float32)
         with Device(1):

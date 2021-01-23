@@ -8,7 +8,6 @@ from ray.util.collective.collective_group.nccl_util import get_num_gpus
 
 import torch
 
-
 logger = logging.getLogger(__name__)
 logger.setLevel("DEBUG")
 
@@ -21,8 +20,9 @@ class Worker:
 
     def init_tensors(self):
         self.buffer = cp.ones((10, ), dtype=cp.float32)
-        self.list_buffer = [cp.ones((10, ), dtype=cp.float32)
-                            for _ in range(2)]
+        self.list_buffer = [
+            cp.ones((10, ), dtype=cp.float32) for _ in range(2)
+        ]
         cp.cuda.Stream.null.synchronize()
         return True
 
@@ -158,10 +158,14 @@ class MultiGPUWorker:
     def init_tensors(self):
         with cp.cuda.Device(0):
             self.buffer0 = cp.ones((10, ), dtype=cp.float32)
-            self.list_buffer0 = [cp.ones((10,), dtype=cp.float32) for _ in range(4)]
+            self.list_buffer0 = [
+                cp.ones((10, ), dtype=cp.float32) for _ in range(4)
+            ]
         with cp.cuda.Device(1):
             self.buffer1 = cp.ones((10, ), dtype=cp.float32)
-            self.list_buffer1 = [cp.ones((10,), dtype=cp.float32) for _ in range(4)]
+            self.list_buffer1 = [
+                cp.ones((10, ), dtype=cp.float32) for _ in range(4)
+            ]
         cp.cuda.Stream.null.synchronize()
         return True
 
@@ -173,13 +177,19 @@ class MultiGPUWorker:
         col.init_collective_group(world_size, rank, backend, group_name)
         return True
 
-    def set_buffer(self, size, value0=1.0, value1=1.0,
-                   dtype=cp.float32, tensor_type0="cupy", tensor_type1="cupy"):
+    def set_buffer(self,
+                   size,
+                   value0=1.0,
+                   value1=1.0,
+                   dtype=cp.float32,
+                   tensor_type0="cupy",
+                   tensor_type1="cupy"):
         if tensor_type0 == "cupy":
             with cp.cuda.Device(0):
                 self.buffer0 = cp.ones(size, dtype=dtype) * value0
         elif tensor_type0 == "torch":
-            self.buffer0 = torch.ones(size, dtype=torch.float32).cuda(0) * value0
+            self.buffer0 = torch.ones(
+                size, dtype=torch.float32).cuda(0) * value0
         else:
             raise RuntimeError()
 
@@ -187,7 +197,8 @@ class MultiGPUWorker:
             with cp.cuda.Device(1):
                 self.buffer1 = cp.ones(size, dtype=dtype) * value1
         elif tensor_type1 == "torch":
-            self.buffer1 = torch.ones(size, dtype=torch.float32).cuda(1) * value1
+            self.buffer1 = torch.ones(
+                size, dtype=torch.float32).cuda(1) * value1
         else:
             raise RuntimeError()
         cp.cuda.Device(0).synchronize()
@@ -195,23 +206,36 @@ class MultiGPUWorker:
         # cp.cuda.Stream.null.synchronize()
         return True
 
-    def set_list_buffer(self, size, value0=1.0, value1=1.0,
-                        dtype=cp.float32, tensor_type0="cupy", tensor_type1="cupy"):
+    def set_list_buffer(self,
+                        size,
+                        value0=1.0,
+                        value1=1.0,
+                        dtype=cp.float32,
+                        tensor_type0="cupy",
+                        tensor_type1="cupy"):
         if tensor_type0 == "cupy":
             with cp.cuda.Device(0):
-                self.list_buffer0 = [cp.ones(size, dtype=dtype) * value0 for _ in range(4)]
+                self.list_buffer0 = [
+                    cp.ones(size, dtype=dtype) * value0 for _ in range(4)
+                ]
         elif tensor_type0 == "torch":
-            self.list_buffer0 = [torch.ones(size, dtype=torch.float32).cuda(0) * value0
-                                 for _ in range(4)]
+            self.list_buffer0 = [
+                torch.ones(size, dtype=torch.float32).cuda(0) * value0
+                for _ in range(4)
+            ]
         else:
             raise RuntimeError()
 
         if tensor_type1 == "cupy":
             with cp.cuda.Device(1):
-                self.list_buffer1 = [cp.ones(size, dtype=dtype) * value1 for _ in range(4)]
+                self.list_buffer1 = [
+                    cp.ones(size, dtype=dtype) * value1 for _ in range(4)
+                ]
         elif tensor_type1 == "torch":
-            self.list_buffer1 = [torch.ones(size, dtype=torch.float32).cuda(1) * value1
-                                 for _ in range(4)]
+            self.list_buffer1 = [
+                torch.ones(size, dtype=torch.float32).cuda(1) * value1
+                for _ in range(4)
+            ]
         else:
             raise RuntimeError()
         cp.cuda.Device(0).synchronize()
@@ -228,20 +252,28 @@ class MultiGPUWorker:
         cp.cuda.Device(1).synchronize()
         return self.buffer0
 
-    def do_reduce_multigpu(self, group_name="default", dst_rank=0, dst_gpu_index=0, op=ReduceOp.SUM):
-        col.reduce_multigpu([self.buffer0, self.buffer1], dst_rank, dst_gpu_index, group_name, op)
+    def do_reduce_multigpu(self,
+                           group_name="default",
+                           dst_rank=0,
+                           dst_gpu_index=0,
+                           op=ReduceOp.SUM):
+        col.reduce_multigpu([self.buffer0, self.buffer1], dst_rank,
+                            dst_gpu_index, group_name, op)
         cp.cuda.Device(0).synchronize()
         cp.cuda.Device(1).synchronize()
         return self.buffer0, self.buffer1
 
-    def do_broadcast_multigpu(self, group_name="default", src_rank=0, src_gpu_index=0):
-        col.broadcast_multigpu([self.buffer0, self.buffer1], src_rank, src_gpu_index, group_name)
+    def do_broadcast_multigpu(self,
+                              group_name="default",
+                              src_rank=0,
+                              src_gpu_index=0):
+        col.broadcast_multigpu([self.buffer0, self.buffer1], src_rank,
+                               src_gpu_index, group_name)
         return self.buffer0, self.buffer1
 
     def do_allgather_multigpu(self, group_name="default"):
         col.allgather_multigpu([self.list_buffer0, self.list_buffer1],
-                               [self.buffer0, self.buffer1],
-                               group_name)
+                               [self.buffer0, self.buffer1], group_name)
         cp.cuda.Device(0).synchronize()
         cp.cuda.Device(1).synchronize()
         return self.list_buffer0, self.list_buffer1
@@ -254,25 +286,37 @@ class MultiGPUWorker:
         cp.cuda.Device(1).synchronize()
         return self.buffer0, self.buffer1
 
-    def do_send_multigpu(self, group_name="default", dst_rank=0, dst_gpu_index=0, src_gpu_index=0):
+    def do_send_multigpu(self,
+                         group_name="default",
+                         dst_rank=0,
+                         dst_gpu_index=0,
+                         src_gpu_index=0):
         if src_gpu_index == 0:
-            col.send_multigpu(self.buffer0, dst_rank, dst_gpu_index, group_name)
+            col.send_multigpu(self.buffer0, dst_rank, dst_gpu_index,
+                              group_name)
             cp.cuda.Device(0).synchronize()
             return self.buffer0
         elif src_gpu_index == 1:
-            col.send_multigpu(self.buffer1, dst_rank, dst_gpu_index, group_name)
+            col.send_multigpu(self.buffer1, dst_rank, dst_gpu_index,
+                              group_name)
             cp.cuda.Device(1).synchronize()
             return self.buffer1
         else:
             raise RuntimeError()
 
-    def do_recv_multigpu(self, group_name="default", src_rank=0, src_gpu_index=0, dst_gpu_index=0):
+    def do_recv_multigpu(self,
+                         group_name="default",
+                         src_rank=0,
+                         src_gpu_index=0,
+                         dst_gpu_index=0):
         if dst_gpu_index == 0:
-            col.recv_multigpu(self.buffer0, src_rank, src_gpu_index, group_name)
+            col.recv_multigpu(self.buffer0, src_rank, src_gpu_index,
+                              group_name)
             cp.cuda.Device(0).synchronize()
             return self.buffer0
         elif dst_gpu_index == 1:
-            col.recv_multigpu(self.buffer1, src_rank, src_gpu_index, group_name)
+            col.recv_multigpu(self.buffer1, src_rank, src_gpu_index,
+                              group_name)
             cp.cuda.Device(1).synchronize()
             return self.buffer1
         else:
@@ -359,7 +403,13 @@ def init_tensors_for_gather_scatter_multigpu(actors,
             ray.get([a.set_buffer.remote(array_size)])
             ray.get([a.set_list_buffer.remote(array_size)])
         elif tensor_backend == "torch":
-            ray.get([a.set_buffer.remote(array_size, tensor_type0="torch", tensor_type1="torch")])
-            ray.get([a.set_list_buffer.remote(array_size, tensor_type0="torch", tensor_type1="torch")])
+            ray.get([
+                a.set_buffer.remote(
+                    array_size, tensor_type0="torch", tensor_type1="torch")
+            ])
+            ray.get([
+                a.set_list_buffer.remote(
+                    array_size, tensor_type0="torch", tensor_type1="torch")
+            ])
         else:
             raise RuntimeError("Unsupported tensor backend.")

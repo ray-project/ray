@@ -8,7 +8,6 @@ from ray.util.collective.const import get_nccl_store_name
 from ray.util.collective.collective_group.nccl_collective_group \
     import _get_comm_key_from_devices, _get_comm_key_send_recv
 
-
 logger = logging.getLogger(__name__)
 logger.setLevel("INFO")
 

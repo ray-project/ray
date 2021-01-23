@@ -13,7 +13,8 @@ from ray.util.collective.tests.util import create_collective_multigpu_workers, \
 @pytest.mark.parametrize("array_size",
                          [2, 2**5, 2**10, 2**15, 2**20, [2, 2], [5, 5, 5]])
 def test_reducescatter_different_array_size(
-    ray_start_distributed_multigpu_2_nodes_4_gpus, array_size, tensor_backend):
+        ray_start_distributed_multigpu_2_nodes_4_gpus, array_size,
+        tensor_backend):
     world_size = 2
     num_gpu_per_worker = 2
     actual_world_size = world_size * num_gpu_per_worker
@@ -25,14 +26,16 @@ def test_reducescatter_different_array_size(
     for i in range(world_size):
         for j in range(num_gpu_per_worker):
             if tensor_backend == "cupy":
-                assert (results[i][j] == cp.ones(array_size, dtype=cp.float32) *
-                        actual_world_size).all()
-            else:
-                assert (results[i][j] == torch.ones(array_size, dtype=torch.float32).cuda(j)
+                assert (results[i][j] == cp.ones(array_size, dtype=cp.float32)
                         * actual_world_size).all()
+            else:
+                assert (results[i][j] == torch.ones(
+                    array_size, dtype=torch.float32).cuda(j) *
+                        actual_world_size).all()
 
 
-def test_reducescatter_torch_cupy(ray_start_distributed_multigpu_2_nodes_4_gpus):
+def test_reducescatter_torch_cupy(
+        ray_start_distributed_multigpu_2_nodes_4_gpus):
     world_size = 2
     num_gpu_per_worker = 2
     actual_world_size = world_size * num_gpu_per_worker
@@ -41,18 +44,30 @@ def test_reducescatter_torch_cupy(ray_start_distributed_multigpu_2_nodes_4_gpus)
 
     # tensor is pytorch, list is cupy
     for i, a in enumerate(actors):
-        ray.get([a.set_buffer.remote(shape, tensor_type0="torch", tensor_type1="torch")])
-        ray.get([a.set_list_buffer.remote(shape, tensor_type0="cupy", tensor_type1="cupy")])
+        ray.get([
+            a.set_buffer.remote(
+                shape, tensor_type0="torch", tensor_type1="torch")
+        ])
+        ray.get([
+            a.set_list_buffer.remote(
+                shape, tensor_type0="cupy", tensor_type1="cupy")
+        ])
     results = ray.get([a.do_reducescatter_multigpu.remote() for a in actors])
     for i in range(world_size):
         for j in range(num_gpu_per_worker):
-            assert (results[i][j] == torch.ones(shape, dtype=torch.float32).cuda(j) *
-                    actual_world_size).all()
+            assert (results[i][j] == torch.ones(
+                shape, dtype=torch.float32).cuda(j) * actual_world_size).all()
 
     # tensor is cupy, list is pytorch
     for i, a in enumerate(actors):
-        ray.get([a.set_buffer.remote(shape, tensor_type0="cupy", tensor_type1="cupy")])
-        ray.get([a.set_list_buffer.remote(shape, tensor_type0="torch", tensor_type1="torch")])
+        ray.get([
+            a.set_buffer.remote(
+                shape, tensor_type0="cupy", tensor_type1="cupy")
+        ])
+        ray.get([
+            a.set_list_buffer.remote(
+                shape, tensor_type0="torch", tensor_type1="torch")
+        ])
     results = ray.get([a.do_reducescatter_multigpu.remote() for a in actors])
     for i in range(world_size):
         for j in range(num_gpu_per_worker):

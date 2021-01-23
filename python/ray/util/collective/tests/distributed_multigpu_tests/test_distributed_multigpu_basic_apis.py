@@ -7,9 +7,11 @@ from ray.util.collective.tests.util import create_collective_multigpu_workers
 
 
 @pytest.mark.parametrize("group_name", ["default", "test", "123?34!"])
-def test_init_two_actors(ray_start_distributed_multigpu_2_nodes_4_gpus, group_name):
+def test_init_two_actors(ray_start_distributed_multigpu_2_nodes_4_gpus,
+                         group_name):
     world_size = 2
-    actors, results = create_collective_multigpu_workers(world_size, group_name)
+    actors, results = create_collective_multigpu_workers(
+        world_size, group_name)
     for i in range(world_size):
         assert (results[i])
 
