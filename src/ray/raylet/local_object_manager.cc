@@ -243,8 +243,10 @@ void LocalObjectManager::SpillObjectsInternal(
                   objects_pending_spill_.erase(it);
                 }
 
-                RAY_LOG(ERROR) << "Failed to send object spilling request: "
-                               << status.ToString();
+                RAY_LOG(WARNING)
+                    << "Failed to send object spilling request: " << status.ToString()
+                    << ". It could be because the IO workers are crashed or there was an "
+                       "exception when spilling objects from the IO worker.";
                 if (callback) {
                   callback(status);
                 }
@@ -324,8 +326,10 @@ void LocalObjectManager::AsyncRestoreSpilledObject(
           io_worker_pool_.PushRestoreWorker(io_worker);
           objects_pending_restore_.erase(object_id);
           if (!status.ok()) {
-            RAY_LOG(ERROR) << "Failed to send restore spilled object request: "
-                           << status.ToString();
+            RAY_LOG(WARNING)
+                << "Failed to send restore spilled object request: " << status.ToString()
+                << ". It could be because the IO worker is crashed or threw exceptions. "
+                   "This indicates the object restoration request failed.";
           } else {
             auto now = absl::GetCurrentTimeNanos();
             auto restored_bytes = r.bytes_restored_total();

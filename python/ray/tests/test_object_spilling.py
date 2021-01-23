@@ -1,6 +1,7 @@
 import copy
 import json
 import os
+import psutil
 import random
 import platform
 import sys
@@ -8,6 +9,8 @@ import sys
 import numpy as np
 import pytest
 import ray
+from ray.ray_constants import (WORKER_PROCESS_TYPE_SPILL_WORKER_IDLE,
+                               WORKER_PROCESS_TYPE_RESTORE_WORKER_IDLE)
 from ray.external_storage import (create_url_with_offset,
                                   parse_url_with_offset)
 from ray.test_utils import wait_for_condition
@@ -104,7 +107,7 @@ def test_spilling_not_done_for_pinned_object(tmp_path, shutdown_only):
     ray.init(
         object_store_memory=75 * 1024 * 1024,
         _system_config={
-            "max_io_workers": 4,
+            "max_io_workers": 2,
             "automatic_object_spilling_enabled": True,
             "object_store_full_delay_ms": 100,
             "object_spilling_config": json.dumps({
@@ -139,7 +142,7 @@ def test_spilling_not_done_for_pinned_object(tmp_path, shutdown_only):
         "_system_config": {
             "automatic_object_spilling_enabled": True,
             "object_store_full_delay_ms": 100,
-            "max_io_workers": 4,
+            "max_io_workers": 2,
             "object_spilling_config": json.dumps({
                 "type": "filesystem",
                 "params": {
@@ -189,7 +192,7 @@ def test_spill_objects_automatically(object_spilling_config, shutdown_only):
         num_cpus=1,
         object_store_memory=75 * 1024 * 1024,
         _system_config={
-            "max_io_workers": 4,
+            "max_io_workers": 2,
             "automatic_object_spilling_enabled": True,
             "object_store_full_delay_ms": 100,
             "object_spilling_config": object_spilling_config,
@@ -582,7 +585,7 @@ def test_fusion_objects(tmp_path, shutdown_only):
     address = ray.init(
         object_store_memory=75 * 1024 * 1024,
         _system_config={
-            "max_io_workers": 3,
+            "max_io_workers": 2,
             "automatic_object_spilling_enabled": True,
             "object_store_full_delay_ms": 100,
             "object_spilling_config": json.dumps({
@@ -743,6 +746,62 @@ def test_spill_objects_on_object_transfer(object_spilling_config,
     tasks = [foo.remote(*task_args) for task_args in args]
     ray.get(tasks)
     assert_spilling_happened(cluster.address)
+
+
+@pytest.mark.skipif(
+    platform.system() == "Windows", reason="Failing on Windows.")
+def test_io_worker_failures(object_spilling_config, shutdown_only):
+    num_io_workers = 2
+    address = ray.init(
+        num_cpus=4,
+        object_store_memory=90 * 1024 * 1024,
+        _system_config={
+            "automatic_object_spilling_enabled": True,
+            "object_store_full_delay_ms": 100,
+            "max_io_workers": num_io_workers,
+            "object_spilling_config": object_spilling_config,
+            "min_spilling_size": 0,
+        },
+    )
+
+    arr = np.random.rand(5 * 1024 * 1024)  # 40MB
+
+    def run_workload():
+        futures = []
+        # Try starting I/O workers.
+        for _ in range(5):
+            futures.append(ray.put(arr))
+        for future in futures:
+            ray.get(future)
+        # Delete all objects.
+        del futures
+        assert_spilling_happened(address["redis_address"])
+
+    # Run the first workload to spawn io workers.
+    run_workload()
+
+    # Kill all IO workers
+    def get_io_worker_pids():
+        io_worker_pids = []
+        for proc in psutil.process_iter():
+            try:
+                cmd = proc.cmdline()[0]
+                pid = proc.pid
+                # print(cmd, pid)
+                if (WORKER_PROCESS_TYPE_SPILL_WORKER_IDLE in cmd
+                        or WORKER_PROCESS_TYPE_RESTORE_WORKER_IDLE in cmd):
+                    io_worker_pids.append(pid)
+            except Exception:
+                pass
+        return io_worker_pids
+
+    # Wait until 4 io_workers are spawned.
+    wait_for_condition(lambda: len(get_io_worker_pids()) == num_io_workers * 2)
+    for pid in get_io_worker_pids():
+        os.kill(pid, 9)
+
+    # Make sure the second workload can finish.
+    run_workload()
 
 
 if __name__ == "__main__":

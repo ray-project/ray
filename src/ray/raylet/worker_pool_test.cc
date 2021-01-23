@@ -619,6 +619,12 @@ TEST_F(WorkerPoolTest, MaxIOWorkerSimpleTest) {
     worker_pool_->PushSpillWorker(worker);
   }
   ASSERT_EQ(worker_pool_->NumSpillWorkerStarting(), 0);
+
+  // Test if disconnection works.
+  for (const auto &worker : spill_workers) {
+    worker_pool_->DisconnectWorker(worker);
+    ASSERT_EQ(worker_pool_->GetRegisteredWorker(worker->Connection()), nullptr);
+  }
 }
 
 TEST_F(WorkerPoolTest, MaxIOWorkerComplicateTest) {
