@@ -68,16 +68,16 @@ class ReplicaSet:
         # added replica or updated max_concurrent_queries value means the
         # query that waits on a free replica might be unblocked on.
         self.config_updated_event = asyncio.Event()
-
-        self.num_queued_queries = metrics.Count(
+        self.num_queued_queries = 0
+        self.num_queued_queries_gauge = metrics.Gauge(
             "serve_backend_queued_queries",
-            description=("The current number of queries to this backend waiting"
-                         " to be assigned to a replica."),
-            tag_keys=("backend",))
-        self.num_queued_queries.set_default_tags({
+            description=(
+                "The current number of queries to this backend waiting"
+                " to be assigned to a replica."),
+            tag_keys=("backend", ))
+        self.num_queued_queries_gauge.set_default_tags({
             "backend": self.backend_tag
         })
-
 
     def set_max_concurrent_queries(self, new_value):
         if new_value != self.max_concurrent_queries:
@@ -141,7 +141,8 @@ class ReplicaSet:
         and only send a query to available replicas (determined by the backend
         max_concurrent_quries value.)
         """
-        self.num_queued_queries.record(1) 
+        self.num_queued_queries += 1
+        self.num_queued_queries_gauge.record(self.num_queued_queries)
         assigned_ref = self._try_assign_replica(query)
         while assigned_ref is None:  # Can't assign a replica right now.
             logger.debug("Failed to assign a replica for "
@@ -162,7 +163,8 @@ class ReplicaSet:
             # We are pretty sure a free replica is ready now, let's loop and
             # assign this query a replica.
             assigned_ref = self._try_assign_replica(query)
-        self.num_queued_queries.record(-1) # TODO: replace with manual gauge
+        self.num_queued_queries -= 1
+        self.num_queued_queries_gauge.record(self.num_queued_queries)
         return assigned_ref
 
 
@@ -188,7 +190,8 @@ class Router:
                 self[key] = self.default_factory(key)
                 return self[key]
 
-        self.backend_replicas: Dict[str, ReplicaSet] = keydefaultdict(ReplicaSet)
+        self.backend_replicas: Dict[str, ReplicaSet] = keydefaultdict(
+            ReplicaSet)
 
         self._pending_endpoints: Dict[str, asyncio.Future] = dict()
 
