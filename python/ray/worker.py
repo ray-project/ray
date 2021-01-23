@@ -176,6 +176,7 @@ class Worker:
             for line in traceback.format_stack():
                 self.tracebacks.insert(0, line.strip())
             del self._core_worker
+            self._core_worker = None
 
     def mark_actor_init_failed(self, error):
         """Called to mark this actor as failed during initialization."""
