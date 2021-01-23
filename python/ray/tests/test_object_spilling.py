@@ -349,7 +349,7 @@ def test_delete_objects(object_spilling_config, shutdown_only):
 
 
 @pytest.mark.skipif(
-    platform.system() == ["Windows"], reason="Failing on Windows.")
+    platform.system() in ["Windows", "Darwin"], reason="Failing on Windows.")
 def test_delete_objects_delete_while_creating(object_spilling_config,
                                               shutdown_only):
     # Limit our object store to 75 MiB of memory.
@@ -394,7 +394,7 @@ def test_delete_objects_delete_while_creating(object_spilling_config,
 
 
 @pytest.mark.skipif(
-    platform.system() == ["Windows"], reason="Failing on Windows.")
+    platform.system() in ["Windows", "Darwin"], reason="Failing on Windows.")
 def test_delete_objects_on_worker_failure(object_spilling_config,
                                           shutdown_only):
     # Limit our object store to 75 MiB of memory.
