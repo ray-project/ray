@@ -325,10 +325,10 @@ message ResourcesData {
   ResourceLoad resource_load_by_shape = 7;
   // Whether this node manager is requesting global GC.
   bool should_global_gc = 8;
-  // Normal task resources.
-  map<string, double> resources_normal_task = 9;
-  // Normal task resources changed.
-  bool resources_normal_task_changed = 10;
+  // Changes in resources used by normal task.
+  // Key is resource name, value is resource change.
+  // If the task returns the resource, the value is negative.
+  map<string, double> normal_task_resources_changes = 9;
 }
 
 message ResourceUsageBatchData {

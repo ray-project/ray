@@ -155,6 +155,14 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
   /// Send any buffered resource usage as a single publish.
   void SendBatchedResourceUsage();
 
+  /// Update the normal task resource changes of given node.
+  ///
+  /// \param node_id Node id.
+  /// \param resources_changes The normal task resource changes.
+  void UpdateNormalTaskResourcesChanges(
+      const NodeID &node_id,
+      const std::unordered_map<std::string, double> &resources_changes);
+
   /// A timer that ticks every raylet_report_resources_period_milliseconds.
   boost::asio::deadline_timer resource_timer_;
   /// Newest resource usage of all nodes.

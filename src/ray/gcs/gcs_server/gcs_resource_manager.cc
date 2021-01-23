@@ -175,6 +175,12 @@ void GcsResourceManager::HandleReportResourceUsage(
     SetAvailableResources(node_id, ResourceSet(resource_changed));
   }
 
+  const auto &resource_changes =
+      MapFromProtobuf(resources_data->normal_task_resources_changes());
+  if (!resource_changes.empty()) {
+    UpdateNormalTaskResourcesChanges(node_id, resource_changes);
+  }
+
   UpdateNodeResourceUsage(node_id, request);
 
   if (resources_data->should_global_gc() || resources_data->resources_total_size() > 0 ||
@@ -383,6 +389,29 @@ void GcsResourceManager::SendBatchedResourceUsage() {
 void GcsResourceManager::UpdatePlacementGroupLoad(
     const std::shared_ptr<rpc::PlacementGroupLoad> placement_group_load) {
   placement_group_load_ = absl::make_optional(placement_group_load);
+}
+
+void GcsResourceManager::UpdateNormalTaskResourcesChanges(
+    const NodeID &node_id,
+    const std::unordered_map<std::string, double> &resources_changes) {
+  std::unordered_map<std::string, double> acquire_resources;
+  std::unordered_map<std::string, double> release_resources;
+  for (const auto &iter : resources_changes) {
+    if (iter.second < 0) {
+      release_resources[iter.first] = -iter.second;
+    } else {
+      acquire_resources[iter.first] = iter.second;
+    }
+  }
+
+  auto &scheduling_resources = cluster_scheduling_resources_[node_id];
+  if (!acquire_resources.empty()) {
+    scheduling_resources.Acquire(ResourceSet(acquire_resources));
+  }
+
+  if (!release_resources.empty()) {
+    scheduling_resources.Release(ResourceSet(release_resources));
+  }
 }
 
 std::string GcsResourceManager::DebugString() const {
