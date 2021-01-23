@@ -531,7 +531,7 @@ void NodeManager::HandleRestoreSpilledObject(
   RAY_LOG(DEBUG) << "Restore spilled object request received. Object id: " << object_id
                  << " spilled_node_id: " << self_node_id_
                  << " object url: " << object_url;
-  local_object_manager_.AsyncRestoreSpilledObject(object_id, object_url, NodeID::Nil(),
+  local_object_manager_.AsyncRestoreSpilledObject(object_id, object_url, spilled_node_id,
                                                   nullptr);
   // Just reply right away. The caller will keep hitting this RPC endpoint until
   // restoration succeeds, so we can safely reply here without waiting for the

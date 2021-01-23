@@ -99,11 +99,12 @@ class LocalObjectManager {
   ///
   /// \param object_id The ID of the object to restore.
   /// \param object_url The URL where the object is spilled.
-  /// \param node_id The node id of a node which spilled the object. If Nil is provided,
-  /// the object is restored directly from the external storage. If a node id is provided,
-  /// it sends a RPC request to a corresponding node to restore the object. \param
-  /// callback A callback to call when the restoration is done. Status will contain the
-  /// error during restoration, if any.
+  /// \param node_id Node id that we try restoring the object. If Nil is provided, the
+  /// object is restored directly from the external storage. If a node id is provided, it
+  /// sends a RPC request to a corresponding node if the given node_id is not equivalent
+  /// to a self node id.
+  /// \param callback A callback to call when the restoration is done.
+  /// Status will contain the error during restoration, if any.
   void AsyncRestoreSpilledObject(const ObjectID &object_id, const std::string &object_url,
                                  const NodeID &node_id,
                                  std::function<void(const ray::Status &)> callback);

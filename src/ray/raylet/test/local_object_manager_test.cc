@@ -378,7 +378,7 @@ TEST_F(LocalObjectManagerTest, TestRestoreSpilledObject) {
   EXPECT_CALL(worker_pool, PushRestoreWorker(_));
   // Subsequent calls should be deduped, so that only one callback should be fired.
   for (int i = 0; i < 10; i++) {
-    manager.AsyncRestoreSpilledObject(object_id, url, NodeID::Nil(),
+    manager.AsyncRestoreSpilledObject(object_id, url, manager_node_id_,
                                       [&](const Status &status) {
                                         ASSERT_TRUE(status.ok());
                                         num_times_fired++;
