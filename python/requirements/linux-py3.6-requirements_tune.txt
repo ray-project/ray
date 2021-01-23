@@ -107,7 +107,7 @@ colorama==0.4.4
     # via
     #   -c ../requirements.txt
     #   cmd2
-colorlog==4.6.2
+colorlog==4.7.2
     # via optuna
 configparser==5.0.1
     # via wandb
