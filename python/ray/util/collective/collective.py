@@ -47,6 +47,8 @@ class GroupManager(object):
         """
         backend = types.Backend(backend)
         if backend == types.Backend.MPI:
+            raise RuntimeError("Ray does not support MPI.")
+        elif backend == types.Backend.GLOO:
             raise NotImplementedError()
         elif backend == types.Backend.NCCL:
             logger.debug("Creating NCCL group: '{}'...".format(group_name))
@@ -653,7 +655,7 @@ def _check_backend_availability(backend: types.Backend):
     """Check whether the backend is available."""
     if backend == types.Backend.GLOO:
         if not gloo_available():
-            raise RuntimeError("MPI is not available.")
+            raise RuntimeError("GLOO is not available.")
     elif backend == types.Backend.NCCL:
         if not nccl_available():
             raise RuntimeError("NCCL is not available.")
