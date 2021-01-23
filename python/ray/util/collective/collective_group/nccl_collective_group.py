@@ -189,7 +189,7 @@ class NCCLGroup(BaseGroup):
         if self._used_gpu_indices:
             devices = list(self._used_gpu_indices)
         else:
-            devices = [i for i in range(nccl_util.get_num_gpus())]
+            devices = list(range(nccl_util.get_num_gpus()))
         barrier_tensors = [None] * len(devices)
         for i, d in enumerate(devices):
             with nccl_util.Device(d):
