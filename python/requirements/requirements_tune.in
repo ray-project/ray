@@ -1,5 +1,5 @@
 # Use base requirements to constrain these requirements.
--c ../requirements.txt
+-c ./requirements.txt
 
 ax-platform==0.1.9; python_version < '3.7'
 ax-platform==0.1.19; python_version >= '3.7'
