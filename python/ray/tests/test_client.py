@@ -5,7 +5,6 @@ import logging
 import threading
 
 import ray.util.client.server.server as ray_client_server
-from ray.util.client import RayAPIStub
 from ray.util.client.common import ClientObjectRef
 from ray.util.client.ray_client_helpers import ray_start_client_server
 
@@ -355,7 +354,6 @@ def test_startup_retry(ray_start_regular_shared):
     def run_client():
         ray_client.connect("localhost:50051")
         ray_client.disconnect()
-
 
     thread = threading.Thread(target=run_client, daemon=True)
     thread.start()

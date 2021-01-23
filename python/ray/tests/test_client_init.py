@@ -5,6 +5,7 @@ import ray.util.client.server.server as ray_client_server
 
 from ray.util.client import RayAPIStub
 
+
 def test_num_clients():
     # Tests num clients reporting; useful if you want to build an app that
     # load balances clients between Ray client servers.
