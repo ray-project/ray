@@ -465,9 +465,9 @@ class NCCLGroup(BaseGroup):
             my_p2p_rank = 1
         else:
             raise RuntimeError(
-                "Send and recv happens on the same process. ray.util.collective "
-                "does not support this case as of now. Alternatively, consider "
-                "doing GPU to GPU memcpy?")
+                "Send and recv happens on the same process! "
+                "ray.util.collective does not support this case as of now. "
+                "Alternatively, consider doing GPU to GPU memcpy?")
 
         group_key = self._generate_group_key(comm_key)
         if my_p2p_rank == 0:
