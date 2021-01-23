@@ -56,7 +56,7 @@ mypy
 networkx
 numba
 # higher version of llvmlite breaks windows
-llvmlite==0.34.0
+llvmlite==0.35.0
 openpyxl
 pexpect
 Pillow; platform_system != "Windows"
