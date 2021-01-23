@@ -5,7 +5,8 @@ import ray
 import cupy as cp
 import torch
 
-from ray.util.collective.tests.util import create_collective_multigpu_workers, \
+from ray.util.collective.tests.util import \
+    create_collective_multigpu_workers, \
     init_tensors_for_gather_scatter_multigpu
 
 

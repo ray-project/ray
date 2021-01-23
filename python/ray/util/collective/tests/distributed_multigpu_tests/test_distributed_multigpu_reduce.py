@@ -134,7 +134,7 @@ def test_reduce_torch_cupy(ray_start_distributed_multigpu_2_nodes_4_gpus,
     actors, _ = create_collective_multigpu_workers(world_size)
     ray.get(actors[0].set_buffer.remote([10], value0=2, value1=3))
     ray.get(actors[1].set_buffer.remote(
-        [10], value0=4, value1=5, tensor_type0='torch', tensor_type1="torch"))
+        [10], value0=4, value1=5, tensor_type0="torch", tensor_type1="torch"))
 
     results = ray.get([
         a.do_reduce_multigpu.remote(

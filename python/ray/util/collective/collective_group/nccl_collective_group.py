@@ -35,9 +35,9 @@ class Rendezvous:
     def __init__(self, store_key):
         if not store_key:
             raise ValueError(
-                "Invalid store key. The store key is normally a concatenation of "
-                "the 'group_name' and the 'communicator key'. See the docstring "
-                "of `get_nccl_communicator` for more details.")
+                "Invalid store_key. The store_key is a concatenation of "
+                "'group_name' and the 'communicator_key'. See the "
+                "docstring of `get_nccl_communicator` for details.")
         self._store_key = store_key
         self._store_name = None
         self._store = None
@@ -138,10 +138,6 @@ class NCCLGroup(BaseGroup):
                 for c in comms:
                     c.destroy()
                 self._dev_comm_map[comm_key] = None
-
-            #for _, streams in self._dev_streams_map.items():
-            #    for stream in streams:
-            #        runtime.streamDestroy(stream.ptr)
 
         if self.rank == 0:
             for comm_key in self._dev_comm_map:

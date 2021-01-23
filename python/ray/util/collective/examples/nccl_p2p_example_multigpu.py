@@ -29,7 +29,7 @@ class Worker:
             with Device(0):
                 collective.send_multigpu(self.send1 * 2, 1, 1, "8")
         else:
-            #with Device(1):
+            # with Device(1):
             collective.recv_multigpu(self.recv2, 0, 0, "8")
         return self.recv2
 
@@ -38,7 +38,7 @@ class Worker:
 
 
 if __name__ == "__main__":
-    ray.init(address='auto')
+    ray.init(address="auto")
     num_workers = 2
     workers = []
     init_rets = []

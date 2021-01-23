@@ -144,7 +144,6 @@ def test_allreduce_multigpu_different_dtype(
 def test_allreduce_torch_cupy(ray_start_distributed_multigpu_2_nodes_4_gpus):
     # import torch
     world_size = 2
-    num_gpu_per_worker = 2
     actual_world_size = 4
     actors, _ = create_collective_multigpu_workers(world_size)
     ray.get(actors[0].set_buffer.remote([10]))

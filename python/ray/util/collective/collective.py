@@ -246,7 +246,8 @@ def allreduce_multigpu(tensor_list: list,
     """Collective allrecue a list of tensors across the group.
 
     Args:
-        tensor_list (List[tensor]): list of tensor to be allreduced. Each located on a GPU.
+        tensor_list (List[tensor]): list of tensors to be allreduced,
+                                    each on a GPU.
         group_name (str): the collective group name to perform allreduce.
 
     Returns:
@@ -364,7 +365,7 @@ def broadcast_multigpu(tensor_list,
     """Broadcast the tensor from a source GPU to all other GPUs.
 
     Args:
-        tensor_list: the tensors to broadcast (source) or receive (destination).
+        tensor_list: the tensors to broadcast (src) or receive (dst).
         src_rank: the rank of the source process.
         src_tensor: the index of the source GPU on the source process.
         group_name: the collective group name to perform broadcast.
@@ -525,7 +526,7 @@ def send_multigpu(tensor,
     Args:
         tensor: the tensor to send, located on a GPU.
         dst_rank (int): the rank of the destination process.
-        dst_gpu_index (int)： the index of the destination gpu on the dst process.
+        dst_gpu_index (int): the destination gpu index.
         group_name (str): the name of the collective group.
 
     Returns:
