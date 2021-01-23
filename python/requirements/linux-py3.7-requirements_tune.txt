@@ -467,7 +467,7 @@ pexpect==4.8.0
     #   ipython
 pickleshare==0.7.5
     # via ipython
-pillow==7.2.0 ; platform_system != "Windows"
+pillow==8.1.0 ; platform_system != "Windows"
     # via
     #   -c ../requirements.txt
     #   bokeh
