@@ -77,7 +77,6 @@ if torch_available():
     }
 
 
-# TODO (Hao): (check this only returns the visible GPUs on this actor.)
 def get_num_gpus():
     """Returns the number of compute-capable GPUs."""
     return cupy.cuda.runtime.getDeviceCount()
@@ -274,28 +273,3 @@ def get_tensor_device_list(tensors):
     for i, tensor in enumerate(tensors):
         devices[i] = get_tensor_device(tensor)
     return devices
-
-
-# TODO(Hao): check below
-# def check_single_tensor_input(tensor):
-#     """Check if the tensor is with a supported type."""
-#     if isinstance(tensor, numpy.ndarray):
-#         return
-#     if types.cupy_available():
-#         if isinstance(tensor, types.cp.ndarray):
-#             return
-#     if types.torch_available():
-#         if isinstance(tensor, types.th.Tensor):
-#             return
-#     raise RuntimeError("Unrecognized tensor type '{}'. Supported types are: "
-#             "np.ndarray, torch.Tensor, cupy.ndarray.".format(
-#                 type(tensor)))
-#
-# def check_collective_input(inputs):
-#     """Check the validity of inputs for collective operations"""
-#     if not isinstance(inputs, list):
-#         raise ValueError("Inputs must be a list of tensors.")
-#     if len(inputs) == 0:
-#         raise ValueError("Collective inputs have 0 elements.")
-#     for i in range(len(inputs)):
-#         check_single_tensor_input(inputs[i])
