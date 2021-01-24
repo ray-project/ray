@@ -2337,6 +2337,36 @@ std::string compact_tag_string(const opencensus::stats::ViewDescriptor &view,
   return result.str();
 }
 
+std::vector<std::unique_ptr<RayObject>> NodeManager::GetObjectsFromPlasma(const std::vector<ObjectID> &object_ids) {
+  // Pin the objects in plasma by getting them and holding a reference to
+  // the returned buffer.
+  // NOTE: the caller must ensure that the objects already exist in plasma before
+  // sending a PinObjectIDs request.
+  std::vector<plasma::ObjectBuffer> plasma_results;
+  // TODO(swang): This `Get` has a timeout of 0, so the plasma store will not
+  // block when serving the request. However, if the plasma store is under
+  // heavy load, then this request can still block the NodeManager event loop
+  // since we must wait for the plasma store's reply. We should consider using
+  // an `AsyncGet` instead.
+  if (!store_client_.Get(object_ids, /*timeout_ms=*/0, &plasma_results).ok()) {
+    RAY_LOG(WARNING) << "Failed to get objects to be pinned from object store.";
+    // TODO(suquark): Maybe "Status::ObjectNotFound" is more accurate here.
+    send_reply_callback(Status::Invalid("Failed to get objects."), nullptr, nullptr);
+    return;
+  }
+
+  std::vector<std::unique_ptr<RayObject>> objects;
+  for (int64_t i = 0; i < request.object_ids().size(); i++) {
+    if (plasma_results[i].data == nullptr) {
+      objects.push_back(nullptr);
+    } else {
+      objects.emplace_back(std::unique_ptr<RayObject>(
+          new RayObject(plasma_results[i].data, plasma_results[i].metadata, {})));
+    }
+  }
+  return objects;
+}
+
 void NodeManager::HandlePinObjectIDs(const rpc::PinObjectIDsRequest &request,
                                      rpc::PinObjectIDsReply *reply,
                                      rpc::SendReplyCallback send_reply_callback) {
@@ -2346,32 +2376,7 @@ void NodeManager::HandlePinObjectIDs(const rpc::PinObjectIDsRequest &request,
     object_ids.push_back(ObjectID::FromBinary(object_id_binary));
   }
   if (object_pinning_enabled_) {
-    // Pin the objects in plasma by getting them and holding a reference to
-    // the returned buffer.
-    // NOTE: the caller must ensure that the objects already exist in plasma before
-    // sending a PinObjectIDs request.
-    std::vector<plasma::ObjectBuffer> plasma_results;
-    // TODO(swang): This `Get` has a timeout of 0, so the plasma store will not
-    // block when serving the request. However, if the plasma store is under
-    // heavy load, then this request can still block the NodeManager event loop
-    // since we must wait for the plasma store's reply. We should consider using
-    // an `AsyncGet` instead.
-    if (!store_client_.Get(object_ids, /*timeout_ms=*/0, &plasma_results).ok()) {
-      RAY_LOG(WARNING) << "Failed to get objects to be pinned from object store.";
-      // TODO(suquark): Maybe "Status::ObjectNotFound" is more accurate here.
-      send_reply_callback(Status::Invalid("Failed to get objects."), nullptr, nullptr);
-      return;
-    }
-
-    std::vector<std::unique_ptr<RayObject>> objects;
-    for (int64_t i = 0; i < request.object_ids().size(); i++) {
-      if (plasma_results[i].data == nullptr) {
-        objects.push_back(nullptr);
-      } else {
-        objects.emplace_back(std::unique_ptr<RayObject>(
-            new RayObject(plasma_results[i].data, plasma_results[i].metadata, {})));
-      }
-    }
+    auto objects = GetObjectsFromPlasma(object_ids);
     local_object_manager_.PinObjects(object_ids, std::move(objects));
   }
   // Wait for the object to be freed by the owner, which keeps the ref count.
