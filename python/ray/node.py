@@ -1168,5 +1168,4 @@ class Node:
         self._system_config["is_external_storage_type_fs"] = (
             is_external_storage_type_fs)
         self._config["is_external_storage_type_fs"] = (
-            is_external_storage_type_fs
-        )
+            is_external_storage_type_fs)
