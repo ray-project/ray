@@ -254,7 +254,7 @@ class InboundRequest {
  public:
   InboundRequest(){};
   InboundRequest(std::function<void()> accept_callback,
-                 std::function<void()> reject_callback, 
+                 std::function<void()> reject_callback,
                  std::function<void(rpc::Address)> steal_callback, TaskID task_id,
                  bool has_dependencies)
       : accept_callback_(accept_callback),

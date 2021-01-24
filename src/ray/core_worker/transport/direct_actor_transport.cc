@@ -497,10 +497,9 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
                     dependencies);
   } else {
     // Add the normal task's callbacks to the non-actor scheduling queue.
-    normal_scheduling_queue_->Add(request.sequence_number(),
-                                  request.client_processed_up_to(), accept_callback,
-                                  reject_callback, steal_callback, task_spec.TaskId(), 
-                                  dependencies);
+    normal_scheduling_queue_->Add(
+        request.sequence_number(), request.client_processed_up_to(), accept_callback,
+        reject_callback, steal_callback, task_spec.TaskId(), dependencies);
   }
 }
 

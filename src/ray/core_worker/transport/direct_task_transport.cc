@@ -77,9 +77,7 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
                                             : ActorID::Nil());
         auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
         scheduling_key_entry.task_queue.push_back(task_spec);
-        // Save the task spec to be able to request workers while permormiing work
-        // stealing, even if the task queue is empty
-        scheduling_key_entry.tasks_to_request_workers.push_back(task_spec);
+
         if (!scheduling_key_entry.AllPipelinesToWorkersFull(
                 max_tasks_in_flight_per_worker_)) {
           // The pipelines to the current workers are not full yet, so we don't need more
@@ -442,18 +440,6 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
     return;
   }
 
-  // Check if we have any new task to request an additional worker. If not, it means we
-  // have already requested a number of leases that is equal to the number of tasks ever
-  // submitted
-  if (scheduling_key_entry.tasks_to_request_workers.empty()) {
-    if (scheduling_key_entry.CanDelete()) {
-      // We can safely remove the entry keyed by scheduling_key from the
-      // scheduling_key_entries_ hashmap.
-      scheduling_key_entries_.erase(scheduling_key);
-    }
-    return;
-  }
-
   // Check whether we really need a new worker or whether we have
   // enough room in an existing worker's pipeline to send the new tasks. If the pipelines
   // are not full, we do not request a new worker (unless work stealing is enabled, in
@@ -504,10 +490,11 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
     }
   }
 
-  // TaskSpecification &resource_spec = task_queue.front();
-  TaskSpecification resource_spec =
-      std::move(scheduling_key_entry.tasks_to_request_workers.front());
-  scheduling_key_entry.tasks_to_request_workers.pop_front();
+  // Create a TaskSpecification with an overwritten TaskID to make sure we don't reuse the
+  // same TaskID to request a worker
+  auto resource_spec_msg = task_queue.front().GetMutableMessage();
+  resource_spec_msg.set_task_id(TaskID::ForFakeTask().Binary());
+  TaskSpecification resource_spec = TaskSpecification(resource_spec_msg);
 
   rpc::Address best_node_address;
   if (raylet_address == nullptr) {
@@ -523,8 +510,8 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
 
   lease_client->RequestWorkerLease(
       resource_spec,
-      [this, resource_spec, scheduling_key](const Status &status,
-                                            const rpc::RequestWorkerLeaseReply &reply) {
+      [this, scheduling_key](const Status &status,
+                             const rpc::RequestWorkerLeaseReply &reply) {
         absl::MutexLock lock(&mu_);
 
         auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
@@ -554,10 +541,6 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
           } else {
             // The raylet redirected us to a different raylet to retry at.
 
-            // Add the task back to the tasks_to_request_workers queue, so that we can
-            // use it for our next RequestWorkerLease RPC to the new raylet.
-            scheduling_key_entry.tasks_to_request_workers.push_back(resource_spec);
-
             RequestNewWorkerIfNeeded(scheduling_key, &reply.retry_at_raylet_address());
           }
         } else if (lease_client != local_lease_client_) {
@@ -566,10 +549,6 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
           // TODO(swang): Fail after some number of retries?
           RAY_LOG(ERROR) << "Retrying attempt to schedule task at remote node. Error: "
                          << status.ToString();
-
-          // Add the task back to the tasks_to_request_workers queue, so that we can use
-          // it for our next RequestWorkerLease RPC to the new raylet.
-          scheduling_key_entry.tasks_to_request_workers.push_back(resource_spec);
 
           RequestNewWorkerIfNeeded(scheduling_key);
 

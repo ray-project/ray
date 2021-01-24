@@ -175,7 +175,6 @@ class CoreWorkerDirectTaskSubmitter {
       const google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> &assigned_resources)
       EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
-
   /// Push a task to a specific worker.
   void PushNormalTask(const rpc::WorkerAddress &addr,
                       rpc::CoreWorkerClientInterface &client,
@@ -308,7 +307,7 @@ class CoreWorkerDirectTaskSubmitter {
     // stolen (2) The owner has received a PushNormalTask reply for each one of the stolen
     // tasks, and the stolen tasks have been forwarded to the thief (or some other worker
     // if the thief's pipeline has gotten full).
-    
+
     void SetReceivedOneStolenTask() {
       RAY_CHECK(currently_stealing);
       stolen_tasks_to_wait_for -= 1;
@@ -358,10 +357,6 @@ class CoreWorkerDirectTaskSubmitter {
     // Tasks that are queued for execution. We keep an individual queue per
     // scheduling class to ensure fairness.
     std::deque<TaskSpecification> task_queue = std::deque<TaskSpecification>();
-    // Keep a queue of tasks that have not been used yet to request a new worker from the
-    // raylet.
-    std::deque<TaskSpecification> tasks_to_request_workers =
-        std::deque<TaskSpecification>();
     // Keep track of the active workers, so that we can quickly check if one of them has
     // room for more tasks in flight
     absl::flat_hash_set<rpc::WorkerAddress> active_workers =
