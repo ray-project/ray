@@ -74,12 +74,13 @@ def test_ray_init(shutdown_only):
     ray.shutdown()
 
 
-@pytest.mark.parametrize("ray_start_cluster", [{
-    "num_cpus": 1,
-    "num_nodes": 1,
-    "do_init": False,
-}],
-                         indirect=True)
+@pytest.mark.parametrize(
+    "ray_start_cluster", [{
+        "num_cpus": 1,
+        "num_nodes": 1,
+        "do_init": False,
+    }],
+    indirect=True)
 def test_connect_to_ray(ray_start_cluster):
     def getpid(args):
         return os.getpid()
@@ -141,9 +142,8 @@ def test_initializer(shutdown_only):
 
     with tempfile.TemporaryDirectory() as dirname:
         num_processes = 4
-        pool = Pool(processes=num_processes,
-                    initializer=init,
-                    initargs=(dirname, ))
+        pool = Pool(
+            processes=num_processes, initializer=init, initargs=(dirname, ))
 
         assert len(os.listdir(dirname)) == 4
         pool.terminate()
@@ -296,8 +296,8 @@ def test_map_async(pool_4_processes):
         return index, os.getpid()
 
     signal = SignalActor.remote()
-    async_result = pool_4_processes.map_async(f, [(i, signal)
-                                                  for i in range(1000)])
+    async_result = pool_4_processes.map_async(
+        f, [(i, signal) for i in range(1000)])
     assert not async_result.ready()
     with pytest.raises(TimeoutError):
         async_result.get(timeout=0.01)
@@ -366,18 +366,18 @@ def test_callbacks(pool_4_processes):
     result.get()
 
     # Will error, check that error_callback is called.
-    result = pool_4_processes.apply_async(f, ((0, [0]), ),
-                                          error_callback=error_callback)
+    result = pool_4_processes.apply_async(
+        f, ((0, [0]), ), error_callback=error_callback)
     assert isinstance(callback_queue.get(), Exception)
     with pytest.raises(Exception, match="intentional failure"):
         result.get()
 
     # Test callbacks for map_async.
     error_indices = [2, 50, 98]
-    result = pool_4_processes.map_async(f, [(index, error_indices)
-                                            for index in range(100)],
-                                        callback=callback,
-                                        error_callback=error_callback)
+    result = pool_4_processes.map_async(
+        f, [(index, error_indices) for index in range(100)],
+        callback=callback,
+        error_callback=error_callback)
     callback_results = []
     while len(callback_results) < 100:
         callback_results.append(callback_queue.get())
@@ -408,9 +408,8 @@ def test_imap(pool_4_processes):
         return index
 
     error_indices = [2, 50, 98]
-    result_iter = pool_4_processes.imap(f, [(index, error_indices)
-                                            for index in range(100)],
-                                        chunksize=11)
+    result_iter = pool_4_processes.imap(
+        f, [(index, error_indices) for index in range(100)], chunksize=11)
     for i in range(100):
         result = result_iter.next()
         if i in error_indices:
@@ -434,9 +433,8 @@ def test_imap_unordered(pool_4_processes):
     error_indices = [2, 50, 98]
     in_order = []
     num_errors = 0
-    result_iter = pool_4_processes.imap_unordered(f, [(index, error_indices)
-                                                      for index in range(100)],
-                                                  chunksize=11)
+    result_iter = pool_4_processes.imap_unordered(
+        f, [(index, error_indices) for index in range(100)], chunksize=11)
     for i in range(100):
         result = result_iter.next()
         if isinstance(result, Exception):
@@ -465,8 +463,8 @@ def test_imap_timeout(pool_4_processes):
 
     wait_index = 23
     signal = SignalActor.remote()
-    result_iter = pool_4_processes.imap(f, [(index, wait_index, signal)
-                                            for index in range(100)])
+    result_iter = pool_4_processes.imap(
+        f, [(index, wait_index, signal) for index in range(100)])
     for i in range(100):
         if i == wait_index:
             with pytest.raises(TimeoutError):
@@ -481,10 +479,8 @@ def test_imap_timeout(pool_4_processes):
 
     wait_index = 23
     signal = SignalActor.remote()
-    result_iter = pool_4_processes.imap_unordered(f,
-                                                  [(index, wait_index, signal)
-                                                   for index in range(100)],
-                                                  chunksize=11)
+    result_iter = pool_4_processes.imap_unordered(
+        f, [(index, wait_index, signal) for index in range(100)], chunksize=11)
     in_order = []
     for i in range(100):
         try:
