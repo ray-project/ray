@@ -158,7 +158,7 @@ class MemoryTableEntry:
         actor_random_bits = object_ref_hex[TASKID_RANDOM_BITS_SIZE:
                                            TASKID_RANDOM_BITS_SIZE +
                                            ACTORID_RANDOM_BITS_SIZE]
-        if (random_bits == "f" * 8 and not actor_random_bits == "f" * 24):
+        if (random_bits == "f" * 16 and not actor_random_bits == "f" * 24):
             return True
         else:
             return False
