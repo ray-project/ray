@@ -58,9 +58,10 @@ class MockObjectDirectory : public ObjectDirectoryInterface {
       const ObjectID object_id = callback.first;
       auto it = locations_.find(object_id);
       if (it == locations_.end()) {
-        callback.second(object_id, std::unordered_set<ray::NodeID>(), "", 0);
+        callback.second(object_id, std::unordered_set<ray::NodeID>(), "", NodeID::Nil(),
+                        0);
       } else {
-        callback.second(object_id, it->second, "", 0);
+        callback.second(object_id, it->second, "", NodeID::Nil(), 0);
       }
     }
     callbacks_.clear();
