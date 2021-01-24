@@ -3,7 +3,6 @@ package io.ray.api.placementgroup;
 import io.ray.api.id.PlacementGroupId;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.TimeUnit;
 
 /**
  * A placement group is used to place interdependent actors according to a specific strategy {@link
@@ -46,9 +45,8 @@ public interface PlacementGroup {
   /**
    * Wait for the placement group to be ready within the specified time.
    *
-   * @param duration the time duration in the given.
-   * @param unit the unit of the {@code duration} argument.
+   * @param timeoutSeconds Timeout in seconds.
    * @return True if the placement group is created. False otherwise.
    */
-  boolean wait(long duration, TimeUnit unit);
+  boolean wait(int timeoutSeconds);
 }

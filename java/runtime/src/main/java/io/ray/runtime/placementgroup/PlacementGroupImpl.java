@@ -7,7 +7,6 @@ import io.ray.api.placementgroup.PlacementGroupState;
 import io.ray.api.placementgroup.PlacementStrategy;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.TimeUnit;
 
 /** The default implementation of `PlacementGroup` interface. */
 public class PlacementGroupImpl implements PlacementGroup {
@@ -57,8 +56,7 @@ public class PlacementGroupImpl implements PlacementGroup {
   }
 
   @Override
-  public boolean wait(long duration, TimeUnit unit) {
-    int timeoutSeconds = Math.toIntExact(TimeUnit.SECONDS.convert(duration, unit));
+  public boolean wait(int timeoutSeconds) {
     return Ray.internal().waitPlacementGroupReady(id, timeoutSeconds);
   }
 

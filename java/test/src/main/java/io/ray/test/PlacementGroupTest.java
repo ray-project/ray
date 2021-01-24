@@ -8,7 +8,6 @@ import io.ray.api.placementgroup.PlacementGroupState;
 import io.ray.api.placementgroup.PlacementStrategy;
 import io.ray.runtime.exception.RayException;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -33,7 +32,7 @@ public class PlacementGroupTest extends BaseTest {
   // It's not comprehensive to test all placement group test cases.
   public void testCreateAndCallActor() {
     PlacementGroup placementGroup = PlacementGroupTestUtils.createSimpleGroup();
-    Assert.assertTrue(placementGroup.wait(10, TimeUnit.SECONDS));
+    Assert.assertTrue(placementGroup.wait(10));
     Assert.assertEquals(placementGroup.getName(), "unnamed_group");
 
     // Test creating an actor from a constructor.
@@ -54,8 +53,8 @@ public class PlacementGroupTest extends BaseTest {
     PlacementGroup secondPlacementGroup =
             PlacementGroupTestUtils.createNameSpecifiedSimpleGroup(
                 "CPU", 1, PlacementStrategy.PACK, 1.0, "second_placement_group");
-    Assert.assertTrue(firstPlacementGroup.wait(10, TimeUnit.SECONDS));
-    Assert.assertTrue(secondPlacementGroup.wait(10, TimeUnit.SECONDS));
+    Assert.assertTrue(firstPlacementGroup.wait(10));
+    Assert.assertTrue(secondPlacementGroup.wait(10));
 
     PlacementGroup firstPlacementGroupRes = Ray.getPlacementGroup((firstPlacementGroup).getId());
     PlacementGroup secondPlacementGroupRes = Ray.getPlacementGroup((secondPlacementGroup).getId());
@@ -104,7 +103,7 @@ public class PlacementGroupTest extends BaseTest {
     // Wait for placement group after it is removed.
     int exceptionCount = 0;
     try {
-      removedPlacementGroup.wait(10, TimeUnit.SECONDS);
+      removedPlacementGroup.wait(10);
     } catch (RayException e) {
       ++exceptionCount;
     }
