@@ -17,7 +17,6 @@ head_start_ray_commands:
     - ray stop
     - ray start --head --autoscaling-config=~/ray_bootstrap_config.yaml
 idle_timeout_minutes: 5
-initial_workers: 1
 initialization_commands:
     - echo init
 max_workers: 2
@@ -32,7 +31,6 @@ setup_commands:
     - echo a
     - echo b
     - echo ${echo hi}
-target_utilization_fraction: 0.9
 worker_nodes:
     ImageId: latest_dlami
     InstanceType: t3a.small

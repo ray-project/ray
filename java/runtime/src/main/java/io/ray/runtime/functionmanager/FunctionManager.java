@@ -69,7 +69,8 @@ public class FunctionManager {
    * Get the RayFunction from a RayFunc instance (a lambda).
    *
    * @param jobId current job id.
-   * @param func The lambda. Returns A RayFunction object.
+   * @param func The lambda.
+   * @return A RayFunction object.
    */
   public RayFunction getFunction(JobId jobId, RayFunc func) {
     JavaFunctionDescriptor functionDescriptor = RAY_FUNC_CACHE.get().get(func.getClass());
@@ -90,7 +91,8 @@ public class FunctionManager {
    * Get the RayFunction from a function descriptor.
    *
    * @param jobId Current job id.
-   * @param functionDescriptor The function descriptor. Returns A RayFunction object.
+   * @param functionDescriptor The function descriptor.
+   * @return A RayFunction object.
    */
   public RayFunction getFunction(JobId jobId, JavaFunctionDescriptor functionDescriptor) {
     JobFunctionTable jobFunctionTable = jobFunctionTables.get(jobId);

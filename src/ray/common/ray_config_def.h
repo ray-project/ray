@@ -361,6 +361,10 @@ RAY_CONFIG(bool, automatic_object_deletion_enabled, true)
 /// Grace period until we throw the OOM error to the application in seconds.
 RAY_CONFIG(int64_t, oom_grace_period_s, 10)
 
+/// Whether or not the external storage is file system.
+/// This is configured based on object_spilling_config.
+RAY_CONFIG(bool, is_external_storage_type_fs, true)
+
 /* Configuration parameters for locality-aware scheduling. */
 /// Whether to enable locality-aware leasing. If enabled, then Ray will consider task
 /// dependency locality when choosing a worker for leasing.
