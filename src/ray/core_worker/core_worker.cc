@@ -514,7 +514,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
           local_raylet_id, RayConfig::instance().worker_lease_timeout_milliseconds(),
           std::move(actor_creator),
           RayConfig::instance().max_tasks_in_flight_per_worker(),
-          boost::asio::steady_timer(io_service_)));
+          RayConfig::instance().work_stealing(), boost::asio::steady_timer(io_service_)));
   future_resolver_.reset(
       new FutureResolver(memory_store_, core_worker_client_pool_, rpc_address_));
   // Unfortunately the raylet client has to be constructed after the receivers.
@@ -2045,6 +2045,13 @@ void CoreWorker::HandlePushTask(const rpc::PushTaskRequest &request,
       direct_task_receiver_->RunNormalTasksFromQueue();
     });
   }
+}
+
+void CoreWorker::HandleStealTasks(const rpc::StealTasksRequest &request,
+                                  rpc::StealTasksReply *reply,
+                                  rpc::SendReplyCallback send_reply_callback) {
+  RAY_LOG(DEBUG) << "Entering CoreWorker::HandleStealWork!";
+  direct_task_receiver_->HandleStealTasks(request, reply, send_reply_callback);
 }
 
 void CoreWorker::HandleDirectActorCallArgWaitComplete(

@@ -466,6 +466,17 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
     send_reply_callback(Status::Invalid("client cancelled stale rpc"), nullptr, nullptr);
   };
 
+  auto steal_callback = [this, task_spec, reply,
+                         send_reply_callback](rpc::Address thief_addr) {
+    RAY_LOG(DEBUG) << "Task " << task_spec.TaskId() << " was stolen from "
+                   << worker_context_.GetWorkerID()
+                   << "'s non_actor_task_queue_! Setting reply->set_task_stolen(true)!";
+    // task stolen. respond accordingly
+    reply->set_task_stolen(true);
+    reply->mutable_thief_addr()->CopyFrom(thief_addr);  //.ToProto
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+  };
+
   auto dependencies = task_spec.GetDependencies();
 
   if (task_spec.IsActorTask()) {
@@ -482,12 +493,14 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
     // TODO(swang): Remove this with legacy raylet code.
     dependencies.pop_back();
     it->second->Add(request.sequence_number(), request.client_processed_up_to(),
-                    accept_callback, reject_callback, dependencies);
+                    accept_callback, reject_callback, nullptr, task_spec.TaskId(),
+                    dependencies);
   } else {
     // Add the normal task's callbacks to the non-actor scheduling queue.
     normal_scheduling_queue_->Add(request.sequence_number(),
                                   request.client_processed_up_to(), accept_callback,
-                                  reject_callback, dependencies);
+                                  reject_callback, steal_callback, task_spec.TaskId(), 
+                                  dependencies);
   }
 }
 
@@ -499,6 +512,28 @@ void CoreWorkerDirectTaskReceiver::RunNormalTasksFromQueue() {
 
   // Execute as many tasks as there are in the queue, in sequential order.
   normal_scheduling_queue_->ScheduleRequests();
+}
+
+void CoreWorkerDirectTaskReceiver::HandleStealTasks(
+    const rpc::StealTasksRequest &request, rpc::StealTasksReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  size_t half = normal_scheduling_queue_->Size() / 2;
+
+  if (half == 0) {
+    RAY_LOG(DEBUG) << "We don't have enough tasks to steal, so we return early!";
+    reply->set_number_of_tasks_stolen(0);
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+    return;
+  }
+
+  rpc::Address thief_addr = request.thief_addr();
+  size_t n_tasks_stolen = normal_scheduling_queue_->Steal(half, thief_addr, reply);
+
+  RAY_LOG(DEBUG) << "Setting the total number of tasks stolen to " << n_tasks_stolen;
+  reply->set_number_of_tasks_stolen(n_tasks_stolen);
+
+  // send reply back
+  send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
 }  // namespace ray

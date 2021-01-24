@@ -119,6 +119,9 @@ class CoreWorkerClientInterface {
   virtual void PushNormalTask(std::unique_ptr<PushTaskRequest> request,
                               const ClientCallback<PushTaskReply> &callback) {}
 
+  virtual void StealTasks(std::unique_ptr<StealTasksRequest> request,
+                          const ClientCallback<StealTasksReply> &callback) {}
+
   /// Notify a wait has completed for direct actor call arguments.
   ///
   /// \param[in] request The request message.
@@ -278,6 +281,11 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
     request->set_sequence_number(-1);
     request->set_client_processed_up_to(-1);
     INVOKE_RPC_CALL(CoreWorkerService, PushTask, *request, callback, grpc_client_);
+  }
+
+  void StealTasks(std::unique_ptr<StealTasksRequest> request,
+                  const ClientCallback<StealTasksReply> &callback) override {
+    INVOKE_RPC_CALL(CoreWorkerService, StealTasks, *request, callback, grpc_client_);
   }
 
   /// Send as many pending tasks as possible. This method is thread-safe.

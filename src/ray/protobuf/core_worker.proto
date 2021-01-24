@@ -71,6 +71,15 @@ message ReturnObject {
   int64 size = 6;
 }
 
+message StealTasksRequest {
+  // The address of the thief that is requesting to steal tasks.
+  Address thief_addr = 1;
+}
+
+message StealTasksReply {
+  int64 number_of_tasks_stolen = 1;
+}
+
 message PushTaskRequest {
   // The ID of the worker this message is intended for.
   bytes intended_worker_id = 1;
@@ -94,8 +103,12 @@ message PushTaskRequest {
 message PushTaskReply {
   // The returned objects.
   repeated ReturnObject return_objects = 1;
+  // Set to true if the task was stolen before its execution at the worker.
+  bool task_stolen = 2;
+  // The address of the thief if the task was stolen
+  Address thief_addr = 3;
   // Set to true if the worker will be exiting.
-  bool worker_exiting = 2;
+  bool worker_exiting = 4;
   // The references that the worker borrowed during the task execution. A
   // borrower is a process that is currently using the object ID, in one of 3
   // ways:
@@ -110,7 +123,7 @@ message PushTaskReply {
   // counts for any IDs that were nested inside these objects that the worker
   // may now be borrowing. The reference counts also include any new borrowers
   // that the worker created by passing a borrowed ID into a nested task.
-  repeated ObjectReferenceCount borrowed_refs = 3;
+  repeated ObjectReferenceCount borrowed_refs = 5;
 }
 
 message DirectActorCallArgWaitCompleteRequest {
@@ -336,6 +349,8 @@ message ExitReply {
 service CoreWorkerService {
   // Push a task directly to this worker from another.
   rpc PushTask(PushTaskRequest) returns (PushTaskReply);
+  // Steal tasks from a worker if it has a surplus of work
+  rpc StealTasks(StealTasksRequest) returns (StealTasksReply);
   // Reply from raylet that wait for direct actor call args has completed.
   rpc DirectActorCallArgWaitComplete(DirectActorCallArgWaitCompleteRequest)
       returns (DirectActorCallArgWaitCompleteReply);
