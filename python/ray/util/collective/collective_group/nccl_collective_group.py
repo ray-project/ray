@@ -28,8 +28,8 @@ class Rendezvous:
 
     Args:
         store_key (str): the unique store key, usually as a concatanation
-                         of group_name and communicator key.
-                         See `get_nccl_communicator` for more details.
+            of group_name and communicator key. See `get_nccl_communicator`
+            for more details.
     """
 
     def __init__(self, store_key):
@@ -86,6 +86,7 @@ class Rendezvous:
 
         Args:
             timeout_s: timeout in seconds.
+
         Return:
             uid (str): the NCCLUniqueID if successful.
         """

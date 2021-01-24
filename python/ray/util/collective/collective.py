@@ -16,7 +16,6 @@ except ImportError:
     _NCCL_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
-logger.setLevel("INFO")
 
 
 def nccl_available():
@@ -215,7 +214,7 @@ def get_world_size(group_name: str = "default") -> int:
 
     Returns:
         The world size of the collective group, -1 if the group does
-        not exist or the process does not belong to the group.
+            not exist or the process does not belong to the group.
     """
     _check_inside_actor()
     if not is_group_initialized(group_name):
@@ -245,11 +244,11 @@ def allreduce(tensor, group_name: str = "default", op=types.ReduceOp.SUM):
 def allreduce_multigpu(tensor_list: list,
                        group_name: str = "default",
                        op=types.ReduceOp.SUM):
-    """Collective allrecue a list of tensors across the group.
+    """Collective allreduce a list of tensors across the group.
 
     Args:
         tensor_list (List[tensor]): list of tensors to be allreduced,
-                                    each on a GPU.
+            each on a GPU.
         group_name (str): the collective group name to perform allreduce.
 
     Returns:
@@ -285,8 +284,8 @@ def reduce(tensor,
 
     Args:
         tensor: the tensor to be reduced on this process.
-        dst_rank: the rank of the destination process.
-        group_name: the collective group name to perform reduce.
+        dst_rank (int): the rank of the destination process.
+        group_name (str): the collective group name to perform reduce.
         op: The reduce operation.
 
     Returns:
@@ -314,10 +313,10 @@ def reduce_multigpu(tensor_list: list,
 
     Args:
         tensor_list: the list of tensors to be reduced on this process;
-                     each tensor located on a GPU.
-        dst_rank: the rank of the destination process.
+            each tensor located on a GPU.
+        dst_rank (int): the rank of the destination process.
         dst_tensor: the index of GPU at the destination.
-        group_name: the collective group name to perform reduce.
+        group_name (str): the collective group name to perform reduce.
         op: The reduce operation.
 
     Returns:
@@ -343,8 +342,8 @@ def broadcast(tensor, src_rank: int = 0, group_name: str = "default"):
 
     Args:
         tensor: the tensor to be broadcasted (src) or received (destination).
-        src_rank: the rank of the source process.
-        group_name: the collective group name to perform broadcast.
+        src_rank (int): the rank of the source process.
+        group_name (str): the collective group name to perform broadcast.
 
     Returns:
         None
@@ -368,9 +367,9 @@ def broadcast_multigpu(tensor_list,
 
     Args:
         tensor_list: the tensors to broadcast (src) or receive (dst).
-        src_rank: the rank of the source process.
-        src_tensor: the index of the source GPU on the source process.
-        group_name: the collective group name to perform broadcast.
+        src_rank (int): the rank of the source process.
+        src_tensor (int): the index of the source GPU on the source process.
+        group_name (str): the collective group name to perform broadcast.
 
     Returns:
         None
@@ -395,7 +394,7 @@ def allgather(tensor_list: list, tensor, group_name: str = "default"):
     Args:
         tensor_list (list): the results, stored as a list of tensors.
         tensor: the tensor (to be gathered) in the current process
-        group_name: the name of the collective group.
+        group_name (str): the name of the collective group.
 
     Returns:
         None
@@ -420,9 +419,9 @@ def allgather_multigpu(output_tensor_lists: list,
 
     Args:
         output_tensor_lists (List[List[tensor]]): gathered results, with shape
-                must be num_gpus * world_size * shape(tensor).
+            must be num_gpus * world_size * shape(tensor).
         input_tensor_list: (List[tensor]): a list of tensors, with shape
-                num_gpus * shape(tensor).
+            num_gpus * shape(tensor).
         group_name (str): the name of the collective group.
 
     Returns:
@@ -475,9 +474,9 @@ def reducescatter_multigpu(output_tensor_list,
 
     Args:
         output_tensor_list: the resulted list of tensors, with
-                            shape: num_gpus * shape(tensor).
+            shape: num_gpus * shape(tensor).
         input_tensor_lists: the original tensors, with shape:
-                            num_gpus * world_size * shape(tensor).
+            num_gpus * world_size * shape(tensor).
         group_name (str): the name of the collective group.
         op: The reduce operation.
 
@@ -676,7 +675,7 @@ def _check_rank_valid(g, rank: int):
     if rank < 0:
         raise ValueError("rank '{}' is negative.".format(rank))
     if rank >= g.world_size:
-        raise ValueError("rank '{}' is greater than world size "
+        raise ValueError("rank '{}' must be less than world size "
                          "'{}'".format(rank, g.world_size))
 
 
@@ -697,7 +696,7 @@ def _check_tensor_lists_input(tensor_lists):
         raise RuntimeError("The input must be a list of lists of tensors. "
                            "Got '{}'.".format(type(tensor_lists)))
     if not tensor_lists:
-        raise RuntimeError("Got an empty list of lists of tensors.")
+        raise RuntimeError(f"Did not receive tensors. Got: {tensor_lists}")
     for t in tensor_lists:
         _check_tensor_list_input(t)
 

@@ -9,7 +9,6 @@ from ray.util.collective.collective_group.nccl_util import get_num_gpus
 import torch
 
 logger = logging.getLogger(__name__)
-logger.setLevel("DEBUG")
 
 
 @ray.remote(num_gpus=1)

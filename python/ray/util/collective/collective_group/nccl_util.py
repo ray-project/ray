@@ -155,7 +155,7 @@ def get_tensor_ptr(tensor):
     if torch_available():
         if isinstance(tensor, torch.Tensor):
             if not tensor.is_cuda:
-                raise RuntimeError("torch tensor must be on gpu.")
+                raise RuntimeError("Torch tensor must be on GPU.")
             return tensor.data_ptr()
     raise ValueError("Unsupported tensor type. Got: {}. Supported "
                      "GPU tensor types are: torch.Tensor, "
@@ -205,14 +205,13 @@ def get_tensor_device(tensor):
     if isinstance(tensor, cupy.ndarray):
         try:
             device = tensor.device.id
-        except AttributeError as e:
-            raise RuntimeError("Got an exception {}. The tensor is not on "
-                               "a valid GPU.".format(e))
-    elif torch_available():
-        if isinstance(tensor, torch.Tensor):
-            device = tensor.device.index
-            if not isinstance(device, int):
-                raise RuntimeError("The tensor is not on a valid GPU.")
+        except AttributeError as exec:
+            raise RuntimeError("The tensor is not on a valid GPU.") \
+                from exec
+    elif torch_available() and isinstance(tensor, torch.Tensor):
+        device = tensor.device.index
+        if not isinstance(device, int):
+            raise RuntimeError("The tensor is not on a valid GPU.")
     else:
         raise ValueError("Unsupported tensor type. "
                          "Got: {}.".format(type(tensor)))
@@ -269,7 +268,5 @@ def get_tensor_device_list(tensors):
         raise RuntimeError(
             "Expect a list of tensors each locates on a GPU device. "
             "Got: '{}'.".format(type(tensors)))
-    devices = [0] * len(tensors)
-    for i, tensor in enumerate(tensors):
-        devices[i] = get_tensor_device(tensor)
+    devices = [get_tensor_device(t) for t in tensors]
     return devices
