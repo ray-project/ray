@@ -79,6 +79,7 @@ py_test_module_list(
     "test_asyncio.py",
     "test_autoscaler.py",
     "test_autoscaler_yaml.py",
+    "test_client_init.py",
     "test_client_metadata.py",
     "test_client.py",
     "test_client_references.py",
