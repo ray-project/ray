@@ -52,7 +52,6 @@ class OnPremCoordinatorServerTest(unittest.TestCase):
             "cluster_name": "random_name",
             "min_workers": 0,
             "max_workers": 0,
-            "initial_workers": 0,
             "provider": {
                 "type": "local",
                 "head_ip": "0.0.0.0:2",
@@ -154,7 +153,6 @@ class OnPremCoordinatorServerTest(unittest.TestCase):
             "cluster_name": "random_name",
             "min_workers": 0,
             "max_workers": 0,
-            "initial_workers": 0,
             "provider": {
                 "type": "local",
                 "coordinator_address": self.coordinator_address,

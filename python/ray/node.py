@@ -1149,11 +1149,6 @@ class Node:
                     "directory_path": self._session_dir
                 }
             })
-        # We need to set both ray param's system config and self._config
-        # because they could've been diverged at this point.
-        self._ray_params._system_config["object_spilling_config"] = (
-            object_spilling_config)
-        self._config["object_spilling_config"] = object_spilling_config
 
         # Try setting up the storage.
         object_spilling_config = json.loads(object_spilling_config)
@@ -1161,3 +1156,17 @@ class Node:
         # Validate external storage usage.
         external_storage.setup_external_storage(object_spilling_config)
         external_storage.reset_external_storage()
+
+        # Configure the proper system config.
+        # We need to set both ray param's system config and self._config
+        # because they could've been diverged at this point.
+        self._ray_params._system_config["object_spilling_config"] = (
+            object_spilling_config)
+        self._config["object_spilling_config"] = object_spilling_config
+        is_external_storage_type_fs = (
+            object_spilling_config["type"] == "filesystem")
+        self._system_config["is_external_storage_type_fs"] = (
+            is_external_storage_type_fs)
+        self._config["is_external_storage_type_fs"] = (
+            is_external_storage_type_fs
+        )
