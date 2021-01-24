@@ -152,8 +152,12 @@ class Node:
             redis_client = self.create_redis_client()
             session_name = _get_with_retry(redis_client, "session_name")
             self.session_name = ray.utils.decode(session_name)
-
         self._init_temp(redis_client)
+
+        # If it is a head node, try validating if
+        # external storage is configurable.
+        if head:
+            self.validate_external_storage()
 
         if connect_only:
             # Get socket names from the configuration.
@@ -1123,3 +1127,37 @@ class Node:
             True if any process that wasn't explicitly killed is still alive.
         """
         return not any(self.dead_processes())
+
+    def validate_external_storage(self):
+        """Make sure we can setup the object spilling external storage.
+
+        This will also fill up the default setting for object spilling
+        if not specified.
+        """
+        object_spilling_config = self._config.get("object_spilling_config", {})
+        automatic_spilling_enabled = self._config.get(
+            "automatic_object_spilling_enabled", True)
+
+        if not automatic_spilling_enabled:
+            return
+
+        # If the config is not specified, we fill up the default.
+        if not object_spilling_config:
+            object_spilling_config = json.dumps({
+                "type": "filesystem",
+                "params": {
+                    "directory_path": self._session_dir
+                }
+            })
+        # We need to set both ray param's system config and self._config
+        # because they could've been diverged at this point.
+        self._ray_params._system_config["object_spilling_config"] = (
+            object_spilling_config)
+        self._config["object_spilling_config"] = object_spilling_config
+
+        # Try setting up the storage.
+        object_spilling_config = json.loads(object_spilling_config)
+        from ray import external_storage
+        # Validate external storage usage.
+        external_storage.setup_external_storage(object_spilling_config)
+        external_storage.reset_external_storage()
