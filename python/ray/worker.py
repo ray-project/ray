@@ -116,6 +116,7 @@ class Worker:
         self._load_code_from_local = False
         self._core_worker = None
         self.tracebacks = []
+        self.core_worker_created = False
 
     @property
     def connected(self):
@@ -168,7 +169,11 @@ class Worker:
 
     @property
     def core_worker(self):
-        assert self._core_worker is not None, self.tracebacks
+        assert self._core_worker is not None, (
+            f"tracebacks: {self.tracebacks}\n"
+            f"is_core_worker_created? {self.core_worker_created}")
+        if not self.core_worker_created:
+            self.core_worker_created = True
         return self._core_worker
 
     def remove_core_worker(self):
