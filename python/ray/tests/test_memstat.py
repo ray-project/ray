@@ -134,7 +134,8 @@ def test_actor_task_refs(ray_start_regular):
     assert count(info, WORKER_PID) == 1, info
     assert count(info, LOCAL_REF) == 1, info
     assert count(info, PINNED_IN_MEMORY) == 1, info
-    assert count(info, USED_BY_PENDING_TASK) == 2, info
+    assert count(info, USED_BY_PENDING_TASK) == 1, info
+    assert count(info, ACTOR_HANDLE) == 1, info
     assert count(info, DESER_ACTOR_TASK_ARG) == 1, info
     del x_id
 
