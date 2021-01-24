@@ -53,7 +53,6 @@ py_test_module_list(
     "test_multinode_failures_2.py",
     "test_multiprocessing.py",
     "test_object_manager.py",
-    "test_object_spilling.py",
     "test_output.py",
     "test_reconstruction.py",
     "test_reference_counting.py",
@@ -134,6 +133,7 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "test_placement_group.py",
+    "test_object_spilling.py",
   ],
   size = "large",
   extra_srcs = SRCS,
