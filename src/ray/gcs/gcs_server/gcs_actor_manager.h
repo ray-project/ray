@@ -21,9 +21,9 @@
 #include "ray/common/task/task_execution_spec.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/gcs/gcs_server/gcs_actor_scheduler.h"
+#include "ray/gcs/gcs_server/gcs_init_data.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
-#include "ray/gcs/redis_gcs_client.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
 #include "ray/rpc/worker/core_worker_client.h"
 #include "src/ray/protobuf/gcs_service.pb.h"
@@ -190,26 +190,6 @@ class GcsActorManager : public rpc::ActorInfoHandler {
                              rpc::GetAllActorInfoReply *reply,
                              rpc::SendReplyCallback send_reply_callback) override;
 
-  void HandleRegisterActorInfo(const rpc::RegisterActorInfoRequest &request,
-                               rpc::RegisterActorInfoReply *reply,
-                               rpc::SendReplyCallback send_reply_callback) override;
-
-  void HandleUpdateActorInfo(const rpc::UpdateActorInfoRequest &request,
-                             rpc::UpdateActorInfoReply *reply,
-                             rpc::SendReplyCallback send_reply_callback) override;
-
-  void HandleAddActorCheckpoint(const rpc::AddActorCheckpointRequest &request,
-                                rpc::AddActorCheckpointReply *reply,
-                                rpc::SendReplyCallback send_reply_callback) override;
-
-  void HandleGetActorCheckpoint(const rpc::GetActorCheckpointRequest &request,
-                                rpc::GetActorCheckpointReply *reply,
-                                rpc::SendReplyCallback send_reply_callback) override;
-
-  void HandleGetActorCheckpointID(const rpc::GetActorCheckpointIDRequest &request,
-                                  rpc::GetActorCheckpointIDReply *reply,
-                                  rpc::SendReplyCallback send_reply_callback) override;
-
   /// Register actor asynchronously.
   ///
   /// \param request Contains the meta info to create the actor.
@@ -258,10 +238,10 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   ///
   /// \param node_id ID of the node where the dead worker was located.
   /// \param worker_id ID of the dead worker.
-  /// \param intentional_exit Whether the death was intentional. If yes and the
-  /// worker was an actor, we should not attempt to restart the actor.
-  void OnWorkerDead(const NodeID &node_id, const WorkerID &worker_id,
-                    bool intentional_exit = false);
+  /// \param exit_type exit reason of the dead worker.
+  void OnWorkerDead(
+      const NodeID &node_id, const WorkerID &worker_id,
+      const rpc::WorkerExitType disconnect_type = rpc::WorkerExitType::SYSTEM_ERROR_EXIT);
 
   /// Handle actor creation task failure. This should be called when scheduling
   /// an actor creation task is infeasible.
@@ -275,11 +255,11 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// \param actor The actor that has been created.
   void OnActorCreationSuccess(const std::shared_ptr<GcsActor> &actor);
 
-  /// Load initial data from gcs storage to memory cache asynchronously.
+  /// Initialize with the gcs tables data synchronously.
   /// This should be called when GCS server restarts after a failure.
   ///
-  /// \param done Callback that will be called when load is complete.
-  void LoadInitialData(const EmptyCallback &done);
+  /// \param gcs_init_data.
+  void Initialize(const GcsInitData &gcs_init_data);
 
   /// Delete non-detached actor information from durable storage once the associated job
   /// finishes.
@@ -301,6 +281,8 @@ class GcsActorManager : public rpc::ActorInfoHandler {
 
   /// Collect stats from gcs actor manager in-memory data structures.
   void CollectStats() const;
+
+  std::string DebugString() const;
 
  private:
   /// A data structure representing an actor's owner.
@@ -413,6 +395,17 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// This method MUST BE IDEMPOTENT because it can be called multiple times during
   /// actor destroy process.
   std::function<void(const ActorID &)> destroy_owned_placement_group_if_needed_;
+
+  // Debug info.
+  enum CountType {
+    REGISTER_ACTOR_REQUEST = 0,
+    CREATE_ACTOR_REQUEST = 1,
+    GET_ACTOR_INFO_REQUEST = 2,
+    GET_NAMED_ACTOR_INFO_REQUEST = 3,
+    GET_ALL_ACTOR_INFO_REQUEST = 4,
+    CountType_MAX = 10,
+  };
+  uint64_t counts_[CountType::CountType_MAX] = {0};
 };
 
 }  // namespace gcs

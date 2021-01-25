@@ -150,6 +150,10 @@ class TaskResourceInstances {
 /// Total and available capacities of each resource of a node.
 class NodeResources {
  public:
+  NodeResources() {}
+  NodeResources(const NodeResources &other)
+      : predefined_resources(other.predefined_resources),
+        custom_resources(other.custom_resources) {}
   /// Available and total capacities for predefined resources.
   std::vector<ResourceCapacity> predefined_resources;
   /// Map containing custom resources. The key of each entry represents the
@@ -157,8 +161,11 @@ class NodeResources {
   absl::flat_hash_map<int64_t, ResourceCapacity> custom_resources;
   /// Returns if this equals another node resources.
   bool operator==(const NodeResources &other);
+  bool operator!=(const NodeResources &other);
   /// Returns human-readable string for these resources.
   std::string DebugString(StringIdMap string_to_int_map) const;
+  /// Returns compact dict-like string.
+  std::string DictString(StringIdMap string_to_int_map) const;
 };
 
 /// Total and available capacities of each resource instance.

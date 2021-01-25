@@ -1,14 +1,15 @@
 from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.typing import TensorType, TensorShape
 
 tf1, tf, tfv = try_import_tf()
 
 
 class GRUGate(tf.keras.layers.Layer if tf else object):
-    def __init__(self, init_bias=0., **kwargs):
+    def __init__(self, init_bias: float = 0., **kwargs):
         super().__init__(**kwargs)
         self._init_bias = init_bias
 
-    def build(self, input_shape):
+    def build(self, input_shape: TensorShape):
         h_shape, x_shape = input_shape
         if x_shape[-1] != h_shape[-1]:
             raise ValueError(
@@ -29,7 +30,7 @@ class GRUGate(tf.keras.layers.Layer if tf else object):
         self._bias_z = self.add_weight(
             shape=(dim, ), initializer=bias_initializer)
 
-    def call(self, inputs, **kwargs):
+    def call(self, inputs: TensorType, **kwargs) -> TensorType:
         # Pass in internal state first.
         h, X = inputs
 

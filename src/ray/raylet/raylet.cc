@@ -60,7 +60,8 @@ Raylet::Raylet(boost::asio::io_service &main_service, const std::string &socket_
                const NodeManagerConfig &node_manager_config,
                const ObjectManagerConfig &object_manager_config,
                std::shared_ptr<gcs::GcsClient> gcs_client, int metrics_export_port)
-    : self_node_id_(NodeID::FromRandom()),
+    : main_service_(main_service),
+      self_node_id_(NodeID::FromRandom()),
       gcs_client_(gcs_client),
       object_directory_(
           RayConfig::instance().ownership_based_object_directory_enabled()
@@ -69,20 +70,34 @@ Raylet::Raylet(boost::asio::io_service &main_service, const std::string &socket_
                                                                     gcs_client_))
               : std::dynamic_pointer_cast<ObjectDirectoryInterface>(
                     std::make_shared<ObjectDirectory>(main_service, gcs_client_))),
-      object_manager_(main_service, self_node_id_, object_manager_config,
-                      object_directory_,
-                      [this](const ObjectID &object_id, const std::string &spilled_url,
-                             std::function<void(const ray::Status &)> callback) {
-                        node_manager_.GetLocalObjectManager().AsyncRestoreSpilledObject(
-                            object_id, spilled_url, callback);
-                      },
-                      [this](int64_t num_bytes_required) {
-                        return node_manager_.GetLocalObjectManager().SpillObjectsOfSize(
-                            num_bytes_required);
-                      }),
+      object_manager_(
+          main_service, self_node_id_, object_manager_config, object_directory_,
+          [this](const ObjectID &object_id, const std::string &object_url,
+                 const NodeID &node_id,
+                 std::function<void(const ray::Status &)> callback) {
+            node_manager_.GetLocalObjectManager().AsyncRestoreSpilledObject(
+                object_id, object_url, node_id, callback);
+          },
+          [this]() {
+            // This callback is called from the plasma store thread.
+            // NOTE: It means the local object manager should be thread-safe.
+            main_service_.post([this]() {
+              node_manager_.GetLocalObjectManager().SpillObjectUptoMaxThroughput();
+            });
+            return node_manager_.GetLocalObjectManager().IsSpillingInProgress();
+          },
+          [this]() {
+            // Post on the node manager's event loop since this
+            // callback is called from the plasma store thread.
+            // This will help keep node manager lock-less.
+            main_service_.post([this]() { node_manager_.TriggerGlobalGC(); });
+          }),
       node_manager_(main_service, self_node_id_, node_manager_config, object_manager_,
                     gcs_client_, object_directory_,
-                    plasma::plasma_store_runner->OnSpaceReleased()),
+                    [this](const ObjectID &object_id) {
+                      // It is used by local_object_store.
+                      return object_manager_.IsPlasmaObjectSpillable(object_id);
+                    }),
       socket_name_(socket_name),
       acceptor_(main_service, ParseUrlEndpoint(socket_name)),
       socket_(main_service) {
@@ -113,28 +128,33 @@ void Raylet::Stop() {
 }
 
 ray::Status Raylet::RegisterGcs() {
-  RAY_RETURN_NOT_OK(gcs_client_->Nodes().RegisterSelf(self_node_info_));
+  auto register_callback = [this](const Status &status) {
+    RAY_CHECK_OK(status);
+    RAY_LOG(INFO) << "Raylet of id, " << self_node_id_
+                  << " started. Raylet consists of node_manager and object_manager."
+                  << " node_manager address: " << self_node_info_.node_manager_address()
+                  << ":" << self_node_info_.node_manager_port()
+                  << " object_manager address: " << self_node_info_.node_manager_address()
+                  << ":" << self_node_info_.object_manager_port()
+                  << " hostname: " << self_node_info_.node_manager_address();
 
-  RAY_LOG(DEBUG) << "Node manager " << self_node_id_ << " started on "
-                 << self_node_info_.node_manager_address() << ":"
-                 << self_node_info_.node_manager_port() << " object manager at "
-                 << self_node_info_.node_manager_address() << ":"
-                 << self_node_info_.object_manager_port() << ", hostname "
-                 << self_node_info_.node_manager_hostname();
+    // Add resource information.
+    const NodeManagerConfig &node_manager_config = node_manager_.GetInitialConfig();
+    std::unordered_map<std::string, std::shared_ptr<rpc::ResourceTableData>> resources;
+    for (const auto &resource_pair :
+         node_manager_config.resource_config.GetResourceMap()) {
+      auto resource = std::make_shared<rpc::ResourceTableData>();
+      resource->set_resource_capacity(resource_pair.second);
+      resources.emplace(resource_pair.first, resource);
+    }
+    RAY_CHECK_OK(gcs_client_->NodeResources().AsyncUpdateResources(self_node_id_,
+                                                                   resources, nullptr));
 
-  // Add resource information.
-  const NodeManagerConfig &node_manager_config = node_manager_.GetInitialConfig();
-  std::unordered_map<std::string, std::shared_ptr<gcs::ResourceTableData>> resources;
-  for (const auto &resource_pair : node_manager_config.resource_config.GetResourceMap()) {
-    auto resource = std::make_shared<gcs::ResourceTableData>();
-    resource->set_resource_capacity(resource_pair.second);
-    resources.emplace(resource_pair.first, resource);
-  }
+    RAY_CHECK_OK(node_manager_.RegisterGcs());
+  };
+
   RAY_RETURN_NOT_OK(
-      gcs_client_->Nodes().AsyncUpdateResources(self_node_id_, resources, nullptr));
-
-  RAY_RETURN_NOT_OK(node_manager_.RegisterGcs());
-
+      gcs_client_->Nodes().RegisterSelf(self_node_info_, register_callback));
   return Status::OK();
 }
 
@@ -154,11 +174,15 @@ void Raylet::HandleAccept(const boost::system::error_code &error) {
                                             const std::vector<uint8_t> &message) {
       node_manager_.ProcessClientMessage(client, message_type, message.data());
     };
+    flatbuffers::FlatBufferBuilder fbb;
+    fbb.Finish(protocol::CreateDisconnectClient(fbb));
+    std::vector<uint8_t> message_data(fbb.GetBufferPointer(),
+                                      fbb.GetBufferPointer() + fbb.GetSize());
     // Accept a new local client and dispatch it to the node manager.
     auto new_connection = ClientConnection::Create(
         client_handler, message_handler, std::move(socket_), "worker",
         node_manager_message_enum,
-        static_cast<int64_t>(protocol::MessageType::DisconnectClient));
+        static_cast<int64_t>(protocol::MessageType::DisconnectClient), message_data);
   }
   // We're ready to accept another client.
   DoAccept();

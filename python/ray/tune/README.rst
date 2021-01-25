@@ -3,7 +3,7 @@ Tune: Scalable Hyperparameter Tuning
 
 Tune is a scalable framework for hyperparameter search with a focus on deep learning and deep reinforcement learning.
 
-User documentation can be `found here <http://docs.ray.io/en/latest/tune.html>`__.
+User documentation can be `found here <http://docs.ray.io/en/master/tune.html>`__.
 
 
 Tutorial

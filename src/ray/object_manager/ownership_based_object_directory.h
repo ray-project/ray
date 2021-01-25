@@ -23,7 +23,7 @@
 #include "absl/container/flat_hash_map.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
-#include "ray/gcs/redis_gcs_client.h"
+#include "ray/gcs/gcs_client.h"
 #include "ray/object_manager/format/object_manager_generated.h"
 #include "ray/object_manager/object_directory.h"
 #include "ray/rpc/worker/core_worker_client.h"
@@ -37,7 +37,7 @@ class OwnershipBasedObjectDirectory : public ObjectDirectory {
   ///
   /// \param io_service The event loop to dispatch callbacks to. This should
   /// usually be the same event loop that the given gcs_client runs on.
-  /// \param gcs_client A Ray GCS client to request object and client
+  /// \param gcs_client A Ray GCS client to request object and node
   /// information from.
   OwnershipBasedObjectDirectory(boost::asio::io_service &io_service,
                                 std::shared_ptr<gcs::GcsClient> &gcs_client);
@@ -56,10 +56,10 @@ class OwnershipBasedObjectDirectory : public ObjectDirectory {
                                          const ObjectID &object_id) override;
 
   ray::Status ReportObjectAdded(
-      const ObjectID &object_id, const NodeID &client_id,
+      const ObjectID &object_id, const NodeID &node_id,
       const object_manager::protocol::ObjectInfoT &object_info) override;
   ray::Status ReportObjectRemoved(
-      const ObjectID &object_id, const NodeID &client_id,
+      const ObjectID &object_id, const NodeID &node_id,
       const object_manager::protocol::ObjectInfoT &object_info) override;
 
   std::string DebugString() const override;

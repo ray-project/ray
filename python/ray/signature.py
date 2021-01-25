@@ -2,7 +2,7 @@ import inspect
 from inspect import Parameter
 import logging
 
-from ray.utils import is_cython
+from ray.util.inspect import is_cython
 
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray provides a default configuration at

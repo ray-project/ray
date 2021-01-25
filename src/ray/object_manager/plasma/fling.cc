@@ -35,7 +35,7 @@
 #define CMSG_LEN(len) (__DARWIN_ALIGN32(sizeof(struct cmsghdr)) + (len))
 #endif
 
-void init_msg(struct msghdr* msg, struct iovec* iov, char* buf, size_t buf_len) {
+void init_msg(struct msghdr *msg, struct iovec *iov, char *buf, size_t buf_len) {
   iov->iov_base = buf;
   iov->iov_len = 1;
 
@@ -56,14 +56,14 @@ int send_fd(int conn, int fd) {
 
   init_msg(&msg, &iov, buf, sizeof(buf));
 
-  struct cmsghdr* header = CMSG_FIRSTHDR(&msg);
+  struct cmsghdr *header = CMSG_FIRSTHDR(&msg);
   if (header == nullptr) {
     return -1;
   }
   header->cmsg_level = SOL_SOCKET;
   header->cmsg_type = SCM_RIGHTS;
   header->cmsg_len = CMSG_LEN(sizeof(fd));
-  memcpy(CMSG_DATA(header), reinterpret_cast<void*>(&fd), sizeof(fd));
+  memcpy(CMSG_DATA(header), reinterpret_cast<void *>(&fd), sizeof(fd));
 
   // Send file descriptor.
   while (true) {
@@ -73,7 +73,7 @@ int send_fd(int conn, int fd) {
         continue;
       } else if (errno == EMSGSIZE) {
         RAY_LOG(WARNING) << "Failed to send file descriptor"
-                           << " (errno = EMSGSIZE), retrying.";
+                         << " (errno = EMSGSIZE), retrying.";
         // If we failed to send the file descriptor, loop until we have sent it
         // successfully. TODO(rkn): This is problematic for two reasons. First
         // of all, sending the file descriptor should just succeed without any
@@ -117,14 +117,14 @@ int recv_fd(int conn) {
 
   int found_fd = -1;
   int oh_noes = 0;
-  for (struct cmsghdr* header = CMSG_FIRSTHDR(&msg); header != NULL;
+  for (struct cmsghdr *header = CMSG_FIRSTHDR(&msg); header != NULL;
        header = CMSG_NXTHDR(&msg, header))
     if (header->cmsg_level == SOL_SOCKET && header->cmsg_type == SCM_RIGHTS) {
       ssize_t count = (header->cmsg_len -
-                       (CMSG_DATA(header) - reinterpret_cast<unsigned char*>(header))) /
+                       (CMSG_DATA(header) - reinterpret_cast<unsigned char *>(header))) /
                       sizeof(int);
       for (int i = 0; i < count; ++i) {
-        int fd = (reinterpret_cast<int*>(CMSG_DATA(header)))[i];
+        int fd = (reinterpret_cast<int *>(CMSG_DATA(header)))[i];
         if (found_fd == -1) {
           found_fd = fd;
         } else {

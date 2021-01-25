@@ -1,3 +1,4 @@
+from ray.utils import get_function_args
 from ray.tune.schedulers.trial_scheduler import TrialScheduler, FIFOScheduler
 from ray.tune.schedulers.hyperband import HyperBandScheduler
 from ray.tune.schedulers.hb_bohb import HyperBandForBOHB
@@ -53,7 +54,11 @@ def create_scheduler(
             f"Got: {scheduler}")
 
     SchedulerClass = SCHEDULER_IMPORT[scheduler]
-    return SchedulerClass(**kwargs)
+
+    scheduler_args = get_function_args(SchedulerClass)
+    trimmed_kwargs = {k: v for k, v in kwargs.items() if k in scheduler_args}
+
+    return SchedulerClass(**trimmed_kwargs)
 
 
 __all__ = [

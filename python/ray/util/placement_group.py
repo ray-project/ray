@@ -1,6 +1,6 @@
 import time
 
-from typing import (List, Dict, Optional)
+from typing import (List, Dict, Optional, Union)
 
 import ray
 from ray._raylet import PlacementGroupID, ObjectRef
@@ -82,6 +82,19 @@ class PlacementGroup:
             placement_group=self,
             placement_group_bundle_index=bundle_index,
             resources=resources).remote(self)
+
+    def wait(self, timeout_seconds: Union[float, int]) -> bool:
+        """Wait for the placement group to be ready within the specified time.
+        Args:
+             timeout_seconds(float|int): Timeout in seconds.
+        Return:
+             True if the placement group is created. False otherwise.
+        """
+        worker = ray.worker.global_worker
+        worker.check_connected()
+
+        return worker.core_worker.wait_placement_group_ready(
+            self.id, timeout_seconds)
 
     @property
     def bundle_specs(self) -> List[Dict]:

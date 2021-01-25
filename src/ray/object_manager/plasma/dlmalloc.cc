@@ -35,8 +35,8 @@
 
 namespace plasma {
 
-void* fake_mmap(size_t);
-int fake_munmap(void*, int64_t);
+void *fake_mmap(size_t);
+int fake_munmap(void *, int64_t);
 
 #define MMAP(s) fake_mmap(s)
 #define MUNMAP(a, s) fake_munmap(a, s)
@@ -64,15 +64,15 @@ int fake_munmap(void*, int64_t);
 
 constexpr int GRANULARITY_MULTIPLIER = 2;
 
-static void* pointer_advance(void* p, ptrdiff_t n) { return (unsigned char*)p + n; }
+static void *pointer_advance(void *p, ptrdiff_t n) { return (unsigned char *)p + n; }
 
-static void* pointer_retreat(void* p, ptrdiff_t n) { return (unsigned char*)p - n; }
+static void *pointer_retreat(void *p, ptrdiff_t n) { return (unsigned char *)p - n; }
 
 #ifdef _WIN32
-void create_and_mmap_buffer(int64_t size, void **pointer, HANDLE* handle) {
+void create_and_mmap_buffer(int64_t size, void **pointer, HANDLE *handle) {
   *handle = CreateFileMapping(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE,
-                               (DWORD)((uint64_t)size >> (CHAR_BIT * sizeof(DWORD))),
-                               (DWORD)(uint64_t)size, NULL);
+                              (DWORD)((uint64_t)size >> (CHAR_BIT * sizeof(DWORD))),
+                              (DWORD)(uint64_t)size, NULL);
   RAY_CHECK(*handle != NULL) << "Failed to create buffer during mmap";
   *pointer = MapViewOfFile(*handle, FILE_MAP_ALL_ACCESS, 0, 0, (size_t)size);
   if (*pointer == NULL) {
@@ -80,7 +80,7 @@ void create_and_mmap_buffer(int64_t size, void **pointer, HANDLE* handle) {
   }
 }
 #else
-void create_and_mmap_buffer(int64_t size, void **pointer, int* fd) {
+void create_and_mmap_buffer(int64_t size, void **pointer, int *fd) {
   // Create a buffer. This is creating a temporary file and then
   // immediately unlinking it so we do not leave traces in the system.
   std::string file_template = plasma_config->directory;
@@ -118,20 +118,20 @@ void create_and_mmap_buffer(int64_t size, void **pointer, int* fd) {
 }
 #endif
 
-void* fake_mmap(size_t size) {
+void *fake_mmap(size_t size) {
   // Add kMmapRegionsGap so that the returned pointer is deliberately not
   // page-aligned. This ensures that the segments of memory returned by
   // fake_mmap are never contiguous.
   size += kMmapRegionsGap;
 
-  void* pointer;
+  void *pointer;
   MEMFD_TYPE fd;
   create_and_mmap_buffer(size, &pointer, &fd);
 
   // Increase dlmalloc's allocation granularity directly.
   mparams.granularity *= GRANULARITY_MULTIPLIER;
 
-  MmapRecord& record = mmap_records[pointer];
+  MmapRecord &record = mmap_records[pointer];
   record.fd = fd;
   record.size = size;
 
@@ -141,7 +141,7 @@ void* fake_mmap(size_t size) {
   return pointer;
 }
 
-int fake_munmap(void* addr, int64_t size) {
+int fake_munmap(void *addr, int64_t size) {
   RAY_LOG(DEBUG) << "fake_munmap(" << addr << ", " << size << ")";
   addr = pointer_retreat(addr, kMmapRegionsGap);
   size += kMmapRegionsGap;
@@ -173,6 +173,6 @@ int fake_munmap(void* addr, int64_t size) {
 
 void SetMallocGranularity(int value) { change_mparam(M_GRANULARITY, value); }
 
-const PlasmaStoreInfo* plasma_config;
+const PlasmaStoreInfo *plasma_config;
 
 }  // namespace plasma

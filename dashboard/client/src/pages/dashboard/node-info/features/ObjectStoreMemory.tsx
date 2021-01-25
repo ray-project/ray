@@ -18,20 +18,22 @@ export const ClusterObjectStoreMemory: ClusterFeatureRenderFn = ({ nodes }) => {
     nodes.map((n) => n.raylet.objectStoreAvailableMemory),
   );
   const totalUsed = sum(nodes.map((n) => n.raylet.objectStoreUsedMemory));
+  const total = totalUsed + totalAvailable;
   return (
     <div style={{ minWidth: 60 }}>
       <UsageBar
-        percent={100 * (totalUsed / totalAvailable)}
-        text={formatUsage(totalUsed, totalAvailable, "mebibyte", false)}
+        percent={100 * (totalUsed / total)}
+        text={formatUsage(totalUsed, total, "mebibyte", false)}
       />
     </div>
   );
 };
 
 export const NodeObjectStoreMemory: NodeFeatureRenderFn = ({ node }) => {
-  const total = node.raylet.objectStoreAvailableMemory;
+  const totalAvailable = node.raylet.objectStoreAvailableMemory;
   const used = node.raylet.objectStoreUsedMemory;
-  if (used === undefined || total === undefined || total === 0) {
+  const total = totalAvailable + used;
+  if (used === undefined || totalAvailable === undefined || total === 0) {
     return (
       <Typography color="textSecondary" component="span" variant="inherit">
         N/A

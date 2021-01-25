@@ -2,6 +2,7 @@ import os
 import json
 import random
 import unittest
+
 import numpy as np
 import sys
 import tempfile
@@ -12,7 +13,8 @@ import ray
 from ray import tune
 from ray.tune import Trainable
 from ray.tune.result import TRAINING_ITERATION
-from ray.tune.schedulers import (HyperBandScheduler, AsyncHyperBandScheduler,
+from ray.tune.schedulers import (FIFOScheduler, HyperBandScheduler,
+                                 AsyncHyperBandScheduler,
                                  PopulationBasedTraining, MedianStoppingRule,
                                  TrialScheduler, HyperBandForBOHB)
 
@@ -1696,6 +1698,59 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         pbt._exploit(runner.trial_executor, trials[1], trials[2])
         shutil.rmtree(tmpdir)
 
+    def testContextExit(self):
+        vals = [5, 1]
+
+        class MockContext:
+            def __init__(self, config):
+                self.config = config
+                self.active = False
+
+            def __enter__(self):
+                print("Set up resource.", self.config)
+                with open("status.txt", "wt") as fp:
+                    fp.write("Activate\n")
+                self.active = True
+                return self
+
+            def __exit__(self, type, value, traceback):
+                print("Clean up resource.", self.config)
+                with open("status.txt", "at") as fp:
+                    fp.write("Cleanup\n")
+                self.active = False
+
+        def train(config):
+            with MockContext(config):
+                for i in range(10):
+                    tune.report(metric=i + config["x"])
+
+        class MockScheduler(FIFOScheduler):
+            def on_trial_result(self, trial_runner, trial, result):
+                return TrialScheduler.STOP
+
+        scheduler = MockScheduler()
+
+        out = tune.run(
+            train, config={"x": tune.grid_search(vals)}, scheduler=scheduler)
+
+        ever_active = set()
+        active = set()
+        for trial in out.trials:
+            with open(os.path.join(trial.logdir, "status.txt"), "rt") as fp:
+                status = fp.read()
+            print(f"Status for trial {trial}: {status}")
+            if "Activate" in status:
+                ever_active.add(trial)
+                active.add(trial)
+            if "Cleanup" in status:
+                active.remove(trial)
+
+        print(f"Ever active: {ever_active}")
+        print(f"Still active: {active}")
+
+        self.assertEqual(len(ever_active), len(vals))
+        self.assertEqual(len(active), 0)
+
 
 class E2EPopulationBasedTestingSuite(unittest.TestCase):
     def setUp(self):
@@ -1836,6 +1891,21 @@ class AsyncHyperBandSuite(unittest.TestCase):
                 TrialScheduler.CONTINUE)
         return t1, t2
 
+    def nanInfSetup(self, scheduler, runner=None):
+        t1 = Trial("PPO")
+        t2 = Trial("PPO")
+        t3 = Trial("PPO")
+        scheduler.on_trial_add(runner, t1)
+        scheduler.on_trial_add(runner, t2)
+        scheduler.on_trial_add(runner, t3)
+        for i in range(10):
+            scheduler.on_trial_result(runner, t1, result(i, np.nan))
+        for i in range(10):
+            scheduler.on_trial_result(runner, t2, result(i, float("inf")))
+        for i in range(10):
+            scheduler.on_trial_result(runner, t3, result(i, float("-inf")))
+        return t1, t2, t3
+
     def testAsyncHBOnComplete(self):
         scheduler = AsyncHyperBandScheduler(
             metric="episode_reward_mean", mode="max", max_t=10, brackets=1)
@@ -1921,6 +1991,41 @@ class AsyncHyperBandSuite(unittest.TestCase):
             scheduler.on_trial_result(None, t3, result(2, 260)),
             TrialScheduler.STOP)
 
+    def testMedianStoppingNanInf(self):
+        scheduler = MedianStoppingRule(
+            metric="episode_reward_mean", mode="max")
+
+        t1, t2, t3 = self.nanInfSetup(scheduler)
+        scheduler.on_trial_complete(None, t1, result(10, np.nan))
+        scheduler.on_trial_complete(None, t2, result(10, float("inf")))
+        scheduler.on_trial_complete(None, t3, result(10, float("-inf")))
+
+    def testHyperbandNanInf(self):
+        scheduler = HyperBandScheduler(
+            metric="episode_reward_mean", mode="max")
+        t1, t2, t3 = self.nanInfSetup(scheduler)
+        scheduler.on_trial_complete(None, t1, result(10, np.nan))
+        scheduler.on_trial_complete(None, t2, result(10, float("inf")))
+        scheduler.on_trial_complete(None, t3, result(10, float("-inf")))
+
+    def testBOHBNanInf(self):
+        scheduler = HyperBandForBOHB(metric="episode_reward_mean", mode="max")
+
+        runner = _MockTrialRunner(scheduler)
+        runner._search_alg = MagicMock()
+        runner._search_alg.searcher = MagicMock()
+
+        t1, t2, t3 = self.nanInfSetup(scheduler, runner)
+        # skip trial complete in this mock setting
+
+    def testPBTNanInf(self):
+        scheduler = PopulationBasedTraining(
+            metric="episode_reward_mean", mode="max")
+        t1, t2, t3 = self.nanInfSetup(scheduler)
+        scheduler.on_trial_complete(None, t1, result(10, np.nan))
+        scheduler.on_trial_complete(None, t2, result(10, float("inf")))
+        scheduler.on_trial_complete(None, t3, result(10, float("-inf")))
+
     def _test_metrics(self, result_func, metric, mode):
         scheduler = AsyncHyperBandScheduler(
             grace_period=1,
@@ -1959,6 +2064,36 @@ class AsyncHyperBandSuite(unittest.TestCase):
             return dict(training_iteration=t, mean_loss=-rew)
 
         self._test_metrics(result2, "mean_loss", "min")
+
+    def _testAnonymousMetricEndToEnd(self, scheduler_cls, searcher=None):
+        def train(config):
+            return config["value"]
+
+        out = tune.run(
+            train,
+            mode="max",
+            num_samples=1,
+            config={"value": tune.uniform(-2., 2.)},
+            scheduler=scheduler_cls(),
+            search_alg=searcher)
+
+        self.assertTrue(bool(out.best_trial))
+
+    def testAnonymousMetricEndToEndFIFO(self):
+        self._testAnonymousMetricEndToEnd(FIFOScheduler)
+
+    def testAnonymousMetricEndToEndASHA(self):
+        self._testAnonymousMetricEndToEnd(AsyncHyperBandScheduler)
+
+    def testAnonymousMetricEndToEndBOHB(self):
+        from ray.tune.suggest.bohb import TuneBOHB
+        self._testAnonymousMetricEndToEnd(HyperBandForBOHB, TuneBOHB())
+
+    def testAnonymousMetricEndToEndMedian(self):
+        self._testAnonymousMetricEndToEnd(MedianStoppingRule)
+
+    def testAnonymousMetricEndToEndPBT(self):
+        self._testAnonymousMetricEndToEnd(PopulationBasedTraining)
 
 
 if __name__ == "__main__":

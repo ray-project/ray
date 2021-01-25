@@ -10,7 +10,8 @@ parser.add_argument("--num-cpus", type=int, default=0)
 parser.add_argument(
     "--framework", choices=["tf2", "tf", "tfe", "torch"], default="tf")
 parser.add_argument("--as-test", action="store_true")
-parser.add_argument("--use-prev-action-reward", action="store_true")
+parser.add_argument("--use-prev-action", action="store_true")
+parser.add_argument("--use-prev-reward", action="store_true")
 parser.add_argument("--stop-iters", type=int, default=200)
 parser.add_argument("--stop-timesteps", type=int, default=100000)
 parser.add_argument("--stop-reward", type=float, default=150.0)
@@ -26,7 +27,9 @@ if __name__ == "__main__":
     configs = {
         "PPO": {
             "num_sgd_iter": 5,
-            "vf_share_layers": True,
+            "model": {
+                "vf_share_layers": True,
+            },
             "vf_loss_coeff": 0.0001,
         },
         "IMPALA": {
@@ -44,7 +47,8 @@ if __name__ == "__main__":
             "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
             "model": {
                 "use_lstm": True,
-                "lstm_use_prev_action_reward": args.use_prev_action_reward,
+                "lstm_use_prev_action": args.use_prev_action,
+                "lstm_use_prev_reward": args.use_prev_reward,
             },
             "framework": args.framework,
             # Run with tracing enabled for tfe/tf2.
@@ -57,7 +61,7 @@ if __name__ == "__main__":
         "episode_reward_mean": args.stop_reward,
     }
 
-    results = tune.run(args.run, config=config, stop=stop, verbose=1)
+    results = tune.run(args.run, config=config, stop=stop, verbose=2)
 
     if args.as_test:
         check_learning_achieved(results, args.stop_reward)

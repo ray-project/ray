@@ -1,7 +1,5 @@
 import os
 from typing import Any, Optional, Tuple
-
-import kubernetes
 import subprocess
 
 from ray import services, logger
@@ -10,13 +8,25 @@ from ray.tune.syncer import NodeSyncer
 from ray.tune.sync_client import SyncClient
 
 
+def try_import_kubernetes():
+    try:
+        import kubernetes
+    except ImportError:
+        kubernetes = None
+    return kubernetes
+
+
+kubernetes = try_import_kubernetes()
+
+
 def NamespacedKubernetesSyncer(namespace):
     """Wrapper to return a ``KubernetesSyncer`` for a Kubernetes namespace.
 
     Args:
         namespace (str): Kubernetes namespace.
 
-    Returns: A ``KubernetesSyncer`` class to be passed to ``tune.run()``.
+    Returns:
+        A ``KubernetesSyncer`` class to be passed to ``tune.run()``.
 
     Example:
 
@@ -53,6 +63,10 @@ class KubernetesSyncer(NodeSyncer):
                  local_dir: str,
                  remote_dir: str,
                  sync_client: Optional[SyncClient] = None):
+        if not kubernetes:
+            raise ImportError(
+                "kubernetes is not installed on this machine/container. "
+                "Try: pip install kubernetes")
         self.local_ip = services.get_node_ip_address()
         self.local_node = self._get_kubernetes_node_by_ip(self.local_ip)
         self.worker_ip = None

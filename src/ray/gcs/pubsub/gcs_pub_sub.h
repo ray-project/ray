@@ -32,7 +32,7 @@ namespace gcs {
 #define OBJECT_CHANNEL "OBJECT"
 #define TASK_CHANNEL "TASK"
 #define TASK_LEASE_CHANNEL "TASK_LEASE"
-#define HEARTBEAT_BATCH_CHANNEL "HEARTBEAT_BATCH"
+#define RESOURCES_BATCH_CHANNEL "RESOURCES_BATCH"
 #define ERROR_INFO_CHANNEL "ERROR_INFO"
 
 /// \class GcsPubSub
@@ -93,6 +93,8 @@ class GcsPubSub {
   /// \param id The id of message to be unsubscribed from redis.
   /// \return Whether the specified ID under the specified channel is unsubscribed.
   bool IsUnsubscribed(const std::string &channel, const std::string &id);
+
+  std::string DebugString() const;
 
  private:
   /// Represents a caller's command to subscribe or unsubscribe to a given
@@ -160,9 +162,11 @@ class GcsPubSub {
   std::shared_ptr<RedisClient> redis_client_;
 
   /// Mutex to protect the subscribe_callback_index_ field.
-  absl::Mutex mutex_;
+  mutable absl::Mutex mutex_;
 
   absl::flat_hash_map<std::string, Channel> channels_ GUARDED_BY(mutex_);
+
+  size_t total_commands_queued_ GUARDED_BY(mutex_);
 };
 
 }  // namespace gcs

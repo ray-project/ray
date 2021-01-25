@@ -5,7 +5,7 @@ RLlib works with several different types of environments, including `OpenAI Gym 
 
 .. tip::
 
-    Not all environments work with all algorithms. Check out the algorithm `feature compatibility matrix <rllib-algorithms.html#feature-compatibility-matrix>`__ for more information.
+    Not all environments work with all algorithms. Check out the `algorithm overview <rllib-algorithms.html#available-algorithms-overview>`__ for more information.
 
 .. image:: rllib-envs.svg
 
@@ -217,11 +217,11 @@ PettingZoo Multi-Agent Environments
 
     from ray.tune.registry import register_env
     # import the pettingzoo environment
-    from pettingzoo.butterfly import prison_v1
+    from pettingzoo.butterfly import prison_v2
     # import rllib pettingzoo interface
     from ray.rllib.env import PettingZooEnv
     # define how to make the environment. This way takes an optional environment config, num_floors
-    env_creator = lambda config: prison_v1.env(num_floors=config.get("num_floors", 4))
+    env_creator = lambda config: prison_v2.env(num_floors=config.get("num_floors", 4))
     # register that way to make the environment under an rllib name
     register_env('prison', lambda config: PettingZooEnv(env_creator(config)))
     # now you can use `prison` as an environment

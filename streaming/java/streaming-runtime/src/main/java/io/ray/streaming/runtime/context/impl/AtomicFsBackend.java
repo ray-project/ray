@@ -5,8 +5,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Achieves an atomic `put` method.
- * known issue: if you crashed while write a key at first time, this code will not work.
+ * Achieves an atomic `put` method. known issue: if you crashed while write a key at first time,
+ * this code will not work.
  */
 public class AtomicFsBackend extends LocalFileContextBackend {
 

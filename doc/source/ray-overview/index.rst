@@ -8,7 +8,7 @@ A Gentle Introduction to Ray
 
 This tutorial will provide a tour of the core features of Ray.
 
-Ray provides Python and Java API.
+Ray provides a Python and Java API.
 To use Ray in Python, first install Ray with: ``pip install ray``.
 To use Ray in Java, first add the `ray-api <https://mvnrepository.com/artifact/io.ray/ray-api>`__ and `ray-runtime <https://mvnrepository.com/artifact/io.ray/ray-runtime>`__ dependencies in your project.
 Then we can use Ray to parallelize your program.
@@ -196,7 +196,7 @@ RLlib Quick Start
 .. code-block:: bash
 
   pip install tensorflow  # or tensorflow-gpu
-  pip install ray[rllib]  # also recommended: ray[debug]
+  pip install ray[rllib]
 
 .. code-block:: python
 

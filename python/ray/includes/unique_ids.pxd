@@ -40,11 +40,6 @@ cdef extern from "ray/common/id.h" namespace "ray" nogil:
         @staticmethod
         size_t Size()
 
-    cdef cppclass CActorCheckpointID "ray::ActorCheckpointID"(CUniqueID):
-
-        @staticmethod
-        CActorCheckpointID FromBinary(const c_string &binary)
-
     cdef cppclass CActorClassID "ray::ActorClassID"(CUniqueID):
 
         @staticmethod
@@ -123,6 +118,8 @@ cdef extern from "ray/common/id.h" namespace "ray" nogil:
                               int64_t parent_task_counter)
 
         CActorID ActorId() const
+
+        CJobID JobId() const
 
     cdef cppclass CObjectID" ray::ObjectID"(CBaseID[CObjectID]):
 

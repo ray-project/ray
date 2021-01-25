@@ -22,6 +22,10 @@ Summary
      - Summary
      - Website
      - Code Example
+   * - :ref:`Random search/grid search <tune-basicvariant>`
+     - Random search/grid search
+     -
+     - :doc:`/tune/examples/tune_basic_example`
    * - :ref:`AxSearch <tune-ax>`
      - Bayesian/Bandit Optimization
      - [`Ax <https://ax.dev/>`__]
@@ -122,6 +126,21 @@ identifier.
       os.path.join("~/my_results", "my-experiment-1"))
 
 .. note:: This is currently not implemented for: AxSearch, TuneBOHB, SigOptSearch, and DragonflySearch.
+
+.. _tune-basicvariant:
+
+Random search and grid search (tune.suggest.basic_variant.BasicVariantGenerator)
+--------------------------------------------------------------------------------
+
+The default and most basic way to do hyperparameter search is via random and grid search.
+Ray Tune does this through the :class:`BasicVariantGenerator <ray.tune.suggest.basic_variant.BasicVariantGenerator>`
+class that generates trial variants given a search space definition.
+
+The :class:`BasicVariantGenerator <ray.tune.suggest.basic_variant.BasicVariantGenerator>` is used per
+default if no search algorithm is passed to
+:func:`tune.run() <ray.tune.run>`.
+
+.. autoclass:: ray.tune.suggest.basic_variant.BasicVariantGenerator
 
 .. _tune-ax:
 

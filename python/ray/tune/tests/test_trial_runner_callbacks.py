@@ -9,8 +9,8 @@ import ray
 from ray import tune
 from ray.rllib import _register_all
 from ray.tune.checkpoint_manager import Checkpoint
-from ray.tune.logger import DEFAULT_LOGGERS, ExperimentLogger, \
-    LegacyExperimentLogger
+from ray.tune.logger import DEFAULT_LOGGERS, LoggerCallback, \
+    LegacyLoggerCallback
 from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.result import TRAINING_ITERATION
 from ray.tune.syncer import SyncConfig, SyncerCallback
@@ -62,9 +62,9 @@ class _MockTrialExecutor(RayTrialExecutor):
         self.failed_trial = None
 
     def fetch_result(self, trial):
-        return self.results.get(trial, {})
+        return [self.results.get(trial, {})]
 
-    def get_next_available_trial(self):
+    def get_next_available_trial(self, timeout=None):
         return self.next_trial or super().get_next_available_trial()
 
     def get_next_failed_trial(self):
@@ -205,14 +205,14 @@ class TrialRunnerCallbacks(unittest.TestCase):
             "delay")
 
     def testCallbackReordering(self):
-        """SyncerCallback should come after ExperimentLogger callbacks"""
+        """SyncerCallback should come after LoggerCallback callbacks"""
 
         def get_positions(callbacks):
             first_logger_pos = None
             last_logger_pos = None
             syncer_pos = None
             for i, callback in enumerate(callbacks):
-                if isinstance(callback, ExperimentLogger):
+                if isinstance(callback, LoggerCallback):
                     if first_logger_pos is None:
                         first_logger_pos = i
                     last_logger_pos = i
@@ -233,8 +233,8 @@ class TrialRunnerCallbacks(unittest.TestCase):
         self.assertLess(last_logger_pos, syncer_pos)
 
         # Auto creation of loggers with existing logger (but no CSV/JSON)
-        callbacks = create_default_callbacks([ExperimentLogger()],
-                                             SyncConfig(), None)
+        callbacks = create_default_callbacks([LoggerCallback()], SyncConfig(),
+                                             None)
         first_logger_pos, last_logger_pos, syncer_pos = get_positions(
             callbacks)
         self.assertLess(last_logger_pos, syncer_pos)
@@ -242,13 +242,12 @@ class TrialRunnerCallbacks(unittest.TestCase):
         # This should throw an error as the syncer comes before the logger
         with self.assertRaises(ValueError):
             callbacks = create_default_callbacks(
-                [SyncerCallback(None),
-                 ExperimentLogger()], SyncConfig(), None)
+                [SyncerCallback(None), LoggerCallback()], SyncConfig(), None)
 
         # This should be reordered but preserve the regular callback order
         [mc1, mc2, mc3] = [Callback(), Callback(), Callback()]
         # Has to be legacy logger to avoid logger callback creation
-        lc = LegacyExperimentLogger(logger_classes=DEFAULT_LOGGERS)
+        lc = LegacyLoggerCallback(logger_classes=DEFAULT_LOGGERS)
         callbacks = create_default_callbacks([mc1, mc2, lc, mc3], SyncConfig(),
                                              None)
         print(callbacks)

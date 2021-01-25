@@ -7,56 +7,61 @@ Tune has default loggers for Tensorboard, CSV, and JSON formats. By default, Tun
 
 If you need to log something lower level like model weights or gradients, see :ref:`Trainable Logging <trainable-logging>`.
 
+.. note::
+    Tune's per-trial ``Logger`` classes have been deprecated. They can still be used, but we encourage you
+    to use our new interface with the ``LoggerCallback`` class instead.
+
 Custom Loggers
 --------------
 
-You can create a custom logger by inheriting the Logger interface (:ref:`logger-interface`):
+You can create a custom logger by inheriting the LoggerCallback interface (:ref:`logger-interface`):
 
 .. code-block:: python
 
-    from ray.tune.logger import Logger
+    from typing import Dict, List
 
-    class MLFLowLogger(Logger):
-        """MLFlow logger.
+    import json
+    import os
 
-        Requires the experiment configuration to have a MLFlow Experiment ID
-        or manually set the proper environment variables.
-        """
+    from ray.tune.logger import LoggerCallback
 
-        def _init(self):
-            from mlflow.tracking import MlflowClient
-            client = MlflowClient()
 
-            # self.config is the same config that your Trainable will see.
-            run = client.create_run(self.config.get("mlflow_experiment_id"))
-            self._run_id = run.info.run_id
-            for key, value in self.config.items():
-                client.log_param(self._run_id, key, value)
-            self.client = client
+    class CustomLoggerCallback(LoggerCallback):
+        """Custom logger interface"""
 
-        def on_result(self, result):
-            for key, value in result.items():
-                if not isinstance(value, float):
-                    continue
-                self.client.log_metric(
-                    self._run_id, key, value, step=result.get(TRAINING_ITERATION))
+        def __init__(self, filename: str = "log.txt):
+            self._trial_files = {}
+            self._filename = filename
 
-        def close(self):
-            self.client.set_terminated(self._run_id)
+        def log_trial_start(self, trial: "Trial"):
+            trial_logfile = os.path.join(trial.logdir, self._filename)
+            self._trial_files[trial] = open(trial_logfile, "at")
+
+        def log_trial_result(self, iteration: int, trial: "Trial", result: Dict):
+            if trial in self._trial_files:
+                self._trial_files[trial].write(json.dumps(result))
+
+        def on_trial_complete(self, iteration: int, trials: List["Trial"],
+                              trial: "Trial", **info):
+            if trial in self._trial_files:
+                self._trial_files[trial].close()
+                del self._trial_files[trial]
+
 
 You can then pass in your own logger as follows:
 
 .. code-block:: python
 
-    from ray.tune.logger import DEFAULT_LOGGERS
+    from ray import tune
 
     tune.run(
         MyTrainableClass,
         name="experiment_name",
-        loggers=DEFAULT_LOGGERS + (CustomLogger1, CustomLogger2)
+        callbacks=[CustomLoggerCallback("log_test.txt")]
     )
 
-These loggers will be called along with the default Tune loggers. You can also check out `logger.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/logger.py>`__ for implementation details.
+Per default, Ray Tune creates JSON, CSV and TensorboardX logger callbacks if you don't pass them yourself.
+You can disable this behavior by setting the ``TUNE_DISABLE_AUTO_CALLBACK_LOGGERS`` environment variable to ``"1"``.
 
 An example of creating a custom logger can be found in :doc:`/tune/examples/logging_example`.
 
@@ -65,11 +70,7 @@ An example of creating a custom logger can be found in :doc:`/tune/examples/logg
 Trainable Logging
 -----------------
 
-By default, Tune only logs the *training result dictionaries* from your Trainable. However, you may want to visualize the model weights, model graph, or use a custom logging library that requires multi-process logging. For example, you may want to do this if:
-
- * you're using `Weights and Biases <https://www.wandb.com/>`_
- * you're using `MLFlow <https://github.com/mlflow/mlflow/>`__
- * you're trying to log images to Tensorboard.
+By default, Tune only logs the *training result dictionaries* from your Trainable. However, you may want to visualize the model weights, model graph, or use a custom logging library that requires multi-process logging. For example, you may want to do this if you're trying to log images to Tensorboard.
 
 You can do this in the trainable, as shown below:
 
@@ -131,7 +132,7 @@ In the distributed case, these logs will be sync'ed back to the driver under you
 Viskit
 ------
 
-Tune automatically integrates with `Viskit <https://github.com/vitchyr/viskit>`_ via the ``CSVLogger`` outputs. To use VisKit (you may have to install some dependencies), run:
+Tune automatically integrates with `Viskit <https://github.com/vitchyr/viskit>`_ via the ``CSVLoggerCallback`` outputs. To use VisKit (you may have to install some dependencies), run:
 
 .. code-block:: bash
 
@@ -143,37 +144,38 @@ The nonrelevant metrics (like timing stats) can be disabled on the left to show 
 .. image:: /ray-tune-viskit.png
 
 
-UnifiedLogger
--------------
-
-.. autoclass:: ray.tune.logger.UnifiedLogger
-
 TBXLogger
 ---------
 
-.. autoclass:: ray.tune.logger.TBXLogger
+.. autoclass:: ray.tune.logger.TBXLoggerCallback
 
 JsonLogger
 ----------
 
-.. autoclass:: ray.tune.logger.JsonLogger
+.. autoclass:: ray.tune.logger.JsonLoggerCallback
 
 CSVLogger
 ---------
 
-.. autoclass:: ray.tune.logger.CSVLogger
+.. autoclass:: ray.tune.logger.CSVLoggerCallback
 
-MLFLowLogger
+MLFlowLogger
 ------------
 
-Tune also provides a default logger for `MLFlow <https://mlflow.org>`_. You can install MLFlow via ``pip install mlflow``. An example can be found in :doc:`/tune/examples/mlflow_example`. Note that this currently does not include artifact logging support. For this, you can use the native MLFlow APIs inside your Trainable definition.
+Tune also provides a default logger for `MLFlow <https://mlflow.org>`_. You can install MLFlow via ``pip install mlflow``.
+You can see the :doc:`tutorial here </tune/tutorials/tune-mlflow>`.
 
-.. autoclass:: ray.tune.logger.MLFLowLogger
+WandbLogger
+-----------
+
+Tune also provides a default logger for `Weights & Biases <https://www.wandb.ai/>`_. You can install Wandb via ``pip install wandb``.
+You can see the :doc:`tutorial here </tune/tutorials/tune-wandb>`
 
 
 .. _logger-interface:
 
-Logger
-------
+LoggerCallback
+--------------
 
-.. autoclass:: ray.tune.logger.Logger
+.. autoclass:: ray.tune.logger.LoggerCallback
+    :members: log_trial_start, log_trial_restore, log_trial_save, log_trial_result, log_trial_end

@@ -23,7 +23,7 @@ RLlib has extra dependencies on top of ``ray``. First, you'll need to install ei
 
 .. code-block:: bash
 
-  pip install 'ray[rllib]'  # also recommended: ray[debug]
+  pip install 'ray[rllib]'
 
 Then, you can try out training in the following equivalent ways:
 
@@ -110,7 +110,12 @@ Beyond environments defined in Python, RLlib supports batch training on `offline
 Customization
 ~~~~~~~~~~~~~
 
-RLlib provides ways to customize almost all aspects of training, including the `environment <rllib-env.html#configuring-environments>`__, `neural network model <rllib-models.html#tensorflow-models>`__, `action distribution <rllib-models.html#custom-action-distributions>`__, and `policy definitions <rllib-concepts.html#policies>`__:
+RLlib provides ways to customize almost all aspects of training, including
+`neural network models <rllib-models.html#tensorflow-models>`__,
+`action distributions <rllib-models.html#custom-action-distributions>`__,
+`policy definitions <rllib-concepts.html#policies>`__:
+the `environment <rllib-env.html#configuring-environments>`__,
+and the `sample collection process <rllib-sample-collection.html>`__
 
 .. image:: rllib-components.svg
 

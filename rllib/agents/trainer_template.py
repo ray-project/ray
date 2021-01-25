@@ -22,10 +22,11 @@ def default_execution_plan(workers: WorkerSet, config: TrainerConfigDict):
 
     # Combine experiences batches until we hit `train_batch_size` in size.
     # Then, train the policy on those experiences and update the workers.
-    train_op = rollouts \
-        .combine(ConcatBatches(
-            min_batch_size=config["train_batch_size"])) \
-        .for_each(TrainOneStep(workers))
+    train_op = rollouts.combine(
+        ConcatBatches(
+            min_batch_size=config["train_batch_size"],
+            count_steps_by=config["multiagent"]["count_steps_by"],
+        )).for_each(TrainOneStep(workers))
 
     # Add on the standard episode reward, etc. metrics reporting. This returns
     # a LocalIterator[metrics_dict] representing metrics for each train step.
@@ -64,7 +65,7 @@ def build_trainer(
             Optional callable that takes the config to check for correctness.
             It may mutate the config as needed.
         default_policy (Optional[Type[Policy]]): The default Policy class to
-            use.
+            use if `get_policy_class` returns None.
         get_policy_class (Optional[Callable[
             TrainerConfigDict, Optional[Type[Policy]]]]): Optional callable
             that takes a config and returns the policy class or None. If None
@@ -145,6 +146,18 @@ def build_trainer(
         @override(Trainer)
         def step(self):
             res = next(self.train_exec_impl)
+
+            # self._iteration gets incremented after this function returns,
+            # meaning that e. g. the first time this function is called,
+            # self._iteration will be 0. We check `self._iteration+1` in the
+            # if-statement below to reflect that the first training iteration
+            # is already over.
+            if (self.config["evaluation_interval"] and (self._iteration + 1) %
+                    self.config["evaluation_interval"] == 0):
+                evaluation_metrics = self._evaluate()
+                assert isinstance(evaluation_metrics, dict), \
+                    "_evaluate() needs to return a dict."
+                res.update(evaluation_metrics)
             return res
 
         @override(Trainer)

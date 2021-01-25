@@ -1,5 +1,5 @@
 ======================================
-Advanced Topics, Configurations, & FAQ
+Advanced Topics and Configurations
 ======================================
 
 Ray Serve has a number of knobs and tools for you to tune for your particular workload.
@@ -16,7 +16,7 @@ the properties of a particular backend.
 Scaling Out
 ===========
 
-To scale out a backend to multiple workers, simply configure the number of replicas.
+To scale out a backend to many instances, simply configure the number of replicas.
 
 .. code-block:: python
 
@@ -27,14 +27,16 @@ To scale out a backend to multiple workers, simply configure the number of repli
   config = {"num_replicas": 2}
   client.update_backend_config("my_scaled_endpoint_backend", config)
 
-This will scale up or down the number of workers that can accept requests.
+This will scale up or down the number of replicas that can accept requests.
 
-Using Resources (CPUs, GPUs)
-============================
+.. _`serve-cpus-gpus`:
 
-To assign hardware resources per worker, you can pass resource requirements to
+Resource Management (CPUs, GPUs)
+================================
+
+To assign hardware resources per replica, you can pass resource requirements to
 ``ray_actor_options``.
-By default, each worker requires one CPU.
+By default, each replica requires one CPU.
 To learn about options to pass in, take a look at :ref:`Resources with Actor<actor-resource-guide>` guide.
 
 For example, to create a backend where each replica uses a single GPU, you can do the
@@ -49,7 +51,7 @@ Fractional Resources
 --------------------
 
 The resources specified in ``ray_actor_options`` can also be *fractional*.
-This allows you to flexibly share resources between workers.
+This allows you to flexibly share resources between replicas.
 For example, if you have two models and each doesn't fully saturate a GPU, you might want to have them share a GPU by allocating 0.5 GPUs each.
 The same could be done to multiplex over CPUs.
 
@@ -81,9 +83,15 @@ If you *do* want to enable this parallelism in your Serve backend, just set OMP_
 
   client.create_backend("parallel_backend", MyBackend, 12)
 
+
+.. note::
+  Some other libraries may not respect ``OMP_NUM_THREADS`` and have their own way to configure parallelism.
+  For example, if you're using OpenCV, you'll need to manually set the number of threads using ``cv2.setNumThreads(num_threads)`` (set to 0 to disable multi-threading).
+  You can check the configuration using ``cv2.getNumThreads()`` and ``cv2.getNumberOfCPUs()``.
+
 .. _serve-batching:
 
-Batching to improve performance
+Batching to Improve Performance
 ===============================
 
 You can also have Ray Serve batch requests for performance. In order to do use this feature, you need to:
@@ -261,13 +269,100 @@ That's it. Let's take a look at an example:
 
 .. literalinclude:: ../../../python/ray/serve/examples/doc/snippet_model_composition.py
 
+
+.. _serve-sync-async-handles:
+
+Sync and Async Handles
+======================
+
+Ray Serve offers two types of ``ServeHandle``. You can use the ``client.get_handle(..., sync=True|False)``
+flag to toggle between them.
+
+- When you set ``sync=True`` (the default), a synchronous handle is returned.
+  Calling ``handle.remote()`` should return a Ray ObjectRef.
+- When you set ``sync=False``, an asyncio based handle is returned. You need to
+  Call it with ``await handle.remote()`` to return a Ray ObjectRef. To use ``await``,
+  you have to run ``client.get_handle`` and ``handle.remote`` in Python asyncio event loop.
+
+The async handle has performance advantage because it uses asyncio directly; as compared
+to the sync handle, which talks to an asyncio event loop in a thread. To learn more about
+the reasoning behind these, checkout our `architecture documentation <./architecture.html>`_.
+
+
 Monitoring
 ==========
 
 Ray Serve exposes important system metrics like the number of successful and
-errored requests through the Ray metrics monitoring infrastructure. By default,
-the metrics are exposed in Prometheus format on each node. See the
-`Ray Monitoring documentation <../ray-metrics.html>`__ for more information.
+errored requests through the `Ray metrics monitoring infrastructure <../ray-metrics.html>`__. By default,
+the metrics are exposed in Prometheus format on each node.
+
+The following metrics are exposed by Ray Serve:
+
+.. list-table::
+   :header-rows: 1
+
+   * - Name
+     - Description
+   * - ``serve_backend_request_counter``
+     - The number of queries that have been processed in this replica.
+   * - ``serve_backend_error_counter``
+     - The number of exceptions that have occurred in the backend.
+   * - ``serve_backend_replica_starts``
+     - The number of times this replica has been restarted due to failure.
+   * - ``serve_backend_queuing_latency_ms``
+     - The latency for queries in the replica's queue waiting to be processed or batched.
+   * - ``serve_backend_processing_latency_ms``
+     - The latency for queries to be processed.
+   * - ``serve_replica_queued_queries``
+     - The current number of queries queued in the backend replicas.
+   * - ``serve_replica_processing_queries``
+     - The current number of queries being processed.
+   * - ``serve_num_http_requests``
+     - The number of HTTP requests processed.
+   * - ``serve_num_router_requests``
+     - The number of requests processed by the router.
+
+To see this in action, run ``ray start --head --metrics-export-port=8080`` in your terminal, and then run the following script:
+
+.. literalinclude:: ../../../python/ray/serve/examples/doc/snippet_metrics.py
+
+In your web browser, navigate to ``localhost:8080``.
+In the output there, you can search for ``serve_`` to locate the metrics above.
+The metrics are updated once every ten seconds, and you will need to refresh the page to see the new values.
+
+For example, after running the script for some time and refreshing ``localhost:8080`` you might see something that looks like::
+
+  ray_serve_backend_processing_latency_ms_count{...,backend="f",...} 99.0
+  ray_serve_backend_processing_latency_ms_sum{...,backend="f",...} 99279.30498123169
+
+which indicates that the average processing latency is just over one second, as expected.
+
+You can even define a `custom metric <..ray-metrics.html#custom-metrics>`__ to use in your backend, and tag it with the current backend or replica.
+Here's an example:
+
+.. literalinclude:: ../../../python/ray/serve/examples/doc/snippet_custom_metric.py
+  :lines: 11-23
+
+See the
+`Ray Monitoring documentation <../ray-metrics.html>`__ for more details, including instructions for scraping these metrics using Prometheus.
+
+Reconfiguring Backends (Experimental)
+=====================================
+
+Suppose you want to update a parameter in your model without creating a whole
+new backend.  You can do this by writing a `reconfigure` method for the class
+underlying your backend.  At runtime, you can then pass in your new parameters
+by setting the `user_config` field of :mod:`BackendConfig <ray.serve.BackendConfig>`.
+
+The following simple example will make the usage clear:
+
+.. literalinclude:: ../../../python/ray/serve/examples/doc/snippet_reconfigure.py
+
+The `reconfigure` method is called when the class is created if `user_config`
+is set.  In particular, it's also called when new replicas are created in the
+future, in case you decide to scale up your backend later.  The
+`reconfigure` method is also called each time `user_config` is updated via
+:mod:`client.update_backend_config <ray.serve.api.Client.update_backend_config>`.
 
 Dependency Management
 =====================
@@ -287,12 +382,39 @@ and another named ``ray-tf2`` with Ray Serve and Tensorflow 2.  The Ray and
 python versions must be the same in both environments.  To specify
 an environment for a backend to use, simply pass the environment name in to
 :mod:`client.create_backend <ray.serve.api.Client.create_backend>`
-as shown below.  Be sure to run the script in an activated conda environment
-(not required to be ``ray-tf1`` or ``ray-tf2``).
+as shown below.
 
 .. literalinclude:: ../../../python/ray/serve/examples/doc/conda_env.py
 
-Alternatively, you may omit the argument ``env`` and call
-:mod:`client.create_backend <ray.serve.api.Client.create_backend>`
-from a script running in the conda environment you want the backend to run in.
+.. note::
+  If the argument ``env`` is omitted, backends will be started in the same
+  conda environment as the caller of
+  :mod:`client.create_backend <ray.serve.api.Client.create_backend>` by
+  default.
 
+The dependencies required in the backend may be different than
+the dependencies installed in the driver program (the one running Serve API
+calls). In this case, you can use an
+:mod:`ImportedBackend <ray.serve.backends.ImportedBackend>` to specify a
+backend based on a class that is installed in the Python environment that
+the workers will run in. Example:
+
+.. literalinclude:: ../../../python/ray/serve/examples/doc/imported_backend.py
+
+Configuring HTTP Server Locations
+=================================
+
+By default, Ray Serve starts only one HTTP on the head node of the Ray cluster.
+You can configure this behavior using the ``http_options={"location": ...}`` flag
+in :mod:`serve.start <ray.serve.start>`:
+
+- "HeadOnly": start one HTTP server on the head node. Serve
+  assumes the head node is the node you executed serve.start
+  on. This is the default.
+- "EveryNode": start one HTTP server per node.
+- "NoServer" or ``None``: disable HTTP server.
+
+.. note::
+   Using the "EveryNode" option, you can point a cloud load balancer to the
+   instance group of Ray cluster to achieve high availability of Serve's HTTP
+   proxies.

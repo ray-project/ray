@@ -1,23 +1,24 @@
-import unittest
 from functools import partial
-
 import gym
-import numpy as np
 from gym.spaces import Box, Dict, Discrete, Tuple
+import numpy as np
+import unittest
 
 import ray
-from ray.rllib.models import MODEL_DEFAULTS, ActionDistribution, ModelCatalog
-from ray.rllib.models.preprocessors import (NoPreprocessor, OneHotPreprocessor,
-                                            Preprocessor)
+from ray.rllib.models import ActionDistribution, ModelCatalog, MODEL_DEFAULTS
+from ray.rllib.models.preprocessors import NoPreprocessor, OneHotPreprocessor,\
+    Preprocessor
+from ray.rllib.models.tf.tf_action_dist import MultiActionDistribution, \
+    TFActionDistribution
 from ray.rllib.models.tf.fcnet import FullyConnectedNetwork
-from ray.rllib.models.tf.tf_action_dist import (MultiActionDistribution,
-                                                TFActionDistribution)
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.models.tf.visionnet import VisionNetwork
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.framework import try_import_tf, try_import_torch
+from ray.rllib.utils.test_utils import framework_iterator
 
 tf1, tf, tfv = try_import_tf()
+torch, _ = try_import_torch()
 
 
 class CustomPreprocessor(Preprocessor):
@@ -74,28 +75,6 @@ class TestModelCatalog(unittest.TestCase):
     def tearDown(self):
         ray.shutdown()
 
-    def test_gym_preprocessors(self):
-        p1 = ModelCatalog.get_preprocessor(gym.make("CartPole-v0"))
-        self.assertEqual(type(p1), NoPreprocessor)
-
-        p2 = ModelCatalog.get_preprocessor(gym.make("FrozenLake-v0"))
-        self.assertEqual(type(p2), OneHotPreprocessor)
-
-    def test_tuple_preprocessor(self):
-        ray.init(object_store_memory=1000 * 1024 * 1024)
-
-        class TupleEnv:
-            def __init__(self):
-                self.observation_space = Tuple(
-                    [Discrete(5),
-                     Box(0, 5, shape=(3, ), dtype=np.float32)])
-
-        p1 = ModelCatalog.get_preprocessor(TupleEnv())
-        self.assertEqual(p1.shape, (8, ))
-        self.assertEqual(
-            list(p1.transform((0, np.array([1, 2, 3])))),
-            [float(x) for x in [1, 0, 0, 0, 0, 1, 2, 3]])
-
     def test_custom_preprocessor(self):
         ray.init(object_store_memory=1000 * 1024 * 1024)
         ModelCatalog.register_custom_preprocessor("foo", CustomPreprocessor)
@@ -111,19 +90,34 @@ class TestModelCatalog(unittest.TestCase):
     def test_default_models(self):
         ray.init(object_store_memory=1000 * 1024 * 1024)
 
-        p1 = ModelCatalog.get_model_v2(
-            obs_space=Box(0, 1, shape=(3, ), dtype=np.float32),
-            action_space=Discrete(5),
-            num_outputs=5,
-            model_config={})
-        self.assertEqual(type(p1), FullyConnectedNetwork)
+        for fw in framework_iterator(frameworks=("jax", "tf", "tf2", "torch")):
+            obs_space = Box(0, 1, shape=(3, ), dtype=np.float32)
+            p1 = ModelCatalog.get_model_v2(
+                obs_space=obs_space,
+                action_space=Discrete(5),
+                num_outputs=5,
+                model_config={},
+                framework=fw,
+            )
+            self.assertTrue("FullyConnectedNetwork" in type(p1).__name__)
+            # Do a test forward pass.
+            obs = np.array([obs_space.sample()])
+            if fw == "torch":
+                obs = torch.from_numpy(obs)
+            out, state_outs = p1({"obs": obs})
+            self.assertTrue(out.shape == (1, 5))
+            self.assertTrue(state_outs == [])
 
-        p2 = ModelCatalog.get_model_v2(
-            obs_space=Box(0, 1, shape=(84, 84, 3), dtype=np.float32),
-            action_space=Discrete(5),
-            num_outputs=5,
-            model_config={})
-        self.assertEqual(type(p2), VisionNetwork)
+            # No Conv2Ds for JAX yet.
+            if fw != "jax":
+                p2 = ModelCatalog.get_model_v2(
+                    obs_space=Box(0, 1, shape=(84, 84, 3), dtype=np.float32),
+                    action_space=Discrete(5),
+                    num_outputs=5,
+                    model_config={},
+                    framework=fw,
+                )
+                self.assertTrue("VisionNetwork" in type(p2).__name__)
 
     def test_custom_model(self):
         ray.init(object_store_memory=1000 * 1024 * 1024)
@@ -216,7 +210,6 @@ class TestModelCatalog(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import sys
-
     import pytest
+    import sys
     sys.exit(pytest.main(["-v", __file__]))

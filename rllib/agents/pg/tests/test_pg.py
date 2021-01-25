@@ -41,14 +41,14 @@ class TestPG(unittest.TestCase):
 
         # Fake CartPole episode of n time steps.
         train_batch = {
-            SampleBatch.CUR_OBS: np.array([[0.1, 0.2, 0.3,
-                                            0.4], [0.5, 0.6, 0.7, 0.8],
-                                           [0.9, 1.0, 1.1, 1.2]]),
+            SampleBatch.OBS: np.array([[0.1, 0.2, 0.3,
+                                        0.4], [0.5, 0.6, 0.7, 0.8],
+                                       [0.9, 1.0, 1.1, 1.2]]),
             SampleBatch.ACTIONS: np.array([0, 1, 1]),
-            SampleBatch.PREV_ACTIONS: np.array([1, 0, 1]),
             SampleBatch.REWARDS: np.array([1.0, 1.0, 1.0]),
-            SampleBatch.PREV_REWARDS: np.array([-1.0, -1.0, -1.0]),
-            SampleBatch.DONES: np.array([False, False, True])
+            SampleBatch.DONES: np.array([False, False, True]),
+            SampleBatch.EPS_ID: np.array([1234, 1234, 1234]),
+            SampleBatch.AGENT_INDEX: np.array([0, 0, 0]),
         }
 
         for fw, sess in framework_iterator(config, session=True):
@@ -63,31 +63,32 @@ class TestPG(unittest.TestCase):
             # to train_batch dict.
             # A = [0.99^2 * 1.0 + 0.99 * 1.0 + 1.0, 0.99 * 1.0 + 1.0, 1.0] =
             # [2.9701, 1.99, 1.0]
-            train_batch = pg.post_process_advantages(policy, train_batch)
+            train_batch_ = pg.post_process_advantages(policy,
+                                                      train_batch.copy())
             if fw == "torch":
-                train_batch = policy._lazy_tensor_dict(train_batch)
+                train_batch_ = policy._lazy_tensor_dict(train_batch_)
 
             # Check Advantage values.
-            check(train_batch[Postprocessing.ADVANTAGES], [2.9701, 1.99, 1.0])
+            check(train_batch_[Postprocessing.ADVANTAGES], [2.9701, 1.99, 1.0])
 
             # Actual loss results.
             if sess:
                 results = policy.get_session().run(
                     policy._loss,
                     feed_dict=policy._get_loss_inputs_dict(
-                        train_batch, shuffle=False))
+                        train_batch_, shuffle=False))
             else:
                 results = (pg.pg_tf_loss
                            if fw in ["tf2", "tfe"] else pg.pg_torch_loss)(
                                policy,
                                policy.model,
                                dist_class=dist_cls,
-                               train_batch=train_batch)
+                               train_batch=train_batch_)
 
             # Calculate expected results.
             if fw != "torch":
                 expected_logits = fc(
-                    fc(train_batch[SampleBatch.CUR_OBS],
+                    fc(train_batch_[SampleBatch.OBS],
                        vars[0],
                        vars[1],
                        framework=fw),
@@ -96,7 +97,7 @@ class TestPG(unittest.TestCase):
                     framework=fw)
             else:
                 expected_logits = fc(
-                    fc(train_batch[SampleBatch.CUR_OBS],
+                    fc(train_batch_[SampleBatch.OBS],
                        vars[2],
                        vars[3],
                        framework=fw),
@@ -104,8 +105,8 @@ class TestPG(unittest.TestCase):
                     vars[1],
                     framework=fw)
             expected_logp = dist_cls(expected_logits, policy.model).logp(
-                train_batch[SampleBatch.ACTIONS])
-            adv = train_batch[Postprocessing.ADVANTAGES]
+                train_batch_[SampleBatch.ACTIONS])
+            adv = train_batch_[Postprocessing.ADVANTAGES]
             if sess:
                 expected_logp = sess.run(expected_logp)
             elif fw == "torch":

@@ -1,16 +1,22 @@
 from abc import abstractmethod, ABCMeta
 import logging
-from typing import Dict, Union
+from typing import Dict, List, Optional, TYPE_CHECKING, Union
 
 from ray.rllib.evaluation.episode import MultiAgentEpisode
+from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.utils.typing import AgentID, EnvID, EpisodeID, PolicyID, \
     TensorType
 
+if TYPE_CHECKING:
+    from ray.rllib.agents.callbacks import DefaultCallbacks
+
 logger = logging.getLogger(__name__)
 
 
-class _SampleCollector(metaclass=ABCMeta):
+# yapf: disable
+# __sphinx_doc_begin__
+class SampleCollector(metaclass=ABCMeta):
     """Collects samples for all policies and agents from a multi-agent env.
 
     Note: This is an experimental class only used when
@@ -29,9 +35,38 @@ class _SampleCollector(metaclass=ABCMeta):
     communication channel).
     """
 
+    def __init__(self,
+                 policy_map: Dict[PolicyID, Policy],
+                 clip_rewards: Union[bool, float],
+                 callbacks: "DefaultCallbacks",
+                 multiple_episodes_in_batch: bool = True,
+                 rollout_fragment_length: int = 200,
+                 count_steps_by: str = "env_steps"):
+        """Initializes a SampleCollector instance.
+
+        Args:
+            policy_map (Dict[str, Policy]): Maps policy ids to policy
+                instances.
+            clip_rewards (Union[bool, float]): Whether to clip rewards before
+                postprocessing (at +/-1.0) or the actual value to +/- clip.
+            callbacks (DefaultCallbacks): RLlib callbacks.
+            multiple_episodes_in_batch (bool): Whether it's allowed to pack
+                multiple episodes into the same built batch.
+            rollout_fragment_length (int): The
+
+        """
+
+        self.policy_map = policy_map
+        self.clip_rewards = clip_rewards
+        self.callbacks = callbacks
+        self.multiple_episodes_in_batch = multiple_episodes_in_batch
+        self.rollout_fragment_length = rollout_fragment_length
+        self.count_steps_by = count_steps_by
+
     @abstractmethod
     def add_init_obs(self, episode: MultiAgentEpisode, agent_id: AgentID,
-                     policy_id: PolicyID, init_obs: TensorType) -> None:
+                     policy_id: PolicyID, t: int,
+                     init_obs: TensorType) -> None:
         """Adds an initial obs (after reset) to this collector.
 
         Since the very first observation in an environment is collected w/o
@@ -48,11 +83,13 @@ class _SampleCollector(metaclass=ABCMeta):
                 values for.
             env_id (EnvID): The environment index (in a vectorized setup).
             policy_id (PolicyID): Unique id for policy controlling the agent.
+            t (int): The time step (episode length - 1). The initial obs has
+                ts=-1(!), then an action/reward/next-obs at t=0, etc..
             init_obs (TensorType): Initial observation (after env.reset()).
 
         Examples:
             >>> obs = env.reset()
-            >>> collector.add_init_obs(12345, 0, "pol0", obs)
+            >>> collector.add_init_obs(my_episode, 0, "pol0", -1, obs)
             >>> obs, r, done, info = env.step(action)
             >>> collector.add_action_reward_next_obs(12345, 0, "pol0", False, {
             ...     "action": action, "obs": obs, "reward": r, "done": done
@@ -107,11 +144,37 @@ class _SampleCollector(metaclass=ABCMeta):
 
     @abstractmethod
     def total_env_steps(self) -> int:
-        """Returns total number of steps taken in the env (sum of all agents).
+        """Returns total number of env-steps taken so far.
+
+        Thereby, a step in an N-agent multi-agent environment counts as only 1
+        for this metric. The returned count contains everything that has not
+        been built yet (and returned as MultiAgentBatches by the
+        `try_build_truncated_episode_multi_agent_batch` or
+        `postprocess_episode(build=True)` methods). After such build, this
+        counter is reset to 0.
 
         Returns:
-            int: The number of steps taken in total in the environment over all
-                agents.
+            int: The number of env-steps taken in total in the environment(s)
+                so far.
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def total_agent_steps(self) -> int:
+        """Returns total number of (individual) agent-steps taken so far.
+
+        Thereby, a step in an N-agent multi-agent environment counts as N.
+        If less than N agents have stepped (because some agents were not
+        required to send actions), the count will be increased by less than N.
+        The returned count contains everything that has not been built yet
+        (and returned as MultiAgentBatches by the
+        `try_build_truncated_episode_multi_agent_batch` or
+        `postprocess_episode(build=True)` methods). After such build, this
+        counter is reset to 0.
+
+        Returns:
+            int: The number of (individual) agent-steps taken in total in the
+                environment(s) so far.
         """
         raise NotImplementedError
 
@@ -145,7 +208,8 @@ class _SampleCollector(metaclass=ABCMeta):
     def postprocess_episode(self,
                             episode: MultiAgentEpisode,
                             is_done: bool = False,
-                            check_dones: bool = False) -> None:
+                            check_dones: bool = False,
+                            build: bool = False) -> Optional[MultiAgentBatch]:
         """Postprocesses all agents' trajectories in a given episode.
 
         Generates (single-trajectory) SampleBatches for all Policies/Agents and
@@ -159,43 +223,42 @@ class _SampleCollector(metaclass=ABCMeta):
             episode (MultiAgentEpisode): The Episode object for which
                 to post-process data.
             is_done (bool): Whether the given episode is actually terminated
-                (all agents are done).
+                (all agents are done OR we hit a hard horizon). If True, the
+                episode will no longer be used/continued and we may need to
+                recycle/erase it internally. If a soft-horizon is hit, the
+                episode will continue to be used and `is_done` should be set
+                to False here.
             check_dones (bool): Whether we need to check that all agents'
                 trajectories have dones=True at the end.
-        """
-        raise NotImplementedError
-
-    @abstractmethod
-    def build_multi_agent_batch(self, env_steps: int) -> \
-            Union[MultiAgentBatch, SampleBatch]:
-        """Builds a MultiAgentBatch of size=env_steps from the collected data.
-
-        Args:
-            env_steps (int): The sum of all env-steps (across all agents) taken
-                so far.
+            build (bool): Whether to build a MultiAgentBatch from the given
+                episode (and only that episode!) and return that
+                MultiAgentBatch. Used for batch_mode=`complete_episodes`.
 
         Returns:
-            Union[MultiAgentBatch, SampleBatch]: Returns the accumulated
-                sample batches for each policy inside one MultiAgentBatch
-                object (or a simple SampleBatch if only one policy).
+            Optional[MultiAgentBatch]: If `build` is True, the
+                SampleBatch or MultiAgentBatch built from `episode` (either
+                just from that episde or from the `_PolicyCollectorGroup`
+                in the `episode.batch_builder` property).
         """
         raise NotImplementedError
 
     @abstractmethod
     def try_build_truncated_episode_multi_agent_batch(self) -> \
-            Union[MultiAgentBatch, SampleBatch, None]:
+            List[Union[MultiAgentBatch, SampleBatch]]:
         """Tries to build an MA-batch, if `rollout_fragment_length` is reached.
 
         Any unprocessed data will be first postprocessed with a policy
         postprocessor.
         This is usually called to collect samples for policy training.
         If not enough data has been collected yet (`rollout_fragment_length`),
-        returns None.
+        returns an empty list.
 
         Returns:
-            Union[MultiAgentBatch, SampleBatch, None]: Returns the accumulated
-                sample batches for each policy inside one MultiAgentBatch
-                object (or a simple SampleBatch if only one policy) or None
-                if `self.rollout_fragment_length` has not been reached yet.
+            List[Union[MultiAgentBatch, SampleBatch]]: Returns a (possibly
+                empty) list of MultiAgentBatches (containing the accumulated
+                SampleBatches for each policy or a simple SampleBatch if only
+                one policy). The list will be empty if
+                `self.rollout_fragment_length` has not been reached yet.
         """
         raise NotImplementedError
+# __sphinx_doc_end__

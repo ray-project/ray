@@ -16,19 +16,14 @@ import redis
 import requests
 
 from ray import ray_constants
-from ray.test_utils import (
-    format_web_url,
-    wait_for_condition,
-    wait_until_server_available,
-    run_string_as_driver,
-)
-from ray.autoscaler._private.util import (DEBUG_AUTOSCALING_STATUS,
+from ray.test_utils import (format_web_url, wait_for_condition,
+                            wait_until_server_available, run_string_as_driver,
+                            wait_until_succeeded_without_exception)
+from ray.autoscaler._private.util import (DEBUG_AUTOSCALING_STATUS_LEGACY,
                                           DEBUG_AUTOSCALING_ERROR)
 import ray.new_dashboard.consts as dashboard_consts
 import ray.new_dashboard.utils as dashboard_utils
 import ray.new_dashboard.modules
-
-os.environ["RAY_USE_NEW_DASHBOARD"] = "1"
 
 logger = logging.getLogger(__name__)
 routes = dashboard_utils.ClassMethodRouteTable
@@ -85,7 +80,7 @@ def test_basic(ray_start_with_dashboard):
         0]
     dashboard_proc = psutil.Process(dashboard_proc_info.process.pid)
     assert dashboard_proc.status() in [
-        psutil.STATUS_RUNNING, psutil.STATUS_SLEEPING
+        psutil.STATUS_RUNNING, psutil.STATUS_SLEEPING, psutil.STATUS_DISK_SLEEP
     ]
     raylet_proc_info = all_processes[ray_constants.PROCESS_TYPE_RAYLET][0]
     raylet_proc = psutil.Process(raylet_proc_info.process.pid)
@@ -141,6 +136,11 @@ def test_basic(ray_start_with_dashboard):
         agent_proc = _search_agent(raylet_proc.children())
         assert agent_proc.pid == agent_pid
         time.sleep(1)
+
+    # The agent should be dead if raylet exits.
+    raylet_proc.kill()
+    raylet_proc.wait()
+    agent_proc.wait(5)
 
     # Check redis keys are set.
     logger.info("Check redis keys are set.")
@@ -208,10 +208,10 @@ def test_http_get(enable_test_module, ray_start_with_dashboard):
 
     target_url = webui_url + "/test/dump"
 
-    timeout_seconds = 10
+    timeout_seconds = 30
     start_time = time.time()
     while True:
-        time.sleep(1)
+        time.sleep(3)
         try:
             response = requests.get(webui_url + "/test/http_get?url=" +
                                     target_url)
@@ -455,22 +455,20 @@ def test_get_cluster_status(ray_start_with_dashboard):
 
     # Check that the cluster_status endpoint works without the underlying data
     # from the GCS, but returns nothing.
-    last_exception = None
-    for _ in range(5):
-        try:
-            response = requests.get(f"{webui_url}/api/cluster_status")
-            response.raise_for_status()
-            assert response.json()["result"]
-            assert "autoscalingStatus" in response.json()["data"]
-            assert response.json()["data"]["autoscalingStatus"] is None
-            assert "autoscalingError" in response.json()["data"]
-            assert response.json()["data"]["autoscalingError"] is None
-            break
-        except requests.RequestException as e:
-            last_exception = e
-            time.sleep(1)
-    else:
-        raise last_exception
+    def get_cluster_status():
+        response = requests.get(f"{webui_url}/api/cluster_status")
+        response.raise_for_status()
+        print(response.json())
+        assert response.json()["result"]
+        assert "autoscalingStatus" in response.json()["data"]
+        assert response.json()["data"]["autoscalingStatus"] is None
+        assert "autoscalingError" in response.json()["data"]
+        assert response.json()["data"]["autoscalingError"] is None
+        assert "clusterStatus" in response.json()["data"]
+        assert "loadMetricsReport" in response.json()["data"]["clusterStatus"]
+
+    wait_until_succeeded_without_exception(get_cluster_status,
+                                           (requests.RequestException, ))
 
     # Populate the GCS field, check that the data is returned from the
     # endpoint.
@@ -483,7 +481,7 @@ def test_get_cluster_status(ray_start_with_dashboard):
         port=int(address[1]),
         password=ray_constants.REDIS_DEFAULT_PASSWORD)
 
-    client.hset(DEBUG_AUTOSCALING_STATUS, "value", "hello")
+    client.hset(DEBUG_AUTOSCALING_STATUS_LEGACY, "value", "hello")
     client.hset(DEBUG_AUTOSCALING_ERROR, "value", "world")
 
     response = requests.get(f"{webui_url}/api/cluster_status")
@@ -493,6 +491,8 @@ def test_get_cluster_status(ray_start_with_dashboard):
     assert response.json()["data"]["autoscalingStatus"] == "hello"
     assert "autoscalingError" in response.json()["data"]
     assert response.json()["data"]["autoscalingError"] == "world"
+    assert "clusterStatus" in response.json()["data"]
+    assert "loadMetricsReport" in response.json()["data"]["clusterStatus"]
 
 
 def test_immutable_types():
@@ -569,6 +569,39 @@ def test_immutable_types():
     d3 = dashboard_utils.ImmutableList([1, np.zeros([3, 5])])
     with pytest.raises(TypeError):
         print(d3[1])
+
+
+def test_http_proxy(enable_test_module, set_http_proxy, shutdown_only):
+    address_info = ray.init(num_cpus=1, include_dashboard=True)
+    assert (wait_until_server_available(address_info["webui_url"]) is True)
+
+    webui_url = address_info["webui_url"]
+    webui_url = format_web_url(webui_url)
+
+    timeout_seconds = 10
+    start_time = time.time()
+    while True:
+        time.sleep(1)
+        try:
+            response = requests.get(
+                webui_url + "/test/dump",
+                proxies={
+                    "http": None,
+                    "https": None
+                })
+            response.raise_for_status()
+            try:
+                response.json()
+                assert response.ok
+            except Exception as ex:
+                logger.info("failed response: %s", response.text)
+                raise ex
+            break
+        except (AssertionError, requests.exceptions.ConnectionError) as e:
+            logger.info("Retry because of %s", e)
+        finally:
+            if time.time() > start_time + timeout_seconds:
+                raise Exception("Timed out while testing.")
 
 
 if __name__ == "__main__":

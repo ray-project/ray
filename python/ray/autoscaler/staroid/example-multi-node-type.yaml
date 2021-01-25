@@ -3,6 +3,12 @@ cluster_name: multi-node-type # name with 'a-z' and '-'
 min_workers: 1
 max_workers: 40
 
+# The autoscaler will scale up the cluster faster with higher upscaling speed.
+# E.g., if the task requires adding more nodes then autoscaler will gradually
+# scale up the cluster in chunks of upscaling_speed*currently_running_nodes.
+# This number should be > 0.
+upscaling_speed: 1.0
+
 # Cloud-provider specific configuration.
 provider:
     type: staroid
@@ -97,9 +103,6 @@ available_node_types:
 # Specify the node type of the head node (as configured above).
 head_node_type: cpu_4_ondemand
 
-# Specify the default type of the worker node (as configured above).
-worker_default_node_type: cpu_4_spot
-
 # The default settings for the head node. This will be merged with the per-node
 # type configs given above.
 #head_node:
@@ -108,6 +111,4 @@ worker_default_node_type: cpu_4_spot
 # type configs given above.
 #worker_nodes:
 
-# Configure the cluster for very conservative auto-scaling otherwise.
-target_utilization_fraction: 0.9
 idle_timeout_minutes: 5

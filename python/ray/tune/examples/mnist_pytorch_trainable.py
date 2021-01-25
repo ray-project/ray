@@ -88,5 +88,4 @@ if __name__ == "__main__":
             "momentum": tune.uniform(0.1, 0.9),
         })
 
-    print("Best config is:",
-          analysis.get_best_config(metric="mean_accuracy", mode="max"))
+    print("Best config is:", analysis.best_config)

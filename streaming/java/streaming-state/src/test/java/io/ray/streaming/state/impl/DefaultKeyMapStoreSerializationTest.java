@@ -56,5 +56,4 @@ public class DefaultKeyMapStoreSerializationTest {
     byte[] result = this.defaultKMapStoreSerDe.serializeUValue(value);
     Assert.assertEquals(value, this.defaultKMapStoreSerDe.deserializeUValue(result));
   }
-
 }

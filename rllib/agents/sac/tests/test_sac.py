@@ -9,12 +9,13 @@ import ray.rllib.agents.sac as sac
 from ray.rllib.agents.sac.sac_tf_policy import sac_actor_critic_loss as tf_loss
 from ray.rllib.agents.sac.sac_torch_policy import actor_critic_loss as \
     loss_torch
-from ray.rllib.models.tf.tf_action_dist import SquashedGaussian
-from ray.rllib.models.torch.torch_action_dist import TorchSquashedGaussian
+from ray.rllib.models.tf.tf_action_dist import Dirichlet
+from ray.rllib.models.torch.torch_action_dist import TorchDirichlet
 from ray.rllib.execution.replay_buffer import LocalReplayBuffer
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
-from ray.rllib.utils.numpy import fc, relu
+from ray.rllib.utils.numpy import fc, huber_loss, relu
+from ray.rllib.utils.spaces.simplex import Simplex
 from ray.rllib.utils.test_utils import check, check_compute_single_action, \
     framework_iterator
 from ray.rllib.utils.torch_ops import convert_to_torch_tensor
@@ -25,7 +26,10 @@ torch, _ = try_import_torch()
 
 class SimpleEnv(Env):
     def __init__(self, config):
-        self.action_space = Box(0.0, 1.0, (1, ))
+        if config.get("simplex_actions", False):
+            self.action_space = Simplex((2, ))
+        else:
+            self.action_space = Box(0.0, 1.0, (1, ))
         self.observation_space = Box(0.0, 1.0, (1, ))
         self.max_steps = config.get("max_steps", 100)
         self.state = None
@@ -38,8 +42,8 @@ class SimpleEnv(Env):
 
     def step(self, action):
         self.steps += 1
-        # Reward is 1.0 - (action - state).
-        [r] = 1.0 - np.abs(action - self.state)
+        # Reward is 1.0 - (max(actions) - state).
+        [r] = 1.0 - np.abs(np.max(action) - self.state)
         d = self.steps >= self.max_steps
         self.state = self.observation_space.sample()
         return self.state, r, d, {}
@@ -95,6 +99,8 @@ class TestSAC(unittest.TestCase):
         config["policy_model"]["fcnet_hiddens"] = [10]
         # Make sure, timing differences do not affect trainer.train().
         config["min_iter_time_s"] = 0
+        # Test SAC with Simplex action space.
+        config["env_config"] = {"simplex_actions": True}
 
         map_ = {
             # Normal net.
@@ -147,7 +153,7 @@ class TestSAC(unittest.TestCase):
         batch_size = 100
         if env is SimpleEnv:
             obs_size = (batch_size, 1)
-            actions = np.random.random(size=(batch_size, 1))
+            actions = np.random.random(size=(batch_size, 2))
         elif env == "CartPole-v0":
             obs_size = (batch_size, 4)
             actions = np.random.randint(0, 2, size=(batch_size, ))
@@ -394,7 +400,8 @@ class TestSAC(unittest.TestCase):
             SampleBatch.REWARDS: np.random.random(size=(batch_size, )),
             SampleBatch.DONES: np.random.choice(
                 [True, False], size=(batch_size, )),
-            SampleBatch.NEXT_OBS: np.random.random(size=obs_size)
+            SampleBatch.NEXT_OBS: np.random.random(size=obs_size),
+            "weights": np.random.random(size=(batch_size, )),
         }
 
     def _sac_loss_helper(self, train_batch, weights, ks, log_alpha, fw, gamma,
@@ -419,7 +426,8 @@ class TestSAC(unittest.TestCase):
         # 16=target Q out bias
         # 17=target Q out kernel
         alpha = np.exp(log_alpha)
-        cls = TorchSquashedGaussian if fw == "torch" else SquashedGaussian
+        # cls = TorchSquashedGaussian if fw == "torch" else SquashedGaussian
+        cls = TorchDirichlet if fw == "torch" else Dirichlet
         model_out_t = train_batch[SampleBatch.CUR_OBS]
         model_out_tp1 = train_batch[SampleBatch.NEXT_OBS]
         target_model_out_tp1 = train_batch[SampleBatch.NEXT_OBS]
@@ -516,7 +524,8 @@ class TestSAC(unittest.TestCase):
         base_td_error = np.abs(q_t_selected - q_t_selected_target)
         td_error = base_td_error
         critic_loss = [
-            0.5 * np.mean(np.power(q_t_selected_target - q_t_selected, 2.0))
+            np.mean(train_batch["weights"] *
+                    huber_loss(q_t_selected_target - q_t_selected))
         ]
         target_entropy = -np.prod((1, ))
         alpha_loss = -np.mean(log_alpha * (log_pis_t + target_entropy))

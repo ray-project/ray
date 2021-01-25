@@ -9,8 +9,9 @@ from ray.rllib.agents.dqn import DQNTrainer
 from ray.rllib.agents.pg import PGTrainer
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.env.external_env import ExternalEnv
-from ray.rllib.tests.test_rollout_worker import (BadPolicy, MockPolicy,
-                                                 MockEnv)
+from ray.rllib.evaluation.tests.test_rollout_worker import (BadPolicy,
+                                                            MockPolicy)
+from ray.rllib.examples.env.mock_env import MockEnv
 from ray.rllib.utils.test_utils import framework_iterator
 from ray.tune.registry import register_env
 

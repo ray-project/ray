@@ -1,6 +1,7 @@
 from typing import Dict, Optional
 
 from ray.tune import trial_runner
+from ray.tune.result import DEFAULT_METRIC
 from ray.tune.trial import Trial
 
 
@@ -32,6 +33,11 @@ class TrialScheduler:
             return False
         if metric:
             self._metric = metric
+
+        if self._metric is None:
+            # Per default, use anonymous metric
+            self._metric = DEFAULT_METRIC
+
         return True
 
     def on_trial_add(self, trial_runner: "trial_runner.TrialRunner",

@@ -52,6 +52,9 @@ cdef class ObjectRef(BaseID):
     def task_id(self):
         return TaskID(self.data.TaskId().Binary())
 
+    def job_id(self):
+        return self.task_id().job_id()
+
     cdef size_t hash(self):
         return self.data.Hash()
 

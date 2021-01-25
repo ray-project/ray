@@ -49,6 +49,7 @@ def create_resettable_class():
             if "fake_reset_not_supported" in self.config:
                 return False
             self.num_resets += 1
+            self.iter = 0
             self.msg = new_config.get("message", "No message")
             return True
 
@@ -87,6 +88,7 @@ def create_resettable_function(num_resets: defaultdict):
 class ActorReuseTest(unittest.TestCase):
     def setUp(self):
         ray.init(num_cpus=1, num_gpus=0)
+        os.environ["TUNE_STATE_REFRESH_PERIOD"] = "0.1"
 
     def tearDown(self):
         ray.shutdown()
@@ -130,7 +132,7 @@ class ActorReuseTest(unittest.TestCase):
         self.assertEqual([t.last_result["id"] for t in trials], [0, 1, 2, 3])
         self.assertEqual([t.last_result["iter"] for t in trials], [2, 2, 2, 2])
         self.assertEqual([t.last_result["num_resets"] for t in trials],
-                         [1, 2, 3, 4])
+                         [4, 5, 6, 7])
 
     def testTrialReuseEnabledFunction(self):
         num_resets = defaultdict(lambda: 0)
@@ -175,7 +177,7 @@ class ActorReuseTest(unittest.TestCase):
             reuse_actors=True).trials
 
         # Check trial 1
-        self.assertEqual(trial1.last_result["num_resets"], 1)
+        self.assertEqual(trial1.last_result["num_resets"], 2)
         self.assertTrue(os.path.exists(os.path.join(trial1.logdir, "stdout")))
         self.assertTrue(os.path.exists(os.path.join(trial1.logdir, "stderr")))
         with open(os.path.join(trial1.logdir, "stdout"), "rt") as fp:
@@ -190,7 +192,7 @@ class ActorReuseTest(unittest.TestCase):
             self.assertNotIn("LOG_STDERR: Second", content)
 
         # Check trial 2
-        self.assertEqual(trial2.last_result["num_resets"], 2)
+        self.assertEqual(trial2.last_result["num_resets"], 3)
         self.assertTrue(os.path.exists(os.path.join(trial2.logdir, "stdout")))
         self.assertTrue(os.path.exists(os.path.join(trial2.logdir, "stderr")))
         with open(os.path.join(trial2.logdir, "stdout"), "rt") as fp:

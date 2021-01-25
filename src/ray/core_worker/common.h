@@ -25,7 +25,6 @@
 namespace ray {
 
 using WorkerType = rpc::WorkerType;
-using PlacementOptions = std::pair<PlacementGroupID, int64_t>;
 
 // Return a string representation of the worker type.
 std::string WorkerTypeString(WorkerType type);
@@ -84,7 +83,7 @@ struct ActorCreationOptions {
       const std::unordered_map<std::string, double> &placement_resources,
       const std::vector<std::string> &dynamic_worker_options, bool is_detached,
       std::string &name, bool is_asyncio,
-      PlacementOptions placement_options = std::make_pair(PlacementGroupID::Nil(), -1),
+      BundleID placement_options = std::make_pair(PlacementGroupID::Nil(), -1),
       bool placement_group_capture_child_tasks = true,
       const std::unordered_map<std::string, std::string> &override_environment_variables =
           {})
@@ -130,7 +129,7 @@ struct ActorCreationOptions {
   /// The placement_options include placement_group_id and bundle_index.
   /// If the actor doesn't belong to a placement group, the placement_group_id will be
   /// nil, and the bundle_index will be -1.
-  PlacementOptions placement_options;
+  BundleID placement_options;
   /// When true, the child task will always scheduled on the same placement group
   /// specified in the PlacementOptions.
   bool placement_group_capture_child_tasks = true;

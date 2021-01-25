@@ -2,6 +2,7 @@ from math import log
 import numpy as np
 import functools
 import tree
+import gym
 
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.modelv2 import ModelV2
@@ -10,7 +11,8 @@ from ray.rllib.utils import MIN_LOG_NN_OUTPUT, MAX_LOG_NN_OUTPUT, \
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.framework import try_import_tf, try_import_tfp
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space
-from ray.rllib.utils.typing import TensorType, List
+from ray.rllib.utils.typing import TensorType, List, Union, \
+    Tuple, ModelConfigDict
 
 tf1, tf, tfv = try_import_tf()
 tfp = try_import_tfp()
@@ -50,23 +52,26 @@ class Categorical(TFActionDistribution):
     """Categorical distribution for discrete action spaces."""
 
     @DeveloperAPI
-    def __init__(self, inputs, model=None, temperature=1.0):
+    def __init__(self,
+                 inputs: List[TensorType],
+                 model: ModelV2 = None,
+                 temperature: float = 1.0):
         assert temperature > 0.0, "Categorical `temperature` must be > 0.0!"
         # Allow softmax formula w/ temperature != 1.0:
         # Divide inputs by temperature.
         super().__init__(inputs / temperature, model)
 
     @override(ActionDistribution)
-    def deterministic_sample(self):
+    def deterministic_sample(self) -> TensorType:
         return tf.math.argmax(self.inputs, axis=1)
 
     @override(ActionDistribution)
-    def logp(self, x):
+    def logp(self, x: TensorType) -> TensorType:
         return -tf.nn.sparse_softmax_cross_entropy_with_logits(
             logits=self.inputs, labels=tf.cast(x, tf.int32))
 
     @override(ActionDistribution)
-    def entropy(self):
+    def entropy(self) -> TensorType:
         a0 = self.inputs - tf.reduce_max(self.inputs, axis=1, keepdims=True)
         ea0 = tf.exp(a0)
         z0 = tf.reduce_sum(ea0, axis=1, keepdims=True)
@@ -74,7 +79,7 @@ class Categorical(TFActionDistribution):
         return tf.reduce_sum(p0 * (tf.math.log(z0) - a0), axis=1)
 
     @override(ActionDistribution)
-    def kl(self, other):
+    def kl(self, other: ActionDistribution) -> TensorType:
         a0 = self.inputs - tf.reduce_max(self.inputs, axis=1, keepdims=True)
         a1 = other.inputs - tf.reduce_max(other.inputs, axis=1, keepdims=True)
         ea0 = tf.exp(a0)
@@ -86,7 +91,7 @@ class Categorical(TFActionDistribution):
             p0 * (a0 - tf.math.log(z0) - a1 + tf.math.log(z1)), axis=1)
 
     @override(TFActionDistribution)
-    def _build_sample_op(self):
+    def _build_sample_op(self) -> TensorType:
         return tf.squeeze(tf.random.categorical(self.inputs, 1), axis=1)
 
     @staticmethod
@@ -98,7 +103,8 @@ class Categorical(TFActionDistribution):
 class MultiCategorical(TFActionDistribution):
     """MultiCategorical distribution for MultiDiscrete action spaces."""
 
-    def __init__(self, inputs, model, input_lens):
+    def __init__(self, inputs: List[TensorType], model: ModelV2,
+                 input_lens: Union[List[int], np.ndarray, Tuple[int, ...]]):
         # skip TFActionDistribution init
         ActionDistribution.__init__(self, inputs, model)
         self.cats = [
@@ -109,12 +115,12 @@ class MultiCategorical(TFActionDistribution):
         self.sampled_action_logp_op = self.logp(self.sample_op)
 
     @override(ActionDistribution)
-    def deterministic_sample(self):
+    def deterministic_sample(self) -> TensorType:
         return tf.stack(
             [cat.deterministic_sample() for cat in self.cats], axis=1)
 
     @override(ActionDistribution)
-    def logp(self, actions):
+    def logp(self, actions: TensorType) -> TensorType:
         # If tensor is provided, unstack it into list.
         if isinstance(actions, tf.Tensor):
             actions = tf.unstack(tf.cast(actions, tf.int32), axis=1)
@@ -123,30 +129,32 @@ class MultiCategorical(TFActionDistribution):
         return tf.reduce_sum(logps, axis=0)
 
     @override(ActionDistribution)
-    def multi_entropy(self):
+    def multi_entropy(self) -> TensorType:
         return tf.stack([cat.entropy() for cat in self.cats], axis=1)
 
     @override(ActionDistribution)
-    def entropy(self):
+    def entropy(self) -> TensorType:
         return tf.reduce_sum(self.multi_entropy(), axis=1)
 
     @override(ActionDistribution)
-    def multi_kl(self, other):
+    def multi_kl(self, other: ActionDistribution) -> TensorType:
         return tf.stack(
             [cat.kl(oth_cat) for cat, oth_cat in zip(self.cats, other.cats)],
             axis=1)
 
     @override(ActionDistribution)
-    def kl(self, other):
+    def kl(self, other: ActionDistribution) -> TensorType:
         return tf.reduce_sum(self.multi_kl(other), axis=1)
 
     @override(TFActionDistribution)
-    def _build_sample_op(self):
+    def _build_sample_op(self) -> TensorType:
         return tf.stack([cat.sample() for cat in self.cats], axis=1)
 
     @staticmethod
     @override(ActionDistribution)
-    def required_model_output_shape(action_space, model_config):
+    def required_model_output_shape(
+            action_space: gym.Space,
+            model_config: ModelConfigDict) -> Union[int, np.ndarray]:
         return np.sum(action_space.nvec)
 
 
@@ -168,7 +176,10 @@ class GumbelSoftmax(TFActionDistribution):
     """
 
     @DeveloperAPI
-    def __init__(self, inputs, model=None, temperature=1.0):
+    def __init__(self,
+                 inputs: List[TensorType],
+                 model: ModelV2 = None,
+                 temperature: float = 1.0):
         """Initializes a GumbelSoftmax distribution.
 
         Args:
@@ -184,12 +195,12 @@ class GumbelSoftmax(TFActionDistribution):
         super().__init__(inputs, model)
 
     @override(ActionDistribution)
-    def deterministic_sample(self):
+    def deterministic_sample(self) -> TensorType:
         # Return the dist object's prob values.
         return self.probs
 
     @override(ActionDistribution)
-    def logp(self, x):
+    def logp(self, x: TensorType) -> TensorType:
         # Override since the implementation of tfp.RelaxedOneHotCategorical
         # yields positive values.
         if x.shape != self.dist.logits.shape:
@@ -204,12 +215,14 @@ class GumbelSoftmax(TFActionDistribution):
             -x * tf.nn.log_softmax(self.dist.logits, axis=-1), axis=-1)
 
     @override(TFActionDistribution)
-    def _build_sample_op(self):
+    def _build_sample_op(self) -> TensorType:
         return self.dist.sample()
 
     @staticmethod
     @override(ActionDistribution)
-    def required_model_output_shape(action_space, model_config):
+    def required_model_output_shape(
+            action_space: gym.Space,
+            model_config: ModelConfigDict) -> Union[int, np.ndarray]:
         return action_space.n
 
 
@@ -220,7 +233,7 @@ class DiagGaussian(TFActionDistribution):
     second half the gaussian standard deviations.
     """
 
-    def __init__(self, inputs, model):
+    def __init__(self, inputs: List[TensorType], model: ModelV2):
         mean, log_std = tf.split(inputs, 2, axis=1)
         self.mean = mean
         self.log_std = log_std
@@ -228,11 +241,11 @@ class DiagGaussian(TFActionDistribution):
         super().__init__(inputs, model)
 
     @override(ActionDistribution)
-    def deterministic_sample(self):
+    def deterministic_sample(self) -> TensorType:
         return self.mean
 
     @override(ActionDistribution)
-    def logp(self, x):
+    def logp(self, x: TensorType) -> TensorType:
         return -0.5 * tf.reduce_sum(
             tf.math.square((tf.cast(x, tf.float32) - self.mean) / self.std),
             axis=1
@@ -240,7 +253,7 @@ class DiagGaussian(TFActionDistribution):
             tf.reduce_sum(self.log_std, axis=1)
 
     @override(ActionDistribution)
-    def kl(self, other):
+    def kl(self, other: ActionDistribution) -> TensorType:
         assert isinstance(other, DiagGaussian)
         return tf.reduce_sum(
             other.log_std - self.log_std +
@@ -249,17 +262,19 @@ class DiagGaussian(TFActionDistribution):
             axis=1)
 
     @override(ActionDistribution)
-    def entropy(self):
+    def entropy(self) -> TensorType:
         return tf.reduce_sum(
             self.log_std + .5 * np.log(2.0 * np.pi * np.e), axis=1)
 
     @override(TFActionDistribution)
-    def _build_sample_op(self):
+    def _build_sample_op(self) -> TensorType:
         return self.mean + self.std * tf.random.normal(tf.shape(self.mean))
 
     @staticmethod
     @override(ActionDistribution)
-    def required_model_output_shape(action_space, model_config):
+    def required_model_output_shape(
+            action_space: gym.Space,
+            model_config: ModelConfigDict) -> Union[int, np.ndarray]:
         return np.prod(action_space.shape) * 2
 
 
@@ -270,7 +285,11 @@ class SquashedGaussian(TFActionDistribution):
     `low`+SMALL_NUMBER or `high`-SMALL_NUMBER respectively.
     """
 
-    def __init__(self, inputs, model, low=-1.0, high=1.0):
+    def __init__(self,
+                 inputs: List[TensorType],
+                 model: ModelV2,
+                 low: float = -1.0,
+                 high: float = 1.0):
         """Parameterizes the distribution via `inputs`.
 
         Args:
@@ -292,16 +311,16 @@ class SquashedGaussian(TFActionDistribution):
         super().__init__(inputs, model)
 
     @override(ActionDistribution)
-    def deterministic_sample(self):
+    def deterministic_sample(self) -> TensorType:
         mean = self.distr.mean()
         return self._squash(mean)
 
     @override(TFActionDistribution)
-    def _build_sample_op(self):
+    def _build_sample_op(self) -> TensorType:
         return self._squash(self.distr.sample())
 
     @override(ActionDistribution)
-    def logp(self, x):
+    def logp(self, x: TensorType) -> TensorType:
         # Unsquash values (from [low,high] to ]-inf,inf[)
         unsquashed_values = self._unsquash(x)
         # Get log prob of unsquashed values from our Normal.
@@ -316,13 +335,21 @@ class SquashedGaussian(TFActionDistribution):
             axis=-1)
         return log_prob
 
-    def _squash(self, raw_values):
+    @override(ActionDistribution)
+    def entropy(self) -> TensorType:
+        raise ValueError("Entropy not defined for SquashedGaussian!")
+
+    @override(ActionDistribution)
+    def kl(self, other: ActionDistribution) -> TensorType:
+        raise ValueError("KL not defined for SquashedGaussian!")
+
+    def _squash(self, raw_values: TensorType) -> TensorType:
         # Returned values are within [low, high] (including `low` and `high`).
         squashed = ((tf.math.tanh(raw_values) + 1.0) / 2.0) * \
             (self.high - self.low) + self.low
         return tf.clip_by_value(squashed, self.low, self.high)
 
-    def _unsquash(self, values):
+    def _unsquash(self, values: TensorType) -> TensorType:
         normed_values = (values - self.low) / (self.high - self.low) * 2.0 - \
                         1.0
         # Stabilize input to atanh.
@@ -333,7 +360,9 @@ class SquashedGaussian(TFActionDistribution):
 
     @staticmethod
     @override(ActionDistribution)
-    def required_model_output_shape(action_space, model_config):
+    def required_model_output_shape(
+            action_space: gym.Space,
+            model_config: ModelConfigDict) -> Union[int, np.ndarray]:
         return np.prod(action_space.shape) * 2
 
 
@@ -347,7 +376,11 @@ class Beta(TFActionDistribution):
         and Gamma(n) = (n - 1)!
     """
 
-    def __init__(self, inputs, model, low=0.0, high=1.0):
+    def __init__(self,
+                 inputs: List[TensorType],
+                 model: ModelV2,
+                 low: float = 0.0,
+                 high: float = 1.0):
         # Stabilize input parameters (possibly coming from a linear layer).
         inputs = tf.clip_by_value(inputs, log(SMALL_NUMBER),
                                   -log(SMALL_NUMBER))
@@ -361,29 +394,31 @@ class Beta(TFActionDistribution):
         super().__init__(inputs, model)
 
     @override(ActionDistribution)
-    def deterministic_sample(self):
+    def deterministic_sample(self) -> TensorType:
         mean = self.dist.mean()
         return self._squash(mean)
 
     @override(TFActionDistribution)
-    def _build_sample_op(self):
+    def _build_sample_op(self) -> TensorType:
         return self._squash(self.dist.sample())
 
     @override(ActionDistribution)
-    def logp(self, x):
+    def logp(self, x: TensorType) -> TensorType:
         unsquashed_values = self._unsquash(x)
         return tf.math.reduce_sum(
             self.dist.log_prob(unsquashed_values), axis=-1)
 
-    def _squash(self, raw_values):
+    def _squash(self, raw_values: TensorType) -> TensorType:
         return raw_values * (self.high - self.low) + self.low
 
-    def _unsquash(self, values):
+    def _unsquash(self, values: TensorType) -> TensorType:
         return (values - self.low) / (self.high - self.low)
 
     @staticmethod
     @override(ActionDistribution)
-    def required_model_output_shape(action_space, model_config):
+    def required_model_output_shape(
+            action_space: gym.Space,
+            model_config: ModelConfigDict) -> Union[int, np.ndarray]:
         return np.prod(action_space.shape) * 2
 
 
@@ -395,20 +430,22 @@ class Deterministic(TFActionDistribution):
     """
 
     @override(ActionDistribution)
-    def deterministic_sample(self):
+    def deterministic_sample(self) -> TensorType:
         return self.inputs
 
     @override(TFActionDistribution)
-    def logp(self, x):
+    def logp(self, x: TensorType) -> TensorType:
         return tf.zeros_like(self.inputs)
 
     @override(TFActionDistribution)
-    def _build_sample_op(self):
+    def _build_sample_op(self) -> TensorType:
         return self.inputs
 
     @staticmethod
     @override(ActionDistribution)
-    def required_model_output_shape(action_space, model_config):
+    def required_model_output_shape(
+            action_space: gym.Space,
+            model_config: ModelConfigDict) -> Union[int, np.ndarray]:
         return np.prod(action_space.shape)
 
 
@@ -503,7 +540,7 @@ class Dirichlet(TFActionDistribution):
 
     e.g. actions that represent resource allocation."""
 
-    def __init__(self, inputs, model):
+    def __init__(self, inputs: List[TensorType], model: ModelV2):
         """Input is a tensor of logits. The exponential of logits is used to
         parametrize the Dirichlet distribution as all parameters need to be
         positive. An arbitrary small epsilon is added to the concentration
@@ -513,7 +550,7 @@ class Dirichlet(TFActionDistribution):
         """
         self.epsilon = 1e-7
         concentration = tf.exp(inputs) + self.epsilon
-        self.dist = tf.distributions.Dirichlet(
+        self.dist = tf1.distributions.Dirichlet(
             concentration=concentration,
             validate_args=True,
             allow_nan_stats=False,
@@ -521,7 +558,11 @@ class Dirichlet(TFActionDistribution):
         super().__init__(concentration, model)
 
     @override(ActionDistribution)
-    def logp(self, x):
+    def deterministic_sample(self) -> TensorType:
+        return tf.nn.softmax(self.dist.concentration)
+
+    @override(ActionDistribution)
+    def logp(self, x: TensorType) -> TensorType:
         # Support of Dirichlet are positive real numbers. x is already
         # an array of positive numbers, but we clip to avoid zeros due to
         # numerical errors.
@@ -530,18 +571,20 @@ class Dirichlet(TFActionDistribution):
         return self.dist.log_prob(x)
 
     @override(ActionDistribution)
-    def entropy(self):
+    def entropy(self) -> TensorType:
         return self.dist.entropy()
 
     @override(ActionDistribution)
-    def kl(self, other):
+    def kl(self, other: ActionDistribution) -> TensorType:
         return self.dist.kl_divergence(other.dist)
 
     @override(TFActionDistribution)
-    def _build_sample_op(self):
+    def _build_sample_op(self) -> TensorType:
         return self.dist.sample()
 
     @staticmethod
     @override(ActionDistribution)
-    def required_model_output_shape(action_space, model_config):
+    def required_model_output_shape(
+            action_space: gym.Space,
+            model_config: ModelConfigDict) -> Union[int, np.ndarray]:
         return np.prod(action_space.shape)

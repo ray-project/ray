@@ -11,7 +11,8 @@ import numpy as np
 import ray
 from ray.tune import (run, Trainable, sample_from, Analysis,
                       ExperimentAnalysis, grid_search)
-from ray.tune.examples.async_hyperband_example import MyTrainableClass
+from ray.tune.utils.mock import MyTrainableClass
+from ray.tune.utils.serialization import TuneFunctionEncoder
 
 
 class ExperimentAnalysisInMemorySuite(unittest.TestCase):
@@ -54,7 +55,8 @@ class ExperimentAnalysisInMemorySuite(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.test_dir, ignore_errors=True)
 
-    def testInit(self):
+    def testInitLegacy(self):
+        """Should still work if checkpoints are not json strings"""
         experiment_checkpoint_path = os.path.join(self.test_dir,
                                                   "experiment_state.json")
         checkpoint_data = {
@@ -62,6 +64,27 @@ class ExperimentAnalysisInMemorySuite(unittest.TestCase):
                 "trainable_name": "MockTrainable",
                 "logdir": "/mock/test/MockTrainable_0_id=3_2020-07-12"
             }]
+        }
+
+        with open(experiment_checkpoint_path, "w") as f:
+            f.write(json.dumps(checkpoint_data))
+
+        experiment_analysis = ExperimentAnalysis(experiment_checkpoint_path)
+        self.assertEqual(len(experiment_analysis._checkpoints), 1)
+        self.assertTrue(experiment_analysis.trials is None)
+
+    def testInit(self):
+        experiment_checkpoint_path = os.path.join(self.test_dir,
+                                                  "experiment_state.json")
+        checkpoint_data = {
+            "checkpoints": [
+                json.dumps(
+                    {
+                        "trainable_name": "MockTrainable",
+                        "logdir": "/mock/test/MockTrainable_0_id=3_2020-07-12"
+                    },
+                    cls=TuneFunctionEncoder)
+            ]
         }
 
         with open(experiment_checkpoint_path, "w") as f:

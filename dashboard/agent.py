@@ -12,6 +12,7 @@ import traceback
 import aiohttp
 import aiohttp.web
 import aiohttp_cors
+import psutil
 from aiohttp import hdrs
 from grpc.experimental import aio as aiogrpc
 
@@ -23,7 +24,7 @@ import ray._private.services
 import ray.utils
 from ray.core.generated import agent_manager_pb2
 from ray.core.generated import agent_manager_pb2_grpc
-import psutil
+from ray.ray_logging import setup_component_logger
 
 try:
     create_task = asyncio.create_task
@@ -38,6 +39,7 @@ aiogrpc.init_grpc_aio()
 
 class DashboardAgent(object):
     def __init__(self,
+                 node_ip_address,
                  redis_address,
                  dashboard_agent_port,
                  redis_password=None,
@@ -49,6 +51,7 @@ class DashboardAgent(object):
                  raylet_name=None):
         """Initialize the DashboardAgent object."""
         # Public attributes are accessible for all agent modules.
+        self.ip = node_ip_address
         self.redis_address = dashboard_utils.address_tuple(redis_address)
         self.redis_password = redis_password
         self.temp_dir = temp_dir
@@ -59,16 +62,18 @@ class DashboardAgent(object):
         self.object_store_name = object_store_name
         self.raylet_name = raylet_name
         self.node_id = os.environ["RAY_NODE_ID"]
-        assert self.node_id, "Empty node id (RAY_NODE_ID)."
-        self.ip = ray._private.services.get_node_ip_address()
+        self.ppid = int(os.environ["RAY_RAYLET_PID"])
+        assert self.ppid > 0
+        logger.info("Parent pid is %s", self.ppid)
         self.server = aiogrpc.server(options=(("grpc.so_reuseport", 0), ))
         self.grpc_port = self.server.add_insecure_port(
             f"[::]:{self.dashboard_agent_port}")
         logger.info("Dashboard agent grpc address: %s:%s", self.ip,
                     self.grpc_port)
         self.aioredis_client = None
-        self.aiogrpc_raylet_channel = aiogrpc.insecure_channel("{}:{}".format(
-            self.ip, self.node_manager_port))
+        options = (("grpc.enable_http_proxy", 0), )
+        self.aiogrpc_raylet_channel = aiogrpc.insecure_channel(
+            f"{self.ip}:{self.node_manager_port}", options=options)
         self.http_session = None
 
     def _load_modules(self):
@@ -87,17 +92,21 @@ class DashboardAgent(object):
 
     async def run(self):
         async def _check_parent():
-            """Check if raylet is dead."""
-            curr_proc = psutil.Process()
-            while True:
-                parent = curr_proc.parent()
-                if parent is None or parent.pid == 1:
-                    logger.error("raylet is dead, agent will die because "
-                                 "it fate-shares with raylet.")
-                    sys.exit(0)
-                await asyncio.sleep(
-                    dashboard_consts.
-                    DASHBOARD_AGENT_CHECK_PARENT_INTERVAL_SECONDS)
+            """Check if raylet is dead and fate-share if it is."""
+            try:
+                curr_proc = psutil.Process()
+                while True:
+                    parent = curr_proc.parent()
+                    if (parent is None or parent.pid == 1
+                            or self.ppid != parent.pid):
+                        logger.error("Raylet is dead, exiting.")
+                        sys.exit(0)
+                    await asyncio.sleep(
+                        dashboard_consts.
+                        DASHBOARD_AGENT_CHECK_PARENT_INTERVAL_SECONDS)
+            except Exception:
+                logger.error("Failed to check parent PID, exiting.")
+                sys.exit(1)
 
         check_parent_task = create_task(_check_parent())
 
@@ -181,6 +190,11 @@ class DashboardAgent(object):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Dashboard agent.")
     parser.add_argument(
+        "--node-ip-address",
+        required=True,
+        type=str,
+        help="the IP address of this node.")
+    parser.add_argument(
         "--redis-address",
         required=True,
         type=str,
@@ -243,17 +257,17 @@ if __name__ == "__main__":
         "--logging-rotate-bytes",
         required=False,
         type=int,
-        default=dashboard_consts.LOGGING_ROTATE_BYTES,
+        default=ray_constants.LOGGING_ROTATE_BYTES,
         help="Specify the max bytes for rotating "
         "log file, default is {} bytes.".format(
-            dashboard_consts.LOGGING_ROTATE_BYTES))
+            ray_constants.LOGGING_ROTATE_BYTES))
     parser.add_argument(
         "--logging-rotate-backup-count",
         required=False,
         type=int,
-        default=dashboard_consts.LOGGING_ROTATE_BACKUP_COUNT,
+        default=ray_constants.LOGGING_ROTATE_BACKUP_COUNT,
         help="Specify the backup count of rotated log file, default is {}.".
-        format(dashboard_consts.LOGGING_ROTATE_BACKUP_COUNT))
+        format(ray_constants.LOGGING_ROTATE_BACKUP_COUNT))
     parser.add_argument(
         "--log-dir",
         required=True,
@@ -269,21 +283,16 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
     try:
-        if args.logging_filename:
-            logging_handlers = [
-                logging.handlers.RotatingFileHandler(
-                    os.path.join(args.log_dir, args.logging_filename),
-                    maxBytes=args.logging_rotate_bytes,
-                    backupCount=args.logging_rotate_backup_count)
-            ]
-        else:
-            logging_handlers = None
-        logging.basicConfig(
-            level=args.logging_level,
-            format=args.logging_format,
-            handlers=logging_handlers)
+        setup_component_logger(
+            logging_level=args.logging_level,
+            logging_format=args.logging_format,
+            log_dir=args.log_dir,
+            filename=args.logging_filename,
+            max_bytes=args.logging_rotate_bytes,
+            backup_count=args.logging_rotate_backup_count)
 
         agent = DashboardAgent(
+            args.node_ip_address,
             args.redis_address,
             args.dashboard_agent_port,
             redis_password=args.redis_password,
@@ -305,4 +314,5 @@ if __name__ == "__main__":
                    "error:\n{}".format(platform.uname()[1], traceback_str))
         ray.utils.push_error_to_driver_through_redis(
             redis_client, ray_constants.DASHBOARD_AGENT_DIED_ERROR, message)
+        logger.exception(message)
         raise e

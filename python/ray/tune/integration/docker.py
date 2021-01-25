@@ -2,9 +2,10 @@ import os
 from typing import Optional, Tuple
 
 from ray import services
-from ray.autoscaler.sdk import rsync
+from ray.autoscaler.sdk import rsync, configure_logging
 from ray.tune.syncer import NodeSyncer
 from ray.tune.sync_client import SyncClient
+from ray.tune.utils import env_integer
 
 
 class DockerSyncer(NodeSyncer):
@@ -12,6 +13,9 @@ class DockerSyncer(NodeSyncer):
     This syncer extends the node syncer, but is usually instantiated
     without a custom sync client. The sync client defaults to
     ``DockerSyncClient`` instead.
+
+    Set the env var `TUNE_SYNCER_VERBOSITY` to increase verbosity
+    of syncing operations (0, 1, 2, 3). Defaults to 0.
 
     .. note::
         This syncer only works with the Ray cluster launcher.
@@ -35,6 +39,9 @@ class DockerSyncer(NodeSyncer):
                  local_dir: str,
                  remote_dir: str,
                  sync_client: Optional[SyncClient] = None):
+        configure_logging(
+            log_style="record",
+            verbosity=env_integer("TUNE_SYNCER_VERBOSITY", 0))
         self.local_ip = services.get_node_ip_address()
         self.worker_ip = None
 

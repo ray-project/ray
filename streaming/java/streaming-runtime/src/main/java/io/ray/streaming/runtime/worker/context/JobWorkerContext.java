@@ -13,24 +13,16 @@ import io.ray.streaming.runtime.python.GraphPbBuilder;
 import java.io.Serializable;
 import java.util.Map;
 
-/**
- * Job worker context of java type.
- */
+/** Job worker context of java type. */
 public class JobWorkerContext implements Serializable {
 
-  /**
-   * JobMaster actor.
-   */
+  /** JobMaster actor. */
   private ActorHandle<JobMaster> master;
 
-  /**
-   * Worker's vertex info.
-   */
+  /** Worker's vertex info. */
   private ExecutionVertex executionVertex;
 
-  public JobWorkerContext(
-      ActorHandle<JobMaster> master,
-      ExecutionVertex executionVertex) {
+  public JobWorkerContext(ActorHandle<JobMaster> master, ExecutionVertex executionVertex) {
     this.master = master;
     this.executionVertex = executionVertex;
   }
@@ -81,14 +73,13 @@ public class JobWorkerContext implements Serializable {
     RemoteCall.ExecutionVertexContext executionVertexContext =
         new GraphPbBuilder().buildExecutionVertexContext(executionVertex);
 
-    byte[] contextBytes = RemoteCall.PythonJobWorkerContext.newBuilder()
-        .setMasterActor(
-            ByteString.copyFrom((((NativeActorHandle) (master)).toBytes())))
-        .setExecutionVertexContext(executionVertexContext)
-        .build()
-        .toByteArray();
+    byte[] contextBytes =
+        RemoteCall.PythonJobWorkerContext.newBuilder()
+            .setMasterActor(ByteString.copyFrom((((NativeActorHandle) (master)).toBytes())))
+            .setExecutionVertexContext(executionVertexContext)
+            .build()
+            .toByteArray();
 
     return contextBytes;
   }
-
 }

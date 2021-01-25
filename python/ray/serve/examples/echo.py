@@ -9,8 +9,8 @@ import requests
 from ray import serve
 
 
-def echo(flask_request):
-    return ["hello " + flask_request.args.get("name", "serve!")]
+def echo(starlette_request):
+    return ["hello " + starlette_request.query_params.get("name", "serve!")]
 
 
 client = serve.start()

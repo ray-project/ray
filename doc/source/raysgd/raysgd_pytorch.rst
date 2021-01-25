@@ -1,3 +1,5 @@
+.. _torch-guide:
+
 Distributed PyTorch
 ===================
 
@@ -466,7 +468,6 @@ After connecting, you can scale up the number of workers seamlessly across multi
     )
     trainer.train()
     model = trainer.get_model()
-
 
 Advanced: Fault Tolerance
 -------------------------

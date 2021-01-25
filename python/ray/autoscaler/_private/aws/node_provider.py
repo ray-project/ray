@@ -52,7 +52,8 @@ def make_ec2_client(region, max_retries, aws_credentials=None):
         "ec2", region_name=region, config=config, **aws_credentials)
 
 
-def list_ec2_instances(region: str) -> List[Dict[str, Any]]:
+def list_ec2_instances(region: str, aws_credentials: Dict[str, Any] = None
+                       ) -> List[Dict[str, Any]]:
     """Get all instance-types/resources available in the user's AWS region.
     Args:
         region (str): the region of the AWS provider. e.g., "us-west-2".
@@ -68,13 +69,15 @@ def list_ec2_instances(region: str) -> List[Dict[str, Any]]:
 
     """
     final_instance_types = []
-    instance_types = boto3.client(
-        "ec2", region_name=region).describe_instance_types()
+    config = Config(retries={"max_attempts": BOTO_MAX_RETRIES})
+    aws_credentials = aws_credentials or {}
+    ec2 = boto3.client(
+        "ec2", region_name=region, config=config, **aws_credentials)
+    instance_types = ec2.describe_instance_types()
     final_instance_types.extend(copy.deepcopy(instance_types["InstanceTypes"]))
     while "NextToken" in instance_types:
-        instance_types = boto3.client(
-            "ec2", region_name=region).describe_instance_types(
-                NextToken=instance_types["NextToken"])
+        instance_types = ec2.describe_instance_types(
+            NextToken=instance_types["NextToken"])
         final_instance_types.extend(
             copy.deepcopy(instance_types["InstanceTypes"]))
 
@@ -236,8 +239,15 @@ class AWSNodeProvider(NodeProvider):
                     }],
                 )
 
-    def create_node(self, node_config, tags, count):
+    def create_node(self, node_config, tags, count) -> Dict[str, Any]:
+        """Creates instances.
+
+        Returns dict mapping instance id to ec2.Instance object for the created
+        instances.
+        """
         tags = copy.deepcopy(tags)
+
+        reused_nodes_dict = {}
         # Try to reuse previously stopped nodes with compatible configs
         if self.cache_stopped_nodes:
             # TODO(ekl) this is breaking the abstraction boundary a little by
@@ -270,6 +280,7 @@ class AWSNodeProvider(NodeProvider):
             reuse_nodes = list(
                 self.ec2.instances.filter(Filters=filters))[:count]
             reuse_node_ids = [n.id for n in reuse_nodes]
+            reused_nodes_dict = {n.id: n for n in reuse_nodes}
             if reuse_nodes:
                 cli_logger.print(
                     # todo: handle plural vs singular?
@@ -295,18 +306,19 @@ class AWSNodeProvider(NodeProvider):
                     self.set_node_tags(node_id, tags)
                 count -= len(reuse_node_ids)
 
+        created_nodes_dict = {}
         if count:
-            self._create_node(node_config, tags, count)
+            created_nodes_dict = self._create_node(node_config, tags, count)
+
+        all_created_nodes = reused_nodes_dict
+        all_created_nodes.update(created_nodes_dict)
+        return all_created_nodes
 
     def _create_node(self, node_config, tags, count):
+        created_nodes_dict = {}
+
         tags = to_aws_format(tags)
         conf = node_config.copy()
-
-        # Delete unsupported keys from the node config
-        try:
-            del conf["Resources"]
-        except KeyError:
-            pass
 
         tag_pairs = [{
             "Key": TAG_RAY_CLUSTER_NAME,
@@ -356,6 +368,7 @@ class AWSNodeProvider(NodeProvider):
                     "TagSpecifications": tag_specs
                 })
                 created = self.ec2_fail_fast.create_instances(**conf)
+                created_nodes_dict = {n.id: n for n in created}
 
                 # todo: timed?
                 # todo: handle plurality?
@@ -393,6 +406,7 @@ class AWSNodeProvider(NodeProvider):
                     cli_logger.print(
                         "create_instances: Attempt failed with {}, retrying.",
                         exc)
+        return created_nodes_dict
 
     def terminate_node(self, node_id):
         node = self._get_cached_node(node_id)
@@ -486,7 +500,8 @@ class AWSNodeProvider(NodeProvider):
         cluster_config = copy.deepcopy(cluster_config)
 
         instances_list = list_ec2_instances(
-            cluster_config["provider"]["region"])
+            cluster_config["provider"]["region"],
+            cluster_config["provider"].get("aws_credentials"))
         instances_dict = {
             instance["InstanceType"]: instance
             for instance in instances_list
@@ -515,8 +530,8 @@ class AWSNodeProvider(NodeProvider):
                         available_node_types[node_type].get("resources", {}):
                     available_node_types[node_type][
                         "resources"] = autodetected_resources
-                    cli_logger.print("Updating the resources of {} to {}.",
-                                     node_type, autodetected_resources)
+                    logger.debug("Updating the resources of {} to {}.".format(
+                        node_type, autodetected_resources))
             else:
                 raise ValueError("Instance type " + instance_type +
                                  " is not available in AWS region: " +

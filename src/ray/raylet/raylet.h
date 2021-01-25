@@ -76,6 +76,9 @@ class Raylet {
 
   friend class TestObjectManagerIntegration;
 
+  // Main event loop.
+  boost::asio::io_service &main_service_;
+
   /// ID of this node.
   NodeID self_node_id_;
   /// Information of this node.

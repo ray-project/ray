@@ -1,7 +1,6 @@
 import logging
 
 import ray
-from ray.rllib.agents.a3c.a3c_tf_policy import A3CTFPolicy
 from ray.rllib.agents.impala.vtrace_tf_policy import VTraceTFPolicy
 from ray.rllib.agents.trainer import Trainer, with_common_config
 from ray.rllib.agents.trainer_template import build_trainer
@@ -160,6 +159,7 @@ def get_policy_class(config):
         if config["vtrace"]:
             return VTraceTFPolicy
         else:
+            from ray.rllib.agents.a3c.a3c_tf_policy import A3CTFPolicy
             return A3CTFPolicy
 
 
@@ -221,7 +221,10 @@ def gather_experiences_directly(workers, config):
             replay_proportion=config["replay_proportion"])) \
         .flatten() \
         .combine(
-            ConcatBatches(min_batch_size=config["train_batch_size"]))
+            ConcatBatches(
+                min_batch_size=config["train_batch_size"],
+                count_steps_by=config["multiagent"]["count_steps_by"],
+            ))
 
     return train_batches
 

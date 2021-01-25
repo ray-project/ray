@@ -12,14 +12,14 @@ class TaskCaller {
   TaskCaller();
 
   TaskCaller(RayRuntime *runtime, RemoteFunctionPtrHolder ptr,
-             std::shared_ptr<msgpack::sbuffer> args);
+             std::vector<std::unique_ptr<::ray::TaskArg>> &&args);
 
   ObjectRef<ReturnType> Remote();
 
  private:
   RayRuntime *runtime_;
   RemoteFunctionPtrHolder ptr_;
-  std::shared_ptr<msgpack::sbuffer> args_;
+  std::vector<std::unique_ptr<::ray::TaskArg>> args_;
 };
 
 // ---------- implementation ----------
@@ -29,8 +29,8 @@ TaskCaller<ReturnType>::TaskCaller() {}
 
 template <typename ReturnType>
 TaskCaller<ReturnType>::TaskCaller(RayRuntime *runtime, RemoteFunctionPtrHolder ptr,
-                                   std::shared_ptr<msgpack::sbuffer> args)
-    : runtime_(runtime), ptr_(ptr), args_(args) {}
+                                   std::vector<std::unique_ptr<::ray::TaskArg>> &&args)
+    : runtime_(runtime), ptr_(ptr), args_(std::move(args)) {}
 
 template <typename ReturnType>
 ObjectRef<ReturnType> TaskCaller<ReturnType>::Remote() {

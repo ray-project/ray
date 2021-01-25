@@ -1,4 +1,5 @@
-from typing import Sequence
+from typing import Callable, Dict, Sequence, Union
+import json
 
 import ray.cloudpickle as cloudpickle
 from collections import deque
@@ -15,10 +16,11 @@ from ray.tune.checkpoint_manager import Checkpoint, CheckpointManager
 # NOTE(rkn): We import ray.tune.registry here instead of importing the names we
 # need because there are cyclic imports that may cause specific names to not
 # have been defined yet. See https://github.com/ray-project/ray/issues/1716.
-from ray.tune.logger import pretty_print
 from ray.tune.registry import get_trainable_cls, validate_trainable
 from ray.tune.result import DEFAULT_RESULTS_DIR, DONE, TRAINING_ITERATION
-from ray.tune.resources import Resources, json_to_resources, resources_to_json
+from ray.tune.resources import PlacementGroupFactory, Resources, \
+    json_to_resources, resources_to_json
+from ray.tune.utils.serialization import TuneFunctionEncoder
 from ray.tune.utils.trainable import TrainableUtil
 from ray.tune.utils import date_str, flatten_dict
 from ray.utils import binary_to_hex, hex_to_binary
@@ -178,6 +180,7 @@ class Trial:
                  evaluated_params=None,
                  experiment_tag="",
                  resources=None,
+                 placement_group_factory=None,
                  stopping_criterion=None,
                  remote_checkpoint_dir=None,
                  checkpoint_freq=0,
@@ -220,6 +223,12 @@ class Trial:
                 resources = default_resources
         self.location = Location()
         self.resources = resources or Resources(cpu=1, gpu=0)
+        self.placement_group_factory = placement_group_factory
+        if self.placement_group_factory:
+            resource_kwargs = self.resources._asdict()
+            resource_kwargs["has_placement_group"] = True
+            self.resources = Resources(**resource_kwargs)
+
         self.stopping_criterion = stopping_criterion or {}
 
         self.log_to_file = log_to_file
@@ -228,7 +237,6 @@ class Trial:
            or not len(self.log_to_file) == 2:
             self.log_to_file = (None, None)
 
-        self.verbose = True
         self.max_failures = max_failures
 
         # Local trial state that is updated during the run
@@ -296,6 +304,9 @@ class Trial:
                 raise ValueError(f"Trial dirname must not contain '/'. "
                                  "Got {self.custom_dirname}")
 
+        self._state_json = None
+        self._state_valid = False
+
     @property
     def node_ip(self):
         return self.location.hostname
@@ -327,6 +338,10 @@ class Trial:
         logdir_name = os.path.basename(self.logdir)
         return os.path.join(self.remote_checkpoint_dir_prefix, logdir_name)
 
+    @property
+    def uses_placement_groups(self):
+        return bool(self.placement_group_factory)
+
     def reset(self):
         return Trial(
             self.trainable_name,
@@ -336,6 +351,7 @@ class Trial:
             evaluated_params=self.evaluated_params,
             experiment_tag=self.experiment_tag,
             resources=self.resources,
+            placement_group_factory=self.placement_group_factory,
             stopping_criterion=self.stopping_criterion,
             remote_checkpoint_dir=self.remote_checkpoint_dir,
             checkpoint_freq=self.checkpoint_freq,
@@ -357,8 +373,10 @@ class Trial:
                                         self.local_dir)
         else:
             os.makedirs(self.logdir, exist_ok=True)
+        self.invalidate_json_state()
 
-    def update_resources(self, cpu, gpu, **kwargs):
+    def update_resources(
+            self, resources: Union[Dict, Callable, PlacementGroupFactory]):
         """EXPERIMENTAL: Updates the resource requirements.
 
         Should only be called when the trial is not running.
@@ -368,16 +386,34 @@ class Trial:
         """
         if self.status is Trial.RUNNING:
             raise ValueError("Cannot update resources while Trial is running.")
-        self.resources = Resources(cpu, gpu, **kwargs)
+        if isinstance(resources, PlacementGroupFactory):
+            self.placement_group_factory = resources
+        elif callable(resources):
+            self.placement_group_factory = PlacementGroupFactory(resources)
+        else:
+            self.resources = Resources(**resources)
+            self.placement_group_factory = None
+
+        if self.placement_group_factory and \
+           not self.resources.has_placement_group:
+            resource_kwargs = self.resources._asdict()
+            resource_kwargs["has_placement_group"] = True
+            self.resources = Resources(**resource_kwargs)
+
+        self.invalidate_json_state()
 
     def set_runner(self, runner):
         self.runner = runner
         self.checkpoint_manager.delete = checkpoint_deleter(
             self._trainable_name(), runner)
+        # No need to invalidate state cache: runner is not stored in json
+        # self.invalidate_json_state()
 
     def set_location(self, location):
         """Sets the location of the trial."""
         self.location = location
+        # No need to invalidate state cache: location is not stored in json
+        # self.invalidate_json_state()
 
     def set_status(self, status):
         """Sets the status of the trial."""
@@ -385,6 +421,15 @@ class Trial:
         if status == Trial.RUNNING:
             if self.start_time is None:
                 self.start_time = time.time()
+        self.invalidate_json_state()
+
+    def set_config(self, config):
+        self.config = config
+        self.invalidate_json_state()
+
+    def set_experiment_tag(self, experiment_tag):
+        self.experiment_tag = experiment_tag
+        self.invalidate_json_state()
 
     def write_error_log(self, error_msg):
         if error_msg and self.logdir:
@@ -395,6 +440,7 @@ class Trial:
                     self.num_failures, date_str()))
                 f.write(error_msg + "\n")
             self.error_msg = error_msg
+        self.invalidate_json_state()
 
     def should_stop(self, result):
         """Whether the given result meets this trial's stopping criteria."""
@@ -428,6 +474,7 @@ class Trial:
     def clear_checkpoint(self):
         self.checkpoint.value = None
         self.restoring_from = None
+        self.invalidate_json_state()
 
     def on_checkpoint(self, checkpoint):
         """Hook for handling checkpoints taken by the Trainable.
@@ -436,12 +483,14 @@ class Trial:
             checkpoint (Checkpoint): Checkpoint taken.
         """
         self.checkpoint_manager.on_checkpoint(checkpoint)
+        self.invalidate_json_state()
 
     def on_restore(self):
         """Handles restoration completion."""
         assert self.is_restoring
         self.last_result = self.restoring_from.result
         self.restoring_from = None
+        self.invalidate_json_state()
 
     def should_recover(self):
         """Returns whether the trial qualifies for retrying.
@@ -456,11 +505,7 @@ class Trial:
     def update_last_result(self, result, terminate=False):
         if self.experiment_tag:
             result.update(experiment_tag=self.experiment_tag)
-        if self.verbose and (terminate or time.time() - self.last_debug >
-                             DEBUG_PRINT_INTERVAL):
-            print("Result for {}:".format(self))
-            print("  {}".format(pretty_print(result).replace("\n", "\n  ")))
-            self.last_debug = time.time()
+
         self.set_location(Location(result.get("node_ip"), result.get("pid")))
         self.last_result = result
         self.last_update_time = time.time()
@@ -498,12 +543,10 @@ class Trial:
                         self.metric_analysis[metric][key] = sum(
                             self.metric_n_steps[metric][str(n)]) / len(
                                 self.metric_n_steps[metric][str(n)])
+        self.invalidate_json_state()
 
     def get_trainable_cls(self):
         return get_trainable_cls(self.trainable_name)
-
-    def set_verbose(self, verbose):
-        self.verbose = verbose
 
     def is_finished(self):
         return self.status in [Trial.ERROR, Trial.TERMINATED]
@@ -550,6 +593,17 @@ class Trial:
             generated_dirname += f"_{date_str()}"
         return generated_dirname.replace("/", "_")
 
+    def invalidate_json_state(self):
+        self._state_valid = False
+
+    def get_json_state(self) -> str:
+        if not self._state_json or not self._state_valid:
+            json_state = json.dumps(
+                self.__getstate__(), indent=2, cls=TuneFunctionEncoder)
+            self._state_json = json_state
+            self._state_valid = True
+        return self._state_json
+
     def __getstate__(self):
         """Memento generator for Trial.
 
@@ -567,8 +621,11 @@ class Trial:
         state["runner"] = None
         state["location"] = Location()
         # Avoid waiting for events that will never occur on resume.
-        state["resuming_from"] = None
+        state["restoring_from"] = None
         state["saving_to"] = None
+
+        state["_state_json"] = None
+        state["_state_valid"] = False
 
         return copy.deepcopy(state)
 

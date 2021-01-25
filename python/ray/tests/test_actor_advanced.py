@@ -12,8 +12,9 @@ import ray
 import ray.test_utils
 import ray.cluster_utils
 from ray.test_utils import (run_string_as_driver, get_non_head_nodes,
-                            wait_for_condition, new_scheduler_enabled)
+                            wait_for_condition)
 from ray.experimental.internal_kv import _internal_kv_get, _internal_kv_put
+from ray._raylet import GlobalStateAccessor
 
 
 def test_remote_functions_not_scheduled_on_actors(ray_start_regular):
@@ -91,7 +92,6 @@ def test_actor_load_balancing(ray_start_cluster):
     ray.get(results)
 
 
-@pytest.mark.skipif(new_scheduler_enabled(), reason="multi node broken")
 def test_actor_lifetime_load_balancing(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=0)
@@ -944,7 +944,6 @@ def test_actor_creation_task_crash(ray_start_regular):
         }
     }],
     indirect=True)
-@pytest.mark.skipif(new_scheduler_enabled(), reason="todo hangs")
 def test_pending_actor_removed_by_owner(ray_start_regular):
     # Verify when an owner of pending actors is killed, the actor resources
     # are correctly returned.
@@ -1034,6 +1033,67 @@ def test_kill(ray_start_regular_shared):
         ray.kill("not_an_actor_handle")
 
 
+def test_get_actor_no_input(ray_start_regular_shared):
+    for bad_name in [None, "", "    "]:
+        with pytest.raises(ValueError):
+            ray.get_actor(bad_name)
+
+
+def test_actor_resource_demand(shutdown_only):
+    ray.shutdown()
+    cluster = ray.init(num_cpus=3)
+    global_state_accessor = GlobalStateAccessor(
+        cluster["redis_address"], ray.ray_constants.REDIS_DEFAULT_PASSWORD)
+    global_state_accessor.connect()
+
+    @ray.remote(num_cpus=2)
+    class Actor:
+        def foo(self):
+            return "ok"
+
+    a = Actor.remote()
+    ray.get(a.foo.remote())
+    time.sleep(1)
+
+    message = global_state_accessor.get_all_resource_usage()
+    resource_usages = ray.gcs_utils.ResourceUsageBatchData.FromString(message)
+
+    # The actor is scheduled so there should be no more demands left.
+    assert len(resource_usages.resource_load_by_shape.resource_demands) == 0
+
+    @ray.remote(num_cpus=80)
+    class Actor2:
+        pass
+
+    actors = []
+    actors.append(Actor2.remote())
+    time.sleep(1)
+
+    # This actor cannot be scheduled.
+    message = global_state_accessor.get_all_resource_usage()
+    resource_usages = ray.gcs_utils.ResourceUsageBatchData.FromString(message)
+    assert len(resource_usages.resource_load_by_shape.resource_demands) == 1
+    assert (
+        resource_usages.resource_load_by_shape.resource_demands[0].shape == {
+            "CPU": 80.0
+        })
+    assert (resource_usages.resource_load_by_shape.resource_demands[0]
+            .num_infeasible_requests_queued == 1)
+
+    actors.append(Actor2.remote())
+    time.sleep(1)
+
+    # Two actors cannot be scheduled.
+    message = global_state_accessor.get_all_resource_usage()
+    resource_usages = ray.gcs_utils.ResourceUsageBatchData.FromString(message)
+    assert len(resource_usages.resource_load_by_shape.resource_demands) == 1
+    assert (resource_usages.resource_load_by_shape.resource_demands[0]
+            .num_infeasible_requests_queued == 2)
+
+    global_state_accessor.disconnect()
+
+
 if __name__ == "__main__":
     import pytest
+    # Test suite is timing out. Disable on windows for now.
     sys.exit(pytest.main(["-v", __file__]))

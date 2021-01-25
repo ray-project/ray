@@ -8,13 +8,15 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-/**
- * A utils class for Placement Group test.
- */
+/** A utils class for placement group test. */
 public class PlacementGroupTestUtils {
 
-  public static PlacementGroup createSpecifiedSimpleGroup(String resourceName, int bundleSize,
-      PlacementStrategy strategy, Double resourceSize) {
+  public static PlacementGroup createNameSpecifiedSimpleGroup(
+      String resourceName,
+      int bundleSize,
+      PlacementStrategy strategy,
+      Double resourceSize,
+      String groupName) {
     List<Map<String, Double>> bundles = new ArrayList<>();
 
     for (int i = 0; i < bundleSize; i++) {
@@ -23,7 +25,13 @@ public class PlacementGroupTestUtils {
       bundles.add(bundle);
     }
 
-    return Ray.createPlacementGroup(bundles, strategy);
+    return Ray.createPlacementGroup(groupName, bundles, strategy);
+  }
+
+  public static PlacementGroup createSpecifiedSimpleGroup(
+      String resourceName, int bundleSize, PlacementStrategy strategy, Double resourceSize) {
+    return createNameSpecifiedSimpleGroup(
+        resourceName, bundleSize, strategy, resourceSize, "unnamed_group");
   }
 
   public static PlacementGroup createSimpleGroup() {
@@ -37,5 +45,4 @@ public class PlacementGroupTestUtils {
   public static void createBundleResourceInvalidGroup() {
     createSpecifiedSimpleGroup("CPU", 1, PlacementStrategy.PACK, 0.0);
   }
-
 }

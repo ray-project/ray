@@ -1,6 +1,7 @@
 import inspect
 import logging
 import weakref
+import _thread
 
 import ray.ray_constants as ray_constants
 import ray._raylet
@@ -11,11 +12,18 @@ from ray.util.placement_group import (
 
 from ray import ActorClassID, Language
 from ray._raylet import PythonFunctionDescriptor
+from ray._private.client_mode_hook import client_mode_hook
 from ray import cross_language
+from ray.util.inspect import (
+    is_function_or_method,
+    is_class_method,
+    is_static_method,
+)
 
 logger = logging.getLogger(__name__)
 
 
+@client_mode_hook
 def method(*args, **kwargs):
     """Annotate an actor method.
 
@@ -172,7 +180,7 @@ class ActorClassMethodMetadata(object):
             each actor method.
     """
 
-    _cache = {}  # This cache will be cleared in ray.disconnect()
+    _cache = {}  # This cache will be cleared in ray.worker.disconnect()
 
     def __init__(self):
         class_name = type(self).__name__
@@ -195,7 +203,7 @@ class ActorClassMethodMetadata(object):
         self = cls.__new__(cls)
 
         actor_methods = inspect.getmembers(modified_class,
-                                           ray.utils.is_function_or_method)
+                                           is_function_or_method)
         self.methods = dict(actor_methods)
 
         # Extract the signatures of each of the methods. This will be used
@@ -208,9 +216,8 @@ class ActorClassMethodMetadata(object):
             # Whether or not this method requires binding of its first
             # argument. For class and static methods, we do not want to bind
             # the first argument, but we do for instance methods
-            is_bound = (ray.utils.is_class_method(method)
-                        or ray.utils.is_static_method(modified_class,
-                                                      method_name))
+            is_bound = (is_class_method(method)
+                        or is_static_method(modified_class, method_name))
 
             # Print a warning message if the method signature is not
             # supported. We don't raise an exception because if the actor
@@ -956,7 +963,7 @@ def modify_class(cls):
     Class.__module__ = cls.__module__
     Class.__name__ = cls.__name__
 
-    if not ray.utils.is_function_or_method(getattr(Class, "__init__", None)):
+    if not is_function_or_method(getattr(Class, "__init__", None)):
         # Add __init__ if it does not exist.
         # Actor creation will be executed with __init__ together.
 
@@ -1002,6 +1009,7 @@ def exit_actor():
     """Intentionally exit the current actor.
 
     This function is used to disconnect an actor and exit the worker.
+    Any ``atexit`` handlers installed in the actor will be run.
 
     Raises:
         Exception: An exception is raised if this is a driver or this
@@ -1011,9 +1019,17 @@ def exit_actor():
     if worker.mode == ray.WORKER_MODE and not worker.actor_id.is_nil():
         # Intentionally disconnect the core worker from the raylet so the
         # raylet won't push an error message to the driver.
-        ray.disconnect()
+        ray.worker.disconnect()
         # Disconnect global state from GCS.
         ray.state.state.disconnect()
+
+        # In asyncio actor mode, we can't raise SystemExit because it will just
+        # quit the asycnio event loop thread, not the main thread. Instead, we
+        # raise an interrupt signal to the main thread to tell it to exit.
+        if worker.core_worker.current_actor_is_asyncio():
+            _thread.interrupt_main()
+            return
+
         # Set a flag to indicate this is an intentional actor exit. This
         # reduces log verbosity.
         exit = SystemExit(0)

@@ -25,16 +25,24 @@ import yaml
 import ray
 from ray.tune import run_experiments
 from ray.rllib import _register_all
+from ray.rllib.utils.deprecation import deprecation_warning
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
-    "--torch",
-    action="store_true",
-    help="Runs all tests with PyTorch enabled.")
+    "--framework",
+    choices=["jax", "tf2", "tf", "tfe", "torch"],
+    default="tf",
+    help="The deep learning framework to use.")
 parser.add_argument(
     "--yaml-dir",
     type=str,
     help="The directory in which to find all yamls to test.")
+
+# Obsoleted arg, use --framework=torch instead.
+parser.add_argument(
+    "--torch",
+    action="store_true",
+    help="Runs all tests with PyTorch enabled.")
 
 if __name__ == "__main__":
     args = parser.parse_args()
@@ -69,8 +77,11 @@ if __name__ == "__main__":
 
         # Add torch option to exp configs.
         for exp in experiments.values():
+            exp["config"]["framework"] = args.framework
             if args.torch:
+                deprecation_warning(old="--torch", new="--framework=torch")
                 exp["config"]["framework"] = "torch"
+                args.framework = "torch"
 
         # Print out the actual config.
         print("== Test config ==")
@@ -82,7 +93,7 @@ if __name__ == "__main__":
         for i in range(3):
             try:
                 ray.init(num_cpus=5)
-                trials = run_experiments(experiments, resume=False, verbose=1)
+                trials = run_experiments(experiments, resume=False, verbose=2)
             finally:
                 ray.shutdown()
                 _register_all()
@@ -97,7 +108,7 @@ if __name__ == "__main__":
                 print("Regression test PASSED")
                 break
             else:
-                print("Regression test FAILED on attempt {}", i + 1)
+                print("Regression test FAILED on attempt {}".format(i + 1))
 
         if not passed:
             print("Overall regression FAILED: Exiting with Error.")

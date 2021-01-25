@@ -18,20 +18,36 @@ import org.testng.Assert;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
-/**
- * Tests for {@link FunctionManager}
- */
+/** Tests for {@link FunctionManager} */
 public class FunctionManagerTest {
 
   public static Object foo() {
     return null;
   }
 
-  public static class Bar {
+  public static class ParentClass {
 
-    public Bar() {
+    public Object foo() {
+      return null;
     }
 
+    public Object bar() {
+      return null;
+    }
+  }
+
+  public interface ChildClassInterface {
+
+    default String interfaceName() {
+      return getClass().getName();
+    }
+  }
+
+  public static class ChildClass extends ParentClass implements ChildClassInterface {
+
+    public ChildClass() {}
+
+    @Override
     public Object bar() {
       return null;
     }
@@ -46,30 +62,33 @@ public class FunctionManagerTest {
   }
 
   private static RayFunc0<Object> fooFunc;
-  private static RayFunc1<Bar, Object> barFunc;
-  private static RayFunc0<Bar> barConstructor;
+  private static RayFunc1<ChildClass, Object> childClassBarFunc;
+  private static RayFunc0<ChildClass> childClassConstructor;
   private static JavaFunctionDescriptor fooDescriptor;
-  private static JavaFunctionDescriptor barDescriptor;
-  private static JavaFunctionDescriptor barConstructorDescriptor;
+  private static JavaFunctionDescriptor childClassBarDescriptor;
+  private static JavaFunctionDescriptor childClassConstructorDescriptor;
   private static JavaFunctionDescriptor overloadFunctionDescriptorInt;
   private static JavaFunctionDescriptor overloadFunctionDescriptorDouble;
 
   @BeforeClass
   public static void beforeClass() {
     fooFunc = FunctionManagerTest::foo;
-    barConstructor = Bar::new;
-    barFunc = Bar::bar;
-    fooDescriptor = new JavaFunctionDescriptor(FunctionManagerTest.class.getName(), "foo",
-        "()Ljava/lang/Object;");
-    barDescriptor = new JavaFunctionDescriptor(Bar.class.getName(), "bar",
-        "()Ljava/lang/Object;");
-    barConstructorDescriptor = new JavaFunctionDescriptor(Bar.class.getName(),
-        FunctionManager.CONSTRUCTOR_NAME,
-        "()V");
-    overloadFunctionDescriptorInt = new JavaFunctionDescriptor(FunctionManagerTest.class.getName(),
-        "overloadFunction", "(I)Ljava/lang/Object;");
-    overloadFunctionDescriptorDouble = new JavaFunctionDescriptor(FunctionManagerTest.class.getName(),
-        "overloadFunction", "(D)Ljava/lang/Object;");
+    childClassConstructor = ChildClass::new;
+    childClassBarFunc = ChildClass::bar;
+    fooDescriptor =
+        new JavaFunctionDescriptor(
+            FunctionManagerTest.class.getName(), "foo", "()Ljava/lang/Object;");
+    childClassBarDescriptor =
+        new JavaFunctionDescriptor(ChildClass.class.getName(), "bar", "()Ljava/lang/Object;");
+    childClassConstructorDescriptor =
+        new JavaFunctionDescriptor(
+            ChildClass.class.getName(), FunctionManager.CONSTRUCTOR_NAME, "()V");
+    overloadFunctionDescriptorInt =
+        new JavaFunctionDescriptor(
+            FunctionManagerTest.class.getName(), "overloadFunction", "(I)Ljava/lang/Object;");
+    overloadFunctionDescriptorDouble =
+        new JavaFunctionDescriptor(
+            FunctionManagerTest.class.getName(), "overloadFunction", "(D)Ljava/lang/Object;");
   }
 
   @Test
@@ -81,14 +100,14 @@ public class FunctionManagerTest {
     Assert.assertEquals(func.getFunctionDescriptor(), fooDescriptor);
 
     // Test actor method
-    func = functionManager.getFunction(JobId.NIL, barFunc);
+    func = functionManager.getFunction(JobId.NIL, childClassBarFunc);
     Assert.assertFalse(func.isConstructor());
-    Assert.assertEquals(func.getFunctionDescriptor(), barDescriptor);
+    Assert.assertEquals(func.getFunctionDescriptor(), childClassBarDescriptor);
 
     // Test actor constructor
-    func = functionManager.getFunction(JobId.NIL, barConstructor);
+    func = functionManager.getFunction(JobId.NIL, childClassConstructor);
     Assert.assertTrue(func.isConstructor());
-    Assert.assertEquals(func.getFunctionDescriptor(), barConstructorDescriptor);
+    Assert.assertEquals(func.getFunctionDescriptor(), childClassConstructorDescriptor);
   }
 
   @Test
@@ -100,48 +119,97 @@ public class FunctionManagerTest {
     Assert.assertEquals(func.getFunctionDescriptor(), fooDescriptor);
 
     // Test actor method
-    func = functionManager.getFunction(JobId.NIL, barDescriptor);
+    func = functionManager.getFunction(JobId.NIL, childClassBarDescriptor);
     Assert.assertFalse(func.isConstructor());
-    Assert.assertEquals(func.getFunctionDescriptor(), barDescriptor);
+    Assert.assertEquals(func.getFunctionDescriptor(), childClassBarDescriptor);
 
     // Test actor constructor
-    func = functionManager.getFunction(JobId.NIL, barConstructorDescriptor);
+    func = functionManager.getFunction(JobId.NIL, childClassConstructorDescriptor);
     Assert.assertTrue(func.isConstructor());
-    Assert.assertEquals(func.getFunctionDescriptor(), barConstructorDescriptor);
+    Assert.assertEquals(func.getFunctionDescriptor(), childClassConstructorDescriptor);
 
     // Test raise overload exception
-    Assert.expectThrows(RuntimeException.class, () -> {
-      functionManager.getFunction(JobId.NIL,
-          new JavaFunctionDescriptor(FunctionManagerTest.class.getName(),
-              "overloadFunction", ""));
-    });
+    Assert.expectThrows(
+        RuntimeException.class,
+        () -> {
+          functionManager.getFunction(
+              JobId.NIL,
+              new JavaFunctionDescriptor(
+                  FunctionManagerTest.class.getName(), "overloadFunction", ""));
+        });
+  }
+
+  @Test
+  public void testInheritance() {
+    final FunctionManager functionManager = new FunctionManager(null);
+    // Check inheritance can work and FunctionManager can find method in parent class.
+    fooDescriptor =
+        new JavaFunctionDescriptor(ParentClass.class.getName(), "foo", "()Ljava/lang/Object;");
+    Assert.assertEquals(
+        functionManager.getFunction(JobId.NIL, fooDescriptor).executable.getDeclaringClass(),
+        ParentClass.class);
+    RayFunction fooFunc =
+        functionManager.getFunction(
+            JobId.NIL,
+            new JavaFunctionDescriptor(ChildClass.class.getName(), "foo", "()Ljava/lang/Object;"));
+    Assert.assertEquals(fooFunc.executable.getDeclaringClass(), ParentClass.class);
+
+    // Check FunctionManager can use method in child class if child class methods overrides methods
+    // in parent class.
+    childClassBarDescriptor =
+        new JavaFunctionDescriptor(ParentClass.class.getName(), "bar", "()Ljava/lang/Object;");
+    Assert.assertEquals(
+        functionManager
+            .getFunction(JobId.NIL, childClassBarDescriptor)
+            .executable
+            .getDeclaringClass(),
+        ParentClass.class);
+    RayFunction barFunc =
+        functionManager.getFunction(
+            JobId.NIL,
+            new JavaFunctionDescriptor(ChildClass.class.getName(), "bar", "()Ljava/lang/Object;"));
+    Assert.assertEquals(barFunc.executable.getDeclaringClass(), ChildClass.class);
+
+    // Check interface default methods.
+    RayFunction interfaceNameFunc =
+        functionManager.getFunction(
+            JobId.NIL,
+            new JavaFunctionDescriptor(
+                ChildClass.class.getName(), "interfaceName", "()Ljava/lang/String;"));
+    Assert.assertEquals(
+        interfaceNameFunc.executable.getDeclaringClass(), ChildClassInterface.class);
   }
 
   @Test
   public void testLoadFunctionTableForClass() {
     JobFunctionTable functionTable = new JobFunctionTable(getClass().getClassLoader());
-    Map<Pair<String, String>, RayFunction> res = functionTable
-        .loadFunctionsForClass(Bar.class.getName());
+    Map<Pair<String, String>, RayFunction> res =
+        functionTable.loadFunctionsForClass(ChildClass.class.getName());
     // The result should be 4 entries:
     //   1, the constructor with signature
     //   2, the constructor without signature
     //   3, bar with signature
     //   4, bar without signature
-    Assert.assertEquals(res.size(), 7);
-    Assert.assertTrue(res.containsKey(
-        ImmutablePair.of(barDescriptor.name, barDescriptor.signature)));
-    Assert.assertTrue(res.containsKey(
-        ImmutablePair.of(barConstructorDescriptor.name, barConstructorDescriptor.signature)));
-    Assert.assertTrue(res.containsKey(
-            ImmutablePair.of(barDescriptor.name, "")));
-    Assert.assertTrue(res.containsKey(
-            ImmutablePair.of(barConstructorDescriptor.name, "")));
-    Assert.assertTrue(res.containsKey(
-            ImmutablePair.of(overloadFunctionDescriptorInt.name, overloadFunctionDescriptorInt.signature)));
-    Assert.assertTrue(res.containsKey(
-            ImmutablePair.of(overloadFunctionDescriptorDouble.name, overloadFunctionDescriptorDouble.signature)));
-    Assert.assertTrue(res.containsKey(
-            ImmutablePair.of(overloadFunctionDescriptorInt.name, "")));
+    Assert.assertEquals(res.size(), 11);
+    Assert.assertTrue(
+        res.containsKey(
+            ImmutablePair.of(childClassBarDescriptor.name, childClassBarDescriptor.signature)));
+    Assert.assertTrue(
+        res.containsKey(
+            ImmutablePair.of(
+                childClassConstructorDescriptor.name, childClassConstructorDescriptor.signature)));
+    Assert.assertTrue(res.containsKey(ImmutablePair.of(childClassBarDescriptor.name, "")));
+    Assert.assertTrue(res.containsKey(ImmutablePair.of(childClassConstructorDescriptor.name, "")));
+    Assert.assertTrue(
+        res.containsKey(
+            ImmutablePair.of(
+                overloadFunctionDescriptorInt.name, overloadFunctionDescriptorInt.signature)));
+    Assert.assertTrue(
+        res.containsKey(
+            ImmutablePair.of(
+                overloadFunctionDescriptorDouble.name,
+                overloadFunctionDescriptorDouble.signature)));
+    Assert.assertTrue(res.containsKey(ImmutablePair.of(overloadFunctionDescriptorInt.name, "")));
     Pair<String, String> overloadKey = ImmutablePair.of(overloadFunctionDescriptorInt.name, "");
     RayFunction func = res.get(overloadKey);
     // The function is overloaded.
@@ -177,12 +245,11 @@ public class FunctionManagerTest {
     }
 
     // Test loading the function.
-    JavaFunctionDescriptor descriptor = new JavaFunctionDescriptor(
-        "DemoApp", "hello", "()Ljava/lang/String;");
-    final FunctionManager functionManager = new FunctionManager(
-        Collections.singletonList(codeSearchPath));
+    JavaFunctionDescriptor descriptor =
+        new JavaFunctionDescriptor("DemoApp", "hello", "()Ljava/lang/String;");
+    final FunctionManager functionManager =
+        new FunctionManager(Collections.singletonList(codeSearchPath));
     RayFunction func = functionManager.getFunction(jobId, descriptor);
     Assert.assertEquals(func.getFunctionDescriptor(), descriptor);
   }
-
 }

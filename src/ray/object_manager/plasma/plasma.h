@@ -26,10 +26,6 @@
 #include "ray/object_manager/plasma/common.h"
 #include "ray/object_manager/plasma/compat.h"
 
-#ifdef PLASMA_CUDA
-using arrow::cuda::CudaIpcMemHandle;
-#endif
-
 namespace plasma {
 
 /// Allocation granularity used in plasma for object allocation.
@@ -37,10 +33,6 @@ constexpr int64_t kBlockSize = 64;
 
 // TODO(pcm): Replace this by the flatbuffers message PlasmaObjectSpec.
 struct PlasmaObject {
-#ifdef PLASMA_CUDA
-  // IPC handle for Cuda.
-  std::shared_ptr<CudaIpcMemHandle> ipc_handle;
-#endif
   /// The file descriptor of the memory mapped file in the store. It is used as
   /// a unique identifier of the file in the client to look up the corresponding
   /// file descriptor on the client's side.
@@ -55,15 +47,14 @@ struct PlasmaObject {
   int64_t metadata_size;
   /// Device number object is on.
   int device_num;
+  /// Set if device_num is equal to 0.
+  int64_t mmap_size;
 
-  bool operator==(const PlasmaObject& other) const {
-    return (
-#ifdef PLASMA_CUDA
-        (ipc_handle == other.ipc_handle) &&
-#endif
-        (store_fd == other.store_fd) && (data_offset == other.data_offset) &&
-        (metadata_offset == other.metadata_offset) && (data_size == other.data_size) &&
-        (metadata_size == other.metadata_size) && (device_num == other.device_num));
+  bool operator==(const PlasmaObject &other) const {
+    return ((store_fd == other.store_fd) && (data_offset == other.data_offset) &&
+            (metadata_offset == other.metadata_offset) &&
+            (data_size == other.data_size) && (metadata_size == other.metadata_size) &&
+            (device_num == other.device_num));
   }
 };
 
@@ -94,10 +85,10 @@ struct PlasmaStoreInfo {
 /// \param object_id The object_id of the entry we are looking for.
 /// \return The entry associated with the object_id or NULL if the object_id
 ///         is not present.
-ObjectTableEntry* GetObjectTableEntry(PlasmaStoreInfo* store_info,
-                                      const ObjectID& object_id);
+ObjectTableEntry *GetObjectTableEntry(PlasmaStoreInfo *store_info,
+                                      const ObjectID &object_id);
 
 /// Globally accessible reference to plasma store configuration.
-extern const PlasmaStoreInfo* plasma_config;
+extern const PlasmaStoreInfo *plasma_config;
 
 }  // namespace plasma

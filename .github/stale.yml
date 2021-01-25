@@ -20,6 +20,7 @@ exemptLabels:
   - release-blocker
   - fix-docs
   - regression
+  - fix-error-msg
 
 # Set to true to ignore issues in a project (defaults to false)
 exemptProjects: false
@@ -34,7 +35,7 @@ exemptAssignees: false
 staleLabel: stale
 
 # Comment to post when marking as stale. Set to `false` to disable
-markComment: >
+markComment: |
   Hi, I'm a bot from the Ray team :)
   
   To help human contributors to focus on more relevant issues, I will automatically add the stale label to issues that have had no activity for more than 4 months.
@@ -44,19 +45,19 @@ markComment: >
   - If you'd like to keep the issue open, just leave any comment, and the stale label will be removed!
   - If you'd like to get more attention to the issue, please tag one of Ray's contributors.
 
-  You can always ask for help on our `discussion forum <https://discuss.ray.io/>`_ or `Ray's public slack channel <https://github.com/ray-project/ray#getting-involved>`_. 
+  You can always ask for help on our [discussion forum](https://discuss.ray.io/) or [Ray's public slack channel](https://github.com/ray-project/ray#getting-involved). 
   
 # Comment to post when removing the stale label.
 # unmarkComment: >
 #   Your comment here.
 
 # Comment to post when closing a stale Issue or Pull Request.
-closeComment: >
+closeComment: |
   Hi again! The issue will be closed because there has been no more activity in the 14 days since the last message.
   
   Please feel free to reopen or open a new issue if you'd still like it to be addressed.
 
-  Again, you can always ask for help on our `discussion forum <https://discuss.ray.io/>`_ or `Ray's public slack channel <https://github.com/ray-project/ray#getting-involved>`_. 
+  Again, you can always ask for help on our [discussion forum](https://discuss.ray.io) or [Ray's public slack channel](https://github.com/ray-project/ray#getting-involved). 
 
   Thanks again for opening the issue! 
 

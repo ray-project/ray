@@ -331,6 +331,36 @@ def test_numpy_subclass_serialization_pickle(ray_start_regular):
     assert repr_orig == repr_ser
 
 
+def test_inspect_serialization(enable_pickle_debug):
+    import threading
+    from ray.cloudpickle import dumps_debug
+
+    lock = threading.Lock()
+
+    with pytest.raises(TypeError):
+        dumps_debug(lock)
+
+    def test_func():
+        print(lock)
+
+    with pytest.raises(TypeError):
+        dumps_debug(test_func)
+
+    class test_class:
+        def test(self):
+            self.lock = lock
+
+    from ray.util.check_serialize import inspect_serializability
+    results = inspect_serializability(lock)
+    assert list(results[1])[0].obj == lock, results
+
+    results = inspect_serializability(test_func)
+    assert list(results[1])[0].obj == lock, results
+
+    results = inspect_serializability(test_class)
+    assert list(results[1])[0].obj == lock, results
+
+
 @pytest.mark.parametrize(
     "ray_start_regular", [{
         "local_mode": True
@@ -541,6 +571,50 @@ def test_reducer_override_no_reference_cycle(ray_start_shared_local_modes):
     dumps(obj)
     del obj
     assert new_obj() is None
+
+
+def test_buffer_alignment(ray_start_shared_local_modes):
+    # Deserialized large numpy arrays should be 64-byte aligned.
+    x = np.random.normal(size=(10, 20, 30))
+    y = ray.get(ray.put(x))
+    assert y.ctypes.data % 64 == 0
+
+    # Unlike PyArrow, Ray aligns small numpy arrays to 8
+    # bytes to be memory efficient.
+    xs = [np.random.normal(size=i) for i in range(100)]
+    ys = ray.get(ray.put(xs))
+    for y in ys:
+        assert y.ctypes.data % 8 == 0
+
+    xs = [np.random.normal(size=i * (1, )) for i in range(20)]
+    ys = ray.get(ray.put(xs))
+    for y in ys:
+        assert y.ctypes.data % 8 == 0
+
+    xs = [np.random.normal(size=i * (5, )) for i in range(1, 8)]
+    xs = [xs[i][(i + 1) * (slice(1, 3), )] for i in range(len(xs))]
+    ys = ray.get(ray.put(xs))
+    for y in ys:
+        assert y.ctypes.data % 8 == 0
+
+
+def test_custom_serializer(ray_start_shared_local_modes):
+    import threading
+
+    class A:
+        def __init__(self, x):
+            self.x = x
+            self.lock = threading.Lock()
+
+    def custom_serializer(a):
+        return a.x
+
+    def custom_deserializer(x):
+        return A(x)
+
+    ray.util.register_serializer(
+        A, serializer=custom_serializer, deserializer=custom_deserializer)
+    ray.get(ray.put(A(1)))
 
 
 if __name__ == "__main__":

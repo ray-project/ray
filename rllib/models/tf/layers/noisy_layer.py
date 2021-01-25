@@ -1,7 +1,8 @@
 import numpy as np
 
-from ray.rllib.utils.framework import get_activation_fn, get_variable, \
-    try_import_tf
+from ray.rllib.models.utils import get_activation_fn
+from ray.rllib.utils.framework import get_variable, try_import_tf, \
+    TensorType, TensorShape
 
 tf1, tf, tfv = try_import_tf()
 
@@ -18,14 +19,18 @@ class NoisyLayer(tf.keras.layers.Layer if tf else object):
     vanish along the training procedure.
     """
 
-    def __init__(self, prefix, out_size, sigma0, activation="relu"):
+    def __init__(self,
+                 prefix: str,
+                 out_size: int,
+                 sigma0: float,
+                 activation: str = "relu"):
         """Initializes a NoisyLayer object.
 
         Args:
             prefix:
-            out_size:
-            sigma0:
-            non_linear:
+            out_size: Output size for Noisy Layer
+            sigma0: Initialization value for sigma_b (bias noise)
+            non_linear: Non-linear activation for Noisy Layer
         """
         super().__init__()
         self.prefix = prefix
@@ -41,7 +46,7 @@ class NoisyLayer(tf.keras.layers.Layer if tf else object):
         self.sigma_w = None  # Noise for weight matrix
         self.sigma_b = None  # Noise for biases.
 
-    def build(self, input_shape):
+    def build(self, input_shape: TensorShape):
         in_size = int(input_shape[1])
 
         self.sigma_w = get_variable(
@@ -78,7 +83,7 @@ class NoisyLayer(tf.keras.layers.Layer if tf else object):
             dtype=tf.float32,
         )
 
-    def call(self, inputs):
+    def call(self, inputs: TensorType) -> TensorType:
         in_size = int(inputs.shape[1])
         epsilon_in = tf.random.normal(shape=[in_size])
         epsilon_out = tf.random.normal(shape=[self.out_size])
@@ -98,5 +103,5 @@ class NoisyLayer(tf.keras.layers.Layer if tf else object):
             action_activation = fn(action_activation)
         return action_activation
 
-    def _f_epsilon(self, x):
+    def _f_epsilon(self, x: TensorType) -> TensorType:
         return tf.math.sign(x) * tf.math.sqrt(tf.math.abs(x))

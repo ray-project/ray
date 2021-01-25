@@ -21,7 +21,7 @@ from ray.rllib.agents.mbmpo.utils import calculate_gae_advantages, \
     MBMPOExploration
 from ray.rllib.agents.trainer_template import build_trainer
 from ray.rllib.env.env_context import EnvContext
-from ray.rllib.env.model_vector_env import model_vector_env
+from ray.rllib.env.wrappers.model_vector_env import model_vector_env
 from ray.rllib.evaluation.metrics import collect_episodes, collect_metrics, \
     get_learner_stats
 from ray.rllib.evaluation.worker_set import WorkerSet
@@ -29,6 +29,7 @@ from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER, \
     STEPS_TRAINED_COUNTER, LEARNER_INFO, _get_shared_metrics
 from ray.rllib.execution.metric_ops import CollectMetrics
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.sgd import standardized
 from ray.rllib.utils.torch_ops import convert_to_torch_tensor
 from ray.rllib.utils.typing import EnvType, TrainerConfigDict
@@ -55,8 +56,6 @@ DEFAULT_CONFIG = with_common_config({
     "create_env_on_driver": True,
     # Step size of SGD.
     "lr": 1e-3,
-    # Share layers for value function.
-    "vf_share_layers": False,
     # Coefficient of the value function loss.
     "vf_loss_coeff": 0.5,
     # Coefficient of the entropy regularizer.
@@ -110,6 +109,12 @@ DEFAULT_CONFIG = with_common_config({
     "custom_vector_env": model_vector_env,
     # How many iterations through MAML per MBMPO iteration.
     "num_maml_steps": 10,
+
+    # Deprecated keys:
+    # Share layers for value function. If you set this to True, it's important
+    # to tune vf_loss_coeff.
+    # Use config.model.vf_share_layers instead.
+    "vf_share_layers": DEPRECATED_VALUE,
 })
 # __sphinx_doc_end__
 # yapf: enable

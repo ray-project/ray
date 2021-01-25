@@ -2,6 +2,7 @@ import numpy as np
 import tree
 
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
+from ray.rllib.utils.typing import TensorType, Union
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
@@ -88,14 +89,17 @@ def relu(x, alpha=0.0):
     return np.maximum(x, x * alpha, x)
 
 
-def one_hot(x, depth=0, on_value=1, off_value=0):
+def one_hot(x: Union[TensorType, int],
+            depth: int = 0,
+            on_value: int = 1.0,
+            off_value: float = 0.0):
     """
     One-hot utility function for numpy.
     Thanks to qianyizhang:
     https://gist.github.com/qianyizhang/07ee1c15cad08afb03f5de69349efc30.
 
     Args:
-        x (np.ndarray): The input to be one-hot encoded.
+        x (TensorType): The input to be one-hot encoded.
         depth (int): The max. number to be one-hot encoded (size of last rank).
         on_value (float): The value to use for on. Default: 1.0.
         off_value (float): The value to use for off. Default: 0.0.
@@ -103,8 +107,12 @@ def one_hot(x, depth=0, on_value=1, off_value=0):
     Returns:
         np.ndarray: The one-hot encoded equivalent of the input array.
     """
+
+    # Handle simple ints properly.
+    if isinstance(x, int):
+        x = np.array(x, dtype=np.int32)
     # Handle torch arrays properly.
-    if torch and isinstance(x, torch.Tensor):
+    elif torch and isinstance(x, torch.Tensor):
         x = x.numpy()
 
     # Handle bool arrays correctly.
@@ -112,6 +120,7 @@ def one_hot(x, depth=0, on_value=1, off_value=0):
         x = x.astype(np.int)
         depth = 2
 
+    # If depth is not given, try to infer it from the values in the array.
     if depth == 0:
         depth = np.max(x) + 1
     assert np.max(x) < depth, \

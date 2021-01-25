@@ -3,6 +3,7 @@ import errno
 import glob
 import json
 import logging
+import logging.handlers
 import os
 import platform
 import re
@@ -13,6 +14,7 @@ import traceback
 import ray.ray_constants as ray_constants
 import ray._private.services as services
 import ray.utils
+from ray.ray_logging import setup_component_logger
 
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray provides a default configuration at
@@ -20,7 +22,7 @@ import ray.utils
 logger = logging.getLogger(__name__)
 
 # The groups are worker id, job id, and pid.
-JOB_LOG_PATTERN = re.compile(".*worker-([0-9a-f]{40})-(\d+)-(\d+)")
+JOB_LOG_PATTERN = re.compile(".*worker-([0-9a-f]+)-(\d+)-(\d+)")
 
 
 class LogFileInfo:
@@ -30,7 +32,8 @@ class LogFileInfo:
                  file_position=None,
                  file_handle=None,
                  is_err_file=False,
-                 job_id=None):
+                 job_id=None,
+                 worker_pid=None):
         assert (filename is not None and size_when_last_opened is not None
                 and file_position is not None)
         self.filename = filename
@@ -39,7 +42,7 @@ class LogFileInfo:
         self.file_handle = file_handle
         self.is_err_file = is_err_file
         self.job_id = job_id
-        self.worker_pid = None
+        self.worker_pid = worker_pid
 
 
 class LogMonitor:
@@ -122,16 +125,21 @@ class LogMonitor:
         log_file_paths = glob.glob(f"{self.logs_dir}/worker*[.out|.err]")
         # segfaults and other serious errors are logged here
         raylet_err_paths = glob.glob(f"{self.logs_dir}/raylet*.err")
+        # monitor logs are needed to report autoscaler events
+        monitor_log_paths = glob.glob(f"{self.logs_dir}/monitor.log")
         # If gcs server restarts, there can be multiple log files.
         gcs_err_path = glob.glob(f"{self.logs_dir}/gcs_server*.err")
-        for file_path in log_file_paths + raylet_err_paths + gcs_err_path:
+        for file_path in (log_file_paths + raylet_err_paths + gcs_err_path +
+                          monitor_log_paths):
             if os.path.isfile(
                     file_path) and file_path not in self.log_filenames:
                 job_match = JOB_LOG_PATTERN.match(file_path)
                 if job_match:
                     job_id = job_match.group(2)
+                    worker_pid = int(job_match.group(3))
                 else:
                     job_id = None
+                    worker_pid = None
 
                 is_err_file = file_path.endswith("err")
 
@@ -143,7 +151,8 @@ class LogMonitor:
                         file_position=0,
                         file_handle=None,
                         is_err_file=is_err_file,
-                        job_id=job_id))
+                        job_id=job_id,
+                        worker_pid=worker_pid))
                 log_filename = os.path.basename(file_path)
                 logger.info(f"Beginning to track file {log_filename}")
 
@@ -236,15 +245,12 @@ class LogMonitor:
                     raise
 
             if file_info.file_position == 0:
-                if (len(lines_to_publish) > 0 and
-                        lines_to_publish[0].startswith("Ray worker pid: ")):
-                    file_info.worker_pid = int(
-                        lines_to_publish[0].split(" ")[-1])
-                    lines_to_publish = lines_to_publish[1:]
-                elif "/raylet" in file_info.filename:
+                if "/raylet" in file_info.filename:
                     file_info.worker_pid = "raylet"
                 elif "/gcs_server" in file_info.filename:
                     file_info.worker_pid = "gcs_server"
+                elif "/monitor" in file_info.filename:
+                    file_info.worker_pid = "autoscaler"
 
             # Record the current position in the file.
             file_info.file_position = file_info.file_handle.tell()
@@ -309,13 +315,42 @@ if __name__ == "__main__":
         default=ray_constants.LOGGER_FORMAT,
         help=ray_constants.LOGGER_FORMAT_HELP)
     parser.add_argument(
+        "--logging-filename",
+        required=False,
+        type=str,
+        default=ray_constants.LOG_MONITOR_LOG_FILE_NAME,
+        help="Specify the name of log file, "
+        "log to stdout if set empty, default is "
+        f"\"{ray_constants.LOG_MONITOR_LOG_FILE_NAME}\"")
+    parser.add_argument(
         "--logs-dir",
         required=True,
         type=str,
         help="Specify the path of the temporary directory used by Ray "
         "processes.")
+    parser.add_argument(
+        "--logging-rotate-bytes",
+        required=False,
+        type=int,
+        default=ray_constants.LOGGING_ROTATE_BYTES,
+        help="Specify the max bytes for rotating "
+        "log file, default is "
+        f"{ray_constants.LOGGING_ROTATE_BYTES} bytes.")
+    parser.add_argument(
+        "--logging-rotate-backup-count",
+        required=False,
+        type=int,
+        default=ray_constants.LOGGING_ROTATE_BACKUP_COUNT,
+        help="Specify the backup count of rotated log file, default is "
+        f"{ray_constants.LOGGING_ROTATE_BACKUP_COUNT}.")
     args = parser.parse_args()
-    ray.utils.setup_logger(args.logging_level, args.logging_format)
+    setup_component_logger(
+        logging_level=args.logging_level,
+        logging_format=args.logging_format,
+        log_dir=args.logs_dir,
+        filename=args.logging_filename,
+        max_bytes=args.logging_rotate_bytes,
+        backup_count=args.logging_rotate_backup_count)
 
     log_monitor = LogMonitor(
         args.logs_dir, args.redis_address, redis_password=args.redis_password)
@@ -331,4 +366,5 @@ if __name__ == "__main__":
                    f"failed with the following error:\n{traceback_str}")
         ray.utils.push_error_to_driver_through_redis(
             redis_client, ray_constants.LOG_MONITOR_DIED_ERROR, message)
+        logger.error(message)
         raise e

@@ -26,6 +26,12 @@ yum -y install unzip zip sudo
 yum -y install java-1.8.0-openjdk java-1.8.0-openjdk-devel xz
 yum -y install openssl
 
+java -version
+java_bin=$(readlink -f "$(command -v java)")
+echo "java_bin path $java_bin"
+java_home=${java_bin%jre/bin/java}
+export JAVA_HOME="$java_home"
+
 /ray/ci/travis/install-bazel.sh
 # Put bazel into the PATH if building Bazel from source
 # export PATH=/root/bazel-3.2.0/output:$PATH:/root/bin
@@ -35,6 +41,10 @@ yum -y install openssl
 #echo "build --config=manylinux2010" >> /root/.bazelrc
 echo "build --incompatible_linkopts_to_linklibs" >> /root/.bazelrc
 
+if [[ -n "${RAY_INSTALL_JAVA:-}" ]]; then
+  bazel build //java:ray_java_pkg
+  unset RAY_INSTALL_JAVA
+fi
 
 # Install and use the latest version of Node.js in order to build the dashboard.
 set +x
@@ -58,9 +68,9 @@ for ((i=0; i<${#PYTHONS[@]}; ++i)); do
 
   # The -f flag is passed twice to also run git clean in the arrow subdirectory.
   # The -d flag removes directories. The -x flag ignores the .gitignore file,
-  # and the -e flag ensures that we don't remove the .whl directory and the
-  # dashboard directory.
-  git clean -f -f -x -d -e .whl -e python/ray/new_dashboard/client -e dashboard/client
+  # and the -e flag ensures that we don't remove the .whl directory, the
+  # dashboard directory and jars directory.
+  git clean -f -f -x -d -e .whl -e python/ray/new_dashboard/client -e dashboard/client -e python/ray/jars
 
   pushd python
     # Fix the numpy version because this will be the oldest numpy version we can
@@ -88,3 +98,6 @@ for path in .whl/*.whl; do
     mv "${path}" "${path//linux/manylinux2014}"
   fi
 done
+
+# Clean the build output so later operations is on a clean directory.
+git clean -f -f -x -d -e .whl -e python/ray/dashboard/client

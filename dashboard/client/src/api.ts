@@ -65,8 +65,8 @@ type ProcessStats = {
 export type Worker = {
   pid: number;
   workerId: string;
-  logCount: number;
-  errorCount: number;
+  logCount?: number;
+  errorCount?: number;
   language: string;
   jobId: string;
   coreWorkerStats: CoreWorkerStats[];
@@ -112,7 +112,7 @@ export type NodeDetails = {
 } & BaseNodeInfo;
 
 export type RayletData = {
-  // Merger of GCSNodeStats and GetNodeStatsReply
+  // Merger of GCSNodeInfo and GetNodeStatsReply
   // GetNodeStatsReply fields.
   // Note workers are in an array in NodeDetails
   objectStoreUsedMemory: number;
@@ -167,8 +167,8 @@ type BaseNodeInfo = {
   };
   loadAvg: [[number, number, number], [number, number, number]];
   net: [number, number]; // Sent and received network traffic in bytes / second
-  logCount: number;
-  errorCount: number;
+  logCount?: number;
+  errorCount?: number;
 };
 
 export type NodeInfoResponse = {

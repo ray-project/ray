@@ -13,7 +13,7 @@ import { sum } from "../../../common/util";
 import ActorStateRepr from "./ActorStateRepr";
 
 const memoryDebuggingDocLink =
-  "https://docs.ray.io/en/latest/memory-management.html#debugging-using-ray-memory";
+  "https://docs.ray.io/en/master/memory-management.html#debugging-using-ray-memory";
 
 type ActorDatum = {
   label: string;

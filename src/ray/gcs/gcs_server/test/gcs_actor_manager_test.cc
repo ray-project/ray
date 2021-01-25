@@ -42,37 +42,48 @@ class MockActorScheduler : public gcs::GcsActorSchedulerInterface {
 
 class MockWorkerClient : public rpc::CoreWorkerClientInterface {
  public:
+  MockWorkerClient(boost::asio::io_service &io_service) : io_service_(io_service) {}
+
   void WaitForActorOutOfScope(
       const rpc::WaitForActorOutOfScopeRequest &request,
       const rpc::ClientCallback<rpc::WaitForActorOutOfScopeReply> &callback) override {
-    callbacks.push_back(callback);
+    callbacks_.push_back(callback);
   }
 
   void KillActor(const rpc::KillActorRequest &request,
                  const rpc::ClientCallback<rpc::KillActorReply> &callback) override {
-    killed_actors.push_back(ActorID::FromBinary(request.intended_actor_id()));
+    killed_actors_.push_back(ActorID::FromBinary(request.intended_actor_id()));
   }
 
   bool Reply(Status status = Status::OK()) {
-    if (callbacks.size() == 0) {
+    if (callbacks_.size() == 0) {
       return false;
     }
-    auto callback = callbacks.front();
-    auto reply = rpc::WaitForActorOutOfScopeReply();
-    callback(status, reply);
-    callbacks.pop_front();
+
+    // The created_actors_ of gcs actor manager will be modified in io_service thread.
+    // In order to avoid multithreading reading and writing created_actors_, we also
+    // send the `WaitForActorOutOfScope` callback operation to io_service thread.
+    std::promise<bool> promise;
+    io_service_.post([this, status, &promise]() {
+      auto callback = callbacks_.front();
+      auto reply = rpc::WaitForActorOutOfScopeReply();
+      callback(status, reply);
+      promise.set_value(false);
+    });
+    promise.get_future().get();
+
+    callbacks_.pop_front();
     return true;
   }
 
-  std::list<rpc::ClientCallback<rpc::WaitForActorOutOfScopeReply>> callbacks;
-  std::vector<ActorID> killed_actors;
+  std::list<rpc::ClientCallback<rpc::WaitForActorOutOfScopeReply>> callbacks_;
+  std::vector<ActorID> killed_actors_;
+  boost::asio::io_service &io_service_;
 };
 
 class GcsActorManagerTest : public ::testing::Test {
  public:
-  GcsActorManagerTest()
-      : mock_actor_scheduler_(new MockActorScheduler()),
-        worker_client_(new MockWorkerClient()) {
+  GcsActorManagerTest() : mock_actor_scheduler_(new MockActorScheduler()) {
     std::promise<bool> promise;
     thread_io_service_.reset(new std::thread([this, &promise] {
       std::unique_ptr<boost::asio::io_service::work> work(
@@ -81,6 +92,7 @@ class GcsActorManagerTest : public ::testing::Test {
       io_service_.run();
     }));
     promise.get_future().get();
+    worker_client_ = std::make_shared<MockWorkerClient>(io_service_);
 
     gcs_pub_sub_ = std::make_shared<GcsServerMocker::MockGcsPubSub>(redis_client_);
     store_client_ = std::make_shared<gcs::InMemoryStoreClient>(io_service_);
@@ -418,8 +430,8 @@ TEST_F(GcsActorManagerTest, TestActorRestartWhenOwnerDead) {
   OnNodeDead(owner_node_id);
   // The child actor should be marked as dead.
   ASSERT_EQ(actor->GetState(), rpc::ActorTableData::DEAD);
-  ASSERT_EQ(worker_client_->killed_actors.size(), 1);
-  ASSERT_EQ(worker_client_->killed_actors.front(), actor->GetActorID());
+  ASSERT_EQ(worker_client_->killed_actors_.size(), 1);
+  ASSERT_EQ(worker_client_->killed_actors_.front(), actor->GetActorID());
 
   // Remove the actor's node and check that the actor is not restarted, since
   // its owner has died.
@@ -460,7 +472,7 @@ TEST_F(GcsActorManagerTest, TestDetachedActorRestartWhenCreatorDead) {
   EXPECT_CALL(*mock_actor_scheduler_, CancelOnNode(owner_node_id));
   OnNodeDead(owner_node_id);
   // The child actor should not be marked as dead.
-  ASSERT_TRUE(worker_client_->killed_actors.empty());
+  ASSERT_TRUE(worker_client_->killed_actors_.empty());
   ASSERT_EQ(actor->GetState(), rpc::ActorTableData::ALIVE);
 }
 
@@ -725,7 +737,7 @@ TEST_F(GcsActorManagerTest, TestRaceConditionCancelLease) {
   actor->UpdateAddress(address);
   const auto actor_id = actor->GetActorID();
   EXPECT_CALL(*mock_actor_scheduler_, CancelOnLeasing(node_id, actor_id));
-  gcs_actor_manager_->OnWorkerDead(owner_node_id, owner_worker_id, false);
+  gcs_actor_manager_->OnWorkerDead(owner_node_id, owner_worker_id);
 }
 
 TEST_F(GcsActorManagerTest, TestRegisterActor) {
@@ -848,10 +860,10 @@ TEST_F(GcsActorManagerTest, TestOwnerAndChildDiedAtTheSameTimeRaceCondition) {
   const auto child_worker_id = actor->GetWorkerID();
   const auto actor_id = actor->GetActorID();
   // Make worker & owner fail at the same time, but owner's failure comes first.
-  gcs_actor_manager_->OnWorkerDead(owner_node_id, owner_worker_id, false);
+  gcs_actor_manager_->OnWorkerDead(owner_node_id, owner_worker_id);
   EXPECT_CALL(*mock_actor_scheduler_, CancelOnWorker(child_node_id, child_worker_id))
       .WillOnce(Return(actor_id));
-  gcs_actor_manager_->OnWorkerDead(child_node_id, child_worker_id, false);
+  gcs_actor_manager_->OnWorkerDead(child_node_id, child_worker_id);
 }
 
 }  // namespace ray

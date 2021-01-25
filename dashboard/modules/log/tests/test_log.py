@@ -1,4 +1,3 @@
-import os
 import sys
 import logging
 import requests
@@ -14,8 +13,6 @@ from ray.test_utils import (
     format_web_url,
     wait_until_server_available,
 )
-
-os.environ["RAY_USE_NEW_DASHBOARD"] = "1"
 
 logger = logging.getLogger(__name__)
 
@@ -98,6 +95,40 @@ def test_log(disable_aiohttp_cache, ray_start_with_dashboard):
             node_info = node_info["data"]["detail"]
             assert "logUrl" in node_info
             assert node_info["logUrl"] in all_nodes_log_urls
+            break
+        except Exception as ex:
+            last_ex = ex
+        finally:
+            if time.time() > start_time + timeout_seconds:
+                ex_stack = traceback.format_exception(
+                    type(last_ex), last_ex,
+                    last_ex.__traceback__) if last_ex else []
+                ex_stack = "".join(ex_stack)
+                raise Exception(f"Timed out while testing, {ex_stack}")
+
+
+def test_log_proxy(ray_start_with_dashboard):
+    assert (wait_until_server_available(ray_start_with_dashboard["webui_url"])
+            is True)
+    webui_url = ray_start_with_dashboard["webui_url"]
+    webui_url = format_web_url(webui_url)
+
+    timeout_seconds = 5
+    start_time = time.time()
+    last_ex = None
+    while True:
+        time.sleep(1)
+        try:
+            # Test range request.
+            response = requests.get(
+                f"{webui_url}/log_proxy?url={webui_url}/logs/dashboard.log",
+                headers={"Range": "bytes=43-51"})
+            response.raise_for_status()
+            assert response.text == "Dashboard"
+            # Test 404.
+            response = requests.get(f"{webui_url}/log_proxy?"
+                                    f"url={webui_url}/logs/not_exist_file.log")
+            assert response.status_code == 404
             break
         except Exception as ex:
             last_ex = ex

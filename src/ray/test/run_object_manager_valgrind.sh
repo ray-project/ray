@@ -41,7 +41,3 @@ $VALGRIND_CMD ./bazel-bin/object_manager_test $STORE_EXEC 10000
 sleep 1s
 $VALGRIND_CMD ./bazel-bin/object_manager_stress_test $STORE_EXEC
 bazel run //:redis-cli -- -p 6379 shutdown
-sleep 1s
-
-# Include raylet integration test once it's ready.
-# $VALGRIND_CMD ./bazel-bin/object_manager_integration_test $STORE_EXEC

@@ -1,7 +1,6 @@
 package io.ray.runtime;
 
 import io.ray.api.id.UniqueId;
-import io.ray.runtime.util.IdUtil;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 import javax.xml.bind.DatatypeConverter;
@@ -13,12 +12,14 @@ public class UniqueIdTest {
   @Test
   public void testConstructUniqueId() {
     // Test `fromHexString()`
-    UniqueId id1 = UniqueId.fromHexString("00000000123456789ABCDEF123456789ABCDEF00");
-    Assert.assertEquals("00000000123456789abcdef123456789abcdef00", id1.toString());
+    UniqueId id1 =
+        UniqueId.fromHexString("00000000123456789ABCDEF123456789ABCDEF0123456789ABCDEF00");
+    Assert.assertEquals("00000000123456789abcdef123456789abcdef0123456789abcdef00", id1.toString());
     Assert.assertFalse(id1.isNil());
 
     try {
-      UniqueId id2 = UniqueId.fromHexString("000000123456789ABCDEF123456789ABCDEF00");
+      UniqueId id2 =
+          UniqueId.fromHexString("000000123456789ABCDEF123456789ABCDEF0123456789ABCDEF00");
       // This shouldn't be happened.
       Assert.assertTrue(false);
     } catch (IllegalArgumentException e) {
@@ -34,23 +35,18 @@ public class UniqueIdTest {
     }
 
     // Test `fromByteBuffer()`
-    byte[] bytes = DatatypeConverter.parseHexBinary("0123456789ABCDEF0123456789ABCDEF01234567");
-    ByteBuffer byteBuffer = ByteBuffer.wrap(bytes, 0, 20);
+    byte[] bytes =
+        DatatypeConverter.parseHexBinary(
+            "0123456789ABCDEF0123456789ABCDEF012345670123456789ABCDEF");
+    ByteBuffer byteBuffer = ByteBuffer.wrap(bytes, 0, 28);
     UniqueId id4 = UniqueId.fromByteBuffer(byteBuffer);
     Assert.assertTrue(Arrays.equals(bytes, id4.getBytes()));
-    Assert.assertEquals("0123456789abcdef0123456789abcdef01234567", id4.toString());
-
+    Assert.assertEquals("0123456789abcdef0123456789abcdef012345670123456789abcdef", id4.toString());
 
     // Test `genNil()`
     UniqueId id6 = UniqueId.NIL;
-    Assert.assertEquals("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF".toLowerCase(), id6.toString());
+    Assert.assertEquals(
+        "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF".toLowerCase(), id6.toString());
     Assert.assertTrue(id6.isNil());
-  }
-
-  @Test
-  void testMurmurHash() {
-    UniqueId id = UniqueId.fromHexString("3131313131313131313132323232323232323232");
-    long remainder = Long.remainderUnsigned(IdUtil.murmurHashCode(id), 1000000000);
-    Assert.assertEquals(remainder, 787616861);
   }
 }

@@ -4,8 +4,8 @@ import io.ray.streaming.runtime.master.JobMaster;
 import io.ray.streaming.runtime.worker.JobWorker;
 
 /**
- * This interface is used for storing context of {@link JobWorker} and {@link JobMaster}.
- * The checkpoint returned by user function is also saved using this interface.
+ * This interface is used for storing context of {@link JobWorker} and {@link JobMaster}. The
+ * checkpoint returned by user function is also saved using this interface.
  */
 public interface ContextBackend {
 
@@ -38,5 +38,4 @@ public interface ContextBackend {
    * @param key key
    */
   void remove(final String key) throws Exception;
-
 }

@@ -24,8 +24,8 @@ message PushRequest {
   bytes push_id = 1;
   // The object ID being transferred.
   bytes object_id = 2;
-  // The client ID of client sending this object
-  bytes client_id = 3;
+  // The node ID of client sending this object
+  bytes node_id = 3;
   // The owner address
   Address owner_address = 4;
   // The index of the chunk being transferred.
@@ -39,8 +39,8 @@ message PushRequest {
 }
 
 message PullRequest {
-  // ID of the requesting client.
-  bytes client_id = 1;
+  // Node ID of the requesting client.
+  bytes node_id = 1;
   // Requested ObjectID.
   bytes object_id = 2;
 }

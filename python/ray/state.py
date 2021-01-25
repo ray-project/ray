@@ -9,6 +9,7 @@ import ray
 from ray import gcs_utils
 from google.protobuf.json_format import MessageToDict
 from ray._private import services
+from ray._private.client_mode_hook import client_mode_hook
 from ray.utils import (decode, binary_to_hex, hex_to_binary)
 
 from ray._raylet import GlobalStateAccessor
@@ -31,6 +32,9 @@ class GlobalState:
 
     def __init__(self):
         """Create a GlobalState object."""
+        # Args used for lazy init of this object.
+        self.redis_address = None
+        self.redis_password = None
         # The redis server storing metadata, such as function table, client
         # table, log files, event logs, workers/actions info.
         self.redis_client = None
@@ -39,12 +43,17 @@ class GlobalState:
         self.global_state_accessor = None
 
     def _check_connected(self):
-        """Check that the object has been initialized before it is used.
+        """Ensure that the object has been initialized before it is used.
+
+        This lazily initializes clients needed for state accessors.
 
         Raises:
             RuntimeError: An exception is raised if ray.init() has not been
                 called yet.
         """
+        if self.redis_client is None and self.redis_address is not None:
+            self._really_init_global_state()
+
         if (self.redis_client is None or self.redis_clients is None
                 or self.global_state_accessor is None):
             raise ray.exceptions.RaySystemError(
@@ -55,15 +64,14 @@ class GlobalState:
         """Disconnect global state from GCS."""
         self.redis_client = None
         self.redis_clients = None
+        self.redis_address = None
+        self.redis_password = None
         if self.global_state_accessor is not None:
             self.global_state_accessor.disconnect()
             self.global_state_accessor = None
 
-    def _initialize_global_state(self,
-                                 redis_address,
-                                 redis_password=None,
-                                 timeout=20):
-        """Initialize the GlobalState object by connecting to Redis.
+    def _initialize_global_state(self, redis_address, redis_password=None):
+        """Set args for lazily initialization of the GlobalState object.
 
         It's possible that certain keys in Redis may not have been fully
         populated yet. In this case, we will retry this method until they have
@@ -73,10 +81,17 @@ class GlobalState:
             redis_address: The Redis address to connect.
             redis_password: The password of the redis server.
         """
+
+        # Save args for lazy init of global state. This avoids opening extra
+        # redis connections from each worker until needed.
+        self.redis_address = redis_address
+        self.redis_password = redis_password
+
+    def _really_init_global_state(self, timeout=20):
         self.redis_client = services.create_redis_client(
-            redis_address, redis_password)
+            self.redis_address, self.redis_password)
         self.global_state_accessor = GlobalStateAccessor(
-            redis_address, redis_password, False)
+            self.redis_address, self.redis_password, False)
         self.global_state_accessor.connect()
         start_time = time.time()
 
@@ -119,7 +134,7 @@ class GlobalState:
         for shard_address in redis_shard_addresses:
             self.redis_clients.append(
                 services.create_redis_client(shard_address.decode(),
-                                             redis_password))
+                                             self.redis_password))
 
     def _execute_command(self, key, *args):
         """Execute a Redis command on the appropriate Redis shard based on key.
@@ -752,19 +767,19 @@ class GlobalState:
         self._check_connected()
 
         resources = defaultdict(int)
-        clients = self.node_table()
-        for client in clients:
-            # Only count resources from latest entries of live clients.
-            if client["Alive"]:
-                for key, value in client["Resources"].items():
+        nodes = self.node_table()
+        for node in nodes:
+            # Only count resources from latest entries of live nodes.
+            if node["Alive"]:
+                for key, value in node["Resources"].items():
                     resources[key] += value
         return dict(resources)
 
-    def _live_client_ids(self):
-        """Returns a set of client IDs corresponding to clients still alive."""
+    def _live_node_ids(self):
+        """Returns a set of node IDs corresponding to nodes still alive."""
         return {
-            client["NodeID"]
-            for client in self.node_table() if (client["Alive"])
+            node["NodeID"]
+            for node in self.node_table() if (node["Alive"])
         }
 
     def _available_resources_per_node(self):
@@ -786,7 +801,7 @@ class GlobalState:
             available_resources_by_id[node_id] = dynamic_resources
 
         # Update nodes in cluster.
-        node_ids = self._live_client_ids()
+        node_ids = self._live_node_ids()
         # Remove disconnected nodes.
         for node_id in available_resources_by_id.keys():
             if node_id not in node_ids:
@@ -818,37 +833,6 @@ class GlobalState:
 
         return dict(total_available_resources)
 
-    def actor_checkpoint_info(self, actor_id):
-        """Get checkpoint info for the given actor id.
-         Args:
-            actor_id: Actor's ID.
-         Returns:
-            A dictionary with information about the actor's checkpoint IDs and
-            their timestamps.
-        """
-        self._check_connected()
-        message = self._execute_command(
-            actor_id,
-            "RAY.TABLE_LOOKUP",
-            gcs_utils.TablePrefix.Value("ACTOR_CHECKPOINT_ID"),
-            "",
-            actor_id.binary(),
-        )
-        if message is None:
-            return None
-        gcs_entry = gcs_utils.GcsEntry.FromString(message)
-        entry = gcs_utils.ActorCheckpointIdData.FromString(
-            gcs_entry.entries[0])
-        checkpoint_ids = [
-            ray.ActorCheckpointID(checkpoint_id)
-            for checkpoint_id in entry.checkpoint_ids
-        ]
-        return {
-            "ActorID": ray.utils.binary_to_hex(entry.actor_id),
-            "CheckpointIds": checkpoint_ids,
-            "Timestamps": list(entry.timestamps),
-        }
-
 
 state = GlobalState()
 """A global object used to access the cluster's global state."""
@@ -868,6 +852,7 @@ def jobs():
     return state.job_table()
 
 
+@client_mode_hook
 def nodes():
     """Get a list of the nodes in the cluster (for debugging only).
 
@@ -981,6 +966,7 @@ def object_transfer_timeline(filename=None):
     return state.chrome_tracing_object_transfer_dump(filename=filename)
 
 
+@client_mode_hook
 def cluster_resources():
     """Get the current total cluster resources.
 
@@ -994,6 +980,7 @@ def cluster_resources():
     return state.cluster_resources()
 
 
+@client_mode_hook
 def available_resources():
     """Get the current available cluster resources.
 

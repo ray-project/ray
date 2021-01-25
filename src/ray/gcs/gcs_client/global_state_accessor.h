@@ -99,13 +99,13 @@ class GlobalStateAccessor {
   /// and serialized as a string to allow multi-language support.
   std::string GetInternalConfig();
 
-  /// Get newest heartbeat of all nodes from GCS Service. Only used when light
-  /// heartbeat enabled.
+  /// Get newest resource usage of all nodes from GCS Service. Only used when light
+  /// rerouce usage report enabled.
   ///
-  /// \return node heartbeat info. To support multi-language, we serialize each
-  /// HeartbeatTableData and return the serialized string. Where used, it needs to be
+  /// \return resource usage info. To support multi-language, we serialize each
+  /// data and return the serialized string. Where used, it needs to be
   /// deserialized with protobuf function.
-  std::unique_ptr<std::string> GetAllHeartbeat();
+  std::unique_ptr<std::string> GetAllResourceUsage();
 
   /// Get information of all actors from GCS Service.
   ///
@@ -121,14 +121,6 @@ class GlobalStateAccessor {
   /// return the serialized string. Where used, it needs to be deserialized with
   /// protobuf function.
   std::unique_ptr<std::string> GetActorInfo(const ActorID &actor_id);
-
-  /// Get checkpoint id of an actor from GCS Service.
-  ///
-  /// \param actor_id The ID of actor to look up in the GCS Service.
-  /// \return Actor checkpoint id. To support multi-language, we serialize each
-  /// ActorCheckpointIdData and return the serialized string. Where used, it needs to be
-  /// deserialized with protobuf function.
-  std::unique_ptr<std::string> GetActorCheckpointId(const ActorID &actor_id);
 
   /// Get information of a worker from GCS Service.
   ///

@@ -16,7 +16,7 @@ their results to be ready.
     hyperparameter tuning, use `Tune`_, a scalable hyperparameter
     tuning library built using Ray's Actor API.
 
-.. _`Tune`: https://docs.ray.io/en/latest/tune.html
+.. _`Tune`: https://docs.ray.io/en/master/tune.html
 
 Setup: Dependencies
 -------------------

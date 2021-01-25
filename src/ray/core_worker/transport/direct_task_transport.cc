@@ -48,7 +48,7 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
       RAY_CHECK_OK(actor_creator_->AsyncCreateActor(
           task_spec, [this, actor_id, task_id](Status status) {
             if (status.ok()) {
-              RAY_LOG(INFO) << "Created actor, actor id = " << actor_id;
+              RAY_LOG(DEBUG) << "Created actor, actor id = " << actor_id;
               task_finisher_->CompletePendingTask(task_id, rpc::PushTaskReply(),
                                                   rpc::Address());
             } else {
@@ -232,8 +232,8 @@ std::shared_ptr<WorkerLeaseInterface>
 CoreWorkerDirectTaskSubmitter::GetOrConnectLeaseClient(
     const rpc::Address *raylet_address) {
   std::shared_ptr<WorkerLeaseInterface> lease_client;
-  if (raylet_address &&
-      NodeID::FromBinary(raylet_address->raylet_id()) != local_raylet_id_) {
+  RAY_CHECK(raylet_address != nullptr);
+  if (NodeID::FromBinary(raylet_address->raylet_id()) != local_raylet_id_) {
     // A remote raylet was specified. Connect to the raylet if needed.
     NodeID raylet_id = NodeID::FromBinary(raylet_address->raylet_id());
     auto it = remote_lease_clients_.find(raylet_id);
@@ -281,8 +281,14 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
     return;
   }
 
-  auto lease_client = GetOrConnectLeaseClient(raylet_address);
   TaskSpecification &resource_spec = task_queue.front();
+  rpc::Address best_node_address;
+  if (raylet_address == nullptr) {
+    // If no raylet address is given, find the best worker for our next lease request.
+    best_node_address = lease_policy_->GetBestNodeForTask(resource_spec);
+    raylet_address = &best_node_address;
+  }
+  auto lease_client = GetOrConnectLeaseClient(raylet_address);
   TaskID task_id = resource_spec.TaskId();
   // Subtract 1 so we don't double count the task we are requesting for.
   int64_t queue_size = task_queue.size() - 1;
@@ -408,7 +414,7 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
 }
 
 Status CoreWorkerDirectTaskSubmitter::CancelTask(TaskSpecification task_spec,
-                                                 bool force_kill) {
+                                                 bool force_kill, bool recursive) {
   RAY_LOG(INFO) << "Killing task: " << task_spec.TaskId();
   const SchedulingKey scheduling_key(
       task_spec.GetSchedulingClass(), task_spec.GetDependencyIds(),
@@ -470,8 +476,9 @@ Status CoreWorkerDirectTaskSubmitter::CancelTask(TaskSpecification task_spec,
   auto request = rpc::CancelTaskRequest();
   request.set_intended_task_id(task_spec.TaskId().Binary());
   request.set_force_kill(force_kill);
+  request.set_recursive(recursive);
   client->CancelTask(
-      request, [this, task_spec, scheduling_key, force_kill](
+      request, [this, task_spec, scheduling_key, force_kill, recursive](
                    const Status &status, const rpc::CancelTaskReply &reply) {
         absl::MutexLock lock(&mu_);
         cancelled_tasks_.erase(task_spec.TaskId());
@@ -483,8 +490,9 @@ Status CoreWorkerDirectTaskSubmitter::CancelTask(TaskSpecification task_spec,
               cancel_retry_timer_->expires_after(boost::asio::chrono::milliseconds(
                   RayConfig::instance().cancellation_retry_ms()));
             }
-            cancel_retry_timer_->async_wait(boost::bind(
-                &CoreWorkerDirectTaskSubmitter::CancelTask, this, task_spec, force_kill));
+            cancel_retry_timer_->async_wait(
+                boost::bind(&CoreWorkerDirectTaskSubmitter::CancelTask, this, task_spec,
+                            force_kill, recursive));
           }
         }
         // Retry is not attempted if !status.ok() because force-kill may kill the worker
@@ -495,7 +503,7 @@ Status CoreWorkerDirectTaskSubmitter::CancelTask(TaskSpecification task_spec,
 
 Status CoreWorkerDirectTaskSubmitter::CancelRemoteTask(const ObjectID &object_id,
                                                        const rpc::Address &worker_addr,
-                                                       bool force_kill) {
+                                                       bool force_kill, bool recursive) {
   auto maybe_client = client_cache_->GetByID(rpc::WorkerAddress(worker_addr).worker_id);
 
   if (!maybe_client.has_value()) {
@@ -504,6 +512,7 @@ Status CoreWorkerDirectTaskSubmitter::CancelRemoteTask(const ObjectID &object_id
   auto client = maybe_client.value();
   auto request = rpc::RemoteCancelTaskRequest();
   request.set_force_kill(force_kill);
+  request.set_recursive(recursive);
   request.set_remote_object_id(object_id.Binary());
   client->RemoteCancelTask(request, nullptr);
   return Status::OK();

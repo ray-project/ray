@@ -3,17 +3,15 @@ import logging
 import numpy as np
 
 import ray
-from ray.rllib.agents.a3c.a3c_torch_policy import apply_grad_clipping
-from ray.rllib.agents.impala.vtrace_tf_policy import postprocess_trajectory
 import ray.rllib.agents.impala.vtrace_torch as vtrace
 from ray.rllib.models.torch.torch_action_dist import TorchCategorical
+from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy import LearningRateSchedule, \
     EntropyCoeffSchedule
-from ray.rllib.policy.torch_policy_template import build_torch_policy
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.torch_ops import explained_variance, global_norm, \
-    sequence_mask
+from ray.rllib.utils.torch_ops import apply_grad_clipping, \
+    explained_variance, global_norm, sequence_mask
 
 torch, nn = try_import_torch()
 
@@ -209,7 +207,7 @@ def make_time_major(policy, seq_lens, tensor, drop_last=False):
         T = tensor.shape[0] // B
     else:
         # Important: chop the tensor into batches at known episode cut
-        # boundaries. TODO(ekl) this is kind of a hack
+        # boundaries.
         T = policy.config["rollout_fragment_length"]
         B = tensor.shape[0] // T
     rs = torch.reshape(tensor, [B, T] + list(tensor.shape[1:]))
@@ -247,7 +245,7 @@ def choose_optimizer(policy, config):
         return torch.optim.Adam(
             params=policy.model.parameters(), lr=policy.cur_lr)
     else:
-        return torch.optim.RMSProp(
+        return torch.optim.RMSprop(
             params=policy.model.parameters(),
             lr=policy.cur_lr,
             weight_decay=config["decay"],
@@ -261,12 +259,12 @@ def setup_mixins(policy, obs_space, action_space, config):
     LearningRateSchedule.__init__(policy, config["lr"], config["lr_schedule"])
 
 
-VTraceTorchPolicy = build_torch_policy(
+VTraceTorchPolicy = build_policy_class(
     name="VTraceTorchPolicy",
+    framework="torch",
     loss_fn=build_vtrace_loss,
     get_default_config=lambda: ray.rllib.agents.impala.impala.DEFAULT_CONFIG,
     stats_fn=stats,
-    postprocess_fn=postprocess_trajectory,
     extra_grad_process_fn=apply_grad_clipping,
     optimizer_fn=choose_optimizer,
     before_init=setup_mixins,

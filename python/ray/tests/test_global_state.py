@@ -171,13 +171,14 @@ def test_load_report(shutdown_only, max_shapes):
             self.report = None
 
         def check_load_report(self):
-            message = global_state_accessor.get_all_heartbeat()
+            message = global_state_accessor.get_all_resource_usage()
             if message is None:
                 return False
 
-            heartbeat = ray.gcs_utils.HeartbeatBatchTableData.FromString(
+            resource_usage = ray.gcs_utils.ResourceUsageBatchData.FromString(
                 message)
-            self.report = heartbeat.resource_load_by_shape.resource_demands
+            self.report = \
+                resource_usage.resource_load_by_shape.resource_demands
             if max_shapes == 0:
                 return True
             elif max_shapes == 2:
@@ -192,6 +193,8 @@ def test_load_report(shutdown_only, max_shapes):
     # Check that we respect the max shapes limit.
     if max_shapes != -1:
         assert len(checker.report) <= max_shapes
+
+    print(checker.report)
 
     if max_shapes > 0:
         # Check that we always include the 1-CPU resource shape.
@@ -224,40 +227,40 @@ def test_placement_group_load_report(ray_start_cluster):
 
     class PgLoadChecker:
         def nothing_is_ready(self):
-            heartbeat = self._read_heartbeat()
-            if not heartbeat:
+            resource_usage = self._read_resource_usage()
+            if not resource_usage:
                 return False
-            if heartbeat.HasField("placement_group_load"):
-                pg_load = heartbeat.placement_group_load
+            if resource_usage.HasField("placement_group_load"):
+                pg_load = resource_usage.placement_group_load
                 return len(pg_load.placement_group_data) == 2
             return False
 
         def only_first_one_ready(self):
-            heartbeat = self._read_heartbeat()
-            if not heartbeat:
+            resource_usage = self._read_resource_usage()
+            if not resource_usage:
                 return False
-            if heartbeat.HasField("placement_group_load"):
-                pg_load = heartbeat.placement_group_load
+            if resource_usage.HasField("placement_group_load"):
+                pg_load = resource_usage.placement_group_load
                 return len(pg_load.placement_group_data) == 1
             return False
 
         def two_infeasible_pg(self):
-            heartbeat = self._read_heartbeat()
-            if not heartbeat:
+            resource_usage = self._read_resource_usage()
+            if not resource_usage:
                 return False
-            if heartbeat.HasField("placement_group_load"):
-                pg_load = heartbeat.placement_group_load
+            if resource_usage.HasField("placement_group_load"):
+                pg_load = resource_usage.placement_group_load
                 return len(pg_load.placement_group_data) == 2
             return False
 
-        def _read_heartbeat(self):
-            message = global_state_accessor.get_all_heartbeat()
+        def _read_resource_usage(self):
+            message = global_state_accessor.get_all_resource_usage()
             if message is None:
                 return False
 
-            heartbeat = ray.gcs_utils.HeartbeatBatchTableData.FromString(
+            resource_usage = ray.gcs_utils.ResourceUsageBatchData.FromString(
                 message)
-            return heartbeat
+            return resource_usage
 
     checker = PgLoadChecker()
 
@@ -297,13 +300,14 @@ def test_backlog_report(shutdown_only):
         return None
 
     def backlog_size_set():
-        message = global_state_accessor.get_all_heartbeat()
+        message = global_state_accessor.get_all_resource_usage()
         if message is None:
             return False
 
-        heartbeat = ray.gcs_utils.HeartbeatBatchTableData.FromString(message)
+        resource_usage = ray.gcs_utils.ResourceUsageBatchData.FromString(
+            message)
         aggregate_resource_load = \
-            heartbeat.resource_load_by_shape.resource_demands
+            resource_usage.resource_load_by_shape.resource_demands
         if len(aggregate_resource_load) == 1:
             backlog_size = aggregate_resource_load[0].backlog_size
             print(backlog_size)

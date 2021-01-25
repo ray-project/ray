@@ -16,6 +16,7 @@
 
 #include <boost/optional.hpp>
 #include <functional>
+#include <future>
 #include <string>
 
 #include "gtest/gtest.h"
@@ -41,6 +42,13 @@ class RayObject;
 
 // Magic argument to signal to mock_worker we should check message order.
 static const int64_t SHOULD_CHECK_MESSAGE_ORDER = 123450000;
+
+/// Wait until the future is ready, or timeout is reached.
+///
+/// \param[in] future The future to wait for.
+/// \param[in] timeout_ms Timeout in milliseconds to wait for for.
+/// \return Whether the future is ready.
+bool WaitReady(std::future<bool> future, const std::chrono::milliseconds &timeout_ms);
 
 /// Wait until the condition is met, or timeout is reached.
 ///

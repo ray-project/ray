@@ -122,6 +122,59 @@ def new_port():
 
 
 def find_redis_address(address=None):
+    """
+    Attempts to find all valid Ray redis addresses on this node.
+
+    Returns:
+        Set of detected Redis instances.
+    """
+    # Currently, this extracts the deprecated --redis-address from the command
+    # that launched the raylet running on this node, if any. Anyone looking to
+    # edit this function should be warned that these commands look like, for
+    # example:
+    # /usr/local/lib/python3.8/dist-packages/ray/core/src/ray/raylet/raylet
+    # --redis_address=123.456.78.910 --node_ip_address=123.456.78.910
+    # --raylet_socket_name=... --store_socket_name=... --object_manager_port=0
+    # --min_worker_port=10000 --max_worker_port=10999
+    # --node_manager_port=58578 --redis_port=6379
+    # --maximum_startup_concurrency=8
+    # --static_resource_list=node:123.456.78.910,1.0,object_store_memory,66
+    # --config_list=plasma_store_as_thread,True
+    # --python_worker_command=/usr/bin/python
+    #     /usr/local/lib/python3.8/dist-packages/ray/workers/default_worker.py
+    #     --redis-address=123.456.78.910:6379
+    #     --node-ip-address=123.456.78.910 --node-manager-port=58578
+    #     --object-store-name=... --raylet-name=...
+    #     --config-list=plasma_store_as_thread,True --temp-dir=/tmp/ray
+    #     --metrics-agent-port=41856 --redis-password=[MASKED]
+    #     --java_worker_command= --cpp_worker_command=
+    #     --redis_password=[MASKED] --temp_dir=/tmp/ray --session_dir=...
+    #     --metrics-agent-port=41856 --metrics_export_port=64229
+    #     --agent_command=/usr/bin/python
+    #     -u /usr/local/lib/python3.8/dist-packages/ray/new_dashboard/agent.py
+    #         --redis-address=123.456.78.910:6379 --metrics-export-port=64229
+    #         --dashboard-agent-port=41856 --node-manager-port=58578
+    #         --object-store-name=... --raylet-name=... --temp-dir=/tmp/ray
+    #         --log-dir=/tmp/ray/session_2020-11-08_14-29-07_199128_278000/logs
+    #         --redis-password=[MASKED] --object_store_memory=5037192806
+    #         --plasma_directory=/tmp
+    # Longer arguments are elided with ... but all arguments from this instance
+    # are included, to provide a sense of what is in these.
+    # Indeed, we had to pull --redis-address to the front of each call to make
+    # this readable.
+    # As you can see, this is very long and complex, which is why we can't
+    # simply extract all the the arguments using regular expressions and
+    # present a dict as if we never lost track of these arguments, for
+    # example. Picking out --redis-address below looks like it might grab the
+    # wrong thing, but double-checking that we're finding the correct process
+    # by checking that the contents look like we expect would probably be prone
+    # to choking in unexpected ways.
+    # Notice that --redis-address appears twice. This is not a copy-paste
+    # error; this is the reason why the for loop below attempts to pick out
+    # every appearance of --redis-address.
+
+    # The --redis-address here is what is now called the --address, but it
+    # appears in the default_worker.py and agent.py calls as --redis-address.
     pids = psutil.pids()
     redis_addresses = set()
     for pid in pids:
@@ -155,7 +208,21 @@ def find_redis_address(address=None):
     return redis_addresses
 
 
+def get_ray_address_to_use_or_die():
+    """
+    Attempts to find an address for an existing Ray cluster if it is not
+    already specified as an environment variable.
+    Returns:
+        A string to pass into `ray.init(address=...)`
+    """
+    if "RAY_ADDRESS" in os.environ:
+        return "auto"  # Avoid conflict with RAY_ADDRESS env var
+
+    return find_redis_address_or_die()
+
+
 def find_redis_address_or_die():
+
     redis_addresses = find_redis_address()
     if len(redis_addresses) > 1:
         raise ConnectionError(
@@ -186,12 +253,21 @@ def get_address_info_from_redis_helper(redis_address,
         client_node_ip_address = client_info["NodeManagerAddress"]
         if (client_node_ip_address == node_ip_address
                 or (client_node_ip_address == "127.0.0.1"
-                    and redis_ip_address == get_node_ip_address())):
+                    and redis_ip_address == get_node_ip_address())
+                or client_node_ip_address == redis_ip_address):
             relevant_client = client_info
             break
     if relevant_client is None:
         raise RuntimeError(
-            "Redis has started but no raylets have registered yet.")
+            f"This node has an IP address of {node_ip_address}, and Ray "
+            "expects this IP address to be either the Redis address or one of"
+            f" the Raylet addresses. Connected to Redis at {redis_address} and"
+            " found raylets at "
+            f"{', '.join(c['NodeManagerAddress'] for c in client_table)} but "
+            f"none of these match this node's IP {node_ip_address}. Are any of"
+            " these actually a different IP address for the same node?"
+            "You might need to provide --node-ip-address to specify the IP "
+            "address that the head should use when sending to this node.")
 
     return {
         "object_store_address": relevant_client["ObjectStoreSocketName"],
@@ -297,19 +373,16 @@ def address_to_ip(address):
     return ":".join([ip_address] + address_parts[1:])
 
 
-def get_node_ip_address(address="8.8.8.8:53"):
-    """Determine the IP address of the local node.
+def node_ip_address_from_perspective(address):
+    """IP address by which the local node can be reached *from* the `address`.
 
     Args:
         address (str): The IP address and port of any known live service on the
             network you care about.
 
     Returns:
-        The IP address of the current node.
+        The IP address by which the local node can be reached from the address.
     """
-    if ray.worker._global_node is not None:
-        return ray.worker._global_node.node_ip_address
-
     ip_address, port = address.split(":")
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
@@ -331,6 +404,12 @@ def get_node_ip_address(address="8.8.8.8:53"):
         s.close()
 
     return node_ip_address
+
+
+def get_node_ip_address(address="8.8.8.8:53"):
+    if ray.worker._global_node is not None:
+        return ray.worker._global_node.node_ip_address
+    return node_ip_address_from_perspective(address)
 
 
 def create_redis_client(redis_address, password=None):
@@ -551,25 +630,50 @@ def wait_for_redis_to_start(redis_ip_address, redis_port, password=None):
     redis_client = redis.StrictRedis(
         host=redis_ip_address, port=redis_port, password=password)
     # Wait for the Redis server to start.
-    num_retries = 12
+    num_retries = ray_constants.START_REDIS_WAIT_RETRIES
     delay = 0.001
-    for _ in range(num_retries):
+    for i in range(num_retries):
         try:
             # Run some random command and see if it worked.
             logger.debug(
                 "Waiting for redis server at {}:{} to respond...".format(
                     redis_ip_address, redis_port))
             redis_client.client_list()
-        except redis.ConnectionError:
+        # If the Redis service is delayed getting set up for any reason, we may
+        # get a redis.ConnectionError: Error 111 connecting to host:port.
+        # Connection refused.
+        # Unfortunately, redis.ConnectionError is also the base class of
+        # redis.AuthenticationError. We *don't* want to obscure a
+        # redis.AuthenticationError, because that indicates the user provided a
+        # bad password. Thus a double except clause to ensure a
+        # redis.AuthenticationError isn't trapped here.
+        except redis.AuthenticationError as authEx:
+            raise RuntimeError("Unable to connect to Redis at {}:{}.".format(
+                redis_ip_address, redis_port)) from authEx
+        except redis.ConnectionError as connEx:
+            if i >= num_retries - 1:
+                raise RuntimeError(
+                    f"Unable to connect to Redis at {redis_ip_address}:"
+                    f"{redis_port} after {num_retries} retries. Check that "
+                    f"{redis_ip_address}:{redis_port} is reachable from this "
+                    "machine. If it is not, your firewall may be blocking "
+                    "this port. If the problem is a flaky connection, try "
+                    "setting the environment variable "
+                    "`RAY_START_REDIS_WAIT_RETRIES` to increase the number of"
+                    " attempts to ping the Redis server.") from connEx
             # Wait a little bit.
             time.sleep(delay)
             delay *= 2
         else:
             break
     else:
-        raise RuntimeError("Unable to connect to Redis. If the Redis instance "
-                           "is on a different machine, check that your "
-                           "firewall is configured properly.")
+        raise RuntimeError(
+            f"Unable to connect to Redis (after {num_retries} retries). "
+            "If the Redis instance is on a different machine, check that "
+            "your firewall and relevant Ray ports are configured properly. "
+            "You can also set the environment variable "
+            "`RAY_START_REDIS_WAIT_RETRIES` to increase the number of "
+            "attempts to ping the Redis server.")
 
 
 def _compute_version_info():
@@ -975,46 +1079,6 @@ def start_log_monitor(redis_address,
     return process_info
 
 
-def start_reporter(redis_address,
-                   port,
-                   metrics_export_port,
-                   stdout_file=None,
-                   stderr_file=None,
-                   redis_password=None,
-                   fate_share=None):
-    """Start a reporter process.
-
-    Args:
-        redis_address (str): The address of the Redis instance.
-        port(int): The port to bind the reporter process.
-        metrics_export_port(int): The port at which metrics are exposed to.
-        stdout_file: A file handle opened for writing to redirect stdout to. If
-            no redirection should happen, then this should be None.
-        stderr_file: A file handle opened for writing to redirect stderr to. If
-            no redirection should happen, then this should be None.
-        redis_password (str): The password of the redis server.
-
-    Returns:
-        ProcessInfo for the process that was started.
-    """
-    reporter_filepath = os.path.join(RAY_PATH, "reporter.py")
-    command = [
-        sys.executable, "-u", reporter_filepath,
-        f"--redis-address={redis_address}", f"--port={port}",
-        f"--metrics-export-port={metrics_export_port}"
-    ]
-    if redis_password:
-        command += ["--redis-password", redis_password]
-
-    process_info = start_ray_process(
-        command,
-        ray_constants.PROCESS_TYPE_REPORTER,
-        stdout_file=stdout_file,
-        stderr_file=stderr_file,
-        fate_share=fate_share)
-    return process_info
-
-
 def start_dashboard(require_dashboard,
                     host,
                     redis_address,
@@ -1190,13 +1254,11 @@ def start_raylet(redis_address,
                  stderr_file=None,
                  config=None,
                  java_worker_options=None,
-                 load_code_from_local=False,
                  huge_pages=False,
                  fate_share=None,
                  socket_to_use=None,
                  head_node=False,
-                 start_initial_python_workers_for_first_job=False,
-                 code_search_path=None):
+                 start_initial_python_workers_for_first_job=False):
     """Start a raylet, which is a combined local scheduler and object manager.
 
     Args:
@@ -1233,9 +1295,6 @@ def start_raylet(redis_address,
         config (dict|None): Optional Raylet configuration that will
             override defaults in RayConfig.
         java_worker_options (list): The command options for Java worker.
-        code_search_path (list): Code search path for worker. code_search_path
-            is added to worker command in non-multi-tenancy mode and job_config
-            in multi-tenancy mode.
     Returns:
         ProcessInfo for the process that was started.
     """
@@ -1248,7 +1307,6 @@ def start_raylet(redis_address,
         raise ValueError("Cannot use valgrind and profiler at the same time.")
 
     assert resource_spec.resolved()
-    num_initial_workers = resource_spec.num_cpus
     static_resources = resource_spec.to_resource_dict()
 
     # Limit the number of workers that can be started in parallel by the
@@ -1285,7 +1343,6 @@ def start_raylet(redis_address,
             raylet_name,
             redis_password,
             session_dir,
-            code_search_path,
         )
     else:
         java_worker_command = []
@@ -1305,15 +1362,18 @@ def start_raylet(redis_address,
 
     # Create the command that the Raylet will use to start workers.
     start_worker_command = [
-        sys.executable, worker_path, f"--node-ip-address={node_ip_address}",
+        sys.executable,
+        worker_path,
+        f"--node-ip-address={node_ip_address}",
         f"--node-manager-port={node_manager_port}",
         f"--object-store-name={plasma_store_name}",
-        f"--raylet-name={raylet_name}", f"--redis-address={redis_address}",
-        f"--config-list={config_str}", f"--temp-dir={temp_dir}",
-        f"--metrics-agent-port={metrics_agent_port}"
+        f"--raylet-name={raylet_name}",
+        f"--redis-address={redis_address}",
+        f"--config-list={config_str}",
+        f"--temp-dir={temp_dir}",
+        f"--metrics-agent-port={metrics_agent_port}",
+        "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER",
     ]
-    if code_search_path:
-        start_worker_command.append(f"--code-search-path={code_search_path}")
     if redis_password:
         start_worker_command += [f"--redis-password={redis_password}"]
 
@@ -1328,17 +1388,12 @@ def start_raylet(redis_address,
     if max_worker_port is None:
         max_worker_port = 0
 
-    if code_search_path is not None and len(code_search_path) > 0:
-        load_code_from_local = True
-
-    if load_code_from_local:
-        start_worker_command += ["--load-code-from-local"]
-
     # Create agent command
     agent_command = [
         sys.executable,
         "-u",
         os.path.join(RAY_PATH, "new_dashboard/agent.py"),
+        f"--node-ip-address={node_ip_address}",
         f"--redis-address={redis_address}",
         f"--metrics-export-port={metrics_export_port}",
         f"--dashboard-agent-port={metrics_agent_port}",
@@ -1363,7 +1418,6 @@ def start_raylet(redis_address,
         f"--node_ip_address={node_ip_address}",
         f"--redis_address={gcs_ip_address}",
         f"--redis_port={gcs_port}",
-        f"--num_initial_workers={num_initial_workers}",
         f"--maximum_startup_concurrency={maximum_startup_concurrency}",
         f"--static_resource_list={resource_argument}",
         f"--config_list={config_str}",
@@ -1423,8 +1477,7 @@ def get_ray_jars_dir():
 
 def build_java_worker_command(java_worker_options, redis_address,
                               node_manager_port, plasma_store_name,
-                              raylet_name, redis_password, session_dir,
-                              code_search_path):
+                              raylet_name, redis_password, session_dir):
     """This method assembles the command used to start a Java worker.
 
     Args:
@@ -1435,7 +1488,6 @@ def build_java_worker_command(java_worker_options, redis_address,
         raylet_name (str): The name of the raylet socket to create.
         redis_password (str): The password of connect to redis.
         session_dir (str): The path of this session.
-        code_search_path (list): Teh job code search path.
     Returns:
         The command string for starting Java worker.
     """
@@ -1456,7 +1508,6 @@ def build_java_worker_command(java_worker_options, redis_address,
     pairs.append(("ray.home", RAY_HOME))
     pairs.append(("ray.logging.dir", os.path.join(session_dir, "logs")))
     pairs.append(("ray.session-dir", session_dir))
-    pairs.append(("ray.job.code-search-path", code_search_path))
     command = ["java"] + ["-D{}={}".format(*pair) for pair in pairs]
 
     command += ["RAY_WORKER_RAYLET_CONFIG_PLACEHOLDER"]
@@ -1568,12 +1619,13 @@ def determine_plasma_store_config(object_store_memory,
                 logger.warning(
                     "WARNING: The object store is using {} instead of "
                     "/dev/shm because /dev/shm has only {} bytes available. "
-                    "This may slow down performance! You may be able to free "
-                    "up space by deleting files in /dev/shm or terminating "
-                    "any running plasma_store_server processes. If you are "
-                    "inside a Docker container, you may need to pass an "
-                    "argument with the flag '--shm-size' to 'docker run'.".
-                    format(ray.utils.get_user_temp_dir(), shm_avail))
+                    "This will harm performance! You may be able to free up "
+                    "space by deleting files in /dev/shm. If you are inside a "
+                    "Docker container, you can increase /dev/shm size by "
+                    "passing '--shm-size=Xgb' to 'docker run' (or add it to "
+                    "the run_options list in a Ray cluster config). Make sure "
+                    "to set this to more than 2gb.".format(
+                        ray.utils.get_user_temp_dir(), shm_avail))
         else:
             plasma_directory = ray.utils.get_user_temp_dir()
 
@@ -1722,6 +1774,7 @@ def start_worker(node_ip_address,
 
 
 def start_monitor(redis_address,
+                  logs_dir,
                   stdout_file=None,
                   stderr_file=None,
                   autoscaling_config=None,
@@ -1731,6 +1784,7 @@ def start_monitor(redis_address,
 
     Args:
         redis_address (str): The address that the Redis server is listening on.
+        logs_dir(str): The path to the log directory.
         stdout_file: A file handle opened for writing to redirect stdout to. If
             no redirection should happen, then this should be None.
         stderr_file: A file handle opened for writing to redirect stderr to. If
@@ -1746,6 +1800,7 @@ def start_monitor(redis_address,
         sys.executable,
         "-u",
         monitor_path,
+        f"--logs-dir={logs_dir}",
         "--redis-address=" + str(redis_address),
     ]
     if autoscaling_config:
@@ -1755,6 +1810,41 @@ def start_monitor(redis_address,
     process_info = start_ray_process(
         command,
         ray_constants.PROCESS_TYPE_MONITOR,
+        stdout_file=stdout_file,
+        stderr_file=stderr_file,
+        fate_share=fate_share)
+    return process_info
+
+
+def start_ray_client_server(redis_address,
+                            ray_client_server_port,
+                            stdout_file=None,
+                            stderr_file=None,
+                            redis_password=None,
+                            fate_share=None):
+    """Run the server process of the Ray client.
+
+    Args:
+        ray_client_server_port (int): Port the Ray client server listens on.
+        stdout_file: A file handle opened for writing to redirect stdout to. If
+            no redirection should happen, then this should be None.
+        stderr_file: A file handle opened for writing to redirect stderr to. If
+            no redirection should happen, then this should be None.
+        redis_password (str): The password of the redis server.
+
+    Returns:
+        ProcessInfo for the process that was started.
+    """
+    command = [
+        sys.executable, "-m", "ray.util.client.server",
+        "--redis-address=" + str(redis_address),
+        "--port=" + str(ray_client_server_port)
+    ]
+    if redis_password:
+        command.append("--redis-password=" + redis_password)
+    process_info = start_ray_process(
+        command,
+        ray_constants.PROCESS_TYPE_RAY_CLIENT_SERVER,
         stdout_file=stdout_file,
         stderr_file=stderr_file,
         fate_share=fate_share)

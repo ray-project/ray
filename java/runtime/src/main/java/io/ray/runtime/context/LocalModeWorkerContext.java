@@ -10,9 +10,7 @@ import io.ray.runtime.generated.Common.TaskSpec;
 import io.ray.runtime.generated.Common.TaskType;
 import io.ray.runtime.task.LocalModeTaskSubmitter;
 
-/**
- * Worker context for local mode.
- */
+/** Worker context for local mode. */
 public class LocalModeWorkerContext implements WorkerContext {
 
   private final JobId jobId;
@@ -52,8 +50,7 @@ public class LocalModeWorkerContext implements WorkerContext {
   }
 
   @Override
-  public void setCurrentClassLoader(ClassLoader currentClassLoader) {
-  }
+  public void setCurrentClassLoader(ClassLoader currentClassLoader) {}
 
   @Override
   public TaskType getCurrentTaskType() {
