@@ -174,7 +174,7 @@ class OneHotPreprocessor(Preprocessor):
     @override(Preprocessor)
     def write(self, observation: TensorType, array: np.ndarray,
               offset: int) -> None:
-        array[offset + observation] = 1
+        array[offset:offset + self.size] = self.transform(observation)
 
 
 class NoPreprocessor(Preprocessor):

@@ -36,6 +36,7 @@ namespace rpc {
   RPC_SERVICE_HANDLER(NodeManagerService, CommitBundleResources)  \
   RPC_SERVICE_HANDLER(NodeManagerService, CancelResourceReserve)  \
   RPC_SERVICE_HANDLER(NodeManagerService, RequestObjectSpillage)  \
+  RPC_SERVICE_HANDLER(NodeManagerService, RestoreSpilledObject)   \
   RPC_SERVICE_HANDLER(NodeManagerService, ReleaseUnusedBundles)
 
 /// Interface of the `NodeManagerService`, see `src/ray/protobuf/node_manager.proto`.
@@ -101,6 +102,10 @@ class NodeManagerServiceHandler {
   virtual void HandleRequestObjectSpillage(const RequestObjectSpillageRequest &request,
                                            RequestObjectSpillageReply *reply,
                                            SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleRestoreSpilledObject(const RestoreSpilledObjectRequest &request,
+                                          RestoreSpilledObjectReply *reply,
+                                          SendReplyCallback send_reply_callback) = 0;
 
   virtual void HandleReleaseUnusedBundles(const ReleaseUnusedBundlesRequest &request,
                                           ReleaseUnusedBundlesReply *reply,

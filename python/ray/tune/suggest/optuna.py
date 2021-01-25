@@ -218,8 +218,14 @@ class OptunaSearch(Searcher):
                           error: bool = False):
         ot_trial = self._ot_trials[trial_id]
         ot_trial_id = ot_trial._trial_id
-        self._storage.set_trial_value(ot_trial_id, result.get(
-            self.metric, None))
+
+        val = result.get(self.metric, None)
+        if hasattr(self._storage, "set_trial_value"):
+            # Backwards compatibility with optuna < 2.4.0
+            self._storage.set_trial_value(ot_trial_id, val)
+        else:
+            self._storage.set_trial_values(ot_trial_id, [val])
+
         self._storage.set_trial_state(ot_trial_id,
                                       ot.trial.TrialState.COMPLETE)
 
