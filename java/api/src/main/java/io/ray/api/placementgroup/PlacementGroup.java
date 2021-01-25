@@ -14,30 +14,35 @@ public interface PlacementGroup {
 
   /**
    * Get the id of current placement group.
+   *
    * @return Id of current placement group.
    */
   PlacementGroupId getId();
 
   /**
    * Get the name of current placement group.
+   *
    * @return Name of current placement group.
    */
   String getName();
 
   /**
    * Get all bundles of current placement group.
+   *
    * @return All bundles of current placement group.
    */
   List<Map<String, Double>> getBundles();
 
   /**
    * Get the strategy of current placement group.
+   *
    * @return Strategy of current placement group.
    */
   PlacementStrategy getStrategy();
 
   /**
    * Get the state of current placement group.
+   *
    * @return Creation state of current placement group.
    */
   PlacementGroupState getState();

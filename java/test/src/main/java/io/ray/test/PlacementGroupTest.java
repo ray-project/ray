@@ -47,12 +47,12 @@ public class PlacementGroupTest extends BaseTest {
   @Test(groups = {"cluster"})
   public void testGetPlacementGroup() {
     PlacementGroup firstPlacementGroup =
-            PlacementGroupTestUtils.createNameSpecifiedSimpleGroup(
-                "CPU", 1, PlacementStrategy.PACK, 1.0, "first_placement_group");
+        PlacementGroupTestUtils.createNameSpecifiedSimpleGroup(
+            "CPU", 1, PlacementStrategy.PACK, 1.0, "first_placement_group");
 
     PlacementGroup secondPlacementGroup =
-            PlacementGroupTestUtils.createNameSpecifiedSimpleGroup(
-                "CPU", 1, PlacementStrategy.PACK, 1.0, "second_placement_group");
+        PlacementGroupTestUtils.createNameSpecifiedSimpleGroup(
+            "CPU", 1, PlacementStrategy.PACK, 1.0, "second_placement_group");
     Assert.assertTrue(firstPlacementGroup.wait(10));
     Assert.assertTrue(secondPlacementGroup.wait(10));
 
@@ -89,8 +89,8 @@ public class PlacementGroupTest extends BaseTest {
         "CPU", 1, PlacementStrategy.PACK, 1.0, "first_placement_group");
 
     PlacementGroup secondPlacementGroup =
-            PlacementGroupTestUtils.createNameSpecifiedSimpleGroup(
-                "CPU", 1, PlacementStrategy.PACK, 1.0, "second_placement_group");
+        PlacementGroupTestUtils.createNameSpecifiedSimpleGroup(
+            "CPU", 1, PlacementStrategy.PACK, 1.0, "second_placement_group");
 
     List<PlacementGroup> allPlacementGroup = Ray.getAllPlacementGroups();
     Assert.assertEquals(allPlacementGroup.size(), 2);
