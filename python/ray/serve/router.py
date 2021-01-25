@@ -1,7 +1,6 @@
 import asyncio
 from enum import Enum
 import itertools
-from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Any, ChainMap, Dict, Iterable, List, Optional
 
@@ -185,13 +184,7 @@ class Router:
 
         self.endpoint_policies: Dict[str, EndpointPolicy] = dict()
 
-        class keydefaultdict(defaultdict):
-            def __missing__(self, key):
-                self[key] = self.default_factory(key)
-                return self[key]
-
-        self.backend_replicas: Dict[str, ReplicaSet] = keydefaultdict(
-            ReplicaSet)
+        self.backend_replicas: Dict[str, ReplicaSet] = dict()
 
         self._pending_endpoints: Dict[str, asyncio.Future] = dict()
 
@@ -235,8 +228,8 @@ class Router:
                                                      replica_handles)
 
         for backend_tag, replica_handles in ChainMap(added, updated).items():
-            self.backend_replicas[backend_tag].update_worker_replicas(
-                replica_handles)
+            self._get_or_create_replica_set(
+                backend_tag).update_worker_replicas(replica_handles)
 
         for backend_tag in removed.keys():
             if backend_tag in self.backend_replicas:
@@ -246,8 +239,9 @@ class Router:
         added, removed, updated = compute_dict_delta(self.backend_replicas,
                                                      backend_configs)
         for backend_tag, config in ChainMap(added, updated).items():
-            self.backend_replicas[backend_tag].set_max_concurrent_queries(
-                config.max_concurrent_queries)
+            self._get_or_create_replica_set(
+                backend_tag).set_max_concurrent_queries(
+                    config.max_concurrent_queries)
 
         for backend_tag in removed.keys():
             if backend_tag in self.backend_replicas:
@@ -283,11 +277,17 @@ class Router:
         endpoint_policy = self.endpoint_policies[endpoint]
         chosen_backend, *shadow_backends = endpoint_policy.assign(query)
 
-        result_ref = await self.backend_replicas[chosen_backend
-                                                 ].assign_replica(query)
+        result_ref = await self._get_or_create_replica_set(
+            chosen_backend).assign_replica(query)
         for backend in shadow_backends:
-            await self.backend_replicas[backend].assign_replica(query)
+            (await self._get_or_create_replica_set(backend)
+             .assign_replica(query))
 
         self.num_router_requests.record(1, tags={"endpoint": endpoint})
 
         return result_ref
+
+    def _get_or_create_replica_set(self, backend_name):
+        if backend_name not in self.backend_replicas:
+            self.backend_replicas[backend_name] = ReplicaSet(backend_name)
+        return self.backend_replicas[backend_name]
