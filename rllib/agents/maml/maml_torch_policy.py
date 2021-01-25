@@ -1,15 +1,15 @@
 import logging
 
 import ray
-from ray.rllib.evaluation.postprocessing import compute_gae_for_sample_batch, \
-    Postprocessing
+from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.agents.ppo.ppo_tf_policy import setup_config
+from ray.rllib.agents.ppo.ppo_tf_policy import postprocess_ppo_gae, \
+    setup_config
 from ray.rllib.agents.ppo.ppo_torch_policy import vf_preds_fetches, \
     ValueNetworkMixin
+from ray.rllib.agents.a3c.a3c_torch_policy import apply_grad_clipping
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.torch_ops import apply_grad_clipping
 
 torch, nn = try_import_torch()
 
@@ -178,7 +178,7 @@ class MAMLLoss(object):
 
                 # Meta Update
                 ppo_loss, s_loss, kl_loss, v_loss, ent = self.compute_losses(
-                    fnet, self.inner_adaptation_steps, i, clip_loss=True)
+                    fnet, self.inner_adaptation_steps - 1, i, clip_loss=True)
 
                 inner_loss = torch.mean(
                     torch.stack([
@@ -271,8 +271,12 @@ def maml_loss(policy, model, dist_class, train_batch):
 
         # `split` may not exist yet (during test-loss call), use a dummy value.
         # Cannot use get here due to train_batch being a TrackingDict.
-        split = train_batch["split"] if "split" in train_batch else \
-            torch.tensor([[8, 8], [8, 8]])
+        if "split" in train_batch:
+            split = train_batch["split"]
+        else:
+            split_shape = (policy.config["inner_adaptation_steps"], policy.config["num_workers"])
+            split_const = int(train_batch["obs"].shape[0] // (split_shape[0] * split_shape[1]))
+            split = torch.ones(split_shape, dtype=int) * split_const
         policy.loss_obj = MAMLLoss(
             model=model,
             dist_class=dist_class,
@@ -355,8 +359,9 @@ MAMLTorchPolicy = build_policy_class(
     stats_fn=maml_stats,
     optimizer_fn=maml_optimizer_fn,
     extra_action_out_fn=vf_preds_fetches,
-    postprocess_fn=compute_gae_for_sample_batch,
+    postprocess_fn=postprocess_ppo_gae,
     extra_grad_process_fn=apply_grad_clipping,
     before_init=setup_config,
     after_init=setup_mixins,
     mixins=[KLCoeffMixin])
+
