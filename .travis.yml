@@ -226,6 +226,9 @@ matrix:
       before_script:
         - . ./ci/travis/ci.sh build
       script:
+        - wget --quiet "https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh" -O miniconda3.sh
+        - bash miniconda3.sh -b -p "$HOME/miniconda3"
+        - conda install -y python=3.7.6
         - export PATH="$HOME/miniconda3/bin:$PATH"
         - python -m pip install docker
         - if [[ "$TRAVIS_PULL_REQUEST" != "false" ]]; then python $TRAVIS_BUILD_DIR/ci/travis/build-docker-images.py NEW; fi
