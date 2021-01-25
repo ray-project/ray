@@ -136,8 +136,11 @@ is generally the easiest way to run release tests.
 
 5. **ASAN tests**
 
-   Run the ``ci/asan_tests`` with the commit. This will enable ASAN build and run the
-   whole Python tests to detect memory leaks.
+   Run the ``ci/asan_tests`` with the commit. This will enable ASAN build and run the whole Python tests to detect memory leaks.
+
+6. **K8s operator tests**
+
+   Run the ``python/ray/tests/test_k8s_*`` to make sure K8s cluster launcher and operator works. Make sure the docker image is the released version.
 
 Identify and Resolve Release Blockers
 -------------------------------------
