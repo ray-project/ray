@@ -356,7 +356,8 @@ Status ConnectOrFail(const std::string &address, int port,
     if (status.IsRedisError()) {
       RAY_LOG(FATAL) << status.message();
     } else {
-      RAY_LOG(FATAL) << status.message();
+      // do nothing and return OK
+      // https://github.com/ray-project/ray/pull/13367#discussion_r560615928
     }
   }
   return Status::OK();
