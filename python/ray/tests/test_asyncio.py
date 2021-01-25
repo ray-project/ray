@@ -6,7 +6,7 @@ import threading
 import pytest
 
 import ray
-from ray.test_utils import SignalActor
+from ray.test_utils import SignalActor, wait_for_condition
 
 
 def test_asyncio_actor(ray_start_regular_shared):
@@ -225,10 +225,23 @@ async def test_asyncio_exit_actor(ray_start_regular_shared):
 
 
 def test_async_callback(ray_start_regular_shared):
-    # TODO(simon): write test
-    # TODO(simon): try to convert the _raylet:get_async_futre to use the future system
+    global_set = set()
 
-    pass
+    ref = ray.put(None)
+    ref.on_completed(lambda _: global_set.add("completed-1"))
+    wait_for_condition(lambda: "completed-1" in global_set)
+
+    signal = SignalActor.remote()
+
+    @ray.remote
+    def wait():
+        ray.get(signal.wait.remote())
+
+    ref = wait.remote()
+    ref.on_completed(lambda _: global_set.add("completed-2"))
+    assert "completed-2" not in global_set
+    signal.send.remote()
+    wait_for_condition(lambda: "completed-2" in global_set)
 
 
 if __name__ == "__main__":

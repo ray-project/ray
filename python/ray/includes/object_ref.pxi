@@ -71,13 +71,33 @@ cdef class ObjectRef(BaseID):
 
     def as_future(self):
         loop = asyncio.get_event_loop()
-        core_worker = ray.worker.global_worker.core_worker
+        py_future = loop.create_future()
 
-        future = loop.create_future()
-        core_worker.get_async(self, future)
+        def callback(result):
+            loop = py_future._loop
+            def set_future():
+                # Issue #11030, #8841
+                # If this future has result set already, we just need to
+                # skip the set result/exception procedure.
+                if py_future.done():
+                    return
+
+                if isinstance(result, RayTaskError):
+                    ray.worker.last_task_error_raise_time = time.time()
+                    py_future.set_exception(result.as_instanceof_cause())
+                elif isinstance(result, RayError):
+                    # Directly raise exception for RayActorError
+                    py_future.set_exception(result)
+                else:
+                    py_future.set_result(result)
+
+            loop.call_soon_threadsafe(set_future)
+
+        self.on_completed(callback)
+
         # A hack to keep a reference to the object ref for ref counting.
-        future.object_ref = self
-        return future
+        py_future.object_ref = self
+        return py_future
 
     def on_completed(self, py_callback):
         core_worker = ray.worker.global_worker.core_worker

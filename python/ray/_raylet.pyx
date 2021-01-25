@@ -1567,13 +1567,6 @@ cdef class CoreWorker:
 
         return ref_counts
 
-    def get_async(self, ObjectRef object_ref, future):
-        cpython.Py_INCREF(future)
-        CCoreWorkerProcess.GetCoreWorker().GetAsync(
-                object_ref.native(),
-                async_set_result,
-                <void*>future)
-
     def get_async_callback(self, ObjectRef object_ref, callback):
         cpython.Py_INCREF(callback)
         CCoreWorkerProcess.GetCoreWorker().GetAsync(
@@ -1617,31 +1610,3 @@ cdef void async_callback(shared_ptr[CRayObject] obj,
     py_callback = <object>user_callback
     py_callback(result)
     cpython.Py_DECREF(py_callback)
-
-cdef void async_set_result(shared_ptr[CRayObject] obj,
-                           CObjectID object_ref,
-                           void *future) with gil:
-    result = _deserialize_first_object(obj, object_ref)
-    py_future = <object>(future)
-    loop = py_future._loop
-
-    def set_future():
-        # Issue #11030, #8841
-        # If this future has result set already, we just need to
-        # skip the set result/exception procedure.
-        if py_future.done():
-            cpython.Py_DECREF(py_future)
-            return
-
-        if isinstance(result, RayTaskError):
-            ray.worker.last_task_error_raise_time = time.time()
-            py_future.set_exception(result.as_instanceof_cause())
-        elif isinstance(result, RayError):
-            # Directly raise exception for RayActorError
-            py_future.set_exception(result)
-        else:
-            py_future.set_result(result)
-
-        cpython.Py_DECREF(py_future)
-
-    loop.call_soon_threadsafe(set_future)
