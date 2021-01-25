@@ -4,10 +4,10 @@ import ray
 import ray.autoscaler.sdk
 
 from time import sleep, perf_counter
-from tqdm import tqdm, trange
+from tqdm import tqdm
 
 NUM_NODES = 50
-OBJECT_SIZE = 2 ** 30
+OBJECT_SIZE = 2**30
 
 
 def scale_to(target):
