@@ -1372,7 +1372,8 @@ ray.shutdown()
     assert assert_alive_num_pg(1)
     assert assert_alive_num_actor(2)
 
-    # Make sure detached placement group will alive when its creator which is detached actor dead.
+    # Make sure detached placement group will alive when its creator which
+    # is detached actor dead.
     # Test actors first.
     @ray.remote(num_cpus=1)
     class NestedActor:
