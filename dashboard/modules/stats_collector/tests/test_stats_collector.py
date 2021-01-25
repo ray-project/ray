@@ -8,6 +8,8 @@ import random
 import pytest
 import ray
 import threading
+import ray.new_dashboard.modules.stats_collector.stats_collector_consts \
+    as stats_collector_consts
 from datetime import datetime, timedelta
 from ray.cluster_utils import Cluster
 from ray.new_dashboard.tests.conftest import *  # noqa
@@ -371,6 +373,48 @@ def test_errors(enable_test_module, disable_aiohttp_cache,
 
     wait_until_succeeded_without_exception(
         check_errs, (AssertionError), timeout_ms=1000)
+
+
+def test_nil_node(enable_test_module, disable_aiohttp_cache,
+                  ray_start_with_dashboard):
+    assert (wait_until_server_available(ray_start_with_dashboard["webui_url"])
+            is True)
+    webui_url = ray_start_with_dashboard["webui_url"]
+    assert wait_until_server_available(webui_url)
+    webui_url = format_web_url(webui_url)
+
+    @ray.remote(num_gpus=1)
+    class InfeasibleActor:
+        pass
+
+    infeasible_actor = InfeasibleActor.remote()  # noqa
+
+    timeout_seconds = 5
+    start_time = time.time()
+    last_ex = None
+    while True:
+        time.sleep(1)
+        try:
+            resp = requests.get(f"{webui_url}/logical/actors")
+            resp_json = resp.json()
+            resp_data = resp_json["data"]
+            actors = resp_data["actors"]
+            assert len(actors) == 1
+            response = requests.get(webui_url + "/test/dump?key=node_actors")
+            response.raise_for_status()
+            result = response.json()
+            assert stats_collector_consts.NIL_NODE_ID not in result["data"][
+                "nodeActors"]
+            break
+        except Exception as ex:
+            last_ex = ex
+        finally:
+            if time.time() > start_time + timeout_seconds:
+                ex_stack = traceback.format_exception(
+                    type(last_ex), last_ex,
+                    last_ex.__traceback__) if last_ex else []
+                ex_stack = "".join(ex_stack)
+                raise Exception(f"Timed out while testing, {ex_stack}")
 
 
 if __name__ == "__main__":

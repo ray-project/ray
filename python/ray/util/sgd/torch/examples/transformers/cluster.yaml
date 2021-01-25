@@ -4,10 +4,8 @@ cluster_name: transformer-cluster
 # The maximum number of workers nodes to launch in addition to the head
 # node. This takes precedence over min_workers. min_workers default to 0.
 min_workers: 3
-initial_workers: 3
 max_workers: 3
 
-target_utilization_fraction: 0.9
 # Cloud-provider specific configuration.
 provider:
     type: aws

@@ -101,7 +101,7 @@ public class JobMaster {
   /**
    * Init JobMaster. To initiate or recover other components(like metrics and extra coordinators).
    *
-   * <p>Returns init result
+   * @return init result
    */
   public Boolean init(boolean isRecover) {
     LOG.info("Initializing job master, isRecover={}.", isRecover);
@@ -136,7 +136,8 @@ public class JobMaster {
    * </ol>
    *
    * @param jobMasterActor JobMaster actor
-   * @param jobGraph logical plan Returns submit result
+   * @param jobGraph logical plan
+   * @return submit result
    */
   public boolean submitJob(ActorHandle<JobMaster> jobMasterActor, JobGraph jobGraph) {
     LOG.info("Begin submitting job using logical plan: {}.", jobGraph);

@@ -61,8 +61,8 @@ public class PlacementGroupUtils {
   /**
    * Generate a PlacementGroupImpl from placementGroupTableData protobuf data.
    *
-   * @param placementGroupTableData protobuf data. Returns placement group info {@link
-   *     PlacementGroupImpl}
+   * @param placementGroupTableData protobuf data.
+   * @return placement group info {@link PlacementGroupImpl}
    */
   private static PlacementGroupImpl generatePlacementGroupFromPbData(
       PlacementGroupTableData placementGroupTableData) {
@@ -90,8 +90,8 @@ public class PlacementGroupUtils {
   /**
    * Generate a PlacementGroupImpl from byte array.
    *
-   * @param placementGroupByteArray bytes array from native method. Returns placement group info
-   *     {@link PlacementGroupImpl}
+   * @param placementGroupByteArray bytes array from native method.
+   * @return placement group info {@link PlacementGroupImpl}
    */
   public static PlacementGroupImpl generatePlacementGroupFromByteArray(
       byte[] placementGroupByteArray) {
