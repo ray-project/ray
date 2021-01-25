@@ -12,7 +12,6 @@ from ray.core.generated import gcs_service_pb2
 from ray.core.generated import gcs_service_pb2_grpc
 from ray.new_dashboard.datacenter import (
     DataSource,
-    DataOrganizer,
     GlobalSignals,
 )
 
@@ -53,7 +52,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         if view is None:
             job_detail = {
                 "jobInfo": DataSource.jobs.get(job_id, {}),
-                "jobActors": await DataOrganizer.get_job_actors(job_id),
+                "jobActors": DataSource.job_actors.get(job_id, {}),
                 "jobWorkers": DataSource.job_workers.get(job_id, []),
             }
             await GlobalSignals.job_info_fetched.send(job_detail)
@@ -104,16 +103,10 @@ class JobHead(dashboard_utils.DashboardHeadModule):
                 pubsub_message = ray.gcs_utils.PubSubMessage.FromString(data)
                 message = ray.gcs_utils.JobTableData.FromString(
                     pubsub_message.data)
-                job_id = ray._raylet.JobID(message.job_id)
-                if job_id.is_submitted_from_dashboard():
-                    job_table_data = job_table_data_to_dict(message)
-                    job_id = job_table_data["jobId"]
-                    # Update jobs.
-                    DataSource.jobs[job_id] = job_table_data
-                else:
-                    logger.info(
-                        "Ignore job %s which is not submitted from dashboard.",
-                        job_id.hex())
+                job_table_data = job_table_data_to_dict(message)
+                job_id = job_table_data["jobId"]
+                # Update jobs.
+                DataSource.jobs[job_id] = job_table_data
             except Exception:
                 logger.exception("Error receiving job info.")
 

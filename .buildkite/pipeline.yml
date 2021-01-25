@@ -1,0 +1,6 @@
+- label: "Ray Core Tests (:buildkite: Experimental)"
+  commands:
+  - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only -- //:all -rllib/...
+- label: "Ray Dashboard Tests"
+  commands:
+  - bazel test --config=ci $(./scripts/bazel_export_options) python/ray/new_dashboard/...

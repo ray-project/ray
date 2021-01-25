@@ -11,6 +11,7 @@ from typing import Iterable, List, Dict, Tuple
 import os
 from ray.serve.exceptions import RayServeException
 from collections import UserDict
+from pathlib import Path
 
 import starlette.requests
 import requests
@@ -102,7 +103,8 @@ def parse_request_item(request_item):
 def _get_logger():
     logger = logging.getLogger("ray.serve")
     # TODO(simon): Make logging level configurable.
-    if os.environ.get("SERVE_LOG_DEBUG"):
+    log_level = os.environ.get("SERVE_LOG_DEBUG")
+    if log_level and int(log_level):
         logger.setLevel(logging.DEBUG)
     else:
         logger.setLevel(logging.INFO)
@@ -180,13 +182,21 @@ def format_actor_name(actor_name, controller_name=None, *modifiers):
 
 def get_conda_env_dir(env_name):
     """Given a environment name like `tf1`, find and validate the
-    corresponding conda directory.
+    corresponding conda directory. Untested on Windows.
     """
     conda_prefix = os.environ.get("CONDA_PREFIX")
     if conda_prefix is None:
-        raise ValueError(
-            "Serve cannot find environment variables installed by conda. " +
-            "Are you sure you are in a conda env?")
+        # The caller is neither in a conda env or in (base).  This is rare
+        # because by default, new terminals start in (base), but we can still
+        # support this case.
+        conda_exe = os.environ.get("CONDA_EXE")
+        if conda_exe is None:
+            raise RayServeException(
+                "Ray Serve cannot find environment variables set by conda. "
+                "Please verify conda is installed.")
+        # Example: CONDA_EXE=$HOME/anaconda3/bin/python
+        # Strip out the /bin/python by going up two parent directories.
+        conda_prefix = str(Path(conda_exe).parent.parent)
 
     # There are two cases:
     # 1. We are in conda base env: CONDA_DEFAULT_ENV=base and

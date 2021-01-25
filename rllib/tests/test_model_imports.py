@@ -49,8 +49,6 @@ class MyKerasModel(TFModelV2):
         else:
             self.base_model = tf.keras.Model(self.inputs, layer_out)
 
-        self.register_variables(self.base_model.variables)
-
     def forward(self, input_dict, state, seq_lens):
         if self.model_config["vf_share_layers"]:
             model_out, self._value_out = self.base_model(input_dict["obs"])
@@ -187,8 +185,9 @@ class TestModelImport(unittest.TestCase):
             "PPO",
             config={
                 "num_workers": 0,
-                "vf_share_layers": True,
-                "model": {}
+                "model": {
+                    "vf_share_layers": True,
+                },
             },
             env="CartPole-v0")
 

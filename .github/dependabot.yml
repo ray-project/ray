@@ -6,16 +6,30 @@ updates:
     # If we want to add more requirements here (Core, RLlib, etc.), then we should make subdirectories for each one.
     directory: "/python/requirements"
     schedule:
-      # TODO(amogkam) change this to weekly after some initial validation.
-      interval: "daily"
-      # 8 PM
-      time: "20:00"
+      # Automatic upgrade checks Saturday at 12 AM.
+      # Dependabot updates can still be manually triggered via Github at any time.
+      interval: "weekly"
+      day: "saturday"
+      # 12 AM
+      time: "00:00"
       # Use Pacific Standard Time
       timezone: "America/Los_Angeles"
     commit-message:
       prefix: "[tune]"
       include: "scope"
-    # Only 3 upgrade PRs at a time.
+    # Only 3 upgrade PRs open at a time.
     open-pull-requests-limit: 3
     reviewers:
       - "ray-project/ray-tune"
+    ignore:
+      # Ignore pinned dependencies in requirements.txt.
+      - dependency-name: aiohttp
+      - dependency-name: msgpack
+      - dependency-name: opencv-python-headless
+      - dependency-name: pandas
+      - dependency-name: scipy
+      - dependency-name: pydantic
+      - dependency-name: cython
+      - dependency-name: llmvlite
+      - dependency-name: pytest
+      - dependency-name: scikit-learn

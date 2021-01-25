@@ -152,7 +152,7 @@ class SharedMemoryBuffer : public Buffer {
 
   size_t Size() const override { return size_; }
 
-  bool OwnsData() const override { return false; }
+  bool OwnsData() const override { return true; }
 
   bool IsPlasmaBuffer() const override { return true; }
 
@@ -170,36 +170,6 @@ class SharedMemoryBuffer : public Buffer {
   size_t size_;
   /// Keep the parent where the buffer is sliced from.
   std::shared_ptr<Buffer> parent_;
-};
-
-/// Represents a byte buffer for plasma object. This can be used to hold the
-/// reference to a plasma object (via the underlying plasma::PlasmaBuffer).
-class PlasmaBuffer : public Buffer {
- public:
-  PlasmaBuffer(std::shared_ptr<Buffer> buffer,
-               std::function<void(PlasmaBuffer *)> on_delete = nullptr)
-      : buffer_(buffer), on_delete_(on_delete) {}
-
-  uint8_t *Data() const override { return buffer_->Data(); }
-
-  size_t Size() const override { return buffer_->Size(); }
-
-  bool OwnsData() const override { return true; }
-
-  bool IsPlasmaBuffer() const override { return true; }
-
-  ~PlasmaBuffer() {
-    if (on_delete_ != nullptr) {
-      on_delete_(this);
-    }
-  };
-
- private:
-  /// shared_ptr to a buffer which can potentially hold a reference
-  /// for the object (when it's a plasma::PlasmaBuffer).
-  std::shared_ptr<Buffer> buffer_;
-  /// Callback to run on destruction.
-  std::function<void(PlasmaBuffer *)> on_delete_;
 };
 
 }  // namespace ray

@@ -101,9 +101,12 @@ class ReplicaSet:
                    ) >= self.max_concurrent_queries:
                 # This replica is overloaded, try next one
                 continue
+
             logger.debug(f"Assigned query {query.metadata.request_id} "
                          f"to replica {replica}.")
-            tracker_ref, user_ref = replica.handle_request.remote(query)
+            # Directly passing args because it might contain an ObjectRef.
+            tracker_ref, user_ref = replica.handle_request.remote(
+                query.metadata, *query.args, **query.kwargs)
             self.in_flight_queries[replica].add(tracker_ref)
             return user_ref
         return None
@@ -144,9 +147,8 @@ class ReplicaSet:
                     return_when=asyncio.FIRST_COMPLETED)
                 if self.config_updated_event.is_set():
                     self.config_updated_event.clear()
-            # We are pretty sure a free replica is ready now, let's recurse and
-            # assign this query a replica.
-            assigned_ref = await self.assign_replica(query)
+            # We are pretty sure a free replica is ready now.
+            assigned_ref = self._try_assign_replica(query)
         return assigned_ref
 
 

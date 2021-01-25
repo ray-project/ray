@@ -38,7 +38,9 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         if change.new:
             node_id, ports = change.new
             ip = DataSource.node_id_to_ip[node_id]
-            channel = aiogrpc.insecure_channel(f"{ip}:{ports[1]}")
+            options = (("grpc.enable_http_proxy", 0), )
+            channel = aiogrpc.insecure_channel(
+                f"{ip}:{ports[1]}", options=options)
             stub = reporter_pb2_grpc.ReporterServiceStub(channel)
             self._stubs[ip] = stub
 
@@ -76,10 +78,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
 
             payload = {
                 "min_workers": cfg["min_workers"],
-                "max_workers": cfg["max_workers"],
-                "initial_workers": cfg["initial_workers"],
-                "autoscaling_mode": cfg["autoscaling_mode"],
-                "idle_timeout_minutes": cfg["idle_timeout_minutes"],
+                "max_workers": cfg["max_workers"]
             }
 
             try:

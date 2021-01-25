@@ -14,7 +14,8 @@ from ray.test_utils import (generate_system_config_map, get_other_nodes,
                             get_error_message)
 import ray.cluster_utils
 from ray._raylet import PlacementGroupID
-from ray.util.placement_group import (PlacementGroup,
+from ray.util.placement_group import (PlacementGroup, placement_group,
+                                      remove_placement_group,
                                       get_current_placement_group)
 
 
@@ -1286,6 +1287,27 @@ def test_placement_group_wait_api(ray_start_cluster_head):
     # Wait for placement group 1 after it is removed.
     with pytest.raises(Exception):
         placement_group1.wait(10)
+
+
+def test_schedule_placement_groups_at_the_same_time():
+    ray.init(num_cpus=4)
+
+    pgs = [placement_group([{"CPU": 2}]) for _ in range(6)]
+
+    wait_pgs = {pg.ready(): pg for pg in pgs}
+
+    def is_all_placement_group_removed():
+        ready, _ = ray.wait(list(wait_pgs.keys()), timeout=0.5)
+        if ready:
+            ready_pg = wait_pgs[ready[0]]
+            remove_placement_group(ready_pg)
+            del wait_pgs[ready[0]]
+
+        if len(wait_pgs) == 0:
+            return True
+        return False
+
+    wait_for_condition(is_all_placement_group_removed)
 
 
 if __name__ == "__main__":

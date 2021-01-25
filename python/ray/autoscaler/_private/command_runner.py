@@ -598,7 +598,8 @@ class DockerCommandRunner(CommandRunnerInterface):
             shutdown_after_run=False,
     ):
         if run_env == "auto":
-            run_env = "host" if cmd.find("docker") == 0 else "docker"
+            run_env = "host" if (not bool(cmd)
+                                 or cmd.find("docker") == 0) else "docker"
 
         if environment_variables:
             cmd = _with_environment_variables(cmd, environment_variables)
@@ -631,8 +632,10 @@ class DockerCommandRunner(CommandRunnerInterface):
             self._get_docker_host_mount_location(
                 self.ssh_command_runner.cluster_name), target.lstrip("/"))
 
+        host_mount_location = os.path.dirname(host_destination.rstrip("/"))
         self.ssh_command_runner.run(
-            f"mkdir -p {os.path.dirname(host_destination.rstrip('/'))}",
+            f"mkdir -p {host_mount_location} && chown -R "
+            f"{self.ssh_command_runner.ssh_user} {host_mount_location}",
             silent=is_rsync_silent())
 
         self.ssh_command_runner.run_rsync_up(
@@ -654,8 +657,10 @@ class DockerCommandRunner(CommandRunnerInterface):
         host_source = os.path.join(
             self._get_docker_host_mount_location(
                 self.ssh_command_runner.cluster_name), source.lstrip("/"))
+        host_mount_location = os.path.dirname(host_source.rstrip("/"))
         self.ssh_command_runner.run(
-            f"mkdir -p {os.path.dirname(host_source.rstrip('/'))}",
+            f"mkdir -p {host_mount_location} && chown -R "
+            f"{self.ssh_command_runner.ssh_user} {host_mount_location}",
             silent=is_rsync_silent())
         if source[-1] == "/":
             source += "."
