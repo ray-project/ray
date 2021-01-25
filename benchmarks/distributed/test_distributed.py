@@ -59,8 +59,14 @@ def test_max_running_tasks():
         for _ in trange(MAX_RUNNING_TASKS_IN_CLUSTER, desc="Launching tasks")
     ]
 
-    for _ in trange(10, desc="Waiting"):
-        sleep(1)
+    max_cpus = ray.cluster_resources()["CPU"]
+    min_cpus_available = max_cpus
+    for _ in trange(int(10 / 0.1), desc="Waiting"):
+        cur_cpus = ray.available_resources()["CPU"]
+        min_cpus_available = min(min_cpus_available, cur_cpus)
+        sleep(0.1)
+
+    assert min_cpus_available < max_cpus / 2, "Cluster not being utilized well."
 
     for _ in trange(
         MAX_RUNNING_TASKS_IN_CLUSTER, desc="Ensuring all tasks have finished"
