@@ -1574,6 +1574,14 @@ cdef class CoreWorker:
                 async_set_result,
                 <void*>future)
 
+    def get_async_callback(self, ObjectRef object_ref, callback):
+        cpython.Py_INCREF(callback)
+        CCoreWorkerProcess.GetCoreWorker().GetAsync(
+            object_ref.native(),
+            async_callback,
+            <void*>callback
+        )
+
     def push_error(self, JobID job_id, error_type, error_message,
                    double timestamp):
         check_status(CCoreWorkerProcess.GetCoreWorker().PushError(
@@ -1586,13 +1594,10 @@ cdef class CoreWorker:
             resource_name.encode("ascii"), capacity,
             CNodeID.FromBinary(client_id.binary()))
 
-cdef void async_set_result(shared_ptr[CRayObject] obj,
-                           CObjectID object_ref,
-                           void *future) with gil:
+cdef object _deserialize_first_object(shared_ptr[CRayObject] obj,
+                                      CObjectID object_ref) with gil:
     cdef:
         c_vector[shared_ptr[CRayObject]] objects_to_deserialize
-    py_future = <object>(future)
-    loop = py_future._loop
 
     # Object is retrieved from in memory store.
     # Here we go through the code path used to deserialize objects.
@@ -1602,6 +1607,23 @@ cdef void async_set_result(shared_ptr[CRayObject] obj,
     ids_to_deserialize = [ObjectRef(object_ref.Binary())]
     result = ray.worker.global_worker.deserialize_objects(
         data_metadata_pairs, ids_to_deserialize)[0]
+
+    return result
+
+cdef void async_callback(shared_ptr[CRayObject] obj,
+                         CObjectID object_ref,
+                         void *user_callback) with gil:
+    result = _deserialize_first_object(obj, object_ref)
+    py_callback = <object>user_callback
+    py_callback(result)
+    cpython.Py_DECREF(py_callback)
+
+cdef void async_set_result(shared_ptr[CRayObject] obj,
+                           CObjectID object_ref,
+                           void *future) with gil:
+    result = _deserialize_first_object(obj, object_ref)
+    py_future = <object>(future)
+    loop = py_future._loop
 
     def set_future():
         # Issue #11030, #8841

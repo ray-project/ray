@@ -224,6 +224,13 @@ async def test_asyncio_exit_actor(ray_start_regular_shared):
         ray.get(a.ping.remote())
 
 
+def test_async_callback(ray_start_regular_shared):
+    # TODO(simon): write test
+    # TODO(simon): try to convert the _raylet:get_async_futre to use the future system
+
+    pass
+
+
 if __name__ == "__main__":
     import pytest
     sys.exit(pytest.main(["-v", __file__]))

@@ -78,3 +78,8 @@ cdef class ObjectRef(BaseID):
         # A hack to keep a reference to the object ref for ref counting.
         future.object_ref = self
         return future
+
+    def on_completed(self, py_callback):
+        core_worker = ray.worker.global_worker.core_worker
+        core_worker.get_async_callback(self, py_callback)
+        return self
