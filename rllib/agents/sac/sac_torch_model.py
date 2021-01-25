@@ -1,12 +1,10 @@
 import gym
 from gym.spaces import Box, Discrete
 import numpy as np
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 from ray.rllib.models.catalog import ModelCatalog
-from ray.rllib.models.torch.misc import SlimFC
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
-from ray.rllib.models.utils import get_activation_fn
 from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
@@ -77,19 +75,16 @@ class SACTorchModel(TorchModelV2, nn.Module):
             self.action_dim = action_space.n
             self.discrete = True
             action_outs = q_outs = self.action_dim
-            action_ins = None  # No action inputs for the discrete case.
         elif isinstance(action_space, Box):
             self.action_dim = np.product(action_space.shape)
             self.discrete = False
             action_outs = 2 * self.action_dim
-            action_ins = self.action_dim
             q_outs = 1
         else:
             assert isinstance(action_space, Simplex)
             self.action_dim = np.product(action_space.shape)
             self.discrete = False
             action_outs = self.action_dim
-            action_ins = self.action_dim
             q_outs = 1
 
         # Build the policy network.
@@ -105,61 +100,6 @@ class SACTorchModel(TorchModelV2, nn.Module):
                                                  q_model_config, "twin_q")
         else:
             self.twin_q_net = None
-
-        #self.action_model = self.build_policy_model()
-        #ins = self.num_outputs
-        #self.obs_ins = ins
-        #activation = get_activation_fn(
-        #    actor_hidden_activation, framework="torch")
-        #for i, n in enumerate(actor_hiddens):
-        #    self.action_model.add_module(
-        #        "action_{}".format(i),
-        #        SlimFC(
-        #            ins,
-        #            n,
-        #            initializer=torch.nn.init.xavier_uniform_,
-        #            activation_fn=activation))
-        #    ins = n
-        #self.action_model.add_module(
-        #    "action_out",
-        #    SlimFC(
-        #        ins,
-        #        action_outs,
-        #        initializer=torch.nn.init.xavier_uniform_,
-        #        activation_fn=None))
-
-        ## Build the Q-net(s), including target Q-net(s).
-        #def build_q_net(name_):
-        #    activation = get_activation_fn(
-        #        critic_hidden_activation, framework="torch")
-        #    # For continuous actions: Feed obs and actions (concatenated)
-        #    # through the NN. For discrete actions, only obs.
-        #    q_net = nn.Sequential()
-        #    ins = self.obs_ins + (0 if self.discrete else action_ins)
-        #    for i, n in enumerate(critic_hiddens):
-        #        q_net.add_module(
-        #            "{}_hidden_{}".format(name_, i),
-        #            SlimFC(
-        #                ins,
-        #                n,
-        #                initializer=torch.nn.init.xavier_uniform_,
-        #                activation_fn=activation))
-        #        ins = n
-
-        #    q_net.add_module(
-        #        "{}_out".format(name_),
-        #        SlimFC(
-        #            ins,
-        #            q_outs,
-        #            initializer=torch.nn.init.xavier_uniform_,
-        #            activation_fn=None))
-        #    return q_net
-
-        #self.q_net = build_q_net("q")
-        #if twin_q:
-        #    self.twin_q_net = build_q_net("twin_q")
-        #else:
-        #    self.twin_q_net = None
 
         log_alpha = nn.Parameter(
             torch.from_numpy(np.array([np.log(initial_alpha)])).float())

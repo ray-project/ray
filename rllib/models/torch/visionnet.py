@@ -93,11 +93,12 @@ class VisionNetwork(TorchModelV2, nn.Module):
                                                      if post_fcnet_hiddens else
                                                      [])
             for i, out_size in enumerate(layer_sizes):
-                layers.append(SlimFC(
-                    in_size=out_channels,
-                    out_size=out_size,
-                    activation_fn=post_fcnet_activation,
-                    initializer=normc_initializer(1.0)))
+                layers.append(
+                    SlimFC(
+                        in_size=out_channels,
+                        out_size=out_size,
+                        activation_fn=post_fcnet_activation,
+                        initializer=normc_initializer(1.0)))
                 out_channels = out_size
 
         # Finish network normally (w/o overriding last layer size with
@@ -121,23 +122,18 @@ class VisionNetwork(TorchModelV2, nn.Module):
                 ]
                 padding, _ = same_padding(in_size, [1, 1], [1, 1])
                 if post_fcnet_hiddens:
-                    layers.append(SlimConv2d(
-                        out_channels,
-                        post_fcnet_hiddens[0],
-                        [1, 1],
-                        1,
-                        padding,
-                        activation_fn=post_fcnet_activation))
-                    in_size = post_fcnet_hiddens[0]
+                    layers.append(nn.Flatten())
+                    in_size = out_channels
                     # Add (optional) post-fc-stack after last Conv2D layer.
-                    for i, out_size in enumerate(post_fcnet_hiddens[1:] +
+                    for i, out_size in enumerate(post_fcnet_hiddens +
                                                  [num_outputs]):
-                        layers.append(SlimFC(
-                            in_size=in_size,
-                            out_size=out_size,
-                            activation_fn=post_fcnet_activation
-                            if i < len(post_fcnet_hiddens) - 1 else None,
-                            initializer=normc_initializer(1.0)))
+                        layers.append(
+                            SlimFC(
+                                in_size=in_size,
+                                out_size=out_size,
+                                activation_fn=post_fcnet_activation
+                                if i < len(post_fcnet_hiddens) - 1 else None,
+                                initializer=normc_initializer(1.0)))
                         in_size = out_size
                     # Last layer is logits layer.
                     self._logits = layers.pop()
@@ -145,8 +141,7 @@ class VisionNetwork(TorchModelV2, nn.Module):
                 else:
                     self._logits = SlimConv2d(
                         out_channels,
-                        num_outputs,
-                        [1, 1],
+                        num_outputs, [1, 1],
                         1,
                         padding,
                         activation_fn=None)
@@ -234,10 +229,7 @@ class VisionNetwork(TorchModelV2, nn.Module):
         # No framestacking:
         if not self.traj_view_framestacking:
             self._features = self._features.permute(0, 3, 1, 2)
-        try:#TODO
-            conv_out = self._convs(self._features)
-        except Exception as e:
-            print()
+        conv_out = self._convs(self._features)
         # Store features to save forward pass when getting value_function out.
         if not self._value_branch_separate:
             self._features = conv_out
@@ -245,16 +237,19 @@ class VisionNetwork(TorchModelV2, nn.Module):
         if not self.last_layer_is_flattened:
             if self._logits:
                 conv_out = self._logits(conv_out)
-            if conv_out.shape[2] != 1 or conv_out.shape[3] != 1:
-                raise ValueError(
-                    "Given `conv_filters` ({}) do not result in a [B, {} "
-                    "(`num_outputs`), 1, 1] shape (but in {})! Please adjust "
-                    "your Conv2D stack such that the last 2 dims are both "
-                    "1.".format(self.model_config["conv_filters"],
-                                self.num_outputs, list(conv_out.shape)))
-            logits = conv_out.squeeze(3)
-            logits = logits.squeeze(2)
-
+            if len(conv_out.shape) == 4:
+                if conv_out.shape[2] != 1 or conv_out.shape[3] != 1:
+                    raise ValueError(
+                        "Given `conv_filters` ({}) do not result in a [B, {} "
+                        "(`num_outputs`), 1, 1] shape (but in {})! Please "
+                        "adjust your Conv2D stack such that the last 2 dims "
+                        "are both 1.".format(self.model_config["conv_filters"],
+                                             self.num_outputs,
+                                             list(conv_out.shape)))
+                logits = conv_out.squeeze(3)
+                logits = logits.squeeze(2)
+            else:
+                logits = conv_out
             return logits, state
         else:
             return conv_out, state
