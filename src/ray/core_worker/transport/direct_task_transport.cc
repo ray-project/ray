@@ -121,7 +121,7 @@ void CoreWorkerDirectTaskSubmitter::AddWorkerLeaseClient(
   client_cache_->GetOrConnect(addr.ToProto());
   int64_t expiration = current_time_ms() + lease_timeout_ms_;
   LeaseEntry new_lease_entry = LeaseEntry(std::move(lease_client), expiration, 0, false,
-                                          0, 0, assigned_resources, scheduling_key);
+                                          0, assigned_resources, scheduling_key);
   worker_to_lease_entry_.emplace(addr, new_lease_entry);
 
   auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
@@ -189,8 +189,7 @@ bool CoreWorkerDirectTaskSubmitter::FindOptimalVictimForStealing(
     // Update the designated victim if the alternative candidate is a better choice than
     // the incumbent victim
     if (victim_addr.worker_id == thief_addr.worker_id ||
-        ((candidate_entry.EstimateTasksAvailableForSteal() >
-          victim_entry.EstimateTasksAvailableForSteal()) &&
+        ((candidate_entry.tasks_in_flight > victim_entry.tasks_in_flight) &&
          candidate_addr.worker_id != thief_addr.worker_id)) {
       victim_it = candidate_it;
     }
@@ -208,14 +207,11 @@ bool CoreWorkerDirectTaskSubmitter::FindOptimalVictimForStealing(
 
   RAY_LOG(DEBUG) << "Victim is worker " << victim_addr.worker_id << " and has "
                  << victim_entry.tasks_in_flight << " tasks in flight, "
-                 << " among which we estimate that "
-                 << victim_entry.EstimateTasksAvailableForSteal()
+                 << " among which we estimate that " << victim_entry.tasks_in_flight / 2
                  << " are available for stealing";
-  RAY_CHECK(victim_entry.tasks_in_flight >=
-            victim_entry.EstimateTasksAvailableForSteal());
   RAY_CHECK(scheduling_key_entry.total_tasks_in_flight >= victim_entry.tasks_in_flight);
 
-  if (victim_entry.EstimateTasksAvailableForSteal() < 1) {
+  if ((victim_entry.tasks_in_flight / 2) < 1) {
     RAY_LOG(DEBUG) << "The designated victim does not have enough tasks to steal.";
     return false;
   }
@@ -243,7 +239,6 @@ void CoreWorkerDirectTaskSubmitter::StealTasksIfNeeded(
   RAY_CHECK(thief_entry.lease_client);
   RAY_CHECK(thief_entry.tasks_in_flight == 0);
   RAY_CHECK(thief_entry.WorkerIsStealing() == false);
-  RAY_CHECK(thief_entry.EstimateTasksAvailableForSteal() == 0);
 
   // Search for a suitable victim
   rpc::Address victim_raw_addr;
@@ -254,12 +249,7 @@ void CoreWorkerDirectTaskSubmitter::StealTasksIfNeeded(
     return;
   }
   rpc::WorkerAddress victim_addr = rpc::WorkerAddress(victim_raw_addr);
-
-  // Record the new StealTasks request in the victim's LeaseEntry to facilitate the
-  // estimate of how many tasks are stealable
   RAY_CHECK(worker_to_lease_entry_.find(victim_addr) != worker_to_lease_entry_.end());
-  auto &victim_entry = worker_to_lease_entry_[victim_addr];
-  victim_entry.SetNewStealTaskRequestPending();
 
   thief_entry.SetWorkerIsStealing();
 
@@ -280,14 +270,6 @@ void CoreWorkerDirectTaskSubmitter::StealTasksIfNeeded(
         if (worker_to_lease_entry_.find(victim_addr) == worker_to_lease_entry_.end()) {
           return;
         }
-        auto &victim_entry = worker_to_lease_entry_[victim_addr];
-
-        // Mark the pending StealTask request as completed (for the purpose of estimating
-        // how many more tasks are available to thieves)
-        // TODO (gabrieleoliaro) - we might want to move this instruction to ensure that
-        // it is executed only once stealing has fully completed (all stolen tasks have
-        // been pushed to the thief)
-        victim_entry.SetStealTaskRequestPendingCompleted();
 
         // Obtain the thief's lease entry (after ensuring that it still exists)
         RAY_CHECK(worker_to_lease_entry_.find(thief_addr) !=

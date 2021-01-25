@@ -251,7 +251,6 @@ class CoreWorkerDirectTaskSubmitter {
         std::shared_ptr<WorkerLeaseInterface> lease_client = nullptr,
         int64_t lease_expiration_time = 0, uint32_t tasks_in_flight = 0,
         bool currently_stealing = false, int64_t stolen_tasks_to_wait_for = 0,
-        uint32_t steal_tasks_request_pending = 0,
         google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> assigned_resources =
             google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry>(),
         SchedulingKey scheduling_key = std::make_tuple(0, std::vector<ObjectID>(),
@@ -261,7 +260,6 @@ class CoreWorkerDirectTaskSubmitter {
           tasks_in_flight(tasks_in_flight),
           currently_stealing(currently_stealing),
           stolen_tasks_to_wait_for(stolen_tasks_to_wait_for),
-          steal_tasks_request_pending(steal_tasks_request_pending),
           assigned_resources(assigned_resources),
           scheduling_key(scheduling_key) {}
 
@@ -322,27 +320,6 @@ class CoreWorkerDirectTaskSubmitter {
       if (stolen_tasks_to_wait_for == 0) {
         SetWorkerDoneStealing();
       }
-    }
-
-    // Compute the upper bound to the total number of tasks that can be stolen from the
-    // worker associated with the LeaseEntry. For example, if a worker has 10 tasks in
-    // flight, and 0 pending StealTasks requests, we can hope to steal up to 10/(2^0)=5
-    // tasks. This value is just the number of tasks in flight divided by 2, because
-    // workers earmark half of the tasks in their queues for thieves)
-    inline uint32_t EstimateTasksAvailableForSteal() const {
-      return tasks_in_flight / pow(2, steal_tasks_request_pending + 1);
-    }
-
-    // Increment the counter that keeps track of how many StealTasks requests are pending
-    // at one victim. Knowing how many requests are pending allows us to estimate how many
-    // tasks are available to steal
-    inline void SetNewStealTaskRequestPending() { steal_tasks_request_pending += 1; }
-
-    // Decrement the counter that keeps track of how many StealTasks requests are pending
-    // at one victim.
-    inline void SetStealTaskRequestPendingCompleted() {
-      RAY_CHECK(steal_tasks_request_pending > 0);
-      steal_tasks_request_pending -= 1;
     }
   };
 
