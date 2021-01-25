@@ -62,9 +62,13 @@ class DashboardAgent(object):
         self.object_store_name = object_store_name
         self.raylet_name = raylet_name
         self.node_id = os.environ["RAY_NODE_ID"]
-        self.ppid = int(os.environ["RAY_RAYLET_PID"])
-        assert self.ppid > 0
-        logger.info("Parent pid is %s", self.ppid)
+        # TODO(edoakes): RAY_RAYLET_PID isn't properly set on Windows. This is
+        # only used for fate-sharing with the raylet and we need a different
+        # fate-sharing mechanism for Windows anyways.
+        if sys.platform not in ["win32", "cygwin"]:
+            self.ppid = int(os.environ["RAY_RAYLET_PID"])
+            assert self.ppid > 0
+            logger.info("Parent pid is %s", self.ppid)
         self.server = aiogrpc.server(options=(("grpc.so_reuseport", 0), ))
         self.grpc_port = self.server.add_insecure_port(
             f"[::]:{self.dashboard_agent_port}")
@@ -108,7 +112,8 @@ class DashboardAgent(object):
                 logger.error("Failed to check parent PID, exiting.")
                 sys.exit(1)
 
-        check_parent_task = create_task(_check_parent())
+        if sys.platform not in ["win32", "cygwin"]:
+            check_parent_task = create_task(_check_parent())
 
         # Create an aioredis client for all modules.
         try:
