@@ -5,6 +5,7 @@ from typing import Any, Dict, Optional, Union
 from enum import Enum
 
 from ray.serve.router import Router
+from ray.util import inspect_serializability
 
 
 @dataclass(frozen=True)
@@ -41,7 +42,7 @@ class RayServeHandle:
     """
 
     def __init__(self,
-                 router: Router,
+                 router, # ThreadProxiedRouter
                  endpoint_name,
                  handle_options: Optional[HandleOptions] = None):
         self.router = router
@@ -78,7 +79,7 @@ class RayServeHandle:
     async def remote(self,
                      request_data: Optional[Union[Dict, Any]] = None,
                      **kwargs):
-        """Issue an asynchrounous request to the endpoint.
+        """Issue an asynchronous request to the endpoint.
 
         Returns a Ray ObjectRef whose results can be waited for or retrieved
         using ray.wait or ray.get (or ``await object_ref``), respectively.
@@ -97,6 +98,11 @@ class RayServeHandle:
 
     def __repr__(self):
         return f"{self.__class__.__name__}(endpoint='{self.endpoint_name}')"
+    
+    def __reduce__(self):
+        deserializer = RayServeHandle
+        serialized_data = (self.router, self.endpoint_name, self.handle_options)
+        return deserializer, serialized_data
 
 
 class RayServeSyncHandle(RayServeHandle):
@@ -123,3 +129,10 @@ class RayServeSyncHandle(RayServeHandle):
         future: concurrent.futures.Future = asyncio.run_coroutine_threadsafe(
             coro, self.router.async_loop)
         return future.result()
+
+    def __reduce__(self):
+        inspect_serializability(self.router, name="my_router_name")
+
+        deserializer = RayServeSyncHandle
+        serialized_data = (self.router, self.endpoint_name, self.handle_options)
+        return deserializer, serialized_data
