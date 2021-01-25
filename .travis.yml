@@ -217,14 +217,12 @@ matrix:
     # Build Py36 & Py38 Docker Images
     - os: linux
       env:
-        # - PYTHON=3.6
-        - LINUX_WHEELS=1 LINUX_JARS=1
+        - LINUX_WHEELS=1
         - PYTHONWARNINGS=ignore
-        - RAY_INSTALL_JAVA=1
       language: java
       jdk: openjdk8
       install:
-        - . ./ci/travis/ci.sh init RAY_CI_LINUX_WHEELS_AFFECTED,RAY_CI_JAVA_AFFECTED,RAY_CI_STREAMING_JAVA_AFFECTED
+        - . ./ci/travis/ci.sh init RAY_CI_LINUX_WHEELS_AFFECTED
       before_script:
         - . ./ci/travis/ci.sh build
       script:
