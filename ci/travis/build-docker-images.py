@@ -344,6 +344,14 @@ def push_readmes():
 
 if __name__ == "__main__":
     print("RUNNING WITH: ", sys.version)
+    if len(sys.argv) == 2:
+        version_to_drop = sys.argv[1]
+        if version_to_drop == "ORIGINAL":
+            PY_MATRIX.pop("-py36")
+            PY_MATRIX.pop("-py38")
+        else:
+            PY_MATRIX.pop("-py37")
+    print("Building the following python versions: ", PY_MATRIX)
     if os.environ.get("TRAVIS") == "true":
         is_docker_affected = _docker_affected()
         if _merge_build() or is_docker_affected:
