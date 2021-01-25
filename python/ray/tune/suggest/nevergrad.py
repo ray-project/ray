@@ -1,5 +1,15 @@
 import logging
 import pickle
+import io
+import builtins
+
+safe_builtins = {
+    'range',
+    'complex',
+    'set',
+    'frozenset',
+    'slice',
+}
 from typing import Dict, Optional, Union, List, Sequence
 
 from ray.tune.result import DEFAULT_METRIC
@@ -25,6 +35,19 @@ from ray.tune.suggest import Searcher
 
 logger = logging.getLogger(__name__)
 
+class RestrictedUnpickler(pickle.Unpickler):
+
+    def find_class(self, module, name):
+        """Only allow safe classes from builtins"""
+        if module == "builtins" and name in safe_builtins:
+            return getattr(builtins, name)
+        """Forbid everything else"""
+        raise pickle.UnpicklingError("global '%s.%s' is forbidden" %
+                                     (module, name))
+
+def restricted_loads(s):
+    """Helper function analogous to pickle.loads()"""
+    return RestrictedUnpickler(io.BytesIO(s)).load()
 
 class NevergradSearch(Searcher):
     """Uses Nevergrad to optimize hyperparameters.
@@ -280,6 +303,7 @@ class NevergradSearch(Searcher):
 
     def restore(self, checkpoint_path: str):
         with open(checkpoint_path, "rb") as inputFile:
+            restricted_loads(inputFile.read())
             trials_object = pickle.load(inputFile)
         self._nevergrad_opt = trials_object[0]
         self._parameters = trials_object[1]
