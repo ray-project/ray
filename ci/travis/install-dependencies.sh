@@ -24,7 +24,7 @@ pkg_install_helper() {
 
 install_bazel() {
   if command -v bazel; then
-    if [ -n "${BUILDKITE-}" ] then;
+    if [ -n "${BUILDKITE-}" ]; then
       echo "Bazel exists, skipping the install"
       return
     fi
