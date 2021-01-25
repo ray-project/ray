@@ -92,6 +92,9 @@ message GetAllActorInfoReply {
   repeated ActorTableData actor_table_data = 2;
 }
 
+// `KillActorViaGcsRequest` is sent to GCS Service to ask to kill an actor.
+// `KillActorViaGcsRequest` is different from `KillActorRequest`.
+// `KillActorRequest` is send to core worker to ask to kill an actor.
 message KillActorViaGcsRequest {
   // ID of this actor.
   bytes actor_id = 1;
