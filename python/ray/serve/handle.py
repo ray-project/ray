@@ -5,7 +5,6 @@ from typing import Any, Dict, Optional, Union
 from enum import Enum
 
 from ray.serve.router import Router
-from ray.util import inspect_serializability
 
 
 @dataclass(frozen=True)
@@ -133,8 +132,6 @@ class RayServeSyncHandle(RayServeHandle):
         return future.result()
 
     def __reduce__(self):
-        inspect_serializability(self.router, name="my_router_name")
-
         deserializer = RayServeSyncHandle
         serialized_data = (self.router, self.endpoint_name,
                            self.handle_options)
