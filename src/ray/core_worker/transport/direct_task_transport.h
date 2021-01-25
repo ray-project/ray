@@ -145,7 +145,7 @@ class CoreWorkerDirectTaskSubmitter {
                     const SchedulingKey &scheduling_key) EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Check that the scheduling_key_entries_ hashmap is empty.
-  bool CheckNoSchedulingKeyEntries() const EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  inline bool CheckNoSchedulingKeyEntries() const EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     return scheduling_key_entries_.empty();
   }
 
@@ -266,7 +266,7 @@ class CoreWorkerDirectTaskSubmitter {
           scheduling_key(scheduling_key) {}
 
     // Check whether the pipeline to the worker associated with a LeaseEntry is full.
-    bool PipelineToWorkerFull(uint32_t max_tasks_in_flight_per_worker) const {
+    inline bool PipelineToWorkerFull(uint32_t max_tasks_in_flight_per_worker) const {
       return tasks_in_flight == max_tasks_in_flight_per_worker;
     }
 
@@ -274,7 +274,7 @@ class CoreWorkerDirectTaskSubmitter {
     // Knowing whether a thief is currently stealing is important to prevent the thief
     // from initiating another StealTasks request or from being returned to the raylet
     // until stealing has completed.
-    bool WorkerIsStealing() const {
+    inline bool WorkerIsStealing() const {
       if (!currently_stealing) {
         RAY_CHECK(stolen_tasks_to_wait_for == 0);
       }
@@ -283,7 +283,7 @@ class CoreWorkerDirectTaskSubmitter {
 
     // Once stealing has begun, updated the thief's currently_stealing flag to reflect the
     // new state.
-    void SetWorkerIsStealing() {
+    inline void SetWorkerIsStealing() {
       RAY_CHECK(!currently_stealing);
       RAY_CHECK(stolen_tasks_to_wait_for == 0);
       currently_stealing = true;
@@ -291,7 +291,7 @@ class CoreWorkerDirectTaskSubmitter {
 
     // Once stealing has completed, updated the thief's currently_stealing flag to reflect
     // the new state.
-    void SetWorkerDoneStealing() {
+    inline void SetWorkerDoneStealing() {
       RAY_CHECK(currently_stealing);
       RAY_CHECK(stolen_tasks_to_wait_for == 0);
       currently_stealing = false;
@@ -308,7 +308,7 @@ class CoreWorkerDirectTaskSubmitter {
     // tasks, and the stolen tasks have been forwarded to the thief (or some other worker
     // if the thief's pipeline has gotten full).
 
-    void SetReceivedOneStolenTask() {
+    inline void SetReceivedOneStolenTask() {
       RAY_CHECK(currently_stealing);
       stolen_tasks_to_wait_for -= 1;
       if (stolen_tasks_to_wait_for == 0) {
@@ -316,7 +316,7 @@ class CoreWorkerDirectTaskSubmitter {
       }
     }
 
-    void IncrementTasksToWaitFor(uint32_t ntasks) {
+    inline void IncrementTasksToWaitFor(uint32_t ntasks) {
       RAY_CHECK(currently_stealing);
       stolen_tasks_to_wait_for += ntasks;
       if (stolen_tasks_to_wait_for == 0) {
@@ -329,18 +329,18 @@ class CoreWorkerDirectTaskSubmitter {
     // flight, and 0 pending StealTasks requests, we can hope to steal up to 10/(2^0)=5
     // tasks. This value is just the number of tasks in flight divided by 2, because
     // workers earmark half of the tasks in their queues for thieves)
-    uint32_t EstimateTasksAvailableForSteal() const {
+    inline uint32_t EstimateTasksAvailableForSteal() const {
       return tasks_in_flight / pow(2, steal_tasks_request_pending + 1);
     }
 
     // Increment the counter that keeps track of how many StealTasks requests are pending
     // at one victim. Knowing how many requests are pending allows us to estimate how many
     // tasks are available to steal
-    void SetNewStealTaskRequestPending() { steal_tasks_request_pending += 1; }
+    inline void SetNewStealTaskRequestPending() { steal_tasks_request_pending += 1; }
 
     // Decrement the counter that keeps track of how many StealTasks requests are pending
     // at one victim.
-    void SetStealTaskRequestPendingCompleted() {
+    inline void SetStealTaskRequestPendingCompleted() {
       RAY_CHECK(steal_tasks_request_pending > 0);
       steal_tasks_request_pending -= 1;
     }
@@ -366,7 +366,7 @@ class CoreWorkerDirectTaskSubmitter {
 
     // Check whether it's safe to delete this SchedulingKeyEntry from the
     // scheduling_key_entries_ hashmap.
-    bool CanDelete() const {
+    inline bool CanDelete() const {
       if (!pending_lease_request.first && task_queue.empty() &&
           active_workers.size() == 0 && total_tasks_in_flight == 0) {
         return true;
@@ -377,7 +377,7 @@ class CoreWorkerDirectTaskSubmitter {
 
     // Check whether the pipelines to the active workers associated with a
     // SchedulingKeyEntry are all full.
-    bool AllPipelinesToWorkersFull(uint32_t max_tasks_in_flight_per_worker) const {
+    inline bool AllPipelinesToWorkersFull(uint32_t max_tasks_in_flight_per_worker) const {
       return total_tasks_in_flight ==
              (active_workers.size() * max_tasks_in_flight_per_worker);
     }
