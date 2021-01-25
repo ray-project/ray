@@ -77,6 +77,7 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
                                             : ActorID::Nil());
         auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
         scheduling_key_entry.task_queue.push_back(task_spec);
+        scheduling_key_entry.resource_spec = task_spec;
 
         if (!scheduling_key_entry.AllPipelinesToWorkersFull(
                 max_tasks_in_flight_per_worker_)) {
@@ -469,7 +470,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
 
   // Create a TaskSpecification with an overwritten TaskID to make sure we don't reuse the
   // same TaskID to request a worker
-  auto resource_spec_msg = task_queue.front().GetMutableMessage();
+  auto resource_spec_msg = scheduling_key_entry.resource_spec.GetMutableMessage();
   resource_spec_msg.set_task_id(TaskID::ForFakeTask().Binary());
   TaskSpecification resource_spec = TaskSpecification(resource_spec_msg);
 

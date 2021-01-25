@@ -354,6 +354,7 @@ class CoreWorkerDirectTaskSubmitter {
     // Keep track of pending worker lease requests to the raylet.
     std::pair<std::shared_ptr<WorkerLeaseInterface>, TaskID> pending_lease_request =
         std::make_pair(nullptr, TaskID::Nil());
+    TaskSpecification resource_spec = TaskSpecification();
     // Tasks that are queued for execution. We keep an individual queue per
     // scheduling class to ensure fairness.
     std::deque<TaskSpecification> task_queue = std::deque<TaskSpecification>();
