@@ -307,8 +307,8 @@ void RayLog::StartRayLog(const std::string &app_name, RayLogLevel severity_thres
 #endif
     // Reset log pattern and level and we assume a log file can be rotated with
     // 10 files in max size 512M by default.
-    if (getenv("RAY_RAOTATION_MAX_BYTES")) {
-      long max_size = std::atol(getenv("RAY_RAOTATION_MAX_BYTES"));
+    if (getenv("RAY_ROTATION_MAX_BYTES")) {
+      long max_size = std::atol(getenv("RAY_ROTATION_MAX_BYTES"));
       // 0 means no log rotation in python, but not in spdlog. We just use the default
       // value here.
       if (max_size != 0) {

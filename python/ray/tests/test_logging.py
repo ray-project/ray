@@ -7,7 +7,7 @@ from ray import ray_constants
 
 
 def set_logging_config(max_bytes, backup_count):
-    os.environ["RAY_RAOTATION_MAX_BYTES"] = str(max_bytes)
+    os.environ["RAY_ROTATION_MAX_BYTES"] = str(max_bytes)
     os.environ["RAY_ROTATION_BACKUP_COUNT"] = str(backup_count)
 
 

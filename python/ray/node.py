@@ -144,7 +144,7 @@ class Node:
 
         # Configure log rotation parameters.
         self.max_bytes = int(
-            os.getenv("RAY_RAOTATION_MAX_BYTES",
+            os.getenv("RAY_ROTATION_MAX_BYTES",
                       ray_constants.LOGGING_ROTATE_BYTES))
         self.backup_count = int(
             os.getenv("RAY_ROTATION_BACKUP_COUNT",
