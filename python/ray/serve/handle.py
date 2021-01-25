@@ -41,10 +41,11 @@ class RayServeHandle:
        # raises RayTaskError Exception
     """
 
-    def __init__(self,
-                 router, # ThreadProxiedRouter
-                 endpoint_name,
-                 handle_options: Optional[HandleOptions] = None):
+    def __init__(
+            self,
+            router,  # ThreadProxiedRouter
+            endpoint_name,
+            handle_options: Optional[HandleOptions] = None):
         self.router = router
         self.endpoint_name = endpoint_name
         self.handle_options = handle_options or HandleOptions()
@@ -98,10 +99,11 @@ class RayServeHandle:
 
     def __repr__(self):
         return f"{self.__class__.__name__}(endpoint='{self.endpoint_name}')"
-    
+
     def __reduce__(self):
         deserializer = RayServeHandle
-        serialized_data = (self.router, self.endpoint_name, self.handle_options)
+        serialized_data = (self.router, self.endpoint_name,
+                           self.handle_options)
         return deserializer, serialized_data
 
 
@@ -134,5 +136,6 @@ class RayServeSyncHandle(RayServeHandle):
         inspect_serializability(self.router, name="my_router_name")
 
         deserializer = RayServeSyncHandle
-        serialized_data = (self.router, self.endpoint_name, self.handle_options)
+        serialized_data = (self.router, self.endpoint_name,
+                           self.handle_options)
         return deserializer, serialized_data

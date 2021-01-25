@@ -93,10 +93,12 @@ class ThreadProxiedRouter:
         coro = self.router.assign_request(request_metadata, request_data,
                                           **kwargs)
         return coro
+
     def __reduce__(self):
         deserializer = ThreadProxiedRouter
         serialized_data = (self.controller_handle, self.sync)
         return deserializer, serialized_data
+
 
 class Client:
     def __init__(self,
