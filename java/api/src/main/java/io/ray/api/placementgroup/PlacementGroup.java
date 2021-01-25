@@ -27,7 +27,7 @@ public interface PlacementGroup {
   String getName();
 
   /**
-   * Get all bundles of current placement group.
+   * Get all bundles which key is resource name and value is resource value.
    *
    * @return All bundles of current placement group.
    */
