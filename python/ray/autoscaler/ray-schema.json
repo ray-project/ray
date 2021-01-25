@@ -24,7 +24,7 @@
             "type": "string"
         },
         "min_workers": {
-            "description": "The minimum number of workers nodes to launch in addition to the head node. This number should be >= 0",
+            "description": "DEPRECATED. Use the per node_type min_workers field instead.",
             "type": "integer",
             "minimum": 0
         },
@@ -34,17 +34,17 @@
             "minimum": 0
         },
         "initial_workers": {
-            "description": "The number of workers to launch initially, in addition to the head node.",
+            "description": "DEPRECATED.",
             "type": "integer",
             "minimum": 0
         },
         "autoscaling_mode": {
-            "description": "The mode of the autoscaler e.g. default, aggressive",
+            "description": "DEPRECATED. Use upscaling_speed instead.",
             "type": "string",
             "enum": [ "default", "aggressive" ]
         },
         "target_utilization_fraction": {
-            "description": "The autoscaler will scale up the cluster to this target fraction of resources usage. For example, if a cluster of 8 nodes is 100% busy # and target_utilization was 0.8, it would resize the cluster to 10.",
+            "description": "DEPRECATED. Use upscaling_speed instead.",
             "type": "number",
             "minimum": 0,
             "maximum": 1
@@ -253,6 +253,10 @@
         "head_node_type": {
             "type": "string",
             "description": "If using multiple node types, specifies the head node type."
+        },
+        "worker_default_node_type": {
+            "type": "string",
+            "description": "DEPRECATED."
         },
         "head_node": {
             "type": "object",
