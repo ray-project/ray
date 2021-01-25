@@ -112,6 +112,9 @@ def _build_cpu_gpu_images(image_name, no_cache=True) -> List[str]:
 
             tagged_name = f"rayproject/{image_name}:nightly{py_name}{gpu}"
             for i in range(2):
+                cleanup = DOCKER_CLIENT.containers.prune().get("SpaceReclaimed")
+                if cleanup is not None:
+                    print(f"Cleaned up {cleanup / (2**20)}MB")
                 output = DOCKER_CLIENT.api.build(
                     path=os.path.join(_get_root_dir(), "docker", image_name),
                     tag=tagged_name,
