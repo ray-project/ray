@@ -2802,8 +2802,8 @@ NodeManager::GetResourcesUsedByNormalTask() const {
       std::dynamic_pointer_cast<ClusterResourceScheduler>(cluster_resource_scheduler_);
   for (const auto &iter : leased_workers_) {
     const auto &leased_worker = iter.second;
-    if (leased_worker->GetActorId().IsNil()) {
-      const auto &allocated_instances = leased_worker->GetAllocatedInstances();
+    const auto &allocated_instances = leased_worker->GetAllocatedInstances();
+    if (leased_worker->GetActorId().IsNil() && allocated_instances != nullptr) {
       const auto &predefined_resources = allocated_instances->predefined_resources;
       for (size_t res_idx = 0; res_idx < predefined_resources.size(); res_idx++) {
         for (size_t inst_idx = 0; inst_idx < predefined_resources[res_idx].size();

@@ -166,15 +166,6 @@ void GcsResourceManager::HandleReportResourceUsage(
   auto resources_data = std::make_shared<rpc::ResourcesData>();
   resources_data->CopyFrom(request.resources());
 
-  // We use `node_resource_usages_` to filter out the nodes that report resource
-  // information for the first time. `UpdateNodeResourceUsage` will modify
-  // `node_resource_usages_`, so we need to do it before `UpdateNodeResourceUsage`.
-  if (node_resource_usages_.count(node_id) == 0 ||
-      resources_data->resources_available_changed()) {
-    const auto &resource_changed = MapFromProtobuf(resources_data->resources_available());
-    SetAvailableResources(node_id, ResourceSet(resource_changed));
-  }
-
   const auto &resource_changes =
       MapFromProtobuf(resources_data->normal_task_resources_changes());
   if (!resource_changes.empty()) {
@@ -394,9 +385,18 @@ void GcsResourceManager::UpdatePlacementGroupLoad(
 void GcsResourceManager::UpdateNormalTaskResourcesChanges(
     const NodeID &node_id,
     const std::unordered_map<std::string, double> &resources_changes) {
+  auto &scheduling_resources = cluster_scheduling_resources_[node_id];
+  const auto &total_resources = scheduling_resources.GetTotalResources();
+
   std::unordered_map<std::string, double> acquire_resources;
   std::unordered_map<std::string, double> release_resources;
   for (const auto &iter : resources_changes) {
+    // TODO(ffbin): If placement group is used in normal task, GCS cannot process the
+    // resource information reported by it at present, I will implement it in the next pr.
+    if (total_resources.GetResource(iter.first) == 0) {
+      continue;
+    }
+
     if (iter.second < 0) {
       release_resources[iter.first] = -iter.second;
     } else {
@@ -404,13 +404,12 @@ void GcsResourceManager::UpdateNormalTaskResourcesChanges(
     }
   }
 
-  auto &scheduling_resources = cluster_scheduling_resources_[node_id];
-  if (!acquire_resources.empty()) {
-    scheduling_resources.Acquire(ResourceSet(acquire_resources));
-  }
-
   if (!release_resources.empty()) {
     scheduling_resources.Release(ResourceSet(release_resources));
+  }
+
+  if (!acquire_resources.empty()) {
+    scheduling_resources.Acquire(ResourceSet(acquire_resources));
   }
 }
 

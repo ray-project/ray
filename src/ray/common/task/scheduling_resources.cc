@@ -180,7 +180,7 @@ void ResourceSet::SubtractResourcesStrict(const ResourceSet &other) {
     // Ensure that quantity is positive. Note, we have to have the check before
     // erasing the object to make sure that it doesn't get added back.
     RAY_CHECK(resource_capacity_[resource_label] >= 0)
-        << "Capacity of resource after subtraction is negative, "
+        << "Capacity of resource " << resource_label << " after subtraction is negative, "
         << resource_capacity_[resource_label].ToDouble() << ".";
 
     if (resource_capacity_[resource_label] == 0) {
