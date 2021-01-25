@@ -456,31 +456,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
   // consider requesting a new worker if work stealing is enabled, and there is at least a
   // worker with stealable tasks
   if (task_queue.empty()) {
-    if (!work_stealing_) {
-      if (scheduling_key_entry.CanDelete()) {
-        // We can safely remove the entry keyed by scheduling_key from the
-        // scheduling_key_entries_ hashmap.
-        scheduling_key_entries_.erase(scheduling_key);
-      }
-      return;
-    }
-
-    // We don't have any of this type of task to run.
-    bool found = false;
-
-    // Look for a worker (with the current scheduling key) with tasks to steal. If we
-    // don't find one, it doesn't make sense to request additional workers.
-    for (auto active_worker_addr = scheduling_key_entry.active_workers.begin();
-         active_worker_addr != scheduling_key_entry.active_workers.end();
-         active_worker_addr++) {
-      auto &lease_entry = worker_to_lease_entry_[*active_worker_addr];
-      if (lease_entry.tasks_in_flight > 1) {
-        // ALTERNATIVELY: if (lease_entry.EstimateTasksAvailableForSteal() > 1) {
-        found = true;
-        break;
-      }
-    }
-    if (!found) {
+    if (!work_stealing_ || scheduling_key_entry.total_tasks_in_flight <= scheduling_key_entry.active_workers.size()) {
       if (scheduling_key_entry.CanDelete()) {
         // We can safely remove the entry keyed by scheduling_key from the
         // scheduling_key_entries_ hashmap.
