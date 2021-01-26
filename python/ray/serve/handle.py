@@ -54,7 +54,7 @@ class RayServeHandle:
         self.request_counter = metrics.Count(
             "serve_handle_request_counter",
             description=("The number of handle.remote() calls that have been "
-                         "made to this handle."),
+                         "made on this handle."),
             tag_keys=("handle", ))
         self.request_counter.set_default_tags({"handle": self.handle_tag})
 
