@@ -22,7 +22,8 @@ def check_support_multiagent(alg, config):
             a = get_trainer_class(alg)(
                 config=config, env="multi_agent_mountaincar")
         else:
-            a = get_trainer_class(alg)(config=config, env="multi_agent_cartpole")
+            a = get_trainer_class(alg)(
+                config=config, env="multi_agent_cartpole")
 
         print(a.train())
         a.stop()

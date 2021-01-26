@@ -218,7 +218,9 @@ COMMON_CONFIG: TrainerConfigDict = {
     # workers are created separately from rollout workers (used to sample data
     # for training).
     "evaluation_num_workers": 0,
-    #TODO
+    # If True, render the environment on the evaluation local worker.
+    "evaluation_render": False,
+    # If True, store evaluation videos in the output dir.
     "evaluation_video": False,
     # Customize the evaluation method. This must be a function of signature
     # (trainer: Trainer, eval_workers: WorkerSet) -> metrics: dict. See the

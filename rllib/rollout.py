@@ -30,6 +30,9 @@ Example Usage via RLlib CLI:
 Example Usage via executable:
     ./rollout.py /tmp/ray/checkpoint_dir/checkpoint-0 --run DQN
     --env CartPole-v0 --steps 1000000 --out rollouts.pkl
+
+Example Usage w/o checkpoint (for testing purposes):
+    ./rollout.py --run PPO --env CartPole-v0 --episodes 500
 """
 
 # Note: if you use any custom models or envs, register them here first, e.g.:
@@ -174,8 +177,11 @@ def create_parser(parser_creator=None):
         epilog=EXAMPLE_USAGE)
 
     parser.add_argument(
-        "checkpoint", type=str, nargs="?",
-        help="Checkpoint from which to roll out.")
+        "checkpoint",
+        type=str,
+        nargs="?",
+        help="(Optional) checkpoint from which to roll out. "
+        "If none given, will use an initial (untrained) Trainer.")
 
     required_named = parser.add_argument_group("required named arguments")
     required_named.add_argument(
@@ -183,11 +189,15 @@ def create_parser(parser_creator=None):
         type=str,
         required=True,
         help="The algorithm or model to train. This may refer to the name "
-        "of a built-on algorithm (e.g. RLLib's DQN or PPO), or a "
+        "of a built-on algorithm (e.g. RLLib's `DQN` or `PPO`), or a "
         "user-defined trainable function or class registered in the "
         "tune registry.")
     required_named.add_argument(
-        "--env", type=str, help="The gym environment to use.")
+        "--env",
+        type=str,
+        help="The environment specifier to use. This could be an openAI gym "
+        "specifier (e.g. `CartPole-v0`) or a full class-path (e.g. "
+        "`ray.rllib.examples.env.simple_corridor.SimpleCorridor`).")
     parser.add_argument(
         "--no-render",
         default=False,
@@ -203,11 +213,13 @@ def create_parser(parser_creator=None):
     parser.add_argument(
         "--steps",
         default=10000,
-        help="Number of timesteps to roll out (overwritten by --episodes).")
+        help="Number of timesteps to roll out. Rollout will also stop if "
+        "`--episodes` limit is reached first.")
     parser.add_argument(
         "--episodes",
         default=0,
-        help="Number of complete episodes to roll out (overrides --steps).")
+        help="Number of complete episodes to roll out. Rollout will also stop "
+        "if `--steps` (timesteps) limit is reached first.")
     parser.add_argument("--out", default=None, help="Output filename.")
     parser.add_argument(
         "--config",
@@ -263,11 +275,6 @@ def run(args, parser):
 
         # Use default config for given agent.
         _, config = get_trainer_class(args.run, return_config=True)
-
-    # Set num_workers to be at least 2.
-    #TODO: why??
-    #if "num_workers" in config:
-    #    config["num_workers"] = min(2, config["num_workers"])
 
     # Make sure worker 0 has an Env.
     config["create_env_on_driver"] = True
@@ -338,13 +345,13 @@ def default_policy_agent_mapping(unused_agent_id):
 
 def keep_going(steps, num_steps, episodes, num_episodes):
     """Determine whether we've collected enough data"""
-    # if num_episodes is set, this overrides num_steps
-    if num_episodes:
-        return episodes < num_episodes
-    # if num_steps is set, continue until we reach the limit
-    if num_steps:
-        return steps < num_steps
-    # otherwise keep going forever
+    # If num_episodes is set, stop if limit reached.
+    if num_episodes and episodes >= num_episodes:
+        return False
+    # If num_steps is set, stop if limit reached.
+    elif num_steps and steps >= num_steps:
+        return False
+    # Otherwise, keep going.
     return True
 
 
@@ -362,10 +369,12 @@ def rollout(agent,
 
     # Normal case: Agent was setup correctly with an evaluation WorkerSet,
     # which we will now use to rollout.
-    if hasattr(agent, "evaluation_workers") and isinstance(agent.evaluation_workers, WorkerSet):
+    if hasattr(agent, "evaluation_workers") and isinstance(
+            agent.evaluation_workers, WorkerSet):
         steps = 0
         episodes = 0
         while keep_going(steps, num_steps, episodes, num_episodes):
+            saver.begin_rollout()
             eval_result = agent._evaluate()["evaluation"]
             # Increase timestep and episode counters.
             eps = agent.config["evaluation_num_episodes"]
@@ -374,6 +383,7 @@ def rollout(agent,
             # Print out results and continue.
             print("Episode #{}: reward: {}".format(
                 episodes, eval_result["episode_reward_mean"]))
+            saver.end_rollout()
         return
 
     # Agent has no evaluation workers, but RolloutWorkers.

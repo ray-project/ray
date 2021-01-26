@@ -425,7 +425,8 @@ class TFPolicy(Policy):
         assert self.loss_initialized()
         builder = TFRunBuilder(self._sess, "learn_on_batch")
         fetches = self._build_learn_on_batch(builder, postprocessed_batch)
-        return builder.get(fetches)
+        ret = builder.get(fetches)
+        return ret
 
     @override(Policy)
     @DeveloperAPI
