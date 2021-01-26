@@ -13,17 +13,25 @@ MAX_PLACEMENT_GROUPS = 1000
 MAX_NUM_NODES = 250
 
 
+def num_alive_nodes():
+    n = 0
+    for node in ray.nodes():
+        if node["Alive"]:
+            n += 1
+    return n
+
+
 def scale_to(target):
-    while len(ray.nodes()) != target:
+    while num_alive_nodes() != target:
         ray.autoscaler.sdk.request_resources(bundles=[{"node": 1}] * target)
-        print(f"Current # nodes: {len(ray.nodes())}, target: {target}")
+        print(f"Current # nodes: {num_alive_nodes()}, target: {target}")
         print("Waiting ...")
         sleep(5)
 
 
 def test_nodes():
     scale_to(MAX_NUM_NODES)
-    assert len(ray.nodes()) == MAX_NUM_NODES
+    assert num_alive_nodes() == MAX_NUM_NODES
     # Treat this as a trivial task to ensure the nodes are all functioning
     test_max_running_tasks()
 
@@ -49,11 +57,10 @@ def test_max_actors():
 def test_max_running_tasks():
     counter = Semaphore.remote(0)
     blocker = Semaphore.remote(0)
-    total_resource = ray.cluster_resources()["node"]
 
-    @ray.remote(num_cpus=0.1)
+    @ray.remote(num_cpus=0.25)
     def task(counter, blocker):
-        sleep(10)
+        sleep(300)
 
     refs = [
         task.remote(counter, blocker)
@@ -62,12 +69,20 @@ def test_max_running_tasks():
 
     max_cpus = ray.cluster_resources()["CPU"]
     min_cpus_available = max_cpus
-    for _ in trange(int(10 / 0.1), desc="Waiting"):
-        cur_cpus = ray.available_resources()["CPU"]
-        min_cpus_available = min(min_cpus_available, cur_cpus)
+    for _ in trange(int(300 / 0.1), desc="Waiting"):
+        try:
+            cur_cpus = ray.available_resources().get("CPU", 0)
+            min_cpus_available = min(min_cpus_available, cur_cpus)
+        except Exception:
+            # There are race conditions `.get` can fail if a new heartbeat
+            # comes at the same time.
+            pass
         sleep(0.1)
 
-    assert min_cpus_available < max_cpus / 2, "Cluster not being utilized well."
+    # There are some relevant magic numbers in this check. 10k tasks each
+    # require 1/4 cpus. Therefore, ideally 2.5k cpus will be used.
+    err_str = f"Only {max_cpus - min_cpus_available}/{max_cpus} cpus used."
+    assert max_cpus - min_cpus_available > 2000, err_str
 
     for _ in trange(
             MAX_RUNNING_TASKS_IN_CLUSTER,
@@ -126,9 +141,8 @@ def test_many_placement_groups():
 ray.init(address="auto")
 
 scale_to(TEST_NUM_NODES)
-assert len(
-    ray.nodes()) == TEST_NUM_NODES, "Wrong number of nodes in cluster " + len(
-        ray.nodes())
+assert num_alive_nodes(
+) == TEST_NUM_NODES, "Wrong number of nodes in cluster " + len(ray.nodes())
 
 cluster_resources = ray.cluster_resources()
 
@@ -142,9 +156,8 @@ test_max_actors()
 actor_end = perf_counter()
 
 sleep(1)
-assert len(
-    ray.nodes()) == TEST_NUM_NODES, "Wrong number of nodes in cluster " + len(
-        ray.nodes())
+assert num_alive_nodes(
+) == TEST_NUM_NODES, "Wrong number of nodes in cluster " + len(ray.nodes())
 assert available_resources == cluster_resources, (
     str(available_resources) + " != " + str(cluster_resources))
 print("Done testing actors")
@@ -154,9 +167,8 @@ test_max_running_tasks()
 task_end = perf_counter()
 
 sleep(1)
-assert len(
-    ray.nodes()) == TEST_NUM_NODES, "Wrong number of nodes in cluster " + str(
-        len(ray.nodes()))
+assert num_alive_nodes(
+) == TEST_NUM_NODES, "Wrong number of nodes in cluster " + len(ray.nodes())
 assert available_resources == cluster_resources, (
     str(available_resources) + " != " + str(cluster_resources))
 print("Done testing tasks")
@@ -166,9 +178,8 @@ test_many_placement_groups()
 pg_end = perf_counter()
 
 sleep(1)
-assert len(
-    ray.nodes()) == TEST_NUM_NODES, "Wrong number of nodes in cluster " + len(
-        ray.nodes())
+assert num_alive_nodes(
+) == TEST_NUM_NODES, "Wrong number of nodes in cluster " + len(ray.nodes())
 assert available_resources == cluster_resources, (
     str(available_resources) + " != " + str(cluster_resources))
 print("Done testing placement groups")
@@ -178,9 +189,8 @@ test_nodes()
 launch_end = perf_counter()
 
 sleep(1)
-assert len(
-    ray.nodes()) == MAX_NUM_NODES, "Wrong number of nodes in cluster " + len(
-        ray.nodes())
+assert num_alive_nodes(
+) == MAX_NUM_NODES, "Wrong number of nodes in cluster " + len(ray.nodes())
 print("Done.")
 
 actor_time = actor_end - actor_start

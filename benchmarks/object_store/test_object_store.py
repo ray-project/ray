@@ -10,10 +10,18 @@ NUM_NODES = 50
 OBJECT_SIZE = 2**30
 
 
+def num_alive_nodes():
+    n = 0
+    for node in ray.nodes():
+        if node["Alive"]:
+            n += 1
+    return n
+
+
 def scale_to(target):
-    ray.autoscaler.sdk.request_resources(bundles=[{"node": 1}] * target)
-    while len(ray.nodes()) != target:
-        print(f"Current # nodes: {len(ray.nodes())}, target: {target}")
+    while num_alive_nodes() != target:
+        ray.autoscaler.sdk.request_resources(bundles=[{"node": 1}] * target)
+        print(f"Current # nodes: {num_alive_nodes()}, target: {target}")
         print("Waiting ...")
         sleep(5)
 
