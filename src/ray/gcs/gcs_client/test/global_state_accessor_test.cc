@@ -283,7 +283,7 @@ TEST_F(GlobalStateAccessorTest, TestObjectTable) {
     NodeID node_id = NodeID::FromRandom();
     std::promise<bool> promise;
     RAY_CHECK_OK(gcs_client_->Objects().AsyncAddLocation(
-        object_id, node_id,
+        object_id, node_id, 0,
         [&promise](Status status) { promise.set_value(status.ok()); }));
     WaitReady(promise.get_future(), timeout_ms_);
   }

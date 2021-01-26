@@ -125,8 +125,8 @@ class LogMonitor:
         log_file_paths = glob.glob(f"{self.logs_dir}/worker*[.out|.err]")
         # segfaults and other serious errors are logged here
         raylet_err_paths = glob.glob(f"{self.logs_dir}/raylet*.err")
-        # The .log file contains autoscaler events, the .err file errors.
-        monitor_log_paths = glob.glob(f"{self.logs_dir}/monitor*[.log|.err]")
+        # monitor logs are needed to report autoscaler events
+        monitor_log_paths = glob.glob(f"{self.logs_dir}/monitor.log")
         # If gcs server restarts, there can be multiple log files.
         gcs_err_path = glob.glob(f"{self.logs_dir}/gcs_server*.err")
         for file_path in (log_file_paths + raylet_err_paths + gcs_err_path +

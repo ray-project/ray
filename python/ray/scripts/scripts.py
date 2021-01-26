@@ -739,6 +739,7 @@ def stop(force, verbose, log_style, log_color):
 
     total_found = 0
     total_stopped = 0
+    stopped = []
     for keyword, filter_by_cmd in processes_to_kill:
         if filter_by_cmd and is_linux and len(keyword) > 15:
             # getting here is an internal bug, so we do not use cli_logger
@@ -777,6 +778,7 @@ def stop(force, verbose, log_style, log_color):
                                        cf.dimmed("(via SIGTERM)"))
 
                 total_stopped += 1
+                stopped.append(proc)
             except psutil.NoSuchProcess:
                 cli_logger.verbose(
                     "Attempted to stop `{}`, but process was already dead.",
@@ -799,8 +801,8 @@ def stop(force, verbose, log_style, log_color):
             cli_logger.warning("Try running the command again, or use `{}`.",
                                cf.bold("--force"))
 
-    # TODO(maximsmol): we should probably block until the processes actually
-    # all died somehow
+    # Wait for the processes to actually stop.
+    psutil.wait_procs(stopped, timeout=2)
 
 
 @cli.command()

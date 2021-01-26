@@ -1,6 +1,7 @@
 import logging
 
 import ray
+from ray.rllib.agents.ppo.ppo_tf_policy import compute_and_clip_gradients
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.evaluation.postprocessing import compute_advantages, \
     Postprocessing
@@ -133,7 +134,7 @@ class MARWILLoss:
 
                 # Exponentially weighted advantages.
                 c = tf.math.sqrt(policy._moving_average_sqd_adv_norm)
-                exp_advs = tf.math.exp(beta * (adv / c))
+                exp_advs = tf.math.exp(beta * (adv / (1e-8 + c)))
             # Static graph.
             else:
                 update_adv_norm = tf1.assign_add(
@@ -200,4 +201,5 @@ MARWILTFPolicy = build_tf_policy(
     stats_fn=stats,
     postprocess_fn=postprocess_advantages,
     before_loss_init=setup_mixins,
+    gradients_fn=compute_and_clip_gradients,
     mixins=[ValueNetworkMixin])

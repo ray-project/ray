@@ -21,7 +21,8 @@ public class BinaryFileUtil {
    * will be protected by a file lock.
    *
    * @param destDir a directory to extract resource file to
-   * @param fileName resource file name Returns extracted resource file
+   * @param fileName resource file name
+   * @return extracted resource file
    */
   public static File getNativeFile(String destDir, String fileName) {
     final File dir = new File(destDir);

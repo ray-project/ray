@@ -31,7 +31,7 @@ except ImportError:
     specs = None
 try:
     from dm_control import suite
-except ImportError:
+except (ImportError, OSError):
     suite = None
 import numpy as np
 
