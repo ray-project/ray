@@ -172,7 +172,7 @@ void GcsResourceManager::HandleReportResourceUsage(
   if (node_resource_usages_.count(node_id) == 0 ||
       resources_data->resources_available_changed()) {
     const auto &resource_changed = MapFromProtobuf(resources_data->resources_available());
-    SetAvailableResources(node_id, ResourceSet(resource_changed));
+    cluster_available_resources_[node_id] = ResourceSet(resource_changed);
   }
 
   UpdateNodeResourceUsage(node_id, request);
@@ -288,11 +288,6 @@ void GcsResourceManager::Initialize(const GcsInitData &gcs_init_data) {
 const absl::flat_hash_map<NodeID, SchedulingResources>
     &GcsResourceManager::GetClusterResources() const {
   return cluster_scheduling_resources_;
-}
-
-void GcsResourceManager::SetAvailableResources(const NodeID &node_id,
-                                               const ResourceSet &resources) {
-  cluster_available_resources_[node_id] = ResourceSet(resources);
 }
 
 void GcsResourceManager::UpdateResourceCapacity(

@@ -106,8 +106,7 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
     const auto &node_id = NodeID::FromBinary(node->node_id());
     std::unordered_map<std::string, double> resource_map;
     resource_map["CPU"] = cpu_num;
-    ResourceSet resources(resource_map);
-    gcs_resource_manager_->SetAvailableResources(node_id, resources);
+    gcs_resource_manager_->UpdateResourceCapacity(node_id, resource_map);
   }
 
   void ScheduleFailedWithZeroNodeTest(rpc::PlacementStrategy strategy) {

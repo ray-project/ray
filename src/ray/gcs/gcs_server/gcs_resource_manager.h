@@ -92,12 +92,6 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
   /// \param node_id The specified node id.
   void OnNodeDead(const NodeID &node_id);
 
-  /// Set the available resources of the specified node.
-  ///
-  /// \param node_id Id of a node.
-  /// \param resources Available resources of a node.
-  void SetAvailableResources(const NodeID &node_id, const ResourceSet &resources);
-
   /// Acquire resources from the specified node. It will deduct directly from the node
   /// resources.
   ///
