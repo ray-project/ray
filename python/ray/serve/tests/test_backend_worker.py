@@ -226,7 +226,7 @@ async def test_task_runner_perform_batch(serve_instance, router,
     query_param = make_request_param()
     my_batch_sizes = await asyncio.gather(*[(
         await router.assign_request.remote(query_param)) for _ in range(3)])
-    assert my_batch_sizes == [2, 2, 1]
+    assert sorted(my_batch_sizes) == [1, 2, 2]
 
 
 async def test_task_runner_perform_async(serve_instance, router,
