@@ -1,4 +1,5 @@
 import abc
+import logging
 import os
 import shutil
 import traceback
@@ -11,6 +12,7 @@ from ray.ray_constants import DEFAULT_OBJECT_PREFIX
 from ray._raylet import ObjectRef
 
 ParsedURL = namedtuple("ParsedURL", "base_url, offset, size")
+logger = logging.getLogger(__name__)
 
 
 def create_url_with_offset(*, url: str, offset: int, size: int) -> str:
@@ -268,14 +270,13 @@ class FileSystemStorage(ExternalStorage):
             try:
                 shutil.rmtree(self.directory_path)
             except FileNotFoundError:
-                # It excpetion occurs when other IO workers are
+                # If excpetion occurs when other IO workers are
                 # deleting the file at the same time.
                 pass
             except Exception:
-                print("There were unexpected errors while deleting "
-                      "a directory that Ray objects are spilled.\n"
-                      f"Directory path: {self.directory_path}\n"
-                      f"Traceback: {traceback.format_exc()}")
+                logger.exception("Error cleaning up spill files\n"
+                                 f"Directory path: {self.directory_path}\n"
+                                 f"Traceback: {traceback.format_exc()}")
                 break
 
 
