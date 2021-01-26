@@ -1,0 +1,3 @@
+cluster:
+  config: /Users/sangbincho/work/ray/release/object_spilling_tests/cluster.yaml
+project_id: prj_7COyHThL5RZqf4PVbVM4l
