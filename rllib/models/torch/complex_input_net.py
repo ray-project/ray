@@ -11,6 +11,7 @@ from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.models.utils import get_filter_config
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.torch_ops import one_hot
 
 torch, nn = try_import_torch()
 
@@ -32,14 +33,14 @@ class ComplexInputNetwork(TorchModelV2, nn.Module):
     def __init__(self, obs_space, action_space, num_outputs, model_config,
                  name):
         # TODO: (sven) Support Dicts as well.
-        original_space = obs_space.original_space if \
+        self.original_space = obs_space.original_space if \
             hasattr(obs_space, "original_space") else obs_space
-        assert isinstance(original_space, (Tuple)), \
+        assert isinstance(self.original_space, (Tuple)), \
             "`obs_space.original_space` must be Tuple!"
 
         nn.Module.__init__(self)
-        TorchModelV2.__init__(self, original_space, action_space, num_outputs,
-                              model_config, name)
+        TorchModelV2.__init__(self, self.original_space, action_space,
+                              num_outputs, model_config, name)
 
         # Atari type CNNs or IMPALA type CNNs (with residual layers)?
         # self.cnn_type = self.model_config["custom_model_config"].get(
@@ -47,8 +48,10 @@ class ComplexInputNetwork(TorchModelV2, nn.Module):
 
         # Build the CNN(s) given obs_space's image components.
         self.cnns = {}
+        self.one_hot = {}
+        self.flatten = {}
         concat_size = 0
-        for i, component in enumerate(original_space):
+        for i, component in enumerate(self.original_space):
             # Image space.
             if len(component.shape) == 3:
                 config = {
@@ -79,13 +82,13 @@ class ComplexInputNetwork(TorchModelV2, nn.Module):
                 self.add_module("cnn_{}".format(i), cnn)
             # Discrete inputs -> One-hot encode.
             elif isinstance(component, Discrete):
+                self.one_hot[i] = True
                 concat_size += component.n
             # TODO: (sven) Multidiscrete (see e.g. our auto-LSTM wrappers).
             # Everything else (1D Box).
             else:
-                assert len(component.shape) == 1, \
-                    "Only input Box 1D or 3D spaces allowed!"
-                concat_size += component.shape[-1]
+                self.flatten[i] = int(np.product(component.shape))
+                concat_size += self.flatten[i]
 
         # Optional post-concat FC-stack.
         post_fc_stack_config = {
@@ -133,8 +136,14 @@ class ComplexInputNetwork(TorchModelV2, nn.Module):
             if i in self.cnns:
                 cnn_out, _ = self.cnns[i]({"obs": component})
                 outs.append(cnn_out)
+            elif i in self.one_hot:
+                if component.dtype in [torch.int32, torch.int64, torch.uint8]:
+                    outs.append(
+                        one_hot(component, self.original_space.spaces[i]))
+                else:
+                    outs.append(component)
             else:
-                outs.append(component)
+                outs.append(torch.reshape(component, [-1, self.flatten[i]]))
         # Concat all outputs and the non-image inputs.
         out = torch.cat(outs, dim=1)
         # Push through (optional) FC-stack (this may be an empty stack).

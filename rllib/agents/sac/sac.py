@@ -166,7 +166,9 @@ def validate_config(config: TrainerConfigDict) -> None:
         ValueError: In case something is wrong with the config.
     """
     if config["use_state_preprocessor"] != DEPRECATED_VALUE:
-        deprecation_warning(old="config['use_state_preprocessor']", error=True)
+        deprecation_warning(
+            old="config['use_state_preprocessor']", error=False)
+        config["use_state_preprocessor"] = DEPRECATED_VALUE
 
     if config["grad_clip"] is not None and config["grad_clip"] <= 0.0:
         raise ValueError("`grad_clip` value must be > 0.0!")

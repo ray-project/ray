@@ -8,6 +8,7 @@ from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.models.utils import get_filter_config
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.tf_ops import one_hot
 
 tf1, tf, tfv = try_import_tf()
 
@@ -30,18 +31,20 @@ class ComplexInputNetwork(TFModelV2):
     def __init__(self, obs_space, action_space, num_outputs, model_config,
                  name):
         # TODO: (sven) Support Dicts as well.
-        original_space = obs_space.original_space if \
+        self.original_space = obs_space.original_space if \
             hasattr(obs_space, "original_space") else obs_space
-        assert isinstance(original_space, (Tuple)), \
+        assert isinstance(self.original_space, (Tuple)), \
             "`obs_space.original_space` must be Tuple!"
 
-        super().__init__(original_space, action_space, num_outputs,
+        super().__init__(self.original_space, action_space, num_outputs,
                          model_config, name)
 
         # Build the CNN(s) given obs_space's image components.
         self.cnns = {}
+        self.one_hot = {}
+        self.flatten = {}
         concat_size = 0
-        for i, component in enumerate(original_space):
+        for i, component in enumerate(self.original_space):
             # Image space.
             if len(component.shape) == 3:
                 config = {
@@ -61,13 +64,13 @@ class ComplexInputNetwork(TFModelV2):
                 self.cnns[i] = cnn
             # Discrete inputs -> One-hot encode.
             elif isinstance(component, Discrete):
+                self.one_hot[i] = True
                 concat_size += component.n
             # TODO: (sven) Multidiscrete (see e.g. our auto-LSTM wrappers).
             # Everything else (1D Box).
             else:
-                assert len(component.shape) == 1, \
-                    "Only input Box 1D or 3D spaces allowed!"
-                concat_size += component.shape[-1]
+                self.flatten[i] = int(np.product(component.shape))
+                concat_size += self.flatten[i]
 
         # Optional post-concat FC-stack.
         post_fc_stack_config = {
@@ -117,8 +120,14 @@ class ComplexInputNetwork(TFModelV2):
             if i in self.cnns:
                 cnn_out, _ = self.cnns[i]({"obs": component})
                 outs.append(cnn_out)
+            elif i in self.one_hot:
+                if component.dtype in [tf.int32, tf.int64, tf.uint8]:
+                    outs.append(
+                        one_hot(component, self.original_space.spaces[i]))
+                else:
+                    outs.append(component)
             else:
-                outs.append(component)
+                outs.append(tf.reshape(component, [-1, self.flatten[i]]))
         # Concat all outputs and the non-image inputs.
         out = tf.concat(outs, axis=1)
         # Push through (optional) FC-stack (this may be an empty stack).
