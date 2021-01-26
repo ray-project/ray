@@ -101,7 +101,9 @@ bool GcsPlacementGroup::IsPlacementGroupLifetimeDone() const {
          placement_group_table_data_.creator_actor_dead();
 }
 
-bool GcsPlacementGroup::IsDetached() const { return placement_group_table_data_.is_detached(); }
+bool GcsPlacementGroup::IsDetached() const {
+  return placement_group_table_data_.is_detached();
+}
 
 /////////////////////////////////////////////////////////////////////////////////////////
 

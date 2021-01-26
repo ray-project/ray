@@ -67,10 +67,9 @@ class PlacementGroupSpecBuilder {
   PlacementGroupSpecBuilder &SetPlacementGroupSpec(
       const PlacementGroupID &placement_group_id, std::string name,
       const std::vector<std::unordered_map<std::string, double>> &bundles,
-      const rpc::PlacementStrategy strategy, 
-      const bool is_detached,
-      const JobID &creator_job_id,
-      const ActorID &creator_actor_id, bool is_creator_detached_actor) {
+      const rpc::PlacementStrategy strategy, const bool is_detached,
+      const JobID &creator_job_id, const ActorID &creator_actor_id,
+      bool is_creator_detached_actor) {
     message_->set_placement_group_id(placement_group_id.Binary());
     message_->set_name(name);
     message_->set_strategy(strategy);

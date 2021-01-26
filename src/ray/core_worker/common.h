@@ -145,7 +145,10 @@ struct PlacementGroupCreationOptions {
   PlacementGroupCreationOptions(
       std::string name, PlacementStrategy strategy,
       std::vector<std::unordered_map<std::string, double>> bundles, bool is_detached)
-      : name(std::move(name)), strategy(strategy), bundles(std::move(bundles)), is_detached(is_detached) {}
+      : name(std::move(name)),
+        strategy(strategy),
+        bundles(std::move(bundles)),
+        is_detached(is_detached) {}
 
   /// The name of the placement group.
   const std::string name;
