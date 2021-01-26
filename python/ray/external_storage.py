@@ -1,9 +1,9 @@
 import abc
 import os
+import shutil
 import traceback
 import urllib
 from collections import namedtuple
-from pathlib import Path
 from typing import List, IO, Tuple
 
 import ray
@@ -212,8 +212,8 @@ class FileSystemStorage(ExternalStorage):
     """
 
     def __init__(self, directory_path):
-        self.directory_path = directory_path
-        self.prefix = DEFAULT_OBJECT_PREFIX
+        self.spill_dir_name = DEFAULT_OBJECT_PREFIX
+        self.directory_path = os.path.join(directory_path, self.spill_dir_name)
         os.makedirs(self.directory_path, exist_ok=True)
         if not os.path.exists(self.directory_path):
             raise ValueError("The given directory path to store objects, "
@@ -224,7 +224,7 @@ class FileSystemStorage(ExternalStorage):
             return []
         # Always use the first object ref as a key when fusioning objects.
         first_ref = object_refs[0]
-        filename = f"{self.prefix}-{first_ref.hex()}-multi-{len(object_refs)}"
+        filename = f"{first_ref.hex()}-multi-{len(object_refs)}"
         url = f"{os.path.join(self.directory_path, filename)}"
         with open(url, "wb") as f:
             return self._write_multiple_objects(f, object_refs, url)
@@ -259,39 +259,15 @@ class FileSystemStorage(ExternalStorage):
     def destroy_external_storage(self):
         # Q: Some users probably don't want to see print here.
         # Should we disable printing when log_to_driver is False?
-        print("Removing remaining files that are spilled to "
+        print("Removing a directory that has spilled files: "
               f"{self.directory_path}.")
         try:
-            dir_path = Path(self.directory_path)
-            paths_to_remove = []
-            for path in dir_path.iterdir():
-                path = str(path)
-                if self.prefix in path:
-                    paths_to_remove.append(path)
-            total_files_to_remove = len(paths_to_remove)
-
-            print(f"\nTotal number of files spilled: {total_files_to_remove}\n"
-                  f"Path: {self.directory_path}.")
-            count = 0
-            multiplier = 1
-            for path in paths_to_remove:
-                if count > len(paths_to_remove) * 0.2 * multiplier:
-                    print(f"Removed [{count} / {total_files_to_remove}]")
-                    multiplier += 1
-                try:
-                    os.remove(path)
-                except FileNotFoundError:
-                    # If files are not found, it is probably
-                    # already deleted by ref count protocol.
-                    pass
-                finally:
-                    count += 1
-            print(f"\nRemoved: {total_files_to_remove}\n"
-                  f"Path: {self.directory_path}.")
+            shutil.rmtree(self.directory_path)
         except Exception as e:
-            print("\nThere was an exception while removing the files.\n"
-                  f"Traceback: {traceback.format_exc()}\n"
-                  f"Exception: {e}")
+            print("Failed to remove a directory.\n"
+                  f"Error: {e}\n"
+                  f"traceback: {traceback.format_exc()}")
+        print("Finished removing a directory.")
 
 
 class ExternalStorageSmartOpenImpl(ExternalStorage):
