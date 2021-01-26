@@ -364,5 +364,32 @@ def test_startup_retry(ray_start_regular_shared):
     ray_client._inside_client_test = False
 
 
+def test_dataclient_server_drop(ray_start_regular_shared):
+    from ray.util.client import ray as ray_client
+    ray_client._inside_client_test = True
+
+    @ray_client.remote
+    def f(x):
+        time.sleep(4)
+        return x
+
+    def stop_server(server):
+        time.sleep(2)
+        server.stop(0)
+
+    server = ray_client_server.serve("localhost:50051")
+    ray_client.connect("localhost:50051")
+    thread = threading.Thread(target=stop_server, args=(server, ))
+    thread.start()
+    x = f.remote(2)
+    with pytest.raises(ConnectionError):
+        _ = ray_client.get(x)
+    thread.join()
+    ray_client.disconnect()
+    ray_client._inside_client_test = False
+    # Wait for f(x) to finish before ray.shutdown() in the fixture
+    time.sleep(3)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
