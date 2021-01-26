@@ -80,11 +80,19 @@ ray::Status OwnershipBasedObjectDirectory::ReportObjectAdded(
   request.set_node_id(node_id.Binary());
 
   rpc_client->AddObjectLocationOwner(
-      request, [worker_id, object_id](Status status,
-                                      const rpc::AddObjectLocationOwnerReply &reply) {
+      request, [worker_id, object_id, node_id](
+                   Status status, const rpc::AddObjectLocationOwnerReply &reply) {
         if (!status.ok()) {
-          RAY_LOG(ERROR) << "Worker " << worker_id << " failed to add the location for "
-                         << object_id;
+          if (status.IsObjectNotFound()) {
+            RAY_LOG(INFO) << "Worker " << worker_id << " failed to add the location "
+                          << node_id << " for " << object_id
+                          << " because the owner no longer has the object; we assume the "
+                             "object was evicted.";
+          } else {
+            RAY_LOG(WARNING) << "Worker " << worker_id << " failed to add the location "
+                             << node_id << " for " << object_id << ": "
+                             << status.ToString();
+          }
         }
       });
   return Status::OK();
@@ -108,11 +116,19 @@ ray::Status OwnershipBasedObjectDirectory::ReportObjectRemoved(
   request.set_node_id(node_id.Binary());
 
   rpc_client->RemoveObjectLocationOwner(
-      request, [worker_id, object_id](Status status,
-                                      const rpc::RemoveObjectLocationOwnerReply &reply) {
+      request, [worker_id, object_id, node_id](
+                   Status status, const rpc::RemoveObjectLocationOwnerReply &reply) {
         if (!status.ok()) {
-          RAY_LOG(ERROR) << "Worker " << worker_id
-                         << " failed to remove the location for " << object_id;
+          if (status.IsObjectNotFound()) {
+            RAY_LOG(INFO) << "Worker " << worker_id << " failed to remove the location "
+                          << node_id << " for " << object_id
+                          << " because the owner no longer has the object; we assume the "
+                             "object was evicted.";
+          } else {
+            RAY_LOG(WARNING) << "Worker " << worker_id
+                             << " failed to remove the location " << node_id << " for "
+                             << object_id << ": " << status.ToString();
+          }
         }
       });
   return Status::OK();
@@ -121,16 +137,32 @@ ray::Status OwnershipBasedObjectDirectory::ReportObjectRemoved(
 void OwnershipBasedObjectDirectory::SubscriptionCallback(
     ObjectID object_id, WorkerID worker_id, Status status,
     const rpc::GetObjectLocationsOwnerReply &reply) {
+  // Objects are added to this map in SubscribeObjectLocations.
   auto it = listeners_.find(object_id);
+  // Do nothing for objects we are not listening for.
   if (it == listeners_.end()) {
     return;
   }
+  std::unordered_set<NodeID> node_ids;
+
+  if (!status.ok()) {
+    RAY_LOG(INFO) << "Worker " << worker_id << " failed to return location updates to "
+                  << "subscribers  for " << object_id << ": " << status.ToString()
+                  << ", assuming that the object was evicted.";
+    auto callbacks = it->second.callbacks;
+    for (const auto &callback_pair : callbacks) {
+      callback_pair.second(object_id, node_ids, "", NodeID::Nil(), 0);
+    }
+    return;
+  }
+
+  // Once this flag is set to true, it should never go back to false.
+  it->second.subscribed = true;
 
   if (reply.object_size() > 0) {
     it->second.object_size = reply.object_size();
   }
 
-  std::unordered_set<NodeID> node_ids;
   for (auto const &node_id : reply.node_ids()) {
     node_ids.emplace(NodeID::FromBinary(node_id));
   }
@@ -154,7 +186,7 @@ void OwnershipBasedObjectDirectory::SubscriptionCallback(
   rpc::GetObjectLocationsOwnerRequest request;
   request.set_intended_worker_id(worker_id.Binary());
   request.set_object_id(object_id.Binary());
-  // TODO(zhuohan): Fix this infinite loop.
+  request.set_last_version(reply.current_version());
   worker_it->second->GetObjectLocationsOwner(
       request,
       std::bind(&OwnershipBasedObjectDirectory::SubscriptionCallback, this, object_id,
@@ -176,6 +208,7 @@ ray::Status OwnershipBasedObjectDirectory::SubscribeObjectLocations(
     rpc::GetObjectLocationsOwnerRequest request;
     request.set_intended_worker_id(owner_address.worker_id());
     request.set_object_id(object_id.Binary());
+    request.set_last_version(0);
     rpc_client->GetObjectLocationsOwner(
         request,
         std::bind(&OwnershipBasedObjectDirectory::SubscriptionCallback, this, object_id,
@@ -188,6 +221,16 @@ ray::Status OwnershipBasedObjectDirectory::SubscribeObjectLocations(
     return Status::OK();
   }
   listener_state.callbacks.emplace(callback_id, callback);
+
+  // If we previously received some notifications about the object's locations,
+  // immediately notify the caller of the current known locations.
+  if (listener_state.subscribed) {
+    auto &locations = listener_state.current_object_locations;
+    auto object_size = it->second.object_size;
+    io_service_.post([callback, locations, object_size, object_id]() {
+      callback(object_id, locations, "", NodeID::Nil(), object_size);
+    });
+  }
   return Status::OK();
 }
 
@@ -221,6 +264,7 @@ ray::Status OwnershipBasedObjectDirectory::LookupLocations(
   rpc::GetObjectLocationsOwnerRequest request;
   request.set_intended_worker_id(owner_address.worker_id());
   request.set_object_id(object_id.Binary());
+  request.set_last_version(0);
 
   rpc_client->GetObjectLocationsOwner(
       request, [this, worker_id, object_id, callback](
