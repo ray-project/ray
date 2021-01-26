@@ -134,7 +134,13 @@ is generally the easiest way to run release tests.
    The summaries printed by each test should be checked in under
    ``release_logs/<version>`` on the **master** branch (make a pull request).
 
-5. **ASAN tests**
+5. **Scalability envelope tests**
+
+   - Run the tests in `benchmarks/` (with `ray submit --start cluster.yaml <test file>`)
+   - Record the outputted times.
+     - Whether the results are acceptable is a judgement call.
+
+6. **ASAN tests**
 
    Run the ``ci/asan_tests`` with the commit. This will enable ASAN build and run the whole Python tests to detect memory leaks.
 
