@@ -137,18 +137,18 @@ def request_resources(num_cpus: Optional[int] = None,
         overwrite=True)
 
 
-def create_or_update_cluster(config_file: str,
-                             override_min_workers: Optional[int],
-                             override_max_workers: Optional[int],
-                             no_restart: bool,
-                             restart_only: bool,
-                             yes: bool,
-                             override_cluster_name: Optional[str] = None,
-                             no_config_cache: bool = False,
-                             redirect_command_output: Optional[bool] = False,
-                             use_login_shells: bool = True,
-                             no_monitor_on_head: bool = False) -> Dict[str,
-                                                                       Any]:
+def create_or_update_cluster(
+        config_file: str,
+        override_min_workers: Optional[int],
+        override_max_workers: Optional[int],
+        no_restart: bool,
+        restart_only: bool,
+        yes: bool,
+        override_cluster_name: Optional[str] = None,
+        no_config_cache: bool = False,
+        redirect_command_output: Optional[bool] = False,
+        use_login_shells: bool = True,
+        no_monitor_on_head: bool = False) -> Dict[str, Any]:
     """Create or updates an autoscaling Ray cluster from a config json."""
     set_using_login_shells(use_login_shells)
     if not use_login_shells:
@@ -494,8 +494,8 @@ def warn_about_bad_start_command(start_commands: List[str],
         cli_logger.warning(
             "Ray runtime will not be started because `{}` is not in `{}`.",
             cf.bold("ray start"), cf.bold("head_start_ray_commands"))
-    if not (any("autoscaling-config" in x for x in ray_start_cmd)
-            or no_monitor_on_head):
+    if not (any("autoscaling-config" in x
+                for x in ray_start_cmd) or no_monitor_on_head):
         cli_logger.warning(
             "The head node will not launch any workers because "
             "`{}` does not have `{}` set.\n"
@@ -635,7 +635,8 @@ def get_or_create_head_node(config: Dict[str, Any],
             config["file_mounts"], None, config)
 
         if not no_monitor_on_head:
-            config = _prepare_config_for_head_node(
+            # Return remote_config_file to avoid prematurely closing it.
+            config, remote_config_file = _prepare_config_for_head_node(
                 config, provider, no_restart)
             cli_logger.print("Prepared bootstrap config")
 
@@ -748,7 +749,7 @@ def _prepare_config_for_head_node(config, provider, no_restart):
             remote_key_path: config["auth"]["ssh_private_key"],
         })
 
-    return config
+    return config, remote_config_file
 
 
 def attach_cluster(config_file: str,
