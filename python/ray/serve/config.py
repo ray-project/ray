@@ -4,7 +4,7 @@ from enum import Enum
 from typing import Any, Dict, List, Optional
 
 import pydantic
-from pydantic import BaseModel, PositiveFloat, PositiveInt, validator
+from pydantic import BaseModel, confloat, PositiveFloat, PositiveInt, validator
 from ray.serve.constants import (ASYNC_CONCURRENCY, DEFAULT_HTTP_HOST,
                                  DEFAULT_HTTP_PORT)
 
@@ -64,7 +64,7 @@ class BackendConfig(BaseModel):
     user_config: Any = None
 
     experimental_graceful_shutdown_wait_loop_s: PositiveFloat = 2.0
-    experimental_graceful_shutdown_timeout_s: PositiveFloat = 20.0
+    experimental_graceful_shutdown_timeout_s: confloat(ge=0) = 20.0
 
     class Config:
         validate_assignment = True
