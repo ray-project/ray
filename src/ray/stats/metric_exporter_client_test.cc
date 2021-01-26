@@ -113,7 +113,9 @@ uint32_t kReportFlushInterval = 500;
 
 class MetricExporterClientTest : public ::testing::Test {
  public:
-  virtual void SetUp() override {
+  virtual void SetUp() override { SetUpStats(); }
+
+  void SetUpStats() {
     const stats::TagsType global_tags = {{stats::LanguageKey, "CPP"},
                                          {stats::WorkerPidKey, "1000"}};
     absl::Duration report_interval = absl::Milliseconds(kReportFlushInterval);
@@ -126,7 +128,6 @@ class MetricExporterClientTest : public ::testing::Test {
     mock2.reset(new MockExporterClient2(mock1));
     ray::stats::Init(global_tags, MetricsAgentPort, mock2, kMockReportBatchSize);
   }
-
   virtual void TearDown() override { Shutdown(); }
 
   void Shutdown() { ray::stats::Shutdown(); }
@@ -143,6 +144,22 @@ bool DoubleEqualTo(double value, double compared_value) {
 
 TEST_F(MetricExporterClientTest, decorator_test) {
   // Export client should emit at least once in report flush interval.
+  for (size_t i = 0; i < 100; ++i) {
+    stats::LiveActors().Record(i + 1);
+  }
+  opencensus::stats::DeltaProducer::Get()->Flush();
+  opencensus::stats::StatsExporterImpl::Get()->Export();
+  ASSERT_GE(100, mock1->GetValue());
+  ASSERT_EQ(1, mock1->GetCount());
+  ASSERT_GE(100, mock2->GetValue());
+  ASSERT_EQ(1, mock2->GetCount());
+}
+
+TEST_F(MetricExporterClientTest, ray_stats_init_shutdown_multiple_times) {
+  Shutdown();
+  SetUpStats();
+  Shutdown();
+  SetUpStats();
   for (size_t i = 0; i < 100; ++i) {
     stats::LiveActors().Record(i + 1);
   }
