@@ -48,9 +48,9 @@ class Query:
 class ReplicaSet:
     """Data structure representing a set of replica actor handles"""
 
-    def __init__(self, backend_tag):
+    def __init__(self, backend_tag, endpoint_tag):
         self.backend_tag = backend_tag
-
+        self.endpoint_tag = endpoint_tag
         # NOTE(simon): We have to do this because max_concurrent_queries
         # and the replica handles come from different long poll keys.
         self.max_concurrent_queries: int = 8
@@ -73,9 +73,10 @@ class ReplicaSet:
             description=(
                 "The current number of queries to this backend waiting"
                 " to be assigned to a replica."),
-            tag_keys=("backend", ))
+            tag_keys=("backend", "endpoint"))
         self.num_queued_queries_gauge.set_default_tags({
-            "backend": self.backend_tag
+            "backend": self.backend_tag,
+            "endpoint": self.endpoint_tag
         })
 
     def set_max_concurrent_queries(self, new_value):
@@ -287,7 +288,8 @@ class Router:
 
         return result_ref
 
-    def _get_or_create_replica_set(self, backend_name):
+    def _get_or_create_replica_set(self, backend_name, endpoint_name):
         if backend_name not in self.backend_replicas:
-            self.backend_replicas[backend_name] = ReplicaSet(backend_name)
+            self.backend_replicas[backend_name] = ReplicaSet(
+                backend_name, endpoint_name)
         return self.backend_replicas[backend_name]

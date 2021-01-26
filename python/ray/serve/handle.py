@@ -55,8 +55,11 @@ class RayServeHandle:
             "serve_handle_request_counter",
             description=("The number of handle.remote() calls that have been "
                          "made on this handle."),
-            tag_keys=("handle", ))
-        self.request_counter.set_default_tags({"handle": self.handle_tag})
+            tag_keys=("handle", "endpoint"))
+        self.request_counter.set_default_tags({
+            "handle": self.handle_tag,
+            "endpoint": self.endpoint_name
+        })
 
     def options(self,
                 *,
