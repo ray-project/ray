@@ -258,11 +258,13 @@ Placement Group Lifetimes
 .. tabs::
   .. group-tab:: Python
 
-    Separately, placement group lifetimes can be decoupled from the job and its creator,
-    allowing a placement group persist even after job exits or creator dead.
+    By default, the lifetimes of placement group is Non-Detached which will be destroy 
+    when the job or its creator(even a detached actor) is done. If you want to keep it 
+    alive, you should make its lifetime `detached`, just like the following code:
 
     .. code-block:: python
 
+      # first_driver.py
       pg = placement_group([{"CPU": 2}, {"CPU": 2}], strategy="STRICT_SPREAD", lifetime="detached")
       ray.get(pg.ready())
 
@@ -271,6 +273,7 @@ Placement Group Lifetimes
 
     .. code-block:: python
 
+      # second_driver.py
       table = ray.util.placement_group_table()
       print(len(table))
 

@@ -1316,6 +1316,7 @@ def test_detached_placement_group(ray_start_cluster):
     cluster = ray_start_cluster
     for _ in range(2):
         cluster.add_node(num_cpus=3)
+    cluster.wait_for_nodes()
     info = ray.init(address=cluster.address)
 
     # Make sure detached placement group will alive when job dead.
