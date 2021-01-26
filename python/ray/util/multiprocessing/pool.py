@@ -494,7 +494,7 @@ class Pool:
     def _chunk_and_run(self, func, iterable, chunksize=None,
                        unpack_args=False):
         if not hasattr(iterable, "__len__"):
-            iterable = [iterable]
+            iterable = list(iterable)
 
         if chunksize is None:
             chunksize = self._calculate_chunksize(iterable)
