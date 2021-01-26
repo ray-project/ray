@@ -189,7 +189,9 @@ def test_worker_replica_failure(serve_instance):
     start = time.time()
     while time.time() - start < 30:
         time.sleep(0.1)
-        responses.add(request_with_retries("/replica_failure", timeout=1).text)
+        response = request_with_retries("/replica_failure", timeout=1).text
+        assert response in ["1", "2"]
+        responses.add(response)
         if len(responses) > 1:
             break
     else:
