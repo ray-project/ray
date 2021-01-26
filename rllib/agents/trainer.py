@@ -213,10 +213,13 @@ COMMON_CONFIG: TrainerConfigDict = {
     },
     # Number of parallel workers to use for evaluation. Note that this is set
     # to zero by default, which means evaluation will be run in the trainer
-    # process. If you increase this, it will increase the Ray resource usage
-    # of the trainer since evaluation workers are created separately from
-    # rollout workers.
+    # process (only if evaluation_interval is not None). If you increase this,
+    # it will increase the Ray resource usage of the trainer since evaluation
+    # workers are created separately from rollout workers (used to sample data
+    # for training).
     "evaluation_num_workers": 0,
+    #TODO
+    "evaluation_video": False,
     # Customize the evaluation method. This must be a function of signature
     # (trainer: Trainer, eval_workers: WorkerSet) -> metrics: dict. See the
     # Trainer._evaluate() method to see the default implementation. The

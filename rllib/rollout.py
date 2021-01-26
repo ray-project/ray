@@ -12,12 +12,12 @@ import shelve
 
 import ray
 import ray.cloudpickle as cloudpickle
+from ray.rllib.agents.registry import get_trainer_class
 from ray.rllib.env import MultiAgentEnv
 from ray.rllib.env.base_env import _DUMMY_AGENT_ID
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
-from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.spaces.space_utils import flatten_to_single_ndarray
 from ray.tune.utils import merge_dicts
 from ray.tune.registry import get_trainable_cls, _global_registry, ENV_CREATOR
@@ -174,7 +174,9 @@ def create_parser(parser_creator=None):
         epilog=EXAMPLE_USAGE)
 
     parser.add_argument(
-        "checkpoint", type=str, help="Checkpoint from which to roll out.")
+        "checkpoint", type=str, nargs="?",
+        help="Checkpoint from which to roll out.")
+
     required_named = parser.add_argument_group("required named arguments")
     required_named.add_argument(
         "--run",
@@ -192,12 +194,6 @@ def create_parser(parser_creator=None):
         action="store_const",
         const=True,
         help="Suppress rendering of the environment.")
-    parser.add_argument(
-        "--monitor",
-        default=False,
-        action="store_true",
-        help="Wrap environment in gym Monitor to record video. NOTE: This "
-        "option is deprecated: Use `--video-dir [some dir]` instead.")
     parser.add_argument(
         "--video-dir",
         type=str,
@@ -244,29 +240,34 @@ def create_parser(parser_creator=None):
 
 def run(args, parser):
     # Load configuration from checkpoint file.
-    config_dir = os.path.dirname(args.checkpoint)
-    config_path = os.path.join(config_dir, "params.pkl")
-    # Try parent directory.
-    if not os.path.exists(config_path):
-        config_path = os.path.join(config_dir, "../params.pkl")
-
-    # If no pkl file found, require command line `--config`.
-    if not os.path.exists(config_path):
-        if not args.config:
-            raise ValueError(
-                "Could not find params.pkl in either the checkpoint dir or "
-                "its parent directory AND no config given on command line!")
-        else:
-            config = args.config
+    config_path = ""
+    if args.checkpoint:
+        config_dir = os.path.dirname(args.checkpoint)
+        config_path = os.path.join(config_dir, "params.pkl")
+        # Try parent directory.
+        if not os.path.exists(config_path):
+            config_path = os.path.join(config_dir, "../params.pkl")
 
     # Load the config from pickled.
-    else:
+    if os.path.exists(config_path):
         with open(config_path, "rb") as f:
             config = cloudpickle.load(f)
+    # If no pkl file found, require command line `--config`.
+    else:
+        # If no config in given checkpoint -> Error.
+        if args.checkpoint:
+            raise ValueError(
+                "Could not find params.pkl in either the checkpoint dir or "
+                "its parent directory AND no `--config` given on command "
+                "line!")
+
+        # Use default config for given agent.
+        _, config = get_trainer_class(args.run, return_config=True)
 
     # Set num_workers to be at least 2.
-    if "num_workers" in config:
-        config["num_workers"] = min(2, config["num_workers"])
+    #TODO: why??
+    #if "num_workers" in config:
+    #    config["num_workers"] = min(2, config["num_workers"])
 
     # Make sure worker 0 has an Env.
     config["create_env_on_driver"] = True
@@ -285,25 +286,29 @@ def run(args, parser):
             parser.error("the following arguments are required: --env")
         args.env = config.get("env")
 
+    # Make sure we have evaluation workers.
+    if not config.get("evaluation_num_workers"):
+        config["evaluation_num_workers"] = config.get("num_workers", 0)
+    if not config.get("evaluation_num_episodes"):
+        config["evaluation_num_episodes"] = 1
+
     ray.init()
 
     # Create the Trainer from config.
     cls = get_trainable_cls(args.run)
     agent = cls(env=args.env, config=config)
-    # Load state from checkpoint.
-    agent.restore(args.checkpoint)
+
+    # Load state from checkpoint, if provided.
+    if args.checkpoint:
+        agent.restore(args.checkpoint)
+
     num_steps = int(args.steps)
     num_episodes = int(args.episodes)
 
     # Determine the video output directory.
-    # Deprecated way: Use (--out|~/ray_results) + "/monitor" as dir.
     video_dir = None
-    if args.monitor:
-        video_dir = os.path.join(
-            os.path.dirname(args.out or "")
-            or os.path.expanduser("~/ray_results/"), "monitor")
-    # New way: Allow user to specify a video output path.
-    elif args.video_dir:
+    # Allow user to specify a video output path.
+    if args.video_dir:
         video_dir = os.path.expanduser(args.video_dir)
 
     # Do the actual rollout.
@@ -355,16 +360,33 @@ def rollout(agent,
     if saver is None:
         saver = RolloutSaver()
 
-    if hasattr(agent, "workers") and isinstance(agent.workers, WorkerSet):
+    # Normal case: Agent was setup correctly with an evaluation WorkerSet,
+    # which we will now use to rollout.
+    if hasattr(agent, "evaluation_workers") and isinstance(agent.evaluation_workers, WorkerSet):
+        steps = 0
+        episodes = 0
+        while keep_going(steps, num_steps, episodes, num_episodes):
+            eval_result = agent._evaluate()["evaluation"]
+            # Increase timestep and episode counters.
+            eps = agent.config["evaluation_num_episodes"]
+            episodes += eps
+            steps += eps * eval_result["episode_len_mean"]
+            # Print out results and continue.
+            print("Episode #{}: reward: {}".format(
+                episodes, eval_result["episode_reward_mean"]))
+        return
+
+    # Agent has no evaluation workers, but RolloutWorkers.
+    elif hasattr(agent, "workers") and isinstance(agent.workers, WorkerSet):
         env = agent.workers.local_worker().env
         multiagent = isinstance(env, MultiAgentEnv)
         if agent.workers.local_worker().multiagent:
             policy_agent_mapping = agent.config["multiagent"][
                 "policy_mapping_fn"]
-
         policy_map = agent.workers.local_worker().policy_map
         state_init = {p: m.get_initial_state() for p, m in policy_map.items()}
         use_lstm = {p: len(s) > 0 for p, s in state_init.items()}
+    # Agent has neither evaluation- nor rollout workers.
     else:
         from gym import envs
         if envs.registry.env_specs.get(agent.config["env"]):
@@ -470,15 +492,12 @@ if __name__ == "__main__":
     parser = create_parser()
     args = parser.parse_args()
 
-    # Old option: monitor, use video-dir instead.
-    if args.monitor:
-        deprecation_warning("--monitor", "--video-dir=[some dir]")
     # User tries to record videos, but no-render is set: Error.
-    if (args.monitor or args.video_dir) and args.no_render:
+    if args.video_dir and args.no_render:
         raise ValueError(
             "You have --no-render set, but are trying to record rollout videos"
-            " (via options --video-dir/--monitor)! "
-            "Either unset --no-render or do not use --video-dir/--monitor.")
+            " (via option --video-dir)! "
+            "Either unset --no-render or do not use --video-dir.")
     # --use_shelve w/o --out option.
     if args.use_shelve and not args.out:
         raise ValueError(
