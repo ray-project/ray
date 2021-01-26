@@ -228,7 +228,7 @@ def test_async_callback(ray_start_regular_shared):
     global_set = set()
 
     ref = ray.put(None)
-    ref.on_completed(lambda _: global_set.add("completed-1"))
+    ref._on_completed(lambda _: global_set.add("completed-1"))
     wait_for_condition(lambda: "completed-1" in global_set)
 
     signal = SignalActor.remote()
@@ -238,7 +238,7 @@ def test_async_callback(ray_start_regular_shared):
         ray.get(signal.wait.remote())
 
     ref = wait.remote()
-    ref.on_completed(lambda _: global_set.add("completed-2"))
+    ref._on_completed(lambda _: global_set.add("completed-2"))
     assert "completed-2" not in global_set
     signal.send.remote()
     wait_for_condition(lambda: "completed-2" in global_set)

@@ -1,6 +1,7 @@
 from ray.includes.unique_ids cimport CObjectID
 
 import asyncio
+from typing import Callable, Any
 
 import ray
 
@@ -93,13 +94,15 @@ cdef class ObjectRef(BaseID):
 
             loop.call_soon_threadsafe(set_future)
 
-        self.on_completed(callback)
+        self._on_completed(callback)
 
         # A hack to keep a reference to the object ref for ref counting.
         py_future.object_ref = self
         return py_future
 
-    def on_completed(self, py_callback):
+    def _on_completed(self, py_callback: Callable[[Any], None]):
+        """Register a callback that will be called after Object is ready.
+        """
         core_worker = ray.worker.global_worker.core_worker
         core_worker.get_async_callback(self, py_callback)
         return self
