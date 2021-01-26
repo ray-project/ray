@@ -100,6 +100,9 @@ class NodeManagerWorkerClient
   /// Ask the raylet to spill an object to external storage.
   VOID_RPC_CLIENT_METHOD(NodeManagerService, RequestObjectSpillage, grpc_client_, )
 
+  /// Ask the raylet to restore an object from external storage.
+  VOID_RPC_CLIENT_METHOD(NodeManagerService, RestoreSpilledObject, grpc_client_, )
+
   /// Release unused bundles.
   VOID_RPC_CLIENT_METHOD(NodeManagerService, ReleaseUnusedBundles, grpc_client_, )
 

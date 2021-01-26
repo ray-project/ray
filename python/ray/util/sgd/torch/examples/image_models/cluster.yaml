@@ -4,10 +4,7 @@ cluster_name: sgd-pytorch-imagenet
 # The maximum number of workers nodes to launch in addition to the head
 # node. This takes precedence over min_workers. min_workers default to 0.
 min_workers: 1
-initial_workers: 1
 max_workers: 1
-
-target_utilization_fraction: 0.9
 
 # If a node is idle for this many minutes, it will be removed.
 idle_timeout_minutes: 10
