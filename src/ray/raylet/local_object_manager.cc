@@ -261,11 +261,15 @@ void LocalObjectManager::AddSpilledUrls(
     const ObjectID &object_id = object_ids[i];
     const std::string &object_url = worker_reply.spilled_objects_url(i);
     RAY_LOG(DEBUG) << "Object " << object_id << " spilled at " << object_url;
+    // Choose a node id to report. If an external storage type is not a filesystem, we
+    // don't need to report where this object is spilled.
+    const auto node_id_object_spilled =
+        is_external_storage_type_fs_ ? self_node_id_ : NodeID::Nil();
     // Write to object directory. Wait for the write to finish before
     // releasing the object to make sure that the spilled object can
     // be retrieved by other raylets.
     RAY_CHECK_OK(object_info_accessor_.AsyncAddSpilledUrl(
-        object_id, object_url,
+        object_id, object_url, node_id_object_spilled,
         [this, object_id, object_url, callback, num_remaining](Status status) {
           RAY_CHECK_OK(status);
           // Unpin the object.
@@ -298,14 +302,35 @@ void LocalObjectManager::AddSpilledUrls(
 }
 
 void LocalObjectManager::AsyncRestoreSpilledObject(
-    const ObjectID &object_id, const std::string &object_url,
+    const ObjectID &object_id, const std::string &object_url, const NodeID &node_id,
     std::function<void(const ray::Status &)> callback) {
-  RAY_LOG(DEBUG) << "Restoring spilled object " << object_id << " from URL "
-                 << object_url;
   if (objects_pending_restore_.count(object_id) > 0) {
     // If the same object is restoring, we dedup here.
     return;
   }
+
+  if (!node_id.IsNil() && node_id != self_node_id_) {
+    // If we know where this object was spilled, and the current node is not that one,
+    // send a RPC to a remote node that spilled the object to restore it.
+    RAY_LOG(DEBUG) << "Send a object restoration request of id: " << object_id
+                   << " to a remote node: " << node_id;
+    // TODO(sang): We need to deduplicate this remote RPC. Since restore request
+    // is retried every 10ms without exponential backoff, this can add huge overhead to a
+    // remote node that spilled the object.
+    restore_object_from_remote_node_(object_id, object_url, node_id);
+    if (callback) {
+      callback(Status::OK());
+    }
+    return;
+  }
+
+  // Restore the object.
+  RAY_LOG(DEBUG) << "Restoring spilled object " << object_id << " from URL "
+                 << object_url;
+  if (!node_id.IsNil()) {
+    RAY_CHECK(spilled_objects_url_.count(object_id) > 0);
+  }
+
   RAY_CHECK(objects_pending_restore_.emplace(object_id).second)
       << "Object dedupe wasn't done properly. Please report if you see this issue.";
   io_worker_pool_.PopRestoreWorker([this, object_id, object_url, callback](

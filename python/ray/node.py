@@ -292,9 +292,10 @@ class Node:
 
             for key in set(env_dict.keys()).intersection(
                     set(params_dict.keys())):
-                logger.warning("Autoscaler is overriding your resource:"
-                               "{}: {} with {}.".format(
-                                   key, params_dict[key], env_dict[key]))
+                if params_dict[key] != env_dict[key]:
+                    logger.warning("Autoscaler is overriding your resource:"
+                                   "{}: {} with {}.".format(
+                                       key, params_dict[key], env_dict[key]))
             return num_cpus, num_gpus, memory, object_store_memory, result
 
         if not self._resource_spec:

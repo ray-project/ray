@@ -2,9 +2,7 @@ cluster_name: ray-xgboost-release-gpu-small
 
 min_workers: 4
 max_workers: 4
-initial_workers: 4
 
-target_utilization_fraction: 0.8
 idle_timeout_minutes: 15
 
 docker:
