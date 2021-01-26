@@ -48,9 +48,8 @@ class Query:
 class ReplicaSet:
     """Data structure representing a set of replica actor handles"""
 
-    def __init__(self, backend_tag, endpoint_tag):
+    def __init__(self, backend_tag):
         self.backend_tag = backend_tag
-        self.endpoint_tag = endpoint_tag
         # NOTE(simon): We have to do this because max_concurrent_queries
         # and the replica handles come from different long poll keys.
         self.max_concurrent_queries: int = 8
@@ -75,8 +74,7 @@ class ReplicaSet:
                 " to be assigned to a replica."),
             tag_keys=("backend", "endpoint"))
         self.num_queued_queries_gauge.set_default_tags({
-            "backend": self.backend_tag,
-            "endpoint": self.endpoint_tag
+            "backend": self.backend_tag
         })
 
     def set_max_concurrent_queries(self, new_value):
@@ -141,8 +139,10 @@ class ReplicaSet:
         and only send a query to available replicas (determined by the backend
         max_concurrent_quries value.)
         """
+        endpoint = query.metadata.endpoint
         self.num_queued_queries += 1
-        self.num_queued_queries_gauge.record(self.num_queued_queries)
+        self.num_queued_queries_gauge.record(
+            self.num_queued_queries, tags={"endpoint": endpoint})
         assigned_ref = self._try_assign_replica(query)
         while assigned_ref is None:  # Can't assign a replica right now.
             logger.debug("Failed to assign a replica for "
@@ -164,7 +164,8 @@ class ReplicaSet:
             # assign this query a replica.
             assigned_ref = self._try_assign_replica(query)
         self.num_queued_queries -= 1
-        self.num_queued_queries_gauge.record(self.num_queued_queries)
+        self.num_queued_queries_gauge.record(
+            self.num_queued_queries, tags={"endpoint": endpoint})
         return assigned_ref
 
 
@@ -288,8 +289,7 @@ class Router:
 
         return result_ref
 
-    def _get_or_create_replica_set(self, backend_name, endpoint_name):
+    def _get_or_create_replica_set(self, backend_name):
         if backend_name not in self.backend_replicas:
-            self.backend_replicas[backend_name] = ReplicaSet(
-                backend_name, endpoint_name)
+            self.backend_replicas[backend_name] = ReplicaSet(backend_name)
         return self.backend_replicas[backend_name]
