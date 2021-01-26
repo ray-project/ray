@@ -69,9 +69,10 @@ class RayAPIStub:
     def _check_versions(self, conn_info, ignore_version: bool) -> None:
         local_major_minor = f"{sys.version_info[0]}.{sys.version_info[1]}"
         if not conn_info["python_version"].startswith(local_major_minor):
-            msg = "Python minor versions differ between client and server. " + \
-                    f"Client is {local_major_minor}.{sys.version_info[2]}, " + \
-                    f"server is {conn_info['python_version']}"
+            version_str = f"{local_major_minor}.{sys.version_info[2]}"
+            msg = "Python minor versions differ between client and server:" + \
+                  f" Client is {version_str}," + \
+                  f" server is {conn_info['python_version']}"
             if ignore_version:
                 logger.warning(msg)
             else:

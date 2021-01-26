@@ -62,10 +62,13 @@ def test_python_version():
                 ray_commit="",
             )
 
-        servicer.data_servicer._build_connection_response = mock_connection_response
+        # inject mock connection function
+        servicer.data_servicer._build_connection_response = \
+            mock_connection_response
+
         ray = RayAPIStub()
         with pytest.raises(RuntimeError):
-            info2 = ray.connect("localhost:50051")
+            _ = ray.connect("localhost:50051")
 
         ray = RayAPIStub()
         info3 = ray.connect("localhost:50051", ignore_version=True)
