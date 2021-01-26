@@ -1622,11 +1622,11 @@ def determine_plasma_store_config(object_store_memory,
                     "This will harm performance! You may be able to free up "
                     "space by deleting files in /dev/shm. If you are inside a "
                     "Docker container, you can increase /dev/shm size by "
-                    "passing '--shm-size={}gb' to 'docker run' (or add it to "
-                    "the run_options list in a Ray cluster config). Make sure "
-                    "to set this to more than 30% of available RAM.".format(
-                        ray.utils.get_user_temp_dir(), shm_avail,
-                        object_store_memory * (1.1) / (2**30)))
+                    "passing '--shm-size={:.2f}gb' to 'docker run' (or add it "
+                    "to the run_options list in a Ray cluster config). Make "
+                    "sure to set this to more than 30% of available RAM.".
+                    format(ray.utils.get_user_temp_dir(), shm_avail,
+                           object_store_memory * (1.1) / (2**30)))
         else:
             plasma_directory = ray.utils.get_user_temp_dir()
 
