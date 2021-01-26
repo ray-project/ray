@@ -230,10 +230,11 @@ class StatsCollector(dashboard_utils.DashboardHeadModule):
                     pubsub_message.data)
                 actor_table_data = actor_table_data_to_dict(message)
                 _process_actor_table_data(actor_table_data)
-                # If actor is not new registered but udpated, we only update
+                # If actor is not new registered but updated, we only update
                 # states related fields.
                 if actor_table_data["state"] != "DEPENDENCIES_UNREADY":
-                    actor_id = actor_id.decode("UTF-8")[len("ACTOR:"):]
+                    actor_id = actor_id.decode("UTF-8")[len(
+                        ray.gcs_utils.TablePrefix_ACTOR_string + ":"):]
                     actor_table_data_copy = dict(DataSource.actors[actor_id])
                     keys = ("state", "address", "numRestarts", "timestamp",
                             "pid")
