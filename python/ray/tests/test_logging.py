@@ -62,7 +62,7 @@ def test_log_rotation(shutdown_only):
 
     ray.get(f.remote())
 
-    paths = [path for path in log_dir_path.iterdir()]
+    paths = list(log_dir_path.iterdir())
 
     def component_exist(component, paths):
         for path in paths:
