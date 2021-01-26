@@ -57,7 +57,7 @@ def _get_root_dir():
 def _get_wheel_name(minor_version_number):
     if minor_version_number:
         matches = glob.glob(
-            f"{_get_root_dir()}/.whl/*{PYTHON_WHL_VERSION}
+            f"{_get_root_dir()}/.whl/*{PYTHON_WHL_VERSION}"
             f"{minor_version_number}*-manylinux*"
         )
         assert len(matches) == 1, (
