@@ -206,7 +206,7 @@ def test_spill_remote_object(ray_start_cluster,
 def test_spill_objects_automatically(object_spilling_config, shutdown_only):
     # Limit our object store to 75 MiB of memory.
     object_spilling_config, _ = object_spilling_config
-    ray.init(
+    address = ray.init(
         num_cpus=1,
         object_store_memory=75 * 1024 * 1024,
         _system_config={
@@ -280,7 +280,7 @@ def test_spill_stats(object_spilling_config, shutdown_only):
     platform.system() == "Windows", reason="Failing on Windows.")
 def test_spill_during_get(object_spilling_config, shutdown_only):
     object_spilling_config, _ = object_spilling_config
-    ray.init(
+    address = ray.init(
         num_cpus=2,
         object_store_memory=100 * 1024 * 1024,
         _system_config={
@@ -346,7 +346,7 @@ def test_spill_deadlock(object_spilling_config, shutdown_only):
 def test_delete_objects(object_spilling_config, shutdown_only):
     # Limit our object store to 75 MiB of memory.
     object_spilling_config, temp_folder = object_spilling_config
-    ray.init(
+    address = ray.init(
         object_store_memory=75 * 1024 * 1024,
         _system_config={
             "max_io_workers": 1,
@@ -384,7 +384,7 @@ def test_delete_objects_delete_while_creating(object_spilling_config,
                                               shutdown_only):
     # Limit our object store to 75 MiB of memory.
     object_spilling_config, temp_folder = object_spilling_config
-    ray.init(
+    address = ray.init(
         object_store_memory=75 * 1024 * 1024,
         _system_config={
             "max_io_workers": 2,
@@ -430,7 +430,7 @@ def test_delete_objects_on_worker_failure(object_spilling_config,
                                           shutdown_only):
     # Limit our object store to 75 MiB of memory.
     object_spilling_config, temp_folder = object_spilling_config
-    ray.init(
+    address = ray.init(
         object_store_memory=75 * 1024 * 1024,
         _system_config={
             "max_io_workers": 2,
@@ -617,7 +617,7 @@ def test_fusion_objects(object_spilling_config, shutdown_only):
 # https://github.com/ray-project/ray/issues/12912
 def do_test_release_resource(object_spilling_config, expect_released):
     object_spilling_config, temp_folder = object_spilling_config
-    ray.init(
+    address = ray.init(
         num_cpus=1,
         object_store_memory=75 * 1024 * 1024,
         _system_config={
@@ -731,6 +731,7 @@ def test_spill_objects_on_object_transfer(object_spilling_config,
     platform.system() == "Windows", reason="Failing on Windows.")
 def test_io_worker_failures(object_spilling_config, shutdown_only):
     num_io_workers = 2
+    object_spilling_config, _ = object_spilling_config
     address = ray.init(
         num_cpus=4,
         object_store_memory=90 * 1024 * 1024,
