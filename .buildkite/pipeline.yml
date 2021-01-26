@@ -1,6 +1,5 @@
 - label: ":cpp: Tests"
   commands:
-  - bash src/ray/test/run_object_manager_tests.sh
   - bazel test --config=ci $(./scripts/bazel_export_options)
       --build_tests_only
       -- //:all -rllib/... -core_worker_test
