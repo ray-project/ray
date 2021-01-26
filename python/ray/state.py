@@ -357,6 +357,21 @@ class GlobalState:
 
         return results
 
+    def job_config(self, job_id):
+        """Fetch the JobConfig for the specified job.
+
+        TODO(edoakes): we should not fetch the whole job table for this.
+        """
+        self._check_connected()
+
+        job_table = self.global_state_accessor.get_job_table()
+        for i in range(len(job_table)):
+            entry = gcs_utils.JobTableData.FromString(job_table[i])
+            if entry.job_id.hex() == job_id:
+                return entry.config
+
+        return None
+
     def profile_table(self):
         self._check_connected()
 

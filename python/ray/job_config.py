@@ -1,4 +1,5 @@
 import ray
+import ray.cloudpickle as cloudpickle
 
 
 class JobConfig:
@@ -18,6 +19,7 @@ class JobConfig:
     def __init__(
             self,
             worker_env=None,
+            python_worker_setup_hook=None,
             num_java_workers_per_process=1,
             jvm_options=None,
             code_search_path=None,
@@ -25,7 +27,16 @@ class JobConfig:
         if worker_env is None:
             self.worker_env = dict()
         else:
+            if not isinstance(worker_env, dict):
+                raise TypeError("worker_env must be a Dict[str, str].")
             self.worker_env = worker_env
+
+        if python_worker_setup_hook is not None and not callable(
+                python_worker_setup_hook):
+            raise TypeError(
+                "python_worker_setup_hook must be a serializable function.")
+        self.python_worker_setup_hook = python_worker_setup_hook
+
         self.num_java_workers_per_process = num_java_workers_per_process
         if jvm_options is None:
             self.jvm_options = []
@@ -38,6 +49,9 @@ class JobConfig:
 
     def serialize(self):
         job_config = ray.gcs_utils.JobConfig()
+        if self.python_worker_setup_hook is not None:
+            job_config.python_worker_setup_hook = cloudpickle.dumps(
+                self.python_worker_setup_hook)
         for key in self.worker_env:
             job_config.worker_env[key] = self.worker_env[key]
         job_config.num_java_workers_per_process = (

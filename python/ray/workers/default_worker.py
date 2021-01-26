@@ -7,6 +7,7 @@ import os
 
 import ray
 import ray.actor
+import ray.cloudpickle as cloudpickle
 import ray.node
 import ray.ray_constants as ray_constants
 import ray.utils
@@ -180,6 +181,13 @@ if __name__ == "__main__":
     configure_log_file(out_file, err_file)
 
     if mode == ray.WORKER_MODE:
+        # Fetch worker setup hook from the GCS and run it.
+        job_id = os.getenv("RAY_JOB_ID")
+        assert job_id
+        job_config = ray.state.state.job_config(job_id)
+        if job_config.python_worker_setup_hook:
+            cloudpickle.loads(job_config.python_worker_setup_hook)(job_id)
+
         ray.worker.global_worker.main_loop()
     elif (mode == ray.RESTORE_WORKER_MODE or mode == ray.SPILL_WORKER_MODE):
         # It is handled by another thread in the C++ core worker.
