@@ -34,7 +34,7 @@ from ray.autoscaler.tags import TAG_RAY_NODE_KIND, TAG_RAY_LAUNCH_CONFIG, \
 from ray.autoscaler._private.cli_logger import cli_logger, cf
 from ray.autoscaler._private.updater import NodeUpdaterThread
 from ray.autoscaler._private.command_runner import set_using_login_shells, \
-                                          set_rsync_silent
+    set_rsync_silent
 from ray.autoscaler._private.event_system import (CreateClusterEvent,
                                                   global_event_system)
 from ray.autoscaler._private.log_timer import LogTimer
@@ -146,7 +146,9 @@ def create_or_update_cluster(config_file: str,
                              override_cluster_name: Optional[str] = None,
                              no_config_cache: bool = False,
                              redirect_command_output: Optional[bool] = False,
-                             use_login_shells: bool = True) -> Dict[str, Any]:
+                             use_login_shells: bool = True,
+                             no_monitor_on_head: bool = False) -> Dict[str,
+                                                                       Any]:
     """Create or updates an autoscaling Ray cluster from a config json."""
     set_using_login_shells(use_login_shells)
     if not use_login_shells:
@@ -225,7 +227,7 @@ def create_or_update_cluster(config_file: str,
 
     try_logging_config(config)
     get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
-                            override_cluster_name)
+                            override_cluster_name, no_monitor_on_head)
     return config
 
 
@@ -485,13 +487,15 @@ def monitor_cluster(cluster_config_file: str, num_lines: int,
         port_forward=None)
 
 
-def warn_about_bad_start_command(start_commands: List[str]) -> None:
+def warn_about_bad_start_command(start_commands: List[str],
+                                 no_monitor_on_head: bool = False) -> None:
     ray_start_cmd = list(filter(lambda x: "ray start" in x, start_commands))
     if len(ray_start_cmd) == 0:
         cli_logger.warning(
             "Ray runtime will not be started because `{}` is not in `{}`.",
             cf.bold("ray start"), cf.bold("head_start_ray_commands"))
-    if not any("autoscaling-config" in x for x in ray_start_cmd):
+    if not (any("autoscaling-config" in x for x in ray_start_cmd)
+            or no_monitor_on_head):
         cli_logger.warning(
             "The head node will not launch any workers because "
             "`{}` does not have `{}` set.\n"
@@ -507,6 +511,7 @@ def get_or_create_head_node(config: Dict[str, Any],
                             restart_only: bool,
                             yes: bool,
                             override_cluster_name: Optional[str],
+                            no_monitor_on_head: bool = False,
                             _provider: Optional[NodeProvider] = None,
                             _runner: ModuleType = subprocess) -> None:
     """Create the cluster head node, which in turn creates the workers."""
@@ -629,41 +634,10 @@ def get_or_create_head_node(config: Dict[str, Any],
         (runtime_hash, file_mounts_contents_hash) = hash_runtime_conf(
             config["file_mounts"], None, config)
 
-        # Rewrite the auth config so that the head
-        # node can update the workers
-        remote_config = copy.deepcopy(config)
-
-        # drop proxy options if they exist, otherwise
-        # head node won't be able to connect to workers
-        remote_config["auth"].pop("ssh_proxy_command", None)
-
-        if "ssh_private_key" in config["auth"]:
-            remote_key_path = "~/ray_bootstrap_key.pem"
-            remote_config["auth"]["ssh_private_key"] = remote_key_path
-
-        # Adjust for new file locations
-        new_mounts = {}
-        for remote_path in config["file_mounts"]:
-            new_mounts[remote_path] = remote_path
-        remote_config["file_mounts"] = new_mounts
-        remote_config["no_restart"] = no_restart
-
-        remote_config = provider.prepare_for_head_node(remote_config)
-
-        # Now inject the rewritten config and SSH key into the head node
-        remote_config_file = tempfile.NamedTemporaryFile(
-            "w", prefix="ray-bootstrap-")
-        remote_config_file.write(json.dumps(remote_config))
-        remote_config_file.flush()
-        config["file_mounts"].update({
-            "~/ray_bootstrap_config.yaml": remote_config_file.name
-        })
-
-        if "ssh_private_key" in config["auth"]:
-            config["file_mounts"].update({
-                remote_key_path: config["auth"]["ssh_private_key"],
-            })
-        cli_logger.print("Prepared bootstrap config")
+        if not no_monitor_on_head:
+            config = _prepare_config_for_head_node(
+                config, provider, no_restart)
+            cli_logger.print("Prepared bootstrap config")
 
         if restart_only:
             setup_commands = []
@@ -676,7 +650,8 @@ def get_or_create_head_node(config: Dict[str, Any],
             ray_start_commands = config["head_start_ray_commands"]
 
         if not no_restart:
-            warn_about_bad_start_command(ray_start_commands)
+            warn_about_bad_start_command(ray_start_commands,
+                                         no_monitor_on_head)
 
         updater = NodeUpdaterThread(
             node_id=head_node,
@@ -735,6 +710,45 @@ def get_or_create_head_node(config: Dict[str, Any],
         remote_shell_str = updater.cmd_runner.remote_shell_command_str()
         cli_logger.print("Get a remote shell to the cluster manually:")
         cli_logger.print("  {}", remote_shell_str.strip())
+
+
+def _prepare_config_for_head_node(config, provider, no_restart):
+    # Rewrite the auth config so that the head
+    # node can update the workers
+    remote_config = copy.deepcopy(config)
+
+    # drop proxy options if they exist, otherwise
+    # head node won't be able to connect to workers
+    remote_config["auth"].pop("ssh_proxy_command", None)
+
+    if "ssh_private_key" in config["auth"]:
+        remote_key_path = "~/ray_bootstrap_key.pem"
+        remote_config["auth"]["ssh_private_key"] = remote_key_path
+
+    # Adjust for new file locations
+    new_mounts = {}
+    for remote_path in config["file_mounts"]:
+        new_mounts[remote_path] = remote_path
+    remote_config["file_mounts"] = new_mounts
+    remote_config["no_restart"] = no_restart
+
+    remote_config = provider.prepare_for_head_node(remote_config)
+
+    # Now inject the rewritten config and SSH key into the head node
+    remote_config_file = tempfile.NamedTemporaryFile(
+        "w", prefix="ray-bootstrap-")
+    remote_config_file.write(json.dumps(remote_config))
+    remote_config_file.flush()
+    config["file_mounts"].update({
+        "~/ray_bootstrap_config.yaml": remote_config_file.name
+    })
+
+    if "ssh_private_key" in config["auth"]:
+        config["file_mounts"].update({
+            remote_key_path: config["auth"]["ssh_private_key"],
+        })
+
+    return config
 
 
 def attach_cluster(config_file: str,
