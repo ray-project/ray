@@ -2803,28 +2803,26 @@ NodeManager::GetResourcesUsedByNormalTask() const {
   for (const auto &iter : leased_workers_) {
     const auto &leased_worker = iter.second;
     const auto &allocated_instances = leased_worker->GetAllocatedInstances();
-    if (leased_worker->GetActorId().IsNil() && allocated_instances != nullptr) {
+    if (leased_worker->GetActorId().IsNil() && leased_worker->IsBlocked() &&
+        allocated_instances != nullptr) {
+      auto plus_func = [](FixedPoint left, FixedPoint right) {
+        return (left + right).Double();
+      };
       const auto &predefined_resources = allocated_instances->predefined_resources;
       for (size_t res_idx = 0; res_idx < predefined_resources.size(); res_idx++) {
-        for (size_t inst_idx = 0; inst_idx < predefined_resources[res_idx].size();
-             inst_idx++) {
-          if (predefined_resources[res_idx][inst_idx] > 0.) {
-            const auto &resource_name =
-                cluster_resource_scheduler->GetResourceNameFromIndex(res_idx);
-            (*resources)[resource_name] +=
-                predefined_resources[res_idx][inst_idx].Double();
-          }
-        }
+        const auto &resource = predefined_resources[res_idx];
+        const auto &resource_name =
+            cluster_resource_scheduler->GetResourceNameFromIndex(res_idx);
+        (*resources)[resource_name] +=
+            std::accumulate(resource.begin(), resource.end(), 0, plus_func);
       }
       auto custom_resources = allocated_instances->custom_resources;
       for (auto it = custom_resources.begin(); it != custom_resources.end(); ++it) {
-        for (size_t inst_idx = 0; inst_idx < it->second.size(); inst_idx++) {
-          if (it->second[inst_idx] > 0.) {
-            const auto &resource_name =
-                cluster_resource_scheduler->GetResourceNameFromIndex(it->first);
-            (*resources)[resource_name] += it->second[inst_idx].Double();
-          }
-        }
+        const auto &resource = it->second;
+        const auto &resource_name =
+            cluster_resource_scheduler->GetResourceNameFromIndex(it->first);
+        (*resources)[resource_name] +=
+            std::accumulate(resource.begin(), resource.end(), 0, plus_func);
       }
     }
   }
