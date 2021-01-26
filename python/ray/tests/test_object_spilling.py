@@ -214,7 +214,7 @@ def test_spill_objects_automatically(object_spilling_config, shutdown_only):
 
 
 @pytest.mark.skipif(
-    platform.system() == "Windows", reason="Failing on Windows.")
+    platform.system() in ["Darwin", "Windows"], reason="Failing on Windows.")
 def test_spill_stats(object_spilling_config, shutdown_only):
     # Limit our object store to 75 MiB of memory.
     object_spilling_config, _ = object_spilling_config
