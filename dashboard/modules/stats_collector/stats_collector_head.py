@@ -221,6 +221,7 @@ class StatsCollector(dashboard_utils.DashboardHeadModule):
                                     RETRY_GET_ALL_ACTOR_INFO_INTERVAL_SECONDS)
 
         # Receive actors from channel.
+        state_keys = ("state", "address", "numRestarts", "timestamp", "pid")
         async for sender, msg in receiver.iter():
             try:
                 actor_id, actor_table_data = msg
@@ -236,9 +237,7 @@ class StatsCollector(dashboard_utils.DashboardHeadModule):
                     actor_id = actor_id.decode("UTF-8")[len(
                         ray.gcs_utils.TablePrefix_ACTOR_string + ":"):]
                     actor_table_data_copy = dict(DataSource.actors[actor_id])
-                    keys = ("state", "address", "numRestarts", "timestamp",
-                            "pid")
-                    for k in keys:
+                    for k in state_keys:
                         actor_table_data_copy[k] = actor_table_data[k]
                     actor_table_data = actor_table_data_copy
                 actor_id = actor_table_data["actorId"]
