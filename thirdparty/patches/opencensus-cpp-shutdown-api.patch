@@ -77,7 +77,7 @@ index 2cff522..c8e2e95 100644
    std::thread harvester_thread_ GUARDED_BY(harvester_mu_);
 +
 +  mutable absl::Mutex mu_;
-+  bool thread_started_ GUARDED_BY(mu_) = false;
++  volatile bool thread_started_ GUARDED_BY(mu_) = false;
  };
  
  }  // namespace stats
