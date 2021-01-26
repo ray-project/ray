@@ -436,7 +436,6 @@ cdef execute_task(
             task_exception = False
             if not (<int>task_type == <int>TASK_TYPE_ACTOR_TASK
                     and function_name == "__ray_terminate__"):
-                worker.reraise_actor_init_error()
                 worker.memory_monitor.raise_if_low_memory()
 
             with core_worker.profile_event(b"task:deserialize_arguments"):
@@ -514,9 +513,6 @@ cdef execute_task(
             if "RAY_PDB" in os.environ:
                 ray.util.pdb.post_mortem()
 
-            if (<int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK):
-                worker.mark_actor_init_failed(error)
-
             backtrace = ray.utils.format_error_message(
                 traceback.format_exc(), task_exception=task_exception)
             if isinstance(error, RayTaskError):
@@ -536,6 +532,10 @@ cdef execute_task(
                 ray_constants.TASK_PUSH_ERROR,
                 str(failure_object),
                 job_id=worker.current_job_id)
+
+            if (<int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK):
+                error.is_creation_task_error = True
+                raise error
 
     if execution_info.max_calls != 0:
         # Reset the state of the worker for the next task to execute.
@@ -559,7 +559,8 @@ cdef CRayStatus task_execution_handler(
         const c_vector[CObjectID] &c_arg_reference_ids,
         const c_vector[CObjectID] &c_return_ids,
         const c_string debugger_breakpoint,
-        c_vector[shared_ptr[CRayObject]] *returns) nogil:
+        c_vector[shared_ptr[CRayObject]] *returns,
+        c_string &error_message) nogil:
 
     with gil:
         try:
@@ -579,12 +580,18 @@ cdef CRayStatus task_execution_handler(
                     "worker_crash",
                     traceback_str,
                     job_id=None)
+                # Cython's bug that doesn't allow reference assignment, workaroud.
+                # See https://github.com/cython/cython/issues/1863
+                (&error_message)[0] = traceback_str
                 sys.exit(1)
         except SystemExit as e:
             # Tell the core worker to exit as soon as the result objects
             # are processed.
             if hasattr(e, "is_ray_terminate"):
                 return CRayStatus.IntentionalSystemExit()
+            elif hasattr(e, "is_creation_task_error"):
+                logger.exception("Error raised in creation task")
+                return CRayStatus.CreationTaskError()
             else:
                 logger.exception("SystemExit was raised from the worker")
                 return CRayStatus.UnexpectedSystemExit()

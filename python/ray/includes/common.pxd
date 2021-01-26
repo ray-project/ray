@@ -91,6 +91,9 @@ cdef extern from "ray/common/status.h" namespace "ray" nogil:
         CRayStatus UnexpectedSystemExit()
 
         @staticmethod
+        CRayStatus CreationTaskError()
+
+        @staticmethod
         CRayStatus NotFound()
 
         c_bool ok()

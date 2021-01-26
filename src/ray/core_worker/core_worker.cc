@@ -578,31 +578,33 @@ void CoreWorker::Shutdown() {
   }
 }
 
-void CoreWorker::Disconnect() {
+void CoreWorker::Disconnect(rpc::WorkerExitType exit_type, const std::string error_message) {
   if (connected_) {
     connected_ = false;
     if (local_raylet_client_) {
-      RAY_IGNORE_EXPR(local_raylet_client_->Disconnect());
+      RAY_IGNORE_EXPR(local_raylet_client_->Disconnect(exit_type, error_message));
     }
   }
 }
 
-void CoreWorker::Exit(bool intentional) {
+void CoreWorker::Exit(rpc::WorkerExitType exit_type, const std::string &error_message) {
   RAY_LOG(INFO)
-      << "Exit signal " << (intentional ? "(intentional)" : "")
-      << " received, this process will exit after all outstanding tasks have finished";
+      << "Exit signal received, this process will exit after all outstanding tasks have finished"
+      << ", exit_type=" << rpc::WorkerExitType_Name(exit_type);
   exiting_ = true;
   // Release the resources early in case draining takes a long time.
   RAY_CHECK_OK(
       local_raylet_client_->NotifyDirectCallTaskBlocked(/*release_resources*/ true));
 
   // Callback to shutdown.
-  auto shutdown = [this, intentional]() {
+  auto shutdown = [this, exit_type, &error_message]() {
     // To avoid problems, make sure shutdown is always called from the same
     // event loop each time.
-    task_execution_service_.post([this, intentional]() {
-      if (intentional) {
-        Disconnect();  // Notify the raylet this is an intentional exit.
+    task_execution_service_.post([this, exit_type, &error_message]() {
+      if (exit_type == rpc::WorkerExitType::CREATION_TASK_ERROR || exit_type == rpc::WorkerExitType::INTENDED_EXIT) {
+        // Notify the raylet about this exit.
+        // Only CREATION_TASK_ERROR and INTENDED_EXIT needs to disconnect manually.
+        Disconnect(exit_type, error_message);
       }
       Shutdown();
     });
@@ -1834,10 +1836,12 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
   // worker ID for the current thread.
   CoreWorkerProcess::SetCurrentThreadWorkerId(GetWorkerID());
 
+  std::string error_message;
+
   status = options_.task_execution_callback(
       task_type, task_spec.GetName(), func,
       task_spec.GetRequiredResources().GetResourceMap(), args, arg_reference_ids,
-      return_ids, task_spec.GetDebuggerBreakpoint(), return_objects);
+      return_ids, task_spec.GetDebuggerBreakpoint(), return_objects, error_message);
 
   absl::optional<rpc::Address> caller_address(
       options_.is_local_mode ? absl::optional<rpc::Address>()
@@ -1898,7 +1902,11 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
   RAY_LOG(DEBUG) << "Finished executing task " << task_spec.TaskId();
 
   if (status.IsSystemExit()) {
-    Exit(status.IsIntentionalSystemExit());
+    if (status.IsCreationTaskError()) {
+      Exit(rpc::WorkerExitType::CREATION_TASK_ERROR, error_message);
+    } else if (status.IsIntentionalSystemExit()) {
+      Exit(rpc::WorkerExitType::INTENDED_EXIT, error_message);
+    }
   }
 
   return status;
@@ -2317,7 +2325,7 @@ void CoreWorker::HandleKillActor(const rpc::KillActorRequest &request,
     // core dumps.
     _Exit(1);
   } else {
-    Exit(/*intentional=*/true);
+    Exit(rpc::WorkerExitType::INTENDED_EXIT, "Worker was intentionally killed.");
   }
 }
 
@@ -2450,7 +2458,7 @@ void CoreWorker::HandleDeleteSpilledObjects(
 void CoreWorker::HandleExit(const rpc::ExitRequest &request, rpc::ExitReply *reply,
                             rpc::SendReplyCallback send_reply_callback) {
   send_reply_callback(Status::OK(), nullptr, nullptr);
-  Exit(/*intentional=*/true);
+  Exit(rpc::WorkerExitType::INTENDED_EXIT, "Worker exit in CoreWorker::HandleExit.");
 }
 
 void CoreWorker::YieldCurrentFiber(FiberEvent &event) {

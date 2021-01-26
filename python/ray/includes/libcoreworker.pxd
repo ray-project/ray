@@ -233,7 +233,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             const c_vector[CObjectID] &arg_reference_ids,
             const c_vector[CObjectID] &return_ids,
             const c_string debugger_breakpoint,
-            c_vector[shared_ptr[CRayObject]] *returns) nogil
+            c_vector[shared_ptr[CRayObject]] *returns,
+            c_string &error_message) nogil
          ) task_execution_callback
         (void(const CWorkerID &) nogil) on_worker_shutdown
         (CRayStatus() nogil) check_signals

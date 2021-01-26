@@ -391,6 +391,9 @@ message WorkerTableData {
   WorkerType worker_type = 5;
   // This is for AddWorker.
   map<string, bytes> worker_info = 6;
+  // Extra exit information describing why worker died.
+  // Only applies when `is_alive` is false.
+  string exit_info = 7;
 }
 
 // Fields to publish when worker fails.

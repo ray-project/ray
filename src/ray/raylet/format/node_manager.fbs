@@ -109,6 +109,7 @@ table ResourceIdSetInfo {
 // This message is sent from a worker to the node manager.
 table DisconnectClient {
   disconnect_type: int;
+  error_message: string;
 }
 
 table ResourceIdSetInfos {

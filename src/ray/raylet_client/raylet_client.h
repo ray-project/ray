@@ -215,7 +215,7 @@ class RayletClient : public RayletClientInterface {
   /// propagate an error message to the driver.
   ///
   /// \return ray::Status.
-  ray::Status Disconnect();
+  ray::Status Disconnect(rpc::WorkerExitType exit_type, const std::string error_message);
 
   /// Tell the raylet which port this worker's gRPC server is listening on.
   ///

@@ -453,4 +453,6 @@ enum WorkerExitType {
   UNUSED_RESOURCE_RELEASED = 2;
   // Worker exit due to placement group removal.
   PLACEMENT_GROUP_REMOVED = 3;
+  // Worker exit due to exceptions in creation task.
+  CREATION_TASK_ERROR = 4;
 }
