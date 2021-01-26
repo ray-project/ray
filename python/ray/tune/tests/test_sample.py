@@ -981,9 +981,6 @@ class SearchSpaceTest(unittest.TestCase):
         return self._testPointsToEvaluate(SkOptSearch, config)
 
     def testPointsToEvaluateZoOpt(self):
-        # https://github.com/polixir/ZOOpt/issues/5
-        self.skipTest("ZoOpt currently ignores initial points. This test "
-                      "will be enabled after this has been fixed.")
         config = {
             "metric": tune.sample.Categorical([1, 2, 3, 4]).uniform(),
             "a": tune.sample.Categorical(["t1", "t2", "t3", "t4"]).uniform(),
