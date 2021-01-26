@@ -198,9 +198,8 @@ class ZOOptSearch(Searcher):
 
         init_samples = None
         if self._points_to_evaluate:
-            logger.warning(
-                "`points_to_evaluate` is ignored by ZOOpt in "
-                "versions <= 0.4.1.")
+            logger.warning("`points_to_evaluate` is ignored by ZOOpt in "
+                           "versions <= 0.4.1.")
             init_samples = [
                 Solution(x=tuple(point[dim] for dim in self._dim_keys))
                 for point in self._points_to_evaluate

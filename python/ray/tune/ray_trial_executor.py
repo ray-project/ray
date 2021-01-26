@@ -572,12 +572,7 @@ class RayTrialExecutor(TrialExecutor):
         if not self._running:
             return None
         shuffled_results = list(self._running.keys())
-
-        # Restore random state to not interfere with categorical sampling
-        # (random.choice) if a seed was set
-        random_state = random.getstate()
         random.shuffle(shuffled_results)
-        random.setstate(random_state)
 
         # Note: We shuffle the results because `ray.wait` by default returns
         # the first available result, and we want to guarantee that slower

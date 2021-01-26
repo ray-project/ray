@@ -219,8 +219,8 @@ class SearchSpaceTest(unittest.TestCase):
         integers_2 = [t.config["integer"] for t in out_2.trials]
         choices_2 = [t.config["choice"] for t in out_2.trials]
 
-        self.assertSequenceEqual(sorted(integers_1), sorted(integers_2))
-        self.assertSequenceEqual(sorted(choices_1), sorted(choices_2))
+        self.assertSequenceEqual(integers_1, integers_2)
+        self.assertSequenceEqual(choices_1, choices_2)
 
     def testConvertAx(self):
         from ray.tune.suggest.ax import AxSearch
