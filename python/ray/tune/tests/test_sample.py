@@ -1,5 +1,4 @@
 import numpy as np
-import random
 import unittest
 
 from ray import tune
@@ -204,7 +203,6 @@ class SearchSpaceTest(unittest.TestCase):
         }
 
         np.random.seed(1000)
-        random.seed(1000)
 
         out_1 = tune.run(train, config=config, num_samples=8, verbose=0)
 
@@ -212,7 +210,6 @@ class SearchSpaceTest(unittest.TestCase):
         choices_1 = [t.config["choice"] for t in out_1.trials]
 
         np.random.seed(1000)
-        random.seed(1000)
 
         out_2 = tune.run(train, config=config, num_samples=8, verbose=0)
 
