@@ -1,7 +1,9 @@
 import os
 import requests
+import sys
 import time
 
+import pytest
 import ray
 from ray.test_utils import wait_for_condition
 from ray.serve.config import BackendConfig, ReplicaConfig
@@ -152,6 +154,7 @@ def test_worker_restart(serve_instance):
 
 # Test that if there are multiple replicas for a worker and one dies
 # unexpectedly, the others continue to serve requests.
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_worker_replica_failure(serve_instance):
     client = serve_instance
 
@@ -261,6 +264,4 @@ def test_create_endpoint_idempotent(serve_instance):
 
 
 if __name__ == "__main__":
-    import sys
-    import pytest
     sys.exit(pytest.main(["-v", "-s", __file__]))

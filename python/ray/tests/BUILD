@@ -48,6 +48,7 @@ py_test_module_list(
     "test_metrics.py",
     "test_multi_node.py",
     "test_multi_node_2.py",
+    "test_multi_node_3.py",
     "test_multi_tenancy.py",
     "test_multinode_failures.py",
     "test_multinode_failures_2.py",
