@@ -176,6 +176,9 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   /// Map from node id to the scheduling resources of the node.
   absl::flat_hash_map<NodeID, SchedulingResources> cluster_scheduling_resources_;
+  /// Map from node id to the available resources of the node.
+  /// It summarizes the resource information reported by each node.
+  absl::flat_hash_map<NodeID, ResourceSet> cluster_available_resources_;
   /// Placement group load information that is used for autoscaler.
   absl::optional<std::shared_ptr<rpc::PlacementGroupLoad>> placement_group_load_;
 

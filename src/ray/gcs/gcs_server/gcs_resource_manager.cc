@@ -147,10 +147,10 @@ void GcsResourceManager::HandleGetAllAvailableResources(
     const rpc::GetAllAvailableResourcesRequest &request,
     rpc::GetAllAvailableResourcesReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  for (const auto &iter : cluster_scheduling_resources_) {
+  for (const auto &iter : cluster_available_resources_) {
     rpc::AvailableResources resource;
     resource.set_node_id(iter.first.Binary());
-    for (const auto &res : iter.second.GetAvailableResources().GetResourceAmountMap()) {
+    for (const auto &res : iter.second.GetResourceAmountMap()) {
       (*resource.mutable_resources_available())[res.first] = res.second.ToDouble();
     }
     reply->add_resources_list()->CopyFrom(resource);
@@ -166,13 +166,22 @@ void GcsResourceManager::HandleReportResourceUsage(
   auto resources_data = std::make_shared<rpc::ResourcesData>();
   resources_data->CopyFrom(request.resources());
 
+  // We use `node_resource_usages_` to filter out the nodes that report resource
+  // information for the first time. `UpdateNodeResourceUsage` will modify
+  // `node_resource_usages_`, so we need to do it before `UpdateNodeResourceUsage`.
+  if (node_resource_usages_.count(node_id) == 0 ||
+      resources_data->resources_available_changed()) {
+    const auto &resource_changed = MapFromProtobuf(resources_data->resources_available());
+    SetAvailableResources(node_id, ResourceSet(resource_changed));
+  }
+
+  UpdateNodeResourceUsage(node_id, request);
+
   const auto &resource_changes =
       MapFromProtobuf(resources_data->normal_task_resources_changes());
   if (!resource_changes.empty()) {
     UpdateNormalTaskResourcesChanges(node_id, resource_changes);
   }
-
-  UpdateNodeResourceUsage(node_id, request);
 
   if (resources_data->should_global_gc() || resources_data->resources_total_size() > 0 ||
       resources_data->resources_available_changed() ||
@@ -283,7 +292,7 @@ const absl::flat_hash_map<NodeID, SchedulingResources>
 
 void GcsResourceManager::SetAvailableResources(const NodeID &node_id,
                                                const ResourceSet &resources) {
-  cluster_scheduling_resources_[node_id].SetAvailableResources(ResourceSet(resources));
+  cluster_available_resources_[node_id] = ResourceSet(resources);
 }
 
 void GcsResourceManager::UpdateResourceCapacity(
@@ -322,6 +331,7 @@ void GcsResourceManager::OnNodeDead(const NodeID &node_id) {
   resources_buffer_.erase(node_id);
   node_resource_usages_.erase(node_id);
   cluster_scheduling_resources_.erase(node_id);
+  cluster_available_resources_.erase(node_id);
 }
 
 bool GcsResourceManager::AcquireResources(const NodeID &node_id,
