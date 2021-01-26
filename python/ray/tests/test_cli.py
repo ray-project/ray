@@ -414,6 +414,17 @@ def test_ray_submit(configure_lang, configure_aws, _unlink_test_ssh_key):
 
             _check_output_via_pattern("test_ray_submit.txt", result)
 
+def test_ray_status():
+    import ray
+    address = ray.init().get("redis_address")
+    runner = CliRunner()
+    result = runner.invoke(scripts.status)
+    _check_output_via_pattern("test_ray_status.txt", result)
+
+    # Try to check status with 
+    os.environ["RAY_ADDRESS"] = address
+    result_env_var = runner.invoke(scripts.status)
+    _check_output_via_pattern("test_ray_status.txt", result_env_var)
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
