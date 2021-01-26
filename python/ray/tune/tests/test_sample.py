@@ -978,6 +978,11 @@ class SearchSpaceTest(unittest.TestCase):
         return self._testPointsToEvaluate(SkOptSearch, config)
 
     def testPointsToEvaluateZoOpt(self):
+        self.skipTest(
+            "ZOOpt's latest release (0.4.1) does not support sampling "
+            "initial points. Please re-enable this test after the next "
+            "release.")
+
         config = {
             "metric": tune.sample.Categorical([1, 2, 3, 4]).uniform(),
             "a": tune.sample.Categorical(["t1", "t2", "t3", "t4"]).uniform(),
