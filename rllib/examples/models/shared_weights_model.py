@@ -39,7 +39,6 @@ class TF2SharedWeightsModel(TFModelV2):
         vf = tf.keras.layers.Dense(
             units=1, activation=None, name="value_out")(last_layer)
         self.base_model = tf.keras.models.Model(inputs, [output, vf])
-        self.register_variables(self.base_model.variables)
 
     @override(ModelV2)
     def forward(self, input_dict, state, seq_lens):
@@ -80,7 +79,6 @@ class SharedWeightsModel1(TFModelV2):
         vf = tf.keras.layers.Dense(
             units=1, activation=None, name="value_out")(last_layer)
         self.base_model = tf.keras.models.Model(inputs, [output, vf])
-        self.register_variables(self.base_model.variables)
 
     @override(ModelV2)
     def forward(self, input_dict, state, seq_lens):
@@ -114,7 +112,6 @@ class SharedWeightsModel2(TFModelV2):
         vf = tf.keras.layers.Dense(
             units=1, activation=None, name="value_out")(last_layer)
         self.base_model = tf.keras.models.Model(inputs, [output, vf])
-        self.register_variables(self.base_model.variables)
 
     @override(ModelV2)
     def forward(self, input_dict, state, seq_lens):

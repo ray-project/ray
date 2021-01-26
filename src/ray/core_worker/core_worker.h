@@ -493,9 +493,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
              const ObjectID &object_id, bool pin_object = false);
 
   /// Create and return a buffer in the object store that can be directly written
-  /// into. After writing to the buffer, the caller must call `Seal()` to finalize
-  /// the object. The `Create()` and `Seal()` combination is an alternative interface
-  /// to `Put()` that allows frontends to avoid an extra copy when possible.
+  /// into. After writing to the buffer, the caller must call `SealOwned()` to
+  /// finalize the object. The `CreateOwned()` and `SealOwned()` combination is
+  /// an alternative interface to `Put()` that allows frontends to avoid an extra
+  /// copy when possible.
   ///
   /// \param[in] metadata Metadata of the object to be written.
   /// \param[in] data_size Size of the object to be written.
@@ -503,14 +504,15 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[out] object_id Object ID generated for the put.
   /// \param[out] data Buffer for the user to write the object into.
   /// \return Status.
-  Status Create(const std::shared_ptr<Buffer> &metadata, const size_t data_size,
-                const std::vector<ObjectID> &contained_object_ids, ObjectID *object_id,
-                std::shared_ptr<Buffer> *data);
+  Status CreateOwned(const std::shared_ptr<Buffer> &metadata, const size_t data_size,
+                     const std::vector<ObjectID> &contained_object_ids,
+                     ObjectID *object_id, std::shared_ptr<Buffer> *data);
 
   /// Create and return a buffer in the object store that can be directly written
-  /// into. After writing to the buffer, the caller must call `Seal()` to finalize
-  /// the object. The `Create()` and `Seal()` combination is an alternative interface
-  /// to `Put()` that allows frontends to avoid an extra copy when possible.
+  /// into, for an object ID that already exists. After writing to the buffer, the
+  /// caller must call `SealExisting()` to finalize the object. The `CreateExisting()`
+  /// and `SealExisting()` combination is an alternative interface to `Put()` that
+  /// allows frontends to avoid an extra copy when possible.
   ///
   /// \param[in] metadata Metadata of the object to be written.
   /// \param[in] data_size Size of the object to be written.
@@ -518,20 +520,28 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] owner_address The address of the object's owner.
   /// \param[out] data Buffer for the user to write the object into.
   /// \return Status.
-  Status Create(const std::shared_ptr<Buffer> &metadata, const size_t data_size,
-                const ObjectID &object_id, const rpc::Address &owner_address,
-                std::shared_ptr<Buffer> *data);
+  Status CreateExisting(const std::shared_ptr<Buffer> &metadata, const size_t data_size,
+                        const ObjectID &object_id, const rpc::Address &owner_address,
+                        std::shared_ptr<Buffer> *data);
 
   /// Finalize placing an object into the object store. This should be called after
-  /// a corresponding `Create()` call and then writing into the returned buffer.
+  /// a corresponding `CreateOwned()` call and then writing into the returned buffer.
+  ///
+  /// \param[in] object_id Object ID corresponding to the object.
+  /// \param[in] pin_object Whether or not to pin the object at the local raylet.
+  /// \return Status.
+  Status SealOwned(const ObjectID &object_id, bool pin_object);
+
+  /// Finalize placing an object into the object store. This should be called after
+  /// a corresponding `CreateExisting()` call and then writing into the returned buffer.
   ///
   /// \param[in] object_id Object ID corresponding to the object.
   /// \param[in] pin_object Whether or not to pin the object at the local raylet.
   /// \param[in] owner_address Address of the owner of the object who will be contacted by
   /// the raylet if the object is pinned. If not provided, defaults to this worker.
   /// \return Status.
-  Status Seal(const ObjectID &object_id, bool pin_object,
-              const absl::optional<rpc::Address> &owner_address = absl::nullopt);
+  Status SealExisting(const ObjectID &object_id, bool pin_object,
+                      const absl::optional<rpc::Address> &owner_address = absl::nullopt);
 
   /// Get a list of objects from the object store. Objects that failed to be retrieved
   /// will be returned as nullptrs.
@@ -786,7 +796,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   ///
   /// \param[in] actor_id The actor handle to get.
   /// \return Status::Invalid if we don't have this actor handle.
-  const ActorHandle *GetActorHandle(const ActorID &actor_id) const;
+  std::shared_ptr<const ActorHandle> GetActorHandle(const ActorID &actor_id) const;
 
   /// Get a handle to a named actor.
   ///
@@ -794,9 +804,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   ///
   /// \param[in] name The name of the actor whose handle to get.
   /// \param[out] actor_handle A handle to the requested actor.
-  /// \return The raw pointer to the actor handle if found, nullptr otherwise.
+  /// \return The shared_ptr to the actor handle if found, nullptr otherwise.
   /// The second pair contains the status of getting a named actor handle.
-  std::pair<const ActorHandle *, Status> GetNamedActorHandle(const std::string &name);
+  std::pair<std::shared_ptr<const ActorHandle>, Status> GetNamedActorHandle(
+      const std::string &name);
 
   ///
   /// The following methods are handlers for the core worker's gRPC server, which follow
@@ -991,7 +1002,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   Status KillActorLocalMode(const ActorID &actor_id);
 
   /// Get a handle to a named actor for local mode.
-  std::pair<const ActorHandle *, Status> GetNamedActorHandleLocalMode(
+  std::pair<std::shared_ptr<const ActorHandle>, Status> GetNamedActorHandleLocalMode(
       const std::string &name);
 
   /// Get the values of the task arguments for the executor. Values are
@@ -1047,7 +1058,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   }
 
   /// Handler if a raylet node is removed from the cluster.
-  void OnNodeRemoved(const rpc::GcsNodeInfo &node_info);
+  void OnNodeRemoved(const NodeID &node_id);
 
   /// Request the spillage of an object that we own from the primary that hosts
   /// the primary copy to spill.

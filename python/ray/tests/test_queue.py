@@ -1,10 +1,9 @@
-import time
-
 import pytest
 
 import ray
 from ray.exceptions import GetTimeoutError, RayActorError
 from ray.util.queue import Queue, Empty, Full
+from ray.test_utils import wait_for_condition
 
 
 # Remote helper functions for testing concurrency
@@ -206,9 +205,11 @@ def test_custom_resources(ray_start_regular_shared):
 
     # Specify resource requirement. The queue should now reserve 1 CPU.
     Queue(actor_options={"num_cpus": 1})
-    time.sleep(1)
-    current_resources = ray.available_resources()
-    assert "CPU" not in current_resources, current_resources
+
+    def no_cpu_in_resources():
+        return "CPU" not in ray.available_resources()
+
+    wait_for_condition(no_cpu_in_resources)
 
 
 if __name__ == "__main__":

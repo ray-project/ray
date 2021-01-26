@@ -121,7 +121,7 @@ def test_actors(disable_aiohttp_cache, ray_start_with_dashboard):
             assert "name" in one_entry
             assert "numRestarts" in one_entry
             assert "pid" in one_entry
-            all_pids = [entry["pid"] for entry in actors.values()]
+            all_pids = {entry["pid"] for entry in actors.values()}
             assert 0 in all_pids  # The infeasible actor
             assert len(all_pids) > 1
             break

@@ -216,7 +216,7 @@ because they are scheduled on a placement group with the STRICT_PACK strategy.
         # The child task is scheduled with the same placement group as its parent
         # although child.options(placement_group=pg).remote() wasn't called.
         ray.get(child.remote())
-    
+
     ray.get(parent.options(placement_group=pg).remote())
 
   To avoid it, you should specify `options(placement_group=None)` in a child task/actor remote call.

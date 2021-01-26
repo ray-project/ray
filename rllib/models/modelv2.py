@@ -346,16 +346,24 @@ class ModelV2:
             data_col = view_req.data_col or view_col
             if index == "last":
                 data_col = last_mappings.get(data_col, data_col)
+                # Range needed.
                 if view_req.shift_from is not None:
                     data = sample_batch[view_col][-1]
                     traj_len = len(sample_batch[data_col])
                     missing_at_end = traj_len % view_req.batch_repeat_value
+                    obs_shift = -1 if data_col in [
+                        SampleBatch.OBS, SampleBatch.NEXT_OBS
+                    ] else 0
+                    from_ = view_req.shift_from + obs_shift
+                    to_ = view_req.shift_to + obs_shift + 1
+                    if to_ == 0:
+                        to_ = None
                     input_dict[view_col] = np.array([
                         np.concatenate([
                             data, sample_batch[data_col][-missing_at_end:]
-                        ])[view_req.shift_from:view_req.shift_to +
-                           1 if view_req.shift_to != -1 else None]
+                        ])[from_:to_]
                     ])
+                # Single index.
                 else:
                     data = sample_batch[data_col][-1]
                     input_dict[view_col] = np.array([data])

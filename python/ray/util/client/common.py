@@ -181,10 +181,6 @@ class ClientActorHandle(ClientStub):
     Args:
         actor_ref: A reference to the running actor given to the client. This
           is a serialized version of the actual handle as an opaque token.
-        actor_class: A reference to the ClientActorClass that this actor was
-          instantiated from.
-        _real_actor_handle: Cached copy of the Raylet-side
-          ray.actor.ActorHandle contained in the actor_id ref.
     """
 
     def __init__(self, actor_ref: ClientActorRef):

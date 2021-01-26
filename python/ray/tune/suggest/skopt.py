@@ -319,13 +319,16 @@ class SkOptSearch(Searcher):
 
     @staticmethod
     def convert_search_space(spec: Dict, join: bool = False) -> Dict:
-        spec = flatten_dict(spec, prevent_delimiter=True)
         resolved_vars, domain_vars, grid_vars = parse_spec_vars(spec)
 
         if grid_vars:
             raise ValueError(
                 "Grid search parameters cannot be automatically converted "
                 "to a SkOpt search space.")
+
+        # Flatten and resolve again after checking for grid search.
+        spec = flatten_dict(spec, prevent_delimiter=True)
+        resolved_vars, domain_vars, grid_vars = parse_spec_vars(spec)
 
         def resolve_value(domain: Domain) -> Union[Tuple, List]:
             sampler = domain.get_sampler()

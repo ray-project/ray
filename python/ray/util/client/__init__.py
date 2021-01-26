@@ -1,4 +1,4 @@
-from typing import List, Tuple
+from typing import List, Tuple, Dict, Any
 
 import logging
 
@@ -24,13 +24,17 @@ class RayAPIStub:
     def connect(self,
                 conn_str: str,
                 secure: bool = False,
-                metadata: List[Tuple[str, str]] = None) -> None:
+                metadata: List[Tuple[str, str]] = None,
+                connection_retries: int = 3) -> Dict[str, Any]:
         """Connect the Ray Client to a server.
 
         Args:
             conn_str: Connection string, in the form "[host]:port"
             secure: Whether to use a TLS secured gRPC channel
             metadata: gRPC metadata to send on connect
+
+        Returns:
+            Dictionary of connection info, e.g., {"num_clients": 1}.
         """
         # Delay imports until connect to avoid circular imports.
         from ray.util.client.worker import Worker
@@ -44,8 +48,18 @@ class RayAPIStub:
             # If we're calling a client connect specifically and we're not
             # currently in client mode, ensure we are.
             ray._private.client_mode_hook._explicitly_enable_client_mode()
-        self.client_worker = Worker(conn_str, secure=secure, metadata=metadata)
-        self.api.worker = self.client_worker
+
+        try:
+            self.client_worker = Worker(
+                conn_str,
+                secure=secure,
+                metadata=metadata,
+                connection_retries=connection_retries)
+            self.api.worker = self.client_worker
+            return self.client_worker.connection_info()
+        except Exception:
+            self.disconnect()
+            raise
 
     def disconnect(self):
         """Disconnect the Ray Client.
@@ -75,7 +89,7 @@ class RayAPIStub:
         return getattr(self.api, key)
 
     def is_connected(self) -> bool:
-        return self.api is not None
+        return self.client_worker is not None
 
     def init(self, *args, **kwargs):
         if self._server is not None:

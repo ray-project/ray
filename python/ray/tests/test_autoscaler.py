@@ -735,6 +735,12 @@ class AutoscalingTest(unittest.TestCase):
         # Eventually reaches steady state
         self.waitForNodes(5)
 
+        # Check the outdated node removal event is generated.
+        autoscaler.update()
+        events = autoscaler.event_summarizer.summary()
+        assert ("Removing 10 nodes of type "
+                "ray-legacy-worker-node-type (outdated)." in events), events
+
     def testDynamicScaling(self):
         config_path = self.write_config(SMALL_CLUSTER)
         self.provider = MockProvider()
@@ -780,6 +786,12 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
         self.waitForNodes(
             10, tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
+
+        # Check the launch failure event is generated.
+        autoscaler.update()
+        events = autoscaler.event_summarizer.summary()
+        assert ("Removing 1 nodes of type "
+                "ray-legacy-worker-node-type (max workers)." in events), events
 
     def testInitialWorkers(self):
         """initial_workers is deprecated, this tests that it is ignored."""
@@ -1287,6 +1299,13 @@ class AutoscalingTest(unittest.TestCase):
             # The failed nodes might have been already terminated by autoscaler
             assert len(self.provider.non_terminated_nodes({})) < 2
 
+        # Check the launch failure event is generated.
+        autoscaler.update()
+        events = autoscaler.event_summarizer.summary()
+        assert (
+            "Removing 2 nodes of type "
+            "ray-legacy-worker-node-type (launch failed)." in events), events
+
     def testConfiguresOutdatedNodes(self):
         from ray.autoscaler._private.cli_logger import cli_logger
 
@@ -1408,6 +1427,13 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
         self.waitForNodes(1, tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
 
+        # Check add/remove events.
+        events = autoscaler.event_summarizer.summary()
+        assert ("Adding 5 nodes of type "
+                "ray-legacy-worker-node-type." in events), events
+        assert ("Removing 4 nodes of type "
+                "ray-legacy-worker-node-type (idle)." in events), events
+
     def testTargetUtilizationFraction(self):
         config = SMALL_CLUSTER.copy()
         config["min_workers"] = 0
@@ -1501,6 +1527,13 @@ class AutoscalingTest(unittest.TestCase):
         lm.last_heartbeat_time_by_ip["172.0.0.0"] = 0
         autoscaler.update()
         self.waitFor(lambda: len(runner.calls) > num_calls, num_retries=150)
+
+        # Check the node removal event is generated.
+        autoscaler.update()
+        events = autoscaler.event_summarizer.summary()
+        assert ("Restarting 1 nodes of type "
+                "ray-legacy-worker-node-type (lost contact with raylet)." in
+                events), events
 
     def testExternalNodeScaler(self):
         config = SMALL_CLUSTER.copy()
@@ -1934,6 +1967,42 @@ MemAvailable:   33000000 kB
         autoscaler.update()
         runner.assert_has_call("172.0.0.0", pattern="--shm-size")
         runner.assert_has_call("172.0.0.0", pattern="--runtime=nvidia")
+
+    def testDockerImageExistsBeforeInspect(self):
+        config = copy.deepcopy(SMALL_CLUSTER)
+        config["min_workers"] = 1
+        config["max_workers"] = 1
+        config["docker"]["pull_before_run"] = False
+        config_path = self.write_config(config)
+        self.provider = MockProvider()
+        runner = MockProcessRunner()
+        runner.respond_to_call("json .Config.Env", ["[]" for i in range(1)])
+        autoscaler = StandardAutoscaler(
+            config_path,
+            LoadMetrics(),
+            max_failures=0,
+            process_runner=runner,
+            update_interval_s=0)
+        autoscaler.update()
+        autoscaler.update()
+        self.waitForNodes(1)
+        self.provider.finish_starting_nodes()
+        autoscaler.update()
+        self.waitForNodes(
+            1, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE})
+        first_pull = [(i, cmd)
+                      for i, cmd in enumerate(runner.command_history())
+                      if "docker pull" in cmd]
+        first_targeted_inspect = [
+            (i, cmd) for i, cmd in enumerate(runner.command_history())
+            if "docker inspect -f" in cmd
+        ]
+
+        # This checks for the bug mentioned #13128 where the image is inspected
+        # before the image is present.
+        assert min(x[0]
+                   for x in first_pull) < min(x[0]
+                                              for x in first_targeted_inspect)
 
 
 if __name__ == "__main__":

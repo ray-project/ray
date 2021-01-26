@@ -535,14 +535,6 @@ class Trainer(Trainable):
         if hasattr(self, "workers") and isinstance(self.workers, WorkerSet):
             self._sync_filters_if_needed(self.workers)
 
-        if self.config["evaluation_interval"] == 1 or (
-                self._iteration > 0 and self.config["evaluation_interval"]
-                and self._iteration % self.config["evaluation_interval"] == 0):
-            evaluation_metrics = self._evaluate()
-            assert isinstance(evaluation_metrics, dict), \
-                "_evaluate() needs to return a dict."
-            result.update(evaluation_metrics)
-
         return result
 
     def _sync_filters_if_needed(self, workers: WorkerSet):
@@ -848,13 +840,15 @@ class Trainer(Trainable):
         """
         if state is None:
             state = []
-        preprocessed = self.workers.local_worker().preprocessors[
-            policy_id].transform(observation)
-        filtered_obs = self.workers.local_worker().filters[policy_id](
-            preprocessed, update=False)
+        # Check the preprocessor and preprocess, if necessary.
+        pp = self.workers.local_worker().preprocessors[policy_id]
+        if type(pp).__name__ != "NoPreprocessor":
+            observation = pp.transform(observation)
+        filtered_observation = self.workers.local_worker().filters[policy_id](
+            observation, update=False)
 
         result = self.get_policy(policy_id).compute_single_action(
-            filtered_obs,
+            filtered_observation,
             state,
             prev_action,
             prev_reward,
@@ -1091,10 +1085,19 @@ class Trainer(Trainable):
 
     @staticmethod
     def _validate_config(config: PartialTrainerConfigDict):
-        if not config.get("_use_trajectory_view_api") and \
-                config.get("model", {}).get("_time_major"):
-            raise ValueError("`model._time_major` only supported "
-                             "iff `_use_trajectory_view_api` is True!")
+        model_config = config.get("model")
+        if model_config is None:
+            config["model"] = model_config = {}
+
+        if not config.get("_use_trajectory_view_api"):
+            traj_view_framestacks = model_config.get("num_framestacks", "auto")
+            if model_config.get("_time_major"):
+                raise ValueError("`model._time_major` only supported "
+                                 "iff `_use_trajectory_view_api` is True!")
+            elif traj_view_framestacks != "auto":
+                raise ValueError("`model.num_framestacks` only supported "
+                                 "iff `_use_trajectory_view_api` is True!")
+            model_config["num_framestacks"] = 0
 
         if isinstance(config["input_evaluation"], tuple):
             config["input_evaluation"] = list(config["input_evaluation"])
@@ -1104,15 +1107,15 @@ class Trainer(Trainable):
                     config["input_evaluation"]))
 
         # Check model config.
-        prev_a_r = config.get("model", {}).get("lstm_use_prev_action_reward",
-                                               DEPRECATED_VALUE)
+        prev_a_r = model_config.get("lstm_use_prev_action_reward",
+                                    DEPRECATED_VALUE)
         if prev_a_r != DEPRECATED_VALUE:
             deprecation_warning(
                 "model.lstm_use_prev_action_reward",
                 "model.lstm_use_prev_action and model.lstm_use_prev_reward",
                 error=False)
-            config["model"]["lstm_use_prev_action"] = prev_a_r
-            config["model"]["lstm_use_prev_reward"] = prev_a_r
+            model_config["lstm_use_prev_action"] = prev_a_r
+            model_config["lstm_use_prev_reward"] = prev_a_r
 
         # Check batching/sample collection settings.
         if config["batch_mode"] not in [

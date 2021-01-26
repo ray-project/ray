@@ -598,7 +598,8 @@ class DockerCommandRunner(CommandRunnerInterface):
             shutdown_after_run=False,
     ):
         if run_env == "auto":
-            run_env = "host" if cmd.find("docker") == 0 else "docker"
+            run_env = "host" if (not bool(cmd)
+                                 or cmd.find("docker") == 0) else "docker"
 
         if environment_variables:
             cmd = _with_environment_variables(cmd, environment_variables)
@@ -631,8 +632,10 @@ class DockerCommandRunner(CommandRunnerInterface):
             self._get_docker_host_mount_location(
                 self.ssh_command_runner.cluster_name), target.lstrip("/"))
 
+        host_mount_location = os.path.dirname(host_destination.rstrip("/"))
         self.ssh_command_runner.run(
-            f"mkdir -p {os.path.dirname(host_destination.rstrip('/'))}",
+            f"mkdir -p {host_mount_location} && chown -R "
+            f"{self.ssh_command_runner.ssh_user} {host_mount_location}",
             silent=is_rsync_silent())
 
         self.ssh_command_runner.run_rsync_up(
@@ -654,8 +657,10 @@ class DockerCommandRunner(CommandRunnerInterface):
         host_source = os.path.join(
             self._get_docker_host_mount_location(
                 self.ssh_command_runner.cluster_name), source.lstrip("/"))
+        host_mount_location = os.path.dirname(host_source.rstrip("/"))
         self.ssh_command_runner.run(
-            f"mkdir -p {os.path.dirname(host_source.rstrip('/'))}",
+            f"mkdir -p {host_mount_location} && chown -R "
+            f"{self.ssh_command_runner.ssh_user} {host_mount_location}",
             silent=is_rsync_silent())
         if source[-1] == "/":
             source += "."
@@ -765,16 +770,20 @@ class DockerCommandRunner(CommandRunnerInterface):
             "~/ray_bootstrap_config.yaml", "~/ray_bootstrap_key.pem"
         ]
 
-        image = self.docker_config.get("image")
-        image = self.docker_config.get(
-            f"{'head' if as_head else 'worker'}_image", image)
+        specific_image = self.docker_config.get(
+            f"{'head' if as_head else 'worker'}_image",
+            self.docker_config.get("image"))
 
         self._check_docker_installed()
         if self.docker_config.get("pull_before_run", True):
-            assert image, "Image must be included in config if " + \
+            assert specific_image, "Image must be included in config if " + \
                 "pull_before_run is specified"
+            self.run("docker pull {}".format(specific_image), run_env="host")
+        else:
 
-            self.run("docker pull {}".format(image), run_env="host")
+            self.run(
+                f"docker image inspect {specific_image} 1> /dev/null  2>&1 || "
+                f"docker pull {specific_image}")
 
         # Bootstrap files cannot be bind mounted because docker opens the
         # underlying inode. When the file is switched, docker becomes outdated.
@@ -788,14 +797,14 @@ class DockerCommandRunner(CommandRunnerInterface):
         requires_re_init = False
         if container_running:
             requires_re_init = self._check_if_container_restart_is_needed(
-                image, cleaned_bind_mounts)
+                specific_image, cleaned_bind_mounts)
             if requires_re_init:
                 self.run(f"docker stop {self.container_name}", run_env="host")
 
         if (not container_running) or requires_re_init:
             # Get home directory
             image_env = self.ssh_command_runner.run(
-                "docker inspect -f '{{json .Config.Env}}' " + image,
+                "docker inspect -f '{{json .Config.Env}}' " + specific_image,
                 with_output=True).decode().strip()
             home_directory = "/root"
             for env_var in json.loads(image_env):
@@ -804,8 +813,8 @@ class DockerCommandRunner(CommandRunnerInterface):
                     break
 
             start_command = docker_start_cmds(
-                self.ssh_command_runner.ssh_user, image, cleaned_bind_mounts,
-                self.container_name,
+                self.ssh_command_runner.ssh_user, specific_image,
+                cleaned_bind_mounts, self.container_name,
                 self.docker_config.get(
                     "run_options", []) + self.docker_config.get(
                         f"{'head' if as_head else 'worker'}_run_options", []) +

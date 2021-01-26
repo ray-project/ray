@@ -226,7 +226,7 @@ def test_create_backend_idempotent(serve_instance):
 
     for i in range(10):
         ray.get(
-            controller.wait_for_event.remote(
+            controller.wait_for_goal.remote(
                 controller.create_backend.remote("my_backend", backend_config,
                                                  replica_config)))
 
@@ -249,7 +249,7 @@ def test_create_endpoint_idempotent(serve_instance):
 
     for i in range(10):
         ray.get(
-            controller.wait_for_event.remote(
+            controller.wait_for_goal.remote(
                 controller.create_endpoint.remote(
                     "my_endpoint", {"my_backend": 1.0}, "/my_route", ["GET"])))
 
