@@ -43,6 +43,17 @@ def object_spilling_config(request, tmpdir):
     yield json.dumps(request.param)
 
 
+def is_dir_empty(temp_folder,
+                 append_path=ray.ray_constants.DEFAULT_OBJECT_PREFIX):
+    # append_path is used because the file based spilling will append
+    # new directory path.
+    num_files = 0
+    temp_folder = temp_folder / append_path
+    for path in temp_folder.iterdir():
+        num_files += 1
+    return num_files == 0
+
+
 def test_invalid_config_raises_exception(shutdown_only):
     # Make sure ray.init raises an exception before
     # it starts processes when invalid object spilling
@@ -80,6 +91,7 @@ def test_spilling_not_done_for_pinned_object(tmp_path, shutdown_only):
     # Limit our object store to 75 MiB of memory.
     temp_folder = tmp_path / "spill"
     temp_folder.mkdir()
+
     ray.init(
         object_store_memory=75 * 1024 * 1024,
         _system_config={
@@ -100,13 +112,7 @@ def test_spilling_not_done_for_pinned_object(tmp_path, shutdown_only):
     with pytest.raises(ray.exceptions.ObjectStoreFullError):
         ref2 = ray.put(arr)  # noqa
 
-    def is_dir_empty():
-        num_files = 0
-        for path in temp_folder.iterdir():
-            num_files += 1
-        return num_files == 0
-
-    wait_for_condition(is_dir_empty)
+    wait_for_condition(lambda: is_dir_empty(temp_folder))
 
 
 @pytest.mark.skipif(
@@ -307,6 +313,7 @@ def test_delete_objects(tmp_path, shutdown_only):
     # Limit our object store to 75 MiB of memory.
     temp_folder = tmp_path / "spill"
     temp_folder.mkdir()
+
     ray.init(
         object_store_memory=75 * 1024 * 1024,
         _system_config={
@@ -332,15 +339,9 @@ def test_delete_objects(tmp_path, shutdown_only):
 
     print("-----------------------------------")
 
-    def is_dir_empty():
-        num_files = 0
-        for path in temp_folder.iterdir():
-            num_files += 1
-        return num_files == 0
-
     del replay_buffer
     del ref
-    wait_for_condition(is_dir_empty)
+    wait_for_condition(lambda: is_dir_empty(temp_folder))
 
 
 @pytest.mark.skipif(
@@ -351,6 +352,7 @@ def test_delete_objects_delete_while_creating(tmp_path, shutdown_only):
     # Limit our object store to 75 MiB of memory.
     temp_folder = tmp_path / "spill"
     temp_folder.mkdir()
+
     ray.init(
         object_store_memory=75 * 1024 * 1024,
         _system_config={
@@ -383,16 +385,10 @@ def test_delete_objects_delete_while_creating(tmp_path, shutdown_only):
         sample = ray.get(ref, timeout=0)
         assert np.array_equal(sample, arr)
 
-    def is_dir_empty():
-        num_files = 0
-        for path in temp_folder.iterdir():
-            num_files += 1
-        return num_files == 0
-
     # After all, make sure all objects are killed without race condition.
     del replay_buffer
     del ref
-    wait_for_condition(is_dir_empty, timeout=1000)
+    wait_for_condition(lambda: is_dir_empty(temp_folder))
 
 
 @pytest.mark.skipif(
@@ -403,6 +399,7 @@ def test_delete_objects_on_worker_failure(tmp_path, shutdown_only):
     # Limit our object store to 75 MiB of memory.
     temp_folder = tmp_path / "spill"
     temp_folder.mkdir()
+
     ray.init(
         object_store_memory=75 * 1024 * 1024,
         _system_config={
@@ -458,14 +455,8 @@ def test_delete_objects_on_worker_failure(tmp_path, shutdown_only):
 
     wait_for_condition(wait_until_actor_dead)
 
-    def is_dir_empty():
-        num_files = 0
-        for path in temp_folder.iterdir():
-            num_files += 1
-        return num_files == 0
-
     # After all, make sure all objects are deleted upon worker failures.
-    wait_for_condition(is_dir_empty, timeout=1000)
+    wait_for_condition(lambda: is_dir_empty(temp_folder))
 
 
 @pytest.mark.skipif(
@@ -474,6 +465,7 @@ def test_delete_objects_multi_node(tmp_path, ray_start_cluster):
     # Limit our object store to 75 MiB of memory.
     temp_folder = tmp_path / "spill"
     temp_folder.mkdir()
+
     cluster = ray_start_cluster
     # Head node.
     cluster.add_node(
@@ -532,18 +524,12 @@ def test_delete_objects_multi_node(tmp_path, ray_start_cluster):
             return True
         return False
 
-    def is_dir_empty():
-        num_files = 0
-        for path in temp_folder.iterdir():
-            num_files += 1
-        return num_files == 0
-
     # Kill actors to remove all references.
     for actor in actors:
         ray.kill(actor)
         wait_for_condition(lambda: wait_until_actor_dead(actor))
     # The multi node deletion should work.
-    wait_for_condition(is_dir_empty)
+    wait_for_condition(lambda: is_dir_empty(temp_folder))
 
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="Flaky on Windows.")
@@ -590,6 +576,7 @@ def test_fusion_objects(tmp_path, shutdown_only):
         assert np.array_equal(sample, solution)
 
     is_test_passing = False
+    temp_folder = temp_folder / ray.ray_constants.DEFAULT_OBJECT_PREFIX
     for path in temp_folder.iterdir():
         file_size = path.stat().st_size
         # Make sure there are at least one
@@ -764,19 +751,13 @@ elif signum == 15:
 os.kill(os.getpid(), sig)
 """
 
-    def is_dir_empty():
-        num_files = 0
-        for path in temp_folder.iterdir():
-            num_files += 1
-        return num_files == 0
-
     # Run a driver with sigint.
     print("Sending sigint...")
     with pytest.raises(subprocess.CalledProcessError):
         print(
             run_string_as_driver(
                 driver.format(temp_dir=str(temp_folder), signum=2)))
-    wait_for_condition(is_dir_empty, timeout=1000)
+    wait_for_condition(lambda: is_dir_empty(temp_folder, append_path=""))
 
     # Q: Looks like Sigterm doesn't work with Ray?
     # print("Sending sigterm...")

@@ -257,17 +257,26 @@ class FileSystemStorage(ExternalStorage):
             os.remove(os.path.join(self.directory_path, filename))
 
     def destroy_external_storage(self):
-        # Q: Some users probably don't want to see print here.
-        # Should we disable printing when log_to_driver is False?
-        print("Removing a directory that has spilled files: "
-              f"{self.directory_path}.")
-        try:
-            shutil.rmtree(self.directory_path)
-        except Exception as e:
-            print("Failed to remove a directory.\n"
-                  f"Error: {e}\n"
-                  f"traceback: {traceback.format_exc()}")
-        print("Finished removing a directory.")
+        # Q: Should we add stdout here to
+        # indicate we are deleting a directory?
+
+        # There's a race condition where IO workers are still
+        # deleting each objects while we try deleting the
+        # whole directory. So we should keep trying it until
+        # The directory is actually deleted.
+        while os.path.isdir(self.directory_path):
+            try:
+                shutil.rmtree(self.directory_path)
+            except FileNotFoundError:
+                # It excpetion occurs when other IO workers are
+                # deleting the file at the same time.
+                pass
+            except Exception:
+                print("There were unexpected errors while deleting "
+                      "a directory that Ray objects are spilled.\n"
+                      f"Directory path: {self.directory_path}\n"
+                      f"Traceback: {traceback.format_exc()}")
+                break
 
 
 class ExternalStorageSmartOpenImpl(ExternalStorage):
