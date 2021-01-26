@@ -1567,7 +1567,7 @@ cdef class CoreWorker:
 
         return ref_counts
 
-    def get_async_callback(self, ObjectRef object_ref, callback):
+    def set_get_async_callback(self, ObjectRef object_ref, callback):
         cpython.Py_INCREF(callback)
         CCoreWorkerProcess.GetCoreWorker().GetAsync(
             object_ref.native(),
@@ -1587,8 +1587,9 @@ cdef class CoreWorker:
             resource_name.encode("ascii"), capacity,
             CNodeID.FromBinary(client_id.binary()))
 
-cdef object _deserialize_first_object(shared_ptr[CRayObject] obj,
-                                      CObjectID object_ref) with gil:
+cdef void async_callback(shared_ptr[CRayObject] obj,
+                         CObjectID object_ref,
+                         void *user_callback) with gil:
     cdef:
         c_vector[shared_ptr[CRayObject]] objects_to_deserialize
 
@@ -1601,12 +1602,6 @@ cdef object _deserialize_first_object(shared_ptr[CRayObject] obj,
     result = ray.worker.global_worker.deserialize_objects(
         data_metadata_pairs, ids_to_deserialize)[0]
 
-    return result
-
-cdef void async_callback(shared_ptr[CRayObject] obj,
-                         CObjectID object_ref,
-                         void *user_callback) with gil:
-    result = _deserialize_first_object(obj, object_ref)
     py_callback = <object>user_callback
     py_callback(result)
     cpython.Py_DECREF(py_callback)

@@ -102,7 +102,10 @@ cdef class ObjectRef(BaseID):
 
     def _on_completed(self, py_callback: Callable[[Any], None]):
         """Register a callback that will be called after Object is ready.
+        If the ObjectRef is already ready, the callback will be called soon.
+        The callback should take the result as the only argument. The result
+        can be an exception object in case of task error.
         """
         core_worker = ray.worker.global_worker.core_worker
-        core_worker.get_async_callback(self, py_callback)
+        core_worker.set_get_async_callback(self, py_callback)
         return self
