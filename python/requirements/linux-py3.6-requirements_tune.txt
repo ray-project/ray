@@ -735,7 +735,7 @@ six==1.15.0
     #   traitlets
     #   wandb
     #   websocket-client
-smart_open[s3]==4.0.1
+smart_open[s3]==4.1.2
     # via
     #   -c ../requirements.txt
     #   -r requirements_tune.in
