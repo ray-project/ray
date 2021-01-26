@@ -209,7 +209,7 @@ matrix:
         - . ./ci/travis/ci.sh test_wheels
         - export PATH="$HOME/miniconda3/bin:$PATH"
         - python -m pip install docker
-        - if [[ "$TRAVIS_PULL_REQUEST" != "false" ]]; then python $TRAVIS_BUILD_DIR/ci/travis/build-docker-images.py ORIGINAL; fi
+        - if [[ "$TRAVIS_PULL_REQUEST" != "false" ]]; then python $TRAVIS_BUILD_DIR/ci/travis/build-docker-images.py PY37; fi
         - bash ./java/build-jar-multiplatform.sh linux
       cache: false
 
@@ -218,6 +218,7 @@ matrix:
     - os: linux
       env:
         - LINUX_WHEELS=1
+        - DOCKER_BUILD_PY36_38=1
         - PYTHONWARNINGS=ignore
       language: java
       jdk: openjdk8
@@ -231,7 +232,7 @@ matrix:
         - conda install -y python=3.7.6
         - export PATH="$HOME/miniconda3/bin:$PATH"
         - python -m pip install docker
-        - if [[ "$TRAVIS_PULL_REQUEST" != "false" ]]; then python $TRAVIS_BUILD_DIR/ci/travis/build-docker-images.py NEW; fi
+        - if [[ "$TRAVIS_PULL_REQUEST" != "false" ]]; then python $TRAVIS_BUILD_DIR/ci/travis/build-docker-images.py PY36_PY38; fi
       cache: false
 
     # Build and deploy multi-platform jars.
@@ -511,7 +512,7 @@ deploy:
 
   - provider: script
     edge: true # This supposedly opts in to deploy v2.
-    script: export PATH="$HOME/miniconda3/bin:$PATH"; ./ci/keep_alive python $TRAVIS_BUILD_DIR/ci/travis/build-docker-images.py NEW
+    script: export PATH="$HOME/miniconda3/bin:$PATH"; ./ci/keep_alive python $TRAVIS_BUILD_DIR/ci/travis/build-docker-images.py PY36_PY38
     skip_cleanup: true
     on:
       repo: ray-project/ray
@@ -520,7 +521,7 @@ deploy:
 
   - provider: script
     edge: true # This supposedly opts in to deploy v2.
-    script: export PATH="$HOME/miniconda3/bin:$PATH"; ./ci/keep_alive python $TRAVIS_BUILD_DIR/ci/travis/build-docker-images.py ORIGINAL
+    script: export PATH="$HOME/miniconda3/bin:$PATH"; ./ci/keep_alive python $TRAVIS_BUILD_DIR/ci/travis/build-docker-images.py PY37
     skip_cleanup: true
     on:
       repo: ray-project/ray

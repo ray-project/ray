@@ -29,11 +29,8 @@ DOCKER_HUB_DESCRIPTION = {
         "https://hub.docker.com/repository/docker/rayproject/ray-ml")
 }
 
-PY_MATRIX = {
-    "-py36" : "3.6.12",
-    "-py37" : "3.7.7",
-    "-py38" : "3.8.5"
-}
+PY_MATRIX = {"-py36": "3.6.12", "-py37": "3.7.7", "-py38": "3.8.5"}
+
 
 def _merge_build():
     return os.environ.get("TRAVIS_PULL_REQUEST").lower() == "false"
@@ -60,13 +57,16 @@ def _get_root_dir():
 def _get_wheel_name(minor_version_number):
     if minor_version_number:
         matches = glob.glob(
-            f"{_get_root_dir()}/.whl/*{PYTHON_WHL_VERSION}{minor_version_number}*-manylinux*")
+            f"{_get_root_dir()}/.whl/*{PYTHON_WHL_VERSION}
+            f"{minor_version_number}*-manylinux*"
+        )
         assert len(matches) == 1, (
-            f"Found ({len(matches)}) matches "
-            f"'*{PYTHON_WHL_VERSION}{minor_version_number}*-manylinux*' instead of 1")
+            f"Found ({len(matches)}) matches for '*{PYTHON_WHL_VERSION}"
+            f"{minor_version_number}*-manylinux*' instead of 1"
+        )
         return os.path.basename(matches[0])
     else:
-        matches =  glob.glob(
+        matches = glob.glob(
             f"{_get_root_dir()}/.whl/*{PYTHON_WHL_VERSION}*-manylinux*")
         return [os.path.basename(i) for i in matches]
 
@@ -106,13 +106,14 @@ def _build_cpu_gpu_images(image_name, no_cache=True) -> List[str]:
                 build_args["GPU"] = f"{py_name}{gpu}"
 
             if image_name in ["ray", "ray-deps"]:
-                build_args["WHEEL_PATH"] = f".whl/{_get_wheel_name(build_args['PYTHON_MINOR_VERSION'])}"
-
-
+                build_args[
+                    "WHEEL_PATH"] = f".whl/{_get_wheel_name(
+                        build_args['PYTHON_MINOR_VERSION'])}"
 
             tagged_name = f"rayproject/{image_name}:nightly{py_name}{gpu}"
             for i in range(2):
-                cleanup = DOCKER_CLIENT.containers.prune().get("SpaceReclaimed")
+                cleanup = DOCKER_CLIENT.containers.prune().get(
+                    "SpaceReclaimed")
                 if cleanup is not None:
                     print(f"Cleaned up {cleanup / (2**20)}MB")
                 output = DOCKER_CLIENT.api.build(
@@ -131,7 +132,7 @@ def _build_cpu_gpu_images(image_name, no_cache=True) -> List[str]:
                             current_iter = datetime.datetime.now()
                             elapsed = datetime.datetime.now() - start
                             print(f"Still building {tagged_name} after "
-                                f"{elapsed.seconds} seconds")
+                                  f"{elapsed.seconds} seconds")
                         full_output += line.decode("utf-8")
                 except Exception as e:
                     print(f"FAILURE with error {e}")
@@ -272,8 +273,8 @@ def push_and_tag_images(push_base_images: bool):
 
             for arch_tag in ["-cpu", "-gpu", ""]:
                 full_arch_tag = f"nightly{py_version}{arch_tag}"
-                # Do not tag release builds because they are no longer up to date
-                # after the branch cut.
+                # Do not tag release builds because they are no longer up to
+                # date after the branch cut.
                 if not _release_build():
                     # Tag and push rayproject/<image>:nightly<arch_tag>
                     docker_push(full_image, full_arch_tag)
@@ -288,22 +289,20 @@ def push_and_tag_images(push_base_images: bool):
                     repository=full_image,
                     tag=specific_tag)
                 docker_push(full_image, specific_tag)
-            
+
                 if "-py37" in py_version:
                     non_python_specific_tag = specific_tag.replace("-py37", "")
                     DOCKER_CLIENT.api.tag(
                         image=f"{full_image}:{full_arch_tag}",
                         repository=full_image,
-                        tag=non_python_specific_tag
-                    )
+                        tag=non_python_specific_tag)
                     docker_push(full_image, non_python_specific_tag)
 
                     non_python_nightly_tag = full_arch_tag.replace("-py37", "")
                     DOCKER_CLIENT.api.tag(
                         image=f"{full_image}:{full_arch_tag}",
                         repository=full_image,
-                        tag=non_python_nightly_tag
-                    )
+                        tag=non_python_nightly_tag)
                     docker_push(full_image, non_python_nightly_tag)
 
 
@@ -349,7 +348,7 @@ if __name__ == "__main__":
     print("RUNNING WITH: ", sys.version)
     if len(sys.argv) == 2:
         version_to_drop = sys.argv[1]
-        if version_to_drop == "ORIGINAL":
+        if version_to_drop == "PY37":
             PY_MATRIX.pop("-py36")
             PY_MATRIX.pop("-py38")
         else:
