@@ -3,6 +3,7 @@ package io.ray.test;
 import io.ray.api.ActorHandle;
 import io.ray.api.Ray;
 import io.ray.runtime.exception.RayActorException;
+import io.ray.runtime.exception.RayException;
 import io.ray.runtime.util.SystemUtil;
 import java.io.IOException;
 import java.util.concurrent.TimeUnit;
@@ -56,6 +57,7 @@ public class ActorRestartTest extends BaseTest {
     // Kill the actor process.
     killActorProcess(actor);
 
+    waitForActorAlive(actor);
     int value = actor.task(Counter::increase).remote().get();
     Assert.assertEquals(value, 1);
 
@@ -80,5 +82,23 @@ public class ActorRestartTest extends BaseTest {
     Process p = Runtime.getRuntime().exec("kill -9 " + pid);
     // Wait for the actor to be killed.
     TimeUnit.SECONDS.sleep(1);
+  }
+
+  private static void waitForActorAlive(ActorHandle<Counter> actor) {
+    // TODO: In a rare case, GCS server will reconstruct the actor on another worker of
+    // the same process while Raylet doesn't know the dead message of other workers yet.
+    // So this reconstruction will fail quickly because the worker process is actually
+    // dead and the RPC request to push actor creation task will fail.
+    Assert.assertTrue(
+        TestUtils.waitForCondition(
+            () -> {
+              try {
+                actor.task(Counter::getPid).remote().get();
+                return true;
+              } catch (RayException e) {
+                return false;
+              }
+            },
+            10000));
   }
 }

@@ -268,7 +268,7 @@ TEST_F(WorkerPoolTest, HandleWorkerRegistration) {
   // Check that there's no starting worker process
   ASSERT_EQ(worker_pool_->NumWorkerProcessesStarting(), 0);
   for (const auto &worker : workers) {
-    worker_pool_->DisconnectWorker(worker);
+    worker_pool_->DisconnectWorker(worker, /*intentional_disconnect=*/true);
     // Check that we cannot lookup the worker after it's disconnected.
     ASSERT_EQ(worker_pool_->GetRegisteredWorker(worker->Connection()), nullptr);
   }
