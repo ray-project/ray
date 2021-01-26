@@ -556,6 +556,8 @@ def test_fusion_objects(object_spilling_config, shutdown_only):
         assert np.array_equal(sample, solution)
 
     is_test_passing = False
+    # Since we'd like to see the temp directory that stores the files,
+    # we need to append this directory.
     temp_folder = temp_folder / ray.ray_constants.DEFAULT_OBJECT_PREFIX
     for path in temp_folder.iterdir():
         file_size = path.stat().st_size
