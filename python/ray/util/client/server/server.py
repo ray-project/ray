@@ -38,6 +38,12 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         self.registered_actor_classes = {}
         self._current_function_stub = None
 
+        # Filled in by the respective services when they are initialized
+        # with this instance as the baseline servicer.
+        # For reference and for test injection.
+        self.data_servicer = None
+        self.logstream_servicer = None
+
     def KVPut(self, request, context=None) -> ray_client_pb2.KVPutResponse:
         with disable_client_hook():
             already_exists = ray.experimental.internal_kv._internal_kv_put(
@@ -420,7 +426,7 @@ def serve(connection_str):
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
     task_servicer = RayletServicer()
     data_servicer = DataServicer(task_servicer)
-    logs_servicer = LogstreamServicer()
+    logs_servicer = LogstreamServicer(task_servicer)
     global _current_servicer
     _current_servicer = task_servicer
     ray_client_pb2_grpc.add_RayletDriverServicer_to_server(

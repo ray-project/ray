@@ -1,7 +1,11 @@
 """Client tests that run their own init (as with init_and_serve) live here"""
+import pytest
+
 import time
+import sys
 
 import ray.util.client.server.server as ray_client_server
+import ray.core.generated.ray_client_pb2 as ray_client_pb2
 
 from ray.util.client import RayAPIStub
 
@@ -32,6 +36,41 @@ def test_num_clients():
         assert isinstance(info3["ray_commit"], str), info3
         assert isinstance(info3["python_version"], str), info3
         api3.disconnect()
+    finally:
+        ray_client_server.shutdown_with_server(server)
+        time.sleep(2)
+
+
+def test_python_version():
+
+    server, _ = ray_client_server.init_and_serve("localhost:50051")
+    try:
+        ray = RayAPIStub()
+        info1 = ray.connect("localhost:50051")
+        assert info1["python_version"] == ".".join(
+            [str(x) for x in list(sys.version_info)[:3]])
+        ray.disconnect()
+        time.sleep(1)
+
+        servicer = ray_client_server._get_current_servicer()
+
+        def mock_connection_response():
+            return ray_client_pb2.ConnectionInfoResponse(
+                num_clients=1,
+                python_version="2.7.12",
+                ray_version="",
+                ray_commit="",
+            )
+
+        servicer.data_servicer._build_connection_response = mock_connection_response
+        ray = RayAPIStub()
+        with pytest.raises(RuntimeError):
+            info2 = ray.connect("localhost:50051")
+
+        ray = RayAPIStub()
+        info3 = ray.connect("localhost:50051", ignore_version=True)
+        assert info3["num_clients"] == 1, info3
+        ray.disconnect()
     finally:
         ray_client_server.shutdown_with_server(server)
         time.sleep(2)
