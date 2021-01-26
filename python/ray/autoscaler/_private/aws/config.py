@@ -5,6 +5,7 @@ import itertools
 import json
 import os
 import time
+from typing import Any, Dict, List
 import logging
 
 import boto3
@@ -359,9 +360,19 @@ def _configure_subnet(config):
 
     # If head or worker security group is specified, filter down to subnets
     # belonging to the same VPC as the security group.
-    filters = _vpc_filter_from_sg(config)
+    sg_ids = (config["head_node"].get("SecurityGroupIds", []) +
+              config["worker_nodes"].get("SecurityGroupIds", []))
+    if sg_ids:
+        vpc_id_of_sg = _get_vpc_id_of_sg(sg_ids, config)
+    else:
+        vpc_id_of_sg = None
+
     try:
-        candidate_subnets = ec2.subnets.filter(Filters=filters)
+        candidate_subnets = ec2.subnets.all()
+        if vpc_id_of_sg:
+            candidate_subnets = [
+                s for s in candidate_subnets if s.vpc_id == vpc_id_of_sg
+            ]
         subnets = sorted(
             (s for s in candidate_subnets if s.state == "available" and (
                 use_internal_ips or s.map_public_ip_on_launch)),
@@ -418,17 +429,13 @@ def _configure_subnet(config):
     return config
 
 
-def _vpc_filter_from_sg(config):
-    """Returns a filter that restricts resources to ones with the same vpc-id
-    as the security groups specified in config's head_node and worker_node
-    fields.
+def _get_vpc_id_of_sg(sg_ids: List[str], config: Dict[str, Any]) -> str:
+    """Returns the VPC id of the security groups with the provided security
+    group ids.
 
-    If neither head nor worker specifies a security group, returns an empty
-    filter.
+    Errors if the provided security groups belong to multiple VPCs.
+    Errors if no security group with any of the provided ids is identified.
     """
-    head_sg_ids = config["head_node"].get("SecurityGroupIds", [])
-    worker_sg_ids = config["worker_nodes"].get("SecurityGroupIds", [])
-    sg_ids = head_sg_ids + worker_sg_ids
     sg_ids = list(set(sg_ids))
 
     ec2 = _resource("ec2", config)
@@ -442,10 +449,12 @@ def _vpc_filter_from_sg(config):
     cli_logger.doassert(len(vpc_ids) <= 1, multiple_vpc_msg)
     assert len(vpc_ids) <= 1, multiple_vpc_msg
 
-    if vpc_ids:
-        return [{"Name": "vpc-id", "Values": vpc_ids}]
-    else:
-        return []
+    no_sg_msg = "Failed to detect a security group with id equal to any of "\
+        "the configured SecurityGroupIds."
+    cli_logger.doassert(len(vpc_ids) > 0, no_sg_msg)
+    assert len(vpc_ids) > 0, no_sg_msg
+
+    return vpc_ids[0]
 
 
 def _configure_security_group(config):

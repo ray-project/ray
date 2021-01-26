@@ -1,7 +1,7 @@
 import ray
 from ray.tests.aws.utils.mocks import mock_path_exists_key_pair
 from ray.tests.aws.utils.constants import DEFAULT_INSTANCE_PROFILE, \
-    DEFAULT_KEY_PAIR, DEFAULT_SUBNET
+    DEFAULT_KEY_PAIR, DEFAULT_SUBNET, A_THOUSAND_SUBNETS_IN_DIFFERENT_VPCS
 
 from unittest import mock
 
@@ -35,24 +35,17 @@ def configure_key_pair_default(ec2_client_stub):
 
 
 def configure_subnet_default(ec2_client_stub):
-    describe_no_security_groups(ec2_client_stub)
     ec2_client_stub.add_response(
         "describe_subnets",
-        expected_params={"Filters": []},
+        expected_params={},
         service_response={"Subnets": [DEFAULT_SUBNET]})
 
 
-def configure_subnet_given_sg(ec2_client_stub, security_group):
-    describe_a_security_group(ec2_client_stub, security_group)
+def describe_a_thousand_subnets_in_different_vpcs(ec2_client_stub):
     ec2_client_stub.add_response(
         "describe_subnets",
-        expected_params={
-            "Filters": [{
-                "Name": "vpc-id",
-                "Values": [security_group["VpcId"]]
-            }]
-        },
-        service_response={"Subnets": [DEFAULT_SUBNET]})
+        expected_params={},
+        service_response={"Subnets": A_THOUSAND_SUBNETS_IN_DIFFERENT_VPCS})
 
 
 def skip_to_configure_sg(ec2_client_stub, iam_client_stub):
