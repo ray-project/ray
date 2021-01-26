@@ -253,7 +253,7 @@ Note that you can anytime remove the placement group to clean up resources.
   ray.shutdown()
 
 Placement Group Lifetimes
----------------
+-------------------------
 
 .. tabs::
   .. group-tab:: Python
