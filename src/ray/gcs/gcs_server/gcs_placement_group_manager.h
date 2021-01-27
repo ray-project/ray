@@ -64,7 +64,7 @@ class GcsPlacementGroup {
   }
 
   /// Get the immutable PlacementGroupTableData of this placement group.
-  const rpc::PlacementGroupTableData &GetPlacementGroupTableData();
+  const rpc::PlacementGroupTableData &GetPlacementGroupTableData() const;
 
   /// Get the mutable bundle of this placement group.
   rpc::Bundle *GetMutableBundle(int bundle_index);
@@ -151,10 +151,13 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
                                rpc::GetPlacementGroupReply *reply,
                                rpc::SendReplyCallback send_reply_callback) override;
 
+  void HandleGetNamedPlacementGroup(const rpc::GetNamedPlacementGroupRequest &request,
+                                    rpc::GetNamedPlacementGroupReply *reply,
+                                    rpc::SendReplyCallback send_reply_callback)  override;
+
   void HandleGetAllPlacementGroup(const rpc::GetAllPlacementGroupRequest &request,
                                   rpc::GetAllPlacementGroupReply *reply,
                                   rpc::SendReplyCallback send_reply_callback) override;
-
   void HandleWaitPlacementGroupUntilReady(
       const rpc::WaitPlacementGroupUntilReadyRequest &request,
       rpc::WaitPlacementGroupUntilReadyReply *reply,
@@ -322,6 +325,7 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
     GET_ALL_PLACEMENT_GROUP_REQUEST = 3,
     WAIT_PLACEMENT_GROUP_UNTIL_READY_REQUEST = 4,
     CountType_MAX = 5,
+    GET_NAMED_PLACEMENT_GROUP_REQUEST = 6,
   };
   uint64_t counts_[CountType::CountType_MAX] = {0};
 };

@@ -65,7 +65,7 @@ rpc::PlacementStrategy GcsPlacementGroup::GetStrategy() const {
   return placement_group_table_data_.strategy();
 }
 
-const rpc::PlacementGroupTableData &GcsPlacementGroup::GetPlacementGroupTableData() {
+const rpc::PlacementGroupTableData &GcsPlacementGroup::GetPlacementGroupTableData() const {
   return placement_group_table_data_;
 }
 
@@ -397,6 +397,32 @@ void GcsPlacementGroupManager::HandleGetPlacementGroup(
     on_done(status, boost::none);
   }
   ++counts_[CountType::GET_PLACEMENT_GROUP_REQUEST];
+}
+
+void GcsPlacementGroupManager::HandleGetNamedPlacementGroup(
+  const rpc::GetNamedPlacementGroupRequest &request, rpc::GetNamedPlacementGroupReply *reply,
+  rpc::SendReplyCallback send_reply_callback) {
+  const std::string &name = request.name();
+  RAY_LOG(DEBUG) << "Getting named placement group info, name = " << name;
+
+  // Try to look up the placement Group ID for the named placement group.
+  auto placement_group_id = GetPlacementGroupIDByName(name);
+
+  auto status = Status::OK();
+  if (placement_group_id.IsNil()) {
+    // The placement group was not found.
+    std::stringstream stream;
+    stream << "Placement Group with name '" << name << "' was not found";
+    RAY_LOG(WARNING) << stream.str();
+    status = Status::NotFound(stream.str());
+  } else {
+    const auto &iter = registered_placement_groups_.find(placement_group_id);
+    RAY_CHECK(iter != registered_placement_groups_.end());
+    reply->mutable_placement_group_table_data()->CopyFrom(iter->second->GetPlacementGroupTableData());
+    RAY_LOG(DEBUG) << "Finished get named placement group info, placement group id = " << placement_group_id;
+  } 
+  GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
+  ++counts_[CountType::GET_NAMED_PLACEMENT_GROUP_REQUEST];
 }
 
 void GcsPlacementGroupManager::HandleGetAllPlacementGroup(
