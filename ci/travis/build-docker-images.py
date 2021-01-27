@@ -56,14 +56,11 @@ def _get_root_dir():
 
 def _get_wheel_name(minor_version_number):
     if minor_version_number:
-        matches = glob.glob(
-            f"{_get_root_dir()}/.whl/*{PYTHON_WHL_VERSION}"
-            f"{minor_version_number}*-manylinux*"
-        )
+        matches = glob.glob(f"{_get_root_dir()}/.whl/*{PYTHON_WHL_VERSION}"
+                            f"{minor_version_number}*-manylinux*")
         assert len(matches) == 1, (
             f"Found ({len(matches)}) matches for '*{PYTHON_WHL_VERSION}"
-            f"{minor_version_number}*-manylinux*' instead of 1"
-        )
+            f"{minor_version_number}*-manylinux*' instead of 1")
         return os.path.basename(matches[0])
     else:
         matches = glob.glob(
@@ -106,9 +103,8 @@ def _build_cpu_gpu_images(image_name, no_cache=True) -> List[str]:
                 build_args["GPU"] = f"{py_name}{gpu}"
 
             if image_name in ["ray", "ray-deps"]:
-                build_args[
-                    "WHEEL_PATH"] = f".whl/{_get_wheel_name(
-                        build_args['PYTHON_MINOR_VERSION'])}"
+                wheel = _get_wheel_name(build_args["PYTHON_MINOR_VERSION"])
+                build_args["WHEEL_PATH"] = f".whl/{wheel}"
 
             tagged_name = f"rayproject/{image_name}:nightly{py_name}{gpu}"
             for i in range(2):
