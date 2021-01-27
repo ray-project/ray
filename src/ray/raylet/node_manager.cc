@@ -459,7 +459,8 @@ void NodeManager::ReportResourceUsage() {
       gcs_client_->NodeResources().GetLastResourceUsage());
   cluster_resource_scheduler_->FillResourceUsage(resources_data);
   cluster_task_manager_->FillResourceUsage(resources_data);
-  FillNormalTaskResourceUsage(resources_data);
+  FillNormalTaskResourceUsage(resources_data, cluster_resource_scheduler_,
+                              leased_workers_, last_report_normal_task_resources_);
 
   // Set the global gc bit on the outgoing heartbeat message.
   if (should_global_gc_) {
@@ -2770,15 +2771,26 @@ void NodeManager::SendSpilledObjectRestorationRequestToRemoteNode(
 }
 
 void NodeManager::FillNormalTaskResourceUsage(
-    const std::shared_ptr<rpc::ResourcesData> &resources_data) {
-  auto new_resources = GetResourcesUsedByNormalTask();
+    const std::shared_ptr<rpc::ResourcesData> &resources_data,
+    const std::shared_ptr<ClusterResourceSchedulerInterface> &cluster_resource_scheduler,
+    const std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers,
+    std::shared_ptr<std::unordered_map<std::string, double>>
+        &last_report_normal_task_resources) {
+  if (!RayConfig::instance().new_scheduler_enabled()) {
+    RAY_LOG(WARNING) << "Filling normal task resource usage is not supported when "
+                        "new scheduler is disabled.";
+    return;
+  }
+
+  auto new_resources =
+      GetResourcesUsedByNormalTask(cluster_resource_scheduler, leased_workers);
   if (new_resources) {
     std::shared_ptr<std::unordered_map<std::string, double>> resources_changes;
-    if (nullptr == last_report_normal_task_resources_) {
+    if (nullptr == last_report_normal_task_resources) {
       resources_changes = new_resources;
     } else {
       resources_changes = GetNormalTaskResourcesChanges(
-          *last_report_normal_task_resources_, new_resources);
+          *last_report_normal_task_resources, new_resources);
     }
 
     if (!resources_changes->empty()) {
@@ -2786,21 +2798,20 @@ void NodeManager::FillNormalTaskResourceUsage(
         (*resources_data->mutable_normal_task_resources_changes())[iter.first] =
             iter.second;
       }
-      last_report_normal_task_resources_ = new_resources;
+      last_report_normal_task_resources = new_resources;
     }
   }
 }
 
 std::shared_ptr<std::unordered_map<std::string, double>>
-NodeManager::GetResourcesUsedByNormalTask() const {
+NodeManager::GetResourcesUsedByNormalTask(
+    const std::shared_ptr<ClusterResourceSchedulerInterface> &cluster_resource_scheduler,
+    const std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers)
+    const {
   auto resources = std::make_shared<std::unordered_map<std::string, double>>();
-  if (!RayConfig::instance().new_scheduler_enabled()) {
-    return resources;
-  }
-
-  auto cluster_resource_scheduler =
-      std::dynamic_pointer_cast<ClusterResourceScheduler>(cluster_resource_scheduler_);
-  for (const auto &iter : leased_workers_) {
+  auto scheduler =
+      std::dynamic_pointer_cast<ClusterResourceScheduler>(cluster_resource_scheduler);
+  for (const auto &iter : leased_workers) {
     const auto &leased_worker = iter.second;
     const auto &allocated_instances = leased_worker->GetAllocatedInstances();
     if (leased_worker->GetActorId().IsNil() && leased_worker->IsBlocked() &&
@@ -2808,11 +2819,11 @@ NodeManager::GetResourcesUsedByNormalTask() const {
       auto plus_func = [](FixedPoint left, FixedPoint right) {
         return (left + right).Double();
       };
+
       const auto &predefined_resources = allocated_instances->predefined_resources;
       for (size_t res_idx = 0; res_idx < predefined_resources.size(); res_idx++) {
         const auto &resource = predefined_resources[res_idx];
-        const auto &resource_name =
-            cluster_resource_scheduler->GetResourceNameFromIndex(res_idx);
+        const auto &resource_name = scheduler->GetResourceNameFromIndex(res_idx);
         double resource_value =
             std::accumulate(resource.begin(), resource.end(), 0, plus_func);
         // Filter the resources used by normal task.
@@ -2820,11 +2831,11 @@ NodeManager::GetResourcesUsedByNormalTask() const {
           (*resources)[resource_name] += resource_value;
         }
       }
+
       auto custom_resources = allocated_instances->custom_resources;
       for (auto it = custom_resources.begin(); it != custom_resources.end(); ++it) {
         const auto &resource = it->second;
-        const auto &resource_name =
-            cluster_resource_scheduler->GetResourceNameFromIndex(it->first);
+        const auto &resource_name = scheduler->GetResourceNameFromIndex(it->first);
         (*resources)[resource_name] +=
             std::accumulate(resource.begin(), resource.end(), 0, plus_func);
         double resource_value =

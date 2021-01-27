@@ -765,15 +765,27 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// If the resource used by normal task changes, update the resource change information
   /// to `resources_data`.
   ///
-  /// \param Output parameter.
+  /// \param resources_data Output parameter.
+  /// \param cluster_resource_scheduler Cluster resource scheduler.
+  /// \param leased_workers Map of workers leased out to direct call clients.
+  /// \param last_report_normal_task_resources Output parameter.
   void FillNormalTaskResourceUsage(
-      const std::shared_ptr<rpc::ResourcesData> &resources_data);
+      const std::shared_ptr<rpc::ResourcesData> &resources_data,
+      const std::shared_ptr<ClusterResourceSchedulerInterface>
+          &cluster_resource_scheduler,
+      const std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>>
+          &leased_workers,
+      std::shared_ptr<std::unordered_map<std::string, double>>
+          &last_report_normal_task_resources);
 
   /// Get the resources used by normal task.
   ///
   /// \return The resources used by normal task.
-  std::shared_ptr<std::unordered_map<std::string, double>> GetResourcesUsedByNormalTask()
-      const;
+  std::shared_ptr<std::unordered_map<std::string, double>> GetResourcesUsedByNormalTask(
+      const std::shared_ptr<ClusterResourceSchedulerInterface>
+          &cluster_resource_scheduler,
+      const std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>>
+          &leased_workers) const;
 
   /// Get the change of resources used by normal task.
   ///

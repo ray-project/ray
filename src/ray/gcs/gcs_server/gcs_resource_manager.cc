@@ -180,6 +180,8 @@ void GcsResourceManager::HandleReportResourceUsage(
   const auto &resource_changes =
       MapFromProtobuf(resources_data->normal_task_resources_changes());
   if (!resource_changes.empty()) {
+    // TODO(ffbin): We need to make sure the addition of task usage + actor usage are
+    // equal to the total resources. I will implement it in the next pr.
     UpdateNormalTaskResourcesChanges(node_id, resource_changes);
   }
 
