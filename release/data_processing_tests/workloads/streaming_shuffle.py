@@ -9,13 +9,13 @@ from ray.cluster_utils import Cluster
 
 num_nodes = 4
 num_cpus = 4
-partition_size = int(500e6) # 500MB
+partition_size = int(500e6)  # 500MB
 # Number of map & reduce tasks == num_partitions.
 # Number of objects == num_partitions ^ 2.
 num_partitions = 200
 # There are two int64 per row, so we divide by 8 * 2 bytes.
 rows_per_partition = partition_size // (8 * 2)
-object_store_size = 20 * 1024 * 1024 * 1024 # 20G
+object_store_size = 20 * 1024 * 1024 * 1024  # 20G
 
 system_config = {
     "automatic_object_spilling_enabled": True,
@@ -127,7 +127,8 @@ def run_shuffle():
     delta = time.time() - start
 
     ray.get(counter.finish.remote())
-    print("Shuffled", total_rows * 8 * 2, "bytes in", delta, "seconds in a single node.\n")
+    print("Shuffled", total_rows * 8 * 2, "bytes in", delta,
+          "seconds in a single node.\n")
 
 
 def run_single_node():
@@ -139,7 +140,8 @@ def run_single_node():
     # Run shuffle.
     print(
         "\n\nTest streaming shuffle with a single node.\n"
-        f"Shuffle size: {partition_size * num_partitions / 1024 / 1024 / 1024}GB")
+        f"Shuffle size: {partition_size * num_partitions / 1024 / 1024 / 1024}GB"
+    )
     run_shuffle()
     time.sleep(5)
     display_spilling_info(address["redis_address"])
@@ -161,7 +163,8 @@ def run_multi_nodes():
     # Run shuffle.
     print(
         f"\n\nTest streaming shuffle with {num_nodes} nodes.\n"
-        f"Shuffle size: {partition_size * num_partitions / 1024 / 1024 / 1024}GB")
+        f"Shuffle size: {partition_size * num_partitions / 1024 / 1024 / 1024}GB"
+    )
     run_shuffle()
     time.sleep(5)
     display_spilling_info(c.address)
