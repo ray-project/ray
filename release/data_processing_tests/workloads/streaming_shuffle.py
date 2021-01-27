@@ -140,8 +140,8 @@ def run_single_node():
     # Run shuffle.
     print(
         "\n\nTest streaming shuffle with a single node.\n"
-        f"Shuffle size: {partition_size * num_partitions / 1024 / 1024 / 1024}GB"
-    )
+        f"Shuffle size: {partition_size * num_partitions / 1024 / 1024 / 1024}"
+        "GB")
     run_shuffle()
     time.sleep(5)
     display_spilling_info(address["redis_address"])
@@ -163,8 +163,8 @@ def run_multi_nodes():
     # Run shuffle.
     print(
         f"\n\nTest streaming shuffle with {num_nodes} nodes.\n"
-        f"Shuffle size: {partition_size * num_partitions / 1024 / 1024 / 1024}GB"
-    )
+        f"Shuffle size: {partition_size * num_partitions / 1024 / 1024 / 1024}"
+        "GB")
     run_shuffle()
     time.sleep(5)
     display_spilling_info(c.address)
