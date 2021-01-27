@@ -1318,7 +1318,7 @@ def test_named_placement_group(ray_start_cluster):
     info = ray.init(address=cluster.address)
     global_placement_group_name = "named_placement_group"
 
-    # Make sure the named placement group will be removed when driver exit.
+    # Create a detached placement group with name.
     driver_code = f"""
 import ray
 
@@ -1327,7 +1327,8 @@ ray.init(address="{info["redis_address"]}")
 pg = ray.util.placement_group(
         [{{"CPU": 1}} for _ in range(2)],
         strategy="STRICT_SPREAD",
-        name="{global_placement_group_name}")
+        name="{global_placement_group_name}",
+        lifetime="detached")
 ray.get(pg.ready())
 
 ray.shutdown()
@@ -1344,13 +1345,21 @@ ray.shutdown()
         return False
     wait_for_condition(is_job_done)
 
-    # Create a placement group with the same name.
-    first_pg = ray.util.placement_group(
-        [{"CPU": 1} for _ in range(2)],
-        strategy="STRICT_SPREAD",
-        name=global_placement_group_name)
-    assert first_pg.wait(10)
+    @ray.remote(num_cpus=1)
+    class Actor:
+        def ping(self):
+            pass
 
+    # Get the named placement group and schedule a actor.
+    placement_group = ray.util.get_placement_group(global_placement_group_name)
+    assert placement_group is not None
+    actor = Actor.options(
+        placement_group=placement_group,
+        placement_group_bundle_index=0).remote()
+
+    ray.get(actor.ping.remote())
+
+    # Create another placement group and make sure its creation will failed.
     second_pg = ray.util.placement_group(
         [{"CPU": 1} for _ in range(2)],
         strategy="STRICT_SPREAD",
