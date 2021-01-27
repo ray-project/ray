@@ -146,12 +146,14 @@ class PullManager {
   /// any objects in the request that are not already being pulled.
   bool ActivateNextPullBundleRequest(
       const std::map<uint64_t, std::vector<rpc::ObjectReference>>::iterator
-          &next_request_it);
+          &next_request_it,
+      std::vector<ObjectID> *objects_to_pull);
 
   /// Deactivate a pull request in the queue. This cancels any pull or restore
   /// operations for the object.
   void DeactivatePullBundleRequest(
-      const std::map<uint64_t, std::vector<rpc::ObjectReference>>::iterator &request_it);
+      const std::map<uint64_t, std::vector<rpc::ObjectReference>>::iterator &request_it,
+      std::unordered_set<ObjectID> *objects_to_cancel = nullptr);
 
   /// Trigger out-of-memory handling if the first request in the queue needs
   /// more space than the bytes available. This is needed to make room for the
