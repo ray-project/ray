@@ -18,7 +18,6 @@ logger = logging.getLogger(__name__)
 class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
     def __init__(self, basic_service: "RayletServicer"):
         self.basic_service = basic_service
-        basic_service.data_servicer = self
         self._clients_lock = Lock()
         self._num_clients = 0  # guarded by self._clients_lock
 

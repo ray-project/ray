@@ -3,6 +3,7 @@ from concurrent import futures
 import grpc
 import base64
 from collections import defaultdict
+from dataclasses import dataclass
 
 from typing import Any
 from typing import Dict
@@ -37,12 +38,6 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         self.actor_owners: Dict[str, Set[bytes]] = defaultdict(set)
         self.registered_actor_classes = {}
         self._current_function_stub = None
-
-        # Filled in by the respective services when they are initialized
-        # with this instance as the baseline servicer.
-        # For reference and for test injection.
-        self.data_servicer = None
-        self.logstream_servicer = None
 
     def KVPut(self, request, context=None) -> ray_client_pb2.KVPutResponse:
         with disable_client_hook():
@@ -413,22 +408,25 @@ def decode_options(
     return opts
 
 
-_current_servicer: Optional[RayletServicer] = None
+@dataclass
+class ClientServerHandle:
+    """Holds the handles to the registered gRPC servicers and their server."""
+    task_servicer: RayletServicer
+    data_servicer: DataServicer
+    logs_servicer: LogstreamServicer
+    grpc_server: grpc.Server
 
-
-# Used by tests to peek inside the servicer
-def _get_current_servicer():
-    global _current_servicer
-    return _current_servicer
+    # Add a hook for all the cases that previously
+    # expected simply a gRPC server
+    def __getattr__(self, attr):
+        return getattr(self.grpc_server, attr)
 
 
 def serve(connection_str):
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
     task_servicer = RayletServicer()
     data_servicer = DataServicer(task_servicer)
-    logs_servicer = LogstreamServicer(task_servicer)
-    global _current_servicer
-    _current_servicer = task_servicer
+    logs_servicer = LogstreamServicer()
     ray_client_pb2_grpc.add_RayletDriverServicer_to_server(
         task_servicer, server)
     ray_client_pb2_grpc.add_RayletDataStreamerServicer_to_server(
@@ -436,16 +434,22 @@ def serve(connection_str):
     ray_client_pb2_grpc.add_RayletLogStreamerServicer_to_server(
         logs_servicer, server)
     server.add_insecure_port(connection_str)
+    current_handle = ClientServerHandle(
+        task_servicer=task_servicer,
+        data_servicer=data_servicer,
+        logs_servicer=logs_servicer,
+        grpc_server=server,
+    )
     server.start()
-    return server
+    return current_handle
 
 
 def init_and_serve(connection_str, *args, **kwargs):
     with disable_client_hook():
         # Disable client mode inside the worker's environment
         info = ray.init(*args, **kwargs)
-    server = serve(connection_str)
-    return (server, info)
+    server_handle = serve(connection_str)
+    return (server_handle, info)
 
 
 def shutdown_with_server(server, _exiting_interpreter=False):

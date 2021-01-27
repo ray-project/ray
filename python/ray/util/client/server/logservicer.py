@@ -13,10 +13,6 @@ from ray.ray_logging import global_worker_stdstream_dispatcher
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 
-from typing import TYPE_CHECKING
-if TYPE_CHECKING:
-    from ray.util.client.server.server import RayletServicer
-
 logger = logging.getLogger(__name__)
 
 
@@ -85,9 +81,6 @@ def log_status_change_thread(log_queue, request_iterator):
 
 
 class LogstreamServicer(ray_client_pb2_grpc.RayletLogStreamerServicer):
-    def __init__(self, basic_service: "RayletServicer"):
-        basic_service.logstream_servicer = self
-
     def Logstream(self, request_iterator, context):
         logger.info("New logs connection")
         log_queue = queue.Queue()

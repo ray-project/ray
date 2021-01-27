@@ -71,7 +71,7 @@ class RayAPIStub:
         if not conn_info["python_version"].startswith(local_major_minor):
             version_str = f"{local_major_minor}.{sys.version_info[2]}"
             msg = "Python minor versions differ between client and server:" + \
-                  f" Client is {version_str}," + \
+                  f" client is {version_str}," + \
                   f" server is {conn_info['python_version']}"
             if ignore_version:
                 logger.warning(msg)
@@ -114,8 +114,9 @@ class RayAPIStub:
         if self._server is not None:
             raise Exception("Trying to start two instances of ray via client")
         import ray.util.client.server.server as ray_client_server
-        self._server, address_info = ray_client_server.init_and_serve(
+        server_handle, address_info = ray_client_server.init_and_serve(
             "localhost:50051", *args, **kwargs)
+        self._server = server_handle.grpc_server
         self.connect("localhost:50051")
         self._connected_with_init = True
         return address_info

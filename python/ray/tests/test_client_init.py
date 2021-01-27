@@ -13,7 +13,8 @@ from ray.util.client import RayAPIStub
 def test_num_clients():
     # Tests num clients reporting; useful if you want to build an app that
     # load balances clients between Ray client servers.
-    server, _ = ray_client_server.init_and_serve("localhost:50051")
+    server_handle, _ = ray_client_server.init_and_serve("localhost:50051")
+    server = server_handle.grpc_server
     try:
         api1 = RayAPIStub()
         info1 = api1.connect("localhost:50051")
@@ -43,7 +44,7 @@ def test_num_clients():
 
 def test_python_version():
 
-    server, _ = ray_client_server.init_and_serve("localhost:50051")
+    server_handle, _ = ray_client_server.init_and_serve("localhost:50051")
     try:
         ray = RayAPIStub()
         info1 = ray.connect("localhost:50051")
@@ -51,8 +52,6 @@ def test_python_version():
             [str(x) for x in list(sys.version_info)[:3]])
         ray.disconnect()
         time.sleep(1)
-
-        servicer = ray_client_server._get_current_servicer()
 
         def mock_connection_response():
             return ray_client_pb2.ConnectionInfoResponse(
@@ -63,7 +62,7 @@ def test_python_version():
             )
 
         # inject mock connection function
-        servicer.data_servicer._build_connection_response = \
+        server_handle.data_servicer._build_connection_response = \
             mock_connection_response
 
         ray = RayAPIStub()
@@ -75,5 +74,5 @@ def test_python_version():
         assert info3["num_clients"] == 1, info3
         ray.disconnect()
     finally:
-        ray_client_server.shutdown_with_server(server)
+        ray_client_server.shutdown_with_server(server_handle.grpc_server)
         time.sleep(2)
