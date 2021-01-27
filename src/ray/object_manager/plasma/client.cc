@@ -495,6 +495,9 @@ Status PlasmaClient::Impl::MarkObjectUnused(const ObjectID &object_id) {
   auto object_entry = objects_in_use_.find(object_id);
   RAY_CHECK(object_entry != objects_in_use_.end());
   RAY_CHECK(object_entry->second->count == 0);
+  if (close(object_entry->second->object.store_fd) == -1) {
+    RAY_LOG(ERROR) << "Failed to close a file descriptor " << object_entry->second->object.store_fd;
+  }
 
   // Remove the entry from the hash table of objects currently in use.
   objects_in_use_.erase(object_id);
