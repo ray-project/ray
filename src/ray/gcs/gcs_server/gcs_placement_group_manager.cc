@@ -143,6 +143,17 @@ void GcsPlacementGroupManager::RegisterPlacementGroup(
     }
     return;
   }
+  if (!placement_group->GetName().empty()) {
+    auto it = named_placement_groups_.find(placement_group->GetName());
+    if (it == named_placement_groups_.end()) {
+      named_placement_groups_.emplace(placement_group->GetName(), placement_group->GetPlacementGroupID());
+    } else {
+      std::stringstream stream;
+      stream << "Placement Group with name '" << placement_group->GetName() << "' already exists.";
+      callback(Status::Invalid(stream.str()));
+      return;
+    }
+  }
 
   // Mark the callback as pending and invoke it after the placement_group has been
   // successfully created.
@@ -174,11 +185,9 @@ void GcsPlacementGroupManager::RegisterPlacementGroup(
 PlacementGroupID GcsPlacementGroupManager::GetPlacementGroupIDByName(
     const std::string &name) {
   PlacementGroupID placement_group_id = PlacementGroupID::Nil();
-  for (const auto &iter : registered_placement_groups_) {
-    if (iter.second->GetName() == name) {
-      placement_group_id = iter.first;
-      break;
-    }
+  auto it = named_placement_groups_.find(name);
+  if (it != named_placement_groups_.end()) {
+    placement_group_id = it->second;
   }
   return placement_group_id;
 }
@@ -311,9 +320,17 @@ void GcsPlacementGroupManager::RemovePlacementGroup(
     on_placement_group_removed(Status::OK());
     return;
   }
-  auto placement_group = placement_group_it->second;
+  auto placement_group = std::move(placement_group_it->second);
   registered_placement_groups_.erase(placement_group_it);
   placement_group_to_create_callbacks_.erase(placement_group_id);
+
+  // Remove placement group from `named_placement_groups_` if its name is not empty.
+  if (!placement_group->GetName().empty()) {
+    auto it = named_placement_groups_.find(placement_group->GetName());
+    if (it != named_placement_groups_.end() && it->second == placement_group->GetPlacementGroupID()) {
+      named_placement_groups_.erase(it);
+    }
+  }
 
   // Destroy all bundles.
   gcs_placement_group_scheduler_->DestroyPlacementGroupBundleResourcesIfExists(
@@ -546,6 +563,9 @@ void GcsPlacementGroupManager::Initialize(const GcsInitData &gcs_init_data) {
     auto placement_group = std::make_shared<GcsPlacementGroup>(item.second);
     if (item.second.state() != rpc::PlacementGroupTableData::REMOVED) {
       registered_placement_groups_.emplace(item.first, placement_group);
+      if (!placement_group->GetName().empty()) {
+        named_placement_groups_.emplace(placement_group->GetName(), placement_group->GetPlacementGroupID());
+      }
 
       if (item.second.state() == rpc::PlacementGroupTableData::PENDING ||
           item.second.state() == rpc::PlacementGroupTableData::RESCHEDULING) {
@@ -583,6 +603,7 @@ std::string GcsPlacementGroupManager::DebugString() const {
          << ", WaitPlacementGroupUntilReady request count: "
          << counts_[CountType::WAIT_PLACEMENT_GROUP_UNTIL_READY_REQUEST]
          << ", Registered placement groups count: " << registered_placement_groups_.size()
+         << ", Named placement group count: " << named_placement_groups_.size()
          << ", Pending placement groups count: " << pending_placement_groups_.size()
          << "}";
   return stream.str();

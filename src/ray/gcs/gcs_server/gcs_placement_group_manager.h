@@ -311,6 +311,9 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   /// Reference of GcsResourceManager.
   GcsResourceManager &gcs_resource_manager_;
 
+  /// Maps placement group names to their placement group ID for lookups by name.
+  absl::flat_hash_map<std::string, PlacementGroupID> named_placement_groups_;
+
   // Debug info.
   enum CountType {
     CREATE_PLACEMENT_GROUP_REQUEST = 0,
