@@ -2,7 +2,6 @@ import abc
 import logging
 import os
 import shutil
-import traceback
 import urllib
 from collections import namedtuple
 from typing import List, IO, Tuple
@@ -274,9 +273,7 @@ class FileSystemStorage(ExternalStorage):
                 # deleting the file at the same time.
                 pass
             except Exception:
-                logger.exception("Error cleaning up spill files\n"
-                                 f"Directory path: {self.directory_path}\n"
-                                 f"Traceback: {traceback.format_exc()}")
+                logger.exception("Error cleaning up spill files")
                 break
 
 
