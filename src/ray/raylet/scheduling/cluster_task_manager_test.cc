@@ -554,7 +554,6 @@ TEST_F(ClusterTaskManagerTest, BacklogReportTest) {
     *callback_occurred_ptr = true;
   };
 
-
   std::vector<TaskID> to_cancel;
 
   // Don't add these fist 2 tasks to `to_cancel`.
@@ -576,7 +575,7 @@ TEST_F(ClusterTaskManagerTest, BacklogReportTest) {
   ASSERT_EQ(pool_.workers.size(), 0);
   ASSERT_EQ(node_info_calls_, 0);
 
-  { // No tasks can run because the worker pool is empty.
+  {  // No tasks can run because the worker pool is empty.
     auto data = std::make_shared<rpc::ResourcesData>();
     task_manager_.FillResourceUsage(data);
     auto resource_load_by_shape = data->resource_load_by_shape();
@@ -589,7 +588,7 @@ TEST_F(ClusterTaskManagerTest, BacklogReportTest) {
 
   // Push a worker so the first task can run.
   std::shared_ptr<MockWorker> worker =
-    std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
   pool_.PushWorker(worker);
   task_manager_.ScheduleAndDispatchTasks();
 
@@ -604,7 +603,6 @@ TEST_F(ClusterTaskManagerTest, BacklogReportTest) {
     ASSERT_EQ(shape1.num_infeasible_requests_queued(), 0);
     ASSERT_EQ(shape1.num_ready_requests_queued(), 9);
   }
-
 
   // Cancel the rest.
   for (auto &task_id : to_cancel) {
