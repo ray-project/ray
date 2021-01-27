@@ -2815,6 +2815,7 @@ NodeManager::GetResourcesUsedByNormalTask() const {
             cluster_resource_scheduler->GetResourceNameFromIndex(res_idx);
         double resource_value =
             std::accumulate(resource.begin(), resource.end(), 0, plus_func);
+        // Filter the resources used by normal task.
         if (resource_value > 0) {
           (*resources)[resource_name] += resource_value;
         }
@@ -2828,6 +2829,7 @@ NodeManager::GetResourcesUsedByNormalTask() const {
             std::accumulate(resource.begin(), resource.end(), 0, plus_func);
         double resource_value =
             std::accumulate(resource.begin(), resource.end(), 0, plus_func);
+        // Filter the resources used by normal task.
         if (resource_value > 0) {
           (*resources)[resource_name] += resource_value;
         }

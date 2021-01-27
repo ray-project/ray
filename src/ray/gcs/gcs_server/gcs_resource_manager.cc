@@ -403,8 +403,13 @@ void GcsResourceManager::UpdateNormalTaskResourcesChanges(
     }
 
     if (iter.second < 0) {
+      // After the task is finished, resources will be released, and the change of
+      // resources is negative. `ResourceSet` requires the resource to be a positive
+      // number, so we need to negate it.
       release_resources[iter.first] = -iter.second;
     } else {
+      // When task runs, it will apply for resources, and the change of resources is
+      // positive.
       acquire_resources[iter.first] = iter.second;
     }
   }
