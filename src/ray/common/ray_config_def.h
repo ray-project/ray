@@ -238,9 +238,6 @@ RAY_CONFIG(uint32_t, maximum_gcs_dead_node_cached_count, 1000)
 /// The interval at which the gcs server will print debug info.
 RAY_CONFIG(int64_t, gcs_dump_debug_log_interval_minutes, 1)
 
-/// Maximum number of times to retry putting an object when the plasma store is full.
-/// Can be set to -1 to enable unlimited retries.
-RAY_CONFIG(int32_t, object_store_full_max_retries, 1000)
 /// Duration to sleep after failing to put an object in plasma because it is full.
 RAY_CONFIG(uint32_t, object_store_full_delay_ms, 10)
 
@@ -361,7 +358,23 @@ RAY_CONFIG(int64_t, min_spilling_size, 100 * 1024 * 1024)
 /// TODO(sang): Fix it.
 RAY_CONFIG(bool, automatic_object_deletion_enabled, true)
 
+/// Grace period until we throw the OOM error to the application in seconds.
+RAY_CONFIG(int64_t, oom_grace_period_s, 10)
+
+/// Whether or not the external storage is file system.
+/// This is configured based on object_spilling_config.
+RAY_CONFIG(bool, is_external_storage_type_fs, true)
+
 /* Configuration parameters for locality-aware scheduling. */
 /// Whether to enable locality-aware leasing. If enabled, then Ray will consider task
 /// dependency locality when choosing a worker for leasing.
 RAY_CONFIG(bool, locality_aware_leasing_enabled, true)
+
+/* Configuration parameters for logging */
+/// Parameters for log rotation. This value is equivalent to RotatingFileHandler's
+/// maxBytes argument.
+RAY_CONFIG(int64_t, log_rotation_max_bytes, 100 * 1024 * 1024)
+
+/// Parameters for log rotation. This value is equivalent to RotatingFileHandler's
+/// backupCount argument.
+RAY_CONFIG(int64_t, log_rotation_backup_count, 5)

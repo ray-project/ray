@@ -16,7 +16,6 @@ from ray import ray_constants
 from ray.resource_spec import ResourceSpec
 from ray.tune.durable_trainable import DurableTrainable
 from ray.tune.error import AbortTrialExecution, TuneError
-from ray.tune.function_runner import FunctionRunner
 from ray.tune.logger import NoopLogger
 from ray.tune.result import TRIAL_INFO, STDOUT_FILE, STDERR_FILE
 from ray.tune.resources import Resources
@@ -246,19 +245,19 @@ class RayTrialExecutor(TrialExecutor):
 
         return None
 
-    def _setup_remote_runner(self, trial, reuse_allowed):
+    def _setup_remote_runner(self, trial):
         trial.init_logdir()
         # We checkpoint metadata here to try mitigating logdir duplication
         self.try_checkpoint_metadata(trial)
         logger_creator = partial(noop_logger_creator, logdir=trial.logdir)
 
-        if (self._reuse_actors and reuse_allowed
-                and self._cached_actor is not None):
+        if (self._reuse_actors and self._cached_actor is not None):
             logger.debug("Trial %s: Reusing cached runner %s", trial,
                          self._cached_actor)
             existing_runner = self._cached_actor
             self._cached_actor = None
             trial.set_runner(existing_runner)
+
             if not self.reset_trial(trial, trial.config, trial.experiment_tag,
                                     logger_creator):
                 raise AbortTrialExecution(
@@ -378,14 +377,7 @@ class RayTrialExecutor(TrialExecutor):
         """
         prior_status = trial.status
         if runner is None:
-            # We reuse actors when there is previously instantiated state on
-            # the actor. Function API calls are also supported when there is
-            # no checkpoint to continue from.
-            # TODO: Check preconditions - why is previous state needed?
-            reuse_allowed = checkpoint is not None or trial.has_checkpoint() \
-                            or issubclass(trial.get_trainable_cls(),
-                                          FunctionRunner)
-            runner = self._setup_remote_runner(trial, reuse_allowed)
+            runner = self._setup_remote_runner(trial)
             if not runner:
                 return False
         trial.set_runner(runner)
@@ -520,11 +512,20 @@ class RayTrialExecutor(TrialExecutor):
         trial.set_experiment_tag(new_experiment_tag)
         trial.set_config(new_config)
         trainable = trial.runner
+
+        # Pass magic variables
+        extra_config = copy.deepcopy(new_config)
+        extra_config[TRIAL_INFO] = TrialInfo(trial)
+
+        stdout_file, stderr_file = trial.log_to_file
+        extra_config[STDOUT_FILE] = stdout_file
+        extra_config[STDERR_FILE] = stderr_file
+
         with self._change_working_directory(trial):
             with warn_if_slow("reset"):
                 try:
                     reset_val = ray.get(
-                        trainable.reset.remote(new_config, logger_creator),
+                        trainable.reset.remote(extra_config, logger_creator),
                         timeout=DEFAULT_GET_TIMEOUT)
                 except GetTimeoutError:
                     logger.exception("Trial %s: reset timed out.", trial)
@@ -572,6 +573,7 @@ class RayTrialExecutor(TrialExecutor):
             return None
         shuffled_results = list(self._running.keys())
         random.shuffle(shuffled_results)
+
         # Note: We shuffle the results because `ray.wait` by default returns
         # the first available result, and we want to guarantee that slower
         # trials (i.e. trials that run remotely) also get fairly reported.

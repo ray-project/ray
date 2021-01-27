@@ -17,7 +17,6 @@ CONFIG_FIELDS = {
     "upscalingSpeed": "upscaling_speed",
     "idleTimeoutMinutes": "idle_timeout_minutes",
     "headPodType": "head_node_type",
-    "workerDefaultPodType": "worker_default_node_type",
     "workerStartRayCommands": "worker_start_ray_commands",
     "headStartRayCommands": "head_start_ray_commands",
     "podTypes": "available_node_types"
@@ -96,4 +95,7 @@ def get_cluster_owner_reference(
 
 def translate(configuration: Dict[str, Any],
               dictionary: Dict[str, str]) -> Dict[str, Any]:
-    return {dictionary[field]: configuration[field] for field in configuration}
+    return {
+        dictionary[field]: configuration[field]
+        for field in dictionary if field in configuration
+    }
