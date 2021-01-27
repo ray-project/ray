@@ -79,7 +79,7 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   InitGcsHeartbeatManager(gcs_init_data);
 
   // Init gcs job manager.
-  InitGcsJobManager();
+  InitGcsJobManager(gcs_init_data);
 
   // Init gcs placement group manager.
   InitGcsPlacementGroupManager(gcs_init_data);
@@ -180,10 +180,12 @@ void GcsServer::InitGcsResourceScheduler() {
       std::make_shared<GcsResourceScheduler>(*gcs_resource_manager_);
 }
 
-void GcsServer::InitGcsJobManager() {
+void GcsServer::InitGcsJobManager(const GcsInitData &gcs_init_data) {
   RAY_CHECK(gcs_table_storage_ && gcs_pub_sub_ && gcs_node_manager_);
   gcs_job_manager_.reset(
       new GcsJobManager(gcs_table_storage_, gcs_pub_sub_, gcs_node_manager_));
+  // Initialize by gcs tables data.
+  gcs_job_manager_->Initialize(gcs_init_data);
   // Register service.
   job_info_service_.reset(new rpc::JobInfoGrpcService(main_service_, *gcs_job_manager_));
   rpc_server_.RegisterService(*job_info_service_);

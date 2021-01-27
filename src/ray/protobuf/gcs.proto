@@ -377,6 +377,7 @@ message JobTableData {
     RUNNING = 2;
     FINISHED = 3;
     FAILED = 4;
+    CANCEL = 5;
   }
   enum DriverExitState {
     UNKNOWN = 0;
@@ -404,15 +405,13 @@ message JobTableData {
   // Job state.
   JobState state = 10;
   // Job payload (The original job request json from dashboard).
-  string job_payload = 12;
+  string job_payload = 11;
   // The reason for the job failure.
-  string fail_error_message = 15;
+  string fail_error_message = 12;
   // The driver cmdline.
-  string driver_cmdline = 16;
-  // is dropped.
-  bool is_dropped = 17;
+  string driver_cmdline = 13;
   // driver exit state.
-  DriverExitState driver_exit_state = 18;
+  DriverExitState driver_exit_state = 14;
 }
 
 message WorkerTableData {

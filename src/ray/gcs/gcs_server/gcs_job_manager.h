@@ -32,6 +32,12 @@ class GcsJobManager : public rpc::JobInfoHandler {
         gcs_pub_sub_(std::move(gcs_pub_sub)),
         gcs_node_manager_(std::move(gcs_node_manager)) {}
 
+  /// Initialize with the gcs tables data synchronously.
+  /// This should be called when GCS server restarts after a failure.
+  ///
+  /// \param gcs_init_data.
+  void Initialize(const GcsInitData &gcs_init_data);
+
   void HandleAddJob(const rpc::AddJobRequest &request, rpc::AddJobReply *reply,
                     rpc::SendReplyCallback send_reply_callback) override;
 

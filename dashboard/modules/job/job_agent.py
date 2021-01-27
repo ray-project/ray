@@ -589,7 +589,7 @@ class StartJavaDriver(JobProcessor):
         ip, port = self._redis_address
         redis_address = ip + ":" + str(port)
         if redis_address is not None:
-            pairs.append(("ray.redis.address", redis_address))
+            pairs.append(("ray.address", redis_address))
 
         if self._redis_password is not None:
             pairs.append(("ray.redis.password", self._redis_password))
@@ -622,8 +622,10 @@ class StartJavaDriver(JobProcessor):
         ]
 
         # Add ray jars path to java classpath
-        ray_jars = ":".join(
-            [os.path.join(get_ray_jars_dir(), "*"), job_package_dir])
+        ray_jars = ":".join([
+            os.path.join(get_ray_jars_dir(), "*"),
+            os.path.join(job_package_dir, "*"),
+        ])
         options = self._job_info.jvm_options()
         cp_index = -1
         for i in range(len(options)):

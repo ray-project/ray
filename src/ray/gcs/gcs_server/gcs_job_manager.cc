@@ -19,7 +19,13 @@
 namespace ray {
 namespace gcs {
 
-// TODO(fyrestone): Recover jobs from Redis.
+void GcsJobManager::Initialize(const GcsInitData &gcs_init_data) {
+  for (auto &item : gcs_init_data.Jobs()) {
+    auto job_data = std::make_shared<JobTableData>(item.second);
+    // Add job data to local cache.
+    jobs_.emplace(item.first, job_data);
+  }
+}
 
 void GcsJobManager::HandleAddJob(const rpc::AddJobRequest &request,
                                  rpc::AddJobReply *reply,
@@ -41,9 +47,9 @@ void GcsJobManager::HandleAddJob(const rpc::AddJobRequest &request,
       return;
     }
 
-    if (iter->second->state() != rpc::JobTableData_JobState_SUBMITTED) {
+    if (iter->second->state() != rpc::JobTableData::SUBMITTED) {
       if (iter->second->timestamp() == request.data().timestamp() &&
-          iter->second->state() == rpc::JobTableData_JobState_RUNNING) {
+          iter->second->state() == rpc::JobTableData::RUNNING) {
         // It is a duplicated message, just reply ok.
         GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
       } else {
@@ -65,12 +71,12 @@ void GcsJobManager::HandleAddJob(const rpc::AddJobRequest &request,
     job_table_data->set_language(request.data().language());
     job_table_data->set_timestamp(request.data().timestamp());
     job_table_data->mutable_config()->CopyFrom(request.data().config());
-    job_table_data->set_state(rpc::JobTableData_JobState_RUNNING);
+    job_table_data->set_state(rpc::JobTableData::RUNNING);
   } else {
     auto iter = jobs_.find(job_id);
     if (iter != jobs_.end()) {
       if (iter->second->timestamp() == request.data().timestamp() &&
-          iter->second->state() == rpc::JobTableData_JobState_RUNNING) {
+          iter->second->state() == rpc::JobTableData::RUNNING) {
         // It is a duplicated message, just reply ok.
         GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
       } else {
@@ -86,7 +92,7 @@ void GcsJobManager::HandleAddJob(const rpc::AddJobRequest &request,
     // Just use the job_table_data come from raylet.
     job_table_data = std::make_shared<JobTableData>();
     job_table_data->CopyFrom(request.data());
-    job_table_data->set_state(rpc::JobTableData_JobState_RUNNING);
+    job_table_data->set_state(rpc::JobTableData::RUNNING);
   }
 
   auto on_done = [this, job_table_data, driver_pid, reply,
@@ -234,7 +240,7 @@ Status GcsJobManager::SubmitJob(const ray::rpc::SubmitJobRequest &request,
   job_table_data->set_job_id(request.job_id());
   job_table_data->set_language(request.language());
   job_table_data->set_job_payload(request.job_payload());
-  job_table_data->set_state(rpc::JobTableData_JobState_SUBMITTED);
+  job_table_data->set_state(rpc::JobTableData::SUBMITTED);
 
   auto driver_client_id = SelectDriver(*job_table_data);
   if (driver_client_id.IsNil()) {
@@ -290,7 +296,7 @@ Status GcsJobManager::DropJob(const ray::rpc::DropJobRequest &request,
   }
 
   RAY_LOG(INFO) << "Dropping job, job id = " << job_id;
-  job_table_data->set_is_dropped(true);
+  job_table_data->set_state(rpc::JobTableData::CANCEL);
   return UpdateJobStateToDead(job_table_data, [job_id, callback](const Status &status) {
     RAY_CHECK_OK(status);
     callback(status);
@@ -341,7 +347,7 @@ void GcsJobManager::OnDriverNodeRemoved(const JobID &job_id, const NodeID &node_
   }
 
   if (job_table_data->config().long_running() &&
-      job_table_data->driver_exit_state() == rpc::JobTableData_DriverExitState_OK) {
+      job_table_data->driver_exit_state() == rpc::JobTableData::OK) {
     RAY_LOG(INFO) << "This is a long-running job and it already exits gracefully, so "
                      "the job state sould not be changed. job id = "
                   << job_id;
@@ -354,19 +360,19 @@ void GcsJobManager::OnDriverNodeRemoved(const JobID &job_id, const NodeID &node_
 Status GcsJobManager::UpdateJobStateToDead(std::shared_ptr<JobTableData> job_table_data,
                                            const ray::gcs::StatusCallback &callback) {
   // Update job state.
-  if (job_table_data->is_dropped() ||
-      job_table_data->driver_exit_state() == rpc::JobTableData_DriverExitState_OK) {
-    job_table_data->set_state(rpc::JobTableData_JobState_FINISHED);
-  } else {
-    job_table_data->set_state(rpc::JobTableData_JobState_FAILED);
+  if (job_table_data->state() != rpc::JobTableData::CANCEL) {
+    if (job_table_data->driver_exit_state() == rpc::JobTableData::OK) {
+      job_table_data->set_state(rpc::JobTableData::FINISHED);
+    } else {
+      job_table_data->set_state(rpc::JobTableData::FAILED);
+    }
   }
   JobID job_id = JobID::FromBinary(job_table_data->job_id());
   RAY_LOG(INFO) << "Updating job state to "
                 << rpc::JobTableData_JobState_Name(job_table_data->state())
                 << ", job id = " << job_id << ", driver exit state = "
                 << rpc::JobTableData_DriverExitState_Name(
-                       job_table_data->driver_exit_state())
-                << ", is dropped = " << job_table_data->is_dropped();
+                       job_table_data->driver_exit_state());
   job_table_data->set_is_dead(true);
   auto on_done = [this, callback, job_id, job_table_data](const Status &status) {
     RAY_CHECK_OK(status);
@@ -380,8 +386,7 @@ Status GcsJobManager::UpdateJobStateToDead(std::shared_ptr<JobTableData> job_tab
                   << rpc::JobTableData_JobState_Name(job_table_data->state())
                   << ", job id = " << job_id << ", driver exit state = "
                   << rpc::JobTableData_DriverExitState_Name(
-                         job_table_data->driver_exit_state())
-                  << ", is dropped = " << job_table_data->is_dropped();
+                         job_table_data->driver_exit_state());
   };
   return gcs_table_storage_->JobTable().Put(job_id, *job_table_data, on_done);
 }
