@@ -76,6 +76,7 @@ cdef class ObjectRef(BaseID):
 
         def callback(result):
             loop = py_future._loop
+
             def set_future():
                 # Issue #11030, #8841
                 # If this future has result set already, we just need to
