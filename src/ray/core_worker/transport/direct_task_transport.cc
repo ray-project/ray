@@ -52,10 +52,13 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
               task_finisher_->CompletePendingTask(task_id, rpc::PushTaskReply(),
                                                   rpc::Address());
             } else {
-              RAY_LOG(ERROR) << "Failed to create actor " << actor_id
-                             << " with status: " << status.ToString();
+              std::ostringstream stream;
+              stream << "Failed to create actor " << actor_id
+                        << " with status: " << status.ToString();
+              std::string error_message = stream.str();
+              RAY_LOG(ERROR) << error_message;
               RAY_UNUSED(task_finisher_->PendingTaskFailed(
-                  task_id, rpc::ErrorType::ACTOR_CREATION_FAILED, &status));
+                  task_id, rpc::ErrorType::ACTOR_CREATION_FAILED, &status, error_message));
             }
           }));
       return;
@@ -106,7 +109,7 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
     }
     if (!keep_executing) {
       RAY_UNUSED(task_finisher_->PendingTaskFailed(
-          task_spec.TaskId(), rpc::ErrorType::TASK_CANCELLED, nullptr));
+          task_spec.TaskId(), rpc::ErrorType::TASK_CANCELLED, nullptr, "Max retry time exceed."));
     }
   });
   return Status::OK();
@@ -406,7 +409,7 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
       // not make sense to retry the task.
       RAY_UNUSED(task_finisher_->PendingTaskFailed(
           task_id, is_actor ? rpc::ErrorType::ACTOR_DIED : rpc::ErrorType::WORKER_DIED,
-          &status));
+          &status, status.message()));
     } else {
       task_finisher_->CompletePendingTask(task_id, reply, addr.ToProto());
     }
@@ -440,7 +443,7 @@ Status CoreWorkerDirectTaskSubmitter::CancelTask(TaskSpecification task_spec,
             CancelWorkerLeaseIfNeeded(scheduling_key);
           }
           RAY_UNUSED(task_finisher_->PendingTaskFailed(task_spec.TaskId(),
-                                                       rpc::ErrorType::TASK_CANCELLED));
+                                                       rpc::ErrorType::TASK_CANCELLED, nullptr, "Task was canceled"));
           return Status::OK();
         }
       }

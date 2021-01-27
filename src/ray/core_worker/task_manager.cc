@@ -266,7 +266,7 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
 }
 
 bool TaskManager::PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_type,
-                                    Status *status) {
+                                    Status *status, const std::string &error_message) {
   // Note that this might be the __ray_terminate__ task, so we don't log
   // loudly with ERROR here.
   RAY_LOG(DEBUG) << "Task " << task_id << " failed with error "
@@ -330,7 +330,7 @@ bool TaskManager::PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_
     // objects.
     RemoveFinishedTaskReferences(spec, release_lineage, rpc::Address(),
                                  ReferenceCounter::ReferenceTableProto());
-    MarkPendingTaskFailed(task_id, spec, error_type);
+    MarkPendingTaskFailed(task_id, spec, error_type, error_message);
   }
 
   ShutdownIfNeeded();
@@ -437,13 +437,13 @@ bool TaskManager::MarkTaskCanceled(const TaskID &task_id) {
 
 void TaskManager::MarkPendingTaskFailed(const TaskID &task_id,
                                         const TaskSpecification &spec,
-                                        rpc::ErrorType error_type) {
+                                        rpc::ErrorType error_type, const std::string &error_message) {
   RAY_LOG(DEBUG) << "Treat task as failed. task_id: " << task_id
                  << ", error_type: " << ErrorType_Name(error_type);
   int64_t num_returns = spec.NumReturns();
   for (int i = 0; i < num_returns; i++) {
     const auto object_id = ObjectID::FromIndex(task_id, /*index=*/i + 1);
-    RAY_UNUSED(in_memory_store_->Put(RayObject(error_type), object_id));
+    RAY_UNUSED(in_memory_store_->Put(RayObject(error_type, error_message), object_id));
   }
 }
 

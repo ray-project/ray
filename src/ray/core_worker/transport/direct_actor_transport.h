@@ -52,7 +52,7 @@ class CoreWorkerDirectActorTaskSubmitterInterface {
   virtual void ConnectActor(const ActorID &actor_id, const rpc::Address &address,
                             int64_t num_restarts) = 0;
   virtual void DisconnectActor(const ActorID &actor_id, int64_t num_restarts,
-                               bool dead = false) = 0;
+                               bool dead, const std::string &dead_info) = 0;
   virtual void KillActor(const ActorID &actor_id, bool force_kill, bool no_restart) = 0;
 
   virtual ~CoreWorkerDirectActorTaskSubmitterInterface() {}
@@ -111,7 +111,9 @@ class CoreWorkerDirectActorTaskSubmitter
   /// ignore the command to connect.
   /// \param[in] dead Whether the actor is permanently dead. In this case, all
   /// pending tasks for the actor should be failed.
-  void DisconnectActor(const ActorID &actor_id, int64_t num_restarts, bool dead = false);
+  /// \param[in] dead_info Reason why the actor is dead, only applies when
+  /// dead = true
+  void DisconnectActor(const ActorID &actor_id, int64_t num_restarts, bool dead, const std::string &dead_info);
 
   /// Set the timerstamp for the caller.
   void SetCallerCreationTimestamp(int64_t timestamp);

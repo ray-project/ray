@@ -132,9 +132,9 @@ void ActorManager::HandleActorStateNotification(const ActorID &actor_id,
                 << ", raylet_id: " << NodeID::FromBinary(actor_data.address().raylet_id())
                 << ", num_restarts: " << actor_data.num_restarts();
   if (actor_data.state() == rpc::ActorTableData::RESTARTING) {
-    direct_actor_submitter_->DisconnectActor(actor_id, actor_data.num_restarts(), false);
+    direct_actor_submitter_->DisconnectActor(actor_id, actor_data.num_restarts(), false, "No dead info avaliable.");
   } else if (actor_data.state() == rpc::ActorTableData::DEAD) {
-    direct_actor_submitter_->DisconnectActor(actor_id, actor_data.num_restarts(), true);
+    direct_actor_submitter_->DisconnectActor(actor_id, actor_data.num_restarts(), true, actor_data.dead_info());
     // We cannot erase the actor handle here because clients can still
     // submit tasks to dead actors. This also means we defer unsubscription,
     // otherwise we crash when bulk unsubscribing all actor handles.

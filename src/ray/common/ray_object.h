@@ -63,6 +63,8 @@ class RayObject {
 
   RayObject(rpc::ErrorType error_type);
 
+  RayObject(rpc::ErrorType error_type, const std::string error_message);
+
   /// Return the data of the ray object.
   const std::shared_ptr<Buffer> &GetData() const { return data_; }
 
