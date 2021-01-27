@@ -1045,7 +1045,9 @@ def start_log_monitor(redis_address,
                       stdout_file=None,
                       stderr_file=None,
                       redis_password=None,
-                      fate_share=None):
+                      fate_share=None,
+                      max_bytes=0,
+                      backup_count=0):
     """Start a log monitor process.
 
     Args:
@@ -1056,17 +1058,20 @@ def start_log_monitor(redis_address,
         stderr_file: A file handle opened for writing to redirect stderr to. If
             no redirection should happen, then this should be None.
         redis_password (str): The password of the redis server.
+        max_bytes (int): Log rotation parameter. Corresponding to
+            RotatingFileHandler's maxBytes.
+        backup_count (int): Log rotation parameter. Corresponding to
+            RotatingFileHandler's backupCount.
 
     Returns:
         ProcessInfo for the process that was started.
     """
     log_monitor_filepath = os.path.join(RAY_PATH, "log_monitor.py")
     command = [
-        sys.executable,
-        "-u",
-        log_monitor_filepath,
-        f"--redis-address={redis_address}",
-        f"--logs-dir={logs_dir}",
+        sys.executable, "-u", log_monitor_filepath,
+        f"--redis-address={redis_address}", f"--logs-dir={logs_dir}",
+        f"--logging-rotate-bytes={max_bytes}",
+        f"--logging-rotate-backup-count={backup_count}"
     ]
     if redis_password:
         command += ["--redis-password", redis_password]
@@ -1088,7 +1093,9 @@ def start_dashboard(require_dashboard,
                     stdout_file=None,
                     stderr_file=None,
                     redis_password=None,
-                    fate_share=None):
+                    fate_share=None,
+                    max_bytes=0,
+                    backup_count=0):
     """Start a dashboard process.
 
     Args:
@@ -1107,6 +1114,10 @@ def start_dashboard(require_dashboard,
         stderr_file: A file handle opened for writing to redirect stderr to. If
             no redirection should happen, then this should be None.
         redis_password (str): The password of the redis server.
+        max_bytes (int): Log rotation parameter. Corresponding to
+            RotatingFileHandler's maxBytes.
+        backup_count (int): Log rotation parameter. Corresponding to
+            RotatingFileHandler's backupCount.
 
     Returns:
         ProcessInfo for the process that was started.
@@ -1132,14 +1143,11 @@ def start_dashboard(require_dashboard,
     dashboard_dir = "new_dashboard"
     dashboard_filepath = os.path.join(RAY_PATH, dashboard_dir, "dashboard.py")
     command = [
-        sys.executable,
-        "-u",
-        dashboard_filepath,
-        f"--host={host}",
-        f"--port={port}",
-        f"--redis-address={redis_address}",
-        f"--temp-dir={temp_dir}",
-        f"--log-dir={logdir}",
+        sys.executable, "-u", dashboard_filepath, f"--host={host}",
+        f"--port={port}", f"--redis-address={redis_address}",
+        f"--temp-dir={temp_dir}", f"--log-dir={logdir}",
+        f"--logging-rotate-bytes={max_bytes}",
+        f"--logging-rotate-backup-count={backup_count}"
     ]
 
     if redis_password:
@@ -1258,7 +1266,9 @@ def start_raylet(redis_address,
                  fate_share=None,
                  socket_to_use=None,
                  head_node=False,
-                 start_initial_python_workers_for_first_job=False):
+                 start_initial_python_workers_for_first_job=False,
+                 max_bytes=0,
+                 backup_count=0):
     """Start a raylet, which is a combined local scheduler and object manager.
 
     Args:
@@ -1295,6 +1305,10 @@ def start_raylet(redis_address,
         config (dict|None): Optional Raylet configuration that will
             override defaults in RayConfig.
         java_worker_options (list): The command options for Java worker.
+        max_bytes (int): Log rotation parameter. Corresponding to
+            RotatingFileHandler's maxBytes.
+        backup_count (int): Log rotation parameter. Corresponding to
+            RotatingFileHandler's backupCount.
     Returns:
         ProcessInfo for the process that was started.
     """
@@ -1372,6 +1386,8 @@ def start_raylet(redis_address,
         f"--config-list={config_str}",
         f"--temp-dir={temp_dir}",
         f"--metrics-agent-port={metrics_agent_port}",
+        f"--logging-rotate-bytes={max_bytes}",
+        f"--logging-rotate-backup-count={backup_count}",
         "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER",
     ]
     if redis_password:
@@ -1402,6 +1418,8 @@ def start_raylet(redis_address,
         f"--raylet-name={raylet_name}",
         f"--temp-dir={temp_dir}",
         f"--log-dir={log_dir}",
+        f"--logging-rotate-bytes={max_bytes}",
+        f"--logging-rotate-backup-count={backup_count}",
     ]
 
     if redis_password is not None and len(redis_password) != 0:
@@ -1780,7 +1798,9 @@ def start_monitor(redis_address,
                   stderr_file=None,
                   autoscaling_config=None,
                   redis_password=None,
-                  fate_share=None):
+                  fate_share=None,
+                  max_bytes=0,
+                  backup_count=0):
     """Run a process to monitor the other processes.
 
     Args:
@@ -1792,17 +1812,20 @@ def start_monitor(redis_address,
             no redirection should happen, then this should be None.
         autoscaling_config: path to autoscaling config file.
         redis_password (str): The password of the redis server.
+        max_bytes (int): Log rotation parameter. Corresponding to
+            RotatingFileHandler's maxBytes.
+        backup_count (int): Log rotation parameter. Corresponding to
+            RotatingFileHandler's backupCount.
 
     Returns:
         ProcessInfo for the process that was started.
     """
     monitor_path = os.path.join(RAY_PATH, "monitor.py")
     command = [
-        sys.executable,
-        "-u",
-        monitor_path,
-        f"--logs-dir={logs_dir}",
-        "--redis-address=" + str(redis_address),
+        sys.executable, "-u", monitor_path, f"--logs-dir={logs_dir}",
+        f"--redis-address={redis_address}",
+        f"--logging-rotate-bytes={max_bytes}",
+        f"--logging-rotate-backup-count={backup_count}"
     ]
     if autoscaling_config:
         command.append("--autoscaling-config=" + str(autoscaling_config))

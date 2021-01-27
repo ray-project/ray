@@ -142,6 +142,18 @@ class Node:
         if "plasma_store_as_thread" not in self._config:
             self._config["plasma_store_as_thread"] = True
 
+        # Configure log rotation parameters.
+        self.max_bytes = int(
+            os.getenv("RAY_ROTATION_MAX_BYTES",
+                      ray_constants.LOGGING_ROTATE_BYTES))
+        self.backup_count = int(
+            os.getenv("RAY_ROTATION_BACKUP_COUNT",
+                      ray_constants.LOGGING_ROTATE_BACKUP_COUNT))
+
+        assert self.max_bytes >= 0
+        assert self.backup_count >= 0
+
+        # Register the temp dir.
         if head:
             redis_client = None
             # date including microsecond
@@ -386,6 +398,14 @@ class Node:
             return self._socket
         except AttributeError:
             return None
+
+    @property
+    def logging_config(self):
+        """Get the logging config of the current node."""
+        return {
+            "log_rotation_max_bytes": self.max_bytes,
+            "log_rotation_backup_count": self.backup_count
+        }
 
     @property
     def address_info(self):
@@ -653,7 +673,9 @@ class Node:
             stdout_file=subprocess.DEVNULL,
             stderr_file=subprocess.DEVNULL,
             redis_password=self._ray_params.redis_password,
-            fate_share=self.kernel_fate_share)
+            fate_share=self.kernel_fate_share,
+            max_bytes=self.max_bytes,
+            backup_count=self.backup_count)
         assert ray_constants.PROCESS_TYPE_LOG_MONITOR not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_LOG_MONITOR] = [
             process_info,
@@ -677,6 +699,8 @@ class Node:
             stderr_file=subprocess.DEVNULL,  # Avoid hang(fd inherit)
             redis_password=self._ray_params.redis_password,
             fate_share=self.kernel_fate_share,
+            max_bytes=self.max_bytes,
+            backup_count=self.backup_count,
             port=self._ray_params.dashboard_port)
         assert ray_constants.PROCESS_TYPE_DASHBOARD not in self.all_processes
         if process_info is not None:
@@ -772,6 +796,8 @@ class Node:
             fate_share=self.kernel_fate_share,
             socket_to_use=self.socket,
             head_node=self.head,
+            max_bytes=self.max_bytes,
+            backup_count=self.backup_count,
             start_initial_python_workers_for_first_job=self._ray_params.
             start_initial_python_workers_for_first_job)
         assert ray_constants.PROCESS_TYPE_RAYLET not in self.all_processes
@@ -797,7 +823,9 @@ class Node:
             stderr_file=stderr_file,
             autoscaling_config=self._ray_params.autoscaling_config,
             redis_password=self._ray_params.redis_password,
-            fate_share=self.kernel_fate_share)
+            fate_share=self.kernel_fate_share,
+            max_bytes=self.max_bytes,
+            backup_count=self.backup_count)
         assert ray_constants.PROCESS_TYPE_MONITOR not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_MONITOR] = [process_info]
 
