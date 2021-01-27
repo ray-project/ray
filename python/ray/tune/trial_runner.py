@@ -16,10 +16,10 @@ from ray.tune.stopper import NoopStopper
 from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.result import (DEFAULT_METRIC, TIME_THIS_ITER_S,
                              RESULT_DUPLICATE, SHOULD_CHECKPOINT)
-from ray.tune.syncer import get_cloud_syncer
+from ray.tune.syncer import CloudSyncer, get_cloud_syncer
 from ray.tune.trial import Checkpoint, Trial
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
-from ray.tune.suggest import BasicVariantGenerator
+from ray.tune.suggest import BasicVariantGenerator, SearchAlgorithm
 from ray.tune.utils import warn_if_slow, flatten_dict, env_integer
 from ray.tune.utils.log import Verbosity, has_verbosity
 from ray.tune.utils.placement_groups import TUNE_MAX_PENDING_TRIALS_PG
@@ -40,6 +40,66 @@ def _find_newest_ckpt(ckpt_dir):
         if fname.startswith("experiment_state") and fname.endswith(".json")
     ]
     return max(full_paths)
+
+
+class _ExperimentCheckpointManager:
+    def __init__(self, checkpoint_dir: str, checkpoint_period: float,
+                 start_time: float, session_str: str, syncer: CloudSyncer):
+        self._checkpoint_dir = checkpoint_dir
+        self._checkpoint_period = checkpoint_period
+
+        self._start_time = start_time
+        self._session_str = session_str
+
+        self._syncer = syncer
+
+        self._last_checkpoint_time = 0.
+
+    def checkpoint(self,
+                   checkpoint_file: str,
+                   trial_runner: "TrialRunner",
+                   trial_executor: RayTrialExecutor,
+                   search_alg: SearchAlgorithm,
+                   force=False):
+        """Saves execution state to `self._local_checkpoint_dir`.
+
+        Overwrites the current session checkpoint, which starts when self
+        is instantiated. Throttle depends on self._checkpoint_period.
+
+        Also automatically saves the search algorithm to the local
+        checkpoint dir.
+
+        Args:
+            force (bool): Forces a checkpoint despite checkpoint_period.
+        """
+        if not self._checkpoint_dir:
+            return
+        now = time.time()
+        if now - self._last_checkpoint_time < self._checkpoint_period and (
+                not force):
+            return
+        self._last_checkpoint_time = now
+        runner_state = {
+            "checkpoints": list(trial_executor.get_checkpoints().values()),
+            "runner_data": trial_runner.__getstate__(),
+            "stats": {
+                "start_time": self._start_time,
+                "timestamp": self._last_checkpoint_time
+            }
+        }
+        tmp_file_name = os.path.join(self._checkpoint_dir, ".tmp_checkpoint")
+        with open(tmp_file_name, "w") as f:
+            json.dump(runner_state, f, indent=2, cls=TuneFunctionEncoder)
+
+        os.replace(tmp_file_name, checkpoint_file)
+        search_alg.save_to_dir(
+            self._checkpoint_dir, session_str=self._session_str)
+
+        if force:
+            self._syncer.sync_up()
+        else:
+            self._syncer.sync_up_if_needed()
+        return self._checkpoint_dir
 
 
 class TrialRunner:
@@ -195,6 +255,12 @@ class TrialRunner:
                 TrialRunner.CKPT_FILE_TMPL.format(self._session_str))
 
         self._callbacks = CallbackList(callbacks or [])
+        self._checkpoint_manager = _ExperimentCheckpointManager(
+            checkpoint_dir=self._local_checkpoint_dir,
+            checkpoint_period=self._checkpoint_period,
+            start_time=self._start_time,
+            session_str=self._session_str,
+            syncer=self._syncer)
 
     @property
     def resumed(self):
@@ -269,36 +335,11 @@ class TrialRunner:
         Args:
             force (bool): Forces a checkpoint despite checkpoint_period.
         """
-        if not self._local_checkpoint_dir:
-            return
-        now = time.time()
-        if now - self._last_checkpoint_time < self._checkpoint_period and (
-                not force):
-            return
-        self._last_checkpoint_time = now
-        runner_state = {
-            "checkpoints": list(
-                self.trial_executor.get_checkpoints().values()),
-            "runner_data": self.__getstate__(),
-            "stats": {
-                "start_time": self._start_time,
-                "timestamp": self._last_checkpoint_time
-            }
-        }
-        tmp_file_name = os.path.join(self._local_checkpoint_dir,
-                                     ".tmp_checkpoint")
-        with open(tmp_file_name, "w") as f:
-            json.dump(runner_state, f, indent=2, cls=TuneFunctionEncoder)
-
-        os.replace(tmp_file_name, self.checkpoint_file)
-        self._search_alg.save_to_dir(
-            self._local_checkpoint_dir, session_str=self._session_str)
-
-        if force:
-            self._syncer.sync_up()
-        else:
-            self._syncer.sync_up_if_needed()
-        return self._local_checkpoint_dir
+        self._checkpoint_manager.checkpoint(
+            checkpoint_file=self.checkpoint_file,
+            trial_runner=self,
+            trial_executor=self.trial_executor,
+            search_alg=self._search_alg)
 
     def resume(self, run_errored_only=False):
         """Resumes all checkpointed trials from previous run.
