@@ -52,7 +52,7 @@ uint64_t PullManager::Pull(const std::vector<rpc::ObjectReference> &object_ref_b
 bool PullManager::ActivateNextPullBundleRequest(
     const std::map<uint64_t, std::vector<rpc::ObjectReference>>::iterator
         &next_request_it,
-      std::vector<ObjectID> *objects_to_pull) {
+    std::vector<ObjectID> *objects_to_pull) {
   // Check that we have sizes for all of the objects in the bundle. If not, we
   // should not activate the bundle, since it may put us over the available
   // capacity.
@@ -93,7 +93,8 @@ bool PullManager::ActivateNextPullBundleRequest(
 }
 
 void PullManager::DeactivatePullBundleRequest(
-    const std::map<uint64_t, std::vector<rpc::ObjectReference>>::iterator &request_it, std::unordered_set<ObjectID> *objects_to_cancel) {
+    const std::map<uint64_t, std::vector<rpc::ObjectReference>>::iterator &request_it,
+    std::unordered_set<ObjectID> *objects_to_cancel) {
   for (const auto &ref : request_it->second) {
     auto obj_id = ObjectRefToId(ref);
     RAY_CHECK(active_object_pull_requests_[obj_id].erase(request_it->first));
