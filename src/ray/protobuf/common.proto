@@ -233,6 +233,8 @@ message PlacementGroupSpec {
   bool creator_job_dead = 7;
   // Whether or not if the creator actor is dead.
   bool creator_actor_dead = 8;
+  // Whether the placement group is persistent.
+  bool is_detached = 9;
 }
 
 message ObjectReference {

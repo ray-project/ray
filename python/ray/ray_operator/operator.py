@@ -9,7 +9,7 @@ import yaml
 from ray._private import services
 from ray.autoscaler._private import commands
 from ray import monitor
-from ray.operator import operator_utils
+from ray.ray_operator import operator_utils
 from ray import ray_constants
 
 
