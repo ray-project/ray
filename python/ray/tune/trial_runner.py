@@ -107,6 +107,7 @@ class _ExperimentCheckpointManager:
                 self._checkpoint_dir, session_str=self._session_str)
 
         checkpoint_time_start = time.monotonic()
+        _serialize_and_write()
         if force:
             self._syncer.sync_up()
         else:
