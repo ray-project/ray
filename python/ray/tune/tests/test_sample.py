@@ -142,6 +142,32 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertTrue(any(-4 < s < 4 for s in samples))
         self.assertTrue(-2 < np.mean(samples) < 2)
 
+    def testFunctionSignature(self):
+        from functools import partial
+
+        def sample_a():
+            return 0
+
+        def sample_b(spec):
+            return 1
+
+        def sample_c(spec, b="ok"):
+            return 2
+
+        def sample_d_invalid(spec, b):
+            return 3
+
+        sample_d_valid = partial(sample_d_invalid, b="ok")
+
+        for sample_fn in [sample_a, sample_b, sample_c, sample_d_valid]:
+            fn = tune.sample_from(sample_fn)
+            sample = fn.sample(None)
+            self.assertIsNotNone(sample)
+
+        with self.assertRaises(ValueError):
+            fn = tune.sample_from(sample_d_invalid)
+            print(fn.sample(None))
+
     def testQuantized(self):
         bounded_positive = tune.sample.Float(1e-4, 1e-1)
 
@@ -170,6 +196,10 @@ class SearchSpaceTest(unittest.TestCase):
     def testConvertAx(self):
         from ray.tune.suggest.ax import AxSearch
         from ax.service.ax_client import AxClient
+
+        # Grid search not supported, should raise ValueError
+        with self.assertRaises(ValueError):
+            AxSearch.convert_search_space({"grid": tune.grid_search([0, 1])})
 
         config = {
             "a": tune.sample.Categorical([2, 3, 4]).uniform(),
@@ -239,6 +269,12 @@ class SearchSpaceTest(unittest.TestCase):
     def testConvertBayesOpt(self):
         from ray.tune.suggest.bayesopt import BayesOptSearch
 
+        # Grid search not supported, should raise ValueError
+        with self.assertRaises(ValueError):
+            BayesOptSearch.convert_search_space({
+                "grid": tune.grid_search([0, 1])
+            })
+
         config = {
             "a": tune.sample.Categorical([2, 3, 4]).uniform(),
             "b": {
@@ -294,6 +330,10 @@ class SearchSpaceTest(unittest.TestCase):
         from ray.tune.suggest.bohb import TuneBOHB
         import ConfigSpace
 
+        # Grid search not supported, should raise ValueError
+        with self.assertRaises(ValueError):
+            TuneBOHB.convert_search_space({"grid": tune.grid_search([0, 1])})
+
         config = {
             "a": tune.sample.Categorical([2, 3, 4]).uniform(),
             "b": {
@@ -345,6 +385,12 @@ class SearchSpaceTest(unittest.TestCase):
 
     def testConvertDragonfly(self):
         from ray.tune.suggest.dragonfly import DragonflySearch
+
+        # Grid search not supported, should raise ValueError
+        with self.assertRaises(ValueError):
+            DragonflySearch.convert_search_space({
+                "grid": tune.grid_search([0, 1])
+            })
 
         config = {
             "a": tune.sample.Categorical([2, 3, 4]).uniform(),
@@ -426,6 +472,12 @@ class SearchSpaceTest(unittest.TestCase):
     def testConvertHyperOpt(self):
         from ray.tune.suggest.hyperopt import HyperOptSearch
         from hyperopt import hp
+
+        # Grid search not supported, should raise ValueError
+        with self.assertRaises(ValueError):
+            HyperOptSearch.convert_search_space({
+                "grid": tune.grid_search([0, 1])
+            })
 
         config = {
             "a": tune.sample.Categorical([2, 3, 4]).uniform(),
@@ -528,6 +580,12 @@ class SearchSpaceTest(unittest.TestCase):
         from ray.tune.suggest.nevergrad import NevergradSearch
         import nevergrad as ng
 
+        # Grid search not supported, should raise ValueError
+        with self.assertRaises(ValueError):
+            NevergradSearch.convert_search_space({
+                "grid": tune.grid_search([0, 1])
+            })
+
         config = {
             "a": tune.sample.Categorical([2, 3, 4]).uniform(),
             "b": {
@@ -589,6 +647,12 @@ class SearchSpaceTest(unittest.TestCase):
         from ray.tune.suggest.optuna import OptunaSearch, param
         from optuna.samplers import RandomSampler
 
+        # Grid search not supported, should raise ValueError
+        with self.assertRaises(ValueError):
+            OptunaSearch.convert_search_space({
+                "grid": tune.grid_search([0, 1])
+            })
+
         config = {
             "a": tune.sample.Categorical([2, 3, 4]).uniform(),
             "b": {
@@ -640,6 +704,12 @@ class SearchSpaceTest(unittest.TestCase):
         from ray.tune.suggest.skopt import SkOptSearch
         from skopt.space import Real, Integer
 
+        # Grid search not supported, should raise ValueError
+        with self.assertRaises(ValueError):
+            SkOptSearch.convert_search_space({
+                "grid": tune.grid_search([0, 1])
+            })
+
         config = {
             "a": tune.sample.Categorical([2, 3, 4]).uniform(),
             "b": {
@@ -685,6 +755,12 @@ class SearchSpaceTest(unittest.TestCase):
     def testConvertZOOpt(self):
         from ray.tune.suggest.zoopt import ZOOptSearch
         from zoopt import ValueType
+
+        # Grid search not supported, should raise ValueError
+        with self.assertRaises(ValueError):
+            ZOOptSearch.convert_search_space({
+                "grid": tune.grid_search([0, 1])
+            })
 
         config = {
             "a": tune.sample.Categorical([2, 3, 4]).uniform(),

@@ -43,7 +43,7 @@ std::string GcsPlacementGroup::GetName() const {
 std::vector<std::shared_ptr<BundleSpecification>> GcsPlacementGroup::GetBundles() const {
   const auto &bundles = placement_group_table_data_.bundles();
   std::vector<std::shared_ptr<BundleSpecification>> ret_bundles;
-  for (auto &bundle : bundles) {
+  for (const auto &bundle : bundles) {
     ret_bundles.push_back(std::make_shared<BundleSpecification>(bundle));
   }
   return ret_bundles;
@@ -53,7 +53,7 @@ std::vector<std::shared_ptr<BundleSpecification>> GcsPlacementGroup::GetUnplaced
     const {
   const auto &bundles = placement_group_table_data_.bundles();
   std::vector<std::shared_ptr<BundleSpecification>> unplaced_bundles;
-  for (auto &bundle : bundles) {
+  for (const auto &bundle : bundles) {
     if (NodeID::FromBinary(bundle.node_id()).IsNil()) {
       unplaced_bundles.push_back(std::make_shared<BundleSpecification>(bundle));
     }
@@ -96,9 +96,13 @@ void GcsPlacementGroup::MarkCreatorActorDead() {
   placement_group_table_data_.set_creator_actor_dead(true);
 }
 
-bool GcsPlacementGroup::IsPlacementGroupRemovable() const {
-  return placement_group_table_data_.creator_job_dead() &&
+bool GcsPlacementGroup::IsPlacementGroupLifetimeDone() const {
+  return !IsDetached() && placement_group_table_data_.creator_job_dead() &&
          placement_group_table_data_.creator_actor_dead();
+}
+
+bool GcsPlacementGroup::IsDetached() const {
+  return placement_group_table_data_.is_detached();
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////
@@ -495,7 +499,7 @@ void GcsPlacementGroupManager::CleanPlacementGroupIfNeededWhenJobDead(
       continue;
     }
     placement_group->MarkCreatorJobDead();
-    if (placement_group->IsPlacementGroupRemovable()) {
+    if (placement_group->IsPlacementGroupLifetimeDone()) {
       RemovePlacementGroup(placement_group->GetPlacementGroupID(), [](Status status) {});
     }
   }
@@ -509,7 +513,7 @@ void GcsPlacementGroupManager::CleanPlacementGroupIfNeededWhenActorDead(
       continue;
     }
     placement_group->MarkCreatorActorDead();
-    if (placement_group->IsPlacementGroupRemovable()) {
+    if (placement_group->IsPlacementGroupLifetimeDone()) {
       RemovePlacementGroup(placement_group->GetPlacementGroupID(), [](Status status) {});
     }
   }
@@ -555,7 +559,7 @@ void GcsPlacementGroupManager::Initialize(const GcsInitData &gcs_init_data) {
       if (item.second.state() == rpc::PlacementGroupTableData::CREATED ||
           item.second.state() == rpc::PlacementGroupTableData::RESCHEDULING) {
         const auto &bundles = item.second.bundles();
-        for (auto &bundle : bundles) {
+        for (const auto &bundle : bundles) {
           if (!NodeID::FromBinary(bundle.node_id()).IsNil()) {
             node_to_bundles[NodeID::FromBinary(bundle.node_id())].emplace_back(bundle);
           }

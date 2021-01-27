@@ -17,7 +17,9 @@ import java.util.stream.Collectors;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-@Test(groups = {"cluster"})
+@Test(
+    groups = {"cluster"},
+    enabled = false)
 public class MultiDriverTest extends BaseTest {
 
   private static final int DRIVER_COUNT = 10;

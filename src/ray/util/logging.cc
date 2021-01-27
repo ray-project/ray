@@ -96,22 +96,19 @@ class SpdLogMessage final {
   explicit SpdLogMessage(const char *file, int line, int loglevel) : loglevel_(loglevel) {
     stream() << ConstBasename(file) << ":" << line << ": ";
   }
-  inline std::shared_ptr<spdlog::logger> get_logger() {
-    auto logger = spdlog::get("ray_log_sink");
-    if (!logger) {
-      logger = spdlog::get("stderr");
-    }
+  inline std::shared_ptr<spdlog::logger> GetDefaultLogger() {
     // We just emit all log informations to stderr when no default logger has been created
     // before starting ray log, which is for glog compatible.
-    if (!logger) {
-      logger = spdlog::stderr_color_mt("stderr");
-      logger->set_pattern(RayLog::GetLogFormatPattern());
-    }
+    static auto logger = spdlog::stderr_color_mt("stderr");
+    logger->set_pattern(RayLog::GetLogFormatPattern());
     return logger;
   }
 
   inline void Flush() {
-    auto logger = get_logger();
+    auto logger = spdlog::get(RayLog::GetLoggerName());
+    if (!logger) {
+      logger = GetDefaultLogger();
+    }
     // To avoid dump duplicated stacktrace with installed failure signal
     // handler, we have to check whether glog failure signal handler is enabled.
     if (!RayLog::IsFailureSignalHandlerEnabled() &&
@@ -197,6 +194,7 @@ std::string RayLog::log_dir_ = "";
 // Format pattern is 2020-08-21 17:00:00,000 I 100 1001 msg.
 // %L is loglevel, %P is process id, %t for thread id.
 std::string RayLog::log_format_pattern_ = "[%Y-%m-%d %H:%M:%S,%e %L %P %t] %v";
+std::string RayLog::logger_name_ = "ray_log_sink";
 long RayLog::log_rotation_max_size_ = 1 << 29;
 long RayLog::log_rotation_file_num_ = 10;
 bool RayLog::is_failure_signal_handler_installed_ = false;
@@ -309,24 +307,34 @@ void RayLog::StartRayLog(const std::string &app_name, RayLogLevel severity_thres
 #endif
     // Reset log pattern and level and we assume a log file can be rotated with
     // 10 files in max size 512M by default.
-    if (getenv("RAY_ROTATION_MAX_SIZE")) {
-      log_rotation_max_size_ = std::atol(getenv("RAY_RAOTATION_MAX_SIZE"));
+    if (getenv("RAY_ROTATION_MAX_BYTES")) {
+      long max_size = std::atol(getenv("RAY_ROTATION_MAX_BYTES"));
+      // 0 means no log rotation in python, but not in spdlog. We just use the default
+      // value here.
+      if (max_size != 0) {
+        log_rotation_max_size_ = max_size;
+      }
     }
-    if (getenv("RAY_ROTATION_FILE_NUM")) {
-      log_rotation_file_num_ = std::atol(getenv("RAY_ROTATION_FILE_NUM"));
+    if (getenv("RAY_ROTATION_BACKUP_COUNT")) {
+      long file_num = std::atol(getenv("RAY_ROTATION_BACKUP_COUNT"));
+      if (file_num != 0) {
+        log_rotation_file_num_ = file_num;
+      }
     }
     spdlog::set_pattern(log_format_pattern_);
     spdlog::set_level(static_cast<spdlog::level::level_enum>(severity_threshold_));
     // Sink all log stuff to default file logger we defined here. We may need
     // multiple sinks for different files or loglevel.
-    auto file_logger = spdlog::get("ray_log_sink");
-    if (!file_logger) {
-      file_logger =
-          spdlog::rotating_logger_mt("ray_log_sink",
-                                     dir_ends_with_slash + app_name_without_path + "_" +
-                                         std::to_string(pid) + ".log",
-                                     log_rotation_max_size_, log_rotation_file_num_);
+    auto file_logger = spdlog::get(RayLog::GetLoggerName());
+    if (file_logger) {
+      // Drop this old logger first if we need reset filename or reconfig
+      // logger.
+      spdlog::drop(RayLog::GetLoggerName());
     }
+    file_logger = spdlog::rotating_logger_mt(
+        RayLog::GetLoggerName(),
+        dir_ends_with_slash + app_name_without_path + "_" + std::to_string(pid) + ".log",
+        log_rotation_max_size_, log_rotation_file_num_);
     spdlog::set_default_logger(file_logger);
 #endif
   } else {
@@ -345,7 +353,7 @@ void RayLog::StartRayLog(const std::string &app_name, RayLogLevel severity_thres
     err_sink->set_level(spdlog::level::err);
 
     auto logger = std::shared_ptr<spdlog::logger>(
-        new spdlog::logger("ray_log_sink", {console_sink, err_sink}));
+        new spdlog::logger(RayLog::GetLoggerName(), {console_sink, err_sink}));
     logger->set_level(level);
     spdlog::set_default_logger(logger);
 #endif
@@ -401,8 +409,9 @@ void RayLog::ShutDownRayLog() {
   if (spdlog::default_logger()) {
     spdlog::default_logger()->flush();
   }
-  spdlog::drop_all();
-  spdlog::shutdown();
+  // NOTE(lingxuan.zlx) All loggers will be closed in shutdown but we don't need drop
+  // console logger out because of some console logging might be used after shutdown ray
+  // log. spdlog::shutdown();
 #endif
 }
 
@@ -449,6 +458,8 @@ bool RayLog::IsLevelEnabled(RayLogLevel log_level) {
 }
 
 std::string RayLog::GetLogFormatPattern() { return log_format_pattern_; }
+
+std::string RayLog::GetLoggerName() { return logger_name_; }
 
 RayLog::RayLog(const char *file_name, int line_number, RayLogLevel severity)
     // glog does not have DEBUG level, we can handle it using is_enabled_.

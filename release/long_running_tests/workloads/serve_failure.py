@@ -11,7 +11,7 @@ from ray.cluster_utils import Cluster
 num_redis_shards = 1
 redis_max_memory = 10**8
 object_store_memory = 10**8
-num_nodes = 1
+num_nodes = 4
 cpus_per_node = 10
 cluster = Cluster()
 for i in range(num_nodes):
@@ -39,10 +39,9 @@ class RandomKiller:
 
     def _get_all_serve_actors(self):
         controller = self.client._controller
-        routers = list(ray.get(controller.get_routers.remote()).values())
+        routers = list(ray.get(controller.get_http_proxies.remote()).values())
         all_handles = routers + [controller]
-        worker_handle_dict = ray.get(
-            controller.get_all_worker_handles.remote())
+        worker_handle_dict = ray.get(controller._all_replica_handles.remote())
         for _, replica_dict in worker_handle_dict.items():
             all_handles.extend(list(replica_dict.values()))
 

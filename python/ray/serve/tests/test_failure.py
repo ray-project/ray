@@ -1,8 +1,10 @@
 import os
 import requests
+import sys
 import tempfile
 import time
 
+import pytest
 import ray
 from ray.test_utils import wait_for_condition
 from ray import serve
@@ -154,6 +156,7 @@ def test_worker_restart(serve_instance):
 
 # Test that if there are multiple replicas for a worker and one dies
 # unexpectedly, the others continue to serve requests.
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_worker_replica_failure(serve_instance):
     client = serve_instance
 
@@ -226,7 +229,7 @@ def test_create_backend_idempotent(serve_instance):
 
     for i in range(10):
         ray.get(
-            controller.wait_for_event.remote(
+            controller.wait_for_goal.remote(
                 controller.create_backend.remote("my_backend", backend_config,
                                                  replica_config)))
 
@@ -249,7 +252,7 @@ def test_create_endpoint_idempotent(serve_instance):
 
     for i in range(10):
         ray.get(
-            controller.wait_for_event.remote(
+            controller.wait_for_goal.remote(
                 controller.create_endpoint.remote(
                     "my_endpoint", {"my_backend": 1.0}, "/my_route", ["GET"])))
 

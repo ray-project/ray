@@ -44,6 +44,7 @@
 #include "ray/rpc/object_manager/object_manager_client.h"
 #include "ray/rpc/object_manager/object_manager_server.h"
 #include "src/ray/protobuf/common.pb.h"
+#include "src/ray/protobuf/node_manager.pb.h"
 
 namespace ray {
 
@@ -105,8 +106,9 @@ class ObjectManagerInterface {
 class ObjectManager : public ObjectManagerInterface,
                       public rpc::ObjectManagerServiceHandler {
  public:
-  using RestoreSpilledObjectCallback = std::function<void(
-      const ObjectID &, const std::string &, std::function<void(const ray::Status &)>)>;
+  using RestoreSpilledObjectCallback =
+      std::function<void(const ObjectID &, const std::string &, const NodeID &,
+                         std::function<void(const ray::Status &)>)>;
 
   /// Implementation of object manager service
 
@@ -291,6 +293,11 @@ class ObjectManager : public ObjectManagerInterface,
   /// Record metrics.
   void RecordMetrics() const;
 
+  /// Populate object store stats.
+  ///
+  /// \param Output parameter.
+  void FillObjectStoreStats(rpc::GetNodeStatsReply *reply) const;
+
   void Tick(const boost::system::error_code &e);
 
  private:
@@ -349,7 +356,7 @@ class ObjectManager : public ObjectManagerInterface,
 
   /// Handle starting, running, and stopping asio rpc_service.
   void StartRpcService();
-  void RunRpcService();
+  void RunRpcService(int index);
   void StopRpcService();
 
   /// Handle an object being added to this node. This adds the object to the

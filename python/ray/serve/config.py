@@ -1,9 +1,12 @@
 import inspect
+from dataclasses import dataclass
+from enum import Enum
+from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, PositiveInt, validator, PositiveFloat
-from ray.serve.constants import ASYNC_CONCURRENCY
-from typing import Optional, Dict, Any, List
-from dataclasses import dataclass, field
+import pydantic
+from pydantic import BaseModel, confloat, PositiveFloat, PositiveInt, validator
+from ray.serve.constants import (ASYNC_CONCURRENCY, DEFAULT_HTTP_HOST,
+                                 DEFAULT_HTTP_PORT)
 
 
 def _callable_accepts_batch(func_or_class):
@@ -61,7 +64,7 @@ class BackendConfig(BaseModel):
     user_config: Any = None
 
     experimental_graceful_shutdown_wait_loop_s: PositiveFloat = 2.0
-    experimental_graceful_shutdown_timeout_s: PositiveFloat = 20.0
+    experimental_graceful_shutdown_timeout_s: confloat(ge=0) = 20.0
 
     class Config:
         validate_assignment = True
@@ -198,8 +201,26 @@ class ReplicaConfig:
             self.resource_dict.update(custom_resources)
 
 
-@dataclass
-class HTTPConfig:
-    host: str = field(init=True)
-    port: int = field(init=True)
-    middlewares: List[Any] = field(init=True)
+class DeploymentMode(str, Enum):
+    NoServer = "NoServer"
+    HeadOnly = "HeadOnly"
+    EveryNode = "EveryNode"
+
+
+class HTTPOptions(pydantic.BaseModel):
+    # Documentation inside serve.start for user's convenience.
+    host: Optional[str] = DEFAULT_HTTP_HOST
+    port: int = DEFAULT_HTTP_PORT
+    middlewares: List[Any] = []
+    location: Optional[DeploymentMode] = DeploymentMode.HeadOnly
+
+    @validator("location", always=True)
+    def location_backfill_no_server(cls, v, values):
+        if values["host"] is None or v is None:
+            return DeploymentMode.NoServer
+        return v
+
+    class Config:
+        validate_assignment = True
+        extra = "forbid"
+        arbitrary_types_allowed = True

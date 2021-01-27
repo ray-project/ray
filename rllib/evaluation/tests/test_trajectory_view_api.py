@@ -146,7 +146,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         config["model"]["custom_model"] = GTrXLNet
         config["model"]["custom_model_config"] = {
             "num_transformer_units": 1,
-            "attn_dim": 64,
+            "attention_dim": 64,
             "num_heads": 2,
             "memory_inference": 50,
             "memory_training": 50,

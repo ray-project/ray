@@ -47,9 +47,6 @@ RAY_CONFIG(uint64_t, num_heartbeats_warning, 5)
 
 /// The duration between reporting resources sent by the raylets.
 RAY_CONFIG(int64_t, raylet_report_resources_period_milliseconds, 100)
-/// Whether to report resource usage lightly. When it is enalbed, only changed part,
-/// like should_global_gc or changed resources, will be included in the message.
-RAY_CONFIG(bool, light_report_resource_usage_enabled, true)
 
 /// The duration between dumping debug info to logs, or -1 to disable.
 RAY_CONFIG(int64_t, debug_dump_period_milliseconds, 10000)
@@ -241,9 +238,6 @@ RAY_CONFIG(uint32_t, maximum_gcs_dead_node_cached_count, 1000)
 /// The interval at which the gcs server will print debug info.
 RAY_CONFIG(int64_t, gcs_dump_debug_log_interval_minutes, 1)
 
-/// Maximum number of times to retry putting an object when the plasma store is full.
-/// Can be set to -1 to enable unlimited retries.
-RAY_CONFIG(int32_t, object_store_full_max_retries, 1000)
 /// Duration to sleep after failing to put an object in plasma because it is full.
 RAY_CONFIG(uint32_t, object_store_full_delay_ms, 10)
 
@@ -288,7 +282,7 @@ RAY_CONFIG(int64_t, metrics_report_batch_size, 100)
 /// Whether or not we enable metrics collection.
 RAY_CONFIG(int64_t, enable_metrics_collection, true)
 
-/// Whether start the Plasma Store as a Raylet thread.
+/// Whether put small objects in the local memory store.
 RAY_CONFIG(bool, put_small_object_in_memory_store, false)
 
 /// Maximum number of tasks that can be in flight between an owner and a worker for which
@@ -363,3 +357,24 @@ RAY_CONFIG(int64_t, min_spilling_size, 100 * 1024 * 1024)
 /// When it is true, manual (force) spilling is not available.
 /// TODO(sang): Fix it.
 RAY_CONFIG(bool, automatic_object_deletion_enabled, true)
+
+/// Grace period until we throw the OOM error to the application in seconds.
+RAY_CONFIG(int64_t, oom_grace_period_s, 10)
+
+/// Whether or not the external storage is file system.
+/// This is configured based on object_spilling_config.
+RAY_CONFIG(bool, is_external_storage_type_fs, true)
+
+/* Configuration parameters for locality-aware scheduling. */
+/// Whether to enable locality-aware leasing. If enabled, then Ray will consider task
+/// dependency locality when choosing a worker for leasing.
+RAY_CONFIG(bool, locality_aware_leasing_enabled, true)
+
+/* Configuration parameters for logging */
+/// Parameters for log rotation. This value is equivalent to RotatingFileHandler's
+/// maxBytes argument.
+RAY_CONFIG(int64_t, log_rotation_max_bytes, 100 * 1024 * 1024)
+
+/// Parameters for log rotation. This value is equivalent to RotatingFileHandler's
+/// backupCount argument.
+RAY_CONFIG(int64_t, log_rotation_backup_count, 5)

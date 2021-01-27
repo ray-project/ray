@@ -11,7 +11,7 @@ serve_tests_srcs = glob(["tests/*.py"],
 
 py_test(
     name = "test_api",
-    size = "medium",
+    size = "large",
     srcs = serve_tests_srcs,
     tags = ["exclusive"],
     deps = [":serve_lib"],
@@ -105,7 +105,7 @@ py_test(
 
 py_test(
     name = "test_standalone",
-    size = "small",
+    size = "medium",
     srcs = serve_tests_srcs,
     tags = ["exclusive"],
     deps = [":serve_lib"],

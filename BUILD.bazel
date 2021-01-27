@@ -274,7 +274,6 @@ cc_library(
         ":ray_common",
         ":ray_util",
         "//src/ray/protobuf:common_cc_proto",
-        "@arrow",
         "@com_github_google_glog//:glog",
         "@msgpack",
     ],
@@ -360,7 +359,6 @@ cc_library(
         ":ray_util",
         "//src/ray/protobuf:common_cc_proto",
         "//src/ray/protobuf:gcs_cc_proto",
-        "@arrow",
         "@boost//:asio",
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -767,6 +765,16 @@ cc_test(
 cc_test(
     name = "actor_manager_test",
     srcs = ["src/ray/core_worker/test/actor_manager_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":core_worker_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "lease_policy_test",
+    srcs = ["src/ray/core_worker/test/lease_policy_test.cc"],
     copts = COPTS,
     deps = [
         ":core_worker_lib",
@@ -1216,6 +1224,19 @@ cc_test(
     ],
 )
 
+cc_test(
+    name = "gcs_resource_scheduler_test",
+    srcs = [
+        "src/ray/gcs/gcs_server/test/gcs_resource_scheduler_test.cc",
+    ],
+    copts = COPTS,
+    deps = [
+        ":gcs_server_lib",
+        ":gcs_test_util_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "service_based_gcs_client_lib",
     srcs = glob(
@@ -1341,30 +1362,6 @@ cc_library(
         ":ray_common",
         ":ray_util",
         "@boost//:asio",
-    ],
-)
-
-cc_binary(
-    name = "object_manager_test",
-    testonly = 1,
-    srcs = ["src/ray/object_manager/test/object_manager_test.cc"],
-    copts = COPTS,
-    deps = [
-        ":object_manager",
-        "//src/ray/protobuf:common_cc_proto",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-cc_binary(
-    name = "object_manager_stress_test",
-    testonly = 1,
-    srcs = ["src/ray/object_manager/test/object_manager_stress_test.cc"],
-    copts = COPTS,
-    deps = [
-        ":object_manager",
-        "//src/ray/protobuf:common_cc_proto",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 

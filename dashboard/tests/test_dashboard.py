@@ -208,10 +208,10 @@ def test_http_get(enable_test_module, ray_start_with_dashboard):
 
     target_url = webui_url + "/test/dump"
 
-    timeout_seconds = 10
+    timeout_seconds = 30
     start_time = time.time()
     while True:
-        time.sleep(1)
+        time.sleep(3)
         try:
             response = requests.get(webui_url + "/test/http_get?url=" +
                                     target_url)
@@ -569,6 +569,39 @@ def test_immutable_types():
     d3 = dashboard_utils.ImmutableList([1, np.zeros([3, 5])])
     with pytest.raises(TypeError):
         print(d3[1])
+
+
+def test_http_proxy(enable_test_module, set_http_proxy, shutdown_only):
+    address_info = ray.init(num_cpus=1, include_dashboard=True)
+    assert (wait_until_server_available(address_info["webui_url"]) is True)
+
+    webui_url = address_info["webui_url"]
+    webui_url = format_web_url(webui_url)
+
+    timeout_seconds = 10
+    start_time = time.time()
+    while True:
+        time.sleep(1)
+        try:
+            response = requests.get(
+                webui_url + "/test/dump",
+                proxies={
+                    "http": None,
+                    "https": None
+                })
+            response.raise_for_status()
+            try:
+                response.json()
+                assert response.ok
+            except Exception as ex:
+                logger.info("failed response: %s", response.text)
+                raise ex
+            break
+        except (AssertionError, requests.exceptions.ConnectionError) as e:
+            logger.info("Retry because of %s", e)
+        finally:
+            if time.time() > start_time + timeout_seconds:
+                raise Exception("Timed out while testing.")
 
 
 if __name__ == "__main__":

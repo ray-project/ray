@@ -55,13 +55,13 @@ def test_detached_deployment():
             "This test can only be ran when port sharing is supported."))
 def test_multiple_routers():
     cluster = Cluster()
-    head_node = cluster.add_node()
-    cluster.add_node()
+    head_node = cluster.add_node(num_cpus=4)
+    cluster.add_node(num_cpus=4)
 
     ray.init(head_node.address)
     node_ids = ray.state.node_ids()
     assert len(node_ids) == 2
-    client = serve.start(http_port=8005)  # noqa: F841
+    client = serve.start(http_options=dict(port=8005, location="EveryNode"))
 
     def get_proxy_names():
         proxy_names = []
@@ -135,11 +135,12 @@ def test_middleware():
 
     port = new_port()
     serve.start(
-        http_port=port,
-        http_middlewares=[
-            Middleware(
-                CORSMiddleware, allow_origins=["*"], allow_methods=["*"])
-        ])
+        http_options=dict(
+            port=port,
+            middlewares=[
+                Middleware(
+                    CORSMiddleware, allow_origins=["*"], allow_methods=["*"])
+            ]))
     ray.get(block_until_http_ready.remote(f"http://127.0.0.1:{port}/-/routes"))
 
     # Snatched several test cases from Starlette
@@ -157,6 +158,81 @@ def test_middleware():
     assert resp.headers["access-control-allow-origin"] == "*"
 
     ray.shutdown()
+
+
+def test_http_proxy_fail_loudly():
+    # Test that if the http server fail to start, serve.start should fail.
+    with pytest.raises(socket.gaierror):
+        serve.start(http_options={"host": "bad.ip.address"})
+
+    ray.shutdown()
+
+
+def test_no_http():
+    # The following should have the same effect.
+    options = [
+        {
+            "http_host": None
+        },
+        {
+            "http_options": {
+                "host": None
+            }
+        },
+        {
+            "http_options": {
+                "location": None
+            }
+        },
+        {
+            "http_options": {
+                "location": "NoServer"
+            }
+        },
+    ]
+
+    ray.init()
+    for option in options:
+        client = serve.start(**option)
+
+        # Only controller actor should exist
+        live_actors = [
+            actor for actor in ray.actors().values()
+            if actor["State"] == ray.gcs_utils.ActorTableData.ALIVE
+        ]
+        assert len(live_actors) == 1
+
+        client.shutdown()
+    ray.shutdown()
+
+
+def test_http_head_only():
+    cluster = Cluster()
+    head_node = cluster.add_node(num_cpus=4)
+    cluster.add_node(num_cpus=4)
+
+    ray.init(head_node.address)
+    node_ids = ray.state.node_ids()
+    assert len(node_ids) == 2
+
+    client = serve.start(http_options={
+        "port": new_port(),
+        "location": "HeadOnly"
+    })
+
+    # Only the controller and head node actor should be started
+    assert len(ray.actors()) == 2
+
+    # They should all be placed on the head node
+    cpu_per_nodes = {
+        r["CPU"]
+        for r in ray.state.state._available_resources_per_node().values()
+    }
+    assert cpu_per_nodes == {2, 4}
+
+    client.shutdown()
+    ray.shutdown()
+    cluster.shutdown()
 
 
 if __name__ == "__main__":

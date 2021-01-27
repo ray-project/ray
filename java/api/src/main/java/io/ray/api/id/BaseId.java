@@ -52,7 +52,7 @@ public abstract class BaseId implements Serializable {
   /**
    * Derived class should implement this function.
    *
-   * <p>Returns The length of this id in bytes.
+   * @return The length of this id in bytes.
    */
   public abstract int size();
 

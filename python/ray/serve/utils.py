@@ -11,6 +11,7 @@ from typing import Iterable, List, Dict, Tuple
 import os
 from ray.serve.exceptions import RayServeException
 from collections import UserDict
+from pathlib import Path
 
 import starlette.requests
 import requests
@@ -19,6 +20,7 @@ import pydantic
 
 import ray
 from ray.serve.constants import HTTP_PROXY_TIMEOUT
+from ray.ray_constants import MEMORY_RESOURCE_UNIT_BYTES
 
 ACTOR_FAILURE_RETRY_TIMEOUT_S = 60
 
@@ -101,7 +103,8 @@ def parse_request_item(request_item):
 def _get_logger():
     logger = logging.getLogger("ray.serve")
     # TODO(simon): Make logging level configurable.
-    if os.environ.get("SERVE_LOG_DEBUG"):
+    log_level = os.environ.get("SERVE_LOG_DEBUG")
+    if log_level and int(log_level):
         logger.setLevel(logging.DEBUG)
     else:
         logger.setLevel(logging.INFO)
@@ -179,13 +182,21 @@ def format_actor_name(actor_name, controller_name=None, *modifiers):
 
 def get_conda_env_dir(env_name):
     """Given a environment name like `tf1`, find and validate the
-    corresponding conda directory.
+    corresponding conda directory. Untested on Windows.
     """
     conda_prefix = os.environ.get("CONDA_PREFIX")
     if conda_prefix is None:
-        raise ValueError(
-            "Serve cannot find environment variables installed by conda. " +
-            "Are you sure you are in a conda env?")
+        # The caller is neither in a conda env or in (base).  This is rare
+        # because by default, new terminals start in (base), but we can still
+        # support this case.
+        conda_exe = os.environ.get("CONDA_EXE")
+        if conda_exe is None:
+            raise RayServeException(
+                "Ray Serve cannot find environment variables set by conda. "
+                "Please verify conda is installed.")
+        # Example: CONDA_EXE=$HOME/anaconda3/bin/python
+        # Strip out the /bin/python by going up two parent directories.
+        conda_prefix = str(Path(conda_exe).parent.parent)
 
     # There are two cases:
     # 1. We are in conda base env: CONDA_DEFAULT_ENV=base and
@@ -295,8 +306,18 @@ def try_schedule_resources_on_nodes(
         for node_id, node_resource in ray_resource.items():
             # Check if we can schedule on this node
             feasible = True
+
             for key, count in resource_dict.items():
-                if node_resource.get(key, 0) - count < 0:
+                # Fix legacy behaviour in all memory objects
+                if "memory" in key:
+                    memory_resource = node_resource.get(key, 0)
+                    if memory_resource > 0:
+                        # Convert from chunks to bytes
+                        memory_resource *= MEMORY_RESOURCE_UNIT_BYTES
+                    if memory_resource - count < 0:
+                        feasible = False
+
+                elif node_resource.get(key, 0) - count < 0:
                     feasible = False
 
             # If we can, schedule it on this node
@@ -414,3 +435,19 @@ def compute_dict_delta(old_dict, new_dict) -> Tuple[dict, dict, dict]:
         {k: new_dict[k]
          for k in updated_keys},
     )
+
+
+def get_current_node_resource_key() -> str:
+    """Get the Ray resource key for current node.
+
+    It can be used for actor placement.
+    """
+    current_node_id = ray.get_runtime_context().node_id.hex()
+    for node in ray.nodes():
+        if node["NodeID"] == current_node_id:
+            # Found the node.
+            for key in node["Resources"].keys():
+                if key.startswith("node:"):
+                    return key
+    else:
+        raise ValueError("Cannot found the node dictionary for current node.")
