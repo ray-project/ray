@@ -185,8 +185,11 @@ class DashboardAgent(object):
                 agent_port=self.grpc_port,
                 agent_ip_address=self.ip))
 
-        await asyncio.gather(check_parent_task,
-                             *(m.run(self.server) for m in modules))
+        tasks = [m.run(self.server) for m in modules]
+        if sys.platform not in ["win32", "cygwin"]:
+            tasks.append(check_parent_task)
+        await asyncio.gather(*tasks)
+
         await self.server.wait_for_termination()
         # Wait for finish signal.
         await runner.cleanup()
