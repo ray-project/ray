@@ -713,7 +713,9 @@ def get_or_create_head_node(config: Dict[str, Any],
         cli_logger.print("  {}", remote_shell_str.strip())
 
 
-def _prepare_config_for_head_node(config, provider, no_restart):
+def _prepare_config_for_head_node(config: Dict[str, Any],
+                                  provider: NodeProvider,
+                                  no_restart: bool) -> Tuple[Dict[str, Any], tempfile.NamedTemporaryFile]:
     # Rewrite the auth config so that the head
     # node can update the workers
     remote_config = copy.deepcopy(config)
