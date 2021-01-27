@@ -118,8 +118,6 @@ class _ExperimentCheckpointManager:
             # Multiplying this time by 19 means we spend ~5% of the time
             # writing global checkpoints and 95% of the time processing trials
             self._checkpoint_period = max(10., checkpoint_time_taken * 19)
-            print(f"TAKEN {checkpoint_time_taken} {self._checkpoint_period}")
-            print(f"{self._syncer}")
             logger.debug(f"Global experiment checkpointing took "
                          f"{checkpoint_time_taken:.2f} seconds. "
                          f"Adjusting checkpoint period to "
