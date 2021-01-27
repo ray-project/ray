@@ -150,7 +150,7 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
       bool success = true;
       const auto &deps = spec.GetDependencyIds();
       if (!deps.empty()) {
-        bool success = pin_task_arguments_(deps, &args);
+        success = pin_task_arguments_(deps, &args);
         if (!success) {
           RAY_LOG(WARNING) << "Error getting task arguments from plasma store";
         }
