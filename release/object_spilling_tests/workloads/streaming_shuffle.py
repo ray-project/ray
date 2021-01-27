@@ -6,9 +6,8 @@ from typing import List
 import time
 
 num_nodes = 4
-object_store_size = 100 * 1024 * 1024  # 100 MB.
-partition_size = int(10e6)  # 20 MB
-num_partitions = 100
+partition_size = int(100e6)  # 100 MB
+num_partitions = 1000
 rows_per_partition = partition_size // (8 * 2)
 
 
@@ -108,6 +107,7 @@ for i in range(1, max_iteration):
     deltas.append(delta)
     # Have some gap before starting the next trial.
     ray.shutdown()
+    print(f"Mean over {i} trials: {np.mean(deltas)} += {np.std(deltas)}")
     time.sleep(5)
 
 print(f"Mean over {max_iteration} trials: {np.mean(deltas)} += {np.std(deltas)}")
