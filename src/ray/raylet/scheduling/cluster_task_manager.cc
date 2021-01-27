@@ -20,7 +20,8 @@ ClusterTaskManager::ClusterTaskManager(
     NodeInfoGetter get_node_info,
     std::function<void(const Task &)> announce_infeasible_task,
     WorkerPoolInterface &worker_pool,
-    std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers)
+    std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers,
+    std::function<bool(const std::vector<ObjectID> &object_ids, std::vector<std::unique_ptr<RayObject>> *results)> pin_task_arguments)
     : self_node_id_(self_node_id),
       cluster_resource_scheduler_(cluster_resource_scheduler),
       task_dependency_manager_(task_dependency_manager),
@@ -31,7 +32,8 @@ ClusterTaskManager::ClusterTaskManager(
           RayConfig::instance().max_resource_shapes_per_load_report()),
       report_worker_backlog_(RayConfig::instance().report_worker_backlog()),
       worker_pool_(worker_pool),
-      leased_workers_(leased_workers) {}
+      leased_workers_(leased_workers),
+      pin_task_arguments_(pin_task_arguments) {}
 
 bool ClusterTaskManager::SchedulePendingTasks() {
   // Always try to schedule infeasible tasks in case they are now feasible.
@@ -144,11 +146,27 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
       auto &task = std::get<0>(work);
       auto &spec = task.GetTaskSpecification();
 
+      std::vector<std::unique_ptr<RayObject>> args;
+      bool success = true;
+      const auto &deps = spec.GetDependencyIds();
+      if (!deps.empty()) {
+        bool success = pin_task_arguments_(deps, &args);
+        if (!success) {
+          RAY_LOG(WARNING) << "Error getting task arguments from plasma store";
+        }
+        for (size_t i = 0; i < deps.size(); i++) {
+          if (args[i] == nullptr) {
+            RAY_LOG(INFO) << "Task " << spec.TaskId() << " argument " << deps[i] << " was evicted before task could be dispatched";
+            success = false;
+            break;
+          }
+        }
+      }
+
       // An argument was evicted since this task was added to the dispatch
       // queue. Move it back to the waiting queue. The caller is responsible
       // for notifying us when the task is unblocked again.
-      if (!spec.GetDependencies().empty() &&
-          !task_dependency_manager_.IsTaskReady(spec.TaskId())) {
+      if (!success) {
         waiting_tasks_[spec.TaskId()] = std::move(*work_it);
         work_it = dispatch_queue.erase(work_it);
         continue;
@@ -177,6 +195,10 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
         bool worker_leased;
         bool remove = AttemptDispatchWork(*work_it, worker, &worker_leased);
         if (worker_leased) {
+          // Pin the arguments while the lease is active. These will be erased
+          // once the lease is returned.
+          RAY_CHECK(pinned_task_arguments_.emplace(spec.TaskId(), std::move(args)).second) << spec.TaskId();
+
           auto reply = std::get<1>(*work_it);
           auto callback = std::get<2>(*work_it);
           Dispatch(worker, leased_workers_, task, reply, callback);
@@ -295,6 +317,7 @@ void ClusterTaskManager::TaskFinished(std::shared_ptr<WorkerInterface> worker,
                                       Task *task) {
   RAY_CHECK(worker != nullptr && task != nullptr);
   *task = worker->GetAssignedTask();
+  RAY_CHECK(pinned_task_arguments_.erase(task->GetTaskSpecification().TaskId()));
   if (worker->GetAllocatedInstances() != nullptr) {
     ReleaseWorkerResources(worker);
   }

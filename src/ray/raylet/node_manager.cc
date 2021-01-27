@@ -212,7 +212,10 @@ NodeManager::NodeManager(boost::asio::io_service &io_service, const NodeID &self
         self_node_id_,
         std::dynamic_pointer_cast<ClusterResourceScheduler>(cluster_resource_scheduler_),
         dependency_manager_, is_owner_alive, get_node_info_func, announce_infeasible_task,
-        worker_pool_, leased_workers_));
+        worker_pool_, leased_workers_,
+        [this](const std::vector<ObjectID> &object_ids, std::vector<std::unique_ptr<RayObject>> *results) {
+          return GetObjectsFromPlasma(object_ids, results);
+        }));
     placement_group_resource_manager_ =
         std::make_shared<NewPlacementGroupResourceManager>(
             std::dynamic_pointer_cast<ClusterResourceScheduler>(
@@ -2337,7 +2340,7 @@ std::string compact_tag_string(const opencensus::stats::ViewDescriptor &view,
   return result.str();
 }
 
-std::vector<std::unique_ptr<RayObject>> NodeManager::GetObjectsFromPlasma(const std::vector<ObjectID> &object_ids) {
+bool NodeManager::GetObjectsFromPlasma(const std::vector<ObjectID> &object_ids, std::vector<std::unique_ptr<RayObject>> *results) {
   // Pin the objects in plasma by getting them and holding a reference to
   // the returned buffer.
   // NOTE: the caller must ensure that the objects already exist in plasma before
@@ -2349,22 +2352,18 @@ std::vector<std::unique_ptr<RayObject>> NodeManager::GetObjectsFromPlasma(const 
   // since we must wait for the plasma store's reply. We should consider using
   // an `AsyncGet` instead.
   if (!store_client_.Get(object_ids, /*timeout_ms=*/0, &plasma_results).ok()) {
-    RAY_LOG(WARNING) << "Failed to get objects to be pinned from object store.";
-    // TODO(suquark): Maybe "Status::ObjectNotFound" is more accurate here.
-    send_reply_callback(Status::Invalid("Failed to get objects."), nullptr, nullptr);
-    return;
+    return false;
   }
 
-  std::vector<std::unique_ptr<RayObject>> objects;
-  for (int64_t i = 0; i < request.object_ids().size(); i++) {
-    if (plasma_results[i].data == nullptr) {
-      objects.push_back(nullptr);
+  for (const auto &plasma_result : plasma_results) {
+    if (plasma_result.data == nullptr) {
+      results->push_back(nullptr);
     } else {
-      objects.emplace_back(std::unique_ptr<RayObject>(
-          new RayObject(plasma_results[i].data, plasma_results[i].metadata, {})));
+      results->emplace_back(std::unique_ptr<RayObject>(
+          new RayObject(plasma_result.data, plasma_result.metadata, {})));
     }
   }
-  return objects;
+  return true;
 }
 
 void NodeManager::HandlePinObjectIDs(const rpc::PinObjectIDsRequest &request,
@@ -2376,8 +2375,14 @@ void NodeManager::HandlePinObjectIDs(const rpc::PinObjectIDsRequest &request,
     object_ids.push_back(ObjectID::FromBinary(object_id_binary));
   }
   if (object_pinning_enabled_) {
-    auto objects = GetObjectsFromPlasma(object_ids);
-    local_object_manager_.PinObjects(object_ids, std::move(objects));
+    std::vector<std::unique_ptr<RayObject>> results;
+    if (!GetObjectsFromPlasma(object_ids, &results)) {
+      RAY_LOG(WARNING) << "Failed to get objects that should have been in the object store. These objects may have been evicted while there are still references in scope.";
+      // TODO(suquark): Maybe "Status::ObjectNotFound" is more accurate here.
+      send_reply_callback(Status::Invalid("Failed to get objects."), nullptr, nullptr);
+      return;
+    }
+    local_object_manager_.PinObjects(object_ids, std::move(results));
   }
   // Wait for the object to be freed by the owner, which keeps the ref count.
   local_object_manager_.WaitForObjectFree(request.owner_address(), object_ids);
