@@ -590,11 +590,7 @@ TEST_F(ClusterTaskManagerTest, BacklogReportTest) {
   task_manager_.FillResourceUsage(data);
 
   resource_load_by_shape = data->resource_load_by_shape();
-  shape1 = resource_load_by_shape.resource_demands()[0];
-
-  ASSERT_EQ(shape1.backlog_size(), 0);
-  ASSERT_EQ(shape1.num_infeasible_requests_queued(), 0);
-  ASSERT_EQ(shape1.num_ready_requests_queued(), 0);
+  ASSERT_TRUE(resource_load_by_shape.resource_demands().empty());
   AssertNoLeaks();
 }
 
