@@ -81,6 +81,9 @@ bool PullManager::ActivateNextPullBundleRequest(
       auto it = object_pull_requests_.find(obj_id);
       RAY_CHECK(it != object_pull_requests_.end());
       num_bytes_being_pulled_ += it->second.object_size;
+      // TODO(ekl) consider batching this and handling it at the end of
+      // UpdatePullsBasedOnAvailableMemory() to avoid pulling cancelled objs.
+      TryToMakeObjectLocal(obj_id);
     }
   }
 
@@ -122,7 +125,6 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) 
   num_bytes_available_ = num_bytes_available;
   uint64_t prev_highest_req_id_being_pulled = highest_req_id_being_pulled_;
 
-  std::unordered_set<ObjectID> object_ids_to_pull;
   // While there is available capacity, activate the next pull request.
   while (num_bytes_being_pulled_ < num_bytes_available_) {
     // Get the next pull request in the queue.
@@ -166,15 +168,6 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) 
   }
 
   TriggerOutOfMemoryHandlingIfNeeded();
-
-  if (highest_req_id_being_pulled_ > prev_highest_req_id_being_pulled) {
-    // There are newly activated requests. Start pulling objects for the newly
-    // activated requests.
-    // NOTE(swang): We could also just wait for the next timer tick to pull the
-    // objects, but this would add a delay of up to one tick for any bundles of
-    // multiple objects, even when we are not under memory pressure.
-    Tick();
-  }
 }
 
 void PullManager::TriggerOutOfMemoryHandlingIfNeeded() {
