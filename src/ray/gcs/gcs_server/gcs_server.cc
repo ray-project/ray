@@ -325,8 +325,9 @@ void GcsServer::InstallEventListeners() {
         auto &worker_address = worker_failure_data->worker_address();
         auto worker_id = WorkerID::FromBinary(worker_address.worker_id());
         auto node_id = NodeID::FromBinary(worker_address.raylet_id());
+        const std::string exit_info = worker_failure_data->exit_info();
         gcs_actor_manager_->OnWorkerDead(node_id, worker_id,
-                                         worker_failure_data->exit_type());
+                                         worker_failure_data->exit_type(), exit_info);
       });
 
   // Install job event listeners.

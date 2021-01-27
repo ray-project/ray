@@ -541,16 +541,20 @@ void GcsActorManager::CollectStats() const {
 }
 
 void GcsActorManager::OnWorkerDead(const ray::NodeID &node_id,
+                                   const ray::WorkerID &worker_id) {
+  OnWorkerDead(node_id, worker_id, rpc::WorkerExitType::SYSTEM_ERROR_EXIT, "No message avaliable.");
+}
+
+void GcsActorManager::OnWorkerDead(const ray::NodeID &node_id,
                                    const ray::WorkerID &worker_id,
-                                   const rpc::WorkerExitType disconnect_type) {
-  bool intentional_exit = disconnect_type == rpc::WorkerExitType::INTENDED_EXIT;
-  if (intentional_exit) {
-    RAY_LOG(INFO) << "Worker " << worker_id << " on node " << node_id
-                  << " intentional exit.";
-  } else {
-    RAY_LOG(INFO) << "Worker " << worker_id << " on node " << node_id
-                  << " failed and exited abnormally.";
-  }
+                                   const rpc::WorkerExitType disconnect_type,
+                                   const std::string &exit_info) {
+  RAY_LOG(INFO) << "Worker " << worker_id << " on node " << node_id << " exited, type="
+                << rpc::WorkerExitType_Name(disconnect_type) << ", exit_info=" << exit_info;
+
+  bool need_reconstruct = 
+    disconnect_type != rpc::WorkerExitType::INTENDED_EXIT &&
+    disconnect_type != rpc::WorkerExitType::CREATION_TASK_ERROR; 
   // Destroy all actors that are owned by this worker.
   const auto it = owners_.find(node_id);
   if (it != owners_.end() && it->second.count(worker_id)) {
@@ -592,7 +596,7 @@ void GcsActorManager::OnWorkerDead(const ray::NodeID &node_id,
 
   // Otherwise, try to reconstruct the actor that was already created or in the creation
   // process.
-  ReconstructActor(actor_id, /*need_reschedule=*/!intentional_exit);
+  ReconstructActor(actor_id, /*need_reschedule=*/need_reconstruct, exit_info);
 }
 
 void GcsActorManager::OnNodeDead(const NodeID &node_id) {
@@ -641,7 +645,11 @@ void GcsActorManager::OnNodeDead(const NodeID &node_id) {
   }
 }
 
-void GcsActorManager::ReconstructActor(const ActorID &actor_id, bool need_reschedule) {
+void GcsActorManager::ReconstructActor(const ActorID &actor_id) {
+  ReconstructActor(actor_id, /*need_reschedule=*/true, /*exit_info=*/"No exit info available.");
+}
+
+void GcsActorManager::ReconstructActor(const ActorID &actor_id, bool need_reschedule, const std::string &exit_info) {
   auto &actor = registered_actors_[actor_id];
   // If the owner and this actor is dead at the same time, the actor
   // could've been destroyed and dereigstered before reconstruction.
@@ -660,6 +668,7 @@ void GcsActorManager::ReconstructActor(const ActorID &actor_id, bool need_resche
   int64_t remaining_restarts;
   // Destroy placement group owned by this actor.
   destroy_owned_placement_group_if_needed_(actor_id);
+  std::string actor_dead_info = exit_info;
   if (!need_reschedule) {
     remaining_restarts = 0;
   } else if (max_restarts == -1) {
@@ -667,6 +676,9 @@ void GcsActorManager::ReconstructActor(const ActorID &actor_id, bool need_resche
   } else {
     int64_t remaining = max_restarts - num_restarts;
     remaining_restarts = std::max(remaining, static_cast<int64_t>(0));
+    if (remaining_restarts == 0) {
+      actor_dead_info = "Actor is dead because max restarts exceed.";
+    }
   }
   RAY_LOG(INFO) << "Actor is failed " << actor_id << " on worker " << worker_id
                 << " at node " << node_id << ", need_reschedule = " << need_reschedule
@@ -701,6 +713,7 @@ void GcsActorManager::ReconstructActor(const ActorID &actor_id, bool need_resche
     }
 
     mutable_actor_table_data->set_state(rpc::ActorTableData::DEAD);
+    mutable_actor_table_data->set_dead_info(actor_dead_info);
     // The backend storage is reliable in the future, so the status must be ok.
     RAY_CHECK_OK(gcs_table_storage_->ActorTable().Put(
         actor_id, *mutable_actor_table_data,

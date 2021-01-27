@@ -145,6 +145,8 @@ message ActorTableData {
   repeated ResourceMapEntry resource_mapping = 15;
   // The process id of this actor.
   uint32 pid = 16;
+  // Reason why the actor died. Only applies when state=DEAD.
+  string dead_info = 17;
 }
 
 message ErrorTableData {
