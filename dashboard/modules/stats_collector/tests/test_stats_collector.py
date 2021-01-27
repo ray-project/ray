@@ -91,7 +91,7 @@ def test_node_info(disable_aiohttp_cache, ray_start_with_dashboard):
                 raise Exception(f"Timed out while testing, {ex_stack}")
 
 
-def test_memory_table(ray_start_with_dashboard):
+def test_memory_table(disable_aiohttp_cache, ray_start_with_dashboard):
     assert (wait_until_server_available(ray_start_with_dashboard["webui_url"]))
 
     @ray.remote
@@ -129,7 +129,7 @@ def test_memory_table(ray_start_with_dashboard):
     wait_for_condition(check_mem_table, 10)
 
 
-def test_get_all_node_details(ray_start_with_dashboard):
+def test_get_all_node_details(disable_aiohttp_cache, ray_start_with_dashboard):
     assert (wait_until_server_available(ray_start_with_dashboard["webui_url"]))
 
     webui_url = format_web_url(ray_start_with_dashboard["webui_url"])
@@ -193,6 +193,10 @@ def test_multi_nodes_info(enable_test_module, disable_aiohttp_cache,
                 assert detail["result"] is True, detail["msg"]
                 detail = detail["data"]["detail"]
                 assert detail["raylet"]["state"] == "ALIVE"
+            response = requests.get(webui_url + "/test/dump?key=agents")
+            response.raise_for_status()
+            agents = response.json()
+            assert len(agents["data"]["agents"]) == 3
             return True
         except Exception as ex:
             logger.info(ex)

@@ -13,6 +13,7 @@ MACPYTHON_URL=https://www.python.org/ftp/python
 MACPYTHON_PY_PREFIX=/Library/Frameworks/Python.framework/Versions
 DOWNLOAD_DIR=python_downloads
 
+NODE_VERSION="14"
 PY_VERSIONS=("3.6.1"
              "3.7.0"
              "3.8.2")
@@ -36,6 +37,7 @@ mkdir -p .whl
 
 # Use the latest version of Node.js in order to build the dashboard.
 source "$HOME"/.nvm/nvm.sh
+nvm install $NODE_VERSION
 nvm use node
 
 # Build the dashboard so its static assets can be included in the wheel.

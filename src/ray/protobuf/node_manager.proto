@@ -115,28 +115,12 @@ message GetNodeStatsRequest {
   bool include_memory_info = 1;
 }
 
-message WorkerStats {
-  // PID of the worker process.
-  uint32 pid = 1;
-  // Whether this is a driver.
-  bool is_driver = 2;
-  // Debug information returned from the core worker.
-  CoreWorkerStats core_worker_stats = 3;
-  // Error string if fetching core worker stats failed.
-  string fetch_error = 4;
-  // Worker id of core worker.
-  bytes worker_id = 5;
-  // Worker language.
-  Language language = 6;
-}
-
 message GetNodeStatsReply {
-  repeated WorkerStats workers_stats = 1;
+  repeated CoreWorkerStats core_workers_stats = 1;
   repeated ViewData view_data = 2;
   uint32 num_workers = 3;
   repeated TaskSpec infeasible_tasks = 4;
   repeated TaskSpec ready_tasks = 5;
-  int32 pid = 6;
 }
 
 message GlobalGCRequest {

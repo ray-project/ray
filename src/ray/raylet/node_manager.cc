@@ -3174,7 +3174,6 @@ void NodeManager::FlushObjectsToFree() {
 void NodeManager::HandleGetNodeStats(const rpc::GetNodeStatsRequest &node_stats_request,
                                      rpc::GetNodeStatsReply *reply,
                                      rpc::SendReplyCallback send_reply_callback) {
-  reply->set_pid(getpid());
   for (const auto &task : local_queues_.GetTasks(TaskState::INFEASIBLE)) {
     if (task.GetTaskSpecification().IsActorCreationTask()) {
       auto infeasible_task = reply->add_infeasible_tasks();
@@ -3254,22 +3253,8 @@ void NodeManager::HandleGetNodeStats(const rpc::GetNodeStatsRequest &node_stats_
     worker->rpc_client()->GetCoreWorkerStats(
         request, [reply, worker, all_workers, driver_ids, send_reply_callback](
                      const ray::Status &status, const rpc::GetCoreWorkerStatsReply &r) {
-          auto worker_stats = reply->add_workers_stats();
-          worker_stats->set_pid(worker->GetProcess().GetId());
-          worker_stats->set_worker_id(worker->WorkerId().Binary());
-          worker_stats->set_is_driver(driver_ids.contains(worker->WorkerId()));
-          worker_stats->set_language(worker->GetLanguage());
+          reply->add_core_workers_stats()->MergeFrom(r.core_worker_stats());
           reply->set_num_workers(reply->num_workers() + 1);
-          if (status.ok()) {
-            worker_stats->mutable_core_worker_stats()->MergeFrom(r.core_worker_stats());
-          } else {
-            RAY_LOG(WARNING) << "Failed to send get core worker stats request, "
-                             << "worker id is " << worker->WorkerId() << ", status is "
-                             << status.ToString()
-                             << ". This is likely since the worker has died before the "
-                                "request was sent.";
-            worker_stats->set_fetch_error(status.ToString());
-          }
           if (reply->num_workers() == all_workers.size()) {
             send_reply_callback(Status::OK(), nullptr, nullptr);
           }
@@ -3281,8 +3266,8 @@ std::string FormatMemoryInfo(std::vector<rpc::GetNodeStatsReply> node_stats) {
   // First pass to compute object sizes.
   absl::flat_hash_map<ObjectID, int64_t> object_sizes;
   for (const auto &reply : node_stats) {
-    for (const auto &worker_stats : reply.workers_stats()) {
-      for (const auto &object_ref : worker_stats.core_worker_stats().object_refs()) {
+    for (const auto &core_worker_stats : reply.core_workers_stats()) {
+      for (const auto &object_ref : core_worker_stats.object_refs()) {
         auto obj_id = ObjectID::FromBinary(object_ref.object_id());
         if (object_ref.object_size() > 0) {
           object_sizes[obj_id] = object_ref.object_size();
@@ -3304,9 +3289,9 @@ std::string FormatMemoryInfo(std::vector<rpc::GetNodeStatsReply> node_stats) {
 
   // Second pass builds the summary string for each node.
   for (const auto &reply : node_stats) {
-    for (const auto &worker_stats : reply.workers_stats()) {
+    for (const auto &core_worker_stats : reply.core_workers_stats()) {
       bool pid_printed = false;
-      for (const auto &object_ref : worker_stats.core_worker_stats().object_refs()) {
+      for (const auto &object_ref : core_worker_stats.object_refs()) {
         auto obj_id = ObjectID::FromBinary(object_ref.object_id());
         if (!object_ref.pinned_in_memory() && object_ref.local_ref_count() == 0 &&
             object_ref.submitted_task_ref_count() == 0 &&
@@ -3317,10 +3302,10 @@ std::string FormatMemoryInfo(std::vector<rpc::GetNodeStatsReply> node_stats) {
           continue;
         }
         if (!pid_printed) {
-          if (worker_stats.is_driver()) {
-            builder << "; driver pid=" << worker_stats.pid() << "\n";
+          if (core_worker_stats.worker_type() == rpc::WorkerType::DRIVER) {
+            builder << "; driver pid=" << core_worker_stats.pid() << "\n";
           } else {
-            builder << "; worker pid=" << worker_stats.pid() << "\n";
+            builder << "; worker pid=" << core_worker_stats.pid() << "\n";
           }
           pid_printed = true;
         }

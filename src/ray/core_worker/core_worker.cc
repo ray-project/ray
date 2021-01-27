@@ -2182,8 +2182,12 @@ void CoreWorker::HandleGetCoreWorkerStats(const rpc::GetCoreWorkerStatsRequest &
   stats->set_current_task_func_desc(current_task_.FunctionDescriptor()->ToString());
   stats->set_ip_address(rpc_address_.ip_address());
   stats->set_port(rpc_address_.port());
+  stats->set_pid(getpid());
+  stats->set_language(options_.language);
   stats->set_job_id(worker_context_.GetCurrentJobID().Binary());
+  stats->set_worker_id(worker_context_.GetWorkerID().Binary());
   stats->set_actor_id(actor_id_.Binary());
+  stats->set_worker_type(worker_context_.GetWorkerType());
   auto used_resources_map = stats->mutable_used_resources();
   for (auto const &it : *resource_ids_) {
     rpc::ResourceAllocations allocations;

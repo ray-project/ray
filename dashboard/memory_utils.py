@@ -278,14 +278,13 @@ class MemoryTable:
         return self.__repr__()
 
 
-def construct_memory_table(workers_info: List,
+def construct_memory_table(workers_stats: List,
                            group_by: GroupByType = GroupByType.NODE_ADDRESS,
                            sort_by=SortingType.OBJECT_SIZE) -> MemoryTable:
     memory_table_entries = []
-    for worker_info in workers_info:
-        pid = worker_info["pid"]
-        is_driver = worker_info.get("isDriver", False)
-        core_worker_stats = worker_info["coreWorkerStats"]
+    for core_worker_stats in workers_stats:
+        pid = core_worker_stats["pid"]
+        is_driver = core_worker_stats.get("workerType") == "DRIVER"
         node_address = core_worker_stats["ipAddress"]
         object_refs = core_worker_stats.get("objectRefs", [])
 

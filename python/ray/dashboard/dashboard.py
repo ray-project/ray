@@ -81,7 +81,7 @@ class DashboardController(BaseDashboardController):
     def _construct_raylet_info(self):
         D = self.raylet_stats.get_raylet_stats()
         workers_info_by_node = {
-            data["nodeId"]: data.get("workersStats")
+            data["nodeId"]: data.get("coreWorkersStats")
             for data in D.values()
         }
 

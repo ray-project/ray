@@ -1,9 +1,9 @@
 import abc
+import os
 import socket
 import time
 import asyncio
 import collections
-import copy
 import json
 import datetime
 import functools
@@ -13,10 +13,11 @@ import logging
 import pkgutil
 import traceback
 from base64 import b64decode
-from collections.abc import MutableMapping, Mapping
+from abc import ABCMeta, abstractmethod
+from collections.abc import MutableMapping, Mapping, Sequence
 from collections import namedtuple
 from typing import Any
-import os
+
 import aioredis
 import aiohttp.web
 import ray.new_dashboard.consts as dashboard_consts
@@ -129,6 +130,7 @@ class ClassMethodRouteTable:
                     req = args[-1]
                     return await handler(bind_info.instance, req)
                 except Exception:
+                    logger.exception("Handle %s %s failed.", method, path)
                     return rest_response(
                         success=False, message=traceback.format_exc())
 
@@ -224,6 +226,8 @@ class CustomEncoder(json.JSONEncoder):
     def default(self, obj):
         if isinstance(obj, bytes):
             return binary_to_hex(obj)
+        if isinstance(obj, Immutable):
+            return obj.mutable()
         # Let the base class default method raise the TypeError
         return json.JSONEncoder.default(self, obj)
 
@@ -427,7 +431,8 @@ class Change:
         self.new = new
 
     def __str__(self):
-        return f"Change(owner: {self.owner}, old: {self.old}, new: {self.new}"
+        return f"Change(owner: {type(self.owner)}), " \
+               f"old: {self.old}, new: {self.new}"
 
 
 class NotifyQueue:
@@ -444,7 +449,163 @@ class NotifyQueue:
         return await cls._queue.get()
 
 
-class Dict(MutableMapping):
+"""
+https://docs.python.org/3/library/json.html?highlight=json#json.JSONEncoder
+    +-------------------+---------------+
+    | Python            | JSON          |
+    +===================+===============+
+    | dict              | object        |
+    +-------------------+---------------+
+    | list, tuple       | array         |
+    +-------------------+---------------+
+    | str               | string        |
+    +-------------------+---------------+
+    | int, float        | number        |
+    +-------------------+---------------+
+    | True              | true          |
+    +-------------------+---------------+
+    | False             | false         |
+    +-------------------+---------------+
+    | None              | null          |
+    +-------------------+---------------+
+"""
+_json_compatible_types = {
+    dict, list, tuple, str, int, float, bool,
+    type(None), bytes
+}
+
+
+def is_immutable(self):
+    raise TypeError("%r objects are immutable" % self.__class__.__name__)
+
+
+def make_immutable(value, strict=True):
+    value_type = type(value)
+    if value_type is dict:
+        return ImmutableDict(value)
+    if value_type is list:
+        return ImmutableList(value)
+    if strict:
+        if value_type not in _json_compatible_types:
+            raise TypeError("Type {} can't be immutable.".format(value_type))
+    return value
+
+
+class Immutable(metaclass=ABCMeta):
+    @abstractmethod
+    def mutable(self):
+        pass
+
+
+class ImmutableList(Immutable, Sequence):
+    """Makes a :class:`list` immutable.
+    """
+
+    __slots__ = ("_list", "_proxy")
+
+    def __init__(self, list_value):
+        if type(list_value) not in (list, ImmutableList):
+            raise TypeError(f"{type(list_value)} object is not a list.")
+        if isinstance(list_value, ImmutableList):
+            list_value = list_value.mutable()
+        self._list = list_value
+        self._proxy = [None] * len(list_value)
+
+    def __reduce_ex__(self, protocol):
+        return type(self), (self._list, )
+
+    def mutable(self):
+        return self._list
+
+    def __eq__(self, other):
+        if isinstance(other, ImmutableList):
+            other = other.mutable()
+        return list.__eq__(self._list, other)
+
+    def __ne__(self, other):
+        if isinstance(other, ImmutableList):
+            other = other.mutable()
+        return list.__ne__(self._list, other)
+
+    def __contains__(self, item):
+        if isinstance(item, Immutable):
+            item = item.mutable()
+        return list.__contains__(self._list, item)
+
+    def __getitem__(self, item):
+        proxy = self._proxy[item]
+        if proxy is None:
+            proxy = self._proxy[item] = make_immutable(self._list[item])
+        return proxy
+
+    def __len__(self):
+        return len(self._list)
+
+    def __repr__(self):
+        return "%s(%s)" % (self.__class__.__name__, list.__repr__(self._list))
+
+
+class ImmutableDict(Immutable, Mapping):
+    """Makes a :class:`dict` immutable.
+    """
+
+    __slots__ = ("_dict", "_proxy")
+
+    def __init__(self, dict_value):
+        if type(dict_value) not in (dict, ImmutableDict):
+            raise TypeError(f"{type(dict_value)} object is not a dict.")
+        if isinstance(dict_value, ImmutableDict):
+            dict_value = dict_value.mutable()
+        self._dict = dict_value
+        self._proxy = {}
+
+    def __reduce_ex__(self, protocol):
+        return type(self), (self._dict, )
+
+    def mutable(self):
+        return self._dict
+
+    def get(self, key, default=None):
+        try:
+            return self[key]
+        except KeyError:
+            return make_immutable(default)
+
+    def __eq__(self, other):
+        if isinstance(other, ImmutableDict):
+            other = other.mutable()
+        return dict.__eq__(self._dict, other)
+
+    def __ne__(self, other):
+        if isinstance(other, ImmutableDict):
+            other = other.mutable()
+        return dict.__ne__(self._dict, other)
+
+    def __contains__(self, item):
+        if isinstance(item, Immutable):
+            item = item.mutable()
+        return dict.__contains__(self._dict, item)
+
+    def __getitem__(self, item):
+        proxy = self._proxy.get(item, None)
+        if proxy is None:
+            proxy = self._proxy[item] = make_immutable(self._dict[item])
+        return proxy
+
+    def __len__(self) -> int:
+        return len(self._dict)
+
+    def __iter__(self):
+        if len(self._proxy) != len(self._dict):
+            for key in self._dict.keys() - self._proxy.keys():
+                self._proxy[key] = make_immutable(self._dict[key])
+        return iter(self._proxy)
+
+    def __repr__(self):
+        return "%s(%s)" % (self.__class__.__name__, dict.__repr__(self._dict))
+
+
+class Dict(ImmutableDict, MutableMapping):
     """A simple descriptor for dict type to notify data changes.
 
     :note: Only the first level data report change.
@@ -453,12 +614,13 @@ class Dict(MutableMapping):
     ChangeItem = namedtuple("DictChangeItem", ["key", "value"])
 
     def __init__(self, *args, **kwargs):
-        self._data = dict(*args, **kwargs)
+        super().__init__(dict(*args, **kwargs))
         self.signal = Signal(self)
 
     def __setitem__(self, key, value):
-        old = self._data.pop(key, None)
-        self._data[key] = value
+        old = self._dict.pop(key, None)
+        self._proxy.pop(key, None)
+        self._dict[key] = value
         if len(self.signal) and old != value:
             if old is None:
                 co = self.signal.send(
@@ -471,30 +633,25 @@ class Dict(MutableMapping):
                         new=Dict.ChangeItem(key, value)))
             NotifyQueue.put(co)
 
-    def __getitem__(self, item):
-        return copy.deepcopy(self._data[item])
-
     def __delitem__(self, key):
-        old = self._data.pop(key, None)
+        old = self._dict.pop(key, None)
+        self._proxy.pop(key, None)
         if len(self.signal) and old is not None:
             co = self.signal.send(
                 Change(owner=self, old=Dict.ChangeItem(key, old)))
             NotifyQueue.put(co)
 
-    def __len__(self):
-        return len(self._data)
-
-    def __iter__(self):
-        return iter(copy.deepcopy(self._data))
-
-    def __str__(self):
-        return str(self._data)
-
     def reset(self, d):
         assert isinstance(d, Mapping)
-        for key in self._data.keys() - d.keys():
-            self.pop(key)
-        self.update(d)
+        for key in self._dict.keys() - d.keys():
+            del self[key]
+        for key, value in d.items():
+            self[key] = value
+
+
+# Register immutable types.
+for immutable_type in Immutable.__subclasses__():
+    _json_compatible_types.add(immutable_type)
 
 
 async def get_aioredis_client(redis_address, redis_password,
