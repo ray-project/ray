@@ -481,7 +481,6 @@ def test_actor_pubsub(disable_aiohttp_cache, ray_start_with_dashboard):
             including_default_value_fields=False)
 
     non_state_keys = ("actorId", "jobId", "taskSpec")
-    state_keys = ("state", "address", "timestamp", "pid")
     for msg in msgs:
         actor_data_dict = actor_table_data_to_dict(msg)
         # DEPENDENCIES_UNREADY is 0, which would not be keeped in dict. We
@@ -493,11 +492,12 @@ def test_actor_pubsub(disable_aiohttp_cache, ray_start_with_dashboard):
         # For status that is not DEPENDENCIES_UNREADY, only states fields will
         # be published.
         elif actor_data_dict["state"] in ("ALIVE", "DEAD"):
-            assert len(actor_data_dict) == 4
-            for k in state_keys:
-                assert k in actor_data_dict
+            assert actor_data_dict.keys() == {
+                "state", "address", "timestamp", "pid"
+            }
         else:
-            raise Exception("Unknown state: {}".format())
+            raise Exception("Unknown state: {}".format(
+                actor_data_dict["state"]))
 
 
 if __name__ == "__main__":
