@@ -41,8 +41,11 @@ message MarkJobFinishedReply {
 }
 
 message MarkJobFailedRequest {
+  // Job id.
   bytes job_id = 1;
+  // The error message for the job failure.
   string error_message = 2;
+  // The command line of driver.
   string driver_cmdline = 3;
 }
 
@@ -59,13 +62,13 @@ message GetAllJobInfoReply {
 }
 
 message SubmitJobRequest {
-  // job id.
+  // Job id.
   bytes job_id = 1;
-  // Language the job uses
+  // Language the job uses.
   Language language = 2;
-  // job payload.
+  // Job payload.
   string job_payload = 4;
-  // required resources.
+  // Required resources.
   map<string, double> required_resources = 5;
 }
 
@@ -74,7 +77,7 @@ message SubmitJobReply {
 }
 
 message DropJobRequest {
-  // job id.
+  // Job id.
   bytes job_id = 1;
 }
 

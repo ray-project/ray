@@ -410,7 +410,7 @@ message JobTableData {
   string fail_error_message = 12;
   // The driver cmdline.
   string driver_cmdline = 13;
-  // driver exit state.
+  // Driver exit state.
   DriverExitState driver_exit_state = 14;
 }
 

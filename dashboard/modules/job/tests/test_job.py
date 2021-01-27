@@ -63,17 +63,17 @@ class Actor:
         self._index = index
 
     def foo(self, x):
-        print("worker job dir {}".format(os.environ["RAY_JOB_DIR"]))
-        print("worker cwd {}".format(os.getcwd()))
+        print(f"worker job dir {os.environ["RAY_JOB_DIR"]}")
+        print(f"worker cwd {os.getcwd()}")
         assert os.path.samefile(os.environ["RAY_JOB_DIR"], os.getcwd())
         assert os.environ["RAY_JOB_DIR"] in sys.path
-        return "Actor {}: {}".format(self._index, x)
+        return f"Actor {self._index}: {x}"
 
 
 def main():
     actors = []
-    print("driver job dir {}".format(os.environ["RAY_JOB_DIR"]))
-    print("driver cwd {}".format(os.getcwd()))
+    print(f"driver job dir {os.environ["RAY_JOB_DIR"]}")
+    print(f"driver cwd {os.getcwd()}")
     assert os.path.samefile(os.environ["RAY_JOB_DIR"], os.getcwd())
     assert os.environ["RAY_JOB_DIR"] in sys.path
     for x in range(2):
