@@ -95,6 +95,7 @@ test:asan --test_env=ASAN_OPTIONS="detect_leaks=0"
 test:asan --test_env=LD_PRELOAD="/usr/lib/x86_64-linux-gnu/libasan.so.2 /usr/lib/gcc/x86_64-linux-gnu/7/libasan.so"
 # For example, for Ubuntu 18.04 libasan can be found here:
 # test:asan --test_env=LD_PRELOAD="/usr/lib/gcc/x86_64-linux-gnu/7/libasan.so"
+test:asan-buildkite --test_env=LD_PRELOAD="/usr/lib/x86_64-linux-gnu/libasan.so.5"
 
 # CI configuration:
 aquery:ci --color=no

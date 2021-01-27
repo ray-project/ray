@@ -330,3 +330,6 @@ class RayParams:
             # Validate external storage usage.
             external_storage.setup_external_storage(object_spilling_config)
             external_storage.reset_external_storage()
+            # Configure the proper system config.
+            self._system_config["is_external_storage_type_fs"] = (
+                object_spilling_config["type"] == "filesystem")

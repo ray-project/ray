@@ -21,3 +21,15 @@ updates:
     open-pull-requests-limit: 3
     reviewers:
       - "ray-project/ray-tune"
+    ignore:
+      # Ignore pinned dependencies in requirements.txt.
+      - dependency-name: aiohttp
+      - dependency-name: msgpack
+      - dependency-name: opencv-python-headless
+      - dependency-name: pandas
+      - dependency-name: scipy
+      - dependency-name: pydantic
+      - dependency-name: cython
+      - dependency-name: llmvlite
+      - dependency-name: pytest
+      - dependency-name: scikit-learn

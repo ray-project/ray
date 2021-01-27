@@ -2,9 +2,7 @@ cluster_name: ray-xgboost-release-cpu-moderate
 
 min_workers: 31
 max_workers: 31
-initial_workers: 31
 
-target_utilization_fraction: 0.8
 idle_timeout_minutes: 15
 
 docker:

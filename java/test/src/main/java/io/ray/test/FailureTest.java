@@ -23,20 +23,17 @@ public class FailureTest extends BaseTest {
 
   private static final String EXCEPTION_MESSAGE = "Oops";
 
-  private String oldNumWorkersPerProcess;
-
   @BeforeClass
   public void setUp() {
     // This is needed by `testGetThrowsQuicklyWhenFoundException`.
     // Set one worker per process. Otherwise, if `badFunc2` and `slowFunc` run in the same
     // process, `sleep` will delay `System.exit`.
-    oldNumWorkersPerProcess = System.getProperty("ray.job.num-java-workers-per-process");
     System.setProperty("ray.job.num-java-workers-per-process", "1");
   }
 
   @AfterClass
   public void tearDown() {
-    System.setProperty("ray.job.num-java-workers-per-process", oldNumWorkersPerProcess);
+    System.clearProperty("ray.job.num-java-workers-per-process");
   }
 
   public static int badFunc() {

@@ -259,7 +259,8 @@ std::vector<ObjectID> PullManager::CancelPull(uint64_t request_id) {
 
 void PullManager::OnLocationChange(const ObjectID &object_id,
                                    const std::unordered_set<NodeID> &client_ids,
-                                   const std::string &spilled_url, size_t object_size) {
+                                   const std::string &spilled_url,
+                                   const NodeID &spilled_node_id, size_t object_size) {
   // Exit if the Pull request has already been fulfilled or canceled.
   auto it = object_pull_requests_.find(object_id);
   if (it == object_pull_requests_.end()) {
@@ -271,7 +272,7 @@ void PullManager::OnLocationChange(const ObjectID &object_id,
   // before.
   it->second.client_locations = std::vector<NodeID>(client_ids.begin(), client_ids.end());
   it->second.spilled_url = spilled_url;
-
+  it->second.spilled_node_id = spilled_node_id;
   if (!it->second.object_size_set) {
     RAY_LOG(DEBUG) << "Updated size of object " << object_id << " to " << object_size
                    << ", num bytes being pulled is now " << num_bytes_being_pulled_;
@@ -299,30 +300,47 @@ void PullManager::TryToMakeObjectLocal(const ObjectID &object_id) {
     return;
   }
 
+  // We always pull objects from a remote node before
+  // restoring it because of two reasons.
+  // 1. This will help reducing the load of external storages
+  //    or remote node that spilled the object.
+  // 2. Also, if we use multi-node file spilling, the restoration will be
+  //    confirmed by a object location subscription, so we should pull first
+  //    before requesting for object restoration.
+  bool did_pull = PullFromRandomLocation(object_id);
+  if (did_pull) {
+    // New object locations were found, so begin trying to pull from a
+    // client.
+    UpdateRetryTimer(request);
+    return;
+  }
+
+  // If we cannot pull, it means all objects have been evicted, so try restoring objects
+  // from the external storage. If the object was spilled on the current node, the
+  // callback will restore the object from the local the disk.
+  // Otherwise, it will send a request to a remote node that spilled the object.
+  // If external storage is a distributed storage, we always try restoring from it without
+  // sending RPCs.
   if (!request.spilled_url.empty()) {
-    // Try to restore the spilled object.
+    const auto spilled_node_id = request.spilled_node_id;
     restore_spilled_object_(
-        object_id, request.spilled_url, [this, object_id](const ray::Status &status) {
-          bool did_pull = true;
-          // Fall back to fetching from another object manager.
+        object_id, request.spilled_url, spilled_node_id,
+        [this, object_id, spilled_node_id](const ray::Status &status) {
           if (!status.ok()) {
-            did_pull = PullFromRandomLocation(object_id);
-          }
-          if (!did_pull) {
-            RAY_LOG(WARNING) << "Object restoration failed and the object could not be "
-                                "found on any other nodes. Object id: "
-                             << object_id;
+            const auto node_id_with_issue =
+                spilled_node_id.IsNil() ? self_node_id_ : spilled_node_id;
+            RAY_LOG(WARNING)
+                << "Object restoration failed and the object could "
+                   "not be "
+                   "found on any other nodes. This can happen if the location where the "
+                   "object was spilled is unreachable. This job may hang if the object "
+                   "is permanently unreachable. "
+                   "Please check the log of node of id: "
+                << node_id_with_issue << " Object id: " << object_id;
           }
         });
-    UpdateRetryTimer(request);
-  } else {
-    // New object locations were found, so begin trying to pull from a
-    // client. This will be called every time a new client location
-    // appears.
-    bool did_pull = PullFromRandomLocation(object_id);
-    if (did_pull) {
-      UpdateRetryTimer(request);
-    }
+    // We shouldn't update the timer here because restoration takes some time, and since
+    // we retry pull requests with exponential backoff, the delay could be large.
   }
 }
 
