@@ -145,7 +145,8 @@ class PlacementGroup:
 
 def placement_group(bundles: List[Dict[str, float]],
                     strategy: str = "PACK",
-                    name: str = "unnamed_group") -> PlacementGroup:
+                    name: str = "unnamed_group",
+                    lifetime=None) -> PlacementGroup:
     """Asynchronously creates a PlacementGroup.
 
     Args:
@@ -160,6 +161,10 @@ def placement_group(bundles: List[Dict[str, float]],
          - "STRICT_SPREAD": Packs Bundles across distinct nodes.
 
         name(str): The name of the placement group.
+        lifetime(str): Either `None`, which defaults to the placement group
+            will fate share with its creator and will be deleted once its
+            creator is dead, or "detached", which means the placement group
+            will live as a global object independent of the creator.
 
     Return:
         PlacementGroup: Placement group object.
@@ -179,8 +184,16 @@ def placement_group(bundles: List[Dict[str, float]],
                 "Bundles cannot be an empty dictionary or "
                 f"resources with only 0 values. Bundles: {bundles}")
 
+    if lifetime is None:
+        detached = False
+    elif lifetime == "detached":
+        detached = True
+    else:
+        raise ValueError("placement group `lifetime` argument must be either"
+                         " `None` or 'detached'")
+
     placement_group_id = worker.core_worker.create_placement_group(
-        name, bundles, strategy)
+        name, bundles, strategy, detached)
 
     return PlacementGroup(placement_group_id)
 

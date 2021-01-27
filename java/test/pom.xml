@@ -117,41 +117,6 @@
           </execution>
         </executions>
       </plugin>
-
-      <plugin>
-        <groupId>com.diffplug.spotless</groupId>
-        <artifactId>spotless-maven-plugin</artifactId>
-        <version>2.6.1</version>
-        <configuration>
-          <!-- optional: limit format enforcement to just the files changed by this feature branch -->
-<!--          <ratchetFrom>origin/main</ratchetFrom>-->
-          <formats>
-            <!-- you can define as many formats as you want, each is independent -->
-            <format>
-              <!-- define the files to apply to -->
-              <includes>
-                <include>.java</include>
-              </includes>
-              <excludes>
-              </excludes>
-              <!-- define the steps to apply to those files -->
-              <trimTrailingWhitespace/>
-              <endWithNewline/>
-              <indent>
-                <tabs>true</tabs>
-                <spacesPerTab>4</spacesPerTab>
-              </indent>
-            </format>
-          </formats>
-          <!-- define a language-specific format -->
-          <java>
-            <googleJavaFormat>
-              <version>1.7</version> <!-- optional -->
-              <style>GOOGLE</style>  <!-- or AOSP (optional) -->
-            </googleJavaFormat>
-          </java>
-        </configuration>
-      </plugin>
     </plugins>
   </build>
 </project>
