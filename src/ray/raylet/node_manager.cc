@@ -365,7 +365,7 @@ void NodeManager::DestroyWorker(std::shared_ptr<WorkerInterface> worker,
   // We should disconnect the client first. Otherwise, we'll remove bundle resources
   // before actual resources are returned. Subsequent disconnect request that comes
   // due to worker dead will be ignored.
-  DisconnectClient(worker->Connection(), disconnect_type);
+  DisconnectClient(worker->Connection(), disconnect_type, "Disconnect client when destroy worker.");
   worker->MarkDead();
   KillWorker(worker);
 }
@@ -1185,8 +1185,12 @@ void NodeManager::HandleWorkerAvailable(const std::shared_ptr<WorkerInterface> &
   cluster_task_manager_->ScheduleAndDispatchTasks();
 }
 
+void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &client) {
+  DisconnectClient(client, rpc::WorkerExitType::SYSTEM_ERROR_EXIT, "No extra message.");
+}
+
 void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &client,
-                                   rpc::WorkerExitType disconnect_type) {
+                                   rpc::WorkerExitType disconnect_type, const std::string &client_error_message) {
   std::shared_ptr<WorkerInterface> worker = worker_pool_.GetRegisteredWorker(client);
   bool is_worker = false, is_driver = false;
   if (worker) {
@@ -1230,7 +1234,7 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
   // Publish the worker failure.
   auto worker_failure_data_ptr =
       gcs::CreateWorkerFailureData(self_node_id_, worker->WorkerId(), worker->IpAddress(),
-                                   worker->Port(), time(nullptr), disconnect_type);
+                                   worker->Port(), time(nullptr), disconnect_type, client_error_message);
   RAY_CHECK_OK(
       gcs_client_->Workers().AsyncReportWorkerFailure(worker_failure_data_ptr, nullptr));
 
@@ -1293,7 +1297,8 @@ void NodeManager::ProcessDisconnectClientMessage(
     const std::shared_ptr<ClientConnection> &client, const uint8_t *message_data) {
   auto message = flatbuffers::GetRoot<protocol::DisconnectClient>(message_data);
   auto disconnect_type = static_cast<rpc::WorkerExitType>(message->disconnect_type());
-  DisconnectClient(client, disconnect_type);
+  std::string error_message = message->error_message()->str();
+  DisconnectClient(client, disconnect_type, error_message);
 }
 
 void NodeManager::ProcessFetchOrReconstructMessage(
