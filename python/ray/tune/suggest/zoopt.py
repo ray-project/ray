@@ -198,8 +198,8 @@ class ZOOptSearch(Searcher):
 
         init_samples = None
         if self._points_to_evaluate:
-            logger.warning(
-                "`points_to_evaluate` seems to be ignored by ZOOpt.")
+            logger.warning("`points_to_evaluate` is ignored by ZOOpt in "
+                           "versions <= 0.4.1.")
             init_samples = [
                 Solution(x=tuple(point[dim] for dim in self._dim_keys))
                 for point in self._points_to_evaluate
@@ -213,8 +213,6 @@ class ZOOptSearch(Searcher):
                 parameter=par,
                 parallel_num=self.parallel_num,
                 **self.kwargs)
-            if init_samples:
-                self.optimizer.init_attribute()
 
     def set_search_properties(self, metric: Optional[str], mode: Optional[str],
                               config: Dict) -> bool:

@@ -96,9 +96,13 @@ void GcsPlacementGroup::MarkCreatorActorDead() {
   placement_group_table_data_.set_creator_actor_dead(true);
 }
 
-bool GcsPlacementGroup::IsPlacementGroupRemovable() const {
-  return placement_group_table_data_.creator_job_dead() &&
+bool GcsPlacementGroup::IsPlacementGroupLifetimeDone() const {
+  return !IsDetached() && placement_group_table_data_.creator_job_dead() &&
          placement_group_table_data_.creator_actor_dead();
+}
+
+bool GcsPlacementGroup::IsDetached() const {
+  return placement_group_table_data_.is_detached();
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////
@@ -539,7 +543,7 @@ void GcsPlacementGroupManager::CleanPlacementGroupIfNeededWhenJobDead(
       continue;
     }
     placement_group->MarkCreatorJobDead();
-    if (placement_group->IsPlacementGroupRemovable()) {
+    if (placement_group->IsPlacementGroupLifetimeDone()) {
       RemovePlacementGroup(placement_group->GetPlacementGroupID(), [](Status status) {});
     }
   }
@@ -553,7 +557,7 @@ void GcsPlacementGroupManager::CleanPlacementGroupIfNeededWhenActorDead(
       continue;
     }
     placement_group->MarkCreatorActorDead();
-    if (placement_group->IsPlacementGroupRemovable()) {
+    if (placement_group->IsPlacementGroupLifetimeDone()) {
       RemovePlacementGroup(placement_group->GetPlacementGroupID(), [](Status status) {});
     }
   }

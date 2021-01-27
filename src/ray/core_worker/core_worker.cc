@@ -270,7 +270,8 @@ void CoreWorkerProcess::RunTaskExecutionLoop() {
   } else {
     std::vector<std::thread> worker_threads;
     for (int i = 0; i < instance_->options_.num_workers; i++) {
-      worker_threads.emplace_back([]() {
+      worker_threads.emplace_back([i] {
+        SetThreadName("worker.task" + std::to_string(i));
         auto worker = instance_->CreateWorker();
         worker->RunTaskExecutionLoop();
         instance_->RemoveWorker(worker);
@@ -649,7 +650,7 @@ void CoreWorker::RunIOService() {
   sigaddset(&mask, SIGTERM);
   pthread_sigmask(SIG_BLOCK, &mask, NULL);
 #endif
-
+  SetThreadName("worker.io");
   io_service_.run();
 }
 
@@ -1462,8 +1463,8 @@ Status CoreWorker::CreatePlacementGroup(
   builder.SetPlacementGroupSpec(
       placement_group_id, placement_group_creation_options.name,
       placement_group_creation_options.bundles, placement_group_creation_options.strategy,
-      worker_context_.GetCurrentJobID(), worker_context_.GetCurrentActorID(),
-      worker_context_.CurrentActorDetached());
+      placement_group_creation_options.is_detached, worker_context_.GetCurrentJobID(),
+      worker_context_.GetCurrentActorID(), worker_context_.CurrentActorDetached());
   PlacementGroupSpecification placement_group_spec = builder.Build();
   *return_placement_group_id = placement_group_id;
   RAY_LOG(INFO) << "Submitting Placement Group creation to GCS: " << placement_group_id;
@@ -2212,6 +2213,7 @@ void CoreWorker::HandleGetObjectLocationsOwner(
   } else {
     status = Status::ObjectNotFound("Object " + object_id.Hex() + " not found");
   }
+  reply->set_object_size(reference_counter_->GetObjectSize(object_id));
   send_reply_callback(status, nullptr, nullptr);
 }
 

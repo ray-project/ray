@@ -1070,6 +1070,7 @@ Status ServiceBasedObjectInfoAccessor::AsyncGetAll(
 
 Status ServiceBasedObjectInfoAccessor::AsyncAddLocation(const ObjectID &object_id,
                                                         const NodeID &node_id,
+                                                        size_t object_size,
                                                         const StatusCallback &callback) {
   RAY_LOG(DEBUG) << "Adding object location, object id = " << object_id
                  << ", node id = " << node_id
@@ -1077,6 +1078,7 @@ Status ServiceBasedObjectInfoAccessor::AsyncAddLocation(const ObjectID &object_i
   rpc::AddObjectLocationRequest request;
   request.set_object_id(object_id.Binary());
   request.set_node_id(node_id.Binary());
+  request.set_size(object_size);
 
   auto operation = [this, request, object_id, node_id,
                     callback](const SequencerDoneCallback &done_callback) {
@@ -1100,13 +1102,14 @@ Status ServiceBasedObjectInfoAccessor::AsyncAddLocation(const ObjectID &object_i
 
 Status ServiceBasedObjectInfoAccessor::AsyncAddSpilledUrl(
     const ObjectID &object_id, const std::string &spilled_url,
-    const StatusCallback &callback) {
+    const NodeID &spilled_node_id, const StatusCallback &callback) {
   RAY_LOG(DEBUG) << "Adding object spilled location, object id = " << object_id
                  << ", spilled_url = " << spilled_url
                  << ", job id = " << object_id.TaskId().JobId();
   rpc::AddObjectLocationRequest request;
   request.set_object_id(object_id.Binary());
   request.set_spilled_url(spilled_url);
+  request.set_spilled_node_id(spilled_node_id.Binary());
 
   auto operation = [this, request, callback](const SequencerDoneCallback &done_callback) {
     client_impl_->GetGcsRpcClient().AddObjectLocation(
@@ -1171,11 +1174,14 @@ Status ServiceBasedObjectInfoAccessor::AsyncSubscribeToLocations(
           rpc::ObjectLocationChange update;
           update.set_is_add(true);
           update.set_node_id(loc.manager());
+          update.set_size(result->size());
           notification.push_back(update);
         }
         if (!result->spilled_url().empty()) {
           rpc::ObjectLocationChange update;
           update.set_spilled_url(result->spilled_url());
+          update.set_spilled_node_id(result->spilled_node_id());
+          update.set_size(result->size());
           notification.push_back(update);
         }
         subscribe(object_id, notification);
@@ -1311,11 +1317,11 @@ ServiceBasedWorkerInfoAccessor::ServiceBasedWorkerInfoAccessor(
     : client_impl_(client_impl) {}
 
 Status ServiceBasedWorkerInfoAccessor::AsyncSubscribeToWorkerFailures(
-    const ItemCallback<rpc::WorkerTableData> &subscribe, const StatusCallback &done) {
+    const ItemCallback<rpc::WorkerDeltaData> &subscribe, const StatusCallback &done) {
   RAY_CHECK(subscribe != nullptr);
   subscribe_operation_ = [this, subscribe](const StatusCallback &done) {
     auto on_subscribe = [subscribe](const std::string &id, const std::string &data) {
-      rpc::WorkerTableData worker_failure_data;
+      rpc::WorkerDeltaData worker_failure_data;
       worker_failure_data.ParseFromString(data);
       subscribe(worker_failure_data);
     };
