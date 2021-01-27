@@ -1357,6 +1357,7 @@ def start_raylet(redis_address,
             raylet_name,
             redis_password,
             session_dir,
+            node_ip_address,
         )
     else:
         java_worker_command = []
@@ -1495,7 +1496,8 @@ def get_ray_jars_dir():
 
 def build_java_worker_command(java_worker_options, redis_address,
                               node_manager_port, plasma_store_name,
-                              raylet_name, redis_password, session_dir):
+                              raylet_name, redis_password, session_dir,
+                              node_ip_address):
     """This method assembles the command used to start a Java worker.
 
     Args:
@@ -1506,6 +1508,7 @@ def build_java_worker_command(java_worker_options, redis_address,
         raylet_name (str): The name of the raylet socket to create.
         redis_password (str): The password of connect to redis.
         session_dir (str): The path of this session.
+        node_ip_address (str): The ip address for this node.
     Returns:
         The command string for starting Java worker.
     """
@@ -1522,6 +1525,9 @@ def build_java_worker_command(java_worker_options, redis_address,
 
     if redis_password is not None:
         pairs.append(("ray.redis.password", redis_password))
+
+    if node_ip_address is not None:
+        pairs.append(("ray.node-ip", node_ip_address))
 
     pairs.append(("ray.home", RAY_HOME))
     pairs.append(("ray.logging.dir", os.path.join(session_dir, "logs")))
