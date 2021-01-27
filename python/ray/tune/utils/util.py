@@ -1,5 +1,7 @@
+from typing import Dict
 import copy
 import json
+import glob
 import logging
 import numbers
 import os
@@ -412,6 +414,50 @@ def diagnose_serialization(trainable):
         return failure_set
 
 
+def atomic_save(state: Dict, checkpoint_dir: str, file_name: str,
+                tmp_file_name: str):
+    """Atomically saves the state object to the checkpoint directory.
+
+    This is automatically used by tune.run during a Tune job.
+
+    Args:
+        state (dict): Object state to be serialized.
+        checkpoint_dir (str): Directory location for the checkpoint.
+        file_name (str): Final name of file.
+        tmp_file_name (str): Temporary name of file.
+    """
+    import ray.cloudpickle as cloudpickle
+    tmp_search_ckpt_path = os.path.join(checkpoint_dir, tmp_file_name)
+    with open(tmp_search_ckpt_path, "wb") as f:
+        cloudpickle.dump(state, f)
+
+    os.rename(tmp_search_ckpt_path, os.path.join(checkpoint_dir, file_name))
+
+
+def load_newest_checkpoint(dirpath: str, ckpt_pattern: str) -> dict:
+    """Returns the most recently modified checkpoint.
+
+    Assumes files are saved with an ordered name, most likely by
+    :obj:atomic_save.
+
+    Args:
+        dirpath (str): Directory in which to look for the checkpoint file.
+        ckpt_pattern (str): File name pattern to match to find checkpoint
+            files.
+
+    Returns:
+        (dict) Deserialized state dict.
+    """
+    import ray.cloudpickle as cloudpickle
+    full_paths = glob.glob(os.path.join(dirpath, ckpt_pattern))
+    if not full_paths:
+        return
+    most_recent_checkpoint = max(full_paths)
+    with open(most_recent_checkpoint, "rb") as f:
+        checkpoint_state = cloudpickle.load(f)
+    return checkpoint_state
+
+
 def wait_for_gpu(gpu_id=None, gpu_memory_limit=0.1, retry=20):
     """Checks if a given GPU has freed memory.
 
@@ -563,7 +609,8 @@ def create_logdir(dirname: str, local_dir: str):
         dirname (str): Dirname to create in `local_dir`
         local_dir (str): Root directory for the log dir
 
-    Returns: full path to the newly created logdir.
+    Returns:
+        full path to the newly created logdir.
     """
     local_dir = os.path.expanduser(local_dir)
     logdir = os.path.join(local_dir, dirname)

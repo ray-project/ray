@@ -535,14 +535,6 @@ class Trainer(Trainable):
         if hasattr(self, "workers") and isinstance(self.workers, WorkerSet):
             self._sync_filters_if_needed(self.workers)
 
-        if self.config["evaluation_interval"] == 1 or (
-                self._iteration > 0 and self.config["evaluation_interval"]
-                and self._iteration % self.config["evaluation_interval"] == 0):
-            evaluation_metrics = self._evaluate()
-            assert isinstance(evaluation_metrics, dict), \
-                "_evaluate() needs to return a dict."
-            result.update(evaluation_metrics)
-
         return result
 
     def _sync_filters_if_needed(self, workers: WorkerSet):

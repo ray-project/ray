@@ -225,7 +225,7 @@ With the cluster now running, we can run a simple script to start Ray Serve and 
     # Connect to the running Ray cluster.
     ray.init(address="auto")
     # Bind on 0.0.0.0 to expose the HTTP server on external IPs.
-    client = serve.start(http_options={"host": "0.0.0.0"})
+    client = serve.start(detached=True, http_options={"host": "0.0.0.0"})
 
     def hello():
         return "hello world"

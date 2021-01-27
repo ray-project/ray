@@ -1,5 +1,5 @@
 # Use base requirements to constrain these requirements.
--c ../requirements.txt
+-c ./requirements.txt
 
 ax-platform==0.1.9; python_version < '3.7'
 ax-platform==0.1.19; python_version >= '3.7'
@@ -20,7 +20,7 @@ matplotlib==3.3.3
 mlflow==1.13.1
 mxnet==1.7.0.post1
 nevergrad==0.4.2.post5
-optuna==2.3.0
+optuna==2.4.0
 pytest-remotedata==0.3.2
 pytorch-lightning-bolts==0.2.5
 pytorch-lightning==1.0.3

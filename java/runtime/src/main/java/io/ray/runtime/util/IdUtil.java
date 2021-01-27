@@ -13,7 +13,7 @@ public class IdUtil {
   /**
    * Compute the actor ID of the task which created this object.
    *
-   * <p>Returns The actor ID of the task which created this object.
+   * @return The actor ID of the task which created this object.
    */
   public static ActorId getActorIdFromObjectId(ObjectId objectId) {
     byte[] taskIdBytes = new byte[TaskId.LENGTH];

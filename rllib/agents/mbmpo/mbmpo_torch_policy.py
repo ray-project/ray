@@ -3,18 +3,18 @@ import logging
 from typing import Tuple, Type
 
 import ray
-from ray.rllib.agents.a3c.a3c_torch_policy import apply_grad_clipping
 from ray.rllib.agents.maml.maml_torch_policy import setup_mixins, \
     maml_loss, maml_stats, maml_optimizer_fn, KLCoeffMixin
-from ray.rllib.agents.ppo.ppo_tf_policy import postprocess_ppo_gae, \
-    setup_config
+from ray.rllib.agents.ppo.ppo_tf_policy import setup_config
 from ray.rllib.agents.ppo.ppo_torch_policy import vf_preds_fetches
+from ray.rllib.evaluation.postprocessing import compute_gae_for_sample_batch
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.torch_ops import apply_grad_clipping
 from ray.rllib.utils.typing import TrainerConfigDict
 
 torch, nn = try_import_torch()
@@ -85,7 +85,7 @@ MBMPOTorchPolicy = build_policy_class(
     stats_fn=maml_stats,
     optimizer_fn=maml_optimizer_fn,
     extra_action_out_fn=vf_preds_fetches,
-    postprocess_fn=postprocess_ppo_gae,
+    postprocess_fn=compute_gae_for_sample_batch,
     extra_grad_process_fn=apply_grad_clipping,
     before_init=setup_config,
     after_init=setup_mixins,

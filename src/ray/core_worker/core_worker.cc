@@ -284,7 +284,8 @@ void CoreWorkerProcess::RunTaskExecutionLoop() {
   } else {
     std::vector<std::thread> worker_threads;
     for (int i = 0; i < instance_->options_.num_workers; i++) {
-      worker_threads.emplace_back([]() {
+      worker_threads.emplace_back([i] {
+        SetThreadName("worker.task" + std::to_string(i));
         auto worker = instance_->CreateWorker();
         worker->RunTaskExecutionLoop();
         instance_->RemoveWorker(worker);
@@ -663,7 +664,7 @@ void CoreWorker::RunIOService() {
   sigaddset(&mask, SIGTERM);
   pthread_sigmask(SIG_BLOCK, &mask, NULL);
 #endif
-
+  SetThreadName("worker.io");
   io_service_.run();
 }
 
@@ -2234,6 +2235,7 @@ void CoreWorker::HandleGetObjectLocationsOwner(
   } else {
     status = Status::ObjectNotFound("Object " + object_id.Hex() + " not found");
   }
+  reply->set_object_size(reference_counter_->GetObjectSize(object_id));
   send_reply_callback(status, nullptr, nullptr);
 }
 

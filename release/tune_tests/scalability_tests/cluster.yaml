@@ -2,9 +2,7 @@ cluster_name: ray-tune-scalability-tests
 
 min_workers: 15
 max_workers: 15
-initial_workers: 15
 
-target_utilization_fraction: 0.8
 idle_timeout_minutes: 15
 
 docker:

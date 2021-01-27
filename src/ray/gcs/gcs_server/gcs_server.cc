@@ -328,7 +328,7 @@ void GcsServer::InstallEventListeners() {
         auto worker_id = WorkerID::FromBinary(worker_address.worker_id());
         auto node_id = NodeID::FromBinary(worker_address.raylet_id());
         gcs_actor_manager_->OnWorkerDead(node_id, worker_id,
-                                         worker_failure_data->intentional_disconnect());
+                                         worker_failure_data->exit_type());
       });
 
   // Install job event listeners.
@@ -352,6 +352,7 @@ void GcsServer::PrintDebugInfo() {
          << gcs_actor_manager_->DebugString() << "\n"
          << gcs_object_manager_->DebugString() << "\n"
          << gcs_placement_group_manager_->DebugString() << "\n"
+         << gcs_pub_sub_->DebugString() << "\n"
          << ((rpc::DefaultTaskInfoHandler *)task_info_handler_.get())->DebugString();
   // TODO(ffbin): We will get the session_dir in the next PR, and write the log to
   // gcs_debug_state.txt.

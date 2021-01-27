@@ -27,7 +27,7 @@ attrs==20.3.0
     #   pytest
 autocfg==0.0.6
     # via gluoncv
-autogluon.core==0.0.16b20210113
+autogluon.core==0.0.16b20210125
     # via gluoncv
 autograd==1.3
     # via autogluon.core
@@ -35,7 +35,7 @@ ax-platform==0.1.9 ; python_version < "3.7"
     # via -r requirements_tune.in
 azure-core==1.10.0
     # via azure-storage-blob
-azure-storage-blob==12.6.0
+azure-storage-blob==12.7.1
     # via mlflow
 backcall==0.2.0
     # via ipython
@@ -45,16 +45,16 @@ bayesian-optimization==1.2.0
     #   nevergrad
 bcrypt==3.2.0
     # via paramiko
-bleach==3.2.1
+bleach==3.2.2
     # via nbconvert
 bokeh==2.2.3
     # via dask
-boto3==1.16.53
+boto3==1.16.58
     # via
     #   -c ../requirements.txt
     #   autogluon.core
     #   smart-open
-botocore==1.19.53
+botocore==1.19.58
     # via
     #   boto3
     #   s3transfer
@@ -87,7 +87,7 @@ click==7.1.2
     #   mlflow
     #   sacremoses
     #   wandb
-cliff==3.5.0
+cliff==3.6.0
     # via optuna
 cloudpickle==1.6.0
     # via
@@ -107,7 +107,7 @@ colorama==0.4.4
     # via
     #   -c ../requirements.txt
     #   cmd2
-colorlog==4.6.2
+colorlog==4.7.2
     # via optuna
 configparser==5.0.1
     # via wandb
@@ -129,7 +129,7 @@ cython==0.29.0
     #   -c ../requirements.txt
     #   autogluon.core
     #   configspace
-dask[complete]==2020.12.0
+dask[complete]==2021.1.0
     # via
     #   -c ../requirements.txt
     #   autogluon.core
@@ -155,7 +155,7 @@ defusedxml==0.6.0
     # via nbconvert
 dill==0.3.3
     # via autogluon.core
-distributed==2020.12.0
+distributed==2021.1.1
     # via
     #   autogluon.core
     #   dask
@@ -213,13 +213,13 @@ google-auth==1.24.0
     #   tensorboard
 gpy==1.9.9
     # via -r requirements_tune.in
-gpytorch==1.3.0
+gpytorch==1.3.1
     # via botorch
 graphviz==0.8.4
     # via
     #   autogluon.core
     #   mxnet
-grpcio==1.34.1
+grpcio==1.35.0
     # via
     #   -c ../requirements.txt
     #   tensorboard
@@ -330,9 +330,9 @@ kubernetes==12.0.1
     #   -r requirements_tune.in
 lightgbm==3.1.1
     # via -r requirements_tune.in
-locket==0.2.0
+locket==0.2.1
     # via partd
-mako==1.1.3
+mako==1.1.4
     # via alembic
 markdown==3.3.3
     # via tensorboard
@@ -366,7 +366,7 @@ nbconvert==6.0.7
     # via
     #   jupyter
     #   notebook
-nbformat==5.0.8
+nbformat==5.1.2
     # via
     #   ipywidgets
     #   nbclient
@@ -436,7 +436,7 @@ opencv-python==4.5.1.48
     # via
     #   gluoncv
     #   gym
-optuna==2.3.0
+optuna==2.4.0
     # via -r requirements_tune.in
 packaging==20.8
     # via
@@ -501,7 +501,7 @@ prometheus-flask-exporter==0.18.1
     # via mlflow
 promise==2.3
     # via wandb
-prompt-toolkit==3.0.10
+prompt-toolkit==3.0.13
     # via
     #   ipython
     #   jupyter-console
@@ -584,7 +584,7 @@ pytorch-lightning==1.0.3
     #   pytorch-lightning-bolts
 pytz==2020.5
     # via pandas
-pyyaml==5.3.1
+pyyaml==5.4.1
     # via
     #   -c ../requirements.txt
     #   autocfg
@@ -600,12 +600,12 @@ pyyaml==5.3.1
     #   pytorch-lightning
     #   wandb
     #   yacs
-pyzmq==20.0.0
+pyzmq==21.0.1
     # via
     #   jupyter-client
     #   notebook
     #   qtconsole
-qtconsole==5.0.1
+qtconsole==5.0.2
     # via jupyter
 qtpy==1.9.0
     # via qtconsole
@@ -703,7 +703,6 @@ six==1.15.0
     #   azure-core
     #   bcrypt
     #   bleach
-    #   cliff
     #   cryptography
     #   cycler
     #   databricks-cli
@@ -736,7 +735,7 @@ six==1.15.0
     #   traitlets
     #   wandb
     #   websocket-client
-smart_open==4.0.1
+smart_open[s3]==4.1.2
     # via
     #   -c ../requirements.txt
     #   -r requirements_tune.in
@@ -763,9 +762,9 @@ tabulate==0.8.7
     #   databricks-cli
 tblib==1.7.0
     # via distributed
-tensorboard-plugin-wit==1.7.0
+tensorboard-plugin-wit==1.8.0
     # via tensorboard
-tensorboard==2.4.0
+tensorboard==2.4.1
     # via pytorch-lightning
 tensorboardx==2.1
     # via

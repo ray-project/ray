@@ -8,7 +8,7 @@ from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.evaluation.rollout_worker import RolloutWorker, \
     _validate_multiagent_config
 from ray.rllib.offline import NoopOutput, JsonReader, MixedInput, JsonWriter, \
-    ShuffledInput
+    ShuffledInput, D4RLReader
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.policy import Policy
 from ray.rllib.utils import merge_dicts
@@ -266,6 +266,9 @@ class WorkerSet:
             input_creator = (
                 lambda ioctx: ShuffledInput(MixedInput(config["input"], ioctx),
                                             config["shuffle_buffer_size"]))
+        elif "d4rl" in config["input"]:
+            env_name = config["input"].split(".")[1]
+            input_creator = (lambda ioctx: D4RLReader(env_name, ioctx))
         else:
             input_creator = (
                 lambda ioctx: ShuffledInput(JsonReader(config["input"], ioctx),

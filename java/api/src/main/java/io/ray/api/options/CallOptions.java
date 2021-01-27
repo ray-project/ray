@@ -22,7 +22,8 @@ public class CallOptions extends BaseTaskOptions {
     /**
      * Set a name for this task.
      *
-     * @param name task name Returns self
+     * @param name task name
+     * @return self
      */
     public Builder setName(String name) {
       this.name = name;
@@ -34,7 +35,8 @@ public class CallOptions extends BaseTaskOptions {
      * multiple times. If the same resource is set multiple times, the latest quantity will be used.
      *
      * @param name resource name
-     * @param value resource capacity Returns self
+     * @param value resource capacity
+     * @return self
      */
     public Builder setResource(String name, Double value) {
       this.resources.put(name, value);
@@ -45,7 +47,8 @@ public class CallOptions extends BaseTaskOptions {
      * Set custom requirements for multiple resources. This method can be called multiple times. If
      * the same resource is set multiple times, the latest quantity will be used.
      *
-     * @param resources requirements for multiple resources. Returns self
+     * @param resources requirements for multiple resources.
+     * @return self
      */
     public Builder setResources(Map<String, Double> resources) {
       this.resources.putAll(resources);
