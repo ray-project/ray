@@ -2509,14 +2509,16 @@ rpc::ObjectStoreStats AccumulateStoreStats(
   rpc::ObjectStoreStats store_stats;
   for (const auto &reply : node_stats) {
     auto cur_store = reply.store_stats();
-    store_stats.set_spill_time_total_s(store_stats.spill_time_total_s() +
-                                       cur_store.spill_time_total_s());
+    // Use max aggregation for time, since the nodes are spilling concurrently.
+    store_stats.set_spill_time_total_s(
+        std::max(store_stats.spill_time_total_s(), cur_store.spill_time_total_s()));
+    store_stats.set_restore_time_total_s(
+        std::max(store_stats.restore_time_total_s(), cur_store.restore_time_total_s()));
+    // Use sum aggregation for the rest of the metrics.
     store_stats.set_spilled_bytes_total(store_stats.spilled_bytes_total() +
                                         cur_store.spilled_bytes_total());
     store_stats.set_spilled_objects_total(store_stats.spilled_objects_total() +
                                           cur_store.spilled_objects_total());
-    store_stats.set_restore_time_total_s(store_stats.restore_time_total_s() +
-                                         cur_store.restore_time_total_s());
     store_stats.set_restored_bytes_total(store_stats.restored_bytes_total() +
                                          cur_store.restored_bytes_total());
     store_stats.set_restored_objects_total(store_stats.restored_objects_total() +
