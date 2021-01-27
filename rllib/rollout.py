@@ -23,15 +23,15 @@ from ray.tune.utils import merge_dicts
 from ray.tune.registry import get_trainable_cls, _global_registry, ENV_CREATOR
 
 EXAMPLE_USAGE = """
-Example Usage via RLlib CLI:
+Example usage via RLlib CLI:
     rllib rollout /tmp/ray/checkpoint_dir/checkpoint-0 --run DQN
     --env CartPole-v0 --steps 1000000 --out rollouts.pkl
 
-Example Usage via executable:
+Example usage via executable:
     ./rollout.py /tmp/ray/checkpoint_dir/checkpoint-0 --run DQN
     --env CartPole-v0 --steps 1000000 --out rollouts.pkl
 
-Example Usage w/o checkpoint (for testing purposes):
+Example usage w/o checkpoint (for testing purposes):
     ./rollout.py --run PPO --env CartPole-v0 --episodes 500
 """
 
@@ -298,6 +298,8 @@ def run(args, parser):
         config["evaluation_num_workers"] = config.get("num_workers", 0)
     if not config.get("evaluation_num_episodes"):
         config["evaluation_num_episodes"] = 1
+    config["evaluation_render"] = not args.no_render
+    config["evaluation_video"] = args.video_dir
 
     ray.init()
 
@@ -503,11 +505,11 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # User tries to record videos, but no-render is set: Error.
-    if args.video_dir and args.no_render:
-        raise ValueError(
-            "You have --no-render set, but are trying to record rollout videos"
-            " (via option --video-dir)! "
-            "Either unset --no-render or do not use --video-dir.")
+    #if args.video_dir and args.no_render:
+    #    raise ValueError(
+    #        "You have --no-render set, but are trying to record rollout videos"
+    #        " (via option --video-dir)! "
+    #        "Either unset --no-render or do not use --video-dir.")
     # --use_shelve w/o --out option.
     if args.use_shelve and not args.out:
         raise ValueError(
