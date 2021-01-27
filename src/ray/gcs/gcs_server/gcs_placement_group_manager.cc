@@ -150,6 +150,7 @@ void GcsPlacementGroupManager::RegisterPlacementGroup(
     } else {
       std::stringstream stream;
       stream << "Placement Group with name '" << placement_group->GetName() << "' already exists.";
+      RAY_LOG(WARNING) << stream.str();
       callback(Status::Invalid(stream.str()));
       return;
     }
