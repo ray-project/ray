@@ -2813,8 +2813,11 @@ NodeManager::GetResourcesUsedByNormalTask() const {
         const auto &resource = predefined_resources[res_idx];
         const auto &resource_name =
             cluster_resource_scheduler->GetResourceNameFromIndex(res_idx);
-        (*resources)[resource_name] +=
+        double resource_value =
             std::accumulate(resource.begin(), resource.end(), 0, plus_func);
+        if (resource_value > 0) {
+          (*resources)[resource_name] += resource_value;
+        }
       }
       auto custom_resources = allocated_instances->custom_resources;
       for (auto it = custom_resources.begin(); it != custom_resources.end(); ++it) {
@@ -2823,6 +2826,11 @@ NodeManager::GetResourcesUsedByNormalTask() const {
             cluster_resource_scheduler->GetResourceNameFromIndex(it->first);
         (*resources)[resource_name] +=
             std::accumulate(resource.begin(), resource.end(), 0, plus_func);
+        double resource_value =
+            std::accumulate(resource.begin(), resource.end(), 0, plus_func);
+        if (resource_value > 0) {
+          (*resources)[resource_name] += resource_value;
+        }
       }
     }
   }
@@ -2837,15 +2845,19 @@ NodeManager::GetNormalTaskResourcesChanges(
   for (const auto &resource : *new_resources) {
     const auto &iter = old_resources.find(resource.first);
     if (iter == old_resources.end()) {
+      // Normal task uses a new resource.
       (*resources_changes)[resource.first] = resource.second;
     } else {
       old_resources.erase(iter);
+      // Get the change of resource used by normal task.
       if (fabs(resource.second - iter->second) > 1e-6) {
         (*resources_changes)[resource.first] = resource.second - iter->second;
       }
     }
   }
 
+  // If a normal task uses a resource and no other task uses this resource after the task
+  // is completed, we need to get the resource information from the `old_resources`.
   for (const auto &resource : old_resources) {
     (*resources_changes)[resource.first] = -resource.second;
   }
