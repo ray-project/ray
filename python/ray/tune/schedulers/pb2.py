@@ -1,37 +1,30 @@
+from typing import Dict, Optional
 from copy import deepcopy
 import logging
-from typing import Dict, Optional
-
 import numpy as np
 import pandas as pd
-from ray.tune import TuneError
 
+from ray.tune import TuneError
 from ray.tune.schedulers import PopulationBasedTraining
 
-try:
-    import GPy
-    _has_gpy = True
-except ImportError:
-    _has_gpy = False
 
-try:
-    import sklearn  # noqa: F401
-    _has_sklearn = True
-except ImportError:
-    _has_sklearn = False
-
-
-def is_gpy_available():
-    return _has_gpy
+def import_pb2_dependencies():
+    try:
+        import GPy
+    except ImportError:
+        GPy = None
+    try:
+        import sklearn
+    except ImportError:
+        sklearn = None
+    return GPy, sklearn
 
 
-def is_sklearn_available():
-    return _has_sklearn
+GPy, has_sklearn = import_pb2_dependencies()
 
-
-if is_gpy_available():
+if GPy and has_sklearn:
     from ray.tune.schedulers.pb2_utils import normalize, optimize_acq, \
-        select_length, UCB, standardize, TV_SquaredExp
+            select_length, UCB, standardize, TV_SquaredExp
 
 logger = logging.getLogger(__name__)
 
@@ -283,10 +276,11 @@ class PB2(PopulationBasedTraining):
                  require_attrs: bool = True,
                  synch: bool = False):
 
-        if not is_gpy_available():
+        gpy_available, sklearn_available = import_pb2_dependencies()
+        if not gpy_available:
             raise RuntimeError("Please install GPy to use PB2.")
 
-        if not is_sklearn_available():
+        if not sklearn_available:
             raise RuntimeError("Please install scikit-learn to use PB2.")
 
         hyperparam_bounds = hyperparam_bounds or {}

@@ -27,7 +27,6 @@ def gen_streaming_java_deps():
             "commons-collections:commons-collections:3.2.2",
         ],
         repositories = [
-            "https://repo.spring.io/plugins-release/",
             "https://repo1.maven.org/maven2/",
         ],
     )

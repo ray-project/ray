@@ -17,6 +17,8 @@ from ray.autoscaler._private.providers import _PROVIDER_PRETTY_NAMES
 from ray.autoscaler._private.aws.utils import LazyDefaultDict, \
     handle_boto_error
 from ray.autoscaler._private.cli_logger import cli_logger, cf
+from ray.autoscaler._private.event_system import (CreateClusterEvent,
+                                                  global_event_system)
 
 logger = logging.getLogger(__name__)
 
@@ -191,6 +193,9 @@ def bootstrap_aws(config):
 
     # Configure SSH access, using an existing key pair if possible.
     config = _configure_key_pair(config)
+    global_event_system.execute_callback(
+        CreateClusterEvent.ssh_keypair_downloaded,
+        {"ssh_key_path": config["auth"]["ssh_private_key"]})
 
     # Pick a reasonable subnet if not specified by the user.
     config = _configure_subnet(config)
@@ -217,9 +222,6 @@ def _configure_iam_role(config):
         cli_logger.verbose(
             "Creating new IAM instance profile {} for use as the default.",
             cf.bold(DEFAULT_RAY_INSTANCE_PROFILE))
-        cli_logger.old_info(
-            logger, "_configure_iam_role: "
-            "Creating new instance profile {}", DEFAULT_RAY_INSTANCE_PROFILE)
         client = _client("iam", config)
         client.create_instance_profile(
             InstanceProfileName=DEFAULT_RAY_INSTANCE_PROFILE)
@@ -237,8 +239,6 @@ def _configure_iam_role(config):
                 "Creating new IAM role {} for "
                 "use as the default instance role.",
                 cf.bold(DEFAULT_RAY_IAM_ROLE))
-            cli_logger.old_info(logger, "_configure_iam_role: "
-                                "Creating new role {}", DEFAULT_RAY_IAM_ROLE)
             iam = _resource("iam", config)
             iam.create_role(
                 RoleName=DEFAULT_RAY_IAM_ROLE,
@@ -265,9 +265,6 @@ def _configure_iam_role(config):
         profile.add_role(RoleName=role.name)
         time.sleep(15)  # wait for propagation
 
-    cli_logger.old_info(
-        logger, "_configure_iam_role: "
-        "Role not specified for head node, using {}", profile.arn)
     config["head_node"]["IamInstanceProfile"] = {"Arn": profile.arn}
 
     return config
@@ -323,9 +320,6 @@ def _configure_key_pair(config):
             cli_logger.verbose(
                 "Creating new key pair {} for use as the default.",
                 cf.bold(key_name))
-            cli_logger.old_info(
-                logger, "_configure_key_pair: "
-                "Creating new key pair {}", key_name)
             key = ec2.create_key_pair(KeyName=key_name)
 
             # We need to make sure to _create_ the file with the right
@@ -351,10 +345,6 @@ def _configure_key_pair(config):
         " not found for " + cf.bold("{}"), key_path, key_name)  # todo: err msg
     assert os.path.exists(key_path), \
         "Private key file {} not found for {}".format(key_path, key_name)
-
-    cli_logger.old_info(
-        logger, "_configure_key_pair: "
-        "KeyName not specified for nodes, using {}", key_name)
 
     config["auth"]["ssh_private_key"] = key_path
     config["head_node"]["KeyName"] = key_name
@@ -409,23 +399,15 @@ def _configure_subnet(config):
                 format(config["provider"]["availability_zone"]))
 
     subnet_ids = [s.subnet_id for s in subnets]
-    subnet_descr = [(s.subnet_id, s.availability_zone) for s in subnets]
     if "SubnetIds" not in config["head_node"]:
         _set_config_info(head_subnet_src="default")
         config["head_node"]["SubnetIds"] = subnet_ids
-        cli_logger.old_info(
-            logger, "_configure_subnet: "
-            "SubnetIds not specified for head node, using {}", subnet_descr)
     else:
         _set_config_info(head_subnet_src="config")
 
     if "SubnetIds" not in config["worker_nodes"]:
         _set_config_info(workers_subnet_src="default")
         config["worker_nodes"]["SubnetIds"] = subnet_ids
-        cli_logger.old_info(
-            logger, "_configure_subnet: "
-            "SubnetId not specified for workers,"
-            " using {}", subnet_descr)
     else:
         _set_config_info(workers_subnet_src="config")
 
@@ -449,20 +431,12 @@ def _configure_security_group(config):
         head_sg = security_groups[NODE_KIND_HEAD]
 
         _set_config_info(head_security_group_src="default")
-        cli_logger.old_info(
-            logger, "_configure_security_group: "
-            "SecurityGroupIds not specified for head node, using {} ({})",
-            head_sg.group_name, head_sg.id)
         config["head_node"]["SecurityGroupIds"] = [head_sg.id]
 
     if NODE_KIND_WORKER in node_types_to_configure:
         workers_sg = security_groups[NODE_KIND_WORKER]
 
         _set_config_info(workers_security_group_src="default")
-        cli_logger.old_info(
-            logger, "_configure_security_group: "
-            "SecurityGroupIds not specified for workers, using {} ({})",
-            workers_sg.group_name, workers_sg.id)
         config["worker_nodes"]["SecurityGroupIds"] = [workers_sg.id]
 
     return config
@@ -482,26 +456,10 @@ def _check_ami(config):
     if config["head_node"].get("ImageId", "").lower() == "latest_dlami":
         config["head_node"]["ImageId"] = default_ami
         _set_config_info(head_ami_src="dlami")
-        cli_logger.old_info(
-            logger,
-            "_check_ami: head node ImageId is 'latest_dlami'. "
-            "Using '{ami_id}', which is the default {ami_name} "
-            "for your region ({region}).",
-            ami_id=default_ami,
-            ami_name=DEFAULT_AMI_NAME,
-            region=region)
 
     if config["worker_nodes"].get("ImageId", "").lower() == "latest_dlami":
         config["worker_nodes"]["ImageId"] = default_ami
         _set_config_info(workers_ami_src="dlami")
-        cli_logger.old_info(
-            logger,
-            "_check_ami: worker nodes ImageId is 'latest_dlami'. "
-            "Using '{ami_id}', which is the default {ami_name} "
-            "for your region ({region}).",
-            ami_id=default_ami,
-            ami_name=DEFAULT_AMI_NAME,
-            region=region)
 
 
 def _upsert_security_groups(config, node_types):
@@ -600,9 +558,8 @@ def _create_security_group(config, vpc_id, group_name):
         "Created new security group {}",
         cf.bold(security_group.group_name),
         _tags=dict(id=security_group.id))
-    cli_logger.old_info(
-        logger, "_create_security_group: Created new security group {} ({})",
-        security_group.group_name, security_group.id)
+    cli_logger.doassert(security_group,
+                        "Failed to create security group")  # err msg
     assert security_group, "Failed to create security group"
     return security_group
 

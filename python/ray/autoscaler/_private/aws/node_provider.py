@@ -4,7 +4,7 @@ import threading
 from collections import defaultdict
 import logging
 import time
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 import boto3
 import botocore
@@ -50,6 +50,38 @@ def make_ec2_client(region, max_retries, aws_credentials=None):
     aws_credentials = aws_credentials or {}
     return boto3.resource(
         "ec2", region_name=region, config=config, **aws_credentials)
+
+
+def list_ec2_instances(region: str, aws_credentials: Dict[str, Any] = None
+                       ) -> List[Dict[str, Any]]:
+    """Get all instance-types/resources available in the user's AWS region.
+    Args:
+        region (str): the region of the AWS provider. e.g., "us-west-2".
+    Returns:
+        final_instance_types: a list of instances. An example of one element in
+        the list:
+            {'InstanceType': 'm5a.xlarge', 'ProcessorInfo':
+            {'SupportedArchitectures': ['x86_64'], 'SustainedClockSpeedInGhz':
+            2.5},'VCpuInfo': {'DefaultVCpus': 4, 'DefaultCores': 2,
+            'DefaultThreadsPerCore': 2, 'ValidCores': [2],
+            'ValidThreadsPerCore': [1, 2]}, 'MemoryInfo': {'SizeInMiB': 16384},
+            ...}
+
+    """
+    final_instance_types = []
+    config = Config(retries={"max_attempts": BOTO_MAX_RETRIES})
+    aws_credentials = aws_credentials or {}
+    ec2 = boto3.client(
+        "ec2", region_name=region, config=config, **aws_credentials)
+    instance_types = ec2.describe_instance_types()
+    final_instance_types.extend(copy.deepcopy(instance_types["InstanceTypes"]))
+    while "NextToken" in instance_types:
+        instance_types = ec2.describe_instance_types(
+            NextToken=instance_types["NextToken"])
+        final_instance_types.extend(
+            copy.deepcopy(instance_types["InstanceTypes"]))
+
+    return final_instance_types
 
 
 class AWSNodeProvider(NodeProvider):
@@ -207,8 +239,15 @@ class AWSNodeProvider(NodeProvider):
                     }],
                 )
 
-    def create_node(self, node_config, tags, count):
+    def create_node(self, node_config, tags, count) -> Dict[str, Any]:
+        """Creates instances.
+
+        Returns dict mapping instance id to ec2.Instance object for the created
+        instances.
+        """
         tags = copy.deepcopy(tags)
+
+        reused_nodes_dict = {}
         # Try to reuse previously stopped nodes with compatible configs
         if self.cache_stopped_nodes:
             # TODO(ekl) this is breaking the abstraction boundary a little by
@@ -241,6 +280,7 @@ class AWSNodeProvider(NodeProvider):
             reuse_nodes = list(
                 self.ec2.instances.filter(Filters=filters))[:count]
             reuse_node_ids = [n.id for n in reuse_nodes]
+            reused_nodes_dict = {n.id: n for n in reuse_nodes}
             if reuse_nodes:
                 cli_logger.print(
                     # todo: handle plural vs singular?
@@ -248,11 +288,6 @@ class AWSNodeProvider(NodeProvider):
                     "To disable reuse, set `cache_stopped_nodes: False` "
                     "under `provider` in the cluster configuration.",
                     cli_logger.render_list(reuse_node_ids))
-                cli_logger.old_info(
-                    logger, "AWSNodeProvider: reusing instances {}. "
-                    "To disable reuse, set "
-                    "'cache_stopped_nodes: False' in the provider "
-                    "config.", reuse_node_ids)
 
                 # todo: timed?
                 with cli_logger.group("Stopping instances to reuse"):
@@ -263,10 +298,6 @@ class AWSNodeProvider(NodeProvider):
                         if node.state["Name"] == "stopping":
                             cli_logger.print("Waiting for instance {} to stop",
                                              node.id)
-                            cli_logger.old_info(
-                                logger,
-                                "AWSNodeProvider: waiting for instance "
-                                "{} to fully stop...", node.id)
                             node.wait_until_stopped()
 
                 self.ec2.meta.client.start_instances(
@@ -275,18 +306,19 @@ class AWSNodeProvider(NodeProvider):
                     self.set_node_tags(node_id, tags)
                 count -= len(reuse_node_ids)
 
+        created_nodes_dict = {}
         if count:
-            self._create_node(node_config, tags, count)
+            created_nodes_dict = self._create_node(node_config, tags, count)
+
+        all_created_nodes = reused_nodes_dict
+        all_created_nodes.update(created_nodes_dict)
+        return all_created_nodes
 
     def _create_node(self, node_config, tags, count):
+        created_nodes_dict = {}
+
         tags = to_aws_format(tags)
         conf = node_config.copy()
-
-        # Delete unsupported keys from the node config
-        try:
-            del conf["Resources"]
-        except KeyError:
-            pass
 
         tag_pairs = [{
             "Key": TAG_RAY_CLUSTER_NAME,
@@ -328,10 +360,6 @@ class AWSNodeProvider(NodeProvider):
             try:
                 subnet_id = subnet_ids[self.subnet_idx % len(subnet_ids)]
 
-                cli_logger.old_info(
-                    logger, "NodeProvider: calling create_instances "
-                    "with {} (count={}).", subnet_id, count)
-
                 self.subnet_idx += 1
                 conf.update({
                     "MinCount": 1,
@@ -340,6 +368,7 @@ class AWSNodeProvider(NodeProvider):
                     "TagSpecifications": tag_specs
                 })
                 created = self.ec2_fail_fast.create_instances(**conf)
+                created_nodes_dict = {n.id: n for n in created}
 
                 # todo: timed?
                 # todo: handle plurality?
@@ -366,26 +395,18 @@ class AWSNodeProvider(NodeProvider):
                             _tags=dict(
                                 state=instance.state["Name"],
                                 info=state_reason["Message"]))
-                        cli_logger.old_info(
-                            logger, "NodeProvider: Created instance "
-                            "[id={}, name={}, info={}]", instance.instance_id,
-                            instance.state["Name"], state_reason["Message"])
                 break
             except botocore.exceptions.ClientError as exc:
                 if attempt == BOTO_CREATE_MAX_RETRIES:
                     # todo: err msg
                     cli_logger.abort(
                         "Failed to launch instances. Max attempts exceeded.")
-                    cli_logger.old_error(
-                        logger,
-                        "create_instances: Max attempts ({}) exceeded.",
-                        BOTO_CREATE_MAX_RETRIES)
                     raise exc
                 else:
                     cli_logger.print(
                         "create_instances: Attempt failed with {}, retrying.",
                         exc)
-                    cli_logger.old_error(logger, exc)
+        return created_nodes_dict
 
     def terminate_node(self, node_id):
         node = self._get_cached_node(node_id)
@@ -395,11 +416,6 @@ class AWSNodeProvider(NodeProvider):
                     "Terminating instance {} " +
                     cf.dimmed("(cannot stop spot instances, only terminate)"),
                     node_id)  # todo: show node name?
-
-                cli_logger.old_info(
-                    logger,
-                    "AWSNodeProvider: terminating node {} (spot nodes cannot "
-                    "be stopped, only terminated)", node_id)
                 node.terminate()
             else:
                 cli_logger.print("Stopping instance {} " + cf.dimmed(
@@ -407,12 +423,6 @@ class AWSNodeProvider(NodeProvider):
                     "set `cache_stopped_nodes: False` "
                     "under `provider` in the cluster configuration)"),
                                  node_id)  # todo: show node name?
-
-                cli_logger.old_info(
-                    logger,
-                    "AWSNodeProvider: stopping node {}. To terminate nodes "
-                    "on stop, set 'cache_stopped_nodes: False' in the "
-                    "provider config.".format(node_id))
                 node.stop()
         else:
             node.terminate()
@@ -441,11 +451,6 @@ class AWSNodeProvider(NodeProvider):
                         "set `cache_stopped_nodes: False` "
                         "under `provider` in the cluster configuration)"),
                     cli_logger.render_list(on_demand_ids))
-                cli_logger.old_info(
-                    logger,
-                    "AWSNodeProvider: stopping nodes {}. To terminate nodes "
-                    "on stop, set 'cache_stopped_nodes: False' in the "
-                    "provider config.", on_demand_ids)
 
                 self.ec2.meta.client.stop_instances(InstanceIds=on_demand_ids)
             if spot_ids:
@@ -453,10 +458,6 @@ class AWSNodeProvider(NodeProvider):
                     "Terminating instances {} " +
                     cf.dimmed("(cannot stop spot instances, only terminate)"),
                     cli_logger.render_list(spot_ids))
-                cli_logger.old_info(
-                    logger,
-                    "AWSNodeProvider: terminating nodes {} (spot nodes cannot "
-                    "be stopped, only terminated)", spot_ids)
 
                 self.ec2.meta.client.terminate_instances(InstanceIds=spot_ids)
         else:
@@ -498,8 +499,9 @@ class AWSNodeProvider(NodeProvider):
             return cluster_config
         cluster_config = copy.deepcopy(cluster_config)
 
-        instances_list = boto3.client("ec2").describe_instance_types()[
-            "InstanceTypes"]
+        instances_list = list_ec2_instances(
+            cluster_config["provider"]["region"],
+            cluster_config["provider"].get("aws_credentials"))
         instances_dict = {
             instance["InstanceType"]: instance
             for instance in instances_list
@@ -528,7 +530,10 @@ class AWSNodeProvider(NodeProvider):
                         available_node_types[node_type].get("resources", {}):
                     available_node_types[node_type][
                         "resources"] = autodetected_resources
-                    cli_logger.print("Updating the resources of {} to {}.",
-                                     node_type, autodetected_resources)
-
+                    logger.debug("Updating the resources of {} to {}.".format(
+                        node_type, autodetected_resources))
+            else:
+                raise ValueError("Instance type " + instance_type +
+                                 " is not available in AWS region: " +
+                                 cluster_config["provider"]["region"] + ".")
         return cluster_config

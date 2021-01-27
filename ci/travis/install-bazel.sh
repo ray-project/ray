@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-
+set -x
 set -euo pipefail
 
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
@@ -44,6 +44,7 @@ esac
   fi
 )
 
+export PATH=/opt/python/cp36-cp36m/bin:$PATH
 python="$(command -v python3 || command -v python || echo python)"
 version="$("${python}" -s -c "import runpy, sys; runpy.run_path(sys.argv.pop(), run_name='__api__')" bazel_version "${ROOT_DIR}/../../python/setup.py")"
 if [ "${OSTYPE}" = "msys" ]; then
@@ -114,6 +115,8 @@ if [ "${CI-}" = true ]; then
     cat <<EOF >> ~/.bazelrc
 build --google_credentials="${translated_path}"
 EOF
+  elif [ -n "${BUILDKITE-}" ]; then
+    echo "Using buildkite secret store to communicate with cache address"
   else
     echo "Using remote build cache in read-only mode." 1>&2
     cat <<EOF >> ~/.bazelrc

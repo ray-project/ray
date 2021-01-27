@@ -21,6 +21,8 @@ def train(config, checkpoint_dir=None):
         v = np.tanh(float(timestep) / config.get("width", 1))
         v *= config.get("height", 1)
 
+        # Checkpoint the state of the training every 3 steps
+        # Note that this is only required for certain schedulers
         if timestep % 3 == 0:
             with tune.checkpoint_dir(step=timestep) as checkpoint_dir:
                 path = os.path.join(checkpoint_dir, "checkpoint")
@@ -42,17 +44,16 @@ if __name__ == "__main__":
     # Hyperband early stopping, configured with `episode_reward_mean` as the
     # objective and `training_iteration` as the time unit,
     # which is automatically filled by Tune.
-    hyperband = HyperBandScheduler(
-        time_attr="training_iteration",
-        metric="episode_reward_mean",
-        mode="max",
-        max_t=200)
+    hyperband = HyperBandScheduler(max_t=200)
 
-    tune.run(
+    analysis = tune.run(
         train,
         name="hyperband_test",
         num_samples=20,
+        metric="episode_reward_mean",
+        mode="max",
         stop={"training_iteration": 10 if args.smoke_test else 99999},
         config={"height": tune.uniform(0, 100)},
         scheduler=hyperband,
         fail_fast=True)
+    print("Best hyperparameters found were: ", analysis.best_config)

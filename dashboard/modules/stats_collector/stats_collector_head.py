@@ -71,7 +71,8 @@ class StatsCollector(dashboard_utils.DashboardHeadModule):
             node_id, node_info = change.new
             address = "{}:{}".format(node_info["nodeManagerAddress"],
                                      int(node_info["nodeManagerPort"]))
-            channel = aiogrpc.insecure_channel(address)
+            options = (("grpc.enable_http_proxy", 0), )
+            channel = aiogrpc.insecure_channel(address, options=options)
             stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
             self._stubs[node_id] = stub
 
@@ -147,20 +148,22 @@ class StatsCollector(dashboard_utils.DashboardHeadModule):
     @routes.get("/node_logs")
     async def get_logs(self, req) -> aiohttp.web.Response:
         ip = req.query["ip"]
-        pid = req.query.get("pid")
-        node_logs = DataSource.ip_and_pid_to_logs[ip]
-        payload = node_logs.get(pid, []) if pid else node_logs
+        pid = str(req.query.get("pid", ""))
+        node_logs = DataSource.ip_and_pid_to_logs.get(ip, {})
+        if pid:
+            node_logs = {str(pid): node_logs.get(pid, [])}
         return dashboard_utils.rest_response(
-            success=True, message="Fetched logs.", logs=payload)
+            success=True, message="Fetched logs.", logs=node_logs)
 
     @routes.get("/node_errors")
     async def get_errors(self, req) -> aiohttp.web.Response:
         ip = req.query["ip"]
-        pid = req.query.get("pid")
-        node_errors = DataSource.ip_and_pid_to_errors[ip]
-        filtered_errs = node_errors.get(pid, []) if pid else node_errors
+        pid = str(req.query.get("pid", ""))
+        node_errors = DataSource.ip_and_pid_to_errors.get(ip, {})
+        if pid:
+            node_errors = {str(pid): node_errors.get(pid, [])}
         return dashboard_utils.rest_response(
-            success=True, message="Fetched errors.", errors=filtered_errs)
+            success=True, message="Fetched errors.", errors=node_errors)
 
     async def _update_actors(self):
         # Subscribe actor channel.
@@ -200,8 +203,10 @@ class StatsCollector(dashboard_utils.DashboardHeadModule):
                         node_id = actor_table_data["address"]["rayletId"]
                         job_actors.setdefault(job_id,
                                               {})[actor_id] = actor_table_data
-                        node_actors.setdefault(node_id,
-                                               {})[actor_id] = actor_table_data
+                        # Update only when node_id is not Nil.
+                        if node_id != stats_collector_consts.NIL_NODE_ID:
+                            node_actors.setdefault(
+                                node_id, {})[actor_id] = actor_table_data
                     DataSource.job_actors.reset(job_actors)
                     DataSource.node_actors.reset(node_actors)
                     logger.info("Received %d actor info from GCS.",
@@ -230,10 +235,11 @@ class StatsCollector(dashboard_utils.DashboardHeadModule):
                 node_id = actor_table_data["address"]["rayletId"]
                 # Update actors.
                 DataSource.actors[actor_id] = actor_table_data
-                # Update node actors.
-                node_actors = dict(DataSource.node_actors.get(node_id, {}))
-                node_actors[actor_id] = actor_table_data
-                DataSource.node_actors[node_id] = node_actors
+                # Update node actors (only when node_id is not Nil).
+                if node_id != stats_collector_consts.NIL_NODE_ID:
+                    node_actors = dict(DataSource.node_actors.get(node_id, {}))
+                    node_actors[actor_id] = actor_table_data
+                    DataSource.node_actors[node_id] = node_actors
                 # Update job actors.
                 job_actors = dict(DataSource.job_actors.get(job_id, {}))
                 job_actors[actor_id] = actor_table_data
@@ -244,7 +250,8 @@ class StatsCollector(dashboard_utils.DashboardHeadModule):
     @async_loop_forever(
         stats_collector_consts.NODE_STATS_UPDATE_INTERVAL_SECONDS)
     async def _update_node_stats(self):
-        for node_id, stub in self._stubs.items():
+        # Copy self._stubs to avoid `dictionary changed size during iteration`.
+        for node_id, stub in list(self._stubs.items()):
             node_info = DataSource.nodes.get(node_id)
             if node_info["state"] != "ALIVE":
                 continue

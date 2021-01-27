@@ -60,8 +60,12 @@ If using the command line, connect to the Ray cluster as follow:
     override this by explicitly setting ``OMP_NUM_THREADS``. ``OMP_NUM_THREADS`` is commonly
     used in numpy, PyTorch, and Tensorflow to perform multit-threaded linear algebra.
     In multi-worker setting, we want one thread per worker instead of many threads
-    per worker to avoid contention.
+    per worker to avoid contention. Some other libraries may have their own way to configure
+    parallelism. For example, if you're using OpenCV, you should manually set the number of
+    threads using cv2.setNumThreads(num_threads) (set to 0 to disable multi-threading).
 
+
+.. _temp-dir-log-files:
 
 Logging and Debugging
 ---------------------
@@ -125,18 +129,64 @@ All Nodes
 - ``--node-manager-port``: Raylet port for node manager. Default: Random value.
 - ``--object-manager-port``: Raylet port for object manager. Default: Random value.
 
+The node manager and object manager run as separate processes with their own ports for communication.
+
 The following options specify the range of ports used by worker processes across machines. All ports in the range should be open.
 
 - ``--min-worker-port``: Minimum port number worker can be bound to. Default: 10000.
 - ``--max-worker-port``: Maximum port number worker can be bound to. Default: 10999.
+
+Port numbers are how Ray disambiguates input and output to and from multiple workers on a single node. Each worker will take input and give output on a single port number. Thus, for example, by default, there is a maximum of 1,000 workers on each node, irrespective of number of CPUs.
+
+In general, it is recommended to give Ray a wide range of possible worker ports, in case any of those ports happen to be in use by some other program on your machine. However, when debugging it is useful to explicitly specify a short list of worker ports such as ``--worker-port-list=10000,10001,10002,10003,10004`` (note that this will limit the number of workers, just like specifying a narrow range).
 
 Head Node
 ~~~~~~~~~
 In addition to ports specified above, the head node needs to open several more ports.
 
 - ``--port``: Port of GCS. Default: 6379.
-- ``--dashboard-port``: Port for accessing the dashboard. Default: 8265
+- ``--redis-shard-ports``: Comma-separated list of ports for non-primary Redis shards. Default: Random values.
 - ``--gcs-server-port``: GCS Server port. GCS server is a stateless service that is in charge of communicating with the GCS. Default: Random value.
+
+- If ``--include-dashboard`` is true (the default), then the head node must open ``--dashboard-port``. Default: 8265.
+
+If ``--include-dashboard`` is true but the ``--dashboard-port`` is not open on
+the head node, you will repeatedly get
+
+.. code-block:: bash
+
+  WARNING worker.py:1114 -- The agent on node <hostname of node that tried to run a task> failed with the following error:
+  Traceback (most recent call last):
+    File "/usr/local/lib/python3.8/dist-packages/grpc/aio/_call.py", line 285, in __await__
+      raise _create_rpc_error(self._cython_call._initial_metadata,
+  grpc.aio._call.AioRpcError: <AioRpcError of RPC that terminated with:
+    status = StatusCode.UNAVAILABLE
+    details = "failed to connect to all addresses"
+    debug_error_string = "{"description":"Failed to pick subchannel","file":"src/core/ext/filters/client_channel/client_channel.cc","file_line":4165,"referenced_errors":[{"description":"failed to connect to all addresses","file":"src/core/ext/filters/client_channel/lb_policy/pick_first/pick_first.cc","file_line":397,"grpc_status":14}]}"
+
+(Also, you will not be able to access the dashboard.)
+
+If you see that error, check whether the ``--dashboard-port`` is accessible
+with ``nc`` or ``nmap`` (or your browser).
+
+.. code-block:: bash
+
+  $ nmap -sV --reason -p 8265 $HEAD_ADDRESS
+  Nmap scan report for compute04.berkeley.edu (123.456.78.910)
+  Host is up, received reset ttl 60 (0.00065s latency).
+  rDNS record for 123.456.78.910: compute04.berkeley.edu
+  PORT     STATE SERVICE REASON         VERSION
+  8265/tcp open  http    syn-ack ttl 60 aiohttp 3.7.2 (Python 3.8)
+  Service detection performed. Please report any incorrect results at https://nmap.org/submit/ .
+
+Note that the dashboard runs as a separate subprocess which can crash invisibly
+in the background, so even if you checked port 8265 earlier, the port might be
+closed *now* (for the prosaic reason that there is no longer a service running
+on it). This also means that if that port is unreachable, if you ``ray stop``
+and ``ray start``, it may become reachable again due to the dashboard
+restarting.
+
+If you don't want the dashboard, set ``--include-dashboard=false``.
 
 Redis Port Authentication
 -------------------------
@@ -195,23 +245,31 @@ Java Applications
 Code Search Path
 ~~~~~~~~~~~~~~~~
 
-If you want to run a Java application in cluster mode, you must first run ``ray start`` to start the Ray cluster. In addition to any ``ray start`` parameters mentioned above, you must add ``--code-search-path`` to tell Ray where to load jars when starting Java workers. Your jar files must be distributed to all nodes of the Ray cluster before running your code, and this parameter must be set on both the head node and non-head nodes.
+If you want to run a Java application in a multi-node cluster, you must specify the code search path in your driver. The code search path is to tell Ray where to load jars when starting Java workers. Your jar files must be distributed to the same path(s) on all nodes of the Ray cluster before running your code.
 
 .. code-block:: bash
 
-  $ ray start ... --code-search-path=/path/to/jars
+  $ java -classpath <classpath> \
+      -Dray.address=<address> \
+      -Dray.job.code-search-path=/path/to/jars/ \
+      <classname> <args>
 
-The ``/path/to/jars`` here points to a directory which contains jars. All jars in the directory will be loaded by workers. You can also provide multiple directories for this parameter.
+The ``/path/to/jars/`` here points to a directory which contains jars. All jars in the directory will be loaded by workers. You can also provide multiple directories for this parameter.
 
 .. code-block:: bash
 
-  $ ray start ... --code-search-path=/path/to/jars1:/path/to/jars2:/path/to/pys1:/path/to/pys2
+  $ java -classpath <classpath> \
+      -Dray.address=<address> \
+      -Dray.job.code-search-path=/path/to/jars1:/path/to/jars2:/path/to/pys1:/path/to/pys2 \
+      <classname> <args>
 
-Code search path is also used for loading Python code if it's specified. This is required for :ref:`cross_language`. If code search path is specified, you can only run Python remote functions which can be found in the code search path.
+You don't need to configure code search path if you run a Java application in a single-node cluster.
 
-You don't need to configure code search path if you run a Java application in single machine mode.
+See ``ray.job.code-search-path`` under :ref:`Driver Options <java-driver-options>` for more information.
 
 .. note:: Currently we don't provide a way to configure Ray when running a Java application in single machine mode. If you need to configure Ray, run ``ray start`` to start the Ray cluster first.
+
+.. _java-driver-options:
 
 Driver Options
 ~~~~~~~~~~~~~~
@@ -238,5 +296,12 @@ The list of available driver options:
   - If it's set to ``true``, the driver will run in :ref:`local_mode`.
   - Type: ``Boolean``
   - Default: ``false``
+
+- ``ray.job.code-search-path``
+
+  - The paths for Java workers to load code from. Currently only directories are supported. You can specify one or more directories split by a ``:``. You don't need to configure code search path if you run a Java application in single machine mode or local mode. Code search path is also used for loading Python code if it's specified. This is required for :ref:`cross_language`. If code search path is specified, you can only run Python remote functions which can be found in the code search path.
+  - Type: ``String``
+  - Default: empty string.
+  - Example: ``/path/to/jars1:/path/to/jars2:/path/to/pys1:/path/to/pys2``
 
 .. _`Apache Arrow`: https://arrow.apache.org/

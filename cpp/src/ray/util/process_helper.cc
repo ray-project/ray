@@ -69,7 +69,9 @@ void ProcessHelper::RayStart(std::shared_ptr<RayConfig> config,
   options.language = Language::CPP;
   options.store_socket = store_socket;
   options.raylet_socket = raylet_socket;
-  options.job_id = JobID::FromInt(1);
+  if (options.worker_type == WorkerType::DRIVER) {
+    options.job_id = JobID::FromInt(1);
+  }
   options.gcs_options = gcs_options;
   options.enable_logging = true;
   options.log_dir = session_dir + "/logs";

@@ -23,19 +23,6 @@ def test_was_current_actor_reconstructed(shutdown_only):
         def get_pid(self):
             return os.getpid()
 
-        # The following methods is to apply the checkpointable interface.
-        def should_checkpoint(self, checkpoint_context):
-            return False
-
-        def save_checkpoint(self, actor_id, checkpoint_id):
-            pass
-
-        def load_checkpoint(self, actor_id, available_checkpoints):
-            pass
-
-        def checkpoint_expired(self, actor_id, checkpoint_id):
-            pass
-
     a = A.remote()
     # `was_reconstructed` should be False when it's called in actor.
     assert ray.get(a.get_was_reconstructed.remote()) is False
@@ -75,6 +62,36 @@ def test_was_current_actor_reconstructed(shutdown_only):
     assert ray.get(a.current_job_id.remote()) is not None
     assert ray.get(a.current_actor_id.remote()) is not None
     ray.get(f.remote())
+
+
+def test_get_context_dict(ray_start_regular):
+    context_dict = ray.get_runtime_context().get()
+    assert context_dict["node_id"] is not None
+    assert context_dict["job_id"] is not None
+    assert "actor_id" not in context_dict
+    assert "task_id" not in context_dict
+
+    @ray.remote
+    class Actor:
+        def check(self, node_id, job_id):
+            context_dict = ray.get_runtime_context().get()
+            assert context_dict["node_id"] == node_id
+            assert context_dict["job_id"] == job_id
+            assert context_dict["actor_id"] is not None
+            assert context_dict["task_id"] is not None
+
+    a = Actor.remote()
+    ray.get(a.check.remote(context_dict["node_id"], context_dict["job_id"]))
+
+    @ray.remote
+    def task(node_id, job_id):
+        context_dict = ray.get_runtime_context().get()
+        assert context_dict["node_id"] == node_id
+        assert context_dict["job_id"] == job_id
+        assert context_dict["task_id"] is not None
+        assert "actor_id" not in context_dict
+
+    ray.get(task.remote(context_dict["node_id"], context_dict["job_id"]))
 
 
 if __name__ == "__main__":

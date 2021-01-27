@@ -1,11 +1,13 @@
 import gym
-from gym.spaces import Discrete
+from gym.spaces import Box, Discrete
 import numpy as np
 from typing import Optional, Tuple
 
 from ray.rllib.models.torch.misc import SlimFC
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
-from ray.rllib.utils.framework import get_activation_fn, try_import_torch
+from ray.rllib.models.utils import get_activation_fn
+from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.spaces.simplex import Simplex
 from ray.rllib.utils.typing import ModelConfigDict, TensorType
 
 torch, nn = try_import_torch()
@@ -66,13 +68,20 @@ class SACTorchModel(TorchModelV2, nn.Module):
         if isinstance(action_space, Discrete):
             self.action_dim = action_space.n
             self.discrete = True
-            self.action_outs = q_outs = self.action_dim
-            self.action_ins = None  # No action inputs for the discrete case.
-        else:
+            action_outs = q_outs = self.action_dim
+            action_ins = None  # No action inputs for the discrete case.
+        elif isinstance(action_space, Box):
             self.action_dim = np.product(action_space.shape)
             self.discrete = False
-            self.action_outs = 2 * self.action_dim
-            self.action_ins = self.action_dim
+            action_outs = 2 * self.action_dim
+            action_ins = self.action_dim
+            q_outs = 1
+        else:
+            assert isinstance(action_space, Simplex)
+            self.action_dim = np.product(action_space.shape)
+            self.discrete = False
+            action_outs = self.action_dim
+            action_ins = self.action_dim
             q_outs = 1
 
         # Build the policy network.
@@ -94,7 +103,7 @@ class SACTorchModel(TorchModelV2, nn.Module):
             "action_out",
             SlimFC(
                 ins,
-                self.action_outs,
+                action_outs,
                 initializer=torch.nn.init.xavier_uniform_,
                 activation_fn=None))
 
@@ -105,7 +114,7 @@ class SACTorchModel(TorchModelV2, nn.Module):
             # For continuous actions: Feed obs and actions (concatenated)
             # through the NN. For discrete actions, only obs.
             q_net = nn.Sequential()
-            ins = self.obs_ins + (0 if self.discrete else self.action_ins)
+            ins = self.obs_ins + (0 if self.discrete else action_ins)
             for i, n in enumerate(critic_hiddens):
                 q_net.add_module(
                     "{}_hidden_{}".format(name_, i),

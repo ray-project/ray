@@ -1,5 +1,5 @@
 import gym
-from gym.envs.classic_control import PendulumEnv
+from gym.envs.classic_control import PendulumEnv, CartPoleEnv
 import numpy as np
 
 # MuJoCo may not be installed.
@@ -8,6 +8,26 @@ try:
     from gym.envs.mujoco import HalfCheetahEnv, HopperEnv
 except (ImportError, gym.error.DependencyNotInstalled):
     pass
+
+
+class CartPoleWrapper(CartPoleEnv):
+    """Wrapper for the Cartpole-v0 environment.
+
+    Adds an additional `reward` method for some model-based RL algos (e.g.
+    MB-MPO).
+    """
+
+    def reward(self, obs, action, obs_next):
+        # obs = batch * [pos, vel, angle, rotation_rate]
+        x = obs_next[:, 0]
+        theta = obs_next[:, 2]
+
+        rew = (x < -self.x_threshold) | (x > self.x_threshold) | (
+            theta < -self.theta_threshold_radians) | (
+                theta > self.theta_threshold_radians)
+
+        rew = rew.astype(float)
+        return rew
 
 
 class PendulumWrapper(PendulumEnv):

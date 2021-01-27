@@ -22,7 +22,7 @@ Let's expose metrics through `ray start`.
 
     ray start --head --metrics-export-port=8080 # Assign metrics export port on a head node.
 
-Now, you can scrape Ray's metrics using Prometheus. 
+Now, you can scrape Ray's metrics using Prometheus.
 
 First, download Prometheus. `Download Link <https://prometheus.io/download/>`_
 
@@ -37,11 +37,11 @@ Let's modify Prometheus's config file to scrape metrics from Prometheus endpoint
 
     # prometheus.yml
     global:
-    scrape_interval:     5s
-    evaluation_interval: 5s
+      scrape_interval:     5s
+      evaluation_interval: 5s
 
     scrape_configs:
-    - job_name: prometheus
+      - job_name: prometheus
         static_configs:
         - targets: ['localhost:8080'] # This must be same as metrics_export_port
 
@@ -119,7 +119,7 @@ This will allow Prometheus to dynamically find endpoints it should scrape (servi
 
 Getting Started (Cluster Launcher)
 ----------------------------------
-When you use a Ray cluster launcher, it is common node IP addresses are changing because cluster is scaling up and down. 
+When you use a Ray cluster launcher, it is common node IP addresses are changing because cluster is scaling up and down.
 In this case, you can use Prometheus' `file based service discovery <https://prometheus.io/docs/guides/file-sd/#installing-configuring-and-running-prometheus>`_.
 
 Prometheus Service Discovery Support
@@ -135,8 +135,8 @@ Ray periodically updates the addresses of all metrics agents in a cluster to thi
 Now, modify a Prometheus config to scrape the file for service discovery.
 
 .. code-block:: yaml
-    
-    # Prometheus config file 
+
+    # Prometheus config file
 
     # my global config
     global:

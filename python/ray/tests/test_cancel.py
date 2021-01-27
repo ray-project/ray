@@ -185,16 +185,16 @@ def test_stress(shutdown_only, use_force):
 
     for done in cancelled:
         with pytest.raises(valid_exceptions(use_force)):
-            ray.get(done)
+            ray.get(done, timeout=120)
     for indx, t in enumerate(tasks):
         if sleep_or_no[indx]:
             ray.cancel(t, force=use_force)
             cancelled.add(t)
         if t in cancelled:
             with pytest.raises(valid_exceptions(use_force)):
-                ray.get(t)
+                ray.get(t, timeout=120)
         else:
-            ray.get(t)
+            ray.get(t, timeout=120)
 
 
 @pytest.mark.parametrize("use_force", [True, False])
@@ -209,6 +209,12 @@ def test_fast(shutdown_only, use_force):
     ids = list()
     for _ in range(100):
         x = fast.remote("a")
+        # NOTE If a non-force Cancellation is attempted in the time
+        # between a worker receiving a task and the worker executing
+        # that task (specifically the python execution), Cancellation
+        # can fail.
+        if not use_force:
+            time.sleep(0.1)
         ray.cancel(x, force=use_force)
         ids.append(x)
 
@@ -225,11 +231,12 @@ def test_fast(shutdown_only, use_force):
         if random.random() > 0.95:
             ray.cancel(ids[idx], force=use_force)
     signaler.send.remote()
-    for obj_ref in ids:
+    for i, obj_ref in enumerate(ids):
         try:
-            ray.get(obj_ref)
+            ray.get(obj_ref, timeout=120)
         except Exception as e:
-            assert isinstance(e, valid_exceptions(use_force))
+            assert isinstance(
+                e, valid_exceptions(use_force)), f"Failure on iteration: {i}"
 
 
 @pytest.mark.parametrize("use_force", [True, False])
@@ -256,6 +263,38 @@ def test_remote_cancel(ray_start_regular, use_force):
 
     with pytest.raises(valid_exceptions(use_force)):
         ray.get(inner, timeout=10)
+
+
+@pytest.mark.parametrize("use_force", [True, False])
+def test_recursive_cancel(shutdown_only, use_force):
+    ray.init(num_cpus=4)
+
+    @ray.remote(num_cpus=1)
+    def inner():
+        while True:
+            time.sleep(0.1)
+
+    @ray.remote(num_cpus=1)
+    def outer():
+
+        x = [inner.remote()]
+        print(x)
+        while True:
+            time.sleep(0.1)
+
+    @ray.remote(num_cpus=4)
+    def many_resources():
+        return 300
+
+    outer_fut = outer.remote()
+    many_fut = many_resources.remote()
+    with pytest.raises(GetTimeoutError):
+        ray.get(many_fut, timeout=1)
+    ray.cancel(outer_fut)
+    with pytest.raises(valid_exceptions(use_force)):
+        ray.get(outer_fut, timeout=10)
+
+    assert ray.get(many_fut, timeout=30)
 
 
 if __name__ == "__main__":

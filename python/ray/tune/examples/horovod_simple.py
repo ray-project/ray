@@ -112,7 +112,9 @@ if __name__ == "__main__":
         replicate_pem=False)
     analysis = tune.run(
         horovod_trainable,
+        metric="loss",
+        mode="min",
         config={"lr": tune.uniform(0.1, 1)},
         num_samples=2 if args.smoke_test else 10,
         fail_fast=True)
-    config = analysis.get_best_config(metric="loss", mode="min")
+    print("Best hyperparameters found were: ", analysis.best_config)

@@ -21,18 +21,12 @@ package io.ray.streaming.state.store;
 import java.io.IOException;
 import java.util.Map;
 
-/**
- * Key Map Store interface.
- */
+/** Key Map Store interface. */
 public interface KeyMapStore<K, S, T> extends KeyValueStore<K, Map<S, T>> {
 
-  /**
-   * put sub key value into the store incrementally.
-   */
+  /** put sub key value into the store incrementally. */
   void put(K key, S subKey, T value) throws IOException;
 
-  /**
-   * get subValue from store.
-   */
+  /** get subValue from store. */
   T get(K key, S subKey) throws IOException;
 }

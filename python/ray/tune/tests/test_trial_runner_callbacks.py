@@ -9,11 +9,16 @@ import ray
 from ray import tune
 from ray.rllib import _register_all
 from ray.tune.checkpoint_manager import Checkpoint
+from ray.tune.logger import DEFAULT_LOGGERS, LoggerCallback, \
+    LegacyLoggerCallback
 from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.result import TRAINING_ITERATION
+from ray.tune.syncer import SyncConfig, SyncerCallback
 
 from ray.tune.trial import Trial
-from ray.tune.trial_runner import Callback, TrialRunner
+from ray.tune.trial_runner import TrialRunner
+from ray.tune import Callback
+from ray.tune.utils.callback import create_default_callbacks
 
 
 class TestCallback(Callback):
@@ -45,7 +50,7 @@ class TestCallback(Callback):
     def on_trial_complete(self, **info):
         self.state["trial_complete"] = info
 
-    def on_trial_fail(self, **info):
+    def on_trial_error(self, **info):
         self.state["trial_fail"] = info
 
 
@@ -57,9 +62,9 @@ class _MockTrialExecutor(RayTrialExecutor):
         self.failed_trial = None
 
     def fetch_result(self, trial):
-        return self.results.get(trial, {})
+        return [self.results.get(trial, {})]
 
-    def get_next_available_trial(self):
+    def get_next_available_trial(self, timeout=None):
         return self.next_trial or super().get_next_available_trial()
 
     def get_next_failed_trial(self):
@@ -198,6 +203,62 @@ class TrialRunnerCallbacks(unittest.TestCase):
         self.assertEqual(
             self.callback.state["trial_complete"]["trial"].config["do"],
             "delay")
+
+    def testCallbackReordering(self):
+        """SyncerCallback should come after LoggerCallback callbacks"""
+
+        def get_positions(callbacks):
+            first_logger_pos = None
+            last_logger_pos = None
+            syncer_pos = None
+            for i, callback in enumerate(callbacks):
+                if isinstance(callback, LoggerCallback):
+                    if first_logger_pos is None:
+                        first_logger_pos = i
+                    last_logger_pos = i
+                elif isinstance(callback, SyncerCallback):
+                    syncer_pos = i
+            return first_logger_pos, last_logger_pos, syncer_pos
+
+        # Auto creation of loggers, no callbacks, no syncer
+        callbacks = create_default_callbacks(None, SyncConfig(), None)
+        first_logger_pos, last_logger_pos, syncer_pos = get_positions(
+            callbacks)
+        self.assertLess(last_logger_pos, syncer_pos)
+
+        # Auto creation of loggers with callbacks
+        callbacks = create_default_callbacks([Callback()], SyncConfig(), None)
+        first_logger_pos, last_logger_pos, syncer_pos = get_positions(
+            callbacks)
+        self.assertLess(last_logger_pos, syncer_pos)
+
+        # Auto creation of loggers with existing logger (but no CSV/JSON)
+        callbacks = create_default_callbacks([LoggerCallback()], SyncConfig(),
+                                             None)
+        first_logger_pos, last_logger_pos, syncer_pos = get_positions(
+            callbacks)
+        self.assertLess(last_logger_pos, syncer_pos)
+
+        # This should throw an error as the syncer comes before the logger
+        with self.assertRaises(ValueError):
+            callbacks = create_default_callbacks(
+                [SyncerCallback(None), LoggerCallback()], SyncConfig(), None)
+
+        # This should be reordered but preserve the regular callback order
+        [mc1, mc2, mc3] = [Callback(), Callback(), Callback()]
+        # Has to be legacy logger to avoid logger callback creation
+        lc = LegacyLoggerCallback(logger_classes=DEFAULT_LOGGERS)
+        callbacks = create_default_callbacks([mc1, mc2, lc, mc3], SyncConfig(),
+                                             None)
+        print(callbacks)
+        first_logger_pos, last_logger_pos, syncer_pos = get_positions(
+            callbacks)
+        self.assertLess(last_logger_pos, syncer_pos)
+        self.assertLess(callbacks.index(mc1), callbacks.index(mc2))
+        self.assertLess(callbacks.index(mc2), callbacks.index(mc3))
+        self.assertLess(callbacks.index(lc), callbacks.index(mc3))
+        # Syncer callback is appended
+        self.assertLess(callbacks.index(mc3), syncer_pos)
 
 
 if __name__ == "__main__":

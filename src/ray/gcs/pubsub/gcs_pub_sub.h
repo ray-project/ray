@@ -32,7 +32,7 @@ namespace gcs {
 #define OBJECT_CHANNEL "OBJECT"
 #define TASK_CHANNEL "TASK"
 #define TASK_LEASE_CHANNEL "TASK_LEASE"
-#define HEARTBEAT_BATCH_CHANNEL "HEARTBEAT_BATCH"
+#define RESOURCES_BATCH_CHANNEL "RESOURCES_BATCH"
 #define ERROR_INFO_CHANNEL "ERROR_INFO"
 
 /// \class GcsPubSub
@@ -94,17 +94,21 @@ class GcsPubSub {
   /// \return Whether the specified ID under the specified channel is unsubscribed.
   bool IsUnsubscribed(const std::string &channel, const std::string &id);
 
+  std::string DebugString() const;
+
  private:
   /// Represents a caller's command to subscribe or unsubscribe to a given
   /// channel.
   struct Command {
     /// SUBSCRIBE constructor.
-    Command(const Callback &subscribe_callback, const StatusCallback &done_callback)
+    Command(const Callback &subscribe_callback, const StatusCallback &done_callback,
+            bool is_sub_or_unsub_all)
         : is_subscribe(true),
           subscribe_callback(subscribe_callback),
-          done_callback(done_callback) {}
+          done_callback(done_callback),
+          is_sub_or_unsub_all(is_sub_or_unsub_all) {}
     /// UNSUBSCRIBE constructor.
-    Command() : is_subscribe(false) {}
+    Command() : is_subscribe(false), is_sub_or_unsub_all(false) {}
     /// True if this is a SUBSCRIBE command and false if UNSUBSCRIBE.
     const bool is_subscribe;
     /// Callback that is called whenever a new pubsub message is received from
@@ -113,6 +117,8 @@ class GcsPubSub {
     /// Callback that is called once we have successfully subscribed to a
     /// channel. This should only be set if is_subscribe is true.
     const StatusCallback done_callback;
+    /// True if this is a SUBSCRIBE all or UNSUBSCRIBE all command else false.
+    const bool is_sub_or_unsub_all;
   };
 
   struct Channel {
@@ -147,7 +153,7 @@ class GcsPubSub {
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   Status SubscribeInternal(const std::string &channel_name, const Callback &subscribe,
-                           const StatusCallback &done,
+                           const StatusCallback &done, bool is_sub_or_unsub_all,
                            const boost::optional<std::string> &id = boost::none);
 
   std::string GenChannelPattern(const std::string &channel,
@@ -156,9 +162,11 @@ class GcsPubSub {
   std::shared_ptr<RedisClient> redis_client_;
 
   /// Mutex to protect the subscribe_callback_index_ field.
-  absl::Mutex mutex_;
+  mutable absl::Mutex mutex_;
 
   absl::flat_hash_map<std::string, Channel> channels_ GUARDED_BY(mutex_);
+
+  size_t total_commands_queued_ GUARDED_BY(mutex_);
 };
 
 }  // namespace gcs

@@ -8,8 +8,7 @@ from ray.rllib.agents.dreamer.dreamer_torch_policy import DreamerTorchPolicy
 from ray.rllib.agents.trainer_template import build_trainer
 from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER, \
     LEARNER_INFO, _get_shared_metrics
-from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.agents.dreamer.dreamer_model import DreamerModel
 from ray.rllib.execution.rollout_ops import ParallelRollouts
@@ -32,6 +31,8 @@ DEFAULT_CONFIG = with_common_config({
     "discount": 0.99,
     # Lambda
     "lambda": 0.95,
+    # Clipping is done inherently via policy tanh.
+    "clip_actions": False,
     # Training iterations per data collection from real env
     "dreamer_train_iters": 100,
     # Horizon for Enviornment (1000 for Mujoco/DMC)
@@ -199,7 +200,7 @@ class DreamerIteration:
         metrics = _get_shared_metrics()
         metrics.info[LEARNER_INFO] = fetches
         metrics.counters[STEPS_SAMPLED_COUNTER] = self.episode_buffer.timesteps
-        metrics.counter[STEPS_SAMPLED_COUNTER] *= self.repeat
+        metrics.counters[STEPS_SAMPLED_COUNTER] *= self.repeat
         res = collect_metrics(local_worker=self.worker)
         res["info"] = metrics.info
         res["info"].update(metrics.counters)
@@ -215,7 +216,7 @@ class DreamerIteration:
         return frames
 
     def policy_stats(self, fetches):
-        return fetches["default_policy"]["learner_stats"]
+        return fetches[DEFAULT_POLICY_ID]["learner_stats"]
 
 
 def execution_plan(workers, config):

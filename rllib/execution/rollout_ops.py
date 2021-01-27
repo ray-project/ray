@@ -141,13 +141,15 @@ class ConcatBatches:
 
     Examples:
         >>> rollouts = ParallelRollouts(...)
-        >>> rollouts = rollouts.combine(ConcatBatches(min_batch_size=10000))
+        >>> rollouts = rollouts.combine(ConcatBatches(
+        ...    min_batch_size=10000, count_steps_by="env_steps"))
         >>> print(next(rollouts).count)
         10000
     """
 
-    def __init__(self, min_batch_size: int):
+    def __init__(self, min_batch_size: int, count_steps_by: str = "env_steps"):
         self.min_batch_size = min_batch_size
+        self.count_steps_by = count_steps_by
         self.buffer = []
         self.count = 0
         self.batch_start_time = None
@@ -159,7 +161,15 @@ class ConcatBatches:
     def __call__(self, batch: SampleBatchType) -> List[SampleBatchType]:
         _check_sample_batch_type(batch)
         self.buffer.append(batch)
-        self.count += batch.count
+
+        if self.count_steps_by == "env_steps":
+            self.count += batch.count
+        else:
+            assert isinstance(batch, MultiAgentBatch), \
+                "`count_steps_by=agent_steps` only allowed in multi-agent " \
+                "environments!"
+            self.count += batch.agent_steps()
+
         if self.count >= self.min_batch_size:
             if self.count > self.min_batch_size * 2:
                 logger.info("Collected more training samples than expected "

@@ -78,10 +78,10 @@ Training][9].
 
 [1]: https://github.com/ray-project/ray
 [2]: https://rise.cs.berkeley.edu/blog/pandas-on-ray/
-[3]: http://docs.ray.io/en/latest/rllib.html
-[4]: http://docs.ray.io/en/latest/tune.html
+[3]: http://docs.ray.io/en/master/rllib.html
+[4]: http://docs.ray.io/en/master/tune.html
 [5]: https://rise.cs.berkeley.edu/blog/distributed-policy-optimizers-for-scalable-and-reproducible-deep-rl/
-[6]: http://docs.ray.io/en/latest/resources.html
+[6]: http://docs.ray.io/en/master/resources.html
 [7]: https://pandas.pydata.org/
 [8]: https://arxiv.org/abs/1803.00933
-[9]: http://docs.ray.io/en/latest/pbt.html
+[9]: http://docs.ray.io/en/master/pbt.html

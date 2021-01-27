@@ -1,13 +1,15 @@
 import asyncio
 from collections import defaultdict
 import time
+import os
 
-import pytest
 import requests
+import pytest
+import starlette.responses
 
 import ray
 from ray import serve
-from ray.test_utils import wait_for_condition
+from ray.test_utils import SignalActor, wait_for_condition
 from ray.serve.constants import SERVE_PROXY_NAME
 from ray.serve.exceptions import RayServeException
 from ray.serve.config import BackendConfig
@@ -18,34 +20,129 @@ from ray.serve.utils import (block_until_http_ready, format_actor_name,
 def test_e2e(serve_instance):
     client = serve_instance
 
-    def function(flask_request):
-        return {"method": flask_request.method}
+    def function(starlette_request):
+        return {"method": starlette_request.method}
 
     client.create_backend("echo:v1", function)
     client.create_endpoint(
         "endpoint", backend="echo:v1", route="/api", methods=["GET", "POST"])
-
-    retry_count = 5
-    timeout_sleep = 0.5
-    while True:
-        try:
-            resp = requests.get(
-                "http://127.0.0.1:8000/-/routes", timeout=0.5).json()
-            assert resp == {"/api": ["endpoint", ["GET", "POST"]]}
-            break
-        except Exception as e:
-            time.sleep(timeout_sleep)
-            timeout_sleep *= 2
-            retry_count -= 1
-            if retry_count == 0:
-                assert False, ("Route table hasn't been updated after 3 tries."
-                               "The latest error was {}").format(e)
 
     resp = requests.get("http://127.0.0.1:8000/api").json()["method"]
     assert resp == "GET"
 
     resp = requests.post("http://127.0.0.1:8000/api").json()["method"]
     assert resp == "POST"
+
+
+def test_starlette_response(serve_instance):
+    client = serve_instance
+
+    def basic_response(_):
+        return starlette.responses.Response(
+            "Hello, world!", media_type="text/plain")
+
+    client.create_backend("basic_response", basic_response)
+    client.create_endpoint(
+        "basic_response", backend="basic_response", route="/basic_response")
+    assert requests.get(
+        "http://127.0.0.1:8000/basic_response").text == "Hello, world!"
+
+    def html_response(_):
+        return starlette.responses.HTMLResponse(
+            "<html><body><h1>Hello, world!</h1></body></html>")
+
+    client.create_backend("html_response", html_response)
+    client.create_endpoint(
+        "html_response", backend="html_response", route="/html_response")
+    assert requests.get(
+        "http://127.0.0.1:8000/html_response"
+    ).text == "<html><body><h1>Hello, world!</h1></body></html>"
+
+    def plain_text_response(_):
+        return starlette.responses.PlainTextResponse("Hello, world!")
+
+    client.create_backend("plain_text_response", plain_text_response)
+    client.create_endpoint(
+        "plain_text_response",
+        backend="plain_text_response",
+        route="/plain_text_response")
+    assert requests.get(
+        "http://127.0.0.1:8000/plain_text_response").text == "Hello, world!"
+
+    def json_response(_):
+        return starlette.responses.JSONResponse({"hello": "world"})
+
+    client.create_backend("json_response", json_response)
+    client.create_endpoint(
+        "json_response", backend="json_response", route="/json_response")
+    assert requests.get("http://127.0.0.1:8000/json_response").json()[
+        "hello"] == "world"
+
+    def redirect_response(_):
+        return starlette.responses.RedirectResponse(
+            url="http://127.0.0.1:8000/basic_response")
+
+    client.create_backend("redirect_response", redirect_response)
+    client.create_endpoint(
+        "redirect_response",
+        backend="redirect_response",
+        route="/redirect_response")
+    assert requests.get(
+        "http://127.0.0.1:8000/redirect_response").text == "Hello, world!"
+
+    def streaming_response(_):
+        async def slow_numbers():
+            for number in range(1, 4):
+                yield str(number)
+                await asyncio.sleep(0.01)
+
+        return starlette.responses.StreamingResponse(
+            slow_numbers(), media_type="text/plain")
+
+    client.create_backend("streaming_response", streaming_response)
+    client.create_endpoint(
+        "streaming_response",
+        backend="streaming_response",
+        route="/streaming_response")
+    assert requests.get(
+        "http://127.0.0.1:8000/streaming_response").text == "123"
+
+
+def test_backend_user_config(serve_instance):
+    client = serve_instance
+
+    class Counter:
+        def __init__(self):
+            self.count = 10
+
+        def __call__(self, starlette_request):
+            return self.count, os.getpid()
+
+        def reconfigure(self, config):
+            self.count = config["count"]
+
+    config = BackendConfig(num_replicas=2, user_config={"count": 123, "b": 2})
+    client.create_backend("counter", Counter, config=config)
+    client.create_endpoint("counter", backend="counter")
+    handle = client.get_handle("counter")
+
+    def check(val, num_replicas):
+        pids_seen = set()
+        for i in range(100):
+            result = ray.get(handle.remote())
+            if str(result[0]) != val:
+                return False
+            pids_seen.add(result[1])
+        return len(pids_seen) == num_replicas
+
+    wait_for_condition(lambda: check("123", 2))
+
+    client.update_backend_config("counter", BackendConfig(num_replicas=3))
+    wait_for_condition(lambda: check("123", 3))
+
+    config = BackendConfig(user_config={"count": 456})
+    client.update_backend_config("counter", config)
+    wait_for_condition(lambda: check("456", 3))
 
 
 def test_call_method(serve_instance):
@@ -67,7 +164,7 @@ def test_call_method(serve_instance):
 
     # Test serve handle path.
     handle = client.get_handle("endpoint")
-    assert ray.get(handle.options("method").remote()) == "hello"
+    assert ray.get(handle.options(method_name="method").remote()) == "hello"
 
 
 def test_no_route(serve_instance):
@@ -144,6 +241,20 @@ def test_reject_duplicate_endpoint_and_route(serve_instance):
         client.create_endpoint("test", backend="backend2", route="/test")
 
 
+def test_no_http(serve_instance):
+    client = serve.start(http_host=None)
+
+    assert len(ray.get(client._controller.get_http_proxies.remote())) == 0
+
+    def hello(*args):
+        return "hello"
+
+    client.create_backend("backend", hello)
+    client.create_endpoint("endpoint", backend="backend")
+
+    assert ray.get(client.get_handle("endpoint").remote()) == "hello"
+
+
 def test_set_traffic_missing_data(serve_instance):
     client = serve_instance
 
@@ -157,8 +268,7 @@ def test_set_traffic_missing_data(serve_instance):
         client.set_traffic("nonexistent_endpoint_name", {backend_name: 1.0})
 
 
-@pytest.mark.parametrize("use_legacy_config", [False, True])
-def test_scaling_replicas(serve_instance, use_legacy_config):
+def test_scaling_replicas(serve_instance):
     client = serve_instance
 
     class Counter:
@@ -169,17 +279,10 @@ def test_scaling_replicas(serve_instance, use_legacy_config):
             self.count += 1
             return self.count
 
-    config = {
-        "num_replicas": 2
-    } if use_legacy_config else BackendConfig(num_replicas=2)
+    config = BackendConfig(num_replicas=2)
     client.create_backend("counter:v1", Counter, config=config)
 
     client.create_endpoint("counter", backend="counter:v1", route="/increment")
-
-    # Keep checking the routing table until /increment is populated
-    while "/increment" not in requests.get(
-            "http://127.0.0.1:8000/-/routes").json():
-        time.sleep(0.2)
 
     counter_result = []
     for _ in range(10):
@@ -189,9 +292,7 @@ def test_scaling_replicas(serve_instance, use_legacy_config):
     # If the load is shared among two replicas. The max result cannot be 10.
     assert max(counter_result) < 10
 
-    update_config = {
-        "num_replicas": 1
-    } if use_legacy_config else BackendConfig(num_replicas=1)
+    update_config = BackendConfig(num_replicas=1)
     client.update_backend_config("counter:v1", update_config)
 
     counter_result = []
@@ -203,8 +304,7 @@ def test_scaling_replicas(serve_instance, use_legacy_config):
     assert max(counter_result) - min(counter_result) > 6
 
 
-@pytest.mark.parametrize("use_legacy_config", [False, True])
-def test_batching(serve_instance, use_legacy_config):
+def test_batching(serve_instance):
     client = serve_instance
 
     class BatchingExample:
@@ -218,19 +318,10 @@ def test_batching(serve_instance, use_legacy_config):
             return [self.count] * batch_size
 
     # set the max batch size
-    config = {
-        "max_batch_size": 5,
-        "batch_wait_timeout": 1
-    } if use_legacy_config else BackendConfig(
-        max_batch_size=5, batch_wait_timeout=1)
+    config = BackendConfig(max_batch_size=5, batch_wait_timeout=1)
     client.create_backend("counter:v11", BatchingExample, config=config)
     client.create_endpoint(
         "counter1", backend="counter:v11", route="/increment2")
-
-    # Keep checking the routing table until /increment is populated
-    while "/increment2" not in requests.get(
-            "http://127.0.0.1:8000/-/routes").json():
-        time.sleep(0.2)
 
     future_list = []
     handle = client.get_handle("counter1")
@@ -245,8 +336,7 @@ def test_batching(serve_instance, use_legacy_config):
     assert max(counter_result) < 20
 
 
-@pytest.mark.parametrize("use_legacy_config", [False, True])
-def test_batching_exception(serve_instance, use_legacy_config):
+def test_batching_exception(serve_instance):
     client = serve_instance
 
     class NoListReturned:
@@ -257,21 +347,17 @@ def test_batching_exception(serve_instance, use_legacy_config):
         def __call__(self, requests):
             return len(requests)
 
-    # set the max batch size
-    config = {
-        "max_batch_size": 5
-    } if use_legacy_config else BackendConfig(max_batch_size=5)
+    # Set the max batch size.
+    config = BackendConfig(max_batch_size=5)
     client.create_backend("exception:v1", NoListReturned, config=config)
-    client.create_endpoint(
-        "exception-test", backend="exception:v1", route="/noListReturned")
+    client.create_endpoint("exception-test", backend="exception:v1")
 
     handle = client.get_handle("exception-test")
     with pytest.raises(ray.exceptions.RayTaskError):
         assert ray.get(handle.remote(temp=1))
 
 
-@pytest.mark.parametrize("use_legacy_config", [False, True])
-def test_updating_config(serve_instance, use_legacy_config):
+def test_updating_config(serve_instance):
     client = serve_instance
 
     class BatchSimple:
@@ -282,27 +368,21 @@ def test_updating_config(serve_instance, use_legacy_config):
         def __call__(self, request):
             return [1] * len(request)
 
-    config = {
-        "max_batch_size": 2,
-        "num_replicas": 3
-    } if use_legacy_config else BackendConfig(
-        max_batch_size=2, num_replicas=3)
+    config = BackendConfig(max_batch_size=2, num_replicas=3)
     client.create_backend("bsimple:v1", BatchSimple, config=config)
     client.create_endpoint("bsimple", backend="bsimple:v1", route="/bsimple")
 
     controller = client._controller
-    old_replica_tag_list = ray.get(
-        controller._list_replicas.remote("bsimple:v1"))
+    old_replica_tag_list = list(
+        ray.get(controller._all_replica_handles.remote())["bsimple:v1"].keys())
 
-    update_config = {
-        "max_batch_size": 5
-    } if use_legacy_config else BackendConfig(max_batch_size=5)
+    update_config = BackendConfig(max_batch_size=5)
     client.update_backend_config("bsimple:v1", update_config)
-    new_replica_tag_list = ray.get(
-        controller._list_replicas.remote("bsimple:v1"))
+    new_replica_tag_list = list(
+        ray.get(controller._all_replica_handles.remote())["bsimple:v1"].keys())
     new_all_tag_list = []
     for worker_dict in ray.get(
-            controller.get_all_worker_handles.remote()).values():
+            controller._all_replica_handles.remote()).values():
         new_all_tag_list.extend(list(worker_dict.keys()))
 
     # the old and new replica tag list should be identical
@@ -348,7 +428,16 @@ def test_delete_backend(serve_instance):
     client.create_backend("delete:v1", function2)
     client.set_traffic("delete_backend", {"delete:v1": 1.0})
 
-    assert requests.get("http://127.0.0.1:8000/delete-backend").text == "olleh"
+    for _ in range(10):
+        try:
+            assert requests.get(
+                "http://127.0.0.1:8000/delete-backend").text == "olleh"
+            break
+        except AssertionError:
+            time.sleep(0.5)  # wait for the traffic policy to propogate
+    else:
+        assert requests.get(
+            "http://127.0.0.1:8000/delete-backend").text == "olleh"
 
 
 @pytest.mark.parametrize("route", [None, "/delete-endpoint"])
@@ -466,8 +555,7 @@ def test_multiple_instances():
     client1.delete_backend(backend)
 
 
-@pytest.mark.parametrize("use_legacy_config", [False, True])
-def test_parallel_start(serve_instance, use_legacy_config):
+def test_parallel_start(serve_instance):
     client = serve_instance
 
     # Test the ability to start multiple replicas in parallel.
@@ -498,9 +586,7 @@ def test_parallel_start(serve_instance, use_legacy_config):
         def __call__(self, _):
             return "Ready"
 
-    config = {
-        "num_replicas": 2
-    } if use_legacy_config else BackendConfig(num_replicas=2)
+    config = BackendConfig(num_replicas=2)
     client.create_backend("p:v0", LongStartingServable, config=config)
     client.create_endpoint("test-parallel", backend="p:v0")
     handle = client.get_handle("test-parallel")
@@ -552,30 +638,25 @@ def test_list_endpoints(serve_instance):
     assert len(client.list_endpoints()) == 0
 
 
-@pytest.mark.parametrize("use_legacy_config", [False, True])
-def test_list_backends(serve_instance, use_legacy_config):
+def test_list_backends(serve_instance):
     client = serve_instance
 
     @serve.accept_batch
     def f():
         pass
 
-    config1 = {
-        "max_batch_size": 10
-    } if use_legacy_config else BackendConfig(max_batch_size=10)
+    config1 = BackendConfig(max_batch_size=10)
     client.create_backend("backend", f, config=config1)
     backends = client.list_backends()
     assert len(backends) == 1
     assert "backend" in backends
-    assert backends["backend"]["max_batch_size"] == 10
+    assert backends["backend"].max_batch_size == 10
 
-    config2 = {
-        "num_replicas": 10
-    } if use_legacy_config else BackendConfig(num_replicas=10)
+    config2 = BackendConfig(num_replicas=10)
     client.create_backend("backend2", f, config=config2)
     backends = client.list_backends()
     assert len(backends) == 2
-    assert backends["backend2"]["num_replicas"] == 10
+    assert backends["backend2"].num_replicas == 10
 
     client.delete_backend("backend")
     backends = client.list_backends()
@@ -602,8 +683,10 @@ def test_endpoint_input_validation(serve_instance):
     client.create_endpoint("endpoint", backend="backend")
 
 
-@pytest.mark.parametrize("use_legacy_config", [False, True])
-def test_create_infeasible_error(serve_instance, use_legacy_config):
+# This error is only printed because creation is run in the control loop, not
+# in the API path.
+@pytest.mark.skip()
+def test_create_infeasible_error(serve_instance):
     client = serve_instance
 
     def f():
@@ -618,12 +701,10 @@ def test_create_infeasible_error(serve_instance, use_legacy_config):
                 "MagicMLResource": 100
             }})
 
-    # Even each replica might be feasible, the total might not be.
+    # Even though each replica might be feasible, the total might not be.
     current_cpus = int(ray.nodes()[0]["Resources"]["CPU"])
     num_replicas = current_cpus + 20
-    config = {
-        "num_replicas": num_replicas
-    } if use_legacy_config else BackendConfig(num_replicas=num_replicas)
+    config = BackendConfig(num_replicas=num_replicas)
     with pytest.raises(RayServeException, match="Cannot scale backend"):
         client.create_backend(
             "f:1",
@@ -632,10 +713,6 @@ def test_create_infeasible_error(serve_instance, use_legacy_config):
                 "CPU": 1,
             }},
             config=config)
-
-    # No replica should be created!
-    replicas = ray.get(client._controller._list_replicas.remote("f1"))
-    assert len(replicas) == 0
 
 
 def test_shutdown():
@@ -751,30 +828,35 @@ def test_connect(serve_instance):
     client.create_endpoint("endpoint", backend="connect_in_backend")
     handle = client.get_handle("endpoint")
     assert ray.get(handle.remote()) == client._controller_name
-    assert "backend-ception" in client.list_backends()
+    assert "backend-ception" in client.list_backends().keys()
 
     client3.create_backend("connect_in_backend", connect_in_backend)
     client3.create_endpoint("endpoint", backend="connect_in_backend")
     handle = client3.get_handle("endpoint")
     assert ray.get(handle.remote()) == client3._controller_name
-    assert "backend-ception" in client3.list_backends()
+    assert "backend-ception" in client3.list_backends().keys()
 
 
 def test_serve_metrics(serve_instance):
     client = serve_instance
 
     @serve.accept_batch
-    def batcher(flask_requests):
-        return ["hello"] * len(flask_requests)
+    def batcher(starlette_requests):
+        return ["hello"] * len(starlette_requests)
 
     client.create_backend("metrics", batcher)
     client.create_endpoint("metrics", backend="metrics", route="/metrics")
+
     # send 10 concurrent requests
     url = "http://127.0.0.1:8000/metrics"
     ray.get([block_until_http_ready.remote(url) for _ in range(10)])
 
     def verify_metrics(do_assert=False):
-        resp = requests.get("http://127.0.0.1:9999").text
+        try:
+            resp = requests.get("http://127.0.0.1:9999").text
+        # Requests will fail if we are crashing the controller
+        except requests.ConnectionError:
+            return False
 
         expected_metrics = [
             # counter
@@ -808,6 +890,99 @@ def test_serve_metrics(serve_instance):
         wait_for_condition(verify_metrics, retry_interval_ms=500)
     except RuntimeError:
         verify_metrics()
+
+
+def test_serve_graceful_shutdown(serve_instance):
+    client = serve_instance
+
+    signal = SignalActor.remote()
+
+    class WaitBackend:
+        @serve.accept_batch
+        async def __call__(self, requests):
+            signal_actor = await requests[0].body()
+            await signal_actor.wait.remote()
+            return ["" for _ in range(len(requests))]
+
+    client.create_backend(
+        "wait",
+        WaitBackend,
+        config=BackendConfig(
+            # Make sure we can queue up queries in the replica side.
+            max_concurrent_queries=10,
+            max_batch_size=1,
+            experimental_graceful_shutdown_wait_loop_s=0.5,
+            experimental_graceful_shutdown_timeout_s=1000,
+        ))
+    client.create_endpoint("wait", backend="wait")
+    handle = client.get_handle("wait")
+    refs = [handle.remote(signal) for _ in range(10)]
+
+    # Wait for all the queries to be enqueued
+    with pytest.raises(ray.exceptions.GetTimeoutError):
+        ray.get(refs, timeout=1)
+
+    @ray.remote(num_cpus=0)
+    def do_blocking_delete():
+        client = serve.connect()
+        client.delete_endpoint("wait")
+        client.delete_backend("wait")
+
+    # Now delete the backend. This should trigger the shutdown sequence.
+    delete_ref = do_blocking_delete.remote()
+
+    # The queries should be enqueued but not executed becuase they are blocked
+    # by signal actor.
+    with pytest.raises(ray.exceptions.GetTimeoutError):
+        ray.get(refs, timeout=1)
+
+    signal.send.remote()
+
+    # All the queries should be drained and executed without error.
+    ray.get(refs)
+    # Blocking delete should complete.
+    ray.get(delete_ref)
+
+
+def test_serve_forceful_shutdown(serve_instance):
+    client = serve_instance
+
+    def sleeper(_):
+        while True:
+            time.sleep(1000)
+
+    client.create_backend(
+        "sleeper",
+        sleeper,
+        config=BackendConfig(experimental_graceful_shutdown_timeout_s=1))
+    client.create_endpoint("sleeper", backend="sleeper")
+    handle = client.get_handle("sleeper")
+    ref = handle.remote()
+    client.delete_endpoint("sleeper")
+    client.delete_backend("sleeper")
+
+    with pytest.raises(ray.exceptions.RayActorError):
+        ray.get(ref)
+
+
+def test_starlette_request(serve_instance):
+    client = serve_instance
+
+    async def echo_body(starlette_request):
+        data = await starlette_request.body()
+        return data
+
+    UVICORN_HIGH_WATER_MARK = 65536  # max bytes in one message
+
+    # Long string to test serialization of multiple messages.
+    long_string = "x" * 10 * UVICORN_HIGH_WATER_MARK
+
+    client.create_backend("echo:v1", echo_body)
+    client.create_endpoint(
+        "endpoint", backend="echo:v1", route="/api", methods=["GET", "POST"])
+
+    resp = requests.post("http://127.0.0.1:8000/api", data=long_string).text
+    assert resp == long_string
 
 
 if __name__ == "__main__":

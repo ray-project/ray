@@ -5,11 +5,11 @@ import argparse
 import random
 
 import ray
-from ray.tune import Trainable, run
+from ray import tune
 from ray.tune.schedulers import PopulationBasedTraining
 
 
-class PBTBenchmarkExample(Trainable):
+class PBTBenchmarkExample(tune.Trainable):
     """Toy PBT problem for benchmarking adaptive learning rate.
 
     The goal is to optimize this trainable's accuracy. The accuracy increases
@@ -85,16 +85,21 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--smoke-test", action="store_true", help="Finish quickly for testing")
+    parser.add_argument(
+        "--cluster",
+        action="store_true",
+        help="Distribute tuning on a cluster")
     args, _ = parser.parse_known_args()
-    if args.smoke_test:
+
+    if args.cluster:
+        ray.init(address="auto")
+    elif args.smoke_test:
         ray.init(num_cpus=2)  # force pausing to happen for test
     else:
         ray.init()
 
     pbt = PopulationBasedTraining(
         time_attr="training_iteration",
-        metric="mean_accuracy",
-        mode="max",
         perturbation_interval=20,
         hyperparam_mutations={
             # distribution for resampling
@@ -103,10 +108,12 @@ if __name__ == "__main__":
             "some_other_factor": [1, 2],
         })
 
-    run(
+    analysis = tune.run(
         PBTBenchmarkExample,
         name="pbt_test",
         scheduler=pbt,
+        metric="mean_accuracy",
+        mode="max",
         reuse_actors=True,
         checkpoint_freq=20,
         verbose=False,
@@ -120,3 +127,5 @@ if __name__ == "__main__":
             # the model training in this example
             "some_other_factor": 1,
         })
+
+    print("Best hyperparameters found were: ", analysis.best_config)

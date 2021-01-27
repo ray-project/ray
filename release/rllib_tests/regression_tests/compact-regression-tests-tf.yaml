@@ -1,0 +1,172 @@
+# This file runs RLlib algorithm learning tests for select algorithms on TF.
+# It is suggested to run these on a single g3.16xlarge or p3.16xl node
+# in a DLAMI / tensorflow_p36 env.
+
+# Note: RL runs are inherently high variance, so you'll have to check to
+# see if the rewards reached seem reasonably in line with previous results.
+
+# You can find the reference results here:
+# https://github.com/ray-project/ray/tree/master/doc/dev/release_logs
+
+a2c-tf-atari:
+    env: BreakoutNoFrameskip-v4
+    run: A2C
+    num_samples: 2
+    stop:
+        time_total_s: 3600
+    config:
+        framework: tf
+        rollout_fragment_length: 20
+        clip_rewards: True
+        num_workers: 5
+        num_envs_per_worker: 5
+        num_gpus: 1
+        lr_schedule: [
+            [0, 0.0007],
+            [20000000, 0.000000000001],
+        ]
+
+apex-dqn-tf-atari:
+    env: BreakoutNoFrameskip-v4
+    run: APEX
+    num_samples: 2
+    stop:
+        time_total_s: 3600
+    config:
+        framework: tf
+        double_q: false
+        dueling: false
+        num_atoms: 1
+        noisy: false
+        n_step: 3
+        lr: .0001
+        adam_epsilon: .00015
+        hiddens: [512]
+        buffer_size: 1000000
+        exploration_config:
+          epsilon_timesteps: 200000
+          final_epsilon: 0.01
+        prioritized_replay_alpha: 0.5
+        final_prioritized_replay_beta: 1.0
+        prioritized_replay_beta_annealing_timesteps: 2000000
+        num_gpus: 1
+        num_workers: 8
+        num_envs_per_worker: 8
+        rollout_fragment_length: 20
+        train_batch_size: 512
+        target_network_update_freq: 50000
+        timesteps_per_iteration: 25000
+
+dqn-tf-atari:
+    env: BreakoutNoFrameskip-v4
+    run: DQN
+    num_samples: 2
+    stop:
+        time_total_s: 3600
+    config:
+        framework: tf
+        double_q: false
+        dueling: false
+        num_atoms: 1
+        noisy: false
+        prioritized_replay: false
+        n_step: 1
+        target_network_update_freq: 8000
+        lr: .0000625
+        adam_epsilon: .00015
+        hiddens: [512]
+        learning_starts: 20000
+        buffer_size: 1000000
+        rollout_fragment_length: 4
+        train_batch_size: 32
+        exploration_config:
+          epsilon_timesteps: 200000
+          final_epsilon: 0.01
+        prioritized_replay_alpha: 0.5
+        final_prioritized_replay_beta: 1.0
+        prioritized_replay_beta_annealing_timesteps: 2000000
+        num_gpus: 0.5
+        timesteps_per_iteration: 10000
+
+impala-tf-atari:
+    env: BreakoutNoFrameskip-v4
+    run: IMPALA
+    num_samples: 2
+    stop:
+        time_total_s: 3600
+    config:
+        framework: tf
+        rollout_fragment_length: 50
+        train_batch_size: 500
+        num_workers: 10
+        num_envs_per_worker: 5
+        clip_rewards: True
+        lr_schedule: [
+            [0, 0.0005],
+            [20000000, 0.000000000001],
+        ]
+        num_gpus: 1
+
+ppo-tf-atari:
+    env: BreakoutNoFrameskip-v4
+    run: PPO
+    num_samples: 2
+    stop:
+        time_total_s: 3600
+    config:
+        framework: tf
+        lambda: 0.95
+        kl_coeff: 0.5
+        clip_rewards: True
+        clip_param: 0.1
+        vf_clip_param: 10.0
+        entropy_coeff: 0.01
+        train_batch_size: 5000
+        rollout_fragment_length: 100
+        sgd_minibatch_size: 500
+        num_sgd_iter: 10
+        num_workers: 10
+        num_envs_per_worker: 5
+        batch_mode: truncate_episodes
+        observation_filter: NoFilter
+        model:
+            vf_share_layers: true
+        num_gpus: 1
+
+# Expect roughly 1000 reward after 1h on 1GPU
+sac-tf-halfcheetah-pybullet:
+    env: HalfCheetahBulletEnv-v0
+    run: SAC
+    num_samples: 2
+    stop:
+        time_total_s: 3600
+    config:
+        framework: tf
+        horizon: 1000
+        soft_horizon: false
+        Q_model:
+          fcnet_activation: relu
+          fcnet_hiddens: [256, 256]
+        policy_model:
+          fcnet_activation: relu
+          fcnet_hiddens: [256, 256]
+        tau: 0.005
+        target_entropy: auto
+        no_done_at_end: true
+        n_step: 1
+        rollout_fragment_length: 1
+        prioritized_replay: true
+        train_batch_size: 256
+        target_network_update_freq: 1
+        timesteps_per_iteration: 1000
+        learning_starts: 10000
+        optimization:
+          actor_learning_rate: 0.0003
+          critic_learning_rate: 0.0003
+          entropy_learning_rate: 0.0003
+        num_workers: 0
+        num_gpus: 1
+        clip_actions: false
+        normalize_actions: true
+        evaluation_interval: 1
+        metrics_smoothing_episodes: 5

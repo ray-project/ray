@@ -1,4 +1,5 @@
 # coding: utf-8
+import collections
 import glob
 import logging
 import os
@@ -18,9 +19,11 @@ import ray.cluster_utils
 import ray.test_utils
 from ray import resource_spec
 import setproctitle
+import subprocess
 
 from ray.test_utils import (check_call_ray, RayTestTimeoutException,
-                            wait_for_condition, wait_for_num_actors)
+                            wait_for_condition, wait_for_num_actors,
+                            new_scheduler_enabled)
 
 logger = logging.getLogger(__name__)
 
@@ -35,11 +38,10 @@ def attempt_to_load_balance(remote_function,
     while attempts < num_attempts:
         locations = ray.get(
             [remote_function.remote(*args) for _ in range(total_tasks)])
-        names = set(locations)
-        counts = [locations.count(name) for name in names]
-        logger.info(f"Counts are {counts}.")
-        if (len(names) == num_nodes
-                and all(count >= minimum_count for count in counts)):
+        counts = collections.Counter(locations)
+        logger.info(f"Counts are {counts}")
+        if (len(counts) == num_nodes
+                and counts.most_common()[-1][1] >= minimum_count):
             break
         attempts += 1
     assert attempts < num_attempts
@@ -92,7 +94,13 @@ def test_local_scheduling_first(ray_start_cluster):
         assert local()
 
 
-def test_load_balancing_with_dependencies(ray_start_cluster):
+@pytest.mark.parametrize("fast", [True, False])
+def test_load_balancing_with_dependencies(ray_start_cluster, fast):
+    if fast and new_scheduler_enabled:
+        # Load-balancing on new scheduler can be inefficient if (task
+        # duration:heartbeat interval) is small enough.
+        pytest.skip()
+
     # This test ensures that tasks are being assigned to all raylets in a
     # roughly equal manner even when the tasks have dependencies.
     cluster = ray_start_cluster
@@ -103,7 +111,10 @@ def test_load_balancing_with_dependencies(ray_start_cluster):
 
     @ray.remote
     def f(x):
-        time.sleep(0.010)
+        if fast:
+            time.sleep(0.010)
+        else:
+            time.sleep(0.1)
         return ray.worker.global_worker.node.unique_id
 
     # This object will be local to one of the raylets. Make sure
@@ -111,6 +122,38 @@ def test_load_balancing_with_dependencies(ray_start_cluster):
     x = ray.put(np.zeros(1000000))
 
     attempt_to_load_balance(f, [x], 100, num_nodes, 25)
+
+
+def test_locality_aware_leasing(ray_start_cluster):
+    # This test ensures that a task will run where its task dependencies are
+    # located. We run an initial non_local() task that is pinned to a
+    # non-local node via a custom resource constraint, and then we run an
+    # unpinned task f() that depends on the output of non_local(), ensuring
+    # that f() runs on the same node as non_local().
+    cluster = ray_start_cluster
+
+    # Disable worker caching so worker leases are not reused, and disable
+    # inlining of return objects so return objects are always put into Plasma.
+    cluster.add_node(
+        num_cpus=1,
+        _system_config={
+            "worker_lease_timeout_milliseconds": 0,
+            "max_direct_call_object_size": 0,
+        })
+    # Use a custom resource for pinning tasks to a node.
+    non_local_node = cluster.add_node(num_cpus=1, resources={"pin": 1})
+    ray.init(address=cluster.address)
+
+    @ray.remote(resources={"pin": 1})
+    def non_local():
+        return ray.worker.global_worker.node.unique_id
+
+    @ray.remote
+    def f(x):
+        return ray.worker.global_worker.node.unique_id
+
+    # Test that task f() runs on the same node as non_local().
+    assert ray.get(f.remote(non_local.remote())) == non_local_node.unique_id
 
 
 def wait_for_num_objects(num_objects, timeout=10):
@@ -153,7 +196,7 @@ def test_global_state_api(shutdown_only):
         def __init__(self):
             pass
 
-    _ = Actor.remote()  # noqa: F841
+    _ = Actor.options(name="test_actor").remote()  # noqa: F841
     # Wait for actor to be created
     wait_for_num_actors(1)
 
@@ -162,6 +205,7 @@ def test_global_state_api(shutdown_only):
 
     actor_info, = actor_table.values()
     assert actor_info["JobID"] == job_id.hex()
+    assert actor_info["Name"] == "test_actor"
     assert "IPAddress" in actor_info["Address"]
     assert "IPAddress" in actor_info["OwnerAddress"]
     assert actor_info["Address"]["Port"] != actor_info["OwnerAddress"]["Port"]
@@ -272,14 +316,14 @@ def test_workers(shutdown_only):
 
 
 def test_object_ref_properties():
-    id_bytes = b"00112233445566778899"
+    id_bytes = b"0011223344556677889900001111"
     object_ref = ray.ObjectRef(id_bytes)
     assert object_ref.binary() == id_bytes
     object_ref = ray.ObjectRef.nil()
     assert object_ref.is_nil()
-    with pytest.raises(ValueError, match=r".*needs to have length 20.*"):
+    with pytest.raises(ValueError, match=r".*needs to have length.*"):
         ray.ObjectRef(id_bytes + b"1234")
-    with pytest.raises(ValueError, match=r".*needs to have length 20.*"):
+    with pytest.raises(ValueError, match=r".*needs to have length.*"):
         ray.ObjectRef(b"0123456789")
     object_ref = ray.ObjectRef.from_random()
     assert not object_ref.is_nil()
@@ -472,16 +516,6 @@ def test_decorated_function(ray_start_regular):
     assert ray.get(result_id) == (3, 2, 1, 5)
 
 
-def test_get_postprocess(ray_start_regular):
-    def get_postprocessor(object_refs, values):
-        return [value for value in values if value > 0]
-
-    ray.worker.global_worker._post_get_hooks.append(get_postprocessor)
-
-    assert ray.get(
-        [ray.put(i) for i in [0, 1, 3, 5, -1, -3, 4]]) == [1, 3, 5, 4]
-
-
 def test_export_after_shutdown(ray_start_regular):
     # This test checks that we can use actor and remote function definitions
     # across multiple Ray sessions.
@@ -520,6 +554,12 @@ def test_export_after_shutdown(ray_start_regular):
         ray.get(actor_handle.method.remote())
 
     ray.get(export_definitions_from_worker.remote(f, Actor))
+
+
+def test_ray_start_and_stop():
+    for i in range(10):
+        subprocess.check_call(["ray", "start", "--head"])
+        subprocess.check_call(["ray", "stop"])
 
 
 def test_invalid_unicode_in_worker_log(shutdown_only):
@@ -788,6 +828,127 @@ def test_detect_docker_cpus():
             cpu_quota_file_name=quota_file.name,
             cpu_share_file_name=period_file.name,
             cpuset_file_name=cpuset_file.name) == 0.42
+
+
+def test_override_environment_variables_task(ray_start_regular):
+    @ray.remote
+    def get_env(key):
+        return os.environ.get(key)
+
+    assert (ray.get(
+        get_env.options(override_environment_variables={
+            "a": "b",
+        }).remote("a")) == "b")
+
+
+def test_override_environment_variables_actor(ray_start_regular):
+    @ray.remote
+    class EnvGetter:
+        def get(self, key):
+            return os.environ.get(key)
+
+    a = EnvGetter.options(override_environment_variables={
+        "a": "b",
+        "c": "d",
+    }).remote()
+    assert (ray.get(a.get.remote("a")) == "b")
+    assert (ray.get(a.get.remote("c")) == "d")
+
+
+def test_override_environment_variables_nested_task(ray_start_regular):
+    @ray.remote
+    def get_env(key):
+        return os.environ.get(key)
+
+    @ray.remote
+    def get_env_wrapper(key):
+        return ray.get(get_env.remote(key))
+
+    assert (ray.get(
+        get_env_wrapper.options(override_environment_variables={
+            "a": "b",
+        }).remote("a")) == "b")
+
+
+def test_override_environment_variables_multitenancy(shutdown_only):
+    ray.init(
+        job_config=ray.job_config.JobConfig(worker_env={
+            "foo1": "bar1",
+            "foo2": "bar2",
+        }))
+
+    @ray.remote
+    def get_env(key):
+        return os.environ.get(key)
+
+    assert ray.get(get_env.remote("foo1")) == "bar1"
+    assert ray.get(get_env.remote("foo2")) == "bar2"
+    assert ray.get(
+        get_env.options(override_environment_variables={
+            "foo1": "baz1",
+        }).remote("foo1")) == "baz1"
+    assert ray.get(
+        get_env.options(override_environment_variables={
+            "foo1": "baz1",
+        }).remote("foo2")) == "bar2"
+
+
+def test_override_environment_variables_complex(shutdown_only):
+    ray.init(
+        job_config=ray.job_config.JobConfig(worker_env={
+            "a": "job_a",
+            "b": "job_b",
+            "z": "job_z",
+        }))
+
+    @ray.remote
+    def get_env(key):
+        return os.environ.get(key)
+
+    @ray.remote
+    class NestedEnvGetter:
+        def get(self, key):
+            return os.environ.get(key)
+
+        def get_task(self, key):
+            return ray.get(get_env.remote(key))
+
+    @ray.remote
+    class EnvGetter:
+        def get(self, key):
+            return os.environ.get(key)
+
+        def get_task(self, key):
+            return ray.get(get_env.remote(key))
+
+        def nested_get(self, key):
+            aa = NestedEnvGetter.options(override_environment_variables={
+                "c": "e",
+                "d": "dd",
+            }).remote()
+            return ray.get(aa.get.remote(key))
+
+    a = EnvGetter.options(override_environment_variables={
+        "a": "b",
+        "c": "d",
+    }).remote()
+    assert (ray.get(a.get.remote("a")) == "b")
+    assert (ray.get(a.get_task.remote("a")) == "b")
+    assert (ray.get(a.nested_get.remote("a")) == "b")
+    assert (ray.get(a.nested_get.remote("c")) == "e")
+    assert (ray.get(a.nested_get.remote("d")) == "dd")
+    assert (ray.get(
+        get_env.options(override_environment_variables={
+            "a": "b",
+        }).remote("a")) == "b")
+
+    assert (ray.get(a.get.remote("z")) == "job_z")
+    assert (ray.get(a.get_task.remote("z")) == "job_z")
+    assert (ray.get(a.nested_get.remote("z")) == "job_z")
+    assert (ray.get(
+        get_env.options(override_environment_variables={
+            "a": "b",
+        }).remote("z")) == "job_z")
 
 
 if __name__ == "__main__":

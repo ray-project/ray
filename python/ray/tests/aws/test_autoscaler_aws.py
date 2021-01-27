@@ -5,7 +5,7 @@ import ray.tests.aws.utils.stubs as stubs
 import ray.tests.aws.utils.helpers as helpers
 from ray.tests.aws.utils.constants import AUX_SUBNET, DEFAULT_SUBNET, \
     DEFAULT_SG_AUX_SUBNET, DEFAULT_SG, DEFAULT_SG_DUAL_GROUP_RULES, \
-    DEFAULT_SG_WITH_RULES_AUX_SUBNET, DEFAULT_SG_WITH_RULES, AUX_SG, \
+    DEFAULT_SG_WITH_RULES_AUX_SUBNET, AUX_SG, \
     DEFAULT_SG_WITH_NAME, DEFAULT_SG_WITH_NAME_AND_RULES, CUSTOM_IN_BOUND_RULES
 
 
@@ -49,13 +49,6 @@ def test_create_sg_different_vpc_same_rules(iam_client_stub, ec2_client_stub):
         ec2_client_stub,
         DEFAULT_SG_WITH_RULES_AUX_SUBNET,
     )
-
-    # given the prior modification to the head security group...
-    # expect the next read of a head security group property to reload it
-    stubs.describe_sg_echo(ec2_client_stub, DEFAULT_SG_WITH_RULES)
-    # given the prior modification to the worker security group...
-    # expect the next read of a worker security group property to reload it
-    stubs.describe_sg_echo(ec2_client_stub, DEFAULT_SG_WITH_RULES_AUX_SUBNET)
 
     # given our mocks and an example config file as input...
     # expect the config to be loaded, validated, and bootstrapped successfully

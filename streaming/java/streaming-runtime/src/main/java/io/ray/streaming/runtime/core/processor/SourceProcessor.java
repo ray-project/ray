@@ -24,7 +24,5 @@ public class SourceProcessor<T> extends StreamProcessor<Record, SourceOperator<T
   }
 
   @Override
-  public void close() {
-
-  }
+  public void close() {}
 }

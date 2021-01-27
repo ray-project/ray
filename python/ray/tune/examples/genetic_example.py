@@ -1,8 +1,7 @@
-"""This test checks that GeneticSearch is functional.
+"""This example demonstrates the usage of GeneticSearch with Ray Tune.
 
 It also checks that it is usable with a separate scheduler.
 """
-import ray
 from ray import tune
 from ray.tune.schedulers import AsyncHyperBandScheduler
 from ray.tune.automl import GeneticSearch
@@ -30,7 +29,6 @@ if __name__ == "__main__":
     parser.add_argument(
         "--smoke-test", action="store_true", help="Finish quickly for testing")
     args, _ = parser.parse_known_args()
-    ray.init()
 
     space = SearchSpace({
         ContinuousSpace("x1", 0, 4, 100),
@@ -40,16 +38,19 @@ if __name__ == "__main__":
         DiscreteSpace("x5", [-1, 0, 1, 2, 3]),
     })
 
-    config = {"stop": {"training_iteration": 100}}
     algo = GeneticSearch(
         space,
         reward_attr="neg_mean_loss",
         max_generation=2 if args.smoke_test else 10,
         population_size=10 if args.smoke_test else 50)
-    scheduler = AsyncHyperBandScheduler(metric="neg_mean_loss", mode="max")
-    tune.run(
+    scheduler = AsyncHyperBandScheduler()
+    analysis = tune.run(
         michalewicz_function,
+        metric="neg_mean_loss",
+        mode="max",
         name="my_exp",
         search_alg=algo,
         scheduler=scheduler,
-        **config)
+        stop={"training_iteration": 100})
+
+    print("Best hyperparameters found were: ", analysis.best_config)

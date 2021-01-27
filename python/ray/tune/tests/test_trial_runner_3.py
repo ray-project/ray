@@ -1,3 +1,4 @@
+import time
 from collections import Counter
 import os
 import pickle
@@ -5,11 +6,17 @@ import shutil
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
+import numpy as np
 
 import ray
+from ray.cluster_utils import Cluster
 from ray.rllib import _register_all
 
-from ray.tune import TuneError
+from ray import tune
+from ray.tune import Callback, TuneError
+from ray.tune.ray_trial_executor import RayTrialExecutor
+from ray.tune.result import TRAINING_ITERATION
 from ray.tune.schedulers import TrialScheduler, FIFOScheduler
 from ray.tune.experiment import Experiment
 from ray.tune.trial import Trial
@@ -19,6 +26,7 @@ from ray.tune.suggest.repeater import Repeater
 from ray.tune.suggest._mock import _MockSuggestionAlgorithm
 from ray.tune.suggest.suggestion import Searcher, ConcurrencyLimiter
 from ray.tune.suggest.search_generator import SearchGenerator
+from ray.util import placement_group
 
 
 class TrialRunnerTest3(unittest.TestCase):
@@ -446,7 +454,7 @@ class TrialRunnerTest3(unittest.TestCase):
         runner.step()  # Start trial
         runner.step()  # Process result, dispatch save
         runner.step()  # Process save
-        self.assertEquals(trials[0].status, Trial.TERMINATED)
+        self.assertEqual(trials[0].status, Trial.TERMINATED)
 
         trials += [
             Trial(
@@ -461,7 +469,7 @@ class TrialRunnerTest3(unittest.TestCase):
         runner.step()  # Process result, dispatch save
         runner.step()  # Process save
         runner.step()  # Error
-        self.assertEquals(trials[1].status, Trial.ERROR)
+        self.assertEqual(trials[1].status, Trial.ERROR)
 
         trials += [
             Trial(
@@ -472,8 +480,8 @@ class TrialRunnerTest3(unittest.TestCase):
         ]
         runner.add_trial(trials[2])
         runner.step()  # Start trial
-        self.assertEquals(len(runner.trial_executor.get_checkpoints()), 3)
-        self.assertEquals(trials[2].status, Trial.RUNNING)
+        self.assertEqual(len(runner.trial_executor.get_checkpoints()), 3)
+        self.assertEqual(trials[2].status, Trial.RUNNING)
 
         runner2 = TrialRunner(resume="LOCAL", local_checkpoint_dir=self.tmpdir)
         for tid in ["trial_terminate", "trial_fail"]:
@@ -529,7 +537,7 @@ class TrialRunnerTest3(unittest.TestCase):
 
         runner2 = TrialRunner(resume="LOCAL", local_checkpoint_dir=self.tmpdir)
         new_trials = runner2.get_trials()
-        self.assertEquals(len(new_trials), 3)
+        self.assertEqual(len(new_trials), 3)
         self.assertTrue(
             runner2.get_trial("non_checkpoint").status == Trial.TERMINATED)
         self.assertTrue(
@@ -575,21 +583,52 @@ class TrialRunnerTest3(unittest.TestCase):
             runner.step()
         # force checkpoint
         runner.checkpoint()
-        self.assertEquals(count_checkpoints(tmpdir), 1)
+        self.assertEqual(count_checkpoints(tmpdir), 1)
 
         runner2 = TrialRunner(resume="LOCAL", local_checkpoint_dir=tmpdir)
         for _ in range(5):
             runner2.step()
-        self.assertEquals(count_checkpoints(tmpdir), 2)
+        self.assertEqual(count_checkpoints(tmpdir), 2)
 
         runner2.checkpoint()
-        self.assertEquals(count_checkpoints(tmpdir), 2)
+        self.assertEqual(count_checkpoints(tmpdir), 2)
         shutil.rmtree(tmpdir)
+
+    @patch("ray.tune.ray_trial_executor.TUNE_RESULT_BUFFER_MIN_TIME_S", 0.5)
+    @patch("ray.tune.ray_trial_executor.TUNE_RESULT_BUFFER_LENGTH", 7)
+    def testCheckpointFreqBuffered(self):
+        def num_checkpoints(trial):
+            return sum(
+                item.startswith("checkpoint_")
+                for item in os.listdir(trial.logdir))
+
+        ray.init(num_cpus=2)
+
+        trial = Trial("__fake", checkpoint_freq=3)
+        runner = TrialRunner(
+            local_checkpoint_dir=self.tmpdir, checkpoint_period=0)
+        runner.add_trial(trial)
+
+        runner.step()  # start trial
+        runner.step()  # run iteration 1-3
+        runner.step()  # process save
+        self.assertEqual(trial.last_result[TRAINING_ITERATION], 3)
+        self.assertEqual(num_checkpoints(trial), 1)
+
+        runner.step()  # run iteration 4-6
+        runner.step()  # process save
+        self.assertEqual(trial.last_result[TRAINING_ITERATION], 6)
+        self.assertEqual(num_checkpoints(trial), 2)
+
+        runner.step()  # run iteration 7-9
+        runner.step()  # process save
+        self.assertEqual(trial.last_result[TRAINING_ITERATION], 9)
+        self.assertEqual(num_checkpoints(trial), 3)
 
     def testUserCheckpoint(self):
         ray.init(num_cpus=3)
-        tmpdir = tempfile.mkdtemp()
-        runner = TrialRunner(local_checkpoint_dir=tmpdir, checkpoint_period=0)
+        runner = TrialRunner(
+            local_checkpoint_dir=self.tmpdir, checkpoint_period=0)
         runner.add_trial(Trial("__fake", config={"user_checkpoint_freq": 2}))
         trials = runner.get_trials()
 
@@ -604,15 +643,67 @@ class TrialRunnerTest3(unittest.TestCase):
         runner.step()  # Process save
         self.assertTrue(trials[0].has_checkpoint())
 
-        runner2 = TrialRunner(resume="LOCAL", local_checkpoint_dir=tmpdir)
+        runner2 = TrialRunner(resume="LOCAL", local_checkpoint_dir=self.tmpdir)
         runner2.step()  # 5: Start trial and dispatch restore
         trials2 = runner2.get_trials()
         self.assertEqual(ray.get(trials2[0].runner.get_info.remote()), 1)
-        shutil.rmtree(tmpdir)
+
+    @patch("ray.tune.ray_trial_executor.TUNE_RESULT_BUFFER_MIN_TIME_S", 1)
+    @patch("ray.tune.ray_trial_executor.TUNE_RESULT_BUFFER_LENGTH", 8)
+    def testUserCheckpointBuffered(self):
+        def num_checkpoints(trial):
+            return sum(
+                item.startswith("checkpoint_")
+                for item in os.listdir(trial.logdir))
+
+        ray.init(num_cpus=3)
+        runner = TrialRunner(
+            local_checkpoint_dir=self.tmpdir, checkpoint_period=0)
+        runner.add_trial(Trial("__fake", config={"user_checkpoint_freq": 10}))
+        trials = runner.get_trials()
+
+        runner.step()  # Start trial, schedule 1-8
+        self.assertEqual(trials[0].status, Trial.RUNNING)
+        self.assertEqual(ray.get(trials[0].runner.set_info.remote(1)), 1)
+        self.assertEqual(num_checkpoints(trials[0]), 0)
+
+        runner.step()  # Process results 0-8, schedule 9-11 (CP)
+        self.assertEqual(trials[0].last_result.get(TRAINING_ITERATION), 8)
+        self.assertFalse(trials[0].has_checkpoint())
+        self.assertEqual(num_checkpoints(trials[0]), 0)
+
+        runner.step()  # Process results 9-11
+        runner.step()  # handle CP, schedule 12-19
+        self.assertEqual(trials[0].last_result.get(TRAINING_ITERATION), 11)
+        self.assertTrue(trials[0].has_checkpoint())
+        self.assertEqual(num_checkpoints(trials[0]), 1)
+
+        runner.step()  # Process results 12-19, schedule 20-21
+        self.assertEqual(trials[0].last_result.get(TRAINING_ITERATION), 19)
+        self.assertTrue(trials[0].has_checkpoint())
+        self.assertEqual(num_checkpoints(trials[0]), 1)
+
+        runner.step()  # Process results 20-21
+        runner.step()  # handle CP, schedule 21-29
+        self.assertEqual(trials[0].last_result.get(TRAINING_ITERATION), 21)
+        self.assertTrue(trials[0].has_checkpoint())
+        self.assertEqual(num_checkpoints(trials[0]), 2)
+
+        runner.step()  # Process results 21-29, schedule 30-31
+        self.assertEqual(trials[0].last_result.get(TRAINING_ITERATION), 29)
+        self.assertTrue(trials[0].has_checkpoint())
+        self.assertTrue(trials[0].has_checkpoint())
+        self.assertEqual(num_checkpoints(trials[0]), 2)
 
 
 class SearchAlgorithmTest(unittest.TestCase):
-    def tearDown(self):
+    @classmethod
+    def setUpClass(cls):
+        ray.init(
+            num_cpus=4, num_gpus=0, local_mode=True, include_dashboard=False)
+
+    @classmethod
+    def tearDownClass(cls):
         ray.shutdown()
         _register_all()
 
@@ -629,8 +720,6 @@ class SearchAlgorithmTest(unittest.TestCase):
         self.assertTrue("d=4" in trial.experiment_tag)
 
     def _test_repeater(self, num_samples, repeat):
-        ray.init(num_cpus=4)
-
         class TestSuggestion(Searcher):
             index = 0
 
@@ -660,25 +749,23 @@ class SearchAlgorithmTest(unittest.TestCase):
 
     def testRepeat1(self):
         trials = self._test_repeater(num_samples=2, repeat=1)
-        self.assertEquals(len(trials), 2)
+        self.assertEqual(len(trials), 2)
         parameter_set = {t.evaluated_params["test_variable"] for t in trials}
-        self.assertEquals(len(parameter_set), 2)
+        self.assertEqual(len(parameter_set), 2)
 
     def testRepeat4(self):
         trials = self._test_repeater(num_samples=12, repeat=4)
-        self.assertEquals(len(trials), 12)
+        self.assertEqual(len(trials), 12)
         parameter_set = {t.evaluated_params["test_variable"] for t in trials}
-        self.assertEquals(len(parameter_set), 3)
+        self.assertEqual(len(parameter_set), 3)
 
     def testOddRepeat(self):
         trials = self._test_repeater(num_samples=11, repeat=5)
-        self.assertEquals(len(trials), 11)
+        self.assertEqual(len(trials), 11)
         parameter_set = {t.evaluated_params["test_variable"] for t in trials}
-        self.assertEquals(len(parameter_set), 3)
+        self.assertEqual(len(parameter_set), 3)
 
     def testSetGetRepeater(self):
-        ray.init(num_cpus=4)
-
         class TestSuggestion(Searcher):
             def __init__(self, index):
                 self.index = index
@@ -729,8 +816,6 @@ class SearchAlgorithmTest(unittest.TestCase):
         assert new_repeater.searcher.returned_result[-1] == {"result": 3}
 
     def testSetGetLimiter(self):
-        ray.init(num_cpus=4)
-
         class TestSuggestion(Searcher):
             def __init__(self, index):
                 self.index = index
@@ -761,8 +846,6 @@ class SearchAlgorithmTest(unittest.TestCase):
         assert limiter2.suggest("test_3")["score"] == 3
 
     def testBatchLimiter(self):
-        ray.init(num_cpus=4)
-
         class TestSuggestion(Searcher):
             def __init__(self, index):
                 self.index = index
@@ -841,7 +924,166 @@ class ResourcesTest(unittest.TestCase):
         original = Resources(1, 0, 0, 1, custom_resources={"a": 1, "b": 2})
         jsoned = resources_to_json(original)
         new_resource = json_to_resources(jsoned)
-        self.assertEquals(original, new_resource)
+        self.assertEqual(original, new_resource)
+
+
+class TrialRunnerPlacementGroupTest(unittest.TestCase):
+    def setUp(self):
+        os.environ["TUNE_GLOBAL_CHECKPOINT_S"] = "10000"
+        self.head_cpus = 8
+        self.head_gpus = 4
+        self.head_custom = 16
+
+        self.cluster = Cluster(
+            initialize_head=True,
+            connect=True,
+            head_node_args={
+                "num_cpus": self.head_cpus,
+                "num_gpus": self.head_gpus,
+                "resources": {
+                    "custom": self.head_custom
+                },
+                "_system_config": {
+                    "num_heartbeats_timeout": 10
+                }
+            })
+        # Pytest doesn't play nicely with imports
+        _register_all()
+
+    def tearDown(self):
+        ray.shutdown()
+        self.cluster.shutdown()
+        _register_all()  # re-register the evicted objects
+
+    def testPlacementGroupRequests(self, scheduled=10):
+        """In this test we try to start 10 trials but only have resources
+        for 2. Placement groups should still be created and PENDING.
+
+        Eventually they should be scheduled sequentially (i.e. in pairs
+        of two)."""
+
+        def train(config):
+            time.sleep(1)
+            now = time.time()
+            tune.report(end=now - config["start_time"])
+
+        def placement_group_factory():
+            head_bundle = {"CPU": 4, "GPU": 0, "custom": 0}
+            child_bundle = {"custom": 1}
+
+            return placement_group([head_bundle, child_bundle, child_bundle])
+
+        trial_executor = RayTrialExecutor()
+
+        this = self
+
+        class _TestCallback(Callback):
+            def on_step_end(self, iteration, trials, **info):
+                if iteration == 1:
+                    this.assertEqual(scheduled, len(trials))
+                    this.assertEqual(
+                        scheduled,
+                        sum(
+                            len(s) for s in
+                            trial_executor._pg_manager._staging.values()) +
+                        sum(
+                            len(s)
+                            for s in trial_executor._pg_manager._ready.values(
+                            )) + len(trial_executor._pg_manager._in_use_pgs))
+
+        start = time.time()
+        out = tune.run(
+            train,
+            config={"start_time": start},
+            resources_per_trial=placement_group_factory,
+            num_samples=10,
+            trial_executor=trial_executor,
+            callbacks=[_TestCallback()])
+
+        trial_end_times = sorted(t.last_result["end"] for t in out.trials)
+        print("Trial end times:", trial_end_times)
+        max_diff = trial_end_times[-1] - trial_end_times[0]
+
+        # Not all trials have been run in parallel
+        self.assertGreater(max_diff, 5)
+
+        # Some trials should have run in parallel
+        self.assertLess(max_diff, 10)
+
+    @patch("ray.tune.trial_runner.TUNE_MAX_PENDING_TRIALS_PG", 6)
+    @patch("ray.tune.utils.placement_groups.TUNE_MAX_PENDING_TRIALS_PG", 6)
+    def testPlacementGroupLimitedRequests(self):
+        """Assert that maximum number of placement groups is enforced."""
+        self.testPlacementGroupRequests(scheduled=6)
+
+    def testPlacementGroupDistributedTraining(self):
+        """Run distributed training using placement groups.
+
+        Each trial requests 4 CPUs and starts 4 remote training workers.
+        """
+
+        def placement_group_factory():
+            head_bundle = {"CPU": 1, "GPU": 0, "custom": 0}
+            child_bundle = {"CPU": 1}
+
+            return placement_group(
+                [head_bundle, child_bundle, child_bundle, child_bundle])
+
+        @ray.remote
+        class TrainingActor:
+            def train(self, val):
+                time.sleep(1)
+                return val
+
+        def train(config):
+            base = config["base"]
+            actors = [TrainingActor.remote() for _ in range(4)]
+            futures = [
+                actor.train.remote(base + 2 * i)
+                for i, actor in enumerate(actors)
+            ]
+            results = ray.get(futures)
+
+            end = time.time() - config["start_time"]
+            tune.report(avg=np.mean(results), end=end)
+
+        trial_executor = RayTrialExecutor()
+
+        start = time.time()
+        out = tune.run(
+            train,
+            config={
+                "start_time": start,
+                "base": tune.grid_search(list(range(0, 100, 10)))
+            },
+            resources_per_trial=placement_group_factory,
+            num_samples=1,
+            trial_executor=trial_executor)
+
+        avgs = sorted(t.last_result["avg"] for t in out.trials)
+        self.assertSequenceEqual(avgs, list(range(3, 103, 10)))
+
+        trial_end_times = sorted(t.last_result["end"] for t in out.trials)
+        print("Trial end times:", trial_end_times)
+        max_diff = trial_end_times[-1] - trial_end_times[0]
+
+        # Not all trials have been run in parallel
+        self.assertGreater(max_diff, 5)
+
+        # Some trials should have run in parallel
+        # Todo: Re-enable when using buildkite
+        # self.assertLess(max_diff, 10)
+
+        # Assert proper cleanup
+        pg_manager = trial_executor._pg_manager
+        self.assertFalse(pg_manager._in_use_trials)
+        self.assertFalse(pg_manager._in_use_pgs)
+        self.assertFalse(pg_manager._staging_futures)
+        for pgf in pg_manager._staging:
+            self.assertFalse(pg_manager._staging[pgf])
+        for pgf in pg_manager._ready:
+            self.assertFalse(pg_manager._ready[pgf])
+        self.assertTrue(pg_manager._latest_staging_start_time)
 
 
 if __name__ == "__main__":

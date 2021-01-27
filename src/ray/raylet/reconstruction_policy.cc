@@ -23,13 +23,13 @@ namespace raylet {
 ReconstructionPolicy::ReconstructionPolicy(
     boost::asio::io_service &io_service,
     std::function<void(const TaskID &, const ObjectID &)> reconstruction_handler,
-    int64_t initial_reconstruction_timeout_ms, const NodeID &client_id,
+    int64_t initial_reconstruction_timeout_ms, const NodeID &node_id,
     std::shared_ptr<gcs::GcsClient> gcs_client,
     std::shared_ptr<ObjectDirectoryInterface> object_directory)
     : io_service_(io_service),
       reconstruction_handler_(reconstruction_handler),
       initial_reconstruction_timeout_ms_(initial_reconstruction_timeout_ms),
-      client_id_(client_id),
+      node_id_(node_id),
       gcs_client_(gcs_client),
       object_directory_(std::move(object_directory)) {}
 
@@ -148,7 +148,7 @@ void ReconstructionPolicy::AttemptReconstruction(const TaskID &task_id,
   auto reconstruction_entry = std::make_shared<TaskReconstructionData>();
   reconstruction_entry->set_task_id(task_id.Binary());
   reconstruction_entry->set_num_reconstructions(reconstruction_attempt);
-  reconstruction_entry->set_node_manager_id(client_id_.Binary());
+  reconstruction_entry->set_node_manager_id(node_id_.Binary());
   RAY_CHECK_OK(gcs_client_->Tasks().AttemptTaskReconstruction(
       reconstruction_entry,
       /*done=*/
@@ -178,10 +178,10 @@ void ReconstructionPolicy::HandleTaskLeaseExpired(const TaskID &task_id) {
     RAY_CHECK_OK(object_directory_->LookupLocations(
         created_object_id, it->second.owner_addresses[created_object_id],
         [this, task_id, reconstruction_attempt](
-            const ray::ObjectID &object_id,
-            const std::unordered_set<ray::NodeID> &clients,
-            const std::string &spilled_url) {
-          if (clients.empty() && spilled_url.empty()) {
+            const ray::ObjectID &object_id, const std::unordered_set<ray::NodeID> &nodes,
+            const std::string &spilled_url, const ray::NodeID &spilled_node_id,
+            size_t object_size) {
+          if (nodes.empty() && spilled_url.empty()) {
             // The required object no longer exists on any live nodes. Attempt
             // reconstruction.
             AttemptReconstruction(task_id, object_id, reconstruction_attempt);

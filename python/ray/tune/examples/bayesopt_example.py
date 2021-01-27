@@ -1,10 +1,9 @@
-"""This test checks that BayesOpt is functional.
+"""This example demonstrates the usage of BayesOpt with Ray Tune.
 
 It also checks that it is usable with a separate scheduler.
 """
 import time
 
-import ray
 from ray import tune
 from ray.tune.schedulers import AsyncHyperBandScheduler
 from ray.tune.suggest import ConcurrencyLimiter
@@ -34,16 +33,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--smoke-test", action="store_true", help="Finish quickly for testing")
     args, _ = parser.parse_known_args()
-    ray.init()
 
-    tune_kwargs = {
-        "num_samples": 10 if args.smoke_test else 1000,
-        "config": {
-            "steps": 100,
-            "width": tune.uniform(0, 20),
-            "height": tune.uniform(-100, 100)
-        }
-    }
     algo = BayesOptSearch(utility_kwargs={
         "kind": "ucb",
         "kappa": 2.5,
@@ -51,11 +41,18 @@ if __name__ == "__main__":
     })
     algo = ConcurrencyLimiter(algo, max_concurrent=4)
     scheduler = AsyncHyperBandScheduler()
-    tune.run(
+    analysis = tune.run(
         easy_objective,
         name="my_exp",
         metric="mean_loss",
         mode="min",
         search_alg=algo,
         scheduler=scheduler,
-        **tune_kwargs)
+        num_samples=10 if args.smoke_test else 1000,
+        config={
+            "steps": 100,
+            "width": tune.uniform(0, 20),
+            "height": tune.uniform(-100, 100)
+        })
+
+    print("Best hyperparameters found were: ", analysis.best_config)

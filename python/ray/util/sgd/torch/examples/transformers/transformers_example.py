@@ -160,8 +160,9 @@ class TransformerOperator(TrainingOperator):
         self.model, self.optimizer = self.register(
             models=model,
             optimizers=optimizer,
-            train_loader=train_loader,
-            validation_loader=None)
+            apex_args={"opt_level": args.fp16_opt_level})
+
+        self.register_data(train_loader=train_loader, validation_loader=None)
 
         self.train_data_len = len(self.train_loader)
         self._warmup_scheduler = get_linear_schedule_with_warmup(
@@ -331,7 +332,6 @@ def main():
     trainer = TorchTrainer(
         training_operator_cls=TransformerOperator,
         use_fp16=args.fp16,
-        apex_args={"opt_level": args.fp16_opt_level},
         num_workers=args.num_workers,
         use_gpu=use_gpu,
         use_tqdm=True,

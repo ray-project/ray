@@ -1,9 +1,12 @@
 import os
 import requests
+import sys
 import tempfile
 import time
 
+import pytest
 import ray
+from ray.test_utils import wait_for_condition
 from ray import serve
 from ray.serve.config import BackendConfig, ReplicaConfig
 
@@ -53,9 +56,11 @@ def test_controller_failure(serve_instance):
     client.create_backend("controller_failure:v2", function)
     client.set_traffic("controller_failure", {"controller_failure:v2": 1.0})
 
-    for _ in range(10):
+    def check_controller_failure():
         response = request_with_retries("/controller_failure", timeout=30)
-        assert response.text == "hello2"
+        return response.text == "hello2"
+
+    wait_for_condition(check_controller_failure)
 
     def function(_):
         return "hello3"
@@ -76,10 +81,10 @@ def test_controller_failure(serve_instance):
         assert response.text == "hello3"
 
 
-def _kill_routers(client):
-    routers = ray.get(client._controller.get_routers.remote())
-    for router in routers.values():
-        ray.kill(router, no_restart=False)
+def _kill_http_proxies(client):
+    http_proxies = ray.get(client._controller.get_http_proxies.remote())
+    for http_proxy in http_proxies.values():
+        ray.kill(http_proxy, no_restart=False)
 
 
 def test_http_proxy_failure(serve_instance):
@@ -98,7 +103,7 @@ def test_http_proxy_failure(serve_instance):
         response = request_with_retries("/proxy_failure", timeout=30)
         assert response.text == "hello1"
 
-    _kill_routers(client)
+    _kill_http_proxies(client)
 
     def function(_):
         return "hello2"
@@ -113,7 +118,7 @@ def test_http_proxy_failure(serve_instance):
 
 def _get_worker_handles(client, backend):
     controller = client._controller
-    backend_dict = ray.get(controller.get_all_worker_handles.remote())
+    backend_dict = ray.get(controller._all_replica_handles.remote())
 
     return list(backend_dict[backend].values())
 
@@ -124,7 +129,7 @@ def test_worker_restart(serve_instance):
     client = serve_instance
 
     class Worker1:
-        def __call__(self):
+        def __call__(self, *args):
             return os.getpid()
 
     client.create_backend("worker_failure:v1", Worker1)
@@ -151,6 +156,7 @@ def test_worker_restart(serve_instance):
 
 # Test that if there are multiple replicas for a worker and one dies
 # unexpectedly, the others continue to serve requests.
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_worker_replica_failure(serve_instance):
     client = serve_instance
 
@@ -176,7 +182,7 @@ def test_worker_replica_failure(serve_instance):
                 while True:
                     pass
 
-        def __call__(self):
+        def __call__(self, *args):
             pass
 
     temp_path = os.path.join(tempfile.gettempdir(),
@@ -223,8 +229,9 @@ def test_create_backend_idempotent(serve_instance):
 
     for i in range(10):
         ray.get(
-            controller.create_backend.remote("my_backend", backend_config,
-                                             replica_config))
+            controller.wait_for_goal.remote(
+                controller.create_backend.remote("my_backend", backend_config,
+                                                 replica_config)))
 
     assert len(ray.get(controller.get_all_backends.remote())) == 1
     client.create_endpoint(
@@ -245,8 +252,9 @@ def test_create_endpoint_idempotent(serve_instance):
 
     for i in range(10):
         ray.get(
-            controller.create_endpoint.remote(
-                "my_endpoint", {"my_backend": 1.0}, "/my_route", ["GET"]))
+            controller.wait_for_goal.remote(
+                controller.create_endpoint.remote(
+                    "my_endpoint", {"my_backend": 1.0}, "/my_route", ["GET"])))
 
     assert len(ray.get(controller.get_all_endpoints.remote())) == 1
     assert requests.get("http://127.0.0.1:8000/my_route").text == "hello"

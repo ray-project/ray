@@ -2,7 +2,6 @@
 The test file for all standalone tests that doesn't
 requires a shared Serve instance.
 """
-from random import randint
 import sys
 import socket
 
@@ -14,7 +13,7 @@ from ray import serve
 from ray.cluster_utils import Cluster
 from ray.serve.constants import SERVE_PROXY_NAME
 from ray.serve.utils import (block_until_http_ready, get_all_node_ids,
-                             format_actor_name, get_node_id_for_actor)
+                             format_actor_name)
 from ray.test_utils import wait_for_condition
 from ray._private.services import new_port
 
@@ -56,13 +55,13 @@ def test_detached_deployment():
             "This test can only be ran when port sharing is supported."))
 def test_multiple_routers():
     cluster = Cluster()
-    head_node = cluster.add_node()
-    cluster.add_node()
+    head_node = cluster.add_node(num_cpus=4)
+    cluster.add_node(num_cpus=4)
 
     ray.init(head_node.address)
     node_ids = ray.state.node_ids()
     assert len(node_ids) == 2
-    client = serve.start(http_port=8005)  # noqa: F841
+    client = serve.start(http_options=dict(port=8005, location="EveryNode"))
 
     def get_proxy_names():
         proxy_names = []
@@ -136,11 +135,12 @@ def test_middleware():
 
     port = new_port()
     serve.start(
-        http_port=port,
-        http_middlewares=[
-            Middleware(
-                CORSMiddleware, allow_origins=["*"], allow_methods=["*"])
-        ])
+        http_options=dict(
+            port=port,
+            middlewares=[
+                Middleware(
+                    CORSMiddleware, allow_origins=["*"], allow_methods=["*"])
+            ]))
     ray.get(block_until_http_ready.remote(f"http://127.0.0.1:{port}/-/routes"))
 
     # Snatched several test cases from Starlette
@@ -160,45 +160,77 @@ def test_middleware():
     ray.shutdown()
 
 
-@pytest.mark.skipif(
-    not hasattr(socket, "SO_REUSEPORT"),
-    reason=("Port sharing only works on newer verion of Linux. "
-            "This test can only be ran when port sharing is supported."))
-def test_cluster_handle_affinity():
+def test_http_proxy_fail_loudly():
+    # Test that if the http server fail to start, serve.start should fail.
+    with pytest.raises(socket.gaierror):
+        serve.start(http_options={"host": "bad.ip.address"})
+
+    ray.shutdown()
+
+
+def test_no_http():
+    # The following should have the same effect.
+    options = [
+        {
+            "http_host": None
+        },
+        {
+            "http_options": {
+                "host": None
+            }
+        },
+        {
+            "http_options": {
+                "location": None
+            }
+        },
+        {
+            "http_options": {
+                "location": "NoServer"
+            }
+        },
+    ]
+
+    ray.init()
+    for option in options:
+        client = serve.start(**option)
+
+        # Only controller actor should exist
+        live_actors = [
+            actor for actor in ray.actors().values()
+            if actor["State"] == ray.gcs_utils.ActorTableData.ALIVE
+        ]
+        assert len(live_actors) == 1
+
+        client.shutdown()
+    ray.shutdown()
+
+
+def test_http_head_only():
     cluster = Cluster()
-    # HACK: using two different ip address so the placement constraint for
-    # resource check later will work.
-    head_node = cluster.add_node(node_ip_address="127.0.0.1", num_cpus=4)
-    cluster.add_node(node_ip_address="0.0.0.0", num_cpus=4)
+    head_node = cluster.add_node(num_cpus=4)
+    cluster.add_node(num_cpus=4)
 
     ray.init(head_node.address)
-
-    # Make sure we have two nodes.
-    node_ids = [n["NodeID"] for n in ray.nodes()]
+    node_ids = ray.state.node_ids()
     assert len(node_ids) == 2
 
-    # Start the backend.
-    client = serve.start(http_port=randint(10000, 30000), detached=True)
-    client.create_backend("hi:v0", lambda _: "hi")
-    client.create_endpoint("hi", backend="hi:v0")
+    client = serve.start(http_options={
+        "port": new_port(),
+        "location": "HeadOnly"
+    })
 
-    # Try to retrieve the handle from both head and worker node, check the
-    # router's node id.
-    @ray.remote
-    def check_handle_router_id():
-        client = serve.connect()
-        handle = client.get_handle("hi")
-        return get_node_id_for_actor(handle.router_handle)
+    # Only the controller and head node actor should be started
+    assert len(ray.actors()) == 2
 
-    router_node_ids = ray.get([
-        check_handle_router_id.options(resources={
-            node_id: 0.01
-        }).remote() for node_id in ray.state.node_ids()
-    ])
+    # They should all be placed on the head node
+    cpu_per_nodes = {
+        r["CPU"]
+        for r in ray.state.state._available_resources_per_node().values()
+    }
+    assert cpu_per_nodes == {2, 4}
 
-    assert set(router_node_ids) == set(node_ids)
-
-    # Clean up the nodes (otherwise Ray will segfault).
+    client.shutdown()
     ray.shutdown()
     cluster.shutdown()
 

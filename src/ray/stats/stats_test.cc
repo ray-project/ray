@@ -41,14 +41,12 @@ class MockExporter : public opencensus::stats::StatsExporter::Handler {
       auto &descriptor = datum.first;
       auto &view_data = datum.second;
 
-      ASSERT_EQ("current_worker", descriptor.name());
+      ASSERT_EQ("local_available_resource", descriptor.name());
       ASSERT_EQ(opencensus::stats::ViewData::Type::kDouble, view_data.type());
       for (const auto &row : view_data.double_data()) {
         for (size_t i = 0; i < descriptor.columns().size(); ++i) {
-          if (descriptor.columns()[i].name() == "WorkerPidKey") {
-            ASSERT_EQ("1000", row.first[i]);
-          } else if (descriptor.columns()[i].name() == "LanguageKey") {
-            ASSERT_EQ("CPP", row.first[i]);
+          if (descriptor.columns()[i].name() == "ResourceName") {
+            ASSERT_EQ("CPU", row.first[i]);
           }
         }
         // row.second store the data of this metric.
@@ -69,8 +67,7 @@ class StatsTest : public ::testing::Test {
     absl::Duration harvest_interval = absl::Milliseconds(kReportFlushInterval / 2);
     ray::stats::StatsConfig::instance().SetReportInterval(report_interval);
     ray::stats::StatsConfig::instance().SetHarvestInterval(harvest_interval);
-    const stats::TagsType global_tags = {{stats::LanguageKey, "CPP"},
-                                         {stats::WorkerPidKey, "1000"}};
+    const stats::TagsType global_tags = {{stats::ResourceNameKey, "CPU"}};
     std::shared_ptr<stats::MetricExporterClient> exporter(
         new stats::StdoutExporterClient());
     ray::stats::Init(global_tags, MetricsAgentPort, exporter);
@@ -85,7 +82,7 @@ class StatsTest : public ::testing::Test {
 TEST_F(StatsTest, F) {
   for (size_t i = 0; i < 20; ++i) {
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
-    stats::CurrentWorker().Record(2345);
+    stats::LocalAvailableResource().Record(2345);
   }
 }
 
@@ -117,6 +114,38 @@ TEST_F(StatsTest, InitializationTest) {
   ASSERT_TRUE(ray::stats::StatsConfig::instance().IsInitialized());
   auto &new_first_tag = ray::stats::StatsConfig::instance().GetGlobalTags()[0];
   ASSERT_TRUE(new_first_tag.second == test_tag_value_that_shouldnt_be_applied);
+}
+
+TEST(Metric, MultiThreadMetricRegisterViewTest) {
+  ray::stats::Shutdown();
+  std::shared_ptr<stats::MetricExporterClient> exporter(
+      new stats::StdoutExporterClient());
+  ray::stats::Init({}, MetricsAgentPort, exporter);
+  std::vector<std::thread> threads;
+  const stats::TagKeyType tag1 = stats::TagKeyType::Register("k1");
+  const stats::TagKeyType tag2 = stats::TagKeyType::Register("k2");
+  for (int index = 0; index < 10; ++index) {
+    threads.emplace_back([tag1, tag2, index]() {
+      for (int i = 0; i < 100; i++) {
+        stats::Count random_counter(
+            "ray.random.counter" + std::to_string(index) + std::to_string(i), "", "",
+            {tag1, tag2});
+        random_counter.Record(i);
+        stats::Gauge random_gauge(
+            "ray.random.gauge" + std::to_string(index) + std::to_string(i), "", "",
+            {tag1, tag2});
+        random_gauge.Record(i);
+        stats::Sum random_sum(
+            "ray.random.sum" + std::to_string(index) + std::to_string(i), "", "",
+            {tag1, tag2});
+        random_sum.Record(i);
+      }
+    });
+  }
+  for (auto &thread : threads) {
+    thread.join();
+  }
+  ray::stats::Shutdown();
 }
 
 TEST_F(StatsTest, MultiThreadedInitializationTest) {

@@ -1,6 +1,7 @@
 import numpy as np
 
-from ray.rllib.utils.framework import get_activation_fn, try_import_torch
+from ray.rllib.models.utils import get_activation_fn
+from ray.rllib.utils.framework import try_import_torch, TensorType
 
 torch, nn = try_import_torch()
 
@@ -17,14 +18,18 @@ class NoisyLayer(nn.Module):
     vanish along the training procedure.
     """
 
-    def __init__(self, in_size, out_size, sigma0, activation="relu"):
+    def __init__(self,
+                 in_size: int,
+                 out_size: int,
+                 sigma0: float,
+                 activation: str = "relu"):
         """Initializes a NoisyLayer object.
 
         Args:
-            in_size:
-            out_size:
-            sigma0:
-            non_linear:
+            in_size: Input size for Noisy Layer
+            out_size: Output size for Noisy Layer
+            sigma0: Initialization value for sigma_b (bias noise)
+            activation: Non-linear activation for Noisy Layer
         """
         super().__init__()
 
@@ -59,7 +64,7 @@ class NoisyLayer(nn.Module):
         b = nn.Parameter(torch.from_numpy(np.zeros([out_size])).float())
         self.register_parameter("b", b)
 
-    def forward(self, inputs):
+    def forward(self, inputs: TensorType) -> TensorType:
         epsilon_in = self._f_epsilon(
             torch.normal(
                 mean=torch.zeros([self.in_size]),
@@ -81,5 +86,5 @@ class NoisyLayer(nn.Module):
             action_activation = self.activation(action_activation)
         return action_activation
 
-    def _f_epsilon(self, x):
+    def _f_epsilon(self, x: TensorType) -> TensorType:
         return torch.sign(x) * torch.pow(torch.abs(x), 0.5)

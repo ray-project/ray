@@ -21,26 +21,34 @@ Clusters are started with the :ref:`Ray Cluster Launcher <ref-automatic-cluster>
 
 You can also create a Ray cluster using a standard cluster manager such as :ref:`Kubernetes <ray-k8s-deploy>`, :ref:`YARN <ray-yarn-deploy>`, or :ref:`SLURM <ray-slurm-deploy>`.
 
-After a cluster is started, you need to connect your program to the Ray cluster.
+After a cluster is started, you need to connect your program to the Ray cluster by starting a driver process on the same node as where you ran ``ray start``:
 
 .. tabs::
-  .. group-tab:: python
+  .. code-tab:: python
 
-    You can connect to this Ray runtime by starting a Python process that calls the following on the same node as where you ran ``ray start``:
-
-    .. code-block:: python
-
-      # This must
-      import ray
-      ray.init(address='auto')
+    # This must
+    import ray
+    ray.init(address='auto')
 
   .. group-tab:: java
 
-    If you want to run Java code, you need to specify the classpath via the ``--code-search-path`` option. See :ref:`code_search_path` for more details.
+    .. code-block:: java
+
+      import io.ray.api.Ray;
+
+      public class MyRayApp {
+
+        public static void main(String[] args) {
+          Ray.init();
+          ...
+        }
+      }
 
     .. code-block:: bash
 
-      $ ray start ... --code-search-path=/path/to/jars
+      java -classpath <classpath> \
+        -Dray.address=<address> \
+        <classname> <args>
 
 and then the rest of your script should be able to leverage Ray as a distributed framework!
 
@@ -74,9 +82,7 @@ The most preferable way to run a Ray cluster is via the :ref:`Ray Cluster Launch
 This section assumes that you have a list of machines and that the nodes in the cluster can communicate with each other. It also assumes that Ray is installed
 on each machine. To install Ray, follow the `installation instructions`_.
 
-To configure the Ray cluster to run Java code, you need to add the ``--code-search-path`` option. See :ref:`code_search_path` for more details.
-
-.. _`installation instructions`: http://docs.ray.io/en/latest/installation.html
+.. _`installation instructions`: http://docs.ray.io/en/master/installation.html
 
 Starting Ray on each machine
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -87,23 +93,88 @@ random port.
 
 .. code-block:: bash
 
-  ray start --head --port=6379
+  $ ray start --head --port=6379
+  ...
+  Next steps
+    To connect to this Ray runtime from another node, run
+      ray start --address='<ip address>:6379' --redis-password='<password>'
+
+  If connection fails, check your firewall settings and network configuration.
 
 The command will print out the address of the Redis server that was started
-(and some other address information).
+(the local node IP address plus the port number you specified).
 
-**Then on all of the other nodes**, run the following. Make sure to replace
+**Then on each of the other nodes**, run the following. Make sure to replace
 ``<address>`` with the value printed by the command on the head node (it
 should look something like ``123.45.67.89:6379``).
 
+Note that if your compute nodes are on their own subnetwork with Network
+Address Translation, to connect from a regular machine outside that subnetwork,
+the command printed by the head node will not work. You need to find the
+address that will reach the head node from the second machine. If the head node
+has a domain address like compute04.berkeley.edu, you can simply use that in
+place of an IP address and rely on the DNS.
+
 .. code-block:: bash
 
-  ray start --address=<address>
+  $ ray start --address=<address> --redis-password='<password>'
+  --------------------
+  Ray runtime started.
+  --------------------
+
+  To terminate the Ray runtime, run
+    ray stop
 
 If you wish to specify that a machine has 10 CPUs and 1 GPU, you can do this
 with the flags ``--num-cpus=10`` and ``--num-gpus=1``. See the :ref:`Configuration <configuring-ray>` page for more information.
 
-Now we've started the Ray runtime.
+If you see ``Unable to connect to Redis. If the Redis instance is on a
+different machine, check that your firewall is configured properly.``,
+this means the ``--port`` is inaccessible at the given IP address (because, for
+example, the head node is not actually running Ray, or you have the wrong IP
+address).
+
+If you see ``Ray runtime started.``, then the node successfully connected to
+the IP address at the ``--port``. You should now be able to connect to the
+cluster with ``ray.init(address='auto')``.
+
+If ``ray.init(address='auto')`` keeps repeating
+``redis_context.cc:303: Failed to connect to Redis, retrying.``, then the node
+is failing to connect to some other port(s) besides the main port.
+
+.. code-block:: bash
+
+  If connection fails, check your firewall settings and network configuration.
+
+If the connection fails, to check whether each port can be reached from a node,
+you can use a tool such as ``nmap`` or ``nc``.
+
+.. code-block:: bash
+
+  $ nmap -sV --reason -p $PORT $HEAD_ADDRESS
+  Nmap scan report for compute04.berkeley.edu (123.456.78.910)
+  Host is up, received echo-reply ttl 60 (0.00087s latency).
+  rDNS record for 123.456.78.910: compute04.berkeley.edu
+  PORT     STATE SERVICE REASON         VERSION
+  6379/tcp open  redis   syn-ack ttl 60 Redis key-value store
+  Service detection performed. Please report any incorrect results at https://nmap.org/submit/ .
+  $ nc -vv -z $HEAD_ADDRESS $PORT
+  Connection to compute04.berkeley.edu 6379 port [tcp/*] succeeded!
+
+If the node cannot access that port at that IP address, you might see
+
+.. code-block:: bash
+
+  $ nmap -sV --reason -p $PORT $HEAD_ADDRESS
+  Nmap scan report for compute04.berkeley.edu (123.456.78.910)
+  Host is up (0.0011s latency).
+  rDNS record for 123.456.78.910: compute04.berkeley.edu
+  PORT     STATE  SERVICE REASON       VERSION
+  6379/tcp closed redis   reset ttl 60
+  Service detection performed. Please report any incorrect results at https://nmap.org/submit/ .
+  $ nc -vv -z $HEAD_ADDRESS $PORT
+  nc: connect to compute04.berkeley.edu port 6379 (tcp) failed: Connection refused
+
 
 Stopping Ray
 ~~~~~~~~~~~~
@@ -134,7 +205,7 @@ To run a distributed Ray program, you'll need to execute your program on the sam
 
         .. code-block:: bash
 
-            java -classpath /path/to/jars/ \
+            java -classpath <classpath> \
               -Dray.address=<address> \
               <classname> <args>
 

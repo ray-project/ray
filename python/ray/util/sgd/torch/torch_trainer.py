@@ -105,7 +105,9 @@ class TorchTrainer:
         wrap_ddp (bool): Whether to automatically wrap DistributedDataParallel
             over each model. If False, you are expected to call it yourself.
         timeout_s (float): Seconds before the torch process group
-            times out. Useful when machines are unreliable.
+            times out. Useful when machines are unreliable. If not set, default
+            to 30 min, which is the same default as
+            ``torch.init_process_group(...)``.
         add_dist_sampler (bool): Whether to automatically add a
             DistributedSampler to all created dataloaders. Only applicable
             if num_workers > 1.
@@ -113,10 +115,6 @@ class TorchTrainer:
             is installed. This is automatically done after the model and
             optimizers are constructed and will work for multi-model training.
             Please see https://github.com/NVIDIA/apex for more details.
-        apex_args (dict|None): Dict containing keyword args for amp.initialize.
-            See https://nvidia.github.io/apex/amp.html#module-apex.amp. By
-            default, the models and optimizers are passed in. Consider using
-            "num_losses" if operating over multiple models and optimizers.
         scheduler_step_freq: "batch", "epoch", "manual", or None. This will
             determine when ``scheduler.step`` is called. If "batch",
             ``step`` will be called after every optimizer step. If "epoch",
@@ -147,10 +145,9 @@ class TorchTrainer:
             use_gpu="auto",
             backend="auto",
             wrap_ddp=True,
-            timeout_s=NCCL_TIMEOUT_S,
+            timeout_s=1800,
             use_fp16=False,
             use_tqdm=False,
-            apex_args=None,
             add_dist_sampler=True,
             scheduler_step_freq=None,
             use_local=False,
@@ -164,6 +161,7 @@ class TorchTrainer:
             loss_creator=None,
             serialize_data_creation=None,
             data_loader_args=None,
+            apex_args=None,
     ):
         if (model_creator or data_creator or optimizer_creator
                 or scheduler_creator or loss_creator):
@@ -201,6 +199,12 @@ class TorchTrainer:
                 "config={ray.util.sgd.utils.BATCH_SIZE: N} to specify a "
                 "batch size to be used across all workers.")
 
+        if apex_args is not None:
+            raise DeprecationWarning(
+                "apex_args is deprecated. Pass in apex_args when calling "
+                "`register` in the `setup` method of your `TrainingOperator` "
+                "instead.")
+
         if serialize_data_creation is True:
             if log_once("serialize_data_creation"):
                 logging.warning(
@@ -228,6 +232,9 @@ class TorchTrainer:
         if backend == "auto":
             backend = "nccl" if use_gpu else "gloo"
 
+        if backend == "nccl":
+            timeout_s = NCCL_TIMEOUT_S
+
         logger.debug(f"Using {backend} as backend.")
         self.backend = backend
         self.num_cpus_per_worker = num_cpus_per_worker
@@ -242,10 +249,6 @@ class TorchTrainer:
         self.add_dist_sampler = add_dist_sampler
         self.use_local = use_local
 
-        if apex_args and not isinstance(apex_args, dict):
-            raise ValueError("apex_args needs to be a dict object.")
-
-        self.apex_args = apex_args
         self.temp_dir = tempfile.mkdtemp(prefix="raysgd")
         self._num_failures = 0
         self._last_resize = float("-inf")
@@ -294,7 +297,6 @@ class TorchTrainer:
             use_fp16=self.use_fp16,
             use_gpu=self.use_gpu,
             use_tqdm=self.use_tqdm,
-            apex_args=self.apex_args,
             scheduler_step_freq=self.scheduler_step_freq)
 
         dist_params = dict(
@@ -303,7 +305,7 @@ class TorchTrainer:
             wrap_ddp=self.wrap_ddp)
 
         worker_args = {
-            "max_workers": num_workers,
+            "max_workers": self.max_replicas,
             "params": params,
             "dist_params": dist_params,
             "initialization_hook": self.initialization_hook,
@@ -592,7 +594,8 @@ class TorchTrainer:
 
             TorchTrainable = TorchTrainer.as_trainable(
                 training_operator_cls=MyTrainingOperator,
-                num_gpus=2,
+                num_workers=2,
+                use_gpu=True,
                 override_tune_step=step
             )
             analysis = tune.run(
@@ -693,7 +696,8 @@ class BaseTorchTrainable(Trainable):
         # TorchTrainable is subclass of BaseTorchTrainable.
         TorchTrainable = TorchTrainer.as_trainable(
             training_operator_cls=MyTrainingOperator,
-            num_gpus=2,
+            num_workers=2,
+            use_gpu=True,
             override_tune_step=custom_step
         )
 
@@ -716,7 +720,7 @@ class BaseTorchTrainable(Trainable):
                 "removed in "
                 "a future version of Ray. Override Trainable.step instead.")
 
-        train_stats = self.trainer.train(max_retries=10, profile=True)
+        train_stats = self.trainer.train(max_retries=0, profile=True)
         validation_stats = self.trainer.validate(profile=True)
         stats = merge_dicts(train_stats, validation_stats)
         return stats

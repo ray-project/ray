@@ -1,3 +1,5 @@
+.. _raysgd-tune:
+
 RaySGD Hyperparameter Tuning
 ============================
 

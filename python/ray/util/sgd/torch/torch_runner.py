@@ -28,7 +28,6 @@ class TorchRunner:
                  serialize_data_creation=True,
                  use_fp16=False,
                  use_tqdm=False,
-                 apex_args=None,
                  scheduler_step_freq=None):
         self.training_operator_cls = training_operator_cls
         self.config = {} if config is None else config
@@ -40,7 +39,6 @@ class TorchRunner:
         self.use_gpu = use_gpu
         self.use_fp16 = use_fp16
         self.use_tqdm = use_tqdm
-        self.apex_args = apex_args or {}
         if use_fp16 and not amp:
             raise ImportError(
                 "Please install apex from "
@@ -64,7 +62,6 @@ class TorchRunner:
             use_gpu=self.use_gpu,
             use_fp16=self.use_fp16,
             use_tqdm=self.use_tqdm,
-            apex_args=self.apex_args,
             scheduler_step_freq=self.scheduler_step_freq)
 
     def get_iterator(self, training=True):

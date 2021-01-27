@@ -179,12 +179,23 @@ replay utility in practice.
 
 .. _tune-scheduler-pb2:
 
-Population Based Bandits (PB2) (tune.schedulers.PB2)
--------------------------------------------------------------------
+Population Based Bandits (PB2) (tune.schedulers.pb2.PB2)
+--------------------------------------------------------
 
-Tune includes a distributed implementation of `Population Based Bandits (PB2) <https://arxiv.org/abs/2002.02518>`__. This can be enabled by setting the ``scheduler`` parameter of ``tune.run``, e.g.
+Tune includes a distributed implementation of `Population Based Bandits (PB2) <https://arxiv.org/abs/2002.02518>`__. This algorithm builds upon PBT, with the main difference being that instead of using random perturbations, PB2 selects new hyperparameter configurations using a Gaussian Process model.
+
+The Tune implementation of PB2 requires GPy and sklearn to be installed:
+
+.. code-block:: bash
+
+    pip install GPy sklearn
+
+
+PB2 can be enabled by setting the ``scheduler`` parameter of ``tune.run``, e.g.:
 
 .. code-block:: python
+
+    from ray.tune.schedulers.pb2 import PB2
 
     pb2_scheduler = PB2(
             time_attr='time_total_s',
@@ -198,14 +209,12 @@ Tune includes a distributed implementation of `Population Based Bandits (PB2) <h
             })
     tune.run( ... , scheduler=pb2_scheduler)
 
-This code builds upon PBT, with the main difference being that instead of using random perturbations, PB2 selects new hyperparameter configurations using a Gaussian Process model. 
 
 When the PB2 scheduler is enabled, each trial variant is treated as a member of the population. Periodically, top-performing trials are checkpointed (this requires your Trainable to support :ref:`save and restore <tune-checkpoint>`). Low-performing trials clone the checkpoints of top performers and perturb the configurations in the hope of discovering an even better variation.
 
 The primary motivation for PB2 is the ability to find promising hyperparamters with only a small population size. With that in mind, you can run this :doc:`PB2 PPO example </tune/examples/pb2_ppo_example>` to compare PB2 vs. PBT, with a population size of ``4`` (as in the paper). The example uses the ``BipedalWalker`` environment so does not require any additional licenses.
 
-
-.. autoclass:: ray.tune.schedulers.PB2
+.. autoclass:: ray.tune.schedulers.pb2.PB2
 
 
 .. _tune-scheduler-bohb:

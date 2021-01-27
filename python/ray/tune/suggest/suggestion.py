@@ -15,6 +15,18 @@ UNRESOLVED_SEARCH_SPACE = str(
     "conversion, pass the space definition as part of the `config` argument "
     "to `tune.run()` instead.")
 
+UNDEFINED_SEARCH_SPACE = str(
+    "Trying to sample a configuration from {cls}, but no search "
+    "space has been defined. Either pass the `{space}` argument when "
+    "instantiating the search algorithm, or pass a `config` to "
+    "`tune.run()`.")
+
+UNDEFINED_METRIC_MODE = str(
+    "Trying to sample a configuration from {cls}, but the `metric` "
+    "({metric}) or `mode` ({mode}) parameters have not been set. "
+    "Either pass these arguments when instantiating the search algorithm, "
+    "or pass them to `tune.run()`.")
+
 
 class Searcher:
     """Abstract class for wrapping suggesting algorithms.
@@ -378,6 +390,12 @@ class ConcurrencyLimiter(Searcher):
 
     def set_state(self, state: Dict):
         self.__dict__.update(state)
+
+    def save(self, checkpoint_path: str):
+        self.searcher.save(checkpoint_path)
+
+    def restore(self, checkpoint_path: str):
+        self.searcher.restore(checkpoint_path)
 
     def on_pause(self, trial_id: str):
         self.searcher.on_pause(trial_id)

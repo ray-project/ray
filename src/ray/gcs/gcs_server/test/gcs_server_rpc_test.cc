@@ -81,27 +81,6 @@ class GcsServerTest : public ::testing::Test {
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  bool RegisterActorInfo(const rpc::RegisterActorInfoRequest &request) {
-    std::promise<bool> promise;
-    client_->RegisterActorInfo(
-        request,
-        [&promise](const Status &status, const rpc::RegisterActorInfoReply &reply) {
-          RAY_CHECK_OK(status);
-          promise.set_value(true);
-        });
-    return WaitReady(promise.get_future(), timeout_ms_);
-  }
-
-  bool UpdateActorInfo(const rpc::UpdateActorInfoRequest &request) {
-    std::promise<bool> promise;
-    client_->UpdateActorInfo(request, [&promise](const Status &status,
-                                                 const rpc::UpdateActorInfoReply &reply) {
-      RAY_CHECK_OK(status);
-      promise.set_value(true);
-    });
-    return WaitReady(promise.get_future(), timeout_ms_);
-  }
-
   boost::optional<rpc::ActorTableData> GetActorInfo(const std::string &actor_id) {
     rpc::GetActorInfoRequest request;
     request.set_actor_id(actor_id);
@@ -120,60 +99,6 @@ class GcsServerTest : public ::testing::Test {
         });
     EXPECT_TRUE(WaitReady(promise.get_future(), timeout_ms_));
     return actor_table_data_opt;
-  }
-
-  bool AddActorCheckpoint(const rpc::AddActorCheckpointRequest &request) {
-    std::promise<bool> promise;
-    client_->AddActorCheckpoint(
-        request,
-        [&promise](const Status &status, const rpc::AddActorCheckpointReply &reply) {
-          RAY_CHECK_OK(status);
-          promise.set_value(true);
-        });
-    return WaitReady(promise.get_future(), timeout_ms_);
-  }
-
-  boost::optional<rpc::ActorCheckpointData> GetActorCheckpoint(
-      const std::string &actor_id, const std::string &checkpoint_id) {
-    rpc::GetActorCheckpointRequest request;
-    request.set_actor_id(actor_id);
-    request.set_checkpoint_id(checkpoint_id);
-    boost::optional<rpc::ActorCheckpointData> checkpoint_data_opt;
-    std::promise<bool> promise;
-    client_->GetActorCheckpoint(
-        request, [&checkpoint_data_opt, &promise](
-                     const Status &status, const rpc::GetActorCheckpointReply &reply) {
-          RAY_CHECK_OK(status);
-          if (reply.has_checkpoint_data()) {
-            checkpoint_data_opt = reply.checkpoint_data();
-          } else {
-            checkpoint_data_opt = boost::none;
-          }
-          promise.set_value(true);
-        });
-    EXPECT_TRUE(WaitReady(promise.get_future(), timeout_ms_));
-    return checkpoint_data_opt;
-  }
-
-  boost::optional<rpc::ActorCheckpointIdData> GetActorCheckpointID(
-      const std::string &actor_id) {
-    rpc::GetActorCheckpointIDRequest request;
-    request.set_actor_id(actor_id);
-    boost::optional<rpc::ActorCheckpointIdData> checkpoint_id_data_opt;
-    std::promise<bool> promise;
-    client_->GetActorCheckpointID(
-        request, [&checkpoint_id_data_opt, &promise](
-                     const Status &status, const rpc::GetActorCheckpointIDReply &reply) {
-          RAY_CHECK_OK(status);
-          if (reply.has_checkpoint_id_data()) {
-            checkpoint_id_data_opt = reply.checkpoint_id_data();
-          } else {
-            checkpoint_id_data_opt = boost::none;
-          }
-          promise.set_value(true);
-        });
-    EXPECT_TRUE(WaitReady(promise.get_future(), timeout_ms_));
-    return checkpoint_id_data_opt;
   }
 
   bool RegisterNode(const rpc::RegisterNodeRequest &request) {
@@ -334,16 +259,6 @@ class GcsServerTest : public ::testing::Test {
     return task_data;
   }
 
-  bool DeleteTasks(const rpc::DeleteTasksRequest &request) {
-    std::promise<bool> promise;
-    client_->DeleteTasks(
-        request, [&promise](const Status &status, const rpc::DeleteTasksReply &reply) {
-          RAY_CHECK_OK(status);
-          promise.set_value(true);
-        });
-    return WaitReady(promise.get_future(), timeout_ms_);
-  }
-
   bool AddTaskLease(const rpc::AddTaskLeaseRequest &request) {
     std::promise<bool> promise;
     client_->AddTaskLease(
@@ -433,11 +348,6 @@ class GcsServerTest : public ::testing::Test {
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  bool WaitReady(const std::future<bool> &future, uint64_t timeout_ms) {
-    auto status = future.wait_for(std::chrono::milliseconds(timeout_ms));
-    return status == std::future_status::ready;
-  }
-
  protected:
   // Gcs server
   std::unique_ptr<gcs::GcsServer> gcs_server_;
@@ -449,32 +359,14 @@ class GcsServerTest : public ::testing::Test {
   std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
 
   // Timeout waiting for gcs server reply, default is 5s
-  const uint64_t timeout_ms_ = 5000;
+  const std::chrono::milliseconds timeout_ms_{5000};
 };
 
 TEST_F(GcsServerTest, TestActorInfo) {
   // Create actor_table_data
   JobID job_id = JobID::FromInt(1);
   auto actor_table_data = Mocker::GenActorTableData(job_id);
-
-  // Add actor checkpoint
-  ActorCheckpointID checkpoint_id = ActorCheckpointID::FromRandom();
-  rpc::ActorCheckpointData checkpoint;
-  checkpoint.set_actor_id(actor_table_data->actor_id());
-  checkpoint.set_checkpoint_id(checkpoint_id.Binary());
-  checkpoint.set_execution_dependency(checkpoint_id.Binary());
-
-  rpc::AddActorCheckpointRequest add_actor_checkpoint_request;
-  add_actor_checkpoint_request.mutable_checkpoint_data()->CopyFrom(checkpoint);
-  ASSERT_TRUE(AddActorCheckpoint(add_actor_checkpoint_request));
-  boost::optional<rpc::ActorCheckpointData> checkpoint_result =
-      GetActorCheckpoint(actor_table_data->actor_id(), checkpoint_id.Binary());
-  ASSERT_TRUE(checkpoint_result->actor_id() == actor_table_data->actor_id());
-  ASSERT_TRUE(checkpoint_result->checkpoint_id() == checkpoint_id.Binary());
-  boost::optional<rpc::ActorCheckpointIdData> checkpoint_id_result =
-      GetActorCheckpointID(actor_table_data->actor_id());
-  ASSERT_TRUE(checkpoint_id_result->actor_id() == actor_table_data->actor_id());
-  ASSERT_TRUE(checkpoint_id_result->checkpoint_ids_size() == 1);
+  // TODO(sand): Add tests that don't require checkponit.
 }
 
 TEST_F(GcsServerTest, TestJobInfo) {
@@ -503,53 +395,11 @@ TEST_F(GcsServerTest, TestJobGarbageCollection) {
   add_job_request.mutable_data()->CopyFrom(*job_table_data);
   ASSERT_TRUE(AddJob(add_job_request));
 
-  // Add actor checkpoint
   auto actor_table_data = Mocker::GenActorTableData(job_id);
-  ActorCheckpointID checkpoint_id = ActorCheckpointID::FromRandom();
-  rpc::ActorCheckpointData checkpoint;
-  checkpoint.set_actor_id(actor_table_data->actor_id());
-  checkpoint.set_checkpoint_id(checkpoint_id.Binary());
-  checkpoint.set_execution_dependency(checkpoint_id.Binary());
-
-  rpc::AddActorCheckpointRequest add_actor_checkpoint_request;
-  add_actor_checkpoint_request.mutable_checkpoint_data()->CopyFrom(checkpoint);
-  ASSERT_TRUE(AddActorCheckpoint(add_actor_checkpoint_request));
-  boost::optional<rpc::ActorCheckpointData> checkpoint_result =
-      GetActorCheckpoint(actor_table_data->actor_id(), checkpoint_id.Binary());
-  ASSERT_TRUE(checkpoint_result->actor_id() == actor_table_data->actor_id());
-  ASSERT_TRUE(checkpoint_result->checkpoint_id() == checkpoint_id.Binary());
-  boost::optional<rpc::ActorCheckpointIdData> checkpoint_id_result =
-      GetActorCheckpointID(actor_table_data->actor_id());
-  ASSERT_TRUE(checkpoint_id_result->actor_id() == actor_table_data->actor_id());
-  ASSERT_TRUE(checkpoint_id_result->checkpoint_ids_size() == 1);
 
   // Register detached actor for job
   auto detached_actor_table_data = Mocker::GenActorTableData(job_id);
   detached_actor_table_data->set_is_detached(true);
-
-  // Add checkpoint for detached actor
-  ActorCheckpointID detached_checkpoint_id = ActorCheckpointID::FromRandom();
-  rpc::ActorCheckpointData detached_checkpoint;
-  detached_checkpoint.set_actor_id(detached_actor_table_data->actor_id());
-  detached_checkpoint.set_checkpoint_id(detached_checkpoint_id.Binary());
-  detached_checkpoint.set_execution_dependency(detached_checkpoint_id.Binary());
-
-  rpc::AddActorCheckpointRequest add_detached_actor_checkpoint_request;
-  add_detached_actor_checkpoint_request.mutable_checkpoint_data()->CopyFrom(
-      detached_checkpoint);
-  ASSERT_TRUE(AddActorCheckpoint(add_detached_actor_checkpoint_request));
-  boost::optional<rpc::ActorCheckpointData> detached_checkpoint_result =
-      GetActorCheckpoint(detached_actor_table_data->actor_id(),
-                         detached_checkpoint_id.Binary());
-  ASSERT_TRUE(detached_checkpoint_result->actor_id() ==
-              detached_actor_table_data->actor_id());
-  ASSERT_TRUE(detached_checkpoint_result->checkpoint_id() ==
-              detached_checkpoint_id.Binary());
-  boost::optional<rpc::ActorCheckpointIdData> detached_checkpoint_id_result =
-      GetActorCheckpointID(detached_actor_table_data->actor_id());
-  ASSERT_TRUE(detached_checkpoint_id_result->actor_id() ==
-              detached_actor_table_data->actor_id());
-  ASSERT_TRUE(detached_checkpoint_id_result->checkpoint_ids_size() == 1);
 
   // Mark job finished
   rpc::MarkJobFinishedRequest mark_job_finished_request;
@@ -560,19 +410,6 @@ TEST_F(GcsServerTest, TestJobGarbageCollection) {
     return !GetActorInfo(actor_table_data->actor_id()).has_value();
   };
   ASSERT_TRUE(WaitForCondition(condition_func, 10 * 1000));
-
-  detached_checkpoint_result = GetActorCheckpoint(detached_actor_table_data->actor_id(),
-                                                  detached_checkpoint_id.Binary());
-  ASSERT_TRUE(detached_checkpoint_result->actor_id() ==
-              detached_actor_table_data->actor_id());
-  ASSERT_TRUE(detached_checkpoint_result->checkpoint_id() ==
-              detached_checkpoint_id.Binary());
-
-  detached_checkpoint_id_result =
-      GetActorCheckpointID(detached_actor_table_data->actor_id());
-  ASSERT_TRUE(detached_checkpoint_id_result->actor_id() ==
-              detached_actor_table_data->actor_id());
-  ASSERT_TRUE(detached_checkpoint_id_result->checkpoint_ids_size() == 1);
 }
 
 TEST_F(GcsServerTest, TestNodeInfo) {
@@ -590,7 +427,7 @@ TEST_F(GcsServerTest, TestNodeInfo) {
 
   // Report heartbeat
   rpc::ReportHeartbeatRequest report_heartbeat_request;
-  report_heartbeat_request.mutable_heartbeat()->set_client_id(gcs_node_info->node_id());
+  report_heartbeat_request.mutable_heartbeat()->set_node_id(gcs_node_info->node_id());
   ASSERT_TRUE(ReportHeartbeat(report_heartbeat_request));
 
   // Update node resources
@@ -611,6 +448,46 @@ TEST_F(GcsServerTest, TestNodeInfo) {
   ASSERT_TRUE(DeleteResources(delete_resources_request));
   resources = GetResources(gcs_node_info->node_id());
   ASSERT_TRUE(resources.empty());
+
+  // Unregister node info
+  rpc::UnregisterNodeRequest unregister_node_info_request;
+  unregister_node_info_request.set_node_id(gcs_node_info->node_id());
+  ASSERT_TRUE(UnregisterNode(unregister_node_info_request));
+  node_info_list = GetAllNodeInfo();
+  ASSERT_TRUE(node_info_list.size() == 1);
+  ASSERT_TRUE(node_info_list[0].state() ==
+              rpc::GcsNodeInfo_GcsNodeState::GcsNodeInfo_GcsNodeState_DEAD);
+}
+
+TEST_F(GcsServerTest, TestHeartbeatWithNoRegistering) {
+  // Create gcs node info
+  auto gcs_node_info = Mocker::GenNodeInfo();
+
+  // Report heartbeat wit no registering
+  rpc::ReportHeartbeatRequest report_heartbeat_request;
+  report_heartbeat_request.mutable_heartbeat()->set_node_id(gcs_node_info->node_id());
+  std::promise<bool> disconnected;
+  client_->ReportHeartbeat(
+      report_heartbeat_request,
+      [&disconnected](const Status &status, const rpc::ReportHeartbeatReply &reply) {
+        if (status.IsDisconnected()) {
+          disconnected.set_value(true);
+        }
+      });
+  WaitReady(disconnected.get_future(), timeout_ms_);
+
+  // Register node info
+  rpc::RegisterNodeRequest register_node_info_request;
+  register_node_info_request.mutable_node_info()->CopyFrom(*gcs_node_info);
+  ASSERT_TRUE(RegisterNode(register_node_info_request));
+  std::vector<rpc::GcsNodeInfo> node_info_list = GetAllNodeInfo();
+  ASSERT_TRUE(node_info_list.size() == 1);
+  ASSERT_TRUE(node_info_list[0].state() ==
+              rpc::GcsNodeInfo_GcsNodeState::GcsNodeInfo_GcsNodeState_ALIVE);
+
+  // Report heartbeat
+  report_heartbeat_request.mutable_heartbeat()->set_node_id(gcs_node_info->node_id());
+  ASSERT_TRUE(ReportHeartbeat(report_heartbeat_request));
 
   // Unregister node info
   rpc::UnregisterNodeRequest unregister_node_info_request;
@@ -666,13 +543,6 @@ TEST_F(GcsServerTest, TestTaskInfo) {
   rpc::TaskTableData result = GetTask(task_id.Binary());
   ASSERT_TRUE(result.task().task_spec().job_id() == job_id.Binary());
 
-  // Delete task
-  rpc::DeleteTasksRequest delete_tasks_request;
-  delete_tasks_request.add_task_id_list(task_id.Binary());
-  ASSERT_TRUE(DeleteTasks(delete_tasks_request));
-  result = GetTask(task_id.Binary());
-  ASSERT_TRUE(!result.has_task());
-
   // Add task lease
   NodeID node_id = NodeID::FromRandom();
   auto task_lease_data = Mocker::GenTaskLeaseData(task_id.Binary(), node_id.Binary());
@@ -708,7 +578,7 @@ TEST_F(GcsServerTest, TestWorkerInfo) {
   report_worker_failure_request.mutable_worker_failure()->CopyFrom(*worker_failure_data);
   ASSERT_TRUE(ReportWorkerFailure(report_worker_failure_request));
   std::vector<rpc::WorkerTableData> worker_table_data = GetAllWorkerInfo();
-  ASSERT_TRUE(worker_table_data.size() == 0);
+  ASSERT_TRUE(worker_table_data.size() == 1);
 
   // Add worker info
   auto worker_data = Mocker::GenWorkerTableData();
@@ -716,7 +586,7 @@ TEST_F(GcsServerTest, TestWorkerInfo) {
   rpc::AddWorkerInfoRequest add_worker_request;
   add_worker_request.mutable_worker_data()->CopyFrom(*worker_data);
   ASSERT_TRUE(AddWorkerInfo(add_worker_request));
-  ASSERT_TRUE(GetAllWorkerInfo().size() == 1);
+  ASSERT_TRUE(GetAllWorkerInfo().size() == 2);
 
   // Get worker info
   boost::optional<rpc::WorkerTableData> result =

@@ -65,15 +65,15 @@ def check_docker_image(cname):
 
 
 def docker_start_cmds(user, image, mount_dict, container_name, user_options,
-                      cluster_name):
+                      cluster_name, home_directory):
     # Imported here due to circular dependency.
     from ray.autoscaler.sdk import get_docker_host_mount_location
     docker_mount_prefix = get_docker_host_mount_location(cluster_name)
     mount = {f"{docker_mount_prefix}/{dst}": dst for dst in mount_dict}
 
-    # TODO(ilr) Move away from defaulting to /root/
     mount_flags = " ".join([
-        "-v {src}:{dest}".format(src=k, dest=v.replace("~/", "/root/"))
+        "-v {src}:{dest}".format(
+            src=k, dest=v.replace("~/", home_directory + "/"))
         for k, v in mount.items()
     ])
 

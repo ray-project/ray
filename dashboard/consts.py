@@ -21,10 +21,8 @@ AIOHTTP_CACHE_DISABLE_ENVIRONMENT_KEY = "RAY_DASHBOARD_NO_CACHE"
 # Named signals
 SIGNAL_NODE_INFO_FETCHED = "node_info_fetched"
 SIGNAL_NODE_SUMMARY_FETCHED = "node_summary_fetched"
+SIGNAL_JOB_INFO_FETCHED = "job_info_fetched"
 SIGNAL_WORKER_INFO_FETCHED = "worker_info_fetched"
-# Default param for RotatingFileHandler
-LOGGING_ROTATE_BYTES = 100 * 1000 * 1000  # maxBytes
-LOGGING_ROTATE_BACKUP_COUNT = 5  # backupCount
 # Default value for datacenter (the default value in protobuf)
 DEFAULT_LANGUAGE = "PYTHON"
 DEFAULT_JOB_ID = "ffff"

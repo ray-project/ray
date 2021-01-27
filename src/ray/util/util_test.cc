@@ -5,6 +5,7 @@
 #include <boost/asio/generic/basic_endpoint.hpp>
 
 #include "gtest/gtest.h"
+#include "ray/util/logging.h"
 
 static const char *argv0 = NULL;
 
@@ -85,6 +86,15 @@ TEST(UtilTest, ParseCommandLineTest) {
   ASSERT_EQ(ParseCommandLine(R"('a')", win32), ArgList({R"('a')"}));
   ASSERT_EQ(ParseCommandLine(R"(x' a \b')", posix), ArgList({R"(x a \b)"}));
   ASSERT_EQ(ParseCommandLine(R"(x' a \b')", win32), ArgList({R"(x')", R"(a)", R"(\b')"}));
+}
+
+TEST(UtilTest, ParseURLTest) {
+  const std::string url = "http://abc?num_objects=9&offset=8388878&size=8388878";
+  auto parsed_url = *ParseURL(url);
+  ASSERT_EQ(parsed_url["url"], "http://abc");
+  ASSERT_EQ(parsed_url["num_objects"], "9");
+  ASSERT_EQ(parsed_url["offset"], "8388878");
+  ASSERT_EQ(parsed_url["size"], "8388878");
 }
 
 TEST(UtilTest, CreateCommandLineTest) {

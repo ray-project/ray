@@ -48,9 +48,9 @@ class BoostingModel:
         with open("/tmp/iris_labels.json") as f:
             self.label_list = json.load(f)
 
-    def __call__(self, flask_request):
-        payload = flask_request.json
-        print("Worker: received flask request with data", payload)
+    async def __call__(self, starlette_request):
+        payload = await starlette_request.json()
+        print("Worker: received starlette request with data", payload)
 
         input_vector = [
             payload["sepal length"],
@@ -143,9 +143,9 @@ class BoostingModelv2:
         with open("/tmp/iris_labels_2.json") as f:
             self.label_list = json.load(f)
 
-    def __call__(self, flask_request):
-        payload = flask_request.json
-        print("Worker: received flask request with data", payload)
+    async def __call__(self, starlette_request):
+        payload = await starlette_request.json()
+        print("Worker: received starlette request with data", payload)
 
         input_vector = [
             payload["sepal length"],

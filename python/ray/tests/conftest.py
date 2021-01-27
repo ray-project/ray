@@ -1,7 +1,7 @@
 """
 This file defines the common pytest fixtures used in current directory.
 """
-
+import os
 from contextlib import contextmanager
 import pytest
 import subprocess
@@ -22,8 +22,7 @@ def get_default_fixure_system_config():
     system_config = {
         "object_timeout_milliseconds": 200,
         "num_heartbeats_timeout": 10,
-        "object_store_full_max_retries": 3,
-        "object_store_full_initial_delay_ms": 100,
+        "object_store_full_delay_ms": 100,
     }
     return system_config
 
@@ -44,6 +43,7 @@ def _ray_start(**kwargs):
     init_kwargs.update(kwargs)
     # Start the Ray processes.
     address_info = ray.init(**init_kwargs)
+
     yield address_info
     # The code after the yield will run as teardown code.
     ray.shutdown()
@@ -202,6 +202,13 @@ def call_ray_start(request):
 def call_ray_stop_only():
     yield
     subprocess.check_call(["ray", "stop"])
+
+
+@pytest.fixture
+def enable_pickle_debug():
+    os.environ["RAY_PICKLE_VERBOSE_DEBUG"] = "1"
+    yield
+    del os.environ["RAY_PICKLE_VERBOSE_DEBUG"]
 
 
 @pytest.fixture()

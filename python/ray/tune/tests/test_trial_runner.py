@@ -263,8 +263,8 @@ class TrialRunnerTest(unittest.TestCase):
             def on_trial_result(self, trial_runner, trial, result):
                 if result["training_iteration"] == 1:
                     executor = trial_runner.trial_executor
-                    executor.stop_trial(trial, stop_logger=False)
-                    trial.update_resources(2, 0)
+                    executor.stop_trial(trial)
+                    trial.update_resources(dict(cpu=2, gpu=0))
                     executor.start_trial(trial)
                 return TrialScheduler.CONTINUE
 
@@ -282,7 +282,8 @@ class TrialRunnerTest(unittest.TestCase):
         runner.step()
         self.assertEqual(trials[0].status, Trial.RUNNING)
         self.assertEqual(runner.trial_executor._committed_resources.cpu, 1)
-        self.assertRaises(ValueError, lambda: trials[0].update_resources(2, 0))
+        self.assertRaises(
+            ValueError, lambda: trials[0].update_resources(dict(cpu=2, gpu=0)))
 
         runner.step()
         self.assertEqual(trials[0].status, Trial.RUNNING)

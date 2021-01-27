@@ -140,6 +140,9 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// Return the spec for a pending task.
   absl::optional<TaskSpecification> GetTaskSpec(const TaskID &task_id) const;
 
+  /// Return specs for pending children tasks of the given parent task.
+  std::vector<TaskID> GetPendingChildrenTasks(const TaskID &parent_task_id) const;
+
   /// Return whether this task can be submitted for execution.
   ///
   /// \param[in] task_id ID of the task to query.

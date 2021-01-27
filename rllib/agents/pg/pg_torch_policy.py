@@ -5,14 +5,13 @@ PyTorch policy class used for PG.
 from typing import Dict, List, Type, Union
 
 import ray
-from ray.rllib.agents.a3c.a3c_torch_policy import view_requirements_fn
 from ray.rllib.agents.pg.utils import post_process_advantages
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.policy import Policy
+from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.torch_policy_template import build_torch_policy
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.typing import TensorType
 
@@ -73,11 +72,11 @@ def pg_loss_stats(policy: Policy,
 # Build a child class of `TFPolicy`, given the extra options:
 # - trajectory post-processing function (to calculate advantages)
 # - PG loss function
-PGTorchPolicy = build_torch_policy(
+PGTorchPolicy = build_policy_class(
     name="PGTorchPolicy",
+    framework="torch",
     get_default_config=lambda: ray.rllib.agents.pg.pg.DEFAULT_CONFIG,
     loss_fn=pg_torch_loss,
     stats_fn=pg_loss_stats,
     postprocess_fn=post_process_advantages,
-    view_requirements_fn=view_requirements_fn,
 )

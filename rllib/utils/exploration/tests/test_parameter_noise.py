@@ -1,12 +1,21 @@
 import numpy as np
 import unittest
 
+import ray
 import ray.rllib.agents.ddpg as ddpg
 import ray.rllib.agents.dqn as dqn
 from ray.rllib.utils.test_utils import check, framework_iterator
 
 
 class TestParameterNoise(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        ray.init()
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        ray.shutdown()
+
     def test_ddpg_parameter_noise(self):
         self.do_test_parameter_noise_exploration(
             ddpg.DDPGTrainer, ddpg.DEFAULT_CONFIG, "Pendulum-v0", {},
@@ -37,6 +46,10 @@ class TestParameterNoise(unittest.TestCase):
             trainer = trainer_cls(config=config, env=env)
             policy = trainer.get_policy()
             pol_sess = getattr(policy, "_sess", None)
+            # Remove noise that has been added during policy initialization
+            # (exploration.postprocess_trajectory does add noise to measure
+            # the delta).
+            policy.exploration._remove_noise(tf_sess=pol_sess)
 
             self.assertFalse(policy.exploration.weights_are_currently_noisy)
             noise_before = self._get_current_noise(policy, fw)
@@ -96,6 +109,12 @@ class TestParameterNoise(unittest.TestCase):
             config["explore"] = False
             trainer = trainer_cls(config=config, env=env)
             policy = trainer.get_policy()
+            pol_sess = getattr(policy, "_sess", None)
+            # Remove noise that has been added during policy initialization
+            # (exploration.postprocess_trajectory does add noise to measure
+            # the delta).
+            policy.exploration._remove_noise(tf_sess=pol_sess)
+
             self.assertFalse(policy.exploration.weights_are_currently_noisy)
             initial_weights = self._get_current_weight(policy, fw)
 

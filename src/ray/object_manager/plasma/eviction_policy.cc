@@ -23,7 +23,7 @@
 
 namespace plasma {
 
-void LRUCache::Add(const ObjectID& key, int64_t size) {
+void LRUCache::Add(const ObjectID &key, int64_t size) {
   auto it = item_map_.find(key);
   RAY_CHECK(it == item_map_.end());
   // Note that it is important to use a list so the iterators stay valid.
@@ -32,7 +32,7 @@ void LRUCache::Add(const ObjectID& key, int64_t size) {
   used_capacity_ += size;
 }
 
-int64_t LRUCache::Remove(const ObjectID& key) {
+int64_t LRUCache::Remove(const ObjectID &key) {
   auto it = item_map_.find(key);
   if (it == item_map_.end()) {
     return -1;
@@ -47,7 +47,7 @@ int64_t LRUCache::Remove(const ObjectID& key) {
 
 void LRUCache::AdjustCapacity(int64_t delta) {
   RAY_LOG(INFO) << "adjusting global lru capacity from " << Capacity() << " to "
-                  << (Capacity() + delta) << " (max " << OriginalCapacity() << ")";
+                << (Capacity() + delta) << " (max " << OriginalCapacity() << ")";
   capacity_ += delta;
   RAY_CHECK(used_capacity_ >= 0) << DebugString();
 }
@@ -58,8 +58,8 @@ int64_t LRUCache::OriginalCapacity() const { return original_capacity_; }
 
 int64_t LRUCache::RemainingCapacity() const { return capacity_ - used_capacity_; }
 
-void LRUCache::Foreach(std::function<void(const ObjectID&)> f) {
-  for (auto& pair : item_list_) {
+void LRUCache::Foreach(std::function<void(const ObjectID &)> f) {
+  for (auto &pair : item_list_) {
     f(pair.first);
   }
 }
@@ -77,7 +77,7 @@ std::string LRUCache::DebugString() const {
 }
 
 int64_t LRUCache::ChooseObjectsToEvict(int64_t num_bytes_required,
-                                       std::vector<ObjectID>* objects_to_evict) {
+                                       std::vector<ObjectID> *objects_to_evict) {
   int64_t bytes_evicted = 0;
   auto it = item_list_.end();
   while (bytes_evicted < num_bytes_required && it != item_list_.begin()) {
@@ -90,37 +90,38 @@ int64_t LRUCache::ChooseObjectsToEvict(int64_t num_bytes_required,
   return bytes_evicted;
 }
 
-EvictionPolicy::EvictionPolicy(PlasmaStoreInfo* store_info, int64_t max_size)
+EvictionPolicy::EvictionPolicy(PlasmaStoreInfo *store_info, int64_t max_size)
     : pinned_memory_bytes_(0), store_info_(store_info), cache_("global lru", max_size) {}
 
 int64_t EvictionPolicy::ChooseObjectsToEvict(int64_t num_bytes_required,
-                                             std::vector<ObjectID>* objects_to_evict) {
+                                             std::vector<ObjectID> *objects_to_evict) {
   int64_t bytes_evicted =
       cache_.ChooseObjectsToEvict(num_bytes_required, objects_to_evict);
   // Update the LRU cache.
-  for (auto& object_id : *objects_to_evict) {
+  for (auto &object_id : *objects_to_evict) {
     cache_.Remove(object_id);
   }
   return bytes_evicted;
 }
 
-void EvictionPolicy::ObjectCreated(const ObjectID& object_id, Client* client,
+void EvictionPolicy::ObjectCreated(const ObjectID &object_id, Client *client,
                                    bool is_create) {
   cache_.Add(object_id, GetObjectSize(object_id));
 }
 
-bool EvictionPolicy::SetClientQuota(Client* client, int64_t output_memory_quota) {
+bool EvictionPolicy::SetClientQuota(Client *client, int64_t output_memory_quota) {
   return false;
 }
 
-bool EvictionPolicy::EnforcePerClientQuota(Client* client, int64_t size, bool is_create,
-                                           std::vector<ObjectID>* objects_to_evict) {
+bool EvictionPolicy::EnforcePerClientQuota(Client *client, int64_t size, bool is_create,
+                                           std::vector<ObjectID> *objects_to_evict) {
   return true;
 }
 
-void EvictionPolicy::ClientDisconnected(Client* client) {}
+void EvictionPolicy::ClientDisconnected(Client *client) {}
 
-bool EvictionPolicy::RequireSpace(int64_t size, std::vector<ObjectID>* objects_to_evict) {
+int64_t EvictionPolicy::RequireSpace(int64_t size,
+                                     std::vector<ObjectID> *objects_to_evict) {
   // Check if there is enough space to create the object.
   int64_t required_space =
       PlasmaAllocator::Allocated() + size - PlasmaAllocator::GetFootprintLimit();
@@ -131,33 +132,33 @@ bool EvictionPolicy::RequireSpace(int64_t size, std::vector<ObjectID>* objects_t
   RAY_LOG(DEBUG) << "not enough space to create this object, so evicting objects";
   // Choose some objects to evict, and update the return pointers.
   int64_t num_bytes_evicted = ChooseObjectsToEvict(space_to_free, objects_to_evict);
-  RAY_LOG(INFO) << "There is not enough space to create this object, so evicting "
-                  << objects_to_evict->size() << " objects to free up "
-                  << num_bytes_evicted << " bytes. The number of bytes in use (before "
-                  << "this eviction) is " << PlasmaAllocator::Allocated() << ".";
-  return num_bytes_evicted >= required_space && num_bytes_evicted > 0;
+  RAY_LOG(DEBUG) << "There is not enough space to create this object, so evicting "
+                 << objects_to_evict->size() << " objects to free up "
+                 << num_bytes_evicted << " bytes. The number of bytes in use (before "
+                 << "this eviction) is " << PlasmaAllocator::Allocated() << ".";
+  return required_space - num_bytes_evicted;
 }
 
-void EvictionPolicy::BeginObjectAccess(const ObjectID& object_id) {
+void EvictionPolicy::BeginObjectAccess(const ObjectID &object_id) {
   // If the object is in the LRU cache, remove it.
   cache_.Remove(object_id);
   pinned_memory_bytes_ += GetObjectSize(object_id);
 }
 
-void EvictionPolicy::EndObjectAccess(const ObjectID& object_id) {
+void EvictionPolicy::EndObjectAccess(const ObjectID &object_id) {
   auto size = GetObjectSize(object_id);
   // Add the object to the LRU cache.
   cache_.Add(object_id, size);
   pinned_memory_bytes_ -= size;
 }
 
-void EvictionPolicy::RemoveObject(const ObjectID& object_id) {
+void EvictionPolicy::RemoveObject(const ObjectID &object_id) {
   // If the object is in the LRU cache, remove it.
   cache_.Remove(object_id);
 }
 
-void EvictionPolicy::RefreshObjects(const std::vector<ObjectID>& object_ids) {
-  for (const auto& object_id : object_ids) {
+void EvictionPolicy::RefreshObjects(const std::vector<ObjectID> &object_ids) {
+  for (const auto &object_id : object_ids) {
     int64_t size = cache_.Remove(object_id);
     if (size != -1) {
       cache_.Add(object_id, size);
@@ -165,7 +166,7 @@ void EvictionPolicy::RefreshObjects(const std::vector<ObjectID>& object_ids) {
   }
 }
 
-int64_t EvictionPolicy::GetObjectSize(const ObjectID& object_id) const {
+int64_t EvictionPolicy::GetObjectSize(const ObjectID &object_id) const {
   auto entry = store_info_->objects[object_id].get();
   return entry->data_size + entry->metadata_size;
 }

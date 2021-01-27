@@ -1,15 +1,17 @@
 import copy
 import logging
-from typing import Dict, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import ray
 import ray.cloudpickle as pickle
+from ray.tune.result import DEFAULT_METRIC
 from ray.tune.sample import Categorical, Domain, Float, Integer, Quantized, \
     Uniform
-from ray.tune.suggest.suggestion import UNRESOLVED_SEARCH_SPACE
+from ray.tune.suggest.suggestion import UNRESOLVED_SEARCH_SPACE, \
+    UNDEFINED_METRIC_MODE, UNDEFINED_SEARCH_SPACE
 from ray.tune.suggest.variant_generator import parse_spec_vars
 from ray.tune.utils.util import unflatten_dict
-from zoopt import ValueType
+from zoopt import Solution, ValueType
 
 try:
     import zoopt
@@ -112,11 +114,16 @@ class ZOOptSearch(Searcher):
             For discrete dimensions: (discrete, search_range, has_order);
             For grid dimensions: (grid, grid_list).
             More details can be found in zoopt package.
-        metric (str): The training result objective value attribute.
-            Defaults to "episode_reward_mean".
+        metric (str): The training result objective value attribute. If None
+            but a mode was passed, the anonymous metric `_metric` will be used
+            per default.
         mode (str): One of {min, max}. Determines whether objective is
             minimizing or maximizing the metric attribute.
-            Defaults to "min".
+        points_to_evaluate (list): Initial parameter suggestions to be run
+            first. This is for when you already have some good parameters
+            you want to run first to help the algorithm make better suggestions
+            for future parameters. Needs to be a list of dicts containing the
+            configurations.
         parallel_num (int): How many workers to parallel. Note that initial
             phase may start less workers than this number. More details can
             be found in zoopt package.
@@ -130,6 +137,8 @@ class ZOOptSearch(Searcher):
                  dim_dict: Optional[Dict] = None,
                  metric: Optional[str] = None,
                  mode: Optional[str] = None,
+                 points_to_evaluate: Optional[List[Dict]] = None,
+                 parallel_num: int = 1,
                  **kwargs):
         assert zoopt is not None, "ZOOpt not found - please install zoopt " \
                                   "by `pip install -U zoopt`."
@@ -158,6 +167,9 @@ class ZOOptSearch(Searcher):
             self._metric_op = -1.
         elif mode == "min":
             self._metric_op = 1.
+
+        self._points_to_evaluate = copy.deepcopy(points_to_evaluate)
+
         self._live_trial_mapping = {}
 
         self._dim_keys = []
@@ -167,23 +179,42 @@ class ZOOptSearch(Searcher):
 
         self.kwargs = kwargs
 
+        self.parallel_num = parallel_num
+
         super(ZOOptSearch, self).__init__(metric=self._metric, mode=mode)
 
         if self._dim_dict:
-            self.setup_zoopt()
+            self._setup_zoopt()
 
-    def setup_zoopt(self):
+    def _setup_zoopt(self):
+        if self._metric is None and self._mode:
+            # If only a mode was passed, use anonymous metric
+            self._metric = DEFAULT_METRIC
+
         _dim_list = []
         for k in self._dim_dict:
             self._dim_keys.append(k)
             _dim_list.append(self._dim_dict[k])
 
+        init_samples = None
+        if self._points_to_evaluate:
+            logger.warning(
+                "`points_to_evaluate` seems to be ignored by ZOOpt.")
+            init_samples = [
+                Solution(x=tuple(point[dim] for dim in self._dim_keys))
+                for point in self._points_to_evaluate
+            ]
         dim = zoopt.Dimension2(_dim_list)
-        par = zoopt.Parameter(budget=self._budget)
+        par = zoopt.Parameter(budget=self._budget, init_samples=init_samples)
         if self._algo == "sracos" or self._algo == "asracos":
             from zoopt.algos.opt_algorithms.racos.sracos import SRacosTune
             self.optimizer = SRacosTune(
-                dimension=dim, parameter=par, **self.kwargs)
+                dimension=dim,
+                parameter=par,
+                parallel_num=self.parallel_num,
+                **self.kwargs)
+            if init_samples:
+                self.optimizer.init_attribute()
 
     def set_search_properties(self, metric: Optional[str], mode: Optional[str],
                               config: Dict) -> bool:
@@ -202,16 +233,20 @@ class ZOOptSearch(Searcher):
         elif self._mode == "min":
             self._metric_op = 1.
 
-        self.setup_zoopt()
+        self._setup_zoopt()
         return True
 
     def suggest(self, trial_id: str) -> Optional[Dict]:
         if not self._dim_dict or not self.optimizer:
             raise RuntimeError(
-                "Trying to sample a configuration from {}, but no search "
-                "space has been defined. Either pass the `{}` argument when "
-                "instantiating the search algorithm, or pass a `config` to "
-                "`tune.run()`.".format(self.__class__.__name__, "space"))
+                UNDEFINED_SEARCH_SPACE.format(
+                    cls=self.__class__.__name__, space="dim_dict"))
+        if not self._metric or not self._mode:
+            raise RuntimeError(
+                UNDEFINED_METRIC_MODE.format(
+                    cls=self.__class__.__name__,
+                    metric=self._metric,
+                    mode=self._mode))
 
         _solution = self.optimizer.suggest()
 

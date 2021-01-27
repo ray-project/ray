@@ -268,9 +268,6 @@ if __name__ == "__main__":
     read_data()
 
     pbt = PopulationBasedTraining(
-        time_attr="training_iteration",
-        metric="mean_accuracy",
-        mode="max",
         perturbation_interval=2,
         hyperparam_mutations={
             "dropout": lambda: np.random.uniform(0, 1),
@@ -282,6 +279,8 @@ if __name__ == "__main__":
         MemNNModel,
         name="pbt_babi_memnn",
         scheduler=pbt,
+        metric="mean_accuracy",
+        mode="max",
         stop={"training_iteration": 4 if args.smoke_test else 100},
         num_samples=2,
         config={

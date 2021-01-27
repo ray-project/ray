@@ -142,7 +142,6 @@ def main():
         training_operator_cls=CustomTrainingOperator,
         use_tqdm=True,
         use_fp16=args.amp,
-        apex_args={"opt_level": "O1"},
         config={
             "args": args,
             BATCH_SIZE: args.batch_size

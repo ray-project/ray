@@ -1,3 +1,5 @@
+.. _tune-main:
+
 Tune: Scalable Hyperparameter Tuning
 ====================================
 

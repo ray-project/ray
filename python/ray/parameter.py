@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 
@@ -44,6 +45,9 @@ class RayParams:
         worker_port_list (str): An explicit list of ports to be used for
             workers (comma-separated). Overrides min_worker_port and
             max_worker_port.
+        ray_client_server_port (int): The port number the ray client server
+            will bind on. If not set, the ray client server will not
+            be started.
         object_ref_seed (int): Used to seed the deterministic generation of
             object refs. The same value can be used across multiple runs of the
             same job in order to generate the object refs in a consistent
@@ -88,10 +92,11 @@ class RayParams:
             contents to Redis.
         autoscaling_config: path to autoscaling config file.
         java_worker_options (list): The command options for Java worker.
-        load_code_from_local: Whether load code from local file or from GCS.
         metrics_agent_port(int): The port to bind metrics agent.
         metrics_export_port(int): The port at which metrics are exposed
             through a Prometheus endpoint.
+        no_monitor(bool): If True, the ray autoscaler monitor for this cluster
+            will not be started.
         _system_config (dict): Configuration for overriding RayConfig
             defaults. Used to set system configuration and for experimental Ray
             core feature flags.
@@ -120,6 +125,7 @@ class RayParams:
                  min_worker_port=None,
                  max_worker_port=None,
                  worker_port_list=None,
+                 ray_client_server_port=None,
                  object_ref_seed=None,
                  driver_mode=None,
                  redirect_worker_output=None,
@@ -141,15 +147,13 @@ class RayParams:
                  include_log_monitor=None,
                  autoscaling_config=None,
                  java_worker_options=None,
-                 load_code_from_local=False,
                  start_initial_python_workers_for_first_job=False,
                  _system_config=None,
                  enable_object_reconstruction=False,
                  metrics_agent_port=None,
                  metrics_export_port=None,
-                 lru_evict=False,
-                 object_spilling_config=None,
-                 code_search_path=None):
+                 no_monitor=False,
+                 lru_evict=False):
         self.object_ref_seed = object_ref_seed
         self.redis_address = redis_address
         self.num_cpus = num_cpus
@@ -168,6 +172,7 @@ class RayParams:
         self.min_worker_port = min_worker_port
         self.max_worker_port = max_worker_port
         self.worker_port_list = worker_port_list
+        self.ray_client_server_port = ray_client_server_port
         self.driver_mode = driver_mode
         self.redirect_worker_output = redirect_worker_output
         self.redirect_output = redirect_output
@@ -186,19 +191,15 @@ class RayParams:
         self.include_log_monitor = include_log_monitor
         self.autoscaling_config = autoscaling_config
         self.java_worker_options = java_worker_options
-        self.load_code_from_local = load_code_from_local
         self.metrics_agent_port = metrics_agent_port
         self.metrics_export_port = metrics_export_port
+        self.no_monitor = no_monitor
         self.start_initial_python_workers_for_first_job = (
             start_initial_python_workers_for_first_job)
-        self._system_config = _system_config
+        self._system_config = _system_config or {}
         self._lru_evict = lru_evict
         self._enable_object_reconstruction = enable_object_reconstruction
-        self.object_spilling_config = object_spilling_config
         self._check_usage()
-        self.code_search_path = code_search_path
-        if code_search_path is None:
-            self.code_search_path = []
 
         # Set the internal config options for LRU eviction.
         if lru_evict:
@@ -209,7 +210,6 @@ class RayParams:
                 raise Exception(
                     "Object pinning cannot be enabled if using LRU eviction.")
             self._system_config["object_pinning_enabled"] = False
-            self._system_config["object_store_full_max_retries"] = -1
             self._system_config["free_objects_period_milliseconds"] = 1000
 
         # Set the internal config options for object reconstruction.
@@ -320,3 +320,16 @@ class RayParams:
         if numpy_major <= 1 and numpy_minor < 16:
             logger.warning("Using ray with numpy < 1.16.0 will result in slow "
                            "serialization. Upgrade numpy if using with ray.")
+
+        # Make sure object spilling configuration is applicable.
+        object_spilling_config = self._system_config.get(
+            "object_spilling_config", {})
+        if object_spilling_config:
+            object_spilling_config = json.loads(object_spilling_config)
+            from ray import external_storage
+            # Validate external storage usage.
+            external_storage.setup_external_storage(object_spilling_config)
+            external_storage.reset_external_storage()
+            # Configure the proper system config.
+            self._system_config["is_external_storage_type_fs"] = (
+                object_spilling_config["type"] == "filesystem")

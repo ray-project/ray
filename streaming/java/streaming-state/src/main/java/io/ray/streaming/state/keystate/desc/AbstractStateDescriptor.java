@@ -21,9 +21,7 @@ package io.ray.streaming.state.keystate.desc;
 import com.google.common.base.Preconditions;
 import io.ray.streaming.state.keystate.state.State;
 
-/**
- * This class defines basic data structures of StateDescriptor.
- */
+/** This class defines basic data structures of StateDescriptor. */
 public abstract class AbstractStateDescriptor<S extends State, T> {
 
   private final String name;
@@ -65,24 +63,26 @@ public abstract class AbstractStateDescriptor<S extends State, T> {
 
   @Override
   public String toString() {
-    return "AbstractStateDescriptor{" + "tableName='" + tableName + '\'' + ", name='" + name + '\''
-        + ", type=" + type + '}';
+    return "AbstractStateDescriptor{"
+        + "tableName='"
+        + tableName
+        + '\''
+        + ", name='"
+        + name
+        + '\''
+        + ", type="
+        + type
+        + '}';
   }
 
   public enum StateType {
-    /**
-     * value state
-     */
+    /** value state */
     VALUE,
 
-    /**
-     * list state
-     */
+    /** list state */
     LIST,
 
-    /**
-     * map state
-     */
+    /** map state */
     MAP
   }
 }

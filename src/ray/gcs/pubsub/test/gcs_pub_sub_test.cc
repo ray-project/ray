@@ -91,11 +91,6 @@ class GcsPubSubTest : public ::testing::Test {
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  bool WaitReady(std::future<bool> future, const std::chrono::milliseconds &timeout_ms) {
-    auto status = future.wait_for(timeout_ms);
-    return status == std::future_status::ready && future.get();
-  }
-
   template <typename Data>
   void WaitPendingDone(const std::vector<Data> &data, int expected_count) {
     auto condition = [this, &data, expected_count]() {

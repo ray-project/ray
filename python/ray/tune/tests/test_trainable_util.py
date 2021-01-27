@@ -5,7 +5,7 @@ import unittest
 
 import ray.utils
 
-from ray.tune.trainable import TrainableUtil
+from ray.tune.utils.trainable import TrainableUtil
 
 
 class TrainableUtilTest(unittest.TestCase):

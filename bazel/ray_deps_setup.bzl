@@ -76,11 +76,12 @@ def auto_http_archive(*, name=None, url=None, urls=True,
                         strip_prefix=strip_prefix, **kwargs)
 
 def ray_deps_setup():
+
     auto_http_archive(
         name = "com_github_antirez_redis",
         build_file = "//bazel:BUILD.redis",
-        url = "https://github.com/antirez/redis/archive/5.0.9.tar.gz",
-        sha256 = "db9bf149e237126f9bb5f40fb72f33701819555d06f16e9a38b4949794214201",
+        url = "https://github.com/redis/redis/archive/6.0.9.tar.gz",
+        sha256 = "2819b6d9c56be1f25cd157b9cb6b7c2733edcb46f4f6bcb1b79cefe639a2853b",
         patches = [
             "//thirdparty/patches:redis-quiet.patch",
         ],
@@ -107,8 +108,8 @@ def ray_deps_setup():
         name = "com_github_tporadowski_redis_bin",
         build_file = "//bazel:BUILD.redis",
         strip_prefix = None,
-        url = "https://github.com/tporadowski/redis/releases/download/v4.0.14.2/Redis-x64-4.0.14.2.zip",
-        sha256 = "6fac443543244c803311de5883b714a7ae3c4fa0594cad51d75b24c4ef45b353",
+        url = "https://github.com/tporadowski/redis/releases/download/v5.0.9/Redis-x64-5.0.9.zip",
+      sha256 = "b09565b22b50c505a5faa86a7e40b6683afb22f3c17c5e6a5e35fc9b7c03f4c2",
     )
 
     auto_http_archive(
@@ -128,12 +129,6 @@ def ray_deps_setup():
         strip_prefix = None,
         url = "https://github.com/bazelbuild/bazel-skylib/releases/download/1.0.2/bazel-skylib-1.0.2.tar.gz",
         sha256 = "97e70364e9249702246c0e9444bccdc4b847bed1eb03c5a3ece4f83dfe6abc44",
-    )
-
-    auto_http_archive(
-        name = "com_github_checkstyle_java",
-        url = "https://github.com/ray-project/checkstyle_java/archive/ef367030d1433877a3360bbfceca18a5d0791bdd.tar.gz",
-        sha256 = "847d391156d7dcc9424e6a8ba06ff23ea2914c725b18d92028074b2ed8de3da9",
     )
 
     auto_http_archive(
@@ -186,16 +181,6 @@ def ray_deps_setup():
             "//thirdparty/patches:glog-stack-trace.patch",
             "//thirdparty/patches:glog-suffix-log.patch",
             "//thirdparty/patches:glog-dump-stacktrack.patch",
-        ],
-    )
-
-    auto_http_archive(
-        name = "arrow",
-        build_file = True,
-        url = "https://github.com/apache/arrow/archive/af45b9212156980f55c399e2e88b4e19b4bb8ec1.tar.gz",
-        sha256 = "2f0aaa50053792aa274b402f2530e63c1542085021cfef83beee9281412c12f6",
-        patches = [
-            "//thirdparty/patches:arrow-windows-export.patch",
         ],
     )
 

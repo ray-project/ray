@@ -1,8 +1,8 @@
 import ray
 from ray.rllib.agents.dqn.dqn_tf_policy import minimize_and_clip, _adjust_nstep
 from ray.rllib.evaluation.metrics import LEARNER_STATS_KEY
-from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.models import ModelCatalog
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.policy.policy import Policy
@@ -28,7 +28,7 @@ class MADDPGPostprocessing:
                                other_agent_batches=None,
                                episode=None):
         # FIXME: Get done from info is required since agentwise done is not
-        # supported now.
+        #  supported now.
         sample_batch.data[SampleBatch.DONES] = self.get_done_from_info(
             sample_batch.data[SampleBatch.INFOS])
 
@@ -251,6 +251,9 @@ class MADDPGTFPolicy(MADDPGPostprocessing, TFPolicy):
             loss_inputs=loss_inputs,
             dist_inputs=actor_feature)
 
+        del self.view_requirements["prev_actions"]
+        del self.view_requirements["prev_rewards"]
+
         self.sess.run(tf1.global_variables_initializer())
 
         # Hard initial update
@@ -262,17 +265,11 @@ class MADDPGTFPolicy(MADDPGPostprocessing, TFPolicy):
 
     @override(TFPolicy)
     def gradients(self, optimizer, loss):
-        if self.config["grad_norm_clipping"] is not None:
-            self.gvs = {
-                k: minimize_and_clip(optimizer, self.losses[k], self.vars[k],
-                                     self.config["grad_norm_clipping"])
-                for k, optimizer in self.optimizers.items()
-            }
-        else:
-            self.gvs = {
-                k: optimizer.compute_gradients(self.losses[k], self.vars[k])
-                for k, optimizer in self.optimizers.items()
-            }
+        self.gvs = {
+            k: minimize_and_clip(optimizer, self.losses[k], self.vars[k],
+                                 self.config["grad_norm_clipping"])
+            for k, optimizer in self.optimizers.items()
+        }
         return self.gvs["critic"] + self.gvs["actor"]
 
     @override(TFPolicy)

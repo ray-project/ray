@@ -19,14 +19,16 @@ from ray import ray_constants
 from ray import cloudpickle as pickle
 from ray._raylet import PythonFunctionDescriptor
 from ray.utils import (
-    is_function_or_method,
-    is_class_method,
-    is_static_method,
     check_oversized_pickle,
     decode,
     ensure_str,
     format_error_message,
     push_error_to_driver,
+)
+from ray.util.inspect import (
+    is_function_or_method,
+    is_class_method,
+    is_static_method,
 )
 
 FunctionExecutionInfo = namedtuple("FunctionExecutionInfo",
@@ -139,8 +141,9 @@ class FunctionActorManager:
                                "remote function", self._worker)
         key = (b"RemoteFunction:" + self._worker.current_job_id.binary() + b":"
                + remote_function._function_descriptor.function_id.binary())
-        self._worker.redis_client.hmset(
-            key, {
+        self._worker.redis_client.hset(
+            key,
+            mapping={
                 "job_id": self._worker.current_job_id.binary(),
                 "function_id": remote_function._function_descriptor.
                 function_id.binary(),
@@ -333,7 +336,7 @@ class FunctionActorManager:
         """
         # We set the driver ID here because it may not have been available when
         # the actor class was defined.
-        self._worker.redis_client.hmset(key, actor_class_info)
+        self._worker.redis_client.hset(key, mapping=actor_class_info)
         self._worker.redis_client.rpush("Exports", key)
 
     def export_actor_class(self, Class, actor_creation_function_descriptor,
@@ -543,14 +546,14 @@ class FunctionActorManager:
                 worker's internal state to record the executed method.
         """
 
-        def actor_method_executor(actor, *args, **kwargs):
+        def actor_method_executor(__ray_actor, *args, **kwargs):
             # Execute the assigned method.
             is_bound = (is_class_method(method)
-                        or is_static_method(type(actor), method_name))
+                        or is_static_method(type(__ray_actor), method_name))
             if is_bound:
                 return method(*args, **kwargs)
             else:
-                return method(actor, *args, **kwargs)
+                return method(__ray_actor, *args, **kwargs)
 
         # Set method_name and method as attributes to the executor closure
         # so we can make decision based on these attributes in task executor.

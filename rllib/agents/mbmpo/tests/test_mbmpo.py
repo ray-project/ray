@@ -27,7 +27,7 @@ class TestMBMPO(unittest.TestCase):
         for _ in framework_iterator(config, frameworks="torch"):
             trainer = mbmpo.MBMPOTrainer(
                 config=config,
-                env="ray.rllib.examples.env.mbmpo_env.PendulumWrapper")
+                env="ray.rllib.examples.env.mbmpo_env.CartPoleWrapper")
             for i in range(num_iterations):
                 trainer.train()
             check_compute_single_action(

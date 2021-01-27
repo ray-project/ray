@@ -3,12 +3,14 @@ import numpy as np
 import unittest
 
 import ray
+from ray.rllib.agents.callbacks import DefaultCallbacks
 import ray.rllib.agents.ppo as ppo
-from ray.rllib.agents.ppo.ppo_tf_policy import postprocess_ppo_gae as \
-    postprocess_ppo_gae_tf, ppo_surrogate_loss as ppo_surrogate_loss_tf
-from ray.rllib.agents.ppo.ppo_torch_policy import postprocess_ppo_gae as \
-    postprocess_ppo_gae_torch, ppo_surrogate_loss as ppo_surrogate_loss_torch
-from ray.rllib.evaluation.postprocessing import Postprocessing
+from ray.rllib.agents.ppo.ppo_tf_policy import ppo_surrogate_loss as \
+    ppo_surrogate_loss_tf
+from ray.rllib.agents.ppo.ppo_torch_policy import ppo_surrogate_loss as \
+    ppo_surrogate_loss_torch
+from ray.rllib.evaluation.postprocessing import compute_gae_for_sample_batch, \
+    Postprocessing
 from ray.rllib.models.tf.tf_action_dist import Categorical
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchCategorical
@@ -19,7 +21,7 @@ from ray.rllib.utils.test_utils import check, framework_iterator, \
 
 # Fake CartPole episode of n time steps.
 FAKE_BATCH = {
-    SampleBatch.CUR_OBS: np.array(
+    SampleBatch.OBS: np.array(
         [[0.1, 0.2, 0.3, 0.4], [0.5, 0.6, 0.7, 0.8], [0.9, 1.0, 1.1, 1.2]],
         dtype=np.float32),
     SampleBatch.ACTIONS: np.array([0, 1, 1]),
@@ -31,7 +33,33 @@ FAKE_BATCH = {
     SampleBatch.ACTION_DIST_INPUTS: np.array(
         [[-2., 0.5], [-3., -0.3], [-0.1, 2.5]], dtype=np.float32),
     SampleBatch.ACTION_LOGP: np.array([-0.5, -0.1, -0.2], dtype=np.float32),
+    SampleBatch.EPS_ID: np.array([0, 0, 0]),
+    SampleBatch.AGENT_INDEX: np.array([0, 0, 0]),
 }
+
+
+class MyCallbacks(DefaultCallbacks):
+    @staticmethod
+    def _check_lr_torch(policy, policy_id):
+        for j, opt in enumerate(policy._optimizers):
+            for p in opt.param_groups:
+                assert p["lr"] == policy.cur_lr, "LR scheduling error!"
+
+    @staticmethod
+    def _check_lr_tf(policy, policy_id):
+        lr = policy.cur_lr
+        sess = policy.get_session()
+        if sess:
+            lr = sess.run(lr)
+            optim_lr = sess.run(policy._optimizer._lr)
+        else:
+            lr = lr.numpy()
+            optim_lr = policy._optimizer.lr.numpy()
+        assert lr == optim_lr, "LR scheduling error!"
+
+    def on_train_result(self, *, trainer, result: dict, **kwargs):
+        trainer.workers.foreach_policy(self._check_lr_torch if trainer.config[
+            "framework"] == "torch" else self._check_lr_tf)
 
 
 class TestPPO(unittest.TestCase):
@@ -43,9 +71,12 @@ class TestPPO(unittest.TestCase):
     def tearDownClass(cls):
         ray.shutdown()
 
-    def test_ppo_compilation(self):
+    def test_ppo_compilation_and_lr_schedule(self):
         """Test whether a PPOTrainer can be built with all frameworks."""
         config = copy.deepcopy(ppo.DEFAULT_CONFIG)
+        # For checking lr-schedule correctness.
+        config["callbacks"] = MyCallbacks
+
         config["num_workers"] = 1
         config["num_sgd_iter"] = 2
         # Settings in case we use an LSTM.
@@ -60,7 +91,8 @@ class TestPPO(unittest.TestCase):
                 for lstm in [True, False]:
                     print("LSTM={}".format(lstm))
                     config["model"]["use_lstm"] = lstm
-                    config["model"]["lstm_use_prev_action_reward"] = lstm
+                    config["model"]["lstm_use_prev_action"] = lstm
+                    config["model"]["lstm_use_prev_reward"] = lstm
                     trainer = ppo.PPOTrainer(config=config, env=env)
                     for i in range(num_iterations):
                         trainer.train()
@@ -82,10 +114,10 @@ class TestPPO(unittest.TestCase):
         config["lr"] = 0.0003
         config["observation_filter"] = "MeanStdFilter"
         config["num_sgd_iter"] = 6
-        config["vf_share_layers"] = True
         config["vf_loss_coeff"] = 0.01
         config["model"]["fcnet_hiddens"] = [32]
         config["model"]["fcnet_activation"] = "linear"
+        config["model"]["vf_share_layers"] = True
 
         trainer = ppo.PPOTrainer(config=config, env="CartPole-v0")
         num_iterations = 200
@@ -119,7 +151,10 @@ class TestPPO(unittest.TestCase):
             # Test whether this is really the argmax action over the logits.
             if fw != "tf":
                 last_out = trainer.get_policy().model.last_output()
-                check(a_, np.argmax(last_out.numpy(), 1)[0])
+                if fw == "torch":
+                    check(a_, np.argmax(last_out.detach().cpu().numpy(), 1)[0])
+                else:
+                    check(a_, np.argmax(last_out.numpy(), 1)[0])
             for _ in range(50):
                 a = trainer.compute_action(
                     obs,
@@ -147,7 +182,7 @@ class TestPPO(unittest.TestCase):
         config["model"]["fcnet_hiddens"] = [10]
         config["model"]["fcnet_activation"] = "linear"
         config["model"]["free_log_std"] = True
-        config["vf_share_layers"] = True
+        config["model"]["vf_share_layers"] = True
 
         for fw, sess in framework_iterator(config, session=True):
             trainer = ppo.PPOTrainer(config=config, env="CartPole-v0")
@@ -171,18 +206,15 @@ class TestPPO(unittest.TestCase):
                 if fw == "tf":
                     return policy.get_session().run(log_std_var)[0]
                 elif fw == "torch":
-                    return log_std_var.detach().numpy()[0]
+                    return log_std_var.detach().cpu().numpy()[0]
                 else:
                     return log_std_var.numpy()[0]
 
             # Check the variable is initially zero.
             init_std = get_value()
             assert init_std == 0.0, init_std
-
-            if fw in ["tf2", "tf", "tfe"]:
-                batch = postprocess_ppo_gae_tf(policy, FAKE_BATCH)
-            else:
-                batch = postprocess_ppo_gae_torch(policy, FAKE_BATCH)
+            batch = compute_gae_for_sample_batch(policy, FAKE_BATCH.copy())
+            if fw == "torch":
                 batch = policy._lazy_tensor_dict(batch)
             policy.learn_on_batch(batch)
 
@@ -198,7 +230,7 @@ class TestPPO(unittest.TestCase):
         config["gamma"] = 0.99
         config["model"]["fcnet_hiddens"] = [10]
         config["model"]["fcnet_activation"] = "linear"
-        config["vf_share_layers"] = True
+        config["model"]["vf_share_layers"] = True
 
         for fw, sess in framework_iterator(config, session=True):
             trainer = ppo.PPOTrainer(config=config, env="CartPole-v0")
@@ -221,10 +253,9 @@ class TestPPO(unittest.TestCase):
             # to train_batch dict.
             # A = [0.99^2 * 0.5 + 0.99 * -1.0 + 1.0, 0.99 * 0.5 - 1.0, 0.5] =
             # [0.50005, -0.505, 0.5]
-            if fw in ["tf2", "tf", "tfe"]:
-                train_batch = postprocess_ppo_gae_tf(policy, FAKE_BATCH)
-            else:
-                train_batch = postprocess_ppo_gae_torch(policy, FAKE_BATCH)
+            train_batch = compute_gae_for_sample_batch(policy,
+                                                       FAKE_BATCH.copy())
+            if fw == "torch":
                 train_batch = policy._lazy_tensor_dict(train_batch)
 
             # Check Advantage values.
@@ -307,12 +338,12 @@ class TestPPO(unittest.TestCase):
                                policy.model)
         expected_logp = dist.logp(train_batch[SampleBatch.ACTIONS])
         if isinstance(model, TorchModelV2):
-            expected_rho = np.exp(expected_logp.detach().numpy() -
+            expected_rho = np.exp(expected_logp.detach().cpu().numpy() -
                                   train_batch.get(SampleBatch.ACTION_LOGP))
             # KL(prev vs current action dist)-loss component.
-            kl = np.mean(dist_prev.kl(dist).detach().numpy())
+            kl = np.mean(dist_prev.kl(dist).detach().cpu().numpy())
             # Entropy-loss component.
-            entropy = np.mean(dist.entropy().detach().numpy())
+            entropy = np.mean(dist.entropy().detach().cpu().numpy())
         else:
             if sess:
                 expected_logp = sess.run(expected_logp)

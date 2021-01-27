@@ -164,7 +164,7 @@ message WaitForObjectEvictionReply {
 message AddObjectLocationOwnerRequest {
   bytes intended_worker_id = 1;
   bytes object_id = 2;
-  bytes client_id = 3;
+  bytes node_id = 3;
 }
 
 message AddObjectLocationOwnerReply {
@@ -173,7 +173,7 @@ message AddObjectLocationOwnerReply {
 message RemoveObjectLocationOwnerRequest {
   bytes intended_worker_id = 1;
   bytes object_id = 2;
-  bytes client_id = 3;
+  bytes node_id = 3;
 }
 
 message RemoveObjectLocationOwnerReply {
@@ -185,7 +185,8 @@ message GetObjectLocationsOwnerRequest {
 }
 
 message GetObjectLocationsOwnerReply {
-  repeated bytes client_ids = 1;
+  repeated bytes node_ids = 1;
+  uint64 object_size = 2;
 }
 
 message KillActorRequest {
@@ -205,6 +206,8 @@ message CancelTaskRequest {
   bytes intended_task_id = 1;
   // Whether to kill the worker.
   bool force_kill = 2;
+  // Whether to recursively cancel tasks.
+  bool recursive = 3;
 }
 
 message CancelTaskReply {
@@ -217,6 +220,8 @@ message RemoteCancelTaskRequest {
   bytes remote_object_id = 1;
   // Whether to kill the worker.
   bool force_kill = 2;
+  // Whether to recursively cancel tasks.
+  bool recursive = 3;
 }
 
 message RemoteCancelTaskReply {
@@ -287,8 +292,6 @@ message LocalGCReply {
 
 message PlasmaObjectReadyRequest {
   bytes object_id = 1;
-  int64 data_size = 2;
-  int64 metadata_size = 3;
 }
 
 message PlasmaObjectReadyReply {
@@ -307,9 +310,21 @@ message SpillObjectsReply {
 message RestoreSpilledObjectsRequest {
   // The URLs of spilled objects.
   repeated string spilled_objects_url = 1;
+  // Object ids to restore. The order of object ids
+  // must be the same as spilled_objects_url.
+  repeated bytes object_ids_to_restore = 2;
 }
 
 message RestoreSpilledObjectsReply {
+  int64 bytes_restored_total = 1;
+}
+
+message DeleteSpilledObjectsRequest {
+  // The URLs of spilled objects.
+  repeated string spilled_objects_url = 1;
+}
+
+message DeleteSpilledObjectsReply {
 }
 
 message ExitRequest {
@@ -361,6 +376,9 @@ service CoreWorkerService {
   // Restore spilled objects from external storage. Caller: raylet; callee: I/O worker.
   rpc RestoreSpilledObjects(RestoreSpilledObjectsRequest)
       returns (RestoreSpilledObjectsReply);
+  // Delete spilled objects from external storage. Caller: raylet; callee: I/O worker.
+  rpc DeleteSpilledObjects(DeleteSpilledObjectsRequest)
+      returns (DeleteSpilledObjectsReply);
   // Notification from raylet that an object ID is available in local plasma.
   rpc PlasmaObjectReady(PlasmaObjectReadyRequest) returns (PlasmaObjectReadyReply);
   // Request for a worker to exit.

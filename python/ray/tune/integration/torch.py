@@ -16,9 +16,10 @@ from ray.tune.result import RESULT_DUPLICATE
 from ray.tune.logger import NoopLogger
 from ray.tune.function_runner import wrap_function
 from ray.tune.resources import Resources
-from ray.tune.trainable import TrainableUtil
+from ray.tune.utils.trainable import PlacementGroupUtil, TrainableUtil
 from ray.tune.utils import detect_checkpoint_function
 from ray.util.sgd.torch.utils import setup_process_group, setup_address
+from ray.util.placement_group import remove_placement_group
 from ray.util.sgd.torch.constants import NCCL_TIMEOUT_S
 
 logger = logging.getLogger(__name__)
@@ -50,20 +51,21 @@ class _TorchTrainable(tune.Trainable):
     """
     _function = None
     _num_workers = None
-    _use_gpu = None
+    _num_gpus_per_worker = None
     _num_cpus_per_worker = None
+    _num_workers_per_host = None
+    _placement_group = None
+    _timeout_s = None
 
     __slots__ = ["workers", "_finished"]
 
-    @classmethod
-    def default_process_group_parameters(self) -> Dict:
-        return dict(timeout=timedelta(NCCL_TIMEOUT_S), backend="gloo")
+    @property
+    def should_colocate(self) -> bool:
+        return self._num_workers_per_host is not None
 
     @classmethod
-    def get_remote_worker_options(self) -> Dict[str, int]:
-        num_gpus = 1 if self._use_gpu else 0
-        num_cpus = int(self._num_cpus_per_worker or 1)
-        return dict(num_cpus=num_cpus, num_gpus=num_gpus)
+    def default_process_group_parameters(cls) -> Dict:
+        return dict(timeout=timedelta(NCCL_TIMEOUT_S), backend="gloo")
 
     def setup(self, config: Dict):
         self._finished = False
@@ -74,8 +76,13 @@ class _TorchTrainable(tune.Trainable):
         func_trainable = wrap_function(self.__class__._function)
 
         remote_trainable = ray.remote(func_trainable)
-        remote_trainable = remote_trainable.options(
-            **self.get_remote_worker_options())
+        remote_option, self._placement_group = \
+            PlacementGroupUtil.get_remote_worker_options(
+                self._num_workers, self._num_cpus_per_worker,
+                self._num_gpus_per_worker,
+                self._num_workers_per_host, self._timeout_s)
+        remote_trainable = \
+            remote_trainable.options(**remote_option)
 
         self.workers = [
             remote_trainable.remote(
@@ -127,15 +134,18 @@ class _TorchTrainable(tune.Trainable):
 
     def stop(self):
         ray.get([worker.stop.remote() for worker in self.workers])
+        if self.should_colocate:
+            remove_placement_group(self._placement_group)
 
 
-def DistributedTrainableCreator(
-        func: Callable,
-        use_gpu: bool = False,
-        num_workers: int = 1,
-        num_cpus_per_worker: int = 1,
-        backend: str = "gloo",
-        timeout_s: int = NCCL_TIMEOUT_S) -> Type[_TorchTrainable]:
+def DistributedTrainableCreator(func: Callable,
+                                num_workers: int = 1,
+                                num_cpus_per_worker: int = 1,
+                                num_gpus_per_worker: int = 0,
+                                num_workers_per_host: Optional[int] = None,
+                                backend: str = "gloo",
+                                timeout_s: int = NCCL_TIMEOUT_S,
+                                use_gpu=None) -> Type[_TorchTrainable]:
     """Creates a class that executes distributed training.
 
     Similar to running `torch.distributed.launch`.
@@ -148,17 +158,19 @@ def DistributedTrainableCreator(
             This function must have 2 args in the signature, and the
             latter arg must contain `checkpoint_dir`. For example:
             `func(config, checkpoint_dir=None)`.
-        use_gpu (bool): Sets resource allocation for workers to 1 GPU
-            if true. Also automatically sets CUDA_VISIBLE_DEVICES
-            for each training worker.
         num_workers (int): Number of training workers to include in
             world.
         num_cpus_per_worker (int): Number of CPU resources to reserve
             per training worker.
+        num_gpus_per_worker (int): Number of GPU resources to reserve
+            per training worker.
+        num_workers_per_host: Optional[int]: Number of workers to
+            colocate per host.
         backend (str): One of "gloo", "nccl".
         timeout_s (float): Seconds before the torch process group
             times out. Useful when machines are unreliable. Defaults
-            to 60 seconds.
+            to 60 seconds. This value is also reused for triggering
+            placement timeouts if forcing colocation.
 
     Returns:
         type(Trainable): A trainable class object that can be passed
@@ -173,13 +185,22 @@ def DistributedTrainableCreator(
             train_func, num_workers=2)
         analysis = tune.run(trainable_cls)
     """
+    if use_gpu:
+        raise ValueError(
+            "use_gpu is deprecated. Use 'num_gpus_per_worker' instead.")
     detect_checkpoint_function(func, abort=True)
+    if num_workers_per_host:
+        if num_workers % num_workers_per_host:
+            raise ValueError("`num_workers` must be an integer multiple "
+                             "of workers_per_node.")
 
     class WrappedDistributedTorchTrainable(_TorchTrainable):
         _function = func
         _num_workers = num_workers
-        _use_gpu = use_gpu
         _num_cpus_per_worker = num_cpus_per_worker
+        _num_gpus_per_worker = num_gpus_per_worker
+        _num_workers_per_host = num_workers_per_host
+        _timeout_s = timeout_s
 
         @classmethod
         def default_process_group_parameters(self) -> Dict:
@@ -187,16 +208,12 @@ def DistributedTrainableCreator(
 
         @classmethod
         def default_resource_request(cls, config: Dict) -> Resources:
-            num_workers_ = int(config.get("num_workers", num_workers))
-            num_cpus = int(
-                config.get("num_cpus_per_worker", num_cpus_per_worker))
-            use_gpu_ = config.get("use_gpu", use_gpu)
 
             return Resources(
                 cpu=0,
                 gpu=0,
-                extra_cpu=num_cpus * num_workers_,
-                extra_gpu=num_workers_ if use_gpu_ else 0)
+                extra_cpu=num_cpus_per_worker * num_workers,
+                extra_gpu=num_gpus_per_worker * num_workers)
 
     return WrappedDistributedTorchTrainable
 

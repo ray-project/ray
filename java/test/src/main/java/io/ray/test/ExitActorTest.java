@@ -3,26 +3,24 @@ package io.ray.test;
 import static io.ray.runtime.util.SystemUtil.pid;
 
 import io.ray.api.ActorHandle;
-import io.ray.api.Checkpointable;
 import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
-import io.ray.api.id.ActorId;
-import io.ray.api.id.UniqueId;
 import io.ray.runtime.exception.RayActorException;
 import io.ray.runtime.task.TaskExecutor;
 import io.ray.runtime.util.SystemUtil;
 import java.io.IOException;
 import java.lang.reflect.Field;
-import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-@Test(groups = {"cluster"})
+@Test(
+    groups = {"cluster"},
+    enabled = false)
 public class ExitActorTest extends BaseTest {
 
-  private static class ExitingActor implements Checkpointable {
+  private static class ExitingActor {
 
     int counter = 0;
 
@@ -39,30 +37,10 @@ public class ExitActorTest extends BaseTest {
       try {
         Field field = TaskExecutor.class.getDeclaredField("actorContextMap");
         field.setAccessible(true);
-        return ((Map<?, ?>)field.get(taskExecutor)).size();
+        return ((Map<?, ?>) field.get(taskExecutor)).size();
       } catch (Exception e) {
         throw new RuntimeException(e);
       }
-    }
-
-    @Override
-    public boolean shouldCheckpoint(CheckpointContext checkpointContext) {
-      return true;
-    }
-
-    @Override
-    public void saveCheckpoint(ActorId actorId, UniqueId checkpointId) {
-    }
-
-    @Override
-    public UniqueId loadCheckpoint(ActorId actorId, List<Checkpoint> availableCheckpoints) {
-      // Dummy load checkpoint.
-      this.counter = 1;
-      return availableCheckpoints.get(availableCheckpoints.size() - 1).checkpointId;
-    }
-
-    @Override
-    public void checkpointExpired(ActorId actorId, UniqueId checkpointId) {
     }
 
     public boolean exit() {
@@ -72,14 +50,13 @@ public class ExitActorTest extends BaseTest {
   }
 
   public void testExitActor() throws IOException, InterruptedException {
-    ActorHandle<ExitingActor> actor = Ray.actor(ExitingActor::new)
-        .setMaxRestarts(10000).remote();
+    ActorHandle<ExitingActor> actor = Ray.actor(ExitingActor::new).setMaxRestarts(10000).remote();
     Assert.assertEquals(1, (int) (actor.task(ExitingActor::incr).remote().get()));
     int pid = actor.task(ExitingActor::getPid).remote().get();
     Runtime.getRuntime().exec("kill -9 " + pid);
     TimeUnit.SECONDS.sleep(1);
     // Make sure this actor can be reconstructed.
-    Assert.assertEquals(2, (int) actor.task(ExitingActor::incr).remote().get());
+    Assert.assertEquals(1, (int) actor.task(ExitingActor::incr).remote().get());
 
     // `exitActor` will exit the actor without reconstructing.
     ObjectRef<Boolean> obj = actor.task(ExitingActor::exit).remote();
@@ -88,8 +65,7 @@ public class ExitActorTest extends BaseTest {
 
   public void testExitActorInMultiWorker() {
     Assert.assertTrue(TestUtils.getNumWorkersPerProcess() > 1);
-    ActorHandle<ExitingActor> actor1 = Ray.actor(ExitingActor::new)
-        .setMaxRestarts(10000).remote();
+    ActorHandle<ExitingActor> actor1 = Ray.actor(ExitingActor::new).setMaxRestarts(10000).remote();
     int pid = actor1.task(ExitingActor::getPid).remote().get();
     Assert.assertEquals(
         1, (int) actor1.task(ExitingActor::getSizeOfActorContextMap).remote().get());
@@ -118,18 +94,19 @@ public class ExitActorTest extends BaseTest {
   }
 
   public void testExitActorWithDynamicOptions() {
-    ActorHandle<ExitingActor> actor = Ray.actor(ExitingActor::new)
-        .setMaxRestarts(10000)
-        // Set dummy JVM options to start a worker process with only one worker.
-        .setJvmOptions(" ")
-        .remote();
+    ActorHandle<ExitingActor> actor =
+        Ray.actor(ExitingActor::new)
+            .setMaxRestarts(10000)
+            // Set dummy JVM options to start a worker process with only one worker.
+            .setJvmOptions(" ")
+            .remote();
     int pid = actor.task(ExitingActor::getPid).remote().get();
     Assert.assertTrue(SystemUtil.isProcessAlive(pid));
     ObjectRef<Boolean> obj1 = actor.task(ExitingActor::exit).remote();
     Assert.assertThrows(RayActorException.class, obj1::get);
     // Now the actor shouldn't be reconstructed anymore.
-    Assert.assertThrows(RayActorException.class,
-        () -> actor.task(ExitingActor::getPid).remote().get());
+    Assert.assertThrows(
+        RayActorException.class, () -> actor.task(ExitingActor::getPid).remote().get());
     // Now the worker process should be dead.
     Assert.assertTrue(TestUtils.waitForCondition(() -> !SystemUtil.isProcessAlive(pid), 5000));
   }

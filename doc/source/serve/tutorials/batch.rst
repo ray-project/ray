@@ -30,13 +30,13 @@ You can use the ``@serve.accept_batch`` decorator to annotate a function or a cl
 This annotation is needed because batched backends have different APIs compared
 to single request backends. In a batched backend, the inputs are a list of values.
 
-For single query backend, the input type is a single Flask request or
+For single query backend, the input type is a single Starlette request or
 :mod:`ServeRequest <ray.serve.utils.ServeRequest>`:
 
 .. code-block:: python
 
     def single_request(
-        request: Union[Flask.Request, ServeRequest],
+        request: Union[starlette.requests.Request, ServeRequest],
     ):
         pass
 
@@ -47,7 +47,7 @@ types:
 
     @serve.accept_batch
     def batched_request(
-        request: List[Union[Flask.Request, ServeRequest]],
+        request: List[Union[starlette.requests.Request, ServeRequest]],
     ):
         pass
 
@@ -63,11 +63,14 @@ are specifying the maximum batch size via ``config={"max_batch_size": 4}``. This
 configuration option limits the maximum possible batch size sent to the backend.
 
 .. note::
-    Ray Serve performs *opportunistic batching*. When a worker is free to evaluate
-    the next batch, Ray Serve will look at the pending queries and take
-    ``max(number_of_pending_queries, max_batch_size)`` queries to form a batch.
-    You can provide :mod:`batch_wait_timeout <ray.serve.BackendConfig>` to override
-    this behavior to wait for a full batch to arrive before executing (under a timeout).
+    Ray Serve performs *opportunistic batching*. When a replica is free to evaluate
+    the next batch, Ray Serve will look at the pending queries and try to take
+    :mod:`max_batch_size <ray.serve.BackendConfig>` queries to form a batch.
+    If the batch has less than ``max_batch_size`` queries, the backend will
+    wait for :mod:`batch_wait_timeout <ray.serve.BackendConfig>`
+    seconds to wait for a full batch to arrive. The default wait is ``0s`` to
+    minimize query latency. You can increase the timeout to improve throughput
+    and increase utilization at the cost of some additional latency.
 
 .. literalinclude:: ../../../../python/ray/serve/examples/doc/tutorial_batch.py
     :start-after: __doc_deploy_begin__
@@ -84,8 +87,8 @@ Ray Serve was able to evaluate them in batches.
 
 What if you want to evaluate a whole batch in Python? Ray Serve allows you to send
 queries via the Python API. A batch of queries can either come from the web server
-or the Python API. Requests coming from the Python API will have the similar API
-as Flask.Request. See more on the API :ref:`here<serve-handle-explainer>`.
+or the Python API. Requests coming from the Python API will have a similar API
+to Starlette Request. See more on the API :ref:`here<serve-handle-explainer>`.
 
 .. literalinclude:: ../../../../python/ray/serve/examples/doc/tutorial_batch.py
     :start-after: __doc_define_servable_v1_begin__

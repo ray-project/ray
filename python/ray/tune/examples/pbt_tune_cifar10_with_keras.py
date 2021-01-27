@@ -22,8 +22,7 @@ from tensorflow.python.keras.layers import Convolution2D, MaxPooling2D
 from tensorflow.python.keras.models import Model, load_model
 from tensorflow.python.keras.preprocessing.image import ImageDataGenerator
 
-import ray
-from ray.tune import grid_search, run, sample_from
+from ray import tune
 from ray.tune import Trainable
 from ray.tune.schedulers import PopulationBasedTraining
 
@@ -184,38 +183,39 @@ if __name__ == "__main__":
         "--smoke-test", action="store_true", help="Finish quickly for testing")
     args, _ = parser.parse_known_args()
 
-    train_spec = {
-        "resources_per_trial": {
-            "cpu": 1,
-            "gpu": 1
-        },
-        "stop": {
-            "mean_accuracy": 0.80,
-            "training_iteration": 30,
-        },
-        "config": {
-            "epochs": 1,
-            "batch_size": 64,
-            "lr": grid_search([10**-4, 10**-5]),
-            "decay": sample_from(lambda spec: spec.config.lr / 100.0),
-            "dropout": grid_search([0.25, 0.5]),
-        },
-        "num_samples": 4,
+    space = {
+        "epochs": 1,
+        "batch_size": 64,
+        "lr": tune.grid_search([10**-4, 10**-5]),
+        "decay": tune.sample_from(lambda spec: spec.config.lr / 100.0),
+        "dropout": tune.grid_search([0.25, 0.5]),
     }
-
     if args.smoke_test:
-        train_spec["config"]["lr"] = 10**-4
-        train_spec["config"]["dropout"] = 0.5
-
-    ray.init()
+        space["lr"] = 10**-4
+        space["dropout"] = 0.5
 
     pbt = PopulationBasedTraining(
         time_attr="training_iteration",
-        metric="mean_accuracy",
-        mode="max",
         perturbation_interval=10,
         hyperparam_mutations={
             "dropout": lambda _: np.random.uniform(0, 1),
         })
 
-    run(Cifar10Model, name="pbt_cifar10", scheduler=pbt, **train_spec)
+    analysis = tune.run(
+        Cifar10Model,
+        name="pbt_cifar10",
+        scheduler=pbt,
+        resources_per_trial={
+            "cpu": 1,
+            "gpu": 1
+        },
+        stop={
+            "mean_accuracy": 0.80,
+            "training_iteration": 30,
+        },
+        config=space,
+        num_samples=4,
+        metric="mean_accuracy",
+        mode="max",
+    )
+    print("Best hyperparameters found were: ", analysis.best_config)

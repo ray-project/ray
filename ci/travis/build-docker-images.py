@@ -41,7 +41,7 @@ def _release_build():
         print(os.environ)
         print("Environment is above ^^")
         return False
-    return branch != "master" and "releases" in branch
+    return branch != "master" and branch.startswith("releases")
 
 
 def _get_curr_dir():
@@ -78,13 +78,13 @@ def _docker_affected():
     return affected
 
 
-def _build_cpu_gpu_images(image_name) -> List[str]:
+def _build_cpu_gpu_images(image_name, no_cache=True) -> List[str]:
     built_images = []
     for gpu in ["-cpu", "-gpu"]:
         build_args = {}
         if image_name == "base-deps":
             build_args["BASE_IMAGE"] = (
-                "nvidia/cuda:10.1-cudnn8-runtime-ubuntu18.04"
+                "nvidia/cuda:10.1-cudnn7-runtime-ubuntu18.04"
                 if gpu == "-gpu" else "ubuntu:focal")
         else:
             build_args["GPU"] = gpu
@@ -97,7 +97,7 @@ def _build_cpu_gpu_images(image_name) -> List[str]:
             output = DOCKER_CLIENT.api.build(
                 path=os.path.join(_get_root_dir(), "docker", image_name),
                 tag=tagged_name,
-                nocache=True,
+                nocache=no_cache,
                 buildargs=build_args)
 
             full_output = ""
@@ -105,7 +105,6 @@ def _build_cpu_gpu_images(image_name) -> List[str]:
                 start = datetime.datetime.now()
                 current_iter = start
                 for line in output:
-                    # print(line)
                     if datetime.datetime.now(
                     ) - current_iter >= datetime.timedelta(minutes=5):
                         current_iter = datetime.datetime.now()
@@ -144,8 +143,7 @@ def copy_wheels():
 
 def build_or_pull_base_images(is_docker_affected: bool) -> List[str]:
     """Returns images to tag and build"""
-    _ = DOCKER_CLIENT.api.pull(
-        repository="rayproject/base-deps", tag="nightly")
+    DOCKER_CLIENT.api.pull(repository="rayproject/base-deps", tag="nightly")
 
     age = DOCKER_CLIENT.api.inspect_image("rayproject/base-deps:nightly")[
         "Created"]
@@ -153,21 +151,23 @@ def build_or_pull_base_images(is_docker_affected: bool) -> List[str]:
     is_stale = (
         datetime.datetime.now() - short_date) > datetime.timedelta(days=14)
 
-    if is_stale or is_docker_affected or _release_build():
+    print("Pulling images for caching")
+
+    DOCKER_CLIENT.api.pull(
+        repository="rayproject/base-deps", tag="nightly-cpu")
+    DOCKER_CLIENT.api.pull(
+        repository="rayproject/base-deps", tag="nightly-gpu")
+
+    DOCKER_CLIENT.api.pull(repository="rayproject/ray-deps", tag="nightly-gpu")
+    DOCKER_CLIENT.api.pull(repository="rayproject/ray-deps", tag="nightly-cpu")
+
+    # TODO(ilr) See if any caching happens
+    if True or (is_stale or is_docker_affected or _release_build()):
         for image in ["base-deps", "ray-deps"]:
-            _build_cpu_gpu_images(image)
+            _build_cpu_gpu_images(image, no_cache=False)
         return True
     else:
         print("Just pulling images!")
-        _ = DOCKER_CLIENT.api.pull(
-            repository="rayproject/base-deps", tag="nightly-cpu")
-        _ = DOCKER_CLIENT.api.pull(
-            repository="rayproject/base-deps", tag="nightly-gpu")
-
-        _ = DOCKER_CLIENT.api.pull(
-            repository="rayproject/ray-deps", tag="nightly-gpu")
-        _ = DOCKER_CLIENT.api.pull(
-            repository="rayproject/ray-deps", tag="nightly-cpu")
         return False
 
 
@@ -179,6 +179,8 @@ def build_ray_ml():
     root_dir = _get_root_dir()
     requirement_files = glob.glob(
         f"{_get_root_dir()}/python/requirements*.txt")
+    requirement_files.extend(
+        glob.glob(f"{_get_root_dir()}/python/requirements/*.txt"))
     for fl in requirement_files:
         shutil.copy(fl, os.path.join(root_dir, "docker/ray-ml/"))
     ray_ml_images = _build_cpu_gpu_images("ray-ml")
@@ -203,9 +205,19 @@ def push_and_tag_images(push_base_images: bool):
 
     def docker_push(image, tag):
         if _merge_build():
-            result = DOCKER_CLIENT.api.push(image, tag=tag)
             print(f"PUSHING: {image}:{tag}, result:")
-            print(result)
+            # This docker API is janky. Without "stream=True" it returns a
+            # massive string filled with every progress bar update, which can
+            # cause CI to back up.
+            #
+            # With stream=True, it's a line-at-a-time generator of the same
+            # info. So we can slow it down by printing every couple hundred
+            # lines
+            i = 0
+            for progress_line in DOCKER_CLIENT.api.push(
+                    image, tag=tag, stream=True):
+                if i % 100 == 0:
+                    print(progress_line)
         else:
             print(
                 "This is a PR Build! On a merge build, we would normally push "
@@ -217,8 +229,8 @@ def push_and_tag_images(push_base_images: bool):
     date_tag = datetime.datetime.now().strftime("%Y-%m-%d")
     sha_tag = os.environ.get("TRAVIS_COMMIT")[:6]
     if _release_build():
-        release_name = re.search("[0-9]\.[0-9]\.[0-9]",
-                                 os.environ.get("TRAVIS_BRANCH"))
+        release_name = re.search("[0-9]\.[0-9]\.[0-9].*",
+                                 os.environ.get("TRAVIS_BRANCH")).group(0)
         date_tag = release_name
         sha_tag = release_name
 
@@ -237,9 +249,13 @@ def push_and_tag_images(push_base_images: bool):
 
         for arch_tag in ["-cpu", "-gpu", ""]:
             full_arch_tag = f"nightly{arch_tag}"
-            # Tag and push rayproject/<image>:nightly<arch_tag>
-            docker_push(full_image, full_arch_tag)
+            # Do not tag release builds because they are no longer up to date
+            # after the branch cut.
+            if not _release_build():
+                # Tag and push rayproject/<image>:nightly<arch_tag>
+                docker_push(full_image, full_arch_tag)
 
+            # Ex: specific_tag == "1.0.1" or "<sha>" or "<date>"
             specific_tag = get_new_tag(
                 full_arch_tag, date_tag if "-deps" in image else sha_tag)
             # Tag and push rayproject/<image>:<sha/date><arch_tag>
@@ -248,15 +264,6 @@ def push_and_tag_images(push_base_images: bool):
                 repository=full_image,
                 tag=specific_tag)
             docker_push(full_image, specific_tag)
-
-            if _release_build():
-                latest_tag = get_new_tag(full_arch_tag, "latest")
-                # Tag and push rayproject/<image>:latest<arch_tag>
-                DOCKER_CLIENT.api.tag(
-                    image=f"{full_image}:{full_arch_tag}",
-                    repository=full_image,
-                    tag=latest_tag)
-                docker_push(full_image, latest_tag)
 
 
 # Push infra here:
@@ -308,4 +315,6 @@ if __name__ == "__main__":
             build_ray()
             build_ray_ml()
             push_and_tag_images(freshly_built)
-            push_readmes()
+            # TODO(ilr) Re-Enable Push READMEs by using a normal password
+            # (not auth token :/)
+            # push_readmes()

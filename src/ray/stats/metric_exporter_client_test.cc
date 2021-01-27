@@ -144,7 +144,7 @@ bool DoubleEqualTo(double value, double compared_value) {
 TEST_F(MetricExporterClientTest, decorator_test) {
   // Export client should emit at least once in report flush interval.
   for (size_t i = 0; i < 100; ++i) {
-    stats::CurrentWorker().Record(i + 1);
+    stats::LiveActors().Record(i + 1);
   }
   opencensus::stats::DeltaProducer::Get()->Flush();
   opencensus::stats::StatsExporterImpl::Get()->Export();

@@ -12,8 +12,8 @@ client = serve.start()
 
 # a backend can be a function or class.
 # it can be made to be invoked from web as well as python.
-def echo_v1(flask_request):
-    response = flask_request.args.get("response", "web")
+def echo_v1(starlette_request):
+    response = starlette_request.query_params.get("response", "web")
     return response
 
 
@@ -32,7 +32,7 @@ print(ray.get(client.get_handle("my_endpoint").remote(response="hello")))
 
 
 # We can also add a new backend and split the traffic.
-def echo_v2(flask_request):
+def echo_v2(starlette_request):
     # magic, only from web.
     return "something new"
 

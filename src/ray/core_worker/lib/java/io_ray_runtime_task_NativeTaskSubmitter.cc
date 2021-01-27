@@ -185,7 +185,7 @@ inline ray::PlacementStrategy ConvertStrategy(jint java_strategy) {
 }
 
 inline ray::PlacementGroupCreationOptions ToPlacementGroupCreationOptions(
-    JNIEnv *env, jobject java_bundles, jint java_strategy) {
+    JNIEnv *env, jstring name, jobject java_bundles, jint java_strategy) {
   std::vector<std::unordered_map<std::string, double>> bundles;
   JavaListToNativeVector<std::unordered_map<std::string, double>>(
       env, java_bundles, &bundles, [](JNIEnv *env, jobject java_bundle) {
@@ -200,7 +200,8 @@ inline ray::PlacementGroupCreationOptions ToPlacementGroupCreationOptions(
               return value;
             });
       });
-  return ray::PlacementGroupCreationOptions("", ConvertStrategy(java_strategy), bundles);
+  return ray::PlacementGroupCreationOptions(JavaStringToNativeString(env, name),
+                                            ConvertStrategy(java_strategy), bundles);
 }
 
 #ifdef __cplusplus
@@ -221,7 +222,9 @@ JNIEXPORT jobject JNICALL Java_io_ray_runtime_task_NativeTaskSubmitter_nativeSub
       ray_function, task_args, task_options, &return_ids,
       /*max_retries=*/0,
       /*placement_options=*/
-      std::pair<ray::PlacementGroupID, int64_t>(ray::PlacementGroupID::Nil(), 0), true);
+      std::pair<ray::PlacementGroupID, int64_t>(ray::PlacementGroupID::Nil(), 0),
+      /*placement_group_capture_child_tasks=*/true,
+      /*debugger_breakpoint*/ "");
 
   // This is to avoid creating an empty java list and boost performance.
   if (return_ids.empty()) {
@@ -272,16 +275,37 @@ Java_io_ray_runtime_task_NativeTaskSubmitter_nativeSubmitActorTask(
 }
 
 JNIEXPORT jbyteArray JNICALL
-Java_io_ray_runtime_task_NativeTaskSubmitter_nativeCreatePlacementGroup(JNIEnv *env,
-                                                                        jclass,
-                                                                        jobject bundles,
-                                                                        jint strategy) {
-  auto options = ToPlacementGroupCreationOptions(env, bundles, strategy);
+Java_io_ray_runtime_task_NativeTaskSubmitter_nativeCreatePlacementGroup(
+    JNIEnv *env, jclass, jstring name, jobject bundles, jint strategy) {
+  auto options = ToPlacementGroupCreationOptions(env, name, bundles, strategy);
   ray::PlacementGroupID placement_group_id;
   auto status = ray::CoreWorkerProcess::GetCoreWorker().CreatePlacementGroup(
       options, &placement_group_id);
   THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, nullptr);
   return IdToJavaByteArray<ray::PlacementGroupID>(env, placement_group_id);
+}
+
+JNIEXPORT void JNICALL
+Java_io_ray_runtime_task_NativeTaskSubmitter_nativeRemovePlacementGroup(
+    JNIEnv *env, jclass p, jbyteArray placement_group_id_bytes) {
+  const auto placement_group_id =
+      JavaByteArrayToId<ray::PlacementGroupID>(env, placement_group_id_bytes);
+  auto status =
+      ray::CoreWorkerProcess::GetCoreWorker().RemovePlacementGroup(placement_group_id);
+  THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, (void)0);
+}
+
+JNIEXPORT jboolean JNICALL
+Java_io_ray_runtime_task_NativeTaskSubmitter_nativeWaitPlacementGroupReady(
+    JNIEnv *env, jclass p, jbyteArray placement_group_id_bytes, jint timeout_seconds) {
+  const auto placement_group_id =
+      JavaByteArrayToId<ray::PlacementGroupID>(env, placement_group_id_bytes);
+  auto status = ray::CoreWorkerProcess::GetCoreWorker().WaitPlacementGroupReady(
+      placement_group_id, timeout_seconds);
+  if (status.IsNotFound()) {
+    env->ThrowNew(java_ray_exception_class, status.message().c_str());
+  }
+  return status.ok();
 }
 
 #ifdef __cplusplus

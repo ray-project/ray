@@ -1,16 +1,15 @@
 import logging
 
 import ray
-from ray.rllib.evaluation.postprocessing import Postprocessing
+from ray.rllib.evaluation.postprocessing import compute_gae_for_sample_batch, \
+    Postprocessing
+from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.torch_policy_template import build_torch_policy
-from ray.rllib.agents.ppo.ppo_tf_policy import postprocess_ppo_gae, \
-    setup_config
+from ray.rllib.agents.ppo.ppo_tf_policy import setup_config
 from ray.rllib.agents.ppo.ppo_torch_policy import vf_preds_fetches, \
     ValueNetworkMixin
-from ray.rllib.agents.a3c.a3c_torch_policy import apply_grad_clipping
-from ray.rllib.utils.framework import get_activation_fn
 from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.torch_ops import apply_grad_clipping
 
 torch, nn = try_import_torch()
 
@@ -127,6 +126,7 @@ class MAMLLoss(object):
                  obs,
                  num_tasks,
                  split,
+                 meta_opt,
                  inner_adaptation_steps=1,
                  entropy_coeff=0,
                  clip_param=0.3,
@@ -134,12 +134,17 @@ class MAMLLoss(object):
                  vf_loss_coeff=1.0,
                  use_gae=True):
 
+        import higher
         self.config = config
         self.num_tasks = num_tasks
         self.inner_adaptation_steps = inner_adaptation_steps
         self.clip_param = clip_param
         self.dist_class = dist_class
         self.cur_kl_coeff = cur_kl_coeff
+        self.model = model
+        self.vf_clip_param = vf_clip_param
+        self.vf_loss_coeff = vf_loss_coeff
+        self.entropy_coeff = entropy_coeff
 
         # Split episode tensors into [inner_adaptation_steps+1, num_tasks, -1]
         self.obs = self.split_placeholders(obs, split)
@@ -150,166 +155,85 @@ class MAMLLoss(object):
         self.value_targets = self.split_placeholders(value_targets, split)
         self.vf_preds = self.split_placeholders(vf_preds, split)
 
-        #  Construct name to tensor dictionary for easier indexing
-        self.policy_vars = {}
-        for name, w in policy_vars:
-            self.policy_vars[name] = w
+        inner_opt = torch.optim.SGD(model.parameters(), lr=config["inner_lr"])
+        surr_losses = []
+        val_losses = []
+        kl_losses = []
+        entropy_losses = []
+        meta_losses = []
+        kls = []
 
-        # Calculate pi_new for PPO
-        pi_new_logits, current_policy_vars, value_fns = [], [], []
+        meta_opt.zero_grad()
         for i in range(self.num_tasks):
-            pi_new, value_fn = self.feed_forward(
-                self.obs[0][i],
-                self.policy_vars,
-                policy_config=config["model"])
-            pi_new_logits.append(pi_new)
-            value_fns.append(value_fn)
-            current_policy_vars.append(self.policy_vars)
+            with higher.innerloop_ctx(
+                    model, inner_opt, copy_initial_weights=False) as (fnet,
+                                                                      diffopt):
+                inner_kls = []
+                for step in range(self.inner_adaptation_steps):
+                    ppo_loss, _, inner_kl_loss, _, _ = self.compute_losses(
+                        fnet, step, i)
+                    diffopt.step(ppo_loss)
+                    inner_kls.append(inner_kl_loss)
+                    kls.append(inner_kl_loss.detach())
 
-        inner_kls = []
-        inner_ppo_loss = []
+                # Meta Update
+                ppo_loss, s_loss, kl_loss, v_loss, ent = self.compute_losses(
+                    fnet, self.inner_adaptation_steps, i, clip_loss=True)
 
-        # Recompute weights for inner-adaptation (same weights as workers)
-        for step in range(self.inner_adaptation_steps):
-            kls = []
-            for i in range(self.num_tasks):
-                # PPO Loss Function (only Surrogate)
-                ppo_loss, _, kl_loss, _, _ = PPOLoss(
-                    dist_class=dist_class,
-                    actions=self.actions[step][i],
-                    curr_logits=pi_new_logits[i],
-                    behaviour_logits=self.behaviour_logits[step][i],
-                    advantages=self.advantages[step][i],
-                    value_fn=value_fns[i],
-                    value_targets=self.value_targets[step][i],
-                    vf_preds=self.vf_preds[step][i],
-                    cur_kl_coeff=0.0,
-                    entropy_coeff=entropy_coeff,
-                    clip_param=clip_param,
-                    vf_clip_param=vf_clip_param,
-                    vf_loss_coeff=vf_loss_coeff,
-                    clip_loss=False)
+                inner_loss = torch.mean(
+                    torch.stack([
+                        a * b for a, b in zip(
+                            self.cur_kl_coeff[
+                                i * self.inner_adaptation_steps:(i + 1) *
+                                self.inner_adaptation_steps], inner_kls)
+                    ]))
+                meta_loss = (ppo_loss + inner_loss) / self.num_tasks
+                meta_loss.backward()
 
-                adapted_policy_vars = self.compute_updated_variables(
-                    ppo_loss, current_policy_vars[i], model)
-                pi_new_logits[i], value_fns[i] = self.feed_forward(
-                    self.obs[step + 1][i],
-                    adapted_policy_vars,
-                    policy_config=config["model"])
-                current_policy_vars[i] = adapted_policy_vars
-                kls.append(kl_loss)
-                inner_ppo_loss.append(ppo_loss)
-            inner_kls.extend(kls)
+                surr_losses.append(s_loss.detach())
+                kl_losses.append(kl_loss.detach())
+                val_losses.append(v_loss.detach())
+                entropy_losses.append(ent.detach())
+                meta_losses.append(meta_loss.detach())
 
-        self.mean_inner_kl = inner_kls
+        meta_opt.step()
 
-        ppo_obj = []
-        for i in range(self.num_tasks):
-            ppo_loss, surr_loss, kl_loss, val_loss, entropy_loss = PPOLoss(
-                dist_class=dist_class,
-                actions=self.actions[self.inner_adaptation_steps][i],
-                curr_logits=pi_new_logits[i],
-                behaviour_logits=self.behaviour_logits[
-                    self.inner_adaptation_steps][i],
-                advantages=self.advantages[self.inner_adaptation_steps][i],
-                value_fn=value_fns[i],
-                value_targets=self.value_targets[self.inner_adaptation_steps][
-                    i],
-                vf_preds=self.vf_preds[self.inner_adaptation_steps][i],
-                cur_kl_coeff=0.0,
-                entropy_coeff=entropy_coeff,
-                clip_param=clip_param,
-                vf_clip_param=vf_clip_param,
-                vf_loss_coeff=vf_loss_coeff,
-                clip_loss=True)
-            ppo_obj.append(ppo_loss)
-        self.mean_policy_loss = surr_loss
-        self.mean_kl = kl_loss
-        self.mean_vf_loss = val_loss
-        self.mean_entropy = entropy_loss
+        # Stats Logging
+        self.mean_policy_loss = torch.mean(torch.stack(surr_losses))
+        self.mean_kl_loss = torch.mean(torch.stack(kl_losses))
+        self.mean_vf_loss = torch.mean(torch.stack(val_losses))
+        self.mean_entropy = torch.mean(torch.stack(entropy_losses))
+        self.mean_inner_kl = kls
+        self.loss = torch.sum(torch.stack(meta_losses))
+        # Hacky, needed to bypass RLlib backend
+        self.loss.requires_grad = True
 
-        self.inner_kl_loss = torch.mean(
-            torch.stack([
-                a * b for a, b in zip(self.cur_kl_coeff, self.mean_inner_kl)
-            ]))
-        self.loss = torch.mean(torch.stack(ppo_obj)) + self.inner_kl_loss
-
-    def feed_forward(self, obs, policy_vars, policy_config):
-        # Hacky for now, reconstruct FC network with adapted weights
-        # @mluo: TODO for any network
-        def fc_network(inp, network_vars, hidden_nonlinearity,
-                       output_nonlinearity, policy_config, hiddens_name,
-                       logits_name):
-            x = inp
-
-            hidden_w = []
-            logits_w = []
-
-            for name, w in network_vars.items():
-                if hiddens_name in name:
-                    hidden_w.append(w)
-                elif logits_name in name:
-                    logits_w.append(w)
-                else:
-                    raise NameError
-
-            assert len(hidden_w) % 2 == 0 and len(logits_w) == 2
-
-            while len(hidden_w) != 0:
-                x = nn.functional.linear(x, hidden_w.pop(0), hidden_w.pop(0))
-                x = hidden_nonlinearity()(x)
-
-            x = nn.functional.linear(x, logits_w.pop(0), logits_w.pop(0))
-            x = output_nonlinearity()(x)
-
-            return x
-
-        policyn_vars = {}
-        valuen_vars = {}
-        log_std = None
-        for name, param in policy_vars.items():
-            if "value" in name:
-                valuen_vars[name] = param
-            elif "log_std" in name:
-                log_std = param
-            else:
-                policyn_vars[name] = param
-
-        output_nonlinearity = nn.Identity
-        hidden_nonlinearity = get_activation_fn(
-            policy_config["fcnet_activation"], framework="torch")
-
-        pi_new_logits = fc_network(obs, policyn_vars, hidden_nonlinearity,
-                                   output_nonlinearity, policy_config,
-                                   "hidden_layers", "logits")
-        if log_std is not None:
-            pi_new_logits = torch.cat(
-                [
-                    pi_new_logits,
-                    log_std.unsqueeze(0).repeat([len(pi_new_logits), 1])
-                ],
-                axis=1)
-
-        value_fn = fc_network(obs, valuen_vars, hidden_nonlinearity,
-                              output_nonlinearity, policy_config,
-                              "value_branch_separate", "value_branch")
-
-        return pi_new_logits, torch.squeeze(value_fn)
-
-    def compute_updated_variables(self, loss, network_vars, model):
-        grad = torch.autograd.grad(
-            loss,
-            inputs=model.parameters(),
-            create_graph=True,
-            allow_unused=True)
-        adapted_vars = {}
-        for i, tup in enumerate(network_vars.items()):
-            name, var = tup
-            if grad[i] is None:
-                adapted_vars[name] = var
-            else:
-                adapted_vars[name] = var - self.config["inner_lr"] * grad[i]
-        return adapted_vars
+    def compute_losses(self,
+                       model,
+                       inner_adapt_iter,
+                       task_iter,
+                       clip_loss=False):
+        obs = self.obs[inner_adapt_iter][task_iter]
+        obs_dict = {"obs": obs, "obs_flat": obs}
+        curr_logits, _ = model.forward(obs_dict, None, None)
+        value_fns = model.value_function()
+        ppo_loss, surr_loss, kl_loss, val_loss, ent_loss = PPOLoss(
+            dist_class=self.dist_class,
+            actions=self.actions[inner_adapt_iter][task_iter],
+            curr_logits=curr_logits,
+            behaviour_logits=self.behaviour_logits[inner_adapt_iter][
+                task_iter],
+            advantages=self.advantages[inner_adapt_iter][task_iter],
+            value_fn=value_fns,
+            value_targets=self.value_targets[inner_adapt_iter][task_iter],
+            vf_preds=self.vf_preds[inner_adapt_iter][task_iter],
+            cur_kl_coeff=0.0,
+            entropy_coeff=self.entropy_coeff,
+            clip_param=self.clip_param,
+            vf_clip_param=self.vf_clip_param,
+            vf_loss_coeff=self.vf_loss_coeff,
+            clip_loss=clip_loss)
+        return ppo_loss, surr_loss, kl_loss, val_loss, ent_loss
 
     def split_placeholders(self, placeholder, split):
         inner_placeholder_list = torch.split(
@@ -345,6 +269,10 @@ def maml_loss(policy, model, dist_class, train_batch):
     else:
         policy.var_list = model.named_parameters()
 
+        # `split` may not exist yet (during test-loss call), use a dummy value.
+        # Cannot use get here due to train_batch being a TrackingDict.
+        split = train_batch["split"] if "split" in train_batch else \
+            torch.tensor([[8, 8], [8, 8]])
         policy.loss_obj = MAMLLoss(
             model=model,
             dist_class=dist_class,
@@ -357,14 +285,15 @@ def maml_loss(policy, model, dist_class, train_batch):
             policy_vars=policy.var_list,
             obs=train_batch[SampleBatch.CUR_OBS],
             num_tasks=policy.config["num_workers"],
-            split=train_batch["split"],
+            split=split,
             config=policy.config,
             inner_adaptation_steps=policy.config["inner_adaptation_steps"],
             entropy_coeff=policy.config["entropy_coeff"],
             clip_param=policy.config["clip_param"],
             vf_clip_param=policy.config["vf_clip_param"],
             vf_loss_coeff=policy.config["vf_loss_coeff"],
-            use_gae=policy.config["use_gae"])
+            use_gae=policy.config["use_gae"],
+            meta_opt=policy.meta_opt)
 
     return policy.loss_obj.loss
 
@@ -379,7 +308,7 @@ def maml_stats(policy, train_batch):
             "total_loss": policy.loss_obj.loss,
             "policy_loss": policy.loss_obj.mean_policy_loss,
             "vf_loss": policy.loss_obj.mean_vf_loss,
-            "kl": policy.loss_obj.mean_kl,
+            "kl_loss": policy.loss_obj.mean_kl_loss,
             "inner_kl": policy.loss_obj.mean_inner_kl,
             "entropy": policy.loss_obj.mean_entropy,
         }
@@ -407,7 +336,9 @@ def maml_optimizer_fn(policy, config):
     Meta-Policy uses Adam optimizer for meta-update
     """
     if not config["worker_index"]:
-        return torch.optim.Adam(policy.model.parameters(), lr=config["lr"])
+        policy.meta_opt = torch.optim.Adam(
+            policy.model.parameters(), lr=config["lr"])
+        return policy.meta_opt
     return torch.optim.SGD(policy.model.parameters(), lr=config["inner_lr"])
 
 
@@ -416,14 +347,15 @@ def setup_mixins(policy, obs_space, action_space, config):
     KLCoeffMixin.__init__(policy, config)
 
 
-MAMLTorchPolicy = build_torch_policy(
+MAMLTorchPolicy = build_policy_class(
     name="MAMLTorchPolicy",
+    framework="torch",
     get_default_config=lambda: ray.rllib.agents.maml.maml.DEFAULT_CONFIG,
     loss_fn=maml_loss,
     stats_fn=maml_stats,
     optimizer_fn=maml_optimizer_fn,
     extra_action_out_fn=vf_preds_fetches,
-    postprocess_fn=postprocess_ppo_gae,
+    postprocess_fn=compute_gae_for_sample_batch,
     extra_grad_process_fn=apply_grad_clipping,
     before_init=setup_config,
     after_init=setup_mixins,

@@ -256,11 +256,6 @@ class _CliLogger():
     to 'record' style logging.
 
     Attributes:
-        old_style (bool):
-            If `old_style` is `True`, the old logging calls are used instead
-            of the new CLI UX. This is disabled by default and remains for
-            backwards compatibility. Currently can only be set via env var
-            RAY_LOG_NEWSTYLE="0".
         color_mode (str):
             Can be "true", "false", or "auto".
 
@@ -276,7 +271,6 @@ class _CliLogger():
 
             Low verbosity will disable `verbose` and `very_verbose` messages.
     """
-    old_style: bool
     color_mode: str
     # color_mode: Union[Literal["auto"], Literal["false"], Literal["true"]]
     indent_level: int
@@ -286,10 +280,10 @@ class _CliLogger():
     _autodetected_cf_colormode: int
 
     def __init__(self):
-        self.old_style = os.environ.get("RAY_LOG_NEWSTYLE", "1") == "0"
         self.indent_level = 0
 
         self._verbosity = 0
+        self._verbosity_overriden = False
         self._color_mode = "auto"
         self._log_style = "record"
         self.pretty = False
@@ -347,12 +341,15 @@ class _CliLogger():
 
     @property
     def verbosity(self):
-        if not self.pretty:
+        if self._verbosity_overriden:
+            return self._verbosity
+        elif not self.pretty:
             return 999
         return self._verbosity
 
     def _set_verbosity(self, x):
         self._verbosity = x
+        self._verbosity_overriden = True
 
     def detect_colors(self):
         """Update color output settings.
@@ -476,9 +473,6 @@ class _CliLogger():
 
         For other arguments, see `_format_msg`.
         """
-        if self.old_style:
-            return
-
         self._print(
             cf.skyBlue(key) + ": " +
             _format_msg(cf.bold(msg), *args, **kwargs))
@@ -567,9 +561,6 @@ class _CliLogger():
 
         For arguments, see `_format_msg`.
         """
-        if self.old_style:
-            return
-
         self._print(_format_msg(msg, *args, **kwargs), _level_str=_level_str)
 
     def abort(self,
@@ -582,9 +573,6 @@ class _CliLogger():
         Print an error and throw an exception to terminate the program
         (the exception will not print a message).
         """
-        if self.old_style:
-            return
-
         if msg is not None:
             self._error(msg, *args, _level_str="PANIC", **kwargs)
 
@@ -604,9 +592,6 @@ class _CliLogger():
 
         For other arguments, see `_format_msg`.
         """
-        if self.old_style:
-            return
-
         if not val:
             exc = None
             if not self.pretty:
@@ -617,101 +602,6 @@ class _CliLogger():
             #                  to do this, install a global try-catch
             #                  for AssertionError and raise them normally
             self.abort(msg, *args, exc=exc, **kwargs)
-
-    def old_debug(self, logger: logging.Logger, msg: str, *args: Any,
-                  **kwargs: Any):
-        """Old debug logging proxy.
-
-        Pass along an old debug log iff new logging is disabled.
-        Supports the new formatting features.
-
-        Args:
-            logger (logging.Logger):
-                Logger to use if old logging behavior is selected.
-
-        For other arguments, see `_format_msg`.
-        """
-        if self.old_style:
-            logger.debug(
-                _format_msg(msg, *args, **kwargs),
-                extra=_external_caller_info())
-            return
-
-    def old_info(self, logger: logging.Logger, msg: str, *args: Any,
-                 **kwargs: Any):
-        """Old info logging proxy.
-
-        Pass along an old info log iff new logging is disabled.
-        Supports the new formatting features.
-
-        Args:
-            logger (logging.Logger):
-                Logger to use if old logging behavior is selected.
-
-        For other arguments, see `_format_msg`.
-        """
-        if self.old_style:
-            logger.info(
-                _format_msg(msg, *args, **kwargs),
-                extra=_external_caller_info())
-            return
-
-    def old_warning(self, logger: logging.Logger, msg: str, *args: Any,
-                    **kwargs: Any):
-        """Old warning logging proxy.
-
-        Pass along an old warning log iff new logging is disabled.
-        Supports the new formatting features.
-
-        Args:
-            logger (logging.Logger):
-                Logger to use if old logging behavior is selected.
-
-        For other arguments, see `_format_msg`.
-        """
-        if self.old_style:
-            logger.warning(
-                _format_msg(msg, *args, **kwargs),
-                extra=_external_caller_info())
-            return
-
-    def old_error(self, logger: logging.Logger, msg: str, *args: Any,
-                  **kwargs: Any):
-        """Old error logging proxy.
-
-        Pass along an old error log iff new logging is disabled.
-        Supports the new formatting features.
-
-        Args:
-            logger (logging.Logger):
-                Logger to use if old logging behavior is selected.
-
-        For other arguments, see `_format_msg`.
-        """
-        if self.old_style:
-            logger.error(
-                _format_msg(msg, *args, **kwargs),
-                extra=_external_caller_info())
-            return
-
-    def old_exception(self, logger: logging.Logger, msg: str, *args: Any,
-                      **kwargs: Any):
-        """Old exception logging proxy.
-
-        Pass along an old exception log iff new logging is disabled.
-        Supports the new formatting features.
-
-        Args:
-            logger (logging.Logger):
-                Logger to use if old logging behavior is selected.
-
-        For other arguments, see `_format_msg`.
-        """
-        if self.old_style:
-            logger.exception(
-                _format_msg(msg, *args, **kwargs),
-                extra=_external_caller_info())
-            return
 
     def render_list(self, xs: List[str], separator: str = cf.reset(", ")):
         """Render a list of bolded values using a non-bolded separator.
@@ -739,9 +629,6 @@ class _CliLogger():
                 The default action to take if the user just presses enter
                 with no input.
         """
-        if self.old_style:
-            return
-
         should_abort = _abort
         default = _default
 
@@ -821,9 +708,6 @@ class _CliLogger():
         Returns:
             The string entered by the user.
         """
-        if self.old_style:
-            return
-
         complete_str = cf.underlined(msg)
         rendered_message = _format_msg(complete_str, *args, **kwargs)
         # the rendered message ends with ascii coding
@@ -840,16 +724,6 @@ class _CliLogger():
             self.newline()
 
         return res
-
-    def old_confirm(self, msg: str, yes: bool):
-        """Old confirm dialog proxy.
-
-        Let `click` display a confirm dialog iff new logging is disabled.
-        """
-        if not self.old_style:
-            return
-
-        return None if yes else click.confirm(msg, abort=True)
 
 
 class SilentClickException(click.ClickException):

@@ -28,9 +28,7 @@ public class ActorConcurrentCallTest extends BaseTest {
 
   public void testConcurrentCall() {
     ActorHandle<ConcurrentActor> actor =
-        Ray.actor(ConcurrentActor::new)
-            .setMaxConcurrency(3)
-            .remote();
+        Ray.actor(ConcurrentActor::new).setMaxConcurrency(3).remote();
     ObjectRef<String> obj1 = actor.task(ConcurrentActor::countDown).remote();
     ObjectRef<String> obj2 = actor.task(ConcurrentActor::countDown).remote();
     ObjectRef<String> obj3 = actor.task(ConcurrentActor::countDown).remote();
@@ -40,5 +38,4 @@ public class ActorConcurrentCallTest extends BaseTest {
     Assert.assertEquals(obj2.get(), "ok");
     Assert.assertEquals(obj3.get(), "ok");
   }
-
 }

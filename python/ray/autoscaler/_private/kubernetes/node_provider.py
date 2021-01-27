@@ -1,15 +1,20 @@
 import logging
+import time
 from uuid import uuid4
 from kubernetes.client.rest import ApiException
 
 from ray.autoscaler._private.command_runner import KubernetesCommandRunner
 from ray.autoscaler._private.kubernetes import core_api, log_prefix, \
     extensions_beta_api
-from ray.autoscaler._private.kubernetes.config import bootstrap_kubernetes
+from ray.autoscaler._private.kubernetes.config import bootstrap_kubernetes, \
+    fillout_resources_kubernetes
 from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME
 
 logger = logging.getLogger(__name__)
+
+MAX_TAG_RETRIES = 3
+DELAY_BEFORE_TAG_RETRY = .5
 
 
 def to_label_selector(tags):
@@ -71,7 +76,23 @@ class KubernetesNodeProvider(NodeProvider):
             raise ValueError("Must use internal IPs with Kubernetes.")
         return super().get_node_id(ip_address, use_internal_ip=use_internal_ip)
 
-    def set_node_tags(self, node_id, tags):
+    def set_node_tags(self, node_ids, tags):
+        for _ in range(MAX_TAG_RETRIES - 1):
+            try:
+                self._set_node_tags(node_ids, tags)
+                return
+            except ApiException as e:
+                if e.status == 409:
+                    logger.info(log_prefix + "Caught a 409 error while setting"
+                                " node tags. Retrying...")
+                    time.sleep(DELAY_BEFORE_TAG_RETRY)
+                    continue
+                else:
+                    raise
+        # One more try
+        self._set_node_tags(node_ids, tags)
+
+    def _set_node_tags(self, node_id, tags):
         pod = core_api().read_namespaced_pod(node_id, self.namespace)
         pod.metadata.labels.update(tags)
         core_api().patch_namespaced_pod(node_id, self.namespace, pod)
@@ -156,6 +177,11 @@ class KubernetesNodeProvider(NodeProvider):
     @staticmethod
     def bootstrap_config(cluster_config):
         return bootstrap_kubernetes(cluster_config)
+
+    @staticmethod
+    def fillout_available_node_types_resources(cluster_config):
+        """Fills out missing "resources" field for available_node_types."""
+        return fillout_resources_kubernetes(cluster_config)
 
 
 def _add_service_name_to_service_port(spec, svc_name):

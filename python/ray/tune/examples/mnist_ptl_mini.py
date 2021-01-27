@@ -1,7 +1,7 @@
 import torch
 from torch.nn import functional as F
 import pytorch_lightning as pl
-from pl_bolts.datamodules import MNISTDataModule
+from pl_bolts.datamodules.mnist_datamodule import MNISTDataModule
 import os
 from ray.tune.integration.pytorch_lightning import TuneReportCallback
 
@@ -16,6 +16,7 @@ class LightningMNISTClassifier(pl.LightningModule):
         self.data_dir = data_dir or os.getcwd()
         self.lr = config["lr"]
         layer_1, layer_2 = config["layer_1"], config["layer_2"]
+        self.batch_size = config["batch_size"]
 
         # mnist images are (1, 28, 28) (channels, width, height)
         self.layer_1 = torch.nn.Linear(28 * 28, layer_1)
@@ -90,7 +91,7 @@ def tune_mnist(num_samples=10, num_epochs=10, gpus_per_trial=0):
         data_dir=data_dir,
         num_epochs=num_epochs,
         num_gpus=gpus_per_trial)
-    tune.run(
+    analysis = tune.run(
         trainable,
         resources_per_trial={
             "cpu": 1,
@@ -101,6 +102,8 @@ def tune_mnist(num_samples=10, num_epochs=10, gpus_per_trial=0):
         config=config,
         num_samples=num_samples,
         name="tune_mnist")
+
+    print("Best hyperparameters found were: ", analysis.best_config)
 
 
 if __name__ == "__main__":

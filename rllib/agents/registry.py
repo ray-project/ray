@@ -40,6 +40,11 @@ def _import_bc():
     return marwil.BCTrainer
 
 
+def _import_cql():
+    from ray.rllib.agents import cql
+    return cql.CQLTrainer
+
+
 def _import_ddpg():
     from ray.rllib.agents import ddpg
     return ddpg.DDPGTrainer
@@ -110,6 +115,11 @@ def _import_simple_q():
     return dqn.SimpleQTrainer
 
 
+def _import_slate_q():
+    from ray.rllib.agents import slateq
+    return slateq.SlateQTrainer
+
+
 def _import_td3():
     from ray.rllib.agents import ddpg
     return ddpg.TD3Trainer
@@ -123,10 +133,12 @@ ALGORITHMS = {
     "APPO": _import_appo,
     "ARS": _import_ars,
     "BC": _import_bc,
+    "CQL": _import_cql,
     "ES": _import_es,
     "DDPG": _import_ddpg,
     "DDPPO": _import_ddppo,
     "DQN": _import_dqn,
+    "SlateQ": _import_slate_q,
     "DREAMER": _import_dreamer,
     "IMPALA": _import_impala,
     "MAML": _import_maml,

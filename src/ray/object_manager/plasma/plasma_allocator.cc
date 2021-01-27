@@ -23,24 +23,24 @@
 namespace plasma {
 
 extern "C" {
-void* dlmemalign(size_t alignment, size_t bytes);
-void dlfree(void* mem);
+void *dlmemalign(size_t alignment, size_t bytes);
+void dlfree(void *mem);
 }
 
 int64_t PlasmaAllocator::footprint_limit_ = 0;
 int64_t PlasmaAllocator::allocated_ = 0;
 
-void* PlasmaAllocator::Memalign(size_t alignment, size_t bytes) {
+void *PlasmaAllocator::Memalign(size_t alignment, size_t bytes) {
   if (allocated_ + static_cast<int64_t>(bytes) > footprint_limit_) {
     return nullptr;
   }
-  void* mem = dlmemalign(alignment, bytes);
+  void *mem = dlmemalign(alignment, bytes);
   RAY_CHECK(mem);
   allocated_ += bytes;
   return mem;
 }
 
-void PlasmaAllocator::Free(void* mem, size_t bytes) {
+void PlasmaAllocator::Free(void *mem, size_t bytes) {
   dlfree(mem);
   allocated_ -= bytes;
 }

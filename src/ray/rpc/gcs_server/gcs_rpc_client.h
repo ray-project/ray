@@ -97,6 +97,12 @@ class GcsRpcClient {
         new GrpcClient<ActorInfoGcsService>(address, port, client_call_manager));
     node_info_grpc_client_ = std::unique_ptr<GrpcClient<NodeInfoGcsService>>(
         new GrpcClient<NodeInfoGcsService>(address, port, client_call_manager));
+    node_resource_info_grpc_client_ =
+        std::unique_ptr<GrpcClient<NodeResourceInfoGcsService>>(
+            new GrpcClient<NodeResourceInfoGcsService>(address, port,
+                                                       client_call_manager));
+    heartbeat_info_grpc_client_ = std::unique_ptr<GrpcClient<HeartbeatInfoGcsService>>(
+        new GrpcClient<HeartbeatInfoGcsService>(address, port, client_call_manager));
     object_info_grpc_client_ = std::unique_ptr<GrpcClient<ObjectInfoGcsService>>(
         new GrpcClient<ObjectInfoGcsService>(address, port, client_call_manager));
     task_info_grpc_client_ = std::unique_ptr<GrpcClient<TaskInfoGcsService>>(
@@ -138,26 +144,6 @@ class GcsRpcClient {
   VOID_GCS_RPC_CLIENT_METHOD(ActorInfoGcsService, GetAllActorInfo,
                              actor_info_grpc_client_, )
 
-  /// Register an actor to GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(ActorInfoGcsService, RegisterActorInfo,
-                             actor_info_grpc_client_, )
-
-  ///  Update actor info in GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(ActorInfoGcsService, UpdateActorInfo,
-                             actor_info_grpc_client_, )
-
-  ///  Add actor checkpoint data to GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(ActorInfoGcsService, AddActorCheckpoint,
-                             actor_info_grpc_client_, )
-
-  ///  Get actor checkpoint data from GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(ActorInfoGcsService, GetActorCheckpoint,
-                             actor_info_grpc_client_, )
-
-  ///  Get actor checkpoint id data from GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(ActorInfoGcsService, GetActorCheckpointID,
-                             actor_info_grpc_client_, )
-
   /// Register a node to GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService, RegisterNode, node_info_grpc_client_, )
 
@@ -167,21 +153,6 @@ class GcsRpcClient {
   /// Get information of all nodes from GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService, GetAllNodeInfo, node_info_grpc_client_, )
 
-  /// Report heartbeat of a node to GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService, ReportHeartbeat,
-                             node_info_grpc_client_, )
-
-  /// Get node's resources from GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService, GetResources, node_info_grpc_client_, )
-
-  /// Update resources of a node in GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService, UpdateResources,
-                             node_info_grpc_client_, )
-
-  /// Delete resources of a node in GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService, DeleteResources,
-                             node_info_grpc_client_, )
-
   /// Set internal config of the cluster in the GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService, SetInternalConfig,
                              node_info_grpc_client_, )
@@ -190,9 +161,33 @@ class GcsRpcClient {
   VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService, GetInternalConfig,
                              node_info_grpc_client_, )
 
+  /// Get node's resources from GCS Service.
+  VOID_GCS_RPC_CLIENT_METHOD(NodeResourceInfoGcsService, GetResources,
+                             node_resource_info_grpc_client_, )
+
+  /// Update resources of a node in GCS Service.
+  VOID_GCS_RPC_CLIENT_METHOD(NodeResourceInfoGcsService, UpdateResources,
+                             node_resource_info_grpc_client_, )
+
+  /// Delete resources of a node in GCS Service.
+  VOID_GCS_RPC_CLIENT_METHOD(NodeResourceInfoGcsService, DeleteResources,
+                             node_resource_info_grpc_client_, )
+
   /// Get available resources of all nodes from the GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService, GetAllAvailableResources,
-                             node_info_grpc_client_, )
+  VOID_GCS_RPC_CLIENT_METHOD(NodeResourceInfoGcsService, GetAllAvailableResources,
+                             node_resource_info_grpc_client_, )
+
+  /// Report resource usage of a node to GCS Service.
+  VOID_GCS_RPC_CLIENT_METHOD(NodeResourceInfoGcsService, ReportResourceUsage,
+                             node_resource_info_grpc_client_, )
+
+  /// Get resource usage of all nodes from GCS Service.
+  VOID_GCS_RPC_CLIENT_METHOD(NodeResourceInfoGcsService, GetAllResourceUsage,
+                             node_resource_info_grpc_client_, )
+
+  /// Report heartbeat of a node to GCS Service.
+  VOID_GCS_RPC_CLIENT_METHOD(HeartbeatInfoGcsService, ReportHeartbeat,
+                             heartbeat_info_grpc_client_, )
 
   /// Get object's locations from GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(ObjectInfoGcsService, GetObjectLocations,
@@ -215,9 +210,6 @@ class GcsRpcClient {
 
   /// Get task information from GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(TaskInfoGcsService, GetTask, task_info_grpc_client_, )
-
-  /// Delete tasks from GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(TaskInfoGcsService, DeleteTasks, task_info_grpc_client_, )
 
   /// Add a task lease to GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(TaskInfoGcsService, AddTaskLease, task_info_grpc_client_, )
@@ -266,6 +258,10 @@ class GcsRpcClient {
   VOID_GCS_RPC_CLIENT_METHOD(PlacementGroupInfoGcsService, GetAllPlacementGroup,
                              placement_group_info_grpc_client_, )
 
+  /// Wait for placement group until ready via GCS Service.
+  VOID_GCS_RPC_CLIENT_METHOD(PlacementGroupInfoGcsService, WaitPlacementGroupUntilReady,
+                             placement_group_info_grpc_client_, )
+
  private:
   std::function<void(GcsServiceFailureType)> gcs_service_failure_detected_;
 
@@ -273,6 +269,8 @@ class GcsRpcClient {
   std::unique_ptr<GrpcClient<JobInfoGcsService>> job_info_grpc_client_;
   std::unique_ptr<GrpcClient<ActorInfoGcsService>> actor_info_grpc_client_;
   std::unique_ptr<GrpcClient<NodeInfoGcsService>> node_info_grpc_client_;
+  std::unique_ptr<GrpcClient<NodeResourceInfoGcsService>> node_resource_info_grpc_client_;
+  std::unique_ptr<GrpcClient<HeartbeatInfoGcsService>> heartbeat_info_grpc_client_;
   std::unique_ptr<GrpcClient<ObjectInfoGcsService>> object_info_grpc_client_;
   std::unique_ptr<GrpcClient<TaskInfoGcsService>> task_info_grpc_client_;
   std::unique_ptr<GrpcClient<StatsGcsService>> stats_grpc_client_;

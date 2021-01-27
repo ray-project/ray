@@ -73,11 +73,16 @@ def test_set_global(ray_start_2_cpus):
     assert result["rank"] == 0
 
 
-def test_simple_tune(ray_start_4_cpus):
+@pytest.mark.parametrize("enabled_checkpoint", [True, False])
+def test_simple_tune(ray_start_4_cpus, enabled_checkpoint):
     trainable_cls = DistributedTrainableCreator(_train_simple, num_slots=2)
     analysis = tune.run(
-        trainable_cls, num_samples=2, stop={"training_iteration": 2})
+        trainable_cls,
+        config={"enable_checkpoint": enabled_checkpoint},
+        num_samples=2,
+        stop={"training_iteration": 2})
     assert analysis.trials[0].last_result["training_iteration"] == 2
+    assert analysis.trials[0].has_checkpoint() == enabled_checkpoint
 
 
 @pytest.mark.parametrize("use_gpu", [True, False])

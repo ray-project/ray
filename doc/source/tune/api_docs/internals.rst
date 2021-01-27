@@ -116,7 +116,7 @@ Trial
 Callbacks
 ---------
 
-.. autoclass:: ray.tune.trial_runner.Callback
+.. autoclass:: ray.tune.callback.Callback
    :members:
 
 

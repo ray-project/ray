@@ -1,38 +1,18 @@
 import gym
 
-from ray.rllib.env.multi_agent_env import MultiAgentEnv
+from ray.rllib.env.multi_agent_env import MultiAgentEnv, make_multi_agent
+from ray.rllib.examples.env.mock_env import MockEnv, MockEnv2
 from ray.rllib.examples.env.stateless_cartpole import StatelessCartPole
-from ray.rllib.tests.test_rollout_worker import MockEnv, MockEnv2
+from ray.rllib.utils.deprecation import deprecation_warning
 
 
 def make_multiagent(env_name_or_creator):
-    class MultiEnv(MultiAgentEnv):
-        def __init__(self, config):
-            num = config.pop("num_agents", 1)
-            if isinstance(env_name_or_creator, str):
-                self.agents = [
-                    gym.make(env_name_or_creator) for _ in range(num)
-                ]
-            else:
-                self.agents = [env_name_or_creator(config) for _ in range(num)]
-            self.dones = set()
-            self.observation_space = self.agents[0].observation_space
-            self.action_space = self.agents[0].action_space
-
-        def reset(self):
-            self.dones = set()
-            return {i: a.reset() for i, a in enumerate(self.agents)}
-
-        def step(self, action_dict):
-            obs, rew, done, info = {}, {}, {}, {}
-            for i, action in action_dict.items():
-                obs[i], rew[i], done[i], info[i] = self.agents[i].step(action)
-                if done[i]:
-                    self.dones.add(i)
-            done["__all__"] = len(self.dones) == len(self.agents)
-            return obs, rew, done, info
-
-    return MultiEnv
+    deprecation_warning(
+        old="ray.rllib.examples.env.multi_agent.make_multiagent",
+        new="ray.rllib.env.multi_agent_env.make_multi_agent",
+        error=False,
+    )
+    return make_multi_agent(env_name_or_creator)
 
 
 class BasicMultiAgent(MultiAgentEnv):
@@ -162,8 +142,8 @@ class RoundRobinMultiAgent(MultiAgentEnv):
         return obs, rew, done, info
 
 
-MultiAgentCartPole = make_multiagent("CartPole-v0")
-MultiAgentMountainCar = make_multiagent("MountainCarContinuous-v0")
-MultiAgentPendulum = make_multiagent("Pendulum-v0")
-MultiAgentStatelessCartPole = make_multiagent(
+MultiAgentCartPole = make_multi_agent("CartPole-v0")
+MultiAgentMountainCar = make_multi_agent("MountainCarContinuous-v0")
+MultiAgentPendulum = make_multi_agent("Pendulum-v0")
+MultiAgentStatelessCartPole = make_multi_agent(
     lambda config: StatelessCartPole(config))

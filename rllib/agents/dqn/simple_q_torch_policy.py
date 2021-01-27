@@ -11,8 +11,8 @@ from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchCategorical, \
     TorchDistributionWrapper
 from ray.rllib.policy import Policy
+from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.torch_policy_template import build_torch_policy
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.torch_ops import huber_loss
 from ray.rllib.utils.typing import TensorType, TrainerConfigDict
@@ -127,8 +127,9 @@ def setup_late_mixins(policy: Policy, obs_space: gym.spaces.Space,
     TargetNetworkMixin.__init__(policy, obs_space, action_space, config)
 
 
-SimpleQTorchPolicy = build_torch_policy(
+SimpleQTorchPolicy = build_policy_class(
     name="SimpleQPolicy",
+    framework="torch",
     loss_fn=build_q_losses,
     get_default_config=lambda: ray.rllib.agents.dqn.dqn.DEFAULT_CONFIG,
     extra_action_out_fn=extra_action_out_fn,

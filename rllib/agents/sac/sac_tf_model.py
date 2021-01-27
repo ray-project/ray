@@ -1,10 +1,11 @@
 import gym
-from gym.spaces import Discrete
+from gym.spaces import Box, Discrete
 import numpy as np
 from typing import Optional, Tuple
 
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.spaces.simplex import Simplex
 from ray.rllib.utils.typing import ModelConfigDict, TensorType
 
 tf1, tf, tfv = try_import_tf()
@@ -64,10 +65,16 @@ class SACTFModel(TFModelV2):
             self.action_dim = action_space.n
             self.discrete = True
             action_outs = q_outs = self.action_dim
-        else:
+        elif isinstance(action_space, Box):
             self.action_dim = np.product(action_space.shape)
             self.discrete = False
             action_outs = 2 * self.action_dim
+            q_outs = 1
+        else:
+            assert isinstance(action_space, Simplex)
+            self.action_dim = np.product(action_space.shape)
+            self.discrete = False
+            action_outs = self.action_dim
             q_outs = 1
 
         self.model_out = tf.keras.layers.Input(
@@ -83,8 +90,6 @@ class SACTFModel(TFModelV2):
                 units=action_outs, activation=None, name="action_out")
         ])
         self.shift_and_log_scale_diag = self.action_model(self.model_out)
-
-        self.register_variables(self.action_model.variables)
 
         self.actions_input = None
         if not self.discrete:
@@ -116,12 +121,10 @@ class SACTFModel(TFModelV2):
             return q_net
 
         self.q_net = build_q_net("q", self.model_out, self.actions_input)
-        self.register_variables(self.q_net.variables)
 
         if twin_q:
             self.twin_q_net = build_q_net("twin_q", self.model_out,
                                           self.actions_input)
-            self.register_variables(self.twin_q_net.variables)
         else:
             self.twin_q_net = None
 
@@ -139,8 +142,6 @@ class SACTFModel(TFModelV2):
             else:
                 target_entropy = -np.prod(action_space.shape)
         self.target_entropy = target_entropy
-
-        self.register_variables([self.log_alpha])
 
     def get_q_values(self,
                      model_out: TensorType,

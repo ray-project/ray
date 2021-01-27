@@ -10,6 +10,7 @@ import io.ray.api.function.PyActorMethod;
 import io.ray.api.function.PyFunction;
 import io.ray.api.function.RayFunc;
 import io.ray.api.id.ActorId;
+import io.ray.api.id.PlacementGroupId;
 import io.ray.api.id.UniqueId;
 import io.ray.api.options.ActorCreationOptions;
 import io.ray.api.options.CallOptions;
@@ -21,14 +22,10 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.Callable;
 
-/**
- * Base interface of a Ray runtime.
- */
+/** Base interface of a Ray runtime. */
 public interface RayRuntime {
 
-  /**
-   * Shutdown the runtime.
-   */
+  /** Shutdown the runtime. */
   void shutdown();
 
   /**
@@ -56,24 +53,28 @@ public interface RayRuntime {
   <T> List<T> get(List<ObjectRef<T>> objectRefs);
 
   /**
-   * Wait for a list of RayObjects to be locally available, until specified number of objects are
-   * ready, or specified timeout has passed.
+   * Wait for a list of RayObjects to be available, until specified number of objects are ready, or
+   * specified timeout has passed.
    *
    * @param waitList A list of ObjectRef to wait for.
    * @param numReturns The number of objects that should be returned.
    * @param timeoutMs The maximum time in milliseconds to wait before returning.
+   * @param fetchLocal If true, wait for the object to be downloaded onto the local node before
+   *     returning it as ready. If false, ray.wait() will not trigger fetching of objects to the
+   *     local node and will return immediately once the object is available anywhere in the
+   *     cluster.
    * @return Two lists, one containing locally available objects, one containing the rest.
    */
-  <T> WaitResult<T> wait(List<ObjectRef<T>> waitList, int numReturns, int timeoutMs);
+  <T> WaitResult<T> wait(
+      List<ObjectRef<T>> waitList, int numReturns, int timeoutMs, boolean fetchLocal);
 
   /**
    * Free a list of objects from Plasma Store.
    *
    * @param objectRefs The object references to free.
    * @param localOnly Whether only free objects for local object store or not.
-   * @param deleteCreatingTasks Whether also delete objects' creating tasks from GCS.
    */
-  void free(List<ObjectRef<?>> objectRefs, boolean localOnly, boolean deleteCreatingTasks);
+  void free(List<ObjectRef<?>> objectRefs, boolean localOnly);
 
   /**
    * Set the resource for the specific node.
@@ -88,9 +89,9 @@ public interface RayRuntime {
 
   /**
    * Get a handle to a named actor.
-   * <p>
-   * Gets a handle to a named actor with the given name. The actor must
-   * have been created with name specified.
+   *
+   * <p>Gets a handle to a named actor with the given name. The actor must have been created with
+   * name specified.
    *
    * @param name The name of the named actor.
    * @param global Whether the named actor is global.
@@ -155,8 +156,8 @@ public interface RayRuntime {
    * @param options The options for creating actor.
    * @return A handle to the actor.
    */
-  <T> ActorHandle<T> createActor(RayFunc actorFactoryFunc, Object[] args,
-                                 ActorCreationOptions options);
+  <T> ActorHandle<T> createActor(
+      RayFunc actorFactoryFunc, Object[] args, ActorCreationOptions options);
 
   /**
    * Create a Python actor on a remote node.
@@ -166,11 +167,13 @@ public interface RayRuntime {
    * @param options The options for creating actor.
    * @return A handle to the actor.
    */
-  PyActorHandle createActor(PyActorClass pyActorClass, Object[] args,
-                            ActorCreationOptions options);
+  PyActorHandle createActor(PyActorClass pyActorClass, Object[] args, ActorCreationOptions options);
 
-  PlacementGroup createPlacementGroup(List<Map<String, Double>> bundles,
-      PlacementStrategy strategy);
+  PlacementGroup createPlacementGroup(
+      String name, List<Map<String, Double>> bundles, PlacementStrategy strategy);
+
+  PlacementGroup createPlacementGroup(
+      List<Map<String, Double>> bundles, PlacementStrategy strategy);
 
   RuntimeContext getRuntimeContext();
 
@@ -194,8 +197,37 @@ public interface RayRuntime {
    */
   <T> Callable<T> wrapCallable(Callable<T> callable);
 
-  /**
-   * Intentionally exit the current actor.
-   */
+  /** Intentionally exit the current actor. */
   void exitActor();
+
+  /**
+   * Get a placement group by id.
+   *
+   * @param id placement group id.
+   * @return The placement group.
+   */
+  PlacementGroup getPlacementGroup(PlacementGroupId id);
+
+  /**
+   * Get all placement groups in this cluster.
+   *
+   * @return All placement groups.
+   */
+  List<PlacementGroup> getAllPlacementGroups();
+
+  /**
+   * Remove a placement group by id.
+   *
+   * @param id Id of the placement group.
+   */
+  void removePlacementGroup(PlacementGroupId id);
+
+  /**
+   * Wait for the placement group to be ready within the specified time.
+   *
+   * @param id Id of placement group.
+   * @param timeoutMs Timeout in milliseconds.
+   * @return True if the placement group is created. False otherwise.
+   */
+  boolean waitPlacementGroupReady(PlacementGroupId id, int timeoutMs);
 }

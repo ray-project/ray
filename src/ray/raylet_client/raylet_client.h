@@ -26,7 +26,6 @@
 #include "src/ray/protobuf/common.pb.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
-using ray::ActorCheckpointID;
 using ray::ActorID;
 using ray::JobID;
 using ray::NodeID;
@@ -118,6 +117,10 @@ class ResourceReserveInterface {
       BundleSpecification &bundle_spec,
       const ray::rpc::ClientCallback<ray::rpc::CancelResourceReserveReply> &callback) = 0;
 
+  virtual void ReleaseUnusedBundles(
+      const std::vector<rpc::Bundle> &bundles_in_use,
+      const rpc::ClientCallback<rpc::ReleaseUnusedBundlesReply> &callback) = 0;
+
   virtual ~ResourceReserveInterface(){};
 };
 
@@ -134,6 +137,14 @@ class DependencyWaiterInterface {
       const std::vector<rpc::ObjectReference> &references, int64_t tag) = 0;
 
   virtual ~DependencyWaiterInterface(){};
+};
+
+class RayletClientInterface : public PinObjectsInterface,
+                              public WorkerLeaseInterface,
+                              public DependencyWaiterInterface,
+                              public ResourceReserveInterface {
+ public:
+  virtual ~RayletClientInterface(){};
 };
 
 namespace raylet {
@@ -168,10 +179,7 @@ class RayletConnection {
   std::mutex write_mutex_;
 };
 
-class RayletClient : public PinObjectsInterface,
-                     public WorkerLeaseInterface,
-                     public DependencyWaiterInterface,
-                     public ResourceReserveInterface {
+class RayletClient : public RayletClientInterface {
  public:
   /// Connect to the raylet.
   ///
@@ -180,7 +188,7 @@ class RayletClient : public PinObjectsInterface,
   /// \param worker_id A unique ID to represent the worker.
   /// \param worker_type The type of the worker. If it is a certain worker type, an
   /// additional message will be sent to register as one.
-  /// \param job_id The ID of the driver. This is non-nil if the client is a driver.
+  /// \param job_id The job ID of the driver or worker.
   /// \param language Language of the worker.
   /// \param ip_address The IP address of the worker.
   /// \param status This will be populated with the result of connection attempt.
@@ -248,8 +256,9 @@ class RayletClient : public PinObjectsInterface,
   /// Notify the raylet that this client is blocked. This is only used for direct task
   /// calls. Note that ordering of this with respect to Unblock calls is important.
   ///
-  /// \return ray::Status.
-  ray::Status NotifyDirectCallTaskBlocked();
+  /// \param release_resources: true if the dirct call blocking needs to release
+  /// resources. \return ray::Status.
+  ray::Status NotifyDirectCallTaskBlocked(bool release_resources);
 
   /// Notify the raylet that this client is unblocked. This is only used for direct task
   /// calls. Note that ordering of this with respect to Block calls is important.
@@ -264,7 +273,6 @@ class RayletClient : public PinObjectsInterface,
   /// \param owner_addresses The addresses of the workers that own the objects.
   /// \param num_returns The number of objects to wait for.
   /// \param timeout_milliseconds Duration, in milliseconds, to wait before returning.
-  /// \param wait_local Whether to wait for objects to appear on this node.
   /// \param mark_worker_blocked Set to false if current task is a direct call task.
   /// \param current_task_id The task that called wait.
   /// \param result A pair with the first element containing the object ids that were
@@ -272,9 +280,8 @@ class RayletClient : public PinObjectsInterface,
   /// \return ray::Status.
   ray::Status Wait(const std::vector<ObjectID> &object_ids,
                    const std::vector<rpc::Address> &owner_addresses, int num_returns,
-                   int64_t timeout_milliseconds, bool wait_local,
-                   bool mark_worker_blocked, const TaskID &current_task_id,
-                   WaitResultPair *result);
+                   int64_t timeout_milliseconds, bool mark_worker_blocked,
+                   const TaskID &current_task_id, WaitResultPair *result);
 
   /// Wait for the given objects, asynchronously. The core worker is notified when
   /// the wait completes.
@@ -306,34 +313,16 @@ class RayletClient : public PinObjectsInterface,
   /// \param object_ids A list of ObjectsIDs to be deleted.
   /// \param local_only Whether keep this request with local object store
   /// or send it to all the object stores.
-  /// \param delete_creating_tasks Whether also delete objects' creating tasks from GCS.
   /// \return ray::Status.
-  ray::Status FreeObjects(const std::vector<ray::ObjectID> &object_ids, bool local_only,
-                          bool deleteCreatingTasks);
-
-  /// Request raylet backend to prepare a checkpoint for an actor.
-  ///
-  /// \param[in] actor_id ID of the actor.
-  /// \param[out] checkpoint_id ID of the new checkpoint (output parameter).
-  /// \return ray::Status.
-  ray::Status PrepareActorCheckpoint(const ActorID &actor_id,
-                                     ActorCheckpointID *checkpoint_id);
-
-  /// Notify raylet backend that an actor was resumed from a checkpoint.
-  ///
-  /// \param actor_id ID of the actor.
-  /// \param checkpoint_id ID of the checkpoint from which the actor was resumed.
-  /// \return ray::Status.
-  ray::Status NotifyActorResumedFromCheckpoint(const ActorID &actor_id,
-                                               const ActorCheckpointID &checkpoint_id);
+  ray::Status FreeObjects(const std::vector<ray::ObjectID> &object_ids, bool local_only);
 
   /// Sets a resource with the specified capacity and client id
   /// \param resource_name Name of the resource to be set
   /// \param capacity Capacity of the resource
-  /// \param client_Id NodeID where the resource is to be set
+  /// \param node_id NodeID where the resource is to be set
   /// \return ray::Status
   ray::Status SetResource(const std::string &resource_name, const double capacity,
-                          const ray::NodeID &client_Id);
+                          const ray::NodeID &node_id);
 
   /// Ask the raylet to spill an object to external storage.
   /// \param object_id The ID of the object to be spilled.
@@ -342,6 +331,15 @@ class RayletClient : public PinObjectsInterface,
   void RequestObjectSpillage(
       const ObjectID &object_id,
       const rpc::ClientCallback<rpc::RequestObjectSpillageReply> &callback);
+
+  /// Ask the raylet to restore the object of a given id.
+  /// \param object_id Object id that the remote raylet needs to restore.
+  /// \param object_url Object URL where the object is spilled.
+  /// \param spilled_node_id Node id of a node where the object is spilled.
+  void RestoreSpilledObject(
+      const ObjectID &object_id, const std::string &object_url,
+      const NodeID &spilled_node_id,
+      const rpc::ClientCallback<rpc::RestoreSpilledObjectReply> &callback);
 
   /// Implements WorkerLeaseInterface.
   void RequestWorkerLease(
@@ -380,6 +378,11 @@ class RayletClient : public PinObjectsInterface,
       const ray::rpc::ClientCallback<ray::rpc::CancelResourceReserveReply> &callback)
       override;
 
+  /// Implements ReleaseUnusedBundlesInterface.
+  void ReleaseUnusedBundles(
+      const std::vector<rpc::Bundle> &bundles_in_use,
+      const rpc::ClientCallback<rpc::ReleaseUnusedBundlesReply> &callback) override;
+
   void PinObjectIDs(
       const rpc::Address &caller_address, const std::vector<ObjectID> &object_ids,
       const ray::rpc::ClientCallback<ray::rpc::PinObjectIDsReply> &callback) override;
@@ -387,7 +390,7 @@ class RayletClient : public PinObjectsInterface,
   void GlobalGC(const rpc::ClientCallback<rpc::GlobalGCReply> &callback);
 
   // Subscribe to receive notification on plasma object
-  ray::Status SubscribeToPlasma(const ObjectID &object_id);
+  void SubscribeToPlasma(const ObjectID &object_id, const rpc::Address &owner_address);
 
   WorkerID GetWorkerID() const { return worker_id_; }
 

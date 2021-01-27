@@ -77,11 +77,6 @@ class GlobalStateAccessorTest : public ::testing::Test {
     TestSetupUtil::FlushAllRedisServers();
   }
 
-  bool WaitReady(std::future<bool> future, const std::chrono::milliseconds &timeout_ms) {
-    auto status = future.wait_for(timeout_ms);
-    return status == std::future_status::ready && future.get();
-  }
-
   // GCS server.
   gcs::GcsServerConfig config;
   std::unique_ptr<gcs::GcsServer> gcs_server_;
@@ -144,12 +139,12 @@ TEST_F(GlobalStateAccessorTest, TestNodeResourceTable) {
     RAY_CHECK_OK(gcs_client_->Nodes().AsyncRegister(
         *node_table_data, [&promise](Status status) { promise.set_value(status.ok()); }));
     WaitReady(promise.get_future(), timeout_ms_);
-    ray::gcs::NodeInfoAccessor::ResourceMap resources;
+    ray::gcs::NodeResourceInfoAccessor::ResourceMap resources;
     rpc::ResourceTableData resource_table_data;
     resource_table_data.set_resource_capacity(static_cast<double>(index + 1) + 0.1);
     resources[std::to_string(index)] =
         std::make_shared<rpc::ResourceTableData>(resource_table_data);
-    RAY_IGNORE_EXPR(gcs_client_->Nodes().AsyncUpdateResources(
+    RAY_IGNORE_EXPR(gcs_client_->NodeResources().AsyncUpdateResources(
         node_id, resources, [](Status status) { RAY_CHECK(status.ok()); }));
   }
   auto node_table = global_state_->GetAllNodeInfo();
@@ -191,12 +186,82 @@ TEST_F(GlobalStateAccessorTest, TestInternalConfig) {
   }
 }
 
+TEST_F(GlobalStateAccessorTest, TestGetAllResourceUsage) {
+  std::unique_ptr<std::string> resources = global_state_->GetAllResourceUsage();
+  rpc::ResourceUsageBatchData resource_usage_batch_data;
+  resource_usage_batch_data.ParseFromString(*resources.get());
+  ASSERT_EQ(resource_usage_batch_data.batch_size(), 0);
+
+  auto node_table_data = Mocker::GenNodeInfo();
+  std::promise<bool> promise;
+  RAY_CHECK_OK(gcs_client_->Nodes().AsyncRegister(
+      *node_table_data, [&promise](Status status) { promise.set_value(status.ok()); }));
+  WaitReady(promise.get_future(), timeout_ms_);
+  auto node_table = global_state_->GetAllNodeInfo();
+  ASSERT_EQ(node_table.size(), 1);
+
+  // Report resource usage first time.
+  std::promise<bool> promise1;
+  auto resources1 = std::make_shared<rpc::ResourcesData>();
+  resources1->set_node_id(node_table_data->node_id());
+  RAY_CHECK_OK(gcs_client_->NodeResources().AsyncReportResourceUsage(
+      resources1, [&promise1](Status status) { promise1.set_value(status.ok()); }));
+  WaitReady(promise1.get_future(), timeout_ms_);
+
+  resources = global_state_->GetAllResourceUsage();
+  resource_usage_batch_data.ParseFromString(*resources.get());
+  ASSERT_EQ(resource_usage_batch_data.batch_size(), 1);
+
+  // Report changed resource usage.
+  std::promise<bool> promise2;
+  auto heartbeat2 = std::make_shared<rpc::ResourcesData>();
+  heartbeat2->set_node_id(node_table_data->node_id());
+  (*heartbeat2->mutable_resources_total())["CPU"] = 1;
+  (*heartbeat2->mutable_resources_total())["GPU"] = 10;
+  heartbeat2->set_resources_available_changed(true);
+  (*heartbeat2->mutable_resources_available())["GPU"] = 5;
+  RAY_CHECK_OK(gcs_client_->NodeResources().AsyncReportResourceUsage(
+      heartbeat2, [&promise2](Status status) { promise2.set_value(status.ok()); }));
+  WaitReady(promise2.get_future(), timeout_ms_);
+
+  resources = global_state_->GetAllResourceUsage();
+  resource_usage_batch_data.ParseFromString(*resources.get());
+  ASSERT_EQ(resource_usage_batch_data.batch_size(), 1);
+  auto resources_data = resource_usage_batch_data.mutable_batch()->at(0);
+  ASSERT_EQ(resources_data.resources_total_size(), 2);
+  ASSERT_EQ((*resources_data.mutable_resources_total())["CPU"], 1.0);
+  ASSERT_EQ((*resources_data.mutable_resources_total())["GPU"], 10.0);
+  ASSERT_EQ(resources_data.resources_available_size(), 1);
+  ASSERT_EQ((*resources_data.mutable_resources_available())["GPU"], 5.0);
+
+  // Report unchanged resource usage. (Only works with light resource usage report
+  // enabled)
+  std::promise<bool> promise3;
+  auto heartbeat3 = std::make_shared<rpc::ResourcesData>();
+  heartbeat3->set_node_id(node_table_data->node_id());
+  (*heartbeat3->mutable_resources_available())["CPU"] = 1;
+  (*heartbeat3->mutable_resources_available())["GPU"] = 6;
+  RAY_CHECK_OK(gcs_client_->NodeResources().AsyncReportResourceUsage(
+      heartbeat3, [&promise3](Status status) { promise3.set_value(status.ok()); }));
+  WaitReady(promise3.get_future(), timeout_ms_);
+
+  resources = global_state_->GetAllResourceUsage();
+  resource_usage_batch_data.ParseFromString(*resources.get());
+  ASSERT_EQ(resource_usage_batch_data.batch_size(), 1);
+  resources_data = resource_usage_batch_data.mutable_batch()->at(0);
+  ASSERT_EQ(resources_data.resources_total_size(), 2);
+  ASSERT_EQ((*resources_data.mutable_resources_total())["CPU"], 1.0);
+  ASSERT_EQ((*resources_data.mutable_resources_total())["GPU"], 10.0);
+  ASSERT_EQ(resources_data.resources_available_size(), 1);
+  ASSERT_EQ((*resources_data.mutable_resources_available())["GPU"], 5.0);
+}
+
 TEST_F(GlobalStateAccessorTest, TestProfileTable) {
   int profile_count = RayConfig::instance().maximum_profile_table_rows_count() + 1;
   ASSERT_EQ(global_state_->GetAllProfileInfo().size(), 0);
   for (int index = 0; index < profile_count; ++index) {
-    auto client_id = NodeID::FromRandom();
-    auto profile_table_data = Mocker::GenProfileTableData(client_id);
+    auto node_id = NodeID::FromRandom();
+    auto profile_table_data = Mocker::GenProfileTableData(node_id);
     std::promise<bool> promise;
     RAY_CHECK_OK(gcs_client_->Stats().AsyncAddProfileData(
         profile_table_data,
@@ -218,7 +283,7 @@ TEST_F(GlobalStateAccessorTest, TestObjectTable) {
     NodeID node_id = NodeID::FromRandom();
     std::promise<bool> promise;
     RAY_CHECK_OK(gcs_client_->Objects().AsyncAddLocation(
-        object_id, node_id,
+        object_id, node_id, 0,
         [&promise](Status status) { promise.set_value(status.ok()); }));
     WaitReady(promise.get_future(), timeout_ms_);
   }

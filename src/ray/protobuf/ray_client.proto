@@ -1,0 +1,324 @@
+// Copyright 2020 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto3";
+
+package ray.rpc;
+
+enum Type { DEFAULT = 0; }
+
+// An argument to a ClientTask.
+message Arg {
+  enum Locality {
+    INTERNED = 0;
+    REFERENCE = 1;
+  }
+
+  // The type of argument this is -- whether a data blob or a reference.
+  Locality local = 1;
+  // The reference id, if a reference.
+  bytes reference_id = 2;
+  // A data blob, if passed in-band.
+  bytes data = 3;
+  // How to decode this data blob.
+  Type type = 4;
+}
+
+// A message representing the valid options to modify a task exectution
+//
+// TODO(barakmich): In the longer term, if everything were a client,
+// this message could be the actual standard for which options are
+// allowed in the API. Today, however, it's a bit flexible and defined in the
+// Python code. So for now, it's a stand-in message with a json field, but
+// this is forwards-compatible with deprecating that field and instituting
+// strongly defined and typed fields, without migrating the original ClientTask.
+message TaskOptions {
+  string json_options = 1;
+}
+
+// Represents one unit of work to be executed by the server.
+message ClientTask {
+  enum RemoteExecType {
+    FUNCTION = 0;
+    ACTOR = 1;
+    METHOD = 2;
+    STATIC_METHOD = 3;
+    NAMED_ACTOR = 4;
+  }
+  // Which type of work this request represents.
+  RemoteExecType type = 1;
+  // A name parameter, if the payload can be called in more than one way
+  // (like a method on a payload object).
+  string name = 2;
+  // A reference to the payload.
+  bytes payload_id = 3;
+  // Positional parameters to pass to this call.
+  repeated Arg args = 4;
+  // Keyword parameters to pass to this call.
+  map<string, Arg> kwargs = 5;
+  // The ID of the client namespace associated with the Datapath stream
+  // making this request.
+  string client_id = 6;
+  // Options for modifying the remote task execution environment.
+  TaskOptions options = 7;
+  // Options passed to create the default remote task excution environment.
+  TaskOptions baseline_options = 8;
+}
+
+message ClientTaskTicket {
+  // Was the task successful?
+  bool valid = 1;
+  // A reference to the returned values from the execution.
+  repeated bytes return_ids = 2;
+  // If unsuccessful, an encoding of the error.
+  bytes error = 3;
+}
+
+// Delivers data to the server
+message PutRequest {
+  // The data blob for the server to store.
+  bytes data = 1;
+}
+
+message PutResponse {
+  // The reference ID for the data that the server has stored.
+  bytes id = 1;
+}
+
+// Requests data from the server.
+message GetRequest {
+  // The reference ID for the requested object data
+  bytes id = 1;
+  // Length of time to wait for data to be available, in seconds. Zero is no timeout.
+  float timeout = 2;
+}
+
+message GetResponse {
+  // Whether or not the data was successfully retrieved
+  bool valid = 1;
+  // The data blob, on success
+  bytes data = 2;
+  // An error blob (for example, an exception) on failure.
+  bytes error = 3;
+}
+
+// Waits for data to be ready on the server, with a timeout.
+message WaitRequest {
+  // The IDs of the data to wait for ready status.
+  repeated bytes object_ids = 1;
+  // How many of the above ids to wait for before returning.
+  int64 num_returns = 2;
+  // How long to wait for these IDs to become ready.
+  double timeout = 3;
+  // The Client namespace associated with the Datapath stream that holds these IDs.
+  string client_id = 4;
+}
+
+message WaitResponse {
+  bool valid = 1;
+  repeated bytes ready_object_ids = 2;
+  repeated bytes remaining_object_ids = 3;
+}
+
+message ClusterInfoType {
+  // Namespace the enum, as it collides in the overall package.
+  enum TypeEnum {
+    IS_INITIALIZED = 0;
+    NODES = 1;
+    CLUSTER_RESOURCES = 2;
+    AVAILABLE_RESOURCES = 3;
+    RUNTIME_CONTEXT = 4;
+  }
+}
+
+message ClusterInfoRequest {
+  ClusterInfoType.TypeEnum type = 1;
+}
+
+message ClusterInfoResponse {
+  message ResourceTable {
+    map<string, double> table = 1;
+  }
+
+  message RuntimeContext {
+    bytes job_id = 1;
+    bytes node_id = 2;
+    bool capture_client_tasks = 3;
+  }
+
+  ClusterInfoType.TypeEnum type = 1;
+  oneof response_type {
+    string json = 2;
+    ResourceTable resource_table = 3;
+    RuntimeContext runtime_context = 4;
+  }
+}
+
+message TerminateRequest {
+  message ActorTerminate {
+    bytes id = 1;
+    bool no_restart = 2;
+  }
+  message TaskObjectTerminate {
+    bytes id = 1;
+    bool force = 2;
+    bool recursive = 3;
+  }
+
+  string client_id = 1;
+  oneof terminate_type {
+    ActorTerminate actor = 2;
+    TaskObjectTerminate task_object = 3;
+  }
+}
+
+message TerminateResponse {
+  bool ok = 1;
+}
+
+message KVGetRequest {
+  bytes key = 1;
+}
+
+message KVGetResponse {
+  bytes value = 1;
+}
+
+message KVPutRequest {
+  bytes key = 1;
+  bytes value = 2;
+  bool overwrite = 3;
+}
+
+message KVPutResponse {
+  bool already_exists = 1;
+}
+
+message KVDelRequest {
+  bytes key = 1;
+}
+
+message KVDelResponse {
+}
+
+message KVListRequest {
+  bytes prefix = 1;
+}
+
+message KVListResponse {
+  repeated bytes keys = 1;
+}
+
+service RayletDriver {
+  rpc GetObject(GetRequest) returns (GetResponse) {
+  }
+  rpc PutObject(PutRequest) returns (PutResponse) {
+  }
+  rpc WaitObject(WaitRequest) returns (WaitResponse) {
+  }
+  rpc Schedule(ClientTask) returns (ClientTaskTicket) {
+  }
+  rpc Terminate(TerminateRequest) returns (TerminateResponse) {
+  }
+  rpc ClusterInfo(ClusterInfoRequest) returns (ClusterInfoResponse) {
+  }
+  rpc KVGet(KVGetRequest) returns (KVGetResponse) {
+  }
+  rpc KVPut(KVPutRequest) returns (KVPutResponse) {
+  }
+  rpc KVDel(KVDelRequest) returns (KVDelResponse) {
+  }
+  rpc KVList(KVListRequest) returns (KVListResponse) {
+  }
+}
+
+message ReleaseRequest {
+  // The IDs to release from the server; the client connected on this stream no
+  // longer holds a reference to them.
+  repeated bytes ids = 1;
+}
+
+message ReleaseResponse {
+  // For each requested ID, whether or not it was released.
+  repeated bool ok = 2;
+}
+
+message ConnectionInfoRequest {
+}
+
+message ConnectionInfoResponse {
+  // The number of data clients connected to the server, including the caller.
+  int32 num_clients = 1;
+  // The Ray version (e.g., "1.2.0").
+  string ray_version = 2;
+  // The Ray commit (git sha1 hash).
+  string ray_commit = 3;
+  // The Python version (e.g., "3.7.2").
+  string python_version = 4;
+}
+
+message DataRequest {
+  // An incrementing counter of request IDs on the Datapath,
+  // to match requests with responses asynchronously.
+  int32 req_id = 1;
+  oneof type {
+    GetRequest get = 2;
+    PutRequest put = 3;
+    ReleaseRequest release = 4;
+    ConnectionInfoRequest connection_info = 5;
+  }
+}
+
+message DataResponse {
+  // The request id that this response matches with.
+  int32 req_id = 1;
+  oneof type {
+    GetResponse get = 2;
+    PutResponse put = 3;
+    ReleaseResponse release = 4;
+    ConnectionInfoResponse connection_info = 5;
+  }
+}
+
+service RayletDataStreamer {
+  rpc Datapath(stream DataRequest) returns (stream DataResponse) {
+  }
+}
+
+// A request to change the quantity or type of the logs
+// currently being streamed. Initially, all logs are disabled.
+message LogSettingsRequest {
+  // Set to recieve logs.
+  bool enabled = 1;
+  // At what loglevel should logs be forwarded on the stream.
+  int32 loglevel = 2;
+  // TODO(barakmich): More log filtering options.
+}
+
+message LogData {
+  // The message data in the log
+  string msg = 1;
+  // The loglevel at which this log should be displayed.
+  // * level > 0: Log leveling as per python's logging library
+  // * level == -1: stdout (fd 1)
+  // * level == -2: stderr (fd 2)
+  int32 level = 2;
+  // The name of the logger that generated this message.
+  string name = 3;
+}
+
+service RayletLogStreamer {
+  rpc Logstream(stream LogSettingsRequest) returns (stream LogData) {
+  }
+}

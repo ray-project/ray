@@ -1,7 +1,8 @@
 import pytest
 
 from ray import serve
-from ray.serve.config import BackendConfig, ReplicaConfig, BackendMetadata
+from ray.serve.config import (BackendConfig, DeploymentMode, HTTPOptions,
+                              ReplicaConfig, BackendMetadata)
 from ray.serve.constants import ASYNC_CONCURRENCY
 from pydantic import ValidationError
 
@@ -140,6 +141,15 @@ def test_replica_config_validation():
         ReplicaConfig(Class, ray_actor_options={"lifetime": None})
     with pytest.raises(ValueError):
         ReplicaConfig(Class, ray_actor_options={"max_restarts": None})
+
+
+def test_http_options():
+    HTTPOptions()
+    HTTPOptions(host="8.8.8.8", middlewares=[object()])
+    assert HTTPOptions(host=None).location == "NoServer"
+    assert HTTPOptions(location=None).location == "NoServer"
+    assert HTTPOptions(
+        location=DeploymentMode.EveryNode).location == "EveryNode"
 
 
 if __name__ == "__main__":

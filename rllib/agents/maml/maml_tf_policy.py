@@ -1,14 +1,14 @@
 import logging
 
 import ray
-from ray.rllib.evaluation.postprocessing import Postprocessing
+from ray.rllib.agents.ppo.ppo_tf_policy import vf_preds_fetches, \
+    compute_and_clip_gradients, setup_config, ValueNetworkMixin
+from ray.rllib.evaluation.postprocessing import compute_gae_for_sample_batch, \
+    Postprocessing
+from ray.rllib.models.utils import get_activation_fn
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.utils import try_import_tf
-from ray.rllib.agents.ppo.ppo_tf_policy import postprocess_ppo_gae, \
-    vf_preds_fetches, compute_and_clip_gradients, setup_config, \
-    ValueNetworkMixin
-from ray.rllib.utils.framework import get_activation_fn
 
 tf1, tf, tfv = try_import_tf()
 
@@ -309,12 +309,6 @@ class MAMLLoss(object):
 
 def maml_loss(policy, model, dist_class, train_batch):
     logits, state = model.from_batch(train_batch)
-
-    policy._loss_input_dict["split"] = tf1.placeholder(
-        tf.int32,
-        name="Meta-Update-Splitting",
-        shape=(policy.config["inner_adaptation_steps"] + 1,
-               policy.config["num_workers"]))
     policy.cur_lr = policy.config["lr"]
 
     if policy.config["worker_index"]:
@@ -413,6 +407,13 @@ def setup_mixins(policy, obs_space, action_space, config):
     ValueNetworkMixin.__init__(policy, obs_space, action_space, config)
     KLCoeffMixin.__init__(policy, config)
 
+    # Create the `split` placeholder.
+    policy._loss_input_dict["split"] = tf1.placeholder(
+        tf.int32,
+        name="Meta-Update-Splitting",
+        shape=(policy.config["inner_adaptation_steps"] + 1,
+               policy.config["num_workers"]))
+
 
 MAMLTFPolicy = build_tf_policy(
     name="MAMLTFPolicy",
@@ -421,7 +422,7 @@ MAMLTFPolicy = build_tf_policy(
     stats_fn=maml_stats,
     optimizer_fn=maml_optimizer_fn,
     extra_action_fetches_fn=vf_preds_fetches,
-    postprocess_fn=postprocess_ppo_gae,
+    postprocess_fn=compute_gae_for_sample_batch,
     gradients_fn=compute_and_clip_gradients,
     before_init=setup_config,
     before_loss_init=setup_mixins,

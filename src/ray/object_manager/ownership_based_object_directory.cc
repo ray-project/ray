@@ -22,9 +22,9 @@ OwnershipBasedObjectDirectory::OwnershipBasedObjectDirectory(
 
 namespace {
 
-/// Filter out the removed clients from the object locations.
-void FilterRemovedClients(std::shared_ptr<gcs::GcsClient> gcs_client,
-                          std::unordered_set<NodeID> *node_ids) {
+/// Filter out the removed nodes from the object locations.
+void FilterRemovedNodes(std::shared_ptr<gcs::GcsClient> gcs_client,
+                        std::unordered_set<NodeID> *node_ids) {
   for (auto it = node_ids->begin(); it != node_ids->end();) {
     if (gcs_client->Nodes().IsRemoved(*it)) {
       it = node_ids->erase(it);
@@ -64,7 +64,7 @@ std::shared_ptr<rpc::CoreWorkerClient> OwnershipBasedObjectDirectory::GetClient(
 }
 
 ray::Status OwnershipBasedObjectDirectory::ReportObjectAdded(
-    const ObjectID &object_id, const NodeID &client_id,
+    const ObjectID &object_id, const NodeID &node_id,
     const object_manager::protocol::ObjectInfoT &object_info) {
   WorkerID worker_id = WorkerID::FromBinary(object_info.owner_worker_id);
   rpc::Address owner_address = GetOwnerAddressFromObjectInfo(object_info);
@@ -77,7 +77,7 @@ ray::Status OwnershipBasedObjectDirectory::ReportObjectAdded(
   rpc::AddObjectLocationOwnerRequest request;
   request.set_intended_worker_id(object_info.owner_worker_id);
   request.set_object_id(object_id.Binary());
-  request.set_client_id(client_id.Binary());
+  request.set_node_id(node_id.Binary());
 
   rpc_client->AddObjectLocationOwner(
       request, [worker_id, object_id](Status status,
@@ -91,7 +91,7 @@ ray::Status OwnershipBasedObjectDirectory::ReportObjectAdded(
 }
 
 ray::Status OwnershipBasedObjectDirectory::ReportObjectRemoved(
-    const ObjectID &object_id, const NodeID &client_id,
+    const ObjectID &object_id, const NodeID &node_id,
     const object_manager::protocol::ObjectInfoT &object_info) {
   WorkerID worker_id = WorkerID::FromBinary(object_info.owner_worker_id);
   rpc::Address owner_address = GetOwnerAddressFromObjectInfo(object_info);
@@ -105,7 +105,7 @@ ray::Status OwnershipBasedObjectDirectory::ReportObjectRemoved(
   rpc::RemoveObjectLocationOwnerRequest request;
   request.set_intended_worker_id(object_info.owner_worker_id);
   request.set_object_id(object_id.Binary());
-  request.set_client_id(client_id.Binary());
+  request.set_node_id(node_id.Binary());
 
   rpc_client->RemoveObjectLocationOwner(
       request, [worker_id, object_id](Status status,
@@ -126,13 +126,17 @@ void OwnershipBasedObjectDirectory::SubscriptionCallback(
     return;
   }
 
-  std::unordered_set<NodeID> client_ids;
-  for (auto const &client_id : reply.client_ids()) {
-    client_ids.emplace(NodeID::FromBinary(client_id));
+  if (reply.object_size() > 0) {
+    it->second.object_size = reply.object_size();
   }
-  FilterRemovedClients(gcs_client_, &client_ids);
-  if (client_ids != it->second.current_object_locations) {
-    it->second.current_object_locations = std::move(client_ids);
+
+  std::unordered_set<NodeID> node_ids;
+  for (auto const &node_id : reply.node_ids()) {
+    node_ids.emplace(NodeID::FromBinary(node_id));
+  }
+  FilterRemovedNodes(gcs_client_, &node_ids);
+  if (node_ids != it->second.current_object_locations) {
+    it->second.current_object_locations = std::move(node_ids);
     auto callbacks = it->second.callbacks;
     // Call all callbacks associated with the object id locations we have
     // received.  This notifies the client even if the list of locations is
@@ -141,7 +145,8 @@ void OwnershipBasedObjectDirectory::SubscriptionCallback(
     for (const auto &callback_pair : callbacks) {
       // It is safe to call the callback directly since this is already running
       // in the subscription callback stack.
-      callback_pair.second(object_id, it->second.current_object_locations, "");
+      callback_pair.second(object_id, it->second.current_object_locations, "",
+                           NodeID::Nil(), it->second.object_size);
     }
   }
 
@@ -208,7 +213,7 @@ ray::Status OwnershipBasedObjectDirectory::LookupLocations(
     RAY_LOG(WARNING) << "Object " << object_id << " does not have owner. "
                      << "LookupLocations returns an empty list of locations.";
     io_service_.post([callback, object_id]() {
-      callback(object_id, std::unordered_set<NodeID>(), "");
+      callback(object_id, std::unordered_set<NodeID>(), "", NodeID::Nil(), 0);
     });
     return Status::OK();
   }
@@ -224,12 +229,12 @@ ray::Status OwnershipBasedObjectDirectory::LookupLocations(
           RAY_LOG(ERROR) << "Worker " << worker_id << " failed to get the location for "
                          << object_id;
         }
-        std::unordered_set<NodeID> client_ids;
-        for (auto const &client_id : reply.client_ids()) {
-          client_ids.emplace(NodeID::FromBinary(client_id));
+        std::unordered_set<NodeID> node_ids;
+        for (auto const &node_id : reply.node_ids()) {
+          node_ids.emplace(NodeID::FromBinary(node_id));
         }
-        FilterRemovedClients(gcs_client_, &client_ids);
-        callback(object_id, client_ids, "");
+        FilterRemovedNodes(gcs_client_, &node_ids);
+        callback(object_id, node_ids, "", NodeID::Nil(), reply.object_size());
       });
   return Status::OK();
 }

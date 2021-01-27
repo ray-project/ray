@@ -162,7 +162,8 @@ cdef extern from "src/ray/protobuf/common.pb.h" nogil:
 cdef extern from "src/ray/protobuf/common.pb.h" nogil:
     cdef CWorkerType WORKER_TYPE_WORKER "ray::WorkerType::WORKER"
     cdef CWorkerType WORKER_TYPE_DRIVER "ray::WorkerType::DRIVER"
-    cdef CWorkerType WORKER_TYPE_IO_WORKER "ray::WorkerType::IO_WORKER"
+    cdef CWorkerType WORKER_TYPE_SPILL_WORKER "ray::WorkerType::SPILL_WORKER"
+    cdef CWorkerType WORKER_TYPE_RESTORE_WORKER "ray::WorkerType::RESTORE_WORKER"  # noqa: E501
 
 cdef extern from "src/ray/protobuf/common.pb.h" nogil:
     cdef CTaskType TASK_TYPE_NORMAL_TASK "ray::TaskType::NORMAL_TASK"
@@ -243,6 +244,10 @@ cdef extern from "ray/core_worker/common.h" nogil:
         CTaskOptions()
         CTaskOptions(c_string name, int num_returns,
                      unordered_map[c_string, double] &resources)
+        CTaskOptions(c_string name, int num_returns,
+                     unordered_map[c_string, double] &resources,
+                     const unordered_map[c_string, c_string]
+                     &override_environment_variables)
 
     cdef cppclass CActorCreationOptions "ray::ActorCreationOptions":
         CActorCreationOptions()
@@ -255,7 +260,9 @@ cdef extern from "ray/core_worker/common.h" nogil:
             const c_vector[c_string] &dynamic_worker_options,
             c_bool is_detached, c_string &name, c_bool is_asyncio,
             c_pair[CPlacementGroupID, int64_t] placement_options,
-            c_bool placement_group_capture_child_tasks)
+            c_bool placement_group_capture_child_tasks,
+            const unordered_map[c_string, c_string]
+            &override_environment_variables)
 
     cdef cppclass CPlacementGroupCreationOptions \
             "ray::PlacementGroupCreationOptions":
