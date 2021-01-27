@@ -69,3 +69,5 @@ RUN sudo apt-get update -y && sudo apt-get upgrade -y \
     fi;) \
     && sudo rm -rf /var/lib/apt/lists/* \
     && sudo apt-get clean
+
+WORKDIR $HOME
