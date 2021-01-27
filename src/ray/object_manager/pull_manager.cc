@@ -123,7 +123,6 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) 
     RAY_LOG(DEBUG) << "Updating pulls based on available memory: " << num_bytes_available;
   }
   num_bytes_available_ = num_bytes_available;
-  uint64_t prev_highest_req_id_being_pulled = highest_req_id_being_pulled_;
 
   // While there is available capacity, activate the next pull request.
   while (num_bytes_being_pulled_ < num_bytes_available_) {
