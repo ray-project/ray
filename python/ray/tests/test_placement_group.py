@@ -1310,5 +1310,52 @@ def test_schedule_placement_groups_at_the_same_time():
     wait_for_condition(is_all_placement_group_removed)
 
 
+def test_named_placement_group(ray_start_cluster):
+    cluster = ray_start_cluster
+    for _ in range(2):
+        cluster.add_node(num_cpus=3)
+    cluster.wait_for_nodes()
+    info = ray.init(address=cluster.address)
+    global_placement_group_name = "named_placement_group"
+
+    # Make sure the named placement group will be removed when driver exit.
+    driver_code = f"""
+import ray
+
+ray.init(address="{info["redis_address"]}")
+
+pg = ray.util.placement_group(
+        [{{"CPU": 1}} for _ in range(2)],
+        strategy="STRICT_SPREAD",
+        name="{global_placement_group_name}")
+ray.get(pg.ready())
+
+ray.shutdown()
+    """
+
+    run_string_as_driver(driver_code)
+
+    # Wait until the driver is reported as dead by GCS.
+    def is_job_done():
+        jobs = ray.jobs()
+        for job in jobs:
+            if "StopTime" in job:
+                return True
+        return False
+    wait_for_condition(is_job_done)
+
+    # Create a placement group with the same name.
+    first_pg = ray.util.placement_group(
+        [{"CPU": 1} for _ in range(2)],
+        strategy="STRICT_SPREAD",
+        name=global_placement_group_name)
+    assert first_pg.wait(10)
+
+    second_pg = ray.util.placement_group(
+        [{"CPU": 1} for _ in range(2)],
+        strategy="STRICT_SPREAD",
+        name=global_placement_group_name)
+    assert not second_pg.wait(10)
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

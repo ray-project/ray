@@ -145,7 +145,7 @@ class PlacementGroup:
 
 def placement_group(bundles: List[Dict[str, float]],
                     strategy: str = "PACK",
-                    name: str = "unnamed_group") -> PlacementGroup:
+                    name: str = "") -> PlacementGroup:
     """Asynchronously creates a PlacementGroup.
 
     Args:
