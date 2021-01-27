@@ -34,6 +34,32 @@ run_testng() {
     fi
 }
 
+# https://unix.stackexchange.com/questions/82598/how-do-i-write-a-retry-logic-in-script-to-keep-retrying-to-run-it-upto-5-times
+function fail {
+  echo "$1" >&2
+  exit 1
+}
+
+function retry {
+  local n=1
+  local max=3
+  local delay=0
+  while true; do
+    if "$@"; then
+      break
+    else
+      if [[ $n -lt $max ]]; then
+        ((n++))
+        echo "Command failed. Attempt $n/$max:"
+        sleep $delay;
+      else
+        fail "The command has failed after $n attempts."
+        break
+      fi
+    fi
+  done
+}
+
 pushd "$ROOT_DIR"/..
 echo "Build java maven deps."
 bazel build //java:gen_maven_deps
@@ -77,7 +103,7 @@ for file in "$docdemo_path"*.java; do
   file=${file#"$docdemo_path"}
   class=${file%".java"}
   echo "Running $class"
-  java -cp bazel-bin/java/all_tests_deploy.jar "io.ray.docdemo.$class"
+  retry java -cp bazel-bin/java/all_tests_deploy.jar "io.ray.docdemo.$class"
 done
 popd
 
