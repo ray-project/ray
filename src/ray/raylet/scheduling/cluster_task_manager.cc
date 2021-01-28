@@ -621,12 +621,12 @@ std::string ClusterTaskManager::DebugStr() const {
   auto accumulator = [](size_t state, const std::pair<int, std::deque<Work>> &pair) {
     return state + pair.second.size();
   };
-  size_t num_infeasible_tasks =
-      std::accumulate(infeasible_tasks_.begin(), infeasible_tasks_.end(), 0, accumulator);
+  size_t num_infeasible_tasks = std::accumulate(
+      infeasible_tasks_.begin(), infeasible_tasks_.end(), (size_t)0, accumulator);
   size_t num_tasks_to_schedule = std::accumulate(
-      tasks_to_schedule_.begin(), tasks_to_schedule_.end(), 0, accumulator);
+      tasks_to_schedule_.begin(), tasks_to_schedule_.end(), (size_t)0, accumulator);
   size_t num_tasks_to_dispatch = std::accumulate(
-      tasks_to_dispatch_.begin(), tasks_to_dispatch_.end(), 0, accumulator);
+      tasks_to_dispatch_.begin(), tasks_to_dispatch_.end(), (size_t)0, accumulator);
   std::stringstream buffer;
   buffer << "========== Node: " << self_node_id_ << " =================\n";
   buffer << "Infeasible queue length: " << num_infeasible_tasks << "\n";
