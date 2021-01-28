@@ -18,10 +18,6 @@ static const uintptr_t BaseAddressForHandle(void *handle) {
 }
 
 uintptr_t FunctionHelper::LoadLibrary(std::string lib_name) {
-  // if (dynamic_library_base_addr != 0) {
-  //   /// Base address has been generated.
-  //   return dynamic_library_base_addr;
-  // }
   /// Generate base address from library.
   RAY_LOG(INFO) << "Start load library " << lib_name;
   void *handle = dlopen(lib_name.c_str(), RTLD_LAZY);
