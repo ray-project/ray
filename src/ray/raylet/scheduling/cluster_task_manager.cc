@@ -618,15 +618,15 @@ bool ClusterTaskManager::AnyPendingTasks(Task *exemplar, bool *any_pending,
 std::string ClusterTaskManager::DebugStr() const {
   // TODO(Shanly): This method will be replaced with `DebugString` once we remove the
   // legacy scheduler.
-  auto accumulator = [](int state, const std::pair<int, std::deque<Work>> &pair) {
+  auto accumulator = [](size_t state, const std::pair<int, std::deque<Work>> &pair) {
     return state + pair.second.size();
   };
-  int num_infeasible_tasks =
-      std::accumulate(infeasible_tasks_.begin(), infeasible_tasks_.end(), 0, accumulator);
-  int num_tasks_to_schedule = std::accumulate(tasks_to_schedule_.begin(),
-                                              tasks_to_schedule_.end(), 0, accumulator);
-  int num_tasks_to_dispatch = std::accumulate(tasks_to_dispatch_.begin(),
-                                              tasks_to_dispatch_.end(), 0, accumulator);
+  size_t num_infeasible_tasks = std::accumulate(
+      infeasible_tasks_.begin(), infeasible_tasks_.end(), (size_t)0, accumulator);
+  size_t num_tasks_to_schedule = std::accumulate(
+      tasks_to_schedule_.begin(), tasks_to_schedule_.end(), (size_t)0, accumulator);
+  size_t num_tasks_to_dispatch = std::accumulate(
+      tasks_to_dispatch_.begin(), tasks_to_dispatch_.end(), (size_t)0, accumulator);
   std::stringstream buffer;
   buffer << "========== Node: " << self_node_id_ << " =================\n";
   buffer << "Infeasible queue length: " << num_infeasible_tasks << "\n";
