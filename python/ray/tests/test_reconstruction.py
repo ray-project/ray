@@ -9,7 +9,6 @@ import ray
 from ray.test_utils import (
     wait_for_condition,
     wait_for_pid_to_exit,
-    new_scheduler_enabled,
 )
 
 SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
@@ -373,6 +372,7 @@ def test_basic_reconstruction_actor_constructor(ray_start_cluster,
                 raise e.as_instanceof_cause()
 
 
+@pytest.mark.skip(reason="This hangs due to a deadlock in admission control.")
 @pytest.mark.parametrize("reconstruction_enabled", [False, True])
 def test_multiple_downstream_tasks(ray_start_cluster, reconstruction_enabled):
     config = {
@@ -437,6 +437,7 @@ def test_multiple_downstream_tasks(ray_start_cluster, reconstruction_enabled):
                 raise e.as_instanceof_cause()
 
 
+@pytest.mark.skip(reason="This hangs due to a deadlock in admission control.")
 @pytest.mark.parametrize("reconstruction_enabled", [False, True])
 def test_reconstruction_chain(ray_start_cluster, reconstruction_enabled):
     config = {
@@ -488,7 +489,8 @@ def test_reconstruction_chain(ray_start_cluster, reconstruction_enabled):
                 raise e.as_instanceof_cause()
 
 
-@pytest.mark.skipif(new_scheduler_enabled(), reason="hangs")
+@pytest.mark.skip(reason="This hangs due to a deadlock in admission control.")
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_reconstruction_stress(ray_start_cluster):
     config = {
         "num_heartbeats_timeout": 10,

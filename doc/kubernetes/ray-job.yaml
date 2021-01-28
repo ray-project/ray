@@ -11,11 +11,11 @@ spec:
       restartPolicy: Never
       containers:
         - name: ray-head
-          image: rayproject/autoscaler
-          imagePullPolicy: Always
+          image: rayproject/ray:nightly
+          imagePullPolicy: IfNotPresent
           command: [ "/bin/bash", "-c", "--" ]
           args:
-            - "wget https://raw.githubusercontent.com/ray-project/ray/master/doc/kubernetes/example.py &&
+            - "cd ~ && wget https://raw.githubusercontent.com/ray-project/ray/master/doc/kubernetes/example.py &&
               ray start --node-ip-address=$MY_POD_IP --num-cpus=0 --address=$RAY_HEAD_SERVICE_HOST:$RAY_HEAD_SERVICE_PORT_REDIS_PRIMARY --object-manager-port=12345 --node-manager-port=12346 &&
               python example.py"
           ports:

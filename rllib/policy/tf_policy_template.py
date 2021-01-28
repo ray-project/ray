@@ -8,7 +8,6 @@ from ray.rllib.policy import eager_tf_policy
 from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import TFPolicy
-from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils import add_mixins, force_list
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.framework import try_import_tf
@@ -66,8 +65,6 @@ def build_tf_policy(
             Policy, ModelV2, TensorType, TensorType, TensorType
         ], Tuple[TensorType, type, List[TensorType]]]] = None,
         mixins: Optional[List[type]] = None,
-        view_requirements_fn: Optional[Callable[[Policy], Dict[
-            str, ViewRequirement]]] = None,
         get_batch_divisibility_req: Optional[Callable[[Policy], int]] = None,
         # TODO: (sven) deprecate once _use_trajectory_view_api is always True.
         obs_include_prev_action_reward: bool = True,
@@ -173,9 +170,6 @@ def build_tf_policy(
         mixins (Optional[List[type]]): Optional list of any class mixins for
             the returned policy class. These mixins will be applied in order
             and will have higher precedence than the DynamicTFPolicy class.
-        view_requirements_fn (Callable[[Policy],
-            Dict[str, ViewRequirement]]): An optional callable to retrieve
-            additional train view requirements for this policy.
         get_batch_divisibility_req (Optional[Callable[[Policy], int]]):
             Optional callable that returns the divisibility requirement for
             sample batches. If None, will assume a value of 1.
@@ -231,7 +225,6 @@ def build_tf_policy(
                 action_distribution_fn=action_distribution_fn,
                 existing_inputs=existing_inputs,
                 existing_model=existing_model,
-                view_requirements_fn=view_requirements_fn,
                 get_batch_divisibility_req=get_batch_divisibility_req,
                 obs_include_prev_action_reward=obs_include_prev_action_reward)
 

@@ -15,7 +15,7 @@ class TrialExecutor:
     and starting/stopping trials.
     """
 
-    def __init__(self, queue_trials=False):
+    def __init__(self, queue_trials: bool = False):
         """Initializes a new TrialExecutor.
 
         Args:
@@ -78,7 +78,7 @@ class TrialExecutor:
         raise NotImplementedError("Subclasses of TrialExecutor must provide "
                                   "has_resources() method")
 
-    def start_trial(self, trial, checkpoint=None, train=True):
+    def start_trial(self, trial, checkpoint=None, train=True) -> bool:
         """Starts the trial restoring from checkpoint if checkpoint is provided.
 
         Args:
@@ -86,6 +86,9 @@ class TrialExecutor:
             checkpoint (Checkpoint): A Python object or path storing the state
             of trial.
             train (bool): Whether or not to start training.
+
+        Returns:
+            True if trial started successfully, False otherwise.
         """
         raise NotImplementedError("Subclasses of TrialExecutor must provide "
                                   "start_trial() method")
@@ -165,6 +168,8 @@ class TrialExecutor:
         if self._queue_trials:
             return
         for trial in trial_runner.get_trials():
+            if trial.uses_placement_groups:
+                return
             if trial.status == Trial.PENDING:
                 if not self.has_resources(trial.resources):
                     resource_string = trial.resources.summary_string()
@@ -275,3 +280,7 @@ class TrialExecutor:
     def cleanup(self, trial):
         """Ensures that trials are cleaned up after stopping."""
         pass
+
+    def in_staging_grace_period(self) -> bool:
+        """Returns True if trials have recently been staged."""
+        return False

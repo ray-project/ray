@@ -17,6 +17,7 @@ from ray.tune import (DurableTrainable, Trainable, TuneError, Stopper,
 from ray.tune import register_env, register_trainable, run_experiments
 from ray.tune.schedulers import (TrialScheduler, FIFOScheduler,
                                  AsyncHyperBandScheduler)
+from ray.tune.stopper import MaximumIterationStopper, TrialPlateauStopper
 from ray.tune.trial import Trial
 from ray.tune.result import (TIMESTEPS_TOTAL, DONE, HOSTNAME, NODE_IP, PID,
                              EPISODES_TOTAL, TRAINING_ITERATION,
@@ -555,6 +556,44 @@ class TrainableFunctionApiTest(unittest.TestCase):
             tune.run(train, stop=CustomStopper().stop)
         with self.assertRaises(TuneError):
             tune.run(train, stop=stop)
+
+    def testMaximumIterationStopper(self):
+        def train(config):
+            for i in range(10):
+                tune.report(it=i)
+
+        stopper = MaximumIterationStopper(max_iter=6)
+
+        out = tune.run(train, stop=stopper)
+        self.assertEqual(out.trials[0].last_result[TRAINING_ITERATION], 6)
+
+    def testTrialPlateauStopper(self):
+        def train(config):
+            tune.report(10.0)
+            tune.report(11.0)
+            tune.report(12.0)
+            for i in range(10):
+                tune.report(20.0)
+
+        # num_results = 4, no other constraints --> early stop after 7
+        stopper = TrialPlateauStopper(metric="_metric", num_results=4)
+
+        out = tune.run(train, stop=stopper)
+        self.assertEqual(out.trials[0].last_result[TRAINING_ITERATION], 7)
+
+        # num_results = 4, grace period 9 --> early stop after 9
+        stopper = TrialPlateauStopper(
+            metric="_metric", num_results=4, grace_period=9)
+
+        out = tune.run(train, stop=stopper)
+        self.assertEqual(out.trials[0].last_result[TRAINING_ITERATION], 9)
+
+        # num_results = 4, min_metric = 22 --> full 13 iterations
+        stopper = TrialPlateauStopper(
+            metric="_metric", num_results=4, metric_threshold=22.0, mode="max")
+
+        out = tune.run(train, stop=stopper)
+        self.assertEqual(out.trials[0].last_result[TRAINING_ITERATION], 13)
 
     def testCustomTrialDir(self):
         def train(config):

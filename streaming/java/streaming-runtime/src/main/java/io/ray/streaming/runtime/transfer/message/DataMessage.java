@@ -2,10 +2,7 @@ package io.ray.streaming.runtime.transfer.message;
 
 import java.nio.ByteBuffer;
 
-
-/**
- * DataMessage represents data between upstream and downstream operators.
- */
+/** DataMessage represents data between upstream and downstream operators. */
 public class DataMessage extends ChannelMessage {
 
   private final ByteBuffer body;

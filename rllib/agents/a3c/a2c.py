@@ -38,17 +38,20 @@ def execution_plan(workers, config):
         # allowing for extremely large experience batches to be used.
         train_op = (
             rollouts.combine(
-                ConcatBatches(min_batch_size=config["microbatch_size"]))
+                ConcatBatches(
+                    min_batch_size=config["microbatch_size"],
+                    count_steps_by=config["multiagent"]["count_steps_by"]))
             .for_each(ComputeGradients(workers))  # (grads, info)
             .batch(num_microbatches)  # List[(grads, info)]
             .for_each(AverageGradients())  # (avg_grads, info)
             .for_each(ApplyGradients(workers)))
     else:
         # In normal mode, we execute one SGD step per each train batch.
-        train_op = rollouts \
-            .combine(ConcatBatches(
-                min_batch_size=config["train_batch_size"])) \
-            .for_each(TrainOneStep(workers))
+        train_op = rollouts.combine(
+            ConcatBatches(
+                min_batch_size=config["train_batch_size"],
+                count_steps_by=config["multiagent"][
+                    "count_steps_by"])).for_each(TrainOneStep(workers))
 
     return StandardMetricsReporting(train_op, workers, config)
 

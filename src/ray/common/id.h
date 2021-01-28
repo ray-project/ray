@@ -124,7 +124,7 @@ class JobID : public BaseID<JobID> {
 
 class ActorID : public BaseID<ActorID> {
  private:
-  static constexpr size_t kUniqueBytesLength = 4;
+  static constexpr size_t kUniqueBytesLength = 12;
 
  public:
   /// Length of `ActorID` in bytes.

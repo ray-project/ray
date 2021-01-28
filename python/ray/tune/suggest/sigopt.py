@@ -136,6 +136,7 @@ class SigOptSearch(Searcher):
                  project: Optional[str] = None,
                  metric: Union[None, str, List[str]] = "episode_reward_mean",
                  mode: Union[None, str, List[str]] = "max",
+                 points_to_evaluate: Optional[List[Dict]] = None,
                  **kwargs):
         assert (experiment_id is
                 None) ^ (space is None), "space xor experiment_id must be set"
@@ -182,17 +183,25 @@ class SigOptSearch(Searcher):
         else:
             self.experiment = self.conn.experiments(experiment_id).fetch()
 
+        self._points_to_evaluate = points_to_evaluate
+
         super(SigOptSearch, self).__init__(metric=metric, mode=mode, **kwargs)
 
     def suggest(self, trial_id: str):
         if self._max_concurrent:
             if len(self._live_trial_mapping) >= self._max_concurrent:
                 return None
+
+        suggestion_kwargs = {}
+        if self._points_to_evaluate:
+            config = self._points_to_evaluate.pop(0)
+            suggestion_kwargs = {"assignments": config}
+
         # Get new suggestion from SigOpt
         suggestion = self.conn.experiments(
-            self.experiment.id).suggestions().create()
+            self.experiment.id).suggestions().create(**suggestion_kwargs)
 
-        self._live_trial_mapping[trial_id] = suggestion
+        self._live_trial_mapping[trial_id] = suggestion.id
 
         return copy.deepcopy(suggestion.assignments)
 
@@ -210,7 +219,7 @@ class SigOptSearch(Searcher):
         """
         if result:
             payload = dict(
-                suggestion=self._live_trial_mapping[trial_id].id,
+                suggestion=self._live_trial_mapping[trial_id],
                 values=self.serialize_result(result))
             self.conn.experiments(
                 self.experiment.id).observations().create(**payload)
@@ -219,7 +228,7 @@ class SigOptSearch(Searcher):
         elif error:
             # Reports a failed Observation
             self.conn.experiments(self.experiment.id).observations().create(
-                failed=True, suggestion=self._live_trial_mapping[trial_id].id)
+                failed=True, suggestion=self._live_trial_mapping[trial_id])
         del self._live_trial_mapping[trial_id]
 
     @staticmethod
@@ -254,12 +263,15 @@ class SigOptSearch(Searcher):
         return values
 
     def save(self, checkpoint_path: str):
-        trials_object = (self.conn, self.experiment)
+        trials_object = (self.experiment.id, self._live_trial_mapping,
+                         self._points_to_evaluate)
         with open(checkpoint_path, "wb") as outputFile:
             pickle.dump(trials_object, outputFile)
 
     def restore(self, checkpoint_path: str):
         with open(checkpoint_path, "rb") as inputFile:
             trials_object = pickle.load(inputFile)
-        self.conn = trials_object[0]
-        self.experiment = trials_object[1]
+        experiment_id, self._live_trial_mapping, self._points_to_evaluate = \
+            trials_object
+
+        self.experiment = self.conn.experiments(experiment_id).fetch()

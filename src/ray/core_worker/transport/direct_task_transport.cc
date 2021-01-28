@@ -48,7 +48,7 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
       RAY_CHECK_OK(actor_creator_->AsyncCreateActor(
           task_spec, [this, actor_id, task_id](Status status) {
             if (status.ok()) {
-              RAY_LOG(INFO) << "Created actor, actor id = " << actor_id;
+              RAY_LOG(DEBUG) << "Created actor, actor id = " << actor_id;
               task_finisher_->CompletePendingTask(task_id, rpc::PushTaskReply(),
                                                   rpc::Address());
             } else {
@@ -232,8 +232,8 @@ std::shared_ptr<WorkerLeaseInterface>
 CoreWorkerDirectTaskSubmitter::GetOrConnectLeaseClient(
     const rpc::Address *raylet_address) {
   std::shared_ptr<WorkerLeaseInterface> lease_client;
-  if (raylet_address &&
-      NodeID::FromBinary(raylet_address->raylet_id()) != local_raylet_id_) {
+  RAY_CHECK(raylet_address != nullptr);
+  if (NodeID::FromBinary(raylet_address->raylet_id()) != local_raylet_id_) {
     // A remote raylet was specified. Connect to the raylet if needed.
     NodeID raylet_id = NodeID::FromBinary(raylet_address->raylet_id());
     auto it = remote_lease_clients_.find(raylet_id);
@@ -281,8 +281,14 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
     return;
   }
 
-  auto lease_client = GetOrConnectLeaseClient(raylet_address);
   TaskSpecification &resource_spec = task_queue.front();
+  rpc::Address best_node_address;
+  if (raylet_address == nullptr) {
+    // If no raylet address is given, find the best worker for our next lease request.
+    best_node_address = lease_policy_->GetBestNodeForTask(resource_spec);
+    raylet_address = &best_node_address;
+  }
+  auto lease_client = GetOrConnectLeaseClient(raylet_address);
   TaskID task_id = resource_spec.TaskId();
   // Subtract 1 so we don't double count the task we are requesting for.
   int64_t queue_size = task_queue.size() - 1;

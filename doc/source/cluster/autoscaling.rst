@@ -10,7 +10,7 @@ Basics
 
 The Ray Cluster Launcher will automatically enable a load-based autoscaler. The scheduler will look at the task, actor, and placement group resource demands from the cluster, and tries to add the minimum set of nodes that can fulfill these demands. When nodes are idle for more than a timeout, they will be removed, down to the ``min_workers`` limit. The head node is never removed.
 
-To avoid launching too many nodes at once, the number of nodes allowed to be pending is limited by the ``upscaling_speed`` setting. By default it is set to ``1.0``, which means the cluster can grow in size by at most ``100%`` at a time (doubling in size each time). This fraction can be set to as high as needed, e.g., ``99999`` to allow the cluster to quickly grow to its max size.
+To avoid launching too many nodes at once, the number of nodes allowed to be pending is limited by the ``upscaling_speed`` setting. By default it is set to ``1.0``, which means the cluster can be growing in size by at most ``100%`` at any time (e.g., if the cluster currently has 20 nodes, at most 20 pending launches are allowed). This fraction can be set to as high as needed, e.g., ``99999`` to allow the cluster to quickly grow to its max size.
 
 In more detail, the autoscaler implements the following control loop:
 
@@ -111,9 +111,6 @@ An example of configuring multiple node types is as follows `(full example) <htt
     # Specify the node type of the head node (as configured above).
     head_node_type: cpu_4_ondemand
 
-    # Specify the default type of the worker node (as configured above).
-    worker_default_node_type: cpu_16_spot
-
 
 The above config defines two CPU node types (``cpu_4_ondemand`` and ``cpu_16_spot``), and two GPU types (``gpu_1_ondemand`` and ``gpu_8_ondemand``). Each node type has a name (e.g., ``cpu_4_ondemand``), which has no semantic meaning and is only for debugging. Let's look at the inner fields of the ``gpu_1_ondemand`` node type:
 
@@ -124,7 +121,7 @@ The node config tells the underlying Cloud provider how to launch a node of this
     node_config:
         InstanceType: p2.xlarge
 
-The resources field tells the autoscaler what kinds of resources this node provides. This can include custom resources as well (e.g., "Custom2"). This field enables the autoscaler to automatically select the right kind of nodes to launch given the resource demands of the application. The resources specified here will be automatically passed to the ``ray start`` command for the node via an environment variable. For more information, see also the `resource demand scheduler <https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/resource_demand_scheduler.py>`__:
+The resources field tells the autoscaler what kinds of resources this node provides. This can include custom resources as well (e.g., "Custom2"). This field enables the autoscaler to automatically select the right kind of nodes to launch given the resource demands of the application. The resources specified here will be automatically passed to the ``ray start`` command for the node via an environment variable. For more information, see also the `resource demand scheduler <https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/_private/resource_demand_scheduler.py>`__:
 
 .. code-block:: yaml
 

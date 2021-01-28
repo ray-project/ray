@@ -4,7 +4,6 @@ from typing import Dict, List, Tuple
 
 import gym
 import ray
-from ray.rllib.agents.a3c.a3c_torch_policy import apply_grad_clipping
 from ray.rllib.agents.dqn.dqn_tf_policy import (
     PRIO_WEIGHTS, Q_SCOPE, Q_TARGET_SCOPE, postprocess_nstep_and_prio)
 from ray.rllib.agents.dqn.dqn_torch_model import DQNTorchModel
@@ -14,15 +13,14 @@ from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_action_dist import (TorchCategorical,
                                                       TorchDistributionWrapper)
 from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy import LearningRateSchedule
-from ray.rllib.policy.torch_policy_template import build_torch_policy
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.exploration.parameter_noise import ParameterNoise
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.torch_ops import (FLOAT_MIN, huber_loss,
-                                       reduce_mean_ignore_inf,
-                                       softmax_cross_entropy_with_logits)
+from ray.rllib.utils.torch_ops import apply_grad_clipping, FLOAT_MIN, \
+    huber_loss, reduce_mean_ignore_inf, softmax_cross_entropy_with_logits
 from ray.rllib.utils.typing import TensorType, TrainerConfigDict
 
 torch, nn = try_import_torch()
@@ -384,8 +382,9 @@ def extra_action_out_fn(policy: Policy, input_dict, state_batches, model,
     return {"q_values": policy.q_values}
 
 
-DQNTorchPolicy = build_torch_policy(
+DQNTorchPolicy = build_policy_class(
     name="DQNTorchPolicy",
+    framework="torch",
     loss_fn=build_q_losses,
     get_default_config=lambda: ray.rllib.agents.dqn.dqn.DEFAULT_CONFIG,
     make_model_and_action_dist=build_q_model_and_distribution,

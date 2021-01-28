@@ -19,7 +19,6 @@ logger = logging.getLogger(__name__)
 @pytest.fixture
 def one_worker_100MiB(request):
     config = {
-        "object_store_full_max_retries": 2,
         "task_retry_delay_ms": 0,
     }
     yield ray.init(
@@ -167,7 +166,7 @@ def test_dependency_refcounts(ray_start_regular):
     check_refcounts({})
 
 
-@pytest.mark.skipif(new_scheduler_enabled(), reason="hangs")
+@pytest.mark.skipif(new_scheduler_enabled(), reason="dynamic res todo")
 def test_actor_creation_task(ray_start_regular):
     @ray.remote
     def large_object():

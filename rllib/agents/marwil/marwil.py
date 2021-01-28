@@ -21,6 +21,8 @@ DEFAULT_CONFIG = with_common_config({
     "beta": 1.0,
     # Balancing value estimation loss and policy optimization loss.
     "vf_coeff": 1.0,
+    # If specified, clip the global norm of gradients by this amount.
+    "grad_clip": None,
     # Whether to calculate cumulative rewards.
     "postprocess_inputs": True,
     # Whether to rollout "complete_episodes" or "truncate_episodes".
@@ -56,7 +58,10 @@ def execution_plan(workers, config):
 
     replay_op = Replay(local_buffer=replay_buffer) \
         .combine(
-            ConcatBatches(min_batch_size=config["train_batch_size"])) \
+            ConcatBatches(
+                min_batch_size=config["train_batch_size"],
+                count_steps_by=config["multiagent"]["count_steps_by"],
+            )) \
         .for_each(TrainOneStep(workers))
 
     train_op = Concurrently(

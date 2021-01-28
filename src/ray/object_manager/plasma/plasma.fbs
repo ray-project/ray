@@ -82,11 +82,6 @@ enum PlasmaError:int {
   ObjectNonexistent,
   // Trying to create an object but there isn't enough space in the store.
   OutOfMemory,
-  // Trying to create an object but there isn't enough space in the store.
-  // However, objects are currently being spilled to make enough space. The
-  // client should try again soon, and there will be enough space (assuming the
-  // space is not taken by another client).
-  TransientOutOfMemory,
   // Trying to delete an object but it's not sealed.
   ObjectNotSealed,
   // Trying to delete an object but it's in use.
@@ -162,7 +157,7 @@ table PlasmaCreateRetryRequest {
   object_id: string;
   // The ID of the request to retry.
   request_id: uint64;
-  }
+}
 
 table CudaHandle {
   handle: [ubyte];

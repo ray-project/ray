@@ -32,6 +32,18 @@ Kubernetes (tune.integration.kubernetes)
 
 .. autofunction:: ray.tune.integration.kubernetes.NamespacedKubernetesSyncer
 
+.. _tune-integration-mlflow:
+
+MLflow (tune.integration.mlflow)
+--------------------------------
+
+:ref:`See also here <tune-mlflow>`.
+
+.. autoclass:: ray.tune.integration.mlflow.MLflowLoggerCallback
+
+.. autofunction:: ray.tune.integration.mlflow.mlflow_mixin
+
+
 .. _tune-integration-mxnet:
 
 MXNet (tune.integration.mxnet)

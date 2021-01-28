@@ -13,7 +13,7 @@ If any example is broken, or if you'd like to add an example to this page, feel 
 General Examples
 ----------------
 
-
+- :doc:`/tune/examples/tune_basic_example`: Simple example for doing a basic random and grid search.
 - :doc:`/tune/examples/async_hyperband_example`: Example of using a simple tuning function with AsyncHyperBandScheduler.
 - :doc:`/tune/examples/hyperband_function_example`: Example of using a Trainable function with HyperBandScheduler.  Also uses the AsyncHyperBandScheduler.
 - :doc:`/tune/examples/pbt_function`: Example of using the function API with a PopulationBasedTraining scheduler.
@@ -82,12 +82,13 @@ Pytorch Lightning
 - :doc:`/tune/examples/mnist_pytorch_lightning`: A comprehensive example using `Pytorch Lightning <https://github.com/PyTorchLightning/pytorch-lightning>`_ to train a MNIST model. This example showcases how to use various search optimization techniques. It utilizes the Ray Tune-provided :ref:`PyTorch Lightning callbacks <tune-integration-pytorch-lightning>`.
 - :ref:`A walkthrough tutorial for using Ray Tune with Pytorch-Lightning <tune-pytorch-lightning>`.
 
-Wandb, MLFlow
+Wandb, MLflow
 ~~~~~~~~~~~~~
 
-- :ref:`Tutorial <tune-wandb>` for using `wandb <https://www.wandb.com/>`__ with Ray Tune
-- :doc:`/tune/examples/wandb_example`: Example for using `Weights and Biases <https://www.wandb.com/>`__ with Ray Tune.
-- :doc:`/tune/examples/mlflow_example`: Example for using `MLFlow <https://github.com/mlflow/mlflow/>`__ with Ray Tune.
+- :ref:`Tutorial <tune-wandb>` for using `wandb <https://www.wandb.ai/>`__ with Ray Tune
+- :doc:`/tune/examples/wandb_example`: Example for using `Weights and Biases <https://www.wandb.ai/>`__ with Ray Tune.
+- :doc:`/tune/examples/mlflow_example`: Example for using `MLflow <https://github.com/mlflow/mlflow/>`__ with Ray Tune.
+- :doc:`/tune/examples/mlflow_ptl_example`: Example for using `MLflow <https://github.com/mlflow/mlflow/>`__ and `Pytorch Lightning <https://github.com/PyTorchLightning/pytorch-lightning>`_ with Ray Tune.
 
 Tensorflow/Keras
 ~~~~~~~~~~~~~~~~

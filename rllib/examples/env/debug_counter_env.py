@@ -12,18 +12,25 @@ class DebugCounterEnv(gym.Env):
     Reward is always: current ts % 3.
     """
 
-    def __init__(self):
+    def __init__(self, config=None):
+        config = config or {}
         self.action_space = gym.spaces.Discrete(2)
-        self.observation_space = gym.spaces.Box(0, 100, (1, ))
-        self.i = 0
+        self.observation_space = \
+            gym.spaces.Box(0, 100, (1, ), dtype=np.float32)
+        self.start_at_t = int(config.get("start_at_t", 0))
+        self.i = self.start_at_t
 
     def reset(self):
-        self.i = 0
-        return [self.i]
+        self.i = self.start_at_t
+        return self._get_obs()
 
     def step(self, action):
         self.i += 1
-        return [self.i], self.i % 3, self.i >= 15, {}
+        return self._get_obs(), float(self.i % 3), \
+            self.i >= 15 + self.start_at_t, {}
+
+    def _get_obs(self):
+        return np.array([self.i], dtype=np.float32)
 
 
 class MultiAgentDebugCounterEnv(MultiAgentEnv):

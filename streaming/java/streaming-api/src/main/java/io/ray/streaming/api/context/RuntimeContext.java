@@ -9,9 +9,7 @@ import io.ray.streaming.state.keystate.state.MapState;
 import io.ray.streaming.state.keystate.state.ValueState;
 import java.util.Map;
 
-/**
- * Encapsulate the runtime information of a streaming task.
- */
+/** Encapsulate the runtime information of a streaming task. */
 public interface RuntimeContext {
 
   int getTaskId();
@@ -20,14 +18,10 @@ public interface RuntimeContext {
 
   int getParallelism();
 
-  /**
-   * @return config of current function
-   */
+  /** Returns config of current function */
   Map<String, String> getConfig();
 
-  /**
-   * @return config of the job
-   */
+  /** Returns config of the job */
   Map<String, String> getJobConfig();
 
   Long getCheckpointId();

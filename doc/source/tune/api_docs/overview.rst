@@ -21,6 +21,7 @@ on `Github`_.
    suggestion.rst
    schedulers.rst
    sklearn.rst
+   stoppers.rst
    logging.rst
    integration.rst
    internals.rst

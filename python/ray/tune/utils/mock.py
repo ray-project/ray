@@ -2,6 +2,7 @@ import os
 import numpy as np
 import json
 import random
+import uuid
 
 import ray.utils
 
@@ -20,7 +21,12 @@ LOCAL_DELETE_TEMPLATE = "rm -rf {target}"
 
 def mock_storage_client():
     """Mocks storage client that treats a local dir as durable storage."""
-    return get_sync_client(LOCAL_SYNC_TEMPLATE, LOCAL_DELETE_TEMPLATE)
+    client = get_sync_client(LOCAL_SYNC_TEMPLATE, LOCAL_DELETE_TEMPLATE)
+    path = os.path.join(ray.utils.get_user_temp_dir(),
+                        f"mock-client-{uuid.uuid4().hex[:4]}")
+    os.makedirs(path, exist_ok=True)
+    client.set_logdir(path)
+    return client
 
 
 class MockNodeSyncer(NodeSyncer):
@@ -96,11 +102,11 @@ class FailureInjectorCallback(Callback):
     """Adds random failure injection to the TrialExecutor."""
 
     def __init__(self,
-                 config_path="/home/ubuntu/ray_bootstrap_config.yaml",
+                 config_path="~/ray_bootstrap_config.yaml",
                  probability=0.1,
                  disable=False):
         self.probability = probability
-        self.config_path = config_path
+        self.config_path = os.path.expanduser(config_path)
         self.disable = disable
 
     def on_step_begin(self, **info):

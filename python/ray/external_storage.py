@@ -1,5 +1,7 @@
 import abc
+import logging
 import os
+import shutil
 import urllib
 from collections import namedtuple
 from typing import List, IO, Tuple
@@ -9,6 +11,7 @@ from ray.ray_constants import DEFAULT_OBJECT_PREFIX
 from ray._raylet import ObjectRef
 
 ParsedURL = namedtuple("ParsedURL", "base_url, offset, size")
+logger = logging.getLogger(__name__)
 
 
 def create_url_with_offset(*, url: str, offset: int, size: int) -> str:
@@ -157,12 +160,15 @@ class ExternalStorage(metaclass=abc.ABCMeta):
 
     @abc.abstractmethod
     def restore_spilled_objects(self, object_refs: List[ObjectRef],
-                                url_with_offset_list: List[str]):
+                                url_with_offset_list: List[str]) -> int:
         """Restore objects from the external storage.
 
         Args:
             object_refs: List of object IDs (note that it is not ref).
             url_with_offset_list: List of url_with_offset.
+
+        Returns:
+            The total number of bytes restored.
         """
 
     @abc.abstractmethod
@@ -171,6 +177,14 @@ class ExternalStorage(metaclass=abc.ABCMeta):
 
         Args:
             urls: URLs that store spilled object files.
+        """
+
+    @abc.abstractmethod
+    def destroy_external_storage(self):
+        """Destroy external storage when a head node is down.
+
+        NOTE: This is currently working when the cluster is
+        started by ray.init
         """
 
 
@@ -186,6 +200,9 @@ class NullStorage(ExternalStorage):
     def delete_spilled_objects(self, urls: List[str]):
         raise NotImplementedError("External storage is not initialized")
 
+    def destroy_external_storage(self):
+        raise NotImplementedError("External storage is not initialized")
+
 
 class FileSystemStorage(ExternalStorage):
     """The class for filesystem-like external storage.
@@ -196,8 +213,8 @@ class FileSystemStorage(ExternalStorage):
     """
 
     def __init__(self, directory_path):
-        self.directory_path = directory_path
-        self.prefix = DEFAULT_OBJECT_PREFIX
+        self.spill_dir_name = DEFAULT_OBJECT_PREFIX
+        self.directory_path = os.path.join(directory_path, self.spill_dir_name)
         os.makedirs(self.directory_path, exist_ok=True)
         if not os.path.exists(self.directory_path):
             raise ValueError("The given directory path to store objects, "
@@ -208,13 +225,14 @@ class FileSystemStorage(ExternalStorage):
             return []
         # Always use the first object ref as a key when fusioning objects.
         first_ref = object_refs[0]
-        filename = f"{self.prefix}-{first_ref.hex()}-multi-{len(object_refs)}"
+        filename = f"{first_ref.hex()}-multi-{len(object_refs)}"
         url = f"{os.path.join(self.directory_path, filename)}"
         with open(url, "wb") as f:
             return self._write_multiple_objects(f, object_refs, url)
 
     def restore_spilled_objects(self, object_refs: List[ObjectRef],
                                 url_with_offset_list: List[str]):
+        total = 0
         for i in range(len(object_refs)):
             object_ref = object_refs[i]
             url_with_offset = url_with_offset_list[i].decode()
@@ -228,14 +246,35 @@ class FileSystemStorage(ExternalStorage):
                 metadata_len = int.from_bytes(f.read(8), byteorder="little")
                 buf_len = int.from_bytes(f.read(8), byteorder="little")
                 self._size_check(metadata_len, buf_len, parsed_result.size)
+                total += buf_len
                 metadata = f.read(metadata_len)
                 # read remaining data to our buffer
                 self._put_object_to_store(metadata, buf_len, f, object_ref)
+        return total
 
     def delete_spilled_objects(self, urls: List[str]):
         for url in urls:
             filename = parse_url_with_offset(url.decode()).base_url
             os.remove(os.path.join(self.directory_path, filename))
+
+    def destroy_external_storage(self):
+        # Q: Should we add stdout here to
+        # indicate we are deleting a directory?
+
+        # There's a race condition where IO workers are still
+        # deleting each objects while we try deleting the
+        # whole directory. So we should keep trying it until
+        # The directory is actually deleted.
+        while os.path.isdir(self.directory_path):
+            try:
+                shutil.rmtree(self.directory_path)
+            except FileNotFoundError:
+                # If excpetion occurs when other IO workers are
+                # deleting the file at the same time.
+                pass
+            except Exception:
+                logger.exception("Error cleaning up spill files")
+                break
 
 
 class ExternalStorageSmartOpenImpl(ExternalStorage):
@@ -297,6 +336,7 @@ class ExternalStorageSmartOpenImpl(ExternalStorage):
     def restore_spilled_objects(self, object_refs: List[ObjectRef],
                                 url_with_offset_list: List[str]):
         from smart_open import open
+        total = 0
         for i in range(len(object_refs)):
             object_ref = object_refs[i]
             url_with_offset = url_with_offset_list[i].decode()
@@ -315,11 +355,16 @@ class ExternalStorageSmartOpenImpl(ExternalStorage):
                 metadata_len = int.from_bytes(f.read(8), byteorder="little")
                 buf_len = int.from_bytes(f.read(8), byteorder="little")
                 self._size_check(metadata_len, buf_len, parsed_result.size)
+                total += buf_len
                 metadata = f.read(metadata_len)
                 # read remaining data to our buffer
                 self._put_object_to_store(metadata, buf_len, f, object_ref)
+        return total
 
     def delete_spilled_objects(self, urls: List[str]):
+        pass
+
+    def destroy_external_storage(self):
         pass
 
 
@@ -336,10 +381,15 @@ def setup_external_storage(config):
         elif storage_type == "smart_open":
             _external_storage = ExternalStorageSmartOpenImpl(
                 **config["params"])
+        elif storage_type == "mock_distributed_fs":
+            # This storage is used to unit test distributed external storages.
+            # TODO(sang): Delete it after introducing the mock S3 test.
+            _external_storage = FileSystemStorage(**config["params"])
         else:
             raise ValueError(f"Unknown external storage type: {storage_type}")
     else:
         _external_storage = NullStorage()
+    return _external_storage
 
 
 def reset_external_storage():
@@ -367,8 +417,8 @@ def restore_spilled_objects(object_refs: List[ObjectRef],
         object_refs: List of object IDs (note that it is not ref).
         url_with_offset_list: List of url_with_offset.
     """
-    _external_storage.restore_spilled_objects(object_refs,
-                                              url_with_offset_list)
+    return _external_storage.restore_spilled_objects(object_refs,
+                                                     url_with_offset_list)
 
 
 def delete_spilled_objects(urls: List[str]):

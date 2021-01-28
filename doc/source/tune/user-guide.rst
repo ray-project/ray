@@ -222,29 +222,29 @@ To use Tune's checkpointing features, you must expose a ``checkpoint_dir`` argum
 
 .. code-block:: python
 
-        import os
-        import time
-        from ray import tune
+    import os
+    import time
+    from ray import tune
 
-        def train_func(config, checkpoint_dir=None):
-            start = 0
-            if checkpoint_dir:
-                with open(os.path.join(checkpoint_dir, "checkpoint")) as f:
-                    state = json.loads(f.read())
-                    start = state["step"] + 1
+    def train_func(config, checkpoint_dir=None):
+        start = 0
+        if checkpoint_dir:
+            with open(os.path.join(checkpoint_dir, "checkpoint")) as f:
+                state = json.loads(f.read())
+                start = state["step"] + 1
 
-            for iter in range(start, 100):
-                time.sleep(1)
+        for step in range(start, 100):
+            time.sleep(1)
 
-                # Obtain a checkpoint directory
-                with tune.checkpoint_dir(step=step) as checkpoint_dir:
-                    path = os.path.join(checkpoint_dir, "checkpoint")
-                    with open(path, "w") as f:
-                        f.write(json.dumps({"step": start}))
+            # Obtain a checkpoint directory
+            with tune.checkpoint_dir(step=step) as checkpoint_dir:
+                path = os.path.join(checkpoint_dir, "checkpoint")
+                with open(path, "w") as f:
+                    f.write(json.dumps({"step": step}))
 
-                tune.report(hello="world", ray="tune")
+            tune.report(hello="world", ray="tune")
 
-        tune.run(train_func)
+    tune.run(train_func)
 
 In this example, checkpoints will be saved by training iteration to ``local_dir/exp_name/trial_name/checkpoint_<step>``.
 
@@ -305,7 +305,9 @@ and passed to your trainable as a parameter.
 Stopping Trials
 ---------------
 
-You can control when trials are stopped early by passing the ``stop`` argument to ``tune.run``. This argument takes either a dictionary or a function.
+You can control when trials are stopped early by passing the ``stop`` argument to ``tune.run``.
+This argument takes, a dictionary, a function, or a :class:`Stopper <ray.tune.stopper.Stopper>` class
+as an argument.
 
 If a dictionary is passed in, the keys may be any field in the return result of ``tune.report`` in the Function API or ``step()`` (including the results from ``step`` and auto-filled metrics).
 
@@ -329,7 +331,7 @@ For more flexibility, you can pass in a function instead. If a function is passe
 
     tune.run(my_trainable, stop=stopper)
 
-Finally, you can implement the ``Stopper`` abstract class for stopping entire experiments. For example, the following example stops all trials after the criteria is fulfilled by any individual trial, and prevents new ones from starting:
+Finally, you can implement the :class:`Stopper <ray.tune.stopper.Stopper>` abstract class for stopping entire experiments. For example, the following example stops all trials after the criteria is fulfilled by any individual trial, and prevents new ones from starting:
 
 .. code-block:: python
 
@@ -352,7 +354,9 @@ Finally, you can implement the ``Stopper`` abstract class for stopping entire ex
     tune.run(my_trainable, stop=stopper)
 
 
-Note that in the above example the currently running trials will not stop immediately but will do so once their current iterations are complete. See the :ref:`tune-stop-ref` documentation.
+Note that in the above example the currently running trials will not stop immediately but will do so once their current iterations are complete.
+
+Ray Tune comes with a set of out-of-the-box stopper classes. See the :ref:`Stopper <tune-stoppers>` documentation.
 
 .. _tune-logging:
 
@@ -684,9 +688,20 @@ These are the environment variables Ray Tune currently considers:
   experiment state is checkpointed. If not set this will default to ``10``.
 * **TUNE_MAX_LEN_IDENTIFIER**: Maximum length of trial subdirectory names (those
   with the parameter values in them)
-* **TUNE_RESULT_DIR**: Directory where Tune trial results are stored. If this
+* **TUNE_MAX_PENDING_TRIALS_PG**: Maximum number of pending trials when placement groups are used. Defaults
+  to ``1000``.
+* **TUNE_RESULT_DIR**: Directory where Ray Tune trial results are stored. If this
   is not set, ``~/ray_results`` will be used.
+* **TUNE_RESULT_BUFFER_LENGTH**: Ray Tune can buffer results from trainables before they are passed
+  to the driver. Enabling this might delay scheduling decisions, as trainables are speculatively
+  continued. Setting this to ``0`` disables result buffering. Defaults to 1000 (results).
+* **TUNE_RESULT_BUFFER_MAX_TIME_S**: Similarly, Ray Tune buffers results up to ``number_of_trial/10`` seconds,
+  but never longer than this value. Defaults to 100 (seconds).
+* **TUNE_RESULT_BUFFER_MIN_TIME_S**: Additionally, you can specify a minimum time to buffer results. Defaults to 0.
 * **TUNE_SYNCER_VERBOSITY**: Amount of command output when using Tune with Docker Syncer. Defaults to 0.
+* **TUNE_TRIAL_STARTUP_GRACE_PERIOD**: Amount of time after starting a trial that Ray Tune checks for successful
+  trial startups. After the grace period, Tune will block until a result from a running trial is received. Can
+  be disabled by setting this to lower or equal to 0.
 * **TUNE_WARN_THRESHOLD_S**: Threshold for logging if an Tune event loop operation takes too long. Defaults to 0.5 (seconds).
 * **TUNE_STATE_REFRESH_PERIOD**: Frequency of updating the resource tracking from Ray. Defaults to 10 (seconds).
 

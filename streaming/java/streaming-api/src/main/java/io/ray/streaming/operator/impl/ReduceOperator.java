@@ -12,8 +12,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-public class ReduceOperator<K, T> extends StreamOperator<ReduceFunction<T>> implements
-    OneInputOperator<T> {
+public class ReduceOperator<K, T> extends StreamOperator<ReduceFunction<T>>
+    implements OneInputOperator<T> {
 
   private Map<K, T> reduceState;
 
@@ -43,5 +43,4 @@ public class ReduceOperator<K, T> extends StreamOperator<ReduceFunction<T>> impl
       collect(record);
     }
   }
-
 }

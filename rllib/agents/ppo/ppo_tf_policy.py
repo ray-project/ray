@@ -8,7 +8,7 @@ from typing import Dict, List, Optional, Type, Union
 
 import ray
 from ray.rllib.evaluation.episode import MultiAgentEpisode
-from ray.rllib.evaluation.postprocessing import compute_advantages, \
+from ray.rllib.evaluation.postprocessing import compute_gae_for_sample_batch, \
     Postprocessing
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_action_dist import TFActionDistribution
@@ -17,6 +17,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import LearningRateSchedule, \
     EntropyCoeffSchedule
 from ray.rllib.policy.tf_policy_template import build_tf_policy
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.utils.framework import try_import_tf, get_variable
 from ray.rllib.utils.tf_ops import explained_variance, make_tf_callable
 from ray.rllib.utils.typing import AgentID, LocalOptimizer, ModelGradients, \
@@ -159,59 +160,6 @@ def vf_preds_fetches(policy: Policy) -> Dict[str, TensorType]:
     }
 
 
-def postprocess_ppo_gae(
-        policy: Policy,
-        sample_batch: SampleBatch,
-        other_agent_batches: Optional[Dict[AgentID, SampleBatch]] = None,
-        episode: Optional[MultiAgentEpisode] = None) -> SampleBatch:
-    """Postprocesses a trajectory and returns the processed trajectory.
-
-    The trajectory contains only data from one episode and from one agent.
-    - If  `config.batch_mode=truncate_episodes` (default), sample_batch may
-    contain a truncated (at-the-end) episode, in case the
-    `config.rollout_fragment_length` was reached by the sampler.
-    - If `config.batch_mode=complete_episodes`, sample_batch will contain
-    exactly one episode (no matter how long).
-    New columns can be added to sample_batch and existing ones may be altered.
-
-    Args:
-        policy (Policy): The Policy used to generate the trajectory
-            (`sample_batch`)
-        sample_batch (SampleBatch): The SampleBatch to postprocess.
-        other_agent_batches (Optional[Dict[PolicyID, SampleBatch]]): Optional
-            dict of AgentIDs mapping to other agents' trajectory data (from the
-            same episode). NOTE: The other agents use the same policy.
-        episode (Optional[MultiAgentEpisode]): Optional multi-agent episode
-            object in which the agents operated.
-
-    Returns:
-        SampleBatch: The postprocessed, modified SampleBatch (or a new one).
-    """
-
-    # Trajectory is actually complete -> last r=0.0.
-    if sample_batch[SampleBatch.DONES][-1]:
-        last_r = 0.0
-    # Trajectory has been truncated -> last r=VF estimate of last obs.
-    else:
-        next_state = []
-        for i in range(policy.num_state_tensors()):
-            next_state.append(sample_batch["state_out_{}".format(i)][-1])
-        last_r = policy._value(sample_batch[SampleBatch.NEXT_OBS][-1],
-                               sample_batch[SampleBatch.ACTIONS][-1],
-                               sample_batch[SampleBatch.REWARDS][-1],
-                               *next_state)
-
-    # Adds the policy logits, VF preds, and advantages to the batch,
-    # using GAE ("generalized advantage estimation") or not.
-    batch = compute_advantages(
-        sample_batch,
-        last_r,
-        policy.config["gamma"],
-        policy.config["lambda"],
-        use_gae=policy.config["use_gae"])
-    return batch
-
-
 def compute_and_clip_gradients(policy: Policy, optimizer: LocalOptimizer,
                                loss: TensorType) -> ModelGradients:
     """Gradients computing function (from loss tensor, using local optimizer).
@@ -234,9 +182,15 @@ def compute_and_clip_gradients(policy: Policy, optimizer: LocalOptimizer,
 
     # Clip by global norm, if necessary.
     if policy.config["grad_clip"] is not None:
+        # Defuse inf gradients (due to super large losses).
         grads = [g for (g, v) in grads_and_vars]
-        policy.grads, _ = tf.clip_by_global_norm(grads,
-                                                 policy.config["grad_clip"])
+        grads, _ = tf.clip_by_global_norm(grads, policy.config["grad_clip"])
+        # If the global_norm is inf -> All grads will be NaN. Stabilize this
+        # here by setting them to 0.0. This will simply ignore destructive loss
+        # calculations.
+        policy.grads = [
+            tf.where(tf.math.is_nan(g), tf.zeros_like(g), g) for g in grads
+        ]
         clipped_grads_and_vars = list(zip(policy.grads, variables))
         return clipped_grads_and_vars
     else:
@@ -292,25 +246,40 @@ class ValueNetworkMixin:
         # observation.
         if config["use_gae"]:
 
-            @make_tf_callable(self.get_session())
-            def value(ob, prev_action, prev_reward, *state):
-                model_out, _ = self.model({
-                    SampleBatch.CUR_OBS: tf.convert_to_tensor([ob]),
-                    SampleBatch.PREV_ACTIONS: tf.convert_to_tensor(
-                        [prev_action]),
-                    SampleBatch.PREV_REWARDS: tf.convert_to_tensor(
-                        [prev_reward]),
-                    "is_training": tf.convert_to_tensor([False]),
-                }, [tf.convert_to_tensor([s]) for s in state],
-                                          tf.convert_to_tensor([1]))
-                # [0] = remove the batch dim.
-                return self.model.value_function()[0]
+            # Input dict is provided to us automatically via the Model's
+            # requirements. It's a single-timestep (last one in trajectory)
+            # input_dict.
+            if config["_use_trajectory_view_api"]:
+
+                @make_tf_callable(self.get_session())
+                def value(**input_dict):
+                    model_out, _ = self.model.from_batch(
+                        input_dict, is_training=False)
+                    # [0] = remove the batch dim.
+                    return self.model.value_function()[0]
+
+            # TODO: (sven) Remove once trajectory view API is all-algo default.
+            else:
+
+                @make_tf_callable(self.get_session())
+                def value(ob, prev_action, prev_reward, *state):
+                    model_out, _ = self.model({
+                        SampleBatch.CUR_OBS: tf.convert_to_tensor([ob]),
+                        SampleBatch.PREV_ACTIONS: tf.convert_to_tensor(
+                            [prev_action]),
+                        SampleBatch.PREV_REWARDS: tf.convert_to_tensor(
+                            [prev_reward]),
+                        "is_training": tf.convert_to_tensor([False]),
+                    }, [tf.convert_to_tensor([s]) for s in state],
+                                              tf.convert_to_tensor([1]))
+                    # [0] = remove the batch dim.
+                    return self.model.value_function()[0]
 
         # When not doing GAE, we do not require the value function's output.
         else:
 
             @make_tf_callable(self.get_session())
-            def value(ob, prev_action, prev_reward, *state):
+            def value(*args, **kwargs):
                 return tf.constant(0.0)
 
         self._value = value
@@ -327,8 +296,23 @@ def setup_config(policy: Policy, obs_space: gym.spaces.Space,
         action_space (gym.spaces.Space): The Policy's action space.
         config (TrainerConfigDict): The Policy's config.
     """
-    # Auto set the model option for VF layer sharing.
-    config["model"]["vf_share_layers"] = config["vf_share_layers"]
+    # Setting `vf_share_layers` in the top-level config is deprecated.
+    # It's confusing as some users might (correctly!) set it in their
+    # model config and then won't notice that it's silently overwritten
+    # here.
+    if config["vf_share_layers"] != DEPRECATED_VALUE:
+        deprecation_warning(
+            old="config[vf_share_layers]",
+            new="config[model][vf_share_layers]",
+            error=False,
+        )
+        config["model"]["vf_share_layers"] = config["vf_share_layers"]
+
+    # If vf_share_layers is True, inform about the need to tune vf_loss_coeff.
+    if config.get("model", {}).get("vf_share_layers") is True:
+        logger.info(
+            "`vf_share_layers=True` in your model. "
+            "Therefore, remember to tune the value of `vf_loss_coeff`!")
 
 
 def setup_mixins(policy: Policy, obs_space: gym.spaces.Space,
@@ -349,13 +333,29 @@ def setup_mixins(policy: Policy, obs_space: gym.spaces.Space,
     LearningRateSchedule.__init__(policy, config["lr"], config["lr_schedule"])
 
 
+def postprocess_ppo_gae(
+        policy: Policy,
+        sample_batch: SampleBatch,
+        other_agent_batches: Optional[Dict[AgentID, SampleBatch]] = None,
+        episode: Optional[MultiAgentEpisode] = None) -> SampleBatch:
+
+    # Stub serving backward compatibility.
+    deprecation_warning(
+        old="rllib.agents.ppo.ppo_tf_policy.postprocess_ppo_gae",
+        new="rllib.evaluation.postprocessing.compute_gae_for_sample_batch",
+        error=False)
+
+    return compute_gae_for_sample_batch(policy, sample_batch,
+                                        other_agent_batches, episode)
+
+
 # Build a child class of `DynamicTFPolicy`, given the custom functions defined
 # above.
 PPOTFPolicy = build_tf_policy(
     name="PPOTFPolicy",
     loss_fn=ppo_surrogate_loss,
     get_default_config=lambda: ray.rllib.agents.ppo.ppo.DEFAULT_CONFIG,
-    postprocess_fn=postprocess_ppo_gae,
+    postprocess_fn=compute_gae_for_sample_batch,
     stats_fn=kl_and_loss_stats,
     gradients_fn=compute_and_clip_gradients,
     extra_action_fetches_fn=vf_preds_fetches,

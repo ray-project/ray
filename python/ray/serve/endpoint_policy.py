@@ -89,5 +89,6 @@ class RandomEndpointPolicy(EndpointPolicy):
                 query.metadata.shard_key.encode("utf-8"))
 
         chosen_backend, shadow_backends = self._select_backends(value)
-        logger.debug(f"Chosen backend {chosen_backend} for query {query}")
+        logger.debug(f"Assigning query {query.metadata.request_id} "
+                     f"to backend {chosen_backend}.")
         return [chosen_backend] + shadow_backends

@@ -107,12 +107,15 @@ class ReaderWorker extends Worker {
     dataReader = new DataReader(inputQueueList, inputActors, new HashMap<>(), workerConfig);
 
     // Should not GetBundle in RayCall thread
-    Thread readThread = new Thread(Ray.wrapRunnable(new Runnable() {
-      @Override
-      public void run() {
-        consume();
-      }
-    }));
+    Thread readThread =
+        new Thread(
+            Ray.wrapRunnable(
+                new Runnable() {
+                  @Override
+                  public void run() {
+                    consume();
+                  }
+                }));
     readThread.start();
 
     LOGGER.info("ReaderWorker init done");
@@ -136,8 +139,11 @@ class ReaderWorker extends Worker {
       int dataSize = dataMessage.body().getInt();
 
       // check size
-      LOGGER.info("capacity {} bufferSize {} dataSize {}",
-          dataMessage.body().capacity(), bufferSize, dataSize);
+      LOGGER.info(
+          "capacity {} bufferSize {} dataSize {}",
+          dataMessage.body().capacity(),
+          bufferSize,
+          dataSize);
       Assert.assertEquals(bufferSize, dataSize);
       if (dataMessage instanceof DataMessage) {
         if (LOGGER.isInfoEnabled()) {
@@ -158,9 +164,7 @@ class ReaderWorker extends Worker {
     LOGGER.info("ReaderWorker consume data done.");
   }
 
-  void onQueueTransfer(long handler, byte[] buffer) {
-  }
-
+  void onQueueTransfer(long handler, byte[] buffer) {}
 
   public boolean done() {
     return totalMsg == msgCount;
@@ -233,12 +237,15 @@ class WriterWorker extends Worker {
         new JavaFunctionDescriptor(Worker.class.getName(), "onReaderMessageSync", "([B)[B"));
     StreamingWorkerConfig workerConfig = new StreamingWorkerConfig(conf);
     dataWriter = new DataWriter(outputQueueList, outputActors, new HashMap<>(), workerConfig);
-    Thread writerThread = new Thread(Ray.wrapRunnable(new Runnable() {
-      @Override
-      public void run() {
-        produce();
-      }
-    }));
+    Thread writerThread =
+        new Thread(
+            Ray.wrapRunnable(
+                new Runnable() {
+                  @Override
+                  public void run() {
+                    produce();
+                  }
+                }));
     writerThread.start();
 
     LOGGER.info("WriterWorker init done");

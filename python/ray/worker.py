@@ -14,8 +14,10 @@ import sys
 import threading
 import time
 import traceback
+from typing import Any, Dict, List, Iterator
 
 # Ray modules
+from ray.autoscaler._private.constants import AUTOSCALER_EVENTS
 import ray.cloudpickle as pickle
 import ray.gcs_utils
 import ray.memory_monitor as memory_monitor
@@ -48,8 +50,10 @@ from ray.exceptions import (
 )
 from ray.function_manager import FunctionActorManager
 from ray.ray_logging import setup_logger
+from ray.ray_logging import global_worker_stdstream_dispatcher
 from ray.utils import _random_string, check_oversized_pickle
 from ray.util.inspect import is_cython
+from ray._private.client_mode_hook import client_mode_hook
 
 SCRIPT_MODE = 0
 WORKER_MODE = 1
@@ -102,6 +106,14 @@ class Worker:
         # Index of the current session. This number will
         # increment every time when `ray.shutdown` is called.
         self._session_index = 0
+        # If this is set, the next .remote call should drop into the
+        # debugger, at the specified breakpoint ID.
+        self.debugger_breakpoint = b""
+        # If this is set, ray.get calls invoked on the object ID returned
+        # by the worker should drop into the debugger at the specified
+        # breakpoint ID.
+        self.debugger_get_breakpoint = b""
+        self._load_code_from_local = False
 
     @property
     def connected(self):
@@ -115,7 +127,7 @@ class Worker:
     @property
     def load_code_from_local(self):
         self.check_connected()
-        return self.node.load_code_from_local
+        return self._load_code_from_local
 
     @property
     def current_job_id(self):
@@ -215,7 +227,10 @@ class Worker:
         """
         self.mode = mode
 
-    def put_object(self, value, object_ref=None, pin_object=True):
+    def set_load_code_from_local(self, load_code_from_local):
+        self._load_code_from_local = load_code_from_local
+
+    def put_object(self, value, object_ref=None):
         """Put value in the local object store with object reference `object_ref`.
 
         This assumes that the value for `object_ref` has not yet been placed in
@@ -229,7 +244,6 @@ class Worker:
             value: The value to put in the object store.
             object_ref (ObjectRef): The object ref of the value to be
                 put. If None, one will be generated.
-            pin_object: If set, the object will be pinned at the raylet.
 
         Returns:
             ObjectRef: The object ref the object was put under.
@@ -261,8 +275,7 @@ class Worker:
         # reference counter.
         return ray.ObjectRef(
             self.core_worker.put_serialized_object(
-                serialized_value, object_ref=object_ref,
-                pin_object=pin_object))
+                serialized_value, object_ref=object_ref))
 
     def deserialize_objects(self, data_metadata_pairs, object_refs):
         context = self.get_serialization_context()
@@ -280,6 +293,10 @@ class Worker:
                 whose values should be retrieved.
             timeout (float): timeout (float): The maximum amount of time in
                 seconds to wait before returning.
+        Returns:
+            list: List of deserialized objects
+            bytes: UUID of the debugger breakpoint we should drop
+                into or b"" if there is no breakpoint.
         """
         # Make sure that the values are object refs.
         for object_ref in object_refs:
@@ -291,7 +308,16 @@ class Worker:
         timeout_ms = int(timeout * 1000) if timeout else -1
         data_metadata_pairs = self.core_worker.get_objects(
             object_refs, self.current_task_id, timeout_ms)
-        return self.deserialize_objects(data_metadata_pairs, object_refs)
+        debugger_breakpoint = b""
+        for (data, metadata) in data_metadata_pairs:
+            if metadata:
+                metadata_fields = metadata.split(b",")
+                if len(metadata_fields) >= 2 and metadata_fields[1].startswith(
+                        ray_constants.OBJECT_METADATA_DEBUG_PREFIX):
+                    debugger_breakpoint = metadata_fields[1][len(
+                        ray_constants.OBJECT_METADATA_DEBUG_PREFIX):]
+        return self.deserialize_objects(data_metadata_pairs,
+                                        object_refs), debugger_breakpoint
 
     def run_function_on_all_workers(self, function,
                                     run_on_other_drivers=False):
@@ -321,7 +347,8 @@ class Worker:
             # actually run the function locally.
             pickled_function = pickle.dumps(function)
 
-            function_to_run_id = hashlib.sha1(pickled_function).digest()
+            function_to_run_id = hashlib.shake_128(pickled_function).digest(
+                ray_constants.ID_SIZE)
             key = b"FunctionsToRun:" + function_to_run_id
             # First run the function on the driver.
             # We always run the task locally.
@@ -443,6 +470,7 @@ _global_node = None
 """ray.node.Node: The global node object that is created by ray.init()."""
 
 
+@client_mode_hook
 def init(
         address=None,
         *,
@@ -469,9 +497,7 @@ def init(
         _memory=None,
         _redis_password=ray_constants.REDIS_DEFAULT_PASSWORD,
         _java_worker_options=None,
-        _code_search_path=None,
         _temp_dir=None,
-        _load_code_from_local=False,
         _lru_evict=False,
         _metrics_export_port=None,
         _system_config=None):
@@ -497,7 +523,7 @@ def init(
 
     You can also define an environment variable called `RAY_ADDRESS` in
     the same format as the `address` parameter to connect to an existing
-    cluster with ray.init().
+    cluster with ray.init() or ray.init(address="auto").
 
     Args:
         address (str): The address of the Ray cluster to connect to. If
@@ -506,7 +532,9 @@ def init(
             It will also kill these processes when Python exits. If the driver
             is running on a node in a Ray cluster, using `auto` as the value
             tells the driver to detect the the cluster, removing the need to
-            specify a specific node address.
+            specify a specific node address. If the environment variable
+            `RAY_ADDRESS` is defined and the address is None or "auto", Ray
+            will set `address` to `RAY_ADDRESS`.
         num_cpus (int): Number of CPUs the user wishes to assign to each
             raylet. By default, this is set based on virtual cores.
         num_gpus (int): Number of GPUs the user wishes to assign to each
@@ -559,10 +587,7 @@ def init(
         _temp_dir (str): If provided, specifies the root temporary
             directory for the Ray process. Defaults to an OS-specific
             conventional location, e.g., "/tmp/ray".
-        _load_code_from_local: Whether code should be loaded from a local
-            module or from the GCS.
         _java_worker_options: Overwrite the options to start Java workers.
-        _code_search_path (list): Java classpath or python import path.
         _lru_evict (bool): If True, when an object store is full, it will evict
             objects in LRU order to make more space and when under memory
             pressure, ray.ObjectLostError may be thrown. If False, then
@@ -589,10 +614,12 @@ def init(
         import resource
         soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
         if soft < hard:
+            # https://github.com/ray-project/ray/issues/12059
+            soft = max(soft, min(hard, 65536))
             logger.debug("Automatically increasing RLIMIT_NOFILE to max "
                          "value of {}".format(hard))
             try:
-                resource.setrlimit(resource.RLIMIT_NOFILE, (hard, hard))
+                resource.setrlimit(resource.RLIMIT_NOFILE, (soft, hard))
             except ValueError:
                 logger.debug("Failed to raise limit.")
         soft, _ = resource.getrlimit(resource.RLIMIT_NOFILE)
@@ -609,13 +636,6 @@ def init(
     if "RAY_ADDRESS" in os.environ:
         if address is None or address == "auto":
             address = os.environ["RAY_ADDRESS"]
-        else:
-            raise RuntimeError(
-                "Cannot use both the RAY_ADDRESS environment variable and "
-                "the address argument of ray.init simultaneously. If you "
-                "use RAY_ADDRESS to connect to a specific Ray cluster, "
-                "please call ray.init() or ray.init(address=\"auto\") on the "
-                "driver.")
 
     # Convert hostnames to numerical IP address.
     if _node_ip_address is not None:
@@ -681,9 +701,7 @@ def init(
             redis_max_memory=_redis_max_memory,
             plasma_store_socket_name=None,
             temp_dir=_temp_dir,
-            load_code_from_local=_load_code_from_local,
             java_worker_options=_java_worker_options,
-            code_search_path=_code_search_path,
             start_initial_python_workers_for_first_job=True,
             _system_config=_system_config,
             lru_evict=_lru_evict,
@@ -729,7 +747,6 @@ def init(
             redis_password=_redis_password,
             object_ref_seed=None,
             temp_dir=_temp_dir,
-            load_code_from_local=_load_code_from_local,
             _system_config=_system_config,
             lru_evict=_lru_evict,
             enable_object_reconstruction=_enable_object_reconstruction,
@@ -749,6 +766,8 @@ def init(
         driver_object_store_memory=_driver_object_store_memory,
         job_id=None,
         job_config=job_config)
+    if job_config and job_config.code_search_path:
+        global_worker.set_load_code_from_local(True)
 
     for hook in _post_init_hooks:
         hook()
@@ -761,6 +780,7 @@ def init(
 _post_init_hooks = []
 
 
+@client_mode_hook
 def shutdown(_exiting_interpreter=False):
     """Disconnect the worker, and terminate processes started by ray.init().
 
@@ -798,6 +818,8 @@ def shutdown(_exiting_interpreter=False):
     # Shut down the Ray processes.
     global _global_node
     if _global_node is not None:
+        if _global_node.is_head():
+            _global_node.destroy_external_storage()
         _global_node.kill_all_processes(check_alive=False, allow_graceful=True)
         _global_node = None
 
@@ -833,6 +855,7 @@ def custom_excepthook(type, value, tb):
         worker_type = ray.gcs_utils.DRIVER
         worker_info = {"exception": error_message}
 
+        ray.state.state._check_connected()
         ray.state.state.add_worker(worker_id, worker_type, worker_info)
     # Call the normal excepthook.
     normal_excepthook(type, value, tb)
@@ -891,35 +914,110 @@ def print_logs(redis_client, threads_stopped, job_id):
             if data["job"] and ray.utils.binary_to_hex(
                     job_id.binary()) != data["job"]:
                 continue
-
-            print_file = sys.stderr if data["is_err"] else sys.stdout
-
-            def color_for(data):
-                if data["pid"] == "raylet":
-                    return colorama.Fore.YELLOW
-                else:
-                    return colorama.Fore.CYAN
-
-            if data["ip"] == localhost:
-                for line in data["lines"]:
-                    print(
-                        "{}{}(pid={}){} {}".format(
-                            colorama.Style.DIM, color_for(data), data["pid"],
-                            colorama.Style.RESET_ALL, line),
-                        file=print_file)
-            else:
-                for line in data["lines"]:
-                    print(
-                        "{}{}(pid={}, ip={}){} {}".format(
-                            colorama.Style.DIM, color_for(data), data["pid"],
-                            data["ip"], colorama.Style.RESET_ALL, line),
-                        file=print_file)
+            data["localhost"] = localhost
+            global_worker_stdstream_dispatcher.emit(data)
 
     except (OSError, redis.exceptions.ConnectionError) as e:
         logger.error(f"print_logs: {e}")
     finally:
         # Close the pubsub client to avoid leaking file descriptors.
         pubsub_client.close()
+
+
+def print_to_stdstream(data):
+    print_file = sys.stderr if data["is_err"] else sys.stdout
+    print_worker_logs(data, print_file)
+
+
+# Start time of this process, used for relative time logs.
+t0 = time.time()
+autoscaler_log_fyi_printed = False
+
+
+def filter_autoscaler_events(lines: List[str]) -> Iterator[str]:
+    """Given raw log lines from the monitor, return only autoscaler events.
+
+    Autoscaler events are denoted by the ":event_summary:" magic token.
+    """
+    global autoscaler_log_fyi_printed
+
+    if not AUTOSCALER_EVENTS:
+        return
+
+    # Print out autoscaler events only, ignoring other messages.
+    for line in lines:
+        if ":event_summary:" in line:
+            if not autoscaler_log_fyi_printed:
+                yield ("Tip: use `ray status` to view detailed "
+                       "autoscaling status. To disable autoscaler event "
+                       "messages, you can set AUTOSCALER_EVENTS=0.")
+                autoscaler_log_fyi_printed = True
+            # The event text immediately follows the ":event_summary:"
+            # magic token.
+            yield line.split(":event_summary:")[1]
+
+
+def time_string() -> str:
+    """Return the relative time from the start of this job.
+
+    For example, 15m30s.
+    """
+    delta = time.time() - t0
+    hours = 0
+    minutes = 0
+    while delta > 3600:
+        hours += 1
+        delta -= 3600
+    while delta > 60:
+        minutes += 1
+        delta -= 60
+    output = ""
+    if hours:
+        output += "{}h".format(hours)
+    if minutes:
+        output += "{}m".format(minutes)
+    output += "{}s".format(int(delta))
+    return output
+
+
+def print_worker_logs(data: Dict[str, str], print_file: Any):
+    def prefix_for(data: Dict[str, str]) -> str:
+        """The PID prefix for this log line."""
+        if data["pid"] in ["autoscaler", "raylet"]:
+            return ""
+        else:
+            return "pid="
+
+    def color_for(data: Dict[str, str]) -> str:
+        """The color for this log line."""
+        if data["pid"] == "raylet":
+            return colorama.Fore.YELLOW
+        elif data["pid"] == "autoscaler":
+            return colorama.Style.BRIGHT + colorama.Fore.CYAN
+        else:
+            return colorama.Fore.CYAN
+
+    if data["pid"] == "autoscaler":
+        pid = "{} +{}".format(data["pid"], time_string())
+        lines = filter_autoscaler_events(data["lines"])
+    else:
+        pid = data["pid"]
+        lines = data["lines"]
+
+    if data["ip"] == data["localhost"]:
+        for line in lines:
+            print(
+                "{}{}({}{}){} {}".format(colorama.Style.DIM, color_for(data),
+                                         prefix_for(data), pid,
+                                         colorama.Style.RESET_ALL, line),
+                file=print_file)
+    else:
+        for line in lines:
+            print(
+                "{}{}({}{}, ip={}){} {}".format(
+                    colorama.Style.DIM, color_for(data), prefix_for(data), pid,
+                    data["ip"], colorama.Style.RESET_ALL, line),
+                file=print_file)
 
 
 def print_error_messages_raylet(task_error_queue, threads_stopped):
@@ -1016,6 +1114,7 @@ def listen_error_messages_raylet(worker, task_error_queue, threads_stopped):
         worker.error_message_pubsub_client.close()
 
 
+@client_mode_hook
 def is_initialized():
     """Check if ray.init has been called yet.
 
@@ -1182,6 +1281,8 @@ def connect(node,
         worker.printer_thread.daemon = True
         worker.printer_thread.start()
         if log_to_driver:
+            global_worker_stdstream_dispatcher.add_handler(
+                "ray_print_logs", print_to_stdstream)
             worker.logger_thread = threading.Thread(
                 target=print_logs,
                 name="ray_print_logs",
@@ -1292,6 +1393,7 @@ def show_in_dashboard(message, key="", dtype="text"):
 blocking_get_inside_async_warned = False
 
 
+@client_mode_hook
 def get(object_refs, *, timeout=None):
     """Get a remote object or a list of remote objects from the object store.
 
@@ -1345,7 +1447,8 @@ def get(object_refs, *, timeout=None):
 
         global last_task_error_raise_time
         # TODO(ujvl): Consider how to allow user to retrieve the ready objects.
-        values = worker.get_objects(object_refs, timeout=timeout)
+        values, debugger_breakpoint = worker.get_objects(
+            object_refs, timeout=timeout)
         for i, value in enumerate(values):
             if isinstance(value, RayError):
                 last_task_error_raise_time = time.time()
@@ -1358,9 +1461,18 @@ def get(object_refs, *, timeout=None):
 
         if is_individual_id:
             values = values[0]
+
+        if debugger_breakpoint != b"":
+            frame = sys._getframe().f_back
+            rdb = ray.util.pdb.connect_ray_pdb(
+                None, None, False, None,
+                debugger_breakpoint.decode() if debugger_breakpoint else None)
+            rdb.set_trace(frame=frame)
+
         return values
 
 
+@client_mode_hook
 def put(value):
     """Store an object in the object store.
 
@@ -1376,7 +1488,7 @@ def put(value):
     worker.check_connected()
     with profiling.profile("ray.put"):
         try:
-            object_ref = worker.put_object(value, pin_object=True)
+            object_ref = worker.put_object(value)
         except ObjectStoreFullError:
             logger.info(
                 "Put failed since the value was either too large or the "
@@ -1389,7 +1501,8 @@ def put(value):
 blocking_wait_inside_async_warned = False
 
 
-def wait(object_refs, *, num_returns=1, timeout=None):
+@client_mode_hook
+def wait(object_refs, *, num_returns=1, timeout=None, fetch_local=True):
     """Return a list of IDs that are ready and a list of IDs that are not.
 
     If timeout is set, the function returns either when the requested number of
@@ -1417,6 +1530,11 @@ def wait(object_refs, *, num_returns=1, timeout=None):
         num_returns (int): The number of object refs that should be returned.
         timeout (float): The maximum amount of time in seconds to wait before
             returning.
+        fetch_local (bool): If True, wait for the object to be downloaded onto
+            the local node before returning it as ready. If False, ray.wait()
+            will not trigger fetching of objects to the local node and will
+            return immediately once the object is available anywhere in the
+            cluster.
 
     Returns:
         A list of object refs that are ready and a list of the remaining object
@@ -1479,10 +1597,12 @@ def wait(object_refs, *, num_returns=1, timeout=None):
             num_returns,
             timeout_milliseconds,
             worker.current_task_id,
+            fetch_local,
         )
         return ready_ids, remaining_ids
 
 
+@client_mode_hook
 def get_actor(name):
     """Get a handle to a detached actor.
 
@@ -1503,15 +1623,17 @@ def get_actor(name):
     return handle
 
 
+@client_mode_hook
 def kill(actor, *, no_restart=True):
     """Kill an actor forcefully.
 
     This will interrupt any running tasks on the actor, causing them to fail
-    immediately. Any atexit handlers installed in the actor will still be run.
+    immediately. ``atexit`` handlers installed in the actor will not be run.
 
     If you want to kill the actor but let pending tasks finish,
     you can call ``actor.__ray_terminate__.remote()`` instead to queue a
-    termination task.
+    termination task. Any ``atexit`` handlers installed in the actor *will*
+    be run in this case.
 
     If the actor is a detached actor, subsequent calls to get its handle via
     ray.get_actor will fail.
@@ -1529,6 +1651,7 @@ def kill(actor, *, no_restart=True):
     worker.core_worker.kill_actor(actor._ray_actor_id, no_restart)
 
 
+@client_mode_hook
 def cancel(object_ref, *, force=False, recursive=True):
     """Cancels a task according to the following conditions.
 
@@ -1645,6 +1768,7 @@ def make_decorator(num_returns=None,
     return decorator
 
 
+@client_mode_hook
 def remote(*args, **kwargs):
     """Defines a remote function or an actor class.
 

@@ -44,5 +44,4 @@ public class LoggingUtil {
     appender.activateOptions();
     Logger.getLogger("io.ray").addAppender(appender);
   }
-
 }

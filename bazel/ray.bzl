@@ -1,5 +1,4 @@
 load("@com_github_google_flatbuffers//:build_defs.bzl", "flatbuffer_library_public")
-load("@com_github_checkstyle_java//checkstyle:checkstyle.bzl", "checkstyle_test")
 load("@bazel_skylib//rules:copy_file.bzl", "copy_file")
 load("@bazel_common//tools/maven:pom_file.bzl", "pom_file")
 
@@ -77,14 +76,6 @@ def define_java_module(
         resources = native.glob([name + "/src/main/resources/**"]) + additional_resources,
         **kwargs
     )
-    checkstyle_test(
-        name = "io_ray_ray_" + name + "-checkstyle",
-        target = ":io_ray_ray_" + name,
-        config = "//java:checkstyle.xml",
-        suppressions = "//java:checkstyle-suppressions.xml",
-        size = "small",
-        tags = ["checkstyle"],
-    )
     if define_test_lib:
         test_lib_name = "io_ray_ray_" + name + "_test"
         pom_file_targets.append(test_lib_name)
@@ -92,14 +83,6 @@ def define_java_module(
             name = test_lib_name,
             srcs = native.glob([name + "/src/test/java/**/*.java"]),
             deps = test_deps,
-        )
-        checkstyle_test(
-            name = "io_ray_ray_" + name + "_test-checkstyle",
-            target = ":io_ray_ray_" + name + "_test",
-            config = "//java:checkstyle.xml",
-            suppressions = "//java:checkstyle-suppressions.xml",
-            size = "small",
-            tags = ["checkstyle"],
         )
     pom_file(
         name = "io_ray_ray_" + name + "_pom",

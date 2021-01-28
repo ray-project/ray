@@ -5,7 +5,7 @@ import shutil
 from typing import Dict, Any
 
 import pandas as pd
-import pickle
+import ray.cloudpickle as pickle
 import os
 
 import ray

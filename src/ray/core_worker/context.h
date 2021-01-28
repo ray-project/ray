@@ -42,16 +42,12 @@ class WorkerContext {
   const std::unordered_map<std::string, std::string>
       &GetCurrentOverrideEnvironmentVariables() const;
 
-  // TODO(kfstorm): Remove this once `enable_multi_tenancy` is deleted.
-  // TODO(edoakes): remove this once Python core worker uses the task interfaces.
-  void SetCurrentJobId(const JobID &job_id);
-
   // TODO(edoakes): remove this once Python core worker uses the task interfaces.
   void SetCurrentTaskId(const TaskID &task_id);
 
   void SetCurrentTask(const TaskSpecification &task_spec);
 
-  void ResetCurrentTask(const TaskSpecification &task_spec);
+  void ResetCurrentTask();
 
   std::shared_ptr<const TaskSpecification> GetCurrentTask() const;
 

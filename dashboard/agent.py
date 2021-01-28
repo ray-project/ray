@@ -62,15 +62,22 @@ class DashboardAgent(object):
         self.object_store_name = object_store_name
         self.raylet_name = raylet_name
         self.node_id = os.environ["RAY_NODE_ID"]
-        assert self.node_id, "Empty node id (RAY_NODE_ID)."
+        # TODO(edoakes): RAY_RAYLET_PID isn't properly set on Windows. This is
+        # only used for fate-sharing with the raylet and we need a different
+        # fate-sharing mechanism for Windows anyways.
+        if sys.platform not in ["win32", "cygwin"]:
+            self.ppid = int(os.environ["RAY_RAYLET_PID"])
+            assert self.ppid > 0
+            logger.info("Parent pid is %s", self.ppid)
         self.server = aiogrpc.server(options=(("grpc.so_reuseport", 0), ))
         self.grpc_port = self.server.add_insecure_port(
             f"[::]:{self.dashboard_agent_port}")
         logger.info("Dashboard agent grpc address: %s:%s", self.ip,
                     self.grpc_port)
         self.aioredis_client = None
+        options = (("grpc.enable_http_proxy", 0), )
         self.aiogrpc_raylet_channel = aiogrpc.insecure_channel(
-            f"{self.ip}:{self.node_manager_port}")
+            f"{self.ip}:{self.node_manager_port}", options=options)
         self.http_session = None
 
     def _load_modules(self):
@@ -89,19 +96,24 @@ class DashboardAgent(object):
 
     async def run(self):
         async def _check_parent():
-            """Check if raylet is dead."""
-            curr_proc = psutil.Process()
-            while True:
-                parent = curr_proc.parent()
-                if parent is None or parent.pid == 1:
-                    logger.error("raylet is dead, agent will die because "
-                                 "it fate-shares with raylet.")
-                    sys.exit(0)
-                await asyncio.sleep(
-                    dashboard_consts.
-                    DASHBOARD_AGENT_CHECK_PARENT_INTERVAL_SECONDS)
+            """Check if raylet is dead and fate-share if it is."""
+            try:
+                curr_proc = psutil.Process()
+                while True:
+                    parent = curr_proc.parent()
+                    if (parent is None or parent.pid == 1
+                            or self.ppid != parent.pid):
+                        logger.error("Raylet is dead, exiting.")
+                        sys.exit(0)
+                    await asyncio.sleep(
+                        dashboard_consts.
+                        DASHBOARD_AGENT_CHECK_PARENT_INTERVAL_SECONDS)
+            except Exception:
+                logger.error("Failed to check parent PID, exiting.")
+                sys.exit(1)
 
-        check_parent_task = create_task(_check_parent())
+        if sys.platform not in ["win32", "cygwin"]:
+            check_parent_task = create_task(_check_parent())
 
         # Create an aioredis client for all modules.
         try:
@@ -173,8 +185,11 @@ class DashboardAgent(object):
                 agent_port=self.grpc_port,
                 agent_ip_address=self.ip))
 
-        await asyncio.gather(check_parent_task,
-                             *(m.run(self.server) for m in modules))
+        tasks = [m.run(self.server) for m in modules]
+        if sys.platform not in ["win32", "cygwin"]:
+            tasks.append(check_parent_task)
+        await asyncio.gather(*tasks)
+
         await self.server.wait_for_termination()
         # Wait for finish signal.
         await runner.cleanup()
@@ -307,4 +322,5 @@ if __name__ == "__main__":
                    "error:\n{}".format(platform.uname()[1], traceback_str))
         ray.utils.push_error_to_driver_through_redis(
             redis_client, ray_constants.DASHBOARD_AGENT_DIED_ERROR, message)
+        logger.exception(message)
         raise e

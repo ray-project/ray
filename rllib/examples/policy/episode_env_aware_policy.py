@@ -21,36 +21,36 @@ class EpisodeEnvAwareLSTMPolicy(RandomPolicy):
 
         self.model = _fake_model()
         self.model.time_major = True
-        self.model.inference_view_requirements = {
+        self.model.view_requirements = {
             SampleBatch.AGENT_INDEX: ViewRequirement(),
             SampleBatch.EPS_ID: ViewRequirement(),
             "env_id": ViewRequirement(),
             "t": ViewRequirement(),
             SampleBatch.OBS: ViewRequirement(),
             SampleBatch.PREV_ACTIONS: ViewRequirement(
-                SampleBatch.ACTIONS, space=self.action_space, data_rel_pos=-1),
+                SampleBatch.ACTIONS, space=self.action_space, shift=-1),
             SampleBatch.PREV_REWARDS: ViewRequirement(
-                SampleBatch.REWARDS, data_rel_pos=-1),
+                SampleBatch.REWARDS, shift=-1),
         }
         for i in range(2):
-            self.model.inference_view_requirements["state_in_{}".format(i)] = \
+            self.model.view_requirements["state_in_{}".format(i)] = \
                 ViewRequirement(
                     "state_out_{}".format(i),
-                    data_rel_pos=-1,
+                    shift=-1,
                     space=self.state_space)
-            self.model.inference_view_requirements[
+            self.model.view_requirements[
                 "state_out_{}".format(i)] = \
                 ViewRequirement(space=self.state_space)
 
         self.view_requirements = dict(
             **{
                 SampleBatch.NEXT_OBS: ViewRequirement(
-                    SampleBatch.OBS, data_rel_pos=1),
+                    SampleBatch.OBS, shift=1),
                 SampleBatch.ACTIONS: ViewRequirement(space=self.action_space),
                 SampleBatch.REWARDS: ViewRequirement(),
                 SampleBatch.DONES: ViewRequirement(),
             },
-            **self.model.inference_view_requirements)
+            **self.model.view_requirements)
 
     @override(Policy)
     def is_recurrent(self):
@@ -97,7 +97,7 @@ class EpisodeEnvAwareAttentionPolicy(RandomPolicy):
             pass
 
         self.model = _fake_model()
-        self.model.inference_view_requirements = {
+        self.model.view_requirements = {
             SampleBatch.AGENT_INDEX: ViewRequirement(),
             SampleBatch.EPS_ID: ViewRequirement(),
             "env_id": ViewRequirement(),
@@ -106,7 +106,7 @@ class EpisodeEnvAwareAttentionPolicy(RandomPolicy):
             "state_in_0": ViewRequirement(
                 "state_out_0",
                 # Provide state outs -50 to -1 as "state-in".
-                data_rel_pos="-50:-1",
+                shift="-50:-1",
                 # Repeat the incoming state every n time steps (usually max seq
                 # len).
                 batch_repeat_value=self.config["model"]["max_seq_len"],
@@ -114,7 +114,7 @@ class EpisodeEnvAwareAttentionPolicy(RandomPolicy):
         }
 
         self.view_requirements = dict(super()._get_default_view_requirements(),
-                                      **self.model.inference_view_requirements)
+                                      **self.model.view_requirements)
 
     @override(Policy)
     def is_recurrent(self):

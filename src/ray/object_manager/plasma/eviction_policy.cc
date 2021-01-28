@@ -132,10 +132,10 @@ int64_t EvictionPolicy::RequireSpace(int64_t size,
   RAY_LOG(DEBUG) << "not enough space to create this object, so evicting objects";
   // Choose some objects to evict, and update the return pointers.
   int64_t num_bytes_evicted = ChooseObjectsToEvict(space_to_free, objects_to_evict);
-  RAY_LOG(INFO) << "There is not enough space to create this object, so evicting "
-                << objects_to_evict->size() << " objects to free up " << num_bytes_evicted
-                << " bytes. The number of bytes in use (before "
-                << "this eviction) is " << PlasmaAllocator::Allocated() << ".";
+  RAY_LOG(DEBUG) << "There is not enough space to create this object, so evicting "
+                 << objects_to_evict->size() << " objects to free up "
+                 << num_bytes_evicted << " bytes. The number of bytes in use (before "
+                 << "this eviction) is " << PlasmaAllocator::Allocated() << ".";
   return required_space - num_bytes_evicted;
 }
 

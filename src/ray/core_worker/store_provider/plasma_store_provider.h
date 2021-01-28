@@ -27,6 +27,57 @@
 
 namespace ray {
 
+class TrackedBuffer;
+
+// Active buffers tracker. This must be allocated as a separate structure since its
+// lifetime can exceed that of the store provider due to TrackedBuffer.
+class BufferTracker {
+ public:
+  // Track an object.
+  void Record(const ObjectID &object_id, TrackedBuffer *buffer,
+              const std::string &call_site);
+  // Release an object from tracking.
+  void Release(const ObjectID &object_id, TrackedBuffer *buffer);
+  // List tracked objects.
+  absl::flat_hash_map<ObjectID, std::pair<int64_t, std::string>> UsedObjects() const;
+
+ private:
+  // Guards the active buffers map. This mutex may be acquired during TrackedBuffer
+  // destruction.
+  mutable absl::Mutex active_buffers_mutex_;
+  // Mapping of live object buffers to their creation call site. Destroyed buffers are
+  // automatically removed from this list via destructor. The map key uniquely
+  // identifies a buffer. It should not be a shared ptr since that would keep the Buffer
+  // alive forever (i.e., this is a weak ref map).
+  absl::flat_hash_map<std::pair<ObjectID, TrackedBuffer *>, std::string> active_buffers_
+      GUARDED_BY(active_buffers_mutex_);
+};
+
+/// This can be used to hold the reference to a buffer.
+class TrackedBuffer : public Buffer {
+ public:
+  TrackedBuffer(std::shared_ptr<Buffer> buffer,
+                const std::shared_ptr<BufferTracker> &tracker, const ObjectID &object_id)
+      : buffer_(buffer), tracker_(tracker), object_id_(object_id) {}
+
+  uint8_t *Data() const override { return buffer_->Data(); }
+
+  size_t Size() const override { return buffer_->Size(); }
+
+  bool OwnsData() const override { return true; }
+
+  bool IsPlasmaBuffer() const override { return true; }
+
+  ~TrackedBuffer() { tracker_->Release(object_id_, this); }
+
+ private:
+  /// shared_ptr to a buffer which can potentially hold a reference
+  /// for the object (when it's a SharedMemoryBuffer).
+  std::shared_ptr<Buffer> buffer_;
+  std::shared_ptr<BufferTracker> tracker_;
+  ObjectID object_id_;
+};
+
 /// The class provides implementations for accessing plasma store, which includes both
 /// local and remote stores. Local access goes is done via a
 /// CoreWorkerLocalPlasmaStoreProvider and remote access goes through the raylet.
@@ -98,8 +149,7 @@ class CoreWorkerPlasmaStoreProvider {
               int64_t timeout_ms, const WorkerContext &ctx,
               absl::flat_hash_set<ObjectID> *ready);
 
-  Status Delete(const absl::flat_hash_set<ObjectID> &object_ids, bool local_only,
-                bool delete_creating_tasks);
+  Status Delete(const absl::flat_hash_set<ObjectID> &object_ids, bool local_only);
 
   /// Lists objects in used (pinned) by the current client.
   ///
@@ -154,21 +204,7 @@ class CoreWorkerPlasmaStoreProvider {
   std::mutex store_client_mutex_;
   std::function<Status()> check_signals_;
   std::function<std::string()> get_current_call_site_;
-
-  // Active buffers tracker. This must be allocated as a separate structure since its
-  // lifetime can exceed that of the store provider due to callback references.
-  struct BufferTracker {
-    // Guards the active buffers map. This mutex may be acquired during PlasmaBuffer
-    // destruction.
-    mutable absl::Mutex active_buffers_mutex_;
-    // Mapping of live object buffers to their creation call site. Destroyed buffers are
-    // automatically removed from this list via destructor callback. The map key uniquely
-    // identifies a buffer. It should not be a shared ptr since that would keep the Buffer
-    // alive forever (i.e., this is a weak ref map).
-    absl::flat_hash_map<std::pair<ObjectID, PlasmaBuffer *>, std::string> active_buffers_
-        GUARDED_BY(active_buffers_mutex_);
-  };
-
+  uint32_t object_store_full_delay_ms_;
   // Pointer to the shared buffer tracker.
   std::shared_ptr<BufferTracker> buffer_tracker_;
 };

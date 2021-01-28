@@ -3,8 +3,8 @@ package io.ray.api;
 import java.util.List;
 
 /**
- * Represents the result of a Ray.wait call. It contains 2 lists,
- * one containing the locally available objects, one containing the rest.
+ * Represents the result of a Ray.wait call. It contains 2 lists, one containing the locally
+ * available objects, one containing the rest.
  */
 public final class WaitResult<T> {
 
@@ -16,18 +16,13 @@ public final class WaitResult<T> {
     this.unready = unready;
   }
 
-  /**
-   * Get the list of ready objects.
-   */
+  /** Get the list of ready objects. */
   public List<ObjectRef<T>> getReady() {
     return ready;
   }
 
-  /**
-   * Get the list of unready objects.
-   */
+  /** Get the list of unready objects. */
   public List<ObjectRef<T>> getUnready() {
     return unready;
   }
-
 }

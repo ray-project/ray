@@ -7,24 +7,16 @@ import io.ray.api.id.UniqueId;
 import io.ray.runtime.generated.Common.Address;
 import io.ray.runtime.generated.Common.TaskType;
 
-/**
- * The context of worker.
- */
+/** The context of worker. */
 public interface WorkerContext {
 
-  /**
-   * ID of the current worker.
-   */
+  /** ID of the current worker. */
   UniqueId getCurrentWorkerId();
 
-  /**
-   * ID of the current job.
-   */
+  /** ID of the current job. */
   JobId getCurrentJobId();
 
-  /**
-   * ID of the current actor.
-   */
+  /** ID of the current actor. */
   ActorId getCurrentActorId();
 
   /**
@@ -33,19 +25,13 @@ public interface WorkerContext {
    */
   ClassLoader getCurrentClassLoader();
 
-  /**
-   * Set the current class loader.
-   */
+  /** Set the current class loader. */
   void setCurrentClassLoader(ClassLoader currentClassLoader);
 
-  /**
-   * Type of the current task.
-   */
+  /** Type of the current task. */
   TaskType getCurrentTaskType();
 
-  /**
-   * ID of the current task.
-   */
+  /** ID of the current task. */
   TaskId getCurrentTaskId();
 
   Address getRpcAddress();

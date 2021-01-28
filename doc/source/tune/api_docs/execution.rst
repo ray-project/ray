@@ -23,14 +23,6 @@ tune.with_parameters
 
 .. autofunction:: ray.tune.with_parameters
 
-.. _tune-stop-ref:
-
-Stopper (tune.Stopper)
-----------------------
-
-.. autoclass:: ray.tune.Stopper
-    :members: __call__, stop_all
-
 .. _tune-sync-config:
 
 tune.SyncConfig

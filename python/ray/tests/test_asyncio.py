@@ -6,7 +6,7 @@ import threading
 import pytest
 
 import ray
-from ray.test_utils import SignalActor
+from ray.test_utils import SignalActor, wait_for_condition
 
 
 def test_asyncio_actor(ray_start_regular_shared):
@@ -196,6 +196,52 @@ async def test_asyncio_double_await(ray_start_regular_shared):
     await signal.send.remote()
     await waiting
     await waiting
+
+
+@pytest.mark.asyncio
+async def test_asyncio_exit_actor(ray_start_regular_shared):
+    # https://github.com/ray-project/ray/issues/12649
+    # The test should just hang without the fix.
+
+    @ray.remote
+    class Actor:
+        async def exit(self):
+            ray.actor.exit_actor()
+
+        async def ping(self):
+            return "pong"
+
+        async def loop_forever(self):
+            while True:
+                await asyncio.sleep(5)
+
+    a = Actor.options(max_task_retries=0).remote()
+    a.loop_forever.remote()
+    # Make sure exit_actor exits immediately, not once all tasks completed.
+    ray.get(a.exit.remote())
+
+    with pytest.raises(ray.exceptions.RayActorError):
+        ray.get(a.ping.remote())
+
+
+def test_async_callback(ray_start_regular_shared):
+    global_set = set()
+
+    ref = ray.put(None)
+    ref._on_completed(lambda _: global_set.add("completed-1"))
+    wait_for_condition(lambda: "completed-1" in global_set)
+
+    signal = SignalActor.remote()
+
+    @ray.remote
+    def wait():
+        ray.get(signal.wait.remote())
+
+    ref = wait.remote()
+    ref._on_completed(lambda _: global_set.add("completed-2"))
+    assert "completed-2" not in global_set
+    signal.send.remote()
+    wait_for_condition(lambda: "completed-2" in global_set)
 
 
 if __name__ == "__main__":

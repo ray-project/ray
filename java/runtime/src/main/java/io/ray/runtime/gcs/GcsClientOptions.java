@@ -1,18 +1,19 @@
 package io.ray.runtime.gcs;
 
+import com.google.common.base.Preconditions;
 import io.ray.runtime.config.RayConfig;
 
-/**
- * Options to create GCS Client.
- */
+/** Options to create GCS Client. */
 public class GcsClientOptions {
   public String ip;
   public int port;
   public String password;
 
   public GcsClientOptions(RayConfig rayConfig) {
-    ip = rayConfig.getRedisIp();
-    port = rayConfig.getRedisPort();
+    String[] ipAndPort = rayConfig.getRedisAddress().split(":");
+    Preconditions.checkArgument(ipAndPort.length == 2, "Invalid redis address.");
+    ip = ipAndPort[0];
+    port = Integer.parseInt(ipAndPort[1]);
     password = rayConfig.redisPassword;
   }
 }

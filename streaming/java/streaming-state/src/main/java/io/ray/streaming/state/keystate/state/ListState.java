@@ -20,9 +20,7 @@ package io.ray.streaming.state.keystate.state;
 
 import java.util.List;
 
-/**
- * ListState interface.
- */
+/** ListState interface. */
 public interface ListState<T> extends UnaryState<List<T>> {
 
   /**

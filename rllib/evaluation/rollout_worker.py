@@ -5,17 +5,17 @@ import logging
 import pickle
 import platform
 import os
-from typing import Callable, Any, List, Dict, Tuple, Union, Optional, \
-    TYPE_CHECKING, Type, TypeVar
+from typing import Any, Callable, Dict, List, Optional, Tuple, Type, TypeVar, \
+    TYPE_CHECKING, Union
 
 import ray
-from ray.rllib.env.atari_wrappers import wrap_deepmind, is_atari
 from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.external_env import ExternalEnv
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.env.external_multi_agent_env import ExternalMultiAgentEnv
 from ray.rllib.env.vector_env import VectorEnv
+from ray.rllib.env.wrappers.atari_wrappers import wrap_deepmind, is_atari
 from ray.rllib.evaluation.sampler import AsyncSampler, SyncSampler
 from ray.rllib.evaluation.rollout_metrics import RolloutMetrics
 from ray.rllib.models import ModelCatalog
@@ -143,6 +143,7 @@ class RolloutWorker(ParallelIteratorWorker):
             policies_to_train: Optional[List[PolicyID]] = None,
             tf_session_creator: Optional[Callable[[], "tf1.Session"]] = None,
             rollout_fragment_length: int = 100,
+            count_steps_by: str = "env_steps",
             batch_mode: str = "truncate_episodes",
             episode_horizon: int = None,
             preprocessor_pref: str = "deepmind",
@@ -177,6 +178,7 @@ class RolloutWorker(ParallelIteratorWorker):
             fake_sampler: bool = False,
             spaces: Optional[Dict[PolicyID, Tuple[gym.spaces.Space,
                                                   gym.spaces.Space]]] = None,
+            _use_trajectory_view_api: bool = True,
             policy: Union[type, Dict[
                 str, Tuple[Optional[type], gym.Space, gym.Space,
                            PartialTrainerConfigDict]]] = None,
@@ -207,8 +209,11 @@ class RolloutWorker(ParallelIteratorWorker):
             tf_session_creator (Optional[Callable[[], tf1.Session]]): A
                 function that returns a TF session. This is optional and only
                 useful with TFPolicy.
-            rollout_fragment_length (int): The target number of env transitions
-                to include in each sample batch returned from this worker.
+            rollout_fragment_length (int): The target number of steps
+                (maesured in `count_steps_by`) to include in each sample
+                batch returned from this worker.
+            count_steps_by (str): The unit in which to count fragment
+                lengths. One of env_steps or agent_steps.
             batch_mode (str): One of the following batch modes:
                 "truncate_episodes": Each call to sample() will return a batch
                     of at most `rollout_fragment_length * num_envs` in size.
@@ -295,6 +300,8 @@ class RolloutWorker(ParallelIteratorWorker):
                 gym.spaces.Space]]]): An optional space dict mapping policy IDs
                 to (obs_space, action_space)-tuples. This is used in case no
                 Env is created on this RolloutWorker.
+            _use_trajectory_view_api (bool): Whether to collect samples through
+                the experimental Trajectory View API.
             policy: Obsoleted arg. Use `policy_spec` instead.
         """
         # Deprecated arg.
@@ -336,7 +343,8 @@ class RolloutWorker(ParallelIteratorWorker):
         elif log_level == "DEBUG":
             enable_periodic_logging()
 
-        env_context = EnvContext(env_config or {}, worker_index)
+        env_context = EnvContext(
+            env_config or {}, worker_index, num_workers=num_workers)
         self.env_context = env_context
         self.policy_config: TrainerConfigDict = policy_config
         if callbacks:
@@ -353,6 +361,7 @@ class RolloutWorker(ParallelIteratorWorker):
             raise ValueError("Policy mapping function not callable?")
         self.env_creator: Callable[[EnvContext], EnvType] = env_creator
         self.rollout_fragment_length: int = rollout_fragment_length * num_envs
+        self.count_steps_by: str = count_steps_by
         self.batch_mode: str = batch_mode
         self.compress_observations: bool = compress_observations
         self.preprocessing_enabled: bool = True
@@ -387,11 +396,22 @@ class RolloutWorker(ParallelIteratorWorker):
                 if clip_rewards is None:
                     clip_rewards = True
 
+                # framestacking via trajectory view API is enabled.
+                num_framestacks = model_config.get("num_framestacks", 0)
+                if not policy_config["_use_trajectory_view_api"]:
+                    model_config["num_framestacks"] = num_framestacks = 0
+                elif num_framestacks == "auto":
+                    model_config["num_framestacks"] = num_framestacks = 4
+                framestack_traj_view = num_framestacks > 1
+                # Deprecated way of framestacking is used.
+                framestack = model_config.get("framestack") is True
+
                 def wrap(env):
                     env = wrap_deepmind(
                         env,
                         dim=model_config.get("dim"),
-                        framestack=model_config.get("framestack"))
+                        framestack=framestack,
+                        framestack_via_traj_view_api=framestack_traj_view)
                     if monitor_path:
                         from gym import wrappers
                         env = wrappers.Monitor(env, monitor_path, resume=True)
@@ -458,6 +478,14 @@ class RolloutWorker(ParallelIteratorWorker):
         else:
             self.policy_map, self.preprocessors = self._build_policy_map(
                 policy_dict, policy_config)
+
+        # Update Policy's view requirements from Model, only if Policy directly
+        # inherited from base `Policy` class. At this point here, the Policy
+        # must have it's Model (if any) defined and ready to output an initial
+        # state.
+        for pol in self.policy_map.values():
+            if not pol._model_init_state_automatically_added:
+                pol._update_model_view_requirements_from_init_state()
 
         if (ray.is_initialized()
                 and ray.worker._mode() != ray.worker.LOCAL_MODE):
@@ -527,6 +555,7 @@ class RolloutWorker(ParallelIteratorWorker):
             raise ValueError("Unsupported batch mode: {}".format(
                 self.batch_mode))
 
+        # Create the IOContext for this worker.
         self.io_context: IOContext = IOContext(log_dir, policy_config,
                                                worker_index, self)
         self.reward_estimators: List[OffPolicyEstimator] = []
@@ -559,6 +588,7 @@ class RolloutWorker(ParallelIteratorWorker):
                 obs_filters=self.filters,
                 clip_rewards=clip_rewards,
                 rollout_fragment_length=rollout_fragment_length,
+                count_steps_by=count_steps_by,
                 callbacks=self.callbacks,
                 horizon=episode_horizon,
                 multiple_episodes_in_batch=pack,
@@ -568,8 +598,10 @@ class RolloutWorker(ParallelIteratorWorker):
                 soft_horizon=soft_horizon,
                 no_done_at_end=no_done_at_end,
                 observation_fn=observation_fn,
-                _use_trajectory_view_api=policy_config.get(
-                    "_use_trajectory_view_api", False))
+                _use_trajectory_view_api=_use_trajectory_view_api,
+                sample_collector_class=policy_config.get(
+                    "sample_collector_class"),
+            )
             # Start the Sampler thread.
             self.sampler.start()
         else:
@@ -582,6 +614,7 @@ class RolloutWorker(ParallelIteratorWorker):
                 obs_filters=self.filters,
                 clip_rewards=clip_rewards,
                 rollout_fragment_length=rollout_fragment_length,
+                count_steps_by=count_steps_by,
                 callbacks=self.callbacks,
                 horizon=episode_horizon,
                 multiple_episodes_in_batch=pack,
@@ -590,8 +623,10 @@ class RolloutWorker(ParallelIteratorWorker):
                 soft_horizon=soft_horizon,
                 no_done_at_end=no_done_at_end,
                 observation_fn=observation_fn,
-                _use_trajectory_view_api=policy_config.get(
-                    "_use_trajectory_view_api", False))
+                _use_trajectory_view_api=_use_trajectory_view_api,
+                sample_collector_class=policy_config.get(
+                    "sample_collector_class"),
+            )
 
         self.input_reader: InputReader = input_creator(self.io_context)
         self.output_writer: OutputWriter = output_creator(self.io_context)
@@ -625,7 +660,9 @@ class RolloutWorker(ParallelIteratorWorker):
                 self.rollout_fragment_length))
 
         batches = [self.input_reader.next()]
-        steps_so_far = batches[0].count
+        steps_so_far = batches[0].count if \
+            self.count_steps_by == "env_steps" else \
+            batches[0].agent_steps()
 
         # In truncate_episodes mode, never pull more than 1 batch per env.
         # This avoids over-running the target batch size.
@@ -637,7 +674,9 @@ class RolloutWorker(ParallelIteratorWorker):
         while (steps_so_far < self.rollout_fragment_length
                and len(batches) < max_batches):
             batch = self.input_reader.next()
-            steps_so_far += batch.count
+            steps_so_far += batch.count if \
+                self.count_steps_by == "env_steps" else \
+                batch.agent_steps()
             batches.append(batch)
         batch = batches[0].concat_samples(batches) if len(batches) > 1 else \
             batches[0]
@@ -648,7 +687,7 @@ class RolloutWorker(ParallelIteratorWorker):
         # for better compression inside the writer.
         self.output_writer.write(batch)
 
-        # Do off-policy estimation if needed
+        # Do off-policy estimation, if needed.
         if self.reward_estimators:
             for sub_batch in batch.split_by_episode():
                 for estimator in self.reward_estimators:
@@ -1044,27 +1083,33 @@ class RolloutWorker(ParallelIteratorWorker):
                 obs_space = preprocessor.observation_space
             else:
                 preprocessors[name] = NoPreprocessor(obs_space)
-            if isinstance(obs_space, gym.spaces.Dict) or \
-                    isinstance(obs_space, gym.spaces.Tuple):
+
+            if isinstance(obs_space, (gym.spaces.Dict, gym.spaces.Tuple)):
                 raise ValueError(
                     "Found raw Tuple|Dict space as input to policy. "
                     "Please preprocess these observations with a "
                     "Tuple|DictFlatteningPreprocessor.")
-            if tf1 and tf1.executing_eagerly():
-                if hasattr(cls, "as_eager"):
-                    cls = cls.as_eager()
-                    if policy_config.get("eager_tracing"):
-                        cls = cls.with_tracing()
-                elif not issubclass(cls, TFPolicy):
-                    pass  # could be some other type of policy
-                else:
-                    raise ValueError("This policy does not support eager "
-                                     "execution: {}".format(cls))
-            if tf1:
+            # Tf.
+            framework = policy_config.get("framework", "tf")
+            if framework in ["tf2", "tf", "tfe"]:
+                assert tf1
+                if framework in ["tf2", "tfe"]:
+                    assert tf1.executing_eagerly()
+                    if hasattr(cls, "as_eager"):
+                        cls = cls.as_eager()
+                        if policy_config.get("eager_tracing"):
+                            cls = cls.with_tracing()
+                    elif not issubclass(cls, TFPolicy):
+                        pass  # could be some other type of policy
+                    else:
+                        raise ValueError("This policy does not support eager "
+                                         "execution: {}".format(cls))
                 with tf1.variable_scope(name):
                     policy_map[name] = cls(obs_space, act_space, merged_conf)
+            # non-tf.
             else:
                 policy_map[name] = cls(obs_space, act_space, merged_conf)
+
         if self.worker_index == 0:
             logger.info("Built policy map: {}".format(policy_map))
             logger.info("Built preprocessor map: {}".format(preprocessors))

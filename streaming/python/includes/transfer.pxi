@@ -385,7 +385,7 @@ cdef c_vector[CObjectID] bytes_list_to_qid_vec(list py_queue_ids) except *:
         c_string q_id_data
     for q_id in py_queue_ids:
         q_id_data = q_id
-        assert q_id_data.size() == CObjectID.Size()
+        assert q_id_data.size() == CObjectID.Size(), f"{q_id_data.size()}, {CObjectID.Size()}"
         obj_id = CObjectID.FromBinary(q_id_data)
         queue_id_vec.push_back(obj_id)
     return queue_id_vec

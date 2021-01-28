@@ -84,7 +84,7 @@ def _build_cpu_gpu_images(image_name, no_cache=True) -> List[str]:
         build_args = {}
         if image_name == "base-deps":
             build_args["BASE_IMAGE"] = (
-                "nvidia/cuda:10.1-cudnn7-runtime-ubuntu18.04"
+                "nvidia/cuda:11.0-cudnn8-runtime-ubuntu18.04"
                 if gpu == "-gpu" else "ubuntu:focal")
         else:
             build_args["GPU"] = gpu
@@ -179,6 +179,8 @@ def build_ray_ml():
     root_dir = _get_root_dir()
     requirement_files = glob.glob(
         f"{_get_root_dir()}/python/requirements*.txt")
+    requirement_files.extend(
+        glob.glob(f"{_get_root_dir()}/python/requirements/*.txt"))
     for fl in requirement_files:
         shutil.copy(fl, os.path.join(root_dir, "docker/ray-ml/"))
     ray_ml_images = _build_cpu_gpu_images("ray-ml")

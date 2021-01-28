@@ -27,7 +27,7 @@ Status TaskExecutor::ExecuteTask(
     const std::unordered_map<std::string, double> &required_resources,
     const std::vector<std::shared_ptr<RayObject>> &args_buffer,
     const std::vector<ObjectID> &arg_reference_ids,
-    const std::vector<ObjectID> &return_ids,
+    const std::vector<ObjectID> &return_ids, const std::string &debugger_breakpoint,
     std::vector<std::shared_ptr<RayObject>> *results) {
   RAY_LOG(INFO) << "TaskExecutor::ExecuteTask";
   RAY_CHECK(ray_function.GetLanguage() == Language::CPP);

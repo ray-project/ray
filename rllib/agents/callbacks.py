@@ -191,8 +191,8 @@ class DefaultCallbacks:
                           **kwargs) -> None:
         """Called at the beginning of Policy.learn_on_batch().
 
-        Note: This is called before the Model's `preprocess_train_batch()`
-        is called.
+        Note: This is called before 0-padding via
+        `pad_batch_to_sequences_of_same_size`.
 
         Args:
             policy (Policy): Reference to the current Policy object.

@@ -7,20 +7,19 @@ import numpy as np
 from typing import Dict, List, Type, Union
 
 import ray
-from ray.rllib.agents.a3c.a3c_torch_policy import apply_grad_clipping
-from ray.rllib.agents.ppo.ppo_tf_policy import postprocess_ppo_gae, \
-    setup_config
-from ray.rllib.evaluation.postprocessing import Postprocessing
+from ray.rllib.agents.ppo.ppo_tf_policy import setup_config
+from ray.rllib.evaluation.postprocessing import compute_gae_for_sample_batch, \
+    Postprocessing
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
 from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy import EntropyCoeffSchedule, \
     LearningRateSchedule
-from ray.rllib.policy.torch_policy_template import build_torch_policy
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.torch_ops import convert_to_torch_tensor, \
-    explained_variance, sequence_mask
+from ray.rllib.utils.torch_ops import apply_grad_clipping, \
+    convert_to_torch_tensor, explained_variance, sequence_mask
 from ray.rllib.utils.typing import TensorType, TrainerConfigDict
 
 torch, nn = try_import_torch()
@@ -49,7 +48,8 @@ def ppo_surrogate_loss(
 
     # RNN case: Mask away 0-padded chunks at end of time axis.
     if state:
-        max_seq_len = torch.max(train_batch["seq_lens"])
+        B = len(train_batch["seq_lens"])
+        max_seq_len = logits.shape[0] // B
         mask = sequence_mask(
             train_batch["seq_lens"],
             max_seq_len,
@@ -110,6 +110,9 @@ def ppo_surrogate_loss(
     policy._total_loss = total_loss
     policy._mean_policy_loss = mean_policy_loss
     policy._mean_vf_loss = mean_vf_loss
+    policy._vf_explained_var = explained_variance(
+        train_batch[Postprocessing.VALUE_TARGETS],
+        policy.model.value_function())
     policy._mean_entropy = mean_entropy
     policy._mean_kl = mean_kl
 
@@ -133,9 +136,7 @@ def kl_and_loss_stats(policy: Policy,
         "total_loss": policy._total_loss,
         "policy_loss": policy._mean_policy_loss,
         "vf_loss": policy._mean_vf_loss,
-        "vf_explained_var": explained_variance(
-            train_batch[Postprocessing.VALUE_TARGETS],
-            policy.model.value_function()),
+        "vf_explained_var": policy._vf_explained_var,
         "kl": policy._mean_kl,
         "entropy": policy._mean_entropy,
         "entropy_coeff": policy.entropy_coeff,
@@ -210,27 +211,41 @@ class ValueNetworkMixin:
         # When doing GAE, we need the value function estimate on the
         # observation.
         if config["use_gae"]:
+            # Input dict is provided to us automatically via the Model's
+            # requirements. It's a single-timestep (last one in trajectory)
+            # input_dict.
+            if config["_use_trajectory_view_api"]:
 
-            def value(ob, prev_action, prev_reward, *state):
-                model_out, _ = self.model({
-                    SampleBatch.CUR_OBS: convert_to_torch_tensor(
-                        np.asarray([ob]), self.device),
-                    SampleBatch.PREV_ACTIONS: convert_to_torch_tensor(
-                        np.asarray([prev_action]), self.device),
-                    SampleBatch.PREV_REWARDS: convert_to_torch_tensor(
-                        np.asarray([prev_reward]), self.device),
-                    "is_training": False,
-                }, [
-                    convert_to_torch_tensor(np.asarray([s]), self.device)
-                    for s in state
-                ], convert_to_torch_tensor(np.asarray([1]), self.device))
-                # [0] = remove the batch dim.
-                return self.model.value_function()[0]
+                def value(**input_dict):
+                    model_out, _ = self.model.from_batch(
+                        convert_to_torch_tensor(input_dict, self.device),
+                        is_training=False)
+                    # [0] = remove the batch dim.
+                    return self.model.value_function()[0]
+
+            # TODO: (sven) Remove once trajectory view API is all-algo default.
+            else:
+
+                def value(ob, prev_action, prev_reward, *state):
+                    model_out, _ = self.model({
+                        SampleBatch.CUR_OBS: convert_to_torch_tensor(
+                            np.asarray([ob]), self.device),
+                        SampleBatch.PREV_ACTIONS: convert_to_torch_tensor(
+                            np.asarray([prev_action]), self.device),
+                        SampleBatch.PREV_REWARDS: convert_to_torch_tensor(
+                            np.asarray([prev_reward]), self.device),
+                        "is_training": False,
+                    }, [
+                        convert_to_torch_tensor(np.asarray([s]), self.device)
+                        for s in state
+                    ], convert_to_torch_tensor(np.asarray([1]), self.device))
+                    # [0] = remove the batch dim.
+                    return self.model.value_function()[0]
 
         # When not doing GAE, we do not require the value function's output.
         else:
 
-            def value(ob, prev_action, prev_reward, *state):
+            def value(*args, **kwargs):
                 return 0.0
 
         self._value = value
@@ -256,13 +271,14 @@ def setup_mixins(policy: Policy, obs_space: gym.spaces.Space,
 
 # Build a child class of `TorchPolicy`, given the custom functions defined
 # above.
-PPOTorchPolicy = build_torch_policy(
+PPOTorchPolicy = build_policy_class(
     name="PPOTorchPolicy",
+    framework="torch",
     get_default_config=lambda: ray.rllib.agents.ppo.ppo.DEFAULT_CONFIG,
     loss_fn=ppo_surrogate_loss,
     stats_fn=kl_and_loss_stats,
     extra_action_out_fn=vf_preds_fetches,
-    postprocess_fn=postprocess_ppo_gae,
+    postprocess_fn=compute_gae_for_sample_batch,
     extra_grad_process_fn=apply_grad_clipping,
     before_init=setup_config,
     before_loss_init=setup_mixins,
