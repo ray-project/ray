@@ -49,7 +49,7 @@ def with_docker_exec(cmds,
 
 def _check_helper(cname, template, docker_cmd):
     return " ".join([
-        "docker_cmd", "inspect", "-f", "'{{" + template + "}}'", cname, "||",
+        docker_cmd, "inspect", "-f", "'{{" + template + "}}'", cname, "||",
         "true"
     ])
 
