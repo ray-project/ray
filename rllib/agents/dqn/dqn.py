@@ -317,12 +317,14 @@ def execution_plan(workers, config):
             [store_op, replay_op],
             mode=rollout_learn_concurrency_mode,
             output_indexes=[1],
-            round_robin_weights=calculate_rr_weights(config))
+            round_robin_weights=calculate_rr_weights(config),
+            strict=True)
     else:
         train_op = Concurrently(
             [store_op, replay_op],
             mode=rollout_learn_concurrency_mode,
-            output_indexes=[1])
+            output_indexes=[1],
+            strict=True)
 
     return StandardMetricsReporting(train_op, workers, config)
 

@@ -28,4 +28,4 @@ steps:
     TFP_VERSION: 0.7
     TORCH_VERSION: 1.4
   displayName: 'Run original rlib learning test job with TF 1.x'
-  timeoutInMinutes: 120
+  timeoutInMinutes: 240

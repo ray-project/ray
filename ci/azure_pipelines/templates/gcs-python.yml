@@ -29,7 +29,7 @@ steps:
     RAY_GCS_SERVICE_ENABLED: false
     RAY_CYTHON_EXAMPLES: 1
   displayName: 'Run original GCS python job'
-  timeoutInMinutes: 120
+  timeoutInMinutes: 240
   # TODO: remove - we are allowing to continue on error because
   # because some tests are very flaky in our agents
   continueOnError: 'true'

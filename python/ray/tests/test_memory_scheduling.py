@@ -89,6 +89,11 @@ class TestMemoryScheduling(unittest.TestCase):
 
     def testTuneDriverStoreLimit(self):
         try:
+            ray.init(
+                num_cpus=4,
+                memory=100 * MB,
+                object_store_memory=100 * MB,
+            )
             _register_all()
             self.assertRaisesRegexp(
                 ray.tune.error.TuneError,

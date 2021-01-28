@@ -28,4 +28,4 @@ steps:
     TFP_VERSION: 0.8
     TORCH_VERSION: 1.4
   displayName: 'Run original rlib learning test job with PyTorch'
-  timeoutInMinutes: 120
+  timeoutInMinutes: 240

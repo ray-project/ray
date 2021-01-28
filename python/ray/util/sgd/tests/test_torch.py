@@ -348,7 +348,7 @@ def test_dataset(ray_start_4_cpus):
 
     input = mlp_identity.to_mat(0.5)
     prediction = float(trainer.get_model()(input)[0][0])
-    assert 0.4 <= prediction <= 0.6
+    assert 0.1 <= prediction <= 0.6
     trainer.shutdown()
 
 

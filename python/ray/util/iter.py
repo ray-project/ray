@@ -1,3 +1,4 @@
+from __future__ import generator_stop
 from contextlib import contextmanager
 import collections
 import logging
@@ -14,6 +15,15 @@ logger = logging.getLogger(__name__)
 # The type of an iterator element.
 T = TypeVar("T")
 U = TypeVar("U")
+
+
+def was_cause_by_stop_iteration(ex) -> bool:
+    if isinstance(ex, StopIteration):
+        return True
+    elif ex.__cause__ is not None:
+        return was_cause_by_stop_iteration(ex.__cause__)
+    else:
+        return False
 
 
 def from_items(items: List[T], num_shards: int = 2,
@@ -133,7 +143,7 @@ def from_actors(actors: List["ray.actor.ActorHandle"],
     if not name:
         name = "from_actors[shards={}]".format(len(actors))
     return ParallelIterator([_ActorSet(actors, [])], name, parent_iterators=[],
-                            is_infinite_sequence = is_infinite_sequence)
+                            is_infinite_sequence=is_infinite_sequence)
 
 
 class ParallelIterator(Generic[T]):
@@ -224,7 +234,9 @@ class ParallelIterator(Generic[T]):
         return ParallelIterator(
             [a.with_transform(local_it_fn) for a in self.actor_sets],
             name=self.name + name,
-            parent_iterators=self.parent_iterators)
+            parent_iterators=self.parent_iterators,
+            is_infinite_sequence=self.is_infinite_sequence
+        )
 
     def for_each(self, fn: Callable[[T], U], max_concurrency=1,
                  resources=None) -> "ParallelIterator[U]":
@@ -418,8 +430,11 @@ class ParallelIterator(Generic[T]):
                             batch_ms=batch_ms)] = actor
                         for item in batch:
                             yield item
-                    except StopIteration:
-                        pass
+                    except (StopIteration, RuntimeError) as ex:
+                        if was_cause_by_stop_iteration(ex):
+                            pass
+                        else:
+                            raise ex
                 # Always yield after each round of wait with timeout.
                 if timeout is not None:
                     yield _NextValueNotReady()
@@ -435,7 +450,9 @@ class ParallelIterator(Generic[T]):
         actors = [worker_cls.remote(g, repeat=False) for g in generators]
         # need explicit reference to self so actors in this instance do not die
         return ParallelIterator(
-            [_ActorSet(actors, [])], name, parent_iterators=[self])
+            [_ActorSet(actors, [])], name, parent_iterators=[self],
+            is_infinite_sequence=self.is_infinite_sequence
+        )
 
     def gather_sync(self) -> "LocalIterator[T]":
         """Returns a local iterable for synchronous iteration.
@@ -482,26 +499,33 @@ class ParallelIterator(Generic[T]):
                         yield _NextValueNotReady()
                 except TimeoutError:
                     yield _NextValueNotReady()
-                except StopIteration:
-                    # If we are streaming (infinite sequence) then
-                    # we want to try again as long as at least one
-                    # actor is able to produce items. If not
-                    # find and remove the actor that produced StopIteration.
-                    results = []
-                    stoped_actors = []
-                    for a, f in zip(list(active), futures):
-                        try:
-                            results.append(ray.get(f))
-                        except StopIteration:
-                            if self.is_infinite_sequence:
-                                stoped_actors.append(a)
-                            else:
-                                active.remove(a)
-                    if results:
-                        yield results
-                    elif self.is_infinite_sequence and len(stoped_actors) == len(active):
-                        raise
-                    futures = [a.par_iter_next.remote() for a in active]
+                except (StopIteration, RuntimeError) as ex:
+                    if was_cause_by_stop_iteration(ex):
+                        # If we are streaming (infinite sequence) then
+                        # we want to try again as long as at least one
+                        # actor is able to produce items. If not
+                        # find and remove the actor that produced StopIteration.
+                        results = []
+                        stoped_actors = []
+                        for a, f in zip(list(active), futures):
+                            try:
+                                results.append(ray.get(f))
+                            except (StopIteration, RuntimeError) as ex_i:
+                                if was_cause_by_stop_iteration(ex_i):
+                                    if self.is_infinite_sequence:
+                                        stoped_actors.append(a)
+                                    else:
+                                        active.remove(a)
+                                else:
+                                    raise ex_i
+
+                        if results:
+                            yield results
+                        elif self.is_infinite_sequence and len(stoped_actors) == len(active):
+                            raise ex
+                        futures = [a.par_iter_next.remote() for a in active]
+                    else:
+                        raise ex
 
         name = "{}.batch_across_shards()".format(self)
         return LocalIterator(base_iterator, SharedMetrics(), name=name,
@@ -572,19 +596,22 @@ class ParallelIterator(Generic[T]):
                         active_actors.add(actor)
                         for item in batch:
                             yield item
-                    except StopIteration:
-                        # If we are streaming (infinite sequence) then
-                        # we want to try again as long as at least one
-                        # actor is able to produce items.
-                        if self.is_infinite_sequence:
-                            futures[actor.par_iter_next_batch.remote(
-                                batch_ms)] = actor
-                            if actor in active_actors:
-                                active_actors.remove(actor)
-                            if len(active_actors) == 0:
-                                raise
+                    except (StopIteration, RuntimeError) as ex:
+                        if was_cause_by_stop_iteration(ex):
+                            # If we are streaming (infinite sequence) then
+                            # we want to try again as long as at least one
+                            # actor is able to produce items.
+                            if self.is_infinite_sequence:
+                                futures[actor.par_iter_next_batch.remote(
+                                    batch_ms)] = actor
+                                if actor in active_actors:
+                                    active_actors.remove(actor)
+                                if len(active_actors) == 0:
+                                    raise
+                            else:
+                                pass
                         else:
-                            pass
+                            raise ex
                 # Always yield after each round of wait with timeout.
                 if timeout is not None:
                     yield _NextValueNotReady()
@@ -611,12 +638,19 @@ class ParallelIterator(Generic[T]):
         actor_sets = []
         actor_sets.extend(self.actor_sets)
         actor_sets.extend(other.actor_sets)
+        is_infinite_sequence = self.is_infinite_sequence
+        if is_infinite_sequence != self.is_infinite_sequence:
+            logger.warning("One iterator is a infinite sequence and the other is not. "
+                           "Assuming the union as a infinite sequence.")
+            is_infinite_sequence = True
         # if one of these iterators is a result of a repartition, we need to
         # keep an explicit reference to its parent iterator
         return ParallelIterator(
             actor_sets,
             "ParallelUnion[{}, {}]".format(self, other),
-            parent_iterators=self.parent_iterators + other.parent_iterators)
+            parent_iterators=self.parent_iterators + other.parent_iterators,
+            is_infinite_sequence=is_infinite_sequence
+        )
 
     def select_shards(self,
                       shards_to_keep: List[int]) -> "ParallelIterator[T]":
@@ -639,7 +673,9 @@ class ParallelIterator(Generic[T]):
         return ParallelIterator(
             [new_actor_set],
             "{}.select_shards({} total)".format(self, len(shards_to_keep)),
-            parent_iterators=self.parent_iterators)
+            parent_iterators=self.parent_iterators,
+            is_infinite_sequence=self.is_infinite_sequence
+        )
 
     def num_shards(self) -> int:
         """Return the number of worker actors backing this iterator."""
@@ -701,8 +737,11 @@ class ParallelIterator(Generic[T]):
                         yield _NextValueNotReady()
                 except TimeoutError:
                     yield _NextValueNotReady()
-                except StopIteration:
-                    break
+                except (StopIteration, RuntimeError) as ex:
+                    if was_cause_by_stop_iteration(ex):
+                        break
+                    else:
+                        raise ex
 
         name = self.name + ".shard[{}]".format(shard_index)
         return LocalIterator(base_iterator, SharedMetrics(), name=name,
@@ -732,6 +771,9 @@ class LocalIterator(Generic[T]):
     HANDLE_NEXT_VALUE_NOT_READY_HOOK_NAME = "_handle_next_value_not_ready"
 
     thread_local = threading.local()
+
+    UNION_MAX_PULL = 1000
+    UNION_PULL_DELAY_SEC = 1e-7
 
     def __init__(self,
                  base_iterator: Callable[[], Iterable[T]],
@@ -797,17 +839,18 @@ class LocalIterator(Generic[T]):
 
     def __iter__(self):
         self._build_once()
-        return self.built_iterator
+        return self
 
     def __next__(self):
         self._build_once()
         try:
             return next(self.built_iterator)
-        except StopIteration:
-            # Force the regeneration of the base iterator
-            if self.is_infinite_sequence:
-                self.built_iterator = None
-            raise
+        except (StopIteration, RuntimeError) as ex:
+            if was_cause_by_stop_iteration(ex):
+                # Force the regeneration of the base iterator
+                if self.is_infinite_sequence:
+                    self.built_iterator = None
+            raise ex
 
     def __str__(self):
         return repr(self)
@@ -931,12 +974,16 @@ class LocalIterator(Generic[T]):
 
     def flatten(self) -> "LocalIterator[T[0]]":
         def apply_flatten(it):
-            for item in it:
-                if isinstance(item, _NextValueNotReady):
-                    yield item
-                else:
-                    for subitem in item:
-                        yield subitem
+            try:
+                for item in it:
+                    if isinstance(item, _NextValueNotReady):
+                        yield item
+                    else:
+                        for subitem in item:
+                            yield subitem
+            except (StopIteration, RuntimeError) as ex:
+                if not was_cause_by_stop_iteration(ex):
+                    raise ex
 
         return LocalIterator(
             self.base_iterator,
@@ -1059,8 +1106,11 @@ class LocalIterator(Generic[T]):
                         if len(queues[i]) == 0:
                             try:
                                 fill_next(timeout)
-                            except StopIteration:
-                                return
+                            except (StopIteration, RuntimeError) as ex:
+                                if was_cause_by_stop_iteration(ex):
+                                    return
+                                else:
+                                    raise ex
                         yield queues[i].popleft()
 
             return gen
@@ -1103,7 +1153,7 @@ class LocalIterator(Generic[T]):
                     "other must be of type LocalIterator, got {}".format(
                         type(it)))
 
-        active = []
+        initial_active = []
         parent_iters = [self] + list(others)
         shared_metrics = SharedMetrics(
             parents=[p.shared_metrics for p in parent_iters])
@@ -1120,51 +1170,70 @@ class LocalIterator(Generic[T]):
             round_robin_weights = [1] * len(parent_iters)
 
         for i, it in enumerate(parent_iters):
-            active.append(
+            initial_active.append(
                 LocalIterator(
                     it.base_iterator,
                     shared_metrics,
                     it.local_transforms,
                     timeout=timeouts[i],
                     is_infinite_sequence=self.is_infinite_sequence))
-        active = list(zip(round_robin_weights, active))
+        initial_active = list(zip(round_robin_weights, initial_active))
 
         def build_union(timeout=None):
-            MAX_PULL = 100 # TOOD(ekl) how to best bound this?
+            active = list(initial_active)
             pull_counts = [0] * len(active)
+            last_pull_timestamp = [0] * len(active)
             while True:
                 yield_counts = [0] * len(active)
                 removed_iter_indices = []
                 for i, (weight, it) in enumerate(list(active)):
-                    expected_yield_counts = weight if weight != "*" else MAX_PULL
+                    expected_yield_counts = weight if weight != "*" else LocalIterator.UNION_MAX_PULL
                     if weight == "*":
-                        max_pull = MAX_PULL
+                        max_pull = LocalIterator.UNION_MAX_PULL
                     else:
                         max_pull = _randomized_int_cast(weight)
                     try:
                         for _ in range(max_pull):
                             pull_counts[i] += 1
+                            last_pull_elapsed = time.perf_counter() - last_pull_timestamp[i]
+                            expected_backoff_delay = pull_counts[i] * LocalIterator.UNION_PULL_DELAY_SEC
+                            if last_pull_elapsed < expected_backoff_delay:
+                                time.sleep(expected_backoff_delay - last_pull_elapsed)
                             item = next(it)
                             if isinstance(item, _NextValueNotReady):
+                                last_pull_timestamp[i] = time.perf_counter()
                                 if timeout is not None:
                                     yield item
                                 break
                             else:
+                                last_pull_timestamp[i] = 0
                                 yield_counts[i] += 1
-                                if yield_counts[i] >= expected_yield_counts:
-                                    pull_counts[i] = 0
+                                pull_counts[i] = 0
                                 yield item
-                    except StopIteration:
-                        fix_weights = [
-                            w != "*" for w in round_robin_weights
-                        ]
-                        if strict or (any(fix_weights) and
-                            yield_counts[i] < expected_yield_counts and
-                            pull_counts[i] >= MAX_PULL):
-                            raise
+                    except (StopIteration, RuntimeError) as ex:
+                        if was_cause_by_stop_iteration(ex):
+                            fix_weights = [
+                                w != "*" for w in round_robin_weights
+                            ]
+                            if strict:
+                                if it.is_infinite_sequence:
+                                    raise
+                                elif (fix_weights[i]
+                                      and yield_counts[i] < expected_yield_counts
+                                      and pull_counts[i] >= LocalIterator.UNION_MAX_PULL):
+                                    raise
+                                else:
+                                    removed_iter_indices.append(i)
+                                    active.remove((weight, it))
+                            elif (any(fix_weights)
+                                  and yield_counts[i] < expected_yield_counts
+                                  and pull_counts[i] >= LocalIterator.UNION_MAX_PULL):
+                                raise
+                            else:
+                                removed_iter_indices.append(i)
+                                active.remove((weight, it))
                         else:
-                            removed_iter_indices.append(i)
-                            active.remove((weight, it))
+                            raise ex
                 pull_counts = [c for j, c in enumerate(pull_counts) if j not in removed_iter_indices]
                 if not active:
                     break
@@ -1232,17 +1301,20 @@ class ParallelIteratorWorker(object):
                 def __next__(self) -> Any:
                     try:
                         return next(self.inner_iterator)
-                    except StopIteration:
-                        self._make_inner_iterator()
-                        # If we have an infinite sequence means that we have an stream
-                        # but the stream is not able to produce items at the moment
-                        # we notified that up and wait for the next call
-                        # If we are not in an infinite sequence, we just retry immediately
-                        # with the new iterator
-                        if is_infinite_sequence:
-                            raise
+                    except (StopIteration, RuntimeError) as ex:
+                        if was_cause_by_stop_iteration(ex):
+                            self._make_inner_iterator()
+                            # If we have an infinite sequence means that we have an stream
+                            # but the stream is not able to produce items at the moment.
+                            # We notified that up and wait for the next call
+                            # If we are not in an infinite sequence, we just retry immediately
+                            # with the new iterator
+                            if is_infinite_sequence:
+                                raise
+                            else:
+                                return next(self.inner_iterator)
                         else:
-                            return next(self.inner_iterator)
+                            raise ex
 
             self.item_generator = _GeneratorWrapper()
         else:
@@ -1278,11 +1350,14 @@ class ParallelIteratorWorker(object):
         while time.time() < t_end:
             try:
                 batch.append(self.par_iter_next())
-            except StopIteration:
-                if len(batch) == 0:
-                    raise StopIteration
+            except (StopIteration, RuntimeError) as ex:
+                if was_cause_by_stop_iteration(ex):
+                    if len(batch) == 0:
+                        raise StopIteration
+                    else:
+                        pass
                 else:
-                    pass
+                    raise ex
         return batch
 
     def par_iter_slice(self, step: int, start: int):
@@ -1300,8 +1375,11 @@ class ParallelIteratorWorker(object):
                 try:
                     val = next(self.local_it)
                     self.next_ith_buffer[j].append(val)
-                except StopIteration:
-                    pass
+                except (StopIteration, RuntimeError) as ex:
+                    if was_cause_by_stop_iteration(ex):
+                        pass
+                    else:
+                        raise ex
 
             if not self.next_ith_buffer[start]:
                 raise StopIteration
@@ -1318,11 +1396,14 @@ class ParallelIteratorWorker(object):
         while time.time() < t_end:
             try:
                 batch.append(self.par_iter_slice(step, start))
-            except StopIteration:
-                if len(batch) == 0:
-                    raise StopIteration
+            except (StopIteration, RuntimeError) as ex:
+                if was_cause_by_stop_iteration(ex):
+                    if len(batch) == 0:
+                        raise StopIteration
+                    else:
+                        pass
                 else:
-                    pass
+                    raise ex
         return batch
 
 

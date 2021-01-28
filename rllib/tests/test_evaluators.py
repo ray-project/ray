@@ -2,7 +2,7 @@ import gym
 import unittest
 
 import ray
-from ray.rllib.agents.dqn import DQNTrainer
+from ray.rllib.agents.dqn import DQNTrainer, DEFAULT_CONFIG as DQN_DEFAULT_CONFIG
 from ray.rllib.agents.a3c import A3CTrainer
 from ray.rllib.agents.dqn.dqn_tf_policy import _adjust_nstep
 from ray.rllib.utils.test_utils import framework_iterator
@@ -29,6 +29,7 @@ class EvalTest(unittest.TestCase):
             return gym.make("CartPole-v0")
 
         agent_classes = [A3CTrainer, DQNTrainer]
+        DQN_DEFAULT_CONFIG["learning_starts"] = 20
 
         for agent_cls in agent_classes:
             for fw in framework_iterator(frameworks=("torch", "tf")):

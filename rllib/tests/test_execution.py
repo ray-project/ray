@@ -20,7 +20,7 @@ from ray.rllib.execution.train_ops import TrainOneStep, ComputeGradients, \
 from ray.rllib.execution.replay_buffer import LocalReplayBuffer, \
     ReplayActor
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.util.iter import LocalIterator, from_range
+from ray.util.iter import LocalIterator, from_range, was_cause_by_stop_iteration
 from ray.util.iter_metrics import SharedMetrics
 
 
@@ -247,8 +247,9 @@ def test_all_straggler_rollouts(ray_start_regular_shared):
         tries += 1
         try:
             batch = next(a)
-        except StopIteration:
-            continue
+        except (StopIteration, RuntimeError) as ex:
+            if was_cause_by_stop_iteration(ex):
+                continue
     # Because we are in bulk_sync mode, we are expecting
     # two full rollout fragments
     assert batch.count == 200
@@ -265,8 +266,9 @@ def test_all_straggler_rollouts(ray_start_regular_shared):
         tries += 1
         try:
             batch = next(a)
-        except StopIteration:
-            continue
+        except (StopIteration, RuntimeError) as ex:
+            if was_cause_by_stop_iteration(ex):
+                continue
     # Because we are in async mode, we are expecting
     # one full rollout fragment instead of two, one
     # worker naturally will finish first.

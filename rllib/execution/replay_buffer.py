@@ -1,3 +1,4 @@
+from __future__ import generator_stop
 import numpy as np
 import random
 import collections

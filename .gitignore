@@ -182,3 +182,4 @@ project-id
 
 # PyCharm
 .ijwb/
+.run/

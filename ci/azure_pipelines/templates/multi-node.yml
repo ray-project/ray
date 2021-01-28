@@ -29,7 +29,7 @@ steps:
     MAC_WHEELS: 1
     RAY_INSTALL_JAVA: 1
   displayName: 'Run original Jenkins multi-node tests'
-  timeoutInMinutes: 180
+  timeoutInMinutes: 240
   # TODO: remove - we are allowing to continue on error because
   # because some tests are very flaky in our agents
   continueOnError: 'true'

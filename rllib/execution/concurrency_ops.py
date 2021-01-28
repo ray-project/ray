@@ -1,3 +1,4 @@
+from __future__ import generator_stop
 from typing import List
 import queue
 

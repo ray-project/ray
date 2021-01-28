@@ -566,7 +566,7 @@ stages:
           - template: templates/artifacts.yml
       - job: Lint
         # Disabled
-        # condition: False
+        condition: False
         timeoutInMinutes: 240
         cancelTimeoutInMinutes: 5
         strategy:

@@ -1,12 +1,49 @@
+from __future__ import generator_stop
 import time
 import collections
 from collections import Counter
+from typing import Iterator, Any, Callable, Generator, List, Optional
+
 import pytest
 
 import ray
 from ray.util.iter import from_items, from_iterators, from_range, \
-    from_actors, ParallelIteratorWorker, LocalIterator
+    from_actors, ParallelIteratorWorker, LocalIterator, was_cause_by_stop_iteration
 from ray.test_utils import Semaphore
+
+
+class _ReusableGenerator(Iterator[int]):
+    def __init__(self, sequence: List[int], sleep: Optional[float] = None):
+        self.sequence = sequence
+        self.sleep = sleep
+        self.position = 0
+        self.last_full_epoch_time = 0
+        self.waiting_time_sec = (100 * LocalIterator.UNION_MAX_PULL *
+                     LocalIterator.UNION_PULL_DELAY_SEC)
+        assert self.waiting_time_sec < 2.0
+        self.wait = False
+
+    def __iter__(self) -> Iterator[int]:
+        return self
+
+    def __next__(self) -> int:
+        if self.sleep:
+            time.sleep(self.sleep)
+        if self.position < len(self.sequence):
+            res = self.sequence[self.position]
+            self.position += 1
+            return res
+        else:
+            if self.wait:
+                if ((time.perf_counter() - self.last_full_epoch_time) >
+                        self.waiting_time_sec):
+                    self.position = 0
+                    self.wait = False
+            else:
+                self.wait = True
+                self.last_full_epoch_time = time.perf_counter()
+            raise StopIteration
+
 
 
 def test_select_shards(ray_start_regular_shared):
@@ -339,12 +376,53 @@ def test_gather_async_optimized(ray_start_regular_shared):
 
 
 def test_gather_async_empty(ray_start_regular_shared):
-    it = from_iterators([range(10), []])
+    # Finite sequences
+    it = from_iterators([range(10), []], is_infinite_sequence=False)
     it = it.gather_async(batch_ms=100, num_async=4)
     assert sorted(it) == list(range(10))
-    it = from_iterators([[], []])
+    it = from_iterators([[], []], is_infinite_sequence=False)
     it = it.gather_async(batch_ms=100, num_async=4)
     assert len(sorted(it)) == 0
+    # Infinite sequences
+    it = from_iterators([_ReusableGenerator(list(range(10))), _ReusableGenerator([])],
+                        is_infinite_sequence=True)
+    collected = []
+    attempts = 4
+    attempts_collect_counts = [0] * attempts
+    while attempts > 0:
+        attempts -= 1
+        try:
+            for x in it.gather_async(batch_ms=100, num_async=4):
+                collected.append(x)
+                attempts_collect_counts[attempts] += 1
+        except (StopIteration, RuntimeError) as ex:
+            if was_cause_by_stop_iteration(ex):
+                continue
+            else:
+                raise ex
+    assert len(collected) > 10
+    for i in range(10):
+        assert collected.count(i) > 2
+    assert [c > 0 for c in attempts_collect_counts].count(True) > 1
+
+    it = from_iterators([_ReusableGenerator([]), _ReusableGenerator([])],
+                        is_infinite_sequence=True)
+    collected = []
+    attempts = 4
+    attempts_collect_counts = [0] * attempts
+    while attempts > 0:
+        attempts -= 1
+        try:
+            for x in it.gather_async(batch_ms=100, num_async=4):
+                collected.append(x)
+                attempts_collect_counts[attempts] += 1
+        except (StopIteration, RuntimeError) as ex:
+            if was_cause_by_stop_iteration(ex):
+                continue
+            else:
+                raise ex
+    assert len(sorted(collected)) == 0
+    assert [c > 0 for c in attempts_collect_counts].count(True) == 0
 
 
 def test_get_shard_optimized(ray_start_regular_shared):
@@ -394,21 +472,66 @@ def test_gather_async_optimized_benchmark(ray_start_regular_shared):
 
 
 def test_batch_across_shards(ray_start_regular_shared):
-    it = from_iterators([[0, 1], [2, 3]])
+    # Finite sequences
+    it = from_iterators([[0, 1], [2, 3]], is_infinite_sequence=False)
     it = it.batch_across_shards()
     assert (
         repr(it) == "LocalIterator[ParallelIterator[from_iterators[shards=2]]"
         ".batch_across_shards()]")
     assert sorted(it) == [[0, 2], [1, 3]]
+    # Infinite sequences
+    it = from_iterators([_ReusableGenerator([0, 1]), _ReusableGenerator([2, 3])],
+                        is_infinite_sequence=True)
+    collected = []
+    attempts = 6
+    attempts_collect_counts = [0] * attempts
+    while attempts > 0:
+        attempts -= 1
+        try:
+            for x in it.batch_across_shards():
+                collected.append(x)
+                attempts_collect_counts[attempts] += 1
+        except (StopIteration, RuntimeError) as ex:
+            if was_cause_by_stop_iteration(ex):
+                continue
+            else:
+                raise ex
+    assert len(collected) > 2
+    for l in [[0, 2], [1, 3]]:
+        assert collected.count(l) >= 2
+    assert [c > 0 for c in attempts_collect_counts].count(True) > 1
 
 
 def test_batch_across_unbalanced_shards(ray_start_regular_shared):
-    it = from_iterators([[0, 1, 2], [3, 4, 5, 6]])
+    # Finite sequences
+    it = from_iterators([[0, 1, 2], [3, 4, 5, 6]], is_infinite_sequence=False)
     it = it.batch_across_shards()
     assert (
         repr(it) == "LocalIterator[ParallelIterator[from_iterators[shards=2]]"
         ".batch_across_shards()]")
     assert sorted(it) == [[0, 3], [1, 4], [2, 5], [6]]
+    # Infinite sequences
+    it = from_iterators([_ReusableGenerator([0, 1, 2]), _ReusableGenerator([3, 4, 5, 6])],
+                        is_infinite_sequence=True)
+    collected = []
+    attempts = 6
+    attempts_collect_counts = [0] * attempts
+    while attempts > 0:
+        attempts -= 1
+        try:
+            for x in it.batch_across_shards():
+                collected.append(x)
+                attempts_collect_counts[attempts] += 1
+        except (StopIteration, RuntimeError) as ex:
+            if was_cause_by_stop_iteration(ex):
+                continue
+            else:
+                raise ex
+    assert len(collected) > 4
+    flat_collected = [x for l in collected for x in l]
+    for x in [0, 1, 2, 3, 4, 5, 6]:
+        assert flat_collected.count(x) >= 2
+    assert [c > 0 for c in attempts_collect_counts].count(True) > 1
 
 
 def test_remote(ray_start_regular_shared):
@@ -450,6 +573,7 @@ def test_union_local(ray_start_regular_shared):
 
 
 def test_union_async(ray_start_regular_shared):
+    # Finite sequences
     def gen_fast():
         for i in range(10):
             time.sleep(0.05)
@@ -462,14 +586,43 @@ def test_union_async(ray_start_regular_shared):
             print("PRODUCE SLOW", i)
             yield i
 
-    it1 = from_iterators([gen_fast]).for_each(lambda x: ("fast", x))
-    it2 = from_iterators([gen_slow]).for_each(lambda x: ("slow", x))
+    it1 = from_iterators([gen_fast],
+                         is_infinite_sequence=False).for_each(lambda x: ("fast", x))
+    it2 = from_iterators([gen_slow],
+                         is_infinite_sequence=False).for_each(lambda x: ("slow", x))
     it = it1.union(it2)
     results = list(it.gather_async())
     assert all(x[0] == "slow" for x in results[-3:]), results
+    # Infinite sequences
+    it1 = from_iterators([_ReusableGenerator(list(range(10)), 0.05)],
+                         is_infinite_sequence=True).for_each(lambda x: ("fast", x))
+    it2 = from_iterators([_ReusableGenerator(list(range(10)), 0.3)],
+                         is_infinite_sequence=True).for_each(lambda x: ("slow", x))
+    it = it1.union(it2)
+    collected = []
+    attempts = 4
+    attempts_collect_counts = [0] * attempts
+    while attempts > 0:
+        attempts -= 1
+        try:
+            for x in it.gather_async():
+                collected.append(x)
+                attempts_collect_counts[attempts] += 1
+                time.sleep(0.05)
+        except (StopIteration, RuntimeError) as ex:
+            if was_cause_by_stop_iteration(ex):
+                continue
+            else:
+                raise ex
+    collected_categories = [t[0] for t in collected]
+    slow_count = collected_categories.count("slow")
+    assert slow_count <= (len(collected_categories)/2)
+    assert (len(collected_categories) - slow_count) >= 8
+    assert [c > 0 for c in attempts_collect_counts].count(True) > 1
 
 
 def test_union_local_async(ray_start_regular_shared):
+    # Finite sequences
     def gen_fast():
         for i in range(10):
             time.sleep(0.05)
@@ -482,8 +635,10 @@ def test_union_local_async(ray_start_regular_shared):
             print("PRODUCE SLOW", i)
             yield i
 
-    it1 = from_iterators([gen_fast]).for_each(lambda x: ("fast", x))
-    it2 = from_iterators([gen_slow]).for_each(lambda x: ("slow", x))
+    it1 = from_iterators([gen_fast],
+                         is_infinite_sequence=False).for_each(lambda x: ("fast", x))
+    it2 = from_iterators([gen_slow],
+                         is_infinite_sequence=False).for_each(lambda x: ("slow", x))
     it = it1.gather_async().union(it2.gather_async())
     assert (repr(it) == "LocalIterator[LocalUnion[LocalIterator["
             "ParallelIterator[from_iterators[shards=1].for_each()]"
@@ -493,9 +648,37 @@ def test_union_local_async(ray_start_regular_shared):
     slow_count = sum(1 for x in results if x[0] == "slow")
     assert slow_count >= 1
     assert (len(results) - slow_count) >= 8
+    # Infinite sequences
+    it1 = from_iterators([_ReusableGenerator(list(range(10)), 0.05)],
+                         is_infinite_sequence=True).for_each(lambda x: ("fast", x))
+    it2 = from_iterators([_ReusableGenerator(list(range(10)), 0.3)],
+                         is_infinite_sequence=True).for_each(lambda x: ("slow", x))
+    it = it1.gather_async().union(it2.gather_async())
+    collected = []
+    attempts = 3
+    attempts_collect_counts = [0] * attempts
+    while attempts > 0:
+        attempts -= 1
+        try:
+            for x in it:
+                collected.append(x)
+                attempts_collect_counts[attempts] += 1
+                time.sleep(0.05)
+        except (StopIteration, RuntimeError) as ex:
+            if was_cause_by_stop_iteration(ex):
+                time.sleep(0.3)
+                continue
+            else:
+                raise ex
+    collected_categories = [t[0] for t in collected]
+    slow_count = collected_categories.count("slow")
+    assert slow_count >= 1
+    assert (len(collected_categories) - slow_count) >= 8
+    assert [c > 0 for c in attempts_collect_counts].count(True) > 1
 
 
 def test_union_local_async_empty_iter(ray_start_regular_shared):
+    # Finite sequences
     def gen_fast():
         for i in range(10):
             time.sleep(0.05)
@@ -505,8 +688,10 @@ def test_union_local_async_empty_iter(ray_start_regular_shared):
     def gen_nothing():
         yield from ()
 
-    it1 = from_iterators([gen_fast]).for_each(lambda x: ("fast", x))
-    it2 = from_iterators([gen_nothing]).for_each(lambda x: ("nothing", x))
+    it1 = from_iterators([gen_fast],
+                         is_infinite_sequence=False).for_each(lambda x: ("fast", x))
+    it2 = from_iterators([gen_nothing],
+                         is_infinite_sequence=False).for_each(lambda x: ("nothing", x))
     it = it1.gather_async().union(it2.gather_async())
     assert (repr(it) == "LocalIterator[LocalUnion[LocalIterator["
             "ParallelIterator[from_iterators[shards=1].for_each()]"
@@ -516,9 +701,36 @@ def test_union_local_async_empty_iter(ray_start_regular_shared):
     fast_count = sum(1 for x in results if x[0] == "fast")
     assert fast_count >= 1
     assert (len(results) - fast_count) == 0
+    # Infinite sequences
+    it1 = from_iterators([_ReusableGenerator(list(range(10)), 0.05)],
+                         is_infinite_sequence=True).for_each(lambda x: ("fast", x))
+    it2 = from_iterators([_ReusableGenerator([])],
+                         is_infinite_sequence=True).for_each(lambda x: ("nothing", x))
+    it = it1.gather_async().union(it2.gather_async())
+    collected = []
+    attempts = 5
+    attempts_collect_counts = [0] * attempts
+    while attempts > 0:
+        attempts -= 1
+        try:
+            for x in it:
+                collected.append(x)
+                attempts_collect_counts[attempts] += 1
+                time.sleep(0.05)
+        except (StopIteration, RuntimeError) as ex:
+            if was_cause_by_stop_iteration(ex):
+                continue
+            else:
+                raise ex
+    collected_categories = [t[0] for t in collected]
+    fast_count = collected_categories.count("fast")
+    assert fast_count >= 1
+    assert (len(collected_categories) - fast_count) == 0
+    assert [c > 0 for c in attempts_collect_counts].count(True) > 1
 
 
 def test_union_local_async_strict(ray_start_regular_shared):
+    # Finite sequences
     def gen_fast():
         for i in range(10):
             time.sleep(0.05)
@@ -531,8 +743,10 @@ def test_union_local_async_strict(ray_start_regular_shared):
             print("PRODUCE SLOW", i)
             yield i
 
-    it1 = from_iterators([gen_fast]).for_each(lambda x: ("fast", x))
-    it2 = from_iterators([gen_slow]).for_each(lambda x: ("slow", x))
+    it1 = from_iterators([gen_fast],
+                         is_infinite_sequence=False).for_each(lambda x: ("fast", x))
+    it2 = from_iterators([gen_slow],
+                         is_infinite_sequence=False).for_each(lambda x: ("slow", x))
     it = it1.gather_async().union(it2.gather_async(), strict=True)
     assert (repr(it) == "LocalIterator[LocalUnion[LocalIterator["
             "ParallelIterator[from_iterators[shards=1].for_each()]"
@@ -542,9 +756,37 @@ def test_union_local_async_strict(ray_start_regular_shared):
     slow_count = sum(1 for x in results if x[0] == "slow")
     assert slow_count >= 1
     assert (len(results) - slow_count) >= 8
+    # Infinite sequences
+    it1 = from_iterators([_ReusableGenerator(list(range(10)), 0.05)],
+                         is_infinite_sequence=True).for_each(lambda x: ("fast", x))
+    it2 = from_iterators([_ReusableGenerator(list(range(10)), 0.3)],
+                         is_infinite_sequence=True).for_each(lambda x: ("slow", x))
+    it = it1.gather_async().union(it2.gather_async(), strict=True)
+    collected = []
+    attempts = 3
+    attempts_collect_counts = [0] * attempts
+    while attempts > 0:
+        attempts -= 1
+        try:
+            for x in it:
+                collected.append(x)
+                attempts_collect_counts[attempts] += 1
+                time.sleep(0.05)
+        except (StopIteration, RuntimeError) as ex:
+            if was_cause_by_stop_iteration(ex):
+                time.sleep(0.3)
+                continue
+            else:
+                raise ex
+    collected_categories = [t[0] for t in collected]
+    slow_count = collected_categories.count("slow")
+    assert slow_count >= 1
+    assert (len(collected_categories) - slow_count) >= 8
+    assert [c > 0 for c in attempts_collect_counts].count(True) > 1
 
 
 def test_union_local_async_strict_empty_iter(ray_start_regular_shared):
+    # Finite sequences
     def gen_fast():
         for i in range(10):
             time.sleep(0.05)
@@ -554,16 +796,46 @@ def test_union_local_async_strict_empty_iter(ray_start_regular_shared):
     def gen_nothing():
         yield from ()
 
-    it1 = from_iterators([gen_fast]).for_each(lambda x: ("fast", x))
-    it2 = from_iterators([gen_nothing]).for_each(lambda x: ("nothing", x))
+    it1 = from_iterators([gen_fast],
+                         is_infinite_sequence=False).for_each(lambda x: ("fast", x))
+    it2 = from_iterators([gen_nothing],
+                         is_infinite_sequence=False).for_each(lambda x: ("nothing", x))
     it = it1.gather_async().union(it2.gather_async(), strict=True)
     assert (repr(it) == "LocalIterator[LocalUnion[LocalIterator["
             "ParallelIterator[from_iterators[shards=1].for_each()]"
             ".gather_async()], LocalIterator[ParallelIterator["
             "from_iterators[shards=1].for_each()].gather_async()]]]")
     results = list(it)
-    slow_count = sum(1 for x in results if x[0] == "slow")
-    assert slow_count == 0
+    fast_count = sum(1 for x in results if x[0] == "fast")
+    assert fast_count >= 1
+    assert (len(results) - fast_count) == 0
+    # Infinite sequences
+    it1 = from_iterators([_ReusableGenerator(list(range(10)), 0.05)],
+                         is_infinite_sequence=True).for_each(lambda x: ("fast", x))
+    it2 = from_iterators([_ReusableGenerator([])],
+                         is_infinite_sequence=True).for_each(lambda x: ("nothing", x))
+    it = it1.gather_async().union(it2.gather_async(), strict=True)
+    collected = []
+    attempts = 5
+    attempts_collect_counts = [0] * attempts
+    while attempts > 0:
+        attempts -= 1
+        try:
+            for x in it:
+                collected.append(x)
+                attempts_collect_counts[attempts] += 1
+                time.sleep(0.05)
+        except (StopIteration, RuntimeError) as ex:
+            if was_cause_by_stop_iteration(ex):
+                time.sleep(0.25)
+                continue
+            else:
+                raise ex
+    collected_categories = [t[0] for t in collected]
+    fast_count = collected_categories.count("fast")
+    assert fast_count >= 1
+    assert (len(collected_categories) - fast_count) == 0
+    assert [c > 0 for c in attempts_collect_counts].count(True) > 1
 
 
 def test_serialization(ray_start_regular_shared):

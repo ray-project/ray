@@ -65,4 +65,4 @@ steps:
     RAY_USE_RANDOM_PORTS: 1
     TRAVIS: 'true'
   displayName: 'Run original Ray tests'
-  timeoutInMinutes: 180
+  timeoutInMinutes: 240

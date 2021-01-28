@@ -33,11 +33,13 @@ CONFIGS = {
         "framework": "tf",
     },
     "DDPG": {
+        "learning_starts": 20,
         "explore": False,
         "timesteps_per_iteration": 100,
         "framework": "tf",
     },
     "DQN": {
+        "learning_starts": 20,
         "explore": False,
         "framework": "tf",
     },
@@ -58,6 +60,7 @@ CONFIGS = {
         "framework": "tf",
     },
     "SAC": {
+        "learning_starts": 20,
         "explore": False,
         "framework": "tf",
     },
