@@ -21,7 +21,6 @@ cc_library(
         "src/ray/util/*.h",
         "src/ray/*.cc",
         "src/ray/*.h",
-        "src/ray/worker/default_worker.cc",
     ]),
     hdrs = glob([
         "include/ray/*.h",
@@ -82,19 +81,50 @@ cc_test(
         "ray_api",
         "@com_google_googletest//:gtest_main",
     ],
+    data = [
+        "cluster_mode_test.so",
+    ],
+    args = [
+        "$(location cluster_mode_test.so)",
+    ]
+)
+
+cc_binary(
+    name = "cluster_mode_test.so",
+    srcs = glob([
+        "src/ray/test/cluster/*.cc",
+    ]),
+    copts = COPTS,
+    linkstatic = True,
+    deps = [
+        "ray_api",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_binary(
+    name = "default_worker",
+    srcs = glob([
+        "src/ray/worker/default_worker.cc"
+    ]),
+    copts = COPTS,
+    linkstatic = True,
+    deps = [
+        "ray_api",
+    ],
 )
 
 genrule(
     name = "ray_cpp_pkg",
     srcs = [
-        "cluster_mode_test",
+        "default_worker",
         "ray_api",
     ],
     outs = ["ray_cpp_pkg.out"],
     cmd = """
         WORK_DIR="$$(pwd)" &&
         mkdir -p "$$WORK_DIR/python/ray/core/src/ray/cpp/" &&
-        cp -f $(location cluster_mode_test) "$$WORK_DIR/python/ray/core/src/ray/cpp/default_worker" &&
+        cp -f $(location default_worker) "$$WORK_DIR/python/ray/core/src/ray/cpp/default_worker" &&
         cp -f $(locations ray_api) "$$WORK_DIR/python/ray/core/src/ray/cpp/" &&
         echo "$$WORK_DIR" > $@
     """,

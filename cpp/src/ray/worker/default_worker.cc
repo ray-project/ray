@@ -3,14 +3,11 @@
 #include <ray/api/ray_config.h>
 #include <ray/util/logging.h>
 
-using namespace ::ray;
-
-namespace ray {
-namespace api {
+using namespace ::ray::api;
 
 int default_worker_main(int argc, char **argv) {
   RAY_LOG(INFO) << "CPP default worker started";
-  RAY_CHECK(argc == 8);
+  RAY_CHECK(argc == 7);
 
   auto config = ray::api::RayConfig::GetInstance();
   config->run_mode = RunMode::CLUSTER;
@@ -32,5 +29,7 @@ int default_worker_main(int argc, char **argv) {
   return 0;
 }
 
-}  // namespace api
-}  // namespace ray
+int main(int argc, char **argv) {
+  default_worker_main(argc, argv);
+  return 0;
+}

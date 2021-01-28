@@ -1,7 +1,6 @@
 
 #include <ray/api.h>
 #include <ray/api/ray_config.h>
-#include <ray/experimental/default_worker.h>
 
 using namespace ::ray::api;
 
@@ -33,17 +32,6 @@ class Counter {
 };
 
 int main(int argc, char **argv) {
-  /// Currently, we compile `default_worker` and `example` in one single binary,
-  /// to work around a symbol conflicting issue.
-  /// This is the main function of the binary, and we use the `is_default_worker` arg to
-  /// tell if this binary is used as `default_worker` or `example`.
-  const char *default_worker_magic = "is_default_worker";
-  /// `is_default_worker` is the last arg of `argv`
-  if (argc > 1 &&
-      memcmp(argv[argc - 1], default_worker_magic, strlen(default_worker_magic)) == 0) {
-    default_worker_main(argc, argv);
-    return 0;
-  }
   /// initialization to cluster mode
   ray::api::RayConfig::GetInstance()->run_mode = RunMode::CLUSTER;
   /// Dynamic library loading is not supported yet.
