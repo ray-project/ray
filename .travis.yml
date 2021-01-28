@@ -229,8 +229,8 @@ matrix:
       script:
         - wget --quiet "https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh" -O miniconda3.sh
         - bash miniconda3.sh -b -p "$HOME/miniconda3"
-        - conda install -y python=3.7.6
         - export PATH="$HOME/miniconda3/bin:$PATH"
+        - conda install -y python=3.7.6
         - python -m pip install docker
         - if [[ "$TRAVIS_PULL_REQUEST" != "false" ]]; then python $TRAVIS_BUILD_DIR/ci/travis/build-docker-images.py PY36_PY38; fi
       cache: false
@@ -513,15 +513,6 @@ deploy:
 
   - provider: script
     edge: true # This supposedly opts in to deploy v2.
-    script: export PATH="$HOME/miniconda3/bin:$PATH"; ./ci/keep_alive python $TRAVIS_BUILD_DIR/ci/travis/build-docker-images.py PY36_PY38
-    skip_cleanup: true
-    on:
-      repo: ray-project/ray
-      all_branches: true
-      condition: $LINUX_WHEELS = 1
-
-  - provider: script
-    edge: true # This supposedly opts in to deploy v2.
     script: export PATH="$HOME/miniconda3/bin:$PATH"; ./ci/keep_alive python $TRAVIS_BUILD_DIR/ci/travis/build-docker-images.py PY37
     skip_cleanup: true
     on:
@@ -561,3 +552,12 @@ deploy:
       repo: ray-project/ray
       branch: master
       condition: $MULTIPLATFORM_JARS = 1 || $MAC_JARS = 1 || $LINUX_JARS = 1
+
+  - provider: script
+    edge: true # This supposedly opts in to deploy v2.
+    script: export PATH="$HOME/miniconda3/bin:$PATH"; ./ci/keep_alive python $TRAVIS_BUILD_DIR/ci/travis/build-docker-images.py PY36_PY38
+    skip_cleanup: true
+    on:
+      repo: ray-project/ray
+      all_branches: true
+      condition: $LINUX_WHEELS = 1
