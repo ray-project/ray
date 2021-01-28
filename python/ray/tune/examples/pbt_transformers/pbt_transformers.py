@@ -26,8 +26,9 @@ def tune_transformer(num_samples=8,
         os.mkdir(data_dir, 0o755)
 
     # Change these as needed.
-    model_name = "bert-base-uncased" if not smoke_test \
-        else "sshleifer/tiny-distilroberta-base"
+    #model_name = "bert-base-uncased" if not smoke_test \
+    #    else "sshleifer/tiny-distilroberta-base"
+    model_name = "sshleifer/tiny-distilroberta-base"
     task_name = "rte"
 
     task_data_dir = os.path.join(data_dir, task_name.upper())
@@ -72,10 +73,12 @@ def tune_transformer(num_samples=8,
         do_eval=True,
         #evaluate_during_training=True,
         evaluation_strategy="steps",
-        eval_steps=(len(train_dataset) // 16) + 1
-        if not smoke_test else 1,  # config
-        save_steps=(len(train_dataset) // 16) + 1
-        if not smoke_test else 1,  # config,
+        #eval_steps=(len(train_dataset) // 16) + 1
+        #if not smoke_test else 1,  # config
+        #save_steps=(len(train_dataset) // 16) + 1
+        #if not smoke_test else 1,  # config,
+        eval_steps=1,
+        save_steps=1,
         num_train_epochs=2,  # config
         max_steps=-1,
         per_device_train_batch_size=16,  # config
@@ -84,6 +87,8 @@ def tune_transformer(num_samples=8,
         weight_decay=0.1,  # config
         logging_dir="./logs",
     )
+
+    training_args._n_gpu = gpus_per_trial
 
     trainer = Trainer(
         model_init=get_model,
@@ -95,6 +100,7 @@ def tune_transformer(num_samples=8,
     # Number of eval steps is dependent on per_device_train_batch_size.
     # So we define a separate function that takes in a spec arg.
     def eval_steps_func(spec):
+        #import pdb; pdb.set_trace()
         if not smoke_test:
             return len(train_dataset
                        ) // spec.config["per_device_train_batch_size"] + 1
@@ -104,11 +110,16 @@ def tune_transformer(num_samples=8,
     tune_config = {
         "per_device_train_batch_size": 32,
         "per_device_eval_batch_size": 32,
+        #"eval_steps": 8,
+        #"save_steps": 8,
         "eval_steps": tune.sample_from(eval_steps_func),
         "save_steps": tune.sample_from(lambda spec: spec.config["eval_steps"]),
-        "num_train_epochs": tune.choice([2, 3, 4, 5]),
+        #"num_train_epochs": tune.choice([2, 3, 4, 5]),
         "max_steps": 1 if smoke_test else -1,  # Used for smoke test.
     }
+
+    print("*********train_data_len", len(train_dataset))
+    print(len(train_dataset) // 32)
 
     scheduler = PopulationBasedTraining(
         time_attr="training_iteration",
@@ -118,7 +129,7 @@ def tune_transformer(num_samples=8,
         hyperparam_mutations={
             "weight_decay": tune.uniform(0.0, 0.3),
             "learning_rate": tune.uniform(1e-5, 5e-5),
-            "per_device_train_batch_size": [16, 32, 64],
+            #"per_device_train_batch_size": [16, 32, 64],
         })
 
     reporter = CLIReporter(
@@ -126,12 +137,13 @@ def tune_transformer(num_samples=8,
             "weight_decay": "w_decay",
             "learning_rate": "lr",
             "per_device_train_batch_size": "train_bs/gpu",
-            "num_epochs": "num_epochs"
+            "num_train_epochs": "num_epochs"
         },
         metric_columns=[
             "eval_acc", "eval_loss", "epoch", "training_iteration"
         ])
 
+    #import pdb; pdb.set_trace()    
     trainer.hyperparameter_search(
         hp_space=lambda _: tune_config,
         backend="ray",
@@ -141,8 +153,8 @@ def tune_transformer(num_samples=8,
             "gpu": gpus_per_trial
         },
         scheduler=scheduler,
-        keep_checkpoints_num=3,
-        checkpoint_score_attr="training_iteration",
+        keep_checkpoints_num=1,
+        #checkpoint_score_attr="training_iteration",
         stop={"training_iteration": 1} if smoke_test else None,
         progress_reporter=reporter,
         local_dir="~/ray_results/",
