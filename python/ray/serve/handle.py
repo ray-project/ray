@@ -6,7 +6,6 @@ from enum import Enum
 
 from ray.serve.utils import get_random_letters
 from ray.util import metrics
-from ray.serve.router import Router
 
 
 @dataclass(frozen=True)
