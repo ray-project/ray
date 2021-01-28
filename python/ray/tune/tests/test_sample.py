@@ -263,12 +263,14 @@ class SearchSpaceTest(unittest.TestCase):
         ]
 
         client1 = AxClient(random_seed=1234)
-        client1.create_experiment(parameters=converted_config)
-        searcher1 = AxSearch(ax_client=client1, metric="a", mode="max")
+        client1.create_experiment(
+            parameters=converted_config, objective_name="a", minimize=False)
+        searcher1 = AxSearch(ax_client=client1)
 
         client2 = AxClient(random_seed=1234)
-        client2.create_experiment(parameters=ax_config)
-        searcher2 = AxSearch(ax_client=client2, metric="a", mode="max")
+        client2.create_experiment(
+            parameters=ax_config, objective_name="a", minimize=False)
+        searcher2 = AxSearch(ax_client=client2)
 
         config1 = searcher1.suggest("0")
         config2 = searcher2.suggest("0")
