@@ -1178,7 +1178,6 @@ class Node:
         object_spilling_config = self._config.get("object_spilling_config", {})
         automatic_spilling_enabled = self._config.get(
             "automatic_object_spilling_enabled", True)
-
         if not automatic_spilling_enabled:
             return
 
