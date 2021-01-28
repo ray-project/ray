@@ -66,8 +66,6 @@ def _ensure_connected(f: Callable) -> Callable:
 
 class ThreadProxiedRouter:
     def __init__(self, controller_handle, sync: bool):
-        self.controller_handle = controller_handle
-        self.sync = sync
         self.router = Router(controller_handle)
 
         if sync:
@@ -93,11 +91,6 @@ class ThreadProxiedRouter:
         coro = self.router.assign_request(request_metadata, request_data,
                                           **kwargs)
         return coro
-
-    def __reduce__(self):
-        deserializer = ThreadProxiedRouter
-        serialized_data = (self.controller_handle, self.sync)
-        return deserializer, serialized_data
 
 
 class Client:
