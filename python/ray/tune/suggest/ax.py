@@ -1,7 +1,6 @@
 import copy
 from typing import Dict, List, Optional, Union
 
-from ax.service.ax_client import AxClient
 from ray.tune.result import DEFAULT_METRIC
 from ray.tune.sample import Categorical, Float, Integer, LogUniform, \
     Quantized, Uniform
@@ -12,8 +11,11 @@ from ray.tune.utils.util import flatten_dict, unflatten_dict
 
 try:
     import ax
+    from ax.service.ax_client import AxClient
+    from ax.exceptions.generation_strategy import \
+        MaxParallelismReachedException
 except ImportError:
-    ax = None
+    ax = AxClient = MaxParallelismReachedException = None
 import logging
 
 from ray.tune.suggest import Searcher
@@ -152,7 +154,6 @@ class AxSearch(Searcher):
 
         self.max_concurrent = max_concurrent
 
-        self._objective_name = metric
         self._parameters = []
         self._live_trial_mapping = {}
 
@@ -180,6 +181,10 @@ class AxSearch(Searcher):
                     "`AxClient.create_experiment()`, or you should pass an "
                     "Ax search space as the `space` parameter to `AxSearch`, "
                     "or pass a `config` dict to `tune.run()`.")
+            if self._mode not in ["min", "max"]:
+                raise ValueError(
+                    "Please specify the `mode` argument when initializing "
+                    "the `AxSearch` object or pass it to `tune.run()`.")
             self._ax.create_experiment(
                 parameters=self._space,
                 objective_name=self._metric,
@@ -202,10 +207,12 @@ class AxSearch(Searcher):
                     ]))
 
         exp = self._ax.experiment
+
+        # Update mode and metric from experiment if it has been passed
         self._mode = "min" \
             if exp.optimization_config.objective.minimize else "max"
         self._metric = exp.optimization_config.objective.metric.name
-        self._objective_name = exp.optimization_config.objective.metric.name
+
         self._parameters = list(exp.parameters)
 
         if self._ax._enforce_sequential_optimization:
@@ -247,7 +254,10 @@ class AxSearch(Searcher):
             config = self._points_to_evaluate.pop(0)
             parameters, trial_index = self._ax.attach_trial(config)
         else:
-            parameters, trial_index = self._ax.get_next_trial()
+            try:
+                parameters, trial_index = self._ax.get_next_trial()
+            except MaxParallelismReachedException:
+                return None
 
         self._live_trial_mapping[trial_id] = trial_index
         return unflatten_dict(parameters)
@@ -263,9 +273,7 @@ class AxSearch(Searcher):
 
     def _process_result(self, trial_id, result):
         ax_trial_index = self._live_trial_mapping[trial_id]
-        metric_dict = {
-            self._objective_name: (result[self._objective_name], 0.0)
-        }
+        metric_dict = {self._metric: (result[self._metric], None)}
         outcome_names = [
             oc.metric.name for oc in
             self._ax.experiment.optimization_config.outcome_constraints
