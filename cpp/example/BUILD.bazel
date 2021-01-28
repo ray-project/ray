@@ -8,19 +8,19 @@ cc_binary(
     srcs = glob([
         "*.cc",
     ]),
+    args = [
+        "--dynamic-library-path $(location example.so)",
+    ],
     copts = COPTS,
+    data = [
+        "example.so",
+        "//cpp:ray_cpp_pkg",
+    ],
     linkstatic = True,
     deps = [
         "//cpp:ray_api",
         "@com_github_gflags_gflags//:gflags",
     ],
-    data = [
-        "example.so",
-        "//cpp:ray_cpp_pkg",
-    ],
-    args = [
-        "--dynamic-library-path $(location example.so)",
-    ]
 )
 
 cc_binary(

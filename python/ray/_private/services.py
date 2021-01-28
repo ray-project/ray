@@ -1579,7 +1579,7 @@ def build_cpp_worker_command(
     Returns:
         The command string for starting CPP worker.
     """
-    
+
     command = [
         DEFAULT_WORKER_EXECUTABLE, plasma_store_name, raylet_name,
         str(node_manager_port), redis_address, redis_password, session_dir
