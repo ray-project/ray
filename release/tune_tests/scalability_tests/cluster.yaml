@@ -20,10 +20,12 @@ auth:
     ssh_user: ubuntu
 
 head_node:
-    InstanceType: m5.16xlarge  # 64 CPUs
+    # 64 CPUs
+    InstanceType: m5.16xlarge
 
 worker_nodes:
-    InstanceType: m5.16xlarge  # 64 CPUs
+    # 64 CPUs
+    InstanceType: m5.16xlarge
 
 setup_commands:
-    - ray install-nightly
+    - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl
