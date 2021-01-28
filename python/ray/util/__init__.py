@@ -4,7 +4,8 @@ from ray.util.check_serialize import inspect_serializability
 from ray.util.debug import log_once, disable_log_once_globally, \
     enable_periodic_logging
 from ray.util.placement_group import (placement_group, placement_group_table,
-                                      remove_placement_group, get_placement_group)
+                                      remove_placement_group,
+                                      get_placement_group)
 from ray.util import rpdb as pdb
 from ray.util.serialization import register_serializer
 

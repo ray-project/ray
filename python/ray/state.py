@@ -390,15 +390,17 @@ class GlobalState:
 
     def get_placement_group_by_name(self, placement_group_name):
         self._check_connected()
-        
+
         placement_group_info = (
             self.global_state_accessor.get_placement_group_by_name(
                 placement_group_name))
         if placement_group_info is None:
             return None
         else:
-            placement_group_info = gcs_utils.PlacementGroupTableData.FromString(placement_group_info)
-            return ray.PlacementGroupID(placement_group_info.placement_group_id)
+            placement_group_info = gcs_utils.PlacementGroupTableData.FromString(
+                placement_group_info)
+            return ray.PlacementGroupID(
+                placement_group_info.placement_group_id)
 
     def placement_group_table(self, placement_group_id=None):
         self._check_connected()

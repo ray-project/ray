@@ -1456,6 +1456,7 @@ ray.shutdown()
             if "StopTime" in job:
                 return True
         return False
+
     wait_for_condition(is_job_done)
 
     @ray.remote(num_cpus=1)
@@ -1475,10 +1476,13 @@ ray.shutdown()
 
     # Create another placement group and make sure its creation will failed.
     same_name_pg = ray.util.placement_group(
-        [{"CPU": 1} for _ in range(2)],
+        [{
+            "CPU": 1
+        } for _ in range(2)],
         strategy="STRICT_SPREAD",
         name=global_placement_group_name)
     assert not same_name_pg.wait(10)
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

@@ -210,6 +210,7 @@ def remove_placement_group(placement_group: PlacementGroup):
 
     worker.core_worker.remove_placement_group(placement_group.id)
 
+
 def get_placement_group(placement_group_name: str):
     """Get a placement group object with a global name.
 
@@ -218,11 +219,15 @@ def get_placement_group(placement_group_name: str):
         The placement group object otherwise.
     """
     if not placement_group_name:
-            raise ValueError("Please supply a non-empty value to get_placement_group")
+        raise ValueError(
+            "Please supply a non-empty value to get_placement_group")
     worker = ray.worker.global_worker
     worker.check_connected()
-    placement_group_id = ray.state.state.get_placement_group_by_name(placement_group_name)
-    return PlacementGroup(placement_group_id) if placement_group_id is not None else None
+    placement_group_id = ray.state.state.get_placement_group_by_name(
+        placement_group_name)
+    return PlacementGroup(
+        placement_group_id) if placement_group_id is not None else None
+
 
 def placement_group_table(placement_group: PlacementGroup = None) -> list:
     """Get the state of the placement group from GCS.
