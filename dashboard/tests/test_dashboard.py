@@ -144,7 +144,7 @@ def test_basic(ray_start_with_dashboard):
 
     # Check redis keys are set.
     logger.info("Check redis keys are set.")
-    dashboard_address = client.get(dashboard_consts.REDIS_KEY_DASHBOARD)
+    dashboard_address = client.get(ray_constants.REDIS_KEY_DASHBOARD)
     assert dashboard_address is not None
     dashboard_rpc_address = client.get(
         dashboard_consts.REDIS_KEY_DASHBOARD_RPC)

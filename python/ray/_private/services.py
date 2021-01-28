@@ -1137,29 +1137,23 @@ def start_dashboard(require_dashboard,
     """
     port_test_socket = socket.socket()
     port_test_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    if port == ray_constants.DEFAULT_DASHBOARD_PORT:
-        while True:
-            try:
-                port_test_socket.bind(("127.0.0.1", port))
-                port_test_socket.close()
-                break
-            except socket.error:
-                port += 1
-    else:
+    port_retries = 10
+    if port != ray_constants.DEFAULT_DASHBOARD_PORT:
         try:
             port_test_socket.bind(("127.0.0.1", port))
             port_test_socket.close()
         except socket.error:
             raise ValueError(
                 f"The given dashboard port {port} is already in use")
+        port_retries = 0
 
     dashboard_dir = "new_dashboard"
     dashboard_filepath = os.path.join(RAY_PATH, dashboard_dir, "dashboard.py")
     command = [
         sys.executable, "-u", dashboard_filepath, f"--host={host}",
-        f"--port={port}", f"--redis-address={redis_address}",
-        f"--temp-dir={temp_dir}", f"--log-dir={logdir}",
-        f"--logging-rotate-bytes={max_bytes}",
+        f"--port={port}", f"--port-retries={port_retries}",
+        f"--redis-address={redis_address}", f"--temp-dir={temp_dir}",
+        f"--log-dir={logdir}", f"--logging-rotate-bytes={max_bytes}",
         f"--logging-rotate-backup-count={backup_count}"
     ]
 
@@ -1187,8 +1181,27 @@ def start_dashboard(require_dashboard,
             stderr_file=stderr_file,
             fate_share=fate_share)
 
-        dashboard_url = (
-            f"{host if host != '0.0.0.0' else get_node_ip_address()}:{port}")
+        redis_client = ray._private.services.create_redis_client(
+            redis_address, redis_password)
+
+        if port_retries == 0:
+            host = host if host != "0.0.0.0" else get_node_ip_address()
+            dashboard_url = (f"{host}:{port}")
+        else:
+            dashboard_url = None
+            for _ in range(20):
+                dashboard_url = redis_client.get(
+                    ray_constants.REDIS_KEY_DASHBOARD)
+                if dashboard_url is not None:
+                    dashboard_url = dashboard_url.decode("utf-8")
+                    break
+                if process_info.process.poll():
+                    break
+                time.sleep(1)
+            if dashboard_url is None:
+                dashboard_log = os.path.join(logdir, "dashboard.log")
+                raise Exception(f"Failed to start dashboard, please check "
+                                f"{dashboard_log} for details.")
 
         logger.info("View the Ray dashboard at {}{}http://{}{}{}".format(
             colorama.Style.BRIGHT, colorama.Fore.GREEN, dashboard_url,

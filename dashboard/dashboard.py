@@ -59,6 +59,7 @@ class Dashboard:
     Args:
         host(str): Host address of dashboard aiohttp server.
         port(int): Port number of dashboard aiohttp server.
+        port_retries(int): The retry times to select a valid port.
         redis_address(str): GCS address of a Ray cluster
         redis_password(str): Redis password to access GCS
         log_dir(str): Log directory of dashboard.
@@ -67,12 +68,14 @@ class Dashboard:
     def __init__(self,
                  host,
                  port,
+                 port_retries,
                  redis_address,
                  redis_password=None,
                  log_dir=None):
         self.dashboard_head = dashboard_head.DashboardHead(
             http_host=host,
             http_port=port,
+            http_port_retries=port_retries,
             redis_address=redis_address,
             redis_password=redis_password,
             log_dir=log_dir)
@@ -101,9 +104,7 @@ class Dashboard:
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description=("Parse Redis server for the "
-                     "dashboard to connect to."))
+    parser = argparse.ArgumentParser(description="Ray dashboard.")
     parser.add_argument(
         "--host",
         required=True,
@@ -114,6 +115,12 @@ if __name__ == "__main__":
         required=True,
         type=int,
         help="The port to use for the HTTP server.")
+    parser.add_argument(
+        "--port-retries",
+        required=False,
+        type=int,
+        default=0,
+        help="The retry times to select a valid port.")
     parser.add_argument(
         "--redis-address",
         required=True,
@@ -187,11 +194,14 @@ if __name__ == "__main__":
         dashboard = Dashboard(
             args.host,
             args.port,
+            args.port_retries,
             args.redis_address,
             redis_password=args.redis_password,
             log_dir=args.log_dir)
         service_discovery = PrometheusServiceDiscoveryWriter(
             args.redis_address, args.redis_password, args.temp_dir)
+        # Need daemon True to avoid dashboard hangs at exit.
+        service_discovery.setDaemon(True)
         service_discovery.start()
         loop = asyncio.get_event_loop()
         loop.run_until_complete(dashboard.run())
@@ -207,5 +217,5 @@ if __name__ == "__main__":
         if isinstance(e, OSError) and e.errno == errno.ENOENT:
             logger.warning(message)
         else:
-            logger.exception(message)
+            logger.error(message)
             raise e
