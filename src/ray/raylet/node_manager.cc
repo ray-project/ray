@@ -1246,8 +1246,9 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
     if ((!task_id.IsNil() || !actor_id.IsNil()) && !worker->IsDead()) {
       // If the worker was an actor, it'll be cleaned by GCS.
       if (actor_id.IsNil()) {
+        // Return the resources that were being used by this worker.
         Task task;
-        static_cast<void>(local_queues_.RemoveTask(task_id, &task));
+        cluster_task_manager_->TaskFinished(worker, &task);
       }
 
       if (disconnect_type == rpc::WorkerExitType::SYSTEM_ERROR_EXIT) {
