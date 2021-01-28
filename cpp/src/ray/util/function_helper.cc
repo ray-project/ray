@@ -14,7 +14,7 @@ uintptr_t base_addr = 0;
 
 static const uintptr_t BaseAddressForHandle(void *handle) {
   /// TODO(Guyang Song): Implement a cross-platform function.
-  return (uintptr_t)((NULL == handle) ? NULL : (void *)*(size_t const*)(handle));
+  return (uintptr_t)((NULL == handle) ? NULL : (void *)*(size_t const *)(handle));
 }
 
 uintptr_t FunctionHelper::LoadLibrary(std::string lib_name) {
