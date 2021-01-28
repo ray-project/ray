@@ -1461,11 +1461,12 @@ ray.shutdown()
     @ray.remote(num_cpus=1)
     class Actor:
         def ping(self):
-            pass
+            return "pong"
 
     # Get the named placement group and schedule a actor.
     placement_group = ray.util.get_placement_group(global_placement_group_name)
     assert placement_group is not None
+    assert placement_group.wait(5)
     actor = Actor.options(
         placement_group=placement_group,
         placement_group_bundle_index=0).remote()
@@ -1473,11 +1474,11 @@ ray.shutdown()
     ray.get(actor.ping.remote())
 
     # Create another placement group and make sure its creation will failed.
-    second_pg = ray.util.placement_group(
+    same_name_pg = ray.util.placement_group(
         [{"CPU": 1} for _ in range(2)],
         strategy="STRICT_SPREAD",
         name=global_placement_group_name)
-    assert not second_pg.wait(10)
+    assert not same_name_pg.wait(10)
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

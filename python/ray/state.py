@@ -11,7 +11,6 @@ from google.protobuf.json_format import MessageToDict
 from ray._private import services
 from ray._private.client_mode_hook import client_mode_hook
 from ray.utils import (decode, binary_to_hex, hex_to_binary)
-from ray.util import PlacementGroup
 
 from ray._raylet import GlobalStateAccessor
 
@@ -389,26 +388,17 @@ class GlobalState:
 
         return dict(result)
 
-    def get_placement_group(self, placement_group_name):
-        """Get a placement group object from a global name.
-
-        Returns:
-            None if can't find a placement group with the given name.
-            The placement group object otherwise.
-        """
+    def get_placement_group_by_name(self, placement_group_name):
         self._check_connected()
-        if not placement_group_name:
-            raise ValueError("Please supply a non-empty value to get_placement_group")
+        
         placement_group_info = (
             self.global_state_accessor.get_placement_group_by_name(
                 placement_group_name))
         if placement_group_info is None:
             return None
         else:
-            placement_group_info = (gcs_utils.PlacementGroupTableData.
-                                    FromString(placement_group_info))
-            return PlacementGroup(binary_to_hex(
-                placement_group_info.placement_group_id))
+            placement_group_info = gcs_utils.PlacementGroupTableData.FromString(placement_group_info)
+            return ray.PlacementGroupID(placement_group_info.placement_group_id)
 
     def placement_group_table(self, placement_group_id=None):
         self._check_connected()
