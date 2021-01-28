@@ -578,7 +578,7 @@ void CoreWorker::Shutdown() {
   }
 }
 
-void CoreWorker::Disconnect(rpc::WorkerExitType exit_type, const std::string error_message) {
+void CoreWorker::Disconnect(rpc::WorkerExitType exit_type, const std::string &error_message) {
   if (connected_) {
     connected_ = false;
     if (local_raylet_client_) {
@@ -597,10 +597,10 @@ void CoreWorker::Exit(rpc::WorkerExitType exit_type, const std::string &error_me
       local_raylet_client_->NotifyDirectCallTaskBlocked(/*release_resources*/ true));
 
   // Callback to shutdown.
-  auto shutdown = [this, exit_type, &error_message]() {
+  auto shutdown = [this, exit_type, error_message]() {
     // To avoid problems, make sure shutdown is always called from the same
     // event loop each time.
-    task_execution_service_.post([this, exit_type, &error_message]() {
+    task_execution_service_.post([this, exit_type, error_message]() {
       if (exit_type == rpc::WorkerExitType::CREATION_TASK_ERROR || exit_type == rpc::WorkerExitType::INTENDED_EXIT) {
         // Notify the raylet about this exit.
         // Only CREATION_TASK_ERROR and INTENDED_EXIT needs to disconnect manually.

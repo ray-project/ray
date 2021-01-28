@@ -100,7 +100,8 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spe
   } else {
     // Do not hold the lock while calling into task_finisher_.
     task_finisher_->MarkTaskCanceled(task_spec.TaskId());
-    std::string error_message = "cancelling all pending tasks of dead actor";
+    auto queue = client_queues_.find(task_spec.ActorId());
+    std::string error_message = "cancelling task of dead actor, dead_info=" + queue->second.dead_info;
     auto status = Status::IOError(error_message);
     // No need to increment the number of completed tasks since the actor is
     // dead.
@@ -193,6 +194,7 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(const ActorID &actor_id
 
   if (dead) {
     queue->second.state = rpc::ActorTableData::DEAD;
+    queue->second.dead_info = dead_info;
     // If there are pending requests, treat the pending tasks as failed.
     RAY_LOG(INFO) << "Failing pending tasks for actor " << actor_id;
     auto &requests = queue->second.requests;
@@ -200,7 +202,7 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(const ActorID &actor_id
     while (head != requests.end()) {
       const auto &task_spec = head->second.first;
       task_finisher_->MarkTaskCanceled(task_spec.TaskId());
-      std::string error_message = "cancelling all pending tasks of dead actor";
+      std::string error_message = "cancelling all pending tasks of dead actor, dead_info=" + dead_info;
       auto status = Status::IOError(error_message);
       // No need to increment the number of completed tasks since the actor is
       // dead.

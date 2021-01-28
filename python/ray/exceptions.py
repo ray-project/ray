@@ -154,8 +154,8 @@ class RayActorError(RayError):
     """
 
     def __str__(self):
-        return ("The actor died unexpectedly before finishing this task. "
-                "Check python-core-worker-*.log files for more information.")
+        return ("The actor died unexpectedly before finishing this task."
+                f" Dead info: {super().__str__()}")
 
 
 class RaySystemError(RayError):

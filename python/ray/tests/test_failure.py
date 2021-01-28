@@ -285,9 +285,9 @@ def test_failed_actor_init(ray_start_regular, error_pubsub):
 
     # Make sure that we get errors from a failed method.
     a.fail_method.remote()
-    errors = get_error_message(p, 1, ray_constants.TASK_PUSH_ERROR)
+    errors = get_error_message(p, 1, ray_constants.WORKER_CRASH_PUSH_ERROR)
     assert len(errors) == 1
-    assert errors[0].type == ray_constants.TASK_PUSH_ERROR
+    assert errors[0].type == ray_constants.WORKER_CRASH_PUSH_ERROR
     assert error_message1 in errors[0].error_message
 
 

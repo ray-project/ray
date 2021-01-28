@@ -571,7 +571,7 @@ cdef CRayStatus task_execution_handler(
                 execute_task(task_type, task_name, ray_function, c_resources,
                              c_args, c_arg_reference_ids, c_return_ids,
                              debugger_breakpoint, returns)
-            except Exception:
+            except Exception as e:
                 traceback_str = traceback.format_exc() + (
                     "An unexpected internal error occurred while the worker "
                     "was executing a task.")
@@ -583,7 +583,12 @@ cdef CRayStatus task_execution_handler(
                 # Cython's bug that doesn't allow reference assignment, workaroud.
                 # See https://github.com/cython/cython/issues/1863
                 (&error_message)[0] = traceback_str
-                sys.exit(1)
+                sys_exit = SystemExit(1)
+                # assign all attrs like is_ray_terminate, is_creation_task_error
+                # to new exception
+                for attr in e.__dict__.keys():
+                    setattr(sys_exit, attr, getattr(e, attr))
+                raise sys_exit from e
         except SystemExit as e:
             # Tell the core worker to exit as soon as the result objects
             # are processed.
