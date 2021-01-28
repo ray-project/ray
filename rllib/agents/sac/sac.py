@@ -55,6 +55,7 @@ DEFAULT_CONFIG = with_common_config({
     # do in the top-level `model` dict.
     "Q_model": {
         "fcnet_hiddens": [],
+        "fcnet_activation": None,
         "post_fcnet_activation": "relu",
         "post_fcnet_hiddens": [256, 256],
         "custom_model": None,  # Use this to define custom Q-model(s).
@@ -65,6 +66,7 @@ DEFAULT_CONFIG = with_common_config({
     # performed before the post_fcnet stack.
     "policy_model": {
         "fcnet_hiddens": [],
+        "fcnet_activation": None,
         "post_fcnet_activation": "relu",
         "post_fcnet_hiddens": [256, 256],
         "custom_model": None,  # Use this to define a custom policy model.

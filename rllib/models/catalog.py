@@ -19,7 +19,7 @@ from ray.rllib.models.torch.torch_action_dist import TorchCategorical, \
     TorchDeterministic, TorchDiagGaussian, \
     TorchMultiActionDistribution, TorchMultiCategorical
 from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.spaces.simplex import Simplex
@@ -797,8 +797,8 @@ class ModelCatalog:
                                  "framework=jax so far!")
 
         if config.get("framestack") != DEPRECATED_VALUE:
-            deprecation_warning(
-                old="framestack", new="num_framestacks (int)", error=False)
+            # deprecation_warning(
+            #     old="framestack", new="num_framestacks (int)", error=False)
             # If old behavior is desired, disable traj. view-style
             # framestacking.
             config["num_framestacks"] = 0
