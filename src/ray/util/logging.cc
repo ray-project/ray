@@ -102,8 +102,8 @@ inline const char *ConstBasename(const char *filepath) {
   return base ? (base + 1) : filepath;
 }
 
-/// NOTE(lingxuan.zlx): Ray will put all of logging content into std err if no
-/// such logger given.
+/// A logger that prints logs to stderr.
+/// This is the default logger if logging is not initialized.
 class DefaultStdErrLogger final {
  public:
   DefaultStdErrLogger() {
