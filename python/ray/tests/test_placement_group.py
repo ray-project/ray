@@ -797,10 +797,10 @@ def test_mini_integration(ray_start_cluster):
     pg_tasks = []
     # total bundle gpu usage = bundles_per_pg * total_num_pg * per_bundle_gpus
     # Note this is half of total
-    for _ in range(total_num_pg):
+    for index in range(total_num_pg):
         pgs.append(
             ray.util.placement_group(
-                name="name",
+                name=f"name{index}",
                 strategy="PACK",
                 bundles=[{
                     "GPU": per_bundle_gpus
