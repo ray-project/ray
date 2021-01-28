@@ -57,7 +57,7 @@ public class RayConfig {
 
   public final List<String> jvmOptionsForJavaWorker;
   public final Map<String, String> workerEnv;
-  public final String workerCwd;
+  public String workerCwd;
 
   private void validate() {
     if (workerMode == WorkerType.WORKER) {

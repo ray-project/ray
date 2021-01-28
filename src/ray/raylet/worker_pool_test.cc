@@ -48,7 +48,7 @@ class WorkerPoolMock : public WorkerPool {
   using WorkerPool::StartWorkerProcess;  // we need this to be public for testing
 
   Process StartProcess(const std::vector<std::string> &worker_command_args,
-                       const ProcessEnvironment &env) override {
+                       const ProcessEnvironment &env, const std::string &cwd) override {
     // Use a bogus process ID that won't conflict with those in the system
     pid_t pid = static_cast<pid_t>(PID_MAX_LIMIT + 1 + worker_commands_by_proc_.size());
     last_worker_process_ = Process::FromPid(pid);
