@@ -7,7 +7,7 @@ def _import_random_agent():
 
 
 def _import_maddpg():
-    import ray.rllib.contrib.maddpg as maddpg
+    from ray.rllib.contrib import maddpg
     return maddpg.MADDPGTrainer, maddpg.DEFAULT_CONFIG
 
 

@@ -122,9 +122,6 @@ COMMON_CONFIG: TrainerConfigDict = {
     "no_done_at_end": False,
     # Arguments to pass to the env creator.
     "env_config": {},
-    #TEST Worker indices to render the env for. None for no rendering.
-    # Int or List[int] for those worker indices that should render their envs.
-    #"env_render_indices": None,
     # Environment name can also be passed via config.
     "env": None,
     # Unsquash actions to the upper and lower bounds of env's action space

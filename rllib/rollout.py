@@ -504,12 +504,6 @@ if __name__ == "__main__":
     parser = create_parser()
     args = parser.parse_args()
 
-    # User tries to record videos, but no-render is set: Error.
-    #if args.video_dir and args.no_render:
-    #    raise ValueError(
-    #        "You have --no-render set, but are trying to record rollout videos"
-    #        " (via option --video-dir)! "
-    #        "Either unset --no-render or do not use --video-dir.")
     # --use_shelve w/o --out option.
     if args.use_shelve and not args.out:
         raise ValueError(

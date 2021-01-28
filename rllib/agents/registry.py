@@ -7,32 +7,32 @@ from ray.rllib.utils.deprecation import deprecation_warning
 
 
 def _import_a2c():
-    import ray.rllib.agents.a3c as a3c
+    from ray.rllib.agents import a3c
     return a3c.A2CTrainer, a3c.a2c.A2C_DEFAULT_CONFIG
 
 
 def _import_a3c():
-    import ray.rllib.agents.a3c as a3c
+    from ray.rllib.agents import a3c
     return a3c.A3CTrainer, a3c.DEFAULT_CONFIG
 
 
 def _import_apex():
-    import ray.rllib.agents.dqn as dqn
+    from ray.rllib.agents import dqn
     return dqn.ApexTrainer, dqn.apex.APEX_DEFAULT_CONFIG
 
 
 def _import_apex_ddpg():
-    import ray.rllib.agents.ddpg as ddpg
+    from ray.rllib.agents import ddpg
     return ddpg.ApexDDPGTrainer, ddpg.apex.APEX_DDPG_DEFAULT_CONFIG
 
 
 def _import_appo():
-    import ray.rllib.agents.ppo as ppo
+    from ray.rllib.agents import ppo
     return ppo.APPOTrainer, ppo.appo.DEFAULT_CONFIG
 
 
 def _import_ars():
-    import ray.rllib.agents.ars as ars
+    from ray.rllib.agents import ars
     return ars.ARSTrainer, ars.DEFAULT_CONFIG
 
 
