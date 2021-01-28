@@ -169,7 +169,9 @@ class TrialRunner:
             raise the exception received by the Trainable. fail_fast='raise'
             can easily leak resources and should be used with caution.
         checkpoint_period (int|str): Trial runner checkpoint periodicity in
-            seconds. Defaults to ``"auto"``.
+            seconds. Defaults to ``"auto"``, which adjusts checkpointing
+            time so that at most 5% of the time is spent on writing
+            checkpoints.
         trial_executor (TrialExecutor): Defaults to RayTrialExecutor.
         callbacks (list): List of callbacks that will be called at different
             times in the training loop. Must be instances of the
@@ -284,7 +286,6 @@ class TrialRunner:
             checkpoint_period = os.getenv("TUNE_GLOBAL_CHECKPOINT_S", "auto")
 
         self._checkpoint_period = checkpoint_period
-
         self._checkpoint_manager = self._create_checkpoint_manager()
 
     def _create_checkpoint_manager(self):
