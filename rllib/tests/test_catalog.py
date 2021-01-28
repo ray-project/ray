@@ -1,13 +1,15 @@
+from functools import partial
 import gym
-from gym.spaces import Box, Discrete
+from gym.spaces import Box, Dict, Discrete
 import numpy as np
 import unittest
 
 import ray
-from ray.rllib.models import ModelCatalog, MODEL_DEFAULTS, ActionDistribution
-from ray.rllib.models.tf.tf_modelv2 import TFModelV2
-from ray.rllib.models.tf.tf_action_dist import TFActionDistribution
+from ray.rllib.models import ActionDistribution, ModelCatalog, MODEL_DEFAULTS
 from ray.rllib.models.preprocessors import NoPreprocessor, Preprocessor
+from ray.rllib.models.tf.tf_action_dist import MultiActionDistribution, \
+    TFActionDistribution
+from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.test_utils import framework_iterator
@@ -58,6 +60,12 @@ class CustomActionDistribution(TFActionDistribution):
     @override(ActionDistribution)
     def logp(self, x):
         return tf.zeros(self.output_shape)
+
+
+class CustomMultiActionDistribution(MultiActionDistribution):
+    @override(MultiActionDistribution)
+    def entropy(self):
+        raise NotImplementedError
 
 
 class TestModelCatalog(unittest.TestCase):
@@ -158,6 +166,42 @@ class TestModelCatalog(unittest.TestCase):
         dist = dist_cls(dist_input, model=model)
         self.assertEqual(dist.sample().shape[1:], dist_input.shape[1:])
         self.assertIsInstance(dist.sample(), tf.Tensor)
+        with self.assertRaises(NotImplementedError):
+            dist.entropy()
+
+    def test_custom_multi_action_distribution(self):
+        class Model():
+            pass
+
+        ray.init(
+            object_store_memory=1000 * 1024 * 1024,
+            ignore_reinit_error=True)  # otherwise fails sometimes locally
+        # registration
+        ModelCatalog.register_custom_action_dist(
+            "test", CustomMultiActionDistribution)
+        s1 = Discrete(5)
+        s2 = Box(0, 1, shape=(3, ), dtype=np.float32)
+        spaces = dict(action_1=s1, action_2=s2)
+        action_space = Dict(spaces)
+        # test retrieving it
+        model_config = MODEL_DEFAULTS.copy()
+        model_config["custom_action_dist"] = "test"
+        dist_cls, param_shape = ModelCatalog.get_action_dist(
+            action_space, model_config)
+        self.assertIsInstance(dist_cls, partial)
+        self.assertEqual(param_shape, s1.n + 2 * s2.shape[0])
+
+        # test the class works as a distribution
+        dist_input = tf1.placeholder(tf.float32, (None, param_shape))
+        model = Model()
+        model.model_config = model_config
+        dist = dist_cls(dist_input, model=model)
+        self.assertIsInstance(dist.sample(), dict)
+        self.assertIn("action_1", dist.sample())
+        self.assertIn("action_2", dist.sample())
+        self.assertEqual(dist.sample()["action_1"].dtype, tf.int64)
+        self.assertEqual(dist.sample()["action_2"].shape[1:], s2.shape)
+
         with self.assertRaises(NotImplementedError):
             dist.entropy()
 
