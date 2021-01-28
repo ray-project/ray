@@ -51,7 +51,7 @@ class _ExperimentCheckpointManager:
         if self._auto_checkpoint_period:
             self._checkpoint_period = 10.  # Initial value
         else:
-            self._checkpoint_period = checkpoint_period
+            self._checkpoint_period = float(checkpoint_period)
 
         self._start_time = start_time
         self._session_str = session_str
@@ -83,6 +83,7 @@ class _ExperimentCheckpointManager:
         """
         if not self._checkpoint_dir:
             return
+
         now = time.time()
         if now - self._last_checkpoint_time < self._checkpoint_period and (
                 not force):
@@ -123,7 +124,7 @@ class _ExperimentCheckpointManager:
                          f"Adjusting checkpoint period to "
                          f"{self._checkpoint_period:.2f} seconds.")
 
-        self._last_checkpoint_time = now
+        self._last_checkpoint_time = time.time()
         return self._checkpoint_dir
 
 
@@ -282,9 +283,14 @@ class TrialRunner:
         if checkpoint_period is None:
             checkpoint_period = os.getenv("TUNE_GLOBAL_CHECKPOINT_S", "auto")
 
-        self._checkpoint_manager = _ExperimentCheckpointManager(
+        self._checkpoint_period = checkpoint_period
+
+        self._checkpoint_manager = self._create_checkpoint_manager()
+
+    def _create_checkpoint_manager(self):
+        return _ExperimentCheckpointManager(
             checkpoint_dir=self._local_checkpoint_dir,
-            checkpoint_period=checkpoint_period,
+            checkpoint_period=self._checkpoint_period,
             start_time=self._start_time,
             session_str=self._session_str,
             syncer=self._syncer)
@@ -378,10 +384,11 @@ class TrialRunner:
             checkpoint_file=self.checkpoint_file,
             trial_runner=self,
             trial_executor=self.trial_executor,
-            search_alg=self._search_alg)
+            search_alg=self._search_alg,
+            force=force)
 
         if context:
-            context.__exit__()
+            context.__exit__(None, None, None)
 
     def resume(self, run_errored_only=False):
         """Resumes all checkpointed trials from previous run.
@@ -1102,7 +1109,8 @@ class TrialRunner:
         for k in [
                 "_trials", "_stop_queue", "_server", "_search_alg",
                 "_scheduler_alg", "_pending_trial_queue_times",
-                "trial_executor", "_syncer", "_callbacks"
+                "trial_executor", "_syncer", "_callbacks",
+                "_checkpoint_manager"
         ]:
             del state[k]
         state["launch_web_server"] = bool(self._server)
@@ -1119,5 +1127,7 @@ class TrialRunner:
         self.__dict__.setdefault("_start_time", start_time)
 
         self.__dict__.update(state)
+        self._checkpoint_manager = self._create_checkpoint_manager()
+
         if launch_web_server:
             self._server = TuneServer(self, self._server_port)
