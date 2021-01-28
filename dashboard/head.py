@@ -205,15 +205,15 @@ class DashboardHead:
                 logger.warning("Try to use port %s: %s", self.http_port, e)
         else:
             raise Exception("Failed to find a valid port for dashboard.")
-        logger.info("Dashboard head http address: %s:%s", self.http_host,
-                    self.http_port)
+        http_host, http_port = site._server.sockets[0].getsockname()
+        logger.info("Dashboard head http address: %s:%s", http_host, http_port)
 
         # Write the dashboard head port to redis.
         await self.aioredis_client.set(ray_constants.REDIS_KEY_DASHBOARD,
-                                       self.ip + ":" + str(self.http_port))
+                                       f"{http_host}:{http_port}")
         await self.aioredis_client.set(
             dashboard_consts.REDIS_KEY_DASHBOARD_RPC,
-            self.ip + ":" + str(self.grpc_port))
+            f"{self.ip}:{self.grpc_port}")
 
         # Dump registered http routes.
         dump_routes = [

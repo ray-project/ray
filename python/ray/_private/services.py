@@ -1186,7 +1186,7 @@ def start_dashboard(require_dashboard,
 
         if port_retries == 0:
             host = host if host != "0.0.0.0" else get_node_ip_address()
-            dashboard_url = (f"{host}:{port}")
+            dashboard_url = f"{host}:{port}"
         else:
             dashboard_url = None
             for _ in range(20):
