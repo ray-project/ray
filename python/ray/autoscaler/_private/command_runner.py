@@ -613,7 +613,8 @@ class DockerCommandRunner(CommandRunnerInterface):
             cmd = with_docker_exec(
                 [cmd],
                 container_name=self.container_name,
-                with_interactive=is_using_login_shells())[0]
+                with_interactive=is_using_login_shells(),
+                docker_cmd=self.docker_cmd)[0]
 
         if shutdown_after_run:
             # sudo shutdown should run after `with_docker_exec` command above
@@ -691,7 +692,7 @@ class DockerCommandRunner(CommandRunnerInterface):
             f"command -v {self.docker_cmd} || echo '{no_exist}'", with_output=True)
         cleaned_output = output.decode().strip()
         if no_exist in cleaned_output or "docker" not in cleaned_output:
-            if self.docker_cmd == 'docker':
+            if self.docker_cmd == "docker":
                 install_commands = [
                     "curl -fsSL https://get.docker.com -o get-docker.sh",
                     "sudo sh get-docker.sh", "sudo usermod -aG docker $USER",
@@ -712,7 +713,7 @@ class DockerCommandRunner(CommandRunnerInterface):
         if self.initialized:
             return True
         output = self.ssh_command_runner.run(
-            check_docker_running_cmd(self.container_name),
+            check_docker_running_cmd(self.container_name, self.docker_cmd),
             with_output=True).decode("utf-8").strip()
         # Checks for the false positive where "true" is in the container name
         return ("true" in output.lower()
@@ -738,7 +739,7 @@ class DockerCommandRunner(CommandRunnerInterface):
             self, image: str, cleaned_bind_mounts: Dict[str, str]) -> bool:
         re_init_required = False
         running_image = self.run(
-            check_docker_image(self.container_name),
+            check_docker_image(self.container_name, self.docker_cmd),
             with_output=True,
             run_env="host").decode("utf-8").strip()
         if running_image != image:
@@ -747,7 +748,7 @@ class DockerCommandRunner(CommandRunnerInterface):
                 "of {} (which was provided in the YAML)", self.container_name,
                 running_image, image)
         mounts = self.run(
-            check_bind_mounts_cmd(self.container_name),
+            check_bind_mounts_cmd(self.container_name, self.docker_cmd),
             with_output=True,
             run_env="host").decode("utf-8").strip()
         try:
@@ -830,7 +831,7 @@ class DockerCommandRunner(CommandRunnerInterface):
                     "run_options", []) + self.docker_config.get(
                         f"{'head' if as_head else 'worker'}_run_options", []) +
                 self._configure_runtime() + self._auto_configure_shm(),
-                self.ssh_command_runner.cluster_name, home_directory)
+                self.ssh_command_runner.cluster_name, home_directory, self.docker_cmd)
             self.run(start_command, run_env="host")
             docker_run_executed = True
 
