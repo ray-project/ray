@@ -107,8 +107,8 @@ MYPY_FILES=(
     'autoscaler/node_provider.py'
     'autoscaler/sdk.py'
     'autoscaler/_private/commands.py'
-    'operator/operator.py'
-    'operator/operator_utils.py'
+    'ray_operator/operator.py'
+    'ray_operator/operator_utils.py'
 )
 
 YAPF_EXCLUDES=(

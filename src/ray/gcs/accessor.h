@@ -303,10 +303,12 @@ class ObjectInfoAccessor {
   ///
   /// \param object_id The ID of object which location will be added to GCS.
   /// \param spilled_url The URL where the object has been spilled.
+  /// \param spilled_node_id The NodeID where the object has been spilled.
   /// \param callback Callback that will be called after object has been added to GCS.
   /// \return Status
   virtual Status AsyncAddSpilledUrl(const ObjectID &object_id,
                                     const std::string &spilled_url,
+                                    const NodeID &spilled_node_id,
                                     const StatusCallback &callback) = 0;
 
   /// Remove location of object from GCS asynchronously.
