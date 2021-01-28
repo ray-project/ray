@@ -25,20 +25,6 @@ from ray.actor import ActorHandle
 _INTERNAL_REPLICA_CONTEXT = None
 global_async_loop = None
 
-global_async_loop = None
-
-
-def create_or_get_async_loop_in_thread():
-    global global_async_loop
-    if global_async_loop is None:
-        global_async_loop = asyncio.new_event_loop()
-        thread = threading.Thread(
-            daemon=True,
-            target=global_async_loop.run_forever,
-        )
-        thread.start()
-    return global_async_loop
-
 
 @dataclass
 class InternalReplicaContext:

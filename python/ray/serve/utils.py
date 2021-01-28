@@ -378,7 +378,6 @@ class MockImportedBackend:
         return await request.body()
 
 
-
 def compute_iterable_delta(old: Iterable,
                            new: Iterable) -> Tuple[set, set, set]:
     """Given two iterables, return the entries that's (added, removed, updated).

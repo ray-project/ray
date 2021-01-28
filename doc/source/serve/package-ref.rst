@@ -21,7 +21,6 @@ Backend Configuration
 
 .. autofunction:: ray.serve.get_current_replica_tag
 
-
 .. _`servehandle-api`:
 
 ServeHandle API
