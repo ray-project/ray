@@ -70,7 +70,8 @@ def tune_transformer(num_samples=8,
         learning_rate=1e-5,  # config
         do_train=True,
         do_eval=True,
-        evaluate_during_training=True,
+        #evaluate_during_training=True,
+        evaluation_strategy="steps",
         eval_steps=(len(train_dataset) // 16) + 1
         if not smoke_test else 1,  # config
         save_steps=(len(train_dataset) // 16) + 1
