@@ -12,6 +12,8 @@ from ray import monitor
 from ray.ray_operator import operator_utils
 from ray import ray_constants
 
+logger = logging.getLogger(__name__)
+
 
 class RayCluster():
     def __init__(self, config: Dict[str, Any]):
@@ -96,18 +98,45 @@ class RayCluster():
 
 
 ray_clusters = {}
+cluster_crs = {}
 
 
-def cluster_action(cluster_config: Dict[str, Any], event_type: str) -> None:
+def handle_event(event_type, cluster_cr, cluster_name):
+    try:
+        cluster_action(event_type, cluster_cr, cluster_name)
+    except Exception:
+        logger.exception(f"Error while updating RayCluster {cluster_name}.")
+        operator_utils.set_status(cluster_cr, cluster_name, "Error")
+
+
+def cluster_action(event_type, cluster_cr, cluster_name) -> None:
+
+    cluster_config = operator_utils.cr_to_config(cluster_cr)
     cluster_name = cluster_config["cluster_name"]
+
     if event_type == "ADDED":
         ray_clusters[cluster_name] = RayCluster(cluster_config)
+        operator_utils.set_status(cluster_cr, cluster_name, "Running")
         ray_clusters[cluster_name].create_or_update()
+        cluster_crs[cluster_name] = cluster_cr
     elif event_type == "MODIFIED":
-        ray_clusters[cluster_name].create_or_update()
+        # Modification of status subresource shouldn't trigger a response.
+        # Check if the spec or metadata.annotations fields have changed. If so,
+        # call create_or_update.
+        old_cr = cluster_crs[cluster_name]
+
+        spec_changed = (cluster_cr["spec"] != old_cr["spec"])
+        annotations_changed = (cluster_cr["metadata"].get(
+            "annotations") != old_cr["metadata"].get("annotations"))
+
+        if spec_changed or annotations_changed:
+            ray_clusters[cluster_name].create_or_update()
+        cluster_crs[cluster_name] = cluster_cr
+
     elif event_type == "DELETED":
         ray_clusters[cluster_name].clean_up()
         del ray_clusters[cluster_name]
+        del cluster_crs[cluster_name]
 
 
 def main() -> None:
@@ -119,9 +148,9 @@ def main() -> None:
     try:
         for event in cluster_cr_stream:
             cluster_cr = event["object"]
+            cluster_name = cluster_cr["metadata"]["name"]
             event_type = event["type"]
-            cluster_config = operator_utils.cr_to_config(cluster_cr)
-            cluster_action(cluster_config, event_type)
+            handle_event(event_type, cluster_cr, cluster_name)
     except ApiException as e:
         if e.status == 404:
             raise Exception(
