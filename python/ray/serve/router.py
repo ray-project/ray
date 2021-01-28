@@ -48,6 +48,7 @@ class Query:
 
 class ReplicaSet:
     """Data structure representing a set of replica actor handles"""
+
     def __init__(self):
         # NOTE(simon): We have to do this because max_concurrent_queries
         # and the replica handles come from different long poll keys.
@@ -141,9 +142,9 @@ class ReplicaSet:
             if num_finished == 0:
                 logger.debug(
                     "All replicas are busy, waiting for a free replica.")
-                await asyncio.wait(self._all_query_refs +
-                                   [self.config_updated_event.wait()],
-                                   return_when=asyncio.FIRST_COMPLETED)
+                await asyncio.wait(
+                    self._all_query_refs + [self.config_updated_event.wait()],
+                    return_when=asyncio.FIRST_COMPLETED)
                 if self.config_updated_event.is_set():
                     self.config_updated_event.clear()
             # We are pretty sure a free replica is ready now.
@@ -230,10 +231,10 @@ class Router:
                 del self.backend_replicas[backend_tag]
 
     async def assign_request(
-        self,
-        request_meta: RequestMetadata,
-        *request_args,
-        **request_kwargs,
+            self,
+            request_meta: RequestMetadata,
+            *request_args,
+            **request_kwargs,
     ):
         """Assign a query and returns an object ref represent the result"""
         endpoint = request_meta.endpoint
