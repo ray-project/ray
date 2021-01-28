@@ -44,65 +44,6 @@ cc_library(
 )
 
 cc_binary(
-    name = "example",
-    testonly = 1,
-    srcs = glob([
-        "src/example/example.cc",
-    ]),
-    copts = COPTS,
-    linkstatic = False,
-    deps = [
-        "ray_api",
-    ],
-)
-
-cc_test(
-    name = "api_test",
-    srcs = glob([
-        "src/ray/test/*.cc",
-    ]),
-    copts = COPTS,
-    linkstatic = False,
-    deps = [
-        "ray_api",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-cc_test(
-    name = "cluster_mode_test",
-    testonly = 0,
-    srcs = glob([
-        "src/ray/test/cluster/*.cc",
-    ]),
-    copts = COPTS,
-    linkstatic = True,
-    deps = [
-        "ray_api",
-        "@com_google_googletest//:gtest_main",
-    ],
-    data = [
-        "cluster_mode_test.so",
-    ],
-    args = [
-        "$(location cluster_mode_test.so)",
-    ]
-)
-
-cc_binary(
-    name = "cluster_mode_test.so",
-    srcs = glob([
-        "src/ray/test/cluster/*.cc",
-    ]),
-    copts = COPTS,
-    linkstatic = True,
-    deps = [
-        "ray_api",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-cc_binary(
     name = "default_worker",
     srcs = glob([
         "src/ray/worker/default_worker.cc"
@@ -128,5 +69,56 @@ genrule(
         cp -f $(locations ray_api) "$$WORK_DIR/python/ray/core/src/ray/cpp/" &&
         echo "$$WORK_DIR" > $@
     """,
+    visibility = ["//visibility:public"],
     local = 1,
+)
+
+# test
+cc_test(
+    name = "api_test",
+    srcs = glob([
+        "src/ray/test/*.cc",
+    ]),
+    copts = COPTS,
+    linkstatic = False,
+    deps = [
+        "ray_api",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "cluster_mode_test",
+    testonly = 0,
+    srcs = glob([
+        "src/ray/test/cluster/*.cc",
+    ]),
+    copts = COPTS,
+    linkstatic = True,
+    deps = [
+        "ray_api",
+        "@com_google_googletest//:gtest_main",
+        "@com_github_gflags_gflags//:gflags",
+    ],
+    data = [
+        "cluster_mode_test.so",
+        "ray_cpp_pkg",
+    ],
+    args = [
+        "$(location cluster_mode_test.so)",
+    ]
+)
+
+cc_binary(
+    name = "cluster_mode_test.so",
+    srcs = glob([
+        "src/ray/test/cluster/*.cc",
+    ]),
+    copts = COPTS,
+    linkstatic = True,
+    deps = [
+        "ray_api",
+        "@com_google_googletest//:gtest_main",
+        "@com_github_gflags_gflags//:gflags",
+    ],
 )
