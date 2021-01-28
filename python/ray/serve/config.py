@@ -1,9 +1,12 @@
 import inspect
-
-from pydantic import BaseModel, PositiveInt, validator
-from ray.serve.constants import ASYNC_CONCURRENCY
-from typing import Optional, Dict, Any
 from dataclasses import dataclass
+from enum import Enum
+from typing import Any, Dict, List, Optional
+
+import pydantic
+from pydantic import BaseModel, confloat, PositiveFloat, PositiveInt, validator
+from ray.serve.constants import (ASYNC_CONCURRENCY, DEFAULT_HTTP_HOST,
+                                 DEFAULT_HTTP_PORT)
 
 
 def _callable_accepts_batch(func_or_class):
@@ -30,25 +33,27 @@ class BackendMetadata:
 class BackendConfig(BaseModel):
     """Configuration options for a backend, to be set by the user.
 
-    :param num_replicas: The number of processes to start up that will
-        handle requests to this backend. Defaults to 0.
-    :type num_replicas: int, optional
-    :param max_batch_size: The maximum number of requests that will be
-        processed in one batch by this backend. Defaults to None (no
-        maximium).
-    :type max_batch_size: int, optional
-    :param batch_wait_timeout: The time in seconds that backend replicas will
-        wait for a full batch of requests before processing a partial batch.
-        Defaults to 0.
-    :type batch_wait_timeout: float, optional
-    :param max_concurrent_queries: The maximum number of queries that will be
-        sent to a replica of this backend without receiving a response.
-        Defaults to None (no maximum).
-    :type max_concurrent_queries: int, optional
-    :param user_config: Arguments to pass to the reconfigure method of the
-        backend. The reconfigure method is called if user_config is not
-        None.
-    :type user_config: Any, optional
+    Args:
+        num_replicas (Optional[int]): The number of processes to start up that
+            will handle requests to this backend. Defaults to 0.
+        max_batch_size (Optional[int]): The maximum number of requests that
+            will be processed in one batch by this backend. Defaults to None
+            (no maximium).
+        batch_wait_timeout (Optional[float]): The time in seconds that backend
+            replicas will wait for a full batch of requests before processing a
+            partial batch. Defaults to 0.
+        max_concurrent_queries (Optional[int]): The maximum number of queries
+            that will be sent to a replica of this backend without receiving a
+            response. Defaults to None (no maximum).
+        user_config (Optional[Any]): Arguments to pass to the reconfigure
+            method of the backend. The reconfigure method is called if
+            user_config is not None.
+        experimental_graceful_shutdown_wait_loop_s (Optional[float]): Duration
+            that backend workers will wait until there is no more work to be
+            done before shutting down. Defaults to 2s.
+        experimental_graceful_shutdown_timeout_s (Optional[float]):
+            Controller waits for this duration to forcefully kill the replica
+            for shutdown. Defaults to 20s.
     """
 
     internal_metadata: BackendMetadata = BackendMetadata()
@@ -57,6 +62,9 @@ class BackendConfig(BaseModel):
     batch_wait_timeout: float = 0
     max_concurrent_queries: Optional[int] = None
     user_config: Any = None
+
+    experimental_graceful_shutdown_wait_loop_s: PositiveFloat = 2.0
+    experimental_graceful_shutdown_timeout_s: confloat(ge=0) = 20.0
 
     class Config:
         validate_assignment = True
@@ -191,3 +199,28 @@ class ReplicaConfig:
                 raise TypeError(
                     "resources in ray_actor_options must be a dictionary.")
             self.resource_dict.update(custom_resources)
+
+
+class DeploymentMode(str, Enum):
+    NoServer = "NoServer"
+    HeadOnly = "HeadOnly"
+    EveryNode = "EveryNode"
+
+
+class HTTPOptions(pydantic.BaseModel):
+    # Documentation inside serve.start for user's convenience.
+    host: Optional[str] = DEFAULT_HTTP_HOST
+    port: int = DEFAULT_HTTP_PORT
+    middlewares: List[Any] = []
+    location: Optional[DeploymentMode] = DeploymentMode.HeadOnly
+
+    @validator("location", always=True)
+    def location_backfill_no_server(cls, v, values):
+        if values["host"] is None or v is None:
+            return DeploymentMode.NoServer
+        return v
+
+    class Config:
+        validate_assignment = True
+        extra = "forbid"
+        arbitrary_types_allowed = True

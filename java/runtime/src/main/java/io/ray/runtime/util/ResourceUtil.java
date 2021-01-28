@@ -8,8 +8,8 @@ public class ResourceUtil {
   public static final String GPU_LITERAL = "GPU";
 
   /**
-   * Convert resources map to a string that is used
-   * for the command line argument of starting raylet.
+   * Convert resources map to a string that is used for the command line argument of starting
+   * raylet.
    *
    * @param resources The resources map to be converted.
    * @return The starting-raylet command line argument, like "CPU,4,GPU,0".
@@ -33,10 +33,10 @@ public class ResourceUtil {
    * Parse the static resources configure field and convert to the resources map.
    *
    * @param resources The static resources string to be parsed.
-   * @return The map whose key represents the resource name
-   *     and the value represents the resource quantity.
-   * @throws IllegalArgumentException If the resources string's format does match,
-   *     it will throw an IllegalArgumentException.
+   * @return The map whose key represents the resource name and the value represents the resource
+   *     quantity.
+   * @throws IllegalArgumentException If the resources string's format does match, it will throw an
+   *     IllegalArgumentException.
    */
   public static Map<String, Double> getResourcesMapFromString(String resources)
       throws IllegalArgumentException {

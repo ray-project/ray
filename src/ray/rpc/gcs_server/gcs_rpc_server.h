@@ -125,14 +125,6 @@ class ActorInfoGcsServiceHandler {
   virtual void HandleGetAllActorInfo(const GetAllActorInfoRequest &request,
                                      GetAllActorInfoReply *reply,
                                      SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleRegisterActorInfo(const RegisterActorInfoRequest &request,
-                                       RegisterActorInfoReply *reply,
-                                       SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleUpdateActorInfo(const UpdateActorInfoRequest &request,
-                                     UpdateActorInfoReply *reply,
-                                     SendReplyCallback send_reply_callback) = 0;
 };
 
 /// The `GrpcService` for `ActorInfoGcsService`.
@@ -156,8 +148,6 @@ class ActorInfoGrpcService : public GrpcService {
     ACTOR_INFO_SERVICE_RPC_HANDLER(GetActorInfo);
     ACTOR_INFO_SERVICE_RPC_HANDLER(GetNamedActorInfo);
     ACTOR_INFO_SERVICE_RPC_HANDLER(GetAllActorInfo);
-    ACTOR_INFO_SERVICE_RPC_HANDLER(RegisterActorInfo);
-    ACTOR_INFO_SERVICE_RPC_HANDLER(UpdateActorInfo);
   }
 
  private:
@@ -182,14 +172,6 @@ class NodeInfoGcsServiceHandler {
   virtual void HandleGetAllNodeInfo(const GetAllNodeInfoRequest &request,
                                     GetAllNodeInfoReply *reply,
                                     SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleReportResourceUsage(const ReportResourceUsageRequest &request,
-                                         ReportResourceUsageReply *reply,
-                                         SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleGetAllResourceUsage(const GetAllResourceUsageRequest &request,
-                                         GetAllResourceUsageReply *reply,
-                                         SendReplyCallback send_reply_callback) = 0;
 
   virtual void HandleSetInternalConfig(const SetInternalConfigRequest &request,
                                        SetInternalConfigReply *reply,
@@ -219,8 +201,6 @@ class NodeInfoGrpcService : public GrpcService {
     NODE_INFO_SERVICE_RPC_HANDLER(RegisterNode);
     NODE_INFO_SERVICE_RPC_HANDLER(UnregisterNode);
     NODE_INFO_SERVICE_RPC_HANDLER(GetAllNodeInfo);
-    NODE_INFO_SERVICE_RPC_HANDLER(ReportResourceUsage);
-    NODE_INFO_SERVICE_RPC_HANDLER(GetAllResourceUsage);
     NODE_INFO_SERVICE_RPC_HANDLER(SetInternalConfig);
     NODE_INFO_SERVICE_RPC_HANDLER(GetInternalConfig);
   }
@@ -252,6 +232,14 @@ class NodeResourceInfoGcsServiceHandler {
       const rpc::GetAllAvailableResourcesRequest &request,
       rpc::GetAllAvailableResourcesReply *reply,
       rpc::SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleReportResourceUsage(const ReportResourceUsageRequest &request,
+                                         ReportResourceUsageReply *reply,
+                                         SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleGetAllResourceUsage(const GetAllResourceUsageRequest &request,
+                                         GetAllResourceUsageReply *reply,
+                                         SendReplyCallback send_reply_callback) = 0;
 };
 
 /// The `GrpcService` for `NodeResourceInfoGcsService`.
@@ -274,6 +262,8 @@ class NodeResourceInfoGrpcService : public GrpcService {
     NODE_RESOURCE_INFO_SERVICE_RPC_HANDLER(UpdateResources);
     NODE_RESOURCE_INFO_SERVICE_RPC_HANDLER(DeleteResources);
     NODE_RESOURCE_INFO_SERVICE_RPC_HANDLER(GetAllAvailableResources);
+    NODE_RESOURCE_INFO_SERVICE_RPC_HANDLER(ReportResourceUsage);
+    NODE_RESOURCE_INFO_SERVICE_RPC_HANDLER(GetAllResourceUsage);
   }
 
  private:
@@ -375,10 +365,6 @@ class TaskInfoGcsServiceHandler {
   virtual void HandleGetTask(const GetTaskRequest &request, GetTaskReply *reply,
                              SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleDeleteTasks(const DeleteTasksRequest &request,
-                                 DeleteTasksReply *reply,
-                                 SendReplyCallback send_reply_callback) = 0;
-
   virtual void HandleAddTaskLease(const AddTaskLeaseRequest &request,
                                   AddTaskLeaseReply *reply,
                                   SendReplyCallback send_reply_callback) = 0;
@@ -410,7 +396,6 @@ class TaskInfoGrpcService : public GrpcService {
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories) override {
     TASK_INFO_SERVICE_RPC_HANDLER(AddTask);
     TASK_INFO_SERVICE_RPC_HANDLER(GetTask);
-    TASK_INFO_SERVICE_RPC_HANDLER(DeleteTasks);
     TASK_INFO_SERVICE_RPC_HANDLER(AddTaskLease);
     TASK_INFO_SERVICE_RPC_HANDLER(GetTaskLease);
     TASK_INFO_SERVICE_RPC_HANDLER(AttemptTaskReconstruction);

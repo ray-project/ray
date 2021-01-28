@@ -57,13 +57,14 @@ public class GlobalGcTest extends BaseTest {
 
   private void testGlobalGcWhenFull(boolean withPut) {
     // Local driver.
-    WeakReference<LargeObjectWithCyclicRef> localRef = new WeakReference<>(
-        new LargeObjectWithCyclicRef());
+    WeakReference<LargeObjectWithCyclicRef> localRef =
+        new WeakReference<>(new LargeObjectWithCyclicRef());
 
     // Remote workers.
-    List<ActorHandle<GarbageHolder>> actors = IntStream
-        .range(0, 2).mapToObj(i -> Ray.actor(GarbageHolder::new).remote())
-        .collect(Collectors.toList());
+    List<ActorHandle<GarbageHolder>> actors =
+        IntStream.range(0, 2)
+            .mapToObj(i -> Ray.actor(GarbageHolder::new).remote())
+            .collect(Collectors.toList());
 
     Assert.assertNotNull(localRef.get());
     for (ActorHandle<GarbageHolder> actor : actors) {
@@ -82,8 +83,11 @@ public class GlobalGcTest extends BaseTest {
       actors.get(0).task(GarbageHolder::returnLargeObject).remote().get();
     }
 
-    TestUtils.waitForCondition(() -> localRef.get() == null && actors.stream().noneMatch(
-        a -> a.task(GarbageHolder::hasGarbage).remote().get()), 10 * 1000);
+    TestUtils.waitForCondition(
+        () ->
+            localRef.get() == null
+                && actors.stream().noneMatch(a -> a.task(GarbageHolder::hasGarbage).remote().get()),
+        10 * 1000);
   }
 
   public void testGlobalGcWhenFullWithPut() {

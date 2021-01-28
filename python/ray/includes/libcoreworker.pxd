@@ -49,6 +49,11 @@ ctypedef void (*ray_callback_function) \
 ctypedef void (*plasma_callback_function) \
     (CObjectID object_id, int64_t data_size, int64_t metadata_size)
 
+# NOTE: This ctypedef is needed, because Cython doesn't compile
+# "pair[shared_ptr[const CActorHandle], CRayStatus]".
+# This is a bug of cython: https://github.com/cython/cython/issues/3967.
+ctypedef shared_ptr[const CActorHandle] ActorHandleSharedPtr
+
 cdef extern from "ray/core_worker/profiling.h" nogil:
     cdef cppclass CProfiler "ray::worker::Profiler":
         void Start()
@@ -140,8 +145,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CRayStatus SerializeActorHandle(const CActorID &actor_id, c_string
                                         *bytes,
                                         CObjectID *c_actor_handle_id)
-        const CActorHandle* GetActorHandle(const CActorID &actor_id) const
-        pair[const CActorHandle*, CRayStatus] GetNamedActorHandle(
+        ActorHandleSharedPtr GetActorHandle(const CActorID &actor_id) const
+        pair[ActorHandleSharedPtr, CRayStatus] GetNamedActorHandle(
             const c_string &name)
         void AddLocalReference(const CObjectID &object_id)
         void RemoveLocalReference(const CObjectID &object_id)
@@ -164,16 +169,17 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CRayStatus Put(const CRayObject &object,
                        const c_vector[CObjectID] &contained_object_ids,
                        const CObjectID &object_id)
-        CRayStatus Create(const shared_ptr[CBuffer] &metadata,
-                          const size_t data_size,
-                          const c_vector[CObjectID] &contained_object_ids,
-                          CObjectID *object_id, shared_ptr[CBuffer] *data)
-        CRayStatus Create(const shared_ptr[CBuffer] &metadata,
-                          const size_t data_size,
-                          const CObjectID &object_id,
-                          const CAddress &owner_address,
-                          shared_ptr[CBuffer] *data)
-        CRayStatus Seal(const CObjectID &object_id, c_bool pin_object)
+        CRayStatus CreateOwned(const shared_ptr[CBuffer] &metadata,
+                               const size_t data_size,
+                               const c_vector[CObjectID] &contained_object_ids,
+                               CObjectID *object_id, shared_ptr[CBuffer] *data)
+        CRayStatus CreateExisting(const shared_ptr[CBuffer] &metadata,
+                                  const size_t data_size,
+                                  const CObjectID &object_id,
+                                  const CAddress &owner_address,
+                                  shared_ptr[CBuffer] *data)
+        CRayStatus SealOwned(const CObjectID &object_id, c_bool pin_object)
+        CRayStatus SealExisting(const CObjectID &object_id, c_bool pin_object)
         CRayStatus Get(const c_vector[CObjectID] &ids, int64_t timeout_ms,
                        c_vector[shared_ptr[CRayObject]] *results,
                        c_bool plasma_objects_only)
@@ -182,7 +188,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                         int64_t timeout_ms, c_vector[c_bool] *results,
                         c_bool fetch_local)
         CRayStatus Delete(const c_vector[CObjectID] &object_ids,
-                          c_bool local_only, c_bool delete_creating_tasks)
+                          c_bool local_only)
         CRayStatus TriggerGlobalGC()
         c_string MemoryUsageString()
 

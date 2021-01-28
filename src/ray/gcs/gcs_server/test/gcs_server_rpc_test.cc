@@ -81,27 +81,6 @@ class GcsServerTest : public ::testing::Test {
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  bool RegisterActorInfo(const rpc::RegisterActorInfoRequest &request) {
-    std::promise<bool> promise;
-    client_->RegisterActorInfo(
-        request,
-        [&promise](const Status &status, const rpc::RegisterActorInfoReply &reply) {
-          RAY_CHECK_OK(status);
-          promise.set_value(true);
-        });
-    return WaitReady(promise.get_future(), timeout_ms_);
-  }
-
-  bool UpdateActorInfo(const rpc::UpdateActorInfoRequest &request) {
-    std::promise<bool> promise;
-    client_->UpdateActorInfo(request, [&promise](const Status &status,
-                                                 const rpc::UpdateActorInfoReply &reply) {
-      RAY_CHECK_OK(status);
-      promise.set_value(true);
-    });
-    return WaitReady(promise.get_future(), timeout_ms_);
-  }
-
   boost::optional<rpc::ActorTableData> GetActorInfo(const std::string &actor_id) {
     rpc::GetActorInfoRequest request;
     request.set_actor_id(actor_id);
@@ -278,16 +257,6 @@ class GcsServerTest : public ::testing::Test {
 
     EXPECT_TRUE(WaitReady(promise.get_future(), timeout_ms_));
     return task_data;
-  }
-
-  bool DeleteTasks(const rpc::DeleteTasksRequest &request) {
-    std::promise<bool> promise;
-    client_->DeleteTasks(
-        request, [&promise](const Status &status, const rpc::DeleteTasksReply &reply) {
-          RAY_CHECK_OK(status);
-          promise.set_value(true);
-        });
-    return WaitReady(promise.get_future(), timeout_ms_);
   }
 
   bool AddTaskLease(const rpc::AddTaskLeaseRequest &request) {
@@ -573,13 +542,6 @@ TEST_F(GcsServerTest, TestTaskInfo) {
   ASSERT_TRUE(AddTask(add_task_request));
   rpc::TaskTableData result = GetTask(task_id.Binary());
   ASSERT_TRUE(result.task().task_spec().job_id() == job_id.Binary());
-
-  // Delete task
-  rpc::DeleteTasksRequest delete_tasks_request;
-  delete_tasks_request.add_task_id_list(task_id.Binary());
-  ASSERT_TRUE(DeleteTasks(delete_tasks_request));
-  result = GetTask(task_id.Binary());
-  ASSERT_TRUE(!result.has_task());
 
   // Add task lease
   NodeID node_id = NodeID::FromRandom();

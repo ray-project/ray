@@ -47,7 +47,6 @@ class CustomTFRPGModel(TFModelV2):
                          name)
         self.model = TFFCNet(obs_space, action_space, num_outputs,
                              model_config, name)
-        self.register_variables(self.model.variables())
 
     def forward(self, input_dict, state, seq_lens):
         # The unpacked input tensors, where M=MAX_PLAYERS, N=MAX_ITEMS:

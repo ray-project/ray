@@ -6,9 +6,7 @@ import io.ray.streaming.operator.StreamOperator;
 import java.io.Serializable;
 import java.util.Map;
 
-/**
- * Job vertex is a cell node where logic is executed.
- */
+/** Job vertex is a cell node where logic is executed. */
 public class JobVertex implements Serializable {
 
   private int vertexId;
@@ -71,5 +69,4 @@ public class JobVertex implements Serializable {
         .add("config", config)
         .toString();
   }
-
 }

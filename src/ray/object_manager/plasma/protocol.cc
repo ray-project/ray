@@ -20,15 +20,9 @@
 #include <utility>
 
 #include "flatbuffers/flatbuffers.h"
-
 #include "ray/object_manager/plasma/common.h"
 #include "ray/object_manager/plasma/connection.h"
 #include "ray/object_manager/plasma/plasma_generated.h"
-
-#ifdef PLASMA_CUDA
-#include "arrow/gpu/cuda_api.h"
-#endif
-#include "arrow/util/ubsan.h"
 
 namespace fb = plasma::flatbuf;
 
@@ -40,8 +34,28 @@ using fb::PlasmaObjectSpec;
 
 using flatbuffers::uoffset_t;
 
-#define PLASMA_CHECK_ENUM(x, y) \
-  static_assert(static_cast<int>(x) == static_cast<int>(y), "protocol mismatch")
+namespace internal {
+
+static uint8_t non_null_filler;
+
+}  // namespace internal
+
+/// \brief Returns maybe_null if not null or a non-null pointer to an arbitrary memory
+/// that shouldn't be dereferenced.
+///
+/// Memset/Memcpy are undefined when a nullptr is passed as an argument use this utility
+/// method to wrap locations where this could happen.
+///
+/// Note: Flatbuffers has UBSan warnings if a zero length vector is passed.
+/// https://github.com/google/flatbuffers/pull/5355 is trying to resolve
+/// them.
+template <typename T>
+inline T *MakeNonNull(T *maybe_null) {
+  if (RAY_PREDICT_TRUE(maybe_null != nullptr)) {
+    return maybe_null;
+  }
+  return reinterpret_cast<T *>(&internal::non_null_filler);
+}
 
 flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>>
 ToFlatbuffer(flatbuffers::FlatBufferBuilder *fbb, const ObjectID *object_ids,
@@ -50,7 +64,7 @@ ToFlatbuffer(flatbuffers::FlatBufferBuilder *fbb, const ObjectID *object_ids,
   for (int64_t i = 0; i < num_objects; i++) {
     results.push_back(fbb->CreateString(object_ids[i].Binary()));
   }
-  return fbb->CreateVector(arrow::util::MakeNonNull(results.data()), results.size());
+  return fbb->CreateVector(MakeNonNull(results.data()), results.size());
 }
 
 flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>>
@@ -61,12 +75,12 @@ ToFlatbuffer(flatbuffers::FlatBufferBuilder *fbb,
     results.push_back(fbb->CreateString(strings[i]));
   }
 
-  return fbb->CreateVector(arrow::util::MakeNonNull(results.data()), results.size());
+  return fbb->CreateVector(MakeNonNull(results.data()), results.size());
 }
 
 flatbuffers::Offset<flatbuffers::Vector<int64_t>> ToFlatbuffer(
     flatbuffers::FlatBufferBuilder *fbb, const std::vector<int64_t> &data) {
-  return fbb->CreateVector(arrow::util::MakeNonNull(data.data()), data.size());
+  return fbb->CreateVector(MakeNonNull(data.data()), data.size());
 }
 
 Status PlasmaReceive(const std::shared_ptr<StoreConn> &store_conn,
@@ -256,15 +270,6 @@ Status SendCreateReply(const std::shared_ptr<Client> &client, ObjectID object_id
                                  object.data_size, object.metadata_offset,
                                  object.metadata_size, object.device_num);
   auto object_string = fbb.CreateString(object_id.Binary());
-#ifdef PLASMA_CUDA
-  flatbuffers::Offset<fb::CudaHandle> ipc_handle;
-  if (object.device_num != 0) {
-    std::shared_ptr<arrow::Buffer> handle;
-    ARROW_ASSIGN_OR_RAISE(handle, object.ipc_handle->Serialize());
-    ipc_handle =
-        fb::CreateCudaHandle(fbb, fbb.CreateVector(handle->data(), handle->size()));
-  }
-#endif
   fb::PlasmaCreateReplyBuilder crb(fbb);
   crb.add_error(static_cast<PlasmaError>(error_code));
   crb.add_plasma_object(&plasma_object);
@@ -273,11 +278,7 @@ Status SendCreateReply(const std::shared_ptr<Client> &client, ObjectID object_id
   crb.add_store_fd(FD2INT(object.store_fd));
   crb.add_mmap_size(object.mmap_size);
   if (object.device_num != 0) {
-#ifdef PLASMA_CUDA
-    crb.add_ipc_handle(ipc_handle);
-#else
     RAY_LOG(FATAL) << "This should be unreachable.";
-#endif
   }
   auto message = crb.Finish();
   return PlasmaSend(client, MessageType::PlasmaCreateReply, &fbb, message);
@@ -306,13 +307,6 @@ Status ReadCreateReply(uint8_t *data, size_t size, ObjectID *object_id,
   *mmap_size = message->mmap_size();
 
   object->device_num = message->plasma_object()->device_num();
-#ifdef PLASMA_CUDA
-  if (object->device_num != 0) {
-    ARROW_ASSIGN_OR_RAISE(
-        object->ipc_handle,
-        CudaIpcMemHandle::FromBuffer(message->ipc_handle()->handle()->data()));
-  }
-#endif
   return PlasmaErrorStatus(message->error());
 }
 
@@ -443,9 +437,8 @@ Status SendDeleteReply(const std::shared_ptr<Client> &client,
   auto message = fb::CreatePlasmaDeleteReply(
       fbb, static_cast<int32_t>(object_ids.size()),
       ToFlatbuffer(&fbb, &object_ids[0], object_ids.size()),
-      fbb.CreateVector(
-          arrow::util::MakeNonNull(reinterpret_cast<const int32_t *>(errors.data())),
-          object_ids.size()));
+      fbb.CreateVector(MakeNonNull(reinterpret_cast<const int32_t *>(errors.data())),
+                       object_ids.size()));
   return PlasmaSend(client, MessageType::PlasmaDeleteReply, &fbb, message);
 }
 
@@ -594,14 +587,6 @@ Status SendGetReply(const std::shared_ptr<Client> &client, ObjectID object_ids[]
     objects.push_back(PlasmaObjectSpec(FD2INT(object.store_fd), object.data_offset,
                                        object.data_size, object.metadata_offset,
                                        object.metadata_size, object.device_num));
-#ifdef PLASMA_CUDA
-    if (object.device_num != 0) {
-      std::shared_ptr<arrow::Buffer> handle;
-      ARROW_ASSIGN_OR_RAISE(handle, object.ipc_handle->Serialize());
-      handles.push_back(
-          fb::CreateCudaHandle(fbb, fbb.CreateVector(handle->data(), handle->size())));
-    }
-#endif
   }
   std::vector<int> store_fds_as_int;
   for (MEMFD_TYPE store_fd : store_fds) {
@@ -609,11 +594,10 @@ Status SendGetReply(const std::shared_ptr<Client> &client, ObjectID object_ids[]
   }
   auto message = fb::CreatePlasmaGetReply(
       fbb, ToFlatbuffer(&fbb, object_ids, num_objects),
-      fbb.CreateVectorOfStructs(arrow::util::MakeNonNull(objects.data()), num_objects),
-      fbb.CreateVector(arrow::util::MakeNonNull(store_fds_as_int.data()),
-                       store_fds_as_int.size()),
-      fbb.CreateVector(arrow::util::MakeNonNull(mmap_sizes.data()), mmap_sizes.size()),
-      fbb.CreateVector(arrow::util::MakeNonNull(handles.data()), handles.size()));
+      fbb.CreateVectorOfStructs(MakeNonNull(objects.data()), num_objects),
+      fbb.CreateVector(MakeNonNull(store_fds_as_int.data()), store_fds_as_int.size()),
+      fbb.CreateVector(MakeNonNull(mmap_sizes.data()), mmap_sizes.size()),
+      fbb.CreateVector(MakeNonNull(handles.data()), handles.size()));
   return PlasmaSend(client, MessageType::PlasmaGetReply, &fbb, message);
 }
 
@@ -623,9 +607,6 @@ Status ReadGetReply(uint8_t *data, size_t size, ObjectID object_ids[],
                     std::vector<int64_t> &mmap_sizes) {
   RAY_DCHECK(data);
   auto message = flatbuffers::GetRoot<fb::PlasmaGetReply>(data);
-#ifdef PLASMA_CUDA
-  int handle_pos = 0;
-#endif
   RAY_DCHECK(VerifyFlatbuffer(message, data, size));
   for (uoffset_t i = 0; i < num_objects; ++i) {
     object_ids[i] = ObjectID::FromBinary(message->object_ids()->Get(i)->str());
@@ -638,14 +619,6 @@ Status ReadGetReply(uint8_t *data, size_t size, ObjectID object_ids[],
     plasma_objects[i].metadata_offset = object->metadata_offset();
     plasma_objects[i].metadata_size = object->metadata_size();
     plasma_objects[i].device_num = object->device_num();
-#ifdef PLASMA_CUDA
-    if (object->device_num() != 0) {
-      const void *ipc_handle = message->handles()->Get(handle_pos)->handle()->data();
-      ARROW_ASSIGN_OR_RAISE(plasma_objects[i].ipc_handle,
-                            CudaIpcMemHandle::FromBuffer(ipc_handle));
-      handle_pos++;
-    }
-#endif
   }
   RAY_CHECK(message->store_fds()->size() == message->mmap_sizes()->size());
   for (uoffset_t i = 0; i < message->store_fds()->size(); i++) {

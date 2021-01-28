@@ -35,12 +35,9 @@ enum MessageType:int {
   RegisterClientReply,
   // Send the worker's gRPC port to the raylet.
   AnnounceWorkerPort,
-  // Notify the raylet that this client is disconnecting unexpectedly.
+  // Notify the raylet that this client is disconnecting.
   // This is sent from a worker to a raylet.
   DisconnectClient,
-  // Notify the raylet that this client is disconnecting gracefully.
-  // This is sent from a worker to a raylet.
-  IntentionalDisconnectClient,
   // Tell a worker to execute a task. This is sent from a raylet to a
   // worker.
   ExecuteTask,
@@ -111,6 +108,7 @@ table ResourceIdSetInfo {
 
 // This message is sent from a worker to the node manager.
 table DisconnectClient {
+  disconnect_type: int;
 }
 
 table ResourceIdSetInfos {
@@ -249,8 +247,6 @@ table FreeObjectsRequest {
   // Whether keep this request with local object store
   // or send it to all the object stores.
   local_only: bool;
-  // Whether also delete objects' creating tasks from GCS.
-  delete_creating_tasks: bool;
   // List of object ids we'll delete from object store.
   object_ids: [string];
 }

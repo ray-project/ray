@@ -32,26 +32,25 @@ public class CrossLanguageInvocationTest extends BaseTest {
   @BeforeClass
   public void beforeClass() {
     // Delete and re-create the temp dir.
-    File tempDir = new File(
-        System.getProperty("java.io.tmpdir") + File.separator + "ray_cross_language_test");
+    File tempDir =
+        new File(System.getProperty("java.io.tmpdir") + File.separator + "ray_cross_language_test");
     FileUtils.deleteQuietly(tempDir);
     tempDir.mkdirs();
     tempDir.deleteOnExit();
 
     // Write the test Python file to the temp dir.
-    InputStream in = CrossLanguageInvocationTest.class
-        .getResourceAsStream("/" + PYTHON_MODULE + ".py");
-    File pythonFile = new File(
-        tempDir.getAbsolutePath() + File.separator + PYTHON_MODULE + ".py");
+    InputStream in =
+        CrossLanguageInvocationTest.class.getResourceAsStream("/" + PYTHON_MODULE + ".py");
+    File pythonFile = new File(tempDir.getAbsolutePath() + File.separator + PYTHON_MODULE + ".py");
     try {
       FileUtils.copyInputStreamToFile(in, pythonFile);
     } catch (IOException e) {
       throw new RuntimeException(e);
     }
 
-    System.setProperty("ray.job.code-search-path",
-        System.getProperty("java.class.path") + File.pathSeparator
-            + tempDir.getAbsolutePath());
+    System.setProperty(
+        "ray.job.code-search-path",
+        System.getProperty("java.class.path") + File.pathSeparator + tempDir.getAbsolutePath());
   }
 
   @AfterClass
@@ -61,48 +60,49 @@ public class CrossLanguageInvocationTest extends BaseTest {
 
   @Test
   public void testCallingPythonFunction() {
-    Object[] inputs = new Object[]{
-        true,  // Boolean
-        Byte.MAX_VALUE,  // Byte
-        Short.MAX_VALUE,  // Short
-        Integer.MAX_VALUE,  // Integer
-        Long.MAX_VALUE,  // Long
-        // BigInteger can support max value of 2^64-1, please refer to:
-        // https://github.com/msgpack/msgpack/blob/master/spec.md#int-format-family
-        // If BigInteger larger than 2^64-1, the value can only be transferred among Java workers.
-        BigInteger.valueOf(Long.MAX_VALUE),  // BigInteger
-        "Hello World!",  // String
-        1.234f,  // Float
-        1.234,  // Double
-        "example binary".getBytes()};  // byte[]
+    Object[] inputs =
+        new Object[] {
+          true, // Boolean
+          Byte.MAX_VALUE, // Byte
+          Short.MAX_VALUE, // Short
+          Integer.MAX_VALUE, // Integer
+          Long.MAX_VALUE, // Long
+          // BigInteger can support max value of 2^64-1, please refer to:
+          // https://github.com/msgpack/msgpack/blob/master/spec.md#int-format-family
+          // If BigInteger larger than 2^64-1, the value can only be transferred among Java workers.
+          BigInteger.valueOf(Long.MAX_VALUE), // BigInteger
+          "Hello World!", // String
+          1.234f, // Float
+          1.234, // Double
+          "example binary".getBytes()
+        }; // byte[]
     for (Object o : inputs) {
-      ObjectRef res = Ray.task(
-          PyFunction.of(PYTHON_MODULE, "py_return_input", o.getClass()),
-          o).remote();
+      ObjectRef res =
+          Ray.task(PyFunction.of(PYTHON_MODULE, "py_return_input", o.getClass()), o).remote();
       Assert.assertEquals(res.get(), o);
     }
     // null
     {
       Object input = null;
-      ObjectRef<Object> res = Ray.task(
-          PyFunction.of(PYTHON_MODULE, "py_return_input", Object.class), input).remote();
+      ObjectRef<Object> res =
+          Ray.task(PyFunction.of(PYTHON_MODULE, "py_return_input", Object.class), input).remote();
       Object r = res.get();
       Assert.assertEquals(r, input);
     }
     // array
     {
-      int[] input = new int[]{1, 2};
-      ObjectRef<int[]> res = Ray.task(
-          PyFunction.of(PYTHON_MODULE, "py_return_input", int[].class), input).remote();
+      int[] input = new int[] {1, 2};
+      ObjectRef<int[]> res =
+          Ray.task(PyFunction.of(PYTHON_MODULE, "py_return_input", int[].class), input).remote();
       int[] r = res.get();
       Assert.assertEquals(r, input);
     }
     // array of Object
     {
-      Object[] input = new Object[]{1, 2.3f, 4.56, "789", "10".getBytes(), null, true,
-          new int[]{1, 2}};
-      ObjectRef<Object[]> res = Ray.task(
-          PyFunction.of(PYTHON_MODULE, "py_return_input", Object[].class), input).remote();
+      Object[] input =
+          new Object[] {1, 2.3f, 4.56, "789", "10".getBytes(), null, true, new int[] {1, 2}};
+      ObjectRef<Object[]> res =
+          Ray.task(PyFunction.of(PYTHON_MODULE, "py_return_input", Object[].class), input).remote();
       Object[] r = res.get();
       // If we tell the value type is Object, then all numbers will be Number type.
       Assert.assertEquals(((Number) r[0]).intValue(), input[0]);
@@ -124,39 +124,47 @@ public class CrossLanguageInvocationTest extends BaseTest {
     }
     // Unsupported types, all Java specific types, e.g. List / Map...
     {
-      Assert.expectThrows(Exception.class, () -> {
-        List<Integer> input = Arrays.asList(1, 2);
-        ObjectRef<List<Integer>> res = Ray.task(
-            PyFunction.of(PYTHON_MODULE, "py_return_input",
-                (Class<List<Integer>>) input.getClass()), input).remote();
-        List<Integer> r = res.get();
-        Assert.assertEquals(r, input);
-      });
+      Assert.expectThrows(
+          Exception.class,
+          () -> {
+            List<Integer> input = Arrays.asList(1, 2);
+            ObjectRef<List<Integer>> res =
+                Ray.task(
+                        PyFunction.of(
+                            PYTHON_MODULE,
+                            "py_return_input",
+                            (Class<List<Integer>>) input.getClass()),
+                        input)
+                    .remote();
+            List<Integer> r = res.get();
+            Assert.assertEquals(r, input);
+          });
     }
   }
 
   @Test
   public void testPythonCallJavaFunction() {
-    ObjectRef<String> res = Ray.task(PyFunction.of(
-        PYTHON_MODULE, "py_func_call_java_function", String.class)).remote();
+    ObjectRef<String> res =
+        Ray.task(PyFunction.of(PYTHON_MODULE, "py_func_call_java_function", String.class)).remote();
     Assert.assertEquals(res.get(), "success");
   }
 
   @Test
   public void testCallingPythonActor() {
-    PyActorHandle actor = Ray.actor(
-        PyActorClass.of(PYTHON_MODULE, "Counter"), "1".getBytes()).remote();
-    ObjectRef<byte[]> res = actor.task(
-        PyActorMethod.of("increase", byte[].class),
-        "1".getBytes()).remote();
+    PyActorHandle actor =
+        Ray.actor(PyActorClass.of(PYTHON_MODULE, "Counter"), "1".getBytes()).remote();
+    ObjectRef<byte[]> res =
+        actor.task(PyActorMethod.of("increase", byte[].class), "1".getBytes()).remote();
     Assert.assertEquals(res.get(), "2".getBytes());
   }
 
   @Test
   public void testPythonCallJavaActor() {
-    ObjectRef<byte[]> res = Ray.task(
-        PyFunction.of(PYTHON_MODULE, "py_func_call_java_actor", byte[].class),
-        "1".getBytes()).remote();
+    ObjectRef<byte[]> res =
+        Ray.task(
+                PyFunction.of(PYTHON_MODULE, "py_func_call_java_actor", byte[].class),
+                "1".getBytes())
+            .remote();
     Assert.assertEquals(res.get(), "Counter1".getBytes());
   }
 
@@ -164,8 +172,9 @@ public class CrossLanguageInvocationTest extends BaseTest {
   public void testPassActorHandleFromPythonToJava() {
     // Call a python function which creates a python actor
     // and pass the actor handle to callPythonActorHandle.
-    ObjectRef<byte[]> res = Ray.task(PyFunction.of(
-        PYTHON_MODULE, "py_func_pass_python_actor_handle", byte[].class)).remote();
+    ObjectRef<byte[]> res =
+        Ray.task(PyFunction.of(PYTHON_MODULE, "py_func_pass_python_actor_handle", byte[].class))
+            .remote();
     Assert.assertEquals(res.get(), "3".getBytes());
   }
 
@@ -174,21 +183,21 @@ public class CrossLanguageInvocationTest extends BaseTest {
     // Create a java actor, and pass actor handle to python.
     ActorHandle<TestActor> javaActor = Ray.actor(TestActor::new, "1".getBytes()).remote();
     Preconditions.checkState(javaActor instanceof NativeActorHandle);
-    ObjectRef<byte[]> res = Ray.task(
-        PyFunction.of(PYTHON_MODULE,
-            "py_func_call_java_actor_from_handle",
-            byte[].class),
-        javaActor).remote();
+    ObjectRef<byte[]> res =
+        Ray.task(
+                PyFunction.of(PYTHON_MODULE, "py_func_call_java_actor_from_handle", byte[].class),
+                javaActor)
+            .remote();
     Assert.assertEquals(res.get(), "12".getBytes());
     // Create a python actor, and pass actor handle to python.
-    PyActorHandle pyActor = Ray.actor(
-        PyActorClass.of(PYTHON_MODULE, "Counter"), "1".getBytes()).remote();
+    PyActorHandle pyActor =
+        Ray.actor(PyActorClass.of(PYTHON_MODULE, "Counter"), "1".getBytes()).remote();
     Preconditions.checkState(pyActor instanceof NativeActorHandle);
-    res = Ray.task(
-        PyFunction.of(PYTHON_MODULE,
-            "py_func_call_python_actor_from_handle",
-            byte[].class),
-        pyActor).remote();
+    res =
+        Ray.task(
+                PyFunction.of(PYTHON_MODULE, "py_func_call_python_actor_from_handle", byte[].class),
+                pyActor)
+            .remote();
     Assert.assertEquals(res.get(), "3".getBytes());
   }
 
@@ -197,8 +206,8 @@ public class CrossLanguageInvocationTest extends BaseTest {
     try {
       throw new RayException("Test Exception");
     } catch (RayException e) {
-      String formattedException = org.apache.commons.lang3.exception.ExceptionUtils
-          .getStackTrace(e);
+      String formattedException =
+          org.apache.commons.lang3.exception.ExceptionUtils.getStackTrace(e);
       io.ray.runtime.generated.Common.RayException exception =
           io.ray.runtime.generated.Common.RayException.parseFrom(e.toBytes());
       Assert.assertEquals(exception.getFormattedExceptionString(), formattedException);
@@ -207,8 +216,9 @@ public class CrossLanguageInvocationTest extends BaseTest {
 
   @Test
   public void testRaiseExceptionFromPython() {
-    ObjectRef<Object> res = Ray.task(PyFunction.of(
-        PYTHON_MODULE, "py_func_python_raise_exception", Object.class)).remote();
+    ObjectRef<Object> res =
+        Ray.task(PyFunction.of(PYTHON_MODULE, "py_func_python_raise_exception", Object.class))
+            .remote();
     try {
       res.get();
     } catch (RuntimeException ex) {
@@ -218,8 +228,8 @@ public class CrossLanguageInvocationTest extends BaseTest {
       Assert.assertEquals(e.getLanguage(), Language.PYTHON);
       // ex.cause is null.
       Assert.assertNull(ex.getCause());
-      Assert.assertTrue(ex.getMessage().contains("ZeroDivisionError: division by zero"),
-          ex.getMessage());
+      Assert.assertTrue(
+          ex.getMessage().contains("ZeroDivisionError: division by zero"), ex.getMessage());
       return;
     }
     Assert.fail();
@@ -227,15 +237,16 @@ public class CrossLanguageInvocationTest extends BaseTest {
 
   @Test
   public void testThrowExceptionFromJava() {
-    ObjectRef<Object> res = Ray.task(PyFunction.of(
-        PYTHON_MODULE, "py_func_java_throw_exception", Object.class)).remote();
+    ObjectRef<Object> res =
+        Ray.task(PyFunction.of(PYTHON_MODULE, "py_func_java_throw_exception", Object.class))
+            .remote();
     try {
       res.get();
     } catch (RuntimeException ex) {
       final String message = ex.getMessage();
       Assert.assertTrue(message.contains("py_func_java_throw_exception"), message);
-      Assert.assertTrue(message.contains("io.ray.test.CrossLanguageInvocationTest.throwException"),
-          message);
+      Assert.assertTrue(
+          message.contains("io.ray.test.CrossLanguageInvocationTest.throwException"), message);
       Assert.assertTrue(message.contains("java.lang.ArithmeticException: / by zero"), message);
       return;
     }
@@ -244,8 +255,9 @@ public class CrossLanguageInvocationTest extends BaseTest {
 
   @Test
   public void testRaiseExceptionFromNestPython() {
-    ObjectRef<Object> res = Ray.task(
-        PyFunction.of(PYTHON_MODULE, "py_func_nest_python_raise_exception", Object.class)).remote();
+    ObjectRef<Object> res =
+        Ray.task(PyFunction.of(PYTHON_MODULE, "py_func_nest_python_raise_exception", Object.class))
+            .remote();
     try {
       res.get();
     } catch (RuntimeException ex) {
@@ -261,15 +273,18 @@ public class CrossLanguageInvocationTest extends BaseTest {
 
   @Test
   public void testThrowExceptionFromNestJava() {
-    ObjectRef<Object> res = Ray.task(
-        PyFunction.of(PYTHON_MODULE, "py_func_nest_java_throw_exception", Object.class)).remote();
+    ObjectRef<Object> res =
+        Ray.task(PyFunction.of(PYTHON_MODULE, "py_func_nest_java_throw_exception", Object.class))
+            .remote();
     try {
       res.get();
     } catch (RuntimeException ex) {
       final String message = ex.getMessage();
       Assert.assertTrue(message.contains("py_func_nest_java_throw_exception"), message);
-      Assert.assertEquals(org.apache.commons.lang3.StringUtils
-          .countMatches(message, "io.ray.runtime.exception.RayTaskException"), 2);
+      Assert.assertEquals(
+          org.apache.commons.lang3.StringUtils.countMatches(
+              message, "io.ray.runtime.exception.RayTaskException"),
+          2);
       Assert.assertTrue(message.contains("py_func_java_throw_exception"), message);
       Assert.assertTrue(message.contains("java.lang.ArithmeticException: / by zero"), message);
       return;
@@ -279,7 +294,7 @@ public class CrossLanguageInvocationTest extends BaseTest {
 
   public static Object[] pack(int i, String s, double f, Object[] o) {
     // This function will be called from test_cross_language_invocation.py
-    return new Object[]{i, s, f, o};
+    return new Object[] {i, s, f, o};
   }
 
   public static Object returnInput(Object o) {
@@ -308,9 +323,8 @@ public class CrossLanguageInvocationTest extends BaseTest {
 
   public static byte[] callPythonActorHandle(PyActorHandle actor) {
     // This function will be called from test_cross_language_invocation.py
-    ObjectRef<byte[]> res = actor.task(
-        PyActorMethod.of("increase", byte[].class),
-        "1".getBytes()).remote();
+    ObjectRef<byte[]> res =
+        actor.task(PyActorMethod.of("increase", byte[].class), "1".getBytes()).remote();
     Assert.assertEquals(res.get(), "3".getBytes());
     return (byte[]) res.get();
   }
@@ -321,14 +335,16 @@ public class CrossLanguageInvocationTest extends BaseTest {
   }
 
   public static Object throwJavaException() {
-    ObjectRef<Object> res = Ray.task(
-        PyFunction.of(PYTHON_MODULE, "py_func_java_throw_exception", Object.class)).remote();
+    ObjectRef<Object> res =
+        Ray.task(PyFunction.of(PYTHON_MODULE, "py_func_java_throw_exception", Object.class))
+            .remote();
     return res.get();
   }
 
   public static Object raisePythonException() {
-    ObjectRef<Object> res = Ray.task(
-        PyFunction.of(PYTHON_MODULE, "py_func_python_raise_exception", Object.class)).remote();
+    ObjectRef<Object> res =
+        Ray.task(PyFunction.of(PYTHON_MODULE, "py_func_python_raise_exception", Object.class))
+            .remote();
     return res.get();
   }
 

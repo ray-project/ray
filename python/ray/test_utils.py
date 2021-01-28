@@ -14,6 +14,8 @@ from contextlib import redirect_stdout, redirect_stderr
 import ray
 import ray._private.services
 import ray.utils
+import requests
+from prometheus_client.parser import text_string_to_metric_families
 from ray.scripts.scripts import main as ray_main
 
 import psutil  # We must import psutil after ray because we bundle it with ray.
@@ -368,6 +370,13 @@ def put_object(obj, use_ray_put):
         return _put.remote(obj)
 
 
+def put_unpinned_object(obj):
+    value = ray.worker.global_worker.get_serialization_context().serialize(obj)
+    return ray.ObjectRef(
+        ray.worker.global_worker.core_worker.put_serialized_object(
+            value, pin_object=False))
+
+
 def wait_until_server_available(address,
                                 timeout_ms=5000,
                                 retry_interval_ms=100):
@@ -446,4 +455,27 @@ def new_scheduler_enabled():
 
 
 def client_test_enabled() -> bool:
-    return os.environ.get("RAY_TEST_CLIENT_MODE") == "1"
+    return os.environ.get("RAY_CLIENT_MODE") == "1"
+
+
+def fetch_prometheus(prom_addresses):
+    components_dict = {}
+    metric_names = set()
+    metric_samples = []
+    for address in prom_addresses:
+        if address not in components_dict:
+            components_dict[address] = set()
+        try:
+            response = requests.get(f"http://{address}/metrics")
+        except requests.exceptions.ConnectionError:
+            continue
+
+        for line in response.text.split("\n"):
+            for family in text_string_to_metric_families(line):
+                for sample in family.samples:
+                    metric_names.add(sample.name)
+                    metric_samples.append(sample)
+                    if "Component" in sample.labels:
+                        components_dict[address].add(
+                            sample.labels["Component"])
+    return components_dict, metric_names, metric_samples

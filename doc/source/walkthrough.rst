@@ -292,9 +292,9 @@ Cancelling tasks
 
       from ray.exceptions import TaskCancelledError
 
-      try: 
+      try:
           ray.get(obj_ref)
-      except TaskCancelledError: 
+      except TaskCancelledError:
           print("Object reference was cancelled.")
 
   .. group-tab:: Java
@@ -407,15 +407,15 @@ Object Eviction
 When the object store gets full, objects will be evicted to make room for new objects.
 This happens in approximate LRU (least recently used) order. To avoid objects from
 being evicted, you can call ``get`` and store their values instead. Numpy array
-objects cannot be evicted while they are mapped in any Python process. You can also
-configure `memory limits <memory-management.html>`__ to control object store usage by
-actors.
+objects cannot be evicted while they are mapped in any Python process.
 
 .. note::
 
     Objects created with ``put`` are pinned in memory while a Python/Java reference
     to the object ref returned by the put exists. This only applies to the specific
     ref returned by put, not refs in general or copies of that refs.
+
+See also: `object spilling <memory-management.html#object-spilling>`__.
 
 Remote Classes (Actors)
 -----------------------

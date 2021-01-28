@@ -30,8 +30,8 @@ public class ValueStateStoreManagerTest extends StateStoreManagerTest {
 
   @BeforeClass
   public void setUp() {
-    ValueStateDescriptor<Integer> descriptor = ValueStateDescriptor
-        .build("value", Integer.class, 0);
+    ValueStateDescriptor<Integer> descriptor =
+        ValueStateDescriptor.build("value", Integer.class, 0);
     descriptor.setTableName("tableName");
     keyStateBackend.setContext(1L, "key");
     proxy = new ValueStateStoreManagerProxy<>(keyStateBackend, descriptor);

@@ -16,18 +16,14 @@ import org.apache.commons.io.IOUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/**
- * Ray service management on one box.
- */
+/** Ray service management on one box. */
 public class RunManager {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(RunManager.class);
 
   private static final Pattern pattern = Pattern.compile("--address='([^']+)'");
 
-  /**
-   * Start the head node.
-   */
+  /** Start the head node. */
   public static void startRayHead(RayConfig rayConfig) {
     LOGGER.debug("Starting ray runtime @ {}.", rayConfig.nodeIp);
     List<String> command = new ArrayList<>();
@@ -54,9 +50,7 @@ public class RunManager {
     LOGGER.info("Ray runtime started @ {}.", rayConfig.nodeIp);
   }
 
-  /**
-   * Stop ray.
-   */
+  /** Stop ray. */
   public static void stopRay() {
     List<String> command = new ArrayList<>();
     command.add("ray");
@@ -73,10 +67,12 @@ public class RunManager {
   public static void getAddressInfoAndFillConfig(RayConfig rayConfig) {
     // NOTE(kfstorm): This method depends on an internal Python API of ray to get the
     // address info of the local node.
-    String script = String.format("import ray;"
-        + " print(ray._private.services.get_address_info_from_redis("
-        + "'%s', '%s', redis_password='%s'))",
-        rayConfig.getRedisAddress(), rayConfig.nodeIp, rayConfig.redisPassword);
+    String script =
+        String.format(
+            "import ray;"
+                + " print(ray._private.services.get_address_info_from_redis("
+                + "'%s', '%s', redis_password='%s'))",
+            rayConfig.getRedisAddress(), rayConfig.nodeIp, rayConfig.redisPassword);
     List<String> command = Arrays.asList("python", "-c", script);
 
     String output = null;
@@ -110,9 +106,14 @@ public class RunManager {
     String output = IOUtils.toString(p.getInputStream(), Charset.defaultCharset());
     p.waitFor();
     if (p.exitValue() != 0) {
-      String sb = "The exit value of the process is " + p.exitValue()
-          + ". Command: " + Joiner.on(" ").join(command) + "\n"
-          + "output:\n" + output;
+      String sb =
+          "The exit value of the process is "
+              + p.exitValue()
+              + ". Command: "
+              + Joiner.on(" ").join(command)
+              + "\n"
+              + "output:\n"
+              + output;
       throw new RuntimeException(sb);
     }
     return output;

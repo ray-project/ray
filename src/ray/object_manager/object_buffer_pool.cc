@@ -59,16 +59,19 @@ std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> ObjectBufferPool::Ge
     plasma::ObjectBuffer object_buffer;
     RAY_CHECK_OK(store_client_.Get(&object_id, 1, 0, &object_buffer));
     if (object_buffer.data == nullptr) {
-      RAY_LOG(ERROR) << "Failed to get object";
+      RAY_LOG(INFO)
+          << "Failed to get a chunk of the object: " << object_id
+          << ". It is mostly because the object is already evicted or spilled when the "
+             "pull request is received. The caller will retry the pull request again.";
       return std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status>(
           errored_chunk_,
           ray::Status::IOError("Unable to obtain object chunk, object not local."));
     }
-    RAY_CHECK(object_buffer.metadata->data() ==
-              object_buffer.data->data() + object_buffer.data->size());
-    RAY_CHECK(data_size == static_cast<uint64_t>(object_buffer.data->size() +
-                                                 object_buffer.metadata->size()));
-    auto *data = const_cast<uint8_t *>(object_buffer.data->data());
+    RAY_CHECK(object_buffer.metadata->Data() ==
+              object_buffer.data->Data() + object_buffer.data->Size());
+    RAY_CHECK(data_size == static_cast<uint64_t>(object_buffer.data->Size() +
+                                                 object_buffer.metadata->Size()));
+    auto *data = object_buffer.data->Data();
     uint64_t num_chunks = GetNumChunks(data_size);
     get_buffer_state_.emplace(
         std::piecewise_construct, std::forward_as_tuple(object_id),
@@ -115,7 +118,7 @@ std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> ObjectBufferPool::Cr
           errored_chunk_, ray::Status::IOError(s.message()));
     }
     // Read object into store.
-    uint8_t *mutable_data = data->mutable_data();
+    uint8_t *mutable_data = data->Data();
     uint64_t num_chunks = GetNumChunks(data_size);
     create_buffer_state_.emplace(
         std::piecewise_construct, std::forward_as_tuple(object_id),

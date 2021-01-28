@@ -204,7 +204,7 @@ TEST_F(GlobalStateAccessorTest, TestGetAllResourceUsage) {
   std::promise<bool> promise1;
   auto resources1 = std::make_shared<rpc::ResourcesData>();
   resources1->set_node_id(node_table_data->node_id());
-  RAY_CHECK_OK(gcs_client_->Nodes().AsyncReportResourceUsage(
+  RAY_CHECK_OK(gcs_client_->NodeResources().AsyncReportResourceUsage(
       resources1, [&promise1](Status status) { promise1.set_value(status.ok()); }));
   WaitReady(promise1.get_future(), timeout_ms_);
 
@@ -220,7 +220,7 @@ TEST_F(GlobalStateAccessorTest, TestGetAllResourceUsage) {
   (*heartbeat2->mutable_resources_total())["GPU"] = 10;
   heartbeat2->set_resources_available_changed(true);
   (*heartbeat2->mutable_resources_available())["GPU"] = 5;
-  RAY_CHECK_OK(gcs_client_->Nodes().AsyncReportResourceUsage(
+  RAY_CHECK_OK(gcs_client_->NodeResources().AsyncReportResourceUsage(
       heartbeat2, [&promise2](Status status) { promise2.set_value(status.ok()); }));
   WaitReady(promise2.get_future(), timeout_ms_);
 
@@ -241,7 +241,7 @@ TEST_F(GlobalStateAccessorTest, TestGetAllResourceUsage) {
   heartbeat3->set_node_id(node_table_data->node_id());
   (*heartbeat3->mutable_resources_available())["CPU"] = 1;
   (*heartbeat3->mutable_resources_available())["GPU"] = 6;
-  RAY_CHECK_OK(gcs_client_->Nodes().AsyncReportResourceUsage(
+  RAY_CHECK_OK(gcs_client_->NodeResources().AsyncReportResourceUsage(
       heartbeat3, [&promise3](Status status) { promise3.set_value(status.ok()); }));
   WaitReady(promise3.get_future(), timeout_ms_);
 
@@ -283,7 +283,7 @@ TEST_F(GlobalStateAccessorTest, TestObjectTable) {
     NodeID node_id = NodeID::FromRandom();
     std::promise<bool> promise;
     RAY_CHECK_OK(gcs_client_->Objects().AsyncAddLocation(
-        object_id, node_id,
+        object_id, node_id, 0,
         [&promise](Status status) { promise.set_value(status.ok()); }));
     WaitReady(promise.get_future(), timeout_ms_);
   }

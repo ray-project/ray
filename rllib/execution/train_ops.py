@@ -2,7 +2,7 @@ from collections import defaultdict
 import logging
 import numpy as np
 import math
-from typing import List
+from typing import List, Tuple, Any
 
 import ray
 from ray.rllib.evaluation.metrics import get_learner_stats, LEARNER_STATS_KEY
@@ -18,7 +18,7 @@ from ray.rllib.policy.sample_batch import SampleBatch, DEFAULT_POLICY_ID, \
     MultiAgentBatch
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.sgd import do_minibatch_sgd, averaged
-from ray.rllib.utils.typing import PolicyID, SampleBatchType
+from ray.rllib.utils.typing import PolicyID, SampleBatchType, ModelGradients
 
 tf1, tf, tfv = try_import_tf()
 
@@ -242,10 +242,10 @@ class ComputeGradients:
     Updates the LEARNER_INFO info field in the local iterator context.
     """
 
-    def __init__(self, workers):
+    def __init__(self, workers: WorkerSet):
         self.workers = workers
 
-    def __call__(self, samples: SampleBatchType):
+    def __call__(self, samples: SampleBatchType) -> Tuple[ModelGradients, int]:
         _check_sample_batch_type(samples)
         metrics = _get_shared_metrics()
         with metrics.timers[COMPUTE_GRADS_TIMER]:
@@ -283,7 +283,7 @@ class ApplyGradients:
         self.policies = policies or workers.local_worker().policies_to_train
         self.update_all = update_all
 
-    def __call__(self, item):
+    def __call__(self, item: Tuple[ModelGradients, int]) -> None:
         if not isinstance(item, tuple) or len(item) != 2:
             raise ValueError(
                 "Input must be a tuple of (grad_dict, count), got {}".format(
@@ -333,7 +333,8 @@ class AverageGradients:
         {"var_0": ..., ...}, 1600  # averaged grads, summed batch count
     """
 
-    def __call__(self, gradients):
+    def __call__(self, gradients: List[Tuple[ModelGradients, int]]
+                 ) -> Tuple[ModelGradients, int]:
         acc = None
         sum_count = 0
         for grad, count in gradients:
@@ -366,10 +367,10 @@ class UpdateTargetNetwork:
     """
 
     def __init__(self,
-                 workers,
-                 target_update_freq,
-                 by_steps_trained=False,
-                 policies=frozenset([])):
+                 workers: WorkerSet,
+                 target_update_freq: int,
+                 by_steps_trained: bool = False,
+                 policies: List[PolicyID] = frozenset([])):
         self.workers = workers
         self.target_update_freq = target_update_freq
         self.policies = (policies or workers.local_worker().policies_to_train)
@@ -378,7 +379,7 @@ class UpdateTargetNetwork:
         else:
             self.metric = STEPS_SAMPLED_COUNTER
 
-    def __call__(self, _):
+    def __call__(self, _: Any) -> None:
         metrics = _get_shared_metrics()
         cur_ts = metrics.counters[self.metric]
         last_update = metrics.counters[LAST_TARGET_UPDATE_TS]

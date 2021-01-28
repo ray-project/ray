@@ -36,10 +36,10 @@ public class ListStateImplTest {
 
   @BeforeClass
   public void setUp() throws Exception {
-    keyStateBackend = new KeyStateBackend(1, new KeyGroup(1, 2),
-        new MemoryStateBackend(new HashMap<>()));
-    ListStateDescriptor<Integer> descriptor = ListStateDescriptor
-        .build("ListStateImplTest", Integer.class);
+    keyStateBackend =
+        new KeyStateBackend(1, new KeyGroup(1, 2), new MemoryStateBackend(new HashMap<>()));
+    ListStateDescriptor<Integer> descriptor =
+        ListStateDescriptor.build("ListStateImplTest", Integer.class);
     descriptor.setTableName("table");
 
     listState = (ListStateImpl<Integer>) keyStateBackend.getListState(descriptor);
@@ -71,7 +71,6 @@ public class ListStateImplTest {
 
     Assert.assertEquals(listState.get(), Arrays.asList(5, 6));
   }
-
 
   @Test(dependsOnMethods = {"testAddGet"})
   public void testUpdate() throws Exception {

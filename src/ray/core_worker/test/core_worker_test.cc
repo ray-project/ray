@@ -820,9 +820,9 @@ TEST_F(SingleNodeTest, TestObjectInterface) {
   ASSERT_EQ(wait_results, std::vector<bool>({true, true, false}));
 
   // Test Delete().
-  // clear the reference held by PlasmaBuffer.
+  // clear the reference held by TrackedBuffer.
   results.clear();
-  RAY_CHECK_OK(core_worker.Delete(ids, true, false));
+  RAY_CHECK_OK(core_worker.Delete(ids, true));
 
   // Note that Delete() calls RayletClient::FreeObjects and would not
   // wait for objects being deleted, so wait a while for plasma store

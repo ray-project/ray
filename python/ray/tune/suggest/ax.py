@@ -1,20 +1,27 @@
 import copy
 from typing import Dict, List, Optional, Union
 
-from ax.service.ax_client import AxClient
 from ray.tune.result import DEFAULT_METRIC
 from ray.tune.sample import Categorical, Float, Integer, LogUniform, \
     Quantized, Uniform
 from ray.tune.suggest.suggestion import UNRESOLVED_SEARCH_SPACE, \
     UNDEFINED_METRIC_MODE, UNDEFINED_SEARCH_SPACE
 from ray.tune.suggest.variant_generator import parse_spec_vars
-from ray.tune.utils import flatten_dict
-from ray.tune.utils.util import unflatten_dict
+from ray.tune.utils.util import flatten_dict, unflatten_dict
 
 try:
     import ax
+    from ax.service.ax_client import AxClient
 except ImportError:
-    ax = None
+    ax = AxClient = None
+
+# This exception only exists in newer Ax releases for python 3.7
+try:
+    from ax.exceptions.generation_strategy import \
+        MaxParallelismReachedException
+except ImportError:
+    MaxParallelismReachedException = Exception
+
 import logging
 
 from ray.tune.suggest import Searcher
@@ -125,6 +132,7 @@ class AxSearch(Searcher):
         assert ax is not None, """Ax must be installed!
             You can install AxSearch with the command:
             `pip install ax-platform sqlalchemy`."""
+
         if mode:
             assert mode in ["min", "max"], "`mode` must be 'min' or 'max'."
 
@@ -152,7 +160,6 @@ class AxSearch(Searcher):
 
         self.max_concurrent = max_concurrent
 
-        self._objective_name = metric
         self._parameters = []
         self._live_trial_mapping = {}
 
@@ -180,6 +187,10 @@ class AxSearch(Searcher):
                     "`AxClient.create_experiment()`, or you should pass an "
                     "Ax search space as the `space` parameter to `AxSearch`, "
                     "or pass a `config` dict to `tune.run()`.")
+            if self._mode not in ["min", "max"]:
+                raise ValueError(
+                    "Please specify the `mode` argument when initializing "
+                    "the `AxSearch` object or pass it to `tune.run()`.")
             self._ax.create_experiment(
                 parameters=self._space,
                 objective_name=self._metric,
@@ -189,16 +200,25 @@ class AxSearch(Searcher):
         else:
             if any([
                     self._space, self._parameter_constraints,
-                    self._outcome_constraints
+                    self._outcome_constraints, self._mode, self._metric
             ]):
                 raise ValueError(
                     "If you create the Ax experiment yourself, do not pass "
                     "values for these parameters to `AxSearch`: {}.".format([
-                        "space", "parameter_constraints", "outcome_constraints"
+                        "space",
+                        "parameter_constraints",
+                        "outcome_constraints",
+                        "mode",
+                        "metric",
                     ]))
 
         exp = self._ax.experiment
-        self._objective_name = exp.optimization_config.objective.metric.name
+
+        # Update mode and metric from experiment if it has been passed
+        self._mode = "min" \
+            if exp.optimization_config.objective.minimize else "max"
+        self._metric = exp.optimization_config.objective.metric.name
+
         self._parameters = list(exp.parameters)
 
         if self._ax._enforce_sequential_optimization:
@@ -240,7 +260,10 @@ class AxSearch(Searcher):
             config = self._points_to_evaluate.pop(0)
             parameters, trial_index = self._ax.attach_trial(config)
         else:
-            parameters, trial_index = self._ax.get_next_trial()
+            try:
+                parameters, trial_index = self._ax.get_next_trial()
+            except MaxParallelismReachedException:
+                return None
 
         self._live_trial_mapping[trial_id] = trial_index
         return unflatten_dict(parameters)
@@ -256,26 +279,27 @@ class AxSearch(Searcher):
 
     def _process_result(self, trial_id, result):
         ax_trial_index = self._live_trial_mapping[trial_id]
-        metric_dict = {
-            self._objective_name: (result[self._objective_name], 0.0)
-        }
+        metric_dict = {self._metric: (result[self._metric], None)}
         outcome_names = [
             oc.metric.name for oc in
             self._ax.experiment.optimization_config.outcome_constraints
         ]
-        metric_dict.update({on: (result[on], 0.0) for on in outcome_names})
+        metric_dict.update({on: (result[on], None) for on in outcome_names})
         self._ax.complete_trial(
             trial_index=ax_trial_index, raw_data=metric_dict)
 
     @staticmethod
     def convert_search_space(spec: Dict):
-        spec = flatten_dict(spec, prevent_delimiter=True)
         resolved_vars, domain_vars, grid_vars = parse_spec_vars(spec)
 
         if grid_vars:
             raise ValueError(
                 "Grid search parameters cannot be automatically converted "
                 "to an Ax search space.")
+
+        # Flatten and resolve again after checking for grid search.
+        spec = flatten_dict(spec, prevent_delimiter=True)
+        resolved_vars, domain_vars, grid_vars = parse_spec_vars(spec)
 
         def resolve_value(par, domain):
             sampler = domain.get_sampler()

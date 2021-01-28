@@ -25,9 +25,11 @@ using ::testing::_;
 class GcsResourceManagerTest : public ::testing::Test {
  public:
   GcsResourceManagerTest() {
-    gcs_resource_manager_ = std::make_shared<gcs::GcsResourceManager>(nullptr, nullptr);
+    gcs_resource_manager_ =
+        std::make_shared<gcs::GcsResourceManager>(io_service_, nullptr, nullptr);
   }
 
+  boost::asio::io_service io_service_;
   std::shared_ptr<gcs::GcsResourceManager> gcs_resource_manager_;
 };
 
@@ -53,6 +55,33 @@ TEST_F(GcsResourceManagerTest, TestBasic) {
       gcs_resource_manager_->ReleaseResources(NodeID::FromRandom(), resource_set));
   ASSERT_TRUE(gcs_resource_manager_->ReleaseResources(node_id, resource_set));
   ASSERT_TRUE(gcs_resource_manager_->AcquireResources(node_id, resource_set));
+}
+
+TEST_F(GcsResourceManagerTest, TestResourceUsageAPI) {
+  auto node = Mocker::GenNodeInfo();
+  auto node_id = NodeID::FromBinary(node->node_id());
+  rpc::GetAllResourceUsageRequest get_all_request;
+  rpc::GetAllResourceUsageReply get_all_reply;
+  auto send_reply_callback = [](ray::Status status, std::function<void()> f1,
+                                std::function<void()> f2) {};
+  gcs_resource_manager_->HandleGetAllResourceUsage(get_all_request, &get_all_reply,
+                                                   send_reply_callback);
+  ASSERT_EQ(get_all_reply.resource_usage_data().batch().size(), 0);
+
+  rpc::ReportResourceUsageRequest report_request;
+  (*report_request.mutable_resources()->mutable_resources_available())["CPU"] = 2;
+  (*report_request.mutable_resources()->mutable_resources_total())["CPU"] = 2;
+  gcs_resource_manager_->UpdateNodeResourceUsage(node_id, report_request);
+
+  gcs_resource_manager_->HandleGetAllResourceUsage(get_all_request, &get_all_reply,
+                                                   send_reply_callback);
+  ASSERT_EQ(get_all_reply.resource_usage_data().batch().size(), 1);
+
+  gcs_resource_manager_->OnNodeDead(node_id);
+  rpc::GetAllResourceUsageReply get_all_reply2;
+  gcs_resource_manager_->HandleGetAllResourceUsage(get_all_request, &get_all_reply2,
+                                                   send_reply_callback);
+  ASSERT_EQ(get_all_reply2.resource_usage_data().batch().size(), 0);
 }
 
 }  // namespace ray

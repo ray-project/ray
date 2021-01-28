@@ -91,7 +91,9 @@ class Policy(metaclass=ABCMeta):
         if not hasattr(self, "view_requirements"):
             self.view_requirements = view_reqs
         else:
-            self.view_requirements.update(view_reqs)
+            for k, v in view_reqs.items():
+                if k not in self.view_requirements:
+                    self.view_requirements[k] = v
         self._model_init_state_automatically_added = False
 
     @abstractmethod
@@ -289,7 +291,7 @@ class Policy(metaclass=ABCMeta):
             state_batches,
             prev_action_batch=input_dict.get(SampleBatch.PREV_ACTIONS),
             prev_reward_batch=input_dict.get(SampleBatch.PREV_REWARDS),
-            info_batch=None,
+            info_batch=input_dict.get(SampleBatch.INFOS),
             explore=explore,
             timestep=timestep,
             episodes=episodes,
@@ -546,7 +548,8 @@ class Policy(metaclass=ABCMeta):
             model=getattr(self, "model", None),
             num_workers=self.config.get("num_workers", 0),
             worker_index=self.config.get("worker_index", 0),
-            framework=getattr(self, "framework", "tf"))
+            framework=getattr(self, "framework",
+                              self.config.get("framework", "tf")))
         return exploration
 
     def _get_default_view_requirements(self):
@@ -669,7 +672,7 @@ class Policy(metaclass=ABCMeta):
                 for key in batch_for_postproc.accessed_keys:
                     if key not in train_batch.accessed_keys and \
                             key in self.view_requirements and \
-                            key not in self.model.inference_view_requirements:
+                            key not in self.model.view_requirements:
                         self.view_requirements[key].used_for_training = False
                 # Remove those not needed at all (leave those that are needed
                 # by Sampler to properly execute sample collection).
@@ -679,7 +682,7 @@ class Policy(metaclass=ABCMeta):
                         SampleBatch.EPS_ID, SampleBatch.AGENT_INDEX,
                         SampleBatch.UNROLL_ID, SampleBatch.DONES,
                         SampleBatch.REWARDS] and \
-                            key not in self.model.inference_view_requirements:
+                            key not in self.model.view_requirements:
                         # If user deleted this key manually in postprocessing
                         # fn, warn about it and do not remove from
                         # view-requirements.
@@ -738,12 +741,12 @@ class Policy(metaclass=ABCMeta):
         # columns in the resulting batch may not all have the same batch size.
         return SampleBatch(ret, _dont_check_lens=True)
 
-    def _update_model_inference_view_requirements_from_init_state(self):
+    def _update_model_view_requirements_from_init_state(self):
         """Uses Model's (or this Policy's) init state to add needed ViewReqs.
 
         Can be called from within a Policy to make sure RNNs automatically
         update their internal state-related view requirements.
-        Changes the `self.inference_view_requirements` dict.
+        Changes the `self.view_requirements` dict.
         """
         self._model_init_state_automatically_added = True
         model = getattr(self, "model", None)
@@ -752,7 +755,7 @@ class Policy(metaclass=ABCMeta):
         for i, state in enumerate(obj.get_initial_state()):
             space = Box(-1.0, 1.0, shape=state.shape) if \
                 hasattr(state, "shape") else state
-            view_reqs = model.inference_view_requirements if model else \
+            view_reqs = model.view_requirements if model else \
                 self.view_requirements
             view_reqs["state_in_{}".format(i)] = ViewRequirement(
                 "state_out_{}".format(i),

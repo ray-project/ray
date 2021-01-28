@@ -120,12 +120,12 @@ class TestRNNSequencing(unittest.TestCase):
                 "rollout_fragment_length": 10,
                 "train_batch_size": 10,
                 "sgd_minibatch_size": 10,
-                "vf_share_layers": True,
                 "simple_optimizer": True,
                 "num_sgd_iter": 1,
                 "model": {
                     "custom_model": "rnn",
                     "max_seq_len": 4,
+                    "vf_share_layers": True,
                 },
                 "framework": "tf",
             })
@@ -178,12 +178,12 @@ class TestRNNSequencing(unittest.TestCase):
                 "rollout_fragment_length": 20,
                 "train_batch_size": 20,
                 "sgd_minibatch_size": 10,
-                "vf_share_layers": True,
                 "simple_optimizer": False,
                 "num_sgd_iter": 1,
                 "model": {
                     "custom_model": "rnn",
                     "max_seq_len": 4,
+                    "vf_share_layers": True,
                 },
                 "framework": "tf",
             })

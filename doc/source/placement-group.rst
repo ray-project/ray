@@ -216,7 +216,7 @@ because they are scheduled on a placement group with the STRICT_PACK strategy.
         # The child task is scheduled with the same placement group as its parent
         # although child.options(placement_group=pg).remote() wasn't called.
         ray.get(child.remote())
-    
+
     ray.get(parent.options(placement_group=pg).remote())
 
   To avoid it, you should specify `options(placement_group=None)` in a child task/actor remote call.
@@ -251,6 +251,42 @@ Note that you can anytime remove the placement group to clean up resources.
   """
 
   ray.shutdown()
+
+Placement Group Lifetimes
+-------------------------
+
+.. tabs::
+  .. group-tab:: Python
+
+    By default, the lifetimes of placement groups are not detached and will be destroyed
+    when the driver is terminated (but, if it is created from a detached actor, it is 
+    killed when the detached actor is killed). If you'd like to keep the placement group 
+    alive regardless of its job or detached actor, you should specify 
+    `lifetime="detached"`. For example:
+
+    .. code-block:: python
+
+      # first_driver.py
+      pg = placement_group([{"CPU": 2}, {"CPU": 2}], strategy="STRICT_SPREAD", lifetime="detached")
+      ray.get(pg.ready())
+
+    The placement group's lifetime will be independent of the driver now. This means it 
+    is possible to retrieve the placement group from other drivers regardless of when 
+    the current driver exits. Let's see an example:
+
+    .. code-block:: python
+
+      # second_driver.py
+      table = ray.util.placement_group_table()
+      print(len(table))
+
+    Note that the lifetime option is decoupled from the name. If we only specified
+    the name without specifying ``lifetime="detached"``, then the placement group can
+    only be retrieved as long as the original driver is still running.
+
+  .. group-tab:: Java
+
+    The lifetime argument is not implemented for Java APIs yet.
 
 Tips for Using Placement Groups
 -------------------------------

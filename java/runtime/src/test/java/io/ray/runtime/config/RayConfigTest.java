@@ -30,8 +30,8 @@ public class RayConfigTest {
       }
       RayConfig rayConfig = RayConfig.create();
       Assert.assertEquals(WorkerType.DRIVER, rayConfig.workerMode);
-      Assert.assertEquals(Collections.singletonList("path/to/ray/job/resource/path"),
-          rayConfig.codeSearchPath);
+      Assert.assertEquals(
+          Collections.singletonList("path/to/ray/job/resource/path"), rayConfig.codeSearchPath);
       Assert.assertEquals(rayConfig.rayletConfigParameters.get("one"), 1);
       Assert.assertEquals(rayConfig.rayletConfigParameters.get("zero"), 0);
       Assert.assertEquals(rayConfig.rayletConfigParameters.get("positive-integer"), 123);

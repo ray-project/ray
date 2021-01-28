@@ -25,8 +25,10 @@ public class RayletConfigTest extends BaseTest {
   public static class TestActor {
 
     public String getConfigValue() {
-      return TestUtils.getRuntime().getRayConfig()
-          .rayletConfigParameters.get(RAY_CONFIG_KEY)
+      return TestUtils.getRuntime()
+          .getRayConfig()
+          .rayletConfigParameters
+          .get(RAY_CONFIG_KEY)
           .toString();
     }
   }

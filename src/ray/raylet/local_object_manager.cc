@@ -162,14 +162,13 @@ bool LocalObjectManager::SpillObjectsOfSize(int64_t num_bytes_to_spill) {
         spill_time_total_s_ += (now - std::max(start_time, last_spill_finish_ns_)) / 1e9;
         if (now - last_spill_log_ns_ > 1e9) {
           last_spill_log_ns_ = now;
-          // TODO(ekl) logging at error level until we add a better UX indicator.
-          RAY_LOG(ERROR) << "Spilled "
-                         << static_cast<int>(spilled_bytes_total_ / (1024 * 1024))
-                         << " MiB, " << spilled_objects_total_
-                         << " objects, write throughput "
-                         << static_cast<int>(spilled_bytes_total_ / (1024 * 1024) /
-                                             spill_time_total_s_)
-                         << " MiB/s";
+          RAY_LOG(INFO) << "Spilled "
+                        << static_cast<int>(spilled_bytes_total_ / (1024 * 1024))
+                        << " MiB, " << spilled_objects_total_
+                        << " objects, write throughput "
+                        << static_cast<int>(spilled_bytes_total_ / (1024 * 1024) /
+                                            spill_time_total_s_)
+                        << " MiB/s";
         }
         last_spill_finish_ns_ = now;
       }
@@ -262,11 +261,15 @@ void LocalObjectManager::AddSpilledUrls(
     const ObjectID &object_id = object_ids[i];
     const std::string &object_url = worker_reply.spilled_objects_url(i);
     RAY_LOG(DEBUG) << "Object " << object_id << " spilled at " << object_url;
+    // Choose a node id to report. If an external storage type is not a filesystem, we
+    // don't need to report where this object is spilled.
+    const auto node_id_object_spilled =
+        is_external_storage_type_fs_ ? self_node_id_ : NodeID::Nil();
     // Write to object directory. Wait for the write to finish before
     // releasing the object to make sure that the spilled object can
     // be retrieved by other raylets.
     RAY_CHECK_OK(object_info_accessor_.AsyncAddSpilledUrl(
-        object_id, object_url,
+        object_id, object_url, node_id_object_spilled,
         [this, object_id, object_url, callback, num_remaining](Status status) {
           RAY_CHECK_OK(status);
           // Unpin the object.
@@ -299,10 +302,37 @@ void LocalObjectManager::AddSpilledUrls(
 }
 
 void LocalObjectManager::AsyncRestoreSpilledObject(
-    const ObjectID &object_id, const std::string &object_url,
+    const ObjectID &object_id, const std::string &object_url, const NodeID &node_id,
     std::function<void(const ray::Status &)> callback) {
+  if (objects_pending_restore_.count(object_id) > 0) {
+    // If the same object is restoring, we dedup here.
+    return;
+  }
+
+  if (!node_id.IsNil() && node_id != self_node_id_) {
+    // If we know where this object was spilled, and the current node is not that one,
+    // send a RPC to a remote node that spilled the object to restore it.
+    RAY_LOG(DEBUG) << "Send a object restoration request of id: " << object_id
+                   << " to a remote node: " << node_id;
+    // TODO(sang): We need to deduplicate this remote RPC. Since restore request
+    // is retried every 10ms without exponential backoff, this can add huge overhead to a
+    // remote node that spilled the object.
+    restore_object_from_remote_node_(object_id, object_url, node_id);
+    if (callback) {
+      callback(Status::OK());
+    }
+    return;
+  }
+
+  // Restore the object.
   RAY_LOG(DEBUG) << "Restoring spilled object " << object_id << " from URL "
                  << object_url;
+  if (!node_id.IsNil()) {
+    RAY_CHECK(spilled_objects_url_.count(object_id) > 0);
+  }
+
+  RAY_CHECK(objects_pending_restore_.emplace(object_id).second)
+      << "Object dedupe wasn't done properly. Please report if you see this issue.";
   io_worker_pool_.PopRestoreWorker([this, object_id, object_url, callback](
                                        std::shared_ptr<WorkerInterface> io_worker) {
     auto start_time = absl::GetCurrentTimeNanos();
@@ -315,6 +345,7 @@ void LocalObjectManager::AsyncRestoreSpilledObject(
         [this, start_time, object_id, callback, io_worker](
             const ray::Status &status, const rpc::RestoreSpilledObjectsReply &r) {
           io_worker_pool_.PushRestoreWorker(io_worker);
+          objects_pending_restore_.erase(object_id);
           if (!status.ok()) {
             RAY_LOG(ERROR) << "Failed to send restore spilled object request: "
                            << status.ToString();
@@ -330,14 +361,13 @@ void LocalObjectManager::AsyncRestoreSpilledObject(
                 (now - std::max(start_time, last_restore_finish_ns_)) / 1e9;
             if (now - last_restore_log_ns_ > 1e9) {
               last_restore_log_ns_ = now;
-              // TODO(ekl) logging at error level until we add a better UX indicator.
-              RAY_LOG(ERROR) << "Restored "
-                             << static_cast<int>(restored_bytes_total_ / (1024 * 1024))
-                             << " MiB, " << restored_objects_total_
-                             << " objects, read throughput "
-                             << static_cast<int>(restored_bytes_total_ / (1024 * 1024) /
-                                                 restore_time_total_s_)
-                             << " MiB/s";
+              RAY_LOG(INFO) << "Restored "
+                            << static_cast<int>(restored_bytes_total_ / (1024 * 1024))
+                            << " MiB, " << restored_objects_total_
+                            << " objects, read throughput "
+                            << static_cast<int>(restored_bytes_total_ / (1024 * 1024) /
+                                                restore_time_total_s_)
+                            << " MiB/s";
             }
             last_restore_finish_ns_ = now;
           }
@@ -412,6 +442,16 @@ void LocalObjectManager::DeleteSpilledObjects(std::vector<std::string> &urls_to_
               }
             });
       });
+}
+
+void LocalObjectManager::FillObjectSpillingStats(rpc::GetNodeStatsReply *reply) const {
+  auto stats = reply->mutable_store_stats();
+  stats->set_spill_time_total_s(spill_time_total_s_);
+  stats->set_spilled_bytes_total(spilled_bytes_total_);
+  stats->set_spilled_objects_total(spilled_objects_total_);
+  stats->set_restore_time_total_s(restore_time_total_s_);
+  stats->set_restored_bytes_total(restored_bytes_total_);
+  stats->set_restored_objects_total(restored_objects_total_);
 }
 
 };  // namespace raylet

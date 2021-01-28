@@ -292,8 +292,12 @@ class NodeUpdater:
         if node_tags.get(TAG_RAY_RUNTIME_CONFIG) == self.runtime_hash:
             # When resuming from a stopped instance the runtime_hash may be the
             # same, but the container will not be started.
-            self.cmd_runner.run_init(
-                as_head=self.is_head_node, file_mounts=self.file_mounts)
+            init_required = self.cmd_runner.run_init(
+                as_head=self.is_head_node,
+                file_mounts=self.file_mounts,
+                sync_run_yet=False)
+            if init_required:
+                node_tags[TAG_RAY_RUNTIME_CONFIG] += "-invalidate"
 
         # runtime_hash will only change whenever the user restarts
         # or updates their cluster with `get_or_create_head_node`
@@ -371,7 +375,8 @@ class NodeUpdater:
                         _numbered=("[]", 5, NUM_SETUP_STEPS)):
                     self.cmd_runner.run_init(
                         as_head=self.is_head_node,
-                        file_mounts=self.file_mounts)
+                        file_mounts=self.file_mounts,
+                        sync_run_yet=True)
                 if self.setup_commands:
                     with cli_logger.group(
                             "Running setup commands",

@@ -22,7 +22,7 @@ class ViewRequirement:
 
     Examples:
         >>> # The default ViewRequirement for a Model is:
-        >>> req = [ModelV2].inference_view_requirements
+        >>> req = [ModelV2].view_requirements
         >>> print(req)
         {"obs": ViewRequirement(shift=0)}
     """
@@ -33,6 +33,7 @@ class ViewRequirement:
                  shift: Union[int, str, List[int]] = 0,
                  index: Optional[int] = None,
                  batch_repeat_value: int = 1,
+                 used_for_compute_actions: bool = True,
                  used_for_training: bool = True):
         """Initializes a ViewRequirement object.
 
@@ -58,6 +59,9 @@ class ViewRequirement:
                 used e.g. for the location of a requested inference dict within
                 the trajectory. Negative values refer to counting from the end
                 of a trajectory.
+            used_for_compute_actions (bool): Whether the data will be used for
+                creating input_dicts for `Policy.compute_actions()` calls (or
+                `Policy.compute_actions_from_input_dict()`).
             used_for_training (bool): Whether the data will be used for
                 training. If False, the column will not be copied into the
                 final train batch.
@@ -81,4 +85,5 @@ class ViewRequirement:
         self.index = index
         self.batch_repeat_value = batch_repeat_value
 
+        self.used_for_compute_actions = used_for_compute_actions
         self.used_for_training = used_for_training

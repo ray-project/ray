@@ -21,6 +21,7 @@
 #include "ray/common/task/task_util.h"
 #include "ray/common/test_util.h"
 #include "ray/gcs/gcs_server/gcs_actor_manager.h"
+#include "ray/gcs/gcs_server/gcs_actor_schedule_strategy.h"
 #include "ray/gcs/gcs_server/gcs_actor_scheduler.h"
 #include "ray/gcs/gcs_server/gcs_node_manager.h"
 #include "ray/gcs/gcs_server/gcs_placement_group_manager.h"
@@ -368,12 +369,6 @@ struct GcsServerMocker {
 
     Status AsyncReportHeartbeat(const std::shared_ptr<rpc::HeartbeatTableData> &data_ptr,
                                 const gcs::StatusCallback &callback) override {
-      return Status::NotImplemented("");
-    }
-
-    Status AsyncSubscribeBatchedResourceUsage(
-        const gcs::ItemCallback<rpc::ResourceUsageBatchData> &subscribe,
-        const gcs::StatusCallback &done) override {
       return Status::NotImplemented("");
     }
 

@@ -5,9 +5,7 @@ import io.ray.api.placementgroup.PlacementGroup;
 import java.util.HashMap;
 import java.util.Map;
 
-/**
- * The options for creating actor.
- */
+/** The options for creating actor. */
 public class ActorCreationOptions extends BaseTaskOptions {
   public final boolean global;
   public final String name;
@@ -17,9 +15,15 @@ public class ActorCreationOptions extends BaseTaskOptions {
   public final PlacementGroup group;
   public final int bundleIndex;
 
-  private ActorCreationOptions(boolean global, String name, Map<String, Double> resources,
-                               int maxRestarts, String jvmOptions, int maxConcurrency,
-                               PlacementGroup group, int bundleIndex) {
+  private ActorCreationOptions(
+      boolean global,
+      String name,
+      Map<String, Double> resources,
+      int maxRestarts,
+      String jvmOptions,
+      int maxConcurrency,
+      PlacementGroup group,
+      int bundleIndex) {
     super(resources);
     this.global = global;
     this.name = name;
@@ -30,9 +34,7 @@ public class ActorCreationOptions extends BaseTaskOptions {
     this.bundleIndex = bundleIndex;
   }
 
-  /**
-   * The inner class for building ActorCreationOptions.
-   */
+  /** The inner class for building ActorCreationOptions. */
   public static class Builder {
     private boolean global;
     private String name;
@@ -44,10 +46,9 @@ public class ActorCreationOptions extends BaseTaskOptions {
     private int bundleIndex;
 
     /**
-     * Set the actor name of a named actor.
-     * This named actor is only accessible from this job by this name via
-     * {@link Ray#getActor(java.lang.String)}. If you want create a named actor that is accessible
-     * from all jobs, use {@link Builder#setGlobalName(java.lang.String)} instead.
+     * Set the actor name of a named actor. This named actor is only accessible from this job by
+     * this name via {@link Ray#getActor(java.lang.String)}. If you want create a named actor that
+     * is accessible from all jobs, use {@link Builder#setGlobalName(java.lang.String)} instead.
      *
      * @param name The name of the named actor.
      * @return self
@@ -73,9 +74,9 @@ public class ActorCreationOptions extends BaseTaskOptions {
     }
 
     /**
-     * Set a custom resource requirement to reserve for the lifetime of this actor.
-     * This method can be called multiple times. If the same resource is set multiple times,
-     * the latest quantity will be used.
+     * Set a custom resource requirement to reserve for the lifetime of this actor. This method can
+     * be called multiple times. If the same resource is set multiple times, the latest quantity
+     * will be used.
      *
      * @param resourceName resource name
      * @param resourceQuantity resource quantity
@@ -87,9 +88,9 @@ public class ActorCreationOptions extends BaseTaskOptions {
     }
 
     /**
-     * Set custom resource requirements to reserve for the lifetime of this actor.
-     * This method can be called multiple times. If the same resource is set multiple times,
-     * the latest quantity will be used.
+     * Set custom resource requirements to reserve for the lifetime of this actor. This method can
+     * be called multiple times. If the same resource is set multiple times, the latest quantity
+     * will be used.
      *
      * @param resources requirements for multiple resources.
      * @return self
@@ -114,8 +115,8 @@ public class ActorCreationOptions extends BaseTaskOptions {
 
     /**
      * Set the JVM options for the Java worker that this actor is running in.
-     * <p>
-     * Note, if this is set, this actor won't share Java worker with other actors or tasks.
+     *
+     * <p>Note, if this is set, this actor won't share Java worker with other actors or tasks.
      *
      * @param jvmOptions JVM options for the Java worker that this actor is running in.
      * @return self
@@ -127,9 +128,9 @@ public class ActorCreationOptions extends BaseTaskOptions {
 
     /**
      * Set the max number of concurrent calls to allow for this actor.
-     * <p>
-     * The max concurrency defaults to 1 for threaded execution.
-     * Note that the execution order is not guaranteed when {@code max_concurrency > 1}.
+     *
+     * <p>The max concurrency defaults to 1 for threaded execution. Note that the execution order is
+     * not guaranteed when {@code max_concurrency > 1}.
      *
      * @param maxConcurrency The max number of concurrent calls to allow for this actor.
      * @return self
@@ -161,5 +162,4 @@ public class ActorCreationOptions extends BaseTaskOptions {
           global, name, resources, maxRestarts, jvmOptions, maxConcurrency, group, bundleIndex);
     }
   }
-
 }

@@ -79,6 +79,7 @@ from ray.includes.unique_ids cimport (
     CPlacementGroupID,
 )
 from ray.includes.libcoreworker cimport (
+    ActorHandleSharedPtr,
     CActorCreationOptions,
     CPlacementGroupCreationOptions,
     CCoreWorkerOptions,
@@ -107,6 +108,10 @@ from ray.exceptions import (
     TaskCancelledError
 )
 from ray.utils import decode
+from ray._private.client_mode_hook import (
+    _enable_client_hook,
+    _disable_client_hook,
+)
 import msgpack
 
 cimport cpython
@@ -558,6 +563,7 @@ cdef CRayStatus task_execution_handler(
 
     with gil:
         try:
+            client_was_enabled = _disable_client_hook()
             try:
                 # The call to execute_task should never raise an exception. If
                 # it does, that indicates that there was an internal error.
@@ -582,6 +588,8 @@ cdef CRayStatus task_execution_handler(
             else:
                 logger.exception("SystemExit was raised from the worker")
                 return CRayStatus.UnexpectedSystemExit()
+        finally:
+            _enable_client_hook(client_was_enabled)
 
     return CRayStatus.OK()
 
@@ -907,13 +915,13 @@ cdef class CoreWorker:
                             CObjectID *c_object_id, shared_ptr[CBuffer] *data):
         if object_ref is None:
             with nogil:
-                check_status(CCoreWorkerProcess.GetCoreWorker().Create(
+                check_status(CCoreWorkerProcess.GetCoreWorker().CreateOwned(
                              metadata, data_size, contained_ids,
                              c_object_id, data))
         else:
             c_object_id[0] = object_ref.native()
             with nogil:
-                check_status(CCoreWorkerProcess.GetCoreWorker().Create(
+                check_status(CCoreWorkerProcess.GetCoreWorker().CreateExisting(
                             metadata, data_size, c_object_id[0],
                             CCoreWorkerProcess.GetCoreWorker().GetRpcAddress(),
                             data))
@@ -925,7 +933,7 @@ cdef class CoreWorker:
         return data.get() == NULL
 
     def put_file_like_object(
-            self, metadata, data_size, file_like, ObjectRef object_ref=None):
+            self, metadata, data_size, file_like, ObjectRef object_ref):
         """Directly create a new Plasma Store object from a file like
         object. This avoids extra memory copy.
 
@@ -963,8 +971,9 @@ cdef class CoreWorker:
             # Using custom object refs is not supported because we
             # can't track their lifecycle, so we don't pin the object
             # in this case.
-            check_status(CCoreWorkerProcess.GetCoreWorker().Seal(
-                         c_object_id, pin_object=False))
+            check_status(
+                CCoreWorkerProcess.GetCoreWorker().SealExisting(
+                            c_object_id, pin_object=False))
 
     def put_serialized_object(self, serialized_object,
                               ObjectRef object_ref=None,
@@ -999,12 +1008,18 @@ cdef class CoreWorker:
                         c_object_id_vector, c_object_id))
             else:
                 with nogil:
-                    # Using custom object refs is not supported because we
-                    # can't track their lifecycle, so we don't pin the object
-                    # in this case.
-                    check_status(CCoreWorkerProcess.GetCoreWorker().Seal(
-                                    c_object_id,
-                                    pin_object and object_ref is None))
+                    if object_ref is None:
+                        check_status(
+                            CCoreWorkerProcess.GetCoreWorker().SealOwned(
+                                        c_object_id,
+                                        pin_object))
+                    else:
+                        # Using custom object refs is not supported because we
+                        # can't track their lifecycle, so we don't pin the
+                        # object in this case.
+                        check_status(
+                            CCoreWorkerProcess.GetCoreWorker().SealExisting(
+                                        c_object_id, pin_object=False))
 
         return c_object_id.Binary()
 
@@ -1031,14 +1046,13 @@ cdef class CoreWorker:
 
         return ready, not_ready
 
-    def free_objects(self, object_refs, c_bool local_only,
-                     c_bool delete_creating_tasks):
+    def free_objects(self, object_refs, c_bool local_only):
         cdef:
             c_vector[CObjectID] free_ids = ObjectRefsToVector(object_refs)
 
         with nogil:
             check_status(CCoreWorkerProcess.GetCoreWorker().Delete(
-                free_ids, local_only, delete_creating_tasks))
+                free_ids, local_only))
 
     def global_gc(self):
         with nogil:
@@ -1170,7 +1184,8 @@ cdef class CoreWorker:
                             self,
                             c_string name,
                             c_vector[unordered_map[c_string, double]] bundles,
-                            c_string strategy):
+                            c_string strategy,
+                            c_bool is_detached):
         cdef:
             CPlacementGroupID c_placement_group_id
             CPlacementStrategy c_strategy
@@ -1194,7 +1209,8 @@ cdef class CoreWorker:
                             CPlacementGroupCreationOptions(
                                 name,
                                 c_strategy,
-                                bundles
+                                bundles,
+                                is_detached
                             ),
                             &c_placement_group_id))
 
@@ -1315,22 +1331,22 @@ cdef class CoreWorker:
         CCoreWorkerProcess.GetCoreWorker().RemoveActorHandleReference(
             c_actor_id)
 
-    cdef make_actor_handle(self, const CActorHandle *c_actor_handle):
+    cdef make_actor_handle(self, ActorHandleSharedPtr c_actor_handle):
         worker = ray.worker.global_worker
         worker.check_connected()
         manager = worker.function_actor_manager
 
-        actor_id = ActorID(c_actor_handle.GetActorID().Binary())
-        job_id = JobID(c_actor_handle.CreationJobID().Binary())
-        language = Language.from_native(c_actor_handle.ActorLanguage())
-        actor_creation_function_descriptor = \
-            CFunctionDescriptorToPython(
-                c_actor_handle.ActorCreationTaskFunctionDescriptor())
+        actor_id = ActorID(dereference(c_actor_handle).GetActorID().Binary())
+        job_id = JobID(dereference(c_actor_handle).CreationJobID().Binary())
+        language = Language.from_native(
+            dereference(c_actor_handle).ActorLanguage())
+        actor_creation_function_descriptor = CFunctionDescriptorToPython(
+            dereference(c_actor_handle).ActorCreationTaskFunctionDescriptor())
         if language == Language.PYTHON:
             assert isinstance(actor_creation_function_descriptor,
                               PythonFunctionDescriptor)
             # Load actor_method_cpu from actor handle's extension data.
-            extension_data = <str>c_actor_handle.ExtensionData()
+            extension_data = <str>dereference(c_actor_handle).ExtensionData()
             if extension_data:
                 actor_method_cpu = int(extension_data)
             else:
@@ -1366,27 +1382,21 @@ cdef class CoreWorker:
                       .GetCoreWorker()
                       .DeserializeAndRegisterActorHandle(
                           bytes, c_outer_object_id))
-        cdef:
-            # NOTE: This handle should not be stored anywhere.
-            const CActorHandle* c_actor_handle = (
-                CCoreWorkerProcess.GetCoreWorker().GetActorHandle(c_actor_id))
-        return self.make_actor_handle(c_actor_handle)
+        return self.make_actor_handle(
+            CCoreWorkerProcess.GetCoreWorker().GetActorHandle(c_actor_id))
 
     def get_named_actor_handle(self, const c_string &name):
         cdef:
-            pair[const CActorHandle*, CRayStatus] named_actor_handle_pair
-            # NOTE: This handle should not be stored anywhere.
-            const CActorHandle* c_actor_handle
+            pair[ActorHandleSharedPtr, CRayStatus] named_actor_handle_pair
 
         # We need it because GetNamedActorHandle needs
         # to call a method that holds the gil.
         with nogil:
             named_actor_handle_pair = (
                 CCoreWorkerProcess.GetCoreWorker().GetNamedActorHandle(name))
-        c_actor_handle = named_actor_handle_pair.first
         check_status(named_actor_handle_pair.second)
 
-        return self.make_actor_handle(c_actor_handle)
+        return self.make_actor_handle(named_actor_handle_pair.first)
 
     def serialize_actor_handle(self, ActorID actor_id):
         cdef:
@@ -1559,12 +1569,13 @@ cdef class CoreWorker:
 
         return ref_counts
 
-    def get_async(self, ObjectRef object_ref, future):
-        cpython.Py_INCREF(future)
+    def set_get_async_callback(self, ObjectRef object_ref, callback):
+        cpython.Py_INCREF(callback)
         CCoreWorkerProcess.GetCoreWorker().GetAsync(
-                object_ref.native(),
-                async_set_result,
-                <void*>future)
+            object_ref.native(),
+            async_callback,
+            <void*>callback
+        )
 
     def push_error(self, JobID job_id, error_type, error_message,
                    double timestamp):
@@ -1578,13 +1589,11 @@ cdef class CoreWorker:
             resource_name.encode("ascii"), capacity,
             CNodeID.FromBinary(client_id.binary()))
 
-cdef void async_set_result(shared_ptr[CRayObject] obj,
-                           CObjectID object_ref,
-                           void *future) with gil:
+cdef void async_callback(shared_ptr[CRayObject] obj,
+                         CObjectID object_ref,
+                         void *user_callback) with gil:
     cdef:
         c_vector[shared_ptr[CRayObject]] objects_to_deserialize
-    py_future = <object>(future)
-    loop = py_future._loop
 
     # Object is retrieved from in memory store.
     # Here we go through the code path used to deserialize objects.
@@ -1595,23 +1604,6 @@ cdef void async_set_result(shared_ptr[CRayObject] obj,
     result = ray.worker.global_worker.deserialize_objects(
         data_metadata_pairs, ids_to_deserialize)[0]
 
-    def set_future():
-        # Issue #11030, #8841
-        # If this future has result set already, we just need to
-        # skip the set result/exception procedure.
-        if py_future.done():
-            cpython.Py_DECREF(py_future)
-            return
-
-        if isinstance(result, RayTaskError):
-            ray.worker.last_task_error_raise_time = time.time()
-            py_future.set_exception(result.as_instanceof_cause())
-        elif isinstance(result, RayError):
-            # Directly raise exception for RayActorError
-            py_future.set_exception(result)
-        else:
-            py_future.set_result(result)
-
-        cpython.Py_DECREF(py_future)
-
-    loop.call_soon_threadsafe(set_future)
+    py_callback = <object>user_callback
+    py_callback(result)
+    cpython.Py_DECREF(py_callback)
