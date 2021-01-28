@@ -7,11 +7,12 @@
 
 - label: ":java: Java"
   commands:
-  - apt-get install -y openjdk-8-jdk
+  - apt-get install -y openjdk-8-jdk maven
   - ./java/test.sh
 
 - label: ":java: Streaming"
   commands:
+  - apt-get install -y openjdk-8-jdk maven
   - bazel test --config=ci $(./scripts/bazel_export_options)
       --test_output=all //streaming:all
   - bash streaming/src/test/run_streaming_queue_test.sh
