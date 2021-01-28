@@ -28,7 +28,6 @@ class HTTPProxy:
     def __init__(self, controller_name):
         # Set the controller name so that serve.connect() will connect to the
         # controller instance this proxy is running in.
-
         ray.serve.api._set_internal_replica_context(None, None,
                                                     controller_name)
         self.client = ray.serve.connect()
