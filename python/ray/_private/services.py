@@ -1195,7 +1195,7 @@ def start_dashboard(require_dashboard,
                 if dashboard_url is not None:
                     dashboard_url = dashboard_url.decode("utf-8")
                     break
-                if process_info.process.poll():
+                if process_info.process.poll() is not None:
                     break
                 time.sleep(1)
             if dashboard_url is None:
