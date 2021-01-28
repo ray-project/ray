@@ -101,8 +101,9 @@ struct Mocker {
     PlacementGroupSpecBuilder builder;
 
     auto placement_group_id = PlacementGroupID::FromRandom();
-    builder.SetPlacementGroupSpec(placement_group_id, name, bundles, strategy, job_id,
-                                  actor_id, /* is_creator_detached */ false);
+    builder.SetPlacementGroupSpec(placement_group_id, name, bundles, strategy,
+                                  /* is_detached */ false, job_id, actor_id,
+                                  /* is_creator_detached */ false);
     return builder.Build();
   }
 

@@ -256,6 +256,7 @@ class Router:
                 raise RayServeException(
                     f"Endpoint {endpoint} was removed. This request "
                     "cannot be completed.")
+            logger.info(f"Endpoint {endpoint} registered.")
 
         endpoint_policy = self.endpoint_policies[endpoint]
         chosen_backend, *shadow_backends = endpoint_policy.assign(query)
