@@ -1,25 +1,25 @@
-- label: ":book: Lint"
-  commands:
-  - export LINT=1
-  - ./ci/travis/install-dependencies.sh
-  - ./ci/travis/ci.sh lint
-  - ./ci/travis/ci.sh build
+# - label: ":book: Lint"
+#   commands:
+#   - export LINT=1
+#   - ./ci/travis/install-dependencies.sh
+#   - ./ci/travis/ci.sh lint
+#   - ./ci/travis/ci.sh build
 
 - label: ":java: Java"
   commands:
-  - apt-get install -y openjdk-8-jdk maven
+  - apt-get install -y openjdk-8-jdk maven clang-format
   - ./java/test.sh
 
-- label: ":java: Streaming"
-  commands:
-  - apt-get install -y openjdk-8-jdk maven
-  - bazel test --config=ci $(./scripts/bazel_export_options)
-      --test_output=all //streaming:all
-  - bash streaming/src/test/run_streaming_queue_test.sh
+# - label: ":java: Streaming"
+#   commands:
+#   - apt-get install -y openjdk-8-jdk maven
+#   - bazel test --config=ci $(./scripts/bazel_export_options)
+#       //streaming:all
+#   - bash streaming/src/test/run_streaming_queue_test.sh
 
-- label: ":cpp: Worker"
-  commands:
-  - ./ci/travis/ci.sh test_cpp
+# - label: ":cpp: Worker"
+#   commands:
+#   - ./ci/travis/ci.sh test_cpp
 
 # - label: ":cpp: Tests"
 #   commands:
