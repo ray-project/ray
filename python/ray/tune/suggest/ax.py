@@ -12,10 +12,16 @@ from ray.tune.utils.util import flatten_dict, unflatten_dict
 try:
     import ax
     from ax.service.ax_client import AxClient
+except ImportError:
+    ax = AxClient = None
+
+# This exception only exists in newer Ax releases for python 3.7
+try:
     from ax.exceptions.generation_strategy import \
         MaxParallelismReachedException
 except ImportError:
-    ax = AxClient = MaxParallelismReachedException = None
+    MaxParallelismReachedException = Exception
+
 import logging
 
 from ray.tune.suggest import Searcher
