@@ -643,7 +643,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// \param[out] results The pointers to objects stored in
   /// plasma.
   /// \return Whether the request was successful.
-  bool GetObjectsFromPlasma(const std::vector<ObjectID> &object_ids, std::vector<std::unique_ptr<RayObject>> *results);
+  bool GetObjectsFromPlasma(const std::vector<ObjectID> &object_ids,
+                            std::vector<std::unique_ptr<RayObject>> *results);
 
   ///////////////////////////////////////////////////////////////////////////////////////
   //////////////////// Begin of the override methods of ClusterTaskManager //////////////

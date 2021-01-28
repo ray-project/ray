@@ -213,7 +213,8 @@ NodeManager::NodeManager(boost::asio::io_service &io_service, const NodeID &self
         std::dynamic_pointer_cast<ClusterResourceScheduler>(cluster_resource_scheduler_),
         dependency_manager_, is_owner_alive, get_node_info_func, announce_infeasible_task,
         worker_pool_, leased_workers_,
-        [this](const std::vector<ObjectID> &object_ids, std::vector<std::unique_ptr<RayObject>> *results) {
+        [this](const std::vector<ObjectID> &object_ids,
+               std::vector<std::unique_ptr<RayObject>> *results) {
           return GetObjectsFromPlasma(object_ids, results);
         }));
     placement_group_resource_manager_ =
@@ -2340,7 +2341,8 @@ std::string compact_tag_string(const opencensus::stats::ViewDescriptor &view,
   return result.str();
 }
 
-bool NodeManager::GetObjectsFromPlasma(const std::vector<ObjectID> &object_ids, std::vector<std::unique_ptr<RayObject>> *results) {
+bool NodeManager::GetObjectsFromPlasma(const std::vector<ObjectID> &object_ids,
+                                       std::vector<std::unique_ptr<RayObject>> *results) {
   // Pin the objects in plasma by getting them and holding a reference to
   // the returned buffer.
   // NOTE: the caller must ensure that the objects already exist in plasma before
@@ -2377,7 +2379,9 @@ void NodeManager::HandlePinObjectIDs(const rpc::PinObjectIDsRequest &request,
   if (object_pinning_enabled_) {
     std::vector<std::unique_ptr<RayObject>> results;
     if (!GetObjectsFromPlasma(object_ids, &results)) {
-      RAY_LOG(WARNING) << "Failed to get objects that should have been in the object store. These objects may have been evicted while there are still references in scope.";
+      RAY_LOG(WARNING)
+          << "Failed to get objects that should have been in the object store. These "
+             "objects may have been evicted while there are still references in scope.";
       // TODO(suquark): Maybe "Status::ObjectNotFound" is more accurate here.
       send_reply_callback(Status::Invalid("Failed to get objects."), nullptr, nullptr);
       return;

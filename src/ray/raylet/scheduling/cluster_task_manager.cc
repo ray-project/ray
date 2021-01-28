@@ -21,7 +21,9 @@ ClusterTaskManager::ClusterTaskManager(
     std::function<void(const Task &)> announce_infeasible_task,
     WorkerPoolInterface &worker_pool,
     std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers,
-    std::function<bool(const std::vector<ObjectID> &object_ids, std::vector<std::unique_ptr<RayObject>> *results)> pin_task_arguments)
+    std::function<bool(const std::vector<ObjectID> &object_ids,
+                       std::vector<std::unique_ptr<RayObject>> *results)>
+        pin_task_arguments)
     : self_node_id_(self_node_id),
       cluster_resource_scheduler_(cluster_resource_scheduler),
       task_dependency_manager_(task_dependency_manager),
@@ -150,13 +152,22 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
       bool success = true;
       const auto &deps = spec.GetDependencyIds();
       if (!deps.empty()) {
+        // This gets refs to the arguments stored in plasma. The refs should be
+        // deleted once we no longer need to pin the arguments.
         success = pin_task_arguments_(deps, &args);
         if (!success) {
           RAY_LOG(WARNING) << "Error getting task arguments from plasma store";
         }
         for (size_t i = 0; i < deps.size(); i++) {
           if (args[i] == nullptr) {
-            RAY_LOG(INFO) << "Task " << spec.TaskId() << " argument " << deps[i] << " was evicted before task could be dispatched";
+            // This can happen if the task's arguments were all local at some
+            // point, but then at least one was evicted before the task could
+            // be dispatched to a worker.
+            RAY_LOG(INFO)
+                << "Task " << spec.TaskId() << " argument " << deps[i]
+                << " was evicted before the task could be dispatched. This can happen "
+                   "when there are many objects needed on this node. The task will be "
+                   "scheduled once all of its dependencies are local.";
             success = false;
             break;
           }
@@ -197,7 +208,9 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
         if (worker_leased) {
           // Pin the arguments while the lease is active. These will be erased
           // once the lease is returned.
-          RAY_CHECK(pinned_task_arguments_.emplace(spec.TaskId(), std::move(args)).second) << spec.TaskId();
+          num_pinned_task_arguments_ += args.size();
+          RAY_CHECK(pinned_task_arguments_.emplace(spec.TaskId(), std::move(args)).second)
+              << spec.TaskId();
 
           auto reply = std::get<1>(*work_it);
           auto callback = std::get<2>(*work_it);
@@ -317,7 +330,10 @@ void ClusterTaskManager::TaskFinished(std::shared_ptr<WorkerInterface> worker,
                                       Task *task) {
   RAY_CHECK(worker != nullptr && task != nullptr);
   *task = worker->GetAssignedTask();
-  RAY_CHECK(pinned_task_arguments_.erase(task->GetTaskSpecification().TaskId()));
+  auto it = pinned_task_arguments_.find(task->GetTaskSpecification().TaskId());
+  RAY_CHECK(it != pinned_task_arguments_.end());
+  num_pinned_task_arguments_ -= it->second.size();
+  pinned_task_arguments_.erase(it);
   if (worker->GetAllocatedInstances() != nullptr) {
     ReleaseWorkerResources(worker);
   }
@@ -646,7 +662,9 @@ std::string ClusterTaskManager::DebugStr() const {
   buffer << "Schedule queue length: " << tasks_to_schedule_.size() << "\n";
   buffer << "Dispatch queue length: " << tasks_to_dispatch_.size() << "\n";
   buffer << "Waiting tasks size: " << waiting_tasks_.size() << "\n";
-  buffer << "infeasible queue length size: " << infeasible_tasks_.size() << "\n";
+  buffer << "Infeasible queue length size: " << infeasible_tasks_.size() << "\n";
+  buffer << "Number of executing tasks: " << pinned_task_arguments_.size() << "\n";
+  buffer << "Number of pinned task arguments: " << num_pinned_task_arguments_ << "\n";
   buffer << "cluster_resource_scheduler state: "
          << cluster_resource_scheduler_->DebugString() << "\n";
   buffer << "==================================================";
