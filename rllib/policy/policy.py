@@ -709,11 +709,12 @@ class Policy(metaclass=ABCMeta):
         ret = {}
         for view_col, view_req in self.view_requirements.items():
             if isinstance(view_req.space, (gym.spaces.Dict, gym.spaces.Tuple)):
-                _, shape = ModelCatalog.get_action_shape(view_req.space, framework=self.config['framework'])
+                _, shape = ModelCatalog.get_action_shape(
+                    view_req.space, framework=self.config["framework"])
                 ret[view_col] = \
                     np.zeros((batch_size, ) + shape[1:], np.float32)
             else:
-                # Range of indices on time-axis, e.g. "-50:-1".
+                # Range of indices on time-axis, e.g. "-50:-1"../s
                 if view_req.shift_from is not None:
                     ret[view_col] = np.zeros_like([[
                         view_req.space.sample()
