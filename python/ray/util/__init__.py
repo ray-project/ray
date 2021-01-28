@@ -25,5 +25,4 @@ __all__ = [
     "connect",
     "disconnect",
     "register_serializer",
-    "unregister_serializer",
 ]
