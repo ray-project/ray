@@ -1,6 +1,6 @@
 # The base-deps Docker image installs main libraries needed to run Ray
 
-# The GPU option is nvidia/cuda:10.1-cudnn7-runtime-ubuntu18.04
+# The GPU option is nvidia/cuda:11.0-cudnn8-runtime-ubuntu18.04
 ARG BASE_IMAGE="ubuntu:focal"
 FROM ${BASE_IMAGE}
 # If this arg is not "autoscaler" then no autoscaler requirements will be included
@@ -69,3 +69,5 @@ RUN sudo apt-get update -y && sudo apt-get upgrade -y \
     fi;) \
     && sudo rm -rf /var/lib/apt/lists/* \
     && sudo apt-get clean
+
+WORKDIR $HOME

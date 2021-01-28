@@ -60,7 +60,8 @@ def test_broadcast_torch_cupy(ray_start_distributed_2_nodes_4_gpus, src_rank):
         assert (results[1] == torch.ones((10, )).cuda() * world_size).all()
 
 
-def test_broadcast_invalid_rank(ray_start_single_node_2_gpus, src_rank=3):
+def test_broadcast_invalid_rank(ray_start_distributed_2_nodes_4_gpus,
+                                src_rank=3):
     world_size = 2
     actors, _ = create_collective_workers(world_size)
     with pytest.raises(ValueError):

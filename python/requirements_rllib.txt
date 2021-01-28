@@ -13,3 +13,10 @@ pettingzoo>=1.4.0
 # For tests on RecSim and Kaggle envs.
 recsim
 kaggle_environments
+
+# For MAML on PyTorch.
+higher
+
+# Unity3D testing
+mlagents
+mlagents_envs

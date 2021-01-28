@@ -15,6 +15,138 @@ from ray.util.metrics import Count, Histogram, Gauge
 from ray.test_utils import wait_for_condition, SignalActor, fetch_prometheus
 
 
+@pytest.fixture
+def _setup_cluster_for_test(ray_start_cluster):
+    NUM_NODES = 2
+    cluster = ray_start_cluster
+    # Add a head node.
+    cluster.add_node(_system_config={"metrics_report_interval_ms": 1000})
+    # Add worker nodes.
+    [cluster.add_node() for _ in range(NUM_NODES - 1)]
+    cluster.wait_for_nodes()
+    ray.init(address=cluster.address)
+
+    worker_should_exit = SignalActor.remote()
+
+    # Generate a metric in the driver.
+    counter = Count("test_driver_counter", description="desc")
+    counter.record(1)
+
+    # Generate some metrics from actor & tasks.
+    @ray.remote
+    def f():
+        counter = Count("test_counter", description="desc")
+        counter.record(1)
+        counter = ray.get(ray.put(counter))  # Test serialization.
+        counter.record(1)
+        ray.get(worker_should_exit.wait.remote())
+
+    @ray.remote
+    class A:
+        async def ping(self):
+            histogram = Histogram(
+                "test_histogram", description="desc", boundaries=[0.1, 1.6])
+            histogram = ray.get(ray.put(histogram))  # Test serialization.
+            histogram.record(1.5)
+            ray.get(worker_should_exit.wait.remote())
+
+    a = A.remote()
+    obj_refs = [f.remote(), a.ping.remote()]
+
+    node_info_list = ray.nodes()
+    prom_addresses = []
+    for node_info in node_info_list:
+        metrics_export_port = node_info["MetricsExportPort"]
+        addr = node_info["NodeManagerAddress"]
+        prom_addresses.append(f"{addr}:{metrics_export_port}")
+
+    yield prom_addresses
+
+    ray.get(worker_should_exit.send.remote())
+    ray.get(obj_refs)
+    ray.shutdown()
+    cluster.shutdown()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+def test_metrics_export_end_to_end(_setup_cluster_for_test):
+    TEST_TIMEOUT_S = 20
+
+    prom_addresses = _setup_cluster_for_test
+
+    def test_cases():
+        components_dict, metric_names, metric_samples = fetch_prometheus(
+            prom_addresses)
+
+        # Raylet should be on every node
+        assert all(
+            "raylet" in components for components in components_dict.values())
+
+        # GCS server should be on one node
+        assert any("gcs_server" in components
+                   for components in components_dict.values())
+
+        # Core worker should be on at least on node
+        assert any("core_worker" in components
+                   for components in components_dict.values())
+
+        # Make sure our user defined metrics exist
+        for metric_name in [
+                "test_counter", "test_histogram", "test_driver_counter"
+        ]:
+            assert any(metric_name in full_name for full_name in metric_names)
+
+        # Make sure GCS server metrics are recorded.
+        assert "ray_outbound_heartbeat_size_kb_sum" in metric_names
+
+        # Make sure the numeric values are correct
+        test_counter_sample = [
+            m for m in metric_samples if "test_counter" in m.name
+        ][0]
+        assert test_counter_sample.value == 2.0
+
+        test_driver_counter_sample = [
+            m for m in metric_samples if "test_driver_counter" in m.name
+        ][0]
+        assert test_driver_counter_sample.value == 1.0
+
+        test_histogram_samples = [
+            m for m in metric_samples if "test_histogram" in m.name
+        ]
+        buckets = {
+            m.labels["le"]: m.value
+            for m in test_histogram_samples if "_bucket" in m.name
+        }
+        # We recorded value 1.5 for the histogram. In Prometheus data model
+        # the histogram is cumulative. So we expect the count to appear in
+        # <1.1 and <+Inf buckets.
+        assert buckets == {"0.1": 0.0, "1.6": 1.0, "+Inf": 1.0}
+        hist_count = [m for m in test_histogram_samples
+                      if "_count" in m.name][0].value
+        hist_sum = [m for m in test_histogram_samples
+                    if "_sum" in m.name][0].value
+        assert hist_count == 1
+        assert hist_sum == 1.5
+
+    def wrap_test_case_for_retry():
+        try:
+            test_cases()
+            return True
+        except AssertionError:
+            return False
+
+    try:
+        wait_for_condition(
+            wrap_test_case_for_retry,
+            timeout=TEST_TIMEOUT_S,
+            retry_interval_ms=1000,  # Yield resource for other processes
+        )
+    except RuntimeError:
+        print(
+            f"The components are {pformat(fetch_prometheus(prom_addresses))}")
+        test_cases()  # Should fail assert
+
+
 def test_prometheus_file_based_service_discovery(ray_start_cluster):
     # Make sure Prometheus service discovery file is correctly written
     # when number of nodes are dynamically changed.
@@ -61,125 +193,6 @@ def test_prome_file_discovery_run_by_dashboard(shutdown_only):
         return False
 
     wait_for_condition(is_service_discovery_exist)
-
-
-@pytest.fixture
-def _setup_cluster_for_test(ray_start_cluster):
-    NUM_NODES = 2
-    cluster = ray_start_cluster
-    # Add a head node.
-    cluster.add_node(_system_config={"metrics_report_interval_ms": 1000})
-    # Add worker nodes.
-    [cluster.add_node() for _ in range(NUM_NODES - 1)]
-    cluster.wait_for_nodes()
-    ray.init(address=cluster.address)
-
-    worker_should_exit = SignalActor.remote()
-
-    # Generate some metrics from actor & tasks.
-    @ray.remote
-    def f():
-        counter = Count("test_counter", description="desc")
-        counter.record(1)
-        ray.get(worker_should_exit.wait.remote())
-
-    @ray.remote
-    class A:
-        async def ping(self):
-            histogram = Histogram(
-                "test_histogram", description="desc", boundaries=[0.1, 1.6])
-            histogram.record(1.5)
-            ray.get(worker_should_exit.wait.remote())
-
-    a = A.remote()
-    obj_refs = [f.remote(), a.ping.remote()]
-
-    node_info_list = ray.nodes()
-    prom_addresses = []
-    for node_info in node_info_list:
-        metrics_export_port = node_info["MetricsExportPort"]
-        addr = node_info["NodeManagerAddress"]
-        prom_addresses.append(f"{addr}:{metrics_export_port}")
-
-    yield prom_addresses
-
-    ray.get(worker_should_exit.send.remote())
-    ray.get(obj_refs)
-    ray.shutdown()
-    cluster.shutdown()
-
-
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
-def test_metrics_export_end_to_end(_setup_cluster_for_test):
-    TEST_TIMEOUT_S = 20
-
-    prom_addresses = _setup_cluster_for_test
-
-    def test_cases():
-        components_dict, metric_names, metric_samples = fetch_prometheus(
-            prom_addresses)
-
-        # Raylet should be on every node
-        assert all(
-            "raylet" in components for components in components_dict.values())
-
-        # GCS server should be on one node
-        assert any("gcs_server" in components
-                   for components in components_dict.values())
-
-        # Core worker should be on at least on node
-        assert any("core_worker" in components
-                   for components in components_dict.values())
-
-        # Make sure our user defined metrics exist
-        for metric_name in ["test_counter", "test_histogram"]:
-            assert any(metric_name in full_name for full_name in metric_names)
-
-        # Make sure GCS server metrics are recorded.
-        assert "ray_outbound_heartbeat_size_kb_sum" in metric_names
-
-        # Make sure the numeric value is correct
-        test_counter_sample = [
-            m for m in metric_samples if "test_counter" in m.name
-        ][0]
-        assert test_counter_sample.value == 1.0
-
-        # Make sure the numeric value is correct
-        test_histogram_samples = [
-            m for m in metric_samples if "test_histogram" in m.name
-        ]
-        buckets = {
-            m.labels["le"]: m.value
-            for m in test_histogram_samples if "_bucket" in m.name
-        }
-        # We recorded value 1.5 for the histogram. In Prometheus data model
-        # the histogram is cumulative. So we expect the count to appear in
-        # <1.1 and <+Inf buckets.
-        assert buckets == {"0.1": 0.0, "1.6": 1.0, "+Inf": 1.0}
-        hist_count = [m for m in test_histogram_samples
-                      if "_count" in m.name][0].value
-        hist_sum = [m for m in test_histogram_samples
-                    if "_sum" in m.name][0].value
-        assert hist_count == 1
-        assert hist_sum == 1.5
-
-    def wrap_test_case_for_retry():
-        try:
-            test_cases()
-            return True
-        except AssertionError:
-            return False
-
-    try:
-        wait_for_condition(
-            wrap_test_case_for_retry,
-            timeout=TEST_TIMEOUT_S,
-            retry_interval_ms=1000,  # Yield resource for other processes
-        )
-    except RuntimeError:
-        print(
-            f"The compoenents are {pformat(fetch_prometheus(prom_addresses))}")
-        test_cases()  # Should fail assert
 
 
 @pytest.fixture

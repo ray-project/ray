@@ -657,12 +657,21 @@ bool ClusterTaskManager::AnyPendingTasks(Task *exemplar, bool *any_pending,
 std::string ClusterTaskManager::DebugStr() const {
   // TODO(Shanly): This method will be replaced with `DebugString` once we remove the
   // legacy scheduler.
+  auto accumulator = [](size_t state, const std::pair<int, std::deque<Work>> &pair) {
+    return state + pair.second.size();
+  };
+  size_t num_infeasible_tasks = std::accumulate(
+      infeasible_tasks_.begin(), infeasible_tasks_.end(), (size_t)0, accumulator);
+  size_t num_tasks_to_schedule = std::accumulate(
+      tasks_to_schedule_.begin(), tasks_to_schedule_.end(), (size_t)0, accumulator);
+  size_t num_tasks_to_dispatch = std::accumulate(
+      tasks_to_dispatch_.begin(), tasks_to_dispatch_.end(), (size_t)0, accumulator);
   std::stringstream buffer;
   buffer << "========== Node: " << self_node_id_ << " =================\n";
-  buffer << "Schedule queue length: " << tasks_to_schedule_.size() << "\n";
-  buffer << "Dispatch queue length: " << tasks_to_dispatch_.size() << "\n";
+  buffer << "Infeasible queue length: " << num_infeasible_tasks << "\n";
+  buffer << "Schedule queue length: " << num_tasks_to_schedule << "\n";
+  buffer << "Dispatch queue length: " << num_tasks_to_dispatch << "\n";
   buffer << "Waiting tasks size: " << waiting_tasks_.size() << "\n";
-  buffer << "Infeasible queue length size: " << infeasible_tasks_.size() << "\n";
   buffer << "Number of executing tasks: " << pinned_task_arguments_.size() << "\n";
   buffer << "Number of pinned task arguments: " << num_pinned_task_arguments_ << "\n";
   buffer << "cluster_resource_scheduler state: "
@@ -714,7 +723,6 @@ void ClusterTaskManager::Dispatch(
     const Task &task, rpc::RequestWorkerLeaseReply *reply,
     std::function<void(void)> send_reply_callback) {
   const auto &task_spec = task.GetTaskSpecification();
-  RAY_LOG(DEBUG) << "Dispatching task " << task_spec.TaskId();
   // Pass the contact info of the worker to use.
   reply->set_worker_pid(worker->GetProcess().GetId());
   reply->mutable_worker_address()->set_ip_address(worker->IpAddress());
@@ -724,6 +732,7 @@ void ClusterTaskManager::Dispatch(
 
   RAY_CHECK(leased_workers.find(worker->WorkerId()) == leased_workers.end());
   leased_workers[worker->WorkerId()] = worker;
+  RemoveFromBacklogTracker(task);
 
   // Update our internal view of the cluster state.
   std::shared_ptr<TaskResourceInstances> allocated_resources;
@@ -775,7 +784,9 @@ void ClusterTaskManager::Dispatch(
 }
 
 void ClusterTaskManager::Spillback(const NodeID &spillback_to, const Work &work) {
-  const auto &task_spec = std::get<0>(work).GetTaskSpecification();
+  const auto &task = std::get<0>(work);
+  const auto &task_spec = task.GetTaskSpecification();
+  RemoveFromBacklogTracker(task);
   RAY_LOG(DEBUG) << "Spilling task " << task_spec.TaskId() << " to node " << spillback_to;
 
   if (!cluster_resource_scheduler_->AllocateRemoteTaskResources(
