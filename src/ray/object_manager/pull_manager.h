@@ -72,9 +72,12 @@ class PullManager {
   /// necessarily a super or subset of the previously available nodes.
   /// \param spilled_url The location of the object if it was spilled. If
   /// non-empty, the object may no longer be on any node.
+  /// \param spilled_node_id The node id of the object if it was spilled. If Nil, the
+  /// object may no longer be on any node.
   void OnLocationChange(const ObjectID &object_id,
                         const std::unordered_set<NodeID> &client_ids,
-                        const std::string &spilled_url, size_t object_size);
+                        const std::string &spilled_url, const NodeID &spilled_node_id,
+                        size_t object_size);
 
   /// Cancel an existing pull request.
   ///
@@ -108,6 +111,7 @@ class PullManager {
           bundle_request_ids() {}
     std::vector<NodeID> client_locations;
     std::string spilled_url;
+    NodeID spilled_node_id;
     double next_pull_time;
     uint8_t num_retries;
     bool object_size_set = false;
@@ -142,12 +146,14 @@ class PullManager {
   /// any objects in the request that are not already being pulled.
   bool ActivateNextPullBundleRequest(
       const std::map<uint64_t, std::vector<rpc::ObjectReference>>::iterator
-          &next_request_it);
+          &next_request_it,
+      std::vector<ObjectID> *objects_to_pull);
 
   /// Deactivate a pull request in the queue. This cancels any pull or restore
   /// operations for the object.
   void DeactivatePullBundleRequest(
-      const std::map<uint64_t, std::vector<rpc::ObjectReference>>::iterator &request_it);
+      const std::map<uint64_t, std::vector<rpc::ObjectReference>>::iterator &request_it,
+      std::unordered_set<ObjectID> *objects_to_cancel = nullptr);
 
   /// Trigger out-of-memory handling if the first request in the queue needs
   /// more space than the bytes available. This is needed to make room for the

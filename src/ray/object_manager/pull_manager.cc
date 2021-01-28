@@ -51,7 +51,8 @@ uint64_t PullManager::Pull(const std::vector<rpc::ObjectReference> &object_ref_b
 
 bool PullManager::ActivateNextPullBundleRequest(
     const std::map<uint64_t, std::vector<rpc::ObjectReference>>::iterator
-        &next_request_it) {
+        &next_request_it,
+    std::vector<ObjectID> *objects_to_pull) {
   // Check that we have sizes for all of the objects in the bundle. If not, we
   // should not activate the bundle, since it may put us over the available
   // capacity.
@@ -81,6 +82,7 @@ bool PullManager::ActivateNextPullBundleRequest(
       auto it = object_pull_requests_.find(obj_id);
       RAY_CHECK(it != object_pull_requests_.end());
       num_bytes_being_pulled_ += it->second.object_size;
+      objects_to_pull->push_back(obj_id);
     }
   }
 
@@ -91,7 +93,8 @@ bool PullManager::ActivateNextPullBundleRequest(
 }
 
 void PullManager::DeactivatePullBundleRequest(
-    const std::map<uint64_t, std::vector<rpc::ObjectReference>>::iterator &request_it) {
+    const std::map<uint64_t, std::vector<rpc::ObjectReference>>::iterator &request_it,
+    std::unordered_set<ObjectID> *objects_to_cancel) {
   for (const auto &ref : request_it->second) {
     auto obj_id = ObjectRefToId(ref);
     RAY_CHECK(active_object_pull_requests_[obj_id].erase(request_it->first));
@@ -101,6 +104,10 @@ void PullManager::DeactivatePullBundleRequest(
       RAY_CHECK(it != object_pull_requests_.end());
       num_bytes_being_pulled_ -= it->second.object_size;
       active_object_pull_requests_.erase(obj_id);
+
+      if (objects_to_cancel) {
+        objects_to_cancel->insert(obj_id);
+      }
     }
   }
 
@@ -120,10 +127,9 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) 
     RAY_LOG(DEBUG) << "Updating pulls based on available memory: " << num_bytes_available;
   }
   num_bytes_available_ = num_bytes_available;
-  uint64_t prev_highest_req_id_being_pulled = highest_req_id_being_pulled_;
 
-  std::unordered_set<ObjectID> object_ids_to_pull;
   // While there is available capacity, activate the next pull request.
+  std::vector<ObjectID> objects_to_pull;
   while (num_bytes_being_pulled_ < num_bytes_available_) {
     // Get the next pull request in the queue.
     const auto last_request_it = pull_request_bundles_.find(highest_req_id_being_pulled_);
@@ -145,7 +151,7 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) 
                    << " num bytes available: " << num_bytes_available_;
     // There is another pull bundle request that we could try, and there is
     // enough space. Activate the next pull bundle request in the queue.
-    if (!ActivateNextPullBundleRequest(next_request_it)) {
+    if (!ActivateNextPullBundleRequest(next_request_it, &objects_to_pull)) {
       // This pull bundle request could not be activated, due to lack of object
       // size information. Wait until we have object size information before
       // activating this pull bundle.
@@ -162,18 +168,15 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) 
                    << " num bytes available: " << num_bytes_available_;
     const auto last_request_it = pull_request_bundles_.find(highest_req_id_being_pulled_);
     RAY_CHECK(last_request_it != pull_request_bundles_.end());
-    DeactivatePullBundleRequest(last_request_it);
+    DeactivatePullBundleRequest(last_request_it, &object_ids_to_cancel);
   }
 
   TriggerOutOfMemoryHandlingIfNeeded();
 
-  if (highest_req_id_being_pulled_ > prev_highest_req_id_being_pulled) {
-    // There are newly activated requests. Start pulling objects for the newly
-    // activated requests.
-    // NOTE(swang): We could also just wait for the next timer tick to pull the
-    // objects, but this would add a delay of up to one tick for any bundles of
-    // multiple objects, even when we are not under memory pressure.
-    Tick();
+  for (const auto &obj_id : objects_to_pull) {
+    if (object_ids_to_cancel.count(obj_id) == 0) {
+      TryToMakeObjectLocal(obj_id);
+    }
   }
 }
 
@@ -259,7 +262,8 @@ std::vector<ObjectID> PullManager::CancelPull(uint64_t request_id) {
 
 void PullManager::OnLocationChange(const ObjectID &object_id,
                                    const std::unordered_set<NodeID> &client_ids,
-                                   const std::string &spilled_url, size_t object_size) {
+                                   const std::string &spilled_url,
+                                   const NodeID &spilled_node_id, size_t object_size) {
   // Exit if the Pull request has already been fulfilled or canceled.
   auto it = object_pull_requests_.find(object_id);
   if (it == object_pull_requests_.end()) {
@@ -271,7 +275,7 @@ void PullManager::OnLocationChange(const ObjectID &object_id,
   // before.
   it->second.client_locations = std::vector<NodeID>(client_ids.begin(), client_ids.end());
   it->second.spilled_url = spilled_url;
-
+  it->second.spilled_node_id = spilled_node_id;
   if (!it->second.object_size_set) {
     RAY_LOG(DEBUG) << "Updated size of object " << object_id << " to " << object_size
                    << ", num bytes being pulled is now " << num_bytes_being_pulled_;
@@ -299,30 +303,47 @@ void PullManager::TryToMakeObjectLocal(const ObjectID &object_id) {
     return;
   }
 
+  // We always pull objects from a remote node before
+  // restoring it because of two reasons.
+  // 1. This will help reducing the load of external storages
+  //    or remote node that spilled the object.
+  // 2. Also, if we use multi-node file spilling, the restoration will be
+  //    confirmed by a object location subscription, so we should pull first
+  //    before requesting for object restoration.
+  bool did_pull = PullFromRandomLocation(object_id);
+  if (did_pull) {
+    // New object locations were found, so begin trying to pull from a
+    // client.
+    UpdateRetryTimer(request);
+    return;
+  }
+
+  // If we cannot pull, it means all objects have been evicted, so try restoring objects
+  // from the external storage. If the object was spilled on the current node, the
+  // callback will restore the object from the local the disk.
+  // Otherwise, it will send a request to a remote node that spilled the object.
+  // If external storage is a distributed storage, we always try restoring from it without
+  // sending RPCs.
   if (!request.spilled_url.empty()) {
-    // Try to restore the spilled object.
+    const auto spilled_node_id = request.spilled_node_id;
     restore_spilled_object_(
-        object_id, request.spilled_url, [this, object_id](const ray::Status &status) {
-          bool did_pull = true;
-          // Fall back to fetching from another object manager.
+        object_id, request.spilled_url, spilled_node_id,
+        [this, object_id, spilled_node_id](const ray::Status &status) {
           if (!status.ok()) {
-            did_pull = PullFromRandomLocation(object_id);
-          }
-          if (!did_pull) {
-            RAY_LOG(WARNING) << "Object restoration failed and the object could not be "
-                                "found on any other nodes. Object id: "
-                             << object_id;
+            const auto node_id_with_issue =
+                spilled_node_id.IsNil() ? self_node_id_ : spilled_node_id;
+            RAY_LOG(WARNING)
+                << "Object restoration failed and the object could "
+                   "not be "
+                   "found on any other nodes. This can happen if the location where the "
+                   "object was spilled is unreachable. This job may hang if the object "
+                   "is permanently unreachable. "
+                   "Please check the log of node of id: "
+                << node_id_with_issue << " Object id: " << object_id;
           }
         });
-    UpdateRetryTimer(request);
-  } else {
-    // New object locations were found, so begin trying to pull from a
-    // client. This will be called every time a new client location
-    // appears.
-    bool did_pull = PullFromRandomLocation(object_id);
-    if (did_pull) {
-      UpdateRetryTimer(request);
-    }
+    // We shouldn't update the timer here because restoration takes some time, and since
+    // we retry pull requests with exponential backoff, the delay could be large.
   }
 }
 

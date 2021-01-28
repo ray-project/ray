@@ -84,7 +84,7 @@ def _build_cpu_gpu_images(image_name, no_cache=True) -> List[str]:
         build_args = {}
         if image_name == "base-deps":
             build_args["BASE_IMAGE"] = (
-                "nvidia/cuda:10.1-cudnn7-runtime-ubuntu18.04"
+                "nvidia/cuda:11.0-cudnn8-runtime-ubuntu18.04"
                 if gpu == "-gpu" else "ubuntu:focal")
         else:
             build_args["GPU"] = gpu

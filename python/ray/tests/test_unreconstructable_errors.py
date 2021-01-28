@@ -10,7 +10,7 @@ class TestObjectLostErrors(unittest.TestCase):
         ray.init(
             num_cpus=1,
             object_store_memory=150 * 1024 * 1024,
-            _redis_max_memory=10000000)
+            _redis_max_memory=10**8)
 
     def tearDown(self):
         ray.shutdown()

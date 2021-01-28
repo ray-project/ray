@@ -220,8 +220,10 @@ uint64_t ObjectManager::Pull(const std::vector<rpc::ObjectReference> &object_ref
 
   const auto &callback = [this](const ObjectID &object_id,
                                 const std::unordered_set<NodeID> &client_ids,
-                                const std::string &spilled_url, size_t object_size) {
-    pull_manager_->OnLocationChange(object_id, client_ids, spilled_url, object_size);
+                                const std::string &spilled_url,
+                                const NodeID &spilled_node_id, size_t object_size) {
+    pull_manager_->OnLocationChange(object_id, client_ids, spilled_url, spilled_node_id,
+                                    object_size);
   };
 
   for (const auto &ref : objects_to_locate) {
@@ -513,7 +515,8 @@ ray::Status ObjectManager::LookupRemainingWaitObjects(const UniqueID &wait_id) {
           object_id, wait_state.owner_addresses[object_id],
           [this, wait_id](const ObjectID &lookup_object_id,
                           const std::unordered_set<NodeID> &node_ids,
-                          const std::string &spilled_url, size_t object_size) {
+                          const std::string &spilled_url, const NodeID &spilled_node_id,
+                          size_t object_size) {
             auto &wait_state = active_wait_requests_.find(wait_id)->second;
             // Note that the object is guaranteed to be added to local_objects_ before
             // the notification is triggered.
@@ -554,7 +557,8 @@ void ObjectManager::SubscribeRemainingWaitObjects(const UniqueID &wait_id) {
           wait_id, object_id, wait_state.owner_addresses[object_id],
           [this, wait_id](const ObjectID &subscribe_object_id,
                           const std::unordered_set<NodeID> &node_ids,
-                          const std::string &spilled_url, size_t object_size) {
+                          const std::string &spilled_url, const NodeID &spilled_node_id,
+                          size_t object_size) {
             auto object_id_wait_state = active_wait_requests_.find(wait_id);
             if (object_id_wait_state == active_wait_requests_.end()) {
               // Depending on the timing of calls to the object directory, we

@@ -156,6 +156,7 @@ test_python() {
       -python/ray/tests:test_metrics_agent # timeout
       -python/ray/tests:test_multi_node
       -python/ray/tests:test_multi_node_2
+      -python/ray/tests:test_multi_node_3
       -python/ray/tests:test_multiprocessing  # test_connect_to_ray() fails to connect to raylet
       -python/ray/tests:test_node_manager
       -python/ray/tests:test_object_manager
