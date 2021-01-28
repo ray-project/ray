@@ -73,7 +73,7 @@ A key problem with machine learning frameworks is the need to restructure all of
 
 With Tune, you can optimize your model just by :ref:`adding a few code snippets <tune-tutorial>`.
 
-Further, Tune actually removes boilerplate from your code training workflow, automatically :ref:`managing checkpoints <tune-checkpoint>` and :ref:`logging results to tools <tune-logging>` such as MLFlow and TensorBoard.
+Further, Tune actually removes boilerplate from your code training workflow, automatically :ref:`managing checkpoints <tune-checkpoint>` and :ref:`logging results to tools <tune-logging>` such as MLflow and TensorBoard.
 
 
 Multi-GPU & distributed training out of the box
