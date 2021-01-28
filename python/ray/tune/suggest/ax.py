@@ -124,9 +124,9 @@ class AxSearch(Searcher):
         assert ax is not None, """Ax must be installed!
             You can install AxSearch with the command:
             `pip install ax-platform sqlalchemy`."""
-        
+
         if mode:
-            assert mode in ["min", "max"], "`mode` must be 'min' or 'max'."                     
+            assert mode in ["min", "max"], "`mode` must be 'min' or 'max'."
 
         super(AxSearch, self).__init__(
             metric=metric,
@@ -172,7 +172,7 @@ class AxSearch(Searcher):
             has_experiment = True
         except ValueError:
             has_experiment = False
-        
+
         if not has_experiment:
             if not self._space:
                 raise ValueError(
@@ -185,8 +185,7 @@ class AxSearch(Searcher):
                 objective_name=self._metric,
                 parameter_constraints=self._parameter_constraints,
                 outcome_constraints=self._outcome_constraints,
-                minimize=self._mode != "max"
-            )
+                minimize=self._mode != "max")
         else:
             if any([
                     self._space, self._parameter_constraints,
@@ -195,15 +194,16 @@ class AxSearch(Searcher):
                 raise ValueError(
                     "If you create the Ax experiment yourself, do not pass "
                     "values for these parameters to `AxSearch`: {}.".format([
-                        "space", 
-                        "parameter_constraints", 
+                        "space",
+                        "parameter_constraints",
                         "outcome_constraints",
                         "mode",
                         "metric",
                     ]))
 
         exp = self._ax.experiment
-        self._mode = "min" if exp.optimization_config.objective.minimize else "max"
+        self._mode = "min" \
+            if exp.optimization_config.objective.minimize else "max"
         self._metric = exp.optimization_config.objective.metric.name
         self._objective_name = exp.optimization_config.objective.metric.name
         self._parameters = list(exp.parameters)
