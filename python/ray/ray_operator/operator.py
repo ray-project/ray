@@ -126,8 +126,8 @@ def cluster_action(event_type, cluster_cr, cluster_name) -> None:
         old_cr = cluster_crs[cluster_name]
 
         spec_changed = (cluster_cr["spec"] != old_cr["spec"])
-        annotations_changed = (cluster_cr["metadata"].get(
-            "annotations") != old_cr["metadata"].get("annotations"))
+        annotations_changed = (cluster_cr["metadata"].get("annotations") !=
+                               old_cr["metadata"].get("annotations"))
 
         if spec_changed or annotations_changed:
             ray_clusters[cluster_name].create_or_update()

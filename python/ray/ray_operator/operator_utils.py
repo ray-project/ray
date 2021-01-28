@@ -101,8 +101,7 @@ def translate(configuration: Dict[str, Any],
     }
 
 
-def set_status(cluster_cr: Dict[str, Any],
-               cluster_name: str,
+def set_status(cluster_cr: Dict[str, Any], cluster_name: str,
                status: str) -> None:
     cluster_cr["status"] = {"phase": status}
     custom_objects_api()\
