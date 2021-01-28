@@ -29,6 +29,7 @@ run_testng() {
             # Test crashed. Print the driver log for diagnosis.
             cat /tmp/ray/session_latest/logs/java-core-driver-*
         fi
+        cat /tmp/ray/session_latest/logs/*
         find . -name "hs_err_*log" -exec cat {} +
         exit $exit_code
     fi
