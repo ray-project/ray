@@ -674,6 +674,12 @@ TEST_F(ClusterTaskManagerTest, BacklogReportTest) {
     task_manager_.FillResourceUsage(data);
     auto resource_load_by_shape = data->resource_load_by_shape();
     ASSERT_EQ(resource_load_by_shape.resource_demands().size(), 0);
+
+    while (!leased_workers_.empty()) {
+      Task finished_task;
+      task_manager_.TaskFinished(leased_workers_.begin()->second, &finished_task);
+      leased_workers_.erase(leased_workers_.begin());
+    }
     AssertNoLeaks();
   }
 }
