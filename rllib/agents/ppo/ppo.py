@@ -190,9 +190,10 @@ class UpdateKL:
             assert "kl" not in fetches, (
                 "kl should be nested under policy id key", fetches)
             if pi_id in fetches:
-                assert "kl" in fetches[pi_id], (fetches, pi_id)
+                #assert "kl" in fetches[pi_id], (fetches, pi_id)
                 # Make the actual `Policy.update_kl()` call.
-                pi.update_kl(fetches[pi_id]["kl"])
+                if "kl" in fetches[pi_id]:#TODO
+                    pi.update_kl(fetches[pi_id]["kl"])
             else:
                 logger.warning("No data for {}, not updating kl".format(pi_id))
 

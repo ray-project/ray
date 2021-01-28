@@ -9,6 +9,41 @@ if jax:
     import jax.numpy as jnp
 
 
+def convert_to_jax_device_array(x, device=None):
+    """Converts any struct to jax.numpy.DeviceArray.
+
+    x (any): Any (possibly nested) struct, the values in which will be
+        converted and returned as a new struct with all leaves converted
+        to torch tensors.
+
+    Returns:
+        Any: A new struct with the same structure as `stats`, but with all
+            values converted to jax.numpy.DeviceArray types.
+    """
+
+    def mapping(item):
+        # Already JAX DeviceArray -> make sure it's on right device.
+        if isinstance(item, jnp.DeviceArray):
+            return item if device is None else item.to(device)
+        # Numpy arrays.
+        if isinstance(item, np.ndarray):
+            # np.object_ type (e.g. info dicts in train batch): leave as-is.
+            if item.dtype == np.object_:
+                return item
+            # Already numpy: Wrap as torch tensor.
+            else:
+                tensor = jnp.array(item)
+        # Everything else: Convert to numpy, then wrap as torch tensor.
+        else:
+            tensor = jnp.asarray(item)
+        # Floatify all float64 tensors.
+        if tensor.dtype == jnp.double:
+            tensor = tensor.astype(jnp.float32)
+        return tensor if device is None else tensor.to(device)
+
+    return tree.map_structure(mapping, x)
+
+
 def convert_to_non_jax_type(stats):
     """Converts values in `stats` to non-JAX numpy or python types.
 

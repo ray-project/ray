@@ -13,7 +13,8 @@ from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
 from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.framework import try_import_jax
-from ray.rllib.utils.jax_ops import convert_to_non_jax_type
+from ray.rllib.utils.jax_ops import convert_to_jax_device_array, \
+    convert_to_non_jax_type
 from ray.rllib.utils.schedules import ConstantSchedule, PiecewiseSchedule
 from ray.rllib.utils.tracking_dict import UsageTrackingDict
 from ray.rllib.utils.typing import ModelGradients, ModelWeights, \
@@ -103,7 +104,7 @@ class JAXPolicy(Policy):
         self.exploration = self._create_exploration()
         self.unwrapped_model = model  # used to support DistributedDataParallel
         self._loss = loss
-        self._gradient_loss = jax.grad(self._loss, argnums=4)
+        #self._gradient_loss = jax.grad(self._loss, argnums=4)
         self._optimizers = force_list(self.optimizer())
 
         self.dist_class = action_distribution_class
@@ -196,8 +197,8 @@ class JAXPolicy(Policy):
         #            is_training=False)
         #else:
         dist_class = self.dist_class
-        dist_inputs, state_out = self.model(input_dict, state_batches,
-                                            seq_lens)
+        dist_inputs, value_out, state_out = self.model(
+            input_dict, state_batches, seq_lens)
 
         #if not (isinstance(dist_class, functools.partial)
         #        or issubclass(dist_class, JAXDistribution)):
@@ -220,6 +221,7 @@ class JAXPolicy(Policy):
         # Add default and custom fetches.
         extra_fetches = self.extra_action_out(input_dict, state_batches,
                                               self.model, action_dist)
+        extra_fetches[SampleBatch.VF_PREDS] = value_out
 
         # Action-dist inputs.
         if dist_inputs is not None:
@@ -329,10 +331,10 @@ class JAXPolicy(Policy):
 
         # Calculate the actual policy loss.
         all_grads = force_list(
-            self._gradient_loss(self, self.model, self.dist_class, train_batch,
-                                model_params))
+            self.gradient_loss({k: train_batch[k] for k in train_batch.keys() if k != "infos"}, model_params))#self, self.model, self.dist_class, train_batch,
+                               #model_params))
 
-        # assert not any(torch.isnan(l) for l in loss_out)
+        #remove: assert not any(torch.isnan(l) for l in loss_out)
         fetches = self.extra_compute_grad_fetches()
 
         # Loop through all optimizers.
@@ -511,6 +513,8 @@ class JAXPolicy(Policy):
 
     def _lazy_tensor_dict(self, data):
         tensor_dict = UsageTrackingDict(data)
+        tensor_dict.set_get_interceptor(
+            functools.partial(convert_to_jax_device_array, device=None))
         return tensor_dict
 
 

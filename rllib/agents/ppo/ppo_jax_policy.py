@@ -11,7 +11,8 @@ from ray.rllib.agents.ppo.ppo_tf_policy import postprocess_ppo_gae, \
     setup_config
 from ray.rllib.agents.ppo.ppo_torch_policy import vf_preds_fetches, \
     KLCoeffMixin, kl_and_loss_stats
-from ray.rllib.evaluation.postprocessing import Postprocessing
+from ray.rllib.evaluation.postprocessing import compute_gae_for_sample_batch, \
+    Postprocessing
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
 from ray.rllib.policy.jax_policy import LearningRateSchedule
@@ -50,71 +51,86 @@ def ppo_surrogate_loss(
         Union[TensorType, List[TensorType]]: A single loss tensor or a list
             of loss tensors.
     """
-    if vars:
-        for k, v in vars.items():
-            setattr(model, k, v)
+    def loss_(train_batch, vars=None):
+        #if vars:
+        #    for k, v in vars.items():
+        #        setattr(model, k, v)
 
-    logits, state = model.from_batch(train_batch, is_training=True)
-    curr_action_dist = dist_class(logits, model)
+        logits, value_out, state = model.forward_(train_batch["obs"])
+        curr_action_dist = dist_class(logits, None)
 
-    prev_action_dist = dist_class(train_batch[SampleBatch.ACTION_DIST_INPUTS],
-                                  model)
+        prev_action_dist = dist_class(
+            train_batch[SampleBatch.ACTION_DIST_INPUTS], None)
 
-    logp_ratio = jnp.exp(
-        curr_action_dist.logp(train_batch[SampleBatch.ACTIONS]) -
-        train_batch[SampleBatch.ACTION_LOGP])
-    action_kl = prev_action_dist.kl(curr_action_dist)
-    mean_kl = jnp.mean(action_kl)
+        logp_ratio = jnp.exp(
+            curr_action_dist.logp(train_batch[SampleBatch.ACTIONS]) -
+            train_batch[SampleBatch.ACTION_LOGP])
+        action_kl = prev_action_dist.kl(curr_action_dist)
+        policy._mean_kl = jnp.mean(action_kl)
 
-    curr_entropy = curr_action_dist.entropy()
-    mean_entropy = jnp.mean(curr_entropy)
+        curr_entropy = curr_action_dist.entropy()
+        policy._mean_entropy = jnp.mean(curr_entropy)
 
-    surrogate_loss = jnp.minimum(
-        train_batch[Postprocessing.ADVANTAGES] * logp_ratio,
-        train_batch[Postprocessing.ADVANTAGES] * jnp.clip(
-            logp_ratio, 1 - policy.config["clip_param"],
-            1 + policy.config["clip_param"]))
-    mean_policy_loss = jnp.mean(-surrogate_loss)
+        surrogate_loss = jnp.minimum(
+            train_batch[Postprocessing.ADVANTAGES] * logp_ratio,
+            train_batch[Postprocessing.ADVANTAGES] * jnp.clip(
+                logp_ratio, 1 - policy.config["clip_param"],
+                1 + policy.config["clip_param"]))
+        policy._mean_policy_loss = jnp.mean(-surrogate_loss)
 
-    if policy.config["use_gae"]:
-        prev_value_fn_out = train_batch[SampleBatch.VF_PREDS]
-        value_fn_out = model.value_function()
-        vf_loss1 = jnp.square(value_fn_out -
-                              train_batch[Postprocessing.VALUE_TARGETS])
-        vf_clipped = prev_value_fn_out + jnp.clip(
-            value_fn_out - prev_value_fn_out, -policy.config["vf_clip_param"],
-            policy.config["vf_clip_param"])
-        vf_loss2 = jnp.square(vf_clipped -
-                              train_batch[Postprocessing.VALUE_TARGETS])
-        vf_loss = jnp.maximum(vf_loss1, vf_loss2)
-        mean_vf_loss = jnp.mean(vf_loss)
-        total_loss = jnp.mean(-surrogate_loss + policy.kl_coeff * action_kl +
-                              policy.config["vf_loss_coeff"] * vf_loss -
-                              policy.entropy_coeff * curr_entropy)
-    else:
-        mean_vf_loss = 0.0
-        total_loss = jnp.mean(-surrogate_loss + policy.kl_coeff * action_kl -
-                              policy.entropy_coeff * curr_entropy)
+        if policy.config["use_gae"]:
+            prev_value_fn_out = train_batch[SampleBatch.VF_PREDS]
+            #value_fn_out = model.value_function()
+            vf_loss1 = jnp.square(value_out -
+                                  train_batch[Postprocessing.VALUE_TARGETS])
+            vf_clipped = prev_value_fn_out + jnp.clip(
+                value_out - prev_value_fn_out, -policy.config["vf_clip_param"],
+                policy.config["vf_clip_param"])
+            vf_loss2 = jnp.square(vf_clipped -
+                                  train_batch[Postprocessing.VALUE_TARGETS])
+            vf_loss = jnp.maximum(vf_loss1, vf_loss2)
+            policy._mean_vf_loss = jnp.mean(vf_loss)
+            total_loss = jnp.mean(-surrogate_loss + policy.kl_coeff * action_kl +
+                                  policy.config["vf_loss_coeff"] * vf_loss -
+                                  policy.entropy_coeff * curr_entropy)
+        else:
+            policy._mean_vf_loss = 0.0
+            total_loss = jnp.mean(-surrogate_loss + policy.kl_coeff * action_kl -
+                                  policy.entropy_coeff * curr_entropy)
+        #policy._value_out = value_out
+        #policy._total_loss = total_loss
+
+        #policy._vf_explained_var = explained_variance(
+        #    train_batch[Postprocessing.VALUE_TARGETS],
+        #    value_out)  # policy.model.value_function()
+
+        #if vars:
+        #    policy._total_loss = policy._total_loss.primal
+        #    policy._mean_policy_loss = policy._mean_policy_loss.primal
+        #    policy._mean_vf_loss = policy._mean_vf_loss.primal
+        #    policy._vf_explained_var = policy._vf_explained_var.primal
+        #    policy._mean_entropy = policy._mean_entropy.primal
+        #    policy._mean_kl = policy._mean_kl.primal
+
+        return total_loss #, mean_policy_loss, mean_vf_loss, value_out, mean_entropy, mean_kl
+
+    if not hasattr(policy, "jit_loss"):
+        policy.jit_loss = jax.jit(loss_)
+        policy.gradient_loss = jax.grad(policy.jit_loss, argnums=1)# 4
+
+    #policy._total_loss = policy.jit_loss(train_batch["obs"], vars)
 
     # Store stats in policy for stats_fn.
-    policy._total_loss = total_loss
-    policy._mean_policy_loss = mean_policy_loss
-    policy._mean_vf_loss = mean_vf_loss
-    policy._vf_explained_var = explained_variance(
-        train_batch[Postprocessing.VALUE_TARGETS],
-        policy.model.value_function())
-    policy._mean_entropy = mean_entropy
-    policy._mean_kl = mean_kl
+    #policy._total_loss = total_loss
+    #policy._mean_policy_loss = mean_policy_loss
+    #policy._mean_vf_loss = mean_vf_loss
+    #policy._vf_explained_var = explained_variance(
+    #    train_batch[Postprocessing.VALUE_TARGETS],
+    #    policy._value_out) #policy.model.value_function()
+    #policy._mean_entropy = mean_entropy
+    #policy._mean_kl = mean_kl
 
-    if vars:
-        policy._total_loss = policy._total_loss.primal
-        policy._mean_policy_loss = policy._mean_policy_loss.primal
-        policy._mean_vf_loss = policy._mean_vf_loss.primal
-        policy._vf_explained_var = policy._vf_explained_var.primal
-        policy._mean_entropy = policy._mean_entropy.primal
-        policy._mean_kl = policy._mean_kl.primal
-
-    return total_loss
+    ret = policy.gradient_loss({k: train_batch[k] for k, v in train_batch.items()}, vars)
 
 
 class ValueNetworkMixin:
@@ -139,10 +155,10 @@ class ValueNetworkMixin:
             assert config["_use_trajectory_view_api"]
 
             def value(**input_dict):
-                model_out, _ = self.model.from_batch(
+                _, value_out, _ = self.model.from_batch(
                     input_dict, is_training=False)
                 # [0] = remove the batch dim.
-                return self.model.value_function()[0]
+                return value_out[0]
 
         # When not doing GAE, we do not require the value function's output.
         else:
@@ -178,9 +194,9 @@ PPOJAXPolicy = build_policy_class(
     framework="jax",
     get_default_config=lambda: ray.rllib.agents.ppo.ppo.DEFAULT_CONFIG,
     loss_fn=ppo_surrogate_loss,
-    stats_fn=kl_and_loss_stats,
-    extra_action_out_fn=vf_preds_fetches,
-    postprocess_fn=postprocess_ppo_gae,
+    #stats_fn=kl_and_loss_stats,
+    #extra_action_out_fn=vf_preds_fetches,
+    postprocess_fn=compute_gae_for_sample_batch,
     extra_grad_process_fn=apply_grad_clipping,
     before_init=setup_config,
     before_loss_init=setup_mixins,

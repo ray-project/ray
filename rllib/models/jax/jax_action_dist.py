@@ -8,6 +8,9 @@ from ray.rllib.utils.typing import TensorType, List
 
 jax, flax = try_import_jax()
 tfp = try_import_tfp()
+jnp = None
+if jax:
+    from jax import numpy as jnp
 
 
 class JAXDistribution(ActionDistribution):
@@ -34,13 +37,6 @@ class JAXDistribution(ActionDistribution):
         return self.dist.kl_divergence(other.dist)
 
     @override(ActionDistribution)
-    def sample(self) -> TensorType:
-        # Update the state of our PRNG.
-        _, self.prng_key = jax.random.split(self.prng_key)
-        self.last_sample = jax.random.categorical(self.prng_key, self.inputs)
-        return self.last_sample
-
-    @override(ActionDistribution)
     def sampled_action_logp(self) -> TensorType:
         assert self.last_sample is not None
         return self.logp(self.last_sample)
@@ -60,9 +56,31 @@ class JAXCategorical(JAXDistribution):
             logits=self.inputs)
 
     @override(ActionDistribution)
+    def sample(self) -> TensorType:
+        # Update the state of our PRNG.
+        _, self.prng_key = jax.random.split(self.prng_key)
+        self.last_sample = jax.random.categorical(self.prng_key, self.inputs)
+        return self.last_sample
+
+    @override(ActionDistribution)
     def deterministic_sample(self):
         self.last_sample = self.inputs.argmax(axis=1)
         return self.last_sample
+
+    @override(JAXDistribution)
+    def entropy(self) -> TensorType:
+        m = jnp.max(self.inputs, axis=-1, keepdims=True)
+        x = self.inputs - m
+        sum_exp_x = jnp.sum(jnp.exp(x), axis=-1)
+        lse_logits = m[..., 0] + jnp.log(sum_exp_x)
+        is_inf_logits = jnp.isinf(self.inputs).astype(jnp.float32)
+        is_negative_logits = (self.inputs < 0).astype(jnp.float32)
+        masked_logits = jnp.where(
+            (is_inf_logits * is_negative_logits).astype(jnp.bool_),
+            jnp.array(1.0).astype(self.inputs.dtype), self.inputs)
+
+        return lse_logits - jnp.sum(
+            jnp.multiply(masked_logits, jnp.exp(x)), axis=-1) / sum_exp_x
 
     @staticmethod
     @override(ActionDistribution)

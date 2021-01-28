@@ -73,7 +73,7 @@ class MyCallbacks(DefaultCallbacks):
 class TestPPO(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init(local_mode=True)
+        ray.init(local_mode=True)#TODO
 
     @classmethod
     def tearDownClass(cls):
@@ -94,7 +94,7 @@ class TestPPO(unittest.TestCase):
         num_iterations = 1#TODO:2
 
         for fw in framework_iterator(
-                config, frameworks=("jax", "torch")):#TODO, "tf2", "tf", "torch")):
+                config, frameworks=("jax")):#TODO, "tf2", "tf", "torch")):
             envs = ["CartPole-v0"]
             #if fw != "jax":
             #    envs.append("MsPacmanNoFrameskip-v4")

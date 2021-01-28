@@ -40,8 +40,11 @@ def compute_advantages(rollout: SampleBatch,
             processed rewards.
     """
 
-    assert SampleBatch.VF_PREDS in rollout or not use_critic, \
-        "use_critic=True but values not found"
+    try:#TODO
+        assert SampleBatch.VF_PREDS in rollout or not use_critic, \
+            "use_critic=True but values not found"
+    except Exception as e:
+        raise e
     assert use_critic or not use_gae, \
         "Can't use gae without using a value function"
 

@@ -58,3 +58,9 @@ class JAXModelV2(ModelV2):
             self, as_dict: bool = False
     ) -> Union[List[TensorType], Dict[str, TensorType]]:
         return self.variables(as_dict=as_dict)
+
+    @PublicAPI
+    @override(ModelV2)
+    def value_function(self) -> TensorType:
+        raise ValueError("JAXModelV2 does not have a separate "
+                         "`value_function()` call!")

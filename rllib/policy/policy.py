@@ -588,6 +588,7 @@ class Policy(metaclass=ABCMeta):
             SampleBatch.EPS_ID: ViewRequirement(),
             SampleBatch.UNROLL_ID: ViewRequirement(),
             SampleBatch.AGENT_INDEX: ViewRequirement(),
+            SampleBatch.VF_PREDS: ViewRequirement(),
             "t": ViewRequirement(),
         }
 

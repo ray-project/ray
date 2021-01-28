@@ -210,11 +210,11 @@ class ModelV2:
         with self.context():
             res = self.forward(restored, state or [], seq_lens)
         if ((not isinstance(res, list) and not isinstance(res, tuple))
-                or len(res) != 2):
+                or len(res) not in [2, 3]):
             raise ValueError(
-                "forward() must return a tuple of (output, state) tensors, "
-                "got {}".format(res))
-        outputs, state = res
+                "forward() must return a tuple of (output, [value-out]?, "
+                "state) tensors, got {}".format(res))
+        outputs, state = res[0], res[-1]
 
         try:
             shape = outputs.shape
@@ -229,7 +229,7 @@ class ModelV2:
             raise ValueError("State output is not a list: {}".format(state))
 
         self._last_output = outputs
-        return outputs, state
+        return res
 
     @PublicAPI
     def from_batch(self, train_batch: SampleBatch,

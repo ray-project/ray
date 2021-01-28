@@ -246,7 +246,10 @@ class StandardizeFields:
         for policy_id in samples.policy_batches:
             batch = samples.policy_batches[policy_id]
             for field in self.fields:
-                batch[field] = standardized(batch[field])
+                try:#TODO
+                    batch[field] = standardized(batch[field])
+                except Exception as e:
+                    raise e
 
         if wrapped:
             samples = samples.policy_batches[DEFAULT_POLICY_ID]

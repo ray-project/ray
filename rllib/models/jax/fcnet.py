@@ -109,34 +109,44 @@ class FullyConnectedNetwork(JAXModelV2):
 
         if not hasattr(self, "forward_"):
             def forward_(flat_in):
-                self._last_flat_in = self._features = flat_in
+                self._last_flat_in = self._features = flat_in#input_dict["obs_flat"]#flat_in
                 if self._hidden_layers:
                     self._features = self._hidden_layers.apply(
                         self._hidden_layers_params, self._last_flat_in)
                 logits = self._logits.apply(self._logits_params, self._features) if \
                     self._logits else self._features
-                return logits, state
 
-            self.forward_ = jax.jit(forward_)
-
-        return self.forward_(input_dict["obs_flat"])
-
-    @override(JAXModelV2)
-    def value_function(self):
-        assert self._features is not None, "must call forward() first"
-
-        if not hasattr(self, "value_function_"):
-            def value_function_():
                 if self._value_branch_separate:
                     x = self._value_branch_separate.apply(
                         self._value_branch_separate_params, self._last_flat_in)
-                    return self._value_branch.apply(self._value_branch_params,
+                    value_out = self._value_branch.apply(self._value_branch_params,
                                                     x).squeeze(1)
                 else:
-                    return self._value_branch.apply(self._value_branch_params,
-                                                    self._features).squeeze(1)
+                    value_out = self._value_branch.apply(self._value_branch_params,
+                                                         self._features).squeeze(1)
 
-            self.value_function_ = jax.jit(value_function_)
+                return logits, value_out, state
 
-        return self.value_function_()
-        
+            self.forward_ = forward_
+            self.jit_forward = jax.jit(forward_)
+
+        return self.jit_forward(input_dict["obs_flat"])
+
+    #@override(JAXModelV2)
+    #def value_function(self):
+    #    assert self._features is not None, "must call forward() first"
+
+    #    if not hasattr(self, "value_function_"):
+    #        def value_function_():
+    #            if self._value_branch_separate:
+    #                x = self._value_branch_separate.apply(
+    #                    self._value_branch_separate_params, self._last_flat_in)
+    #                return self._value_branch.apply(self._value_branch_params,
+    #                                                x).squeeze(1)
+    #            else:
+    #                return self._value_branch.apply(self._value_branch_params,
+    #                                                self._features).squeeze(1)
+
+    #        self.value_function_ = jax.jit(value_function_)
+
+    #    return self.value_function_()

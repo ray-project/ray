@@ -27,7 +27,10 @@ def averaged(kv, axis=None):
     out = {}
     for k, v in kv.items():
         if v[0] is not None and not isinstance(v[0], dict):
-            out[k] = np.mean(v, axis=axis)
+            try:#TODO
+                out[k] = np.mean(v, axis=axis)
+            except Exception as e:
+                raise e
         else:
             out[k] = v[0]
     return out
