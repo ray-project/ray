@@ -209,8 +209,30 @@ matrix:
         - . ./ci/travis/ci.sh test_wheels
         - export PATH="$HOME/miniconda3/bin:$PATH"
         - python -m pip install docker
-        - if [[ "$TRAVIS_PULL_REQUEST" != "false" ]]; then python $TRAVIS_BUILD_DIR/ci/travis/build-docker-images.py; fi
+        - if [[ "$TRAVIS_PULL_REQUEST" != "false" ]]; then python $TRAVIS_BUILD_DIR/ci/travis/build-docker-images.py PY37; fi
         - bash ./java/build-jar-multiplatform.sh linux
+      cache: false
+
+
+    # Build Py36 & Py38 Docker Images
+    - os: linux
+      env:
+        - LINUX_WHEELS=1
+        - DOCKER_BUILD_PY36_38=1
+        - PYTHONWARNINGS=ignore
+      language: java
+      jdk: openjdk8
+      install:
+        - . ./ci/travis/ci.sh init RAY_CI_LINUX_WHEELS_AFFECTED
+      before_script:
+        - . ./ci/travis/ci.sh build
+      script:
+        - wget --quiet "https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh" -O miniconda3.sh
+        - bash miniconda3.sh -b -p "$HOME/miniconda3"
+        - export PATH="$HOME/miniconda3/bin:$PATH"
+        - conda install -y python=3.7.6
+        - python -m pip install docker
+        - if [[ "$TRAVIS_PULL_REQUEST" != "false" ]]; then python $TRAVIS_BUILD_DIR/ci/travis/build-docker-images.py PY36_PY38; fi
       cache: false
 
     # Build and deploy multi-platform jars.
@@ -491,7 +513,7 @@ deploy:
 
   - provider: script
     edge: true # This supposedly opts in to deploy v2.
-    script: export PATH="$HOME/miniconda3/bin:$PATH"; ./ci/keep_alive python $TRAVIS_BUILD_DIR/ci/travis/build-docker-images.py
+    script: export PATH="$HOME/miniconda3/bin:$PATH"; ./ci/keep_alive python $TRAVIS_BUILD_DIR/ci/travis/build-docker-images.py PY37
     skip_cleanup: true
     on:
       repo: ray-project/ray
@@ -530,3 +552,12 @@ deploy:
       repo: ray-project/ray
       branch: master
       condition: $MULTIPLATFORM_JARS = 1 || $MAC_JARS = 1 || $LINUX_JARS = 1
+
+  - provider: script
+    edge: true # This supposedly opts in to deploy v2.
+    script: export PATH="$HOME/miniconda3/bin:$PATH"; ./ci/keep_alive python $TRAVIS_BUILD_DIR/ci/travis/build-docker-images.py PY36_PY38
+    skip_cleanup: true
+    on:
+      repo: ray-project/ray
+      all_branches: true
+      condition: $LINUX_WHEELS = 1
