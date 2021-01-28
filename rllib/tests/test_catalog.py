@@ -1,18 +1,15 @@
 from functools import partial
 import gym
-from gym.spaces import Box, Dict, Discrete, Tuple
+from gym.spaces import Box, Dict, Discrete
 import numpy as np
 import unittest
 
 import ray
 from ray.rllib.models import ActionDistribution, ModelCatalog, MODEL_DEFAULTS
-from ray.rllib.models.preprocessors import NoPreprocessor, OneHotPreprocessor,\
-    Preprocessor
+from ray.rllib.models.preprocessors import NoPreprocessor, Preprocessor
 from ray.rllib.models.tf.tf_action_dist import MultiActionDistribution, \
     TFActionDistribution
-from ray.rllib.models.tf.fcnet import FullyConnectedNetwork
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
-from ray.rllib.models.tf.visionnet import VisionNetwork
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.test_utils import framework_iterator
