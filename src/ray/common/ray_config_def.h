@@ -369,3 +369,12 @@ RAY_CONFIG(bool, is_external_storage_type_fs, true)
 /// Whether to enable locality-aware leasing. If enabled, then Ray will consider task
 /// dependency locality when choosing a worker for leasing.
 RAY_CONFIG(bool, locality_aware_leasing_enabled, true)
+
+/* Configuration parameters for logging */
+/// Parameters for log rotation. This value is equivalent to RotatingFileHandler's
+/// maxBytes argument.
+RAY_CONFIG(int64_t, log_rotation_max_bytes, 100 * 1024 * 1024)
+
+/// Parameters for log rotation. This value is equivalent to RotatingFileHandler's
+/// backupCount argument.
+RAY_CONFIG(int64_t, log_rotation_backup_count, 5)

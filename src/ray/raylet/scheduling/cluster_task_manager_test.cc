@@ -554,48 +554,69 @@ TEST_F(ClusterTaskManagerTest, BacklogReportTest) {
     *callback_occurred_ptr = true;
   };
 
-  std::shared_ptr<MockWorker> worker =
-      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
-  pool_.PushWorker(std::dynamic_pointer_cast<WorkerInterface>(worker));
-
   std::vector<TaskID> to_cancel;
 
-  for (int i = 0; i < 10; i++) {
-    Task task = CreateTask({{ray::kCPU_ResourceLabel, 100}});
-    task.SetBacklogSize(i);
+  // Don't add these fist 2 tasks to `to_cancel`.
+  for (int i = 0; i < 1; i++) {
+    Task task = CreateTask({{ray::kCPU_ResourceLabel, 8}});
+    task.SetBacklogSize(10 - i);
+    task_manager_.QueueAndScheduleTask(task, &reply, callback);
+  }
+
+  for (int i = 1; i < 10; i++) {
+    Task task = CreateTask({{ray::kCPU_ResourceLabel, 8}});
+    task.SetBacklogSize(10 - i);
     task_manager_.QueueAndScheduleTask(task, &reply, callback);
     to_cancel.push_back(task.GetTaskSpecification().TaskId());
   }
 
   ASSERT_FALSE(callback_occurred);
   ASSERT_EQ(leased_workers_.size(), 0);
-  ASSERT_EQ(pool_.workers.size(), 1);
+  ASSERT_EQ(pool_.workers.size(), 0);
   ASSERT_EQ(node_info_calls_, 0);
 
-  auto data = std::make_shared<rpc::ResourcesData>();
-  task_manager_.FillResourceUsage(data);
+  {  // No tasks can run because the worker pool is empty.
+    auto data = std::make_shared<rpc::ResourcesData>();
+    task_manager_.FillResourceUsage(data);
+    auto resource_load_by_shape = data->resource_load_by_shape();
+    auto shape1 = resource_load_by_shape.resource_demands()[0];
 
-  auto resource_load_by_shape = data->resource_load_by_shape();
-  auto shape1 = resource_load_by_shape.resource_demands()[0];
+    ASSERT_EQ(shape1.backlog_size(), 55);
+    ASSERT_EQ(shape1.num_infeasible_requests_queued(), 0);
+    ASSERT_EQ(shape1.num_ready_requests_queued(), 10);
+  }
 
-  ASSERT_EQ(shape1.backlog_size(), 45);
-  ASSERT_EQ(shape1.num_infeasible_requests_queued(), 10);
-  ASSERT_EQ(shape1.num_ready_requests_queued(), 0);
+  // Push a worker so the first task can run.
+  std::shared_ptr<MockWorker> worker =
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
+  pool_.PushWorker(worker);
+  task_manager_.ScheduleAndDispatchTasks();
 
+  {
+    auto data = std::make_shared<rpc::ResourcesData>();
+    task_manager_.FillResourceUsage(data);
+    auto resource_load_by_shape = data->resource_load_by_shape();
+    auto shape1 = resource_load_by_shape.resource_demands()[0];
+
+    ASSERT_TRUE(callback_occurred);
+    ASSERT_EQ(shape1.backlog_size(), 45);
+    ASSERT_EQ(shape1.num_infeasible_requests_queued(), 0);
+    ASSERT_EQ(shape1.num_ready_requests_queued(), 9);
+  }
+
+  // Cancel the rest.
   for (auto &task_id : to_cancel) {
     ASSERT_TRUE(task_manager_.CancelTask(task_id));
   }
+  RAY_LOG(ERROR) << "Finished cancelling tasks";
 
-  data = std::make_shared<rpc::ResourcesData>();
-  task_manager_.FillResourceUsage(data);
-
-  resource_load_by_shape = data->resource_load_by_shape();
-  shape1 = resource_load_by_shape.resource_demands()[0];
-
-  ASSERT_EQ(shape1.backlog_size(), 0);
-  ASSERT_EQ(shape1.num_infeasible_requests_queued(), 0);
-  ASSERT_EQ(shape1.num_ready_requests_queued(), 0);
-  AssertNoLeaks();
+  {
+    auto data = std::make_shared<rpc::ResourcesData>();
+    task_manager_.FillResourceUsage(data);
+    auto resource_load_by_shape = data->resource_load_by_shape();
+    ASSERT_EQ(resource_load_by_shape.resource_demands().size(), 0);
+    AssertNoLeaks();
+  }
 }
 
 TEST_F(ClusterTaskManagerTest, OwnerDeadTest) {

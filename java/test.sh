@@ -71,15 +71,18 @@ RAY_BACKEND_LOG_LEVEL=debug java -cp bazel-bin/java/all_tests_deploy.jar -Dray.a
  -Dray.redis.password='123456' -Dray.job.code-search-path="$PWD/bazel-bin/java/all_tests_deploy.jar" io.ray.test.MultiDriverTest
 ray stop
 
-echo "Running documentation demo code."
-docdemo_path="java/test/src/main/java/io/ray/docdemo/"
-for file in "$docdemo_path"*.java; do
-  file=${file#"$docdemo_path"}
-  class=${file%".java"}
-  echo "Running $class"
-  java -cp bazel-bin/java/all_tests_deploy.jar "io.ray.docdemo.$class"
-done
-popd
+# See issue #13742 the test is very flaky.
+# Skipping the doc test for now.
+
+# echo "Running documentation demo code."
+# docdemo_path="java/test/src/main/java/io/ray/docdemo/"
+# for file in "$docdemo_path"*.java; do
+#   file=${file#"$docdemo_path"}
+#   class=${file%".java"}
+#   echo "Running $class"
+#   java -cp bazel-bin/java/all_tests_deploy.jar "io.ray.docdemo.$class"
+# done
+# popd
 
 pushd "$ROOT_DIR"
 echo "Testing maven install."
