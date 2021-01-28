@@ -37,6 +37,7 @@ from testfixtures.popen import MockPopen, PopenBehaviour
 
 import ray.autoscaler._private.aws.config as aws_config
 import ray.scripts.scripts as scripts
+from ray.test_utils import wait_for_condition
 
 boto3_list = [{
     "InstanceType": "t1.micro",
@@ -419,6 +420,14 @@ def test_ray_status():
     import ray
     address = ray.init().get("redis_address")
     runner = CliRunner()
+
+    def output_ready():
+        result = runner.invoke(scripts.status)
+        result.stdout
+        return not result.exception and "memory" in result.output
+
+    wait_for_condition(output_ready)
+
     result = runner.invoke(scripts.status, [])
     _check_output_via_pattern("test_ray_status.txt", result)
 

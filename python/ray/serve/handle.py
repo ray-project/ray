@@ -4,6 +4,10 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, Optional, Union
 from enum import Enum
 
+from ray.serve.utils import get_random_letters
+from ray.util import metrics
+from ray.serve.router import Router
+
 
 @dataclass(frozen=True)
 class HandleOptions:
@@ -46,6 +50,17 @@ class RayServeHandle:
         self.router = router
         self.endpoint_name = endpoint_name
         self.handle_options = handle_options or HandleOptions()
+        self.handle_tag = f"{self.endpoint_name}#{get_random_letters()}"
+
+        self.request_counter = metrics.Count(
+            "serve_handle_request_counter",
+            description=("The number of handle.remote() calls that have been "
+                         "made on this handle."),
+            tag_keys=("handle", "endpoint"))
+        self.request_counter.set_default_tags({
+            "handle": self.handle_tag,
+            "endpoint": self.endpoint_name
+        })
 
     def options(self,
                 *,
@@ -91,6 +106,7 @@ class RayServeHandle:
             ``**kwargs``: All keyword arguments will be available in
                 ``request.query_params``.
         """
+        self.request_counter.record(1)
         return await self.router._remote(
             self.endpoint_name, self.handle_options, request_data, kwargs)
 
@@ -123,6 +139,7 @@ class RayServeSyncHandle(RayServeHandle):
             ``**kwargs``: All keyword arguments will be available in
                 ``request.args``.
         """
+        self.request_counter.record(1)
         coro = self.router._remote(self.endpoint_name, self.handle_options,
                                    request_data, kwargs)
         future: concurrent.futures.Future = asyncio.run_coroutine_threadsafe(
