@@ -107,7 +107,10 @@ class TFModelV2(ModelV2):
         if isinstance(struct, tf.keras.models.Model):
             ret = {}
             for var in struct.variables:
-                key = current_key + "." + re.sub("/", ".", var.name)
+                name = re.sub("/", ".", var.name)
+                # Remove the first level (policy's name).
+                name = re.sub("^\\w+\\.", "", name)
+                key = current_key + "." + name
                 ret[key] = var
             return ret
         # Other TFModelV2: Include its vars into ours.
@@ -118,7 +121,7 @@ class TFModelV2(ModelV2):
             }
         # tf.Variable
         elif isinstance(struct, tf.Variable):
-            return {current_key + "." + struct.name: struct}
+            return {current_key: struct}
         # List/Tuple.
         elif isinstance(struct, (tuple, list)):
             ret = {}

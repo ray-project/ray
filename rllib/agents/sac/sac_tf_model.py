@@ -164,13 +164,19 @@ class SACTFModel(TFModelV2):
         Returns:
             tf.keras.model.Model: The keras Q-net model.
         """
+        self.concat_obs_and_actions = False
         if self.discrete:
             input_space = obs_space
         else:
             orig_space = getattr(obs_space, "original_space", obs_space)
-            input_space = gym.spaces.Tuple((orig_space.spaces if isinstance(
-                orig_space, gym.spaces.Tuple) else [obs_space]) +
-                                           [action_space])
+            if isinstance(orig_space, Box) and len(orig_space.shape) == 1:
+                input_space = Box(float("-inf"), float("inf"),
+                                  shape=(orig_space.shape[0] + action_space.shape[0], ))
+                self.concat_obs_and_actions = True
+            else:
+                input_space = gym.spaces.Tuple((orig_space.spaces if isinstance(
+                    orig_space, gym.spaces.Tuple) else [obs_space]) +
+                                               [action_space])
         model = ModelCatalog.get_model_v2(
             input_space,
             action_space,
@@ -198,15 +204,7 @@ class SACTFModel(TFModelV2):
         Returns:
             TensorType: Q-values tensor of shape [BATCH_SIZE, 1].
         """
-        # Continuous case -> concat actions to model_out.
-        if actions is not None:
-            input_dict = {"obs": force_list(model_out) + [actions]}
-        # Discrete case -> return q-vals for all actions.
-        else:
-            input_dict = {"obs": model_out}
-
-        out, _ = self.q_net(input_dict, [], None)
-        return out
+        return self._get_q_value(model_out, actions, self.q_net)
 
     def get_twin_q_values(self,
                           model_out: TensorType,
@@ -225,14 +223,20 @@ class SACTFModel(TFModelV2):
         Returns:
             TensorType: Q-values tensor of shape [BATCH_SIZE, 1].
         """
+        return self._get_q_value(model_out, actions, self.twin_q_net)
+
+    def _get_q_value(self, model_out, actions, net):
         # Continuous case -> concat actions to model_out.
         if actions is not None:
-            input_dict = {"obs": force_list(model_out) + [actions]}
+            if self.concat_obs_and_actions:
+                input_dict = {"obs": tf.concat([model_out, actions], axis=-1)}
+            else:
+                input_dict = {"obs": force_list(model_out) + [actions]}
         # Discrete case -> return q-vals for all actions.
         else:
             input_dict = {"obs": model_out}
 
-        out, _ = self.twin_q_net(input_dict, [], None)
+        out, _ = net(input_dict, [], None)
         return out
 
     def get_policy_output(self, model_out: TensorType) -> TensorType:

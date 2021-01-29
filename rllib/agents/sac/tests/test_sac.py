@@ -53,7 +53,7 @@ class SimpleEnv(Env):
 class TestSAC(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init()
+        ray.init(local_mode=True)#TODO
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -240,10 +240,10 @@ class TestSAC(unittest.TestCase):
                         policy.td_error,
                         policy.optimizer().compute_gradients(
                             policy.critic_loss[0],
-                            policy.model.q_variables()),
+                            [v for v in policy.model.q_variables() if "value_" not in v.name]),
                         policy.optimizer().compute_gradients(
                             policy.actor_loss,
-                            policy.model.policy_variables()),
+                            [v for v in policy.model.policy_variables() if "value_" not in v.name]),
                         policy.optimizer().compute_gradients(
                             policy.alpha_loss, policy.model.log_alpha)],
                         feed_dict=policy._get_loss_inputs_dict(
@@ -366,9 +366,9 @@ class TestSAC(unittest.TestCase):
                     if tf_updated_weights:
                         check(
                             updated_weights[
-                                "default_policy/sequential/action_1/kernel"],
+                                "default_policy/fc_1/kernel"],
                             tf_updated_weights[-1][
-                                "default_policy/sequential/action_1/kernel"],
+                                "default_policy/fc_1/kernel"],
                             false=True)
                     tf_updated_weights.append(updated_weights)
 
@@ -452,9 +452,9 @@ class TestSAC(unittest.TestCase):
             fc(
                 relu(
                     fc(model_out_t,
-                       weights[ks[3]],
-                       weights[ks[2]],
-                       framework=fw)), weights[ks[5]], weights[ks[4]]), None)
+                       weights[ks[1]],
+                       weights[ks[0]],
+                       framework=fw)), weights[ks[9]], weights[ks[8]]), None)
         policy_t = action_dist_t.deterministic_sample()
         log_pis_t = action_dist_t.logp(policy_t)
         if sess:
@@ -467,9 +467,9 @@ class TestSAC(unittest.TestCase):
             fc(
                 relu(
                     fc(model_out_tp1,
-                       weights[ks[3]],
-                       weights[ks[2]],
-                       framework=fw)), weights[ks[5]], weights[ks[4]]), None)
+                       weights[ks[1]],
+                       weights[ks[0]],
+                       framework=fw)), weights[ks[9]], weights[ks[8]]), None)
         policy_tp1 = action_dist_tp1.deterministic_sample()
         log_pis_tp1 = action_dist_tp1.logp(policy_tp1)
         if sess:
@@ -483,11 +483,11 @@ class TestSAC(unittest.TestCase):
             relu(
                 fc(np.concatenate(
                     [model_out_t, train_batch[SampleBatch.ACTIONS]], -1),
-                   weights[ks[7]],
-                   weights[ks[6]],
+                   weights[ks[3]],
+                   weights[ks[2]],
                    framework=fw)),
-            weights[ks[9]],
-            weights[ks[8]],
+            weights[ks[11]],
+            weights[ks[10]],
             framework=fw)
 
         # Q-values for current policy in given current state.
@@ -495,11 +495,11 @@ class TestSAC(unittest.TestCase):
         q_t_det_policy = fc(
             relu(
                 fc(np.concatenate([model_out_t, policy_t], -1),
-                   weights[ks[7]],
-                   weights[ks[6]],
+                   weights[ks[3]],
+                   weights[ks[2]],
                    framework=fw)),
-            weights[ks[9]],
-            weights[ks[8]],
+            weights[ks[11]],
+            weights[ks[10]],
             framework=fw)
 
         # Target q network evaluation.
@@ -508,11 +508,11 @@ class TestSAC(unittest.TestCase):
             q_tp1 = fc(
                 relu(
                     fc(np.concatenate([target_model_out_tp1, policy_tp1], -1),
-                       weights[ks[15]],
-                       weights[ks[14]],
+                       weights[ks[7]],
+                       weights[ks[6]],
                        framework=fw)),
-                weights[ks[17]],
-                weights[ks[16]],
+                weights[ks[15]],
+                weights[ks[14]],
                 framework=fw)
         else:
             assert fw == "tfe"
@@ -554,7 +554,7 @@ class TestSAC(unittest.TestCase):
                 np.transpose(v) if re.search("kernel", k) else np.array([v])
                 if re.search("log_alpha", k) else v)
             for k, v in weights_dict.items()
-            if re.search("(sequential(/|_1)|value_out/|log_alpha)", k)
+            if re.match("^default_policy/(fc_(1|out)|value_out(_1)?/|log_alpha)(/(kernel|bias))?$", k)
         }
         return model_dict
 

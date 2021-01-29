@@ -138,7 +138,7 @@ class TestSupportedSpacesPG(unittest.TestCase):
         check_support("PG", config, train=False, check_bounds=True, tfe=True)
 
 
-class TestSupportedSpaesOffPolicy(unittest.TestCase):
+class TestSupportedSpacesOffPolicy(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         ray.init(num_cpus=4)
