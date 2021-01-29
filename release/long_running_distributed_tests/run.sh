@@ -43,6 +43,7 @@ echo "branch: $ray_branch"
 echo "workload: $workload"
 
 wheel="https://s3-us-west-2.amazonaws.com/ray-wheels/$ray_branch/$commit/ray-$ray_version-cp37-cp37m-manylinux2014_x86_64.whl"
+wheel="https://ray-wheels.s3-us-west-2.amazonaws.com/releases/1.2.0/b4d87b8fc5ff03b868adba35b37da32b7be9f71f/ray-1.2.0-cp37-cp37m-manylinux2014_x86_64.whl"
 
 conda uninstall -y terminado || true
 pip install -U pip

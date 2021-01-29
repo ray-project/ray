@@ -6,7 +6,7 @@ max_workers: 3
 idle_timeout_minutes: 15
 
 docker:
-    image: anyscale/ray-ml:latest-gpu
+    image: rayproject/ray-ml:latest-gpu
     container_name: ray_container
     pull_before_run: True
 
@@ -21,14 +21,16 @@ auth:
 
 head_node:
     InstanceType: g3.8xlarge
+    ImageId: ami-0828a1066dc750737
 
 worker_nodes:
   InstanceType: g3.8xlarge
+  ImageId: ami-0828a1066dc750737
   InstanceMarketOptions:
     MarketType: spot
 
 setup_commands:
-  - apt-get install -y libglib2.0-0 libcudnn7=7.6.5.32-1+cuda10.1
+  - sudo apt-get install -y libglib2.0-0 libcudnn7=7.6.5.32-1+cuda10.1
   - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl
 
 # Command to start ray on the head node. You don't need to change this.
