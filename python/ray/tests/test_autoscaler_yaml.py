@@ -45,6 +45,31 @@ class AutoscalingConfigTest(unittest.TestCase):
             except Exception:
                 self.fail("Config did not pass validation test!")
 
+    def testValidateDefaultConfigMinMaxWorkers(self):
+        aws_config_path = os.path.join(
+            RAY_PATH, "autoscaler/aws/example-multi-node-type.yaml")
+        with open(aws_config_path) as f:
+            config = yaml.safe_load(f)
+        config = prepare_config(config)
+        for node_type in config["available_node_types"]:
+            config["available_node_types"][node_type]["resources"] = config[
+                "available_node_types"][node_type].get("resources", {})
+        try:
+            validate_config(config)
+        except Exception:
+            self.fail("Config did not pass validation test!")
+
+        config["max_workers"] = 0  # the sum of min_workers is 1.
+        with pytest.raises(ValueError):
+            validate_config(config)
+
+        # make sure edge case of exactly 1 passes too.
+        config["max_workers"] = 1
+        try:
+            validate_config(config)
+        except Exception:
+            self.fail("Config did not pass validation test!")
+
     @pytest.mark.skipif(
         sys.platform.startswith("win"),
         reason="TODO(ameer): fails on Windows.")
