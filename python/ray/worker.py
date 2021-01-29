@@ -305,7 +305,11 @@ class Worker:
                     f"Attempting to call `get` on the value {object_ref}, "
                     "which is not an ray.ObjectRef.")
 
-        timeout_ms = int(timeout * 1000) if timeout else -1
+        if timeout is not None and timeout >= 0:
+            timeout_ms = int(timeout * 1000)
+        else:
+            timeout_ms = -1
+
         data_metadata_pairs = self.core_worker.get_objects(
             object_refs, self.current_task_id, timeout_ms)
         debugger_breakpoint = b""
