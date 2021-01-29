@@ -109,7 +109,8 @@ def run(
         upload_dir: Optional = None,
         sync_to_cloud: Optional = None,
         sync_to_driver: Optional = None,
-        sync_on_checkpoint: Optional = None):
+        sync_on_checkpoint: Optional = None,
+) -> ExperimentAnalysis:
     """Executes training.
 
     Examples:
