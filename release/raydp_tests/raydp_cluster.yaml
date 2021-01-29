@@ -1,0 +1,74 @@
+# An unique identifier for the head node and workers of this cluster.
+cluster_name: raydp
+# min_workers: 3
+# max_workers: 3
+min_workers: 0
+max_workers: 0
+idle_timeout_minutes: 60
+
+# Cloud-provider specific configuration.
+provider:
+    type: aws
+    region: us-east-2
+    availability_zone: us-east-2a
+    cache_stopped_nodes: False
+# How Ray will authenticate with newly launched nodes.
+auth:
+    ssh_user: ubuntu
+head_node:
+        # InstanceType: m5.4xlarge
+        InstanceType: i3.8xlarge
+        ImageId: ami-0edc3c56e8af8d35a
+worker_nodes:
+        # InstanceType: m5.2xlarge
+        InstanceType: i3.8xlarge
+        ImageId: ami-0edc3c56e8af8d35a
+        IamInstanceProfile:
+                Arn: arn:aws:iam::959243851260:instance-profile/ray-autoscaler-v1
+setup_commands:
+    - pip install ray[all]
+    - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl https://anyscale-temp.s3-us-west-2.amazonaws.com/pyspark-3.0.0-py2.py3-none-any.whl https://anyscale-temp.s3-us-west-2.amazonaws.com/raydp-0.1.0.user_defined_jars0-py2.py3-none-any.whl
+    - sudo systemctl stop apt-daily.timer
+    - sudo systemctl stop apt-daily-upgrade.timer
+    - sudo systemctl stop motd-news.timer
+    # - sudo systemctl stop apt-daily.service && sudo systemctl kill --kill-who=all apt-daily.service
+    # - sudo systemctl stop apt-daily-upgrade.service && sudo systemctl kill --kill-who=all apt-daily-upgrade.service
+    # - sudo systemctl stop motd-news.service && sudo systemctl kill --kill-who=all motd-news.service
+    - sudo systemctl mask apt-daily.service && sudo systemctl stop apt-daily.service
+    - sudo systemctl mask apt-daily-upgrade.service && sudo systemctl stop apt-daily-upgrade.service
+    - sudo systemctl mask motd-news.service && sudo systemctl stop motd-news.service
+    - sudo systemctl mask unattended-upgrades.service && sudo systemctl stop unattended-upgrades.service
+    - sudo systemd-run --property="After=apt-daily.service apt-daily-upgrade.service motd-news.service unattended-upgrades.service" --wait /bin/true
+    # - while ! (systemctl list-units --all apt-daily.service | egrep -q '(dead|failed)'); do sleep 1; done
+    # - sudo rm -f /var/lib/apt/lists/lock && sudo rm -f /var/cache/apt/archives/lock
+    # - sudo rm -f /var/lib/dpkg/lock*
+    # - sudo rm -f /var/lib/dpkg/updates/* && sudo apt clean && sudo apt update
+    # - sudo dpkg --configure -a && sudo apt update
+    # - sudo apt-get remove update-notifier update-notifier-common
+    # - sudo killall -q update-notifier
+    - while sudo fuser /var/{{lib/{dpkg,apt/lists},cache/apt/archives}/lock,lib/dpkg/lock-frontend} >/dev/null 2>&1; do echo "Waiting for dpkg locks to be released..."; sudo lsof /var/{{lib/{dpkg,apt/lists},cache/apt/archives}/lock,lib/dpkg/lock-frontend}; sleep 1; done
+    - sudo dpkg --configure -a
+    - sudo apt-get install -y openjdk-11-jdk
+    - sudo mkdir -p /opt/spark/jars && sudo rm -f /opt/spark/jars/*.jars
+    # The following are needed for writing/reading Parquet files to/from S3.
+    - sudo curl https://repo1.maven.org/maven2/org/apache/hadoop/hadoop-aws/2.7.4/hadoop-aws-2.7.4.jar -o /opt/spark/jars/hadoop-aws-2.7.4.jar
+    - sudo curl https://repo1.maven.org/maven2/com/amazonaws/aws-java-sdk/1.7.4/aws-java-sdk-1.7.4.jar -o /opt/spark/jars/aws-java-sdk-1.7.4.jar
+    - sudo curl https://repo1.maven.org/maven2/org/apache/hadoop/hadoop-common/2.7.4/hadoop-common-2.7.4.jar -o /opt/spark/jars/hadoop-common-2.7.4.jar
+    - sudo curl https://repo1.maven.org/maven2/joda-time/joda-time/2.3/joda-time-2.3.jar -o /opt/spark/jars/joda-time-2.3.jar
+    - sudo chown -R ubuntu:ubuntu /opt/spark
+    - sudo chmod 644 /opt/spark/jars/*.jar
+    - sudo mkdir -p /tmp/benchmark_scratch && sudo rm -f /tmp/benchmark_scratch/*.parquet && sudo chown -R ubuntu:ubuntu /tmp/benchmark_scratch && sudo chmod 777 /tmp/benchmark_scratch
+    - sudo mkfs -t ext4 /dev/nvme0n1 && sudo mkdir -p /mnt/disk0 && sudo mount /dev/nvme0n1 /mnt/disk0 && sudo chown -R ubuntu:ubuntu /mnt/disk0 && sudo chmod 777 /mnt/disk0
+    - sudo mkfs -t ext4 /dev/nvme1n1 && sudo mkdir -p /mnt/disk1 && sudo mount /dev/nvme1n1 /mnt/disk1 && sudo chown -R ubuntu:ubuntu /mnt/disk1 && sudo chmod 777 /mnt/disk1
+    - sudo mkfs -t ext4 /dev/nvme2n1 && sudo mkdir -p /mnt/disk2 && sudo mount /dev/nvme2n1 /mnt/disk2 && sudo chown -R ubuntu:ubuntu /mnt/disk2 && sudo chmod 777 /mnt/disk2
+    - sudo mkfs -t ext4 /dev/nvme3n1 && sudo mkdir -p /mnt/disk3 && sudo mount /dev/nvme3n1 /mnt/disk3 && sudo chown -R ubuntu:ubuntu /mnt/disk3 && sudo chmod 777 /mnt/disk3
+
+# Command to start ray on the head node. You don't need to change this.
+head_start_ray_commands:
+    - ray stop
+    - ulimit -n 65536; ray start --head --port=6379 --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml
+
+# Command to start ray on worker nodes. You don't need to change this.
+worker_start_ray_commands:
+    - ray stop
+    - ulimit -n 65536; ray start --address=$RAY_HEAD_IP:6379 --object-manager-port=8076
