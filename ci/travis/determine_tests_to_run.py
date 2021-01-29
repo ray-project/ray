@@ -62,10 +62,17 @@ if __name__ == "__main__":
 
         commit_range = os.getenv("TRAVIS_COMMIT_RANGE")
         if commit_range is None:
-            with open(os.environ["GITHUB_EVENT_PATH"], "rb") as f:
-                event = json.loads(f.read())
-            base = event["pull_request"]["base"]["sha"]
-            commit_range = "{}...{}".format(base, event.get("after", ""))
+            if os.environ.get("GITHUB_EVENT_PATH"):
+                with open(os.environ["GITHUB_EVENT_PATH"], "rb") as f:
+                    event = json.loads(f.read())
+                base = event["pull_request"]["base"]["sha"]
+                commit_range = "{}...{}".format(base, event.get("after", ""))
+            else:
+                assert os.environ.get("BUILDKITE")
+                commit_range = "{}...{}".format(
+                    os.environ["BUILDKITE_PULL_REQUEST_BASE_BRANCH"],
+                    os.environ["BUILDKITE_COMMIT"],
+                )
         files = list_changed_files(commit_range)
 
         print(pformat(files), file=sys.stderr)
