@@ -62,14 +62,13 @@ def _get_wheel_name():
 
 
 def _docker_affected():
-    result = StringIO()
-    subprocess.run(
+    proc = subprocess.run(
         [
             sys.executable, f"{_get_curr_dir()}/determine_tests_to_run.py",
             "--output=json"
         ],
-        stdout=result)
-    affected_env_var_list = json.loads(result.getvalue())
+        capture_output=True)
+    affected_env_var_list = json.loads(proc.stdout)
     affected = ("RAY_CI_DOCKER_AFFECTED" in affected_env_var_list or
                 "RAY_CI_PYTHON_DEPENDENCIES_AFFECTED" in affected_env_var_list)
     print(f"Docker affected: {affected}")
