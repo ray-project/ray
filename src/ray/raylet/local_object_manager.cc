@@ -265,7 +265,7 @@ void LocalObjectManager::AddSpilledUrls(
     // don't need to report where this object is spilled.
     const auto node_id_object_spilled =
         is_external_storage_type_fs_ ? self_node_id_ : NodeID::Nil();
-    
+
     auto it = objects_pending_spill_.find(object_id);
     RAY_CHECK(it != objects_pending_spill_.end());
 

@@ -213,8 +213,7 @@ class PlasmaStore {
   void GetAvailableMemory(std::function<void(size_t)> callback) const {
     int64_t num_bytes_in_use = static_cast<int64_t>(num_bytes_in_use_);
     RAY_CHECK(PlasmaAllocator::GetFootprintLimit() >= num_bytes_in_use);
-    size_t available =
-        PlasmaAllocator::GetFootprintLimit() - num_bytes_in_use;
+    size_t available = PlasmaAllocator::GetFootprintLimit() - num_bytes_in_use;
     callback(available);
   }
 
