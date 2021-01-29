@@ -211,8 +211,10 @@ class PlasmaStore {
   void ProcessCreateRequests();
 
   void GetAvailableMemory(std::function<void(size_t)> callback) const {
+    int64_t num_bytes_in_use = static_cast<int64_t>(num_bytes_in_use_);
+    RAY_CHECK(PlasmaAllocator::GetFootprintLimit() >= num_bytes_in_use);
     size_t available =
-        PlasmaAllocator::GetFootprintLimit() - eviction_policy_.GetPinnedMemoryBytes();
+        PlasmaAllocator::GetFootprintLimit() - num_bytes_in_use;
     callback(available);
   }
 
@@ -313,6 +315,8 @@ class PlasmaStore {
   /// interface that node manager or object manager can access the plasma store with this
   /// mutex if it is not absolutely necessary.
   std::recursive_mutex mutex_;
+
+  size_t num_bytes_in_use_ = 0;
 };
 
 }  // namespace plasma
