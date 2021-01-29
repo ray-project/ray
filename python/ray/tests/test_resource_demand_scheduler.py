@@ -2063,7 +2063,6 @@ class AutoscalingTest(unittest.TestCase):
                 "node_config": {},
                 "resources": {
                     "CPU": 2,
-                    "GPU": 1,
                     "WORKER": 1
                 },
                 "max_workers": 3
@@ -2180,7 +2179,6 @@ class AutoscalingTest(unittest.TestCase):
                 "node_config": {},
                 "resources": {
                     "CPU": 2,
-                    "GPU": 1,
                     "WORKER": 1
                 },
                 "max_workers": 3,
@@ -2294,7 +2292,6 @@ class AutoscalingTest(unittest.TestCase):
                 "node_config": {},
                 "resources": {
                     "CPU": 2,
-                    "GPU": 1,
                     "WORKER": 1
                 },
                 "max_workers": 3,
