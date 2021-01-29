@@ -170,13 +170,16 @@ class SACTFModel(TFModelV2):
         else:
             orig_space = getattr(obs_space, "original_space", obs_space)
             if isinstance(orig_space, Box) and len(orig_space.shape) == 1:
-                input_space = Box(float("-inf"), float("inf"),
-                                  shape=(orig_space.shape[0] + action_space.shape[0], ))
+                input_space = Box(
+                    float("-inf"),
+                    float("inf"),
+                    shape=(orig_space.shape[0] + action_space.shape[0], ))
                 self.concat_obs_and_actions = True
             else:
-                input_space = gym.spaces.Tuple((orig_space.spaces if isinstance(
-                    orig_space, gym.spaces.Tuple) else [obs_space]) +
-                                               [action_space])
+                input_space = gym.spaces.Tuple(
+                    (orig_space.spaces if isinstance(
+                        orig_space, gym.spaces.Tuple) else [obs_space]) +
+                    [action_space])
         model = ModelCatalog.get_model_v2(
             input_space,
             action_space,
