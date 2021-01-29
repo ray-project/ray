@@ -105,7 +105,7 @@ def run(
 
     When a SIGINT signal is received (e.g. through Ctrl+C), the tuning run
     will gracefully shut down and checkpoint the latest experiment state.
-    Sending SIGINT (or SIGKILL/SIGTERM instead) will skip this step.
+    Sending SIGINT again (or SIGKILL/SIGTERM instead) will skip this step.
 
     Examples:
 

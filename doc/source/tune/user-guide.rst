@@ -261,8 +261,25 @@ You can restore a single trial checkpoint by using ``tune.run(restore=<checkpoin
         config={"env": "CartPole-v0"},
     )
 
+
+Distributed Checkpointing
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+On a multinode cluster, Tune automatically creates a copy of all trial checkpoints on the head node. This requires the Ray cluster to be started with the :ref:`cluster launcher <ref-automatic-cluster>` and also requires rsync to be installed.
+
+Note that you must use the ``tune.checkpoint_dir`` API to trigger syncing. Also, if running Tune on Kubernetes, be sure to use the :ref:`KubernetesSyncer <tune-kubernetes>` to transfer files between different pods.
+
+If you do not use the cluster launcher, you should set up a NFS or global file system and
+disable cross-node syncing:
+
+.. code-block:: python
+
+    sync_config = tune.SyncConfig(sync_to_driver=False)
+    tune.run(func, sync_config=sync_config)
+
+
 Stopping and resuming a tuning run
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+----------------------------------
 Ray Tune periodically checkpoints the experiment state so that it can be
 restarted when it fails or stops. The checkpointing period is
 dynamically adjusted so that at least 95% of the time is used for handling
@@ -313,22 +330,6 @@ of your original tuning run:
     Resources requested: 1/16 CPUs, 0/0 GPUs, 0.0/4.69 GiB heap, 0.0/1.61 GiB objects
     Result logdir: /Users/ray/ray_results/my_trainable_2021-01-29_10-16-44
     Number of trials: 1/1 (1 RUNNING)
-
-
-Distributed Checkpointing
-~~~~~~~~~~~~~~~~~~~~~~~~~
-
-On a multinode cluster, Tune automatically creates a copy of all trial checkpoints on the head node. This requires the Ray cluster to be started with the :ref:`cluster launcher <ref-automatic-cluster>` and also requires rsync to be installed.
-
-Note that you must use the ``tune.checkpoint_dir`` API to trigger syncing. Also, if running Tune on Kubernetes, be sure to use the :ref:`KubernetesSyncer <tune-kubernetes>` to transfer files between different pods.
-
-If you do not use the cluster launcher, you should set up a NFS or global file system and
-disable cross-node syncing:
-
-.. code-block:: python
-
-    sync_config = tune.SyncConfig(sync_to_driver=False)
-    tune.run(func, sync_config=sync_config)
 
 
 Handling Large Datasets
