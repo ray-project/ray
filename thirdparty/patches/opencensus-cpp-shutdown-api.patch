@@ -1,29 +1,44 @@
 diff --git opencensus/stats/internal/delta_producer.cc opencensus/stats/internal/delta_producer.cc
-index c61b4d9..b3e4ef2 100644
+index c61b4d9..f2b0c91 100644
 --- opencensus/stats/internal/delta_producer.cc
 +++ opencensus/stats/internal/delta_producer.cc
-@@ -75,6 +75,20 @@ DeltaProducer* DeltaProducer::Get() {
-   return global_delta_producer;
+@@ -70,9 +70,32 @@ void Delta::SwapAndReset(
+   registered_boundaries_ = registered_boundaries;
  }
  
-+void DeltaProducer::Shutdown() {
-+  {
+-DeltaProducer* DeltaProducer::Get() {
+-  static DeltaProducer* global_delta_producer = new DeltaProducer;
+-  return global_delta_producer;
++absl::Mutex DeltaProducer::mu_;
++std::unique_ptr<DeltaProducer> DeltaProducer::delta_producer_ = nullptr;
++
++std::unique_ptr<DeltaProducer> DeltaProducer::Get() {
++  if (delta_producer_ == nullptr) {
 +    absl::MutexLock l(&mu_);
-+    if (!thread_started_) {
-+      return;
++    if (delta_producer_ == nullptr) {
++      delta_producer_ = std::unique_ptr<DeltaProducer>(new DeltaProducer);
 +    }
-+    thread_started_ = false;
 +  }
++  return std::move(delta_producer_);
++}
++
++void DeltaProducer::Shutdown() {
++  absl::MutexLock l(&mu_);
++  if (!thread_started_) {
++    return;
++  }
++  thread_started_ = false;
 +  // Join loop thread when shutdown.
 +  if (harvester_thread_.joinable()) {
 +    harvester_thread_.join();
 +  }
-+}
-+
++  if (delta_producer_ != nullptr) {
++    delta_producer_.reset();
++  }
+ }
+ 
  void DeltaProducer::AddMeasure() {
-   delta_mu_.Lock();
-   absl::MutexLock harvester_lock(&harvester_mu_);
-@@ -115,7 +129,10 @@ void DeltaProducer::Flush() {
+@@ -115,7 +138,10 @@ void DeltaProducer::Flush() {
  }
  
  DeltaProducer::DeltaProducer()
@@ -35,7 +50,7 @@ index c61b4d9..b3e4ef2 100644
  
  void DeltaProducer::SwapDeltas() {
    ABSL_ASSERT(last_delta_.delta().empty() && "Last delta was not consumed.");
-@@ -131,11 +148,19 @@ void DeltaProducer::RunHarvesterLoop() {
+@@ -131,11 +157,19 @@ void DeltaProducer::RunHarvesterLoop() {
    absl::Time next_harvest_time = absl::Now() + harvest_interval_;
    while (true) {
      const absl::Time now = absl::Now();
@@ -59,30 +74,33 @@ index c61b4d9..b3e4ef2 100644
  }
  
 diff --git opencensus/stats/internal/delta_producer.h opencensus/stats/internal/delta_producer.h
-index 2cff522..c8e2e95 100644
+index 2cff522..1a71414 100644
 --- opencensus/stats/internal/delta_producer.h
 +++ opencensus/stats/internal/delta_producer.h
-@@ -71,6 +71,8 @@ class DeltaProducer final {
+@@ -69,7 +69,9 @@ class Delta final {
+ class DeltaProducer final {
+  public:
    // Returns a pointer to the singleton DeltaProducer.
-   static DeltaProducer* Get();
- 
-+  void Shutdown();
+-  static DeltaProducer* Get();
++  static std::unique_ptr<DeltaProducer> Get();
 +
++  void Shutdown();
+ 
    // Adds a new Measure.
    void AddMeasure();
- 
-@@ -122,6 +124,9 @@ class DeltaProducer final {
+@@ -122,6 +124,10 @@ class DeltaProducer final {
    // thread when calling a flush during harvesting.
    Delta last_delta_ GUARDED_BY(harvester_mu_);
    std::thread harvester_thread_ GUARDED_BY(harvester_mu_);
 +
-+  mutable absl::Mutex mu_;
++  static absl::Mutex mu_;
 +  volatile bool thread_started_ GUARDED_BY(mu_) = false;
++  static std::unique_ptr<DeltaProducer> delta_producer_;
  };
  
  }  // namespace stats
 diff --git opencensus/stats/internal/stats_exporter.cc opencensus/stats/internal/stats_exporter.cc
-index 43ddbc7..37b4ae1 100644
+index 43ddbc7..dcc2cbe 100644
 --- opencensus/stats/internal/stats_exporter.cc
 +++ opencensus/stats/internal/stats_exporter.cc
 @@ -95,25 +95,52 @@ void StatsExporterImpl::ClearHandlersForTesting() {
