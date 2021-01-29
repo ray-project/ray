@@ -8,6 +8,7 @@
 - label: ":java: Java"
   commands:
   - apt-get install -y openjdk-8-jdk maven clang-format
+  - RAY_INSTALL_JAVA=1 ./ci/travis/ci.sh build
   - ./java/test.sh
 
 # - label: ":java: Streaming"
