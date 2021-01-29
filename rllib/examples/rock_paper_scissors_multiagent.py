@@ -15,11 +15,13 @@ import random
 from ray import tune
 from ray.rllib.agents.pg import PGTrainer, PGTFPolicy, PGTorchPolicy
 from ray.rllib.agents.registry import get_agent_class
-from ray.rllib.examples.env.rock_paper_scissors import RockPaperScissors
+from pettingzoo.classic import rps_v1
 from ray.rllib.examples.policy.rock_paper_scissors_dummies import \
     BeatLastHeuristic, AlwaysSameHeuristic
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.test_utils import check_learning_achieved
+from ray.tune.registry import register_env
+from ray.rllib.env import PettingZooEnv
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
@@ -31,11 +33,20 @@ parser.add_argument("--stop-iters", type=int, default=150)
 parser.add_argument("--stop-reward", type=float, default=1000.0)
 parser.add_argument("--stop-timesteps", type=int, default=100000)
 
+def env_creator(args):
+    env = rps_v1.env()
+    return env
+
+register_env('RockPaperScissors', lambda config: PettingZooEnv(env_creator(config)))
+
+env_for_spaces = PettingZooEnv(env_creator({}))
+obs_space = env_for_spaces.observation_space
+act_space = env_for_spaces.action_space
 
 def run_same_policy(args, stop):
     """Use the same policy for both agents (trivial case)."""
     config = {
-        "env": RockPaperScissors,
+        "env": 'RockPaperScissors',
         "framework": "torch" if args.torch else "tf",
     }
 
@@ -62,7 +73,7 @@ def run_heuristic_vs_learned(args, use_lstm=False, trainer="PG"):
             return random.choice(["always_same", "beat_last"])
 
     config = {
-        "env": RockPaperScissors,
+        "env": 'RockPaperScissors',
         "gamma": 0.9,
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
@@ -73,10 +84,10 @@ def run_heuristic_vs_learned(args, use_lstm=False, trainer="PG"):
         "multiagent": {
             "policies_to_train": ["learned"],
             "policies": {
-                "always_same": (AlwaysSameHeuristic, Discrete(3), Discrete(3),
+                "always_same": (AlwaysSameHeuristic, obs_space, act_space,
                                 {}),
-                "beat_last": (BeatLastHeuristic, Discrete(3), Discrete(3), {}),
-                "learned": (None, Discrete(3), Discrete(3), {
+                "beat_last": (BeatLastHeuristic, obs_space, act_space, {}),
+                "learned": (None, obs_space, act_space, {
                     "model": {
                         "use_lstm": use_lstm
                     },
@@ -96,6 +107,7 @@ def run_heuristic_vs_learned(args, use_lstm=False, trainer="PG"):
         # Timesteps reached.
         if results["timesteps_total"] > args.stop_timesteps:
             break
+        ''' MAY REQUIRE CHANGES TO RPS ENV IN PETTINGZOO
         # Reward (difference) reached -> all good, return.
         elif env.player1_score - env.player2_score > args.stop_reward:
             return
@@ -105,7 +117,7 @@ def run_heuristic_vs_learned(args, use_lstm=False, trainer="PG"):
         raise ValueError(
             "Desired reward difference ({}) not reached! Only got to {}.".
             format(args.stop_reward, env.player1_score - env.player2_score))
-
+        '''
 
 def run_with_custom_entropy_loss(args, stop):
     """Example of customizing the loss function of an existing policy.

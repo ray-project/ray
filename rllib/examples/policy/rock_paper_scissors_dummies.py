@@ -61,6 +61,8 @@ class BeatLastHeuristic(Policy):
                 return RockPaperScissors.SCISSORS
             elif x[RockPaperScissors.SCISSORS] == 1:
                 return RockPaperScissors.ROCK
+            elif x[-1] == 1:
+                return RockPaperScissors.PAPER
 
         return [successor(x) for x in obs_batch], [], {}
 
