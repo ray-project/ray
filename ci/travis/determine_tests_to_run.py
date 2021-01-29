@@ -54,6 +54,10 @@ if __name__ == "__main__":
     for key in ["GITHUB_EVENT_NAME", "TRAVIS_EVENT_TYPE"]:
         event_type = os.getenv(key, event_type)
 
+    if (os.environ.get("BUILDKITE")
+            and os.environ.get("BUILDKITE_PULL_REQUEST") != "false"):
+        event_type = "pull_request"
+
     if event_type == "pull_request":
 
         commit_range = os.getenv("TRAVIS_COMMIT_RANGE")
@@ -185,7 +189,7 @@ if __name__ == "__main__":
         RAY_CI_ONLY_RLLIB_AFFECTED = 1
 
     # Log the modified environment variables visible in console.
-    print(" ".join([
+    output_string = " ".join([
         "RAY_CI_TUNE_AFFECTED={}".format(RAY_CI_TUNE_AFFECTED),
         "RAY_CI_SGD_AFFECTED={}".format(RAY_CI_SGD_AFFECTED),
         "RAY_CI_ONLY_RLLIB_AFFECTED={}".format(RAY_CI_ONLY_RLLIB_AFFECTED),
@@ -207,4 +211,12 @@ if __name__ == "__main__":
         "RAY_CI_DOCKER_AFFECTED={}".format(RAY_CI_DOCKER_AFFECTED),
         "RAY_CI_PYTHON_DEPENDENCIES_AFFECTED={}".format(
             RAY_CI_PYTHON_DEPENDENCIES_AFFECTED),
-    ]))
+    ])
+
+    # Used by buildkite log format
+    if os.environ.get("OUTPUT_AS_JSON_ARRAY"):
+        pairs = [item.split("=") for item in output_string.split(" ")]
+        affected_vars = [key for key, affected in pairs if affected == "1"]
+        print(json.dumps(affected_vars))
+    else:
+        print(output_string)
