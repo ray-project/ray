@@ -34,7 +34,7 @@ class FrameStackingCartPoleModel(TFModelV2):
             shape=(self.num_frames, obs_space.shape[0]))
         obs_reshaped = tf.keras.layers.Reshape(
             [obs_space.shape[0] * self.num_frames])(obs)
-        rewards = tf.keras.layers.Input(shape=(self.num_frames, ))
+        rewards = tf.keras.layers.Input(shape=(self.num_frames))
         rewards_reshaped = tf.keras.layers.Reshape([self.num_frames])(rewards)
         actions = tf.keras.layers.Input(
             shape=(self.num_frames, self.action_space.n))
@@ -62,8 +62,8 @@ class FrameStackingCartPoleModel(TFModelV2):
             space=self.action_space)
 
     def forward(self, input_dict, states, seq_lens):
-        obs = input_dict["prev_n_obs"]
-        rewards = input_dict["prev_n_rewards"]
+        obs = tf.cast(input_dict["prev_n_obs"], tf.float32)
+        rewards = tf.cast(input_dict["prev_n_rewards"], tf.float32)
         actions = one_hot(input_dict["prev_n_actions"], self.action_space)
         out, self._last_value = self.base_model([obs, actions, rewards])
         return out, []
