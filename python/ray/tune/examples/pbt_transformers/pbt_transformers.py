@@ -121,7 +121,6 @@ def tune_transformer(num_samples=8,
             "eval_acc", "eval_loss", "epoch", "training_iteration"
         ])
 
-    # import pdb; pdb.set_trace()
     trainer.hyperparameter_search(
         hp_space=lambda _: tune_config,
         backend="ray",
