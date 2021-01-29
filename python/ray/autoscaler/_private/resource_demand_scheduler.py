@@ -669,8 +669,8 @@ def _utilization_score(node_resources: ResourceDict,
     is_gpu_node = "GPU" in node_resources
     any_gpu_task = any("GPU" in r for r in resources)
 
-    # Avoid launching GPU nodes for non-GPU tasks. Note that if there is a GPU
-    # task, then we still allow CPU tasks to be packed onto the node.
+    # Avoid launching GPU nodes if there aren't any GPU tasks at all. Note that
+    # if there *is* a GPU task, then CPU tasks can be scheduled as well.
     if is_gpu_node and not any_gpu_task:
         return None
 
