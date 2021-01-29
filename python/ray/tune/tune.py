@@ -110,6 +110,7 @@ def run(
         sync_to_cloud: Optional = None,
         sync_to_driver: Optional = None,
         sync_on_checkpoint: Optional = None,
+        _remote: bool = True,
 ) -> ExperimentAnalysis:
     """Executes training.
 
@@ -265,7 +266,9 @@ def run(
             ``ray.tune.callback.Callback`` class. If not passed,
             `LoggerCallback` and `SyncerCallback` callbacks are automatically
             added.
-
+        _remote (bool): Whether to run the Tune driver in a remote function.
+            This is disabled automatically if a custom trial executor is
+            passed in.
 
     Returns:
         ExperimentAnalysis: Object for experiment analysis.
@@ -273,8 +276,15 @@ def run(
     Raises:
         TuneError: Any trials failed and `raise_on_failed_trial` is True.
     """
-    return ray.get(
-        _tune_run_impl.remote(
+
+    if _remote and not trial_executor:
+        get_fn = ray.get
+        exec_impl = ray.remote(num_cpus=0)(_tune_run_impl).remote
+    else:
+        get_fn = lambda x: x  # noqa
+        exec_impl = _tune_run_impl
+    return get_fn(
+        exec_impl(
             run_or_experiment,
             name,
             metric,
@@ -577,7 +587,8 @@ def run_experiments(
         trial_executor: Optional[RayTrialExecutor] = None,
         raise_on_failed_trial: bool = True,
         concurrent: bool = True,
-        callbacks: Optional[Sequence[Callback]] = None):
+        callbacks: Optional[Sequence[Callback]] = None,
+        _remote: bool = True):
     """Runs and blocks until all trials finish.
 
     Examples:
@@ -591,11 +602,17 @@ def run_experiments(
         List of Trial objects, holding data for each executed trial.
 
     """
-    return ray.get(
-        _tune_run_experiments_impl.remote(
-            experiments, scheduler, server_port, verbose, progress_reporter,
-            resume, queue_trials, reuse_actors, trial_executor,
-            raise_on_failed_trial, concurrent, callbacks))
+    if _remote and not trial_executor:
+        get_fn = ray.get
+        exec_impl = ray.remote(num_cpus=0)(_tune_run_experiments_impl).remote
+    else:
+        get_fn = lambda x: x  # noqa
+        exec_impl = _tune_run_experiments_impl
+    return get_fn(
+        exec_impl(experiments, scheduler, server_port, verbose,
+                  progress_reporter, resume, queue_trials, reuse_actors,
+                  trial_executor, raise_on_failed_trial, concurrent,
+                  callbacks))
 
 
 @ray.remote(num_cpus=0)
