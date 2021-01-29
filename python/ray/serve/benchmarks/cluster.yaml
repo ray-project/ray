@@ -1,13 +1,10 @@
 cluster_name: default
 min_workers: 5
 max_workers: 5
-initial_workers: 5
-autoscaling_mode: default
 docker:
     image: 'anyscale/ray-ml:latest'
     container_name: ray_container
     pull_before_run: true
-target_utilization_fraction: 0.8
 idle_timeout_minutes: 5
 provider:
     type: aws
@@ -27,7 +24,7 @@ worker_nodes:
 initialization_commands: []
 setup_commands:
     - sudo apt-get install build-essential libssl-dev git -y
-    - 'rm -r wrk || true && git clone https://github.com/wg/wrk.git wrk && cd wrk && make -j && cp wrk /usr/local/bin'
+    - 'rm -r wrk || true && git clone https://github.com/wg/wrk.git /tmp/wrk && cd /tmp/wrk && make -j && sudo cp wrk /usr/local/bin'
     - ray install-nightly
 head_setup_commands: []
 worker_setup_commands: []

@@ -106,8 +106,9 @@ class ObjectManagerInterface {
 class ObjectManager : public ObjectManagerInterface,
                       public rpc::ObjectManagerServiceHandler {
  public:
-  using RestoreSpilledObjectCallback = std::function<void(
-      const ObjectID &, const std::string &, std::function<void(const ray::Status &)>)>;
+  using RestoreSpilledObjectCallback =
+      std::function<void(const ObjectID &, const std::string &, const NodeID &,
+                         std::function<void(const ray::Status &)>)>;
 
   /// Implementation of object manager service
 
@@ -355,7 +356,7 @@ class ObjectManager : public ObjectManagerInterface,
 
   /// Handle starting, running, and stopping asio rpc_service.
   void StartRpcService();
-  void RunRpcService();
+  void RunRpcService(int index);
   void StopRpcService();
 
   /// Handle an object being added to this node. This adds the object to the

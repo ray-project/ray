@@ -113,6 +113,26 @@ def test_create_sg_with_custom_inbound_rules_and_name(iam_client_stub,
     ec2_client_stub.assert_no_pending_responses()
 
 
+def test_subnet_given_head_and_worker_sg(iam_client_stub, ec2_client_stub):
+    stubs.configure_iam_role_default(iam_client_stub)
+    stubs.configure_key_pair_default(ec2_client_stub)
+
+    # list a security group and a thousand subnets in different vpcs
+    stubs.describe_a_security_group(ec2_client_stub, DEFAULT_SG)
+    stubs.describe_a_thousand_subnets_in_different_vpcs(ec2_client_stub)
+
+    config = helpers.bootstrap_aws_example_config_file(
+        "example-head-and-worker-security-group.yaml")
+
+    # check that just the single subnet in the right vpc is filled
+    assert config["head_node"]["SubnetIds"] == [DEFAULT_SUBNET["SubnetId"]]
+    assert config["worker_nodes"]["SubnetIds"] == [DEFAULT_SUBNET["SubnetId"]]
+
+    # expect no pending responses left in IAM or EC2 client stub queues
+    iam_client_stub.assert_no_pending_responses()
+    ec2_client_stub.assert_no_pending_responses()
+
+
 if __name__ == "__main__":
     import sys
     sys.exit(pytest.main(["-v", __file__]))

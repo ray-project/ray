@@ -5,11 +5,12 @@ import unittest
 import ray
 from ray.rllib.agents.callbacks import DefaultCallbacks
 import ray.rllib.agents.ppo as ppo
-from ray.rllib.agents.ppo.ppo_tf_policy import postprocess_ppo_gae as \
-    postprocess_ppo_gae_tf, ppo_surrogate_loss as ppo_surrogate_loss_tf
-from ray.rllib.agents.ppo.ppo_torch_policy import postprocess_ppo_gae as \
-    postprocess_ppo_gae_torch, ppo_surrogate_loss as ppo_surrogate_loss_torch
-from ray.rllib.evaluation.postprocessing import Postprocessing
+from ray.rllib.agents.ppo.ppo_tf_policy import ppo_surrogate_loss as \
+    ppo_surrogate_loss_tf
+from ray.rllib.agents.ppo.ppo_torch_policy import ppo_surrogate_loss as \
+    ppo_surrogate_loss_torch
+from ray.rllib.evaluation.postprocessing import compute_gae_for_sample_batch, \
+    Postprocessing
 from ray.rllib.models.tf.tf_action_dist import Categorical
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchCategorical
@@ -212,11 +213,8 @@ class TestPPO(unittest.TestCase):
             # Check the variable is initially zero.
             init_std = get_value()
             assert init_std == 0.0, init_std
-
-            if fw in ["tf2", "tf", "tfe"]:
-                batch = postprocess_ppo_gae_tf(policy, FAKE_BATCH.copy())
-            else:
-                batch = postprocess_ppo_gae_torch(policy, FAKE_BATCH.copy())
+            batch = compute_gae_for_sample_batch(policy, FAKE_BATCH.copy())
+            if fw == "torch":
                 batch = policy._lazy_tensor_dict(batch)
             policy.learn_on_batch(batch)
 
@@ -255,11 +253,9 @@ class TestPPO(unittest.TestCase):
             # to train_batch dict.
             # A = [0.99^2 * 0.5 + 0.99 * -1.0 + 1.0, 0.99 * 0.5 - 1.0, 0.5] =
             # [0.50005, -0.505, 0.5]
-            if fw in ["tf2", "tf", "tfe"]:
-                train_batch = postprocess_ppo_gae_tf(policy, FAKE_BATCH.copy())
-            else:
-                train_batch = postprocess_ppo_gae_torch(
-                    policy, FAKE_BATCH.copy())
+            train_batch = compute_gae_for_sample_batch(policy,
+                                                       FAKE_BATCH.copy())
+            if fw == "torch":
                 train_batch = policy._lazy_tensor_dict(train_batch)
 
             # Check Advantage values.

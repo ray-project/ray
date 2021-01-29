@@ -210,7 +210,6 @@ class RayParams:
                 raise Exception(
                     "Object pinning cannot be enabled if using LRU eviction.")
             self._system_config["object_pinning_enabled"] = False
-            self._system_config["object_store_full_max_retries"] = -1
             self._system_config["free_objects_period_milliseconds"] = 1000
 
         # Set the internal config options for object reconstruction.
@@ -331,3 +330,6 @@ class RayParams:
             # Validate external storage usage.
             external_storage.setup_external_storage(object_spilling_config)
             external_storage.reset_external_storage()
+            # Configure the proper system config.
+            self._system_config["is_external_storage_type_fs"] = (
+                object_spilling_config["type"] == "filesystem")
