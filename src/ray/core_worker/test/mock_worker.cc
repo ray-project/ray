@@ -134,6 +134,7 @@ class MockWorker {
                        const std::vector<ObjectID> &return_ids,
                        std::vector<std::shared_ptr<RayObject>> *results) {
     while (1) {
+      sleep(1);
     }
     return Status::OK();
   }
