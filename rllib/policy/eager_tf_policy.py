@@ -320,7 +320,8 @@ def build_eager_tf_policy(name,
             # Callback handling.
             learn_stats = {}
             self.callbacks.on_learn_on_batch(
-                policy=self, train_batch=postprocessed_batch,
+                policy=self,
+                train_batch=postprocessed_batch,
                 result=learn_stats)
 
             pad_batch_to_sequences_of_same_size(

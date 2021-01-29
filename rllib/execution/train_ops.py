@@ -61,15 +61,17 @@ class TrainOneStep:
             if self.num_sgd_iter > 1 or self.sgd_minibatch_size > 0:
                 lw = self.workers.local_worker()
                 info = do_minibatch_sgd(
-                    batch, {pid: lw.get_policy(pid) for pid in self.policies},
-                    lw, self.num_sgd_iter, self.sgd_minibatch_size, [])
+                    batch, {pid: lw.get_policy(pid)
+                            for pid in self.policies}, lw, self.num_sgd_iter,
+                    self.sgd_minibatch_size, [])
                 # TODO(ekl) shouldn't be returning learner stats directly here
                 # TODO(sven): Skips `custom_metrics` key from on_learn_on_batch
                 #  callback (shouldn't).
                 metrics.info[LEARNER_INFO] = info
             else:
                 info = self.workers.local_worker().learn_on_batch(batch)
-                metrics.info[LEARNER_INFO] = extract_stats(info, LEARNER_STATS_KEY)
+                metrics.info[LEARNER_INFO] = extract_stats(
+                    info, LEARNER_STATS_KEY)
                 metrics.info["custom_metrics"] = extract_stats(
                     info, "custom_metrics")
             learn_timer.push_units_processed(batch.count)

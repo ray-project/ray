@@ -429,8 +429,7 @@ class TFPolicy(Policy):
         # Callback handling.
         learn_stats = {}
         self.callbacks.on_learn_on_batch(
-            policy=self, train_batch=postprocessed_batch,
-            result=learn_stats)
+            policy=self, train_batch=postprocessed_batch, result=learn_stats)
 
         fetches = self._build_learn_on_batch(builder, postprocessed_batch)
         stats = builder.get(fetches)
