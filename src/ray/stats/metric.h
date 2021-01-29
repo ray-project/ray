@@ -129,6 +129,9 @@ class Metric {
   std::vector<opencensus::tags::TagKey> tag_keys_;
   std::unique_ptr<opencensus::stats::Measure<double>> measure_;
 
+  // For making sure thread-safe to all of metric registrations.
+  static absl::Mutex registration_mutex_;
+
 };  // class Metric
 
 class Gauge : public Metric {

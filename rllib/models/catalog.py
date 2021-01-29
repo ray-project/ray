@@ -199,13 +199,14 @@ class ModelCatalog:
         config = config or MODEL_DEFAULTS
         # Custom distribution given.
         if config.get("custom_action_dist"):
-            action_dist_name = config["custom_action_dist"]
+            custom_action_config = config.copy()
+            action_dist_name = custom_action_config.pop("custom_action_dist")
             logger.debug(
                 "Using custom action distribution {}".format(action_dist_name))
             dist_cls = _global_registry.get(RLLIB_ACTION_DIST,
                                             action_dist_name)
-            dist_cls = ModelCatalog._get_multi_action_distribution(
-                dist_cls, action_space, {}, framework)
+            return ModelCatalog._get_multi_action_distribution(
+                dist_cls, action_space, custom_action_config, framework)
 
         # Dist_type is given directly as a class.
         elif type(dist_type) is type and \
@@ -740,7 +741,8 @@ class ModelCatalog:
                 action_space=action_space,
                 child_distributions=child_dists,
                 input_lens=input_lens), int(sum(input_lens))
-        return dist_class
+        return dist_class, dist_class.required_model_output_shape(
+            action_space, config)
 
     @staticmethod
     def _validate_config(config: ModelConfigDict, framework: str) -> None:

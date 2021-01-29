@@ -60,12 +60,15 @@ class Worker:
         """
         self.metadata = metadata if metadata else []
         self.channel = None
+        self._conn_state = grpc.ChannelConnectivity.IDLE
         self._client_id = make_client_id()
         if secure:
             credentials = grpc.ssl_channel_credentials()
             self.channel = grpc.secure_channel(conn_str, credentials)
         else:
             self.channel = grpc.insecure_channel(conn_str)
+
+        self.channel.subscribe(self._on_channel_state_change)
 
         # Retry the connection until the channel responds to something
         # looking like a gRPC connection, though it may be a proxy.
@@ -128,6 +131,10 @@ class Worker:
         self.log_client.set_logstream_level(logging.INFO)
         self.closed = False
 
+    def _on_channel_state_change(self, conn_state: grpc.ChannelConnectivity):
+        logger.debug(f"client gRPC channel state change: {conn_state}")
+        self._conn_state = conn_state
+
     def connection_info(self):
         try:
             data = self.data_client.ConnectionInfo()
@@ -165,7 +172,11 @@ class Worker:
         except grpc.RpcError as e:
             raise e.details()
         if not data.valid:
-            err = cloudpickle.loads(data.error)
+            try:
+                err = cloudpickle.loads(data.error)
+            except Exception:
+                logger.exception("Failed to deserialize {}".format(data.error))
+                raise
             logger.error(err)
             raise err
         return loads_from_server(data.data)
@@ -249,7 +260,12 @@ class Worker:
         except grpc.RpcError as e:
             raise decode_exception(e.details)
         if not ticket.valid:
-            raise cloudpickle.loads(ticket.error)
+            try:
+                raise cloudpickle.loads(ticket.error)
+            except Exception:
+                logger.exception("Failed to deserialize {}".format(
+                    ticket.error))
+                raise
         return ticket.return_ids
 
     def call_release(self, id: bytes) -> None:
@@ -356,6 +372,9 @@ class Worker:
             return self.get_cluster_info(
                 ray_client_pb2.ClusterInfoType.IS_INITIALIZED)
         return False
+
+    def is_connected(self) -> bool:
+        return self._conn_state == grpc.ChannelConnectivity.READY
 
 
 def make_client_id() -> str:

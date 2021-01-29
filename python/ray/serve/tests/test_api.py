@@ -683,6 +683,9 @@ def test_endpoint_input_validation(serve_instance):
     client.create_endpoint("endpoint", backend="backend")
 
 
+# This error is only printed because creation is run in the control loop, not
+# in the API path.
+@pytest.mark.skip()
 def test_create_infeasible_error(serve_instance):
     client = serve_instance
 
@@ -872,6 +875,10 @@ def test_serve_metrics(serve_instance):
             # gauge
             "replica_processing_queries",
             "replica_queued_queries",
+            # handle
+            "serve_handle_request_counter",
+            # ReplicaSet
+            "backend_queued_queries"
         ]
         for metric in expected_metrics:
             # For the final error round

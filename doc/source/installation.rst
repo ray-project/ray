@@ -24,22 +24,7 @@ You can install the latest official version of Ray as follows. Official releases
 Daily Releases (Nightlies)
 --------------------------
 
-You can install the latest Ray wheels via the following command. These daily releases are tested via automated tests but do not go through the full release process:
-
-.. code-block:: bash
-
-  pip install -U ray
-  ray install-nightly
-
-
-.. note:: ``ray install-nightly`` may not capture updated library dependencies. After running ``ray install-nightly``, consider running ``pip install ray[<library>]`` *without upgrading (via -U)* to update dependencies.
-
-
-.. note:: If you're currently on ``ray<=1.0.1.post1``, ``ray install-nightly`` will not install the most recent nightly wheels. Please use the links below instead.
-
-Alternatively, here are the links to the latest wheels (which are built for each commit on the
-master branch). To install these wheels, use the following ``pip`` command and wheels
-instead of the ones above:
+You can install the nightly Ray wheels via the following links. These daily releases are tested via automated tests but do not go through the full release process. To install these wheels, use the following ``pip`` command and wheels:
 
 .. code-block:: bash
 

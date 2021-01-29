@@ -5,15 +5,25 @@ ARG BUILDKITE_PULL_REQUEST
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=America/Los_Angeles
+
 ENV BUILDKITE=true
 ENV CI=true
 ENV PYTHON=3.6
+ENV RAY_USE_RANDOM_PORTS=1
+ENV RAY_DEFAULT_BUILD=1
 
 RUN apt-get update -qq
 RUN apt-get install -y -qq \
     curl python-is-python3 git build-essential \
-    sudo unzip apt-utils dialog tzdata wget
+    sudo unzip apt-utils dialog tzdata wget rsync \
+    language-pack-en tmux cmake gdb vim htop \
+    libgtk2.0-dev zlib1g-dev libgl1-mesa-dev
+
+# System conf for tests
 RUN locale -a
+ENV LC_ALL=en_US.utf8
+ENV LANG=en_US.utf8
+RUN echo "ulimit -c 0" >> /root/.bashrc
 
 # Setup Bazel caches
 RUN (echo "build --remote_cache=${REMOTE_CACHE_URL}" >> /root/.bazelrc); \

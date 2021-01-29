@@ -193,6 +193,32 @@ class SearchSpaceTest(unittest.TestCase):
         samples = tune.sample.Float(0, 33).quantized(3).sample(size=1000)
         self.assertTrue(all(0 <= s <= 33 for s in samples))
 
+    def testCategoricalSeedInTrainingLoop(self):
+        def train(config):
+            return 0
+
+        config = {
+            "integer": tune.randint(0, 100_000),
+            "choice": tune.choice(list(range(100_000)))
+        }
+
+        np.random.seed(1000)
+
+        out_1 = tune.run(train, config=config, num_samples=8, verbose=0)
+
+        integers_1 = [t.config["integer"] for t in out_1.trials]
+        choices_1 = [t.config["choice"] for t in out_1.trials]
+
+        np.random.seed(1000)
+
+        out_2 = tune.run(train, config=config, num_samples=8, verbose=0)
+
+        integers_2 = [t.config["integer"] for t in out_2.trials]
+        choices_2 = [t.config["choice"] for t in out_2.trials]
+
+        self.assertSequenceEqual(integers_1, integers_2)
+        self.assertSequenceEqual(choices_1, choices_2)
+
     def testConvertAx(self):
         from ray.tune.suggest.ax import AxSearch
         from ax.service.ax_client import AxClient
@@ -237,12 +263,14 @@ class SearchSpaceTest(unittest.TestCase):
         ]
 
         client1 = AxClient(random_seed=1234)
-        client1.create_experiment(parameters=converted_config)
-        searcher1 = AxSearch(ax_client=client1, metric="a", mode="max")
+        client1.create_experiment(
+            parameters=converted_config, objective_name="a", minimize=False)
+        searcher1 = AxSearch(ax_client=client1)
 
         client2 = AxClient(random_seed=1234)
-        client2.create_experiment(parameters=ax_config)
-        searcher2 = AxSearch(ax_client=client2, metric="a", mode="max")
+        client2.create_experiment(
+            parameters=ax_config, objective_name="a", minimize=False)
+        searcher2 = AxSearch(ax_client=client2)
 
         config1 = searcher1.suggest("0")
         config2 = searcher2.suggest("0")
@@ -952,9 +980,11 @@ class SearchSpaceTest(unittest.TestCase):
         return self._testPointsToEvaluate(SkOptSearch, config)
 
     def testPointsToEvaluateZoOpt(self):
-        # https://github.com/polixir/ZOOpt/issues/5
-        self.skipTest("ZoOpt currently ignores initial points. This test "
-                      "will be enabled after this has been fixed.")
+        self.skipTest(
+            "ZOOpt's latest release (0.4.1) does not support sampling "
+            "initial points. Please re-enable this test after the next "
+            "release.")
+
         config = {
             "metric": tune.sample.Categorical([1, 2, 3, 4]).uniform(),
             "a": tune.sample.Categorical(["t1", "t2", "t3", "t4"]).uniform(),
