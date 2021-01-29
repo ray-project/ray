@@ -321,7 +321,7 @@ ran ``tune.run(my_trainable)``, the ``name`` might look like something like this
 You can see which name you need to pass by taking a look at the results table
 of your original tuning run:
 
-.. code-block:: plain
+.. code-block::
     :emphasize-lines: 5
 
     == Status ==
