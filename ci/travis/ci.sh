@@ -355,7 +355,6 @@ lint_web() {
     cd "${WORKSPACE_DIR}"/python/ray/new_dashboard/client
     set +x # suppress set -x since it'll get very noisy here
 
-
     if [ -z "${BUILDKITE-}" ]; then
       . "${HOME}/.nvm/nvm.sh"
       nvm use --silent node
