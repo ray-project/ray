@@ -331,7 +331,7 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
     CountType_MAX = 5,
     GET_NAMED_PLACEMENT_GROUP_REQUEST = 6,
   };
-  uint64_t counts_[CountType::CountType_MAX] = {0};
+  uint64_t counts_[CountType::GET_NAMED_PLACEMENT_GROUP_REQUEST] = {0};
 };
 
 }  // namespace gcs
