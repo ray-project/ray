@@ -898,8 +898,6 @@ bool WorkerPool::DisconnectWorker(const std::shared_ptr<WorkerInterface> &worker
         // port yet. When they announce worker port, they'll be marked idle again. So
         // removing them from idle sets here doesn't really prevent them from being popped
         // later.
-        RAY_LOG(INFO) << "Adding to pending_disconnection_workers: " << worker->WorkerId()
-                      << " pid, " << worker->GetProcess().GetId();
         state.pending_disconnection_workers.insert(worker2);
       }
     }
