@@ -405,6 +405,8 @@ class NCCLGroup(BaseGroup):
         # Now create the communicators
         actual_world_size = len(device_list) * self.world_size
         comms = [None] * len(device_list)
+        # TODO(Fu): preallocate a stream pool for each device
+        # Add a map from device to stream index to keep track of the pool
         streams = [None] * len(device_list)
         nccl_util.groupStart()
         for i, device in enumerate(device_list):
@@ -412,9 +414,11 @@ class NCCLGroup(BaseGroup):
             with nccl_util.Device(device):
                 comms[i] = nccl_util.create_nccl_communicator(
                     actual_world_size, nccl_uid, actual_rank)
+                # TODO(Fu): get the stream from the pool in the round-robin fashion
                 streams[i] = cupy.cuda.Stream.null
                 # Stream(non_blocking=True)
         nccl_util.groupEnd()
+        # TODO(Fu): lock
         self._dev_comm_map[comm_key] = comms
         self._dev_streams_map[comm_key] = streams
         return comms
