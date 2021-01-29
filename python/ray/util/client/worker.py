@@ -419,6 +419,7 @@ class Worker:
                 "num_returns": func._num_returns,
                 "memory": func._memory
             })
+        return key
 
     def _get_converted(self, key: str) -> "ClientStub":
         """Given a UUID, return the converted object"""

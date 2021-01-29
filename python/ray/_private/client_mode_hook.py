@@ -41,40 +41,34 @@ def client_mode_hook(func):
 
     @wraps(func)
     def wrapper(*args, **kwargs):
-        global _client_hook_enabled
-        if client_mode_enabled and _client_hook_enabled:
+        if client_mode_should_convert():
             return getattr(ray, func.__name__)(*args, **kwargs)
         return func(*args, **kwargs)
 
     return wrapper
 
 
-def client_mode_convert_function(method):
-    """Decorator to convert a RemoteFunction call into a client call
+def client_mode_should_convert():
+    global _client_hook_enabled
+    return client_mode_enabled and _client_hook_enabled
 
-    The common case for this decorator is for methods on RemoteFunction
-    that need to transparently convert that RemoteFunction to a
-    ClientRemoteFunction. This happens in circumstances where the
+
+def client_mode_convert_function(func_cls, in_args, in_kwargs, **kwargs):
+    """Runs a preregistered ray RemoteFunction through the ray client.
+
+    The common case for this is to transparently convert that RemoteFunction
+    to a ClientRemoteFunction. This happens in circumstances where the
     RemoteFunction is declared early, in a library and only then is Ray used in
     client mode -- nescessitating a conversion.
     """
     from ray.util.client import ray
 
-    @wraps(method)
-    def wrapper(*args, **kwargs):
-        global _client_hook_enabled
-        if not client_mode_enabled or not _client_hook_enabled:
-            return method(*args, **kwargs)
-
-        obj = method.__self__
-        key = getattr(obj, RAY_CLIENT_MODE_ATTR, None)
-        if key is None:
-            key = ray._convert_function(obj)
-            setattr(obj, RAY_CLIENT_MODE_ATTR, key)
-        client_func = ray._get_converted(key)
-        return getattr(client_func, method.__name__)(*args, **kwargs)
-
-    return wrapper
+    key = getattr(func_cls, RAY_CLIENT_MODE_ATTR, None)
+    if key is None:
+        key = ray._convert_function(func_cls)
+        setattr(func_cls, RAY_CLIENT_MODE_ATTR, key)
+    client_func = ray._get_converted(key)
+    return client_func._remote(in_args, in_kwargs, **kwargs)
 
 
 def client_mode_convert_actor(method):
