@@ -2,6 +2,7 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "ray/common/ray_object.h"
 #include "ray/common/task/task.h"
 #include "ray/common/task/task_common.h"
 #include "ray/raylet/dependency_manager.h"
@@ -60,7 +61,10 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
       NodeInfoGetter get_node_info,
       std::function<void(const Task &)> announce_infeasible_task,
       WorkerPoolInterface &worker_pool,
-      std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers);
+      std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers,
+      std::function<bool(const std::vector<ObjectID> &object_ids,
+                         std::vector<std::unique_ptr<RayObject>> *results)>
+          pin_task_arguments);
 
   /// (Step 1) Queue tasks and schedule.
   /// Queue task and schedule. This hanppens when processing the worker lease request.
@@ -247,6 +251,22 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// parameters of methods if necessary once we remove the legacy scheduler.
   WorkerPoolInterface &worker_pool_;
   std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers_;
+
+  /// Callback to get references to task arguments. These will be pinned while
+  /// the task is running.
+  std::function<bool(const std::vector<ObjectID> &object_ids,
+                     std::vector<std::unique_ptr<RayObject>> *results)>
+      pin_task_arguments_;
+
+  /// Arguments needed by currently granted lease requests. These should be
+  /// pinned before the lease is granted to ensure that the arguments are not
+  /// evicted before the task(s) start running.
+  std::unordered_map<TaskID, std::vector<std::unique_ptr<RayObject>>>
+      pinned_task_arguments_;
+
+  /// The total number of arguments pinned for running tasks.
+  /// Used for debug purposes.
+  size_t num_pinned_task_arguments_ = 0;
 
   /// Determine whether a task should be immediately dispatched,
   /// or placed on a wait queue.

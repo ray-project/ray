@@ -140,7 +140,7 @@ class AtariRamPreprocessor(Preprocessor):
     @override(Preprocessor)
     def transform(self, observation: TensorType) -> np.ndarray:
         self.check_shape(observation)
-        return (observation - 128) / 128
+        return (observation.astype("float32") - 128) / 128
 
 
 class OneHotPreprocessor(Preprocessor):

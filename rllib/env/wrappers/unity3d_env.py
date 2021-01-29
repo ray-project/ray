@@ -27,7 +27,12 @@ class Unity3DEnv(MultiAgentEnv):
     inside an RLlib PolicyClient for cloud/distributed training of Unity games.
     """
 
-    _BASE_PORT = 5004
+    # Default base port when connecting directly to the Editor
+    _BASE_PORT_EDITOR = 5004
+    # Default base port when connecting to a compiled environment
+    _BASE_PORT_ENVIRONMENT = 5005
+    # The worker_id for each environment instance
+    _WORKER_ID = 0
 
     def __init__(self,
                  file_name: str = None,
@@ -73,18 +78,24 @@ class Unity3DEnv(MultiAgentEnv):
             # environments (num_workers >> 1). Otherwise, would lead to port
             # conflicts sometimes.
             time.sleep(random.randint(1, 10))
-            port_ = port or self._BASE_PORT
-            self._BASE_PORT += 1
+            port_ = port or (self._BASE_PORT_ENVIRONMENT
+                             if file_name else self._BASE_PORT_EDITOR)
+            # cache the worker_id and
+            # increase it for the next environment
+            worker_id_ = Unity3DEnv._WORKER_ID if file_name else 0
+            Unity3DEnv._WORKER_ID += 1
             try:
                 self.unity_env = UnityEnvironment(
                     file_name=file_name,
-                    worker_id=0,
+                    worker_id=worker_id_,
                     base_port=port_,
                     seed=seed,
                     no_graphics=no_graphics,
                     timeout_wait=timeout_wait,
                 )
-                print("Created UnityEnvironment for port {}".format(port_))
+                print(
+                    "Created UnityEnvironment for port {}".format(port_ +
+                                                                  worker_id_))
             except mlagents_envs.exception.UnityWorkerInUseException:
                 pass
             else:

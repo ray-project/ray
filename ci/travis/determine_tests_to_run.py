@@ -124,6 +124,8 @@ if __name__ == "__main__":
                     for prefix in skip_prefix_list):
                 # nothing is run but linting in these cases
                 pass
+            elif changed_file.endswith("build-docker-images.py"):
+                RAY_CI_DOCKER_AFFECTED = 1
             elif changed_file.startswith("src/"):
                 RAY_CI_TUNE_AFFECTED = 1
                 RAY_CI_SGD_AFFECTED = 1

@@ -99,7 +99,6 @@ const JobList = () => {
                     isDead,
                     driverPid,
                     timestamp,
-                    namespaceId,
                   }) => (
                     <TableRow key={jobId}>
                       <TableCell align="center">
