@@ -85,10 +85,6 @@ public class ActorRestartTest extends BaseTest {
   }
 
   private static void waitForActorAlive(ActorHandle<Counter> actor) {
-    // TODO: In a rare case, GCS server will reconstruct the actor on another worker of
-    // the same process while Raylet doesn't know the dead message of other workers yet.
-    // So this reconstruction will fail quickly because the worker process is actually
-    // dead and the RPC request to push actor creation task will fail.
     Assert.assertTrue(
         TestUtils.waitForCondition(
             () -> {
