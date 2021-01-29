@@ -639,7 +639,7 @@ def get_nodes_for(node_types: Dict[NodeType, NodeTypeConfigDict],
             # resources. This will behave properly with the current utilization
             # score heuristic, but it's a little dangerous and misleading.
             logger.warning(
-                f"The autoscaler could not find a node type to satisfy the"
+                f"The autoscaler could not find a node type to satisfy the "
                 f"request: {resources}. If this request is related to "
                 f"placement groups the resource request will resolve itself, "
                 f"otherwise please specify a node type with the necessary "
@@ -664,8 +664,15 @@ def get_nodes_for(node_types: Dict[NodeType, NodeTypeConfigDict],
 
 
 def _utilization_score(node_resources: ResourceDict,
-                       resources: ResourceDict) -> float:
+                       resources: List[ResourceDict]) -> float:
     remaining = copy.deepcopy(node_resources)
+    is_gpu_node = "GPU" in node_resources
+    any_gpu_task = any("GPU" in r for r in resources)
+
+    # Avoid launching GPU nodes for non-GPU tasks. Note that if there is a GPU
+    # task, then we still allow CPU tasks to be packed onto the node.
+    if is_gpu_node and not any_gpu_task:
+        return None
 
     fittable = []
     for r in resources:
