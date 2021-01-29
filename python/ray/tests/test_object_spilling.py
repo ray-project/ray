@@ -618,9 +618,6 @@ def test_release_during_plasma_fetch(object_spilling_config, shutdown_only):
     do_test_release_resource(object_spilling_config, expect_released=True)
 
 
-@pytest.mark.skip(
-    reason="This hangs due to a deadlock between a worker getting its "
-    "arguments and the node pulling arguments for the next task queued.")
 @pytest.mark.skipif(
     platform.system() == "Windows", reason="Failing on Windows.")
 @pytest.mark.timeout(30)
