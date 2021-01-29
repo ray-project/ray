@@ -63,6 +63,13 @@ class AutoscalingConfigTest(unittest.TestCase):
         with pytest.raises(ValueError):
             validate_config(config)
 
+        # make sure edge case of exactly 1 passes too.
+        config["max_workers"] = 1
+        try:
+            validate_config(config)
+        except Exception:
+            self.fail("Config did not pass validation test!")
+
     @pytest.mark.skipif(
         sys.platform.startswith("win"),
         reason="TODO(ameer): fails on Windows.")
