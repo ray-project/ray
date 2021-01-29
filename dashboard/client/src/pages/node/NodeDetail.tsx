@@ -75,7 +75,6 @@ const NodeDetailPage = (props: RouteComponentProps<{ id: string }>) => {
     onRefreshChange,
     raylet,
     handleChange,
-    namespaceMap,
   } = useNodeDetail(props);
 
   return (

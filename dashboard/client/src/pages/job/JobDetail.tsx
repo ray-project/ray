@@ -88,7 +88,7 @@ const JobDetailPage = (props: RouteComponentProps<{ id: string }>) => {
   return (
     <div className={classes.root}>
       <TitleCard title={`JOB - ${params.id}`}>
-        <StatusChip type="job" status={jobInfo.isDead ? 'DEAD' : 'ALIVE'} />
+        <StatusChip type="job" status={jobInfo.isDead ? "DEAD" : "ALIVE"} />
         <br />
         Auto Refresh:
         <Switch
