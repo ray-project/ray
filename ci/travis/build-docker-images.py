@@ -7,7 +7,6 @@ import re
 import shutil
 import subprocess
 import sys
-from io import StringIO
 from typing import List, Tuple
 
 import docker
