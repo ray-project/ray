@@ -1,4 +1,5 @@
 import {
+  Button,
   createStyles,
   makeStyles,
   Tab,
@@ -8,6 +9,7 @@ import {
 } from "@material-ui/core";
 import React, { useCallback, useEffect, useRef } from "react";
 import { useDispatch, useSelector } from "react-redux";
+import { useHistory } from "react-router-dom";
 import { getActorGroups, getNodeInfo, getTuneAvailability } from "../../api";
 import { StoreState } from "../../store";
 import LastUpdated from "./LastUpdated";
@@ -59,6 +61,7 @@ const Dashboard: React.FC = () => {
   const tuneAvailability = useSelector(tuneAvailabilitySelector);
   const tab = useSelector(tabSelector);
   const classes = useDashboardStyles();
+  const history = useHistory();
 
   // Polling Function
   const refreshInfo = useCallback(async () => {
@@ -103,6 +106,9 @@ const Dashboard: React.FC = () => {
   return (
     <div className={classes.root}>
       <Typography variant="h5">Ray Dashboard</Typography>
+      <Button onClick={() => history.push("/summary")}>
+        Try New Dashboard
+      </Button>
       <Tabs
         className={classes.tabs}
         indicatorColor="primary"
