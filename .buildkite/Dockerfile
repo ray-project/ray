@@ -44,5 +44,5 @@ RUN ./ci/travis/ci.sh init
 RUN bash --login -i ./ci/travis/ci.sh build
 
 # Run determine test to run
-RUN bash --login -i -c "OUTPUT_AS_JSON_ARRAY=1 python ./ci/travis/determine_tests_to_run.py > affected_set.json"
+RUN bash --login -i -c "python ./ci/travis/determine_tests_to_run.py --output=json > affected_set.json"
 RUN cat affected_set.json
