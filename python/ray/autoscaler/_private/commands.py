@@ -494,8 +494,10 @@ def warn_about_bad_start_command(start_commands: List[str],
         cli_logger.warning(
             "Ray runtime will not be started because `{}` is not in `{}`.",
             cf.bold("ray start"), cf.bold("head_start_ray_commands"))
-    if not (any("autoscaling-config" in x
-                for x in ray_start_cmd) or no_monitor_on_head):
+
+    autoscaling_config_in_ray_start_cmd = any(
+        "autoscaling-config" in x for x in ray_start_cmd)
+    if not (autoscaling_config_in_ray_start_cmd or no_monitor_on_head):
         cli_logger.warning(
             "The head node will not launch any workers because "
             "`{}` does not have `{}` set.\n"
@@ -636,7 +638,7 @@ def get_or_create_head_node(config: Dict[str, Any],
 
         if not no_monitor_on_head:
             # Return remote_config_file to avoid prematurely closing it.
-            config, remote_config_file = _prepare_config_for_head_node(
+            config, remote_config_file = _set_up_config_for_head_node(
                 config, provider, no_restart)
             cli_logger.print("Prepared bootstrap config")
 
@@ -713,9 +715,16 @@ def get_or_create_head_node(config: Dict[str, Any],
         cli_logger.print("  {}", remote_shell_str.strip())
 
 
-def _prepare_config_for_head_node(config: Dict[str, Any],
-                                  provider: NodeProvider,
-                                  no_restart: bool) -> Tuple[Dict[str, Any], tempfile.NamedTemporaryFile]:
+def _set_up_config_for_head_node(config: Dict[str, Any],
+                                 provider: NodeProvider,
+                                 no_restart: bool) ->\
+        Tuple[Dict[str, Any], Any]:
+    """Prepares autoscaling config and, if needed, ssh key, to be mounted onto
+    the Ray head node for use by the autoscaler.
+
+    Returns the modified config and the temporary config file that will be
+    mounted onto the head node.
+    """
     # Rewrite the auth config so that the head
     # node can update the workers
     remote_config = copy.deepcopy(config)
