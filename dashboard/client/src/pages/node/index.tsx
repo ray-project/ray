@@ -14,7 +14,6 @@ import {
 } from "@material-ui/core";
 import { makeStyles } from "@material-ui/core/styles";
 import Pagination from "@material-ui/lab/Pagination";
-import dayjs from "dayjs";
 import React from "react";
 import { Link } from "react-router-dom";
 import Loading from "../../components/Loading";
@@ -70,7 +69,7 @@ export const NodeCard = (props: { node: NodeDetail }) => {
   }
 
   const { raylet, hostname, ip, cpu, mem, net, disk, logUrl } = node;
-  const { nodeId, state, brpcPort } = raylet;
+  const { nodeId, state } = raylet;
 
   return (
     <Paper variant="outlined" style={{ padding: "12px 12px", margin: 12 }}>
