@@ -192,6 +192,8 @@ def test_stress(shutdown_only, use_force):
     # Kill all infinitely sleeping tasks (queued or not).
     for indx, t in enumerate(tasks):
         if sleep_or_no[indx]:
+            if t not in cancelled:
+                time.sleep(0.1)
             ray.cancel(t, force=use_force)
             cancelled.add(t)
     for indx, t in enumerate(tasks):
