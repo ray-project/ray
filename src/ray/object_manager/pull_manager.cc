@@ -431,7 +431,8 @@ std::string PullManager::DebugString() const {
   result << "\n- num bytes being pulled: " << num_bytes_being_pulled_;
   result << "\n- num pull request bundles: " << pull_request_bundles_.size();
   result << "\n- num objects requested pull: " << object_pull_requests_.size();
-  result << "\n- num objects actively being pulled: " << active_object_pull_requests_.size();
+  result << "\n- num objects actively being pulled: "
+         << active_object_pull_requests_.size();
   return result.str();
 }
 
