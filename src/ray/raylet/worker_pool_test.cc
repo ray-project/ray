@@ -738,6 +738,36 @@ TEST_F(WorkerPoolTest, DeleteWorkerPushPop) {
   });
 }
 
+TEST_F(WorkerPoolTest, NoPopOnCrashedWorkerProcess) {
+  // Start a Java worker process.
+  Process proc =
+      worker_pool_->StartWorkerProcess(Language::JAVA, rpc::WorkerType::WORKER, JOB_ID);
+  auto worker1 = CreateWorker(Process(), Language::JAVA);
+  auto worker2 = CreateWorker(Process(), Language::JAVA);
+
+  // We now imitate worker process crashing while core worker initializing.
+
+  // 1. we register both workers.
+  RAY_CHECK_OK(worker_pool_->RegisterWorker(worker1, proc.GetId(), [](Status, int) {}));
+  RAY_CHECK_OK(worker_pool_->RegisterWorker(worker2, proc.GetId(), [](Status, int) {}));
+
+  // 2. announce worker port for worker 1. When interacting with worker pool, it's PushWorker.
+  worker_pool_->PushWorker(worker1);
+
+  // 3. kill the worker process. Now let's assume that Raylet found that the connection with worker 1 disconnected first.
+  worker_pool_->DisconnectWorker(worker1, /*intentional_disconnect=*/false);
+
+  // 4. but the RPC for announcing worker port for worker 2 is already in Raylet input buffer. So now Raylet needs to handle worker 2.
+  worker_pool_->PushWorker(worker2);
+
+  // 5. Let's try to pop a worker to execute a task. Worker 2 shouldn't be popped because the process has crashed.
+  const auto task_spec = ExampleTaskSpec();
+  ASSERT_EQ(worker_pool_->PopWorker(task_spec), nullptr);
+
+  // 6. Now Raylet disconnects with worker 2.
+  worker_pool_->DisconnectWorker(worker1, /*intentional_disconnect=*/false);
+}
+
 }  // namespace raylet
 
 }  // namespace ray
