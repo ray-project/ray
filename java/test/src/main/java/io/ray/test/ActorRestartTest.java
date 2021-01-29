@@ -10,9 +10,7 @@ import java.util.concurrent.TimeUnit;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-@Test(
-    groups = {"cluster"},
-    enabled = false)
+@Test(groups = {"cluster"})
 public class ActorRestartTest extends BaseTest {
 
   public static class Counter {
