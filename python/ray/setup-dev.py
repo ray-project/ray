@@ -66,7 +66,7 @@ if __name__ == "__main__":
     do_link("rllib", force=args.yes, local_path="../../../rllib")
     do_link("tune", force=args.yes)
     do_link("autoscaler", force=args.yes)
-    do_link("operator", force=args.yes)
+    do_link("ray_operator", force=args.yes)
     do_link("cloudpickle", force=args.yes)
     do_link("scripts", force=args.yes)
     do_link("internal", force=args.yes)

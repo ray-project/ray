@@ -201,7 +201,8 @@ inline ray::PlacementGroupCreationOptions ToPlacementGroupCreationOptions(
             });
       });
   return ray::PlacementGroupCreationOptions(JavaStringToNativeString(env, name),
-                                            ConvertStrategy(java_strategy), bundles);
+                                            ConvertStrategy(java_strategy), bundles,
+                                            /*is_detached=*/false);
 }
 
 #ifdef __cplusplus

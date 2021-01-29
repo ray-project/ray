@@ -44,8 +44,18 @@ class LogstreamClient:
                     self.stdstream(level=record.level, msg=record.msg)
                 self.log(level=record.level, msg=record.msg)
         except grpc.RpcError as e:
-            if grpc.StatusCode.CANCELLED != e.code():
-                # Not just shutting down normally
+            if e.code() == grpc.StatusCode.CANCELLED:
+                # Graceful shutdown. We've cancelled our own connection.
+                logger.info("Cancelling logs channel")
+            elif e.code() == grpc.StatusCode.UNAVAILABLE:
+                # TODO(barakmich): The server may have
+                # dropped. In theory, we can retry, as per
+                # https://grpc.github.io/grpc/core/md_doc_statuscodes.html but
+                # in practice we may need to think about the correct semantics
+                # here.
+                logger.info("Server disconnected from logs channel")
+            else:
+                # Some other, unhandled, gRPC error
                 logger.error(
                     f"Got Error from logger channel -- shutting down: {e}")
                 raise e
