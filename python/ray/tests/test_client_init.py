@@ -22,6 +22,18 @@ def complex_task(value):
     return value * 10
 
 
+@ray.remote
+class C:
+    def __init__(self, x):
+        self.val = x
+
+    def double(self):
+        self.val += self.val
+
+    def get(self):
+        return self.val
+
+
 def test_basic_preregister():
     from ray.util.client import ray
     server, _ = ray_client_server.init_and_serve("localhost:50051")
@@ -31,6 +43,12 @@ def test_basic_preregister():
         print(val)
         assert val >= 20
         assert val <= 200
+        c = C.remote(3)
+        x = c.double.remote()
+        y = c.double.remote()
+        ray.wait([x, y])
+        val = ray.get(c.get.remote())
+        assert val == 12
     finally:
         ray.disconnect()
         ray_client_server.shutdown_with_server(server)

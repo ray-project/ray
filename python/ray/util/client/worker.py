@@ -402,6 +402,7 @@ class Worker:
                 "resources": md.resources,
                 "accelerator_type": md.accelerator_type,
             })
+        return key
 
     def _convert_function(self, func: "RemoteFunction") -> str:
         """Register a ClientRemoteFunc for the ActorClass and return a UUID"""

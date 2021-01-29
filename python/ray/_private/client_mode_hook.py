@@ -71,29 +71,19 @@ def client_mode_convert_function(func_cls, in_args, in_kwargs, **kwargs):
     return client_func._remote(in_args, in_kwargs, **kwargs)
 
 
-def client_mode_convert_actor(method):
-    """Decorator to convert an ActorClass call into a client call
+def client_mode_convert_actor(actor_cls, in_args, in_kwargs, **kwargs):
+    """Runs a preregistered actor class on the ray client
 
-    The common case for this decorator is for methods on ActorClass
-    that need to transparently convert that ActorClass to a
-    ClientActorClass. This happens in circumstances where the
-    ActorClass is declared early, in a library and only then is Ray used in
+    The common case for this decorator is for instantiating an ActorClass
+    transparently as a ClientActorClass. This happens in circumstances where
+    the ActorClass is declared early, in a library and only then is Ray used in
     client mode -- nescessitating a conversion.
     """
     from ray.util.client import ray
 
-    @wraps(method)
-    def wrapper(*args, **kwargs):
-        global _client_hook_enabled
-        if not client_mode_enabled or not _client_hook_enabled:
-            return method(*args, **kwargs)
-
-        obj = method.__self__
-        key = getattr(obj, RAY_CLIENT_MODE_ATTR, None)
-        if key is None:
-            key = ray._convert_actor(obj)
-            setattr(obj, RAY_CLIENT_MODE_ATTR, key)
-        client_actor = ray._get_converted(key)
-        return getattr(client_actor, method.__name__)(*args, **kwargs)
-
-    return wrapper
+    key = getattr(actor_cls, RAY_CLIENT_MODE_ATTR, None)
+    if key is None:
+        key = ray._convert_actor(actor_cls)
+        setattr(actor_cls, RAY_CLIENT_MODE_ATTR, key)
+    client_actor = ray._get_converted(key)
+    return client_actor._remote(in_args, in_kwargs, **kwargs)
