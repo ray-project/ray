@@ -43,12 +43,26 @@ def _find_newest_ckpt(ckpt_dir):
 
 
 class _ExperimentCheckpointManager:
+    """Helper class for managing experiment-level checkpoints.
+
+    This class implements the ``checkpoint()`` method used to checkpoint
+    experiment state. When called, this will serialize and write to disk
+    the state of the trial runner, trial executor, and search algorithm, to
+    a specified checkpoint file.
+
+    The checkpoint period is automatically adjusted to
+    ``max(10, time_per_checkpoint * 19)``. This means that at most 5% of the
+    time (1/20) will be used for writing checkpoints, while 95% of the time
+    (19/20) will be used to handle the rest of the training loop.
+
+    """
+
     def __init__(self, checkpoint_dir: str,
                  checkpoint_period: Union[int, float, str], start_time: float,
                  session_str: str, syncer: CloudSyncer):
         self._checkpoint_dir = checkpoint_dir
-        self._auto_checkpoint_period = checkpoint_period == "auto"
-        if self._auto_checkpoint_period:
+        self._auto_checkpoint_enabled = checkpoint_period == "auto"
+        if self._auto_checkpoint_enabled:
             self._checkpoint_period = 10.  # Initial value
         else:
             self._checkpoint_period = float(checkpoint_period)
@@ -61,8 +75,8 @@ class _ExperimentCheckpointManager:
         self._last_checkpoint_time = 0.
 
     @property
-    def auto_checkpoint_period(self):
-        return self._auto_checkpoint_period
+    def auto_checkpoint_enabled(self):
+        return self._auto_checkpoint_enabled
 
     def checkpoint(self,
                    checkpoint_file: str,
@@ -115,7 +129,7 @@ class _ExperimentCheckpointManager:
             self._syncer.sync_up_if_needed()
         checkpoint_time_taken = time.monotonic() - checkpoint_time_start
 
-        if self._auto_checkpoint_period:
+        if self._auto_checkpoint_enabled:
             # Multiplying this time by 19 means we spend ~5% of the time
             # writing global checkpoints and 95% of the time processing trials
             self._checkpoint_period = max(10., checkpoint_time_taken * 19)
@@ -369,9 +383,7 @@ class TrialRunner:
         Args:
             force (bool): Forces a checkpoint despite checkpoint_period.
         """
-        context = None
-        if not self._checkpoint_manager.auto_checkpoint_period:
-            context = warn_if_slow(
+        with warn_if_slow(
                 "experiment_checkpoint",
                 message="Checkpointing the experiment state took "
                 "{duration:.3f} s, which may be a performance "
@@ -379,17 +391,15 @@ class TrialRunner:
                 "`TUNE_GLOBAL_CHECKPOINT_S` environment variable is "
                 "something significantly higher than this duration "
                 "to ensure compute time is mostly spent on the main "
-                "training loop.").__enter__()
+                "training loop.",
+                disable=self._checkpoint_manager.auto_checkpoint_enabled):
 
-        self._checkpoint_manager.checkpoint(
-            checkpoint_file=self.checkpoint_file,
-            trial_runner=self,
-            trial_executor=self.trial_executor,
-            search_alg=self._search_alg,
-            force=force)
-
-        if context:
-            context.__exit__(None, None, None)
+            self._checkpoint_manager.checkpoint(
+                checkpoint_file=self.checkpoint_file,
+                trial_runner=self,
+                trial_executor=self.trial_executor,
+                search_alg=self._search_alg,
+                force=force)
 
     def resume(self, run_errored_only=False):
         """Resumes all checkpointed trials from previous run.
