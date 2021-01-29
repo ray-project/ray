@@ -17,6 +17,7 @@ from typing import List, Dict
 from ray.autoscaler.node_provider import NodeProvider
 from ray.gcs_utils import PlacementGroupTableData
 from ray.core.generated.common_pb2 import PlacementStrategy
+from ray.autoscaler._private.constants import AUTOSCALER_CONSERVE_GPU_NODES
 from ray.autoscaler.tags import (
     TAG_RAY_USER_NODE_TYPE, NODE_KIND_UNMANAGED, NODE_TYPE_LEGACY_WORKER,
     NODE_KIND_WORKER, NODE_TYPE_LEGACY_HEAD, TAG_RAY_NODE_KIND, NODE_KIND_HEAD)
@@ -671,8 +672,9 @@ def _utilization_score(node_resources: ResourceDict,
 
     # Avoid launching GPU nodes if there aren't any GPU tasks at all. Note that
     # if there *is* a GPU task, then CPU tasks can be scheduled as well.
-    if is_gpu_node and not any_gpu_task:
-        return None
+    if AUTOSCALER_CONSERVE_GPU_NODES:
+        if is_gpu_node and not any_gpu_task:
+            return None
 
     fittable = []
     for r in resources:
