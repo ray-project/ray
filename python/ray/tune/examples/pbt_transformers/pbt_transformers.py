@@ -26,7 +26,7 @@ def tune_transformer(num_samples=8,
         os.mkdir(data_dir, 0o755)
 
     # Change these as needed.
-    #model_name = "bert-base-uncased" if not smoke_test \
+    # model_name = "bert-base-uncased" if not smoke_test \
     #    else "sshleifer/tiny-distilroberta-base"
     model_name = "sshleifer/tiny-distilroberta-base"
     task_name = "rte"
@@ -71,14 +71,9 @@ def tune_transformer(num_samples=8,
         learning_rate=1e-5,  # config
         do_train=True,
         do_eval=True,
-        #evaluate_during_training=True,
-        evaluation_strategy="steps",
-        #eval_steps=(len(train_dataset) // 16) + 1
-        #if not smoke_test else 1,  # config
-        #save_steps=(len(train_dataset) // 16) + 1
-        #if not smoke_test else 1,  # config,
-        eval_steps=1,
-        save_steps=1,
+        no_cuda=gpus_per_trial <= 0,
+        evaluation_strategy="epoch",
+        load_best_model_at_end=True,
         num_train_epochs=2,  # config
         max_steps=-1,
         per_device_train_batch_size=16,  # config
@@ -97,29 +92,12 @@ def tune_transformer(num_samples=8,
         eval_dataset=eval_dataset,
         compute_metrics=build_compute_metrics_fn(task_name))
 
-    # Number of eval steps is dependent on per_device_train_batch_size.
-    # So we define a separate function that takes in a spec arg.
-    def eval_steps_func(spec):
-        #import pdb; pdb.set_trace()
-        if not smoke_test:
-            return len(train_dataset
-                       ) // spec.config["per_device_train_batch_size"] + 1
-        else:
-            return min(1, spec.config["per_device_train_batch_size"])
-
     tune_config = {
         "per_device_train_batch_size": 32,
         "per_device_eval_batch_size": 32,
-        #"eval_steps": 8,
-        #"save_steps": 8,
-        "eval_steps": tune.sample_from(eval_steps_func),
-        "save_steps": tune.sample_from(lambda spec: spec.config["eval_steps"]),
-        #"num_train_epochs": tune.choice([2, 3, 4, 5]),
+        "num_train_epochs": tune.choice([2, 3, 4, 5]),
         "max_steps": 1 if smoke_test else -1,  # Used for smoke test.
     }
-
-    print("*********train_data_len", len(train_dataset))
-    print(len(train_dataset) // 32)
 
     scheduler = PopulationBasedTraining(
         time_attr="training_iteration",
@@ -129,7 +107,7 @@ def tune_transformer(num_samples=8,
         hyperparam_mutations={
             "weight_decay": tune.uniform(0.0, 0.3),
             "learning_rate": tune.uniform(1e-5, 5e-5),
-            #"per_device_train_batch_size": [16, 32, 64],
+            "per_device_train_batch_size": [16, 32, 64],
         })
 
     reporter = CLIReporter(
@@ -143,7 +121,7 @@ def tune_transformer(num_samples=8,
             "eval_acc", "eval_loss", "epoch", "training_iteration"
         ])
 
-    #import pdb; pdb.set_trace()    
+    # import pdb; pdb.set_trace()
     trainer.hyperparameter_search(
         hp_space=lambda _: tune_config,
         backend="ray",
@@ -154,7 +132,7 @@ def tune_transformer(num_samples=8,
         },
         scheduler=scheduler,
         keep_checkpoints_num=1,
-        #checkpoint_score_attr="training_iteration",
+        checkpoint_score_attr="training_iteration",
         stop={"training_iteration": 1} if smoke_test else None,
         progress_reporter=reporter,
         local_dir="~/ray_results/",
@@ -173,8 +151,8 @@ if __name__ == "__main__":
         type=str,
         default=None,
         help="Address to use for Ray. "
-        "Use \"auto\" for cluster. "
-        "Defaults to None for local.")
+             "Use \"auto\" for cluster. "
+             "Defaults to None for local.")
     args, _ = parser.parse_known_args()
 
     if args.smoke_test:
