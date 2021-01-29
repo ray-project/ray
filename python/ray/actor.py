@@ -937,7 +937,7 @@ class ActorHandle:
     def __reduce__(self):
         """This code path is used by pickling but not by Ray forking."""
         state = self._serialization_helper()
-        return ActorHandle._deserialization_helper, (state)
+        return ActorHandle._deserialization_helper, state
 
 
 def modify_class(cls):
