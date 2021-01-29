@@ -121,15 +121,11 @@ def cluster_action(event_type, cluster_cr, cluster_name) -> None:
         cluster_crs[cluster_name] = cluster_cr
     elif event_type == "MODIFIED":
         # Modification of status subresource shouldn't trigger a response.
-        # Check if the spec or metadata.annotations fields have changed. If so,
-        # call create_or_update.
+        # For this reason, check if the spec has change before triggering an
+        # update.
         old_cr = cluster_crs[cluster_name]
-
         spec_changed = (cluster_cr["spec"] != old_cr["spec"])
-        annotations_changed = (cluster_cr["metadata"].get("annotations") !=
-                               old_cr["metadata"].get("annotations"))
-
-        if spec_changed or annotations_changed:
+        if spec_changed:
             ray_clusters[cluster_name].create_or_update()
         cluster_crs[cluster_name] = cluster_cr
 
