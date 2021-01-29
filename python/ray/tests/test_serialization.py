@@ -616,12 +616,12 @@ def test_custom_serializer(ray_start_shared_local_modes):
         A, serializer=custom_serializer, deserializer=custom_deserializer)
     ray.get(ray.put(A(1)))
 
-    ray.util.unregister_serializer(A)
+    ray.util.deregister_serializer(A)
     with pytest.raises(Exception):
         ray.get(ray.put(A(1)))
 
-    # unregister again takes no effects
-    ray.util.unregister_serializer(A)
+    # deregister again takes no effects
+    ray.util.deregister_serializer(A)
 
 
 if __name__ == "__main__":

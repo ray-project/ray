@@ -112,15 +112,15 @@ There are at least 3 ways to define your custom serialization process:
         A, serializer=custom_serializer, deserializer=custom_deserializer)
       ray.get(ray.put(A(1)))  # success!
 
-      # You can unregister the serializer at any time.
-      ray.util.unregister_serializer(A)
+      # You can deregister the serializer at any time.
+      ray.util.deregister_serializer(A)
       ray.get(ray.put(A(1)))  # fail!
 
-      # Nothing happens when unregister an unavailable serializer.
-      ray.util.unregister_serializer(A)
+      # Nothing happens when deregister an unavailable serializer.
+      ray.util.deregister_serializer(A)
 
    NOTE: Serializers are managed locally for each Ray worker. So for every Ray worker,
-   if you want to use the serializer, you need to register the serializer. Unregister
+   if you want to use the serializer, you need to register the serializer. Deregister
    a serializer also only applies locally.
 
    If you register a new serializer for a class, the new serializer would replace
