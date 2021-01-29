@@ -4,17 +4,6 @@
 #include <gloo/context.h>
 #include <gloo/config.h>
 
-#include <gloo/allgather.h>
-#include <gloo/allgatherv.h>
-#include <gloo/alltoall.h>
-#include <gloo/alltoallv.h>
-#include <gloo/barrier.h>
-#include <gloo/broadcast.h>
-#include <gloo/gather.h>
-#include <gloo/reduce.h>
-#include <gloo/scatter.h>
-
-
 // #include <transport.h>
 #include <rendezvous.h>
 #include <collective.h>
@@ -65,28 +54,42 @@ PYBIND11_MODULE(pygloo, m){
         .value("glooFloat64", pygloo::glooDataType_t::glooFloat64)
         .export_values();
 
-    m.def("allgather", &gloo::allgather, "allgather");
-    m.def("allgatherv", &gloo::allgatherv, "allgatherv");
+    m.def("allgather", &pygloo::allgather_wrapper);
+    m.def("allgatherv", &pygloo::allgatherv_wrapper);
 
-    m.def("allreduce", &pygloo::allreduce_wrapper, "allreduce", pybind11::arg("context")=nullptr, pybind11::arg("sendbuf")=nullptr, pybind11::arg("recvbuf")=nullptr, pybind11::arg("size")=nullptr, pybind11::arg("datatype") = nullptr, pybind11::arg("reduceop")=pygloo::ReduceOp::SUM, pybind11::arg("algorithm") = gloo::AllreduceOptions::Algorithm::RING);
+    m.def("allreduce", &pygloo::allreduce_wrapper,
+          pybind11::arg("context") = nullptr,
+          pybind11::arg("sendbuf") = nullptr,
+          pybind11::arg("recvbuf") = nullptr,pybind11::arg("size") = nullptr,
+          pybind11::arg("datatype") = nullptr,
+          pybind11::arg("reduceop") = pygloo::ReduceOp::SUM,
+          pybind11::arg("algorithm") = gloo::AllreduceOptions::Algorithm::RING);
 
+    m.def("reduce", &pygloo::reduce_wrapper,
+          pybind11::arg("context") = nullptr,
+          pybind11::arg("sendbuf") = nullptr,
+          pybind11::arg("recvbuf") = nullptr,pybind11::arg("size") = nullptr,
+          pybind11::arg("datatype") = nullptr,
+          pybind11::arg("reduceop") = pygloo::ReduceOp::SUM,
+          pybind11::arg("root") = 0);
 
-    pybind11::class_<gloo::AllreduceOptions>(m, "AllreduceOptions")
-        .def(pybind11::init<const std::shared_ptr<gloo::Context>&>())
-        .def("setAlgorithm", &gloo::AllreduceOptions::setAlgorithm)
-        .def("setReduceFunction", &gloo::AllreduceOptions::setReduceFunction)
-        .def("setTag", &gloo::AllreduceOptions::setTag)
-        .def("setMaxSegmentSize", &gloo::AllreduceOptions::setMaxSegmentSize)
-        .def("setTimeout", &gloo::AllreduceOptions::setTimeout);
+    m.def("scatter", &pygloo::scatter_wrapper,
+          pybind11::arg("context") = nullptr,
+          pybind11::arg("sendbuf") = nullptr,
+          pybind11::arg("recvbuf") = nullptr,pybind11::arg("size") = nullptr,
+          pybind11::arg("datatype") = nullptr,
+          pybind11::arg("root") = 0);
 
+    m.def("send", &pygloo::send_wrapper);
+    m.def("recv", &pygloo::recv_wrapper);
 
-    m.def("alltoall", &gloo::alltoall, "alltoall");
-    m.def("alltoallv", &gloo::alltoallv, "alltoallv");
-    m.def("barrier", &gloo::barrier, "barrier");
-    m.def("broadcast", &gloo::broadcast, "broadcast");
-    m.def("gather", &gloo::barrier, "gather");
-    m.def("reduce", &gloo::barrier, "reduce");
-    m.def("scatter", &gloo::barrier, "scatter");
+    m.def("broadcast", &pygloo::broadcast_wrapper,
+          pybind11::arg("context") = nullptr,
+          pybind11::arg("sendbuf") = nullptr,
+          pybind11::arg("recvbuf") = nullptr, pybind11::arg("size") = nullptr,
+          pybind11::arg("datatype") = nullptr, pybind11::arg("root") = 0);
+
+    m.def("barrier", &pygloo::barrier);
 
     pybind11::class_<gloo::Context, std::shared_ptr<gloo::Context>>(m, "Context")
         .def(pybind11::init<int, int, int>(), pybind11::arg("rank")=nullptr, pybind11::arg("size")=nullptr, pybind11::arg("base")=2)

@@ -7,10 +7,22 @@ import shutil
 import torch
 
 @ray.remote(num_cpus=1)
-def test_allreduce(rank, world_size, fileStore_path):
+def test_reduce(rank, world_size, fileStore_path):
     '''
     rank  # Rank of this process within list of participating processes
     world_size  # Number of participating processes
+
+    BUG:
+        The non-root recvbuf will recieves some data.
+        Example: root is 0. But recvbuf of rank 1 shouldn't change.
+        (pid=5479) rank 0 sends [[1. 2. 3.]
+        (pid=5479)              [1. 2. 3.]],
+        (pid=5479)  receives [[2. 4. 6.]
+        (pid=5479)           [2. 4. 6.]]
+        (pid=5478) rank 1 sends [[1. 2. 3.]
+        (pid=5478)              [1. 2. 3.]],
+        (pid=5478)  receives [[0. 0. 0.]
+        (pid=5478)           [0. 4. 6.]]
     '''
     if rank==0:
         if os.path.exists(fileStore_path):
@@ -42,25 +54,17 @@ def test_allreduce(rank, world_size, fileStore_path):
     data_size = sendbuf.size if isinstance(sendbuf, np.ndarray) else sendbuf.numpy().size
     datatype = pygloo.glooDataType_t.glooFloat32
     op = pygloo.ReduceOp.SUM
-    algorithm = pygloo.allreduceAlgorithm.RING
+    root = 0
 
-    pygloo.allreduce(context, sendptr, recvptr, data_size, datatype, op, algorithm)
+    pygloo.reduce(context, sendptr, recvptr, data_size, datatype, op, root)
 
     print(f"rank {rank} sends {sendbuf}, receives {recvbuf}")
-    ## example output
-    # (pid=30445) rank 0 sends [[1. 2. 3.]
-    # (pid=30445)              [1. 2. 3.]],
-    # (pid=30445)     receives [[2. 4. 6.]
-    # (pid=30445)              [2. 4. 6.]]
-    # (pid=30446) rank 1 sends [[1. 2. 3.]
-    # (pid=30446)              [1. 2. 3.]],
-    # (pid=30446)     receives [[2. 4. 6.]
-    # (pid=30446)              [2. 4. 6.]]
+
 
 if __name__ == "__main__":
     ray.init(num_cpus=6)
     world_size = 2
     fileStore_path = f"{ray.worker._global_node.get_session_dir_path()}" + "/collective/gloo/rendezvous"
 
-    fns = [test_allreduce.remote(i, world_size, fileStore_path) for i in range(world_size)]
+    fns = [test_reduce.remote(i, world_size, fileStore_path) for i in range(world_size)]
     ray.get(fns)
