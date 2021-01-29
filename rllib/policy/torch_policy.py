@@ -353,7 +353,7 @@ class TorchPolicy(Policy):
         # Callback handling.
         learn_stats = {}
         self.callbacks.on_learn_on_batch(
-            policy=self, train_batch=postprocessed_batch)
+            policy=self, train_batch=postprocessed_batch, result=learn_stats)
 
         # Compute gradients (will calculate all losses and `backward()`
         # them to get the grads).
