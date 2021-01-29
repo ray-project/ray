@@ -74,8 +74,9 @@ ray stop
 if [[ "$OSTYPE" == "linux"* ]]; then
   echo "Running node ip tests"
   RAY_BACKEND_LOG_LEVEL=debug ray start --head --port=6379 --redis-password=123456 --node-ip-address="127.0.0.2"
-  RAY_BACKEND_LOG_LEVEL=debug java -cp bazel-bin/java/all_tests_deploy.jar -Dray.address="127.0.0.2:6379"\
-   -Dray.redis.password='123456' -Dray.job.code-search-path="$PWD/bazel-bin/java/all_tests_deploy.jar" io.ray.test.NodeIpTest
+  RAY_BACKEND_LOG_LEVEL=debug java -cp bazel-bin/java/all_tests_deploy.jar -Dray.address="127.0.0.2:6379" -Dray.node-ip="127.0.0.2"\
+   -Dray.redis.password='123456' -Dray.job.code-search-path="$PWD/bazel-bin/java/all_tests_deploy.jar"\
+   org.testng.TestNG --testclass io.ray.test.NodeIpTest -listener io.ray.test.TestProgressListener -d /tmp/ray_java_test_output
   ray stop
 fi
 

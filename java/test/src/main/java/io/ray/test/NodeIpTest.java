@@ -4,7 +4,7 @@ import io.ray.api.Ray;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-@Test(groups = {"cluster"})
+@Test(groups = {"additional"})
 public class NodeIpTest extends BaseTest{
 
   private static final String NODE_IP = "127.0.0.2";
