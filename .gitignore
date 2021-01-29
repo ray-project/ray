@@ -186,6 +186,3 @@ tools/prometheus*
 # ray project files
 project-id
 .mypy_cache/
-
-# Testing
-.anyscale
