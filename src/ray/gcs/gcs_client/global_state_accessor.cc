@@ -264,8 +264,9 @@ std::unique_ptr<std::string> GlobalStateAccessor::GetPlacementGroupByName(
   std::unique_ptr<std::string> placement_group_table_data;
   std::promise<bool> promise;
   RAY_CHECK_OK(gcs_client_->PlacementGroups().AsyncGetByName(
-      placement_group_name, TransformForOptionalItemCallback<rpc::PlacementGroupTableData>(
-                              placement_group_table_data, promise)));
+      placement_group_name,
+      TransformForOptionalItemCallback<rpc::PlacementGroupTableData>(
+          placement_group_table_data, promise)));
   promise.get_future().get();
   return placement_group_table_data;
 }
