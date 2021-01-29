@@ -1,0 +1,1272 @@
+2021-01-29 12:21:10,712	INFO worker.py:655 -- Connecting to existing Ray cluster at address: 10.0.0.53:6379
+INFO:__main__:Waiting for nodes 101/101
+INFO:__main__:Nodes have all joined. There are {'GPU': 10000.0, 'CPU': 264.0, 'object_store_memory': 4168.0, 'memory': 14130.0, 'node:10.0.0.57': 1.0, 'node:10.0.0.192': 1.0, 'node:10.0.0.247': 1.0, 'node:10.0.0.34': 1.0, 'node:10.0.0.26': 1.0, 'node:10.0.0.13': 1.0, 'node:10.0.0.226': 1.0, 'node:10.0.0.98': 1.0, 'node:10.0.0.93': 1.0, 'node:10.0.0.88': 1.0, 'node:10.0.0.157': 1.0, 'node:10.0.0.59': 1.0, 'node:10.0.0.242': 1.0, 'node:10.0.0.110': 1.0, 'node:10.0.0.148': 1.0, 'node:10.0.0.136': 1.0, 'node:10.0.0.18': 1.0, 'node:10.0.0.56': 1.0, 'node:10.0.0.219': 1.0, 'node:10.0.0.43': 1.0, 'node:10.0.0.203': 1.0, 'node:10.0.0.65': 1.0, 'node:10.0.0.209': 1.0, 'node:10.0.0.129': 1.0, 'node:10.0.0.237': 1.0, 'node:10.0.0.154': 1.0, 'node:10.0.0.176': 1.0, 'node:10.0.0.250': 1.0, 'node:10.0.0.22': 1.0, 'node:10.0.0.215': 1.0, 'node:10.0.0.5': 1.0, 'node:10.0.0.7': 1.0, 'node:10.0.0.240': 1.0, 'node:10.0.0.100': 1.0, 'node:10.0.0.147': 1.0, 'node:10.0.0.20': 1.0, 'node:10.0.0.104': 1.0, 'node:10.0.0.235': 1.0, 'node:10.0.0.193': 1.0, 'node:10.0.0.172': 1.0, 'node:10.0.0.190': 1.0, 'node:10.0.0.124': 1.0, 'node:10.0.0.90': 1.0, 'node:10.0.0.143': 1.0, 'node:10.0.0.51': 1.0, 'node:10.0.0.213': 1.0, 'node:10.0.0.195': 1.0, 'node:10.0.0.14': 1.0, 'node:10.0.0.164': 1.0, 'node:10.0.0.181': 1.0, 'node:10.0.0.16': 1.0, 'node:10.0.0.214': 1.0, 'node:10.0.0.54': 1.0, 'node:10.0.0.10': 1.0, 'node:10.0.0.252': 1.0, 'node:10.0.0.244': 1.0, 'node:10.0.0.173': 1.0, 'node:10.0.0.198': 1.0, 'node:10.0.0.103': 1.0, 'node:10.0.0.161': 1.0, 'node:10.0.0.254': 1.0, 'node:10.0.0.96': 1.0, 'node:10.0.0.239': 1.0, 'node:10.0.0.225': 1.0, 'node:10.0.0.142': 1.0, 'node:10.0.0.97': 1.0, 'node:10.0.0.162': 1.0, 'node:10.0.0.107': 1.0, 'node:10.0.0.53': 1.0, 'node:10.0.0.159': 1.0, 'node:10.0.0.177': 1.0, 'node:10.0.0.152': 1.0, 'node:10.0.0.30': 1.0, 'node:10.0.0.224': 1.0, 'node:10.0.0.233': 1.0, 'node:10.0.0.211': 1.0, 'node:10.0.0.243': 1.0, 'node:10.0.0.153': 1.0, 'node:10.0.0.130': 1.0, 'node:10.0.0.236': 1.0, 'node:10.0.0.231': 1.0, 'node:10.0.0.123': 1.0, 'node:10.0.0.229': 1.0, 'node:10.0.0.180': 1.0, 'node:10.0.0.119': 1.0, 'node:10.0.0.166': 1.0, 'node:10.0.0.105': 1.0, 'node:10.0.0.228': 1.0, 'node:10.0.0.101': 1.0, 'node:10.0.0.183': 1.0, 'node:10.0.0.141': 1.0, 'node:10.0.0.81': 1.0, 'node:10.0.0.227': 1.0, 'node:10.0.0.156': 1.0, 'node:10.0.0.74': 1.0, 'node:10.0.0.131': 1.0, 'node:10.0.0.66': 1.0, 'node:10.0.0.165': 1.0, 'node:10.0.0.79': 1.0, 'node:10.0.0.120': 1.0, 'node:10.0.0.91': 1.0} resources.
+INFO:__main__:Submitting many tasks with large returns.
+INFO:__main__:Iteration 0
+INFO:__main__:Iteration 1
+INFO:__main__:Iteration 2
+INFO:__main__:Iteration 3
+INFO:__main__:Iteration 4
+INFO:__main__:Iteration 5
+INFO:__main__:Iteration 6
+INFO:__main__:Iteration 7
+INFO:__main__:Iteration 8
+INFO:__main__:Iteration 9
+INFO:__main__:Finished stage 0 after 50.40076494216919 seconds.
+INFO:__main__:Submitting many tasks.
+INFO:__main__:Iteration 0
+INFO:__main__:Iteration 1
+INFO:__main__:Iteration 2
+INFO:__main__:Iteration 3
+INFO:__main__:Iteration 4
+INFO:__main__:Iteration 5
+INFO:__main__:Iteration 6
+INFO:__main__:Iteration 7
+INFO:__main__:Iteration 8
+INFO:__main__:Iteration 9
+INFO:__main__:Finished stage 1 after 191.78780102729797 seconds.
+INFO:__main__:Submitting tasks with many dependencies.
+INFO:__main__:Iteration 0. Cumulative time 5.698204040527344e-05 seconds
+INFO:__main__:Iteration 1. Cumulative time 0.06537389755249023 seconds
+INFO:__main__:Iteration 2. Cumulative time 3.087442636489868 seconds
+INFO:__main__:Iteration 3. Cumulative time 6.02111291885376 seconds
+INFO:__main__:Iteration 4. Cumulative time 8.70894980430603 seconds
+INFO:__main__:Iteration 5. Cumulative time 11.454749345779419 seconds
+INFO:__main__:Iteration 6. Cumulative time 14.328656673431396 seconds
+INFO:__main__:Iteration 7. Cumulative time 16.918598175048828 seconds
+INFO:__main__:Iteration 8. Cumulative time 19.799813270568848 seconds
+INFO:__main__:Iteration 9. Cumulative time 22.682613611221313 seconds
+INFO:__main__:Iteration 10. Cumulative time 25.65492868423462 seconds
+INFO:__main__:Iteration 11. Cumulative time 28.40489411354065 seconds
+INFO:__main__:Iteration 12. Cumulative time 30.908810138702393 seconds
+INFO:__main__:Iteration 13. Cumulative time 33.757829666137695 seconds
+INFO:__main__:Iteration 14. Cumulative time 36.63235306739807 seconds
+INFO:__main__:Iteration 15. Cumulative time 39.530078172683716 seconds
+INFO:__main__:Iteration 16. Cumulative time 42.2801947593689 seconds
+INFO:__main__:Iteration 17. Cumulative time 45.1412034034729 seconds
+INFO:__main__:Iteration 18. Cumulative time 48.039846897125244 seconds
+INFO:__main__:Iteration 19. Cumulative time 50.956923961639404 seconds
+INFO:__main__:Finished after 53.85985541343689 seconds.
+INFO:__main__:Iteration 0. Cumulative time 53.86023259162903 seconds
+INFO:__main__:Iteration 1. Cumulative time 56.76315259933472 seconds
+INFO:__main__:Iteration 2. Cumulative time 59.69025707244873 seconds
+INFO:__main__:Iteration 3. Cumulative time 62.42388868331909 seconds
+INFO:__main__:Iteration 4. Cumulative time 65.33992958068848 seconds
+INFO:__main__:Iteration 5. Cumulative time 68.11507892608643 seconds
+INFO:__main__:Iteration 6. Cumulative time 70.99078464508057 seconds
+INFO:__main__:Iteration 7. Cumulative time 73.93925189971924 seconds
+INFO:__main__:Iteration 8. Cumulative time 76.86448955535889 seconds
+INFO:__main__:Iteration 9. Cumulative time 79.77712345123291 seconds
+INFO:__main__:Iteration 10. Cumulative time 82.60483145713806 seconds
+INFO:__main__:Iteration 11. Cumulative time 85.49543642997742 seconds
+INFO:__main__:Iteration 12. Cumulative time 88.21166396141052 seconds
+INFO:__main__:Iteration 13. Cumulative time 90.95798254013062 seconds
+INFO:__main__:Iteration 14. Cumulative time 93.86175179481506 seconds
+INFO:__main__:Iteration 15. Cumulative time 96.65680623054504 seconds
+INFO:__main__:Iteration 16. Cumulative time 99.48941898345947 seconds
+INFO:__main__:Iteration 17. Cumulative time 102.14055562019348 seconds
+INFO:__main__:Iteration 18. Cumulative time 105.02256655693054 seconds
+INFO:__main__:Iteration 19. Cumulative time 107.92312693595886 seconds
+INFO:__main__:Finished after 110.82486629486084 seconds.
+INFO:__main__:Iteration 0. Cumulative time 110.8250641822815 seconds
+INFO:__main__:Iteration 1. Cumulative time 113.63621544837952 seconds
+INFO:__main__:Iteration 2. Cumulative time 116.53051948547363 seconds
+INFO:__main__:Iteration 3. Cumulative time 118.99896001815796 seconds
+INFO:__main__:Iteration 4. Cumulative time 121.79647970199585 seconds
+INFO:__main__:Iteration 5. Cumulative time 124.69179773330688 seconds
+INFO:__main__:Iteration 6. Cumulative time 127.55425119400024 seconds
+INFO:__main__:Iteration 7. Cumulative time 130.24935293197632 seconds
+INFO:__main__:Iteration 8. Cumulative time 133.11976265907288 seconds
+INFO:__main__:Iteration 9. Cumulative time 135.85288214683533 seconds
+INFO:__main__:Iteration 10. Cumulative time 138.67894458770752 seconds
+INFO:__main__:Iteration 11. Cumulative time 141.37635397911072 seconds
+INFO:__main__:Iteration 12. Cumulative time 144.23610401153564 seconds
+INFO:__main__:Iteration 13. Cumulative time 146.99253249168396 seconds
+INFO:__main__:Iteration 14. Cumulative time 149.86445569992065 seconds
+INFO:__main__:Iteration 15. Cumulative time 152.78440713882446 seconds
+INFO:__main__:Iteration 16. Cumulative time 155.70268654823303 seconds
+INFO:__main__:Iteration 17. Cumulative time 158.44867277145386 seconds
+INFO:__main__:Iteration 18. Cumulative time 161.1802418231964 seconds
+INFO:__main__:Iteration 19. Cumulative time 164.11211824417114 seconds
+INFO:__main__:Finished after 166.8478033542633 seconds.
+INFO:__main__:Iteration 0. Cumulative time 166.84800624847412 seconds
+INFO:__main__:Iteration 1. Cumulative time 169.41235971450806 seconds
+INFO:__main__:Iteration 2. Cumulative time 172.18083572387695 seconds
+INFO:__main__:Iteration 3. Cumulative time 175.0946249961853 seconds
+INFO:__main__:Iteration 4. Cumulative time 178.01805114746094 seconds
+INFO:__main__:Iteration 5. Cumulative time 180.9108452796936 seconds
+INFO:__main__:Iteration 6. Cumulative time 183.73357939720154 seconds
+INFO:__main__:Iteration 7. Cumulative time 186.70087432861328 seconds
+INFO:__main__:Iteration 8. Cumulative time 189.65288615226746 seconds
+INFO:__main__:Iteration 9. Cumulative time 192.63496661186218 seconds
+INFO:__main__:Iteration 10. Cumulative time 195.5277009010315 seconds
+INFO:__main__:Iteration 11. Cumulative time 198.15746974945068 seconds
+INFO:__main__:Iteration 12. Cumulative time 200.63273191452026 seconds
+INFO:__main__:Iteration 13. Cumulative time 203.4736180305481 seconds
+INFO:__main__:Iteration 14. Cumulative time 206.3241159915924 seconds
+INFO:__main__:Iteration 15. Cumulative time 209.04437041282654 seconds
+INFO:__main__:Iteration 16. Cumulative time 212.07495856285095 seconds
+INFO:__main__:Iteration 17. Cumulative time 215.10428261756897 seconds
+INFO:__main__:Iteration 18. Cumulative time 218.0964002609253 seconds
+INFO:__main__:Iteration 19. Cumulative time 221.02325963974 seconds
+INFO:__main__:Finished after 223.7248888015747 seconds.
+INFO:__main__:Iteration 0. Cumulative time 223.72505021095276 seconds
+INFO:__main__:Iteration 1. Cumulative time 226.60717725753784 seconds
+INFO:__main__:Iteration 2. Cumulative time 229.340811252594 seconds
+INFO:__main__:Iteration 3. Cumulative time 232.10496354103088 seconds
+INFO:__main__:Iteration 4. Cumulative time 234.88690543174744 seconds
+INFO:__main__:Iteration 5. Cumulative time 237.69877219200134 seconds
+INFO:__main__:Iteration 6. Cumulative time 240.6218798160553 seconds
+INFO:__main__:Iteration 7. Cumulative time 243.33003306388855 seconds
+INFO:__main__:Iteration 8. Cumulative time 246.20901155471802 seconds
+INFO:__main__:Iteration 9. Cumulative time 249.08657240867615 seconds
+INFO:__main__:Iteration 10. Cumulative time 251.68043613433838 seconds
+INFO:__main__:Iteration 11. Cumulative time 254.54818749427795 seconds
+INFO:__main__:Iteration 12. Cumulative time 257.4249098300934 seconds
+INFO:__main__:Iteration 13. Cumulative time 260.3077836036682 seconds
+INFO:__main__:Iteration 14. Cumulative time 263.2531063556671 seconds
+INFO:__main__:Iteration 15. Cumulative time 266.14702916145325 seconds
+INFO:__main__:Iteration 16. Cumulative time 269.1128640174866 seconds
+INFO:__main__:Iteration 17. Cumulative time 271.9204783439636 seconds
+INFO:__main__:Iteration 18. Cumulative time 274.69508361816406 seconds
+INFO:__main__:Iteration 19. Cumulative time 277.46253752708435 seconds
+INFO:__main__:Finished after 280.4902238845825 seconds.
+INFO:__main__:Finished stage 2 after 280.4905333518982 seconds.
+INFO:__main__:Creating 200 actors.
+INFO:__main__:Finished stage 3 actor creation in 0.3304018974304199 seconds.
+INFO:__main__:Submitting many small actor tasks.
+INFO:__main__:Submitted 0
+INFO:__main__:Submitted 20000
+INFO:__main__:Submitted 40000
+INFO:__main__:Submitted 60000
+INFO:__main__:Submitted 80000
+INFO:__main__:Submitted 100000
+INFO:__main__:Submitted 120000
+INFO:__main__:Submitted 140000
+INFO:__main__:Submitted 160000
+INFO:__main__:Submitted 180000
+INFO:__main__:Submitted 0
+INFO:__main__:Submitted 20000
+INFO:__main__:Submitted 40000
+INFO:__main__:Submitted 60000
+INFO:__main__:Submitted 80000
+INFO:__main__:Submitted 100000
+INFO:__main__:Submitted 120000
+INFO:__main__:Submitted 140000
+INFO:__main__:Submitted 160000
+INFO:__main__:Submitted 180000
+INFO:__main__:Submitted 200000
+INFO:__main__:Submitted 220000
+INFO:__main__:Submitted 240000
+INFO:__main__:Submitted 260000
+INFO:__main__:Submitted 280000
+INFO:__main__:Submitted 300000
+INFO:__main__:Submitted 320000
+INFO:__main__:Submitted 340000
+INFO:__main__:Submitted 360000
+INFO:__main__:Submitted 380000
+INFO:__main__:Submitted 400000
+INFO:__main__:Submitted 420000
+INFO:__main__:Submitted 440000
+INFO:__main__:Submitted 460000
+INFO:__main__:Submitted 480000
+INFO:__main__:Submitted 500000
+INFO:__main__:Submitted 520000
+INFO:__main__:Submitted 540000
+INFO:__main__:Submitted 560000
+INFO:__main__:Submitted 580000
+INFO:__main__:Submitted 600000
+INFO:__main__:Submitted 620000
+INFO:__main__:Submitted 640000
+INFO:__main__:Submitted 660000
+INFO:__main__:Submitted 680000
+INFO:__main__:Submitted 700000
+INFO:__main__:Submitted 720000
+INFO:__main__:Submitted 740000
+INFO:__main__:Submitted 760000
+INFO:__main__:Submitted 780000
+INFO:__main__:Submitted 800000
+INFO:__main__:Submitted 820000
+INFO:__main__:Submitted 840000
+INFO:__main__:Submitted 860000
+INFO:__main__:Submitted 880000
+INFO:__main__:Submitted 900000
+INFO:__main__:Submitted 920000
+INFO:__main__:Submitted 940000
+INFO:__main__:Submitted 960000
+INFO:__main__:Submitted 980000
+INFO:__main__:Submitted 1000000
+INFO:__main__:Submitted 1020000
+INFO:__main__:Submitted 1040000
+INFO:__main__:Submitted 1060000
+INFO:__main__:Submitted 1080000
+INFO:__main__:Submitted 1100000
+INFO:__main__:Submitted 1120000
+INFO:__main__:Submitted 1140000
+INFO:__main__:Submitted 1160000
+INFO:__main__:Submitted 1180000
+INFO:__main__:Submitted 1200000
+INFO:__main__:Submitted 1220000
+INFO:__main__:Submitted 1240000
+INFO:__main__:Submitted 1260000
+INFO:__main__:Submitted 1280000
+INFO:__main__:Submitted 1300000
+INFO:__main__:Submitted 1320000
+INFO:__main__:Submitted 1340000
+INFO:__main__:Submitted 1360000
+INFO:__main__:Submitted 1380000
+INFO:__main__:Submitted 1400000
+INFO:__main__:Submitted 1420000
+INFO:__main__:Submitted 1440000
+INFO:__main__:Submitted 1460000
+INFO:__main__:Submitted 1480000
+INFO:__main__:Submitted 1500000
+INFO:__main__:Submitted 1520000
+INFO:__main__:Submitted 1540000
+INFO:__main__:Submitted 1560000
+INFO:__main__:Submitted 1580000
+INFO:__main__:Submitted 1600000
+INFO:__main__:Submitted 1620000
+INFO:__main__:Submitted 1640000
+INFO:__main__:Submitted 1660000
+INFO:__main__:Submitted 1680000
+INFO:__main__:Submitted 1700000
+INFO:__main__:Submitted 1720000
+INFO:__main__:Submitted 1740000
+INFO:__main__:Submitted 1760000
+INFO:__main__:Submitted 1780000
+INFO:__main__:Submitted 1800000
+INFO:__main__:Submitted 1820000
+INFO:__main__:Submitted 1840000
+INFO:__main__:Submitted 1860000
+INFO:__main__:Submitted 1880000
+INFO:__main__:Submitted 1900000
+INFO:__main__:Submitted 1920000
+INFO:__main__:Submitted 1940000
+INFO:__main__:Submitted 1960000
+INFO:__main__:Submitted 1980000
+INFO:__main__:Submitted 2000000
+INFO:__main__:Submitted 2020000
+INFO:__main__:Submitted 2040000
+INFO:__main__:Submitted 2060000
+INFO:__main__:Submitted 2080000
+INFO:__main__:Submitted 2100000
+INFO:__main__:Submitted 2120000
+INFO:__main__:Submitted 2140000
+INFO:__main__:Submitted 2160000
+INFO:__main__:Submitted 2180000
+INFO:__main__:Submitted 2200000
+INFO:__main__:Submitted 2220000
+INFO:__main__:Submitted 2240000
+INFO:__main__:Submitted 2260000
+INFO:__main__:Submitted 2280000
+INFO:__main__:Submitted 2300000
+INFO:__main__:Submitted 2320000
+INFO:__main__:Submitted 2340000
+INFO:__main__:Submitted 2360000
+INFO:__main__:Submitted 2380000
+INFO:__main__:Submitted 2400000
+INFO:__main__:Submitted 2420000
+INFO:__main__:Submitted 2440000
+INFO:__main__:Submitted 2460000
+INFO:__main__:Submitted 2480000
+INFO:__main__:Submitted 2500000
+INFO:__main__:Submitted 2520000
+INFO:__main__:Submitted 2540000
+INFO:__main__:Submitted 2560000
+INFO:__main__:Submitted 2580000
+INFO:__main__:Submitted 2600000
+INFO:__main__:Submitted 2620000
+INFO:__main__:Submitted 2640000
+INFO:__main__:Submitted 2660000
+INFO:__main__:Submitted 2680000
+INFO:__main__:Submitted 2700000
+INFO:__main__:Submitted 2720000
+INFO:__main__:Submitted 2740000
+INFO:__main__:Submitted 2760000
+INFO:__main__:Submitted 2780000
+INFO:__main__:Submitted 2800000
+INFO:__main__:Submitted 2820000
+INFO:__main__:Submitted 2840000
+INFO:__main__:Submitted 2860000
+INFO:__main__:Submitted 2880000
+INFO:__main__:Submitted 2900000
+INFO:__main__:Submitted 2920000
+INFO:__main__:Submitted 2940000
+INFO:__main__:Submitted 2960000
+INFO:__main__:Submitted 2980000
+INFO:__main__:Submitted 3000000
+INFO:__main__:Submitted 3020000
+INFO:__main__:Submitted 3040000
+INFO:__main__:Submitted 3060000
+INFO:__main__:Submitted 3080000
+INFO:__main__:Submitted 3100000
+INFO:__main__:Submitted 3120000
+INFO:__main__:Submitted 3140000
+INFO:__main__:Submitted 3160000
+INFO:__main__:Submitted 3180000
+INFO:__main__:Submitted 3200000
+INFO:__main__:Submitted 3220000
+INFO:__main__:Submitted 3240000
+INFO:__main__:Submitted 3260000
+INFO:__main__:Submitted 3280000
+INFO:__main__:Submitted 3300000
+INFO:__main__:Submitted 3320000
+INFO:__main__:Submitted 3340000
+INFO:__main__:Submitted 3360000
+INFO:__main__:Submitted 3380000
+INFO:__main__:Submitted 3400000
+INFO:__main__:Submitted 3420000
+INFO:__main__:Submitted 3440000
+INFO:__main__:Submitted 3460000
+INFO:__main__:Submitted 3480000
+INFO:__main__:Submitted 3500000
+INFO:__main__:Submitted 3520000
+INFO:__main__:Submitted 3540000
+INFO:__main__:Submitted 3560000
+INFO:__main__:Submitted 3580000
+INFO:__main__:Submitted 3600000
+INFO:__main__:Submitted 3620000
+INFO:__main__:Submitted 3640000
+INFO:__main__:Submitted 3660000
+INFO:__main__:Submitted 3680000
+INFO:__main__:Submitted 3700000
+INFO:__main__:Submitted 3720000
+INFO:__main__:Submitted 3740000
+INFO:__main__:Submitted 3760000
+INFO:__main__:Submitted 3780000
+INFO:__main__:Submitted 3800000
+INFO:__main__:Submitted 3820000
+INFO:__main__:Submitted 3840000
+INFO:__main__:Submitted 3860000
+INFO:__main__:Submitted 3880000
+INFO:__main__:Submitted 3900000
+INFO:__main__:Submitted 3920000
+INFO:__main__:Submitted 3940000
+INFO:__main__:Submitted 3960000
+INFO:__main__:Submitted 3980000
+INFO:__main__:Submitted 4000000
+INFO:__main__:Submitted 4020000
+INFO:__main__:Submitted 4040000
+INFO:__main__:Submitted 4060000
+INFO:__main__:Submitted 4080000
+INFO:__main__:Submitted 4100000
+INFO:__main__:Submitted 4120000
+INFO:__main__:Submitted 4140000
+INFO:__main__:Submitted 4160000
+INFO:__main__:Submitted 4180000
+INFO:__main__:Submitted 4200000
+INFO:__main__:Submitted 4220000
+INFO:__main__:Submitted 4240000
+INFO:__main__:Submitted 4260000
+INFO:__main__:Submitted 4280000
+INFO:__main__:Submitted 4300000
+INFO:__main__:Submitted 4320000
+INFO:__main__:Submitted 4340000
+INFO:__main__:Submitted 4360000
+INFO:__main__:Submitted 4380000
+INFO:__main__:Submitted 4400000
+INFO:__main__:Submitted 4420000
+INFO:__main__:Submitted 4440000
+INFO:__main__:Submitted 4460000
+INFO:__main__:Submitted 4480000
+INFO:__main__:Submitted 4500000
+INFO:__main__:Submitted 4520000
+INFO:__main__:Submitted 4540000
+INFO:__main__:Submitted 4560000
+INFO:__main__:Submitted 4580000
+INFO:__main__:Submitted 4600000
+INFO:__main__:Submitted 4620000
+INFO:__main__:Submitted 4640000
+INFO:__main__:Submitted 4660000
+INFO:__main__:Submitted 4680000
+INFO:__main__:Submitted 4700000
+INFO:__main__:Submitted 4720000
+INFO:__main__:Submitted 4740000
+INFO:__main__:Submitted 4760000
+INFO:__main__:Submitted 4780000
+INFO:__main__:Submitted 4800000
+INFO:__main__:Submitted 4820000
+INFO:__main__:Submitted 4840000
+INFO:__main__:Submitted 4860000
+INFO:__main__:Submitted 4880000
+INFO:__main__:Submitted 4900000
+INFO:__main__:Submitted 4920000
+INFO:__main__:Submitted 4940000
+INFO:__main__:Submitted 4960000
+INFO:__main__:Submitted 4980000
+INFO:__main__:Submitted 5000000
+INFO:__main__:Submitted 5020000
+INFO:__main__:Submitted 5040000
+INFO:__main__:Submitted 5060000
+INFO:__main__:Submitted 5080000
+INFO:__main__:Submitted 5100000
+INFO:__main__:Submitted 5120000
+INFO:__main__:Submitted 5140000
+INFO:__main__:Submitted 5160000
+INFO:__main__:Submitted 5180000
+INFO:__main__:Submitted 5200000
+INFO:__main__:Submitted 5220000
+INFO:__main__:Submitted 5240000
+INFO:__main__:Submitted 5260000
+INFO:__main__:Submitted 5280000
+INFO:__main__:Submitted 5300000
+INFO:__main__:Submitted 5320000
+INFO:__main__:Submitted 5340000
+INFO:__main__:Submitted 5360000
+INFO:__main__:Submitted 5380000
+INFO:__main__:Submitted 5400000
+INFO:__main__:Submitted 5420000
+INFO:__main__:Submitted 5440000
+INFO:__main__:Submitted 5460000
+INFO:__main__:Submitted 5480000
+INFO:__main__:Submitted 5500000
+INFO:__main__:Submitted 5520000
+INFO:__main__:Submitted 5540000
+INFO:__main__:Submitted 5560000
+INFO:__main__:Submitted 5580000
+INFO:__main__:Submitted 5600000
+INFO:__main__:Submitted 5620000
+INFO:__main__:Submitted 5640000
+INFO:__main__:Submitted 5660000
+INFO:__main__:Submitted 5680000
+INFO:__main__:Submitted 5700000
+INFO:__main__:Submitted 5720000
+INFO:__main__:Submitted 5740000
+INFO:__main__:Submitted 5760000
+INFO:__main__:Submitted 5780000
+INFO:__main__:Submitted 5800000
+INFO:__main__:Submitted 5820000
+INFO:__main__:Submitted 5840000
+INFO:__main__:Submitted 5860000
+INFO:__main__:Submitted 5880000
+INFO:__main__:Submitted 5900000
+INFO:__main__:Submitted 5920000
+INFO:__main__:Submitted 5940000
+INFO:__main__:Submitted 5960000
+INFO:__main__:Submitted 5980000
+INFO:__main__:Submitted 6000000
+INFO:__main__:Submitted 6020000
+INFO:__main__:Submitted 6040000
+INFO:__main__:Submitted 6060000
+INFO:__main__:Submitted 6080000
+INFO:__main__:Submitted 6100000
+INFO:__main__:Submitted 6120000
+INFO:__main__:Submitted 6140000
+INFO:__main__:Submitted 6160000
+INFO:__main__:Submitted 6180000
+INFO:__main__:Submitted 6200000
+INFO:__main__:Submitted 6220000
+INFO:__main__:Submitted 6240000
+INFO:__main__:Submitted 6260000
+INFO:__main__:Submitted 6280000
+INFO:__main__:Submitted 6300000
+INFO:__main__:Submitted 6320000
+INFO:__main__:Submitted 6340000
+INFO:__main__:Submitted 6360000
+INFO:__main__:Submitted 6380000
+INFO:__main__:Submitted 6400000
+INFO:__main__:Submitted 6420000
+INFO:__main__:Submitted 6440000
+INFO:__main__:Submitted 6460000
+INFO:__main__:Submitted 6480000
+INFO:__main__:Submitted 6500000
+INFO:__main__:Submitted 6520000
+INFO:__main__:Submitted 6540000
+INFO:__main__:Submitted 6560000
+INFO:__main__:Submitted 6580000
+INFO:__main__:Submitted 6600000
+INFO:__main__:Submitted 6620000
+INFO:__main__:Submitted 6640000
+INFO:__main__:Submitted 6660000
+INFO:__main__:Submitted 6680000
+INFO:__main__:Submitted 6700000
+INFO:__main__:Submitted 6720000
+INFO:__main__:Submitted 6740000
+INFO:__main__:Submitted 6760000
+INFO:__main__:Submitted 6780000
+INFO:__main__:Submitted 6800000
+INFO:__main__:Submitted 6820000
+INFO:__main__:Submitted 6840000
+INFO:__main__:Submitted 6860000
+INFO:__main__:Submitted 6880000
+INFO:__main__:Submitted 6900000
+INFO:__main__:Submitted 6920000
+INFO:__main__:Submitted 6940000
+INFO:__main__:Submitted 6960000
+INFO:__main__:Submitted 6980000
+INFO:__main__:Submitted 7000000
+INFO:__main__:Submitted 7020000
+INFO:__main__:Submitted 7040000
+INFO:__main__:Submitted 7060000
+INFO:__main__:Submitted 7080000
+INFO:__main__:Submitted 7100000
+INFO:__main__:Submitted 7120000
+INFO:__main__:Submitted 7140000
+INFO:__main__:Submitted 7160000
+INFO:__main__:Submitted 7180000
+INFO:__main__:Submitted 7200000
+INFO:__main__:Submitted 7220000
+INFO:__main__:Submitted 7240000
+INFO:__main__:Submitted 7260000
+INFO:__main__:Submitted 7280000
+INFO:__main__:Submitted 7300000
+INFO:__main__:Submitted 7320000
+INFO:__main__:Submitted 7340000
+INFO:__main__:Submitted 7360000
+INFO:__main__:Submitted 7380000
+INFO:__main__:Submitted 7400000
+INFO:__main__:Submitted 7420000
+INFO:__main__:Submitted 7440000
+INFO:__main__:Submitted 7460000
+INFO:__main__:Submitted 7480000
+INFO:__main__:Submitted 7500000
+INFO:__main__:Submitted 7520000
+INFO:__main__:Submitted 7540000
+INFO:__main__:Submitted 7560000
+INFO:__main__:Submitted 7580000
+INFO:__main__:Submitted 7600000
+INFO:__main__:Submitted 7620000
+INFO:__main__:Submitted 7640000
+INFO:__main__:Submitted 7660000
+INFO:__main__:Submitted 7680000
+INFO:__main__:Submitted 7700000
+INFO:__main__:Submitted 7720000
+INFO:__main__:Submitted 7740000
+INFO:__main__:Submitted 7760000
+INFO:__main__:Submitted 7780000
+INFO:__main__:Submitted 7800000
+INFO:__main__:Submitted 7820000
+INFO:__main__:Submitted 7840000
+INFO:__main__:Submitted 7860000
+INFO:__main__:Submitted 7880000
+INFO:__main__:Submitted 7900000
+INFO:__main__:Submitted 7920000
+INFO:__main__:Submitted 7940000
+INFO:__main__:Submitted 7960000
+INFO:__main__:Submitted 7980000
+INFO:__main__:Submitted 8000000
+INFO:__main__:Submitted 8020000
+INFO:__main__:Submitted 8040000
+INFO:__main__:Submitted 8060000
+INFO:__main__:Submitted 8080000
+INFO:__main__:Submitted 8100000
+INFO:__main__:Submitted 8120000
+INFO:__main__:Submitted 8140000
+INFO:__main__:Submitted 8160000
+INFO:__main__:Submitted 8180000
+INFO:__main__:Submitted 8200000
+INFO:__main__:Submitted 8220000
+INFO:__main__:Submitted 8240000
+INFO:__main__:Submitted 8260000
+INFO:__main__:Submitted 8280000
+INFO:__main__:Submitted 8300000
+INFO:__main__:Submitted 8320000
+INFO:__main__:Submitted 8340000
+INFO:__main__:Submitted 8360000
+INFO:__main__:Submitted 8380000
+INFO:__main__:Submitted 8400000
+INFO:__main__:Submitted 8420000
+INFO:__main__:Submitted 8440000
+INFO:__main__:Submitted 8460000
+INFO:__main__:Submitted 8480000
+INFO:__main__:Submitted 8500000
+INFO:__main__:Submitted 8520000
+INFO:__main__:Submitted 8540000
+INFO:__main__:Submitted 8560000
+INFO:__main__:Submitted 8580000
+INFO:__main__:Submitted 8600000
+INFO:__main__:Submitted 8620000
+INFO:__main__:Submitted 8640000
+INFO:__main__:Submitted 8660000
+INFO:__main__:Submitted 8680000
+INFO:__main__:Submitted 8700000
+INFO:__main__:Submitted 8720000
+INFO:__main__:Submitted 8740000
+INFO:__main__:Submitted 8760000
+INFO:__main__:Submitted 8780000
+INFO:__main__:Submitted 8800000
+INFO:__main__:Submitted 8820000
+INFO:__main__:Submitted 8840000
+INFO:__main__:Submitted 8860000
+INFO:__main__:Submitted 8880000
+INFO:__main__:Submitted 8900000
+INFO:__main__:Submitted 8920000
+INFO:__main__:Submitted 8940000
+INFO:__main__:Submitted 8960000
+INFO:__main__:Submitted 8980000
+INFO:__main__:Submitted 9000000
+INFO:__main__:Submitted 9020000
+INFO:__main__:Submitted 9040000
+INFO:__main__:Submitted 9060000
+INFO:__main__:Submitted 9080000
+INFO:__main__:Submitted 9100000
+INFO:__main__:Submitted 9120000
+INFO:__main__:Submitted 9140000
+INFO:__main__:Submitted 9160000
+INFO:__main__:Submitted 9180000
+INFO:__main__:Submitted 9200000
+INFO:__main__:Submitted 9220000
+INFO:__main__:Submitted 9240000
+INFO:__main__:Submitted 9260000
+INFO:__main__:Submitted 9280000
+INFO:__main__:Submitted 9300000
+INFO:__main__:Submitted 9320000
+INFO:__main__:Submitted 9340000
+INFO:__main__:Submitted 9360000
+INFO:__main__:Submitted 9380000
+INFO:__main__:Submitted 9400000
+INFO:__main__:Submitted 9420000
+INFO:__main__:Submitted 9440000
+INFO:__main__:Submitted 9460000
+INFO:__main__:Submitted 9480000
+INFO:__main__:Submitted 9500000
+INFO:__main__:Submitted 9520000
+INFO:__main__:Submitted 9540000
+INFO:__main__:Submitted 9560000
+INFO:__main__:Submitted 9580000
+INFO:__main__:Submitted 9600000
+INFO:__main__:Submitted 9620000
+INFO:__main__:Submitted 9640000
+INFO:__main__:Submitted 9660000
+INFO:__main__:Submitted 9680000
+INFO:__main__:Submitted 9700000
+INFO:__main__:Submitted 9720000
+INFO:__main__:Submitted 9740000
+INFO:__main__:Submitted 9760000
+INFO:__main__:Submitted 9780000
+INFO:__main__:Submitted 9800000
+INFO:__main__:Submitted 9820000
+INFO:__main__:Submitted 9840000
+INFO:__main__:Submitted 9860000
+INFO:__main__:Submitted 9880000
+INFO:__main__:Submitted 9900000
+INFO:__main__:Submitted 9920000
+INFO:__main__:Submitted 9940000
+INFO:__main__:Submitted 9960000
+INFO:__main__:Submitted 9980000
+INFO:__main__:Submitted 10000000
+INFO:__main__:Submitted 10020000
+INFO:__main__:Submitted 10040000
+INFO:__main__:Submitted 10060000
+INFO:__main__:Submitted 10080000
+INFO:__main__:Submitted 10100000
+INFO:__main__:Submitted 10120000
+INFO:__main__:Submitted 10140000
+INFO:__main__:Submitted 10160000
+INFO:__main__:Submitted 10180000
+INFO:__main__:Submitted 10200000
+INFO:__main__:Submitted 10220000
+INFO:__main__:Submitted 10240000
+INFO:__main__:Submitted 10260000
+INFO:__main__:Submitted 10280000
+INFO:__main__:Submitted 10300000
+INFO:__main__:Submitted 10320000
+INFO:__main__:Submitted 10340000
+INFO:__main__:Submitted 10360000
+INFO:__main__:Submitted 10380000
+INFO:__main__:Submitted 10400000
+INFO:__main__:Submitted 10420000
+INFO:__main__:Submitted 10440000
+INFO:__main__:Submitted 10460000
+INFO:__main__:Submitted 10480000
+INFO:__main__:Submitted 10500000
+INFO:__main__:Submitted 10520000
+INFO:__main__:Submitted 10540000
+INFO:__main__:Submitted 10560000
+INFO:__main__:Submitted 10580000
+INFO:__main__:Submitted 10600000
+INFO:__main__:Submitted 10620000
+INFO:__main__:Submitted 10640000
+INFO:__main__:Submitted 10660000
+INFO:__main__:Submitted 10680000
+INFO:__main__:Submitted 10700000
+INFO:__main__:Submitted 10720000
+INFO:__main__:Submitted 10740000
+INFO:__main__:Submitted 10760000
+INFO:__main__:Submitted 10780000
+INFO:__main__:Submitted 10800000
+INFO:__main__:Submitted 10820000
+INFO:__main__:Submitted 10840000
+INFO:__main__:Submitted 10860000
+INFO:__main__:Submitted 10880000
+INFO:__main__:Submitted 10900000
+INFO:__main__:Submitted 10920000
+INFO:__main__:Submitted 10940000
+INFO:__main__:Submitted 10960000
+INFO:__main__:Submitted 10980000
+INFO:__main__:Submitted 11000000
+INFO:__main__:Submitted 11020000
+INFO:__main__:Submitted 11040000
+INFO:__main__:Submitted 11060000
+INFO:__main__:Submitted 11080000
+INFO:__main__:Submitted 11100000
+INFO:__main__:Submitted 11120000
+INFO:__main__:Submitted 11140000
+INFO:__main__:Submitted 11160000
+INFO:__main__:Submitted 11180000
+INFO:__main__:Submitted 11200000
+INFO:__main__:Submitted 11220000
+INFO:__main__:Submitted 11240000
+INFO:__main__:Submitted 11260000
+INFO:__main__:Submitted 11280000
+INFO:__main__:Submitted 11300000
+INFO:__main__:Submitted 11320000
+INFO:__main__:Submitted 11340000
+INFO:__main__:Submitted 11360000
+INFO:__main__:Submitted 11380000
+INFO:__main__:Submitted 11400000
+INFO:__main__:Submitted 11420000
+INFO:__main__:Submitted 11440000
+INFO:__main__:Submitted 11460000
+INFO:__main__:Submitted 11480000
+INFO:__main__:Submitted 11500000
+INFO:__main__:Submitted 11520000
+INFO:__main__:Submitted 11540000
+INFO:__main__:Submitted 11560000
+INFO:__main__:Submitted 11580000
+INFO:__main__:Submitted 11600000
+INFO:__main__:Submitted 11620000
+INFO:__main__:Submitted 11640000
+INFO:__main__:Submitted 11660000
+INFO:__main__:Submitted 11680000
+INFO:__main__:Submitted 11700000
+INFO:__main__:Submitted 11720000
+INFO:__main__:Submitted 11740000
+INFO:__main__:Submitted 11760000
+INFO:__main__:Submitted 11780000
+INFO:__main__:Submitted 11800000
+INFO:__main__:Submitted 11820000
+INFO:__main__:Submitted 11840000
+INFO:__main__:Submitted 11860000
+INFO:__main__:Submitted 11880000
+INFO:__main__:Submitted 11900000
+INFO:__main__:Submitted 11920000
+INFO:__main__:Submitted 11940000
+INFO:__main__:Submitted 11960000
+INFO:__main__:Submitted 11980000
+INFO:__main__:Submitted 12000000
+INFO:__main__:Submitted 12020000
+INFO:__main__:Submitted 12040000
+INFO:__main__:Submitted 12060000
+INFO:__main__:Submitted 12080000
+INFO:__main__:Submitted 12100000
+INFO:__main__:Submitted 12120000
+INFO:__main__:Submitted 12140000
+INFO:__main__:Submitted 12160000
+INFO:__main__:Submitted 12180000
+INFO:__main__:Submitted 12200000
+INFO:__main__:Submitted 12220000
+INFO:__main__:Submitted 12240000
+INFO:__main__:Submitted 12260000
+INFO:__main__:Submitted 12280000
+INFO:__main__:Submitted 12300000
+INFO:__main__:Submitted 12320000
+INFO:__main__:Submitted 12340000
+INFO:__main__:Submitted 12360000
+INFO:__main__:Submitted 12380000
+INFO:__main__:Submitted 12400000
+INFO:__main__:Submitted 12420000
+INFO:__main__:Submitted 12440000
+INFO:__main__:Submitted 12460000
+INFO:__main__:Submitted 12480000
+INFO:__main__:Submitted 12500000
+INFO:__main__:Submitted 12520000
+INFO:__main__:Submitted 12540000
+INFO:__main__:Submitted 12560000
+INFO:__main__:Submitted 12580000
+INFO:__main__:Submitted 12600000
+INFO:__main__:Submitted 12620000
+INFO:__main__:Submitted 12640000
+INFO:__main__:Submitted 12660000
+INFO:__main__:Submitted 12680000
+INFO:__main__:Submitted 12700000
+INFO:__main__:Submitted 12720000
+INFO:__main__:Submitted 12740000
+INFO:__main__:Submitted 12760000
+INFO:__main__:Submitted 12780000
+INFO:__main__:Submitted 12800000
+INFO:__main__:Submitted 12820000
+INFO:__main__:Submitted 12840000
+INFO:__main__:Submitted 12860000
+INFO:__main__:Submitted 12880000
+INFO:__main__:Submitted 12900000
+INFO:__main__:Submitted 12920000
+INFO:__main__:Submitted 12940000
+INFO:__main__:Submitted 12960000
+INFO:__main__:Submitted 12980000
+INFO:__main__:Submitted 13000000
+INFO:__main__:Submitted 13020000
+INFO:__main__:Submitted 13040000
+INFO:__main__:Submitted 13060000
+INFO:__main__:Submitted 13080000
+INFO:__main__:Submitted 13100000
+INFO:__main__:Submitted 13120000
+INFO:__main__:Submitted 13140000
+INFO:__main__:Submitted 13160000
+INFO:__main__:Submitted 13180000
+INFO:__main__:Submitted 13200000
+INFO:__main__:Submitted 13220000
+INFO:__main__:Submitted 13240000
+INFO:__main__:Submitted 13260000
+INFO:__main__:Submitted 13280000
+INFO:__main__:Submitted 13300000
+INFO:__main__:Submitted 13320000
+INFO:__main__:Submitted 13340000
+INFO:__main__:Submitted 13360000
+INFO:__main__:Submitted 13380000
+INFO:__main__:Submitted 13400000
+INFO:__main__:Submitted 13420000
+INFO:__main__:Submitted 13440000
+INFO:__main__:Submitted 13460000
+INFO:__main__:Submitted 13480000
+INFO:__main__:Submitted 13500000
+INFO:__main__:Submitted 13520000
+INFO:__main__:Submitted 13540000
+INFO:__main__:Submitted 13560000
+INFO:__main__:Submitted 13580000
+INFO:__main__:Submitted 13600000
+INFO:__main__:Submitted 13620000
+INFO:__main__:Submitted 13640000
+INFO:__main__:Submitted 13660000
+INFO:__main__:Submitted 13680000
+INFO:__main__:Submitted 13700000
+INFO:__main__:Submitted 13720000
+INFO:__main__:Submitted 13740000
+INFO:__main__:Submitted 13760000
+INFO:__main__:Submitted 13780000
+INFO:__main__:Submitted 13800000
+INFO:__main__:Submitted 13820000
+INFO:__main__:Submitted 13840000
+INFO:__main__:Submitted 13860000
+INFO:__main__:Submitted 13880000
+INFO:__main__:Submitted 13900000
+INFO:__main__:Submitted 13920000
+INFO:__main__:Submitted 13940000
+INFO:__main__:Submitted 13960000
+INFO:__main__:Submitted 13980000
+INFO:__main__:Submitted 14000000
+INFO:__main__:Submitted 14020000
+INFO:__main__:Submitted 14040000
+INFO:__main__:Submitted 14060000
+INFO:__main__:Submitted 14080000
+INFO:__main__:Submitted 14100000
+INFO:__main__:Submitted 14120000
+INFO:__main__:Submitted 14140000
+INFO:__main__:Submitted 14160000
+INFO:__main__:Submitted 14180000
+INFO:__main__:Submitted 14200000
+INFO:__main__:Submitted 14220000
+INFO:__main__:Submitted 14240000
+INFO:__main__:Submitted 14260000
+INFO:__main__:Submitted 14280000
+INFO:__main__:Submitted 14300000
+INFO:__main__:Submitted 14320000
+INFO:__main__:Submitted 14340000
+INFO:__main__:Submitted 14360000
+INFO:__main__:Submitted 14380000
+INFO:__main__:Submitted 14400000
+INFO:__main__:Submitted 14420000
+INFO:__main__:Submitted 14440000
+INFO:__main__:Submitted 14460000
+INFO:__main__:Submitted 14480000
+INFO:__main__:Submitted 14500000
+INFO:__main__:Submitted 14520000
+INFO:__main__:Submitted 14540000
+INFO:__main__:Submitted 14560000
+INFO:__main__:Submitted 14580000
+INFO:__main__:Submitted 14600000
+INFO:__main__:Submitted 14620000
+INFO:__main__:Submitted 14640000
+INFO:__main__:Submitted 14660000
+INFO:__main__:Submitted 14680000
+INFO:__main__:Submitted 14700000
+INFO:__main__:Submitted 14720000
+INFO:__main__:Submitted 14740000
+INFO:__main__:Submitted 14760000
+INFO:__main__:Submitted 14780000
+INFO:__main__:Submitted 14800000
+INFO:__main__:Submitted 14820000
+INFO:__main__:Submitted 14840000
+INFO:__main__:Submitted 14860000
+INFO:__main__:Submitted 14880000
+INFO:__main__:Submitted 14900000
+INFO:__main__:Submitted 14920000
+INFO:__main__:Submitted 14940000
+INFO:__main__:Submitted 14960000
+INFO:__main__:Submitted 14980000
+INFO:__main__:Submitted 15000000
+INFO:__main__:Submitted 15020000
+INFO:__main__:Submitted 15040000
+INFO:__main__:Submitted 15060000
+INFO:__main__:Submitted 15080000
+INFO:__main__:Submitted 15100000
+INFO:__main__:Submitted 15120000
+INFO:__main__:Submitted 15140000
+INFO:__main__:Submitted 15160000
+INFO:__main__:Submitted 15180000
+INFO:__main__:Submitted 15200000
+INFO:__main__:Submitted 15220000
+INFO:__main__:Submitted 15240000
+INFO:__main__:Submitted 15260000
+INFO:__main__:Submitted 15280000
+INFO:__main__:Submitted 15300000
+INFO:__main__:Submitted 15320000
+INFO:__main__:Submitted 15340000
+INFO:__main__:Submitted 15360000
+INFO:__main__:Submitted 15380000
+INFO:__main__:Submitted 15400000
+INFO:__main__:Submitted 15420000
+INFO:__main__:Submitted 15440000
+INFO:__main__:Submitted 15460000
+INFO:__main__:Submitted 15480000
+INFO:__main__:Submitted 15500000
+INFO:__main__:Submitted 15520000
+INFO:__main__:Submitted 15540000
+INFO:__main__:Submitted 15560000
+INFO:__main__:Submitted 15580000
+INFO:__main__:Submitted 15600000
+INFO:__main__:Submitted 15620000
+INFO:__main__:Submitted 15640000
+INFO:__main__:Submitted 15660000
+INFO:__main__:Submitted 15680000
+INFO:__main__:Submitted 15700000
+INFO:__main__:Submitted 15720000
+INFO:__main__:Submitted 15740000
+INFO:__main__:Submitted 15760000
+INFO:__main__:Submitted 15780000
+INFO:__main__:Submitted 15800000
+
+INFO:__main__:Submitted 15820000
+INFO:__main__:Submitted 15840000
+INFO:__main__:Submitted 15860000
+INFO:__main__:Submitted 15880000
+INFO:__main__:Submitted 15900000
+INFO:__main__:Submitted 15920000
+INFO:__main__:Submitted 15940000
+INFO:__main__:Submitted 15960000
+INFO:__main__:Submitted 15980000
+INFO:__main__:Submitted 16000000
+INFO:__main__:Submitted 16020000
+INFO:__main__:Submitted 16040000
+INFO:__main__:Submitted 16060000
+INFO:__main__:Submitted 16080000
+INFO:__main__:Submitted 16100000
+INFO:__main__:Submitted 16120000
+INFO:__main__:Submitted 16140000
+INFO:__main__:Submitted 16160000
+INFO:__main__:Submitted 16180000
+INFO:__main__:Submitted 16200000
+INFO:__main__:Submitted 16220000
+INFO:__main__:Submitted 16240000
+INFO:__main__:Submitted 16260000
+INFO:__main__:Submitted 16280000
+INFO:__main__:Submitted 16300000
+INFO:__main__:Submitted 16320000
+INFO:__main__:Submitted 16340000
+INFO:__main__:Submitted 16360000
+INFO:__main__:Submitted 16380000
+INFO:__main__:Submitted 16400000
+INFO:__main__:Submitted 16420000
+INFO:__main__:Submitted 16440000
+INFO:__main__:Submitted 16460000
+INFO:__main__:Submitted 16480000
+INFO:__main__:Submitted 16500000
+INFO:__main__:Submitted 16520000
+INFO:__main__:Submitted 16540000
+INFO:__main__:Submitted 16560000
+INFO:__main__:Submitted 16580000
+INFO:__main__:Submitted 16600000
+INFO:__main__:Submitted 16620000
+INFO:__main__:Submitted 16640000
+INFO:__main__:Submitted 16660000
+INFO:__main__:Submitted 16680000
+INFO:__main__:Submitted 16700000
+INFO:__main__:Submitted 16720000
+INFO:__main__:Submitted 16740000
+INFO:__main__:Submitted 16760000
+INFO:__main__:Submitted 16780000
+INFO:__main__:Submitted 16800000
+INFO:__main__:Submitted 16820000
+INFO:__main__:Submitted 16840000
+INFO:__main__:Submitted 16860000
+INFO:__main__:Submitted 16880000
+INFO:__main__:Submitted 16900000
+INFO:__main__:Submitted 16920000
+INFO:__main__:Submitted 16940000
+INFO:__main__:Submitted 16960000
+INFO:__main__:Submitted 16980000
+INFO:__main__:Submitted 17000000
+INFO:__main__:Submitted 17020000
+INFO:__main__:Submitted 17040000
+INFO:__main__:Submitted 17060000
+INFO:__main__:Submitted 17080000
+INFO:__main__:Submitted 17100000
+INFO:__main__:Submitted 17120000
+INFO:__main__:Submitted 17140000
+INFO:__main__:Submitted 17160000
+INFO:__main__:Submitted 17180000
+INFO:__main__:Submitted 17200000
+INFO:__main__:Submitted 17220000
+INFO:__main__:Submitted 17240000
+INFO:__main__:Submitted 17260000
+INFO:__main__:Submitted 17280000
+INFO:__main__:Submitted 17300000
+INFO:__main__:Submitted 17320000
+INFO:__main__:Submitted 17340000
+INFO:__main__:Submitted 17360000
+INFO:__main__:Submitted 17380000
+INFO:__main__:Submitted 17400000
+INFO:__main__:Submitted 17420000
+INFO:__main__:Submitted 17440000
+INFO:__main__:Submitted 17460000
+INFO:__main__:Submitted 17480000
+INFO:__main__:Submitted 17500000
+INFO:__main__:Submitted 17520000
+INFO:__main__:Submitted 17540000
+INFO:__main__:Submitted 17560000
+INFO:__main__:Submitted 17580000
+INFO:__main__:Submitted 17600000
+INFO:__main__:Submitted 17620000
+INFO:__main__:Submitted 17640000
+INFO:__main__:Submitted 17660000
+INFO:__main__:Submitted 17680000
+INFO:__main__:Submitted 17700000
+INFO:__main__:Submitted 17720000
+INFO:__main__:Submitted 17740000
+INFO:__main__:Submitted 17760000
+INFO:__main__:Submitted 17780000
+INFO:__main__:Submitted 17800000
+INFO:__main__:Submitted 17820000
+INFO:__main__:Submitted 17840000
+INFO:__main__:Submitted 17860000
+INFO:__main__:Submitted 17880000
+INFO:__main__:Submitted 17900000
+INFO:__main__:Submitted 17920000
+INFO:__main__:Submitted 17940000
+INFO:__main__:Submitted 17960000
+INFO:__main__:Submitted 17980000
+INFO:__main__:Submitted 18000000
+INFO:__main__:Submitted 18020000
+INFO:__main__:Submitted 18040000
+INFO:__main__:Submitted 18060000
+INFO:__main__:Submitted 18080000
+INFO:__main__:Submitted 18100000
+INFO:__main__:Submitted 18120000
+INFO:__main__:Submitted 18140000
+INFO:__main__:Submitted 18160000
+INFO:__main__:Submitted 18180000
+INFO:__main__:Submitted 18200000
+INFO:__main__:Submitted 18220000
+INFO:__main__:Submitted 18240000
+INFO:__main__:Submitted 18260000
+INFO:__main__:Submitted 18280000
+INFO:__main__:Submitted 18300000
+INFO:__main__:Submitted 18320000
+INFO:__main__:Submitted 18340000
+INFO:__main__:Submitted 18360000
+INFO:__main__:Submitted 18380000
+INFO:__main__:Submitted 18400000
+INFO:__main__:Submitted 18420000
+INFO:__main__:Submitted 18440000
+INFO:__main__:Submitted 18460000
+INFO:__main__:Submitted 18480000
+INFO:__main__:Submitted 18500000
+INFO:__main__:Submitted 18520000
+INFO:__main__:Submitted 18540000
+INFO:__main__:Submitted 18560000
+INFO:__main__:Submitted 18580000
+INFO:__main__:Submitted 18600000
+INFO:__main__:Submitted 18620000
+INFO:__main__:Submitted 18640000
+INFO:__main__:Submitted 18660000
+INFO:__main__:Submitted 18680000
+INFO:__main__:Submitted 18700000
+INFO:__main__:Submitted 18720000
+INFO:__main__:Submitted 18740000
+INFO:__main__:Submitted 18760000
+INFO:__main__:Submitted 18780000
+INFO:__main__:Submitted 18800000
+INFO:__main__:Submitted 18820000
+INFO:__main__:Submitted 18840000
+INFO:__main__:Submitted 18860000
+INFO:__main__:Submitted 18880000
+INFO:__main__:Submitted 18900000
+INFO:__main__:Submitted 18920000
+INFO:__main__:Submitted 18940000
+INFO:__main__:Submitted 18960000
+INFO:__main__:Submitted 18980000
+INFO:__main__:Submitted 19000000
+INFO:__main__:Submitted 19020000
+INFO:__main__:Submitted 19040000
+INFO:__main__:Submitted 19060000
+INFO:__main__:Submitted 19080000
+INFO:__main__:Submitted 19100000
+INFO:__main__:Submitted 19120000
+INFO:__main__:Submitted 19140000
+INFO:__main__:Submitted 19160000
+INFO:__main__:Submitted 19180000
+INFO:__main__:Submitted 19200000
+INFO:__main__:Submitted 19220000
+INFO:__main__:Submitted 19240000
+INFO:__main__:Submitted 19260000
+INFO:__main__:Submitted 19280000
+INFO:__main__:Submitted 19300000
+INFO:__main__:Submitted 19320000
+INFO:__main__:Submitted 19340000
+INFO:__main__:Submitted 19360000
+INFO:__main__:Submitted 19380000
+INFO:__main__:Submitted 19400000
+INFO:__main__:Submitted 19420000
+INFO:__main__:Submitted 19440000
+INFO:__main__:Submitted 19460000
+INFO:__main__:Submitted 19480000
+INFO:__main__:Submitted 19500000
+INFO:__main__:Submitted 19520000
+INFO:__main__:Submitted 19540000
+INFO:__main__:Submitted 19560000
+INFO:__main__:Submitted 19580000
+INFO:__main__:Submitted 19600000
+INFO:__main__:Submitted 19620000
+INFO:__main__:Submitted 19640000
+INFO:__main__:Submitted 19660000
+INFO:__main__:Submitted 19680000
+INFO:__main__:Submitted 19700000
+INFO:__main__:Submitted 19720000
+INFO:__main__:Submitted 19740000
+INFO:__main__:Submitted 19760000
+INFO:__main__:Submitted 19780000
+INFO:__main__:Submitted 19800000
+INFO:__main__:Submitted 19820000
+INFO:__main__:Submitted 19840000
+INFO:__main__:Submitted 19860000
+INFO:__main__:Submitted 19880000
+INFO:__main__:Submitted 19900000
+INFO:__main__:Submitted 19920000
+INFO:__main__:Submitted 19940000
+INFO:__main__:Submitted 19960000
+INFO:__main__:Submitted 19980000
+INFO:__main__:Finished stage 3 in 2303.117142677307 seconds.
+INFO:__main__:Scheduling many tasks for spillback.
+INFO:__main__:Spread: 92.86646408499928	Last: 4498.536940681	First: 4405.670476596
+INFO:__main__:Spread: 91.63911475000077	Last: 4577.626048189	First: 4485.986933439
+INFO:__main__:Spread: 91.60993627400057	Last: 4356.173303139	First: 4264.563366865
+INFO:__main__:Spread: 91.22929921899959	Last: 4605.340655685	First: 4514.111356466
+INFO:__main__:Spread: 90.4096571910004	Last: 4599.637940364	First: 4509.228283173
+INFO:__main__:Spread: 89.70178905600005	Last: 4470.798249861	First: 4381.096460805
+INFO:__main__:Spread: 88.88566935499966	Last: 4507.340310201	First: 4418.454640846
+INFO:__main__:Spread: 88.75284262600053	Last: 4601.748695305	First: 4512.995852679
+INFO:__main__:Spread: 88.94867057600004	Last: 4485.047155638	First: 4396.098485062
+INFO:__main__:Spread: 87.83441665999999	Last: 4593.737567275	First: 4505.903150615
+INFO:__main__:Spread: 87.1186101860003	Last: 4590.898250073	First: 4503.779639887
+INFO:__main__:Spread: 86.72072938400015	Last: 4602.616066278	First: 4515.895336894
+INFO:__main__:Spread: 86.40716983600032	Last: 4534.524654851	First: 4448.117485015
+INFO:__main__:Spread: 86.33344221300013	Last: 4589.521412741	First: 4503.187970528
+INFO:__main__:Spread: 85.0717865280003	Last: 4431.590678876	First: 4346.518892348
+INFO:__main__:Spread: 84.58451435000006	Last: 4596.79981512	First: 4512.21530077
+INFO:__main__:Spread: 84.15690578199974	Last: 4408.933717502	First: 4324.77681172
+INFO:__main__:Spread: 84.05887177400018	Last: 4503.666219615	First: 4419.607347841
+INFO:__main__:Spread: 82.82707424699947	Last: 4476.715268321	First: 4393.888194074
+INFO:__main__:Spread: 82.35037929600003	Last: 4503.735053995	First: 4421.384674699
+INFO:__main__:Spread: 82.38575564799976	Last: 4578.866022014	First: 4496.480266366
+INFO:__main__:Spread: 82.07761859600032	Last: 4599.695455361	First: 4517.617836765
+INFO:__main__:Spread: 80.87652081299984	Last: 4472.097987119	First: 4391.221466306
+INFO:__main__:Spread: 81.04289534800046	Last: 4588.099619761	First: 4507.056724413
+INFO:__main__:Spread: 79.99682345800011	Last: 4529.948752087	First: 4449.951928629
+INFO:__main__:Spread: 79.39150419500038	Last: 4473.604629944	First: 4394.213125749
+INFO:__main__:Spread: 79.06759593300012	Last: 4412.297303488	First: 4333.229707555
+INFO:__main__:Spread: 79.29429132800033	Last: 4502.077370303	First: 4422.783078975
+INFO:__main__:Spread: 78.63628862500082	Last: 4464.620179348	First: 4385.983890723
+INFO:__main__:Spread: 77.72326415299995	Last: 4513.610055884	First: 4435.886791731
+INFO:__main__:Spread: 77.10714442000062	Last: 4595.884128755	First: 4518.776984335
+INFO:__main__:Spread: 76.86746478700024	Last: 4508.37571706	First: 4431.508252273
+INFO:__main__:Spread: 75.75518765800007	Last: 4588.428024674	First: 4512.672837016
+INFO:__main__:Spread: 76.16772355900048	Last: 4586.273847763	First: 4510.106124204
+INFO:__main__:Spread: 75.20183745899976	Last: 4504.099833566	First: 4428.897996107
+INFO:__main__:Spread: 75.10370624799998	Last: 4599.260294988	First: 4524.15658874
+INFO:__main__:Spread: 74.4041252800007	Last: 4508.198048154	First: 4433.793922874
+INFO:__main__:Spread: 74.16799668400017	Last: 4594.085273837	First: 4519.917277153
+INFO:__main__:Spread: 73.54414390000056	Last: 4505.480915924	First: 4431.936772024
+INFO:__main__:Spread: 72.2408244140006	Last: 4480.35187302	First: 4408.111048606
+INFO:__main__:Spread: 71.71555440099928	Last: 4533.346749398	First: 4461.631194997
+INFO:__main__:Spread: 71.5086482050001	Last: 4599.684380106	First: 4528.175731901
+INFO:__main__:Spread: 70.7551321889996	Last: 4517.117295137	First: 4446.362162948
+INFO:__main__:Spread: 69.96719160900011	Last: 4585.460408138	First: 4515.493216529
+INFO:__main__:Spread: 70.04051913500007	Last: 4509.067568896	First: 4439.027049761
+INFO:__main__:Spread: 69.2492899429999	Last: 4426.887896514	First: 4357.638606571
+INFO:__main__:Spread: 68.40859615699992	Last: 4542.531200865	First: 4474.122604708
+INFO:__main__:Spread: 68.33233603000008	Last: 4599.571741496	First: 4531.239405466
+INFO:__main__:Spread: 67.46227291200012	Last: 4604.432242592	First: 4536.96996968
+INFO:__main__:Spread: 67.35578229800012	Last: 4423.591334542	First: 4356.235552244
+INFO:__main__:Spread: 67.15633493600035	Last: 4472.659517566	First: 4405.50318263
+INFO:__main__:Spread: 66.34968998000022	Last: 4596.924856113	First: 4530.575166133
+INFO:__main__:Spread: 65.12183401499988	Last: 4600.684633788	First: 4535.562799773
+INFO:__main__:Spread: 65.00593257199944	Last: 4604.760078298	First: 4539.754145726
+INFO:__main__:Spread: 64.31305400600013	Last: 4546.590770068	First: 4482.277716062
+INFO:__main__:Spread: 64.30493425399982	Last: 4605.110778069	First: 4540.805843815
+INFO:__main__:Spread: 63.28147352100041	Last: 4537.906217838	First: 4474.624744317
+INFO:__main__:Spread: 62.59997292099979	Last: 4584.896888079	First: 4522.296915158
+INFO:__main__:Spread: 62.05891718099974	Last: 4513.346578443	First: 4451.287661262
+INFO:__main__:Spread: 62.62034356999993	Last: 4406.688844767	First: 4344.068501197
+INFO:__main__:Spread: 62.066355953999846	Last: 4596.892429783	First: 4534.826073829
+INFO:__main__:Spread: 60.97847920500044	Last: 4466.768763539	First: 4405.790284334
+INFO:__main__:Spread: 60.28157816100065	Last: 4504.998464559	First: 4444.716886398
+INFO:__main__:Spread: 59.518905556999925	Last: 4565.483863048	First: 4505.964957491
+INFO:__main__:Spread: 59.99333900500005	Last: 4589.234301401	First: 4529.240962396
+INFO:__main__:Spread: 58.64792644699992	Last: 4601.829742381	First: 4543.181815934
+INFO:__main__:Spread: 58.57066052099981	Last: 4592.8133815	First: 4534.242720979
+INFO:__main__:Spread: 57.39182123599949	Last: 4595.504352665	First: 4538.112531429
+INFO:__main__:Spread: 57.24767265999981	Last: 4489.333560425	First: 4432.085887765
+INFO:__main__:Spread: 56.53841974599982	Last: 4591.301067843	First: 4534.762648097
+INFO:__main__:Spread: 56.714305554999555	Last: 4592.498652984	First: 4535.784347429
+INFO:__main__:Spread: 56.35718801600069	Last: 4435.500527117	First: 4379.143339101
+INFO:__main__:Spread: 55.741310243000044	Last: 4593.185865496	First: 4537.444555253
+INFO:__main__:Spread: 54.472006861999944	Last: 4590.972487079	First: 4536.500480217
+INFO:__main__:Spread: 54.33447359300044	Last: 4540.047788718	First: 4485.713315125
+INFO:__main__:Spread: 54.140593085000546	Last: 4480.929376744	First: 4426.788783659
+INFO:__main__:Spread: 53.67984443899968	Last: 4572.981782965	First: 4519.301938526
+INFO:__main__:Spread: 52.36957528499988	Last: 4564.950870212	First: 4512.581294927
+INFO:__main__:Spread: 51.63308865899944	Last: 4402.900877732	First: 4351.267789073
+INFO:__main__:Spread: 52.128265968999585	Last: 4444.41963969	First: 4392.291373721
+INFO:__main__:Spread: 51.131046401000276	Last: 4502.778613955	First: 4451.647567554
+INFO:__main__:Spread: 51.04452228399987	Last: 4596.214239747	First: 4545.169717463
+INFO:__main__:Spread: 49.7321434129999	Last: 4593.827475511	First: 4544.095332098
+INFO:__main__:Spread: 49.32369329300036	Last: 4501.381360063	First: 4452.05766677
+INFO:__main__:Spread: 48.883136991000356	Last: 4547.60355214	First: 4498.720415149
+INFO:__main__:Spread: 48.48586962399986	Last: 4447.855823707	First: 4399.369954083
+INFO:__main__:Spread: 47.5666764610005	Last: 4578.619918018	First: 4531.053241557
+INFO:__main__:Spread: 47.3654761709995	Last: 4606.623058173	First: 4559.257582002
+INFO:__main__:Spread: 47.07241982400046	Last: 4430.92710709	First: 4383.854687266
+INFO:__main__:Spread: 46.11529858400081	Last: 4501.964199689	First: 4455.848901105
+INFO:__main__:Spread: 45.38006353600031	Last: 4567.622207413	First: 4522.242143877
+INFO:__main__:Spread: 45.78568541599998	Last: 4502.708029236	First: 4456.92234382
+INFO:__main__:Spread: 43.895173810000415	Last: 4602.357975568	First: 4558.462801758
+INFO:__main__:Spread: 43.96019104400057	Last: 4523.607729506	First: 4479.647538462
+INFO:__main__:Spread: 43.92278933799935	Last: 4595.628277995	First: 4551.705488657
+INFO:__main__:Spread: 42.248185207999995	Last: 4493.537348576	First: 4451.289163368
+INFO:__main__:Spread: 42.185945508999794	Last: 4589.797080882	First: 4547.611135373
+INFO:__main__:Spread: 41.62409491100061	Last: 4606.345450632	First: 4564.721355721
+INFO:__main__:Spread: 41.17161776100056	Last: 4511.43420992	First: 4470.262592159
+INFO:__main__:Spread: 40.253680420999444	Last: 4594.114090603	First: 4553.860410182
+INFO:__main__:Avg spread: 66.90121385927009
+Stage 0 results:
+	Total time: 50.40076494216919
+Stage 1 results:
+	Total time: 191.78780102729797
+	Average iteration time: 19.178766775131226
+	Max iteration time: 21.238199949264526
+	Min iteration time: 18.299438953399658
+Stage 2 results:
+	Total time: 280.4905333518982
+	Average iteration time: 56.0978446483612
+	Max iteration time: 56.96464133262634
+	Min iteration time: 53.859785318374634
+Stage 3 results:
+	Actor creation time: 0.3304018974304199
+	Total time: 2303.117142677307
+Stage 4 results:
+	Scheduling spread: 66.90121385927009.
+Loaded cached provider configuration
+If you experience issues with the cloud provider, try re-running the command with --no-config-cache.
+Fetched IP: 54.153.113.158
+Fetched IP: 54.153.113.158
