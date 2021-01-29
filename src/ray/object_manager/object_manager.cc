@@ -818,7 +818,6 @@ std::string ObjectManager::DebugString() const {
   result << "\n" << object_directory_->DebugString();
   result << "\n" << store_notification_->DebugString();
   result << "\n" << buffer_pool_.DebugString();
-  result << "\n" << pull_manager_->DebugString();
   return result.str();
 }
 
