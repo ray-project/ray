@@ -510,7 +510,7 @@ deploy:
     on:
       branch: master
       repo: ray-project/ray
-      condition: $LINUX_WHEELS = 1 || $MAC_WHEELS = 1
+      condition: ($LINUX_WHEELS = 1 && $DOCKER_BUILD_PY37=1) || $MAC_WHEELS = 1
 
   - provider: script
     edge: true # This supposedly opts in to deploy v2.
