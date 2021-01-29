@@ -555,6 +555,17 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
              std::vector<std::shared_ptr<RayObject>> *results,
              bool plasma_objects_only = false);
 
+  /// Get objects directly from the local plasma store, without waiting for the
+  /// objects to be fetched from another node. This should only be used
+  /// internally, never by user code.
+  ///
+  /// \param[in] ids The IDs of the objects to get.
+  /// \param[out] results The results will be stored here. A nullptr will be
+  /// added for objects that were not in the local store.
+  /// \return Status OK if all objects were found. Returns ObjectNotFound error
+  /// if at least one object was not in the local store.
+  Status GetObjectsFromLocalStore(const std::vector<ObjectID> &ids, std::vector<std::shared_ptr<RayObject>> *results);
+
   /// Return whether or not the object store contains the given object.
   ///
   /// \param[in] object_id ID of the objects to check for.

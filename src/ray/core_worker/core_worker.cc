@@ -1058,6 +1058,20 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids, const int64_t timeout_m
   return Status::OK();
 }
 
+Status CoreWorker::GetObjectsFromLocalStore(const std::vector<ObjectID> &ids,
+                       std::vector<std::shared_ptr<RayObject>> *results) {
+  results->resize(ids.size(), nullptr);
+
+  absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> result_map;
+  RAY_RETURN_NOT_OK(plasma_store_provider_->GetObjectsFromLocalStore(ids, results));
+  for (size_t i = 0; i < ids.size(); i++) {
+    if ((*results)[i] == nullptr) {
+      RAY_LOG(WARNING) << "Object " << ids[i] << " not in local store";
+    }
+  }
+  return Status::OK();
+}
+
 Status CoreWorker::Contains(const ObjectID &object_id, bool *has_object) {
   bool found = false;
   bool in_plasma = false;
