@@ -320,7 +320,7 @@ def run(
             sync_on_checkpoint))
 
 
-@ray.remote
+@ray.remote(num_cpus=0)
 def _tune_run_impl(
         run_or_experiment: Union[str, Callable, Type],
         name: Optional[str] = None,
@@ -598,7 +598,7 @@ def run_experiments(
             raise_on_failed_trial, concurrent, callbacks))
 
 
-@ray.remote
+@ray.remote(num_cpus=0)
 def _tune_run_experiments_impl(
         experiments: Union[Experiment, Mapping, Sequence[Union[Experiment,
                                                                Mapping]]],
