@@ -6,6 +6,7 @@ import logging
 import sys
 import time
 
+import ray
 from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.callback import Callback
 from ray.tune.error import TuneError
@@ -63,8 +64,99 @@ def _report_progress(runner, reporter, done=False):
         executor_debug_str = runner.trial_executor.debug_string()
         reporter.report(trials, done, sched_debug_str, executor_debug_str)
 
-
 def run(
+        run_or_experiment: Union[str, Callable, Type],
+        name: Optional[str] = None,
+        metric: Optional[str] = None,
+        mode: Optional[str] = None,
+        stop: Union[None, Mapping, Stopper, Callable[[str, Mapping],
+                                                     bool]] = None,
+        time_budget_s: Union[None, int, float, datetime.timedelta] = None,
+        config: Optional[Dict[str, Any]] = None,
+        resources_per_trial: Optional[Mapping[str, Union[float, int]]] = None,
+        num_samples: int = 1,
+        local_dir: Optional[str] = None,
+        search_alg: Optional[Union[Searcher, SearchAlgorithm]] = None,
+        scheduler: Optional[TrialScheduler] = None,
+        keep_checkpoints_num: Optional[int] = None,
+        checkpoint_score_attr: Optional[str] = None,
+        checkpoint_freq: int = 0,
+        checkpoint_at_end: bool = False,
+        verbose: Union[int, Verbosity] = Verbosity.V3_TRIAL_DETAILS,
+        progress_reporter: Optional[ProgressReporter] = None,
+        log_to_file: bool = False,
+        trial_name_creator: Optional[Callable[[Trial], str]] = None,
+        trial_dirname_creator: Optional[Callable[[Trial], str]] = None,
+        sync_config: Optional[SyncConfig] = None,
+        export_formats: Optional[Sequence] = None,
+        max_failures: int = 0,
+        fail_fast: bool = False,
+        restore: Optional[str] = None,
+        server_port: Optional[int] = None,
+        resume: bool = False,
+        queue_trials: bool = False,
+        reuse_actors: bool = False,
+        trial_executor: Optional[RayTrialExecutor] = None,
+        raise_on_failed_trial: bool = True,
+        callbacks: Optional[Sequence[Callback]] = None,
+        # Deprecated args
+        loggers: Optional[Sequence[Type[Logger]]] = None,
+        ray_auto_init: Optional = None,
+        run_errored_only: Optional = None,
+        global_checkpoint_period: Optional = None,
+        with_server: Optional = None,
+        upload_dir: Optional = None,
+        sync_to_cloud: Optional = None,
+        sync_to_driver: Optional = None,
+        sync_on_checkpoint: Optional = None):
+    return ray.get(_tune_run_impl.remote(
+        run_or_experiment,
+        name,
+        metric,
+        mode,
+        stop,
+        time_budget_s,
+        config,
+        resources_per_trial,
+        num_samples,
+        local_dir,
+        search_alg,
+        scheduler,
+        keep_checkpoints_num,
+        checkpoint_score_attr,
+        checkpoint_freq,
+        checkpoint_at_end,
+        verbose,
+        progress_reporter,
+        log_to_file,
+        trial_name_creator,
+        trial_dirname_creator,
+        sync_config,
+        export_formats,
+        max_failures,
+        fail_fast,
+        restore,
+        server_port,
+        resume,
+        queue_trials,
+        reuse_actors,
+        trial_executor,
+        raise_on_failed_trial,
+        callbacks,
+        # Deprecated args
+        loggers,
+        ray_auto_init,
+        run_errored_only,
+        global_checkpoint_period,
+        with_server,
+        upload_dir,
+        sync_to_cloud,
+        sync_to_driver,
+        sync_on_checkpoint))
+
+
+@ray.remote
+def _tune_run_impl(
         run_or_experiment: Union[str, Callable, Type],
         name: Optional[str] = None,
         metric: Optional[str] = None,
@@ -470,6 +562,36 @@ def run(
 
 
 def run_experiments(
+        experiments: Union[Experiment, Mapping, Sequence[Union[Experiment,
+                                                               Mapping]]],
+        scheduler: Optional[TrialScheduler] = None,
+        server_port: Optional[int] = None,
+        verbose: Union[int, Verbosity] = Verbosity.V3_TRIAL_DETAILS,
+        progress_reporter: Optional[ProgressReporter] = None,
+        resume: bool = False,
+        queue_trials: bool = False,
+        reuse_actors: bool = False,
+        trial_executor: Optional[RayTrialExecutor] = None,
+        raise_on_failed_trial: bool = True,
+        concurrent: bool = True,
+        callbacks: Optional[Sequence[Callback]] = None):
+    return ray.get(_tune_run_experiments_impl.remote(
+        experiments,
+        scheduler,
+        server_port,
+        verbose,
+        progress_reporter,
+        resume,
+        queue_trials,
+        reuse_actors,
+        trial_executor,
+        raise_on_failed_trial,
+        concurrent,
+        callbacks))
+
+
+@ray.remote
+def _tune_run_experiments_impl(
         experiments: Union[Experiment, Mapping, Sequence[Union[Experiment,
                                                                Mapping]]],
         scheduler: Optional[TrialScheduler] = None,
