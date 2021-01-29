@@ -1,4 +1,5 @@
 import logging
+import os
 import signal
 import sys
 import time
@@ -101,6 +102,10 @@ def run(
         sync_on_checkpoint=None,
 ):
     """Executes training.
+
+    When a SIGINT signal is received (e.g. through Ctrl+C), the tuning run
+    will gracefully shut down and checkpoint the latest experiment state.
+    Sending SIGINT (or SIGKILL/SIGTERM instead) will skip this step.
 
     Examples:
 
@@ -254,7 +259,6 @@ def run(
             ``ray.tune.callback.Callback`` class. If not passed,
             `LoggerCallback` and `SyncerCallback` callbacks are automatically
             added.
-
 
     Returns:
         ExperimentAnalysis: Object for experiment analysis.
@@ -424,12 +428,14 @@ def run(
         logger.warning(
             "SIGINT received (e.g. via Ctrl+C), ending Ray Tune run. "
             "This will try to checkpoint the experiment state one last time. "
-            "Press CTRL+C one more time (or send SIGKILL/SIGTERM) to skip. ")
+            "Press CTRL+C one more time (or send SIGINT/SIGKILL/SIGTERM) "
+            "to skip. ")
         state[signal.SIGINT] = True
         # Restore original signal handler to react to future SIGINT signals
         signal.signal(signal.SIGINT, original_handler)
 
-    signal.signal(signal.SIGINT, sigint_handler)
+    if not int(os.getenv("TUNE_DISABLE_SIGINT_HANDLER", "0")):
+        signal.signal(signal.SIGINT, sigint_handler)
 
     tune_start = time.time()
     while not runner.is_finished() and not state[signal.SIGINT]:
