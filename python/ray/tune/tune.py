@@ -64,6 +64,7 @@ def _report_progress(runner, reporter, done=False):
         executor_debug_str = runner.trial_executor.debug_string()
         reporter.report(trials, done, sched_debug_str, executor_debug_str)
 
+
 def run(
         run_or_experiment: Union[str, Callable, Type],
         name: Optional[str] = None,
@@ -109,50 +110,51 @@ def run(
         sync_to_cloud: Optional = None,
         sync_to_driver: Optional = None,
         sync_on_checkpoint: Optional = None):
-    return ray.get(_tune_run_impl.remote(
-        run_or_experiment,
-        name,
-        metric,
-        mode,
-        stop,
-        time_budget_s,
-        config,
-        resources_per_trial,
-        num_samples,
-        local_dir,
-        search_alg,
-        scheduler,
-        keep_checkpoints_num,
-        checkpoint_score_attr,
-        checkpoint_freq,
-        checkpoint_at_end,
-        verbose,
-        progress_reporter,
-        log_to_file,
-        trial_name_creator,
-        trial_dirname_creator,
-        sync_config,
-        export_formats,
-        max_failures,
-        fail_fast,
-        restore,
-        server_port,
-        resume,
-        queue_trials,
-        reuse_actors,
-        trial_executor,
-        raise_on_failed_trial,
-        callbacks,
-        # Deprecated args
-        loggers,
-        ray_auto_init,
-        run_errored_only,
-        global_checkpoint_period,
-        with_server,
-        upload_dir,
-        sync_to_cloud,
-        sync_to_driver,
-        sync_on_checkpoint))
+    return ray.get(
+        _tune_run_impl.remote(
+            run_or_experiment,
+            name,
+            metric,
+            mode,
+            stop,
+            time_budget_s,
+            config,
+            resources_per_trial,
+            num_samples,
+            local_dir,
+            search_alg,
+            scheduler,
+            keep_checkpoints_num,
+            checkpoint_score_attr,
+            checkpoint_freq,
+            checkpoint_at_end,
+            verbose,
+            progress_reporter,
+            log_to_file,
+            trial_name_creator,
+            trial_dirname_creator,
+            sync_config,
+            export_formats,
+            max_failures,
+            fail_fast,
+            restore,
+            server_port,
+            resume,
+            queue_trials,
+            reuse_actors,
+            trial_executor,
+            raise_on_failed_trial,
+            callbacks,
+            # Deprecated args
+            loggers,
+            ray_auto_init,
+            run_errored_only,
+            global_checkpoint_period,
+            with_server,
+            upload_dir,
+            sync_to_cloud,
+            sync_to_driver,
+            sync_on_checkpoint))
 
 
 @ray.remote
@@ -575,19 +577,11 @@ def run_experiments(
         raise_on_failed_trial: bool = True,
         concurrent: bool = True,
         callbacks: Optional[Sequence[Callback]] = None):
-    return ray.get(_tune_run_experiments_impl.remote(
-        experiments,
-        scheduler,
-        server_port,
-        verbose,
-        progress_reporter,
-        resume,
-        queue_trials,
-        reuse_actors,
-        trial_executor,
-        raise_on_failed_trial,
-        concurrent,
-        callbacks))
+    return ray.get(
+        _tune_run_experiments_impl.remote(
+            experiments, scheduler, server_port, verbose, progress_reporter,
+            resume, queue_trials, reuse_actors, trial_executor,
+            raise_on_failed_trial, concurrent, callbacks))
 
 
 @ray.remote
