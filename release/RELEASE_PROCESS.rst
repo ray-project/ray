@@ -152,7 +152,7 @@ is generally the easiest way to run release tests.
    - ``data_processing_tests/workloads/streaming_shuffle.py`` run the 100GB streaming shuffle in a single node & fake 4 nodes cluster.
 
    **IMPORTANT** Check if the workload scripts has terminated. If so, please record the result (both read/write bandwidth and the shuffle result) to the ``release_logs/data_processing_tests/[test_name]``.
-   Both shuffling runtime and read/write bandwidth shouldn't be changed that much compared to the previous release.
+   Both shuffling runtime and read/write bandwidth shouldn't be decreasing more than 15% compared to the previous release.
   
 
 Identify and Resolve Release Blockers
