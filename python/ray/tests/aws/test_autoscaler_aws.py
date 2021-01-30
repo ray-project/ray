@@ -141,7 +141,7 @@ def test_fills_out_amis():
 
     defaults_filled = bootstrap_aws(config)
 
-    assert defaults_filled["head_node"].get("ImageId")
+    assert defaults_filled["head_node"].get("ImageId") == "latest_dlami"
     assert defaults_filled["worker_nodes"].get("ImageId")
 
 
