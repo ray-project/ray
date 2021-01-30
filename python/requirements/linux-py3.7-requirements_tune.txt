@@ -54,7 +54,7 @@ boto3==1.16.58
     #   -c ../requirements.txt
     #   autogluon.core
     #   smart-open
-botocore==1.19.58
+botocore==1.19.63
     # via
     #   boto3
     #   s3transfer
