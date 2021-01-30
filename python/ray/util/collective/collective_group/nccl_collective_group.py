@@ -122,6 +122,9 @@ class NCCLGroup(BaseGroup):
         # record the used GPU IDs.
         self._used_gpu_indices = set()
 
+        # TODO(Fu): implement a stream pool, which could be a fixed size array of lazily created streams
+        #           Then add a map from device to stream pool here. May also need an index tracker map
+
         if nccl_util.get_nccl_build_version() < 2000:
             raise RuntimeError("NCCL in Ray requires NCCL >= 2.0.")
         if nccl_util.get_nccl_runtime_version() < 2704:
@@ -415,6 +418,8 @@ class NCCLGroup(BaseGroup):
                 comms[i] = nccl_util.create_nccl_communicator(
                     actual_world_size, nccl_uid, actual_rank)
                 # TODO(Fu): get the stream from the pool in the round-robin fashion
+                # Create a new stream, or return the stream in the pool if it has been created
+                # Device detection, or pass
                 streams[i] = cupy.cuda.Stream.null
                 # Stream(non_blocking=True)
         nccl_util.groupEnd()
@@ -485,6 +490,7 @@ class NCCLGroup(BaseGroup):
         # create the p2p communicators
         with nccl_util.Device(my_gpu_idx):
             comm = nccl_util.create_nccl_communicator(2, nccl_uid, my_p2p_rank)
+            #TODO(Fu): get the stream from pool
             stream = cupy.cuda.Stream.null
             # Stream(non_blocking=True)
         self._dev_comm_map[comm_key] = [comm]
