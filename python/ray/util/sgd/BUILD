@@ -249,7 +249,7 @@ py_test(
 py_test(
     name = "pytorch_pbt_failure",
     size = "medium",
-    srcs = ["../../../../release/long_running_distributed_tests/workloads/pytorch_pbt_failure.py"],
+    srcs = ["torch/examples/pytorch_pbt_failure.py"],
     tags = ["exlusive", "pytorch", "release"],
     deps = [":sgd_lib"],
     args = ["--smoke-test"]
