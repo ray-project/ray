@@ -45,6 +45,8 @@ class AutoscalingConfigTest(unittest.TestCase):
             except Exception:
                 self.fail("Config did not pass validation test!")
 
+    @pytest.mark.skipif(
+        sys.platform.startswith("win"), reason="Fails on Windows.")
     def testValidateDefaultConfigMinMaxWorkers(self):
         aws_config_path = os.path.join(
             RAY_PATH, "autoscaler/aws/example-multi-node-type.yaml")
@@ -71,8 +73,7 @@ class AutoscalingConfigTest(unittest.TestCase):
             self.fail("Config did not pass validation test!")
 
     @pytest.mark.skipif(
-        sys.platform.startswith("win"),
-        reason="TODO(ameer): fails on Windows.")
+        sys.platform.startswith("win"), reason="Fails on Windows.")
     def testValidateDefaultConfigAWSMultiNodeTypes(self):
         aws_config_path = os.path.join(
             RAY_PATH, "autoscaler/aws/example-multi-node-type.yaml")
