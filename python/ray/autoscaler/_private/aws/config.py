@@ -374,8 +374,8 @@ def _configure_subnet(config):
                 s for s in candidate_subnets if s.vpc_id == vpc_id_of_sg
             ]
         subnets = sorted(
-            (s for s in candidate_subnets if s.state == "available" and (
-                use_internal_ips or s.map_public_ip_on_launch)),
+            (s for s in candidate_subnets if s.state == "available" and
+             (use_internal_ips or s.map_public_ip_on_launch)),
             reverse=True,  # sort from Z-A
             key=lambda subnet: subnet.availability_zone)
     except botocore.exceptions.ClientError as exc:
