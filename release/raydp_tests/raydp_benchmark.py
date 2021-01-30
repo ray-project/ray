@@ -17,17 +17,27 @@ def load_dataset(spark, nbytes, npartitions, sort, base):
 
     @ray.remote
     def load(i):
-        filename = os.path.join(base, "df-{}-{}-{}.parquet".format("sort" if sort else "groupby", num_bytes_per_partition, i))
+        filename = os.path.join(
+            base, "df-{}-{}-{}.parquet".format("sort" if sort else "groupby",
+                                               num_bytes_per_partition, i))
         print("Partition file", filename)
         if not os.path.exists(filename):
             if sort:
                 nrows = num_bytes_per_partition // 8
                 print("Allocating dataset with {} rows".format(nrows))
-                dataset = pd.DataFrame(np.random.randint(0, np.iinfo(np.int64).max, size=(nrows, 1), dtype=np.int64), columns=['a'])
+                dataset = pd.DataFrame(
+                    np.random.randint(
+                        0,
+                        np.iinfo(np.int64).max,
+                        size=(nrows, 1),
+                        dtype=np.int64),
+                    columns=['a'])
             else:
                 nrows = num_bytes_per_partition // (8 * 2)
                 print("Allocating dataset with {} rows".format(nrows))
-                dataset = pd.DataFrame(np.random.randint(0, 100, size=(nrows, 2), dtype=np.int64), columns=['a', 'b'])
+                dataset = pd.DataFrame(
+                    np.random.randint(0, 100, size=(nrows, 2), dtype=np.int64),
+                    columns=['a', 'b'])
             print("Done allocating")
             dataset.to_parquet(filename, flavor="spark")
             print("Done writing to disk")
@@ -37,7 +47,10 @@ def load_dataset(spark, nbytes, npartitions, sort, base):
         filenames.append(load.remote(i))
     ray.wait(filenames, num_returns=len(filenames))
 
-    return spark.read.parquet(os.path.join(base, "df-{}-{}-*.parquet".format("sort" if sort else "groupby", num_bytes_per_partition)))
+    return spark.read.parquet(
+        os.path.join(
+            base, "df-{}-{}-*.parquet".format("sort" if sort else "groupby",
+                                              num_bytes_per_partition)))
 
 
 def trial(spark, nbytes, n_partitions, sort, generate_only, base):
@@ -90,7 +103,8 @@ if __name__ == '__main__':
     parser.add_argument("--nbytes", type=int, default=1_000_000)
     parser.add_argument("--npartitions", type=int, default=100, required=False)
     # Max partition size is 1GB.
-    parser.add_argument("--max-partition-size", type=int, default=1000_000_000, required=False)
+    parser.add_argument(
+        "--max-partition-size", type=int, default=1000_000_000, required=False)
     parser.add_argument("--num-nodes", type=int, default=1)
     parser.add_argument("--num-executors", type=int, default=4)
     parser.add_argument("--cores-per-executor", type=int, default=1)
@@ -104,7 +118,8 @@ if __name__ == '__main__':
     parser.add_argument("--clear-old-data", action="store_true")
     parser.add_argument("--spark-local-dir", type=str, default="/tmp")
     parser.add_argument("--spark-executor-memory", type=str, default="1g")
-    parser.add_argument("--spark-python-worker-memory", type=str, default="512m")
+    parser.add_argument(
+        "--spark-python-worker-memory", type=str, default="512m")
     parser.add_argument("--spark-memory-fraction", type=float, default=0.6)
     args = parser.parse_args()
 
@@ -138,8 +153,10 @@ if __name__ == '__main__':
             "spark.memory.fraction": args.spark_memory_fraction,
         }
         if args.s3:
-            config["spark.driver.extraJavaOptions"] += " -Dcom.amazonaws.services.s3.enableV4=true"
-            config["spark.executor.extraJavaOptions"] += " -Dcom.amazonaws.services.s3.enableV4=true"
+            config[
+                "spark.driver.extraJavaOptions"] += " -Dcom.amazonaws.services.s3.enableV4=true"
+            config[
+                "spark.executor.extraJavaOptions"] += " -Dcom.amazonaws.services.s3.enableV4=true"
             config.update({
                 # "spark.driver.extraClassPath": "/opt/spark/jars/hadoop-aws-2.7.4.jar:/opt/spark/jars/aws-java-sdk-1.7.4.jar:/opt/spark/jars/hadoop-common-2.7.4.jar:/opt/spark/jars/joda-time-2.3.jar",
                 # "spark.executor.extraClassPath": "/opt/spark/jars/hadoop-aws-2.7.4.jar:/opt/spark/jars/aws-java-sdk-1.7.4.jar:/opt/spark/jars/hadoop-common-2.7.4.jar:/opt/spark/jars/joda-time-2.3.jar",
@@ -156,15 +173,14 @@ if __name__ == '__main__':
                 # "spark.sepculation": False,
             })
         print("Initializing Spark on Ray...")
-        spark = raydp.init_spark(app_name, num_executors, cores_per_executor, memory_per_executor, config)
+        spark = raydp.init_spark(app_name, num_executors, cores_per_executor,
+                                 memory_per_executor, config)
     else:
         print("Creating Spark session...")
         # NOTE: We still initialize a local Ray cluster for parallel data generation.
         ray.init()
-        spark = (SparkSession.builder
-                    .master("local")
-                    .appName("Shuffle Benchmark on Spark")
-                    .getOrCreate())
+        spark = (SparkSession.builder.master("local")
+                 .appName("Shuffle Benchmark on Spark").getOrCreate())
 
     system = "Spark" if args.spark_only else "RayDP"
     print(f"Running Spark version {spark.version}")
@@ -190,9 +206,12 @@ if __name__ == '__main__':
         npartitions = args.nbytes // args.max_partition_size
 
     print("Starting real trials...")
-    output = trial(spark, args.nbytes, npartitions, args.sort, args.generate_only, base)
+    output = trial(spark, args.nbytes, npartitions, args.sort,
+                   args.generate_only, base)
     print("Trials done.")
-    print("{} mean over {} trials: {} +- {}".format(system, len(output), np.mean(output), np.std(output)))
+    print("{} mean over {} trials: {} +- {}".format(system, len(output),
+                                                    np.mean(output),
+                                                    np.std(output)))
 
     if args.cluster:
         outfile = "/tmp/raydp_benchmark_output.csv"
@@ -200,16 +219,19 @@ if __name__ == '__main__':
         outfile = "output.csv"
     write_header = not os.path.exists(outfile) or os.path.getsize(outfile) == 0
     with open(outfile, "a+") as csvfile:
-        fieldnames = ["system", "operation", "num_nodes", "nbytes", "npartitions", "duration"]
+        fieldnames = [
+            "system", "operation", "num_nodes", "nbytes", "npartitions",
+            "duration"
+        ]
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
         if write_header:
             writer.writeheader()
         row = {
-                "operation": "sort" if args.sort else "groupby",
-                "num_nodes": args.num_nodes,
-                "nbytes": args.nbytes,
-                "npartitions": npartitions,
-                }
+            "operation": "sort" if args.sort else "groupby",
+            "num_nodes": args.num_nodes,
+            "nbytes": args.nbytes,
+            "npartitions": npartitions,
+        }
         for output in output:
             row["system"] = system
             row["duration"] = output
