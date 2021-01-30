@@ -344,13 +344,16 @@ class DragonflySearch(Searcher):
 
     @staticmethod
     def convert_search_space(spec: Dict) -> List[Dict]:
-        spec = flatten_dict(spec, prevent_delimiter=True)
         resolved_vars, domain_vars, grid_vars = parse_spec_vars(spec)
 
         if grid_vars:
             raise ValueError(
                 "Grid search parameters cannot be automatically converted "
                 "to a Dragonfly search space.")
+
+        # Flatten and resolve again after checking for grid search.
+        spec = flatten_dict(spec, prevent_delimiter=True)
+        resolved_vars, domain_vars, grid_vars = parse_spec_vars(spec)
 
         def resolve_value(par: str, domain: Domain) -> Dict:
             sampler = domain.get_sampler()

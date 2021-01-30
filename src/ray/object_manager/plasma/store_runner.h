@@ -1,8 +1,7 @@
 #pragma once
 
-#include <memory>
-
 #include <boost/asio.hpp>
+#include <memory>
 
 #include "absl/synchronization/mutex.h"
 #include "ray/object_manager/notification/object_store_notification_manager.h"
@@ -13,8 +12,7 @@ namespace plasma {
 class PlasmaStoreRunner {
  public:
   PlasmaStoreRunner(std::string socket_name, int64_t system_memory,
-                    bool hugepages_enabled, std::string plasma_directory,
-                    const std::string external_store_endpoint);
+                    bool hugepages_enabled, std::string plasma_directory);
   void Start(ray::SpillObjectsCallback spill_objects_callback = nullptr,
              std::function<void()> object_store_full_callback = nullptr);
   void Stop();
@@ -24,6 +22,10 @@ class PlasmaStoreRunner {
   }
   bool IsPlasmaObjectSpillable(const ObjectID &object_id);
 
+  void GetAvailableMemoryAsync(std::function<void(size_t)> callback) const {
+    main_service_.post([this, callback]() { store_->GetAvailableMemory(callback); });
+  }
+
  private:
   void Shutdown();
   absl::Mutex store_runner_mutex_;
@@ -31,8 +33,7 @@ class PlasmaStoreRunner {
   int64_t system_memory_;
   bool hugepages_enabled_;
   std::string plasma_directory_;
-  std::string external_store_endpoint_;
-  boost::asio::io_service main_service_;
+  mutable boost::asio::io_service main_service_;
   std::unique_ptr<PlasmaStore> store_;
   std::shared_ptr<ray::ObjectStoreNotificationManager> listener_;
 };

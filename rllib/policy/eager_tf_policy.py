@@ -4,6 +4,7 @@ It supports both traced and non-traced eager execution modes."""
 
 import functools
 import logging
+import threading
 
 from ray.util.debug import log_once
 from ray.rllib.models.catalog import ModelCatalog
@@ -15,6 +16,7 @@ from ray.rllib.utils import add_mixins, force_list
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.tf_ops import convert_to_non_tf_type
+from ray.rllib.utils.threading import with_lock
 from ray.rllib.utils.tracking_dict import UsageTrackingDict
 
 tf1, tf, tfv = try_import_tf()
@@ -255,18 +257,22 @@ def build_eager_tf_policy(name,
                     config["model"],
                     framework=self.framework,
                 )
+            # Lock used for locking some methods on the object-level.
+            # This prevents possible race conditions when calling the model
+            # first, then its value function (e.g. in a loss function), in
+            # between of which another model call is made (e.g. to compute an
+            # action).
+            self._lock = threading.RLock()
+
             # Auto-update model's inference view requirements, if recurrent.
-            self._update_model_inference_view_requirements_from_init_state()
+            self._update_model_view_requirements_from_init_state()
 
             self.exploration = self._create_exploration()
-            self._state_in = [
-                tf.convert_to_tensor([s])
-                for s in self.model.get_initial_state()
-            ]
+            self._state_inputs = self.model.get_initial_state()
+            self._is_recurrent = len(self._state_inputs) > 0
 
             # Combine view_requirements for Model and Policy.
-            self.view_requirements.update(
-                self.model.inference_view_requirements)
+            self.view_requirements.update(self.model.view_requirements)
 
             if before_loss_init:
                 before_loss_init(self, observation_space, action_space, config)
@@ -308,6 +314,7 @@ def build_eager_tf_policy(name,
                                       episode)
             return sample_batch
 
+        @with_lock
         @override(Policy)
         def learn_on_batch(self, postprocessed_batch):
             # Callback handling.
@@ -354,6 +361,7 @@ def build_eager_tf_policy(name,
             grads = [g for g, v in grads_and_vars]
             return grads, stats
 
+        @with_lock
         @override(Policy)
         @convert_eager_inputs
         @convert_eager_outputs
@@ -375,6 +383,8 @@ def build_eager_tf_policy(name,
 
             # TODO: remove python side effect to cull sources of bugs.
             self._is_training = False
+            self._is_recurrent = \
+                state_batches is not None and state_batches != []
             self._state_in = state_batches or []
 
             if not tf1.executing_eagerly():
@@ -449,6 +459,7 @@ def build_eager_tf_policy(name,
 
             return actions, state_out, extra_fetches
 
+        @with_lock
         @override(Policy)
         def compute_log_likelihoods(self,
                                     actions,
@@ -552,11 +563,11 @@ def build_eager_tf_policy(name,
 
         @override(Policy)
         def is_recurrent(self):
-            return len(self._state_in) > 0
+            return self._is_recurrent
 
         @override(Policy)
         def num_state_tensors(self):
-            return len(self._state_in)
+            return len(self._state_inputs)
 
         @override(Policy)
         def get_initial_state(self):
@@ -594,6 +605,7 @@ def build_eager_tf_policy(name,
                 self._optimizer.apply_gradients(
                     [(g, v) for g, v in grads_and_vars if g is not None])
 
+        @with_lock
         def _compute_gradients(self, samples):
             """Computes and returns grads as eager tensors."""
 

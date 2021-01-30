@@ -20,9 +20,14 @@ public class PlasmaFreeTest extends BaseTest {
     Assert.assertEquals("hello", helloString);
     Ray.internal().free(ImmutableList.of(helloId), true);
 
-    final boolean result = TestUtils.waitForCondition(() ->
-        !TestUtils.getRuntime().getObjectStore()
-          .wait(ImmutableList.of(((ObjectRefImpl<String>) helloId).getId()), 1, 0).get(0), 50);
+    final boolean result =
+        TestUtils.waitForCondition(
+            () ->
+                !TestUtils.getRuntime()
+                    .getObjectStore()
+                    .wait(ImmutableList.of(((ObjectRefImpl<String>) helloId).getId()), 1, 0, true)
+                    .get(0),
+            50);
     if (TestUtils.isSingleProcessMode()) {
       Assert.assertTrue(result);
     } else {

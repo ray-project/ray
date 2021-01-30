@@ -21,7 +21,7 @@ public class ActorCreator<A> extends BaseActorCreator<ActorCreator<A>> {
   /**
    * Set the JVM options for the Java worker that this actor is running in.
    *
-   * Note, if this is set, this actor won't share Java worker with other actors or tasks.
+   * <p>Note, if this is set, this actor won't share Java worker with other actors or tasks.
    *
    * @param jvmOptions JVM options for the Java worker that this actor is running in.
    * @return self
@@ -40,5 +40,4 @@ public class ActorCreator<A> extends BaseActorCreator<ActorCreator<A>> {
   public ActorHandle<A> remote() {
     return Ray.internal().createActor(func, args, buildOptions());
   }
-
 }

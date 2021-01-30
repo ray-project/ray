@@ -180,21 +180,22 @@ class TestCuriosity(unittest.TestCase):
             trainer.stop()
             self.assertTrue(learnt)
 
-            if fw == "tf":
-                # W/o Curiosity. Expect to learn nothing.
-                print("Trying w/o curiosity (not expected to learn).")
-                config["exploration_config"] = {
-                    "type": "StochasticSampling",
-                }
-                trainer = ppo.PPOTrainer(config=config)
-                rewards_wo = 0.0
-                for _ in range(num_iterations):
-                    result = trainer.train()
-                    rewards_wo += result["episode_reward_mean"]
-                    print(result)
-                trainer.stop()
-                self.assertTrue(rewards_wo == 0.0)
-                print("Did not reach goal w/o curiosity!")
+            # Disable this check for now. Add too much flakyness to test.
+            # if fw == "tf":
+            #    # W/o Curiosity. Expect to learn nothing.
+            #    print("Trying w/o curiosity (not expected to learn).")
+            #    config["exploration_config"] = {
+            #        "type": "StochasticSampling",
+            #    }
+            #    trainer = ppo.PPOTrainer(config=config)
+            #    rewards_wo = 0.0
+            #    for _ in range(num_iterations):
+            #        result = trainer.train()
+            #        rewards_wo += result["episode_reward_mean"]
+            #        print(result)
+            #    trainer.stop()
+            #    self.assertTrue(rewards_wo == 0.0)
+            #    print("Did not reach goal w/o curiosity!")
 
     def test_curiosity_on_partially_observable_domain(self):
         config = ppo.DEFAULT_CONFIG.copy()

@@ -20,7 +20,6 @@
 #include "ray/common/task/task_util.h"
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/context.h"
-#include "ray/gcs/redis_gcs_client.h"
 #include "src/ray/protobuf/core_worker.pb.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
@@ -42,7 +41,7 @@ class ActorHandle {
   ActorHandle(const std::string &serialized);
 
   /// Constructs an ActorHandle from a gcs::ActorTableData message.
-  ActorHandle(const gcs::ActorTableData &actor_table_data);
+  ActorHandle(const rpc::ActorTableData &actor_table_data);
 
   ActorID GetActorID() const { return ActorID::FromBinary(inner_.actor_id()); };
 

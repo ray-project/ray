@@ -43,6 +43,8 @@
 #include "ray/object_manager/push_manager.h"
 #include "ray/rpc/object_manager/object_manager_client.h"
 #include "ray/rpc/object_manager/object_manager_server.h"
+#include "src/ray/protobuf/common.pb.h"
+#include "src/ray/protobuf/node_manager.pb.h"
 
 namespace ray {
 
@@ -95,9 +97,8 @@ class ObjectStoreRunner {
 
 class ObjectManagerInterface {
  public:
-  virtual ray::Status Pull(const ObjectID &object_id,
-                           const rpc::Address &owner_address) = 0;
-  virtual void CancelPull(const ObjectID &object_id) = 0;
+  virtual uint64_t Pull(const std::vector<rpc::ObjectReference> &object_refs) = 0;
+  virtual void CancelPull(uint64_t request_id) = 0;
   virtual ~ObjectManagerInterface(){};
 };
 
@@ -105,8 +106,9 @@ class ObjectManagerInterface {
 class ObjectManager : public ObjectManagerInterface,
                       public rpc::ObjectManagerServiceHandler {
  public:
-  using RestoreSpilledObjectCallback = std::function<void(
-      const ObjectID &, const std::string &, std::function<void(const ray::Status &)>)>;
+  using RestoreSpilledObjectCallback =
+      std::function<void(const ObjectID &, const std::string &, const NodeID &,
+                         std::function<void(const ray::Status &)>)>;
 
   /// Implementation of object manager service
 
@@ -238,18 +240,19 @@ class ObjectManager : public ObjectManagerInterface,
   /// \return Void.
   void Push(const ObjectID &object_id, const NodeID &node_id);
 
-  /// Pull an object from NodeID.
+  /// Pull a bundle of objects. This will attempt to make all objects in the
+  /// bundle local until the request is canceled with the returned ID.
   ///
-  /// \param object_id The object's object id.
-  /// \return Status of whether the pull request successfully initiated.
-  ray::Status Pull(const ObjectID &object_id, const rpc::Address &owner_address) override;
+  /// \param object_refs The bundle of objects that must be made local.
+  /// \return A request ID that can be used to cancel the request.
+  uint64_t Pull(const std::vector<rpc::ObjectReference> &object_refs) override;
 
-  /// Cancels all requests (Push/Pull) associated with the given ObjectID. This
-  /// method is idempotent.
+  /// Cancels the pull request with the given ID. This cancels any fetches for
+  /// objects that were passed to the original pull request, if no other pull
+  /// request requires them.
   ///
-  /// \param object_id The ObjectID.
-  /// \return Void.
-  void CancelPull(const ObjectID &object_id) override;
+  /// \param pull_request_id The request to cancel.
+  void CancelPull(uint64_t pull_request_id) override;
 
   /// Callback definition for wait.
   using WaitCallback = std::function<void(const std::vector<ray::ObjectID> &found,
@@ -289,6 +292,11 @@ class ObjectManager : public ObjectManagerInterface,
 
   /// Record metrics.
   void RecordMetrics() const;
+
+  /// Populate object store stats.
+  ///
+  /// \param Output parameter.
+  void FillObjectStoreStats(rpc::GetNodeStatsReply *reply) const;
 
   void Tick(const boost::system::error_code &e);
 
@@ -348,7 +356,7 @@ class ObjectManager : public ObjectManagerInterface,
 
   /// Handle starting, running, and stopping asio rpc_service.
   void StartRpcService();
-  void RunRpcService();
+  void RunRpcService(int index);
   void StopRpcService();
 
   /// Handle an object being added to this node. This adds the object to the

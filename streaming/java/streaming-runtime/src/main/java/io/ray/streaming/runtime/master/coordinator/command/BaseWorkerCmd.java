@@ -7,11 +7,9 @@ public abstract class BaseWorkerCmd implements Serializable {
 
   public ActorId fromActorId;
 
-  public BaseWorkerCmd() {
-  }
+  public BaseWorkerCmd() {}
 
   protected BaseWorkerCmd(ActorId actorId) {
     this.fromActorId = actorId;
   }
-
 }

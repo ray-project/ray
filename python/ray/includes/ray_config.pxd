@@ -15,8 +15,6 @@ cdef extern from "ray/common/ray_config.h" nogil:
 
         int64_t raylet_heartbeat_timeout_milliseconds() const
 
-        c_bool light_report_resource_usage_enabled() const
-
         int64_t debug_dump_period_milliseconds() const
 
         int64_t num_heartbeats_timeout() const

@@ -9,18 +9,12 @@ import subprocess
 import ray
 from ray.cluster_utils import Cluster
 from ray.test_utils import init_error_pubsub
-from ray.test_utils import client_test_enabled
-import ray.experimental.client as ray_client
 
 
 @pytest.fixture
 def shutdown_only():
     yield None
     # The code after the yield will run as teardown code.
-    if client_test_enabled():
-        ray_client.ray.disconnect()
-        ray_client._stop_test_server(1)
-        ray_client.reset_api()
     ray.shutdown()
 
 
@@ -28,7 +22,6 @@ def get_default_fixure_system_config():
     system_config = {
         "object_timeout_milliseconds": 200,
         "num_heartbeats_timeout": 10,
-        "object_store_full_max_retries": 3,
         "object_store_full_delay_ms": 100,
     }
     return system_config
@@ -49,17 +42,10 @@ def _ray_start(**kwargs):
     init_kwargs = get_default_fixture_ray_kwargs()
     init_kwargs.update(kwargs)
     # Start the Ray processes.
-    if client_test_enabled():
-        address_info = ray_client.ray.init(**init_kwargs)
-    else:
-        address_info = ray.init(**init_kwargs)
+    address_info = ray.init(**init_kwargs)
 
     yield address_info
     # The code after the yield will run as teardown code.
-    if client_test_enabled():
-        ray_client.ray.disconnect()
-        ray_client._stop_test_server(1)
-        ray_client.reset_api()
     ray.shutdown()
 
 
@@ -144,16 +130,9 @@ def _ray_start_cluster(**kwargs):
         # We assume driver will connect to the head (first node),
         # so ray init will be invoked if do_init is true
         if len(remote_nodes) == 1 and do_init:
-            if client_test_enabled():
-                ray_client.ray.init(address=cluster.address)
-            else:
-                ray.init(address=cluster.address)
+            ray.init(address=cluster.address)
     yield cluster
     # The code after the yield will run as teardown code.
-    if client_test_enabled():
-        ray_client.ray.disconnect()
-        ray_client._stop_test_server(1)
-        ray_client.reset_api()
     ray.shutdown()
     cluster.shutdown()
 

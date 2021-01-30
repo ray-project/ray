@@ -2,18 +2,15 @@ import collections
 import numpy as np
 import sys
 import itertools
-from typing import Any, Dict, Iterable, List, Optional, Set, Union
+from typing import Dict, Iterable, List, Optional, Set, Union
 
 from ray.rllib.utils.annotations import PublicAPI, DeveloperAPI
 from ray.rllib.utils.compression import pack, unpack, is_compressed
 from ray.rllib.utils.memory import concat_aligned
-from ray.rllib.utils.typing import TensorType
+from ray.rllib.utils.typing import PolicyID, TensorType
 
 # Default policy id for single agent environments
 DEFAULT_POLICY_ID = "default_policy"
-
-# TODO(ekl) reuse the other id def once we fix imports
-PolicyID = Any
 
 
 @PublicAPI
@@ -88,6 +85,11 @@ class SampleBatch:
 
         # Keeps track of new columns added after initial ones.
         self.new_columns = []
+
+    @PublicAPI
+    def __len__(self):
+        """Returns the amount of samples in the sample batch."""
+        return self.count
 
     @staticmethod
     @PublicAPI

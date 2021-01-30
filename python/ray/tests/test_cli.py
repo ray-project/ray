@@ -37,6 +37,7 @@ from testfixtures.popen import MockPopen, PopenBehaviour
 
 import ray.autoscaler._private.aws.config as aws_config
 import ray.scripts.scripts as scripts
+from ray.test_utils import wait_for_condition
 
 boto3_list = [{
     "InstanceType": "t1.micro",
@@ -324,6 +325,30 @@ def test_ray_attach(configure_lang, configure_aws, _unlink_test_ssh_key):
     reason=("Mac builds don't provide proper locale support"))
 @mock_ec2
 @mock_iam
+def test_ray_dashboard(configure_lang, configure_aws, _unlink_test_ssh_key):
+    def commands_mock(command, stdin):
+        # TODO(maximsmol): this is a hack since stdout=sys.stdout
+        #                  doesn't work with the mock for some reason
+        print("ubuntu@ip-.+:~$ exit")
+        return PopenBehaviour(stdout="ubuntu@ip-.+:~$ exit")
+
+    with _setup_popen_mock(commands_mock):
+        runner = CliRunner()
+        result = runner.invoke(scripts.up, [
+            DEFAULT_TEST_CONFIG_PATH, "--no-config-cache", "-y",
+            "--log-style=pretty", "--log-color", "False"
+        ])
+        _die_on_error(result)
+
+        result = runner.invoke(scripts.dashboard, [DEFAULT_TEST_CONFIG_PATH])
+        _check_output_via_pattern("test_ray_dashboard.txt", result)
+
+
+@pytest.mark.skipif(
+    sys.platform == "darwin" and "travis" in os.environ.get("USER", ""),
+    reason=("Mac builds don't provide proper locale support"))
+@mock_ec2
+@mock_iam
 def test_ray_exec(configure_lang, configure_aws, _unlink_test_ssh_key):
     def commands_mock(command, stdin):
         # TODO(maximsmol): this is a hack since stdout=sys.stdout
@@ -389,6 +414,33 @@ def test_ray_submit(configure_lang, configure_aws, _unlink_test_ssh_key):
                 ])
 
             _check_output_via_pattern("test_ray_submit.txt", result)
+
+
+def test_ray_status():
+    import ray
+    address = ray.init().get("redis_address")
+    runner = CliRunner()
+
+    def output_ready():
+        result = runner.invoke(scripts.status)
+        result.stdout
+        return not result.exception and "memory" in result.output
+
+    wait_for_condition(output_ready)
+
+    result = runner.invoke(scripts.status, [])
+    _check_output_via_pattern("test_ray_status.txt", result)
+
+    result_arg = runner.invoke(scripts.status, ["--address", address])
+    _check_output_via_pattern("test_ray_status.txt", result_arg)
+
+    # Try to check status with RAY_ADDRESS set
+    os.environ["RAY_ADDRESS"] = address
+    result_env = runner.invoke(scripts.status)
+    _check_output_via_pattern("test_ray_status.txt", result_env)
+
+    result_env_arg = runner.invoke(scripts.status, ["--address", address])
+    _check_output_via_pattern("test_ray_status.txt", result_env_arg)
 
 
 if __name__ == "__main__":

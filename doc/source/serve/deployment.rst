@@ -69,7 +69,7 @@ a backend in serve for our model (and versioned it with a string).
 What serve does when we run this code is store the model as a Ray actor
 and route traffic to it as the endpoint is queried, in this case over HTTP.
 Note that in order for this endpoint to be accessible from other machines, we
-need to specify ``http_host="0.0.0.0"`` in :mod:`serve.start <ray.serve.start>` like we did here.
+need to specify ``http_options={"host": "0.0.0.0"}`` in :mod:`serve.start <ray.serve.start>` like we did here.
 
 Now let's query our endpoint to see the result.
 
@@ -225,7 +225,7 @@ With the cluster now running, we can run a simple script to start Ray Serve and 
     # Connect to the running Ray cluster.
     ray.init(address="auto")
     # Bind on 0.0.0.0 to expose the HTTP server on external IPs.
-    client = serve.start(http_host="0.0.0.0")
+    client = serve.start(detached=True, http_options={"host": "0.0.0.0"})
 
     def hello():
         return "hello world"

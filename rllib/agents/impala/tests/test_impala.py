@@ -2,6 +2,7 @@ import unittest
 
 import ray
 import ray.rllib.agents.impala as impala
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.test_utils import check_compute_single_action, \
     framework_iterator
@@ -62,7 +63,7 @@ class TestIMPALA(unittest.TestCase):
         trainer = impala.ImpalaTrainer(config=local_cfg, env="CartPole-v0")
 
         def get_lr(result):
-            return result["info"]["learner"]["default_policy"]["cur_lr"]
+            return result["info"]["learner"][DEFAULT_POLICY_ID]["cur_lr"]
 
         try:
             r1 = trainer.train()

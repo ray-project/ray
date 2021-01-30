@@ -144,14 +144,6 @@ class GcsRpcClient {
   VOID_GCS_RPC_CLIENT_METHOD(ActorInfoGcsService, GetAllActorInfo,
                              actor_info_grpc_client_, )
 
-  /// Register an actor to GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(ActorInfoGcsService, RegisterActorInfo,
-                             actor_info_grpc_client_, )
-
-  ///  Update actor info in GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(ActorInfoGcsService, UpdateActorInfo,
-                             actor_info_grpc_client_, )
-
   /// Register a node to GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService, RegisterNode, node_info_grpc_client_, )
 
@@ -160,14 +152,6 @@ class GcsRpcClient {
 
   /// Get information of all nodes from GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService, GetAllNodeInfo, node_info_grpc_client_, )
-
-  /// Report resource usage of a node to GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService, ReportResourceUsage,
-                             node_info_grpc_client_, )
-
-  /// Get resource usage of all nodes from GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService, GetAllResourceUsage,
-                             node_info_grpc_client_, )
 
   /// Set internal config of the cluster in the GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService, SetInternalConfig,
@@ -191,6 +175,14 @@ class GcsRpcClient {
 
   /// Get available resources of all nodes from the GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(NodeResourceInfoGcsService, GetAllAvailableResources,
+                             node_resource_info_grpc_client_, )
+
+  /// Report resource usage of a node to GCS Service.
+  VOID_GCS_RPC_CLIENT_METHOD(NodeResourceInfoGcsService, ReportResourceUsage,
+                             node_resource_info_grpc_client_, )
+
+  /// Get resource usage of all nodes from GCS Service.
+  VOID_GCS_RPC_CLIENT_METHOD(NodeResourceInfoGcsService, GetAllResourceUsage,
                              node_resource_info_grpc_client_, )
 
   /// Report heartbeat of a node to GCS Service.

@@ -194,3 +194,11 @@ void FillRandom(T *data) {
     (*data)[i] = static_cast<uint8_t>(dist(generator));
   }
 }
+
+inline void SetThreadName(const std::string &thread_name) {
+#if defined(__APPLE__)
+  pthread_setname_np(thread_name.c_str());
+#elif defined(__linux__)
+  pthread_setname_np(pthread_self(), thread_name.substr(0, 15).c_str());
+#endif
+}

@@ -12,6 +12,7 @@ from ray.util.placement_group import (
 
 from ray import ActorClassID, Language
 from ray._raylet import PythonFunctionDescriptor
+from ray._private.client_mode_hook import client_mode_hook
 from ray import cross_language
 from ray.util.inspect import (
     is_function_or_method,
@@ -22,6 +23,7 @@ from ray.util.inspect import (
 logger = logging.getLogger(__name__)
 
 
+@client_mode_hook
 def method(*args, **kwargs):
     """Annotate an actor method.
 
@@ -178,7 +180,7 @@ class ActorClassMethodMetadata(object):
             each actor method.
     """
 
-    _cache = {}  # This cache will be cleared in ray.disconnect()
+    _cache = {}  # This cache will be cleared in ray.worker.disconnect()
 
     def __init__(self):
         class_name = type(self).__name__
@@ -582,7 +584,9 @@ class ActorClass:
         elif lifetime == "detached":
             detached = True
         else:
-            raise ValueError("lifetime must be either `None` or 'detached'")
+            raise ValueError(
+                "actor `lifetime` argument must be either `None` or 'detached'"
+            )
 
         if placement_group_capture_child_tasks is None:
             placement_group_capture_child_tasks = (
@@ -933,7 +937,7 @@ class ActorHandle:
     def __reduce__(self):
         """This code path is used by pickling but not by Ray forking."""
         state = self._serialization_helper()
-        return ActorHandle._deserialization_helper, (state)
+        return ActorHandle._deserialization_helper, state
 
 
 def modify_class(cls):
@@ -1017,7 +1021,7 @@ def exit_actor():
     if worker.mode == ray.WORKER_MODE and not worker.actor_id.is_nil():
         # Intentionally disconnect the core worker from the raylet so the
         # raylet won't push an error message to the driver.
-        ray.disconnect()
+        ray.worker.disconnect()
         # Disconnect global state from GCS.
         ray.state.state.disconnect()
 

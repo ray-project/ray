@@ -171,7 +171,7 @@ class DynamicTFPolicy(TFPolicy):
                 model_config=self.config["model"],
                 framework="tf")
         # Auto-update model's inference view requirements, if recurrent.
-        self._update_model_inference_view_requirements_from_init_state()
+        self._update_model_view_requirements_from_init_state()
 
         if existing_inputs:
             self._state_inputs = [
@@ -186,8 +186,7 @@ class DynamicTFPolicy(TFPolicy):
                     get_placeholder(
                         space=vr.space,
                         time_axis=not isinstance(vr.shift, int),
-                    ) for k, vr in
-                    self.model.inference_view_requirements.items()
+                    ) for k, vr in self.model.view_requirements.items()
                     if k.startswith("state_in_")
                 ]
             else:
@@ -200,7 +199,7 @@ class DynamicTFPolicy(TFPolicy):
         # Add NEXT_OBS, STATE_IN_0.., and others.
         self.view_requirements = self._get_default_view_requirements()
         # Combine view_requirements for Model and Policy.
-        self.view_requirements.update(self.model.inference_view_requirements)
+        self.view_requirements.update(self.model.view_requirements)
 
         # Setup standard placeholders.
         if existing_inputs is not None:
@@ -560,7 +559,7 @@ class DynamicTFPolicy(TFPolicy):
         all_accessed_keys = \
             train_batch.accessed_keys | batch_for_postproc.accessed_keys | \
             batch_for_postproc.added_keys | set(
-                self.model.inference_view_requirements.keys())
+                self.model.view_requirements.keys())
 
         TFPolicy._initialize_loss(self, loss, [(k, v)
                                                for k, v in train_batch.items()
@@ -584,7 +583,7 @@ class DynamicTFPolicy(TFPolicy):
             # Tag those only needed for post-processing.
             for key in batch_for_postproc.accessed_keys:
                 if key not in train_batch.accessed_keys and \
-                        key not in self.model.inference_view_requirements:
+                        key not in self.model.view_requirements:
                     if key in self.view_requirements:
                         self.view_requirements[key].used_for_training = False
                     if key in self._loss_input_dict:
@@ -597,7 +596,7 @@ class DynamicTFPolicy(TFPolicy):
                     SampleBatch.EPS_ID, SampleBatch.AGENT_INDEX,
                     SampleBatch.UNROLL_ID, SampleBatch.DONES,
                     SampleBatch.REWARDS] and \
-                        key not in self.model.inference_view_requirements:
+                        key not in self.model.view_requirements:
                     # If user deleted this key manually in postprocessing
                     # fn, warn about it and do not remove from
                     # view-requirements.

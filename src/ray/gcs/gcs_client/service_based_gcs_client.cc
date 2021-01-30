@@ -37,21 +37,23 @@ Status ServiceBasedGcsClient::Connect(boost::asio::io_service &io_service) {
     return Status::Invalid("gcs service address is invalid!");
   }
 
-  // Connect to gcs.
-  redis_gcs_client_.reset(new RedisGcsClient(options_));
-  RAY_CHECK_OK(redis_gcs_client_->Connect(io_service));
+  // Connect to redis.
+  RedisClientOptions redis_client_options(options_.server_ip_, options_.server_port_,
+                                          options_.password_, options_.is_test_client_);
+  redis_client_.reset(new RedisClient(redis_client_options));
+  RAY_CHECK_OK(redis_client_->Connect(io_service));
 
   // Init gcs pub sub instance.
-  gcs_pub_sub_.reset(new GcsPubSub(redis_gcs_client_->GetRedisClient()));
+  gcs_pub_sub_.reset(new GcsPubSub(redis_client_));
 
   // Get gcs service address.
   get_server_address_func_ = [this](std::pair<std::string, int> *address) {
     return GetGcsServerAddressFromRedis(
-        redis_gcs_client_->primary_context()->sync_context(), address);
+        redis_client_->GetPrimaryContext()->sync_context(), address);
   };
   std::pair<std::string, int> address;
   RAY_CHECK(GetGcsServerAddressFromRedis(
-      redis_gcs_client_->primary_context()->sync_context(), &address,
+      redis_client_->GetPrimaryContext()->sync_context(), &address,
       RayConfig::instance().gcs_service_connect_retries()))
       << "Failed to get gcs server address when init gcs client.";
 
@@ -96,8 +98,8 @@ void ServiceBasedGcsClient::Disconnect() {
   is_connected_ = false;
   detect_timer_->cancel();
   gcs_pub_sub_.reset();
-  redis_gcs_client_->Disconnect();
-  redis_gcs_client_.reset();
+  redis_client_->Disconnect();
+  redis_client_.reset();
   RAY_LOG(DEBUG) << "ServiceBasedGcsClient Disconnected.";
 }
 
@@ -180,7 +182,7 @@ void ServiceBasedGcsClient::GcsServiceFailureDetected(rpc::GcsServiceFailureType
     // following flag is always false.
     resubscribe_func_(false);
     // Resend resource usage after reconnected, needed by resource view in GCS.
-    node_accessor_->AsyncReReportResourceUsage();
+    node_resource_accessor_->AsyncReReportResourceUsage();
     break;
   default:
     RAY_LOG(FATAL) << "Unsupported failure type: " << type;
@@ -205,7 +207,7 @@ void ServiceBasedGcsClient::ReconnectGcsServer() {
         RAY_LOG(INFO)
             << "Repeated reconnection in "
             << RayConfig::instance().minimum_gcs_reconnect_interval_milliseconds()
-            << "milliseconds, return directly.";
+            << " milliseconds, return directly.";
         return;
       }
 

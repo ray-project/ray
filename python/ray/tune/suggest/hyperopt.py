@@ -400,8 +400,9 @@ class HyperOptSearch(Searcher):
             if isinstance(domain, Float):
                 if isinstance(sampler, LogUniform):
                     if quantize:
-                        return hpo.hp.qloguniform(par, domain.lower,
-                                                  domain.upper, quantize)
+                        return hpo.hp.qloguniform(par, np.log(domain.lower),
+                                                  np.log(domain.upper),
+                                                  quantize)
                     return hpo.hp.loguniform(par, np.log(domain.lower),
                                              np.log(domain.upper))
                 elif isinstance(sampler, Uniform):
@@ -416,12 +417,21 @@ class HyperOptSearch(Searcher):
                     return hpo.hp.normal(par, sampler.mean, sampler.sd)
 
             elif isinstance(domain, Integer):
-                if isinstance(sampler, Uniform):
+                if isinstance(sampler, LogUniform):
                     if quantize:
-                        logger.warning(
-                            "HyperOpt does not support quantization for "
-                            "integer values. Reverting back to 'randint'.")
-                    return hpo.hp.randint(par, domain.lower, high=domain.upper)
+                        return hpo.base.pyll.scope.int(
+                            hpo.hp.qloguniform(par, np.log(domain.lower),
+                                               np.log(domain.upper), quantize))
+                    return hpo.base.pyll.scope.int(
+                        hpo.hp.qloguniform(par, np.log(domain.lower),
+                                           np.log(domain.upper), 1.0))
+                elif isinstance(sampler, Uniform):
+                    if quantize:
+                        return hpo.base.pyll.scope.int(
+                            hpo.hp.quniform(par, domain.lower, domain.upper,
+                                            quantize))
+                    return hpo.hp.uniformint(
+                        par, domain.lower, high=domain.upper)
             elif isinstance(domain, Categorical):
                 if isinstance(sampler, Uniform):
                     return hpo.hp.choice(par, [

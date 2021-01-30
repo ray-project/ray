@@ -3,7 +3,6 @@ import os
 
 import ray
 from ray import tune
-from ray.rllib.models.tf.attention_net import GTrXLNet
 from ray.rllib.examples.env.look_and_push import LookAndPush, OneHot
 from ray.rllib.examples.env.repeat_after_me_env import RepeatAfterMeEnv
 from ray.rllib.examples.env.repeat_initial_obs_env import RepeatInitialObsEnv
@@ -26,8 +25,6 @@ parser.add_argument("--stop-reward", type=float, default=80)
 
 if __name__ == "__main__":
     args = parser.parse_args()
-
-    assert not args.torch, "PyTorch not supported for AttentionNets yet!"
 
     ray.init(num_cpus=args.num_cpus or None)
 
@@ -52,17 +49,15 @@ if __name__ == "__main__":
         "num_sgd_iter": 10,
         "vf_loss_coeff": 1e-5,
         "model": {
-            "custom_model": GTrXLNet,
+            "use_attention": True,
             "max_seq_len": 50,
-            "custom_model_config": {
-                "num_transformer_units": 1,
-                "attn_dim": 64,
-                "memory_inference": 100,
-                "memory_training": 50,
-                "head_dim": 32,
-                "num_heads": 2,
-                "ff_hidden_dim": 32,
-            },
+            "attention_num_transformer_units": 1,
+            "attention_dim": 64,
+            "attention_memory_inference": 100,
+            "attention_memory_training": 50,
+            "attention_num_heads": 2,
+            "attention_head_dim": 32,
+            "attention_position_wise_mlp_dim": 32,
         },
         "framework": "torch" if args.torch else "tf",
     }

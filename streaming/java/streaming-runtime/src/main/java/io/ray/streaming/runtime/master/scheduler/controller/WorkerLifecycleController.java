@@ -24,9 +24,7 @@ import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/**
- * Worker lifecycle controller is used to control JobWorker's creation, initiation and so on.
- */
+/** Worker lifecycle controller is used to control JobWorker's creation, initiation and so on. */
 public class WorkerLifecycleController {
 
   private static final Logger LOG = LoggerFactory.getLogger(WorkerLifecycleController.class);
@@ -42,26 +40,31 @@ public class WorkerLifecycleController {
    * @return creation result
    */
   private boolean createWorker(ExecutionVertex executionVertex) {
-    LOG.info("Start to create worker actor for vertex: {} with resource: {}, workeConfig: {}.",
-        executionVertex.getExecutionVertexName(), executionVertex.getResource(),
+    LOG.info(
+        "Start to create worker actor for vertex: {} with resource: {}, workeConfig: {}.",
+        executionVertex.getExecutionVertexName(),
+        executionVertex.getResource(),
         executionVertex.getWorkerConfig());
 
     Language language = executionVertex.getLanguage();
 
     BaseActorHandle actor;
     if (Language.JAVA == language) {
-      actor = Ray.actor(JobWorker::new, executionVertex)
-          .setResources(executionVertex.getResource())
-          .setMaxRestarts(-1)
-          .remote();
+      actor =
+          Ray.actor(JobWorker::new, executionVertex)
+              .setResources(executionVertex.getResource())
+              .setMaxRestarts(-1)
+              .remote();
     } else {
-      RemoteCall.ExecutionVertexContext.ExecutionVertex vertexPb
-          = new GraphPbBuilder().buildVertex(executionVertex);
-      actor = Ray.actor(
-          PyActorClass.of("ray.streaming.runtime.worker", "JobWorker"), vertexPb.toByteArray())
-          .setResources(executionVertex.getResource())
-          .setMaxRestarts(-1)
-          .remote();
+      RemoteCall.ExecutionVertexContext.ExecutionVertex vertexPb =
+          new GraphPbBuilder().buildVertex(executionVertex);
+      actor =
+          Ray.actor(
+                  PyActorClass.of("ray.streaming.runtime.worker", "JobWorker"),
+                  vertexPb.toByteArray())
+              .setResources(executionVertex.getResource())
+              .setMaxRestarts(-1)
+              .remote();
     }
 
     if (null == actor) {
@@ -71,8 +74,10 @@ public class WorkerLifecycleController {
 
     executionVertex.setWorkerActor(actor);
 
-    LOG.info("Worker actor created, actor: {}, vertex: {}.",
-        executionVertex.getWorkerActorId(), executionVertex.getExecutionVertexName());
+    LOG.info(
+        "Worker actor created, actor: {}, vertex: {}.",
+        executionVertex.getWorkerActorId(),
+        executionVertex.getExecutionVertexName());
     return true;
   }
 
@@ -89,11 +94,15 @@ public class WorkerLifecycleController {
     long startTime = System.currentTimeMillis();
 
     Map<ObjectRef<Boolean>, ActorId> rayObjects = new HashMap<>();
-    vertexToContextMap.entrySet().forEach((entry -> {
-      ExecutionVertex vertex = entry.getKey();
-      rayObjects.put(RemoteCallWorker.initWorker(vertex.getWorkerActor(), entry.getValue()),
-          vertex.getWorkerActorId());
-    }));
+    vertexToContextMap
+        .entrySet()
+        .forEach(
+            (entry -> {
+              ExecutionVertex vertex = entry.getKey();
+              rayObjects.put(
+                  RemoteCallWorker.initWorker(vertex.getWorkerActor(), entry.getValue()),
+                  vertex.getWorkerActorId());
+            }));
 
     List<ObjectRef<Boolean>> objectRefList = new ArrayList<>(rayObjects.keySet());
 
@@ -122,11 +131,13 @@ public class WorkerLifecycleController {
     List<ObjectRef<Object>> objectRefs = new ArrayList<>();
 
     // start source actors 1st
-    executionGraph.getSourceActors()
+    executionGraph
+        .getSourceActors()
         .forEach(actor -> objectRefs.add(RemoteCallWorker.rollback(actor, lastCheckpointId)));
 
     // then start non-source actors
-    executionGraph.getNonSourceActors()
+    executionGraph
+        .getNonSourceActors()
         .forEach(actor -> objectRefs.add(RemoteCallWorker.rollback(actor, lastCheckpointId)));
 
     WaitResult<Object> result = Ray.wait(objectRefs, objectRefs.size(), timeout);
@@ -151,14 +162,18 @@ public class WorkerLifecycleController {
 
   private boolean destroyWorker(ExecutionVertex executionVertex) {
     BaseActorHandle rayActor = executionVertex.getWorkerActor();
-    LOG.info("Begin destroying worker[vertex={}, actor={}].",
-        executionVertex.getExecutionVertexName(), rayActor.getId());
+    LOG.info(
+        "Begin destroying worker[vertex={}, actor={}].",
+        executionVertex.getExecutionVertexName(),
+        rayActor.getId());
 
     boolean destroyResult = RemoteCallWorker.shutdownWithoutReconstruction(rayActor);
 
     if (!destroyResult) {
-      LOG.error("Failed to destroy JobWorker[{}]'s actor: {}.",
-          executionVertex.getExecutionVertexName(), rayActor);
+      LOG.error(
+          "Failed to destroy JobWorker[{}]'s actor: {}.",
+          executionVertex.getExecutionVertexName(),
+          rayActor);
       return false;
     }
 
@@ -172,18 +187,22 @@ public class WorkerLifecycleController {
    * @param operation the function to be executed
    */
   private boolean asyncBatchExecute(
-      Function<ExecutionVertex, Boolean> operation,
-      List<ExecutionVertex> executionVertices) {
+      Function<ExecutionVertex, Boolean> operation, List<ExecutionVertex> executionVertices) {
     final Object asyncContext = Ray.getAsyncContext();
 
     List<CompletableFuture<Boolean>> futureResults =
-        executionVertices.stream().map(vertex -> CompletableFuture.supplyAsync(() -> {
-          Ray.setAsyncContext(asyncContext);
-          return operation.apply(vertex);
-        })).collect(Collectors.toList());
+        executionVertices.stream()
+            .map(
+                vertex ->
+                    CompletableFuture.supplyAsync(
+                        () -> {
+                          Ray.setAsyncContext(asyncContext);
+                          return operation.apply(vertex);
+                        }))
+            .collect(Collectors.toList());
 
-    List<Boolean> succeeded = futureResults.stream().map(CompletableFuture::join)
-        .collect(Collectors.toList());
+    List<Boolean> succeeded =
+        futureResults.stream().map(CompletableFuture::join).collect(Collectors.toList());
 
     if (succeeded.stream().anyMatch(x -> !x)) {
       LOG.error("Not all futures return true, check ResourceManager'log the detail.");
@@ -191,5 +210,4 @@ public class WorkerLifecycleController {
     }
     return true;
   }
-
 }

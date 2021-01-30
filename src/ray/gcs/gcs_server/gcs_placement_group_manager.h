@@ -61,6 +61,7 @@ class GcsPlacementGroup {
         placement_group_spec.creator_job_dead());
     placement_group_table_data_.set_creator_actor_dead(
         placement_group_spec.creator_actor_dead());
+    placement_group_table_data_.set_is_detached(placement_group_spec.is_detached());
   }
 
   /// Get the immutable PlacementGroupTableData of this placement group.
@@ -107,8 +108,11 @@ class GcsPlacementGroup {
   /// Mark that the creator actor of this placement group is dead.
   void MarkCreatorActorDead();
 
-  /// Return True if the placement group is removable. False otherwise.
-  bool IsPlacementGroupRemovable() const;
+  /// Return True if the placement group lifetime is done. False otherwise.
+  bool IsPlacementGroupLifetimeDone() const;
+
+  /// Returns whether or not this is a detached placement group.
+  bool IsDetached() const;
 
  private:
   /// The placement_group meta data which contains the task specification as well as the
@@ -130,12 +134,12 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   /// \param io_context The event loop to run the monitor on.
   /// \param scheduler Used to schedule placement group creation tasks.
   /// \param gcs_table_storage Used to flush placement group data to storage.
-  /// \param gcs_node_manager Reference of GcsNodeManager.
+  /// \param gcs_resource_manager Reference of GcsResourceManager.
   explicit GcsPlacementGroupManager(
       boost::asio::io_context &io_context,
       std::shared_ptr<GcsPlacementGroupSchedulerInterface> scheduler,
       std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
-      GcsNodeManager &gcs_node_manager);
+      GcsResourceManager &gcs_resource_manager);
 
   ~GcsPlacementGroupManager() = default;
 
@@ -193,7 +197,7 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   void OnPlacementGroupCreationSuccess(
       const std::shared_ptr<GcsPlacementGroup> &placement_group);
 
-  /// TODO-SANG Fill it up.
+  /// Remove the placement group of a given id.
   void RemovePlacementGroup(const PlacementGroupID &placement_group_id,
                             StatusCallback on_placement_group_removed);
 
@@ -308,8 +312,8 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   /// We should probably support concurrenet creation (or batching).
   PlacementGroupID scheduling_in_progress_id_ = PlacementGroupID::Nil();
 
-  /// Reference of GcsNodeManager.
-  GcsNodeManager &gcs_node_manager_;
+  /// Reference of GcsResourceManager.
+  GcsResourceManager &gcs_resource_manager_;
 
   // Debug info.
   enum CountType {

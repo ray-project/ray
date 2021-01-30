@@ -12,7 +12,7 @@ ray.init(address="{}")
 from ray import serve
 client = serve.connect()
 
-def driver(flask_request):
+def driver(starlette_request):
     return "OK!"
 
 client.create_backend("driver", driver)

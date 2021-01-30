@@ -1,5 +1,4 @@
 import logging
-import random
 from copy import copy
 from inspect import signature
 from math import isclose
@@ -228,6 +227,22 @@ class Integer(Domain):
             items = np.random.randint(domain.lower, domain.upper, size=size)
             return items if len(items) > 1 else domain.cast(items[0])
 
+    class _LogUniform(LogUniform):
+        def sample(self,
+                   domain: "Integer",
+                   spec: Optional[Union[List[Dict], Dict]] = None,
+                   size: int = 1):
+            assert domain.lower > 0, \
+                "LogUniform needs a lower bound greater than 0"
+            assert 0 < domain.upper < float("inf"), \
+                "LogUniform needs a upper bound greater than 0"
+            logmin = np.log(domain.lower) / np.log(self.base)
+            logmax = np.log(domain.upper) / np.log(self.base)
+
+            items = self.base**(np.random.uniform(logmin, logmax, size=size))
+            items = np.round(items).astype(int)
+            return items if len(items) > 1 else domain.cast(items[0])
+
     default_sampler_cls = _Uniform
 
     def __init__(self, lower, upper):
@@ -247,6 +262,23 @@ class Integer(Domain):
         new.set_sampler(self._Uniform())
         return new
 
+    def loguniform(self, base: float = 10):
+        if not self.lower > 0:
+            raise ValueError(
+                "LogUniform requires a lower bound greater than 0."
+                f"Got: {self.lower}. Did you pass a variable that has "
+                "been log-transformed? If so, pass the non-transformed value "
+                "instead.")
+        if not 0 < self.upper < float("inf"):
+            raise ValueError(
+                "LogUniform requires a upper bound greater than 0. "
+                f"Got: {self.lower}. Did you pass a variable that has "
+                "been log-transformed? If so, pass the non-transformed value "
+                "instead.")
+        new = copy(self)
+        new.set_sampler(self._LogUniform(base))
+        return new
+
     def is_valid(self, value: int):
         return self.lower <= value <= self.upper
 
@@ -262,7 +294,7 @@ class Categorical(Domain):
                    spec: Optional[Union[List[Dict], Dict]] = None,
                    size: int = 1):
 
-            items = random.choices(domain.categories, k=size)
+            items = np.random.choice(domain.categories, size=size).tolist()
             return items if len(items) > 1 else domain.cast(items[0])
 
     default_sampler_cls = _Uniform
@@ -300,8 +332,7 @@ class Function(Domain):
                    domain: "Function",
                    spec: Optional[Union[List[Dict], Dict]] = None,
                    size: int = 1):
-            pass_spec = len(signature(domain.func).parameters) > 0
-            if pass_spec:
+            if domain.pass_spec:
                 items = [
                     domain.func(spec[i] if isinstance(spec, list) else spec)
                     for i in range(size)
@@ -314,11 +345,23 @@ class Function(Domain):
     default_sampler_cls = _CallSampler
 
     def __init__(self, func: Callable):
-        if len(signature(func).parameters) > 1:
-            raise ValueError(
-                "The function passed to a `Function` parameter must accept "
-                "either 0 or 1 parameters.")
+        sig = signature(func)
 
+        pass_spec = True  # whether we should pass `spec` when calling `func`
+        try:
+            sig.bind({})
+        except TypeError:
+            pass_spec = False
+
+        if not pass_spec:
+            try:
+                sig.bind()
+            except TypeError as exc:
+                raise ValueError(
+                    "The function passed to a `Function` parameter must be "
+                    "callable with either 0 or 1 parameters.") from exc
+
+        self.pass_spec = pass_spec
         self.func = func
 
     def is_function(self):
@@ -427,7 +470,7 @@ def choice(categories: List):
     """Sample a categorical value.
 
     Sampling from ``tune.choice([1, 2])`` is equivalent to sampling from
-    ``random.choice([1, 2])``
+    ``np.random.choice([1, 2])``
 
     """
     return Categorical(categories).uniform()
@@ -445,6 +488,16 @@ def randint(lower: int, upper: int):
     return Integer(lower, upper).uniform()
 
 
+def lograndint(lower: int, upper: int, base: float = 10):
+    """Sample an integer value log-uniformly between ``lower`` and ``upper``,
+    with ``base`` being the base of logarithm.
+
+    ``lower`` is inclusive, ``upper`` is exclusive.
+
+    """
+    return Integer(lower, upper).loguniform(base)
+
+
 def qrandint(lower: int, upper: int, q: int = 1):
     """Sample an integer value uniformly between ``lower`` and ``upper``.
 
@@ -453,11 +506,21 @@ def qrandint(lower: int, upper: int, q: int = 1):
     The value will be quantized, i.e. rounded to an integer increment of ``q``.
     Quantization makes the upper bound inclusive.
 
-    Sampling from ``tune.randint(10)`` is equivalent to sampling from
-    ``np.random.randint(10)``
-
     """
     return Integer(lower, upper).uniform().quantized(q)
+
+
+def qlograndint(lower: int, upper: int, q: int, base: float = 10):
+    """Sample an integer value log-uniformly between ``lower`` and ``upper``,
+    with ``base`` being the base of logarithm.
+
+    ``lower`` is inclusive, ``upper`` is also inclusive (!).
+
+    The value will be quantized, i.e. rounded to an integer increment of ``q``.
+    Quantization makes the upper bound inclusive.
+
+    """
+    return Integer(lower, upper).loguniform(base).quantized(q)
 
 
 def randn(mean: float = 0., sd: float = 1.):

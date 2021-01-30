@@ -7,6 +7,7 @@ import ray
 from ray.rllib.agents.qmix.mixers import VDNMixer, QMixer
 from ray.rllib.agents.qmix.model import RNNModel, _get_size
 from ray.rllib.env.multi_agent_env import ENV_STATE
+from ray.rllib.env.wrappers.group_agents_wrapper import GROUP_REWARDS
 from ray.rllib.evaluation.metrics import LEARNER_STATS_KEY
 from ray.rllib.models.torch.torch_action_dist import TorchCategorical
 from ray.rllib.policy.policy import Policy
@@ -14,7 +15,6 @@ from ray.rllib.policy.rnn_sequencing import chop_into_sequences
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import _unpack_obs
-from ray.rllib.env.constants import GROUP_REWARDS
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.annotations import override
 
@@ -143,7 +143,7 @@ class QMixLoss(nn.Module):
         return loss, mask, masked_td_error, chosen_action_qvals, targets
 
 
-# TODO(sven): Make this a TorchPolicy child via `build_torch_policy`.
+# TODO(sven): Make this a TorchPolicy child via `build_policy_class`.
 class QMixTorchPolicy(Policy):
     """QMix impl. Assumes homogeneous agents for now.
 

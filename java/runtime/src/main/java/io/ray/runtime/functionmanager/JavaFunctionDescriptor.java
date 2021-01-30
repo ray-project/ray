@@ -5,22 +5,14 @@ import com.google.common.collect.ImmutableList;
 import io.ray.runtime.generated.Common.Language;
 import java.util.List;
 
-/**
- * Represents metadata of Java function.
- */
+/** Represents metadata of Java function. */
 public final class JavaFunctionDescriptor implements FunctionDescriptor {
 
-  /**
-   * Function's class name.
-   */
+  /** Function's class name. */
   public final String className;
-  /**
-   * Function's name.
-   */
+  /** Function's name. */
   public final String name;
-  /**
-   * Function's signature.
-   */
+  /** Function's signature. */
   public final String signature;
 
   public JavaFunctionDescriptor(String className, String name, String signature) {
@@ -43,9 +35,9 @@ public final class JavaFunctionDescriptor implements FunctionDescriptor {
       return false;
     }
     JavaFunctionDescriptor that = (JavaFunctionDescriptor) o;
-    return Objects.equal(className, that.className) &&
-        Objects.equal(name, that.name) &&
-        Objects.equal(signature, that.signature);
+    return Objects.equal(className, that.className)
+        && Objects.equal(name, that.name)
+        && Objects.equal(signature, that.signature);
   }
 
   @Override

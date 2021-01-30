@@ -296,6 +296,85 @@ def test_pull_request_retry(shutdown_only):
     ray.get(driver.remote())
 
 
+@pytest.mark.timeout(30)
+def test_pull_bundles_admission_control(shutdown_only):
+    cluster = Cluster()
+    object_size = int(6e6)
+    num_objects = 10
+    num_tasks = 10
+    # Head node can fit all of the objects at once.
+    cluster.add_node(
+        num_cpus=0,
+        object_store_memory=2 * num_tasks * num_objects * object_size)
+    cluster.wait_for_nodes()
+    ray.init(address=cluster.address)
+
+    # Worker node can only fit 1 task at a time.
+    cluster.add_node(
+        num_cpus=1, object_store_memory=1.5 * num_objects * object_size)
+    cluster.wait_for_nodes()
+
+    @ray.remote
+    def foo(*args):
+        return
+
+    args = []
+    for _ in range(num_tasks):
+        task_args = [
+            ray.put(np.zeros(object_size, dtype=np.uint8))
+            for _ in range(num_objects)
+        ]
+        args.append(task_args)
+
+    tasks = [foo.remote(*task_args) for task_args in args]
+    ray.get(tasks)
+
+
+@pytest.mark.timeout(30)
+def test_pull_bundles_admission_control_dynamic(shutdown_only):
+    # This test is the same as test_pull_bundles_admission_control, except that
+    # the object store's capacity starts off higher and is later consumed
+    # dynamically by concurrent workers.
+    cluster = Cluster()
+    object_size = int(6e6)
+    num_objects = 10
+    num_tasks = 10
+    # Head node can fit all of the objects at once.
+    cluster.add_node(
+        num_cpus=0,
+        object_store_memory=2 * num_tasks * num_objects * object_size)
+    cluster.wait_for_nodes()
+    ray.init(address=cluster.address)
+
+    # Worker node can fit 2 tasks at a time.
+    cluster.add_node(
+        num_cpus=1, object_store_memory=2.5 * num_objects * object_size)
+    cluster.wait_for_nodes()
+
+    @ray.remote
+    def foo(i, *args):
+        print("foo", i)
+        return
+
+    @ray.remote
+    def allocate(i):
+        print("allocate", i)
+        return np.zeros(object_size, dtype=np.uint8)
+
+    args = []
+    for _ in range(num_tasks):
+        task_args = [
+            ray.put(np.zeros(object_size, dtype=np.uint8))
+            for _ in range(num_objects)
+        ]
+        args.append(task_args)
+
+    tasks = [foo.remote(i, *task_args) for i, task_args in enumerate(args)]
+    allocated = [allocate.remote(i) for i in range(num_objects)]
+    ray.get(tasks)
+    del allocated
+
+
 if __name__ == "__main__":
     import pytest
     import sys

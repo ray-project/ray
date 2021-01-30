@@ -21,6 +21,36 @@
 
 namespace ray {
 
+void BufferTracker::Record(const ObjectID &object_id, TrackedBuffer *buffer,
+                           const std::string &call_site) {
+  absl::MutexLock lock(&active_buffers_mutex_);
+  active_buffers_[std::make_pair(object_id, buffer)] = call_site;
+}
+
+void BufferTracker::Release(const ObjectID &object_id, TrackedBuffer *buffer) {
+  absl::MutexLock lock(&active_buffers_mutex_);
+  auto key = std::make_pair(object_id, buffer);
+  RAY_CHECK(active_buffers_.contains(key));
+  active_buffers_.erase(key);
+}
+
+absl::flat_hash_map<ObjectID, std::pair<int64_t, std::string>>
+BufferTracker::UsedObjects() const {
+  absl::flat_hash_map<ObjectID, std::pair<int64_t, std::string>> used;
+  absl::MutexLock lock(&active_buffers_mutex_);
+  for (const auto &entry : active_buffers_) {
+    auto it = used.find(entry.first.first);
+    if (it != used.end()) {
+      // Prefer to keep entries that have non-empty callsites.
+      if (!it->second.second.empty()) {
+        continue;
+      }
+    }
+    used[entry.first.first] = std::make_pair(entry.first.second->Size(), entry.second);
+  }
+  return used;
+}
+
 CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
     const std::string &store_socket,
     const std::shared_ptr<raylet::RayletClient> raylet_client,
@@ -85,13 +115,12 @@ Status CoreWorkerPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &meta
                                              const rpc::Address &owner_address,
                                              std::shared_ptr<Buffer> *data) {
   Status status;
-  std::shared_ptr<arrow::Buffer> arrow_buffer;
   uint64_t retry_with_request_id = 0;
   {
     std::lock_guard<std::mutex> guard(store_client_mutex_);
     status = store_client_.Create(
         object_id, owner_address, data_size, metadata ? metadata->Data() : nullptr,
-        metadata ? metadata->Size() : 0, &retry_with_request_id, &arrow_buffer,
+        metadata ? metadata->Size() : 0, &retry_with_request_id, data,
         /*device_num=*/0);
   }
 
@@ -104,7 +133,7 @@ Status CoreWorkerPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &meta
                      << retry_with_request_id;
       status = store_client_.RetryCreate(object_id, retry_with_request_id,
                                          metadata ? metadata->Data() : nullptr,
-                                         &retry_with_request_id, &arrow_buffer);
+                                         &retry_with_request_id, data);
     }
   }
 
@@ -129,7 +158,6 @@ Status CoreWorkerPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &meta
     status = Status::OK();
   } else {
     RAY_RETURN_NOT_OK(status);
-    *data = std::make_shared<PlasmaBuffer>(PlasmaBuffer(arrow_buffer));
   }
   return status;
 }
@@ -171,27 +199,17 @@ Status CoreWorkerPlasmaStoreProvider::FetchAndGetFromPlasmaStore(
   for (size_t i = 0; i < plasma_results.size(); i++) {
     if (plasma_results[i].data != nullptr || plasma_results[i].metadata != nullptr) {
       const auto &object_id = batch_ids[i];
-      std::shared_ptr<PlasmaBuffer> data = nullptr;
-      std::shared_ptr<PlasmaBuffer> metadata = nullptr;
-      if (plasma_results[i].data && plasma_results[i].data->size()) {
+      std::shared_ptr<TrackedBuffer> data = nullptr;
+      std::shared_ptr<Buffer> metadata = nullptr;
+      if (plasma_results[i].data && plasma_results[i].data->Size()) {
         // We track the set of active data buffers in active_buffers_. On destruction,
         // the buffer entry will be removed from the set via callback.
-        std::shared_ptr<BufferTracker> tracker = buffer_tracker_;
-        data = std::make_shared<PlasmaBuffer>(
-            plasma_results[i].data, [tracker, object_id](PlasmaBuffer *this_buffer) {
-              absl::MutexLock lock(&tracker->active_buffers_mutex_);
-              auto key = std::make_pair(object_id, this_buffer);
-              RAY_CHECK(tracker->active_buffers_.contains(key));
-              tracker->active_buffers_.erase(key);
-            });
-        auto call_site = get_current_call_site_();
-        {
-          absl::MutexLock lock(&tracker->active_buffers_mutex_);
-          tracker->active_buffers_[std::make_pair(object_id, data.get())] = call_site;
-        }
+        data = std::make_shared<TrackedBuffer>(plasma_results[i].data, buffer_tracker_,
+                                               object_id);
+        buffer_tracker_->Record(object_id, data.get(), get_current_call_site_());
       }
-      if (plasma_results[i].metadata && plasma_results[i].metadata->size()) {
-        metadata = std::make_shared<PlasmaBuffer>(plasma_results[i].metadata);
+      if (plasma_results[i].metadata && plasma_results[i].metadata->Size()) {
+        metadata = plasma_results[i].metadata;
       }
       const auto result_object =
           std::make_shared<RayObject>(data, metadata, std::vector<ObjectID>());
@@ -226,7 +244,7 @@ Status CoreWorkerPlasmaStoreProvider::Get(
     const absl::flat_hash_set<ObjectID> &object_ids, int64_t timeout_ms,
     const WorkerContext &ctx,
     absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results,
-    bool *got_exception, bool release_resources) {
+    bool *got_exception) {
   int64_t batch_size = RayConfig::instance().worker_fetch_request_size();
   std::vector<ObjectID> batch_ids;
   absl::flat_hash_set<ObjectID> remaining(object_ids.begin(), object_ids.end());
@@ -277,7 +295,8 @@ Status CoreWorkerPlasmaStoreProvider::Get(
     size_t previous_size = remaining.size();
     // This is a separate IPC from the FetchAndGet in direct call mode.
     if (ctx.CurrentTaskIsDirectCall() && ctx.ShouldReleaseResourcesOnBlockingCalls()) {
-      RAY_RETURN_NOT_OK(raylet_client_->NotifyDirectCallTaskBlocked(release_resources));
+      RAY_RETURN_NOT_OK(raylet_client_->NotifyDirectCallTaskBlocked(
+          RayConfig::instance().release_resources_during_plasma_fetch()));
     }
     RAY_RETURN_NOT_OK(
         FetchAndGetFromPlasmaStore(remaining, batch_ids, batch_timeout,
@@ -334,9 +353,8 @@ Status CoreWorkerPlasmaStoreProvider::Wait(
 
     // This is a separate IPC from the Wait in direct call mode.
     if (ctx.CurrentTaskIsDirectCall() && ctx.ShouldReleaseResourcesOnBlockingCalls()) {
-      // SANG-TODO Implement wait
-      RAY_RETURN_NOT_OK(
-          raylet_client_->NotifyDirectCallTaskBlocked(/*release_resources*/ true));
+      RAY_RETURN_NOT_OK(raylet_client_->NotifyDirectCallTaskBlocked(
+          RayConfig::instance().release_resources_during_plasma_fetch()));
     }
     const auto owner_addresses = reference_counter_->GetOwnerAddresses(id_vector);
     RAY_RETURN_NOT_OK(
@@ -373,19 +391,7 @@ std::string CoreWorkerPlasmaStoreProvider::MemoryUsageString() {
 
 absl::flat_hash_map<ObjectID, std::pair<int64_t, std::string>>
 CoreWorkerPlasmaStoreProvider::UsedObjectsList() const {
-  absl::flat_hash_map<ObjectID, std::pair<int64_t, std::string>> used;
-  absl::MutexLock lock(&buffer_tracker_->active_buffers_mutex_);
-  for (const auto &entry : buffer_tracker_->active_buffers_) {
-    auto it = used.find(entry.first.first);
-    if (it != used.end()) {
-      // Prefer to keep entries that have non-empty callsites.
-      if (!it->second.second.empty()) {
-        continue;
-      }
-    }
-    used[entry.first.first] = std::make_pair(entry.first.second->Size(), entry.second);
-  }
-  return used;
+  return buffer_tracker_->UsedObjects();
 }
 
 void CoreWorkerPlasmaStoreProvider::WarnIfAttemptedTooManyTimes(
@@ -423,7 +429,7 @@ Status CoreWorkerPlasmaStoreProvider::WarmupStore() {
   RAY_RETURN_NOT_OK(Create(nullptr, 8, object_id, rpc::Address(), &data));
   RAY_RETURN_NOT_OK(Seal(object_id));
   RAY_RETURN_NOT_OK(Release(object_id));
-  RAY_RETURN_NOT_OK(Delete({object_id}, false));
+  RAY_RETURN_NOT_OK(Delete({object_id}, true));
   return Status::OK();
 }
 

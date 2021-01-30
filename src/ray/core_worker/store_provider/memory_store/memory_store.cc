@@ -232,18 +232,16 @@ bool CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &object_
 Status CoreWorkerMemoryStore::Get(const std::vector<ObjectID> &object_ids,
                                   int num_objects, int64_t timeout_ms,
                                   const WorkerContext &ctx, bool remove_after_get,
-                                  std::vector<std::shared_ptr<RayObject>> *results,
-                                  bool release_resources) {
+                                  std::vector<std::shared_ptr<RayObject>> *results) {
   return GetImpl(object_ids, num_objects, timeout_ms, ctx, remove_after_get, results,
-                 /*abort_if_any_object_is_exception=*/true, release_resources);
+                 /*abort_if_any_object_is_exception=*/true);
 }
 
 Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
                                       int num_objects, int64_t timeout_ms,
                                       const WorkerContext &ctx, bool remove_after_get,
                                       std::vector<std::shared_ptr<RayObject>> *results,
-                                      bool abort_if_any_object_is_exception,
-                                      bool release_resources) {
+                                      bool abort_if_any_object_is_exception) {
   (*results).resize(object_ids.size(), nullptr);
 
   std::shared_ptr<GetRequest> get_request;
@@ -301,8 +299,7 @@ Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
 
   // Wait for remaining objects (or timeout).
   if (should_notify_raylet) {
-    // SANG-TODO Implement memory store get
-    RAY_CHECK_OK(raylet_client_->NotifyDirectCallTaskBlocked(release_resources));
+    RAY_CHECK_OK(raylet_client_->NotifyDirectCallTaskBlocked(/*release_resources=*/true));
   }
 
   bool done = false;
@@ -377,11 +374,11 @@ Status CoreWorkerMemoryStore::Get(
     const absl::flat_hash_set<ObjectID> &object_ids, int64_t timeout_ms,
     const WorkerContext &ctx,
     absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results,
-    bool *got_exception, bool release_resources) {
+    bool *got_exception) {
   const std::vector<ObjectID> id_vector(object_ids.begin(), object_ids.end());
   std::vector<std::shared_ptr<RayObject>> result_objects;
   RAY_RETURN_NOT_OK(Get(id_vector, id_vector.size(), timeout_ms, ctx,
-                        /*remove_after_get=*/false, &result_objects, release_resources));
+                        /*remove_after_get=*/false, &result_objects));
 
   for (size_t i = 0; i < id_vector.size(); i++) {
     if (result_objects[i] != nullptr) {
@@ -404,9 +401,8 @@ Status CoreWorkerMemoryStore::Wait(const absl::flat_hash_set<ObjectID> &object_i
   std::vector<ObjectID> id_vector(object_ids.begin(), object_ids.end());
   std::vector<std::shared_ptr<RayObject>> result_objects;
   RAY_CHECK(object_ids.size() == id_vector.size());
-  auto status =
-      GetImpl(id_vector, num_objects, timeout_ms, ctx, false, &result_objects,
-              /*abort_if_any_object_is_exception=*/false, /*release_resources=*/true);
+  auto status = GetImpl(id_vector, num_objects, timeout_ms, ctx, false, &result_objects,
+                        /*abort_if_any_object_is_exception=*/false);
   // Ignore TimedOut statuses since we return ready objects explicitly.
   if (!status.IsTimedOut()) {
     RAY_RETURN_NOT_OK(status);

@@ -23,18 +23,9 @@ namespace ray {
 namespace gcs {
 
 //////////////////////////////////////////////////////////////////////////////////////////
-GcsNodeManager::GcsNodeManager(
-    boost::asio::io_service &main_io_service, std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
-    std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
-    std::shared_ptr<gcs::GcsResourceManager> gcs_resource_manager)
-    : resource_timer_(main_io_service),
-      light_report_resource_usage_enabled_(
-          RayConfig::instance().light_report_resource_usage_enabled()),
-      gcs_pub_sub_(gcs_pub_sub),
-      gcs_table_storage_(gcs_table_storage),
-      gcs_resource_manager_(gcs_resource_manager) {
-  SendBatchedResourceUsage();
-}
+GcsNodeManager::GcsNodeManager(std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
+                               std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage)
+    : gcs_pub_sub_(gcs_pub_sub), gcs_table_storage_(gcs_table_storage) {}
 
 void GcsNodeManager::HandleRegisterNode(const rpc::RegisterNodeRequest &request,
                                         rpc::RegisterNodeReply *reply,
@@ -42,7 +33,6 @@ void GcsNodeManager::HandleRegisterNode(const rpc::RegisterNodeRequest &request,
   NodeID node_id = NodeID::FromBinary(request.node_info().node_id());
   RAY_LOG(INFO) << "Registering node info, node id = " << node_id
                 << ", address = " << request.node_info().node_manager_address();
-  AddNode(std::make_shared<rpc::GcsNodeInfo>(request.node_info()));
   auto on_done = [this, node_id, request, reply,
                   send_reply_callback](const Status &status) {
     RAY_CHECK_OK(status);
@@ -50,6 +40,7 @@ void GcsNodeManager::HandleRegisterNode(const rpc::RegisterNodeRequest &request,
                   << ", address = " << request.node_info().node_manager_address();
     RAY_CHECK_OK(gcs_pub_sub_->Publish(NODE_CHANNEL, node_id.Hex(),
                                        request.node_info().SerializeAsString(), nullptr));
+    AddNode(std::make_shared<rpc::GcsNodeInfo>(request.node_info()));
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
   RAY_CHECK_OK(
@@ -66,13 +57,17 @@ void GcsNodeManager::HandleUnregisterNode(const rpc::UnregisterNodeRequest &requ
     node->set_state(rpc::GcsNodeInfo::DEAD);
     node->set_timestamp(current_sys_time_ms());
     AddDeadNodeToCache(node);
+    auto node_info_delta = std::make_shared<rpc::GcsNodeInfo>();
+    node_info_delta->set_node_id(node->node_id());
+    node_info_delta->set_state(node->state());
+    node_info_delta->set_timestamp(node->timestamp());
 
-    auto on_done = [this, node_id, node, reply,
+    auto on_done = [this, node_id, node_info_delta, reply,
                     send_reply_callback](const Status &status) {
-      auto on_done = [this, node_id, node, reply,
+      auto on_done = [this, node_id, node_info_delta, reply,
                       send_reply_callback](const Status &status) {
-        RAY_CHECK_OK(gcs_pub_sub_->Publish(NODE_CHANNEL, node_id.Hex(),
-                                           node->SerializeAsString(), nullptr));
+        RAY_CHECK_OK(gcs_pub_sub_->Publish(
+            NODE_CHANNEL, node_id.Hex(), node_info_delta->SerializeAsString(), nullptr));
         GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
         RAY_LOG(INFO) << "Finished unregistering node info, node id = " << node_id;
       };
@@ -95,29 +90,6 @@ void GcsNodeManager::HandleGetAllNodeInfo(const rpc::GetAllNodeInfoRequest &requ
   }
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
   ++counts_[CountType::GET_ALL_NODE_INFO_REQUEST];
-}
-
-void GcsNodeManager::HandleReportResourceUsage(
-    const rpc::ReportResourceUsageRequest &request, rpc::ReportResourceUsageReply *reply,
-    rpc::SendReplyCallback send_reply_callback) {
-  NodeID node_id = NodeID::FromBinary(request.resources().node_id());
-  auto resources_data = std::make_shared<rpc::ResourcesData>();
-  resources_data->CopyFrom(request.resources());
-
-  UpdateNodeResourceUsage(node_id, request);
-
-  // Update node realtime resources.
-  UpdateNodeRealtimeResources(node_id, *resources_data);
-
-  if (!light_report_resource_usage_enabled_ || resources_data->should_global_gc() ||
-      resources_data->resources_total_size() > 0 ||
-      resources_data->resources_available_changed() ||
-      resources_data->resource_load_changed()) {
-    resources_buffer_[node_id] = *resources_data;
-  }
-
-  GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
-  ++counts_[CountType::REPORT_RESOURCE_USAGE_REQUEST];
 }
 
 void GcsNodeManager::HandleSetInternalConfig(const rpc::SetInternalConfigRequest &request,
@@ -148,78 +120,6 @@ void GcsNodeManager::HandleGetInternalConfig(const rpc::GetInternalConfigRequest
   ++counts_[CountType::GET_INTERNAL_CONFIG_REQUEST];
 }
 
-void GcsNodeManager::HandleGetAllResourceUsage(
-    const rpc::GetAllResourceUsageRequest &request, rpc::GetAllResourceUsageReply *reply,
-    rpc::SendReplyCallback send_reply_callback) {
-  if (!node_resource_usages_.empty()) {
-    auto batch = std::make_shared<rpc::ResourceUsageBatchData>();
-    absl::flat_hash_map<ResourceSet, rpc::ResourceDemand> aggregate_load;
-    for (const auto &usage : node_resource_usages_) {
-      // Aggregate the load reported by each raylet.
-      auto load = usage.second.resource_load_by_shape();
-      for (const auto &demand : load.resource_demands()) {
-        auto scheduling_key = ResourceSet(MapFromProtobuf(demand.shape()));
-        auto &aggregate_demand = aggregate_load[scheduling_key];
-        aggregate_demand.set_num_ready_requests_queued(
-            aggregate_demand.num_ready_requests_queued() +
-            demand.num_ready_requests_queued());
-        aggregate_demand.set_num_infeasible_requests_queued(
-            aggregate_demand.num_infeasible_requests_queued() +
-            demand.num_infeasible_requests_queued());
-        if (RayConfig::instance().report_worker_backlog()) {
-          aggregate_demand.set_backlog_size(aggregate_demand.backlog_size() +
-                                            demand.backlog_size());
-        }
-      }
-
-      batch->add_batch()->CopyFrom(usage.second);
-    }
-
-    for (const auto &demand : aggregate_load) {
-      auto demand_proto = batch->mutable_resource_load_by_shape()->add_resource_demands();
-      demand_proto->CopyFrom(demand.second);
-      for (const auto &resource_pair : demand.first.GetResourceMap()) {
-        (*demand_proto->mutable_shape())[resource_pair.first] = resource_pair.second;
-      }
-    }
-
-    // Update placement group load to heartbeat batch.
-    // This is updated only one per second.
-    if (placement_group_load_.has_value()) {
-      auto placement_group_load = placement_group_load_.value();
-      auto placement_group_load_proto = batch->mutable_placement_group_load();
-      placement_group_load_proto->CopyFrom(*placement_group_load.get());
-    }
-    reply->mutable_resource_usage_data()->CopyFrom(*batch);
-  }
-
-  GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
-  ++counts_[CountType::GET_ALL_RESOURCE_USAGE_REQUEST];
-}
-
-void GcsNodeManager::UpdateNodeResourceUsage(
-    const NodeID node_id, const rpc::ReportResourceUsageRequest &request) {
-  auto iter = node_resource_usages_.find(node_id);
-  if (!light_report_resource_usage_enabled_ || iter == node_resource_usages_.end()) {
-    auto resources_data = std::make_shared<rpc::ResourcesData>();
-    resources_data->CopyFrom(request.resources());
-    node_resource_usages_[node_id] = *resources_data;
-  } else {
-    if (request.resources().resources_total_size() > 0) {
-      (*iter->second.mutable_resources_total()) = request.resources().resources_total();
-    }
-    if (request.resources().resources_available_changed()) {
-      (*iter->second.mutable_resources_available()) =
-          request.resources().resources_available();
-    }
-    if (request.resources().resource_load_changed()) {
-      (*iter->second.mutable_resource_load()) = request.resources().resource_load();
-    }
-    (*iter->second.mutable_resource_load_by_shape()) =
-        request.resources().resource_load_by_shape();
-  }
-}
-
 absl::optional<std::shared_ptr<rpc::GcsNodeInfo>> GcsNodeManager::GetAliveNode(
     const ray::NodeID &node_id) const {
   auto iter = alive_nodes_.find(node_id);
@@ -240,7 +140,6 @@ void GcsNodeManager::AddNode(std::shared_ptr<rpc::GcsNodeInfo> node) {
     for (auto &listener : node_added_listeners_) {
       listener(node);
     }
-    gcs_resource_manager_->OnNodeAdd(*node);
   }
 }
 
@@ -255,10 +154,6 @@ std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::RemoveNode(
     stats::NodeFailureTotal.Record(1);
     // Remove from alive nodes.
     alive_nodes_.erase(iter);
-    // Remove from cluster resources.
-    gcs_resource_manager_->OnNodeDead(node_id);
-    resources_buffer_.erase(node_id);
-    node_resource_usages_.erase(node_id);
     if (!is_intended) {
       // Broadcast a warning to all of the drivers indicating that the node
       // has been marked as dead.
@@ -288,10 +183,15 @@ void GcsNodeManager::OnNodeFailure(const NodeID &node_id) {
     node->set_state(rpc::GcsNodeInfo::DEAD);
     node->set_timestamp(current_sys_time_ms());
     AddDeadNodeToCache(node);
-    auto on_done = [this, node_id, node](const Status &status) {
-      auto on_done = [this, node_id, node](const Status &status) {
-        RAY_CHECK_OK(gcs_pub_sub_->Publish(NODE_CHANNEL, node_id.Hex(),
-                                           node->SerializeAsString(), nullptr));
+    auto node_info_delta = std::make_shared<rpc::GcsNodeInfo>();
+    node_info_delta->set_node_id(node->node_id());
+    node_info_delta->set_state(node->state());
+    node_info_delta->set_timestamp(node->timestamp());
+
+    auto on_done = [this, node_id, node_info_delta](const Status &status) {
+      auto on_done = [this, node_id, node_info_delta](const Status &status) {
+        RAY_CHECK_OK(gcs_pub_sub_->Publish(
+            NODE_CHANNEL, node_id.Hex(), node_info_delta->SerializeAsString(), nullptr));
       };
       RAY_CHECK_OK(gcs_table_storage_->NodeResourceTable().Delete(node_id, on_done));
     };
@@ -313,21 +213,6 @@ void GcsNodeManager::Initialize(const GcsInitData &gcs_init_data) {
          const std::pair<NodeID, int64_t> &right) { return left.second < right.second; });
 }
 
-void GcsNodeManager::UpdateNodeRealtimeResources(
-    const NodeID &node_id, const rpc::ResourcesData &resource_data) {
-  if (!light_report_resource_usage_enabled_ ||
-      gcs_resource_manager_->GetClusterResources().count(node_id) == 0 ||
-      resource_data.resources_available_changed()) {
-    gcs_resource_manager_->SetAvailableResources(
-        node_id, ResourceSet(MapFromProtobuf(resource_data.resources_available())));
-  }
-}
-
-void GcsNodeManager::UpdatePlacementGroupLoad(
-    const std::shared_ptr<rpc::PlacementGroupLoad> placement_group_load) {
-  placement_group_load_ = absl::make_optional(placement_group_load);
-}
-
 void GcsNodeManager::AddDeadNodeToCache(std::shared_ptr<rpc::GcsNodeInfo> node) {
   if (dead_nodes_.size() >= RayConfig::instance().maximum_gcs_dead_node_cached_count()) {
     const auto &node_id = sorted_dead_node_list_.begin()->first;
@@ -340,34 +225,6 @@ void GcsNodeManager::AddDeadNodeToCache(std::shared_ptr<rpc::GcsNodeInfo> node) 
   sorted_dead_node_list_.emplace_back(node_id, node->timestamp());
 }
 
-void GcsNodeManager::SendBatchedResourceUsage() {
-  if (!resources_buffer_.empty()) {
-    auto batch = std::make_shared<rpc::ResourceUsageBatchData>();
-    for (auto &resources : resources_buffer_) {
-      batch->add_batch()->Swap(&resources.second);
-    }
-    stats::OutboundHeartbeatSizeKB.Record((double)(batch->ByteSizeLong() / 1024.0));
-
-    RAY_CHECK_OK(gcs_pub_sub_->Publish(RESOURCES_BATCH_CHANNEL, "",
-                                       batch->SerializeAsString(), nullptr));
-    resources_buffer_.clear();
-  }
-
-  auto resources_period = boost::posix_time::milliseconds(
-      RayConfig::instance().raylet_report_resources_period_milliseconds());
-  resource_timer_.expires_from_now(resources_period);
-  resource_timer_.async_wait([this](const boost::system::error_code &error) {
-    if (error == boost::asio::error::operation_aborted) {
-      // `operation_aborted` is set when `resource_timer_` is canceled or destroyed.
-      // The Monitor lifetime may be short than the object who use it. (e.g. gcs_server)
-      return;
-    }
-    RAY_CHECK(!error) << "Sending batched resource usage failed with error: "
-                      << error.message();
-    SendBatchedResourceUsage();
-  });
-}
-
 std::string GcsNodeManager::DebugString() const {
   std::ostringstream stream;
   stream << "GcsNodeManager: {RegisterNode request count: "
@@ -376,10 +233,6 @@ std::string GcsNodeManager::DebugString() const {
          << counts_[CountType::UNREGISTER_NODE_REQUEST]
          << ", GetAllNodeInfo request count: "
          << counts_[CountType::GET_ALL_NODE_INFO_REQUEST]
-         << ", ReportResourceUsage request count: "
-         << counts_[CountType::REPORT_RESOURCE_USAGE_REQUEST]
-         << ", GetAllResourceUsage request count: "
-         << counts_[CountType::GET_ALL_RESOURCE_USAGE_REQUEST]
          << ", SetInternalConfig request count: "
          << counts_[CountType::SET_INTERNAL_CONFIG_REQUEST]
          << ", GetInternalConfig request count: "

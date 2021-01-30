@@ -21,6 +21,7 @@
 #include "absl/container/flat_hash_set.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/common/id.h"
+#include "ray/core_worker/lease_policy.h"
 #include "ray/rpc/grpc_server.h"
 #include "ray/rpc/worker/core_worker_client.h"
 #include "ray/rpc/worker/core_worker_client_pool.h"
@@ -50,7 +51,8 @@ class ReferenceCounterInterface {
 
 /// Class used by the core worker to keep track of ObjectID reference counts for garbage
 /// collection. This class is thread safe.
-class ReferenceCounter : public ReferenceCounterInterface {
+class ReferenceCounter : public ReferenceCounterInterface,
+                         public LocalityDataProviderInterface {
  public:
   using ReferenceTableProto =
       ::google::protobuf::RepeatedPtrField<rpc::ObjectReferenceCount>;
@@ -169,6 +171,15 @@ class ReferenceCounter : public ReferenceCounterInterface {
       const int64_t object_size, bool is_reconstructable,
       const absl::optional<NodeID> &pinned_at_raylet_id = absl::optional<NodeID>())
       LOCKS_EXCLUDED(mutex_);
+
+  /// Remove reference for an object that we own. The reference will only be
+  /// removed if the object's ref count is 0. This should only be used when
+  /// speculatively adding an owned reference that may need to be rolled back, e.g. if
+  /// the creation of the corresponding Plasma object fails. All other references will
+  /// be cleaned up via the reference counting protocol.
+  ///
+  /// \param[in] object_id The ID of the object that we own and wish to remove.
+  void RemoveOwnedObject(const ObjectID &object_id) LOCKS_EXCLUDED(mutex_);
 
   /// Update the size of the object.
   ///
@@ -359,32 +370,47 @@ class ReferenceCounter : public ReferenceCounterInterface {
       const absl::flat_hash_map<ObjectID, std::pair<int64_t, std::string>> pinned_objects,
       rpc::CoreWorkerStats *stats) const LOCKS_EXCLUDED(mutex_);
 
-  /// Add location to the location table of the given object.
+  /// Add a new location for the given object. The owner must have the object ref in
+  /// scope.
   ///
   /// \param[in] object_id The object to update.
-  /// \param[in] node_id The node to be added to the location table.
-  void AddObjectLocation(const ObjectID &object_id, const NodeID &node_id)
+  /// \param[in] node_id The new object location to be added.
+  /// \return True if the reference exists, false otherwise.
+  bool AddObjectLocation(const ObjectID &object_id, const NodeID &node_id)
       LOCKS_EXCLUDED(mutex_);
 
-  /// Remove location from the location table of the given object.
+  /// Remove a location for the given object. The owner must have the object ref in
+  /// scope.
   ///
   /// \param[in] object_id The object to update.
-  /// \param[in] node_id The node to be removed from the location table.
-  void RemoveObjectLocation(const ObjectID &object_id, const NodeID &node_id)
+  /// \param[in] node_id The object location to be removed.
+  /// \return True if the reference exists, false otherwise.
+  bool RemoveObjectLocation(const ObjectID &object_id, const NodeID &node_id)
       LOCKS_EXCLUDED(mutex_);
 
-  /// Get the locations from the location table of the given object.
+  /// Get the locations of the given object. The owner must have the object ref in
+  /// scope.
   ///
   /// \param[in] object_id The object to get locations for.
-  /// \return The nodes that have the object.
-  std::unordered_set<NodeID> GetObjectLocations(const ObjectID &object_id)
-      LOCKS_EXCLUDED(mutex_);
+  /// \return The nodes that have the object if the reference exists, empty optional
+  ///         otherwise.
+  absl::optional<absl::flat_hash_set<NodeID>> GetObjectLocations(
+      const ObjectID &object_id) LOCKS_EXCLUDED(mutex_);
+
+  /// Get an object's size. This will return 0 if the object is out of scope.
+  ///
+  /// \param[in] object_id The object whose size to get.
+  /// \return Object size, or 0 if the object is out of scope.
+  size_t GetObjectSize(const ObjectID &object_id) const;
 
   /// Handle an object has been spilled to external storage.
   ///
   /// This notifies the primary raylet that the object is safe to release and
   /// records that the object has been spilled to suppress reconstruction.
   void HandleObjectSpilled(const ObjectID &object_id);
+
+  /// Get locality data for object.
+  absl::optional<LocalityData> GetLocalityData(const ObjectID &object_id);
 
  private:
   struct Reference {
@@ -470,6 +496,9 @@ class ReferenceCounter : public ReferenceCounterInterface {
     // counting is enabled, then some raylet must be pinning the object value.
     // This is the address of that raylet.
     absl::optional<NodeID> pinned_at_raylet_id;
+    // If this object is owned by us and stored in plasma, this contains all
+    // object locations.
+    absl::flat_hash_set<NodeID> locations;
     // Whether this object can be reconstructed via lineage. If false, then the
     // object's value will be pinned as long as it is referenced by any other
     // object's lineage.
@@ -689,14 +718,6 @@ class ReferenceCounter : public ReferenceCounterInterface {
 
   /// Holds all reference counts and dependency information for tracked ObjectIDs.
   ReferenceTable object_id_refs_ GUARDED_BY(mutex_);
-
-  using LocationTable = absl::flat_hash_map<ObjectID, absl::flat_hash_set<NodeID>>;
-
-  /// Holds the client information for the owned objects. This table is seperate from
-  /// the reference table because we add object reference after putting object into the
-  /// plasma store and add the location to the object directory. Therefore we will receive
-  /// object location information before the reference is created.
-  LocationTable object_id_locations_ GUARDED_BY(mutex_);
 
   /// Objects whose values have been freed by the language frontend.
   /// The values in plasma will not be pinned. An object ID is

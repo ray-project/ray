@@ -23,7 +23,6 @@ class CentralizedCriticModel(TFModelV2):
         # Base of the model
         self.model = FullyConnectedNetwork(obs_space, action_space,
                                            num_outputs, model_config, name)
-        self.register_variables(self.model.variables())
 
         # Central VF maps (obs, opp_obs, opp_act) -> vf_pred
         obs = tf.keras.layers.Input(shape=(6, ), name="obs")
@@ -37,7 +36,6 @@ class CentralizedCriticModel(TFModelV2):
             1, activation=None, name="c_vf_out")(central_vf_dense)
         self.central_vf = tf.keras.Model(
             inputs=[obs, opp_obs, opp_act], outputs=central_vf_out)
-        self.register_variables(self.central_vf.variables)
 
     @override(ModelV2)
     def forward(self, input_dict, state, seq_lens):
@@ -45,9 +43,10 @@ class CentralizedCriticModel(TFModelV2):
 
     def central_value_function(self, obs, opponent_obs, opponent_actions):
         return tf.reshape(
-            self.central_vf(
-                [obs, opponent_obs,
-                 tf.one_hot(opponent_actions, 2)]), [-1])
+            self.central_vf([
+                obs, opponent_obs,
+                tf.one_hot(tf.cast(opponent_actions, tf.int32), 2)
+            ]), [-1])
 
     @override(ModelV2)
     def value_function(self):
@@ -78,11 +77,9 @@ class YetAnotherCentralizedCriticModel(TFModelV2):
             num_outputs,
             model_config,
             name + "_action")
-        self.register_variables(self.action_model.variables())
 
         self.value_model = FullyConnectedNetwork(obs_space, action_space, 1,
                                                  model_config, name + "_vf")
-        self.register_variables(self.value_model.variables())
 
     def forward(self, input_dict, state, seq_lens):
         self._value_out, _ = self.value_model({
@@ -124,7 +121,7 @@ class TorchCentralizedCriticModel(TorchModelV2, nn.Module):
     def central_value_function(self, obs, opponent_obs, opponent_actions):
         input_ = torch.cat([
             obs, opponent_obs,
-            torch.nn.functional.one_hot(opponent_actions, 2).float()
+            torch.nn.functional.one_hot(opponent_actions.long(), 2).float()
         ], 1)
         return torch.reshape(self.central_vf(input_), [-1])
 

@@ -598,6 +598,32 @@ def test_buffer_alignment(ray_start_shared_local_modes):
         assert y.ctypes.data % 8 == 0
 
 
+def test_custom_serializer(ray_start_shared_local_modes):
+    import threading
+
+    class A:
+        def __init__(self, x):
+            self.x = x
+            self.lock = threading.Lock()
+
+    def custom_serializer(a):
+        return a.x
+
+    def custom_deserializer(x):
+        return A(x)
+
+    ray.util.register_serializer(
+        A, serializer=custom_serializer, deserializer=custom_deserializer)
+    ray.get(ray.put(A(1)))
+
+    ray.util.deregister_serializer(A)
+    with pytest.raises(Exception):
+        ray.get(ray.put(A(1)))
+
+    # deregister again takes no effects
+    ray.util.deregister_serializer(A)
+
+
 if __name__ == "__main__":
     import pytest
     sys.exit(pytest.main(["-v", __file__]))
