@@ -1,3 +1,0 @@
-system,operation,num_nodes,nbytes,npartitions,duration
-dask,sort,1,100000000,50,52.92490792274475
-dask,sort,1,100000000,50,45.55415391921997
