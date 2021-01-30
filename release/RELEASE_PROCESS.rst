@@ -148,6 +148,22 @@ is generally the easiest way to run release tests.
 
    Run the ``python/ray/tests/test_k8s_*`` to make sure K8s cluster launcher and operator works. Make sure the docker image is the released version.
 
+6. **Data processing tests**
+
+   .. code-block:: bash
+
+      data_processing_tests/README.rst
+
+   Follow the instructions to kick off the tests and check the status of the workloads.
+   Data processing tests make sure all the data processing features are reliable and performant.
+   The following tests should be run.
+
+   - ``data_processing_tests/workloads/streaming_shuffle.py`` run the 100GB streaming shuffle in a single node & fake 4 nodes cluster.
+
+   **IMPORTANT** Check if the workload scripts has terminated. If so, please record the result (both read/write bandwidth and the shuffle result) to the ``release_logs/data_processing_tests/[test_name]``.
+   Both shuffling runtime and read/write bandwidth shouldn't be decreasing more than 15% compared to the previous release.
+  
+
 Identify and Resolve Release Blockers
 -------------------------------------
 If a release blocking issue arises in the course of testing, you should

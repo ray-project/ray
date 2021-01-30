@@ -1,5 +1,6 @@
 import ray.worker
 import logging
+from ray._private.client_mode_hook import client_mode_hook
 
 logger = logging.getLogger(__name__)
 
@@ -149,6 +150,7 @@ class RuntimeContext(object):
 _runtime_context = None
 
 
+@client_mode_hook
 def get_runtime_context():
     global _runtime_context
     if _runtime_context is None:
