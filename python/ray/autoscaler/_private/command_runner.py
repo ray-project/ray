@@ -312,8 +312,8 @@ class SSHOptions:
         ssh_key_option = ["-i", self.ssh_key] if self.ssh_key else []
         return ssh_key_option + [
             x for y in (["-o", "{}={}".format(k, v)]
-                        for k, v in self.arg_dict.items() if v is not None)
-            for x in y
+                        for k, v in self.arg_dict.items()
+                        if v is not None) for x in y
         ]
 
 
@@ -888,9 +888,9 @@ class DockerCommandRunner(CommandRunnerInterface):
             shm_output = self.ssh_command_runner.run(
                 "cat /proc/meminfo || true",
                 with_output=True).decode().strip()
-            available_memory = int(
-                [ln for ln in shm_output.split("\n")
-                 if "MemAvailable" in ln][0].split()[1])
+            available_memory = int([
+                ln for ln in shm_output.split("\n") if "MemAvailable" in ln
+            ][0].split()[1])
             available_memory_bytes = available_memory * 1024
             # Overestimate SHM size by 10%
             shm_size = min((available_memory_bytes *

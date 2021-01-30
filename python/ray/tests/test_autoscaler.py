@@ -524,9 +524,10 @@ class AutoscalingTest(unittest.TestCase):
         # 1. mkdir -p {docker_mount_prefix}
         # 2. rsync bootstrap files
         # 3. docker cp bootstrap files into container
-        commands_with_mount = [(i, cmd) for i, cmd in
-                               enumerate(runner.command_history())
-                               if docker_mount_prefix in cmd]
+        commands_with_mount = [
+            (i, cmd) for i, cmd in enumerate(runner.command_history())
+            if docker_mount_prefix in cmd
+        ]
         rsync_commands = [x for x in commands_with_mount if "rsync" in x[1]]
         docker_cp_commands = [
             x for x in commands_with_mount if "docker cp" in x[1]
@@ -2039,9 +2040,10 @@ MemAvailable:   33000000 kB
         first_pull = [(i, cmd)
                       for i, cmd in enumerate(runner.command_history())
                       if "docker pull" in cmd]
-        first_targeted_inspect = [(i, cmd) for i, cmd in
-                                  enumerate(runner.command_history())
-                                  if "docker inspect -f" in cmd]
+        first_targeted_inspect = [
+            (i, cmd) for i, cmd in enumerate(runner.command_history())
+            if "docker inspect -f" in cmd
+        ]
 
         # This checks for the bug mentioned #13128 where the image is inspected
         # before the image is present.
