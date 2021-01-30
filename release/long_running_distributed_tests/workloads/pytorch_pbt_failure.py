@@ -92,7 +92,6 @@ TorchTrainable = TorchTrainer.as_trainable(
     },
     use_gpu=not args.smoke_test)
 
-
 pbt_scheduler = PopulationBasedTraining(
     time_attr="training_iteration",
     metric="val_loss",
