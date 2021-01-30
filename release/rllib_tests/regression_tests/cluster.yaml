@@ -21,11 +21,18 @@ auth:
 
 head_node:
     InstanceType: p3.16xlarge
+    ImageId: latest_dlami
+
+file_mounts:
+    /compact-regression-tests-torch.yaml: compact-regression-tests-torch.yaml
+    /compact-regression-tests-tf.yaml: compact-regression-tests-tf.yaml
+    /run.sh: run.sh
+
 
 # List of shell commands to run to set up nodes.
 setup_commands:
-    - apt-get install -y libglib2.0-0 libcudnn7=7.6.5.32-1+cuda10.1
-    - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl
+    - sudo apt-get install -y libglib2.0-0 libcudnn7=7.6.5.32-1+cuda10.1
+    - pip install -U https://ray-wheels.s3-us-west-2.amazonaws.com/releases/1.2.0/b4d87b8fc5ff03b868adba35b37da32b7be9f71f/ray-1.2.0-cp37-cp37m-manylinux2014_x86_64.whl
 
 # Command to start ray on the head node. You don't need to change this.
 head_start_ray_commands:
