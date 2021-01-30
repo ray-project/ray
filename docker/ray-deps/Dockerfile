@@ -22,7 +22,7 @@ RUN sudo apt-get update && sudo apt-get install -y libhdf5-serial-dev hdf5-tools
 RUN  $HOME/anaconda3/bin/mamba install --yes numpy six requests h5py astor protobuf
 # grpcio takes a long time to install from source, lets do it as a seperate stage so it can be cached on re-run.
 RUN  $HOME/anaconda3/bin/mamba install --yes grpcio || pip install grpcio
-RUN  $HOME/anaconda3/bin/pip install numpy grpcio absl-py py-cpuinfo psutil portpicker six mock requests gast h5py astor termcolor protobuf keras-applications keras-preprocessing wrapt google-pasta pybind11
+RUN  $HOME/anaconda3/bin/pip install absl-py py-cpuinfo psutil portpicker six mock requests gast h5py astor termcolor protobuf keras-applications keras-preprocessing wrapt google-pasta pybind11
 # Install tensorflow depending on the arch
 RUN arch=$(uname -m); \
     echo "Arch is $arch"; \

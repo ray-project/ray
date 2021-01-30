@@ -59,24 +59,24 @@ RUN  export arch=$(uname -m); \
     && rm /tmp/miniconda.sh \
     && $HOME/anaconda3/bin/conda install -y mamba \
     && $HOME/anaconda3/bin/mamba install --yes python=$PYTHON_VERSION \
-    && $HOME/anaconda3/bin/mamba install --yes cytoolz lz4 pandas numpy==1.19.2 scikit-build flatbuffers cython==0.29.21 psutil pynacl \
+    && $HOME/anaconda3/bin/mamba install --yes cytoolz lz4 pandas numpy==1.19.5 scikit-build flatbuffers cython==0.29.21 psutil pynacl \
     && $HOME/anaconda3/bin/conda clean -y --all \
     && $HOME/anaconda3/bin/pip install --no-cache-dir \
 	flatbuffers \
-	cython==0.29.23 \
-	numpy==1.19.5 \
-	psutil \
 	blist \
 	atari-py \
     # blist is needed for numpy (which is re-installed when ray is installed)
     # atari-py is built from source for Python 3.8 (requires g++ & zlib1g-dev)
     # To avoid the following error on Jenkins:
     # AttributeError: 'numpy.ufunc' object has no attribute '__module__'
-    && $HOME/anaconda3/bin/pip uninstall -y dask \
-    # We install cmake temporarily to get psutil, blist & atari-py
-    && sudo apt-get autoremove -y cmake zlib1g-dev \
+	&& $HOME/anaconda3/bin/pip uninstall -y dask \
+	# On amd64:
+	# We install cmake temporarily to get psutil, blist & atari-py
+	# But in arm we need these friends for later parties.
+	&& sudo apt-get autoremove -y $(if [ "$arch" = "x86_64" ]; then echo \
+	cmake zlib1g-dev; fi)
 	# We keep g++ on GPU images, because uninstalling removes CUDA Devel tooling
-	$(if [ "$BASE_IMAGE" = "ubuntu:focal" ]; then echo \
+	$(if [ "$BASE_IMAGE" = "ubuntu:focal" && "$arch" = "x86_64" ]; then echo \
 	g++; fi) \
     # Either install kubectl or remove wget
     && (if [ "$AUTOSCALER" = "autoscaler" ]; \

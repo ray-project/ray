@@ -8,6 +8,7 @@ set -ex
 GPU=""
 BASE_IMAGE=${BASE_IMAGE:-"ubuntu:focal"}
 DOCKER_PREFIX=${DOCKER_PREFIX:-"rayproject/"}
+PYTHON_VERSION=3.8.6
 
 while [[ $# -gt 0 ]]
 do
@@ -37,8 +38,15 @@ case $key in
     echo "not implemented, just hardcode me :'("
     exit 1
     ;;
+    --python-version)
+    # Python version to install. e.g. 3.7.7.
+    # Changing python versions may require a different wheel.
+    # If not provided defaults to 3.7.7
+    shift
+    PYTHON_VERSION=$1
+    ;;
     *)
-    echo "Usage: build-docker.sh [ --no-cache-build ] [ --shas-only ] [ --build-development-image ] [ --build-examples ] [ --wheel-to-use ]"
+    echo "Usage: build-docker.sh [ --no-cache-build ] [ --shas-only ] [ --build-development-image ] [ --build-examples ] [ --wheel-to-use ] [ --python-version ]"
     exit 1
 esac
 shift
@@ -51,7 +59,7 @@ do
   git rev-parse HEAD > ./docker/${IMAGE}/git-rev
   git archive -o ./docker/${IMAGE}/ray.tar "$(git rev-parse HEAD)"
   cp ./python/requirements/requirements.txt ./docker/${IMAGE}/requirements.txt
-    IMAGE_SHA=$(docker buildx build $NO_CACHE --build-arg GPU="$GPU" --build-arg BASE_IMAGE="$BASE_IMAGE" --build-arg DOCKER_PREFIX="$DOCKER_PREFIX"  -t ${DOCKER_PREFIX}$IMAGE:nightly$GPU --platform linux/arm64,linux/amd64 --push docker/$IMAGE )
+    IMAGE_SHA=$(docker buildx build $NO_CACHE --build-arg GPU="$GPU" --build-arg BASE_IMAGE="$BASE_IMAGE" --build-arg PYTHON_VERSION="$PYTHON_VERSION" --build-arg DOCKER_PREFIX="$DOCKER_PREFIX"  -t ${DOCKER_PREFIX}$IMAGE:nightly$GPU --platform linux/arm64,linux/amd64 --push docker/$IMAGE )
     if [ $OUTPUT_SHA ]; then
 	echo "rayproject/$IMAGE:nightly$GPU SHA:$IMAGE_SHA"
     fi
