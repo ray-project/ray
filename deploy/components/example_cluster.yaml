@@ -86,10 +86,12 @@ spec:
     # Minimum number of Ray workers of this Pod type.
     minWorkers: 2
     # Maximum number of Ray workers of this Pod type. Takes precedence over minWorkers.
-    maxWorkers: 3
-    # User-specified custom resources for use by Ray.
-    # (Ray detects CPU and GPU from pod spec resource requests and limits, so no need to fill those here.)
-    rayResources: {"example-resource-a": 1, "example-resource-b": 1}
+    maxWorkers: 10
+    # User-specified custom resources for use by Ray
+    #rayResources: {"Custom1": 1, "is_spot": 1}
+    # Optional commands to run before starting the Ray runtime.
+    #setupCommands:
+    #  - pip install numpy # Example
     podConfig:
       apiVersion: v1
       kind: Pod
