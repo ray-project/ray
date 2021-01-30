@@ -95,8 +95,9 @@ public class PlacementGroupUtils {
    */
   public static PlacementGroupImpl generatePlacementGroupFromByteArray(
       byte[] placementGroupByteArray) {
-    Preconditions.checkNotNull(
-        placementGroupByteArray, "Can't generate a placement group from empty byte array.");
+    if (placementGroupByteArray == null) {
+      return null;
+    }
 
     PlacementGroupTableData placementGroupTableData;
     try {

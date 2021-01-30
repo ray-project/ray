@@ -140,4 +140,6 @@ public class PlacementGroupTest extends BaseTest {
   public void testBundleResourceValidCheckWhenCreate() {
     PlacementGroupTestUtils.createBundleResourceInvalidGroup();
   }
+
+
 }

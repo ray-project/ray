@@ -115,6 +115,17 @@ Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetPlacementGroupInfo(JNIEnv *
 
 /*
  * Class:     io_ray_runtime_gcs_GlobalStateAccessor
+ * Method:    nativeGetPlacementGroupInfoByName
+ * Signature: (JLjava/lang/String;Z)[B
+ */
+JNIEXPORT jbyteArray JNICALL
+Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetPlacementGroupInfoByName(JNIEnv *, jobject,
+                                                                            jlong,
+                                                                            jstring,
+                                                                            jboolean);
+
+/*
+ * Class:     io_ray_runtime_gcs_GlobalStateAccessor
  * Method:    nativeGetAllPlacementGroupInfo
  * Signature: (J)Ljava/util/List;
  */

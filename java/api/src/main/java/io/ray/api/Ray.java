@@ -2,13 +2,12 @@ package io.ray.api;
 
 import io.ray.api.id.PlacementGroupId;
 import io.ray.api.id.UniqueId;
+import io.ray.api.options.PlacementGroupCreationOptions;
 import io.ray.api.placementgroup.PlacementGroup;
-import io.ray.api.placementgroup.PlacementStrategy;
 import io.ray.api.runtime.RayRuntime;
 import io.ray.api.runtime.RayRuntimeFactory;
 import io.ray.api.runtimecontext.RuntimeContext;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.Callable;
 
@@ -259,19 +258,11 @@ public final class Ray extends RayCall {
    * for the resource to be updated and rescheduled. This function only works when gcs actor manager
    * is turned on.
    *
-   * @param name Name of the placement group.
-   * @param bundles Pre-allocated resource list.
-   * @param strategy Actor placement strategy.
+   * @param creationOptions Creation options of the placement group.
    * @return A handle to the created placement group.
    */
-  public static PlacementGroup createPlacementGroup(
-      String name, List<Map<String, Double>> bundles, PlacementStrategy strategy) {
-    return internal().createPlacementGroup(name, bundles, strategy);
-  }
-
-  public static PlacementGroup createPlacementGroup(
-      List<Map<String, Double>> bundles, PlacementStrategy strategy) {
-    return internal().createPlacementGroup(bundles, strategy);
+  public static PlacementGroup createPlacementGroup(PlacementGroupCreationOptions creationOptions) {
+    return internal().createPlacementGroup(creationOptions);
   }
 
   /**
@@ -294,6 +285,26 @@ public final class Ray extends RayCall {
    */
   public static PlacementGroup getPlacementGroup(PlacementGroupId id) {
     return internal().getPlacementGroup(id);
+  }
+
+  /**
+   * Get a placement group by placement group name from current job.
+   *
+   * @param name placement group name.
+   * @return The placement group.
+   */
+  public static PlacementGroup getPlacementGroup(String name) {
+    return internal().getPlacementGroup(name, false);
+  }
+
+  /**
+   * Get a placement group by placement group name from all jobs.
+   *
+   * @param name placement group name.
+   * @return The placement group.
+   */
+  public static PlacementGroup getGlobalPlacementGroup(String name) {
+    return internal().getPlacementGroup(name, true);
   }
 
   /**

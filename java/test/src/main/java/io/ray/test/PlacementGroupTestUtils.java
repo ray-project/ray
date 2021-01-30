@@ -1,6 +1,7 @@
 package io.ray.test;
 
 import io.ray.api.Ray;
+import io.ray.api.options.PlacementGroupCreationOptions;
 import io.ray.api.placementgroup.PlacementGroup;
 import io.ray.api.placementgroup.PlacementStrategy;
 import java.util.ArrayList;
@@ -24,8 +25,9 @@ public class PlacementGroupTestUtils {
       bundle.put(resourceName, resourceSize);
       bundles.add(bundle);
     }
-
-    return Ray.createPlacementGroup(groupName, bundles, strategy);
+    PlacementGroupCreationOptions creationOptions = new PlacementGroupCreationOptions.Builder()
+      .setName(groupName).setBundles(bundles).setStrategy(strategy).build();
+    return Ray.createPlacementGroup(creationOptions);
   }
 
   public static PlacementGroup createSpecifiedSimpleGroup(

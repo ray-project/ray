@@ -83,6 +83,14 @@ public class GlobalStateAccessor {
     }
   }
 
+  public byte[] getPlacementGroupInfo(String name, boolean global) {
+    synchronized (GlobalStateAccessor.class) {
+      validateGlobalStateAccessorPointer();
+      return nativeGetPlacementGroupInfoByName(
+        globalStateAccessorNativePointer, name, global);
+    }
+  }
+
   public List<byte[]> getAllPlacementGroupInfo() {
     synchronized (GlobalStateAccessor.class) {
       validateGlobalStateAccessorPointer();
@@ -144,6 +152,9 @@ public class GlobalStateAccessor {
   private native byte[] nativeGetActorInfo(long nativePtr, byte[] actorId);
 
   private native byte[] nativeGetPlacementGroupInfo(long nativePtr, byte[] placementGroupId);
+
+  private native byte[] nativeGetPlacementGroupInfoByName(long nativePtr, String name,
+                                                          boolean global);
 
   private native List<byte[]> nativeGetAllPlacementGroupInfo(long nativePtr);
 }
