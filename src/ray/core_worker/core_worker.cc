@@ -1066,7 +1066,7 @@ Status CoreWorker::GetObjectsFromLocalStore(const std::vector<ObjectID> &ids,
   RAY_RETURN_NOT_OK(plasma_store_provider_->GetObjectsFromLocalStore(ids, results));
   for (size_t i = 0; i < ids.size(); i++) {
     if ((*results)[i] == nullptr) {
-      RAY_LOG(WARNING) << "Object " << ids[i] << " not in local store";
+      RAY_LOG(FATAL) << "Object " << ids[i] << " not in local store. This should not happen.";
     }
   }
   return Status::OK();

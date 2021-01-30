@@ -899,6 +899,7 @@ cdef class CoreWorker:
         return RayObjectsToDataMetadataPairs(results)
 
     def get_objects_from_local_store(self, object_refs):
+        """Get objects from local plasma store directly instead of passing raylet."""
         cdef:
             c_vector[shared_ptr[CRayObject]] results
             c_vector[CObjectID] c_object_ids = ObjectRefsToVector(object_refs)
