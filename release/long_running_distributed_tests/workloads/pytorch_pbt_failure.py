@@ -11,7 +11,6 @@ import ray
 from ray import tune
 from ray.tune import CLIReporter
 from ray.tune.schedulers import PopulationBasedTraining
-from ray.tune.utils.util import merge_dicts
 from ray.tune.utils.mock import FailureInjectorCallback
 from ray.util.sgd.torch import TorchTrainer, TrainingOperator
 from ray.util.sgd.torch.resnet import ResNet18
@@ -94,14 +93,6 @@ TorchTrainable = TorchTrainer.as_trainable(
     use_gpu=not args.smoke_test)
 
 
-class NoFaultToleranceTrainable(TorchTrainable):
-    def _train(self):
-        train_stats = self.trainer.train(max_retries=0, profile=True)
-        validation_stats = self.trainer.validate(profile=True)
-        stats = merge_dicts(train_stats, validation_stats)
-        return stats
-
-
 pbt_scheduler = PopulationBasedTraining(
     time_attr="training_iteration",
     metric="val_loss",
@@ -119,7 +110,7 @@ reporter.add_metric_column("val_loss", "loss")
 reporter.add_metric_column("val_accuracy", "acc")
 
 analysis = tune.run(
-    NoFaultToleranceTrainable,
+    TorchTrainable,
     num_samples=4,
     config={
         "lr": tune.choice([0.001, 0.01, 0.1]),
