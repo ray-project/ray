@@ -1,6 +1,7 @@
 import pytest
 
-from ray.autoscaler._private.aws.config import _get_vpc_id_or_die
+from ray.autoscaler._private.aws.config import _get_vpc_id_or_die, \
+                                               bootstrap_aws
 import ray.tests.aws.utils.stubs as stubs
 import ray.tests.aws.utils.helpers as helpers
 from ray.tests.aws.utils.constants import AUX_SUBNET, DEFAULT_SUBNET, \
@@ -131,6 +132,17 @@ def test_subnet_given_head_and_worker_sg(iam_client_stub, ec2_client_stub):
     # expect no pending responses left in IAM or EC2 client stub queues
     iam_client_stub.assert_no_pending_responses()
     ec2_client_stub.assert_no_pending_responses()
+
+
+def test_fills_out_amis():
+    config = helpers.load_aws_example_config_file("example-full.yaml")
+    del config["head_node"]["ImageId"]
+    del config["worker_nodes"]["ImageId"]
+
+    defaults_filled = bootstrap_aws(config)
+
+    assert defaults_filled["head_node"].get("ImageId")
+    assert defaults_filled["worker_nodes"].get("ImageId")
 
 
 if __name__ == "__main__":
