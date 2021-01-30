@@ -312,8 +312,8 @@ class SSHOptions:
         ssh_key_option = ["-i", self.ssh_key] if self.ssh_key else []
         return ssh_key_option + [
             x for y in (["-o", "{}={}".format(k, v)]
-                        for k, v in self.arg_dict.items()
-                        if v is not None) for x in y
+                        for k, v in self.arg_dict.items() if v is not None)
+            for x in y
         ]
 
 
@@ -601,7 +601,8 @@ class DockerCommandRunner(CommandRunnerInterface):
             shutdown_after_run=False,
     ):
         if run_env == "auto":
-            run_env = "host" if (not bool(cmd) or cmd.find(self.docker_cmd) == 0) else self.docker_cmd
+            run_env = "host" if (not bool(cmd) or cmd.find(
+                self.docker_cmd) == 0) else self.docker_cmd
 
         if environment_variables:
             cmd = _with_environment_variables(cmd, environment_variables)
@@ -650,8 +651,7 @@ class DockerCommandRunner(CommandRunnerInterface):
                 # Without it, docker copies the source *into* the target
                 host_destination += "/."
             self.ssh_command_runner.run(
-                "{} cp {} {}:{}".format(self.docker_cmd,
-                                        host_destination,
+                "{} cp {} {}:{}".format(self.docker_cmd, host_destination,
                                         self.container_name,
                                         self._docker_expand_user(target)),
                 silent=is_rsync_silent())
@@ -672,8 +672,7 @@ class DockerCommandRunner(CommandRunnerInterface):
             # Without it, docker copies the source *into* the target
         if not options.get("docker_mount_if_possible", False):
             self.ssh_command_runner.run(
-                "{} cp {}:{} {}".format(self.docker_cmd,
-                                        self.container_name,
+                "{} cp {}:{} {}".format(self.docker_cmd, self.container_name,
                                         self._docker_expand_user(source),
                                         host_source),
                 silent=is_rsync_silent())
@@ -689,7 +688,8 @@ class DockerCommandRunner(CommandRunnerInterface):
     def _check_docker_installed(self):
         no_exist = "NoExist"
         output = self.ssh_command_runner.run(
-            f"command -v {self.docker_cmd} || echo '{no_exist}'", with_output=True)
+            f"command -v {self.docker_cmd} || echo '{no_exist}'",
+            with_output=True)
         cleaned_output = output.decode().strip()
         if no_exist in cleaned_output or "docker" not in cleaned_output:
             if self.docker_cmd == "docker":
@@ -705,9 +705,10 @@ class DockerCommandRunner(CommandRunnerInterface):
                 ]
 
             logger.error(
-                f"{self.docker_cmd.capitalize()} not installed. You can install"
-                f" {self.docker_cmd.capitalize()} by adding the following commands to"
-                f" 'initialization_commands':\n" + "\n".join(install_commands))
+                f"{self.docker_cmd.capitalize()} not installed. You can "
+                f"install {self.docker_cmd.capitalize()} by adding the "
+                "following commands to 'initialization_commands':\n" +
+                "\n".join(install_commands))
 
     def _check_container_status(self):
         if self.initialized:
@@ -724,7 +725,8 @@ class DockerCommandRunner(CommandRunnerInterface):
         if user_pos > -1:
             if self.home_dir is None:
                 self.home_dir = self.ssh_command_runner.run(
-                    f"{self.docker_cmd} exec {self.container_name} printenv HOME",
+                    f"{self.docker_cmd} exec {self.container_name} "
+                    "printenv HOME",
                     with_output=True).decode("utf-8").strip()
 
             if any_char:
@@ -790,12 +792,14 @@ class DockerCommandRunner(CommandRunnerInterface):
         if self.docker_config.get("pull_before_run", True):
             assert specific_image, "Image must be included in config if " + \
                 "pull_before_run is specified"
-            self.run("{} pull {}".format(self.docker_cmd, specific_image), run_env="host")
+            self.run(
+                "{} pull {}".format(self.docker_cmd, specific_image),
+                run_env="host")
         else:
 
-            self.run(
-                f"{self.docker_cmd} image inspect {specific_image} 1> /dev/null  2>&1 || "
-                f"{self.docker_cmd} pull {specific_image}")
+            self.run(f"{self.docker_cmd} image inspect {specific_image} "
+                     "1> /dev/null  2>&1 || "
+                     f"{self.docker_cmd} pull {specific_image}")
 
         # Bootstrap files cannot be bind mounted because docker opens the
         # underlying inode. When the file is switched, docker becomes outdated.
@@ -811,12 +815,15 @@ class DockerCommandRunner(CommandRunnerInterface):
             requires_re_init = self._check_if_container_restart_is_needed(
                 specific_image, cleaned_bind_mounts)
             if requires_re_init:
-                self.run(f"{self.docker_cmd} stop {self.container_name}", run_env="host")
+                self.run(
+                    f"{self.docker_cmd} stop {self.container_name}",
+                    run_env="host")
 
         if (not container_running) or requires_re_init:
             # Get home directory
             image_env = self.ssh_command_runner.run(
-                f"{self.docker_cmd} inspect -f '{{json .Config.Env}}' " + specific_image,
+                f"{self.docker_cmd} inspect -f '{{json .Config.Env}}' " +
+                specific_image,
                 with_output=True).decode().strip()
             home_directory = "/root"
             for env_var in json.loads(image_env):
@@ -831,7 +838,8 @@ class DockerCommandRunner(CommandRunnerInterface):
                     "run_options", []) + self.docker_config.get(
                         f"{'head' if as_head else 'worker'}_run_options", []) +
                 self._configure_runtime() + self._auto_configure_shm(),
-                self.ssh_command_runner.cluster_name, home_directory, self.docker_cmd)
+                self.ssh_command_runner.cluster_name, home_directory,
+                self.docker_cmd)
             self.run(start_command, run_env="host")
             docker_run_executed = True
 
@@ -880,9 +888,9 @@ class DockerCommandRunner(CommandRunnerInterface):
             shm_output = self.ssh_command_runner.run(
                 "cat /proc/meminfo || true",
                 with_output=True).decode().strip()
-            available_memory = int([
-                ln for ln in shm_output.split("\n") if "MemAvailable" in ln
-            ][0].split()[1])
+            available_memory = int(
+                [ln for ln in shm_output.split("\n")
+                 if "MemAvailable" in ln][0].split()[1])
             available_memory_bytes = available_memory * 1024
             # Overestimate SHM size by 10%
             shm_size = min((available_memory_bytes *

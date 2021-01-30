@@ -429,7 +429,6 @@ class AutoscalingTest(unittest.TestCase):
             f"docker cp {docker_mount_prefix}/~/ray_bootstrap_config.yaml"
         runner.assert_has_call("1.2.3.4", pattern=pattern_to_assert)
 
-
     @unittest.skipIf(sys.platform == "win32", "Failing on Windows.")
     def testGetOrCreateHeadNodePodman(self):
         config = copy.deepcopy(SMALL_CLUSTER)
@@ -471,7 +470,8 @@ class AutoscalingTest(unittest.TestCase):
         runner.assert_has_call("1.2.3.4", pattern=pattern_to_assert)
 
         for cmd in runner.command_history():
-            assert "docker" not in cmd, f"Docker (not podman) found in call: {cmd}" 
+            assert "docker" not in cmd, ("Docker (not podman) found in call: "
+                                         f"{cmd}")
 
         runner.assert_has_call("1.2.3.4", "podman inspect")
         runner.assert_has_call("1.2.3.4", "podman exec")
@@ -524,10 +524,9 @@ class AutoscalingTest(unittest.TestCase):
         # 1. mkdir -p {docker_mount_prefix}
         # 2. rsync bootstrap files
         # 3. docker cp bootstrap files into container
-        commands_with_mount = [
-            (i, cmd) for i, cmd in enumerate(runner.command_history())
-            if docker_mount_prefix in cmd
-        ]
+        commands_with_mount = [(i, cmd) for i, cmd in
+                               enumerate(runner.command_history())
+                               if docker_mount_prefix in cmd]
         rsync_commands = [x for x in commands_with_mount if "rsync" in x[1]]
         docker_cp_commands = [
             x for x in commands_with_mount if "docker cp" in x[1]
@@ -2040,10 +2039,9 @@ MemAvailable:   33000000 kB
         first_pull = [(i, cmd)
                       for i, cmd in enumerate(runner.command_history())
                       if "docker pull" in cmd]
-        first_targeted_inspect = [
-            (i, cmd) for i, cmd in enumerate(runner.command_history())
-            if "docker inspect -f" in cmd
-        ]
+        first_targeted_inspect = [(i, cmd) for i, cmd in
+                                  enumerate(runner.command_history())
+                                  if "docker inspect -f" in cmd]
 
         # This checks for the bug mentioned #13128 where the image is inspected
         # before the image is present.
