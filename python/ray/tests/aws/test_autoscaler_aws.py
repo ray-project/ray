@@ -1,7 +1,8 @@
 import pytest
 
 from ray.autoscaler._private.aws.config import _get_vpc_id_or_die, \
-                                               bootstrap_aws
+                                               bootstrap_aws, \
+                                               DEFAULT_AMI
 import ray.tests.aws.utils.stubs as stubs
 import ray.tests.aws.utils.helpers as helpers
 from ray.tests.aws.utils.constants import AUX_SUBNET, DEFAULT_SUBNET, \
@@ -141,8 +142,11 @@ def test_fills_out_amis():
 
     defaults_filled = bootstrap_aws(config)
 
-    assert defaults_filled["head_node"].get("ImageId") == "latest_dlami"
-    assert defaults_filled["worker_nodes"].get("ImageId") == "latest_dlami"
+    ami = DEFAULT_AMI.get(config.get("provider", {}).get("region"))
+
+    assert defaults_filled["head_node"].get("ImageId") == ami
+
+    assert defaults_filled["worker_nodes"].get("ImageId") == ami
 
 
 if __name__ == "__main__":
