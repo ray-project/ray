@@ -397,8 +397,9 @@ class GlobalState:
         if placement_group_info is None:
             return None
         else:
-            placement_group_info = gcs_utils.PlacementGroupTableData.FromString(
-                placement_group_info)
+            placement_group_info = \
+                gcs_utils.PlacementGroupTableData.FromString(
+                    placement_group_info)
             return ray.PlacementGroupID(
                 placement_group_info.placement_group_id)
 

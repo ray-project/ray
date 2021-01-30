@@ -157,7 +157,7 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
 
   void HandleGetNamedPlacementGroup(const rpc::GetNamedPlacementGroupRequest &request,
                                     rpc::GetNamedPlacementGroupReply *reply,
-                                    rpc::SendReplyCallback send_reply_callback)  override;
+                                    rpc::SendReplyCallback send_reply_callback) override;
 
   void HandleGetAllPlacementGroup(const rpc::GetAllPlacementGroupRequest &request,
                                   rpc::GetAllPlacementGroupReply *reply,
@@ -328,10 +328,10 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
     GET_PLACEMENT_GROUP_REQUEST = 2,
     GET_ALL_PLACEMENT_GROUP_REQUEST = 3,
     WAIT_PLACEMENT_GROUP_UNTIL_READY_REQUEST = 4,
-    CountType_MAX = 5,
-    GET_NAMED_PLACEMENT_GROUP_REQUEST = 6,
+    GET_NAMED_PLACEMENT_GROUP_REQUEST = 5,
+    CountType_MAX = 6,
   };
-  uint64_t counts_[CountType::GET_NAMED_PLACEMENT_GROUP_REQUEST] = {0};
+  uint64_t counts_[CountType::CountType_MAX] = {0};
 };
 
 }  // namespace gcs

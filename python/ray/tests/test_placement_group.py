@@ -375,6 +375,7 @@ def test_remove_pending_placement_group(ray_start_cluster):
     # Create a placement group that cannot be scheduled now.
     placement_group = ray.util.placement_group([{"GPU": 2}, {"CPU": 2}])
     ray.util.remove_placement_group(placement_group)
+
     # TODO(sang): Add state check here.
     @ray.remote(num_cpus=4)
     def f():
@@ -1482,6 +1483,11 @@ ray.shutdown()
         strategy="STRICT_SPREAD",
         name=global_placement_group_name)
     assert not same_name_pg.wait(10)
+
+    # Get a named placement group with a name that doesn't exist
+    # and make sure it will return None correctly.
+    inexistent_pg = ray.util.get_placement_group("inexistent_pg")
+    assert inexistent_pg is None
 
 
 if __name__ == "__main__":
