@@ -252,6 +252,7 @@ Status CoreWorkerPlasmaStoreProvider::GetObjectsFromLocalStore(const std::vector
           std::make_shared<RayObject>(data, metadata, std::vector<ObjectID>());
       results->emplace_back(std::move(result_object));
     } else {
+      RAY_LOG(ERROR) << "null will be added; " << object_ids[i];
       results->push_back(nullptr);
     }
   }

@@ -680,7 +680,7 @@ void PlasmaStore::EvictObjects(const std::vector<ObjectID> &object_ids) {
     return;
   }
   for (const auto &object_id : object_ids) {
-    RAY_LOG(DEBUG) << "evicting object " << object_id.Hex();
+    RAY_LOG(ERROR) << "evicting object " << object_id.Hex();
     auto entry = GetObjectTableEntry(&store_info_, object_id);
     // TODO(rkn): This should probably not fail, but should instead throw an
     // error. Maybe we should also support deleting objects that have been

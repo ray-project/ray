@@ -222,7 +222,7 @@ void LocalObjectManager::SpillObjectsInternal(
       [this, objects_to_spill, callback](std::shared_ptr<WorkerInterface> io_worker) {
         rpc::SpillObjectsRequest request;
         for (const auto &object_id : objects_to_spill) {
-          RAY_LOG(DEBUG) << "Sending spill request for object " << object_id;
+          RAY_LOG(ERROR) << "Sending spill request for object " << object_id;
           request.add_object_ids_to_spill(object_id.Binary());
         }
         io_worker->rpc_client()->SpillObjects(
@@ -234,6 +234,7 @@ void LocalObjectManager::SpillObjectsInternal(
               }
               io_worker_pool_.PushSpillWorker(io_worker);
               if (!status.ok()) {
+                RAY_CHECK(false);
                 for (const auto &object_id : objects_to_spill) {
                   auto it = objects_pending_spill_.find(object_id);
                   RAY_CHECK(it != objects_pending_spill_.end());
