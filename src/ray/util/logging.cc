@@ -102,8 +102,8 @@ inline const char *ConstBasename(const char *filepath) {
   return base ? (base + 1) : filepath;
 }
 
-/// NOTE(lingxuan.zlx): Ray will put all of logging content into std err if no
-/// such logger given.
+/// A logger that prints logs to stderr.
+/// This is the default logger if logging is not initialized.
 class DefaultStdErrLogger final {
  public:
   DefaultStdErrLogger() {
@@ -116,7 +116,9 @@ class DefaultStdErrLogger final {
   std::shared_ptr<spdlog::logger> default_stderr_logger_;
 };
 
-static DefaultStdErrLogger default_stderr_logger;
+/// NOTE(lingxuan.zlx): Default stderr logger must be singleton and global
+/// variable so core worker process can invoke `RAY_LOG` in its whole lifecyle.
+std::unique_ptr<DefaultStdErrLogger> default_stderr_logger(new DefaultStdErrLogger());
 
 class SpdLogMessage final {
  public:
@@ -127,7 +129,7 @@ class SpdLogMessage final {
   inline void Flush() {
     auto logger = spdlog::get(RayLog::GetLoggerName());
     if (!logger) {
-      logger = default_stderr_logger.GetDefaultLogger();
+      logger = default_stderr_logger->GetDefaultLogger();
     }
     // To avoid dump duplicated stacktrace with installed failure signal
     // handler, we have to check whether glog failure signal handler is enabled.
