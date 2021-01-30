@@ -43,10 +43,9 @@ auth:
 # The key is the name of the node type, which is just for debugging purposes.
 # The node config specifies the launch config and physical instance type.
 available_node_types:
-    ray.head.small:
+    ray.head.default:
         node_config:
           InstanceType: m5.large
-
           # You can provision additional disk space with a conf as follows
           BlockDeviceMappings:
               - DeviceName: /dev/sda1
@@ -58,8 +57,6 @@ available_node_types:
     ray.worker.small:
         node_config:
           InstanceType: m5.large
-          ImageId: ami-0a2363a9cff180a64 # Deep Learning AMI (Ubuntu) Version 30
-
           # Run workers on spot by default. Comment this out to use on-demand.
           InstanceMarketOptions:
               MarketType: spot
@@ -69,7 +66,7 @@ available_node_types:
         max_workers: 1
 
 # Specify the node type of the head node (as configured above).
-head_node_type: ray.head.small
+head_node_type: ray.head.default
 
 # The default settings for the head node. This will be merged with the per-node
 # type configs given above.
@@ -116,6 +113,7 @@ setup_commands:
     # Note: if you're developing Ray, you probably want to create an AMI that
     # has your Ray repo pre-cloned. Then, you can replace the pip installs
     # below with a git checkout <your_sha> (and possibly a recompile).
+    - echo 'export PATH="$HOME/anaconda3/envs/tensorflow2_latest_p37/bin:$PATH"' >> ~/.bashrc
     - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl
     # Consider uncommenting these if you also want to run apt-get commands during setup
     # - sudo pkill -9 apt-get || true
