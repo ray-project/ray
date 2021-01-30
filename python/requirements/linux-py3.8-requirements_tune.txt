@@ -125,7 +125,7 @@ cython==0.29.0
     #   -c ../requirements.txt
     #   autogluon.core
     #   configspace
-dask[complete]==2021.1.0
+dask[complete]==2021.1.1
     # via
     #   -c ../requirements.txt
     #   autogluon.core
