@@ -45,13 +45,12 @@ shift
 done
 
 # Build base-deps, ray-deps, and ray.
-#for IMAGE in "base-deps" "ray-deps" "ray"
-for IMAGE in "ray"
+for IMAGE in "base-deps" "ray-deps" "ray"
 do
   rm ./docker/${IMAGE}/ray.tar ./docker/${IMAGE}/git-rev ./docker/${IMAGE}/requirements.txt || echo "No need to cleanup"
   git rev-parse HEAD > ./docker/${IMAGE}/git-rev
   git archive -o ./docker/${IMAGE}/ray.tar "$(git rev-parse HEAD)"
-  cp ./python/requirements.txt ./docker/${IMAGE}/requirements.txt
+  cp ./python/requirements/requirements.txt ./docker/${IMAGE}/requirements.txt
     IMAGE_SHA=$(docker buildx build $NO_CACHE --build-arg GPU="$GPU" --build-arg BASE_IMAGE="$BASE_IMAGE" --build-arg DOCKER_PREFIX="$DOCKER_PREFIX"  -t ${DOCKER_PREFIX}$IMAGE:nightly$GPU --platform linux/arm64,linux/amd64 --push docker/$IMAGE )
     if [ $OUTPUT_SHA ]; then
 	echo "rayproject/$IMAGE:nightly$GPU SHA:$IMAGE_SHA"
