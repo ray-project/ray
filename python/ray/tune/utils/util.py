@@ -471,18 +471,16 @@ def wait_for_gpu(gpu_id=None, gpu_memory_limit=0.1, retry=20):
         gpu_id (Optional[str]): GPU id to check. Must be found
             within GPUtil.getGPUs(). If none, resorts to
             the first item returned from `ray.get_gpu_ids()`.
-        gpu_memory_limit (float): If memory usage is below
+        gpu_memory_limit (float): If fractional memory usage is below
             this quantity, the check will break.
         retry (int): Number of times to check GPU limit. Sleeps 5
             seconds between checks.
 
     Returns:
-        bool
-            True if free.
+        bool: True if free.
 
     Raises:
-        RuntimeError
-            If GPUtil is not found, if no GPUs are detected
+        RuntimeError: If GPUtil is not found, if no GPUs are detected
             or if the check fails.
 
     Example:
@@ -504,8 +502,8 @@ def wait_for_gpu(gpu_id=None, gpu_memory_limit=0.1, retry=20):
             raise RuntimeError(f"No GPU ids found from {ray.get_gpu_ids()}. "
                                "Did you set Tune resources correctly?")
         gpu_id = gpu_id_list[0]
-    gpu_object = GPUtil.getGPUs()[gpu_id]
     for i in range(int(retry)):
+        gpu_object = GPUtil.getGPUs()[gpu_id]
         if gpu_object.memoryUsed > gpu_memory_limit:
             logger.info(f"Waiting for GPU {gpu_id} memory to free. "
                         f"Mem: {gpu_object.memoryUsed:0.3f}")
