@@ -1,6 +1,5 @@
 #include <collective.h>
-#include <gloo/Barrier.h>
-
+#include <gloo/barrier.h>
 
 namespace pygloo {
 
@@ -12,4 +11,4 @@ void barrier(const std::shared_ptr<gloo::Context> &context) {
   gloo::barrier(opts_);
 }
 
-} // pygloo
+} // namespace pygloo

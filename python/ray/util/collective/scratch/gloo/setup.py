@@ -140,4 +140,5 @@ if __name__ == "__main__":
         include_package_data=True,
         zip_safe=False,
         # license="Apache 2.0"
+        # namespace_packages=["."],
     )

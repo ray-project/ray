@@ -6,12 +6,10 @@ namespace pygloo {
 template <typename T>
 void send(const std::shared_ptr<gloo::Context> &context, intptr_t sendbuf,
           size_t size, int peer) {
-  printf("??");
 
   T *input_ptr = reinterpret_cast<T *>(sendbuf);
 
   auto inputBuffer = context->createUnboundBuffer(input_ptr, size * sizeof(T));
-  printf("??");
   inputBuffer->send(peer, context->rank);
   // inputBuffer->send(peer, 0, 0, size * sizeof(T));
   inputBuffer->waitSend(context->getTimeout());

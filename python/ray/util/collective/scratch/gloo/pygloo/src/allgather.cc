@@ -22,7 +22,8 @@ void allgather(const std::shared_ptr<gloo::Context> &context, intptr_t sendbuf,
 }
 
 void allgather_wrapper(const std::shared_ptr<gloo::Context> &context,
-                       intptr_t sendbuf, intptr_t recvbuf, size_t size,glooDataType_t datatype) {
+                       intptr_t sendbuf, intptr_t recvbuf, size_t size,
+                       glooDataType_t datatype) {
   switch (datatype) {
   case glooDataType_t::glooInt8:
     allgather<int8_t>(context, sendbuf, recvbuf, size);
@@ -58,7 +59,7 @@ void allgather_wrapper(const std::shared_ptr<gloo::Context> &context,
 
 template <typename T>
 void allgatherv(const std::shared_ptr<gloo::Context> &context, intptr_t sendbuf,
-               intptr_t recvbuf, size_t size) {
+                intptr_t recvbuf, size_t size) {
   T *input_ptr = reinterpret_cast<T *>(sendbuf);
   T *output_ptr = reinterpret_cast<T *>(recvbuf);
 
@@ -72,7 +73,8 @@ void allgatherv(const std::shared_ptr<gloo::Context> &context, intptr_t sendbuf,
 }
 
 void allgatherv_wrapper(const std::shared_ptr<gloo::Context> &context,
-                       intptr_t sendbuf, intptr_t recvbuf, size_t size,glooDataType_t datatype) {
+                        intptr_t sendbuf, intptr_t recvbuf, size_t size,
+                        glooDataType_t datatype) {
   switch (datatype) {
   case glooDataType_t::glooInt8:
     allgather<int8_t>(context, sendbuf, recvbuf, size);
@@ -105,4 +107,4 @@ void allgatherv_wrapper(const std::shared_ptr<gloo::Context> &context,
     throw std::runtime_error("Unhandled dataType");
   }
 }
-}
+} // namespace pygloo

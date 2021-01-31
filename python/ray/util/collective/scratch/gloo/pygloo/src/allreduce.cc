@@ -1,6 +1,5 @@
 #include <collective.h>
 #include <gloo/allreduce.h>
-#include <gloo/allreduce_ring.h>
 #include <gloo/reduce.h>
 
 namespace pygloo {
@@ -64,4 +63,4 @@ void allreduce_wrapper(const std::shared_ptr<gloo::Context> &context,
   }
 }
 
-} // pygloo
+} // namespace pygloo

@@ -7,13 +7,17 @@ namespace pygloo {
 template <typename T>
 void broadcast(const std::shared_ptr<gloo::Context> &context, intptr_t sendbuf,
                intptr_t recvbuf, size_t size, int root) {
-  T *input_ptr = reinterpret_cast<T *>(sendbuf);
-  T *output_ptr = reinterpret_cast<T *>(recvbuf);
 
-  // Configure broadcastOptions struct and call allreduec function
+  // Configure BroadcastOptions struct and call broadcast function
   gloo::BroadcastOptions opts_(context);
-  opts_.setInput(input_ptr, size);
+
+  if(context->rank == root){
+    T *input_ptr = reinterpret_cast<T *>(sendbuf);
+    opts_.setInput(input_ptr, size);
+  }
+  T *output_ptr = reinterpret_cast<T *>(recvbuf);
   opts_.setOutput(output_ptr, size);
+
   opts_.setRoot(root);
   opts_.setTag(0);
 

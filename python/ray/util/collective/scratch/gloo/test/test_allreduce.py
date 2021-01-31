@@ -1,10 +1,10 @@
-import pygloo
 import numpy as np
 import os
 import ray
 import time
 import shutil
 import torch
+import pygloo
 
 @ray.remote(num_cpus=1)
 def test_allreduce(rank, world_size, fileStore_path):

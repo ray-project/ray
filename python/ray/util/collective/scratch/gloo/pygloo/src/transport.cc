@@ -2,7 +2,8 @@
 #include <gloo/config.h>
 #include <transport.h>
 
-
+namespace pygloo{
+namespace transport{
 #if GLOO_HAVE_TRANSPORT_TCP
 
 template <typename... Args>
@@ -12,7 +13,7 @@ void def_transport_tcp_module(pybind11::module &m)
 {
     pybind11::module tcp = m.def_submodule("tcp", "This is a tcp module");
 
-    tcp.def("CreateDevice", &gloo::transport::tcp::CreateDevice, pybind11::return_value_policy::reference);
+    tcp.def("CreateDevice", &gloo::transport::tcp::CreateDevice);
 
     pybind11::class_<gloo::transport::tcp::attr>(tcp, "attr")
         .def(pybind11::init<>())
@@ -70,17 +71,20 @@ void def_transport_uv_module(pybind11::module &m)
 }
 #endif
 
+
 void def_transport_module(pybind11::module &m)
 {
     pybind11::module transport = m.def_submodule("transport", "This is a transport module");
 
-    pybind11::class_<gloo::transport::Device, std::shared_ptr<gloo::transport::Device>, pygloo::transport::PyDevice>(transport, "Device")
+    pybind11::class_<gloo::transport::Device,std::shared_ptr<gloo::transport::Device>, pygloo::transport::PyDevice>(transport, "Device", pybind11::module_local())
         .def("str", &gloo::transport::Device::str)
         .def("getPCIBusID", &gloo::transport::Device::getPCIBusID)
         .def("getInterfaceSpeed", &gloo::transport::Device::getInterfaceSpeed)
         .def("hasGPUDirect", &gloo::transport::Device::hasGPUDirect)
-        .def("createContext", &gloo::transport::Device::createContext, pybind11::return_value_policy::reference);
+        .def("createContext", &gloo::transport::Device::createContext);
 
     def_transport_uv_module(transport);
     def_transport_tcp_module(transport);
+}
+}
 }
