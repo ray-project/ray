@@ -1,6 +1,11 @@
 ARG GPU
 ARG DOCKER_PREFIX
 
+#tag::bzl[]
+# Specify bazel (see https://github.com/bazelbuild/bazel/issues/12887)
+ENV USE_BAZEL_VERSION=3.7.2
+#end::bzl[]
+
 # Do a seperate build stage so we don't have to ship all of build dependencies
 FROM "$DOCKER_PREFIX"ray-deps:nightly"$GPU" AS builder
 # For Click
