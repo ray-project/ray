@@ -105,6 +105,14 @@ def test_util_score():
         (8, 8)
 
 
+def test_gpu_node_util_score():
+    # Avoid scheduling CPU tasks on GPU node.
+    assert _utilization_score({"GPU": 1, "CPU": 1}, [{"CPU": 1}]) is None
+    assert _utilization_score({"GPU": 1, "CPU": 1}, [{"CPU": 1, "GPU": 1}]) \
+        == (1.0, 1.0)
+    assert _utilization_score({"GPU": 1, "CPU": 1}, [{"GPU": 1}]) == (0.0, 0.5)
+
+
 def test_bin_pack():
     assert get_bin_pack_residual([], [{"GPU": 2}, {"GPU": 2}])[0] == \
         [{"GPU": 2}, {"GPU": 2}]
@@ -245,6 +253,32 @@ def test_get_nodes_packing_heuristic():
         }] * 8, strict_spread=True) == {
             "p2.xlarge": 8
         }
+
+
+def test_gpu_node_avoid_cpu_task():
+    types = {
+        "cpu": {
+            "resources": {
+                "CPU": 1
+            },
+            "max_workers": 10,
+        },
+        "gpu": {
+            "resources": {
+                "GPU": 1,
+                "CPU": 100,
+            },
+            "max_workers": 10,
+        },
+    }
+    r1 = [{"CPU": 1}] * 100
+    assert get_nodes_for(types, {}, "empty_node", 100, r1) == {"cpu": 10}
+    r2 = [{"GPU": 1}] + [{"CPU": 1}] * 100
+    assert get_nodes_for(types, {}, "empty_node", 100, r2) == \
+        {"gpu": 1}
+    r3 = [{"GPU": 1}] * 4 + [{"CPU": 1}] * 404
+    assert get_nodes_for(types, {}, "empty_node", 100, r3) == \
+        {"gpu": 4, "cpu": 4}
 
 
 def test_get_nodes_respects_max_limit():
@@ -2029,7 +2063,6 @@ class AutoscalingTest(unittest.TestCase):
                 "node_config": {},
                 "resources": {
                     "CPU": 2,
-                    "GPU": 1,
                     "WORKER": 1
                 },
                 "max_workers": 3
@@ -2146,7 +2179,6 @@ class AutoscalingTest(unittest.TestCase):
                 "node_config": {},
                 "resources": {
                     "CPU": 2,
-                    "GPU": 1,
                     "WORKER": 1
                 },
                 "max_workers": 3,
@@ -2260,7 +2292,6 @@ class AutoscalingTest(unittest.TestCase):
                 "node_config": {},
                 "resources": {
                     "CPU": 2,
-                    "GPU": 1,
                     "WORKER": 1
                 },
                 "max_workers": 3,

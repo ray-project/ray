@@ -321,6 +321,10 @@ The following metrics are exposed by Ray Serve:
      - The number of HTTP requests processed.
    * - ``serve_num_router_requests``
      - The number of requests processed by the router.
+   * - ``serve_handle_request_counter``
+     - The number of requests processed by this ServeHandle.
+   * - ``backend_queued_queries`` 
+     - The number of queries for this backend waiting to be assigned to a replica.
 
 To see this in action, run ``ray start --head --metrics-export-port=8080`` in your terminal, and then run the following script:
 

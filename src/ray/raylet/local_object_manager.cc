@@ -32,6 +32,7 @@ void LocalObjectManager::PinObjects(const std::vector<ObjectID> &object_ids,
       continue;
     }
     RAY_LOG(DEBUG) << "Pinning object " << object_id;
+    pinned_objects_size_ += object->GetSize();
     pinned_objects_.emplace(object_id, std::move(object));
   }
 }
@@ -69,7 +70,10 @@ void LocalObjectManager::ReleaseFreedObject(const ObjectID &object_id) {
     if (automatic_object_deletion_enabled_) {
       spilled_object_pending_delete_.push(object_id);
     }
-    pinned_objects_.erase(object_id);
+    if (pinned_objects_.count(object_id)) {
+      pinned_objects_size_ -= pinned_objects_[object_id]->GetSize();
+      pinned_objects_.erase(object_id);
+    }
   }
 
   // Try to evict all copies of the object from the cluster.
@@ -237,6 +241,7 @@ void LocalObjectManager::SpillObjectsInternal(
                 for (const auto &object_id : objects_to_spill) {
                   auto it = objects_pending_spill_.find(object_id);
                   RAY_CHECK(it != objects_pending_spill_.end());
+                  pinned_objects_size_ += it->second->GetSize();
                   pinned_objects_.emplace(object_id, std::move(it->second));
                   objects_pending_spill_.erase(it);
                 }
@@ -452,6 +457,17 @@ void LocalObjectManager::FillObjectSpillingStats(rpc::GetNodeStatsReply *reply) 
   stats->set_restore_time_total_s(restore_time_total_s_);
   stats->set_restored_bytes_total(restored_bytes_total_);
   stats->set_restored_objects_total(restored_objects_total_);
+}
+
+std::string LocalObjectManager::DebugString() const {
+  std::stringstream result;
+  result << "LocalObjectManager:\n";
+  result << "- num pinned objects: " << pinned_objects_.size() << "\n";
+  result << "- pinned objects size: " << pinned_objects_size_ << "\n";
+  result << "- num objects pending restore: " << objects_pending_restore_.size() << "\n";
+  result << "- num objects pending spill: " << objects_pending_spill_.size() << "\n";
+  result << "- num bytes pending spill: " << num_bytes_pending_spill_ << "\n";
+  return result.str();
 }
 
 };  // namespace raylet
