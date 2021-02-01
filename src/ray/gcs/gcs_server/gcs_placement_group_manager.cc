@@ -419,7 +419,7 @@ void GcsPlacementGroupManager::HandleGetNamedPlacementGroup(
 
   if (placement_group_id.IsNil()) {
     // The placement group was not found.
-    RAY_LOG(WARNING) << "Placement Group with name '" << name << "' was not found";
+    RAY_LOG(DEBUG) << "Placement Group with name '" << name << "' was not found";
   } else {
     const auto &iter = registered_placement_groups_.find(placement_group_id);
     RAY_CHECK(iter != registered_placement_groups_.end());
