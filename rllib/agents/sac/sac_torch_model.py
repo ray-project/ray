@@ -235,6 +235,12 @@ class SACTorchModel(TorchModelV2, nn.Module):
         return self._get_q_value(model_out, actions, self.twin_q_net)
 
     def _get_q_value(self, model_out, actions, net):
+        # Model outs may come as original Tuple observations, concat them
+        # here if this is the case.
+        if isinstance(net.obs_space, Box) and \
+                isinstance(model_out, list):
+            model_out = torch.cat(model_out, dim=-1)
+
         # Continuous case -> concat actions to model_out.
         if actions is not None:
             if self.concat_obs_and_actions:
@@ -266,6 +272,11 @@ class SACTorchModel(TorchModelV2, nn.Module):
         Returns:
             TensorType: Distribution inputs for sampling actions.
         """
+        # Model outs may come as original Tuple observations, concat them
+        # here if this is the case.
+        if isinstance(self.action_model.obs_space, Box) and \
+                isinstance(model_out, list):
+            model_out = torch.cat(model_out, dim=-1)
         out, _ = self.action_model({"obs": model_out}, [], None)
         return out
 
