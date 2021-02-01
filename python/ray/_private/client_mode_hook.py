@@ -2,6 +2,7 @@ import os
 from contextlib import contextmanager
 from functools import wraps
 
+# This flag is set on function defs to mark they have been converted to client mode.
 RAY_CLIENT_MODE_ATTR = "__ray_client_mode_key__"
 
 client_mode_enabled = os.environ.get("RAY_CLIENT_MODE", "0") == "1"
