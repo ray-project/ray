@@ -135,6 +135,33 @@ def test_subnet_given_head_and_worker_sg(iam_client_stub, ec2_client_stub):
     ec2_client_stub.assert_no_pending_responses()
 
 
+def test_fills_out_amis_one(iam_client_stub, ec2_client_stub):
+    # Setup stubs to mock out boto3
+    stubs.configure_iam_role_default(iam_client_stub)
+    stubs.configure_key_pair_default(ec2_client_stub)
+    stubs.describe_a_security_group(ec2_client_stub, DEFAULT_SG)
+    stubs.configure_subnet_default(ec2_client_stub)
+
+    config = helpers.load_aws_example_config_file("example-full.yaml")
+    del config["head_node"]["ImageId"]
+    del config["worker_nodes"]["ImageId"]
+
+    # Pass in SG for stub to work
+    config["head_node"]["SecurityGroupIds"] = ["sg-1234abcd"]
+    config["worker_nodes"]["SecurityGroupIds"] = ["sg-1234abcd"]
+
+    defaults_filled = bootstrap_aws(config)
+
+    ami = DEFAULT_AMI.get(config.get("provider", {}).get("region"))
+
+    assert defaults_filled["head_node"].get("ImageId") == ami
+
+    assert defaults_filled["worker_nodes"].get("ImageId") == ami
+
+    iam_client_stub.assert_no_pending_responses()
+    ec2_client_stub.assert_no_pending_responses()
+
+
 def test_fills_out_amis():
     config = helpers.load_aws_example_config_file("example-full.yaml")
     del config["head_node"]["ImageId"]
