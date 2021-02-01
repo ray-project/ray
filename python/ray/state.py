@@ -398,7 +398,8 @@ class GlobalState:
             return None
         else:
             placement_group_table_data = \
-                gcs_utils.PlacementGroupTableData.FromString(placement_group_info)
+                gcs_utils.PlacementGroupTableData.FromString(
+                    placement_group_info)
             return self._gen_placement_group_info(placement_group_table_data)
 
     def placement_group_table(self, placement_group_id=None):
