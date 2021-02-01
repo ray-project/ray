@@ -33,6 +33,10 @@ logger = logging.getLogger(__name__)
 INITIAL_TIMEOUT_SEC = 5
 MAX_TIMEOUT_SEC = 30
 
+# This version string is incremented to indicate breaking changes in the
+# protocol that require upgrading the client version.
+CURRENT_PROTOCOL_VERSION = "2020-02-01"
+
 
 def backoff(timeout: int) -> int:
     timeout = timeout + 5
@@ -139,6 +143,7 @@ class Worker:
             "python_version": data.python_version,
             "ray_version": data.ray_version,
             "ray_commit": data.ray_commit,
+            "protocol_version": CURRENT_PROTOCOL_VERSION,
         }
 
     def get(self, vals, *, timeout: Optional[float] = None) -> Any:
