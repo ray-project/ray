@@ -1,4 +1,3 @@
-import copy
 import os
 import unittest
 from unittest.mock import patch
@@ -10,6 +9,7 @@ import yaml
 from ray.autoscaler.tags import TAG_RAY_NODE_KIND, NODE_KIND_HEAD
 from ray.autoscaler.node_provider import NodeProvider
 from ray.ray_operator.operator import RayCluster
+from ray.ray_operator.operator_utils import cr_to_config
 from ray.autoscaler._private.kubernetes.node_provider import\
     KubernetesNodeProvider
 from ray.autoscaler._private.updater import NodeUpdaterThread
@@ -103,12 +103,21 @@ def mock_bootstrap_config(cluster_config):
     return cluster_config
 
 
-def config_path():
-    # Config used in test.
+def custom_resources():
+    # K8s custom resources used in test.
     here = os.path.realpath(__file__)
     ray_python_root = os.path.dirname(os.path.dirname(here))
-    relative_path = "autoscaler/kubernetes/example-full.yaml"
-    return os.path.join(ray_python_root, relative_path)
+    relative_path = "autoscaler/kubernetes/operator_configs"
+    abs_path = os.path.join(ray_python_root, relative_path)
+    cluster1, cluster2 = "example_cluster.yaml", "example_cluster2.yaml"
+    path1, path2 = os.path.join(abs_path, cluster1), os.path.join(
+        abs_path, cluster2)
+    cr1, cr2 = (yaml.safe_load(open(path1).read()),
+                yaml.safe_load(open(path2).read()))
+    # Metadata and field is filled by K8s in real life.
+    cr1["metadata"]["uid"] = "abc"
+    cr2["metadata"]["uid"] = "xyz"
+    return cr1, cr2
 
 
 class OperatorTest(unittest.TestCase):
@@ -125,21 +134,23 @@ class OperatorTest(unittest.TestCase):
                 patch.object(KubernetesNodeProvider, BOOTSTRAP_CONFIG,
                              mock_bootstrap_config):
 
-            config = yaml.safe_load(open(config_path()).read())
+            cluster_cr1, cluster_cr2 = custom_resources()
 
             # Ensure that operator does not mount any files during cluster
             # launch.
-            config1 = copy.deepcopy(config)
+            config1 = cr_to_config(cluster_cr1)
+            config1["provider"]["namespace"] = "test"
             cluster1 = RayCluster(config1)
             cluster1.start_head()
 
             # Check that this test is working correctly by inserting extraneous
             # file mounts and confirming a ValueError from the mocked
             # NodeUpdater.
-            config2 = copy.deepcopy(config)
-            # Giving this cluster a different name so that a new
-            # KubernetesNodeProvider is instantiated in cluster2.start_head().
-            config2["cluster_name"] = "another_name"
+            config2 = cr_to_config(cluster_cr2)
+            config2["provider"]["namespace"] = "test"
+            # Note: There is no user interface for adding file mounts
+            # to the config of a Ray cluster run via the operator.
+            # This purely for purposes of testing this test.
             config2["file_mounts"] = {"remote_foo": os.path.abspath(__file__)}
             cluster2 = RayCluster(config2)
             with pytest.raises(ValueError):
