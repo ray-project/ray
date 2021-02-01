@@ -159,6 +159,7 @@ void PlasmaStore::AddToClientObjectIds(const ObjectID &object_id, ObjectTableEnt
   if (entry->ref_count == 0) {
     // Tell the eviction policy that this object is being used.
     eviction_policy_.BeginObjectAccess(object_id);
+    num_bytes_in_use_ += entry->data_size + entry->metadata_size;
   }
   // Increase reference count.
   entry->ref_count++;
@@ -537,6 +538,7 @@ int PlasmaStore::RemoveFromClientObjectIds(const ObjectID &object_id,
     // If no more clients are using this object, notify the eviction policy
     // that the object is no longer being used.
     if (entry->ref_count == 0) {
+      num_bytes_in_use_ -= entry->data_size + entry->metadata_size;
       RAY_LOG(DEBUG) << "Releasing object no longer in use " << object_id;
       if (deletion_cache_.count(object_id) == 0) {
         // Tell the eviction policy that this object is no longer being used.
