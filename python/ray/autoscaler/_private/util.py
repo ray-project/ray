@@ -124,7 +124,7 @@ def rewrite_legacy_yaml_to_available_node_types(
             },
         }
         config["head_node_type"] = NODE_TYPE_LEGACY_HEAD
-
+        del config["min_workers"]
     return config
 
 
