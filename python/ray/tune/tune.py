@@ -111,7 +111,7 @@ def run(
         sync_to_cloud: Optional = None,
         sync_to_driver: Optional = None,
         sync_on_checkpoint: Optional = None,
-        _remote: bool = True,
+        _remote: bool = None,
 ) -> ExperimentAnalysis:
     """Executes training.
 
@@ -269,7 +269,7 @@ def run(
             added.
         _remote (bool): Whether to run the Tune driver in a remote function.
             This is disabled automatically if a custom trial executor is
-            passed in.
+            passed in. This is enabled by default in Ray client mode.
 
     Returns:
         ExperimentAnalysis: Object for experiment analysis.
@@ -278,6 +278,8 @@ def run(
         TuneError: Any trials failed and `raise_on_failed_trial` is True.
     """
 
+    if _remote is None:
+        _remote = ray.util.client.ray.is_connected()
     if _remote and not trial_executor:
         _ray_auto_init()
         get_fn = ray.get
@@ -589,7 +591,7 @@ def run_experiments(
         raise_on_failed_trial: bool = True,
         concurrent: bool = True,
         callbacks: Optional[Sequence[Callback]] = None,
-        _remote: bool = True):
+        _remote: bool = None):
     """Runs and blocks until all trials finish.
 
     Examples:
@@ -603,6 +605,8 @@ def run_experiments(
         List of Trial objects, holding data for each executed trial.
 
     """
+    if _remote is None:
+        _remote = ray.util.client.ray.is_connected()
     if _remote and not trial_executor:
         _ray_auto_init()
         get_fn = ray.get
