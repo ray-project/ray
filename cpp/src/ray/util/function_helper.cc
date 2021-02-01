@@ -14,19 +14,14 @@ uintptr_t base_addr = 0;
 
 static const uintptr_t BaseAddressForHandle(void *handle) {
   /// TODO(Guyang Song): Implement a cross-platform function.
-  /// Not Implemented.
-  return -1;
+  return (uintptr_t)((NULL == handle) ? NULL : (void *)*(size_t const *)(handle));
 }
 
 uintptr_t FunctionHelper::LoadLibrary(std::string lib_name) {
-  if (dynamic_library_base_addr != 0) {
-    /// Base address has been generated.
-    return dynamic_library_base_addr;
-  }
   /// Generate base address from library.
   RAY_LOG(INFO) << "Start load library " << lib_name;
-  void *example = dlopen(lib_name.c_str(), RTLD_LAZY);
-  uintptr_t base_addr = BaseAddressForHandle(example);
+  void *handle = dlopen(lib_name.c_str(), RTLD_LAZY);
+  uintptr_t base_addr = BaseAddressForHandle(handle);
   RAY_CHECK(base_addr > 0);
   RAY_LOG(INFO) << "Loaded library " << lib_name << " to base address " << base_addr;
   loaded_library_.emplace(lib_name, base_addr);

@@ -50,16 +50,8 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                     resp = ray_client_pb2.DataResponse(
                         release=ray_client_pb2.ReleaseResponse(ok=released))
                 elif req_type == "connection_info":
-                    with self._clients_lock:
-                        cur_num_clients = self._num_clients
-                    info = ray_client_pb2.ConnectionInfoResponse(
-                        num_clients=cur_num_clients,
-                        python_version="{}.{}.{}".format(
-                            sys.version_info[0], sys.version_info[1],
-                            sys.version_info[2]),
-                        ray_version=ray.__version__,
-                        ray_commit=ray.__commit__)
-                    resp = ray_client_pb2.DataResponse(connection_info=info)
+                    resp = ray_client_pb2.DataResponse(
+                        connection_info=self._build_connection_response())
                 else:
                     raise Exception(f"Unreachable code: Request type "
                                     f"{req_type} not handled in Datapath")
@@ -72,3 +64,13 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
             self.basic_service.release_all(client_id)
             with self._clients_lock:
                 self._num_clients -= 1
+
+    def _build_connection_response(self):
+        with self._clients_lock:
+            cur_num_clients = self._num_clients
+        return ray_client_pb2.ConnectionInfoResponse(
+            num_clients=cur_num_clients,
+            python_version="{}.{}.{}".format(
+                sys.version_info[0], sys.version_info[1], sys.version_info[2]),
+            ray_version=ray.__version__,
+            ray_commit=ray.__commit__)
