@@ -1,5 +1,6 @@
 import asyncio
 from collections import defaultdict
+import copy
 from enum import Enum
 import time
 from typing import Dict, List, Optional, Tuple
@@ -43,6 +44,7 @@ class BackendReplica:
     def __init__(self, controller_name: str, detached: bool,
                  replica_tag: ReplicaTag, backend_tag: BackendTag):
         self._actor_name = format_actor_name(replica_tag, controller_name)
+        self._placement_group_name = self._actor_name + "_placement_group"
         self._controller_name = controller_name
         self._detached = detached
         self._replica_tag = replica_tag
@@ -54,6 +56,7 @@ class BackendReplica:
 
     def __get_state__(self):
         clean_dict = self.__dict__.copy()
+        del clean_dict["_placement_group"]
         del clean_dict["_actor_handle"]
         del clean_dict["_startup_obj_ref"]
         del clean_dict["_drain_obj_ref"]
@@ -76,6 +79,8 @@ class BackendReplica:
             # Fetch actor handles for all backend replicas in the system.
             # The actors must exist if this class was checkpointed in the
             # RUNNING state.
+            self._placement_group = ray.get_placement_group(
+                self._placement_group_name)
             self._actor_handle = ray.get_actor(self._actor_name)
         elif self._state == ReplicaState.STOPPING:
             self.stop()
@@ -85,6 +90,24 @@ class BackendReplica:
             ReplicaState.SHOULD_START, ReplicaState.STARTING
         }, (f"State must be {ReplicaState.SHOULD_START} or "
             f"{ReplicaState.STARTING}, *not* {self._state}")
+
+        # Make a copy because we need to pop off the resources below. This
+        # should be small.
+        actor_options = copy.copy(
+            backend_info.replica_config.ray_actor_options)
+        try:
+            self._placement_group = ray.get_placement_group(
+                self._placement_group_name)
+        except ValueError:
+            logger.debug(
+                "Creating placement group '{}' for backend '{}'".format(
+                    self._replica_tag, self._backend_tag))
+            # TODO(edoakes): what if it's empty?
+            self._placement_group = ray.placement_group(
+                [actor_options.pop("resources")],
+                lifetime="detached",
+                name=self._placement_group_name)
+
         try:
             self._actor_handle = ray.get_actor(self._actor_name)
         except ValueError:
@@ -95,7 +118,8 @@ class BackendReplica:
                 lifetime="detached" if self._detached else None,
                 max_restarts=-1,
                 max_task_retries=-1,
-                **backend_info.replica_config.ray_actor_options).remote(
+                placement_group=self._placement_group,
+                **actor_options).remote(
                     self._backend_tag, self._replica_tag,
                     backend_info.replica_config.actor_init_args,
                     backend_info.backend_config, self._controller_name)
@@ -164,6 +188,7 @@ class BackendReplica:
                     f"{self._graceful_shutdown_timeout_s}s, force-killing.")
 
             ray.kill(replica, no_restart=True)
+            ray.remove_placement_group(self._placement_group)
             self._state = ReplicaState.STOPPED
             return True
         return False
