@@ -1061,16 +1061,16 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids, const int64_t timeout_m
 Status CoreWorker::GetObjectsFromLocalStore(
     const std::vector<ObjectID> &ids, std::vector<std::shared_ptr<RayObject>> *results) {
   results->resize(ids.size(), nullptr);
-  RAY_LOG(ERROR) << "results in core worker; " << results;
 
   absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> result_map;
   RAY_RETURN_NOT_OK(plasma_store_provider_->GetObjectsFromLocalStore(ids, &result_map));
   for (size_t i = 0; i < ids.size(); i++) {
     auto pair = result_map.find(ids[i]);
-    if (pair != result_map.end()) {
-      (*results)[i] = pair->second;
-      RAY_CHECK(pair->second != nullptr);
-    }
+    // The caller of this method should guarantee that the object exists in the plasma
+    // store when this method is called.
+    RAY_CHECK(pair != result_map.end());
+    RAY_CHECK(pair->second != nullptr);
+    (*results)[i] = pair->second;
   }
   return Status::OK();
 }

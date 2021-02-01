@@ -472,7 +472,6 @@ void PlasmaStore::ProcessGetRequest(const std::shared_ptr<Client> &client,
     // locally. If so, record that the object is being used and mark it as accounted for.
     auto entry = GetObjectTableEntry(&store_info_, object_id);
     if (entry && entry->state == ObjectState::PLASMA_SEALED) {
-      RAY_LOG(ERROR) << "OBJECT GET " << object_id << " SEALED";
       // Update the get request to take into account the present object.
       PlasmaObject_init(&get_req->objects[object_id], entry);
       get_req->num_satisfied += 1;
@@ -480,7 +479,6 @@ void PlasmaStore::ProcessGetRequest(const std::shared_ptr<Client> &client,
       // where entry == NULL, this will be called from SealObject.
       AddToClientObjectIds(object_id, entry, client);
     } else if (entry && entry->state == ObjectState::PLASMA_EVICTED) {
-      RAY_LOG(ERROR) << "OBJECT GET " << object_id << " EVICTED";
       // Make sure the object pointer is not already allocated
       RAY_CHECK(!entry->pointer);
 
@@ -502,7 +500,6 @@ void PlasmaStore::ProcessGetRequest(const std::shared_ptr<Client> &client,
         entry->state = ObjectState::PLASMA_EVICTED;
       }
     } else {
-      RAY_LOG(ERROR) << "OBJECT GET " << object_id << " NOT LOCAL";
       // Add a placeholder plasma object to the get request to indicate that the
       // object is not present. This will be parsed by the client. We set the
       // data size to -1 to indicate that the object is not present.
@@ -680,7 +677,7 @@ void PlasmaStore::EvictObjects(const std::vector<ObjectID> &object_ids) {
     return;
   }
   for (const auto &object_id : object_ids) {
-    RAY_LOG(ERROR) << "evicting object " << object_id.Hex();
+    RAY_LOG(DEBUG) << "evicting object " << object_id.Hex();
     auto entry = GetObjectTableEntry(&store_info_, object_id);
     // TODO(rkn): This should probably not fail, but should instead throw an
     // error. Maybe we should also support deleting objects that have been

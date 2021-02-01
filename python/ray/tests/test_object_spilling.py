@@ -261,7 +261,7 @@ def test_spill_during_get(object_spilling_config, shutdown_only):
     object_spilling_config, _ = object_spilling_config
     ray.init(
         num_cpus=4,
-        object_store_memory=75 * 1024 * 1024,
+        object_store_memory=100 * 1024 * 1024,
         _system_config={
             "automatic_object_spilling_enabled": True,
             "object_store_full_delay_ms": 100,
@@ -273,20 +273,18 @@ def test_spill_during_get(object_spilling_config, shutdown_only):
 
     @ray.remote
     def f():
-        return np.random.rand(5 * 1024 * 1024)
+        return np.random.rand(10 * 1024 * 1024)
 
     ids = []
-    for i in range(2):
+    for i in range(10):
         x = f.remote()
         print(i, x)
         ids.append(x)
-    import time
-    time.sleep(5)
 
     # Concurrent gets, which require restoring from external storage, while
     # objects are being created.
-    # for x in ids:
-    #     print(ray.get(x).shape)
+    for x in ids:
+        print(ray.get(x).shape)
 
 
 @pytest.mark.skipif(

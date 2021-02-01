@@ -82,11 +82,10 @@ class ExternalStorage(metaclass=abc.ABCMeta):
 
     def _get_objects_from_store(self, object_refs):
         worker = ray.worker.global_worker
-        # ray_object_pairs = worker.core_worker.get_objects(
-        #     object_refs,
-        #     worker.current_task_id,
-        #     timeout_ms=0,
-        #     plasma_objects_only=True)
+        # Since the object should always exist in the plasma store before
+        # spilling, it can directly get the object from the local plasma
+        # store.
+        # issue: https://github.com/ray-project/ray/pull/13831
         ray_object_pairs = worker.core_worker.get_objects_from_local_store(
             object_refs)
         return ray_object_pairs
@@ -115,7 +114,6 @@ class ExternalStorage(metaclass=abc.ABCMeta):
         offset = 0
         ray_object_pairs = self._get_objects_from_store(object_refs)
         for ref, (buf, metadata) in zip(object_refs, ray_object_pairs):
-            assert metadata is not None, (f"NO METADATA {ref}")
             metadata_len = len(metadata)
             buf_len = len(buf)
             # 16 bytes to store metadata and buffer length.

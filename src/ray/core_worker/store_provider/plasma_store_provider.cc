@@ -235,6 +235,7 @@ Status CoreWorkerPlasmaStoreProvider::GetObjectsFromLocalStore(
   }
 
   for (size_t i = 0; i < object_ids.size(); i++) {
+    // Q: This part is very similar to ::Get() method. Should we create a private method?
     if (plasma_results[i].data != nullptr || plasma_results[i].metadata != nullptr) {
       const auto &object_id = object_ids[i];
       std::shared_ptr<TrackedBuffer> data = nullptr;

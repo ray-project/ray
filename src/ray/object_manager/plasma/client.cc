@@ -456,7 +456,6 @@ Status PlasmaClient::Impl::GetBuffers(
       object_buffers[i].metadata = SharedMemoryBuffer::Slice(
           physical_buf, object->data_size, object->metadata_size);
       object_buffers[i].device_num = object->device_num;
-      RAY_LOG(ERROR) << "object information is filled " << object_ids[i];
       // Increment the count of the number of instances of this object that this
       // client is using. Cache the reference to the object.
       IncrementObjectCount(received_object_ids[i], object, true);
