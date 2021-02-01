@@ -9,6 +9,7 @@ import re
 import subprocess
 import sys
 from pprint import pformat
+import argparse
 
 
 def list_changed_files(commit_range):
@@ -30,7 +31,44 @@ def list_changed_files(commit_range):
     return [s.strip() for s in out.decode().splitlines() if s is not None]
 
 
+def is_pull_request():
+    event_type = None
+
+    for key in ["GITHUB_EVENT_NAME", "TRAVIS_EVENT_TYPE"]:
+        event_type = os.getenv(key, event_type)
+
+    if (os.environ.get("BUILDKITE")
+            and os.environ.get("BUILDKITE_PULL_REQUEST") != "false"):
+        event_type = "pull_request"
+
+    return event_type == "pull_request"
+
+
+def get_commit_range():
+    commit_range = None
+
+    if os.environ.get("TRAVIS"):
+        commit_range = os.environ["TRAVIS_COMMIT_RANGE"]
+    elif os.environ.get("GITHUB_EVENT_PATH"):
+        with open(os.environ["GITHUB_EVENT_PATH"], "rb") as f:
+            event = json.loads(f.read())
+        base = event["pull_request"]["base"]["sha"]
+        commit_range = "{}...{}".format(base, event.get("after", ""))
+    elif os.environ.get("BUILDKITE"):
+        commit_range = "{}...{}".format(
+            os.environ["BUILDKITE_PULL_REQUEST_BASE_BRANCH"],
+            os.environ["BUILDKITE_COMMIT"],
+        )
+
+    assert commit_range is not None
+    return commit_range
+
+
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--output", type=str, help="json or envvars", default="envvars")
+    args = parser.parse_args()
 
     RAY_CI_TUNE_AFFECTED = 0
     RAY_CI_SGD_AFFECTED = 0
@@ -50,20 +88,10 @@ if __name__ == "__main__":
     RAY_CI_DOC_AFFECTED = 0
     RAY_CI_PYTHON_DEPENDENCIES_AFFECTED = 0
 
-    event_type = None
-    for key in ["GITHUB_EVENT_NAME", "TRAVIS_EVENT_TYPE"]:
-        event_type = os.getenv(key, event_type)
-
-    if event_type == "pull_request":
-
-        commit_range = os.getenv("TRAVIS_COMMIT_RANGE")
-        if commit_range is None:
-            with open(os.environ["GITHUB_EVENT_PATH"], "rb") as f:
-                event = json.loads(f.read())
-            base = event["pull_request"]["base"]["sha"]
-            commit_range = "{}...{}".format(base, event.get("after", ""))
+    if is_pull_request():
+        commit_range = get_commit_range()
         files = list_changed_files(commit_range)
-
+        print(pformat(commit_range), file=sys.stderr)
         print(pformat(files), file=sys.stderr)
 
         skip_prefix_list = [
@@ -187,7 +215,7 @@ if __name__ == "__main__":
         RAY_CI_ONLY_RLLIB_AFFECTED = 1
 
     # Log the modified environment variables visible in console.
-    print(" ".join([
+    output_string = " ".join([
         "RAY_CI_TUNE_AFFECTED={}".format(RAY_CI_TUNE_AFFECTED),
         "RAY_CI_SGD_AFFECTED={}".format(RAY_CI_SGD_AFFECTED),
         "RAY_CI_ONLY_RLLIB_AFFECTED={}".format(RAY_CI_ONLY_RLLIB_AFFECTED),
@@ -209,4 +237,15 @@ if __name__ == "__main__":
         "RAY_CI_DOCKER_AFFECTED={}".format(RAY_CI_DOCKER_AFFECTED),
         "RAY_CI_PYTHON_DEPENDENCIES_AFFECTED={}".format(
             RAY_CI_PYTHON_DEPENDENCIES_AFFECTED),
-    ]))
+    ])
+
+    # Debug purpose
+    print(output_string, file=sys.stderr)
+
+    # Used by buildkite log format
+    if args.output.lower() == "json":
+        pairs = [item.split("=") for item in output_string.split(" ")]
+        affected_vars = [key for key, affected in pairs if affected == "1"]
+        print(json.dumps(affected_vars))
+    else:
+        print(output_string)
