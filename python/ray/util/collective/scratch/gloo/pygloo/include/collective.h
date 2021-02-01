@@ -68,40 +68,48 @@ void allreduce_wrapper(const std::shared_ptr<gloo::Context> &context,
                        glooDataType_t datatype,
                        ReduceOp reduceop = ReduceOp::SUM,
                        gloo::AllreduceOptions::Algorithm algorithm =
-                           gloo::AllreduceOptions::Algorithm::RING);
+                           gloo::AllreduceOptions::Algorithm::RING,
+                       uint32_t tag = 0);
 
 void allgather_wrapper(const std::shared_ptr<gloo::Context> &context,
                        intptr_t sendbuf, intptr_t recvbuf, size_t size,
-                       glooDataType_t datatype);
+                       glooDataType_t datatype, uint32_t tag = 0);
 
 void allgatherv_wrapper(const std::shared_ptr<gloo::Context> &context,
                         intptr_t sendbuf, intptr_t recvbuf, size_t size,
-                        glooDataType_t datatype);
+                        glooDataType_t datatype, uint32_t tag = 0);
 
 void reduce_wrapper(const std::shared_ptr<gloo::Context> &context,
                     intptr_t sendbuf, intptr_t recvbuf, size_t size,
                     glooDataType_t datatype,
-                    ReduceOp reduceop = pygloo::ReduceOp::SUM, int root = 0);
+                    ReduceOp reduceop = pygloo::ReduceOp::SUM, int root = 0,
+                    uint32_t tag = 0);
 
 void scatter_wrapper(const std::shared_ptr<gloo::Context> &context,
                      std::vector<intptr_t> sendbuf, intptr_t recvbuf,
-                     size_t size, glooDataType_t datatype, int root = 0);
+                     size_t size, glooDataType_t datatype, int root = 0,
+                     uint32_t tag = 0);
+
+void gather_wrapper(const std::shared_ptr<gloo::Context> &context,
+                    intptr_t sendbuf, intptr_t recvbuf, size_t size,
+                    glooDataType_t datatype, int root = 0, uint32_t tag = 0);
 
 void send_wrapper(const std::shared_ptr<gloo::Context> &context,
                   intptr_t sendbuf, size_t size, glooDataType_t datatype,
-                  int peer);
+                  int peer, uint32_t tag = 0);
 
 void recv_wrapper(const std::shared_ptr<gloo::Context> &context,
                   intptr_t recvbuf, size_t size, glooDataType_t datatype,
-                  int peer);
+                  int peer, uint32_t tag = 0);
 
 void broadcast_wrapper(const std::shared_ptr<gloo::Context> &context,
                        intptr_t sendbuf, intptr_t recvbuf, size_t size,
-                       glooDataType_t datatype, int root = 0);
+                       glooDataType_t datatype, int root = 0, uint32_t tag = 0);
 
-void reduce_scatter_wrapper(const std::shared_ptr<gloo::Context> &context, intptr_t sendbuf,
-               intptr_t recvbuf,  size_t size, std::vector<int> recvElems, glooDataType_t datatype, ReduceOp reduceop = pygloo::ReduceOp::SUM);
+void reduce_scatter_wrapper(const std::shared_ptr<gloo::Context> &context,
+                            intptr_t sendbuf, intptr_t recvbuf, size_t size,
+                            std::vector<int> recvElems, glooDataType_t datatype,
+                            ReduceOp reduceop = pygloo::ReduceOp::SUM);
 
-void barrier(const std::shared_ptr<gloo::Context> &context);
-
+void barrier(const std::shared_ptr<gloo::Context> &context, uint32_t tag = 0);
 } // namespace pygloo

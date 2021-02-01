@@ -31,22 +31,6 @@ load("@rules_foreign_cc//:workspace_definitions.bzl", "rules_foreign_cc_dependen
 #      The default is True.
 rules_foreign_cc_dependencies()
 
-# # OpenBLAS source code repository
-# http_archive(
-#    name = "openblas",
-#    build_file_content = all_content,
-#    strip_prefix = "OpenBLAS-0.3.2",
-#    urls = ["https://github.com/xianyi/OpenBLAS/archive/v0.3.2.tar.gz"],
-# )
-
-# # Eigen source code repository
-# http_archive(
-#    name = "eigen",
-#    build_file_content = all_content,
-#    strip_prefix = "eigen-git-mirror-3.3.5",
-#    urls = ["https://github.com/eigenteam/eigen-git-mirror/archive/3.3.5.tar.gz"],
-# )
-
 
 http_archive(
     name = "rules_foreign_cc",
@@ -76,6 +60,7 @@ http_archive(
    build_file_content = all_content,
    strip_prefix = "libuv-1.40.0",
    urls = ["https://github.com/libuv/libuv/archive/v1.40.0.tar.gz"],
+   sha256 = "70fe1c9ba4f2c509e8166c0ca2351000237da573bb6c82092339207a9715ba6b",
 )
 
 # gloo source code repository

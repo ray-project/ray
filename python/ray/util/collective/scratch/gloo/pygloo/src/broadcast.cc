@@ -6,7 +6,7 @@ namespace pygloo {
 
 template <typename T>
 void broadcast(const std::shared_ptr<gloo::Context> &context, intptr_t sendbuf,
-               intptr_t recvbuf, size_t size, int root) {
+               intptr_t recvbuf, size_t size, int root, uint32_t tag) {
 
   // Configure BroadcastOptions struct and call broadcast function
   gloo::BroadcastOptions opts_(context);
@@ -19,41 +19,41 @@ void broadcast(const std::shared_ptr<gloo::Context> &context, intptr_t sendbuf,
   opts_.setOutput(output_ptr, size);
 
   opts_.setRoot(root);
-  opts_.setTag(0);
+  opts_.setTag(tag);
 
   gloo::broadcast(opts_);
 }
 
 void broadcast_wrapper(const std::shared_ptr<gloo::Context> &context,
                        intptr_t sendbuf, intptr_t recvbuf, size_t size,
-                       glooDataType_t datatype, int root) {
+                       glooDataType_t datatype, int root, uint32_t tag) {
   switch (datatype) {
   case glooDataType_t::glooInt8:
-    broadcast<int8_t>(context, sendbuf, recvbuf, size, root);
+    broadcast<int8_t>(context, sendbuf, recvbuf, size, root, tag);
     break;
   case glooDataType_t::glooUint8:
-    broadcast<uint8_t>(context, sendbuf, recvbuf, size, root);
+    broadcast<uint8_t>(context, sendbuf, recvbuf, size, root, tag);
     break;
   case glooDataType_t::glooInt32:
-    broadcast<int32_t>(context, sendbuf, recvbuf, size, root);
+    broadcast<int32_t>(context, sendbuf, recvbuf, size, root, tag);
     break;
   case glooDataType_t::glooUint32:
-    broadcast<uint32_t>(context, sendbuf, recvbuf, size, root);
+    broadcast<uint32_t>(context, sendbuf, recvbuf, size, root, tag);
     break;
   case glooDataType_t::glooInt64:
-    broadcast<int64_t>(context, sendbuf, recvbuf, size, root);
+    broadcast<int64_t>(context, sendbuf, recvbuf, size, root, tag);
     break;
   case glooDataType_t::glooUint64:
-    broadcast<uint64_t>(context, sendbuf, recvbuf, size, root);
+    broadcast<uint64_t>(context, sendbuf, recvbuf, size, root, tag);
     break;
   case glooDataType_t::glooFloat16:
-    broadcast<gloo::float16>(context, sendbuf, recvbuf, size, root);
+    broadcast<gloo::float16>(context, sendbuf, recvbuf, size, root, tag);
     break;
   case glooDataType_t::glooFloat32:
-    broadcast<float_t>(context, sendbuf, recvbuf, size, root);
+    broadcast<float_t>(context, sendbuf, recvbuf, size, root, tag);
     break;
   case glooDataType_t::glooFloat64:
-    broadcast<double_t>(context, sendbuf, recvbuf, size, root);
+    broadcast<double_t>(context, sendbuf, recvbuf, size, root, tag);
     break;
   default:
     throw std::runtime_error("Unhandled dataType");

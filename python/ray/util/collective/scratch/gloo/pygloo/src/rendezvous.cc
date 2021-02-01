@@ -12,7 +12,8 @@
 #include <rendezvous.h>
 
 namespace pygloo {
-namespace rendezvous{
+namespace rendezvous {
+
 void def_rendezvous_module(pybind11::module &m) {
   pybind11::module rendezvous =
       m.def_submodule("rendezvous", "This is a rendezvous module");
@@ -60,5 +61,5 @@ void def_rendezvous_module(pybind11::module &m) {
       .def("get", &gloo::rendezvous::RedisStore::get);
 #endif
 }
-}
+} // namespace rendezvous
 } // namespace pygloo

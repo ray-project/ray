@@ -1,7 +1,16 @@
 # Problems
 
-- send-recv:
+- reduce: non-root rank recv something.
 
-        RuntimeError: [/home/huangrunhui/.cache/bazel/_bazel_huangrunhui/eeabd3e6c81db288a0288e96bd7f425d/sandbox/linux-sandbox/227/execroot/rules_foreign_cc_usage_example/external/gloo/gloo/transport/tcp/pair.cc:598] Connection closed by peer [127.0.0.1]:54932
+        The non-root recvbuf will recieves some data.
+        Example: root is 0. But recvbuf of rank 1 shouldn't change.
+        (pid=5479) rank 0 sends [[1. 2. 3.]
+        (pid=5479)              [1. 2. 3.]],
+        (pid=5479)  receives [[2. 4. 6.]
+        (pid=5479)           [2. 4. 6.]]
+        (pid=5478) rank 1 sends [[1. 2. 3.]
+        (pid=5478)              [1. 2. 3.]],
+        (pid=5478)  receives [[0. 0. 0.]
+        (pid=5478)           [0. 4. 6.]]
 
 - The differences between `broadcast` and `bcast`

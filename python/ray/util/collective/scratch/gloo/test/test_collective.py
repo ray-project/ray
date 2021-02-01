@@ -7,7 +7,7 @@ import shutil
 import torch
 
 @ray.remote(num_cpus=1)
-def test_reduce(rank, world_size, fileStore_path):
+def test_gather(rank, world_size, fileStore_path):
     '''
     rank  # Rank of this process within list of participating processes
     world_size  # Number of participating processes
@@ -29,30 +29,33 @@ def test_reduce(rank, world_size, fileStore_path):
 
     context.connectFullMesh(store, dev)
 
-    sendbuf = np.array([[1,2,3],[1,2,3]], dtype=np.float32)
-    recvbuf = np.zeros_like(sendbuf, dtype=np.float32)
+    sendbuf = np.array([rank, rank+1], dtype=np.float32)
     sendptr = sendbuf.ctypes.data
+
+    recvbuf = np.zeros((1, world_size*2), dtype=np.float32)
     recvptr = recvbuf.ctypes.data
 
-    # sendbuf = torch.Tensor([[1,2,3],[1,2,3]]).float()
-    # recvbuf = torch.zeros_like(sendbuf)
+    # sendbuf = torch.Tensor([i+1 for i in range(sum([j+1 for j in range(world_size)]))]).float()
     # sendptr = sendbuf.data_ptr()
+    # recvbuf = torch.zeros(rank+1).float()
     # recvptr = recvbuf.data_ptr()
 
     data_size = sendbuf.size if isinstance(sendbuf, np.ndarray) else sendbuf.numpy().size
     datatype = pygloo.glooDataType_t.glooFloat32
-    op = pygloo.ReduceOp.SUM
-    root = 0
 
-    pygloo.reduce(context, sendptr, recvptr, data_size, datatype, op, root)
+    pygloo.gather(context, sendptr, recvptr, data_size, datatype, root = 0)
 
     print(f"rank {rank} sends {sendbuf}, receives {recvbuf}")
 
+    ## example output
+    # (pid=23172) rank 2 sends [2. 3.], receives [[0. 0. 0. 0. 0. 0.]]
+    # (pid=23171) rank 1 sends [1. 2.], receives [[0. 0. 0. 0. 0. 0.]]
+    # (pid=23173) rank 0 sends [0. 1.], receives [[0. 1. 1. 2. 2. 3.]]
 
 if __name__ == "__main__":
     ray.init(num_cpus=6)
-    world_size = 2
+    world_size = 3
     fileStore_path = f"{ray.worker._global_node.get_session_dir_path()}" + "/collective/gloo/rendezvous"
 
-    fns = [test_reduce.remote(i, world_size, fileStore_path) for i in range(world_size)]
+    fns = [test_gather.remote(i, world_size, fileStore_path) for i in range(world_size)]
     ray.get(fns)

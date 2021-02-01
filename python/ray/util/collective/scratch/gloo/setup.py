@@ -27,6 +27,12 @@ SUPPORTED_BAZEL = (3, 2, 0)
 
 ROOT_DIR = os.path.dirname(__file__)
 
+install_requires = [
+    # "aioredis",
+    # "libuv",
+]
+
+
 # Calls Bazel in PATH, falling back to the standard user installatation path
 # (~/.bazel/bin/bazel) if it isn't found.
 def bazel_invoke(invoker, cmdline, *args, **kwargs):
@@ -136,9 +142,9 @@ if __name__ == "__main__":
         cmdclass={"build_ext": build_ext},
         # The BinaryDistribution argument triggers build_ext.
         distclass=BinaryDistribution,
+        install_requires=install_requires,
         setup_requires=["wheel"],
         include_package_data=True,
         zip_safe=False,
         # license="Apache 2.0"
-        # namespace_packages=["."],
     )

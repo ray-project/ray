@@ -1,13 +1,13 @@
-import pygloo
 import numpy as np
 import os
 import ray
 import time
 import shutil
 import torch
+import pygloo
 
 @ray.remote(num_cpus=1)
-def test_reduce(rank, world_size, fileStore_path):
+def test_barrier(rank, world_size, fileStore_path):
     '''
     rank  # Rank of this process within list of participating processes
     world_size  # Number of participating processes
@@ -42,17 +42,25 @@ def test_reduce(rank, world_size, fileStore_path):
     data_size = sendbuf.size if isinstance(sendbuf, np.ndarray) else sendbuf.numpy().size
     datatype = pygloo.glooDataType_t.glooFloat32
     op = pygloo.ReduceOp.SUM
-    root = 0
+    algorithm = pygloo.allreduceAlgorithm.RING
 
-    pygloo.reduce(context, sendptr, recvptr, data_size, datatype, op, root)
-
+    pygloo.allreduce(context, sendptr, recvptr, data_size, datatype, op, algorithm)
+    pygloo.barrier(context)
     print(f"rank {rank} sends {sendbuf}, receives {recvbuf}")
-
+    ## example output
+    # (pid=30445) rank 0 sends [[1. 2. 3.]
+    # (pid=30445)              [1. 2. 3.]],
+    # (pid=30445)     receives [[2. 4. 6.]
+    # (pid=30445)              [2. 4. 6.]]
+    # (pid=30446) rank 1 sends [[1. 2. 3.]
+    # (pid=30446)              [1. 2. 3.]],
+    # (pid=30446)     receives [[2. 4. 6.]
+    # (pid=30446)              [2. 4. 6.]]
 
 if __name__ == "__main__":
     ray.init(num_cpus=6)
     world_size = 2
     fileStore_path = f"{ray.worker._global_node.get_session_dir_path()}" + "/collective/gloo/rendezvous"
 
-    fns = [test_reduce.remote(i, world_size, fileStore_path) for i in range(world_size)]
+    fns = [test_barrier.remote(i, world_size, fileStore_path) for i in range(world_size)]
     ray.get(fns)

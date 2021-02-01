@@ -54,42 +54,63 @@ PYBIND11_MODULE(pygloo, m) {
       .value("glooFloat64", pygloo::glooDataType_t::glooFloat64)
       .export_values();
 
-  m.def("allgather", &pygloo::allgather_wrapper);
-  m.def("allgatherv", &pygloo::allgatherv_wrapper);
-
   m.def("allreduce", &pygloo::allreduce_wrapper,
         pybind11::arg("context") = nullptr, pybind11::arg("sendbuf") = nullptr,
         pybind11::arg("recvbuf") = nullptr, pybind11::arg("size") = nullptr,
         pybind11::arg("datatype") = nullptr,
         pybind11::arg("reduceop") = pygloo::ReduceOp::SUM,
-        pybind11::arg("algorithm") = gloo::AllreduceOptions::Algorithm::RING);
+        pybind11::arg("algorithm") = gloo::AllreduceOptions::Algorithm::RING,
+        pybind11::arg("tag") = 0);
+
+  m.def("allgather", &pygloo::allgather_wrapper,
+        pybind11::arg("context") = nullptr, pybind11::arg("sendbuf") = nullptr,
+        pybind11::arg("recvbuf") = nullptr, pybind11::arg("size") = nullptr,
+        pybind11::arg("datatype") = nullptr, pybind11::arg("tag") = 0);
+  m.def("allgatherv", &pygloo::allgatherv_wrapper,
+        pybind11::arg("context") = nullptr, pybind11::arg("sendbuf") = nullptr,
+        pybind11::arg("recvbuf") = nullptr, pybind11::arg("size") = nullptr,
+        pybind11::arg("datatype") = nullptr, pybind11::arg("tag") = 0);
 
   m.def("reduce", &pygloo::reduce_wrapper, pybind11::arg("context") = nullptr,
         pybind11::arg("sendbuf") = nullptr, pybind11::arg("recvbuf") = nullptr,
         pybind11::arg("size") = nullptr, pybind11::arg("datatype") = nullptr,
         pybind11::arg("reduceop") = pygloo::ReduceOp::SUM,
-        pybind11::arg("root") = 0);
+        pybind11::arg("root") = 0, pybind11::arg("tag") = 0);
 
   m.def("scatter", &pygloo::scatter_wrapper, pybind11::arg("context") = nullptr,
         pybind11::arg("sendbuf") = nullptr, pybind11::arg("recvbuf") = nullptr,
         pybind11::arg("size") = nullptr, pybind11::arg("datatype") = nullptr,
-        pybind11::arg("root") = 0);
+        pybind11::arg("root") = 0, pybind11::arg("tag") = 0);
 
-  m.def("send", &pygloo::send_wrapper);
-  m.def("recv", &pygloo::recv_wrapper);
+  m.def("gather", &pygloo::gather_wrapper, pybind11::arg("context") = nullptr,
+        pybind11::arg("sendbuf") = nullptr, pybind11::arg("recvbuf") = nullptr,
+        pybind11::arg("size") = nullptr, pybind11::arg("datatype") = nullptr,
+        pybind11::arg("root") = 0, pybind11::arg("tag") = 0);
+
+  m.def("send", &pygloo::send_wrapper, pybind11::arg("context") = nullptr,
+        pybind11::arg("sendbuf") = nullptr, pybind11::arg("size") = nullptr,
+        pybind11::arg("datatype") = nullptr, pybind11::arg("peer") = nullptr,
+        pybind11::arg("tag") = 0);
+  m.def("recv", &pygloo::recv_wrapper, pybind11::arg("context") = nullptr,
+        pybind11::arg("recvbuf") = nullptr, pybind11::arg("size") = nullptr,
+        pybind11::arg("datatype") = nullptr, pybind11::arg("peer") = nullptr,
+        pybind11::arg("tag") = 0);
 
   m.def("broadcast", &pygloo::broadcast_wrapper,
         pybind11::arg("context") = nullptr, pybind11::arg("sendbuf") = nullptr,
         pybind11::arg("recvbuf") = nullptr, pybind11::arg("size") = nullptr,
-        pybind11::arg("datatype") = nullptr, pybind11::arg("root") = 0);
+        pybind11::arg("datatype") = nullptr, pybind11::arg("root") = 0,
+        pybind11::arg("tag") = 0);
 
   m.def("reduce_scatter", &pygloo::reduce_scatter_wrapper,
         pybind11::arg("context") = nullptr, pybind11::arg("sendbuf") = nullptr,
-        pybind11::arg("recvbuf") = nullptr, pybind11::arg("size") = nullptr, pybind11::arg("recvElems") = nullptr,
+        pybind11::arg("recvbuf") = nullptr, pybind11::arg("size") = nullptr,
+        pybind11::arg("recvElems") = nullptr,
         pybind11::arg("datatype") = nullptr,
         pybind11::arg("reduceop") = pygloo::ReduceOp::SUM);
 
-  m.def("barrier", &pygloo::barrier);
+  m.def("barrier", &pygloo::barrier, pybind11::arg("context") = nullptr,
+        pybind11::arg("tag") = 0);
 
   pybind11::class_<gloo::Context, std::shared_ptr<gloo::Context>>(m, "Context")
       .def(pybind11::init<int, int, int>(), pybind11::arg("rank") = nullptr,

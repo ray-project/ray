@@ -55,7 +55,8 @@ void reduce_scatter(const std::shared_ptr<gloo::Context> &context,
                                                   recvElems, fn);
   algorithm.run();
 
-  memcpy(reinterpret_cast<T *>(recvbuf), inputbuf.data(), recvElems[context->rank]*sizeof(T));
+  memcpy(reinterpret_cast<T *>(recvbuf), inputbuf.data(),
+         recvElems[context->rank] * sizeof(T));
 }
 
 void reduce_scatter_wrapper(const std::shared_ptr<gloo::Context> &context,
@@ -103,5 +104,4 @@ void reduce_scatter_wrapper(const std::shared_ptr<gloo::Context> &context,
     throw std::runtime_error("Unhandled dataType");
   }
 }
-
 } // namespace pygloo

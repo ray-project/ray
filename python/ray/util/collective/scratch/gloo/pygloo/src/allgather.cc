@@ -8,7 +8,7 @@ namespace pygloo {
 
 template <typename T>
 void allgather(const std::shared_ptr<gloo::Context> &context, intptr_t sendbuf,
-               intptr_t recvbuf, size_t size) {
+               intptr_t recvbuf, size_t size, uint32_t tag) {
   T *input_ptr = reinterpret_cast<T *>(sendbuf);
   T *output_ptr = reinterpret_cast<T *>(recvbuf);
 
@@ -16,41 +16,41 @@ void allgather(const std::shared_ptr<gloo::Context> &context, intptr_t sendbuf,
   gloo::AllgatherOptions opts_(context);
   opts_.setInput(input_ptr, size);
   opts_.setOutput(output_ptr, size * context->size);
-  opts_.setTag(0);
+  opts_.setTag(tag);
 
   gloo::allgather(opts_);
 }
 
 void allgather_wrapper(const std::shared_ptr<gloo::Context> &context,
                        intptr_t sendbuf, intptr_t recvbuf, size_t size,
-                       glooDataType_t datatype) {
+                       glooDataType_t datatype, uint32_t tag) {
   switch (datatype) {
   case glooDataType_t::glooInt8:
-    allgather<int8_t>(context, sendbuf, recvbuf, size);
+    allgather<int8_t>(context, sendbuf, recvbuf, size, tag);
     break;
   case glooDataType_t::glooUint8:
-    allgather<uint8_t>(context, sendbuf, recvbuf, size);
+    allgather<uint8_t>(context, sendbuf, recvbuf, size, tag);
     break;
   case glooDataType_t::glooInt32:
-    allgather<int32_t>(context, sendbuf, recvbuf, size);
+    allgather<int32_t>(context, sendbuf, recvbuf, size, tag);
     break;
   case glooDataType_t::glooUint32:
-    allgather<uint32_t>(context, sendbuf, recvbuf, size);
+    allgather<uint32_t>(context, sendbuf, recvbuf, size, tag);
     break;
   case glooDataType_t::glooInt64:
-    allgather<int64_t>(context, sendbuf, recvbuf, size);
+    allgather<int64_t>(context, sendbuf, recvbuf, size, tag);
     break;
   case glooDataType_t::glooUint64:
-    allgather<uint64_t>(context, sendbuf, recvbuf, size);
+    allgather<uint64_t>(context, sendbuf, recvbuf, size, tag);
     break;
   case glooDataType_t::glooFloat16:
-    allgather<gloo::float16>(context, sendbuf, recvbuf, size);
+    allgather<gloo::float16>(context, sendbuf, recvbuf, size, tag);
     break;
   case glooDataType_t::glooFloat32:
-    allgather<float_t>(context, sendbuf, recvbuf, size);
+    allgather<float_t>(context, sendbuf, recvbuf, size, tag);
     break;
   case glooDataType_t::glooFloat64:
-    allgather<double_t>(context, sendbuf, recvbuf, size);
+    allgather<double_t>(context, sendbuf, recvbuf, size, tag);
     break;
   default:
     throw std::runtime_error("Unhandled dataType");
@@ -59,7 +59,7 @@ void allgather_wrapper(const std::shared_ptr<gloo::Context> &context,
 
 template <typename T>
 void allgatherv(const std::shared_ptr<gloo::Context> &context, intptr_t sendbuf,
-                intptr_t recvbuf, size_t size) {
+                intptr_t recvbuf, size_t size, uint32_t tag) {
   T *input_ptr = reinterpret_cast<T *>(sendbuf);
   T *output_ptr = reinterpret_cast<T *>(recvbuf);
 
@@ -67,41 +67,41 @@ void allgatherv(const std::shared_ptr<gloo::Context> &context, intptr_t sendbuf,
   gloo::AllgatherOptions opts_(context);
   opts_.setInput(input_ptr, size);
   opts_.setOutput(output_ptr, size * context->size);
-  opts_.setTag(0);
+  opts_.setTag(tag);
 
   gloo::allgather(opts_);
 }
 
 void allgatherv_wrapper(const std::shared_ptr<gloo::Context> &context,
                         intptr_t sendbuf, intptr_t recvbuf, size_t size,
-                        glooDataType_t datatype) {
+                        glooDataType_t datatype, uint32_t tag) {
   switch (datatype) {
   case glooDataType_t::glooInt8:
-    allgather<int8_t>(context, sendbuf, recvbuf, size);
+    allgather<int8_t>(context, sendbuf, recvbuf, size, tag);
     break;
   case glooDataType_t::glooUint8:
-    allgather<uint8_t>(context, sendbuf, recvbuf, size);
+    allgather<uint8_t>(context, sendbuf, recvbuf, size, tag);
     break;
   case glooDataType_t::glooInt32:
-    allgather<int32_t>(context, sendbuf, recvbuf, size);
+    allgather<int32_t>(context, sendbuf, recvbuf, size, tag);
     break;
   case glooDataType_t::glooUint32:
-    allgather<uint32_t>(context, sendbuf, recvbuf, size);
+    allgather<uint32_t>(context, sendbuf, recvbuf, size, tag);
     break;
   case glooDataType_t::glooInt64:
-    allgather<int64_t>(context, sendbuf, recvbuf, size);
+    allgather<int64_t>(context, sendbuf, recvbuf, size, tag);
     break;
   case glooDataType_t::glooUint64:
-    allgather<uint64_t>(context, sendbuf, recvbuf, size);
+    allgather<uint64_t>(context, sendbuf, recvbuf, size, tag);
     break;
   case glooDataType_t::glooFloat16:
-    allgather<gloo::float16>(context, sendbuf, recvbuf, size);
+    allgather<gloo::float16>(context, sendbuf, recvbuf, size, tag);
     break;
   case glooDataType_t::glooFloat32:
-    allgather<float_t>(context, sendbuf, recvbuf, size);
+    allgather<float_t>(context, sendbuf, recvbuf, size, tag);
     break;
   case glooDataType_t::glooFloat64:
-    allgather<double_t>(context, sendbuf, recvbuf, size);
+    allgather<double_t>(context, sendbuf, recvbuf, size, tag);
     break;
   default:
     throw std::runtime_error("Unhandled dataType");

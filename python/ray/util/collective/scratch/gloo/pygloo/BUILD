@@ -17,7 +17,7 @@ load("@pybind11_bazel//:build_defs.bzl", "pybind_extension")
 #     # as the result of the build;
 #     # However, the cmake_external dependants could use other artefacts provided by the build,
 #     # according to their CMake script
-#     static_libraries = ["libuv.a"],
+#     # static_libraries = ["libuv.a"],
 # )
 
 cmake_external(
