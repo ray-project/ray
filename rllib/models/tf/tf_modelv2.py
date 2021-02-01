@@ -108,8 +108,6 @@ class TFModelV2(ModelV2):
             ret = {}
             for var in struct.variables:
                 name = re.sub("/", ".", var.name)
-                ## Remove the first level (policy's name).
-                #name = re.sub("^\\w+\\.", "", name)
                 key = current_key + "." + name
                 ret[key] = var
             return ret
