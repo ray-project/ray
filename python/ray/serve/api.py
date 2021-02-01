@@ -323,22 +323,23 @@ class Client:
     def create_backend(
             self,
             backend_tag: str,
-            func_or_class: Union[Callable, Type[Callable]],
-            *actor_init_args: Any,
+            backend_def: Union[Callable, Type[Callable], str],
+            *init_args: Any,
             ray_actor_options: Optional[Dict] = None,
             config: Optional[Union[BackendConfig, Dict[str, Any]]] = None,
             env: Optional[CondaEnv] = None) -> None:
         """Create a backend with the provided tag.
 
-        The backend will serve requests with func_or_class.
-
         Args:
             backend_tag (str): a unique tag assign to identify this backend.
-            func_or_class (callable, class): a function or a class implementing
-                __call__, returning a JSON-serializable object or a
-                Starlette Response object.
-            *actor_init_args (optional): the arguments to pass to the class
-                initialization method.
+            backend_def (callable, class, str): a function or class
+                implementing __call__ and returning a JSON-serializable object
+                or a Starlette Response object. A string import path can also
+                be provided (e.g., "my_module.MyClass"), in which case the
+                underlying function or class will be imported dynamically in
+                the worker replicas.
+            *init_args (optional): the arguments to pass to the class
+                initialization method. Not valid if backend_def is a function.
             ray_actor_options (optional): options to be passed into the
                 @ray.remote decorator for the backend actor.
             config (dict, serve.BackendConfig, optional): configuration options
@@ -386,9 +387,7 @@ class Client:
             ray_actor_options.update(
                 override_environment_variables={"PYTHONHOME": conda_env_dir})
         replica_config = ReplicaConfig(
-            func_or_class,
-            *actor_init_args,
-            ray_actor_options=ray_actor_options)
+            backend_def, *init_args, ray_actor_options=ray_actor_options)
         metadata = BackendMetadata(
             accepts_batches=replica_config.accepts_batches,
             is_blocking=replica_config.is_blocking)

@@ -37,7 +37,3 @@ objects instead of Starlette requests.
 Batching Requests
 -----------------
 .. autofunction:: ray.serve.accept_batch
-
-Built-in Backends
------------------
-.. autoclass:: ray.serve.backends.ImportedBackend

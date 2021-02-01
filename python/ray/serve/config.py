@@ -9,18 +9,26 @@ from ray.serve.constants import (ASYNC_CONCURRENCY, DEFAULT_HTTP_HOST,
                                  DEFAULT_HTTP_PORT)
 
 
-def _callable_accepts_batch(func_or_class):
-    if inspect.isfunction(func_or_class):
-        return hasattr(func_or_class, "_serve_accept_batch")
-    elif inspect.isclass(func_or_class):
-        return hasattr(func_or_class.__call__, "_serve_accept_batch")
+def _callable_accepts_batch(backend_def):
+    if inspect.isfunction(backend_def):
+        return hasattr(backend_def, "_serve_accept_batch")
+    elif inspect.isclass(backend_def):
+        return hasattr(backend_def.__call__, "_serve_accept_batch")
+    elif isinstance(backend_def, str):
+        return True
+
+    assert False
 
 
-def _callable_is_blocking(func_or_class):
-    if inspect.isfunction(func_or_class):
-        return not inspect.iscoroutinefunction(func_or_class)
-    elif inspect.isclass(func_or_class):
-        return not inspect.iscoroutinefunction(func_or_class.__call__)
+def _callable_is_blocking(backend_def):
+    if inspect.isfunction(backend_def):
+        return not inspect.iscoroutinefunction(backend_def)
+    elif inspect.isclass(backend_def):
+        return not inspect.iscoroutinefunction(backend_def.__call__)
+    elif isinstance(backend_def, str):
+        return False
+
+    assert False
 
 
 @dataclass
@@ -119,12 +127,11 @@ class BackendConfig(BaseModel):
 
 
 class ReplicaConfig:
-    def __init__(self, func_or_class, *actor_init_args,
-                 ray_actor_options=None):
-        self.func_or_class = func_or_class
-        self.accepts_batches = _callable_accepts_batch(func_or_class)
-        self.is_blocking = _callable_is_blocking(func_or_class)
-        self.actor_init_args = list(actor_init_args)
+    def __init__(self, backend_def, *init_args, ray_actor_options=None):
+        self.backend_def = backend_def
+        self.accepts_batches = _callable_accepts_batch(backend_def)
+        self.is_blocking = _callable_is_blocking(backend_def)
+        self.init_args = list(init_args)
         if ray_actor_options is None:
             self.ray_actor_options = {}
         else:
@@ -134,27 +141,28 @@ class ReplicaConfig:
         self._validate()
 
     def _validate(self):
-        # Validate that func_or_class is a function or class.
-        if inspect.isfunction(self.func_or_class):
-            if len(self.actor_init_args) != 0:
+        # Validate that backend_def is an import path, function, or class.
+        if isinstance(self.backend_def, str):
+            pass
+        elif inspect.isfunction(self.backend_def):
+            if len(self.init_args) != 0:
                 raise ValueError(
-                    "actor_init_args not supported for function backend.")
-        elif not inspect.isclass(self.func_or_class):
+                    "init_args not supported for function backend.")
+        elif not inspect.isclass(self.backend_def):
             raise TypeError(
                 "Backend must be a function or class, it is {}.".format(
-                    type(self.func_or_class)))
+                    type(self.backend_def)))
 
         if not isinstance(self.ray_actor_options, dict):
             raise TypeError("ray_actor_options must be a dictionary.")
         elif "lifetime" in self.ray_actor_options:
             raise ValueError(
-                "Specifying lifetime in actor_init_args is not allowed.")
+                "Specifying lifetime in init_args is not allowed.")
         elif "name" in self.ray_actor_options:
-            raise ValueError(
-                "Specifying name in actor_init_args is not allowed.")
+            raise ValueError("Specifying name in init_args is not allowed.")
         elif "max_restarts" in self.ray_actor_options:
             raise ValueError("Specifying max_restarts in "
-                             "actor_init_args is not allowed.")
+                             "init_args is not allowed.")
         else:
             # Ray defaults to zero CPUs for placement, we default to one here.
             if "num_cpus" not in self.ray_actor_options:
