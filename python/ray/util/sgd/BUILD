@@ -241,6 +241,20 @@ py_test(
     args = ["--smoke-test"]
 )
 
+# --------------------------------------------------------------------
+# SGD related tests from the ../../../../release directory.
+# Please keep these sorted alphabetically.
+# --------------------------------------------------------------------
+
+py_test(
+    name = "pytorch_pbt_failure",
+    size = "medium",
+    srcs = ["torch/examples/pytorch_pbt_failure.py"],
+    tags = ["exlusive", "pytorch", "release"],
+    deps = [":sgd_lib"],
+    args = ["--smoke-test"]
+)
+
 # This is a dummy test dependency that causes the above tests to be
 # re-run if any of these files changes.
 py_library(

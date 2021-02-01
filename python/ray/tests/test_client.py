@@ -322,11 +322,24 @@ def test_basic_named_actor(ray_start_regular_shared):
 
         actor.inc.remote()
         actor.inc.remote()
-        del actor
 
+        # Make sure the get_actor call works
         new_actor = ray.get_actor("test_acc")
         new_actor.inc.remote()
         assert ray.get(new_actor.get.remote()) == 3
+
+        del actor
+
+        actor = Accumulator.options(
+            name="test_acc2", lifetime="detached").remote()
+        actor.inc.remote()
+        del actor
+
+        detatched_actor = ray.get_actor("test_acc2")
+        for i in range(5):
+            detatched_actor.inc.remote()
+
+        assert ray.get(detatched_actor.get.remote()) == 6
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
@@ -362,6 +375,33 @@ def test_startup_retry(ray_start_regular_shared):
     thread.join()
     server.stop(0)
     ray_client._inside_client_test = False
+
+
+def test_dataclient_server_drop(ray_start_regular_shared):
+    from ray.util.client import ray as ray_client
+    ray_client._inside_client_test = True
+
+    @ray_client.remote
+    def f(x):
+        time.sleep(4)
+        return x
+
+    def stop_server(server):
+        time.sleep(2)
+        server.stop(0)
+
+    server = ray_client_server.serve("localhost:50051")
+    ray_client.connect("localhost:50051")
+    thread = threading.Thread(target=stop_server, args=(server, ))
+    thread.start()
+    x = f.remote(2)
+    with pytest.raises(ConnectionError):
+        _ = ray_client.get(x)
+    thread.join()
+    ray_client.disconnect()
+    ray_client._inside_client_test = False
+    # Wait for f(x) to finish before ray.shutdown() in the fixture
+    time.sleep(3)
 
 
 if __name__ == "__main__":

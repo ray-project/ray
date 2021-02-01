@@ -584,7 +584,9 @@ class ActorClass:
         elif lifetime == "detached":
             detached = True
         else:
-            raise ValueError("lifetime must be either `None` or 'detached'")
+            raise ValueError(
+                "actor `lifetime` argument must be either `None` or 'detached'"
+            )
 
         if placement_group_capture_child_tasks is None:
             placement_group_capture_child_tasks = (
@@ -935,7 +937,7 @@ class ActorHandle:
     def __reduce__(self):
         """This code path is used by pickling but not by Ray forking."""
         state = self._serialization_helper()
-        return ActorHandle._deserialization_helper, (state)
+        return ActorHandle._deserialization_helper, state
 
 
 def modify_class(cls):
