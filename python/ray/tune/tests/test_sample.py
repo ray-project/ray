@@ -517,27 +517,27 @@ class SearchSpaceTest(unittest.TestCase):
         converted_config = HEBOSearch.convert_search_space(config)
         hebo_space_config = {
             {
-                'name': 'a',
-                'type': 'cat',
-                'categories': [2, 3, 4]
+                "name": "a",
+                "type": "cat",
+                "categories": [2, 3, 4]
             },
             {
-                'name': 'b/x',
-                'type': 'int',
-                'lb': 0,
-                'ub': 5
+                "name": "b/x",
+                "type": "int",
+                "lb": 0,
+                "ub": 5
             },
             {
-                'name': 'b/y',
-                'type': 'int',
-                'lb': 4,
-                'ub': 4
+                "name": "b/y",
+                "type": "int",
+                "lb": 4,
+                "ub": 4
             },
             {
-                'name': 'b/z',
-                'type': 'pow',
-                'lb': 1e-4,
-                'ub': 1e-2
+                "name": "b/z",
+                "type": "pow",
+                "lb": 1e-4,
+                "ub": 1e-2
             },
         }
         hebo_space = DesignSpace().parse(hebo_space_config)

@@ -673,16 +673,16 @@ class HEBOWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
     def set_basic_conf(self):
         space_config = [
             {
-                'name': 'width',
-                'type': 'num',
-                'lb': 0,
-                'ub': 20
+                "name": "width",
+                "type": "num",
+                "lb": 0,
+                "ub": 20
             },
             {
-                'name': 'height',
-                'type': 'num',
-                'lb': -100,
-                'ub': 100
+                "name": "height",
+                "type": "num",
+                "lb": -100,
+                "ub": 100
             },
         ]
         space = HEBODesignSpace().parse(space_config)
