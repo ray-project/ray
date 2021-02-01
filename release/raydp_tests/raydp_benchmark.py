@@ -11,49 +11,72 @@ import os.path
 import time
 
 
-def load_dataset(spark, nbytes, npartitions, sort, base):
-    num_bytes_per_partition = nbytes // npartitions
-    filenames = []
+@ray.remote
+def load(filename, num_bytes_per_partition, repartition):
+    print("Partition file", filename)
+    if repartition:
+        nrows = num_bytes_per_partition // 8
+        print("Allocating dataset with {} rows".format(nrows))
+        dataset = pd.DataFrame(np.random.randint(0, np.iinfo(np.int64).max, size=(nrows, 1), dtype=np.int64), columns=['a'])
+    else:
+        nrows = num_bytes_per_partition // (8 * 2)
+        print("Allocating dataset with {} rows".format(nrows))
+        dataset = pd.DataFrame(np.random.randint(0, 100, size=(nrows, 2), dtype=np.int64), columns=['a', 'b'])
+    print("Done allocating")
+    dataset.to_parquet(filename, flavor="spark")
+    print("Done writing to disk")
+    return filename
 
-    @ray.remote
-    def load(i):
-        filename = os.path.join(base, "df-{}-{}-{}.parquet".format("sort" if sort else "groupby", num_bytes_per_partition, i))
-        print("Partition file", filename)
-        if not os.path.exists(filename):
-            if sort:
-                nrows = num_bytes_per_partition // 8
-                print("Allocating dataset with {} rows".format(nrows))
-                dataset = pd.DataFrame(np.random.randint(0, np.iinfo(np.int64).max, size=(nrows, 1), dtype=np.int64), columns=['a'])
-            else:
-                nrows = num_bytes_per_partition // (8 * 2)
-                print("Allocating dataset with {} rows".format(nrows))
-                dataset = pd.DataFrame(np.random.randint(0, 100, size=(nrows, 2), dtype=np.int64), columns=['a', 'b'])
-            print("Done allocating")
-            dataset.to_parquet(filename, flavor="spark")
-            print("Done writing to disk")
-        return filename
 
-    for i in range(npartitions):
-        filenames.append(load.remote(i))
+def load_dataset(spark, npartitions, num_bytes_per_partition, repartition, base):
+    op_name = "repartition" if repartition else "groupby"
+    filenames = [
+        load.remote(
+            os.path.join(base, "df-{}-{}-{}.parquet".format(op_name, num_bytes_per_partition, i)),
+            num_bytes_per_partition,
+            repartition,
+        ) for i in range(npartitions)
+    ]
     ray.wait(filenames, num_returns=len(filenames))
 
-    return spark.read.parquet(os.path.join(base, "df-{}-{}-*.parquet".format("sort" if sort else "groupby", num_bytes_per_partition)))
+    return spark.read.parquet(os.path.join(base, "df-{}-{}-*.parquet".format(op_name, num_bytes_per_partition)))
 
 
-def trial(spark, nbytes, n_partitions, sort, generate_only, base):
-    df = load_dataset(spark, nbytes, n_partitions, sort, base)
+def load_dataset_before_spark(npartitions, num_bytes_per_partition, repartition, base):
+    op_name = "repartition" if repartition else "groupby"
+    filenames = [
+        load.remote(
+            os.path.join(base, "df-{}-{}-{}.parquet".format(op_name, num_bytes_per_partition, i)),
+            num_bytes_per_partition,
+            repartition,
+        ) for i in range(npartitions)
+    ]
+    ray.wait(filenames, num_returns=len(filenames))
+
+    return os.path.join(base, "df-{}-{}-*.parquet".format(op_name, num_bytes_per_partition))
+
+
+def trial(spark, nbytes, npartitions, repartition, range_repartition, generate_only, base, ntrials, input_file=None):
+    num_bytes_per_partition = nbytes // npartitions
+    if not range_repartition:
+        df = spark.read.parquet(input_file)
+        # df = load_dataset(spark, npartitions, num_bytes_per_partition, repartition, base)
 
     if generate_only:
         return
 
     times = []
     start = time.time()
-    for i in range(10):
+    for i in range(ntrials):
         print("Trial {} start".format(i))
         trial_start = time.time()
 
-        if sort:
-            df.sort("a").head(10)
+        if repartition:
+            out = base + f"df-out-repartition-{num_bytes_per_partition}-trial-{i}.parquet"
+            df.repartition(npartitions).write.parquet(out, mode="overwrite")
+        elif range_repartition:
+            print(f"nbytes: {nbytes}, npartitions: {npartitions}")
+            spark.range(nbytes // 8, numPartitions=npartitions).repartition(npartitions).count()
         else:
             df.groupBy("b").avg("a").collect()
 
@@ -62,7 +85,7 @@ def trial(spark, nbytes, n_partitions, sort, generate_only, base):
         times.append(duration)
         print("Trial {} done after {}".format(i, duration))
 
-        if time.time() - start > 10800:
+        if time.time() - start > 300:
             break
     return times
 
@@ -92,10 +115,12 @@ if __name__ == '__main__':
     # Max partition size is 1GB.
     parser.add_argument("--max-partition-size", type=int, default=1000_000_000, required=False)
     parser.add_argument("--num-nodes", type=int, default=1)
-    parser.add_argument("--num-executors", type=int, default=4)
-    parser.add_argument("--cores-per-executor", type=int, default=1)
-    parser.add_argument("--memory-per-executor", type=int, default=2)
-    parser.add_argument("--sort", action="store_true")
+    parser.add_argument("--ntrials", type=int, default=1)
+    parser.add_argument("--num-executors", type=int, default=1)
+    parser.add_argument("--cores-per-executor", type=int, default=32)
+    parser.add_argument("--memory-per-executor", type=int, default=20)
+    parser.add_argument("--repartition", action="store_true")
+    parser.add_argument("--range-repartition", action="store_true")
     parser.add_argument("--timeline", action="store_true")
     parser.add_argument("--spark-only", action="store_true")
     parser.add_argument("--cluster", action="store_true")
@@ -103,10 +128,25 @@ if __name__ == '__main__':
     parser.add_argument("--generate-only", action="store_true")
     parser.add_argument("--clear-old-data", action="store_true")
     parser.add_argument("--spark-local-dir", type=str, default="/tmp")
-    parser.add_argument("--spark-executor-memory", type=str, default="1g")
+    parser.add_argument("--spark-driver-memory", type=str, default="1g")
     parser.add_argument("--spark-python-worker-memory", type=str, default="512m")
     parser.add_argument("--spark-memory-fraction", type=float, default=0.6)
+    parser.add_argument("--spark-memory-storage-fraction", type=float, default=0.5)
     args = parser.parse_args()
+
+    if args.s3:
+        base = "s3a://raydp-shuffle-benchmarks/data"
+    elif args.cluster:
+        base = "/mnt/disk0/benchmark_scratch"
+    else:
+        base = "data"
+
+    # FIXME(Clark): The logic around whether to write input data before initialization is
+    # very brittle and gross, rewrite if we ever plan to commit this code somewhere.
+    input_file = None
+    warmup_input_file = None
+    warmup_nbytes = 1000
+    warmup_npartitions = 10
 
     if not args.spark_only:
         print("Starting Ray...")
@@ -125,6 +165,12 @@ if __name__ == '__main__':
         # Wait until Ray has started and scaled before initializing Spark on Ray.
         scale_to(args.num_nodes)
 
+        if not args.range_repartition:
+            warmup_num_bytes_per_partition = warmup_nbytes // warmup_npartitions
+            warmup_input_file = load_dataset_before_spark(warmup_npartitions, warmup_num_bytes_per_partition, args.repartition, base)
+            num_bytes_per_partition = args.nbytes // args.npartitions
+            input_file = load_dataset_before_spark(args.npartitions, num_bytes_per_partition, args.repartition, base)
+
         app_name = "Shuffle Benchmark on RayDP"
         num_executors = args.num_executors
         cores_per_executor = args.cores_per_executor
@@ -133,9 +179,11 @@ if __name__ == '__main__':
             "spark.driver.extraJavaOptions": "-Dio.netty.tryReflectionSetAccessible=true",
             "spark.executor.extraJavaOptions": "-Dio.netty.tryReflectionSetAccessible=true",
             "spark.local.dir": args.spark_local_dir,
-            "spark.executor.memory": args.spark_executor_memory,
+            "spark.driver.memory": args.spark_driver_memory,
             "spark.python.worker.memory": args.spark_python_worker_memory,
             "spark.memory.fraction": args.spark_memory_fraction,
+            "spark.memory.storageFraction": args.spark_memory_storage_fraction,
+            "spark.eventLog.enabled": True,
         }
         if args.s3:
             config["spark.driver.extraJavaOptions"] += " -Dcom.amazonaws.services.s3.enableV4=true"
@@ -168,12 +216,6 @@ if __name__ == '__main__':
 
     system = "Spark" if args.spark_only else "RayDP"
     print(f"Running Spark version {spark.version}")
-    if args.s3:
-        base = "s3a://raydp-shuffle-benchmarks/data"
-    elif args.cluster:
-        base = "/tmp/benchmark_scratch"
-    else:
-        base = "data"
 
     if args.clear_old_data:
         print(f"Clearing old data from {base}.")
@@ -182,7 +224,7 @@ if __name__ == '__main__':
             os.remove(f)
 
     print("Starting warmup trials...")
-    print(system, trial(spark, 1000, 10, args.sort, args.generate_only, base))
+    print(system, trial(spark, 1000, 10, args.repartition, args.range_repartition, args.generate_only, base, 10, warmup_input_file))
     print("Warmup done.")
 
     npartitions = args.npartitions
@@ -190,7 +232,7 @@ if __name__ == '__main__':
         npartitions = args.nbytes // args.max_partition_size
 
     print("Starting real trials...")
-    output = trial(spark, args.nbytes, npartitions, args.sort, args.generate_only, base)
+    output = trial(spark, args.nbytes, npartitions, args.repartition, args.range_repartition, args.generate_only, base, args.ntrials, input_file=input_file)
     print("Trials done.")
     print("{} mean over {} trials: {} +- {}".format(system, len(output), np.mean(output), np.std(output)))
 
@@ -205,7 +247,7 @@ if __name__ == '__main__':
         if write_header:
             writer.writeheader()
         row = {
-                "operation": "sort" if args.sort else "groupby",
+                "operation": "repartition" if args.repartition else "range_repartition" if args.range_repartition else "groupby",
                 "num_nodes": args.num_nodes,
                 "nbytes": args.nbytes,
                 "npartitions": npartitions,

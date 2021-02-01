@@ -57,11 +57,12 @@ setup_commands:
     - sudo curl https://repo1.maven.org/maven2/joda-time/joda-time/2.3/joda-time-2.3.jar -o /opt/spark/jars/joda-time-2.3.jar
     - sudo chown -R ubuntu:ubuntu /opt/spark
     - sudo chmod 644 /opt/spark/jars/*.jar
-    - sudo mkdir -p /tmp/benchmark_scratch && sudo rm -f /tmp/benchmark_scratch/*.parquet && sudo chown -R ubuntu:ubuntu /tmp/benchmark_scratch && sudo chmod 777 /tmp/benchmark_scratch
     - sudo mkfs -t ext4 /dev/nvme0n1 && sudo mkdir -p /mnt/disk0 && sudo mount /dev/nvme0n1 /mnt/disk0 && sudo chown -R ubuntu:ubuntu /mnt/disk0 && sudo chmod 777 /mnt/disk0
     - sudo mkfs -t ext4 /dev/nvme1n1 && sudo mkdir -p /mnt/disk1 && sudo mount /dev/nvme1n1 /mnt/disk1 && sudo chown -R ubuntu:ubuntu /mnt/disk1 && sudo chmod 777 /mnt/disk1
     - sudo mkfs -t ext4 /dev/nvme2n1 && sudo mkdir -p /mnt/disk2 && sudo mount /dev/nvme2n1 /mnt/disk2 && sudo chown -R ubuntu:ubuntu /mnt/disk2 && sudo chmod 777 /mnt/disk2
     - sudo mkfs -t ext4 /dev/nvme3n1 && sudo mkdir -p /mnt/disk3 && sudo mount /dev/nvme3n1 /mnt/disk3 && sudo chown -R ubuntu:ubuntu /mnt/disk3 && sudo chmod 777 /mnt/disk3
+    - mkdir -p /mnt/disk0/benchmark_scratch && rm -f /mnt/disk0/benchmark_scratch/*.parquet
+    - sudo mkdir -p /tmp/spark-events && sudo chown -R ubuntu:ubuntu /tmp/spark-events && sudo chmod 777 /tmp/spark-events
 
 # Command to start ray on the head node. You don't need to change this.
 head_start_ray_commands:
