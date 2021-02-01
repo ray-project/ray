@@ -107,7 +107,7 @@ def do_test_log_likelihood(run,
 class TestComputeLogLikelihood(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init()
+        ray.init(local_mode=True)#TODO
 
     @classmethod
     def tearDownClass(cls) -> None:

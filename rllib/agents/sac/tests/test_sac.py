@@ -10,6 +10,9 @@ from ray.rllib.agents.sac.sac_tf_policy import sac_actor_critic_loss as tf_loss
 from ray.rllib.agents.sac.sac_torch_policy import actor_critic_loss as \
     loss_torch
 from ray.rllib.examples.env.random_env import RandomEnv
+from ray.rllib.examples.models.batch_norm_model import KerasBatchNormModel, \
+    TorchBatchNormModel
+from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.tf.tf_action_dist import Dirichlet
 from ray.rllib.models.torch.torch_action_dist import TorchDirichlet
 from ray.rllib.execution.replay_buffer import LocalReplayBuffer
@@ -53,7 +56,7 @@ class SimpleEnv(Env):
 class TestSAC(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init()
+        ray.init(local_mode=True)
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -72,10 +75,14 @@ class TestSAC(unittest.TestCase):
         config["train_batch_size"] = 10
         num_iterations = 1
 
+        ModelCatalog.register_custom_model("batch_norm", KerasBatchNormModel)
+        ModelCatalog.register_custom_model("batch_norm_torch",
+                                           TorchBatchNormModel)
+
         image_space = Box(-1.0, 1.0, shape=(84, 84, 3))
         simple_space = Box(-1.0, 1.0, shape=(3, ))
 
-        for _ in framework_iterator(config):
+        for fw in framework_iterator(config):
             # Test for different env types (discrete w/ and w/o image, + cont).
             for env in [
                     RandomEnv,
@@ -92,6 +99,11 @@ class TestSAC(unittest.TestCase):
                     }
                 else:
                     config["env_config"] = {}
+                # Test making the Q-model a custom one for CartPole, otherwise,
+                # use the default model.
+                config["Q_model"]["custom_model"] = "batch_norm{}".format(
+                    "_torch"
+                    if fw == "torch" else "") if env == "CartPole-v0" else None
                 trainer = sac.SACTrainer(config=config, env=env)
                 for i in range(num_iterations):
                     results = trainer.train()
