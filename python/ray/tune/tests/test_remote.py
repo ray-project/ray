@@ -38,7 +38,9 @@ class RemoteTest(unittest.TestCase):
 
     def testRemoteRunExperimentsInClient(self):
         ray.init()
+        assert not ray.util.client.ray.is_connected()
         with ray_start_client_server() as r:
+            assert ray.util.client.ray.is_connected()
 
             def train(config, reporter):
                 for i in range(100):
@@ -55,7 +57,9 @@ class RemoteTest(unittest.TestCase):
 
     def testRemoteRunInClient(self):
         ray.init()
+        assert not ray.util.client.ray.is_connected()
         with ray_start_client_server() as r:
+            assert ray.util.client.ray.is_connected()
 
             def train(config, reporter):
                 for i in range(100):
