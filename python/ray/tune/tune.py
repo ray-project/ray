@@ -3,6 +3,7 @@ from typing import Any, Callable, Dict, Mapping, Optional, Sequence, Type, \
 
 import datetime
 import logging
+import os
 import sys
 import time
 
@@ -278,6 +279,7 @@ def run(
     """
 
     if _remote and not trial_executor:
+        _ray_auto_init()
         get_fn = ray.get
         exec_impl = ray.remote(num_cpus=0)(_tune_run_impl).remote
     else:
@@ -602,6 +604,7 @@ def run_experiments(
 
     """
     if _remote and not trial_executor:
+        _ray_auto_init()
         get_fn = ray.get
         exec_impl = ray.remote(num_cpus=0)(_tune_run_experiments_impl).remote
     else:
@@ -662,3 +665,14 @@ def _tune_run_experiments_impl(
                 scheduler=scheduler,
                 callbacks=callbacks).trials
         return trials
+
+
+def _ray_auto_init():
+    """Initialize Ray unless already configured."""
+    if os.environ.get("TUNE_DISABLE_AUTO_INIT") == "1":
+        logger.info("'TUNE_DISABLE_AUTO_INIT=1' detected.")
+    elif not ray.is_initialized():
+        logger.info("Initializing Ray automatically."
+                    "For cluster usage or custom Ray initialization, "
+                    "call `ray.init(...)` before `tune.run`.")
+        ray.init()
