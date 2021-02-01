@@ -506,7 +506,7 @@ message WaitPlacementGroupUntilReadyReply {
 
 message GetNamedPlacementGroupRequest {
   // Name of the placement group.
-  string name = 2;
+  string name = 1;
 }
 
 message GetNamedPlacementGroupReply {

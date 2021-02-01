@@ -155,8 +155,9 @@ void GcsPlacementGroupManager::RegisterPlacementGroup(
                                       placement_group->GetPlacementGroupID());
     } else {
       std::stringstream stream;
-      stream << "Placement Group with name '" << placement_group->GetName()
-             << "' already exists.";
+      stream << "Failed to create placement group '"
+             << placement_group->GetPlacementGroupID() << "' because name '"
+             << placement_group->GetName() << "' already exists.";
       RAY_LOG(WARNING) << stream.str();
       callback(Status::Invalid(stream.str()));
       return;
