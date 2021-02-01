@@ -1,4 +1,3 @@
-import os
 import unittest
 
 import ray
