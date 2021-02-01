@@ -113,7 +113,8 @@ if __name__ == '__main__':
     parser.add_argument("--nbytes", type=int, default=1_000_000)
     parser.add_argument("--npartitions", type=int, default=100, required=False)
     # Max partition size is 1GB.
-    parser.add_argument("--max-partition-size", type=int, default=1000_000_000, required=False)
+    parser.add_argument(
+        "--max-partition-size", type=int, default=1000_000_000, required=False)
     parser.add_argument("--num-nodes", type=int, default=1)
     parser.add_argument("--ntrials", type=int, default=1)
     parser.add_argument("--num-executors", type=int, default=1)
@@ -186,8 +187,10 @@ if __name__ == '__main__':
             "spark.eventLog.enabled": True,
         }
         if args.s3:
-            config["spark.driver.extraJavaOptions"] += " -Dcom.amazonaws.services.s3.enableV4=true"
-            config["spark.executor.extraJavaOptions"] += " -Dcom.amazonaws.services.s3.enableV4=true"
+            config[
+                "spark.driver.extraJavaOptions"] += " -Dcom.amazonaws.services.s3.enableV4=true"
+            config[
+                "spark.executor.extraJavaOptions"] += " -Dcom.amazonaws.services.s3.enableV4=true"
             config.update({
                 # "spark.driver.extraClassPath": "/opt/spark/jars/hadoop-aws-2.7.4.jar:/opt/spark/jars/aws-java-sdk-1.7.4.jar:/opt/spark/jars/hadoop-common-2.7.4.jar:/opt/spark/jars/joda-time-2.3.jar",
                 # "spark.executor.extraClassPath": "/opt/spark/jars/hadoop-aws-2.7.4.jar:/opt/spark/jars/aws-java-sdk-1.7.4.jar:/opt/spark/jars/hadoop-common-2.7.4.jar:/opt/spark/jars/joda-time-2.3.jar",
@@ -204,15 +207,14 @@ if __name__ == '__main__':
                 # "spark.sepculation": False,
             })
         print("Initializing Spark on Ray...")
-        spark = raydp.init_spark(app_name, num_executors, cores_per_executor, memory_per_executor, config)
+        spark = raydp.init_spark(app_name, num_executors, cores_per_executor,
+                                 memory_per_executor, config)
     else:
         print("Creating Spark session...")
         # NOTE: We still initialize a local Ray cluster for parallel data generation.
         ray.init()
-        spark = (SparkSession.builder
-                    .master("local")
-                    .appName("Shuffle Benchmark on Spark")
-                    .getOrCreate())
+        spark = (SparkSession.builder.master("local")
+                 .appName("Shuffle Benchmark on Spark").getOrCreate())
 
     system = "Spark" if args.spark_only else "RayDP"
     print(f"Running Spark version {spark.version}")
@@ -234,7 +236,9 @@ if __name__ == '__main__':
     print("Starting real trials...")
     output = trial(spark, args.nbytes, npartitions, args.repartition, args.range_repartition, args.generate_only, base, args.ntrials, input_file=input_file)
     print("Trials done.")
-    print("{} mean over {} trials: {} +- {}".format(system, len(output), np.mean(output), np.std(output)))
+    print("{} mean over {} trials: {} +- {}".format(system, len(output),
+                                                    np.mean(output),
+                                                    np.std(output)))
 
     if args.cluster:
         outfile = "/tmp/raydp_benchmark_output.csv"
@@ -242,7 +246,10 @@ if __name__ == '__main__':
         outfile = "output.csv"
     write_header = not os.path.exists(outfile) or os.path.getsize(outfile) == 0
     with open(outfile, "a+") as csvfile:
-        fieldnames = ["system", "operation", "num_nodes", "nbytes", "npartitions", "duration"]
+        fieldnames = [
+            "system", "operation", "num_nodes", "nbytes", "npartitions",
+            "duration"
+        ]
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
         if write_header:
             writer.writeheader()
