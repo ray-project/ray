@@ -218,7 +218,7 @@ def test_fast(shutdown_only, use_force):
         # between a worker receiving a task and the worker executing
         # that task (specifically the python execution), Cancellation
         # can fail.
-        
+
         time.sleep(0.1)
         ray.cancel(x, force=use_force)
         ids.append(x)
