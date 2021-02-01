@@ -86,8 +86,7 @@ class ExternalStorage(metaclass=abc.ABCMeta):
         # spilling, it can directly get the object from the local plasma
         # store.
         # issue: https://github.com/ray-project/ray/pull/13831
-        ray_object_pairs = worker.core_worker.get_objects_from_local_store(
-            object_refs)
+        ray_object_pairs = worker.core_worker.get_if_local(object_refs)
         return ray_object_pairs
 
     def _put_object_to_store(self, metadata, data_size, file_like, object_ref):

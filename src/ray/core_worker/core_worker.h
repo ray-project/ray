@@ -566,8 +566,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// added for objects that were not in the local store.
   /// \return Status OK if all objects were found. Returns ObjectNotFound error
   /// if at least one object was not in the local store.
-  Status GetObjectsFromLocalStore(const std::vector<ObjectID> &ids,
-                                  std::vector<std::shared_ptr<RayObject>> *results);
+  Status GetIfLocal(const std::vector<ObjectID> &ids,
+                    std::vector<std::shared_ptr<RayObject>> *results);
 
   /// Return whether or not the object store contains the given object.
   ///

@@ -152,9 +152,8 @@ class CoreWorkerPlasmaStoreProvider {
   /// added for objects that were not in the local store.
   /// \return Status OK if the request to the local object store was
   /// successful.
-  Status GetObjectsFromLocalStore(
-      const std::vector<ObjectID> &ids,
-      absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results);
+  Status GetIfLocal(const std::vector<ObjectID> &ids,
+                    absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results);
 
   Status Contains(const ObjectID &object_id, bool *has_object);
 
