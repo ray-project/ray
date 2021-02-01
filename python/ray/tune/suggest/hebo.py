@@ -176,6 +176,12 @@ class HEBOSearch(Searcher):
             self._setup_optimizer()
 
     def _setup_optimizer(self):
+        # HEBO internally minimizes, so "max" => -1
+        if self._mode == "max":
+            self._metric_op = -1.
+        elif self._mode == "min":
+            self._metric_op = 1.
+
         if self._metric is None and self._mode:
             # If only a mode was passed, use anonymous metric
             self._metric = DEFAULT_METRIC
@@ -204,11 +210,6 @@ class HEBOSearch(Searcher):
             self._metric = metric
         if mode:
             self._mode = mode
-
-        if self._mode == "max":
-            self._metric_op = -1.
-        elif self._mode == "min":
-            self._metric_op = 1.
 
         self._setup_optimizer()
         return True

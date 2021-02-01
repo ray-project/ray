@@ -507,7 +507,7 @@ class SearchSpaceTest(unittest.TestCase):
             HEBOSearch.convert_search_space({"grid": tune.grid_search([0, 1])})
 
         config = {
-            "a": tune.sample.Categorical([2, 3, 4]).uniform(),
+            "a": tune.sample.Categorical(["2", "3", "4"]).uniform(),
             "b": {
                 "x": tune.sample.Integer(0, 5),
                 "y": 4,
@@ -515,11 +515,11 @@ class SearchSpaceTest(unittest.TestCase):
             }
         }
         converted_config = HEBOSearch.convert_search_space(config)
-        hebo_space_config = {
+        hebo_space_config = [
             {
                 "name": "a",
                 "type": "cat",
-                "categories": [2, 3, 4]
+                "categories": ["2", "3", "4"]
             },
             {
                 "name": "b/x",
@@ -528,18 +528,12 @@ class SearchSpaceTest(unittest.TestCase):
                 "ub": 5
             },
             {
-                "name": "b/y",
-                "type": "int",
-                "lb": 4,
-                "ub": 4
-            },
-            {
                 "name": "b/z",
                 "type": "pow",
                 "lb": 1e-4,
                 "ub": 1e-2
             },
-        }
+        ]
         hebo_space = DesignSpace().parse(hebo_space_config)
 
         searcher1 = HEBOSearch(space=converted_config, metric="a", mode="max")
@@ -553,7 +547,7 @@ class SearchSpaceTest(unittest.TestCase):
         config2 = searcher2.suggest("0")
 
         self.assertEqual(config1, config2)
-        self.assertIn(config1["a"], [2, 3, 4])
+        self.assertIn(config1["a"], ["2", "3", "4"])
         self.assertIn(config1["b"]["x"], list(range(5)))
         self.assertLess(1e-4, config1["b"]["z"])
         self.assertLess(config1["b"]["z"], 1e-2)
@@ -562,7 +556,7 @@ class SearchSpaceTest(unittest.TestCase):
         analysis = tune.run(
             _mock_objective, config=config, search_alg=searcher, num_samples=1)
         trial = analysis.trials[0]
-        self.assertIn(trial.config["a"], [2, 3, 4])
+        self.assertIn(trial.config["a"], ["2", "3", "4"])
         self.assertEqual(trial.config["b"]["y"], 4)
 
         # Mixed configs are not supported
