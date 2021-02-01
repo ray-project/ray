@@ -211,6 +211,7 @@ Experimental APIs
 .. automodule:: ray.experimental
    :members:
 
+.. _package-ref-command-line-api:
 
 The Ray Command Line API
 ------------------------

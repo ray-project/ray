@@ -231,6 +231,8 @@ Papers
    :caption: Ray Cluster
 
    cluster/index.rst
+   cluster/quickstart.rst
+   cluster/reference.rst
    cluster/launcher.rst
    cluster/autoscaling.rst
    cluster/deploy.rst

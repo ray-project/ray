@@ -57,8 +57,6 @@ Once the Ray cluster is running, you can manually SSH into it or use provided co
 .. toctree::
 
     /cluster/cloud.rst
-    /cluster/config.rst
-    /cluster/commands.rst
 
 Questions or Issues?
 --------------------
