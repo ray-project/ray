@@ -188,6 +188,9 @@ test_cpp() {
   bazel build --config=ci //cpp:all
   # shellcheck disable=SC2046
   bazel test --config=ci $(./scripts/bazel_export_options) //cpp:all --build_tests_only
+  # run the cpp example
+  bazel run //cpp/example:example
+
 }
 
 test_wheels() {

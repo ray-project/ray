@@ -69,6 +69,14 @@ def multi_node_object_spilling_config(request, tmp_path):
     yield create_object_spilling_config(request, tmp_path)
 
 
+def run_basic_workload():
+    """Run the workload that requires spilling."""
+    arr = np.random.rand(5 * 1024 * 1024)  # 40 MB
+    refs = []
+    refs.append([ray.put(arr) for _ in range(2)])
+    ray.get(ray.put(arr))
+
+
 def is_dir_empty(temp_folder,
                  append_path=ray.ray_constants.DEFAULT_OBJECT_PREFIX):
     # append_path is used because the file based spilling will append
@@ -109,6 +117,68 @@ def test_url_generation_and_parse():
     assert parsed_result.base_url == url
     assert parsed_result.offset == offset
     assert parsed_result.size == size
+
+
+@pytest.mark.skipif(
+    platform.system() == "Windows", reason="Failing on Windows.")
+def test_default_config(shutdown_only):
+    ray.init(num_cpus=0, object_store_memory=75 * 1024 * 1024)
+    # Make sure the object spilling configuration is properly set.
+    config = json.loads(
+        ray.worker._global_node._config["object_spilling_config"])
+    assert config["type"] == "filesystem"
+    assert (config["params"]["directory_path"] ==
+            ray.worker._global_node._session_dir)
+    # Make sure the basic workload can succeed.
+    run_basic_workload()
+    ray.shutdown()
+
+    # Make sure config is not initalized if spilling is not enabled..
+    ray.init(
+        num_cpus=0,
+        object_store_memory=75 * 1024 * 1024,
+        _system_config={
+            "automatic_object_spilling_enabled": False,
+            "object_store_full_delay_ms": 100
+        })
+    assert "object_spilling_config" not in ray.worker._global_node._config
+    with pytest.raises(ray.exceptions.ObjectStoreFullError):
+        run_basic_workload()
+    ray.shutdown()
+
+    # Make sure when we use a different config, it is reflected.
+    ray.init(
+        num_cpus=0,
+        _system_config={
+            "object_spilling_config": (
+                json.dumps(mock_distributed_fs_object_spilling_config))
+        })
+    config = json.loads(
+        ray.worker._global_node._config["object_spilling_config"])
+    assert config["type"] == "mock_distributed_fs"
+
+
+@pytest.mark.skipif(
+    platform.system() == "Windows", reason="Failing on Windows.")
+def test_default_config_cluster(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=0)
+    ray.init(cluster.address)
+    worker_nodes = []
+    worker_nodes.append(
+        cluster.add_node(num_cpus=1, object_store_memory=75 * 1024 * 1024))
+    cluster.wait_for_nodes()
+
+    # Run the basic spilling workload on both
+    # worker nodes and make sure they are working.
+    @ray.remote
+    def task():
+        arr = np.random.rand(5 * 1024 * 1024)  # 40 MB
+        refs = []
+        refs.append([ray.put(arr) for _ in range(2)])
+        ray.get(ray.put(arr))
+
+    ray.get([task.remote() for _ in range(2)])
 
 
 @pytest.mark.skipif(
@@ -690,9 +760,7 @@ import json
 import os
 import signal
 import numpy as np
-
 import ray
-
 ray.init(
     object_store_memory=75 * 1024 * 1024,
     _system_config={{
@@ -709,7 +777,6 @@ ray.init(
     }})
 arr = np.random.rand(1024 * 1024)  # 8 MB data
 replay_buffer = []
-
 # Spill lots of objects
 for _ in range(30):
     ref = None
