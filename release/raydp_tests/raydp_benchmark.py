@@ -17,46 +17,69 @@ def load(filename, num_bytes_per_partition, repartition):
     if repartition:
         nrows = num_bytes_per_partition // 8
         print("Allocating dataset with {} rows".format(nrows))
-        dataset = pd.DataFrame(np.random.randint(0, np.iinfo(np.int64).max, size=(nrows, 1), dtype=np.int64), columns=['a'])
+        dataset = pd.DataFrame(
+            np.random.randint(
+                0, np.iinfo(np.int64).max, size=(nrows, 1), dtype=np.int64),
+            columns=['a'])
     else:
         nrows = num_bytes_per_partition // (8 * 2)
         print("Allocating dataset with {} rows".format(nrows))
-        dataset = pd.DataFrame(np.random.randint(0, 100, size=(nrows, 2), dtype=np.int64), columns=['a', 'b'])
+        dataset = pd.DataFrame(
+            np.random.randint(0, 100, size=(nrows, 2), dtype=np.int64),
+            columns=['a', 'b'])
     print("Done allocating")
     dataset.to_parquet(filename, flavor="spark")
     print("Done writing to disk")
     return filename
 
 
-def load_dataset(spark, npartitions, num_bytes_per_partition, repartition, base):
+def load_dataset(spark, npartitions, num_bytes_per_partition, repartition,
+                 base):
     op_name = "repartition" if repartition else "groupby"
     filenames = [
         load.remote(
-            os.path.join(base, "df-{}-{}-{}.parquet".format(op_name, num_bytes_per_partition, i)),
+            os.path.join(
+                base, "df-{}-{}-{}.parquet".format(
+                    op_name, num_bytes_per_partition, i)),
             num_bytes_per_partition,
             repartition,
         ) for i in range(npartitions)
     ]
     ray.wait(filenames, num_returns=len(filenames))
 
-    return spark.read.parquet(os.path.join(base, "df-{}-{}-*.parquet".format(op_name, num_bytes_per_partition)))
+    return spark.read.parquet(
+        os.path.join(
+            base, "df-{}-{}-*.parquet".format(op_name,
+                                              num_bytes_per_partition)))
 
 
-def load_dataset_before_spark(npartitions, num_bytes_per_partition, repartition, base):
+def load_dataset_before_spark(npartitions, num_bytes_per_partition,
+                              repartition, base):
     op_name = "repartition" if repartition else "groupby"
     filenames = [
         load.remote(
-            os.path.join(base, "df-{}-{}-{}.parquet".format(op_name, num_bytes_per_partition, i)),
+            os.path.join(
+                base, "df-{}-{}-{}.parquet".format(
+                    op_name, num_bytes_per_partition, i)),
             num_bytes_per_partition,
             repartition,
         ) for i in range(npartitions)
     ]
     ray.wait(filenames, num_returns=len(filenames))
 
-    return os.path.join(base, "df-{}-{}-*.parquet".format(op_name, num_bytes_per_partition))
+    return os.path.join(
+        base, "df-{}-{}-*.parquet".format(op_name, num_bytes_per_partition))
 
 
-def trial(spark, nbytes, npartitions, repartition, range_repartition, generate_only, base, ntrials, input_file=None):
+def trial(spark,
+          nbytes,
+          npartitions,
+          repartition,
+          range_repartition,
+          generate_only,
+          base,
+          ntrials,
+          input_file=None):
     num_bytes_per_partition = nbytes // npartitions
     if not range_repartition:
         df = spark.read.parquet(input_file)
@@ -76,7 +99,9 @@ def trial(spark, nbytes, npartitions, repartition, range_repartition, generate_o
             df.repartition(npartitions).write.parquet(out, mode="overwrite")
         elif range_repartition:
             print(f"nbytes: {nbytes}, npartitions: {npartitions}")
-            spark.range(nbytes // 8, numPartitions=npartitions).repartition(npartitions).count()
+            spark.range(
+                nbytes // 8,
+                numPartitions=npartitions).repartition(npartitions).count()
         else:
             df.groupBy("b").avg("a").collect()
 
@@ -130,9 +155,11 @@ if __name__ == '__main__':
     parser.add_argument("--clear-old-data", action="store_true")
     parser.add_argument("--spark-local-dir", type=str, default="/tmp")
     parser.add_argument("--spark-driver-memory", type=str, default="1g")
-    parser.add_argument("--spark-python-worker-memory", type=str, default="512m")
+    parser.add_argument(
+        "--spark-python-worker-memory", type=str, default="512m")
     parser.add_argument("--spark-memory-fraction", type=float, default=0.6)
-    parser.add_argument("--spark-memory-storage-fraction", type=float, default=0.5)
+    parser.add_argument(
+        "--spark-memory-storage-fraction", type=float, default=0.5)
     args = parser.parse_args()
 
     if args.s3:
@@ -168,9 +195,13 @@ if __name__ == '__main__':
 
         if not args.range_repartition:
             warmup_num_bytes_per_partition = warmup_nbytes // warmup_npartitions
-            warmup_input_file = load_dataset_before_spark(warmup_npartitions, warmup_num_bytes_per_partition, args.repartition, base)
+            warmup_input_file = load_dataset_before_spark(
+                warmup_npartitions, warmup_num_bytes_per_partition,
+                args.repartition, base)
             num_bytes_per_partition = args.nbytes // args.npartitions
-            input_file = load_dataset_before_spark(args.npartitions, num_bytes_per_partition, args.repartition, base)
+            input_file = load_dataset_before_spark(args.npartitions,
+                                                   num_bytes_per_partition,
+                                                   args.repartition, base)
 
         app_name = "Shuffle Benchmark on RayDP"
         num_executors = args.num_executors
@@ -226,7 +257,10 @@ if __name__ == '__main__':
             os.remove(f)
 
     print("Starting warmup trials...")
-    print(system, trial(spark, 1000, 10, args.repartition, args.range_repartition, args.generate_only, base, 10, warmup_input_file))
+    print(
+        system,
+        trial(spark, 1000, 10, args.repartition, args.range_repartition,
+              args.generate_only, base, 10, warmup_input_file))
     print("Warmup done.")
 
     npartitions = args.npartitions
@@ -234,7 +268,16 @@ if __name__ == '__main__':
         npartitions = args.nbytes // args.max_partition_size
 
     print("Starting real trials...")
-    output = trial(spark, args.nbytes, npartitions, args.repartition, args.range_repartition, args.generate_only, base, args.ntrials, input_file=input_file)
+    output = trial(
+        spark,
+        args.nbytes,
+        npartitions,
+        args.repartition,
+        args.range_repartition,
+        args.generate_only,
+        base,
+        args.ntrials,
+        input_file=input_file)
     print("Trials done.")
     print("{} mean over {} trials: {} +- {}".format(system, len(output),
                                                     np.mean(output),
@@ -254,11 +297,13 @@ if __name__ == '__main__':
         if write_header:
             writer.writeheader()
         row = {
-                "operation": "repartition" if args.repartition else "range_repartition" if args.range_repartition else "groupby",
-                "num_nodes": args.num_nodes,
-                "nbytes": args.nbytes,
-                "npartitions": npartitions,
-                }
+            "operation": "repartition"
+            if args.repartition else "range_repartition"
+            if args.range_repartition else "groupby",
+            "num_nodes": args.num_nodes,
+            "nbytes": args.nbytes,
+            "npartitions": npartitions,
+        }
         for output in output:
             row["system"] = system
             row["duration"] = output
