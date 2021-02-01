@@ -822,7 +822,7 @@ class DockerCommandRunner(CommandRunnerInterface):
         if (not container_running) or requires_re_init:
             # Get home directory
             image_env = self.ssh_command_runner.run(
-                f"{self.docker_cmd} inspect -f '{{json .Config.Env}}' " +
+                f"{self.docker_cmd} " + "inspect -f '{{json .Config.Env}}' " +
                 specific_image,
                 with_output=True).decode().strip()
             home_directory = "/root"
@@ -867,7 +867,7 @@ class DockerCommandRunner(CommandRunnerInterface):
             return []
 
         runtime_output = self.ssh_command_runner.run(
-            f"{self.docker_cmd} info -f '{{.Runtimes}}' ",
+            f"{self.docker_cmd} " + "info -f '{{.Runtimes}}' ",
             with_output=True).decode().strip()
         if "nvidia-container-runtime" in runtime_output:
             try:

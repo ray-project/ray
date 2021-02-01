@@ -252,7 +252,7 @@
                 "type": "boolean",
                 "description": "Use 'podman' command in place of 'docker'",
                 "default": false
-              }
+                }
             }
         },
         "head_node_type": {
