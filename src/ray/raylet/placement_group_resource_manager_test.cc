@@ -61,7 +61,7 @@ class OldPlacementGroupResourceManagerTest : public ::testing::Test {
 
 TEST_F(OldPlacementGroupResourceManagerTest, TestPrepareBundleResource) {
   // 1. create bundle spec.
-  auto group_id = PlacementGroupID::FromRandom();
+  auto group_id = PlacementGroupID::Of(JobID::FromInt(1));
   std::unordered_map<std::string, double> unit_resource;
   unit_resource.insert({"CPU", 1.0});
   auto bundle_spec = Mocker::GenBundleCreation(group_id, 1, unit_resource);
@@ -84,7 +84,7 @@ TEST_F(OldPlacementGroupResourceManagerTest, TestPrepareBundleResource) {
 
 TEST_F(OldPlacementGroupResourceManagerTest, TestPrepareBundleWithInsufficientResource) {
   // 1. create bundle spec.
-  auto group_id = PlacementGroupID::FromRandom();
+  auto group_id = PlacementGroupID::Of(JobID::FromInt(1));
   std::unordered_map<std::string, double> unit_resource;
   unit_resource.insert({"CPU", 2.0});
   auto bundle_spec = Mocker::GenBundleCreation(group_id, 1, unit_resource);
@@ -98,7 +98,7 @@ TEST_F(OldPlacementGroupResourceManagerTest, TestPrepareBundleWithInsufficientRe
 
 TEST_F(OldPlacementGroupResourceManagerTest, TestCommitBundleResource) {
   // 1. create bundle spec.
-  auto group_id = PlacementGroupID::FromRandom();
+  auto group_id = PlacementGroupID::Of(JobID::FromInt(1));
   std::unordered_map<std::string, double> unit_resource;
   unit_resource.insert({"CPU", 1.0});
   auto bundle_spec = Mocker::GenBundleCreation(group_id, 1, unit_resource);
@@ -125,7 +125,7 @@ TEST_F(OldPlacementGroupResourceManagerTest, TestCommitBundleResource) {
 
 TEST_F(OldPlacementGroupResourceManagerTest, TestReturnBundleResource) {
   // 1. create bundle spec.
-  auto group_id = PlacementGroupID::FromRandom();
+  auto group_id = PlacementGroupID::Of(JobID::FromInt(1));
   std::unordered_map<std::string, double> unit_resource;
   unit_resource.insert({"CPU", 1.0});
   auto bundle_spec = Mocker::GenBundleCreation(group_id, 1, unit_resource);
@@ -151,7 +151,7 @@ TEST_F(OldPlacementGroupResourceManagerTest, TestReturnBundleResource) {
 
 TEST_F(OldPlacementGroupResourceManagerTest, TestMultipleBundlesCommitAndReturn) {
   // 1. create two bundles spec.
-  auto group_id = PlacementGroupID::FromRandom();
+  auto group_id = PlacementGroupID::Of(JobID::FromInt(1));
   std::unordered_map<std::string, double> unit_resource;
   unit_resource.insert({"CPU", 1.0});
   auto first_bundle_spec = Mocker::GenBundleCreation(group_id, 1, unit_resource);
@@ -207,7 +207,7 @@ TEST_F(OldPlacementGroupResourceManagerTest, TestMultipleBundlesCommitAndReturn)
 
 TEST_F(OldPlacementGroupResourceManagerTest, TestIdempotencyWithMultiPrepare) {
   // 1. create one bundle spec.
-  auto group_id = PlacementGroupID::FromRandom();
+  auto group_id = PlacementGroupID::Of(JobID::FromInt(1));
   std::unordered_map<std::string, double> unit_resource;
   unit_resource.insert({"CPU", 1.0});
   auto bundle_spec = Mocker::GenBundleCreation(group_id, 1, unit_resource);
@@ -228,7 +228,7 @@ TEST_F(OldPlacementGroupResourceManagerTest, TestIdempotencyWithMultiPrepare) {
 
 TEST_F(OldPlacementGroupResourceManagerTest, TestIdempotencyWithRandomOrder) {
   // 1. create one bundle spec.
-  auto group_id = PlacementGroupID::FromRandom();
+  auto group_id = PlacementGroupID::Of(JobID::FromInt(1));
   std::unordered_map<std::string, double> unit_resource;
   unit_resource.insert({"CPU", 1.0});
   auto bundle_spec = Mocker::GenBundleCreation(group_id, 1, unit_resource);
@@ -291,7 +291,7 @@ class NewPlacementGroupResourceManagerTest : public ::testing::Test {
 
 TEST_F(NewPlacementGroupResourceManagerTest, TestNewPrepareBundleResource) {
   // 1. create bundle spec.
-  auto group_id = PlacementGroupID::FromRandom();
+  auto group_id = PlacementGroupID::Of(JobID::FromInt(1));
   std::unordered_map<std::string, double> unit_resource;
   unit_resource.insert({"CPU", 1.0});
   auto bundle_spec = Mocker::GenBundleCreation(group_id, 1, unit_resource);
@@ -306,7 +306,7 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewPrepareBundleResource) {
 TEST_F(NewPlacementGroupResourceManagerTest,
        TestNewPrepareBundleWithInsufficientResource) {
   // 1. create bundle spec.
-  auto group_id = PlacementGroupID::FromRandom();
+  auto group_id = PlacementGroupID::Of(JobID::FromInt(1));
   std::unordered_map<std::string, double> unit_resource;
   unit_resource.insert({"CPU", 2.0});
   auto bundle_spec = Mocker::GenBundleCreation(group_id, 1, unit_resource);
@@ -320,7 +320,7 @@ TEST_F(NewPlacementGroupResourceManagerTest,
 
 TEST_F(NewPlacementGroupResourceManagerTest, TestNewCommitBundleResource) {
   // 1. create bundle spec.
-  auto group_id = PlacementGroupID::FromRandom();
+  auto group_id = PlacementGroupID::Of(JobID::FromInt(1));
   std::unordered_map<std::string, double> unit_resource;
   unit_resource.insert({"CPU", 1.0});
   auto bundle_spec = Mocker::GenBundleCreation(group_id, 1, unit_resource);
@@ -346,7 +346,7 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewCommitBundleResource) {
 
 TEST_F(NewPlacementGroupResourceManagerTest, TestNewReturnBundleResource) {
   // 1. create bundle spec.
-  auto group_id = PlacementGroupID::FromRandom();
+  auto group_id = PlacementGroupID::Of(JobID::FromInt(1));
   std::unordered_map<std::string, double> unit_resource;
   unit_resource.insert({"CPU", 1.0});
   auto bundle_spec = Mocker::GenBundleCreation(group_id, 1, unit_resource);
@@ -366,7 +366,7 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewReturnBundleResource) {
 
 TEST_F(NewPlacementGroupResourceManagerTest, TestNewMultipleBundlesCommitAndReturn) {
   // 1. create two bundles spec.
-  auto group_id = PlacementGroupID::FromRandom();
+  auto group_id = PlacementGroupID::Of(JobID::FromInt(1));
   std::unordered_map<std::string, double> unit_resource;
   unit_resource.insert({"CPU", 1.0});
   auto first_bundle_spec = Mocker::GenBundleCreation(group_id, 1, unit_resource);
@@ -418,7 +418,7 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewMultipleBundlesCommitAndRetu
 
 TEST_F(NewPlacementGroupResourceManagerTest, TestNewIdempotencyWithMultiPrepare) {
   // 1. create one bundle spec.
-  auto group_id = PlacementGroupID::FromRandom();
+  auto group_id = PlacementGroupID::Of(JobID::FromInt(1));
   std::unordered_map<std::string, double> unit_resource;
   unit_resource.insert({"CPU", 1.0});
   auto bundle_spec = Mocker::GenBundleCreation(group_id, 1, unit_resource);
@@ -444,7 +444,7 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewIdempotencyWithMultiPrepare)
 
 TEST_F(NewPlacementGroupResourceManagerTest, TestNewIdempotencyWithRandomOrder) {
   // 1. create one bundle spec.
-  auto group_id = PlacementGroupID::FromRandom();
+  auto group_id = PlacementGroupID::Of(JobID::FromInt(1));
   std::unordered_map<std::string, double> unit_resource;
   unit_resource.insert({"CPU", 1.0});
   auto bundle_spec = Mocker::GenBundleCreation(group_id, 1, unit_resource);

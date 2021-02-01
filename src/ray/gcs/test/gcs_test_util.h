@@ -100,7 +100,7 @@ struct Mocker {
       rpc::PlacementStrategy strategy, const JobID &job_id, const ActorID &actor_id) {
     PlacementGroupSpecBuilder builder;
 
-    auto placement_group_id = PlacementGroupID::FromRandom();
+    auto placement_group_id = PlacementGroupID::Of(job_id);
     builder.SetPlacementGroupSpec(placement_group_id, name, bundles, strategy,
                                   /* is_detached */ false, job_id, actor_id,
                                   /* is_creator_detached */ false);

@@ -241,6 +241,22 @@ JobID JobID::FromInt(uint32_t value) {
       std::string(reinterpret_cast<const char *>(data.data()), data.size()));
 }
 
+PlacementGroupID PlacementGroupID::Of(const JobID &job_id) {
+  // No need to set transport type for a random object id.
+  // No need to assign put_index/return_index bytes.
+  std::string data(PlacementGroupID::kUniqueBytesLength, 0);
+  FillRandom(&data);
+  std::copy_n(job_id.Data(), JobID::kLength, std::back_inserter(data));
+  RAY_CHECK(data.size() == kLength);
+  return PlacementGroupID::FromBinary(data);
+}
+
+JobID PlacementGroupID::JobId() const {
+  RAY_CHECK(!IsNil());
+  return JobID::FromBinary(std::string(
+      reinterpret_cast<const char *>(this->Data() + kUniqueBytesLength), JobID::kLength));
+}
+
 #define ID_OSTREAM_OPERATOR(id_type)                              \
   std::ostream &operator<<(std::ostream &os, const id_type &id) { \
     if (id.IsNil()) {                                             \

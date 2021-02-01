@@ -336,7 +336,12 @@ cdef class PlacementGroupID(BaseID):
 
     @classmethod
     def from_random(cls):
-        return cls(CPlacementGroupID.FromRandom().Binary())
+        return cls(os.urandom(CPlacementGroupID.Size()))
+
+    @classmethod
+    def of(cls, job_id):
+        assert isinstance(job_id, JobID)
+        return cls(CPlacementGroupID.Of(CJobID.FromBinary(job_id.binary())).Binary())
 
     @classmethod
     def nil(cls):

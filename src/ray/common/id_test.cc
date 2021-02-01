@@ -99,6 +99,27 @@ TEST(HashTest, TestNilHash) {
   ASSERT_NE(id1.Hash(), id2.Hash());
 }
 
+TEST(PlacementGroupIDTest, TestPlacementGroup) {
+  {
+    // test from binary
+    PlacementGroupID placement_group_id_1 = PlacementGroupID::Of(JobID::FromInt(1));
+    const auto placement_group_id_1_binary = placement_group_id_1.Binary();
+    const auto placement_group_id_2 =
+        PlacementGroupID::FromBinary(placement_group_id_1_binary);
+    ASSERT_EQ(placement_group_id_1, placement_group_id_2);
+    const auto placement_group_id_1_hex = placement_group_id_1.Hex();
+    const auto placement_group_id_3 = PlacementGroupID::FromHex(placement_group_id_1_hex);
+    ASSERT_EQ(placement_group_id_1, placement_group_id_3);
+  }
+
+  {
+    // test get job id
+    auto job_id = JobID::FromInt(1);
+    const PlacementGroupID placement_group_id = PlacementGroupID::Of(job_id);
+    ASSERT_EQ(job_id, placement_group_id.JobId());
+  }
+}
+
 }  // namespace ray
 
 int main(int argc, char **argv) {
