@@ -700,8 +700,8 @@ class DockerCommandRunner(CommandRunnerInterface):
                 ]
             else:
                 install_commands = [
-                    "sudo apt - get update",
-                    "sudo apt - get - y install podman"
+                    "sudo apt-get update",
+                    "sudo apt-get - y install podman"
                 ]
 
             logger.error(
