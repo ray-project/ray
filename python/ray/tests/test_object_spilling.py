@@ -273,7 +273,7 @@ def test_spill_during_get(object_spilling_config, shutdown_only):
 
     @ray.remote
     def f():
-        return np.random.rand(10 * 1024 * 1024)
+        return np.zeros(10 * 1024 * 1024)
 
     ids = []
     for i in range(10):
