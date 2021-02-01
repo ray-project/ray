@@ -36,6 +36,7 @@ def test_num_clients():
         assert isinstance(info3["ray_version"], str), info3
         assert isinstance(info3["ray_commit"], str), info3
         assert isinstance(info3["python_version"], str), info3
+        assert isinstance(info3["protocol_version"], str), info3
         api3.disconnect()
     finally:
         ray_client_server.shutdown_with_server(server)
