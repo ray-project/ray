@@ -1189,19 +1189,23 @@ def start_dashboard(require_dashboard,
             dashboard_url = f"{host}:{port}"
         else:
             dashboard_url = None
+            dashboard_returncode = None
             for _ in range(20):
                 dashboard_url = redis_client.get(
                     ray_constants.REDIS_KEY_DASHBOARD)
                 if dashboard_url is not None:
                     dashboard_url = dashboard_url.decode("utf-8")
                     break
-                if process_info.process.poll() is not None:
+                dashboard_returncode = process_info.process.poll()
+                if dashboard_returncode is not None:
                     break
                 time.sleep(1)
             if dashboard_url is None:
                 dashboard_log = os.path.join(logdir, "dashboard.log")
-                raise Exception(f"Failed to start dashboard, please check "
-                                f"{dashboard_log} for details.")
+                returncode_str = (f"return code {dashboard_returncode}, "
+                                  if dashboard_returncode is not None else "")
+                raise Exception(f"Failed to start dashboard, {returncode_str}"
+                                f"please check {dashboard_log} for details.")
 
         logger.info("View the Ray dashboard at {}{}http://{}{}{}".format(
             colorama.Style.BRIGHT, colorama.Fore.GREEN, dashboard_url,

@@ -35,14 +35,16 @@ def setup_static_dir():
         os.path.dirname(os.path.abspath(__file__)), "client", "build")
     module_name = os.path.basename(os.path.dirname(__file__))
     if not os.path.isdir(build_dir):
-        raise OSError(
-            errno.ENOENT, "Dashboard build directory not found. If installing "
-            "from source, please follow the additional steps "
-            "required to build the dashboard"
-            f"(cd python/ray/{module_name}/client "
-            "&& npm install "
-            "&& npm ci "
-            "&& npm run build)", build_dir)
+        client_not_found = "Dashboard build directory not found. " \
+                           "If installing from source, please follow " \
+                           "the additional steps required to build " \
+                           "the dashboard" \
+                           f"(cd python/ray/{module_name}/client " \
+                           "&& npm install " \
+                           "&& npm ci " \
+                           "&& npm run build)", build_dir
+        logger.error("%s", client_not_found)
+        raise OSError(errno.ENOENT, client_not_found, build_dir)
 
     static_dir = os.path.join(build_dir, "static")
     routes.static("/static", static_dir, follow_symlinks=True)
@@ -210,8 +212,9 @@ if __name__ == "__main__":
         redis_client = ray._private.services.create_redis_client(
             args.redis_address, password=args.redis_password)
         traceback_str = ray.utils.format_error_message(traceback.format_exc())
-        message = ("The dashboard on node {} failed with the following "
-                   "error:\n{}".format(platform.uname()[1], traceback_str))
+        message = f"The dashboard on node {platform.uname()[1]} " \
+                  f"failed with the following " \
+                  f"error:\n{traceback_str}"
         ray.utils.push_error_to_driver_through_redis(
             redis_client, ray_constants.DASHBOARD_DIED_ERROR, message)
         if isinstance(e, OSError) and e.errno == errno.ENOENT:
