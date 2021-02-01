@@ -352,6 +352,7 @@ def test_spill_deadlock(object_spilling_config, shutdown_only):
 def test_delete_objects(object_spilling_config, shutdown_only):
     # Limit our object store to 75 MiB of memory.
     object_spilling_config, temp_folder = object_spilling_config
+    address = ray.init(
         object_store_memory=75 * 1024 * 1024,
         _system_config={
             "max_io_workers": 1,
