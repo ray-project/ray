@@ -7,7 +7,7 @@ def test_imported_backend(serve_instance):
     client = serve_instance
 
     backend_class = ImportedBackend("ray.serve.utils.MockImportedBackend")
-    config = BackendConfig(user_config="config")
+    config = BackendConfig(user_config="config", max_batch_size=2)
     client.create_backend(
         "imported", backend_class, "input_arg", config=config)
     client.create_endpoint("imported", backend="imported")
