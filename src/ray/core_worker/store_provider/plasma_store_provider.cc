@@ -225,8 +225,9 @@ Status CoreWorkerPlasmaStoreProvider::FetchAndGetFromPlasmaStore(
   return Status::OK();
 }
 
-Status CoreWorkerPlasmaStoreProvider::GetObjectsFromLocalStore(const std::vector<ObjectID> &object_ids,
-                       std::vector<std::shared_ptr<RayObject>> *results) {
+Status CoreWorkerPlasmaStoreProvider::GetObjectsFromLocalStore(
+    const std::vector<ObjectID> &object_ids,
+    absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results) {
   std::vector<plasma::ObjectBuffer> plasma_results;
   {
     std::lock_guard<std::mutex> guard(store_client_mutex_);
@@ -250,10 +251,7 @@ Status CoreWorkerPlasmaStoreProvider::GetObjectsFromLocalStore(const std::vector
       }
       const auto result_object =
           std::make_shared<RayObject>(data, metadata, std::vector<ObjectID>());
-      results->emplace_back(std::move(result_object));
-    } else {
-      RAY_LOG(ERROR) << "null will be added; " << object_ids[i];
-      results->push_back(nullptr);
+      (*results)[object_id] = result_object;
     }
   }
   return Status::OK();

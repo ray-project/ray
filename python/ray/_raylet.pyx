@@ -899,13 +899,15 @@ cdef class CoreWorker:
         return RayObjectsToDataMetadataPairs(results)
 
     def get_objects_from_local_store(self, object_refs):
-        """Get objects from local plasma store directly instead of passing raylet."""
+        """Get objects from local plasma store directly
+        without a fetch request to raylet."""
         cdef:
             c_vector[shared_ptr[CRayObject]] results
             c_vector[CObjectID] c_object_ids = ObjectRefsToVector(object_refs)
         with nogil:
-            check_status(CCoreWorkerProcess.GetCoreWorker().GetObjectsFromLocalStore(
-                c_object_ids, &results))
+            check_status(
+                CCoreWorkerProcess.GetCoreWorker().GetObjectsFromLocalStore(
+                    c_object_ids, &results))
         return RayObjectsToDataMetadataPairs(results)
 
     def object_exists(self, ObjectRef object_ref):
