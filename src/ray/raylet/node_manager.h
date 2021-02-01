@@ -647,6 +647,16 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   std::unordered_map<SchedulingClass, ordered_set<TaskID>> MakeTasksByClass(
       const std::vector<Task> &tasks) const;
 
+  /// Get pointers to objects stored in plasma. They will be
+  /// released once the returned references go out of scope.
+  ///
+  /// \param[in] object_ids The objects to get.
+  /// \param[out] results The pointers to objects stored in
+  /// plasma.
+  /// \return Whether the request was successful.
+  bool GetObjectsFromPlasma(const std::vector<ObjectID> &object_ids,
+                            std::vector<std::unique_ptr<RayObject>> *results);
+
   ///////////////////////////////////////////////////////////////////////////////////////
   //////////////////// Begin of the override methods of ClusterTaskManager //////////////
   // The following methods are defined in node_manager.task.cc instead of node_manager.cc
