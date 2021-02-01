@@ -1,13 +1,12 @@
 import datetime
+import json
 import functools
 import glob
 import os
 import re
-import runpy
 import shutil
+import subprocess
 import sys
-from contextlib import redirect_stdout
-from io import StringIO
 from typing import List, Tuple
 
 import docker
@@ -15,7 +14,7 @@ import docker
 print = functools.partial(print, file=sys.stderr, flush=True)
 DOCKER_USERNAME = "raytravisbot"
 DOCKER_CLIENT = None
-PYTHON_WHL_VERSION = "cp37m"
+PYTHON_WHL_VERSION = "cp3"
 
 DOCKER_HUB_DESCRIPTION = {
     "base-deps": ("Internal Image, refer to "
@@ -28,6 +27,8 @@ DOCKER_HUB_DESCRIPTION = {
         "Deprecated image, please use: "
         "https://hub.docker.com/repository/docker/rayproject/ray-ml")
 }
+
+PY_MATRIX = {"-py36": "3.6.12", "-py37": "3.7.7", "-py38": "3.8.5"}
 
 
 def _merge_build():
@@ -52,28 +53,30 @@ def _get_root_dir():
     return os.path.join(_get_curr_dir(), "../../")
 
 
-def _get_wheel_name():
-    matches = glob.glob(
-        f"{_get_root_dir()}/.whl/*{PYTHON_WHL_VERSION}-manylinux*")
-    assert len(matches) == 1, (
-        f"Found ({len(matches)}) matches "
-        f"'*{PYTHON_WHL_VERSION}-manylinux*' instead of 1")
-    return os.path.basename(matches[0])
+def _get_wheel_name(minor_version_number):
+    if minor_version_number:
+        matches = glob.glob(f"{_get_root_dir()}/.whl/*{PYTHON_WHL_VERSION}"
+                            f"{minor_version_number}*-manylinux*")
+        assert len(matches) == 1, (
+            f"Found ({len(matches)}) matches for '*{PYTHON_WHL_VERSION}"
+            f"{minor_version_number}*-manylinux*' instead of 1")
+        return os.path.basename(matches[0])
+    else:
+        matches = glob.glob(
+            f"{_get_root_dir()}/.whl/*{PYTHON_WHL_VERSION}*-manylinux*")
+        return [os.path.basename(i) for i in matches]
 
 
 def _docker_affected():
-    result = StringIO()
-    with redirect_stdout(result):
-        runpy.run_path(
-            f"{_get_curr_dir()}/determine_tests_to_run.py",
-            run_name="__main__")
-    variable_definitions = result.getvalue().split()
-    env_var_dict = {
-        x.split("=")[0]: x.split("=")[1]
-        for x in variable_definitions
-    }
-    affected = env_var_dict["RAY_CI_DOCKER_AFFECTED"] == "1" or \
-        env_var_dict["RAY_CI_PYTHON_DEPENDENCIES_AFFECTED"] == "1"
+    proc = subprocess.run(
+        [
+            sys.executable, f"{_get_curr_dir()}/determine_tests_to_run.py",
+            "--output=json"
+        ],
+        capture_output=True)
+    affected_env_var_list = json.loads(proc.stdout)
+    affected = ("RAY_CI_DOCKER_AFFECTED" in affected_env_var_list or
+                "RAY_CI_PYTHON_DEPENDENCIES_AFFECTED" in affected_env_var_list)
     print(f"Docker affected: {affected}")
     return affected
 
@@ -81,64 +84,76 @@ def _docker_affected():
 def _build_cpu_gpu_images(image_name, no_cache=True) -> List[str]:
     built_images = []
     for gpu in ["-cpu", "-gpu"]:
-        build_args = {}
-        if image_name == "base-deps":
-            build_args["BASE_IMAGE"] = (
-                "nvidia/cuda:10.1-cudnn7-runtime-ubuntu18.04"
-                if gpu == "-gpu" else "ubuntu:focal")
-        else:
-            build_args["GPU"] = gpu
+        for py_name, py_version in PY_MATRIX.items():
+            build_args = {}
+            build_args["PYTHON_VERSION"] = py_version
+            # I.e. "-py36"[-1] == 6
+            build_args["PYTHON_MINOR_VERSION"] = py_name[-1]
 
-        if "ray" in image_name:
-            build_args["WHEEL_PATH"] = f".whl/{_get_wheel_name()}"
-
-        tagged_name = f"rayproject/{image_name}:nightly{gpu}"
-        for i in range(2):
-            output = DOCKER_CLIENT.api.build(
-                path=os.path.join(_get_root_dir(), "docker", image_name),
-                tag=tagged_name,
-                nocache=no_cache,
-                buildargs=build_args)
-
-            full_output = ""
-            try:
-                start = datetime.datetime.now()
-                current_iter = start
-                for line in output:
-                    if datetime.datetime.now(
-                    ) - current_iter >= datetime.timedelta(minutes=5):
-                        current_iter = datetime.datetime.now()
-                        elapsed = datetime.datetime.now() - start
-                        print(f"Still building {tagged_name} after "
-                              f"{elapsed.seconds} seconds")
-                    full_output += line.decode("utf-8")
-            except Exception as e:
-                print(f"FAILURE with error {e}")
-
-            if len(DOCKER_CLIENT.api.images(tagged_name)) == 0:
-                print(f"ERROR building: {tagged_name} & error below:")
-                print(full_output)
-                if (i == 1):
-                    raise Exception("FAILED TO BUILD IMAGE")
-                print("TRYING AGAIN")
+            if image_name == "base-deps":
+                build_args["BASE_IMAGE"] = (
+                    "nvidia/cuda:11.0-cudnn8-runtime-ubuntu18.04"
+                    if gpu == "-gpu" else "ubuntu:focal")
             else:
-                break
+                # NOTE(ilr) This is a bit of an abuse of the name "GPU"
+                build_args["GPU"] = f"{py_name}{gpu}"
 
-        print("BUILT: ", tagged_name)
-        built_images.append(tagged_name)
+            if image_name in ["ray", "ray-deps"]:
+                wheel = _get_wheel_name(build_args["PYTHON_MINOR_VERSION"])
+                build_args["WHEEL_PATH"] = f".whl/{wheel}"
+
+            tagged_name = f"rayproject/{image_name}:nightly{py_name}{gpu}"
+            for i in range(2):
+                cleanup = DOCKER_CLIENT.containers.prune().get(
+                    "SpaceReclaimed")
+                if cleanup is not None:
+                    print(f"Cleaned up {cleanup / (2**20)}MB")
+                output = DOCKER_CLIENT.api.build(
+                    path=os.path.join(_get_root_dir(), "docker", image_name),
+                    tag=tagged_name,
+                    nocache=no_cache,
+                    buildargs=build_args)
+
+                full_output = ""
+                try:
+                    start = datetime.datetime.now()
+                    current_iter = start
+                    for line in output:
+                        if datetime.datetime.now(
+                        ) - current_iter >= datetime.timedelta(minutes=5):
+                            current_iter = datetime.datetime.now()
+                            elapsed = datetime.datetime.now() - start
+                            print(f"Still building {tagged_name} after "
+                                  f"{elapsed.seconds} seconds")
+                        full_output += line.decode("utf-8")
+                except Exception as e:
+                    print(f"FAILURE with error {e}")
+
+                if len(DOCKER_CLIENT.api.images(tagged_name)) == 0:
+                    print(f"ERROR building: {tagged_name} & error below:")
+                    print(full_output)
+                    if (i == 1):
+                        raise Exception("FAILED TO BUILD IMAGE")
+                    print("TRYING AGAIN")
+                else:
+                    break
+
+            print("BUILT: ", tagged_name)
+            built_images.append(tagged_name)
     return built_images
 
 
 def copy_wheels():
     root_dir = _get_root_dir()
-    wheel = _get_wheel_name()
-    source = os.path.join(root_dir, ".whl", wheel)
-    ray_dst = os.path.join(root_dir, "docker/ray/.whl/")
-    ray_dep_dst = os.path.join(root_dir, "docker/ray-deps/.whl/")
-    os.makedirs(ray_dst, exist_ok=True)
-    shutil.copy(source, ray_dst)
-    os.makedirs(ray_dep_dst, exist_ok=True)
-    shutil.copy(source, ray_dep_dst)
+    wheels = _get_wheel_name(None)
+    for wheel in wheels:
+        source = os.path.join(root_dir, ".whl", wheel)
+        ray_dst = os.path.join(root_dir, "docker/ray/.whl/")
+        ray_dep_dst = os.path.join(root_dir, "docker/ray-deps/.whl/")
+        os.makedirs(ray_dst, exist_ok=True)
+        shutil.copy(source, ray_dst)
+        os.makedirs(ray_dep_dst, exist_ok=True)
+        shutil.copy(source, ray_dep_dst)
 
 
 def build_or_pull_base_images(is_docker_affected: bool) -> List[str]:
@@ -239,31 +254,48 @@ def push_and_tag_images(push_base_images: bool):
         image_list.extend(["base-deps", "ray-deps"])
 
     for image in image_list:
-        full_image = f"rayproject/{image}"
+        for py_version in PY_MATRIX.keys():
+            full_image = f"rayproject/{image}"
 
-        # Generate <IMAGE_NAME>:nightly from nightly-cpu
-        DOCKER_CLIENT.api.tag(
-            image=f"{full_image}:nightly-cpu",
-            repository=full_image,
-            tag="nightly")
-
-        for arch_tag in ["-cpu", "-gpu", ""]:
-            full_arch_tag = f"nightly{arch_tag}"
-            # Do not tag release builds because they are no longer up to date
-            # after the branch cut.
-            if not _release_build():
-                # Tag and push rayproject/<image>:nightly<arch_tag>
-                docker_push(full_image, full_arch_tag)
-
-            # Ex: specific_tag == "1.0.1" or "<sha>" or "<date>"
-            specific_tag = get_new_tag(
-                full_arch_tag, date_tag if "-deps" in image else sha_tag)
-            # Tag and push rayproject/<image>:<sha/date><arch_tag>
+            # Tag "nightly-py3x" from "nightly-py3x-cpu"
             DOCKER_CLIENT.api.tag(
-                image=f"{full_image}:{full_arch_tag}",
+                image=f"{full_image}:nightly{py_version}-cpu",
                 repository=full_image,
-                tag=specific_tag)
-            docker_push(full_image, specific_tag)
+                tag=f"nightly{py_version}")
+
+            for arch_tag in ["-cpu", "-gpu", ""]:
+                full_arch_tag = f"nightly{py_version}{arch_tag}"
+                # Do not tag release builds because they are no longer up to
+                # date after the branch cut.
+                if not _release_build():
+                    # Tag and push rayproject/<image>:nightly<arch_tag>
+                    docker_push(full_image, full_arch_tag)
+
+                # Ex: specific_tag == "1.0.1" or "<sha>" or "<date>"
+                specific_tag = get_new_tag(
+                    full_arch_tag, date_tag if "-deps" in image else sha_tag)
+
+                # Tag and push rayproject/<image>:<sha/date><py_tag><arch_tag>
+                DOCKER_CLIENT.api.tag(
+                    image=f"{full_image}:{full_arch_tag}",
+                    repository=full_image,
+                    tag=specific_tag)
+                docker_push(full_image, specific_tag)
+
+                if "-py37" in py_version:
+                    non_python_specific_tag = specific_tag.replace("-py37", "")
+                    DOCKER_CLIENT.api.tag(
+                        image=f"{full_image}:{full_arch_tag}",
+                        repository=full_image,
+                        tag=non_python_specific_tag)
+                    docker_push(full_image, non_python_specific_tag)
+
+                    non_python_nightly_tag = full_arch_tag.replace("-py37", "")
+                    DOCKER_CLIENT.api.tag(
+                        image=f"{full_image}:{full_arch_tag}",
+                        repository=full_image,
+                        tag=non_python_nightly_tag)
+                    docker_push(full_image, non_python_nightly_tag)
 
 
 # Push infra here:
@@ -306,6 +338,14 @@ def push_readmes():
 
 if __name__ == "__main__":
     print("RUNNING WITH: ", sys.version)
+    if len(sys.argv) == 2:
+        version_to_drop = sys.argv[1]
+        if version_to_drop == "PY37":
+            PY_MATRIX.pop("-py36")
+            PY_MATRIX.pop("-py38")
+        else:
+            PY_MATRIX.pop("-py37")
+    print("Building the following python versions: ", PY_MATRIX)
     if os.environ.get("TRAVIS") == "true":
         is_docker_affected = _docker_affected()
         if _merge_build() or is_docker_affected:

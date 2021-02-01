@@ -23,6 +23,7 @@ py_test_module_list(
     "test_autoscaling_policy.py",
     "test_basic.py",
     "test_basic_2.py",
+    "test_basic_3.py",
     "test_cancel.py",
     "test_cli.py",
     "test_component_failures_2.py",
@@ -48,6 +49,7 @@ py_test_module_list(
     "test_metrics.py",
     "test_multi_node.py",
     "test_multi_node_2.py",
+    "test_multi_node_3.py",
     "test_multi_tenancy.py",
     "test_multinode_failures.py",
     "test_multinode_failures_2.py",
@@ -173,11 +175,12 @@ py_test_module_list(
     "test_advanced.py",
     "test_basic.py",
     "test_basic_2.py",
+    "test_basic_3.py",
   ],
   size = "medium",
   extra_srcs = SRCS,
   name_suffix = "_client_mode",
-  # TODO(barakmich): py_test will support env in Bazel 4.0.0... 
+  # TODO(barakmich): py_test will support env in Bazel 4.0.0...
   # Until then, we can use tags.
   #env = {"RAY_CLIENT_MODE": "1"},
   tags = ["exclusive", "client_tests"],
