@@ -274,8 +274,10 @@ def maml_loss(policy, model, dist_class, train_batch):
         if "split" in train_batch:
             split = train_batch["split"]
         else:
-            split_shape = (policy.config["inner_adaptation_steps"], policy.config["num_workers"])
-            split_const = int(train_batch["obs"].shape[0] // (split_shape[0] * split_shape[1]))
+            split_shape = (policy.config["inner_adaptation_steps"],
+                           policy.config["num_workers"])
+            split_const = int(train_batch["obs"].shape[0] //
+                              (split_shape[0] * split_shape[1]))
             split = torch.ones(split_shape, dtype=int) * split_const
         policy.loss_obj = MAMLLoss(
             model=model,
@@ -364,4 +366,3 @@ MAMLTorchPolicy = build_policy_class(
     before_init=setup_config,
     after_init=setup_mixins,
     mixins=[KLCoeffMixin])
-
