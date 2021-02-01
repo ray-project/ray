@@ -49,8 +49,10 @@ class InvalidValuesTest(unittest.TestCase):
         # At least one nan, inf, -inf and float
         client = AxClient(random_seed=4321)
         client.create_experiment(
-            parameters=converted_config, objective_name="_metric")
-        searcher = AxSearch(ax_client=client, metric="_metric", mode="max")
+            parameters=converted_config,
+            objective_name="_metric",
+            minimize=False)
+        searcher = AxSearch(ax_client=client)
 
         out = tune.run(
             _invalid_objective,

@@ -1463,8 +1463,8 @@ Status CoreWorker::CreatePlacementGroup(
   builder.SetPlacementGroupSpec(
       placement_group_id, placement_group_creation_options.name,
       placement_group_creation_options.bundles, placement_group_creation_options.strategy,
-      worker_context_.GetCurrentJobID(), worker_context_.GetCurrentActorID(),
-      worker_context_.CurrentActorDetached());
+      placement_group_creation_options.is_detached, worker_context_.GetCurrentJobID(),
+      worker_context_.GetCurrentActorID(), worker_context_.CurrentActorDetached());
   PlacementGroupSpecification placement_group_spec = builder.Build();
   *return_placement_group_id = placement_group_id;
   RAY_LOG(INFO) << "Submitting Placement Group creation to GCS: " << placement_group_id;

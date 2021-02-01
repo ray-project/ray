@@ -4,6 +4,7 @@ import os
 import psutil
 import random
 import platform
+import subprocess
 import sys
 
 import numpy as np
@@ -13,7 +14,7 @@ from ray.ray_constants import (WORKER_PROCESS_TYPE_SPILL_WORKER_IDLE,
                                WORKER_PROCESS_TYPE_RESTORE_WORKER_IDLE)
 from ray.external_storage import (create_url_with_offset,
                                   parse_url_with_offset)
-from ray.test_utils import wait_for_condition
+from ray.test_utils import wait_for_condition, run_string_as_driver
 from ray.internal.internal_api import memory_summary
 
 bucket_name = "object-spilling-test"
@@ -69,6 +70,17 @@ def object_spilling_config(request, tmp_path):
     ])
 def multi_node_object_spilling_config(request, tmp_path):
     yield create_object_spilling_config(request, tmp_path)
+
+
+def is_dir_empty(temp_folder,
+                 append_path=ray.ray_constants.DEFAULT_OBJECT_PREFIX):
+    # append_path is used because the file based spilling will append
+    # new directory path.
+    num_files = 0
+    temp_folder = temp_folder / append_path
+    for path in temp_folder.iterdir():
+        num_files += 1
+    return num_files == 0
 
 
 def test_invalid_config_raises_exception(shutdown_only):
@@ -145,13 +157,7 @@ def test_spilling_not_done_for_pinned_object(object_spilling_config,
     with pytest.raises(ray.exceptions.ObjectStoreFullError):
         ref2 = ray.put(arr)  # noqa
 
-    def is_dir_empty():
-        num_files = 0
-        for path in temp_folder.iterdir():
-            num_files += 1
-        return num_files == 0
-
-    wait_for_condition(is_dir_empty)
+    wait_for_condition(lambda: is_dir_empty(temp_folder))
 
 
 @pytest.mark.skipif(
@@ -229,7 +235,7 @@ def test_spill_objects_automatically(object_spilling_config, shutdown_only):
             ref = ray.put(arr)
             replay_buffer.append(ref)
             solution_buffer.append(arr)
-
+    print("spill done.")
     # randomly sample objects
     for _ in range(500):
         index = random.choice(list(range(buffer_length)))
@@ -346,7 +352,6 @@ def test_spill_deadlock(object_spilling_config, shutdown_only):
 def test_delete_objects(object_spilling_config, shutdown_only):
     # Limit our object store to 75 MiB of memory.
     object_spilling_config, temp_folder = object_spilling_config
-    address = ray.init(
         object_store_memory=75 * 1024 * 1024,
         _system_config={
             "max_io_workers": 1,
@@ -366,16 +371,10 @@ def test_delete_objects(object_spilling_config, shutdown_only):
 
     print("-----------------------------------")
 
-    def is_dir_empty():
-        num_files = 0
-        for path in temp_folder.iterdir():
-            num_files += 1
-        return num_files == 0
-
     del replay_buffer
     del ref
-    wait_for_condition(is_dir_empty)
     assert_spilling_happened(address["redis_address"], restore=False)
+    wait_for_condition(lambda: is_dir_empty(temp_folder))
 
 
 @pytest.mark.skipif(
@@ -411,17 +410,11 @@ def test_delete_objects_delete_while_creating(object_spilling_config,
         sample = ray.get(ref, timeout=0)
         assert np.array_equal(sample, arr)
 
-    def is_dir_empty():
-        num_files = 0
-        for path in temp_folder.iterdir():
-            num_files += 1
-        return num_files == 0
-
     # After all, make sure all objects are killed without race condition.
     del replay_buffer
     del ref
-    wait_for_condition(is_dir_empty, timeout=1000)
     assert_spilling_happened(address["redis_address"])
+    wait_for_condition(lambda: is_dir_empty(temp_folder))
 
 
 @pytest.mark.skipif(
@@ -480,15 +473,9 @@ def test_delete_objects_on_worker_failure(object_spilling_config,
 
     wait_for_condition(wait_until_actor_dead)
 
-    def is_dir_empty():
-        num_files = 0
-        for path in temp_folder.iterdir():
-            num_files += 1
-        return num_files == 0
-
     # After all, make sure all objects are deleted upon worker failures.
-    wait_for_condition(is_dir_empty, timeout=1000)
     assert_spilling_happened(address["redis_address"])
+    wait_for_condition(lambda: is_dir_empty(temp_folder))
 
 
 @pytest.mark.skipif(
@@ -497,6 +484,7 @@ def test_delete_objects_multi_node(multi_node_object_spilling_config,
                                    ray_start_cluster):
     # Limit our object store to 75 MiB of memory.
     object_spilling_config, temp_folder = multi_node_object_spilling_config
+
     cluster = ray_start_cluster
     # Head node.
     cluster.add_node(
@@ -550,19 +538,13 @@ def test_delete_objects_multi_node(multi_node_object_spilling_config,
             return True
         return False
 
-    def is_dir_empty():
-        num_files = 0
-        for path in temp_folder.iterdir():
-            num_files += 1
-        return num_files == 0
-
     # Kill actors to remove all references.
     for actor in actors:
         ray.kill(actor)
         wait_for_condition(lambda: wait_until_actor_dead(actor))
     # The multi node deletion should work.
-    wait_for_condition(is_dir_empty)
     assert_spilling_happened(cluster.address)
+    wait_for_condition(lambda: is_dir_empty(temp_folder))
 
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="Flaky on Windows.")
@@ -603,6 +585,9 @@ def test_fusion_objects(object_spilling_config, shutdown_only):
         assert np.array_equal(sample, solution)
 
     is_test_passing = False
+    # Since we'd like to see the temp directory that stores the files,
+    # we need to append this directory.
+    temp_folder = temp_folder / ray.ray_constants.DEFAULT_OBJECT_PREFIX
     for path in temp_folder.iterdir():
         file_size = path.stat().st_size
         # Make sure there are at least one
@@ -664,9 +649,6 @@ def test_release_during_plasma_fetch(object_spilling_config, shutdown_only):
     do_test_release_resource(object_spilling_config, expect_released=True)
 
 
-@pytest.mark.skip(
-    reason="This hangs due to a deadlock between a worker getting its "
-    "arguments and the node pulling arguments for the next task queued.")
 @pytest.mark.skipif(
     platform.system() == "Windows", reason="Failing on Windows.")
 @pytest.mark.timeout(30)
@@ -782,6 +764,72 @@ def test_io_worker_failures(object_spilling_config, shutdown_only):
 
     # Make sure the second workload can finish.
     run_workload()
+
+
+@pytest.mark.skipif(
+    platform.system() in ["Windows"], reason="Failing on "
+    "Windows and Mac.")
+def test_file_deleted_when_driver_exits(tmp_path, shutdown_only):
+    # Limit our object store to 75 MiB of memory.
+    temp_folder = tmp_path / "spill"
+    temp_folder.mkdir()
+
+    driver = """
+import json
+import os
+import signal
+import numpy as np
+
+import ray
+
+ray.init(
+    object_store_memory=75 * 1024 * 1024,
+    _system_config={{
+        "max_io_workers": 2,
+        "min_spilling_size": 0,
+        "automatic_object_spilling_enabled": True,
+        "object_store_full_delay_ms": 100,
+        "object_spilling_config": json.dumps({{
+            "type": "filesystem",
+            "params": {{
+                "directory_path": "{temp_dir}"
+            }}
+        }}),
+    }})
+arr = np.random.rand(1024 * 1024)  # 8 MB data
+replay_buffer = []
+
+# Spill lots of objects
+for _ in range(30):
+    ref = None
+    while ref is None:
+        ref = ray.put(arr)
+        replay_buffer.append(ref)
+# Send sigterm to itself.
+signum = {signum}
+sig = None
+if signum == 2:
+    sig = signal.SIGINT
+elif signum == 15:
+    sig = signal.SIGTERM
+os.kill(os.getpid(), sig)
+"""
+
+    # Run a driver with sigint.
+    print("Sending sigint...")
+    with pytest.raises(subprocess.CalledProcessError):
+        print(
+            run_string_as_driver(
+                driver.format(temp_dir=str(temp_folder), signum=2)))
+    wait_for_condition(lambda: is_dir_empty(temp_folder, append_path=""))
+
+    # Q: Looks like Sigterm doesn't work with Ray?
+    # print("Sending sigterm...")
+    # # Run a driver with sigterm.
+    # with pytest.raises(subprocess.CalledProcessError):
+    #     print(run_string_as_driver(
+    #         driver.format(temp_dir=str(temp_folder), signum=15)))
+    # wait_for_condition(is_dir_empty, timeout=1000)
 
 
 if __name__ == "__main__":
