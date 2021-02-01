@@ -13,6 +13,7 @@ from ray.util.collective.types import AllReduceOptions, \
     BarrierOptions, Backend, ReduceOptions, BroadcastOptions, \
     AllGatherOptions, ReduceScatterOptions, SendOptions, \
     RecvOptions
+from threading import Lock
 
 logger = logging.getLogger(__name__)
 
@@ -109,7 +110,43 @@ class Rendezvous:
         return uid
 
 
+class StreamPool:
+    """
+    The class that represents a stream pool associated with a device
+
+    Args:
+        size: the size of the pool, which should be fixed across all device
+    """
+    def __init__(self, size):
+        #TODO(Fu): add a lock
+        self.size = size
+        self.pool = [None] * size
+        self.index = 0
+        self.mux = Lock()
+
+    def getStreamFromPool(self):
+        """Get the stream from pool. The function locks first and releases before returning
+
+        Returns:
+            stream (cupy.cuda.Stream): the stream on which the kernel should be placed
+        """
+
+        self.mux.acquire()
+        # Create a new stream if it hasn't been initialized yet
+        if self.pool[self.index] == None:
+            # TODO(Fu): double check whether to set the non_blocking variable
+            self.pool[self.index] = cupy.cuda.Stream(null=False)
+        stream = self.pool[self.index]
+        self.index = (self.index + 1) % self.size
+        self.mux.release()
+        return stream
+    
+    #TODO(Fu): do we need a destructor? check with Hao regarding RAII stuff
+
 class NCCLGroup(BaseGroup):
+
+    POOL_SIZE = 32 # this is the same as in c10
+
     def __init__(self, world_size, rank, group_name):
         """Init an NCCL collective group."""
         super(NCCLGroup, self).__init__(world_size, rank, group_name)
@@ -122,8 +159,8 @@ class NCCLGroup(BaseGroup):
         # record the used GPU IDs.
         self._used_gpu_indices = set()
 
-        # TODO(Fu): implement a stream pool, which could be a fixed size array of lazily created streams
-        #           Then add a map from device to stream pool here. May also need an index tracker map
+        # TODO(Fu): might need an event map
+        self._dev_pool_map = {}
 
         if nccl_util.get_nccl_build_version() < 2000:
             raise RuntimeError("NCCL in Ray requires NCCL >= 2.0.")
@@ -151,6 +188,7 @@ class NCCLGroup(BaseGroup):
         self._barrier_tensor = None
         self._dev_comm_map = None
         self._dev_streams_map = None
+        self._dev_pool_map = None
         super(NCCLGroup, self).destroy_group()
 
     @classmethod
@@ -408,8 +446,6 @@ class NCCLGroup(BaseGroup):
         # Now create the communicators
         actual_world_size = len(device_list) * self.world_size
         comms = [None] * len(device_list)
-        # TODO(Fu): preallocate a stream pool for each device
-        # Add a map from device to stream index to keep track of the pool
         streams = [None] * len(device_list)
         nccl_util.groupStart()
         for i, device in enumerate(device_list):
@@ -419,8 +455,8 @@ class NCCLGroup(BaseGroup):
                     actual_world_size, nccl_uid, actual_rank)
                 # TODO(Fu): get the stream from the pool in the round-robin fashion
                 # Create a new stream, or return the stream in the pool if it has been created
-                # Device detection, or pass
-                streams[i] = cupy.cuda.Stream.null
+                pool: StreamPool = self._dev_pool_map.get(comm_key, StreamPool(self.POOL_SIZE))
+                streams[i] = pool.getStreamFromPool()
                 # Stream(non_blocking=True)
         nccl_util.groupEnd()
         # TODO(Fu): lock
@@ -433,6 +469,7 @@ class NCCLGroup(BaseGroup):
         """Let NCCL streams wait for current streams for every device."""
         # FIXME: This behavior is different from nccl document. It seems like
         # cupy allocate tensors on null streams.
+        # TODO(Fu): nccl document says we need recordStream besides calling this function
         cupy.cuda.Stream.null.synchronize()
 
     def _get_nccl_p2p_communicator(self, comm_key, my_gpu_idx, peer_rank,
@@ -491,8 +528,11 @@ class NCCLGroup(BaseGroup):
         with nccl_util.Device(my_gpu_idx):
             comm = nccl_util.create_nccl_communicator(2, nccl_uid, my_p2p_rank)
             #TODO(Fu): get the stream from pool
-            stream = cupy.cuda.Stream.null
+            pool: StreamPool = self._dev_pool_map.get(comm_key, StreamPool(self.POOL_SIZE))
+            stream = pool.getStreamFromPool()
             # Stream(non_blocking=True)
+        
+        #TODO(Fu): lock and might need to add event
         self._dev_comm_map[comm_key] = [comm]
         self._dev_streams_map[comm_key] = [stream]
         return [comm]
