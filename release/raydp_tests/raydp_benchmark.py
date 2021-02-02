@@ -79,6 +79,7 @@ def trial(spark,
           generate_only,
           base,
           ntrials,
+          out,
           input_file=None):
     num_bytes_per_partition = nbytes // npartitions
     if not range_repartition:
@@ -95,8 +96,8 @@ def trial(spark,
         trial_start = time.time()
 
         if repartition:
-            out = base + f"df-out-repartition-{num_bytes_per_partition}-trial-{i}.parquet"
-            df.repartition(npartitions).write.parquet(out, mode="overwrite")
+            outfile = out + f"df-out-repartition-{num_bytes_per_partition}-trial-{i}.parquet"
+            df.repartition(npartitions).write.parquet(outfile, mode="overwrite")
         elif range_repartition:
             print(f"nbytes: {nbytes}, npartitions: {npartitions}")
             spark.range(
@@ -164,14 +165,17 @@ if __name__ == '__main__':
 
     if args.s3:
         base = "s3a://raydp-shuffle-benchmarks/data"
+        out = "s3a://raydp-shuffle-benchmarks/out"
     elif args.cluster:
         base = "/mnt/disk0/benchmark_scratch"
+        out = "/mnt/disk1/out"
     else:
         base = "data"
+        out = "out"
 
     if args.clear_old_data:
         print(f"Clearing old data from {base}.")
-        files = glob.glob(os.path.join(base, "*.parquet"))
+        files = glob.glob(os.path.join(base, "*.parquet")) + glob.glob(os.path.join(out, "*.parquet"))
         for f in files:
             os.remove(f)
 
@@ -260,7 +264,7 @@ if __name__ == '__main__':
     print(
         system,
         trial(spark, 1000, 10, args.repartition, args.range_repartition,
-              args.generate_only, base, 10, warmup_input_file))
+              args.generate_only, base, 10, out, warmup_input_file))
     print("Warmup done.")
 
     npartitions = args.npartitions
@@ -277,6 +281,7 @@ if __name__ == '__main__':
         args.generate_only,
         base,
         args.ntrials,
+        out,
         input_file=input_file)
     print("Trials done.")
     print("{} mean over {} trials: {} +- {}".format(system, len(output),

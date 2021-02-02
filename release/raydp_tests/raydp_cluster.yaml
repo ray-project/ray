@@ -62,6 +62,7 @@ setup_commands:
     - sudo mkfs -t ext4 /dev/nvme2n1 && sudo mkdir -p /mnt/disk2 && sudo mount /dev/nvme2n1 /mnt/disk2 && sudo chown -R ubuntu:ubuntu /mnt/disk2 && sudo chmod 777 /mnt/disk2
     - sudo mkfs -t ext4 /dev/nvme3n1 && sudo mkdir -p /mnt/disk3 && sudo mount /dev/nvme3n1 /mnt/disk3 && sudo chown -R ubuntu:ubuntu /mnt/disk3 && sudo chmod 777 /mnt/disk3
     - mkdir -p /mnt/disk0/benchmark_scratch && rm -f /mnt/disk0/benchmark_scratch/*.parquet
+    - mkdir -p /mnt/disk1/out && rm -f /mnt/disk1/out/*.parquet
     - sudo mkdir -p /tmp/spark-events && sudo chown -R ubuntu:ubuntu /tmp/spark-events && sudo chmod 777 /tmp/spark-events
 
 # Command to start ray on the head node. You don't need to change this.
