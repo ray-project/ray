@@ -18,8 +18,9 @@ from ray.tune.checkpoint_manager import Checkpoint, CheckpointManager
 # have been defined yet. See https://github.com/ray-project/ray/issues/1716.
 from ray.tune.registry import get_trainable_cls, validate_trainable
 from ray.tune.result import DEFAULT_RESULTS_DIR, DONE, TRAINING_ITERATION
-from ray.tune.resources import PlacementGroupFactory, Resources, \
+from ray.tune.resources import Resources, \
     json_to_resources, resources_to_json
+from ray.tune.utils.placement_groups import PlacementGroupFactory
 from ray.tune.utils.serialization import TuneFunctionEncoder
 from ray.tune.utils.trainable import TrainableUtil
 from ray.tune.utils import date_str, flatten_dict
@@ -388,9 +389,8 @@ class Trial:
             raise ValueError("Cannot update resources while Trial is running.")
         if isinstance(resources, PlacementGroupFactory):
             self.placement_group_factory = resources
-        elif callable(resources):
-            self.placement_group_factory = PlacementGroupFactory(resources)
         else:
+            # Todo: Auto create placement group factory from resource dict
             self.resources = Resources(**resources)
             self.placement_group_factory = None
 

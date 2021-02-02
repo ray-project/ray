@@ -1,20 +1,89 @@
+import json
 from collections import defaultdict
-from typing import Dict, Optional, Set, Tuple
+from inspect import signature
+from typing import Dict, List, Optional, Set, TYPE_CHECKING, Tuple
 import os
 import time
 
 import ray
 from ray import ObjectRef
 from ray.actor import ActorClass
-from ray.tune.resources import PlacementGroupFactory
-from ray.tune.trial import Trial
-from ray.util.placement_group import PlacementGroup
+from ray.util.placement_group import PlacementGroup, placement_group
+
+if TYPE_CHECKING:
+    from ray.tune.trial import Trial
 
 TUNE_MAX_PENDING_TRIALS_PG = int(os.getenv("TUNE_MAX_PENDING_TRIALS_PG", 1000))
 # Seconds we wait for a trial to come up before we make blocking calls
 # to process events
 TUNE_TRIAL_STARTUP_GRACE_PERIOD = float(
     os.getenv("TUNE_TRIAL_STARTUP_GRACE_PERIOD", 10.))
+
+
+class PlacementGroupFactory:
+    """Wrapper class to identify placement group factory methods."""
+
+    def __init__(self,
+                 bundles: List[Dict[str, float]],
+                 strategy: str = "PACK",
+                 *args,
+                 **kwargs):
+        self._bundles = bundles
+        self._strategy = strategy
+        self._args = args
+        self._kwargs = kwargs
+
+        self._hash = None
+        self._bound = None
+
+        self._bind()
+
+    def _bind(self):
+        sig = signature(placement_group)
+        try:
+            self._bound = sig.bind(self._bundles, self._strategy, *self._args,
+                                   **self._kwargs)
+        except Exception as exc:
+            raise RuntimeError(
+                "Invalid definition for placement group factory. Please check "
+                "that you passed valid arguments to the PlacementGroupFactory "
+                "object.") from exc
+
+        # Overwrite args and kwargs with bounded args and kwargs.
+        # This will be the same if one factory was initialized with args
+        # and another one with kwargs.
+        self._args = self._bound.args
+        self._kwargs = self._bound.kwargs
+
+    def __call__(self, *args, **kwargs):
+        return placement_group(self._bundles, self._strategy, *self._args,
+                               **self._kwargs)
+
+    def __eq__(self, other):
+        return self._bound == other._bound
+
+    def __hash__(self):
+        if not self._hash:
+            # Cache hash
+            self._hash = hash(
+                json.dumps(
+                    self.__getstate__(),
+                    sort_keys=True,
+                    indent=0,
+                    ensure_ascii=True))
+        return self._hash
+
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        state.pop("_hash", None)
+        state.pop("_bound", None)
+        return state
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+        self._hash = None
+        self._bound = None
+        self._bind()
 
 
 class PlacementGroupManager:
@@ -41,8 +110,8 @@ class PlacementGroupManager:
                                                      PlacementGroup]] = {}
 
         # Placement groups used by trials
-        self._in_use_pgs: Dict[PlacementGroup, Trial] = {}
-        self._in_use_trials: Dict[Trial, PlacementGroup] = {}
+        self._in_use_pgs: Dict[PlacementGroup, "Trial"] = {}
+        self._in_use_trials: Dict["Trial", PlacementGroup] = {}
 
         # Latest PG staging time to check if still in grace period.
         self._latest_staging_start_time = time.time()
@@ -94,7 +163,7 @@ class PlacementGroupManager:
                 self._staging[ready_pgf].remove(ready_pg)
                 self._ready[ready_pgf].add(ready_pg)
 
-    def get_full_actor_cls(self, trial: Trial,
+    def get_full_actor_cls(self, trial: "Trial",
                            actor_cls: ActorClass) -> Optional[ActorClass]:
         """Get a fully configured actor class.
 
@@ -103,7 +172,7 @@ class PlacementGroupManager:
         `self._ready`.
 
         Args:
-            trial (Trial): Trial object to start
+            trial ("Trial"): "Trial" object to start
             actor_cls: Ray actor class.
 
         Returns:
@@ -147,11 +216,11 @@ class PlacementGroupManager:
         """
         return bool(self._ready[pgf])
 
-    def trial_in_use(self, trial: Trial):
+    def trial_in_use(self, trial: "Trial"):
         return trial in self._in_use_trials
 
-    def clean_trial_placement_group(self,
-                                    trial: Trial) -> Optional[PlacementGroup]:
+    def clean_trial_placement_group(
+            self, trial: "Trial") -> Optional[PlacementGroup]:
         """Remove reference to placement groups associated with a trial.
 
         Returns an associated placement group. If the trial was scheduled, this
@@ -161,7 +230,7 @@ class PlacementGroupManager:
         group that is not yet being used by another trial.
 
         Args:
-            trial (Trial): Trial object.
+            trial ("Trial"): "Trial" object.
 
         Returns:
             PlacementGroup or None.
@@ -172,11 +241,11 @@ class PlacementGroupManager:
         trial_pg = None
 
         if trial in self._in_use_trials:
-            # Trial was in use. Just return its placement group.
+            # "Trial" was in use. Just return its placement group.
             trial_pg = self._in_use_trials.pop(trial)
             self._in_use_pgs.pop(trial_pg)
         else:
-            # Trial was not in use. If there are pending placement groups
+            # "Trial" was not in use. If there are pending placement groups
             # in staging, pop a random one.
             if self._staging[pgf]:
                 trial_pg = self._staging[pgf].pop()

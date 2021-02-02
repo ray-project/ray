@@ -13,7 +13,7 @@ from ray.tune.suggest import BasicVariantGenerator
 from ray.tune.trial import Trial, Checkpoint
 from ray.tune.resources import Resources
 from ray.cluster_utils import Cluster
-from ray.util import placement_group
+from ray.tune.utils.placement_groups import PlacementGroupFactory
 
 
 class RayTrialExecutorTest(unittest.TestCase):
@@ -334,11 +334,11 @@ class RayExecutorPlacementGroupTest(unittest.TestCase):
         def train(config):
             tune.report(metric=0, resources=ray.available_resources())
 
-        def placement_group_factory():
-            head_bundle = {"CPU": 1, "GPU": 0, "custom": 4}
-            child_bundle = {"CPU": 2, "GPU": 1, "custom": 3}
+        head_bundle = {"CPU": 1, "GPU": 0, "custom": 4}
+        child_bundle = {"CPU": 2, "GPU": 1, "custom": 3}
 
-            return placement_group([head_bundle, child_bundle, child_bundle])
+        placement_group_factory = PlacementGroupFactory(
+            [head_bundle, child_bundle, child_bundle])
 
         out = tune.run(train, resources_per_trial=placement_group_factory)
 
@@ -351,6 +351,47 @@ class RayExecutorPlacementGroupTest(unittest.TestCase):
             "GPU": self.head_gpus - 2.0,
             "custom": self.head_custom - 10.0
         })
+
+    def testPlacementGroupFactoryEquality(self):
+        """
+        Test that two different placement group factory objects are considered
+        equal and evaluate to the same hash.
+        """
+        from collections import Counter
+
+        pgf_1 = PlacementGroupFactory([{
+            "CPU": 2,
+            "GPU": 4,
+            "custom": 7
+        }, {
+            "GPU": 2,
+            "custom": 1,
+            "CPU": 3
+        }], "PACK", "no_name", None)
+
+        pgf_2 = PlacementGroupFactory(
+            [{
+                "custom": 7,
+                "GPU": 4,
+                "CPU": 2,
+            }, {
+                "custom": 1,
+                "GPU": 2,
+                "CPU": 3
+            }],
+            strategy="PACK",
+            name="no_name",
+            lifetime=None)
+
+        self.assertEqual(pgf_1, pgf_2)
+
+        # Hash testing
+        counter = Counter()
+        counter[pgf_1] += 1
+        counter[pgf_2] += 1
+
+        self.assertEqual(counter[pgf_1], 2)
+        self.assertEqual(counter[pgf_2], 2)
 
 
 class LocalModeExecutorTest(RayTrialExecutorTest):

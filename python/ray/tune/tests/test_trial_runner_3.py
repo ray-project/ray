@@ -26,7 +26,7 @@ from ray.tune.suggest.repeater import Repeater
 from ray.tune.suggest._mock import _MockSuggestionAlgorithm
 from ray.tune.suggest.suggestion import Searcher, ConcurrencyLimiter
 from ray.tune.suggest.search_generator import SearchGenerator
-from ray.util import placement_group
+from ray.tune.utils.placement_groups import PlacementGroupFactory
 
 
 class TrialRunnerTest3(unittest.TestCase):
@@ -986,11 +986,11 @@ class TrialRunnerPlacementGroupTest(unittest.TestCase):
             now = time.time()
             tune.report(end=now - config["start_time"])
 
-        def placement_group_factory():
-            head_bundle = {"CPU": 4, "GPU": 0, "custom": 0}
-            child_bundle = {"custom": 1}
+        head_bundle = {"CPU": 4, "GPU": 0, "custom": 0}
+        child_bundle = {"custom": 1}
 
-            return placement_group([head_bundle, child_bundle, child_bundle])
+        placement_group_factory = PlacementGroupFactory(
+            [head_bundle, child_bundle, child_bundle])
 
         trial_executor = RayTrialExecutor()
 
@@ -1041,12 +1041,11 @@ class TrialRunnerPlacementGroupTest(unittest.TestCase):
         Each trial requests 4 CPUs and starts 4 remote training workers.
         """
 
-        def placement_group_factory():
-            head_bundle = {"CPU": 1, "GPU": 0, "custom": 0}
-            child_bundle = {"CPU": 1}
+        head_bundle = {"CPU": 1, "GPU": 0, "custom": 0}
+        child_bundle = {"CPU": 1}
 
-            return placement_group(
-                [head_bundle, child_bundle, child_bundle, child_bundle])
+        placement_group_factory = PlacementGroupFactory(
+            [head_bundle, child_bundle, child_bundle, child_bundle])
 
         @ray.remote
         class TrainingActor:
