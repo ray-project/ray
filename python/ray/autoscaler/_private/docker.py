@@ -29,8 +29,10 @@ def validate_docker_config(config):
 
 def with_docker_exec(cmds,
                      container_name,
+                     docker_cmd,
                      env_vars=None,
                      with_interactive=False):
+    assert docker_cmd, "Must provide docker command"
     env_str = ""
     if env_vars:
         env_str = " ".join(
@@ -45,27 +47,27 @@ def with_docker_exec(cmds,
     ]
 
 
-def _check_helper(cname, template):
+def _check_helper(cname, template, docker_cmd):
     return " ".join([
-        "docker", "inspect", "-f", "'{{" + template + "}}'", cname, "||",
+        docker_cmd, "inspect", "-f", "'{{" + template + "}}'", cname, "||",
         "true"
     ])
 
 
-def check_docker_running_cmd(cname):
-    return _check_helper(cname, ".State.Running")
+def check_docker_running_cmd(cname, docker_cmd):
+    return _check_helper(cname, ".State.Running", docker_cmd)
 
 
-def check_bind_mounts_cmd(cname):
-    return _check_helper(cname, "json .Mounts")
+def check_bind_mounts_cmd(cname, docker_cmd):
+    return _check_helper(cname, "json .Mounts", docker_cmd)
 
 
-def check_docker_image(cname):
-    return _check_helper(cname, ".Config.Image")
+def check_docker_image(cname, docker_cmd):
+    return _check_helper(cname, ".Config.Image", docker_cmd)
 
 
 def docker_start_cmds(user, image, mount_dict, container_name, user_options,
-                      cluster_name, home_directory):
+                      cluster_name, home_directory, docker_cmd):
     # Imported here due to circular dependency.
     from ray.autoscaler.sdk import get_docker_host_mount_location
     docker_mount_prefix = get_docker_host_mount_location(cluster_name)
@@ -84,7 +86,7 @@ def docker_start_cmds(user, image, mount_dict, container_name, user_options,
 
     user_options_str = " ".join(user_options)
     docker_run = [
-        "docker", "run", "--rm", "--name {}".format(container_name), "-d",
+        docker_cmd, "run", "--rm", "--name {}".format(container_name), "-d",
         "-it", mount_flags, env_flags, user_options_str, "--net=host", image,
         "bash"
     ]
