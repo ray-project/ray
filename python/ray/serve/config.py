@@ -16,8 +16,8 @@ def _callable_accepts_batch(backend_def):
         return hasattr(backend_def.__call__, "_serve_accept_batch")
     elif isinstance(backend_def, str):
         return True
-
-    assert False
+    else:
+        raise TypeError("backend_def must be function, class, or str.")
 
 
 def _callable_is_blocking(backend_def):
@@ -27,8 +27,8 @@ def _callable_is_blocking(backend_def):
         return not inspect.iscoroutinefunction(backend_def.__call__)
     elif isinstance(backend_def, str):
         return False
-
-    assert False
+    else:
+        raise TypeError("backend_def must be function, class, or str.")
 
 
 @dataclass
