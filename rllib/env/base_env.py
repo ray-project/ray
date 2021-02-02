@@ -205,6 +205,18 @@ class BaseEnv:
             if hasattr(env, "close"):
                 env.close()
 
+    # Experimental method.
+    def try_render(self, env_id: Optional[EnvID] = None) -> None:
+        """Tries to render the environment.
+
+        Args:
+            env_id (Optional[int]): The sub-env ID if applicable. If None,
+                renders the entire Env (i.e. all sub-envs).
+        """
+
+        # By default, do nothing.
+        pass
+
 
 # Fixed agent identifier when there is only the single agent in the env
 _DUMMY_AGENT_ID = "agent0"
@@ -346,13 +358,18 @@ class _VectorEnvToBaseEnv(BaseEnv):
             self.vector_env.vector_step(action_vector)
 
     @override(BaseEnv)
-    def try_reset(self,
-                  env_id: Optional[EnvID] = None) -> Optional[MultiAgentDict]:
+    def try_reset(self, env_id: Optional[EnvID] = None) -> MultiAgentDict:
+        assert env_id is None or isinstance(env_id, int)
         return {_DUMMY_AGENT_ID: self.vector_env.reset_at(env_id)}
 
     @override(BaseEnv)
     def get_unwrapped(self) -> List[EnvType]:
         return self.vector_env.get_unwrapped()
+
+    @override(BaseEnv)
+    def try_render(self, env_id: Optional[EnvID] = None) -> None:
+        assert env_id is None or isinstance(env_id, int)
+        return self.vector_env.try_render_at(env_id)
 
 
 class _MultiAgentEnvToBaseEnv(BaseEnv):

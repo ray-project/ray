@@ -583,6 +583,11 @@ class RolloutWorker(ParallelIteratorWorker):
                 raise ValueError(
                     "Unknown evaluation method: {}".format(method))
 
+        render = False
+        if policy_config.get("render_env") is True and \
+                (num_workers == 0 or worker_index == 1):
+            render = True
+
         if self.env is None:
             self.sampler = None
         elif sample_async:
@@ -608,6 +613,7 @@ class RolloutWorker(ParallelIteratorWorker):
                 _use_trajectory_view_api=_use_trajectory_view_api,
                 sample_collector_class=policy_config.get(
                     "sample_collector_class"),
+                render=render,
             )
             # Start the Sampler thread.
             self.sampler.start()
@@ -633,6 +639,7 @@ class RolloutWorker(ParallelIteratorWorker):
                 _use_trajectory_view_api=_use_trajectory_view_api,
                 sample_collector_class=policy_config.get(
                     "sample_collector_class"),
+                render=render,
             )
 
         self.input_reader: InputReader = input_creator(self.io_context)

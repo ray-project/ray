@@ -52,7 +52,7 @@ COMMON_CONFIG: TrainerConfigDict = {
     # Number of rollout worker actors to create for parallel sampling. Setting
     # this to 0 will force rollouts to be done in the trainer actor.
     "num_workers": 2,
-    # Number of environments to evaluate vectorwise per worker. This enables
+    # Number of environments to evaluate vector-wise per worker. This enables
     # model inference batching, which can improve performance for inference
     # bottlenecked workloads.
     "num_envs_per_worker": 1,
@@ -120,10 +120,18 @@ COMMON_CONFIG: TrainerConfigDict = {
     # set this if soft_horizon=True, unless your env is actually running
     # forever without returning done=True.
     "no_done_at_end": False,
-    # Arguments to pass to the env creator.
-    "env_config": {},
     # Environment name can also be passed via config.
     "env": None,
+    # Arguments to pass to the env creator.
+    "env_config": {},
+    # If True, try to render the environment on the local worker or on worker
+    # 1 (if num_workers > 0). For vectorized envs, this usually means that only
+    # the first sub-environment will be rendered.
+    "render_env": False,
+    # If True, store evaluation videos in the output dir.
+    # Alternatively, provide a path (str) to a directory here, where the env
+    # recordings should be stored instead.
+    "record_env": False,
     # Unsquash actions to the upper and lower bounds of env's action space
     "normalize_actions": False,
     # Whether to clip rewards during Policy's postprocessing.
@@ -218,10 +226,6 @@ COMMON_CONFIG: TrainerConfigDict = {
     # workers are created separately from rollout workers (used to sample data
     # for training).
     "evaluation_num_workers": 0,
-    # If True, render the environment on the evaluation local worker.
-    "evaluation_render": False,
-    # If True, store evaluation videos in the output dir.
-    "evaluation_video": False,
     # Customize the evaluation method. This must be a function of signature
     # (trainer: Trainer, eval_workers: WorkerSet) -> metrics: dict. See the
     # Trainer._evaluate() method to see the default implementation. The

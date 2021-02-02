@@ -175,7 +175,6 @@ def get_agent_class(alg: str) -> type:
 
 
 def _get_trainer_class(alg: str, return_config=False) -> type:
-    class_ = None
     if alg in ALGORITHMS:
         class_, config = ALGORITHMS[alg]()
     elif alg in CONTRIBUTED_ALGORITHMS:

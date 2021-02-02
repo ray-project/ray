@@ -1,7 +1,7 @@
 import logging
 import gym
 import numpy as np
-from typing import Callable, List, Tuple
+from typing import Callable, List, Optional, Tuple
 
 from ray.rllib.utils.annotations import override, PublicAPI
 from ray.rllib.utils.typing import EnvType, EnvConfigDict, EnvObsType, \
@@ -54,8 +54,11 @@ class VectorEnv:
         raise NotImplementedError
 
     @PublicAPI
-    def reset_at(self, index: int) -> EnvObsType:
+    def reset_at(self, index: Optional[int] = None) -> EnvObsType:
         """Resets a single environment.
+
+        Args:
+            index (Optional[int]): An optional sub-env index to reset.
 
         Returns:
             obs (obj): Observations from the reset sub environment.
@@ -87,6 +90,15 @@ class VectorEnv:
             List[Env]: List of all underlying sub environments.
         """
         raise NotImplementedError
+
+    # Experimental method.
+    def try_render_at(self, index: Optional[int] = None) -> None:
+        """Renders a single environment.
+
+        Args:
+            index (Optional[int]): An optional sub-env index to render.
+        """
+        pass
 
 
 class _VectorizedGymEnv(VectorEnv):
@@ -133,7 +145,9 @@ class _VectorizedGymEnv(VectorEnv):
         return [e.reset() for e in self.envs]
 
     @override(VectorEnv)
-    def reset_at(self, index):
+    def reset_at(self, index: Optional[int] = None) -> EnvObsType:
+        if index is None:
+            index = 0
         return self.envs[index].reset()
 
     @override(VectorEnv)
@@ -157,3 +171,9 @@ class _VectorizedGymEnv(VectorEnv):
     @override(VectorEnv)
     def get_unwrapped(self):
         return self.envs
+
+    @override(VectorEnv)
+    def try_render_at(self, index: Optional[int] = None):
+        if index is None:
+            index = 0
+        return self.envs[index].render()
