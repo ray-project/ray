@@ -280,8 +280,9 @@ def run(
 
     if _remote is None:
         _remote = ray.util.client.ray.is_connected()
-    if _remote and not trial_executor:
+    if not trial_executor:
         _ray_auto_init()
+    if _remote and not trial_executor:
         get_fn = ray.get
         exec_impl = ray.remote(num_cpus=0)(_tune_run_impl).remote
     else:
@@ -607,8 +608,9 @@ def run_experiments(
     """
     if _remote is None:
         _remote = ray.util.client.ray.is_connected()
-    if _remote and not trial_executor:
+    if not trial_executor:
         _ray_auto_init()
+    if _remote and not trial_executor:
         get_fn = ray.get
         exec_impl = ray.remote(num_cpus=0)(_tune_run_experiments_impl).remote
     else:
