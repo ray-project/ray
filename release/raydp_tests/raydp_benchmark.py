@@ -169,6 +169,12 @@ if __name__ == '__main__':
     else:
         base = "data"
 
+    if args.clear_old_data:
+        print(f"Clearing old data from {base}.")
+        files = glob.glob(os.path.join(base, "*.parquet"))
+        for f in files:
+            os.remove(f)
+
     # FIXME(Clark): The logic around whether to write input data before initialization is
     # very brittle and gross, rewrite if we ever plan to commit this code somewhere.
     input_file = None
@@ -249,12 +255,6 @@ if __name__ == '__main__':
 
     system = "Spark" if args.spark_only else "RayDP"
     print(f"Running Spark version {spark.version}")
-
-    if args.clear_old_data:
-        print(f"Clearing old data from {base}.")
-        files = glob.glob(os.path.join(base, "*.parquet"))
-        for f in files:
-            os.remove(f)
 
     print("Starting warmup trials...")
     print(
