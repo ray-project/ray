@@ -401,16 +401,17 @@ class ReferenceCounter : public ReferenceCounterInterface,
   absl::optional<absl::flat_hash_set<NodeID>> GetObjectLocations(
       const ObjectID &object_id) LOCKS_EXCLUDED(mutex_);
 
-  /// Get object locations more recent than the given version, asynchronously. The
-  /// provided callback will be invoked when new locations become available.
+  /// Subscribe to object location changes that are more recent than the given version.
+  /// The provided callback will be invoked when new locations become available.
   ///
   /// \param[in] object_id The object whose locations we want.
   /// \param[in] last_location_version The version of the last location update the
   /// caller received. Only more recent location updates will be returned.
   /// \param[in] callback The callback to invoke with the location update.
   /// \return The status of the location get.
-  Status GetObjectLocationsAsync(const ObjectID &object_id, int64_t last_location_version,
-                                 const LocationSubscriptionCallback &callback)
+  Status SubscribeObjectLocations(const ObjectID &object_id,
+                                  int64_t last_location_version,
+                                  const LocationSubscriptionCallback &callback)
       LOCKS_EXCLUDED(mutex_);
 
   /// Get an object's size. This will return 0 if the object is out of scope.

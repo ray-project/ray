@@ -2234,7 +2234,7 @@ void CoreWorker::HandleGetObjectLocationsOwner(
       send_reply_callback(Status::OK(), nullptr, nullptr);
     });
   };
-  auto status = reference_counter_->GetObjectLocationsAsync(
+  auto status = reference_counter_->SubscribeObjectLocations(
       object_id, request.last_version(), callback);
   if (!status.ok()) {
     send_reply_callback(status, nullptr, nullptr);
