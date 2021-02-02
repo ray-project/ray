@@ -47,7 +47,6 @@ public class RayConfig {
   public String rayletSocketName;
   // Listening port for node manager.
   public int nodeManagerPort;
-  public final Map<String, Object> rayletConfigParameters;
 
   public final List<String> codeSearchPath;
 
@@ -144,25 +143,6 @@ public class RayConfig {
       Preconditions.checkState(
           workerMode != WorkerType.WORKER,
           "Worker started by raylet should accept the node manager port from raylet.");
-    }
-
-    // Raylet parameters.
-    rayletConfigParameters = new HashMap<>();
-    Config rayletConfig = config.getConfig("ray.raylet.config");
-    for (Map.Entry<String, ConfigValue> entry : rayletConfig.entrySet()) {
-      Object value = entry.getValue().unwrapped();
-      if (value != null) {
-        if (value instanceof String) {
-          String valueString = (String) value;
-          Boolean booleanValue = BooleanUtils.toBooleanObject(valueString);
-          if (booleanValue != null) {
-            value = booleanValue;
-          } else if (NumberUtils.isParsable(valueString)) {
-            value = NumberUtils.createNumber(valueString);
-          }
-        }
-        rayletConfigParameters.put(entry.getKey(), value);
-      }
     }
 
     // Job code search path.

@@ -19,6 +19,7 @@
 #include <typeinfo>
 #include <unordered_map>
 
+#include "absl/strings/escaping.h"
 #include "ray/util/logging.h"
 
 class RayConfig {
@@ -52,8 +53,11 @@ class RayConfig {
 /// A helper macro that helps to set a value to a config item.
 #define RAY_CONFIG(type, name, default_value) \
   if (pair.first == #name) {                  \
+    std::string value = pair.second;          \
+    if (typeid(type) == typeid(std::string)) {\
+      RAY_CHECK(absl::Base64Unescape(pair.second, &value)) << "key: " << #name << ", value: " << pair.second; \
+    }                                         \
     if (typeid(type) == typeid(bool)) {       \
-       std::string value = pair.second;       \
        std::transform(value.begin(),          \
                       value.end(),            \
                       value.begin(),          \
@@ -61,13 +65,25 @@ class RayConfig {
        name##_ = value == "true" ||           \
                  value == "1";                \
     } else {                                  \
-      std::istringstream stream(pair.second); \
+      std::istringstream stream(value);       \
       stream >> name##_;                      \
     }                                         \
     continue;                                 \
   }
 
-  void initialize(const std::unordered_map<std::string, std::string> &config_map) {
+  void initialize(const std::string &config_list) {
+    // Parse the configuration list.
+    std::unordered_map<std::string, std::string> config_map;
+    std::istringstream config_string(config_list);
+    std::string config_name;
+    std::string config_value;
+
+    while (std::getline(config_string, config_name, ',')) {
+      RAY_CHECK(std::getline(config_string, config_value, ';'));
+      // TODO(rkn): The line below could throw an exception. What should we do about this?
+      config_map[config_name] = config_value;
+    }
+
     for (auto const &pair : config_map) {
       // We use a big chain of if else statements because C++ doesn't allow
       // switch statements on strings.

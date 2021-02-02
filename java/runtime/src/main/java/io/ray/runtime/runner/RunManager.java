@@ -32,7 +32,6 @@ public class RunManager {
     command.add("--head");
     command.add("--redis-password");
     command.add(rayConfig.redisPassword);
-    command.add("--system-config=" + new Gson().toJson(rayConfig.rayletConfigParameters));
     command.addAll(rayConfig.headArgs);
     String output;
     try {

@@ -285,7 +285,7 @@ class LocalObjectManagerTest : public ::testing::Test {
                   remote_node_set_restore_requested_[node_id].emplace(object_id);
                 }),
         unpins(std::make_shared<std::unordered_map<ObjectID, int>>()) {
-    RayConfig::instance().initialize({{"object_spilling_config", "mock_config"}});
+    RayConfig::instance().initialize("object_spilling_config,YQ==");
   }
 
   void TearDown() {
