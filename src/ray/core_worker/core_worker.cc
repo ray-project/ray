@@ -2219,20 +2219,19 @@ void CoreWorker::HandleGetObjectLocationsOwner(
     return;
   }
   auto object_id = ObjectID::FromBinary(request.object_id());
-  auto callback = [this, object_id, reply, send_reply_callback](
-                      const absl::flat_hash_set<NodeID> &locations, int64_t object_size,
-                      int64_t current_version) {
-    io_service_.post([object_id, reply, send_reply_callback, locations, object_size,
-                      current_version]() {
-      RAY_LOG(DEBUG) << "Replying to HandleGetObjectLocationsOwner for " << object_id
-                     << " with location update version " << current_version;
-      for (const auto &node_id : locations) {
-        reply->add_node_ids(node_id.Binary());
-      }
-      reply->set_object_size(object_size);
-      reply->set_current_version(current_version);
-      send_reply_callback(Status::OK(), nullptr, nullptr);
-    });
+  const auto &callback = [object_id, reply, send_reply_callback](
+                             const absl::flat_hash_set<NodeID> &locations,
+                             int64_t object_size, int64_t current_version) {
+    RAY_LOG(DEBUG) << "Replying to HandleGetObjectLocationsOwner for " << object_id
+                   << " with location update version " << current_version << ", "
+                   << locations.size() << " locations, and " << object_size
+                   << " object size.";
+    for (const auto &node_id : locations) {
+      reply->add_node_ids(node_id.Binary());
+    }
+    reply->set_object_size(object_size);
+    reply->set_current_version(current_version);
+    send_reply_callback(Status::OK(), nullptr, nullptr);
   };
   auto status = reference_counter_->SubscribeObjectLocations(
       object_id, request.last_version(), callback);
