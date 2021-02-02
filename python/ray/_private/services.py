@@ -1135,10 +1135,10 @@ def start_dashboard(require_dashboard,
     Returns:
         ProcessInfo for the process that was started.
     """
-    port_test_socket = socket.socket()
-    port_test_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     port_retries = 10
     if port != ray_constants.DEFAULT_DASHBOARD_PORT:
+        port_test_socket = socket.socket()
+        port_test_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try:
             port_test_socket.bind(("127.0.0.1", port))
             port_test_socket.close()
@@ -1202,10 +1202,11 @@ def start_dashboard(require_dashboard,
                 time.sleep(1)
             if dashboard_url is None:
                 dashboard_log = os.path.join(logdir, "dashboard.log")
-                returncode_str = (f"return code {dashboard_returncode}, "
+                returncode_str = (f", return code {dashboard_returncode}"
                                   if dashboard_returncode is not None else "")
-                raise Exception(f"Failed to start dashboard, {returncode_str}"
-                                f"please check {dashboard_log} for details.")
+                raise Exception("Failed to start the dashboard"
+                                f"{returncode_str}. "
+                                f"Please check {dashboard_log} for details.")
 
         logger.info("View the Ray dashboard at {}{}http://{}{}{}".format(
             colorama.Style.BRIGHT, colorama.Fore.GREEN, dashboard_url,

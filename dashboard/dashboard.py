@@ -3,7 +3,8 @@ try:
 except ImportError:
     print("The dashboard requires aiohttp to run.")
     import sys
-    sys.exit(1)
+    # Set an exit code different from throwing an exception.
+    sys.exit(2)
 
 import argparse
 import asyncio
@@ -201,7 +202,7 @@ if __name__ == "__main__":
         service_discovery = PrometheusServiceDiscoveryWriter(
             args.redis_address, args.redis_password, args.temp_dir)
         # Need daemon True to avoid dashboard hangs at exit.
-        service_discovery.setDaemon(True)
+        service_discovery.daemon = True
         service_discovery.start()
         loop = asyncio.get_event_loop()
         loop.run_until_complete(dashboard.run())
