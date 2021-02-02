@@ -359,7 +359,7 @@ def test_spill_stats(object_spilling_config, shutdown_only):
 
     s = memory_summary(stats_only=True)
     # 50MB * 5 references + 30MB used for task execution.
-    assert "ray.get: 280 MiB." in s, s
+    assert "Objects consumed by Ray tasks: 280 MiB." in s, s
     assert_no_thrashing(address["redis_address"])
 
 
