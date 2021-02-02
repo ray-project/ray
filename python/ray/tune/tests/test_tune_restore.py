@@ -1,8 +1,10 @@
 # coding: utf-8
+import signal
 from collections import Counter
 import os
 import shutil
 import tempfile
+import time
 import unittest
 import skopt
 import numpy as np
@@ -85,6 +87,66 @@ class TuneRestoreTest(unittest.TestCase):
             },
         )
         self.assertTrue(os.path.isfile(self.checkpoint_path))
+
+
+class TuneInterruptionTest(unittest.TestCase):
+    def testExperimentInterrupted(self):
+        import multiprocessing
+
+        trainer_semaphore = multiprocessing.Semaphore()
+        driver_semaphore = multiprocessing.Semaphore()
+
+        class SteppingCallback(Callback):
+            def on_step_end(self, iteration, trials, **info):
+                driver_semaphore.release()  # Driver should continue
+                trainer_semaphore.acquire()  # Wait until released
+
+        def _run(local_dir):
+            def _train(config):
+                for i in range(7):
+                    tune.report(val=i)
+
+            tune.run(
+                _train,
+                local_dir=local_dir,
+                name="interrupt",
+                callbacks=[SteppingCallback()])
+
+        local_dir = tempfile.mkdtemp()
+        process = multiprocessing.Process(target=_run, args=(local_dir, ))
+        process.daemon = False
+        process.start()
+
+        exp_dir = os.path.join(local_dir, "interrupt")
+
+        # Skip first five steps
+        for i in range(5):
+            driver_semaphore.acquire()  # Wait for callback
+            trainer_semaphore.release()  # Continue training
+
+        driver_semaphore.acquire()
+
+        experiment_state_file = None
+        for file in os.listdir(exp_dir):
+            if file.startswith("experiment_state"):
+                experiment_state_file = os.path.join(exp_dir, file)
+                break
+
+        self.assertTrue(experiment_state_file)
+        last_mtime = os.path.getmtime(experiment_state_file)
+
+        # Now send kill signal
+        os.kill(process.pid, signal.SIGINT)
+        # Release trainer. It should handle the signal and try to
+        # checkpoint the experiment
+        trainer_semaphore.release()
+
+        time.sleep(2)  # Wait for checkpoint
+        new_mtime = os.path.getmtime(experiment_state_file)
+
+        self.assertNotEqual(last_mtime, new_mtime)
+
+        shutil.rmtree(local_dir)
 
 
 class TuneFailResumeGridTest(unittest.TestCase):

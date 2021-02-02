@@ -3,6 +3,8 @@ from typing import Any, Callable, Dict, Mapping, Optional, Sequence, Type, \
 
 import datetime
 import logging
+import os
+import signal
 import sys
 import time
 
@@ -111,6 +113,10 @@ def run(
         sync_on_checkpoint: Optional = None,
 ) -> ExperimentAnalysis:
     """Executes training.
+
+    When a SIGINT signal is received (e.g. through Ctrl+C), the tuning run
+    will gracefully shut down and checkpoint the latest experiment state.
+    Sending SIGINT again (or SIGKILL/SIGTERM instead) will skip this step.
 
     Examples:
 
@@ -264,7 +270,6 @@ def run(
             ``ray.tune.callback.Callback`` class. If not passed,
             `LoggerCallback` and `SyncerCallback` callbacks are automatically
             added.
-
 
     Returns:
         ExperimentAnalysis: Object for experiment analysis.
@@ -427,8 +432,24 @@ def run(
                            "`Trainable.default_resource_request` if using the "
                            "Trainable API.")
 
+    original_handler = signal.getsignal(signal.SIGINT)
+    state = {signal.SIGINT: False}
+
+    def sigint_handler(sig, frame):
+        logger.warning(
+            "SIGINT received (e.g. via Ctrl+C), ending Ray Tune run. "
+            "This will try to checkpoint the experiment state one last time. "
+            "Press CTRL+C one more time (or send SIGINT/SIGKILL/SIGTERM) "
+            "to skip. ")
+        state[signal.SIGINT] = True
+        # Restore original signal handler to react to future SIGINT signals
+        signal.signal(signal.SIGINT, original_handler)
+
+    if not int(os.getenv("TUNE_DISABLE_SIGINT_HANDLER", "0")):
+        signal.signal(signal.SIGINT, sigint_handler)
+
     tune_start = time.time()
-    while not runner.is_finished():
+    while not runner.is_finished() and not state[signal.SIGINT]:
         runner.step()
         if has_verbosity(Verbosity.V1_EXPERIMENT):
             _report_progress(runner, progress_reporter)
@@ -451,7 +472,7 @@ def run(
             incomplete_trials += [trial]
 
     if incomplete_trials:
-        if raise_on_failed_trial:
+        if raise_on_failed_trial and not state[signal.SIGINT]:
             raise TuneError("Trials did not complete", incomplete_trials)
         else:
             logger.error("Trials did not complete: %s", incomplete_trials)
@@ -460,6 +481,12 @@ def run(
     if has_verbosity(Verbosity.V1_EXPERIMENT):
         logger.info(f"Total run time: {all_taken:.2f} seconds "
                     f"({tune_taken:.2f} seconds for the tuning loop).")
+
+    if state[signal.SIGINT]:
+        logger.warning(
+            "Experiment has been interrupted, but the most recent state was "
+            "saved. You can continue running this experiment by passing "
+            "`resume=True` to `tune.run()`")
 
     trials = runner.get_trials()
     return ExperimentAnalysis(
