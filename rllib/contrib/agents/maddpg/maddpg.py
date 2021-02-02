@@ -13,7 +13,7 @@ import logging
 
 from ray.rllib.agents.trainer import COMMON_CONFIG, with_common_config
 from ray.rllib.agents.dqn.dqn import GenericOffPolicyTrainer
-from ray.rllib.contrib.maddpg.maddpg_policy import MADDPGTFPolicy
+from ray.rllib.contrib.agents.maddpg.maddpg_policy import MADDPGTFPolicy
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 from ray.rllib.utils import merge_dicts
 

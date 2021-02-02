@@ -612,17 +612,17 @@ py_test(
 py_test(
     name = "random_agent",
     tags = ["agents_dir"],
-    main = "contrib/random_agent/random_agent.py",
+    main = "contrib/agents/random_agent/random_agent.py",
     size = "small",
-    srcs = ["contrib/random_agent/random_agent.py"]
+    srcs = ["contrib/agents/random_agent/random_agent.py"]
 )
 
 py_test(
     name = "alpha_zero_cartpole",
     tags = ["agents_dir"],
-    main = "contrib/alpha_zero/examples/train_cartpole.py",
+    main = "contrib/agents/alpha_zero/examples/train_cartpole.py",
     size = "large",
-    srcs = ["contrib/alpha_zero/examples/train_cartpole.py"],
+    srcs = ["contrib/agents/alpha_zero/examples/train_cartpole.py"],
     args = ["--training-iteration=1", "--num-workers=2", "--ray-num-cpus=3"]
 )
 
@@ -2183,19 +2183,19 @@ py_test(
 )
 
 py_test(
-    name = "contrib/bandits/examples/lin_ts",
-    main = "contrib/bandits/examples/simple_context_bandit.py",
+    name = "contrib/agents/bandits/examples/lin_ts",
+    main = "contrib/agents/bandits/examples/simple_context_bandit.py",
     tags = ["examples", "examples_T"],
     size = "small",
-    srcs = ["contrib/bandits/examples/simple_context_bandit.py"],
+    srcs = ["contrib/agents/bandits/examples/simple_context_bandit.py"],
     args = ["--as-test", "--stop-reward=10", "--run=contrib/LinTS"],
 )
 
 py_test(
-    name = "contrib/bandits/examples/lin_ucb",
-    main = "contrib/bandits/examples/simple_context_bandit.py",
+    name = "contrib/agents/bandits/examples/lin_ucb",
+    main = "contrib/agents/bandits/examples/simple_context_bandit.py",
     tags = ["examples", "examples_U"],
     size = "small",
-    srcs = ["contrib/bandits/examples/simple_context_bandit.py"],
+    srcs = ["contrib/agents/bandits/examples/simple_context_bandit.py"],
     args = ["--as-test", "--stop-reward=10", "--run=contrib/LinUCB"],
 )

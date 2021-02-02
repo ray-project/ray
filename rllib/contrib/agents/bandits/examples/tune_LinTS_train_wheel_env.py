@@ -8,9 +8,9 @@ import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt
 from ray import tune
-from ray.rllib.contrib.bandits.agents import LinTSTrainer
-from ray.rllib.contrib.bandits.agents.lin_ts import TS_CONFIG
-from ray.rllib.contrib.bandits.envs import WheelBanditEnv
+from ray.rllib.contrib.agents.bandits.agents import LinTSTrainer
+from ray.rllib.contrib.agents.bandits.agents.lin_ts import TS_CONFIG
+from ray.rllib.contrib.agents.bandits.envs import WheelBanditEnv
 
 
 def plot_model_weights(means, covs, ax):

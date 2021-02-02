@@ -2,13 +2,13 @@ import logging
 
 from ray.rllib.agents.trainer import with_common_config
 from ray.rllib.agents.trainer_template import build_trainer
-from ray.rllib.contrib.bandits.agents.policy import BanditPolicy
+from ray.rllib.contrib.agents.bandits.agents.policy import BanditPolicy
 
 logger = logging.getLogger(__name__)
 
 # yapf: disable
 # __sphinx_doc_begin__
-TS_CONFIG = with_common_config({
+UCB_CONFIG = with_common_config({
     # No remote workers by default.
     "num_workers": 0,
     "framework": "torch",  # Only PyTorch supported so far.
@@ -23,11 +23,11 @@ TS_CONFIG = with_common_config({
     "timesteps_per_iteration": 100,
 
     "exploration_config": {
-        "type": "ray.rllib.contrib.bandits.exploration.ThompsonSampling"
+        "type": "ray.rllib.contrib.bandits.exploration.UCB"
     }
 })
 # __sphinx_doc_end__
 # yapf: enable
 
-LinTSTrainer = build_trainer(
-    name="LinTS", default_config=TS_CONFIG, default_policy=BanditPolicy)
+LinUCBTrainer = build_trainer(
+    name="LinUCB", default_config=UCB_CONFIG, default_policy=BanditPolicy)

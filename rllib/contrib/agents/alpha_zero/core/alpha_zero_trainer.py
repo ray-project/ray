@@ -15,9 +15,9 @@ from ray.rllib.models.torch.torch_action_dist import TorchCategorical
 from ray.rllib.utils.framework import try_import_torch
 from ray.tune.registry import ENV_CREATOR, _global_registry
 
-from ray.rllib.contrib.alpha_zero.core.alpha_zero_policy import AlphaZeroPolicy
-from ray.rllib.contrib.alpha_zero.core.mcts import MCTS
-from ray.rllib.contrib.alpha_zero.core.ranked_rewards import get_r2_env_wrapper
+from ray.rllib.contrib.agents.alpha_zero.core.alpha_zero_policy import AlphaZeroPolicy
+from ray.rllib.contrib.agents.alpha_zero.core.mcts import MCTS
+from ray.rllib.contrib.agents.alpha_zero.core.ranked_rewards import get_r2_env_wrapper
 
 torch, nn = try_import_torch()
 

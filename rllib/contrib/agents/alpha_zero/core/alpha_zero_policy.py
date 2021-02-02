@@ -2,7 +2,7 @@ import numpy as np
 
 from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY
 from ray.rllib.policy.torch_policy import TorchPolicy
-from ray.rllib.contrib.alpha_zero.core.mcts import Node, RootParentNode
+from ray.rllib.contrib.agents.alpha_zero.core.mcts import Node, RootParentNode
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 
