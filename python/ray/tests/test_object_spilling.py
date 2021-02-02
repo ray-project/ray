@@ -314,7 +314,7 @@ def test_spill_objects_automatically(object_spilling_config, shutdown_only):
 
 
 @pytest.mark.skipif(
-    platform.system() in ["Darwin", "Windows"], reason="Failing on Windows.")
+    platform.system() in ["Windows", "Darwin"], reason="Failing on Windows.")
 def test_spill_stats(object_spilling_config, shutdown_only):
     # Limit our object store to 75 MiB of memory.
     object_spilling_config, _ = object_spilling_config
@@ -630,11 +630,7 @@ def test_delete_objects_multi_node(multi_node_object_spilling_config,
         wait_for_condition(lambda: wait_until_actor_dead(actor))
     # The multi node deletion should work.
     wait_for_condition(lambda: is_dir_empty(temp_folder))
-    # NOTE: Currently, this thrashing calculation logic could be wrong if the
-    # core worker dies before it reports the referenced bytes.
-    # TODO(sang): Re-enable after finding a more
-    # robust thrashing tracking method.
-    # assert_no_thrashing(cluster.address)
+    assert_no_thrashing(cluster.address)
 
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="Flaky on Windows.")

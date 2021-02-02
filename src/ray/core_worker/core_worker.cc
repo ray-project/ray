@@ -1038,7 +1038,6 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids, const int64_t timeout_m
   for (size_t i = 0; i < ids.size(); i++) {
     const auto pair = result_map.find(ids[i]);
     if (pair != result_map.end()) {
-      RecordPlasmaReferencedBytes(pair->second);
       (*results)[i] = pair->second;
       RAY_CHECK(!pair->second->IsInPlasmaError());
       if (pair->second->IsException()) {
@@ -2024,7 +2023,6 @@ Status CoreWorker::GetAndPinArgsForExecutor(const TaskSpecification &task,
   }
   for (const auto &it : result_map) {
     for (size_t idx : by_ref_indices[it.first]) {
-      RecordPlasmaReferencedBytes(it.second);
       args->at(idx) = it.second;
     }
   }
@@ -2360,9 +2358,6 @@ void CoreWorker::HandleGetCoreWorkerStats(const rpc::GetCoreWorkerStatsRequest &
   stats->set_worker_id(worker_context_.GetWorkerID().Binary());
   stats->set_actor_id(actor_id_.Binary());
   stats->set_worker_type(worker_context_.GetWorkerType());
-  stats->set_referenced_bytes(total_referenced_bytes_);
-  // Reset this value so that it can be correctly accumulated to the raylet.
-  total_referenced_bytes_ = 0;
   auto used_resources_map = stats->mutable_used_resources();
   for (auto const &it : *resource_ids_) {
     rpc::ResourceAllocations allocations;

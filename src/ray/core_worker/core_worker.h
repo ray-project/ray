@@ -1093,15 +1093,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
     return call_site;
   }
 
-  inline void RecordPlasmaReferencedBytes(const std::shared_ptr<RayObject> &object) {
-    // Record the referenced bytes if the object is in the plasma store.
-    // It is used to detect the thrashing.
-    const auto object_size = object->GetSize();
-    if (object_size >= max_direct_call_object_size_) {
-      total_referenced_bytes_ += object_size;
-    }
-  }
-
   /// Shared state of the worker. Includes process-level and thread-level state.
   /// TODO(edoakes): we should move process-level state into this class and make
   /// this a ThreadContext.
@@ -1263,8 +1254,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   /// Whether we are shutting down and not running further tasks.
   bool exiting_ = false;
-
-  int64_t total_referenced_bytes_ = 0;
 
   int64_t max_direct_call_object_size_;
 
