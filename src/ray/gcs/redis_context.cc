@@ -353,9 +353,8 @@ Status ConnectOrFail(const std::string &address, int port,
   std::string errorMessage = "";
   Status status = ConnectWithRetries(address, port, connect_function, context);
   if (!status.ok()) {
-    if (status.IsRedisError()) {
-      RAY_LOG(FATAL) << status.message();
-    }
+    RAY_LOG(FATAL) << "Failed to connect to " << address << ":" << port
+                   << ". The last error was " << status.ToString();
   }
   return Status::OK();
 }
