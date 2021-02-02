@@ -139,6 +139,7 @@ class Worker:
             "python_version": data.python_version,
             "ray_version": data.ray_version,
             "ray_commit": data.ray_commit,
+            "protocol_version": data.protocol_version,
         }
 
     def get(self, vals, *, timeout: Optional[float] = None) -> Any:
