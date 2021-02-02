@@ -27,6 +27,9 @@ class ImportedBackend:
                 # proxy it manually.
                 return self.wrapped.reconfigure(*args, **kwargs)
 
+            # We mark 'accept_batch' here just so this will always pass the
+            # check we make during create_backend(). Unfortunately this means
+            # that validation won't happen until the replica is created.
             @serve.accept_batch
             def __call__(self, *args, **kwargs):
                 return self.wrapped(*args, **kwargs)
