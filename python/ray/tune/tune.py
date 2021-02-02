@@ -289,7 +289,7 @@ def run(
     if _remote is True and trial_executor:
         raise ValueError("cannot use custom trial executor")
 
-    if not trial_executor:
+    if not trial_executor or isinstance(trial_executor, RayTrialExecutor):
         _ray_auto_init()
 
     if _remote:
