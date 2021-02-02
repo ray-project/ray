@@ -184,10 +184,11 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
 
   /// Disconnect a registered worker.
   ///
-  /// \param The worker to disconnect. The worker must be registered.
+  /// \param worker The worker to disconnect. The worker must be registered.
+  /// \param disconnect_type Type of a worker exit.
   /// \return Whether the given worker was in the pool of idle workers.
   bool DisconnectWorker(const std::shared_ptr<WorkerInterface> &worker,
-                        bool intentional_disconnect);
+                        rpc::WorkerExitType disconnect_type);
 
   /// Disconnect a registered driver.
   ///

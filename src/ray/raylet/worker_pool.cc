@@ -859,7 +859,7 @@ void WorkerPool::PrestartWorkers(const TaskSpecification &task_spec,
 }
 
 bool WorkerPool::DisconnectWorker(const std::shared_ptr<WorkerInterface> &worker,
-                                  bool intentional_disconnect) {
+                                  rpc::WorkerExitType disconnect_type) {
   auto &state = GetStateForLanguage(worker->GetLanguage());
   RAY_CHECK(RemoveWorker(state.registered_workers, worker));
   RAY_UNUSED(RemoveWorker(state.pending_disconnection_workers, worker));
@@ -875,7 +875,7 @@ bool WorkerPool::DisconnectWorker(const std::shared_ptr<WorkerInterface> &worker
 
   MarkPortAsFree(worker->AssignedPort());
   auto status = RemoveWorker(state.idle, worker);
-  if (!intentional_disconnect) {
+  if (disconnect_type != rpc::WorkerExitType::INTENDED_EXIT) {
     // A Java worker process may have multiple workers. If one of them disconnects
     // unintentionally (which means that the worker process has died), we remove the
     // others from idle pool so that the failed actor will not be rescheduled on the same

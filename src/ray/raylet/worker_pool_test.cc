@@ -268,7 +268,8 @@ TEST_F(WorkerPoolTest, HandleWorkerRegistration) {
   // Check that there's no starting worker process
   ASSERT_EQ(worker_pool_->NumWorkerProcessesStarting(), 0);
   for (const auto &worker : workers) {
-    worker_pool_->DisconnectWorker(worker, /*intentional_disconnect=*/true);
+    worker_pool_->DisconnectWorker(
+        worker, /*disconnect_type=*/rpc::WorkerExitType::INTENDED_EXIT);
     // Check that we cannot lookup the worker after it's disconnected.
     ASSERT_EQ(worker_pool_->GetRegisteredWorker(worker->Connection()), nullptr);
   }
@@ -729,7 +730,8 @@ TEST_F(WorkerPoolTest, NoPopOnCrashedWorkerProcess) {
 
   // 3. kill the worker process. Now let's assume that Raylet found that the connection
   // with worker 1 disconnected first.
-  worker_pool_->DisconnectWorker(worker1, /*intentional_disconnect=*/false);
+  worker_pool_->DisconnectWorker(
+      worker1, /*disconnect_type=*/rpc::WorkerExitType::SYSTEM_ERROR_EXIT);
 
   // 4. but the RPC for announcing worker port for worker 2 is already in Raylet input
   // buffer. So now Raylet needs to handle worker 2.
@@ -741,7 +743,8 @@ TEST_F(WorkerPoolTest, NoPopOnCrashedWorkerProcess) {
   ASSERT_EQ(worker_pool_->PopWorker(task_spec), nullptr);
 
   // 6. Now Raylet disconnects with worker 2.
-  worker_pool_->DisconnectWorker(worker2, /*intentional_disconnect=*/false);
+  worker_pool_->DisconnectWorker(
+      worker2, /*disconnect_type=*/rpc::WorkerExitType::SYSTEM_ERROR_EXIT);
 }
 
 }  // namespace raylet
