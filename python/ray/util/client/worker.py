@@ -104,7 +104,7 @@ class Worker:
                 logger.info("Ray client server unavailable, "
                             f"retrying in {timeout}s...")
                 logger.debug(f"Received when checking init: {e.details()}")
-                # Ray is not ready yet, wait a timeout
+                # Ray is not ready yet, wait a timeout.
                 time.sleep(timeout)
             # Fallthrough, backoff, and retry at the top of the loop
             logger.info("Waiting for Ray to become ready on the server, "
