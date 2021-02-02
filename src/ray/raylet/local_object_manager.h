@@ -136,6 +136,8 @@ class LocalObjectManager {
   /// \param Output parameter.
   void FillObjectSpillingStats(rpc::GetNodeStatsReply *reply) const;
 
+  std::string DebugString() const;
+
  private:
   FRIEND_TEST(LocalObjectManagerTest, TestSpillObjectsOfSize);
   FRIEND_TEST(LocalObjectManagerTest,
@@ -202,6 +204,9 @@ class LocalObjectManager {
 
   // Objects that are pinned on this node.
   absl::flat_hash_map<ObjectID, std::unique_ptr<RayObject>> pinned_objects_;
+
+  // Total size of objects pinned on this node.
+  size_t pinned_objects_size_ = 0;
 
   // Objects that were pinned on this node but that are being spilled.
   // These objects will be released once spilling is complete and the URL is

@@ -133,11 +133,13 @@ class warn_if_slow:
     def __init__(self,
                  name: str,
                  threshold: Optional[float] = None,
-                 message: Optional[str] = None):
+                 message: Optional[str] = None,
+                 disable: bool = False):
         self.name = name
         self.threshold = threshold or self.DEFAULT_THRESHOLD
         self.message = message or self.DEFAULT_MESSAGE
         self.too_slow = False
+        self.disable = disable
 
     def __enter__(self):
         self.start = time.time()
@@ -145,6 +147,8 @@ class warn_if_slow:
 
     def __exit__(self, type, value, traceback):
         now = time.time()
+        if self.disable:
+            return
         if now - self.start > self.threshold and now - START_OF_TIME > 60.0:
             self.too_slow = True
             duration = now - self.start

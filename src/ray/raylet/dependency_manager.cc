@@ -185,12 +185,6 @@ bool DependencyManager::RequestTaskDependencies(
   return task_entry.num_missing_dependencies == 0;
 }
 
-bool DependencyManager::IsTaskReady(const TaskID &task_id) const {
-  auto task_entry = queued_task_requests_.find(task_id);
-  RAY_CHECK(task_entry != queued_task_requests_.end());
-  return task_entry->second.num_missing_dependencies == 0;
-}
-
 void DependencyManager::RemoveTaskDependencies(const TaskID &task_id) {
   RAY_LOG(DEBUG) << "Removing dependencies for task " << task_id;
   auto task_entry = queued_task_requests_.find(task_id);
