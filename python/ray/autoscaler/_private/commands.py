@@ -150,6 +150,9 @@ def create_or_update_cluster(
         use_login_shells: bool = True,
         no_monitor_on_head: bool = False) -> Dict[str, Any]:
     """Create or updates an autoscaling Ray cluster from a config json."""
+    # no_monitor_on_head is an internal flag used by the Ray K8s operator.
+    # If True, prevents autoscaling config sync to the Ray head during cluster
+    # creation. See https://github.com/ray-project/ray/pull/13720.
     set_using_login_shells(use_login_shells)
     if not use_login_shells:
         cmd_output_util.set_allow_interactive(False)
