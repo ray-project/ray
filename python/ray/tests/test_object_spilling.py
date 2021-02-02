@@ -348,7 +348,7 @@ def test_spill_stats(object_spilling_config, shutdown_only):
     assert "Spilled 200 MiB, 4 objects" in s, s
     assert "Restored 150 MiB, 3 objects" in s, s
 
-    # Test if referenced bytes are correctly calculated.
+    # Test if consumed bytes are correctly calculated.
     obj = ray.put(np.zeros(30 * 1024 * 1024, dtype=np.uint8))
 
     @ray.remote
