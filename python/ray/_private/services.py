@@ -1204,9 +1204,17 @@ def start_dashboard(require_dashboard,
                 dashboard_log = os.path.join(logdir, "dashboard.log")
                 returncode_str = (f", return code {dashboard_returncode}"
                                   if dashboard_returncode is not None else "")
+                try:
+                    with open(dashboard_log, "r") as f:
+                        lines = f.readlines()
+                except Exception:
+                    lines = []
+                n = 10
+                first_line = f" The last {n} lines of {dashboard_log}:\n"
+                last_log_str = ("".join([first_line] + lines[-n:])
+                                if len(lines) > 0 else "")
                 raise Exception("Failed to start the dashboard"
-                                f"{returncode_str}. "
-                                f"Please check {dashboard_log} for details.")
+                                f"{returncode_str}.{last_log_str}")
 
         logger.info("View the Ray dashboard at {}{}http://{}{}{}".format(
             colorama.Style.BRIGHT, colorama.Fore.GREEN, dashboard_url,
