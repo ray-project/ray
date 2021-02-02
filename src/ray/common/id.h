@@ -312,7 +312,7 @@ class PlacementGroupID : public BaseID<PlacementGroupID> {
   static constexpr size_t kUniqueBytesLength = 14;
 
  public:
-  /// Length of `ActorID` in bytes.
+  /// Length of `PlacementGroupID` in bytes.
   static constexpr size_t kLength = kUniqueBytesLength + JobID::kLength;
 
   /// Size of `PlacementGroupID` in bytes.
@@ -320,7 +320,7 @@ class PlacementGroupID : public BaseID<PlacementGroupID> {
   /// \return Size of `PlacementGroupID` in bytes.
   static size_t Size() { return kLength; }
 
-  /// Creates an `PlacementGroupID` by hashing the given information.
+  /// Creates a `PlacementGroupID` by hashing the given information.
   ///
   /// \param job_id The job id to which this actor belongs.
   ///
