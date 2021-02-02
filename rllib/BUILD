@@ -1509,6 +1509,13 @@ py_test(
     srcs = ["tests/test_timesteps.py"]
 )
 
+py_test(
+    name = "tests/test_trainer",
+    tags = ["tests_dir", "tests_dir_T"],
+    size = "small",
+    srcs = ["tests/test_trainer.py"]
+)
+
 # --------------------------------------------------------------------
 # examples/ directory
 #
