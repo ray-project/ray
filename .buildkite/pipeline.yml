@@ -6,6 +6,7 @@
   - ./ci/travis/ci.sh build
 
 - label: ":java: Java"
+  conditions: ["RAY_CI_JAVA_AFFECTED"]
   commands:
   - apt-get install -y openjdk-8-jdk maven clang-format
   # Compile Java again so bazel will compile Java as a language.
