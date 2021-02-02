@@ -17,13 +17,16 @@ logger = logging.getLogger(__name__)
 
 class RayCluster():
     def __init__(self, config: Dict[str, Any]):
-        self.config = config
+        self.set_config(config)
         self.name = self.config["cluster_name"]
         self.config_path = operator_utils.config_path(self.name)
 
         self.setup_logging()
 
         self.subprocess = None  # type: Optional[mp.Process]
+
+    def set_config(self, config: Dict[str, Any]) -> None:
+        self.config = config
 
     def do_in_subprocess(self,
                          f: Callable[[], None],
@@ -98,7 +101,7 @@ class RayCluster():
 
 
 ray_clusters = {}
-cluster_crs = {}
+last_generation = {}
 
 
 def handle_event(event_type, cluster_cr, cluster_name):
@@ -115,24 +118,22 @@ def cluster_action(event_type, cluster_cr, cluster_name) -> None:
     cluster_name = cluster_config["cluster_name"]
 
     if event_type == "ADDED":
-        ray_clusters[cluster_name] = RayCluster(cluster_config)
         operator_utils.set_status(cluster_cr, cluster_name, "Running")
+        ray_clusters[cluster_name] = RayCluster(cluster_config)
         ray_clusters[cluster_name].create_or_update()
-        cluster_crs[cluster_name] = cluster_cr
+        last_generation[cluster_name] = cluster_cr["metadata"]["generation"]
     elif event_type == "MODIFIED":
-        # Modification of status subresource shouldn't trigger a response.
-        # For this reason, check if the spec has change before triggering an
-        # update.
-        old_cr = cluster_crs[cluster_name]
-        spec_changed = (cluster_cr["spec"] != old_cr["spec"])
-        if spec_changed:
+        # Check metadata.generation to determine if there's a spec change.
+        current_generation = cluster_cr["metadata"]["generation"]
+        if current_generation > last_generation[cluster_name]:
+            ray_clusters[cluster_name].set_config(cluster_config)
             ray_clusters[cluster_name].create_or_update()
-        cluster_crs[cluster_name] = cluster_cr
+            last_generation[cluster_name] = current_generation
 
     elif event_type == "DELETED":
         ray_clusters[cluster_name].clean_up()
         del ray_clusters[cluster_name]
-        del cluster_crs[cluster_name]
+        del last_generation[cluster_name]
 
 
 def main() -> None:
