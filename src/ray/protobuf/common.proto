@@ -428,6 +428,8 @@ message CoreWorkerStats {
   uint32 pid = 22;
   // The worker type.
   WorkerType worker_type = 23;
+  // Total plasma object bytes that are referenced by this core worker.
+  int64 referenced_bytes = 24;
 }
 
 message MetricPoint {

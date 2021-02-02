@@ -2509,11 +2509,14 @@ void NodeManager::HandleGetNodeStats(const rpc::GetNodeStatsRequest &node_stats_
     request.set_intended_worker_id(worker->WorkerId().Binary());
     request.set_include_memory_info(node_stats_request.include_memory_info());
     worker->rpc_client()->GetCoreWorkerStats(
-        request, [reply, worker, all_workers, driver_ids, send_reply_callback](
+        request, [this, reply, worker, all_workers, driver_ids, send_reply_callback](
                      const ray::Status &status, const rpc::GetCoreWorkerStatsReply &r) {
+          total_referenced_bytes_ += r.core_worker_stats().referenced_bytes();
           reply->add_core_workers_stats()->MergeFrom(r.core_worker_stats());
           reply->set_num_workers(reply->num_workers() + 1);
           if (reply->num_workers() == all_workers.size()) {
+            auto stats = reply->mutable_store_stats();
+            stats->set_referenced_bytes(total_referenced_bytes_);
             send_reply_callback(Status::OK(), nullptr, nullptr);
           }
         });
@@ -2545,6 +2548,8 @@ rpc::ObjectStoreStats AccumulateStoreStats(
                                              cur_store.object_store_bytes_avail());
     store_stats.set_num_local_objects(store_stats.num_local_objects() +
                                       cur_store.num_local_objects());
+    store_stats.set_referenced_bytes(store_stats.referenced_bytes() +
+                                     cur_store.referenced_bytes());
   }
   return store_stats;
 }

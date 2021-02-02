@@ -935,6 +935,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// Managers all bundle-related operations.
   std::shared_ptr<PlacementGroupResourceManager> placement_group_resource_manager_;
+
+  /// The total bytes size of plasma objects that are referenced by core workers.
+  /// It is accumulative.
+  int64_t total_referenced_bytes_ = 0;
 };
 
 }  // namespace raylet
