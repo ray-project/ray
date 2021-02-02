@@ -589,7 +589,6 @@ class NodeResourceInfoAccessor {
  protected:
   NodeResourceInfoAccessor() = default;
 
- private:
   /// Cache which stores resource usage in last report used to check if they are changed.
   /// Used by light resource usage report.
   std::shared_ptr<SchedulingResources> last_resource_usage_ =
