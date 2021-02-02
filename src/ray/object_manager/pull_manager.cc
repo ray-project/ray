@@ -277,11 +277,17 @@ void PullManager::OnLocationChange(const ObjectID &object_id,
   it->second.spilled_url = spilled_url;
   it->second.spilled_node_id = spilled_node_id;
   if (!it->second.object_size_set) {
-    RAY_LOG(DEBUG) << "Updated size of object " << object_id << " to " << object_size
-                   << ", num bytes being pulled is now " << num_bytes_being_pulled_;
     it->second.object_size = object_size;
     it->second.object_size_set = true;
     UpdatePullsBasedOnAvailableMemory(num_bytes_available_);
+    RAY_LOG(DEBUG) << "Updated size of object " << object_id << " to " << object_size
+                   << ", num bytes being pulled is now " << num_bytes_being_pulled_;
+    if (it->second.object_size == 0) {
+      RAY_LOG(WARNING) << "Size of object " << object_id
+                       << " stored in object store is zero. This may be a bug since "
+                          "objects in the object store should be large, and can result "
+                          "in too many objects being fetched to this node";
+    }
   }
   RAY_LOG(DEBUG) << "OnLocationChange " << spilled_url << " num clients "
                  << client_ids.size();
