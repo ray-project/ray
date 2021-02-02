@@ -1485,9 +1485,13 @@ ray.shutdown()
     assert not same_name_pg.wait(10)
 
     # Get a named placement group with a name that doesn't exist
-    # and make sure it will return None correctly.
-    inexistent_pg = ray.util.get_placement_group("inexistent_pg")
-    assert inexistent_pg is None
+    # and make sure it will raise ValueError correctly.
+    error_count = 0
+    try:
+        ray.util.get_placement_group("inexistent_pg")
+    except ValueError:
+        error_count = error_count + 1
+    assert error_count == 1
 
 
 if __name__ == "__main__":

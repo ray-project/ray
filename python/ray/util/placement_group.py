@@ -226,9 +226,12 @@ def get_placement_group(placement_group_name: str):
     worker.check_connected()
     placement_group_info = ray.state.state.get_placement_group_by_name(
         placement_group_name)
-    return PlacementGroup(PlacementGroupID(hex_to_binary(
-        placement_group_info["placement_group_id"]))) \
-        if placement_group_info is not None else None
+    if placement_group_info is None:
+        raise ValueError(
+            f"Failed to look up actor with name: {placement_group_name}")
+    else:
+        return PlacementGroup(PlacementGroupID(hex_to_binary(
+            placement_group_info["placement_group_id"])))
 
 
 def placement_group_table(placement_group: PlacementGroup = None) -> list:
