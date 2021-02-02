@@ -208,7 +208,7 @@ ray::Status OwnershipBasedObjectDirectory::SubscribeObjectLocations(
     rpc::GetObjectLocationsOwnerRequest request;
     request.set_intended_worker_id(owner_address.worker_id());
     request.set_object_id(object_id.Binary());
-    request.set_last_version(0);
+    request.set_last_version(-1);
     rpc_client->GetObjectLocationsOwner(
         request,
         std::bind(&OwnershipBasedObjectDirectory::SubscriptionCallback, this, object_id,

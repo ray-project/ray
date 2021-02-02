@@ -51,7 +51,7 @@ class ReferenceCounterInterface {
 
 // Callback for location subscriptions.
 using LocationSubscriptionCallback =
-    std::function<void(const absl::flat_hash_set<NodeID> &, int64_t, uint64_t)>;
+    std::function<void(const absl::flat_hash_set<NodeID> &, int64_t, int64_t)>;
 
 /// Class used by the core worker to keep track of ObjectID reference counts for garbage
 /// collection. This class is thread safe.
@@ -409,8 +409,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// caller received. Only more recent location updates will be returned.
   /// \param[in] callback The callback to invoke with the location update.
   /// \return The status of the location get.
-  Status GetObjectLocationsAsync(const ObjectID &object_id,
-                                 uint64_t last_location_version,
+  Status GetObjectLocationsAsync(const ObjectID &object_id, int64_t last_location_version,
                                  const LocationSubscriptionCallback &callback)
       LOCKS_EXCLUDED(mutex_);
 
@@ -517,8 +516,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// object locations.
     absl::flat_hash_set<NodeID> locations;
     /// A logical counter for object location updates, used for object location
-    /// subscriptions.
-    uint64_t location_version = 1;
+    /// subscriptions. Subscribers use -1 to indicate that they want us to
+    /// immediately send them the current location data.
+    int64_t location_version = 0;
     // Whether this object can be reconstructed via lineage. If false, then the
     // object's value will be pinned as long as it is referenced by any other
     // object's lineage.

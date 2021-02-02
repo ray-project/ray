@@ -2221,7 +2221,7 @@ void CoreWorker::HandleGetObjectLocationsOwner(
   auto object_id = ObjectID::FromBinary(request.object_id());
   auto callback = [this, object_id, reply, send_reply_callback](
                       const absl::flat_hash_set<NodeID> &locations, int64_t object_size,
-                      uint64_t current_version) {
+                      int64_t current_version) {
     io_service_.post([object_id, reply, send_reply_callback, locations, object_size,
                       current_version]() {
       RAY_LOG(DEBUG) << "Replying to HandleGetObjectLocationsOwner for " << object_id

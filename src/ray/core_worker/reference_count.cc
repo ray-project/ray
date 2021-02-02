@@ -1024,7 +1024,7 @@ void ReferenceCounter::PushToLocationSubscribers(ReferenceTable::iterator it,
 }
 
 Status ReferenceCounter::GetObjectLocationsAsync(
-    const ObjectID &object_id, uint64_t last_location_version,
+    const ObjectID &object_id, int64_t last_location_version,
     const LocationSubscriptionCallback &callback) {
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
