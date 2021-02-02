@@ -103,6 +103,7 @@ def translate(configuration: Dict[str, Any],
 
 def set_status(cluster_cr: Dict[str, Any], cluster_name: str,
                status: str) -> None:
+    # TODO: Add retry logic in case of 409 due to old resource version.
     cluster_cr["status"] = {"phase": status}
     custom_objects_api()\
         .patch_namespaced_custom_object_status(namespace=RAY_NAMESPACE,

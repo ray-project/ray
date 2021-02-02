@@ -105,6 +105,9 @@ last_generation = {}
 
 
 def handle_event(event_type, cluster_cr, cluster_name):
+    # TODO: This only detects errors in the parent process and thus doesn't
+    # catch cluster-specific autoscaling failures. Fix that (perhaps at
+    # the same time that we eliminate subprocesses).
     try:
         cluster_action(event_type, cluster_cr, cluster_name)
     except Exception:
