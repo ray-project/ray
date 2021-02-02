@@ -205,7 +205,7 @@ class DashboardHead:
                 logger.warning("Try to use port %s: %s", self.http_port, e)
         else:
             raise Exception("Failed to find a valid port for dashboard.")
-        http_host, http_port = site._server.sockets[0].getsockname()
+        http_host, http_port, *_ = site._server.sockets[0].getsockname()
         logger.info("Dashboard head http address: %s:%s", http_host, http_port)
 
         # Write the dashboard head port to redis.
