@@ -19,6 +19,7 @@ def train_ray(path,
               ray_params=None,
               xgboost_params=None,
               **kwargs):
+    path = os.path.expanduser(path)
     if not os.path.exists(path):
         raise ValueError(f"Path does not exist: {path}")
 
