@@ -16,6 +16,7 @@ from ray.tune.utils.util import is_nan_or_inf, unflatten_dict
 
 try:  # Python 3 only -- needed for lint test.
     import bo as hebo
+    import torch  # hebo has torch as a dependency
 except ImportError:
     hebo = None
 
@@ -96,6 +97,10 @@ class HEBOSearch(Searcher):
             as a list so the optimiser can be told the results without
             needing to re-compute the trial. Must be the same length as
             points_to_evaluate. (See tune/examples/hebo_example.py)
+        random_state_seed (int, None): seed for reproducible
+            results. Defaults to None. Please note that setting this to a value
+            will change global random states for `numpy` and `torch`
+            on initalization and loading from checkpoint.
 
     Tune automatically converts search spaces to HEBO's format:
 
@@ -140,6 +145,7 @@ class HEBOSearch(Searcher):
             mode: Optional[str] = None,
             points_to_evaluate: Optional[List[Dict]] = None,
             evaluated_rewards: Optional[List] = None,
+            random_state_seed: Optional[int] = None,
             **kwargs):
         assert hebo is not None, (
             "HEBO must be installed!. You can install HEBO with"
@@ -148,6 +154,11 @@ class HEBOSearch(Searcher):
             "#subdirectory=HEBO`.")
         if mode:
             assert mode in ["min", "max"], "`mode` must be 'min' or 'max'."
+        if random_state_seed:
+            assert random_state_seed is None or isinstance(
+                random_state_seed, int
+            ), "random_state_seed must be None or int, got '{}'.".format(
+                type(random_state_seed))
         super(HEBOSearch, self).__init__(metric=metric, mode=mode)
 
         if isinstance(space, dict) and space:
@@ -165,6 +176,7 @@ class HEBOSearch(Searcher):
                             " Got {}.".format(type(space)))
 
         self._hebo_config = kwargs
+        self._random_state_seed = random_state_seed
         self._space = space
         self._points_to_evaluate = points_to_evaluate
         self._evaluated_rewards = evaluated_rewards
@@ -185,6 +197,10 @@ class HEBOSearch(Searcher):
         if self._metric is None and self._mode:
             # If only a mode was passed, use anonymous metric
             self._metric = DEFAULT_METRIC
+
+        if self._random_state_seed is not None:
+            np.random.seed(self._random_state_seed)
+            torch.random.manual_seed(self._random_state_seed)
 
         self._opt = hebo.optimizers.hebo.HEBO(
             space=self._space, **self._hebo_config)
@@ -256,13 +272,25 @@ class HEBOSearch(Searcher):
 
     def save(self, checkpoint_path: str):
         """Storing current optimizer state."""
+        if self._random_state_seed is not None:
+            numpy_random_state = np.random.get_state()
+            torch_random_state = torch.get_rng_state()
+        else:
+            numpy_random_state = None
+            torch_random_state = None
         with open(checkpoint_path, "wb") as f:
-            pickle.dump((self._opt, self._points_to_evaluate), f)
+            pickle.dump((self._opt, self._points_to_evaluate,
+                         numpy_random_state, torch_random_state), f)
 
     def restore(self, checkpoint_path: str):
         """Restoring current optimizer state."""
         with open(checkpoint_path, "rb") as f:
-            (self._opt, self._points_to_evaluate) = pickle.load(f)
+            (self._opt, self._points_to_evaluate, numpy_random_state,
+             torch_random_state) = pickle.load(f)
+        if numpy_random_state is not None:
+            np.random.set_state(numpy_random_state)
+        if torch_random_state is not None:
+            torch.random.set_rng_state(torch_random_state)
 
     @staticmethod
     def convert_search_space(spec: Dict, prefix: str = "") -> Dict:

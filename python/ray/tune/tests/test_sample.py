@@ -536,8 +536,13 @@ class SearchSpaceTest(unittest.TestCase):
         ]
         hebo_space = DesignSpace().parse(hebo_space_config)
 
-        searcher1 = HEBOSearch(space=converted_config, metric="a", mode="max")
-        searcher2 = HEBOSearch(space=hebo_space, metric="a", mode="max")
+        searcher1 = HEBOSearch(
+            space=converted_config,
+            metric="a",
+            mode="max",
+            random_state_seed=123)
+        searcher2 = HEBOSearch(
+            space=hebo_space, metric="a", mode="max", random_state_seed=123)
 
         np.random.seed(1234)
         torch.manual_seed(1234)
@@ -552,7 +557,7 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertLess(1e-4, config1["b"]["z"])
         self.assertLess(config1["b"]["z"], 1e-2)
 
-        searcher = HEBOSearch(metric="a", mode="max")
+        searcher = HEBOSearch(metric="a", mode="max", random_state_seed=123)
         analysis = tune.run(
             _mock_objective, config=config, search_alg=searcher, num_samples=1)
         trial = analysis.trials[0]

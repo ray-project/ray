@@ -59,7 +59,9 @@ if __name__ == "__main__":
 
     algo = HEBOSearch(
         points_to_evaluate=previously_run_params,
-        evaluated_rewards=known_rewards)
+        evaluated_rewards=known_rewards,
+        random_state_seed=123,  # for reproducibility
+    )
     algo = ConcurrencyLimiter(algo, max_concurrent=4)
 
     scheduler = AsyncHyperBandScheduler()

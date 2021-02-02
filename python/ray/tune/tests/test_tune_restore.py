@@ -690,7 +690,8 @@ class HEBOWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
         def cost(param, reporter):
             reporter(loss=(param["height"] - 14)**2 - abs(param["width"] - 3))
 
-        search_alg = HEBOSearch(space=space, metric="loss", mode="min")
+        search_alg = HEBOSearch(
+            space=space, metric="loss", mode="min", random_state_seed=5)
 
         return search_alg, cost
 

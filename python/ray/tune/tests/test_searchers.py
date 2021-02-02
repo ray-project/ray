@@ -116,7 +116,7 @@ class InvalidValuesTest(unittest.TestCase):
         out = tune.run(
             _invalid_objective,
             # At least one nan, inf, -inf and float
-            search_alg=HEBOSearch(),
+            search_alg=HEBOSearch(random_state_seed=123),
             config=self.config,
             mode="max",
             num_samples=8,
