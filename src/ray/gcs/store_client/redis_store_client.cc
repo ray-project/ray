@@ -115,7 +115,7 @@ Status RedisStoreClient::AsyncDeleteWithIndex(const std::string &table_name,
                                               const std::string &index_key,
                                               const StatusCallback &callback) {
   std::vector<std::string> redis_keys;
-  redis_keys.reserve(20);
+  redis_keys.reserve(2);
   redis_keys.push_back(GenRedisKey(table_name, key));
   redis_keys.push_back(GenRedisKey(table_name, key, index_key));
 

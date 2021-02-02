@@ -82,11 +82,11 @@ class ExternalStorage(metaclass=abc.ABCMeta):
 
     def _get_objects_from_store(self, object_refs):
         worker = ray.worker.global_worker
-        ray_object_pairs = worker.core_worker.get_objects(
-            object_refs,
-            worker.current_task_id,
-            timeout_ms=0,
-            plasma_objects_only=True)
+        # Since the object should always exist in the plasma store before
+        # spilling, it can directly get the object from the local plasma
+        # store.
+        # issue: https://github.com/ray-project/ray/pull/13831
+        ray_object_pairs = worker.core_worker.get_if_local(object_refs)
         return ray_object_pairs
 
     def _put_object_to_store(self, metadata, data_size, file_like, object_ref):

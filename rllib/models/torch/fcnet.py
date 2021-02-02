@@ -24,8 +24,11 @@ class FullyConnectedNetwork(TorchModelV2, nn.Module):
                               model_config, name)
         nn.Module.__init__(self)
 
+        hiddens = model_config.get("fcnet_hiddens", []) + \
+            model_config.get("post_fcnet_hiddens", [])
         activation = model_config.get("fcnet_activation")
-        hiddens = model_config.get("fcnet_hiddens", [])
+        if not model_config.get("fcnet_hiddens", []):
+            activation = model_config.get("post_fcnet_activation")
         no_final_linear = model_config.get("no_final_linear")
         self.vf_share_layers = model_config.get("vf_share_layers")
         self.free_log_std = model_config.get("free_log_std")

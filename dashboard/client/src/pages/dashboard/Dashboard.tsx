@@ -35,6 +35,7 @@ const useDashboardStyles = makeStyles((theme: Theme) =>
       "& > :not(:first-child)": {
         marginTop: theme.spacing(4),
       },
+      position: "relative",
     },
     tabs: {
       borderBottomColor: theme.palette.divider,
@@ -106,8 +107,14 @@ const Dashboard: React.FC = () => {
   return (
     <div className={classes.root}>
       <Typography variant="h5">Ray Dashboard</Typography>
-      <Button onClick={() => history.push("/summary")}>
-        Try New Dashboard
+      <Button
+        style={{ position: "absolute", right: 16, top: 16 }}
+        variant="contained"
+        size="small"
+        color="primary"
+        onClick={() => history.push("/node")}
+      >
+        Try Experimental Dashboard
       </Button>
       <Tabs
         className={classes.tabs}

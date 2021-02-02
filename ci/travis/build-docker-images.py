@@ -1,13 +1,12 @@
 import datetime
+import json
 import functools
 import glob
 import os
 import re
-import runpy
 import shutil
+import subprocess
 import sys
-from contextlib import redirect_stdout
-from io import StringIO
 from typing import List, Tuple
 
 import docker
@@ -69,18 +68,15 @@ def _get_wheel_name(minor_version_number):
 
 
 def _docker_affected():
-    result = StringIO()
-    with redirect_stdout(result):
-        runpy.run_path(
-            f"{_get_curr_dir()}/determine_tests_to_run.py",
-            run_name="__main__")
-    variable_definitions = result.getvalue().split()
-    env_var_dict = {
-        x.split("=")[0]: x.split("=")[1]
-        for x in variable_definitions
-    }
-    affected = env_var_dict["RAY_CI_DOCKER_AFFECTED"] == "1" or \
-        env_var_dict["RAY_CI_PYTHON_DEPENDENCIES_AFFECTED"] == "1"
+    proc = subprocess.run(
+        [
+            sys.executable, f"{_get_curr_dir()}/determine_tests_to_run.py",
+            "--output=json"
+        ],
+        capture_output=True)
+    affected_env_var_list = json.loads(proc.stdout)
+    affected = ("RAY_CI_DOCKER_AFFECTED" in affected_env_var_list or
+                "RAY_CI_PYTHON_DEPENDENCIES_AFFECTED" in affected_env_var_list)
     print(f"Docker affected: {affected}")
     return affected
 

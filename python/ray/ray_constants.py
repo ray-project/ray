@@ -234,4 +234,4 @@ MACH_PAGE_SIZE_BYTES = 4096
 MAX_INT64_VALUE = 9223372036854775807
 
 # Object Spilling related constants
-DEFAULT_OBJECT_PREFIX = "ray_spilled_object"
+DEFAULT_OBJECT_PREFIX = "ray_spilled_objects"

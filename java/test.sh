@@ -16,6 +16,16 @@ pushd "$ROOT_DIR"
   mvn -T16 checkstyle:check
 popd
 
+on_exit() {
+  exit_code=$?
+  if [ $exit_code -ne 0 ]; then
+    echo "Exit trap, printing ray logs"
+    cat /tmp/ray/session_latest/logs/*
+  fi
+}
+
+trap on_exit EXIT
+
 run_testng() {
     local exit_code
     if "$@"; then

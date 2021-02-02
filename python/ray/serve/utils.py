@@ -392,11 +392,14 @@ class MockImportedBackend:
     def reconfigure(self, config):
         self.config = config
 
-    def __call__(self, *args):
-        return {"arg": self.arg, "config": self.config}
+    def __call__(self, batch):
+        return [{
+            "arg": self.arg,
+            "config": self.config
+        } for _ in range(len(batch))]
 
-    async def other_method(self, request):
-        return await request.body()
+    async def other_method(self, batch):
+        return [await request.body() for request in batch]
 
 
 def compute_iterable_delta(old: Iterable,
@@ -406,7 +409,7 @@ def compute_iterable_delta(old: Iterable,
     Usage:
         >>> old = {"a", "b"}
         >>> new = {"a", "d"}
-        >>> compute_dict_delta(old, new)
+        >>> compute_iterable_delta(old, new)
         ({"d"}, {"b"}, {"a"})
     """
     old_keys, new_keys = set(old), set(new)
