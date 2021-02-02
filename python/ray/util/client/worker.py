@@ -101,17 +101,11 @@ class Worker:
                 # Note that channel_ready_future constitutes its own timeout,
                 # which is why we do not sleep here.
             except grpc.RpcError as e:
-                if e.code() == grpc.StatusCode.UNAVAILABLE:
-                    # UNAVAILABLE is gRPC's retryable error,
-                    # so we do that here.
-                    logger.info("Ray client server unavailable, "
-                                f"retrying in {timeout}s...")
-                    logger.debug(f"Received when checking init: {e.details()}")
-                    # Ray is not ready yet, wait a timeout
-                    time.sleep(timeout)
-                else:
-                    # Any other gRPC error gets a reraise
-                    raise e
+                logger.info("Ray client server unavailable, "
+                            f"retrying in {timeout}s...")
+                logger.debug(f"Received when checking init: {e.details()}")
+                # Ray is not ready yet, wait a timeout.
+                time.sleep(timeout)
             # Fallthrough, backoff, and retry at the top of the loop
             logger.info("Waiting for Ray to become ready on the server, "
                         f"retry in {timeout}s...")
