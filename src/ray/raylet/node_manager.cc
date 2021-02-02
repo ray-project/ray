@@ -2548,7 +2548,7 @@ rpc::ObjectStoreStats AccumulateStoreStats(
     store_stats.set_num_local_objects(store_stats.num_local_objects() +
                                       cur_store.num_local_objects());
     store_stats.set_consumed_bytes(store_stats.consumed_bytes() +
-                                     cur_store.consumed_bytes());
+                                   cur_store.consumed_bytes());
   }
   return store_stats;
 }
