@@ -2,10 +2,11 @@ from gym.spaces import Box, Discrete, Tuple
 import numpy as np
 
 from ray.rllib.models.catalog import ModelCatalog
-from ray.rllib.models.modelv2 import ModelV2
+from ray.rllib.models.modelv2 import ModelV2, restore_original_dimensions
 from ray.rllib.models.tf.misc import normc_initializer
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.models.utils import get_filter_config
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.tf_ops import one_hot
@@ -114,11 +115,16 @@ class ComplexInputNetwork(TFModelV2):
 
     @override(ModelV2)
     def forward(self, input_dict, state, seq_lens):
+        if SampleBatch.OBS in input_dict and "obs_flat" in input_dict:
+            orig_obs = input_dict[SampleBatch.OBS]
+        else:
+            orig_obs = restore_original_dimensions(input_dict[SampleBatch.OBS],
+                                                   self.obs_space, "tf")
         # Push image observations through our CNNs.
         outs = []
-        for i, component in enumerate(input_dict["obs"]):
+        for i, component in enumerate(orig_obs):
             if i in self.cnns:
-                cnn_out, _ = self.cnns[i]({"obs": component})
+                cnn_out, _ = self.cnns[i]({SampleBatch.OBS: component})
                 outs.append(cnn_out)
             elif i in self.one_hot:
                 if component.dtype in [tf.int32, tf.int64, tf.uint8]:
@@ -131,7 +137,7 @@ class ComplexInputNetwork(TFModelV2):
         # Concat all outputs and the non-image inputs.
         out = tf.concat(outs, axis=1)
         # Push through (optional) FC-stack (this may be an empty stack).
-        out, _ = self.post_fc_stack({"obs": out}, [], None)
+        out, _ = self.post_fc_stack({SampleBatch.OBS: out}, [], None)
 
         # No logits/value branches.
         if not self.logits_and_value_model:

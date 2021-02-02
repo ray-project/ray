@@ -65,6 +65,7 @@ class TestSAC(unittest.TestCase):
     def test_sac_compilation(self):
         """Tests whether an SACTrainer can be built with all frameworks."""
         config = sac.DEFAULT_CONFIG.copy()
+        config["Q_model"] = sac.DEFAULT_CONFIG["Q_model"].copy()
         config["num_workers"] = 0  # Run locally.
         config["twin_q"] = True
         config["clip_actions"] = False

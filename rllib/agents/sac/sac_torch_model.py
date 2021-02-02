@@ -137,13 +137,10 @@ class SACTorchModel(TorchModelV2, nn.Module):
         Override this method in a sub-class of SACTFModel to implement your
         own policy net. Alternatively, simply set `custom_model` within the
         top level SAC `policy_model` config key to make this default
-        implementation use your custom policy network.
-
-        Args:
-            TODO
+        implementation of `build_policy_model` use your custom policy network.
 
         Returns:
-            TFModelV2: The TFModelV2 policy sub-model.
+            TorchModelV2: The TorchModelV2 policy sub-model.
         """
         model = ModelCatalog.get_model_v2(
             obs_space,
@@ -161,14 +158,10 @@ class SACTorchModel(TorchModelV2, nn.Module):
         Override this method in a sub-class of SACTFModel to implement your
         own Q-nets. Alternatively, simply set `custom_model` within the
         top level SAC `Q_model` config key to make this default implementation
-        use your custom Q-nets.
-
-        Args:
-            observations (tf.keras.layer.Layer): The observation inputs layer.
-            actions  (tf.keras.layer.Layer): The actions inputs layer.
+        of `build_q_model` use your custom Q-nets.
 
         Returns:
-            tf.keras.model.Model: The keras Q-net model.
+            TorchModelV2: The TorchModelV2 Q-net sub-model.
         """
         self.concat_obs_and_actions = False
         if self.discrete:
@@ -182,10 +175,14 @@ class SACTorchModel(TorchModelV2, nn.Module):
                     shape=(orig_space.shape[0] + action_space.shape[0], ))
                 self.concat_obs_and_actions = True
             else:
-                input_space = gym.spaces.Tuple(
-                    (orig_space.spaces if isinstance(
-                        orig_space, gym.spaces.Tuple) else [obs_space]) +
-                    [action_space])
+                if isinstance(orig_space, gym.spaces.Tuple):
+                    spaces = orig_space.spaces
+                elif isinstance(orig_space, gym.spaces.Dict):
+                    spaces = list(orig_space.spaces.values())
+                else:
+                    spaces = [obs_space]
+                input_space = gym.spaces.Tuple(spaces + [action_space])
+
         model = ModelCatalog.get_model_v2(
             input_space,
             action_space,
@@ -237,9 +234,11 @@ class SACTorchModel(TorchModelV2, nn.Module):
     def _get_q_value(self, model_out, actions, net):
         # Model outs may come as original Tuple observations, concat them
         # here if this is the case.
-        if isinstance(net.obs_space, Box) and \
-                isinstance(model_out, list):
-            model_out = torch.cat(model_out, dim=-1)
+        if isinstance(net.obs_space, Box):
+            if isinstance(model_out, (list, tuple)):
+                model_out = torch.cat(model_out, dim=-1)
+        elif isinstance(model_out, dict):
+            model_out = list(model_out.values())
 
         # Continuous case -> concat actions to model_out.
         if actions is not None:
@@ -274,9 +273,11 @@ class SACTorchModel(TorchModelV2, nn.Module):
         """
         # Model outs may come as original Tuple observations, concat them
         # here if this is the case.
-        if isinstance(self.action_model.obs_space, Box) and \
-                isinstance(model_out, list):
-            model_out = torch.cat(model_out, dim=-1)
+        if isinstance(self.action_model.obs_space, Box):
+            if isinstance(model_out, (list, tuple)):
+                model_out = torch.cat(model_out, dim=-1)
+            elif isinstance(model_out, dict):
+                model_out = torch.cat(list(model_out.values()), dim=-1)
         out, _ = self.action_model({"obs": model_out}, [], None)
         return out
 
