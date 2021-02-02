@@ -1007,7 +1007,7 @@ absl::optional<LocalityData> ReferenceCounter::GetLocalityData(
 }
 
 void ReferenceCounter::PushToLocationSubscribers(ReferenceTable::iterator it) {
-  auto callbacks = it->second.location_subscription_callbacks;
+  const auto callbacks = it->second.location_subscription_callbacks;
   it->second.location_subscription_callbacks.clear();
   it->second.location_version++;
   for (const auto callback : callbacks) {
@@ -1021,8 +1021,9 @@ Status ReferenceCounter::GetObjectLocationsAsync(
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
-    RAY_LOG(WARNING) << "Tried to register a location subscriber for an object "
-                     << object_id << " that doesn't exist in the reference table";
+    RAY_LOG(INFO) << "Tried to register a location subscriber for an object " << object_id
+                  << " that doesn't exist in the reference table."
+                  << " The object has probably already been freed.";
     return Status::ObjectNotFound("Object " + object_id.Hex() + " not found");
   }
 

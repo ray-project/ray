@@ -89,9 +89,8 @@ ray::Status OwnershipBasedObjectDirectory::ReportObjectAdded(
                           << " because the owner no longer has the object; we assume the "
                              "object was evicted.";
           } else {
-            RAY_LOG(WARNING) << "Worker " << worker_id << " failed to add the location "
-                             << node_id << " for " << object_id << ": "
-                             << status.ToString();
+            RAY_LOG(INFO) << "Worker " << worker_id << " failed to add the location "
+                          << node_id << " for " << object_id << ": " << status.ToString();
           }
         }
       });
@@ -123,11 +122,10 @@ ray::Status OwnershipBasedObjectDirectory::ReportObjectRemoved(
             RAY_LOG(INFO) << "Worker " << worker_id << " failed to remove the location "
                           << node_id << " for " << object_id
                           << " because the owner no longer has the object; we assume the "
-                             "object was evicted.";
+                             "object was freed.";
           } else {
-            RAY_LOG(WARNING) << "Worker " << worker_id
-                             << " failed to remove the location " << node_id << " for "
-                             << object_id << ": " << status.ToString();
+            RAY_LOG(INFO) << "Worker " << worker_id << " failed to remove the location "
+                          << node_id << " for " << object_id << ": " << status.ToString();
           }
         }
       });
@@ -145,30 +143,28 @@ void OwnershipBasedObjectDirectory::SubscriptionCallback(
   }
   std::unordered_set<NodeID> node_ids;
 
-  if (!status.ok()) {
-    RAY_LOG(INFO) << "Worker " << worker_id << " failed to return location updates to "
-                  << "subscribers  for " << object_id << ": " << status.ToString()
-                  << ", assuming that the object was evicted.";
-    auto callbacks = it->second.callbacks;
-    for (const auto &callback_pair : callbacks) {
-      callback_pair.second(object_id, node_ids, "", NodeID::Nil(), 0);
-    }
-    return;
-  }
-
   // Once this flag is set to true, it should never go back to false.
   it->second.subscribed = true;
 
-  if (reply.object_size() > 0) {
-    it->second.object_size = reply.object_size();
-  }
+  if (!status.ok()) {
+    RAY_LOG(INFO) << "Worker " << worker_id << " failed to return location updates to "
+                  << "subscribers  for " << object_id << ": " << status.ToString()
+                  << ", assuming that the object was freed or evicted.";
+    it->second.object_size = 0;
+  } else {
+    if (reply.object_size() > 0) {
+      it->second.object_size = reply.object_size();
+    }
 
-  for (auto const &node_id : reply.node_ids()) {
-    node_ids.emplace(NodeID::FromBinary(node_id));
+    for (auto const &node_id : reply.node_ids()) {
+      node_ids.emplace(NodeID::FromBinary(node_id));
+    }
+    FilterRemovedNodes(gcs_client_, &node_ids);
   }
-  FilterRemovedNodes(gcs_client_, &node_ids);
-  if (node_ids != it->second.current_object_locations) {
+  if (node_ids != it->second.current_object_locations || !status.ok()) {
     it->second.current_object_locations = std::move(node_ids);
+    // Copy the callbacks so that the callbacks can unsubscribe without interrupting
+    // looping over the callbacks.
     auto callbacks = it->second.callbacks;
     // Call all callbacks associated with the object id locations we have
     // received.  This notifies the client even if the list of locations is
@@ -264,7 +260,7 @@ ray::Status OwnershipBasedObjectDirectory::LookupLocations(
   rpc::GetObjectLocationsOwnerRequest request;
   request.set_intended_worker_id(owner_address.worker_id());
   request.set_object_id(object_id.Binary());
-  request.set_last_version(0);
+  request.set_last_version(-1);
 
   rpc_client->GetObjectLocationsOwner(
       request, [this, worker_id, object_id, callback](
