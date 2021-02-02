@@ -98,15 +98,15 @@ def assert_no_thrashing(address):
         raylet["NodeManagerPort"],
         stats_only=True)
     restored_bytes = 0
-    referenced_bytes = 0
+    consumed_bytes = 0
 
     for line in memory_summary.split("\n"):
         if "Restored" in line:
             restored_bytes = int(line.split(" ")[1])
-        if "referenced" in line:
-            referenced_bytes = int(line.split(" ")[-2])
-    assert referenced_bytes >= restored_bytes, (
-        f"referenced: {referenced_bytes}, restored: {restored_bytes}")
+        if "consumed" in line:
+            consumed_bytes = int(line.split(" ")[-2])
+    assert consumed_bytes >= restored_bytes, (
+        f"consumed: {consumed_bytes}, restored: {restored_bytes}")
 
 
 def test_invalid_config_raises_exception(shutdown_only):

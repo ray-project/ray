@@ -835,7 +835,7 @@ void ObjectManager::FillObjectStoreStats(rpc::GetNodeStatsReply *reply) const {
   stats->set_object_store_bytes_avail(config_.object_store_memory);
   stats->set_num_local_objects(local_objects_.size());
   if (plasma::plasma_store_runner) {
-    stats->set_referenced_bytes(plasma::plasma_store_runner->GetReferencedBytes());
+    stats->set_consumed_bytes(plasma::plasma_store_runner->GetConsumedBytes());
   }
 }
 

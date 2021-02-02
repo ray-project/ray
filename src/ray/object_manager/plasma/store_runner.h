@@ -22,7 +22,7 @@ class PlasmaStoreRunner {
   }
   bool IsPlasmaObjectSpillable(const ObjectID &object_id);
 
-  int64_t GetReferencedBytes();
+  int64_t GetConsumedBytes();
 
   void GetAvailableMemoryAsync(std::function<void(size_t)> callback) const {
     main_service_.post([this, callback]() { store_->GetAvailableMemory(callback); });

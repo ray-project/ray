@@ -83,7 +83,7 @@ struct GetRequest {
   /// satisfied.
   int64_t num_satisfied;
   /// Whether or not the request comes from the core worker. It is used to track the size
-  /// of total objects that are referenced by core worker.
+  /// of total objects that are consumed by core worker.
   bool is_from_worker;
 
   void AsyncWait(int64_t timeout_ms,
@@ -398,7 +398,7 @@ void PlasmaStore::ReturnFromGet(GetRequest *get_req) {
       store_fds.push_back(fd);
       mmap_sizes.push_back(GetMmapSize(fd));
       if (get_req->is_from_worker) {
-        total_referenced_bytes_ += object.data_size + object.metadata_size;
+        total_consumed_bytes_ += object.data_size + object.metadata_size;
       }
     }
   }
@@ -1029,9 +1029,9 @@ void PlasmaStore::ReplyToCreateClient(const std::shared_ptr<Client> &client,
   }
 }
 
-int64_t PlasmaStore::GetReferencedBytes() {
+int64_t PlasmaStore::GetConsumedBytes() {
   std::lock_guard<std::recursive_mutex> guard(mutex_);
-  return total_referenced_bytes_;
+  return total_consumed_bytes_;
 }
 
 bool PlasmaStore::IsObjectSpillable(const ObjectID &object_id) {

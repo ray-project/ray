@@ -65,11 +65,10 @@ def memory_summary(node_manager_address=None,
                 reply.store_stats.restored_objects_total,
                 int(reply.store_stats.restored_bytes_total / (1024 * 1024) /
                     reply.store_stats.restore_time_total_s)))
-    if reply.store_stats.referenced_bytes > 0:
+    if reply.store_stats.consumed_bytes > 0:
         store_summary += (
-            "Total bytes of plasma objects referenced by ray tasks "
-            "or ray.get: {} MiB.".format(
-                int(reply.store_stats.referenced_bytes / (1024 * 1024))))
+            "Objects consumed by Ray tasks: {} MiB.".format(
+                int(reply.store_stats.consumed_bytes / (1024 * 1024))))
     if stats_only:
         return store_summary
     return reply.memory_summary + "\n" + store_summary

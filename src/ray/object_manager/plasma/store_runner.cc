@@ -123,7 +123,7 @@ bool PlasmaStoreRunner::IsPlasmaObjectSpillable(const ObjectID &object_id) {
   return store_->IsObjectSpillable(object_id);
 }
 
-int64_t PlasmaStoreRunner::GetReferencedBytes() { return store_->GetReferencedBytes(); }
+int64_t PlasmaStoreRunner::GetConsumedBytes() { return store_->GetConsumedBytes(); }
 
 std::unique_ptr<PlasmaStoreRunner> plasma_store_runner;
 

@@ -191,8 +191,8 @@ class PlasmaStore {
   /// before the object is pinned by raylet for the first time.
   bool IsObjectSpillable(const ObjectID &object_id);
 
-  /// Return the plasma object bytes that are referenced by core workers.
-  int64_t GetReferencedBytes();
+  /// Return the plasma object bytes that are consumed by core workers.
+  int64_t GetConsumedBytes();
 
   void SetNotificationListener(
       const std::shared_ptr<ray::ObjectStoreNotificationManager> &notification_listener) {
@@ -321,8 +321,8 @@ class PlasmaStore {
 
   size_t num_bytes_in_use_ = 0;
 
-  /// Total plasma object bytes that are referenced by core workers.
-  int64_t total_referenced_bytes_ = 0;
+  /// Total plasma object bytes that are consumed by core workers.
+  int64_t total_consumed_bytes_ = 0;
 };
 
 }  // namespace plasma
