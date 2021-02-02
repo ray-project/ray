@@ -714,11 +714,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// Pushes location updates to subscribers of a particular reference, invoking all
   /// callbacks registered for the reference by GetLocationsAsync calls. This method
   /// also increments the reference's location version counter.
-  ///
-  /// Precondition: Provided lock has already been acquired.
-  /// Postcondition: Provided lock is released.
-  void PushToLocationSubscribers(ReferenceTable::iterator it,
-                                 absl::ReleasableMutexLock &lock)
+  void PushToLocationSubscribers(ReferenceTable::iterator it)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Address of our RPC server. This is used to determine whether we own a

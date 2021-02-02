@@ -181,12 +181,11 @@ void ReferenceCounter::RemoveOwnedObject(const ObjectID &object_id) {
 }
 
 void ReferenceCounter::UpdateObjectSize(const ObjectID &object_id, int64_t object_size) {
-  absl::ReleasableMutexLock lock(&mutex_);
+  absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
   if (it != object_id_refs_.end()) {
     it->second.object_size = object_size;
-    // NOTE: PushToLocationSubscribers() releases lock.
-    PushToLocationSubscribers(it, lock);
+    PushToLocationSubscribers(it);
   }
 }
 
@@ -914,7 +913,7 @@ void ReferenceCounter::SetReleaseLineageCallback(
 
 bool ReferenceCounter::AddObjectLocation(const ObjectID &object_id,
                                          const NodeID &node_id) {
-  absl::ReleasableMutexLock lock(&mutex_);
+  absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
     RAY_LOG(INFO) << "Tried to add an object location for an object " << object_id
@@ -922,14 +921,13 @@ bool ReferenceCounter::AddObjectLocation(const ObjectID &object_id,
     return false;
   }
   it->second.locations.insert(node_id);
-  // NOTE: PushToLocationSubscribers() releases lock.
-  PushToLocationSubscribers(it, lock);
+  PushToLocationSubscribers(it);
   return true;
 }
 
 bool ReferenceCounter::RemoveObjectLocation(const ObjectID &object_id,
                                             const NodeID &node_id) {
-  absl::ReleasableMutexLock lock(&mutex_);
+  absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
     RAY_LOG(INFO) << "Tried to remove an object location for an object " << object_id
@@ -937,8 +935,7 @@ bool ReferenceCounter::RemoveObjectLocation(const ObjectID &object_id,
     return false;
   }
   it->second.locations.erase(node_id);
-  // NOTE: PushToLocationSubscribers() releases lock.
-  PushToLocationSubscribers(it, lock);
+  PushToLocationSubscribers(it);
   return true;
 }
 
@@ -1009,17 +1006,12 @@ absl::optional<LocalityData> ReferenceCounter::GetLocalityData(
   return locality_data;
 }
 
-void ReferenceCounter::PushToLocationSubscribers(ReferenceTable::iterator it,
-                                                 absl::ReleasableMutexLock &lock) {
+void ReferenceCounter::PushToLocationSubscribers(ReferenceTable::iterator it) {
   auto callbacks = it->second.location_subscription_callbacks;
   it->second.location_subscription_callbacks.clear();
-  auto locations = it->second.locations;
-  auto object_size = it->second.object_size;
-  auto current_version = ++it->second.location_version;
-  // NOTE: We release the lock before running the callbacks.
-  lock.Release();
+  it->second.location_version++;
   for (const auto callback : callbacks) {
-    callback(locations, object_size, current_version);
+    callback(it->second.locations, it->second.object_size, it->second.location_version);
   }
 }
 
