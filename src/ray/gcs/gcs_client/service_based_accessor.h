@@ -444,7 +444,8 @@ class ServiceBasedPlacementGroupInfoAccessor : public PlacementGroupInfoAccessor
   virtual ~ServiceBasedPlacementGroupInfoAccessor() = default;
 
   Status AsyncCreatePlacementGroup(
-      const PlacementGroupSpecification &placement_group_spec) override;
+      const PlacementGroupSpecification &placement_group_spec,
+      const StatusCallback &callback) override;
 
   Status AsyncRemovePlacementGroup(const PlacementGroupID &placement_group_id,
                                    const StatusCallback &callback) override;
