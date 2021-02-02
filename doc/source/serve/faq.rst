@@ -73,6 +73,20 @@ To call a method via Python, use :mod:`handle.options <ray.serve.handle.RayServe
 The call is the same as a regular query except a different method is called
 within the replica. It is compatible with batching as well.
 
+How do I use custom status codes in my response?
+---------------------------------------------------------
+
+You can return a `Starlette Response object <https://www.starlette.io/responses/>`_ from your backend code:
+
+.. code-block:: python
+
+    from starlette.responses import Response
+
+    def f(starlette_request):
+        return Response('Hello, world!', status_code=123, media_type='text/plain')
+    
+    client.create_backend("hello", f)
+
 How do I enable CORS and other HTTP features?
 ---------------------------------------------
 
