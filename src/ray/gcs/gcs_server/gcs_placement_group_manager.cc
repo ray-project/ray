@@ -148,8 +148,6 @@ void GcsPlacementGroupManager::RegisterPlacementGroup(
     return;
   }
 
-  // Mark the callback as pending and invoke it after the placement_group has been
-  // successfully created.
   placement_group_to_register_callback_[placement_group->GetPlacementGroupID()] =
       std::move(callback);
   registered_placement_groups_.emplace(placement_group->GetPlacementGroupID(),
@@ -159,17 +157,20 @@ void GcsPlacementGroupManager::RegisterPlacementGroup(
   RAY_CHECK_OK(gcs_table_storage_->PlacementGroupTable().Put(
       placement_group_id, placement_group->GetPlacementGroupTableData(),
       [this, placement_group_id, placement_group](Status status) {
+        // The backend storage is supposed to be reliable, so the status must be ok.
         RAY_CHECK_OK(status);
+        auto iter = placement_group_to_register_callback_.find(placement_group_id);
+        RAY_CHECK(iter != placement_group_to_register_callback_.end());
         if (!registered_placement_groups_.contains(placement_group_id)) {
-          auto iter = placement_group_to_register_callback_.find(placement_group_id);
-          if (iter != placement_group_to_register_callback_.end()) {
-            std::stringstream stream;
-            stream << "Placement group of id " << placement_group_id
-                   << " has been removed before registration.";
-            iter->second(Status::NotFound(stream.str()));
-            placement_group_to_register_callback_.erase(iter);
-          }
+          // Return failed in sync if the placement group has removed already.
+          std::stringstream stream;
+          stream << "Placement group of id " << placement_group_id
+                 << " has been removed before registration.";
+          iter->second(Status::NotFound(stream.str()));
+          placement_group_to_register_callback_.erase(iter);
         } else {
+          iter->second(status);
+          placement_group_to_register_callback_.erase(iter);
           SchedulePendingPlacementGroups();
         }
       }));
@@ -222,13 +223,6 @@ void GcsPlacementGroupManager::OnPlacementGroupCreationSuccess(
       [this, placement_group_id](Status status) {
         RAY_CHECK_OK(status);
 
-        // Invoke callback for registration request of this placement_group
-        // and remove it from placement_group_to_register_callback_.
-        auto iter = placement_group_to_register_callback_.find(placement_group_id);
-        if (iter != placement_group_to_register_callback_.end()) {
-          iter->second(Status::OK());
-          placement_group_to_register_callback_.erase(iter);
-        }
         MarkSchedulingDone();
         SchedulePendingPlacementGroups();
 
@@ -317,7 +311,6 @@ void GcsPlacementGroupManager::RemovePlacementGroup(
   }
   auto placement_group = placement_group_it->second;
   registered_placement_groups_.erase(placement_group_it);
-  placement_group_to_create_callbacks_.erase(placement_group_id);
 
   // Destroy all bundles.
   gcs_placement_group_scheduler_->DestroyPlacementGroupBundleResourcesIfExists(
@@ -346,13 +339,15 @@ void GcsPlacementGroupManager::RemovePlacementGroup(
       placement_group->GetPlacementGroupTableData(),
       [this, on_placement_group_removed, placement_group_id](Status status) {
         RAY_CHECK_OK(status);
-        // If placement group hasn't been created yet, send a response to a core worker
-        // that the creation of placement group has failed.
-        auto it = placement_group_to_register_callback_.find(placement_group_id);
-        if (it != placement_group_to_register_callback_.end()) {
-          it->second(
-              Status::NotFound("Placement group is removed before it is created."));
-          placement_group_to_register_callback_.erase(it);
+        // If there is a driver waiting for the creation done, then send a message that
+        // the placement group has been removed.
+        auto it = placement_group_to_create_callbacks_.find(placement_group_id);
+        if (it != placement_group_to_create_callbacks_.end()) {
+          for (auto &callback : it->second) {
+            callback(
+                Status::NotFound("Placement group is removed before it is created."));
+          }
+          placement_group_to_create_callbacks_.erase(it);
         }
         on_placement_group_removed(status);
       }));
