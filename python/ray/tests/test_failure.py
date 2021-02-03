@@ -1039,7 +1039,10 @@ def test_parallel_actor_fill_plasma_retry(ray_start_cluster_head):
 
 
 def test_fill_object_store_exception(shutdown_only):
-    ray.init(num_cpus=2, object_store_memory=10**8)
+    ray.init(
+        num_cpus=2,
+        object_store_memory=10**8,
+        _system_config={"automatic_object_spilling_enabled": False})
 
     @ray.remote
     def expensive_task():
