@@ -2384,7 +2384,9 @@ bool NodeManager::GetObjectsFromPlasma(const std::vector<ObjectID> &object_ids,
   // heavy load, then this request can still block the NodeManager event loop
   // since we must wait for the plasma store's reply. We should consider using
   // an `AsyncGet` instead.
-  if (!store_client_.Get(object_ids, /*timeout_ms=*/0, &plasma_results).ok()) {
+  if (!store_client_
+           .Get(object_ids, /*timeout_ms=*/0, &plasma_results, /*is_from_worker=*/false)
+           .ok()) {
     return false;
   }
 
@@ -2546,6 +2548,8 @@ rpc::ObjectStoreStats AccumulateStoreStats(
                                              cur_store.object_store_bytes_avail());
     store_stats.set_num_local_objects(store_stats.num_local_objects() +
                                       cur_store.num_local_objects());
+    store_stats.set_consumed_bytes(store_stats.consumed_bytes() +
+                                   cur_store.consumed_bytes());
   }
   return store_stats;
 }

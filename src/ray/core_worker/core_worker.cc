@@ -566,6 +566,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   // NOTE: This also marks the worker as available in Raylet. We do this at the
   // very end in case there is a problem during construction.
   RAY_CHECK_OK(local_raylet_client_->AnnounceWorkerPort(core_worker_server_->GetPort()));
+  // Used to detect if the object is in the plasma store.
+  max_direct_call_object_size_ = RayConfig::instance().max_direct_call_object_size();
 }
 
 void CoreWorker::Shutdown() {
@@ -881,8 +883,7 @@ Status CoreWorker::Put(const RayObject &object,
   bool object_exists;
   if (options_.is_local_mode ||
       (RayConfig::instance().put_small_object_in_memory_store() &&
-       static_cast<int64_t>(object.GetSize()) <
-           RayConfig::instance().max_direct_call_object_size())) {
+       static_cast<int64_t>(object.GetSize()) < max_direct_call_object_size_)) {
     RAY_LOG(DEBUG) << "Put " << object_id << " in memory store";
     RAY_CHECK(memory_store_->Put(object, object_id));
     return Status::OK();
@@ -923,8 +924,7 @@ Status CoreWorker::CreateOwned(const std::shared_ptr<Buffer> &metadata,
                                      NodeID::FromBinary(rpc_address_.raylet_id()));
   if (options_.is_local_mode ||
       (RayConfig::instance().put_small_object_in_memory_store() &&
-       static_cast<int64_t>(data_size) <
-           RayConfig::instance().max_direct_call_object_size())) {
+       static_cast<int64_t>(data_size) < max_direct_call_object_size_)) {
     *data = std::make_shared<LocalMemoryBuffer>(data_size);
   } else {
     auto status =
@@ -1037,7 +1037,7 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids, const int64_t timeout_m
   bool missing_result = false;
   bool will_throw_exception = false;
   for (size_t i = 0; i < ids.size(); i++) {
-    auto pair = result_map.find(ids[i]);
+    const auto pair = result_map.find(ids[i]);
     if (pair != result_map.end()) {
       (*results)[i] = pair->second;
       RAY_CHECK(!pair->second->IsInPlasmaError());
@@ -1778,8 +1778,7 @@ Status CoreWorker::AllocateReturnObjects(
 
       // Allocate a buffer for the return object.
       if (options_.is_local_mode ||
-          static_cast<int64_t>(data_sizes[i]) <
-              RayConfig::instance().max_direct_call_object_size()) {
+          static_cast<int64_t>(data_sizes[i]) < max_direct_call_object_size_) {
         data_buffer = std::make_shared<LocalMemoryBuffer>(data_sizes[i]);
       } else {
         RAY_RETURN_NOT_OK(CreateExisting(metadatas[i], data_sizes[i], object_ids[i],
