@@ -553,16 +553,16 @@ Status ReadEvictReply(uint8_t *data, size_t size, int64_t &num_bytes) {
 // Get messages.
 
 Status SendGetRequest(const std::shared_ptr<StoreConn> &store_conn,
-                      const ObjectID *object_ids, int64_t num_objects,
-                      int64_t timeout_ms) {
+                      const ObjectID *object_ids, int64_t num_objects, int64_t timeout_ms,
+                      bool is_from_worker) {
   flatbuffers::FlatBufferBuilder fbb;
   auto message = fb::CreatePlasmaGetRequest(
-      fbb, ToFlatbuffer(&fbb, object_ids, num_objects), timeout_ms);
+      fbb, ToFlatbuffer(&fbb, object_ids, num_objects), timeout_ms, is_from_worker);
   return PlasmaSend(store_conn, MessageType::PlasmaGetRequest, &fbb, message);
 }
 
 Status ReadGetRequest(uint8_t *data, size_t size, std::vector<ObjectID> &object_ids,
-                      int64_t *timeout_ms) {
+                      int64_t *timeout_ms, bool *is_from_worker) {
   RAY_DCHECK(data);
   auto message = flatbuffers::GetRoot<fb::PlasmaGetRequest>(data);
   RAY_DCHECK(VerifyFlatbuffer(message, data, size));
@@ -571,6 +571,7 @@ Status ReadGetRequest(uint8_t *data, size_t size, std::vector<ObjectID> &object_
     object_ids.push_back(ObjectID::FromBinary(object_id));
   }
   *timeout_ms = message->timeout_ms();
+  *is_from_worker = message->is_from_worker();
   return Status::OK();
 }
 

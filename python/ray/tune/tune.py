@@ -8,6 +8,7 @@ import signal
 import sys
 import time
 
+import ray
 from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.callback import Callback
 from ray.tune.error import TuneError
@@ -111,6 +112,7 @@ def run(
         sync_to_cloud: Optional = None,
         sync_to_driver: Optional = None,
         sync_on_checkpoint: Optional = None,
+        _remote: bool = None,
 ) -> ExperimentAnalysis:
     """Executes training.
 
@@ -270,6 +272,9 @@ def run(
             ``ray.tune.callback.Callback`` class. If not passed,
             `LoggerCallback` and `SyncerCallback` callbacks are automatically
             added.
+        _remote (bool): Whether to run the Tune driver in a remote function.
+            This is disabled automatically if a custom trial executor is
+            passed in. This is enabled by default in Ray client mode.
 
     Returns:
         ExperimentAnalysis: Object for experiment analysis.
@@ -277,6 +282,64 @@ def run(
     Raises:
         TuneError: Any trials failed and `raise_on_failed_trial` is True.
     """
+
+    if _remote is None:
+        _remote = ray.util.client.ray.is_connected()
+
+    if _remote is True and trial_executor:
+        raise ValueError("cannot use custom trial executor")
+
+    if not trial_executor or isinstance(trial_executor, RayTrialExecutor):
+        _ray_auto_init()
+
+    if _remote:
+        return ray.get(
+            ray.remote(num_cpus=0)(run).remote(
+                run_or_experiment,
+                name,
+                metric,
+                mode,
+                stop,
+                time_budget_s,
+                config,
+                resources_per_trial,
+                num_samples,
+                local_dir,
+                search_alg,
+                scheduler,
+                keep_checkpoints_num,
+                checkpoint_score_attr,
+                checkpoint_freq,
+                checkpoint_at_end,
+                verbose,
+                progress_reporter,
+                log_to_file,
+                trial_name_creator,
+                trial_dirname_creator,
+                sync_config,
+                export_formats,
+                max_failures,
+                fail_fast,
+                restore,
+                server_port,
+                resume,
+                queue_trials,
+                reuse_actors,
+                trial_executor,
+                raise_on_failed_trial,
+                callbacks,
+                # Deprecated args
+                loggers,
+                ray_auto_init,
+                run_errored_only,
+                global_checkpoint_period,
+                with_server,
+                upload_dir,
+                sync_to_cloud,
+                sync_to_driver,
+                sync_on_checkpoint,
+                _remote=False))
+
     all_start = time.time()
     if global_checkpoint_period:
         raise ValueError("global_checkpoint_period is deprecated. Set env var "
@@ -509,7 +572,8 @@ def run_experiments(
         trial_executor: Optional[RayTrialExecutor] = None,
         raise_on_failed_trial: bool = True,
         concurrent: bool = True,
-        callbacks: Optional[Sequence[Callback]] = None):
+        callbacks: Optional[Sequence[Callback]] = None,
+        _remote: bool = None):
     """Runs and blocks until all trials finish.
 
     Examples:
@@ -523,6 +587,32 @@ def run_experiments(
         List of Trial objects, holding data for each executed trial.
 
     """
+    if _remote is None:
+        _remote = ray.util.client.ray.is_connected()
+
+    if _remote is True and trial_executor:
+        raise ValueError("cannot use custom trial executor")
+
+    if not trial_executor or isinstance(trial_executor, RayTrialExecutor):
+        _ray_auto_init()
+
+    if _remote:
+        return ray.get(
+            ray.remote(num_cpus=0)(run_experiments).remote(
+                experiments,
+                scheduler,
+                server_port,
+                verbose,
+                progress_reporter,
+                resume,
+                queue_trials,
+                reuse_actors,
+                trial_executor,
+                raise_on_failed_trial,
+                concurrent,
+                callbacks,
+                _remote=False))
+
     # This is important to do this here
     # because it schematize the experiments
     # and it conducts the implicit registration.
@@ -557,3 +647,14 @@ def run_experiments(
                 scheduler=scheduler,
                 callbacks=callbacks).trials
         return trials
+
+
+def _ray_auto_init():
+    """Initialize Ray unless already configured."""
+    if os.environ.get("TUNE_DISABLE_AUTO_INIT") == "1":
+        logger.info("'TUNE_DISABLE_AUTO_INIT=1' detected.")
+    elif not ray.is_initialized():
+        logger.info("Initializing Ray automatically."
+                    "For cluster usage or custom Ray initialization, "
+                    "call `ray.init(...)` before `tune.run`.")
+        ray.init()

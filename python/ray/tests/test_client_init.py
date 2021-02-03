@@ -2,12 +2,61 @@
 import pytest
 
 import time
+import random
 import sys
 
 import ray.util.client.server.server as ray_client_server
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 
 from ray.util.client import RayAPIStub
+
+import ray
+
+
+@ray.remote
+def hello_world():
+    c1 = complex_task.remote(random.randint(1, 10))
+    c2 = complex_task.remote(random.randint(1, 10))
+    return sum(ray.get([c1, c2]))
+
+
+@ray.remote
+def complex_task(value):
+    time.sleep(1)
+    return value * 10
+
+
+@ray.remote
+class C:
+    def __init__(self, x):
+        self.val = x
+
+    def double(self):
+        self.val += self.val
+
+    def get(self):
+        return self.val
+
+
+def test_basic_preregister():
+    from ray.util.client import ray
+    server, _ = ray_client_server.init_and_serve("localhost:50051")
+    try:
+        ray.connect("localhost:50051")
+        val = ray.get(hello_world.remote())
+        print(val)
+        assert val >= 20
+        assert val <= 200
+        c = C.remote(3)
+        x = c.double.remote()
+        y = c.double.remote()
+        ray.wait([x, y])
+        val = ray.get(c.get.remote())
+        assert val == 12
+    finally:
+        ray.disconnect()
+        ray_client_server.shutdown_with_server(server)
+        time.sleep(2)
 
 
 def test_num_clients():
