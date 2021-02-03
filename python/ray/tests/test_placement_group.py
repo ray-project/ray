@@ -1419,8 +1419,10 @@ ray.shutdown()
 
     # Kill an actor and wait until it is killed.
     ray.kill(a)
-    with pytest.raises(ray.exceptions.RayActorError):
+    try:
         ray.get(a.ready.remote())
+    except ray.exceptions.RayActorError:
+        pass
 
     # We should have 2 alive pgs and 4 alive actors.
     assert assert_alive_num_pg(2)
