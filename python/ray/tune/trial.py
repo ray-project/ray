@@ -224,8 +224,15 @@ class Trial:
                             trainable_cls, default_resources))
                 resources = default_resources
         self.location = Location()
+
         self.resources = resources or Resources(cpu=1, gpu=0)
         self.placement_group_factory = placement_group_factory
+
+        if not self.placement_group_factory and \
+           not int(os.getenv("TUNE_DISABLE_AUTO_PLACEMENT_GROUPS", "0")):
+            self.placement_group_factory = resource_dict_to_pg_factory(
+                resources)
+
         if self.placement_group_factory:
             resource_kwargs = self.resources._asdict()
             resource_kwargs["has_placement_group"] = True

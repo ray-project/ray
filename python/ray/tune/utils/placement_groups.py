@@ -8,6 +8,7 @@ import time
 import ray
 from ray import ObjectRef
 from ray.actor import ActorClass
+from ray.tune.resources import Resources
 from ray.util.placement_group import PlacementGroup, placement_group
 
 if TYPE_CHECKING:
@@ -56,8 +57,8 @@ class PlacementGroupFactory:
         self._kwargs = self._bound.kwargs
 
     def __call__(self, *args, **kwargs):
-        return placement_group(self._bundles, self._strategy, *self._args,
-                               **self._kwargs)
+        # Call with bounded *args and **kwargs
+        return placement_group(*self._args, **self._kwargs)
 
     def __eq__(self, other):
         return self._bound == other._bound
@@ -86,7 +87,12 @@ class PlacementGroupFactory:
         self._bind()
 
 
-def resource_dict_to_pg_factory(spec: Dict[str, float]):
+def resource_dict_to_pg_factory(spec: Optional[Dict[str, float]]):
+    spec = spec or {"cpu": 1}
+
+    if isinstance(spec, Resources):
+        spec = spec.to_json()
+
     if any(k.startswith("extra_") for k in spec):
         raise ValueError(
             "Passing `extra_*` resource requirements to `resources_per_trial` "

@@ -185,21 +185,22 @@ def create_trial_from_spec(spec, output_path, parser, **trial_kwargs):
     if resources:
         if isinstance(resources, PlacementGroupFactory):
             trial_kwargs["placement_group_factory"] = resources
-        elif not int(os.getenv("TUNE_DISABLE_AUTO_PLACEMENT_GROUPS", "0")):
-            trial_kwargs[
-                "placement_group_factory"] = resource_dict_to_pg_factory(
-                    resources)
         else:
             logger.warning(
                 "Deprecation warning: Passing a dict to `resources_per_trial` "
                 "is deprecated and support will be removed in a future "
                 "release. Please use a `PlacementGroupFactory` "
                 "object instead.")
-            try:
-                trial_kwargs["resources"] = json_to_resources(resources)
-            except (TuneError, ValueError) as exc:
-                raise TuneError("Error parsing resources_per_trial",
-                                resources) from exc
+            if not int(os.getenv("TUNE_DISABLE_AUTO_PLACEMENT_GROUPS", "0")):
+                trial_kwargs[
+                    "placement_group_factory"] = resource_dict_to_pg_factory(
+                        resources)
+            else:
+                try:
+                    trial_kwargs["resources"] = json_to_resources(resources)
+                except (TuneError, ValueError) as exc:
+                    raise TuneError("Error parsing resources_per_trial",
+                                    resources) from exc
 
     return Trial(
         # Submitting trial via server in py2.7 creates Unicode, which does not
