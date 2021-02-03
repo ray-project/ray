@@ -197,6 +197,7 @@ matrix:
       env:
         # - PYTHON=3.6
         - LINUX_WHEELS=1 LINUX_JARS=1
+        - DOCKER_BUILD_PY37=1
         - PYTHONWARNINGS=ignore
         - RAY_INSTALL_JAVA=1
       language: java
@@ -493,7 +494,7 @@ deploy:
     on:
       repo: ray-project/ray
       all_branches: true
-      condition: $LINUX_WHEELS = 1 || $MAC_WHEELS = 1
+      condition: ($LINUX_WHEELS = 1 && $DOCKER_BUILD_PY37=1) || $MAC_WHEELS = 1
 
   - provider: s3
     edge: true # This supposedly opts in to deploy v2.
@@ -509,7 +510,7 @@ deploy:
     on:
       branch: master
       repo: ray-project/ray
-      condition: $LINUX_WHEELS = 1 || $MAC_WHEELS = 1
+      condition: ($LINUX_WHEELS = 1 && $DOCKER_BUILD_PY37=1) || $MAC_WHEELS = 1
 
   - provider: script
     edge: true # This supposedly opts in to deploy v2.
@@ -518,7 +519,7 @@ deploy:
     on:
       repo: ray-project/ray
       all_branches: true
-      condition: $LINUX_WHEELS = 1
+      condition: $LINUX_WHEELS = 1 && $DOCKER_BUILD_PY37 = 1
 
   # Upload jars so that we can debug locally for every commit
   - provider: s3
@@ -560,4 +561,4 @@ deploy:
     on:
       repo: ray-project/ray
       all_branches: true
-      condition: $LINUX_WHEELS = 1
+      condition: $LINUX_WHEELS = 1 && $DOCKER_BUILD_PY36_38 = 1

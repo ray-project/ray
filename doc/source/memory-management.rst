@@ -18,34 +18,13 @@ Ray system memory: this is memory used internally by Ray
 
 Application memory: this is memory used by your application
   - **Worker heap**: memory used by your application (e.g., in Python code or TensorFlow), best measured as the *resident set size (RSS)* of your application minus its *shared memory usage (SHR)* in commands such as ``top``. The reason you need to subtract *SHR* is that object store shared memory is reported by the OS as shared with each worker. Not subtracting *SHR* will result in double counting memory usage.
-  - **Object store memory**: memory used when your application creates objects in the object store via ``ray.put`` and when returning values from remote functions. Objects are reference counted and evicted when they fall out of scope. There is an object store server running on each node.
+  - **Object store memory**: memory used when your application creates objects in the object store via ``ray.put`` and when returning values from remote functions. Objects are reference counted and evicted when they fall out of scope. There is an object store server running on each node. In Ray 1.3+, objects will be `spilled to disk <#object-spilling>`__ if the object store fills up.
   - **Object store shared memory**: memory used when your application reads objects via ``ray.get``. Note that if an object is already present on the node, this does not cause additional allocations. This allows large objects to be efficiently shared among many actors and tasks.
 
 ObjectRef Reference Counting
 ----------------------------
 
 Ray implements distributed reference counting so that any ``ObjectRef`` in scope in the cluster is pinned in the object store. This includes local python references, arguments to pending tasks, and IDs serialized inside of other objects.
-
-Frequently Asked Questions (FAQ)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-**My application failed with ObjectStoreFullError. What happened?**
-
-Ensure that you're removing ``ObjectRef`` references when they're no longer needed. See `Debugging using 'ray memory'`_ for information on how to identify what objects are in scope in your application.
-
-This exception is raised when the object store on a node was full of pinned objects when the application tried to create a new object (either by calling ``ray.put()`` or returning an object from a task). If you're sure that the configured object store size was large enough for your application to run, ensure that you're removing ``ObjectRef`` references when they're no longer in use so their objects can be evicted from the object store.
-
-**I'm running Ray inside IPython or a Jupyter Notebook and there are ObjectRef references causing problems even though I'm not storing them anywhere.**
-
-Try `Enabling LRU Fallback`_, which will cause unused objects referenced by IPython to be LRU evicted when the object store is full instead of erroring.
-
-IPython stores the output of every cell in a local Python variable indefinitely. This causes Ray to pin the objects even though your application may not actually be using them.
-
-**My application used to run on previous versions of Ray but now I'm getting ObjectStoreFullError.**
-
-Either modify your application to remove ``ObjectRef`` references when they're no longer needed or try `Enabling LRU Fallback`_ to revert to the old behavior.
-
-In previous versions of Ray, there was no reference counting and instead objects in the object store were LRU evicted once the object store ran out of space. Some applications (e.g., applications that keep references to all objects ever created) may have worked with LRU eviction but do not with reference counting.
 
 Debugging using 'ray memory'
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -198,38 +177,16 @@ In this example, we first create an object via ``ray.put()``, then capture its `
 
 In the output of ``ray memory``, we see that the second object displays as a normal ``LOCAL_REFERENCE``, but the first object is listed as ``CAPTURED_IN_OBJECT``.
 
-Enabling LRU Fallback
-~~~~~~~~~~~~~~~~~~~~~
-
-By default, Ray will raise an exception if the object store is full of pinned objects when an application tries to create a new object. However, in some cases applications might keep references to objects much longer than they actually use them, so simply LRU evicting objects from the object store when it's full can prevent the application from failing.
-
-Please note that relying on this is **not recommended** - instead, if possible you should try to remove references as they're no longer needed in your application to free space in the object store.
-
-To enable LRU eviction when the object store is full, initialize ray with the ``lru_evict`` option set:
-
-.. code-block:: python
-
-  ray.init(lru_evict=True)
-
-.. code-block:: bash
-
-  ray start --lru-evict
-
 Object Spilling
 ---------------
 
-Ray 1.2.0+ has *beta* support for spilling objects to external storage once the capacity
-of the object store is used up. Please file a `GitHub issue <https://github.com/ray-project/ray/issues/>`__
-if you encounter any problems with this new feature. Eventually, object spilling will be
-enabled by default, but for now you need to enable it manually:
-
-To enable object spilling to the local filesystem (single node clusters only):
+Ray 1.3+ spills objects to external storage once the object store is full. By default, objects are spilled to the local filesystem.
+To configure the directory where objects are placed, use:
 
 .. code-block:: python
 
     ray.init(
         _system_config={
-            "automatic_object_spilling_enabled": True,
             "object_spilling_config": json.dumps(
                 {"type": "filesystem", "params": {"directory_path": "/tmp/spill"}},
             )
@@ -242,7 +199,6 @@ To enable object spilling to remote storage (any URI supported by `smart_open <h
 
     ray.init(
         _system_config={
-            "automatic_object_spilling_enabled": True,
             "max_io_workers": 4,  # More IO workers for remote storage.
             "min_spilling_size": 100 * 1024 * 1024,  # Spill at least 100MB at a time.
             "object_spilling_config": json.dumps(

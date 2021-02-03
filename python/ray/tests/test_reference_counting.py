@@ -18,8 +18,10 @@ logger = logging.getLogger(__name__)
 
 @pytest.fixture
 def one_worker_100MiB(request):
+    # It has lots of tests that don't require object spilling.
     config = {
         "task_retry_delay_ms": 0,
+        "automatic_object_spilling_enabled": False
     }
     yield ray.init(
         num_cpus=1,

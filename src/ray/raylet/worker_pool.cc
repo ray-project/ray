@@ -1037,6 +1037,10 @@ std::string WorkerPool::DebugString() const {
            << " workers: " << entry.second.registered_workers.size();
     result << "\n- num " << Language_Name(entry.first)
            << " drivers: " << entry.second.registered_drivers.size();
+    result << "\n- num object spill callbacks queued: "
+           << entry.second.spill_io_worker_state.pending_io_tasks.size();
+    result << "\n- num object restore queued: "
+           << entry.second.restore_io_worker_state.pending_io_tasks.size();
   }
   result << "\n- num idle workers: " << idle_of_all_languages_.size();
   return result.str();

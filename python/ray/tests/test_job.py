@@ -33,7 +33,7 @@ _ = Actor.remote()
     assert len(actor_table) == 1
 
     job_table = ray.jobs()
-    assert len(job_table) == 2
+    assert len(job_table) == 3  # dash, ray client server
 
     # Kill the driver process.
     p.kill()
@@ -79,7 +79,7 @@ ray.get(_.value.remote())
     assert len(actor_table) == 1
 
     job_table = ray.jobs()
-    assert len(job_table) == 2
+    assert len(job_table) == 3  # dash, ray client server
 
     # Kill the driver process.
     p.kill()
