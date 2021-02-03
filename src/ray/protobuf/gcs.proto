@@ -327,6 +327,8 @@ message ResourcesData {
   ResourceLoad resource_load_by_shape = 7;
   // Whether this node manager is requesting global GC.
   bool should_global_gc = 8;
+  // IP address of the node.
+  string node_manager_address = 9;
 }
 
 message ResourceUsageBatchData {
