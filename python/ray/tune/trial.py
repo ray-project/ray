@@ -20,7 +20,8 @@ from ray.tune.registry import get_trainable_cls, validate_trainable
 from ray.tune.result import DEFAULT_RESULTS_DIR, DONE, TRAINING_ITERATION
 from ray.tune.resources import Resources, \
     json_to_resources, resources_to_json
-from ray.tune.utils.placement_groups import PlacementGroupFactory
+from ray.tune.utils.placement_groups import PlacementGroupFactory, \
+    resource_dict_to_pg_factory
 from ray.tune.utils.serialization import TuneFunctionEncoder
 from ray.tune.utils.trainable import TrainableUtil
 from ray.tune.utils import date_str, flatten_dict
@@ -389,8 +390,15 @@ class Trial:
             raise ValueError("Cannot update resources while Trial is running.")
         if isinstance(resources, PlacementGroupFactory):
             self.placement_group_factory = resources
+        elif not int(os.getenv("TUNE_DISABLE_AUTO_PLACEMENT_GROUPS", "0")):
+            self.placement_group_factory = resource_dict_to_pg_factory(
+                resources)
         else:
-            # Todo: Auto create placement group factory from resource dict
+            logger.warning(
+                "Deprecation warning: Passing a dict to `update_resources()` "
+                "is deprecated and support will be removed in a future "
+                "release. Please use a `PlacementGroupFactory` "
+                "object instead.")
             self.resources = Resources(**resources)
             self.placement_group_factory = None
 

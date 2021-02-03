@@ -3,13 +3,15 @@ import json
 import os
 
 # For compatibility under py2 to consider unicode as str
+from ray import logger
 from ray.tune.utils.serialization import TuneFunctionEncoder
 from six import string_types
 
 from ray.tune import TuneError
 from ray.tune.trial import Trial
 from ray.tune.resources import json_to_resources
-from ray.tune.utils.placement_groups import PlacementGroupFactory
+from ray.tune.utils.placement_groups import PlacementGroupFactory, \
+    resource_dict_to_pg_factory
 from ray.tune.utils.util import SafeFallbackEncoder
 
 
@@ -183,8 +185,16 @@ def create_trial_from_spec(spec, output_path, parser, **trial_kwargs):
     if resources:
         if isinstance(resources, PlacementGroupFactory):
             trial_kwargs["placement_group_factory"] = resources
+        elif not int(os.getenv("TUNE_DISABLE_AUTO_PLACEMENT_GROUPS", "0")):
+            trial_kwargs[
+                "placement_group_factory"] = resource_dict_to_pg_factory(
+                    resources)
         else:
-            # Todo: Auto-create placement group factory from resource dict
+            logger.warning(
+                "Deprecation warning: Passing a dict to `resources_per_trial` "
+                "is deprecated and support will be removed in a future "
+                "release. Please use a `PlacementGroupFactory` "
+                "object instead.")
             try:
                 trial_kwargs["resources"] = json_to_resources(resources)
             except (TuneError, ValueError) as exc:

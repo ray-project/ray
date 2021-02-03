@@ -86,6 +86,30 @@ class PlacementGroupFactory:
         self._bind()
 
 
+def resource_dict_to_pg_factory(spec: Dict[str, float]):
+    if any(k.startswith("extra_") for k in spec):
+        raise ValueError(
+            "Passing `extra_*` resource requirements to `resources_per_trial` "
+            "is deprecated. Please use a `PlacementGroupFactory` object "
+            "to define your resource requirements instead.")
+
+    cpus = spec.pop("cpu", 0.)
+    gpus = spec.pop("gpu", 0.)
+    memory = spec.pop("memory", 0.)
+    object_store_memory = spec.pop("object_store_memory", 0.)
+
+    bundle = {k: v for k, v in spec.pop("custom_resources", {})}
+
+    bundle.update({
+        "CPU": cpus,
+        "GPU": gpus,
+        "memory": memory,
+        "object_store_memory": object_store_memory
+    })
+
+    return PlacementGroupFactory([bundle])
+
+
 class PlacementGroupManager:
     """PlacementGroupManager to stage and manage placement groups.
 
