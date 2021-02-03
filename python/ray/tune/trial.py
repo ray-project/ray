@@ -25,6 +25,7 @@ from ray.tune.utils.placement_groups import PlacementGroupFactory, \
 from ray.tune.utils.serialization import TuneFunctionEncoder
 from ray.tune.utils.trainable import TrainableUtil
 from ray.tune.utils import date_str, flatten_dict
+from ray.util import log_once
 from ray.utils import binary_to_hex, hex_to_binary
 
 DEBUG_PRINT_INTERVAL = 5
@@ -227,16 +228,7 @@ class Trial:
 
         self.resources = resources or Resources(cpu=1, gpu=0)
         self.placement_group_factory = placement_group_factory
-
-        if not self.placement_group_factory and \
-           not int(os.getenv("TUNE_DISABLE_AUTO_PLACEMENT_GROUPS", "0")):
-            self.placement_group_factory = resource_dict_to_pg_factory(
-                resources)
-
-        if self.placement_group_factory:
-            resource_kwargs = self.resources._asdict()
-            resource_kwargs["has_placement_group"] = True
-            self.resources = Resources(**resource_kwargs)
+        self._setup_resources()
 
         self.stopping_criterion = stopping_criterion or {}
 
@@ -315,6 +307,22 @@ class Trial:
 
         self._state_json = None
         self._state_valid = False
+
+    def _setup_resources(self, log_always: bool = False):
+        if not self.placement_group_factory and \
+           not int(os.getenv("TUNE_PLACEMENT_GROUP_AUTO_DISABLED", "0")):
+            try:
+                self.placement_group_factory = resource_dict_to_pg_factory(
+                    self.resources)
+            except ValueError as exc:
+                if log_always or log_once("tune_pg_extra_resources"):
+                    logger.warning(exc)
+                self.placement_group_factory = None
+
+        if self.placement_group_factory:
+            resource_kwargs = self.resources._asdict()
+            resource_kwargs["has_placement_group"] = True
+            self.resources = Resources(**resource_kwargs)
 
     @property
     def node_ip(self):
@@ -395,25 +403,13 @@ class Trial:
         """
         if self.status is Trial.RUNNING:
             raise ValueError("Cannot update resources while Trial is running.")
+
         if isinstance(resources, PlacementGroupFactory):
             self.placement_group_factory = resources
-        elif not int(os.getenv("TUNE_DISABLE_AUTO_PLACEMENT_GROUPS", "0")):
-            self.placement_group_factory = resource_dict_to_pg_factory(
-                resources)
         else:
-            logger.warning(
-                "Deprecation warning: Passing a dict to `update_resources()` "
-                "is deprecated and support will be removed in a future "
-                "release. Please use a `PlacementGroupFactory` "
-                "object instead.")
             self.resources = Resources(**resources)
-            self.placement_group_factory = None
 
-        if self.placement_group_factory and \
-           not self.resources.has_placement_group:
-            resource_kwargs = self.resources._asdict()
-            resource_kwargs["has_placement_group"] = True
-            self.resources = Resources(**resource_kwargs)
+        self._setup_resources()
 
         self.invalidate_json_state()
 

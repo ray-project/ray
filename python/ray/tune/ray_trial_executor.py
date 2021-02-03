@@ -155,7 +155,8 @@ class RayTrialExecutor(TrialExecutor):
                  queue_trials: bool = False,
                  reuse_actors: bool = False,
                  ray_auto_init: Optional[bool] = None,
-                 refresh_period: Optional[float] = None):
+                 refresh_period: Optional[float] = None,
+                 wait_for_placement_group: Optional[float] = None):
         if ray_auto_init is None:
             if os.environ.get("TUNE_DISABLE_AUTO_INIT") == "1":
                 logger.info("'TUNE_DISABLE_AUTO_INIT=1' detected.")
@@ -189,6 +190,12 @@ class RayTrialExecutor(TrialExecutor):
                 os.environ.get("TUNE_STATE_REFRESH_PERIOD",
                                TUNE_STATE_REFRESH_PERIOD))
         self._refresh_period = refresh_period
+
+        self._wait_for_pg = wait_for_placement_group or float(
+            os.environ.get("TUNE_PLACEMENT_GROUP_WAIT_S", "-1"))
+        if self._wait_for_pg < 0:
+            self._wait_for_pg = None
+
         self._last_resource_refresh = float("-inf")
         self._last_ip_refresh = float("-inf")
         self._last_ip_addresses = set()
@@ -282,10 +289,27 @@ class RayTrialExecutor(TrialExecutor):
                     if self._pg_manager.stage_trial_pg(
                             trial.placement_group_factory):
                         self._staged_trials.add(trial)
+
+                if self._wait_for_pg is not None:
+                    logger.debug(
+                        f"Waiting up to {self._wait_for_pg} seconds for "
+                        f"placement group to become ready.")
+                    wait_end = time.monotonic() + self._wait_for_pg
+                    while time.monotonic() < wait_end:
+                        self._pg_manager.update_status()
+                        if self._pg_manager.has_ready(
+                                trial.placement_group_factory):
+                            break
+                        time.sleep(0.1)
+                else:
+                    return None
+
+            if not self._pg_manager.has_ready(trial.placement_group_factory):
+                # PG may have become ready during waiting period
                 return None
-            else:
-                full_actor_class = self._pg_manager.get_full_actor_cls(
-                    trial, _actor_cls)
+
+            full_actor_class = self._pg_manager.get_full_actor_cls(
+                trial, _actor_cls)
         else:
             full_actor_class = _actor_cls.options(
                 num_cpus=trial.resources.cpu,

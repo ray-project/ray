@@ -31,6 +31,7 @@ from ray.tune.utils.placement_groups import PlacementGroupFactory
 
 class TrialRunnerTest3(unittest.TestCase):
     def setUp(self):
+        os.environ["TUNE_PLACEMENT_GROUP_WAIT_S"] = "1"
         self.tmpdir = tempfile.mkdtemp()
 
     def tearDown(self):

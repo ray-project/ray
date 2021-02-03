@@ -749,6 +749,12 @@ These are the environment variables Ray Tune currently considers:
   with the parameter values in them)
 * **TUNE_MAX_PENDING_TRIALS_PG**: Maximum number of pending trials when placement groups are used. Defaults
   to ``1000``.
+* **TUNE_PLACEMENT_GROUP_AUTO_DISABLED**: Ray Tune automatically uses placement groups
+  instead of the legacy resource requests. Setting this to 1 enables legacy placement.
+* **TUNE_PLACEMENT_GROUP_WAIT_S**: Default time the trial executor waits for placement
+  groups to be placed before continuing the tuning loop. Setting this to a float
+  will block for that many seconds. This is mostly used for testing purposes. Defaults
+  to -1, which disables blocking.
 * **TUNE_RESULT_DIR**: Directory where Ray Tune trial results are stored. If this
   is not set, ``~/ray_results`` will be used.
 * **TUNE_RESULT_BUFFER_LENGTH**: Ray Tune can buffer results from trainables before they are passed

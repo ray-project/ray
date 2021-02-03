@@ -38,6 +38,7 @@ def create_mock_components():
 class TrialRunnerTest2(unittest.TestCase):
     def setUp(self):
         os.environ["TUNE_STATE_REFRESH_PERIOD"] = "0.1"
+        os.environ["TUNE_PLACEMENT_GROUP_WAIT_S"] = "1"
 
     def tearDown(self):
         ray.shutdown()

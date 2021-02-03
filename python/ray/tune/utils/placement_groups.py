@@ -50,15 +50,9 @@ class PlacementGroupFactory:
                 "that you passed valid arguments to the PlacementGroupFactory "
                 "object.") from exc
 
-        # Overwrite args and kwargs with bounded args and kwargs.
-        # This will be the same if one factory was initialized with args
-        # and another one with kwargs.
-        self._args = self._bound.args
-        self._kwargs = self._bound.kwargs
-
     def __call__(self, *args, **kwargs):
         # Call with bounded *args and **kwargs
-        return placement_group(*self._args, **self._kwargs)
+        return placement_group(*self._bound.args, **self._bound.kwargs)
 
     def __eq__(self, other):
         return self._bound == other._bound
@@ -68,7 +62,10 @@ class PlacementGroupFactory:
             # Cache hash
             self._hash = hash(
                 json.dumps(
-                    self.__getstate__(),
+                    {
+                        "args": self._bound.args,
+                        "kwargs": self._bound.kwargs
+                    },
                     sort_keys=True,
                     indent=0,
                     ensure_ascii=True))
@@ -91,9 +88,9 @@ def resource_dict_to_pg_factory(spec: Optional[Dict[str, float]]):
     spec = spec or {"cpu": 1}
 
     if isinstance(spec, Resources):
-        spec = spec.to_json()
+        spec = spec._asdict()
 
-    if any(k.startswith("extra_") for k in spec):
+    if any(k.startswith("extra_") and spec[k] for k in spec):
         raise ValueError(
             "Passing `extra_*` resource requirements to `resources_per_trial` "
             "is deprecated. Please use a `PlacementGroupFactory` object "
@@ -222,7 +219,7 @@ class PlacementGroupManager:
         # Pass the full resource specs of the first bundle per default
         first_bundle = pg.bundle_specs[0].copy()
         num_cpus = first_bundle.pop("CPU", None)
-        num_gpus = first_bundle.get("GPU", None)
+        num_gpus = first_bundle.pop("GPU", None)
 
         # Only custom resources remain in `first_bundle`
         resources = first_bundle or None

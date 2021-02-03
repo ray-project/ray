@@ -17,6 +17,7 @@ from ray.tune.suggest import BasicVariantGenerator
 
 class TrialRunnerTest(unittest.TestCase):
     def setUp(self):
+        os.environ["TUNE_PLACEMENT_GROUP_WAIT_S"] = "1"
         _register_all()  # re-register the evicted objects
 
     def tearDown(self):
@@ -257,6 +258,7 @@ class TrialRunnerTest(unittest.TestCase):
 
     def testChangeResources(self):
         """Checks that resource requirements can be changed on fly."""
+        os.environ["TUNE_PLACEMENT_GROUP_AUTO_DISABLED"] = "1"
         ray.init(num_cpus=2)
 
         class ChangingScheduler(FIFOScheduler):
@@ -318,10 +320,10 @@ class TrialRunnerTest(unittest.TestCase):
         runner.step()
         runner.step()
         runner.step()
-        self.assertEqual(len(runner._trials), 3)
+        self.assertEqual(len(runner._trials), 100)
 
         runner.step()
-        self.assertEqual(len(runner._trials), 3)
+        self.assertEqual(len(runner._trials), 100)
 
         self.assertEqual(runner._trials[0].status, Trial.RUNNING)
         self.assertEqual(runner._trials[1].status, Trial.RUNNING)
