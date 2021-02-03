@@ -8,7 +8,7 @@ import sys
 import ray.util.client.server.server as ray_client_server
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 
-from ray.util.client import RayAPIStub
+from ray.util.client import RayAPIStub, CURRENT_PROTOCOL_VERSION
 
 import ray
 
@@ -109,7 +109,7 @@ def test_python_version():
                 python_version="2.7.12",
                 ray_version="",
                 ray_commit="",
-                protocol_version=ray.util.client.CURRENT_PROTOCOL_VERSION,
+                protocol_version=CURRENT_PROTOCOL_VERSION,
             )
 
         # inject mock connection function
@@ -137,6 +137,7 @@ def test_protocol_version():
         info1 = ray.connect("localhost:50051")
         local_py_version = ".".join(
             [str(x) for x in list(sys.version_info)[:3]])
+        assert info1["protocol_version"] == CURRENT_PROTOCOL_VERSION, info1
         ray.disconnect()
         time.sleep(1)
 
