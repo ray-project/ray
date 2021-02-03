@@ -161,6 +161,7 @@ class NCCLGroup(BaseGroup):
 
         # TODO(Fu): might need an event map
         self._dev_pool_map = {}
+        self._dev_event_map = {}
 
         if nccl_util.get_nccl_build_version() < 2000:
             raise RuntimeError("NCCL in Ray requires NCCL >= 2.0.")
@@ -447,30 +448,38 @@ class NCCLGroup(BaseGroup):
         actual_world_size = len(device_list) * self.world_size
         comms = [None] * len(device_list)
         streams = [None] * len(device_list)
+        events = [None] * len(device_list)
         nccl_util.groupStart()
         for i, device in enumerate(device_list):
             actual_rank = self.rank * len(device_list) + i
             with nccl_util.Device(device):
                 comms[i] = nccl_util.create_nccl_communicator(
                     actual_world_size, nccl_uid, actual_rank)
-                # TODO(Fu): get the stream from the pool in the round-robin fashion
-                # Create a new stream, or return the stream in the pool if it has been created
                 pool: StreamPool = self._dev_pool_map.get(comm_key, StreamPool(self.POOL_SIZE))
                 streams[i] = pool.getStreamFromPool()
                 # Stream(non_blocking=True)
+                events[i] = cupy.cuda.Event() # TODO(Fu): double check the parameters
         nccl_util.groupEnd()
         # TODO(Fu): lock
         self._dev_comm_map[comm_key] = comms
         self._dev_streams_map[comm_key] = streams
+        self._dev_event_map[comm_key] = events
         return comms
 
     @staticmethod
-    def _sync_streams():
+    def _sync_streams(device_list, events, streams):
         """Let NCCL streams wait for current streams for every device."""
         # FIXME: This behavior is different from nccl document. It seems like
         # cupy allocate tensors on null streams.
         # TODO(Fu): nccl document says we need recordStream besides calling this function
-        cupy.cuda.Stream.null.synchronize()
+        #cupy.cuda.Stream.null.synchronize()
+        for i, device in enumerate(device_list):
+            with nccl_util.Device(device):
+                stream: cupy.cuda.Stream = streams[i]
+                event: cupy.cuda.Event = events[i]
+                event.record(cupy.cuda.get_current_stream())
+                stream.wait_event(event)
+
 
     def _get_nccl_p2p_communicator(self, comm_key, my_gpu_idx, peer_rank,
                                    peer_gpu_idx):
@@ -530,11 +539,13 @@ class NCCLGroup(BaseGroup):
             #TODO(Fu): get the stream from pool
             pool: StreamPool = self._dev_pool_map.get(comm_key, StreamPool(self.POOL_SIZE))
             stream = pool.getStreamFromPool()
+            event = cupy.cuda.Event()
             # Stream(non_blocking=True)
         
         #TODO(Fu): lock and might need to add event
         self._dev_comm_map[comm_key] = [comm]
         self._dev_streams_map[comm_key] = [stream]
+        self._dev_event_map[comm_key] = [event]
         return [comm]
 
     def _generate_group_key(self, comm_key):
@@ -607,16 +618,31 @@ class NCCLGroup(BaseGroup):
         key = _get_comm_key_from_devices(devices)
         comms = self._get_nccl_collective_communicator(key, devices)
         streams = self._dev_streams_map[key]
+        events = self._dev_event_map[key]
 
         # TODO(Hao): sync streams and events
-        self._sync_streams()
+        self._sync_streams(devices, events, streams)
 
         # Make the collective call
         if preprocess_fn:
             preprocess_fn(streams)
         nccl_util.groupStart()
+        # recordStreams for synchronization as per nccl document
+        for i, tensor in enumerate(input_tensors):
+            # TODO(Fu): device guard?
+            stream = streams[i]
+            # TODO(Fu): how to recordStreams as there are no library functions
+            # We also need to make sure input tensors are not freed before their 
+            # usages on ncclStreams finish. This can be achieved by calling 
+            # c10::cuda::CUDACachingAllocator::recordStream, which remembers the 
+            # usage stream (ncclStream), creates an event on the usage stream 
+            # when GC attempts to free the input tensor, and delays GC until that
+            # event is done.
+
+
         for i, tensor in enumerate(input_tensors):
             collective_fn(tensor, output_tensors[i], comms[i], streams[i])
+            
         nccl_util.groupEnd()
         if postprocess_fn:
             postprocess_fn(streams)
@@ -648,12 +674,16 @@ class NCCLGroup(BaseGroup):
         comms = self._get_nccl_p2p_communicator(comm_key, my_gpu_idx,
                                                 peer_rank, peer_gpu_idx)
         streams = self._dev_streams_map[comm_key]
+        events = self._dev_event_map[comm_key]
 
         # TODO(Hao): sync streams and events
-        self._sync_streams()
+        self._sync_streams([my_gpu_idx], streams, events)
 
         # We have made sure that self.rank != peer_rank during API check.
         peer_p2p_rank = 0 if self.rank > peer_rank else 1
+        for i, tensor in enumerate(tensors):
+            stream = streams[i]
+            # TODO(Fu): recordStreams
         for i, tensor in enumerate(tensors):
             p2p_fn(tensors[i], comms[i], streams[i], peer_p2p_rank)
 
