@@ -2219,19 +2219,25 @@ void CoreWorker::HandleGetObjectLocationsOwner(
     return;
   }
   auto object_id = ObjectID::FromBinary(request.object_id());
-  absl::optional<absl::flat_hash_set<NodeID>> node_ids =
-      reference_counter_->GetObjectLocations(object_id);
-  Status status;
-  if (node_ids.has_value()) {
-    for (const auto &node_id : node_ids.value()) {
+  const auto &callback = [object_id, reply, send_reply_callback](
+                             const absl::flat_hash_set<NodeID> &locations,
+                             int64_t object_size, int64_t current_version) {
+    RAY_LOG(DEBUG) << "Replying to HandleGetObjectLocationsOwner for " << object_id
+                   << " with location update version " << current_version << ", "
+                   << locations.size() << " locations, and " << object_size
+                   << " object size.";
+    for (const auto &node_id : locations) {
       reply->add_node_ids(node_id.Binary());
     }
-    status = Status::OK();
-  } else {
-    status = Status::ObjectNotFound("Object " + object_id.Hex() + " not found");
+    reply->set_object_size(object_size);
+    reply->set_current_version(current_version);
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+  };
+  auto status = reference_counter_->SubscribeObjectLocations(
+      object_id, request.last_version(), callback);
+  if (!status.ok()) {
+    send_reply_callback(status, nullptr, nullptr);
   }
-  reply->set_object_size(reference_counter_->GetObjectSize(object_id));
-  send_reply_callback(status, nullptr, nullptr);
 }
 
 void CoreWorker::HandleWaitForRefRemoved(const rpc::WaitForRefRemovedRequest &request,
