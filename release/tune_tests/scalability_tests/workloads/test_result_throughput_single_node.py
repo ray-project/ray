@@ -1,3 +1,15 @@
+"""Result throughput on a single node
+
+In this run, we will start 96 trials concurrently that report very often
+(500 results per second). We thus measure the amount of overhead incurred when
+dealing with a large number of results.
+
+Test owner: krfricke
+
+Acceptance criteria: Should run faster than 120 seconds.
+
+Theoretical minimum time: 100 seconds
+"""
 import os
 
 import ray

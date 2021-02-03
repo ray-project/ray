@@ -1,3 +1,15 @@
+"""Result throughput on a cluster
+
+In this run, we will start 1000 trials concurrently that report often
+(10 results per second). We thus measure the amount of overhead incurred when
+dealing with a large number of results from distributed trials.
+
+Test owner: krfricke
+
+Acceptance criteria: Should run faster than 120 seconds.
+
+Theoretical minimum time: 100 seconds
+"""
 import os
 
 import ray

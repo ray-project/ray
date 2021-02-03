@@ -1,3 +1,15 @@
+"""Book keeping overhead (1 node, 10k trials)
+
+In this run, we will start a large number of trials (10k) that take just a
+second to run. We thus measure overhead that comes with dealing with a
+large number of trials, e.g. experiment checkpointing.
+
+Test owner: krfricke
+
+Acceptance criteria: Should run faster than 800 seconds.
+
+Theoretical minimum time: 10000/16 = 625 seconds
+"""
 import os
 
 import ray

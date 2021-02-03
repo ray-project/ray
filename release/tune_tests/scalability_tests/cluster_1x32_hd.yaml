@@ -1,4 +1,4 @@
-cluster_name: ray-tune-scalability-tests-1x96
+cluster_name: ray-tune-scalability-tests-1x32_hd
 
 min_workers: 0
 max_workers: 0
@@ -20,10 +20,15 @@ auth:
     ssh_user: ubuntu
 
 head_node:
-    InstanceType: m5.24xlarge  # 96 CPUs
+    InstanceType: m5.8xlarge  # 32 CPUs, 128 GB memory
+
+    BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+              VolumeSize: 160
 
 worker_nodes:
-    InstanceType: m5.24xlarge  # 96 CPUs
+    InstanceType: m5.8xlarge  # 32 CPUs, 128 GB memory
 
 setup_commands:
     - ray install-nightly

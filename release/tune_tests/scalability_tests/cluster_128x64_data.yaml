@@ -1,0 +1,35 @@
+cluster_name: ray-tune-scalability-tests-128x64_data
+
+min_workers: 127
+max_workers: 127
+
+idle_timeout_minutes: 15
+
+docker:
+    image: anyscale/ray:nightly
+    container_name: ray_container
+    pull_before_run: true
+
+provider:
+    type: aws
+    region: us-west-2
+    availability_zone: us-west-2a
+    cache_stopped_nodes: false
+
+auth:
+    ssh_user: ubuntu
+
+head_node:
+    InstanceType: m5.16xlarge  # 64 CPUs
+
+worker_nodes:
+    InstanceType: m5.16xlarge  # 64 CPUs
+
+setup_commands:
+    - ray install-nightly
+    - pip install pytest xgboost_ray
+    - mkdir -p ~/data || true
+    - rm -rf ~/data/train.parquet || true
+    - rm -rf ~/data/test.parquet || true
+    - python ${ANYSCALE_WORKING_DIR}/create_test_data.py ~/data/train.parquet --seed 1234 --num-rows 40000000 --num-cols 40 --num-partitions 128 --num-classes 2
+    - python ${ANYSCALE_WORKING_DIR}/create_test_data.py ~/data/test.parquet --seed 1234 --num-rows 10000000 --num-cols 40 --num-partitions 128 --num-classes 2

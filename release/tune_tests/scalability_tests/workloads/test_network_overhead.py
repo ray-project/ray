@@ -1,3 +1,15 @@
+"""Networking overhead (200 trials on 200 nodes)
+
+In this run, we will start 200 trials and run them on 200 different nodes.
+This test will thus measure the overhead that comes with network communication
+and specifically log synchronization.
+
+Test owner: krfricke
+
+Acceptance criteria: Should run faster than 500 seconds.
+
+Theoretical minimum time: 300 seconds
+"""
 import ray
 from ray import tune
 

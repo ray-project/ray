@@ -1,4 +1,4 @@
-cluster_name: ray-tune-scalability-tests
+cluster_name: ray-tune-scalability-tests-1x16
 
 min_workers: 0
 max_workers: 0
