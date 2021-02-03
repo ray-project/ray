@@ -55,6 +55,8 @@ Docker
         - str
     :ref:`disable_automatic_runtime_detection <cluster-configuration-disable-automatic-runtime-detection>`: bool
     :ref:`disable_shm_size_detection <cluster-configuration-disable-shm-size-detection>`: bool
+    :ref:`head_image <cluster-configuration-head-image>`: str
+    :ref:`worker_image <cluster-configuration-worker-image>`: str
 
 .. _cluster-configuration-auth-type:
 
