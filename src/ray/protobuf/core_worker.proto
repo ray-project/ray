@@ -121,7 +121,8 @@ message DirectActorCallArgWaitCompleteRequest {
   int64 tag = 2;
 }
 
-message DirectActorCallArgWaitCompleteReply {}
+message DirectActorCallArgWaitCompleteReply {
+}
 
 message GetObjectStatusRequest {
   // The ID of the worker that owns this object. This is also
@@ -147,7 +148,8 @@ message WaitForActorOutOfScopeRequest {
   bytes actor_id = 2;
 }
 
-message WaitForActorOutOfScopeReply {}
+message WaitForActorOutOfScopeReply {
+}
 
 message WaitForObjectEvictionRequest {
   // The ID of the worker this message is intended for.
@@ -156,7 +158,8 @@ message WaitForObjectEvictionRequest {
   bytes object_id = 2;
 }
 
-message WaitForObjectEvictionReply {}
+message WaitForObjectEvictionReply {
+}
 
 message AddObjectLocationOwnerRequest {
   bytes intended_worker_id = 1;
@@ -164,7 +167,8 @@ message AddObjectLocationOwnerRequest {
   bytes node_id = 3;
 }
 
-message AddObjectLocationOwnerReply {}
+message AddObjectLocationOwnerReply {
+}
 
 message RemoveObjectLocationOwnerRequest {
   bytes intended_worker_id = 1;
@@ -172,7 +176,8 @@ message RemoveObjectLocationOwnerRequest {
   bytes node_id = 3;
 }
 
-message RemoveObjectLocationOwnerReply {}
+message RemoveObjectLocationOwnerReply {
+}
 
 message GetObjectLocationsOwnerRequest {
   bytes intended_worker_id = 1;
@@ -199,7 +204,8 @@ message KillActorRequest {
   bool no_restart = 3;
 }
 
-message KillActorReply {}
+message KillActorReply {
+}
 
 message CancelTaskRequest {
   // ID of task that should be killed.
@@ -224,7 +230,8 @@ message RemoteCancelTaskRequest {
   bool recursive = 3;
 }
 
-message RemoteCancelTaskReply {}
+message RemoteCancelTaskReply {
+}
 
 message GetCoreWorkerStatsRequest {
   // The ID of the worker this message is intended for.
@@ -283,15 +290,18 @@ message WaitForRefRemovedReply {
   repeated ObjectReferenceCount borrowed_refs = 1;
 }
 
-message LocalGCRequest {}
+message LocalGCRequest {
+}
 
-message LocalGCReply {}
+message LocalGCReply {
+}
 
 message PlasmaObjectReadyRequest {
   bytes object_id = 1;
 }
 
-message PlasmaObjectReadyReply {}
+message PlasmaObjectReadyReply {
+}
 
 message SpillObjectsRequest {
   // The IDs of objects to be spilled.
@@ -320,11 +330,14 @@ message DeleteSpilledObjectsRequest {
   repeated string spilled_objects_url = 1;
 }
 
-message DeleteSpilledObjectsReply {}
+message DeleteSpilledObjectsReply {
+}
 
-message ExitRequest {}
+message ExitRequest {
+}
 
-message ExitReply {}
+message ExitReply {
+}
 
 service CoreWorkerService {
   // Push a task directly to this worker from another.
