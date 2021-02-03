@@ -62,6 +62,8 @@ This checklist is meant to be used in conjunction with the RELEASE_PROCESS.rst d
 	- [ ] K8s operator test
 - [ ] Data processing tests
     - [ ] streaming_shuffle
+- [x] Tune tests
+    - [x] ignore for now
 - [ ] XGBoost Tests
     - [ ] distributed_api_test
     - [ ] train_small

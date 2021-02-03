@@ -172,15 +172,16 @@ is generally the easiest way to run release tests.
 
 10. **XGBoost release tests**
 
-   .. code-block:: bash
+    .. code-block:: bash
 
-      xgboost_tests/README.rst
+       xgboost_tests/README.rst
 
-   Follow the instructions to kick off the tests and check the status of the workloads.
-   The XGBoost release tests use assertions or fail with exceptions and thus
-   should automatically tell you if they failed or not.
-   Only in the case of the fault tolerance tests you might want
-   to check the logs. See the readme for more information.
+    Follow the instructions to kick off the tests and check the status of the workloads.
+    The XGBoost release tests use assertions or fail with exceptions and thus
+    should automatically tell you if they failed or not.
+    Only in the case of the fault tolerance tests you might want
+    to check the logs. See the readme for more information.
+
 
 Identify and Resolve Release Blockers
 -------------------------------------

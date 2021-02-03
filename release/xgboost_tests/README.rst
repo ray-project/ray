@@ -9,7 +9,7 @@ Overview
 --------
 There are four kinds of tests:
 
-1. ``distributed_api_test`` - checks general API functionality and sohuld finish very quickly (< 1minute)
+1. ``distributed_api_test`` - checks general API functionality and should finish very quickly (< 1 minute)
 2. ``train_*`` - checks single trial training on different setups.
 3. ``tune_*`` - checks multi trial training via Ray Tune.
 4. ``ft_*`` - checks fault tolerance. **These tests are currently flaky**
@@ -25,3 +25,8 @@ than expected, causing the test to fail. In other cases, the re-scheduled
 actors become available too soon after crashing, causing the assertions to
 fail. Please consider re-running the test a couple of times or contact the
 test owner with outputs from the tests for further questions.
+
+Acceptance criteria
+-------------------
+These tests are considered passing when they throw no error at the end of
+the output log.
