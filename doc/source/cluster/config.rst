@@ -53,6 +53,8 @@ Docker
     :ref:`pull_before_run <cluster-configuration-pull-before-run>`: bool
     :ref:`run_options <cluster-configuration-run-options>`:
         - str
+    :ref:`disable_automatic_runtime_detection <cluster-configuration-disable-automatic-runtime-detection>`: bool
+    :ref:`disable_shm_size_detection <cluster-configuration-disable-shm-size-detection>`: bool
 
 .. _cluster-configuration-auth-type:
 
@@ -442,7 +444,7 @@ After you have customized the nodes, create a new machine image (or docker conta
 
 The Docker image to pull in the head and worker nodes. If no image is specified, Ray will not use Docker.
 
-* **Required:** No
+* **Required:** Yes (If Docker is in use.)
 * **Importance:** High
 * **Type:** String
 * **Update requires:** Restart
@@ -459,9 +461,9 @@ The Ray project provides Docker images on `DockerHub <https://hub.docker.com/u/r
 ``docker.container_name``
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The name to use when starting the Docker container. If no container name is specified, the container name will be automatically assigned.
+The name to use when starting the Docker container.
 
-* **Required:** No
+* **Required:** Yes (If Docker is in use.)
 * **Importance:** Low
 * **Type:** String
 * **Default:** ``[]``
@@ -491,6 +493,35 @@ The extra options to pass to ``docker run``.
 * **Importance:** Medium
 * **Type:** List of String
 * **Default:** ``[]``
+* **Update requires:** Restart
+
+
+.. _cluster-configuration-disable-automatic-runtime-detection:
+
+``docker.disable_automatic_runtime_detection``
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+If enabled, Ray will not try to use the NVIDIA runtime if GPUs are present.
+
+* **Required:** No
+* **Importance:** Medium
+* **Type:** Boolean
+* **Default:** ``False``
+* **Update requires:** Restart
+
+
+### disable_shm_size_detection
+.. _cluster-configuration-disable-shm-size-detection:
+
+``docker.disable_shm_size_detection``
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+If enabled, Ray will not automatically specify the size /dev/shm for the started container.
+
+* **Required:** No
+* **Importance:** Medium
+* **Type:** Boolean
+* **Default:** ``False``
 * **Update requires:** Restart
 
 .. _cluster-configuration-ssh-user:
