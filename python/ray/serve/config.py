@@ -5,8 +5,7 @@ from typing import Any, Dict, List, Optional
 
 import pydantic
 from pydantic import BaseModel, confloat, PositiveFloat, PositiveInt, validator
-from ray.serve.constants import (ASYNC_CONCURRENCY, DEFAULT_HTTP_HOST,
-                                 DEFAULT_HTTP_PORT)
+from ray.serve.constants import DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT
 
 
 def _callable_accepts_batch(backend_def):
@@ -113,8 +112,11 @@ class BackendConfig(BaseModel):
             # Pipeline/async mode: if the servable is not blocking,
             # router should just keep pushing queries to the replicas
             # until a high limit.
+            # TODO(edoakes): setting this to a relatively low constant because
+            # we can't determine if imported backends are sync or async, but we
+            # may consider tweaking it in the future.
             if not values["internal_metadata"].is_blocking:
-                v = ASYNC_CONCURRENCY
+                v = 100
 
             # Batch inference mode: user specifies non zero timeout to wait for
             # full batch. We will use 2*max_batch_size to perform double
