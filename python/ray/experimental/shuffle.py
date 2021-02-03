@@ -1,11 +1,11 @@
-from typing import TypeVar, List, Iterable, Tuple, Callable
+from typing import TypeVar, List, Iterable, Tuple, Callable, Any
 
 import ray
 from ray import ObjectRef
 
 PartitionID = int
-InType = TypeVar("InType")
-OutType = TypeVar("OutType")
+InType = Any
+OutType = Any
 
 
 class InputCombiner:
@@ -15,7 +15,7 @@ class InputCombiner:
     def add(self, data: InType) -> None:
         self.results.append(ray.put(data))
 
-    def finish(self) -> List[ObjectRef[InType]]:
+    def finish(self) -> List[ObjectRef]:
         return self.results
 
 
@@ -33,34 +33,38 @@ def simple_shuffle(
         input_reader: Callable[[PartitionID], Iterable[InType]],
         input_num_partitions: int,
         output_num_partitions: int,
-        output_writer: Callable[[PartitionID, List[ObjectRef[InType]]],
+        output_writer: Callable[[PartitionID, List[ObjectRef]],
                                 OutType],
         partitioner: Callable[[Iterable[InType], int], Iterable[
             PartitionID]] = round_robin_partitioner,
         input_combiner: InputCombiner = InputCombiner,
 ) -> List[OutType]:
+
     @ray.remote(num_returns=output_num_partitions)
-    def shuffle_map(i: PartitionID) -> List[List[ObjectRef[InType]]]:
+    def shuffle_map(i: PartitionID) -> List[List[ObjectRef]]:
         combiners = [input_combiner() for _ in range(output_num_partitions)]
-        for out_i, item in partitioner(input_reader(i)):
+        for out_i, item in partitioner(input_reader(i), output_num_partitions):
             combiners[out_i].add(item)
-        outputs = [[ray.put(r) for r in c.results()] for c in range(combiners)]
-        return outputs
+        return [c.finish() for c in combiners]
 
     @ray.remote
     def shuffle_reduce(i: PartitionID,
-                       inputs: List[ObjectRef[InType]]) -> OutType:
-        return output_writer(i, inputs)
+                       *mapper_outputs: List[List[ObjectRef]]) -> OutType:
+        combined_outputs = []
+        assert len(mapper_outputs) == input_num_partitions
+        for m in mapper_outputs:
+            for combiner_output_ref in m:
+                combined_outputs.append(combiner_output_ref)
+        return output_writer(i, combined_outputs)
 
-    shuffle_map_out = ray.get(
-        [shuffle_map.remote(i) for i in range(input_num_partitions)])
+    shuffle_map_out = [shuffle_map.remote(i) for i in range(input_num_partitions)]
 
-    shuffle_reduce_out = []
-    for j in range(output_num_partitions):
-        reduce_input = []
-        for map_output in shuffle_map_out:
-            reduce_input.extend(map_output[j])
-        shuffle_reduce_out.append(shuffle_reduce.remote(j, reduce_input))
+    shuffle_reduce_out = [
+        shuffle_reduce.remote(
+            j,
+            *[shuffle_map_out[i][j] for i in range(input_num_partitions)])
+        for j in range(output_num_partitions)
+    ]
 
     return ray.get(shuffle_reduce_out)
 
@@ -84,6 +88,8 @@ if __name__ == "__main__":
     import numpy as np
     import time
 
+    ray.init()
+
     partition_size = int(200e6)
     num_partitions = 50
     rows_per_partition = partition_size // (8 * 2)
@@ -97,19 +103,22 @@ if __name__ == "__main__":
         tracker.inc.remote()
 
     def output_writer(i: PartitionID,
-                      shuffle_inputs: List[ObjectRef[InType]]) -> OutType:
+                      shuffle_inputs: List[ObjectRef]) -> OutType:
+        total = 0
         for obj_ref in shuffle_inputs:
-            ray.get(obj_ref)
+            arr = ray.get(obj_ref)
+            total += arr.size * arr.itemsize
         tracker.inc2.remote()
+        return total
 
     start = time.time()
 
-    output_size = simple_shuffle(
+    output_sizes = simple_shuffle(
         input_reader=input_reader,
-        input_num_partition=num_partitions,
+        input_num_partitions=num_partitions,
         output_num_partitions=num_partitions,
         output_writer=output_writer)
     delta = time.time() - start
 
-    print("Shuffled", int(output_size / (1024 * 1024)), "MiB in", delta,
+    print("Shuffled", int(sum(output_sizes) / (1024 * 1024)), "MiB in", delta,
           "seconds")
