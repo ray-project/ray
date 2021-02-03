@@ -5,7 +5,7 @@ The Ray Kubernetes Operator
 
 Ray provides a `Kubernetes Operator`_ for managing autoscaling Ray clusters.
 Using the operator provides similar functionality to deploying a Ray cluster using
-the :ref:`Ray Cluster Launcher<ref-autoscaling>`. However, working with the operator does not require
+the Ray Cluster Launcher. However, working with the operator does not require
 running Ray locally -- all interactions with your Ray cluster are mediated by Kubernetes.
 
 The operator makes use of a `Kubernetes Custom Resource`_ called a *RayCluster*.

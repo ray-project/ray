@@ -289,10 +289,9 @@ What's Next?
 
 Now that you have a working understanding of the cluster launcher, check out:
 
-* :ref:`cluster-config`: A guide to configuring your Ray cluster.
+* :ref:`ref-cluster-quick-start`: A end-to-end demo to run an application that autoscales.
+* :ref:`cluster-config`: A complete reference of how to configure your Ray cluster.
 * :ref:`cluster-commands`: A short user guide to the various cluster launcher commands.
-* A `step by step guide`_ to using the cluster launcher
-* :ref:`ref-autoscaling`: An overview of how Ray autoscaling works.
 
 
 

@@ -164,11 +164,6 @@ A minimal sample cluster configuration file looks as follows:
             provider:
                 type: aws
                 region: us-west-2
-                availability_zone: us-west-2a
-            
-            # How Ray will authenticate with newly launched nodes.
-            auth:
-              ssh_user: ubuntu
 
     .. group-tab:: Azure
 
@@ -203,14 +198,8 @@ A minimal sample cluster configuration file looks as follows:
             provider:
                 type: gcp
                 region: us-west1
-                availability_zone: us-west1-a
-                project_id: null # Globally unique project id
-            
-            # How Ray will authenticate with newly launched nodes.
-            auth:
-                ssh_user: ubuntu
 
-Save this configuration file as ``config.yaml``. You can specify a lot more details in the configuration file: instance types to use, minimum and maximum number of workers to start, autoscaling strategy, files to sync, and more. For a full reference on the available configuration properties, please refer to the :ref:`configuration options reference <cluster-configuration>`.
+Save this configuration file as ``config.yaml``. You can specify a lot more details in the configuration file: instance types to use, minimum and maximum number of workers to start, autoscaling strategy, files to sync, and more. For a full reference on the available configuration properties, please refer to the :ref:`configuration options reference <cluster-config>`.
 
 After defining our configuration, we will use the Ray Cluster Launcher to start a cluster on the cloud, creating a designated "head node" and worker nodes. To start the Ray cluster, we will use the Ray CLI. Run the following command:
 
@@ -242,7 +231,7 @@ The output should now look similar to the following:
 
 In this sample output, 3 nodes were started. If the output only shows 1 node, you may want to increase the ``secs`` in ``time.sleep(secs)`` to give Ray more time to start additional nodes.
 
-The Ray CLI offers additional functionality. For example, you can monitor the Ray cluster status with ``ray monitor config.yaml``, and you can connect to the cluster (ssh into the head node) with ``ray attach config.yaml``. For a full reference on the Ray CLI, please refer to :ref:`the Command Line API reference <package-ref-command-line-api>`.
+The Ray CLI offers additional functionality. For example, you can monitor the Ray cluster status with ``ray monitor config.yaml``, and you can connect to the cluster (ssh into the head node) with ``ray attach config.yaml``. For a full reference on the Ray CLI, please refer to :ref:`the cluster commands reference <cluster-commands>`.
 
 To finish, don't forget to shut down the cluster. Run the following command:
 

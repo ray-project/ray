@@ -1,4 +1,4 @@
-.. _cluster-configuration:
+.. _cluster-config:
 
 Configuration Options
 =====================
@@ -11,7 +11,6 @@ Syntax
 .. parsed-literal::
 
     :ref:`cluster_name <cluster-configuration-cluster-name>`: str
-    :ref:`min_workers <cluster-configuration-min-workers>`: int
     :ref:`max_workers <cluster-configuration-max-workers>`: int
     :ref:`upscaling_speed <cluster-configuration-upscaling-speed>`: float
     :ref:`idle_timeout_minutes <cluster-configuration-idle-timeout-minutes>`: int
@@ -23,6 +22,8 @@ Syntax
         :ref:`auth <cluster-configuration-auth-type>`
     :ref:`available_node_types <cluster-configuration-available-node-types>`:
         :ref:`node_types <cluster-configuration-node-types-type>`
+    :ref:`worker_nodes <cluster-configuration-worker-nodes>`:
+        :ref:`node_config <cluster-configuration-node-config-type>`
     :ref:`head_node_type <cluster-configuration-head-node-type>`: str
     :ref:`file_mounts <cluster-configuration-file-mounts>`:
         :ref:`file_mounts <cluster-configuration-file-mounts-type>`
@@ -37,7 +38,6 @@ Syntax
         - str
     :ref:`setup_commands <cluster-configuration-setup-commands>`:
         - str
-    **TODO: head_start_ray_commands, worker_start_ray_commands**
 
 Custom types
 ------------
@@ -53,7 +53,6 @@ Docker
     :ref:`pull_before_run <cluster-configuration-pull-before-run>`: bool
     :ref:`run_options <cluster-configuration-run-options>`:
         - str
-    **TODO: head_image, worker_image, worker_run_options**
 
 .. _cluster-configuration-auth-type:
 
@@ -131,11 +130,12 @@ The nodes types object's keys represent the names of the different node types.
             :ref:`Node config <cluster-configuration-node-config-type>`
         :ref:`resources <cluster-configuration-resources>`:
             :ref:`Resources <cluster-configuration-resources-type>`
-        :ref:`min_workers <cluster-configuration-min-workers>`: int
-        :ref:`max_workers <cluster-configuration-max-workers>`: int
+        :ref:`min_workers <cluster-configuration-node-min-workers>`: int
+        :ref:`max_workers <cluster-configuration-node-max-workers>`: int
         :ref:`worker_setup_commands <cluster-configuration-worker-setup-commands>`:
             - str
-        **TODO: pull_before_run, worker_image, worker_run_options**
+        :ref:`docker <cluster-configuration-node-docker>`:
+            :ref:`Node Docker <cluster-configuration-node-docker-type>`
     <node_type_2_name>:
         ...
     ...
@@ -148,17 +148,27 @@ Node config
 .. tabs::
     .. group-tab:: AWS
 
-        A YAML object as defined in the `the AWS docs <https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-ec2-instance.html>`_.
+        A YAML object as defined in `the AWS docs <https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-ec2-instance.html>`_.
 
     .. group-tab:: Azure
 
-        A YAML object as defined in the `the Azure docs <https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-ec2-instance.html>`_.
-        **TODO: Link docs**
+        A YAML object as defined in `the deployment template <https://docs.microsoft.com/en-us/azure/templates/microsoft.compute/virtualmachines>`_ whose resources are defined in `the Azure docs <https://docs.microsoft.com/en-us/azure/templates/>`_.
 
     .. group-tab:: GCP
 
-        A YAML object as defined in the `the GCP docs <https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-ec2-instance.html>`_.
-        **TODO: Link docs**
+        A YAML object as defined in `the GCP docs <https://cloud.google.com/compute/docs/reference/rest/v1/instances>`_.
+
+.. _cluster-configuration-node-docker-type:
+
+Node Docker
+~~~~~~~~~~~
+
+.. parsed-literal::
+
+    :ref:`worker_image <cluster-configuration-image>`: str
+    :ref:`pull_before_run <cluster-configuration-pull-before-run>`: bool
+    :ref:`worker_run_options <cluster-configuration-run-options>`:
+        - str
 
 .. _cluster-configuration-resources-type:
 
@@ -196,23 +206,7 @@ The name of the cluster.
 * **Required:** Yes
 * **Importance:** High
 * **Type:** String
-* **Maximum:** ``128``
-* **Pattern:** ``[^\s]+``
-* **Update requires:** Restart
-
-.. _cluster-configuration-min-workers:
-
-``min_workers``
-~~~~~~~~~~~~~~~
-
-The minimum number of workers to maintain in the cluster regardless of utilization.
-
-* **Required:** No
-* **Importance:** High
-* **Type:** Integer
-* **Default:** ``0``
-* **Minimum:** ``0``
-* **Maximum:** Unbounded
+* **Pattern:** **TODO**
 * **Update requires:** Restart
 
 .. _cluster-configuration-max-workers:
@@ -225,7 +219,7 @@ The maximum number of workers to maintain in the cluster regardless of utilizati
 * **Required:** No
 * **Importance:** High
 * **Type:** Integer
-* **Default:** Unbounded **TODO: WHAT VALUE DO YOU CONFIGURE TO GET UNBOUNDED**
+* **Default:** ``3``
 * **Minimum:** ``0``
 * **Maximum:** Unbounded
 * **Update requires:** Restart
@@ -317,7 +311,7 @@ The definition of node types that are available to launch and scale the Ray clus
 * **Required:** No
 * **Importance:** High
 * **Type:** :ref:`Node types <cluster-configuration-node-types-type>`
-* **Default:** **TODO: ADD DEFAULT**
+* **Default:** **TODO**
 * **Update requires:** Restart
 
 .. _cluster-configuration-head-node-type:
@@ -327,12 +321,23 @@ The definition of node types that are available to launch and scale the Ray clus
 
 The key for one of the node types in ``available_node_types``. This node type will be used to launch the head node.
 
-* **Required:** No
+* **Required:** Yes (unless :ref:`node types <cluster-configuration-available-node-types>` is not configured either)
 * **Importance:** High
 * **Type:** String
-* **Default:** **TODO: ADD DEFAULT**
-* **Maximum:** ``128``
-* **Pattern:** ``[^\s]+``
+* **Pattern:** **TODO**
+* **Update requires:** Restart
+
+.. _cluster-configuration-worker-nodes:
+
+``worker_nodes``
+~~~~~~~~~~~~~~~~
+
+The configuration to be used to launch worker nodes on the cloud service provider. Generally, node configs are set in the :ref:`node config of each node type <cluster-configuration-node-config>`. Setting this property allows propagation of a default value to all the node types when they launch as workers (e.g., using spot instances across all workers can be configured here so that it doesn't have to be set across all instance types).
+
+* **Required:** No
+* **Importance:** Medium
+* **Type:** :ref:`Node config <cluster-configuration-node-config-type>`
+* **Default:** ``{}``
 * **Update requires:** Restart
 
 .. _cluster-configuration-file-mounts:
@@ -571,6 +576,7 @@ The user that Ray will authenticate with when launching new nodes.
         * **Required:** Yes
         * **Importance:** High
         * **Type:** String
+        * **Allowed values:** ``aws | azure | gcp``
         * **Update requires:** Restart
 
     .. group-tab:: Azure
@@ -580,6 +586,7 @@ The user that Ray will authenticate with when launching new nodes.
         * **Required:** Yes
         * **Importance:** High
         * **Type:** String
+        * **Allowed values:** ``aws | azure | gcp``
         * **Update requires:** Restart
 
     .. group-tab:: GCP
@@ -589,6 +596,7 @@ The user that Ray will authenticate with when launching new nodes.
         * **Required:** Yes
         * **Importance:** High
         * **Type:** String
+        * **Allowed values:** ``aws | azure | gcp``
         * **Update requires:** Restart
 
 .. _cluster-configuration-region:
@@ -621,7 +629,7 @@ The user that Ray will authenticate with when launching new nodes.
 
 .. _cluster-configuration-availability-zone:
 
-``provider.availability-zone``
+``provider.availability_zone``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. tabs::
@@ -632,7 +640,7 @@ The user that Ray will authenticate with when launching new nodes.
         * **Required:** No
         * **Importance:** Low
         * **Type:** String
-        * **Default:** **TODO: ADD DEFAULT**
+        * **Default:** **TODO: WHAT VALUE CAN YOU SET TO GET THE EQUIVALENT OF AN ABSENCE OF VALUE**
         * **Update requires:** Restart
 
     .. group-tab:: Azure
@@ -646,7 +654,7 @@ The user that Ray will authenticate with when launching new nodes.
         * **Required:** No
         * **Importance:** Low
         * **Type:** String
-        * **Default:** **TODO: ADD DEFAULT**
+        * **Default:** **TODO: WHAT VALUE CAN YOU SET TO GET THE EQUIVALENT OF AN ABSENCE OF VALUE**
         * **Update requires:** Restart
 
 .. _cluster-configuration-location:
@@ -782,6 +790,38 @@ The resources that a node type provides, which enables the autoscaler to automat
 * **Default:** ``{}``
 * **Update requires:** Restart
 
+In some cases, adding special nodes without any resources may be desirable. Such nodes can be used as a driver which connects to the cluster to launch jobs. In order to manually add a node to an autoscaled cluster, the *ray-cluster-name* tag should be set and *ray-node-type* tag should be set to unmanaged. Unmanaged nodes can be created by setting the resources to ``{}`` and the :ref:`maximum workers <cluster-configuration-node-min-workers>` to 0. The Autoscaler will not attempt to start, stop, or update unmanaged nodes. The user is responsible for properly setting up and cleaning up unmanaged nodes.
+
+.. _cluster-configuration-node-min-workers:
+
+``available_node_types.<node_type_name>.node_type.min_workers``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The minimum number of workers to maintain for this node type regardless of utilization.
+
+* **Required:** No
+* **Importance:** High
+* **Type:** Integer
+* **Default:** ``0``
+* **Minimum:** ``0``
+* **Maximum:** Unbounded
+* **Update requires:** Restart
+
+.. _cluster-configuration-node-max-workers:
+
+``available_node_types.<node_type_name>.node_type.max_workers``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The maximum number of workers to maintain for this node type regardless of utilization. If higher than the :ref:`minimum workers <cluster-configuration-node-min-workers>`, this value will apply.
+
+* **Required:** No
+* **Importance:** High
+* **Type:** Integer
+* **Default:** ``3``
+* **Minimum:** ``0``
+* **Maximum:** Unbounded
+* **Update requires:** Restart
+
 .. _cluster-configuration-worker-setup-commands:
 
 ``available_node_types.<node_type_name>.node_type.worker_setup_commands``
@@ -800,23 +840,84 @@ A list of commands to run to set up worker nodes. These commands will only run i
 ``available_node_types.<node_type_name>.node_type.resources.CPU``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The number of CPUs made available by this node. If not configured, the Autoscaler will automatically assign a value based on the instance type. **TODO: IS THIS TRUE FOR AZURE AND GCP?**
+.. tabs::
+    .. group-tab:: AWS
 
-* **Required:** No
-* **Importance:** Low
-* **Type:** Integer
-* **Default:** ``null``
-* **Update requires:** Restart
+        The number of CPUs made available by this node. If not configured, the Autoscaler will automatically assign a value based on the instance type.
+
+        * **Required:** No
+        * **Importance:** Low
+        * **Type:** Integer
+        * **Default:** **TODO: WHAT VALUE CAN YOU SET TO GET THE EQUIVALENT OF AN ABSENCE OF VALUE**
+        * **Update requires:** Restart
+
+    .. group-tab:: Azure
+
+        The number of CPUs made available by this node.
+        
+        * **Required:** Yes
+        * **Importance:** High
+        * **Type:** Integer
+        * **Default:** ``0``
+        * **Update requires:** Restart
+
+    .. group-tab:: GCP
+
+        The number of CPUs made available by this node.
+        
+        * **Required:** No
+        * **Importance:** High
+        * **Type:** Integer
+        * **Default:** ``0``
+        * **Update requires:** Restart
+
+
 
 .. _cluster-configuration-gpu:
 
 ``available_node_types.<node_type_name>.node_type.resources.GPU``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The number of GPUs made available by this node. If not configured, the Autoscaler will automatically assign a value based on the instance type. **TODO: IS THIS TRUE FOR AZURE AND GCP?**
+.. tabs::
+    .. group-tab:: AWS
+
+        The number of GPUs made available by this node. If not configured, the Autoscaler will automatically assign a value based on the instance type.
+
+        * **Required:** No
+        * **Importance:** Low
+        * **Type:** Integer
+        * **Default:** **TODO: WHAT VALUE CAN YOU SET TO GET THE EQUIVALENT OF AN ABSENCE OF VALUE**
+        * **Update requires:** Restart
+
+    .. group-tab:: Azure
+
+        The number of GPUs made available by this node.
+        
+        * **Required:** No
+        * **Importance:** High
+        * **Type:** Integer
+        * **Default:** ``0``
+        * **Update requires:** Restart
+
+    .. group-tab:: GCP
+
+        The number of GPUs made available by this node.
+        
+        * **Required:** No
+        * **Importance:** High
+        * **Type:** Integer
+        * **Default:** ``0``
+        * **Update requires:** Restart
+
+.. _cluster-configuration-node-docker:
+
+``available_node_types.<node_type_name>.docker``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+A set of overrides to the top-level :ref:`Docker <cluster-configuration-docker>` configuration.
 
 * **Required:** No
 * **Importance:** Low
-* **Type:** Integer
-* **Default:** ``null``
+* **Type:** :ref:`docker <cluster-configuration-node-docker-type>`
+* **Default:** ``{}``
 * **Update requires:** Restart

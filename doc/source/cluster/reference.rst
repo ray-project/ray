@@ -8,3 +8,4 @@ Config and Command Reference
 
     config.rst
     commands.rst
+    sdk.rst
