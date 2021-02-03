@@ -57,6 +57,10 @@ Docker
     :ref:`disable_shm_size_detection <cluster-configuration-disable-shm-size-detection>`: bool
     :ref:`head_image <cluster-configuration-head-image>`: str
     :ref:`worker_image <cluster-configuration-worker-image>`: str
+    :ref:`head_run_options <cluster-configuration-run-options>`:
+        - str
+    :ref:`worker_run_options <cluster-configuration-run-options>`:
+        - str    
 
 .. _cluster-configuration-auth-type:
 
