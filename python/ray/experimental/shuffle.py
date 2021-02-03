@@ -91,7 +91,7 @@ if __name__ == "__main__":
     ray.init()
 
     partition_size = int(200e6)
-    num_partitions = 50
+    num_partitions = 5
     rows_per_partition = partition_size // (8 * 2)
 
     tracker = _StatusTracker.remote()
@@ -120,5 +120,7 @@ if __name__ == "__main__":
         output_writer=output_writer)
     delta = time.time() - start
 
+    time.sleep(1)
+    print(ray.internal.internal_api.memory_summary(stats_only=True))
     print("Shuffled", int(sum(output_sizes) / (1024 * 1024)), "MiB in", delta,
           "seconds")
