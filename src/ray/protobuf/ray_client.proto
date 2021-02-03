@@ -266,6 +266,8 @@ message ConnectionInfoResponse {
   string ray_commit = 3;
   // The Python version (e.g., "3.7.2").
   string python_version = 4;
+  // The protocol version of the server (e.g., "2020-02-01").
+  string protocol_version = 5;
 }
 
 message DataRequest {

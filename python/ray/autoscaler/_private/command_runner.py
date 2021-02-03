@@ -584,6 +584,9 @@ class DockerCommandRunner(CommandRunnerInterface):
         self.docker_config = docker_config
         self.home_dir = None
         self.initialized = False
+        # Optionally use 'podman' instead of 'docker'
+        use_podman = docker_config.get("use_podman", False)
+        self.docker_cmd = "podman" if use_podman else "docker"
 
     def run(
             self,
@@ -598,8 +601,8 @@ class DockerCommandRunner(CommandRunnerInterface):
             shutdown_after_run=False,
     ):
         if run_env == "auto":
-            run_env = "host" if (not bool(cmd)
-                                 or cmd.find("docker") == 0) else "docker"
+            run_env = "host" if (not bool(cmd) or cmd.find(
+                self.docker_cmd) == 0) else self.docker_cmd
 
         if environment_variables:
             cmd = _with_environment_variables(cmd, environment_variables)
@@ -611,7 +614,8 @@ class DockerCommandRunner(CommandRunnerInterface):
             cmd = with_docker_exec(
                 [cmd],
                 container_name=self.container_name,
-                with_interactive=is_using_login_shells())[0]
+                with_interactive=is_using_login_shells(),
+                docker_cmd=self.docker_cmd)[0]
 
         if shutdown_after_run:
             # sudo shutdown should run after `with_docker_exec` command above
@@ -647,9 +651,9 @@ class DockerCommandRunner(CommandRunnerInterface):
                 # Without it, docker copies the source *into* the target
                 host_destination += "/."
             self.ssh_command_runner.run(
-                "docker cp {} {}:{}".format(host_destination,
-                                            self.container_name,
-                                            self._docker_expand_user(target)),
+                "{} cp {} {}:{}".format(self.docker_cmd, host_destination,
+                                        self.container_name,
+                                        self._docker_expand_user(target)),
                 silent=is_rsync_silent())
 
     def run_rsync_down(self, source, target, options=None):
@@ -668,9 +672,9 @@ class DockerCommandRunner(CommandRunnerInterface):
             # Without it, docker copies the source *into* the target
         if not options.get("docker_mount_if_possible", False):
             self.ssh_command_runner.run(
-                "docker cp {}:{} {}".format(self.container_name,
-                                            self._docker_expand_user(source),
-                                            host_source),
+                "{} cp {}:{} {}".format(self.docker_cmd, self.container_name,
+                                        self._docker_expand_user(source),
+                                        host_source),
                 silent=is_rsync_silent())
         self.ssh_command_runner.run_rsync_down(
             host_source, target, options=options)
@@ -678,22 +682,30 @@ class DockerCommandRunner(CommandRunnerInterface):
     def remote_shell_command_str(self):
         inner_str = self.ssh_command_runner.remote_shell_command_str().replace(
             "ssh", "ssh -tt", 1).strip("\n")
-        return inner_str + " docker exec -it {} /bin/bash\n".format(
-            self.container_name)
+        return inner_str + " {} exec -it {} /bin/bash\n".format(
+            self.docker_cmd, self.container_name)
 
     def _check_docker_installed(self):
         no_exist = "NoExist"
         output = self.ssh_command_runner.run(
-            f"command -v docker || echo '{no_exist}'", with_output=True)
+            f"command -v {self.docker_cmd} || echo '{no_exist}'",
+            with_output=True)
         cleaned_output = output.decode().strip()
         if no_exist in cleaned_output or "docker" not in cleaned_output:
-            install_commands = [
-                "curl -fsSL https://get.docker.com -o get-docker.sh",
-                "sudo sh get-docker.sh", "sudo usermod -aG docker $USER",
-                "sudo systemctl restart docker -f"
-            ]
+            if self.docker_cmd == "docker":
+                install_commands = [
+                    "curl -fsSL https://get.docker.com -o get-docker.sh",
+                    "sudo sh get-docker.sh", "sudo usermod -aG docker $USER",
+                    "sudo systemctl restart docker -f"
+                ]
+            else:
+                install_commands = [
+                    "sudo apt-get update", "sudo apt-get -y install podman"
+                ]
+
             logger.error(
-                "Docker not installed. You can install Docker by adding the "
+                f"{self.docker_cmd.capitalize()} not installed. You can "
+                f"install {self.docker_cmd.capitalize()} by adding the "
                 "following commands to 'initialization_commands':\n" +
                 "\n".join(install_commands))
 
@@ -701,7 +713,7 @@ class DockerCommandRunner(CommandRunnerInterface):
         if self.initialized:
             return True
         output = self.ssh_command_runner.run(
-            check_docker_running_cmd(self.container_name),
+            check_docker_running_cmd(self.container_name, self.docker_cmd),
             with_output=True).decode("utf-8").strip()
         # Checks for the false positive where "true" is in the container name
         return ("true" in output.lower()
@@ -712,7 +724,8 @@ class DockerCommandRunner(CommandRunnerInterface):
         if user_pos > -1:
             if self.home_dir is None:
                 self.home_dir = self.ssh_command_runner.run(
-                    f"docker exec {self.container_name} printenv HOME",
+                    f"{self.docker_cmd} exec {self.container_name} "
+                    "printenv HOME",
                     with_output=True).decode("utf-8").strip()
 
             if any_char:
@@ -727,7 +740,7 @@ class DockerCommandRunner(CommandRunnerInterface):
             self, image: str, cleaned_bind_mounts: Dict[str, str]) -> bool:
         re_init_required = False
         running_image = self.run(
-            check_docker_image(self.container_name),
+            check_docker_image(self.container_name, self.docker_cmd),
             with_output=True,
             run_env="host").decode("utf-8").strip()
         if running_image != image:
@@ -736,7 +749,7 @@ class DockerCommandRunner(CommandRunnerInterface):
                 "of {} (which was provided in the YAML)", self.container_name,
                 running_image, image)
         mounts = self.run(
-            check_bind_mounts_cmd(self.container_name),
+            check_bind_mounts_cmd(self.container_name, self.docker_cmd),
             with_output=True,
             run_env="host").decode("utf-8").strip()
         try:
@@ -778,12 +791,14 @@ class DockerCommandRunner(CommandRunnerInterface):
         if self.docker_config.get("pull_before_run", True):
             assert specific_image, "Image must be included in config if " + \
                 "pull_before_run is specified"
-            self.run("docker pull {}".format(specific_image), run_env="host")
+            self.run(
+                "{} pull {}".format(self.docker_cmd, specific_image),
+                run_env="host")
         else:
 
-            self.run(
-                f"docker image inspect {specific_image} 1> /dev/null  2>&1 || "
-                f"docker pull {specific_image}")
+            self.run(f"{self.docker_cmd} image inspect {specific_image} "
+                     "1> /dev/null  2>&1 || "
+                     f"{self.docker_cmd} pull {specific_image}")
 
         # Bootstrap files cannot be bind mounted because docker opens the
         # underlying inode. When the file is switched, docker becomes outdated.
@@ -799,12 +814,15 @@ class DockerCommandRunner(CommandRunnerInterface):
             requires_re_init = self._check_if_container_restart_is_needed(
                 specific_image, cleaned_bind_mounts)
             if requires_re_init:
-                self.run(f"docker stop {self.container_name}", run_env="host")
+                self.run(
+                    f"{self.docker_cmd} stop {self.container_name}",
+                    run_env="host")
 
         if (not container_running) or requires_re_init:
             # Get home directory
             image_env = self.ssh_command_runner.run(
-                "docker inspect -f '{{json .Config.Env}}' " + specific_image,
+                f"{self.docker_cmd} " + "inspect -f '{{json .Config.Env}}' " +
+                specific_image,
                 with_output=True).decode().strip()
             home_directory = "/root"
             for env_var in json.loads(image_env):
@@ -819,7 +837,8 @@ class DockerCommandRunner(CommandRunnerInterface):
                     "run_options", []) + self.docker_config.get(
                         f"{'head' if as_head else 'worker'}_run_options", []) +
                 self._configure_runtime() + self._auto_configure_shm(),
-                self.ssh_command_runner.cluster_name, home_directory)
+                self.ssh_command_runner.cluster_name, home_directory,
+                self.docker_cmd)
             self.run(start_command, run_env="host")
             docker_run_executed = True
 
@@ -832,7 +851,8 @@ class DockerCommandRunner(CommandRunnerInterface):
                     # is called before the first `file_sync` happens
                     self.run_rsync_up(file_mounts[mount], mount)
                 self.ssh_command_runner.run(
-                    "docker cp {src} {container}:{dst}".format(
+                    "{cmd} cp {src} {container}:{dst}".format(
+                        cmd=self.docker_cmd,
                         src=os.path.join(
                             self._get_docker_host_mount_location(
                                 self.ssh_command_runner.cluster_name), mount),
@@ -846,7 +866,7 @@ class DockerCommandRunner(CommandRunnerInterface):
             return []
 
         runtime_output = self.ssh_command_runner.run(
-            "docker info -f '{{.Runtimes}}' ",
+            f"{self.docker_cmd} " + "info -f '{{.Runtimes}}' ",
             with_output=True).decode().strip()
         if "nvidia-container-runtime" in runtime_output:
             try:

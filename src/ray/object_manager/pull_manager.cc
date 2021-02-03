@@ -277,11 +277,17 @@ void PullManager::OnLocationChange(const ObjectID &object_id,
   it->second.spilled_url = spilled_url;
   it->second.spilled_node_id = spilled_node_id;
   if (!it->second.object_size_set) {
-    RAY_LOG(DEBUG) << "Updated size of object " << object_id << " to " << object_size
-                   << ", num bytes being pulled is now " << num_bytes_being_pulled_;
     it->second.object_size = object_size;
     it->second.object_size_set = true;
     UpdatePullsBasedOnAvailableMemory(num_bytes_available_);
+    RAY_LOG(DEBUG) << "Updated size of object " << object_id << " to " << object_size
+                   << ", num bytes being pulled is now " << num_bytes_being_pulled_;
+    if (it->second.object_size == 0) {
+      RAY_LOG(WARNING) << "Size of object " << object_id
+                       << " stored in object store is zero. This may be a bug since "
+                          "objects in the object store should be large, and can result "
+                          "in too many objects being fetched to this node";
+    }
   }
   RAY_LOG(DEBUG) << "OnLocationChange " << spilled_url << " num clients "
                  << client_ids.size();
@@ -423,5 +429,17 @@ void PullManager::Tick() {
 }
 
 int PullManager::NumActiveRequests() const { return object_pull_requests_.size(); }
+
+std::string PullManager::DebugString() const {
+  std::stringstream result;
+  result << "PullManager:";
+  result << "\n- num bytes available for pulled objects: " << num_bytes_available_;
+  result << "\n- num bytes being pulled: " << num_bytes_being_pulled_;
+  result << "\n- num pull request bundles: " << pull_request_bundles_.size();
+  result << "\n- num objects requested pull: " << object_pull_requests_.size();
+  result << "\n- num objects actively being pulled: "
+         << active_object_pull_requests_.size();
+  return result.str();
+}
 
 }  // namespace ray
