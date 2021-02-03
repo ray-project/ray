@@ -343,22 +343,19 @@ def test_heartbeat_ip(shutdown_only):
     global_state_accessor.connect()
 
     self_ip = ray.services.get_node_ip_address()
+
     def self_ip_is_set():
         message = global_state_accessor.get_all_resource_usage()
         if message is None:
             return False
 
         resource_usage = ray.gcs_utils.ResourceUsageBatchData.FromString(
-            message
-        )
+            message)
         resources_data = resource_usage.batch[0]
-        print(resources_data)
-        return resources_data.get_node_manager_address() == self_ip
-
+        return resources_data.node_manager_address == self_ip
 
     ray.test_utils.wait_for_condition(self_ip_is_set, timeout=2)
     global_state_accessor.disconnect()
-
 
 
 if __name__ == "__main__":
