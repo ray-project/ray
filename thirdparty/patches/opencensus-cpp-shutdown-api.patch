@@ -1,5 +1,5 @@
 diff --git opencensus/stats/internal/delta_producer.cc opencensus/stats/internal/delta_producer.cc
-index c61b4d9..f2b0c91 100644
+index c61b4d9..a464198 100644
 --- opencensus/stats/internal/delta_producer.cc
 +++ opencensus/stats/internal/delta_producer.cc
 @@ -70,9 +70,32 @@ void Delta::SwapAndReset(
@@ -12,14 +12,14 @@ index c61b4d9..f2b0c91 100644
 +absl::Mutex DeltaProducer::mu_;
 +std::unique_ptr<DeltaProducer> DeltaProducer::delta_producer_ = nullptr;
 +
-+std::unique_ptr<DeltaProducer> DeltaProducer::Get() {
++std::unique_ptr<DeltaProducer>& DeltaProducer::Get() {
 +  if (delta_producer_ == nullptr) {
 +    absl::MutexLock l(&mu_);
 +    if (delta_producer_ == nullptr) {
 +      delta_producer_ = std::unique_ptr<DeltaProducer>(new DeltaProducer);
 +    }
 +  }
-+  return std::move(delta_producer_);
++  return delta_producer_;
 +}
 +
 +void DeltaProducer::Shutdown() {
@@ -33,24 +33,23 @@ index c61b4d9..f2b0c91 100644
 +    harvester_thread_.join();
 +  }
 +  if (delta_producer_ != nullptr) {
-+    delta_producer_.reset();
++    delta_producer_.reset(nullptr);
 +  }
  }
  
  void DeltaProducer::AddMeasure() {
-@@ -115,7 +138,10 @@ void DeltaProducer::Flush() {
+@@ -115,7 +138,9 @@ void DeltaProducer::Flush() {
  }
  
  DeltaProducer::DeltaProducer()
 -    : harvester_thread_(&DeltaProducer::RunHarvesterLoop, this) {}
 +    : harvester_thread_(&DeltaProducer::RunHarvesterLoop, this) {
-+  absl::MutexLock l(&mu_);
 +  thread_started_ = true;
 +}
  
  void DeltaProducer::SwapDeltas() {
    ABSL_ASSERT(last_delta_.delta().empty() && "Last delta was not consumed.");
-@@ -131,11 +157,19 @@ void DeltaProducer::RunHarvesterLoop() {
+@@ -131,11 +156,14 @@ void DeltaProducer::RunHarvesterLoop() {
    absl::Time next_harvest_time = absl::Now() + harvest_interval_;
    while (true) {
      const absl::Time now = absl::Now();
@@ -64,17 +63,12 @@ index c61b4d9..f2b0c91 100644
 +      next_harvest_time = std::max(next_harvest_time, now) + harvest_interval_;
 +      Flush();
 +    }
-+    {
-+      absl::MutexLock l(&mu_);
-+      if (!thread_started_) {
-+        break;
-+      }
-+    }
++    if (!thread_started_) { break; }
    }
  }
  
 diff --git opencensus/stats/internal/delta_producer.h opencensus/stats/internal/delta_producer.h
-index 2cff522..1a71414 100644
+index 2cff522..8dfb9fb 100644
 --- opencensus/stats/internal/delta_producer.h
 +++ opencensus/stats/internal/delta_producer.h
 @@ -69,7 +69,9 @@ class Delta final {
@@ -82,7 +76,7 @@ index 2cff522..1a71414 100644
   public:
    // Returns a pointer to the singleton DeltaProducer.
 -  static DeltaProducer* Get();
-+  static std::unique_ptr<DeltaProducer> Get();
++  static std::unique_ptr<DeltaProducer>& Get();
 +
 +  void Shutdown();
  
