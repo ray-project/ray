@@ -177,19 +177,20 @@ if __name__ == "__main__":
             elif changed_file.startswith("streaming/java"):
                 RAY_CI_STREAMING_JAVA_AFFECTED = 1
             else:
-                RAY_CI_TUNE_AFFECTED = 1
-                RAY_CI_SGD_AFFECTED = 1
-                RAY_CI_RLLIB_AFFECTED = 1
-                RAY_CI_SERVE_AFFECTED = 1
-                RAY_CI_JAVA_AFFECTED = 1
-                RAY_CI_PYTHON_AFFECTED = 1
-                RAY_CI_DOC_AFFECTED = 1
-                RAY_CI_LINUX_WHEELS_AFFECTED = 1
-                RAY_CI_MACOS_WHEELS_AFFECTED = 1
-                RAY_CI_STREAMING_CPP_AFFECTED = 1
-                RAY_CI_STREAMING_PYTHON_AFFECTED = 1
-                RAY_CI_STREAMING_JAVA_AFFECTED = 1
-                RAY_CI_DASHBOARD_AFFECTED = 1
+                pass
+                # RAY_CI_TUNE_AFFECTED = 1
+                # RAY_CI_SGD_AFFECTED = 1
+                # RAY_CI_RLLIB_AFFECTED = 1
+                # RAY_CI_SERVE_AFFECTED = 1
+                # RAY_CI_JAVA_AFFECTED = 1
+                # RAY_CI_PYTHON_AFFECTED = 1
+                # RAY_CI_DOC_AFFECTED = 1
+                # RAY_CI_LINUX_WHEELS_AFFECTED = 1
+                # RAY_CI_MACOS_WHEELS_AFFECTED = 1
+                # RAY_CI_STREAMING_CPP_AFFECTED = 1
+                # RAY_CI_STREAMING_PYTHON_AFFECTED = 1
+                # RAY_CI_STREAMING_JAVA_AFFECTED = 1
+                # RAY_CI_DASHBOARD_AFFECTED = 1
     else:
         RAY_CI_TUNE_AFFECTED = 1
         RAY_CI_SGD_AFFECTED = 1
