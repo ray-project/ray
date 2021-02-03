@@ -5,8 +5,8 @@ from ray.rllib.env.external_multi_agent_env import ExternalMultiAgentEnv
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.env.vector_env import VectorEnv
 from ray.rllib.utils.annotations import override, PublicAPI
-from ray.rllib.utils.typing import EnvType, MultiEnvDict, EnvID, \
-    AgentID, MultiAgentDict
+from ray.rllib.utils.typing import AgentID, EnvID, EnvType, MultiAgentDict, \
+    MultiEnvDict, PartialTrainerConfigDict
 
 if TYPE_CHECKING:
     from ray.rllib.models.preprocessors import Preprocessor
@@ -80,11 +80,14 @@ class BaseEnv:
     """
 
     @staticmethod
-    def to_base_env(env: EnvType,
-                    make_env: Callable[[int], EnvType] = None,
-                    num_envs: int = 1,
-                    remote_envs: bool = False,
-                    remote_env_batch_wait_ms: int = 0) -> "BaseEnv":
+    def to_base_env(
+            env: EnvType,
+            make_env: Callable[[int], EnvType] = None,
+            num_envs: int = 1,
+            remote_envs: bool = False,
+            remote_env_batch_wait_ms: int = 0,
+            policy_config: PartialTrainerConfigDict = None,
+    ) -> "BaseEnv":
         """Wraps any env type as needed to expose the async interface."""
 
         from ray.rllib.env.remote_vector_env import RemoteVectorEnv
@@ -129,7 +132,9 @@ class BaseEnv:
                         existing_envs=[env],
                         num_envs=num_envs,
                         action_space=env.action_space,
-                        observation_space=env.observation_space)
+                        observation_space=env.observation_space,
+                        policy_config=policy_config,
+                    )
                     env = _VectorEnvToBaseEnv(env)
         assert isinstance(env, BaseEnv), env
         return env

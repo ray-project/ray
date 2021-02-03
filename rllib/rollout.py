@@ -437,7 +437,7 @@ def rollout(agent,
         env = gym_wrappers.Monitor(
             env=env,
             directory=video_dir,
-            video_callable=lambda x: True,
+            video_callable=lambda _: True,
             force=True)
 
     steps = 0
