@@ -15,7 +15,7 @@ from ray.rllib.utils.test_utils import framework_iterator
 ACTION_SPACES_TO_TEST = {
     "discrete": Discrete(5),
     "vector": Box(-1.0, 1.0, (5, ), dtype=np.float32),
-    # "vector2": Box(-1.0, 1.0, (5, 5), dtype=np.float32),
+    "vector2": Box(-1.0, 1.0, (5, 5), dtype=np.float32),
     "multidiscrete": MultiDiscrete([1, 2, 3, 4]),
     "tuple": Tuple(
         [Discrete(2),
@@ -63,8 +63,6 @@ def check_support(alg, config, train=True, check_bounds=False, tfe=False):
                     p_done=1.0,
                     check_action_bounds=check_bounds)))
         stat = "ok"
-        if alg == "SAC":
-            config["use_state_preprocessor"] = o_name in ["atari", "image"]
 
         try:
             a = get_agent_class(alg)(config=config, env=RandomEnv)

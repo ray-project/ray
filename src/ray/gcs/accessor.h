@@ -308,7 +308,7 @@ class ObjectInfoAccessor {
   /// \return Status
   virtual Status AsyncAddSpilledUrl(const ObjectID &object_id,
                                     const std::string &spilled_url,
-                                    const NodeID &spilled_node_id,
+                                    const NodeID &spilled_node_id, size_t object_size,
                                     const StatusCallback &callback) = 0;
 
   /// Remove location of object from GCS asynchronously.

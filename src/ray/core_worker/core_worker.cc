@@ -1058,6 +1058,23 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids, const int64_t timeout_m
   return Status::OK();
 }
 
+Status CoreWorker::GetIfLocal(const std::vector<ObjectID> &ids,
+                              std::vector<std::shared_ptr<RayObject>> *results) {
+  results->resize(ids.size(), nullptr);
+
+  absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> result_map;
+  RAY_RETURN_NOT_OK(plasma_store_provider_->GetIfLocal(ids, &result_map));
+  for (size_t i = 0; i < ids.size(); i++) {
+    auto pair = result_map.find(ids[i]);
+    // The caller of this method should guarantee that the object exists in the plasma
+    // store when this method is called.
+    RAY_CHECK(pair != result_map.end());
+    RAY_CHECK(pair->second != nullptr);
+    (*results)[i] = pair->second;
+  }
+  return Status::OK();
+}
+
 Status CoreWorker::Contains(const ObjectID &object_id, bool *has_object) {
   bool found = false;
   bool in_plasma = false;
@@ -1463,8 +1480,8 @@ Status CoreWorker::CreatePlacementGroup(
   builder.SetPlacementGroupSpec(
       placement_group_id, placement_group_creation_options.name,
       placement_group_creation_options.bundles, placement_group_creation_options.strategy,
-      worker_context_.GetCurrentJobID(), worker_context_.GetCurrentActorID(),
-      worker_context_.CurrentActorDetached());
+      placement_group_creation_options.is_detached, worker_context_.GetCurrentJobID(),
+      worker_context_.GetCurrentActorID(), worker_context_.CurrentActorDetached());
   PlacementGroupSpecification placement_group_spec = builder.Build();
   *return_placement_group_id = placement_group_id;
   RAY_LOG(INFO) << "Submitting Placement Group creation to GCS: " << placement_group_id;

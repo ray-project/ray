@@ -89,7 +89,6 @@ TEST_F(DependencyManagerTest, TestSimpleTask) {
       dependency_manager_.RequestTaskDependencies(task_id, ObjectIdsToRefs(arguments));
   ASSERT_FALSE(ready);
   ASSERT_EQ(object_manager_mock_.active_requests.size(), 1);
-  ASSERT_FALSE(dependency_manager_.IsTaskReady(task_id));
 
   // For each argument, tell the task dependency manager that the argument is
   // local. All arguments should be canceled as they become available locally.
@@ -98,15 +97,12 @@ TEST_F(DependencyManagerTest, TestSimpleTask) {
   }
   auto ready_task_ids = dependency_manager_.HandleObjectLocal(arguments[0]);
   ASSERT_TRUE(ready_task_ids.empty());
-  ASSERT_FALSE(dependency_manager_.IsTaskReady(task_id));
   ready_task_ids = dependency_manager_.HandleObjectLocal(arguments[1]);
   ASSERT_TRUE(ready_task_ids.empty());
-  ASSERT_FALSE(dependency_manager_.IsTaskReady(task_id));
   // The task is ready to run.
   ready_task_ids = dependency_manager_.HandleObjectLocal(arguments[2]);
   ASSERT_EQ(ready_task_ids.size(), 1);
   ASSERT_EQ(ready_task_ids.front(), task_id);
-  ASSERT_TRUE(dependency_manager_.IsTaskReady(task_id));
 
   // Remove the task.
   dependency_manager_.RemoveTaskDependencies(task_id);
@@ -127,7 +123,6 @@ TEST_F(DependencyManagerTest, TestMultipleTasks) {
     bool ready = dependency_manager_.RequestTaskDependencies(
         task_id, ObjectIdsToRefs({argument_id}));
     ASSERT_FALSE(ready);
-    ASSERT_FALSE(dependency_manager_.IsTaskReady(task_id));
     // The object should be requested from the object manager once for each task.
     ASSERT_EQ(object_manager_mock_.active_requests.size(), i + 1);
   }
@@ -139,7 +134,6 @@ TEST_F(DependencyManagerTest, TestMultipleTasks) {
   std::unordered_set<TaskID> added_tasks(dependent_tasks.begin(), dependent_tasks.end());
   for (auto &id : ready_task_ids) {
     ASSERT_TRUE(added_tasks.erase(id));
-    ASSERT_TRUE(dependency_manager_.IsTaskReady(id));
   }
   ASSERT_TRUE(added_tasks.empty());
 
@@ -166,7 +160,6 @@ TEST_F(DependencyManagerTest, TestTaskArgEviction) {
   bool ready =
       dependency_manager_.RequestTaskDependencies(task_id, ObjectIdsToRefs(arguments));
   ASSERT_FALSE(ready);
-  ASSERT_FALSE(dependency_manager_.IsTaskReady(task_id));
 
   // Tell the task dependency manager that each of the arguments is now
   // available.
@@ -183,7 +176,6 @@ TEST_F(DependencyManagerTest, TestTaskArgEviction) {
       ASSERT_TRUE(ready_tasks.empty());
     }
   }
-  ASSERT_TRUE(dependency_manager_.IsTaskReady(task_id));
 
   // Simulate each of the arguments getting evicted. Each object should now be
   // considered remote.
@@ -203,7 +195,6 @@ TEST_F(DependencyManagerTest, TestTaskArgEviction) {
       // the waiting state.
       ASSERT_TRUE(waiting_tasks.empty());
     }
-    ASSERT_FALSE(dependency_manager_.IsTaskReady(task_id));
   }
 
   // Tell the task dependency manager that each of the arguments is available
@@ -221,7 +212,6 @@ TEST_F(DependencyManagerTest, TestTaskArgEviction) {
       ASSERT_TRUE(ready_tasks.empty());
     }
   }
-  ASSERT_TRUE(dependency_manager_.IsTaskReady(task_id));
 
   dependency_manager_.RemoveTaskDependencies(task_id);
   AssertNoLeaks();

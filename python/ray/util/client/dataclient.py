@@ -37,6 +37,7 @@ class DataClient:
         self._req_id = 0
         self._client_id = client_id
         self._metadata = metadata
+        self._in_shutdown = False
         self.data_thread.start()
 
     def _next_id(self) -> int:
@@ -67,9 +68,19 @@ class DataClient:
                     self.ready_data[response.req_id] = response
                     self.cv.notify_all()
         except grpc.RpcError as e:
-            if grpc.StatusCode.CANCELLED == e.code():
+            with self.cv:
+                self._in_shutdown = True
+                self.cv.notify_all()
+            if e.code() == grpc.StatusCode.CANCELLED:
                 # Gracefully shutting down
                 logger.info("Cancelling data channel")
+            elif e.code() == grpc.StatusCode.UNAVAILABLE:
+                # TODO(barakmich): The server may have
+                # dropped. In theory, we can retry, as per
+                # https://grpc.github.io/grpc/core/md_doc_statuscodes.html but
+                # in practice we may need to think about the correct semantics
+                # here.
+                logger.info("Server disconnected from data channel")
             else:
                 logger.error(
                     f"Got Error from data channel -- shutting down: {e}")
@@ -88,7 +99,11 @@ class DataClient:
         self.request_queue.put(req)
         data = None
         with self.cv:
-            self.cv.wait_for(lambda: req_id in self.ready_data)
+            self.cv.wait_for(
+                lambda: req_id in self.ready_data or self._in_shutdown)
+            if self._in_shutdown:
+                raise ConnectionError(
+                    f"cannot send request {req}: data channel shutting down")
             data = self.ready_data[req_id]
             del self.ready_data[req_id]
         return data
