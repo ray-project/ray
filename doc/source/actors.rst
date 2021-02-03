@@ -105,7 +105,7 @@ Methods of the actor can be called remotely.
 
     counter_actor = Counter.remote()
 
-    assert counter_actor.increment.remote() == 1
+    assert ray.get(counter_actor.increment.remote()) == 1
 
     @ray.remote
     class Foo(object):
