@@ -697,6 +697,8 @@ class TrialRunnerTest3(unittest.TestCase):
 
     @patch("ray.tune.syncer.CLOUD_SYNC_PERIOD", 0)
     def testCheckpointAutoPeriod(self):
+        ray.init(num_cpus=3)
+
         # This makes checkpointing take 2 seconds.
         def sync_up(source, target):
             time.sleep(2)

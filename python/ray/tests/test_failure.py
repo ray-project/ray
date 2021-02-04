@@ -990,7 +990,7 @@ def test_raylet_crash_when_get(ray_start_regular):
 def test_connect_with_disconnected_node(shutdown_only):
     config = {
         "num_heartbeats_timeout": 50,
-        "raylet_heartbeat_timeout_milliseconds": 10,
+        "raylet_heartbeat_period_milliseconds": 10,
     }
     cluster = Cluster()
     cluster.add_node(num_cpus=0, _system_config=config)
@@ -1202,7 +1202,7 @@ def test_serialized_id(ray_start_cluster):
 def test_fate_sharing(ray_start_cluster, use_actors, node_failure):
     config = {
         "num_heartbeats_timeout": 10,
-        "raylet_heartbeat_timeout_milliseconds": 100,
+        "raylet_heartbeat_period_milliseconds": 100,
     }
     cluster = Cluster()
     # Head node with no resources.
