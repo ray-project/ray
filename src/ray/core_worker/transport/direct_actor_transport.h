@@ -365,6 +365,7 @@ class SchedulingQueue {
   virtual size_t Size() const = 0;
   virtual size_t Steal(size_t max_tasks, rpc::Address thief_addr,
                        rpc::StealTasksReply *reply) = 0;
+  virtual bool CancelTaskIfFound(TaskID task_id) = 0;
   virtual ~SchedulingQueue(){};
 };
 
@@ -426,11 +427,20 @@ class ActorSchedulingQueue : public SchedulingQueue {
     ScheduleRequests();
   }
 
+
   size_t Steal(size_t max_tasks, rpc::Address thief_addr, rpc::StealTasksReply *reply) {
     RAY_CHECK(false) << "Cannot steal actor tasks";
     // The return instruction will never be executed, but we need to include it
     // nonetheless because this is a non-void function.
     return 0;
+
+  // We don't allow the cancellation of actor tasks, so invoking CancelTaskIfFound results
+  // in a fatal error.
+  bool CancelTaskIfFound(TaskID task_id) {
+    RAY_CHECK(false) << "Cannot cancel actor tasks";
+    // The return instruction will never be executed, but we need to include it
+    // nonetheless because this is a non-void function.
+    return false;
   }
 
   /// Schedules as many requests as possible in sequence.
@@ -595,6 +605,21 @@ class NormalSchedulingQueue : public SchedulingQueue {
     }
 
     return tasks_stolen;
+  } 
+
+  // Search for an InboundRequest associated with the task that we are trying to cancel.
+  // If found, remove the InboundRequest from the queue and return true. Otherwise, return
+  // false.
+  bool CancelTaskIfFound(TaskID task_id) {
+    absl::MutexLock lock(&mu_);
+    for (std::deque<InboundRequest>::reverse_iterator it = pending_normal_tasks_.rbegin();
+         it != pending_normal_tasks_.rend(); ++it) {
+      if (it->TaskID() == task_id) {
+        pending_normal_tasks_.erase(std::next(it).base());
+        return true;
+      }
+    }
+    return false;
   }
 
   /// Schedules as many requests as possible in sequence.
@@ -666,6 +691,9 @@ class CoreWorkerDirectTaskReceiver {
   void HandleStealTasks(const rpc::StealTasksRequest &request,
                         rpc::StealTasksReply *reply,
                         rpc::SendReplyCallback send_reply_callback);
+
+  bool CancelQueuedNormalTask(TaskID task_id);
+
 
  private:
   // Worker context.

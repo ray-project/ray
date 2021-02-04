@@ -513,6 +513,7 @@ void CoreWorkerDirectTaskReceiver::RunNormalTasksFromQueue() {
   normal_scheduling_queue_->ScheduleRequests();
 }
 
+
 void CoreWorkerDirectTaskReceiver::HandleStealTasks(
     const rpc::StealTasksRequest &request, rpc::StealTasksReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
@@ -533,6 +534,12 @@ void CoreWorkerDirectTaskReceiver::HandleStealTasks(
 
   // send reply back
   send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
+bool CoreWorkerDirectTaskReceiver::CancelQueuedNormalTask(TaskID task_id) {
+  // Look up the task to be canceled in the queue of normal tasks. If it is found and
+  // removed successfully, return true.
+  return normal_scheduling_queue_->CancelTaskIfFound(task_id);
 }
 
 }  // namespace ray

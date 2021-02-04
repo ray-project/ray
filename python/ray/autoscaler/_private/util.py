@@ -86,6 +86,14 @@ def validate_config(config: Dict[str, Any]) -> None:
             raise ValueError(
                 "`head_node_type` must be one of `available_node_types`.")
 
+        sum_min_workers = sum(
+            config["available_node_types"][node_type].get("min_workers", 0)
+            for node_type in config["available_node_types"])
+        if sum_min_workers > config["max_workers"]:
+            raise ValueError(
+                "The specified global `max_workers` is smaller than the "
+                "sum of `min_workers` of all the available node types.")
+
 
 def prepare_config(config):
     with_defaults = fillout_defaults(config)
@@ -116,7 +124,7 @@ def rewrite_legacy_yaml_to_available_node_types(
             },
         }
         config["head_node_type"] = NODE_TYPE_LEGACY_HEAD
-
+        del config["min_workers"]
     return config
 
 

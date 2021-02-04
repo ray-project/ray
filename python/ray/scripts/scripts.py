@@ -285,7 +285,7 @@ def debug(address):
     "--ray-client-server-port",
     required=False,
     type=int,
-    default=None,
+    default=10001,
     help="the port number the ray client server will bind on. If not set, "
     "the ray client server will not be started.")
 @click.option(
@@ -739,6 +739,7 @@ def stop(force, verbose, log_style, log_color):
 
     total_found = 0
     total_stopped = 0
+    stopped = []
     for keyword, filter_by_cmd in processes_to_kill:
         if filter_by_cmd and is_linux and len(keyword) > 15:
             # getting here is an internal bug, so we do not use cli_logger
@@ -777,6 +778,7 @@ def stop(force, verbose, log_style, log_color):
                                        cf.dimmed("(via SIGTERM)"))
 
                 total_stopped += 1
+                stopped.append(proc)
             except psutil.NoSuchProcess:
                 cli_logger.verbose(
                     "Attempted to stop `{}`, but process was already dead.",
@@ -799,8 +801,8 @@ def stop(force, verbose, log_style, log_color):
             cli_logger.warning("Try running the command again, or use `{}`.",
                                cf.bold("--force"))
 
-    # TODO(maximsmol): we should probably block until the processes actually
-    # all died somehow
+    # Wait for the processes to actually stop.
+    psutil.wait_procs(stopped, timeout=2)
 
 
 @cli.command()
@@ -1370,7 +1372,13 @@ def timeline(address):
     type=str,
     default=ray_constants.REDIS_DEFAULT_PASSWORD,
     help="Connect to ray with redis_password.")
-def memory(address, redis_password):
+@click.option(
+    "--stats-only",
+    is_flag=True,
+    type=bool,
+    default=False,
+    help="Connect to ray with redis_password.")
+def memory(address, redis_password, stats_only):
     """Print object references held in a Ray cluster."""
     if not address:
         address = services.get_ray_address_to_use_or_die()
@@ -1379,7 +1387,8 @@ def memory(address, redis_password):
     raylet = state.node_table()[0]
     print(
         ray.internal.internal_api.memory_summary(raylet["NodeManagerAddress"],
-                                                 raylet["NodeManagerPort"]))
+                                                 raylet["NodeManagerPort"],
+                                                 stats_only))
 
 
 @cli.command()

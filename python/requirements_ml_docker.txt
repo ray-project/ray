@@ -1,3 +1,7 @@
 ipython
-tensorflow-gpu
-torch
+tensorflow-gpu>=2.4.0
+-f https://download.pytorch.org/whl/torch_stable.html
+torch==1.7.1+cu110 
+-f https://download.pytorch.org/whl/torch_stable.html
+torchvision==0.8.2+cu110 
+pip; python_version > "3.7"

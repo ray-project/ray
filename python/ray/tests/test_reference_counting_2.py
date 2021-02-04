@@ -22,6 +22,7 @@ def one_worker_100MiB(request):
     config = {
         "task_retry_delay_ms": 0,
         "object_timeout_milliseconds": 1000,
+        "automatic_object_spilling_enabled": False
     }
     yield ray.init(
         num_cpus=1,

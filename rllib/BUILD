@@ -1070,6 +1070,13 @@ sh_test(
 )
 
 py_test(
+    name = "env/wrappers/tests/test_unity3d_env",
+    tags = ["env"],
+    size = "small",
+    srcs = ["env/wrappers/tests/test_unity3d_env.py"]
+)
+
+py_test(
     name = "env/wrappers/tests/test_recsim_wrapper",
     tags = ["env"],
     size = "small",
@@ -1500,6 +1507,13 @@ py_test(
     tags = ["tests_dir", "tests_dir_T"],
     size = "small",
     srcs = ["tests/test_timesteps.py"]
+)
+
+py_test(
+    name = "tests/test_trainer",
+    tags = ["tests_dir", "tests_dir_T"],
+    size = "small",
+    srcs = ["tests/test_trainer.py"]
 )
 
 # --------------------------------------------------------------------
@@ -2100,7 +2114,7 @@ py_test(
     tags = ["examples", "examples_T"],
     size = "medium",
     srcs = ["examples/trajectory_view_api.py"],
-    args = ["--as-test", "--framework=tf", "--stop-reward=80.0"]
+    args = ["--as-test", "--framework=tf", "--stop-reward=100.0"]
 )
 
 py_test(
@@ -2109,7 +2123,7 @@ py_test(
     tags = ["examples", "examples_T"],
     size = "medium",
     srcs = ["examples/trajectory_view_api.py"],
-    args = ["--as-test", "--framework=torch", "--stop-reward=80.0"]
+    args = ["--as-test", "--framework=torch", "--stop-reward=100.0"]
 )
 
 py_test(

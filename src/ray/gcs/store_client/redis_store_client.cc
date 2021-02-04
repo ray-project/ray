@@ -104,7 +104,8 @@ Status RedisStoreClient::AsyncDelete(const std::string &table_name,
   }
 
   std::string redis_key = GenRedisKey(table_name, key);
-  std::vector<std::string> args = {"DEL", redis_key};
+  // We always replace `DEL` with `UNLINK`.
+  std::vector<std::string> args = {"UNLINK", redis_key};
 
   auto shard_context = redis_client_->GetShardContext(redis_key);
   return shard_context->RunArgvAsync(args, delete_callback);
@@ -115,7 +116,7 @@ Status RedisStoreClient::AsyncDeleteWithIndex(const std::string &table_name,
                                               const std::string &index_key,
                                               const StatusCallback &callback) {
   std::vector<std::string> redis_keys;
-  redis_keys.reserve(20);
+  redis_keys.reserve(2);
   redis_keys.push_back(GenRedisKey(table_name, key));
   redis_keys.push_back(GenRedisKey(table_name, key, index_key));
 
@@ -218,10 +219,11 @@ Status RedisStoreClient::DoPut(const std::string &key, const std::string &data,
 
 Status RedisStoreClient::DeleteByKeys(const std::vector<std::string> &keys,
                                       const StatusCallback &callback) {
-  // The `DEL` command for each shard.
+  // Delete for each shard.
+  // We always replace `DEL` with `UNLINK`.
   int total_count = 0;
   auto del_commands_by_shards =
-      GenCommandsByShards(redis_client_, "DEL", keys, &total_count);
+      GenCommandsByShards(redis_client_, "UNLINK", keys, &total_count);
 
   auto finished_count = std::make_shared<int>(0);
 

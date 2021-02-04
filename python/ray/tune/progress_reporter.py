@@ -57,6 +57,13 @@ class ProgressReporter:
         """
         raise NotImplementedError
 
+    def set_search_properties(self, metric: Optional[str],
+                              mode: Optional[str]):
+        return True
+
+    def set_total_samples(self, total_samples: int):
+        pass
+
 
 class TuneReporterBase(ProgressReporter):
     """Abstract base class for the default Tune reporters.

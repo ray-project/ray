@@ -216,7 +216,7 @@ def get_ray_address_to_use_or_die():
         A string to pass into `ray.init(address=...)`
     """
     if "RAY_ADDRESS" in os.environ:
-        return "auto"  # Avoid conflict with RAY_ADDRESS env var
+        return os.environ.get("RAY_ADDRESS")
 
     return find_redis_address_or_die()
 
@@ -829,6 +829,13 @@ def start_redis(node_ip_address,
     redis_modules = [REDIS_MODULE]
 
     redis_stdout_file, redis_stderr_file = redirect_files[0]
+    # If no port is given, fallback to default Redis port for the primary
+    # shard.
+    if port is None:
+        port = ray_constants.DEFAULT_PORT
+        num_retries = 20
+    else:
+        num_retries = 1
     # Start the primary Redis shard.
     port, p = _start_redis_instance(
         redis_executable,
@@ -836,6 +843,7 @@ def start_redis(node_ip_address,
         port=port,
         password=password,
         redis_max_clients=redis_max_clients,
+        num_retries=num_retries,
         # Below we use None to indicate no limit on the memory of the
         # primary Redis shard.
         redis_max_memory=None,
@@ -869,17 +877,29 @@ def start_redis(node_ip_address,
     # Start other Redis shards. Each Redis shard logs to a separate file,
     # prefixed by "redis-<shard number>".
     redis_shards = []
+    # Attempt to start the other Redis shards port range right after the
+    # primary Redis shard port.
+    last_shard_port = port
     for i in range(num_redis_shards):
         redis_stdout_file, redis_stderr_file = redirect_files[i + 1]
         redis_executable = REDIS_EXECUTABLE
         redis_modules = [REDIS_MODULE]
+        redis_shard_port = redis_shard_ports[i]
+        # If no shard port is given, try to start this shard's Redis instance
+        # on the port right after the last shard's port.
+        if redis_shard_port is None:
+            redis_shard_port = last_shard_port + 1
+            num_retries = 20
+        else:
+            num_retries = 1
 
         redis_shard_port, p = _start_redis_instance(
             redis_executable,
             modules=redis_modules,
-            port=redis_shard_ports[i],
+            port=redis_shard_port,
             password=password,
             redis_max_clients=redis_max_clients,
+            num_retries=num_retries,
             redis_max_memory=redis_max_memory,
             stdout_file=redis_stdout_file,
             stderr_file=redis_stderr_file,
@@ -890,13 +910,14 @@ def start_redis(node_ip_address,
         redis_shards.append(shard_address)
         # Store redis shard information in the primary redis shard.
         primary_redis_client.rpush("RedisShards", shard_address)
+        last_shard_port = redis_shard_port
 
     return redis_address, redis_shards, processes
 
 
 def _start_redis_instance(executable,
                           modules,
-                          port=None,
+                          port,
                           redis_max_clients=None,
                           num_retries=20,
                           stdout_file=None,
@@ -907,20 +928,19 @@ def _start_redis_instance(executable,
     """Start a single Redis server.
 
     Notes:
-        If "port" is not None, then we will only use this port and try
-        only once. Otherwise, we will first try the default redis port,
-        and if it is unavailable, we will try random ports with
-        maximum retries of "num_retries".
+        We will initially try to start the Redis instance at the given port,
+        and then try at most `num_retries - 1` times to start the Redis
+        instance at successive random ports.
 
     Args:
         executable (str): Full path of the redis-server executable.
         modules (list of str): A list of pathnames, pointing to the redis
             module(s) that will be loaded in this redis server.
-        port (int): If provided, start a Redis server with this port.
+        port (int): Try to start a Redis server at this port.
         redis_max_clients: If this is provided, Ray will attempt to configure
             Redis with this maxclients number.
-        num_retries (int): The number of times to attempt to start Redis. If a
-            port is provided, this defaults to 1.
+        num_retries (int): The number of times to attempt to start Redis at
+            successive ports.
         stdout_file: A file handle opened for writing to redirect stdout to. If
             no redirection should happen, then this should be None.
         stderr_file: A file handle opened for writing to redirect stderr to. If
@@ -943,13 +963,6 @@ def _start_redis_instance(executable,
     for module in modules:
         assert os.path.isfile(module)
     counter = 0
-    if port is not None:
-        # If a port is specified, then try only once to connect.
-        # This ensures that we will use the given port.
-        num_retries = 1
-    else:
-        port = ray_constants.DEFAULT_PORT
-
     load_module_args = []
     for module in modules:
         load_module_args += ["--loadmodule", module]
@@ -1045,7 +1058,9 @@ def start_log_monitor(redis_address,
                       stdout_file=None,
                       stderr_file=None,
                       redis_password=None,
-                      fate_share=None):
+                      fate_share=None,
+                      max_bytes=0,
+                      backup_count=0):
     """Start a log monitor process.
 
     Args:
@@ -1056,17 +1071,20 @@ def start_log_monitor(redis_address,
         stderr_file: A file handle opened for writing to redirect stderr to. If
             no redirection should happen, then this should be None.
         redis_password (str): The password of the redis server.
+        max_bytes (int): Log rotation parameter. Corresponding to
+            RotatingFileHandler's maxBytes.
+        backup_count (int): Log rotation parameter. Corresponding to
+            RotatingFileHandler's backupCount.
 
     Returns:
         ProcessInfo for the process that was started.
     """
     log_monitor_filepath = os.path.join(RAY_PATH, "log_monitor.py")
     command = [
-        sys.executable,
-        "-u",
-        log_monitor_filepath,
-        f"--redis-address={redis_address}",
-        f"--logs-dir={logs_dir}",
+        sys.executable, "-u", log_monitor_filepath,
+        f"--redis-address={redis_address}", f"--logs-dir={logs_dir}",
+        f"--logging-rotate-bytes={max_bytes}",
+        f"--logging-rotate-backup-count={backup_count}"
     ]
     if redis_password:
         command += ["--redis-password", redis_password]
@@ -1088,7 +1106,9 @@ def start_dashboard(require_dashboard,
                     stdout_file=None,
                     stderr_file=None,
                     redis_password=None,
-                    fate_share=None):
+                    fate_share=None,
+                    max_bytes=0,
+                    backup_count=0):
     """Start a dashboard process.
 
     Args:
@@ -1107,6 +1127,10 @@ def start_dashboard(require_dashboard,
         stderr_file: A file handle opened for writing to redirect stderr to. If
             no redirection should happen, then this should be None.
         redis_password (str): The password of the redis server.
+        max_bytes (int): Log rotation parameter. Corresponding to
+            RotatingFileHandler's maxBytes.
+        backup_count (int): Log rotation parameter. Corresponding to
+            RotatingFileHandler's backupCount.
 
     Returns:
         ProcessInfo for the process that was started.
@@ -1132,14 +1156,11 @@ def start_dashboard(require_dashboard,
     dashboard_dir = "new_dashboard"
     dashboard_filepath = os.path.join(RAY_PATH, dashboard_dir, "dashboard.py")
     command = [
-        sys.executable,
-        "-u",
-        dashboard_filepath,
-        f"--host={host}",
-        f"--port={port}",
-        f"--redis-address={redis_address}",
-        f"--temp-dir={temp_dir}",
-        f"--log-dir={logdir}",
+        sys.executable, "-u", dashboard_filepath, f"--host={host}",
+        f"--port={port}", f"--redis-address={redis_address}",
+        f"--temp-dir={temp_dir}", f"--log-dir={logdir}",
+        f"--logging-rotate-bytes={max_bytes}",
+        f"--logging-rotate-backup-count={backup_count}"
     ]
 
     if redis_password:
@@ -1258,7 +1279,9 @@ def start_raylet(redis_address,
                  fate_share=None,
                  socket_to_use=None,
                  head_node=False,
-                 start_initial_python_workers_for_first_job=False):
+                 start_initial_python_workers_for_first_job=False,
+                 max_bytes=0,
+                 backup_count=0):
     """Start a raylet, which is a combined local scheduler and object manager.
 
     Args:
@@ -1295,6 +1318,10 @@ def start_raylet(redis_address,
         config (dict|None): Optional Raylet configuration that will
             override defaults in RayConfig.
         java_worker_options (list): The command options for Java worker.
+        max_bytes (int): Log rotation parameter. Corresponding to
+            RotatingFileHandler's maxBytes.
+        backup_count (int): Log rotation parameter. Corresponding to
+            RotatingFileHandler's backupCount.
     Returns:
         ProcessInfo for the process that was started.
     """
@@ -1372,6 +1399,8 @@ def start_raylet(redis_address,
         f"--config-list={config_str}",
         f"--temp-dir={temp_dir}",
         f"--metrics-agent-port={metrics_agent_port}",
+        f"--logging-rotate-bytes={max_bytes}",
+        f"--logging-rotate-backup-count={backup_count}",
         "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER",
     ]
     if redis_password:
@@ -1402,6 +1431,8 @@ def start_raylet(redis_address,
         f"--raylet-name={raylet_name}",
         f"--temp-dir={temp_dir}",
         f"--log-dir={log_dir}",
+        f"--logging-rotate-bytes={max_bytes}",
+        f"--logging-rotate-backup-count={backup_count}",
     ]
 
     if redis_password is not None and len(redis_password) != 0:
@@ -1562,13 +1593,9 @@ def build_cpp_worker_command(
         The command string for starting CPP worker.
     """
 
-    # TODO(Guyang Song): Remove the arg is_default_worker.
-    # See `cluster_mode_test.cc` for why this workaround is currently needed
-    # for C++ workers.
     command = [
         DEFAULT_WORKER_EXECUTABLE, plasma_store_name, raylet_name,
-        str(node_manager_port), redis_address, redis_password, session_dir,
-        "is_default_worker"
+        str(node_manager_port), redis_address, redis_password, session_dir
     ]
 
     return command
@@ -1622,10 +1649,11 @@ def determine_plasma_store_config(object_store_memory,
                     "This will harm performance! You may be able to free up "
                     "space by deleting files in /dev/shm. If you are inside a "
                     "Docker container, you can increase /dev/shm size by "
-                    "passing '--shm-size=Xgb' to 'docker run' (or add it to "
-                    "the run_options list in a Ray cluster config). Make sure "
-                    "to set this to more than 2gb.".format(
-                        ray.utils.get_user_temp_dir(), shm_avail))
+                    "passing '--shm-size={:.2f}gb' to 'docker run' (or add it "
+                    "to the run_options list in a Ray cluster config). Make "
+                    "sure to set this to more than 30% of available RAM.".
+                    format(ray.utils.get_user_temp_dir(), shm_avail,
+                           object_store_memory * (1.1) / (2**30)))
         else:
             plasma_directory = ray.utils.get_user_temp_dir()
 
@@ -1779,7 +1807,9 @@ def start_monitor(redis_address,
                   stderr_file=None,
                   autoscaling_config=None,
                   redis_password=None,
-                  fate_share=None):
+                  fate_share=None,
+                  max_bytes=0,
+                  backup_count=0):
     """Run a process to monitor the other processes.
 
     Args:
@@ -1791,17 +1821,20 @@ def start_monitor(redis_address,
             no redirection should happen, then this should be None.
         autoscaling_config: path to autoscaling config file.
         redis_password (str): The password of the redis server.
+        max_bytes (int): Log rotation parameter. Corresponding to
+            RotatingFileHandler's maxBytes.
+        backup_count (int): Log rotation parameter. Corresponding to
+            RotatingFileHandler's backupCount.
 
     Returns:
         ProcessInfo for the process that was started.
     """
     monitor_path = os.path.join(RAY_PATH, "monitor.py")
     command = [
-        sys.executable,
-        "-u",
-        monitor_path,
-        f"--logs-dir={logs_dir}",
-        "--redis-address=" + str(redis_address),
+        sys.executable, "-u", monitor_path, f"--logs-dir={logs_dir}",
+        f"--redis-address={redis_address}",
+        f"--logging-rotate-bytes={max_bytes}",
+        f"--logging-rotate-backup-count={backup_count}"
     ]
     if autoscaling_config:
         command.append("--autoscaling-config=" + str(autoscaling_config))
