@@ -13,7 +13,7 @@ from ray.actor import ActorHandle
 from ray.async_compat import sync_to_async
 
 from ray.serve.utils import (parse_request_item, _get_logger, chain_future,
-                             unpack_future)
+                             unpack_future, import_attr)
 from ray.serve.exceptions import RayServeException
 from ray.util import metrics
 from ray.serve.config import BackendConfig
@@ -94,33 +94,40 @@ class BatchQueue:
         return batch
 
 
-def create_backend_replica(func_or_class: Union[Callable, Type[Callable]]):
+def create_backend_replica(backend_def: Union[Callable, Type[Callable], str]):
     """Creates a replica class wrapping the provided function or class.
 
     This approach is picked over inheritance to avoid conflict between user
     provided class and the RayServeReplica class.
     """
-
-    if inspect.isfunction(func_or_class):
-        is_function = True
-    elif inspect.isclass(func_or_class):
-        is_function = False
-    else:
-        assert False, "func_or_class must be function or class."
+    backend_def = backend_def
 
     # TODO(architkulkarni): Add type hints after upgrading cloudpickle
     class RayServeWrappedReplica(object):
         def __init__(self, backend_tag, replica_tag, init_args,
                      backend_config: BackendConfig, controller_name: str):
+            if isinstance(backend_def, str):
+                backend = import_attr(backend_def)
+            else:
+                backend = backend_def
+
+            if inspect.isfunction(backend):
+                is_function = True
+            elif inspect.isclass(backend):
+                is_function = False
+            else:
+                assert False, ("backend_def must be function, class, or "
+                               "corresponding import path.")
+
             # Set the controller name so that serve.connect() in the user's
             # backend code will connect to the instance that this backend is
             # running in.
             ray.serve.api._set_internal_replica_context(
                 backend_tag, replica_tag, controller_name)
             if is_function:
-                _callable = func_or_class
+                _callable = backend
             else:
-                _callable = func_or_class(*init_args)
+                _callable = backend(*init_args)
 
             assert controller_name, "Must provide a valid controller_name"
             controller_handle = ray.get_actor(controller_name)
@@ -144,8 +151,12 @@ def create_backend_replica(func_or_class: Union[Callable, Type[Callable]]):
         async def drain_pending_queries(self):
             return await self.backend.drain_pending_queries()
 
-    RayServeWrappedReplica.__name__ = "RayServeReplica_{}".format(
-        func_or_class.__name__)
+    if isinstance(backend_def, str):
+        RayServeWrappedReplica.__name__ = "RayServeReplica_{}".format(
+            backend_def)
+    else:
+        RayServeWrappedReplica.__name__ = "RayServeReplica_{}".format(
+            backend_def.__name__)
     return RayServeWrappedReplica
 
 
@@ -415,8 +426,7 @@ class RayServeReplica:
         if user_config:
             if self.is_function:
                 raise ValueError(
-                    "argument func_or_class must be a class to use user_config"
-                )
+                    "backend_def must be a class to use user_config")
             elif not hasattr(self.callable, BACKEND_RECONFIGURE_METHOD):
                 raise RayServeException("user_config specified but backend " +
                                         self.backend_tag + " missing " +
