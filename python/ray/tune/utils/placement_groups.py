@@ -15,10 +15,6 @@ if TYPE_CHECKING:
     from ray.tune.trial import Trial
 
 TUNE_MAX_PENDING_TRIALS_PG = int(os.getenv("TUNE_MAX_PENDING_TRIALS_PG", 1000))
-# Seconds we wait for a trial to come up before we make blocking calls
-# to process events
-TUNE_TRIAL_STARTUP_GRACE_PERIOD = float(
-    os.getenv("TUNE_TRIAL_STARTUP_GRACE_PERIOD", 10.))
 
 
 class PlacementGroupFactory:
@@ -142,6 +138,11 @@ class PlacementGroupManager:
 
         # Latest PG staging time to check if still in grace period.
         self._latest_staging_start_time = time.time()
+
+        # Seconds we wait for a trial to come up before we make blocking calls
+        # to process events
+        self._grace_period = float(
+            os.getenv("TUNE_TRIAL_STARTUP_GRACE_PERIOD", 10.))
 
     def stage_trial_pg(self, pgf: PlacementGroupFactory):
         """Stage a trial placement group.
@@ -293,5 +294,5 @@ class PlacementGroupManager:
         return trial_pg
 
     def in_staging_grace_period(self):
-        return self._staging_futures and time.time(
-        ) <= self._latest_staging_start_time + TUNE_TRIAL_STARTUP_GRACE_PERIOD
+        return self._staging_futures and self._grace_period and time.time(
+        ) <= self._latest_staging_start_time + self._grace_period

@@ -285,12 +285,15 @@ class RayTrialExecutor(TrialExecutor):
         _actor_cls = _class_cache.get(trial.get_trainable_cls())
         if trial.uses_placement_groups:
             if not self._pg_manager.has_ready(trial.placement_group_factory):
+                just_staged = False
                 if trial not in self._staged_trials:
                     if self._pg_manager.stage_trial_pg(
                             trial.placement_group_factory):
                         self._staged_trials.add(trial)
+                        just_staged = True
 
-                if self._wait_for_pg is not None:
+                if self._wait_for_pg is not None and (
+                        just_staged or not self.get_running_trials()):
                     logger.debug(
                         f"Waiting up to {self._wait_for_pg} seconds for "
                         f"placement group to become ready.")
@@ -444,6 +447,9 @@ class RayTrialExecutor(TrialExecutor):
                     with self._change_working_directory(trial):
                         self._trial_cleanup.add(
                             trial, actor=trial.runner, placement_group=pg)
+                    if trial in self._staged_trials:
+                        self._staged_trials.remove(trial)
+
         except Exception:
             logger.exception("Trial %s: Error stopping runner.", trial)
             self.set_status(trial, Trial.ERROR)

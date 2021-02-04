@@ -17,7 +17,10 @@ from ray.tune.suggest import BasicVariantGenerator
 
 class TrialRunnerTest(unittest.TestCase):
     def setUp(self):
-        os.environ["TUNE_PLACEMENT_GROUP_WAIT_S"] = "1"
+        # Wait up to five seconds for placement groups when starting a trial
+        os.environ["TUNE_PLACEMENT_GROUP_WAIT_S"] = "5"
+        # Block for results even when placement groups are pending
+        os.environ["TUNE_TRIAL_STARTUP_GRACE_PERIOD"] = "0"
         _register_all()  # re-register the evicted objects
 
     def tearDown(self):
@@ -103,7 +106,6 @@ class TrialRunnerTest(unittest.TestCase):
         runner.step()
         self.assertEqual(trials[0].status, Trial.RUNNING)
         self.assertEqual(trials[1].status, Trial.PENDING)
-
         runner.step()
         self.assertEqual(trials[0].status, Trial.TERMINATED)
         self.assertEqual(trials[1].status, Trial.PENDING)
