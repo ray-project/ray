@@ -462,7 +462,8 @@ def load_newest_checkpoint(dirpath: str, ckpt_pattern: str) -> dict:
     return checkpoint_state
 
 
-def wait_for_gpu(gpu_id=None, gpu_memory_limit=0.1, retry=20):
+def wait_for_gpu(gpu_id=None, util_limit=0.01, retry=20,
+                 gpu_memory_limit=None):
     """Checks if a given GPU has freed memory.
 
     Requires ``gputil`` to be installed: ``pip install gputil``.
@@ -471,10 +472,11 @@ def wait_for_gpu(gpu_id=None, gpu_memory_limit=0.1, retry=20):
         gpu_id (Optional[str]): GPU id to check. Must be found
             within GPUtil.getGPUs(). If none, resorts to
             the first item returned from `ray.get_gpu_ids()`.
-        gpu_memory_limit (float): If fractional memory usage is below
-            this quantity, the check will break.
         retry (int): Number of times to check GPU limit. Sleeps 5
             seconds between checks.
+        util_limit (float): Threshold to unblock. You can set this to
+            0 to block until the GPU is completely free.
+        gpu_memory_limit (float): Deprecated.
 
     Returns:
         bool: True if free.
@@ -493,6 +495,9 @@ def wait_for_gpu(gpu_id=None, gpu_memory_limit=0.1, retry=20):
 
         tune.run(tune_func, resources_per_trial={"GPU": 1}, num_samples=10)
     """
+    if gpu_memory_limit:
+        raise ValueError("'gpu_memory_limit' is deprecated. "
+                         "Use 'util_limit' instead.")
     if GPUtil is None:
         raise RuntimeError(
             "GPUtil must be installed if calling `wait_for_gpu`.")
@@ -504,9 +509,9 @@ def wait_for_gpu(gpu_id=None, gpu_memory_limit=0.1, retry=20):
         gpu_id = gpu_id_list[0]
     for i in range(int(retry)):
         gpu_object = [g for g in GPUtil.getGPUs() if g.uuid == gpu_id][0]
-        if gpu_object.memoryUsed > gpu_memory_limit:
-            logger.info(f"Waiting for GPU {gpu_id} memory to free. "
-                        f"Mem: {gpu_object.memoryUsed:0.3f}")
+        if gpu_object.memoryUtil > util_limit:
+            logger.info(f"Waiting for GPU util to reach {util_limit}. "
+                        f"Mem: {gpu_object.memoryUtil:0.3f}")
             time.sleep(5)
         else:
             return True
