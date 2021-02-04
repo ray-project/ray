@@ -1484,6 +1484,17 @@ ray.shutdown()
         name=global_placement_group_name)
     assert not same_name_pg.wait(10)
 
+    # Remove a named placement group and make sure the second creation
+    # will successful.
+    ray.util.remove_placement_group(placement_group)
+    same_name_pg = ray.util.placement_group(
+        [{
+            "CPU": 1
+        } for _ in range(2)],
+        strategy="STRICT_SPREAD",
+        name=global_placement_group_name)
+    assert same_name_pg.wait(10)
+
     # Get a named placement group with a name that doesn't exist
     # and make sure it will raise ValueError correctly.
     error_count = 0
