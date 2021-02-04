@@ -482,7 +482,7 @@ cdef execute_task(
                                 "'async def' should not be used for remote "
                                 "tasks. You can wrap the async function with "
                                 "`asyncio.get_event_loop.run_until(f())`. "
-                                "See more at DOC_LINK.")
+                                "See more at docs.ray.io/async_api.html")
                         outputs = function_executor(*args, **kwargs)
                         next_breakpoint = (
                             ray.worker.global_worker.debugger_breakpoint)
