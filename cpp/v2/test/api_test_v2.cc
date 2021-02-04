@@ -1,103 +1,97 @@
-#include <gtest/gtest.h>
-#include <iostream>
 #include <api_v2.h>
+#include <gtest/gtest.h>
+
+#include <iostream>
 
 using namespace ray;
 
-void hello(){
-  std::cout<<"hello\n";
-}
+void hello() { std::cout << "hello\n"; }
 
-void dummy(){
-  std::cout<<"dummy\n";
-}
+void dummy() { std::cout << "dummy\n"; }
 
-int bar(int a){
-  std::cout<<"bar"<<", arg: "<<a<<"\n";
+int bar(int a) {
+  std::cout << "bar"
+            << ", arg: " << a << "\n";
   return a;
 }
 
 namespace my_namespace {
-  int bar(int a){
-    std::cout<<"bar in namespace"<<", arg: "<<a<<"\n";
-    return a + 1;
-  }
+int bar(int a) {
+  std::cout << "bar in namespace"
+            << ", arg: " << a << "\n";
+  return a + 1;
 }
+}  // namespace my_namespace
 
-int add(int a, int b) {
-  return a + b;
-}
+int add(int a, int b) { return a + b; }
 
-void not_registered_func(){
-}
+void not_registered_func() {}
 
-int overload_func(){
-  std::cout<<"overload_func no arguments\n";
+int overload_func() {
+  std::cout << "overload_func no arguments\n";
   return 0;
 }
-int overload_func(int i){
-  std::cout<<"overload_func one argument\n";
+int overload_func(int i) {
+  std::cout << "overload_func one argument\n";
   return i;
 }
-int overload_func(int i, int j){
-  std::cout<<"overload_func two arguments\n";
+int overload_func(int i, int j) {
+  std::cout << "overload_func two arguments\n";
   return i + j;
 }
 
-struct Base{
-  Base() =default;
-  Base(int){}
-  Base(int, ObjectRef<int>){}
+struct Base {
+  Base() = default;
+  Base(int) {}
+  Base(int, ObjectRef<int>) {}
   ~Base() = default;
 
-  static Base Create(int){
-    return {};
-  }
+  static Base Create(int) { return {}; }
 
-  virtual int bar(int i){
-    std::cout<<"bar in Base\n";
+  virtual int bar(int i) {
+    std::cout << "bar in Base\n";
     return i;
   }
-  int foo(int i){
-    std::cout<<"foo\n";
+  int foo(int i) {
+    std::cout << "foo\n";
     return i;
   }
 
-  int overload_func(int i){
-    std::cout<<"Base::overload_func one argument\n";
+  int overload_func(int i) {
+    std::cout << "Base::overload_func one argument\n";
     return i;
   }
   int overload_func(int i) const {
-    std::cout<<"Base::overload_func one argument\n";
+    std::cout << "Base::overload_func one argument\n";
     return i;
   }
-  int overload_func(int i, int j){
-    std::cout<<"Base::overload_func two arguments\n";
+  int overload_func(int i, int j) {
+    std::cout << "Base::overload_func two arguments\n";
     return i + j;
   }
-  int overload_func(int i, int j, int k){
-    std::cout<<"Base::overload_func two arguments\n";
+  int overload_func(int i, int j, int k) {
+    std::cout << "Base::overload_func two arguments\n";
     return i + j + k;
   }
 };
 
-struct Derived : public Base{
+struct Derived : public Base {
   int bar(int i) override {
-    std::cout<<"bar in Derived\n";
-    return i+1;
+    std::cout << "bar in Derived\n";
+    return i + 1;
   }
 };
 
 RAY_REGISTER(hello, bar, add, my_namespace::bar, &Base::foo, &Base::bar,
-             RayFunc(overload_func),
-             RayFunc(overload_func, int),
+             RayFunc(overload_func), RayFunc(overload_func, int),
              RayMemberFunc(&Base::overload_func, cv_none, int),
              RayMemberFunc(&Base::overload_func, cv_none, int, int));
 
 TEST(RayApiTestV2, RayRegister) {
   EXPECT_TRUE(register_func("dummy", dummy));
 
-  // We have already registered hello and bar functions before, duplicate register fucntions will throw exception.
+  // We have already registered hello and bar functions before, duplicate register
+  // fucntions will throw exception.
   EXPECT_THROW(register_func("hello", hello), std::logic_error);
   EXPECT_THROW(register_func("bar1", bar), std::logic_error);
 }
@@ -110,8 +104,7 @@ TEST(RayApiTestV2, GetFunction) {
   EXPECT_EQ(get_function(not_registered_func), nullptr);
 
   EXPECT_EQ(get_function(RayFunc(overload_func)), RayFunc(overload_func));
-  EXPECT_EQ(get_function(RayFunc(overload_func, int)),
-            RayFunc(overload_func, int));
+  EXPECT_EQ(get_function(RayFunc(overload_func, int)), RayFunc(overload_func, int));
 
   EXPECT_EQ(get_function(&Base::foo), &Base::foo);
   EXPECT_EQ(get_function(&Base::bar), &Base::bar);
@@ -121,9 +114,8 @@ TEST(RayApiTestV2, GetFunction) {
             expected_func);
 
   auto expected_func1 = RayMemberFunc(&Base::overload_func, cv_none, int, int);
-  EXPECT_EQ(
-      get_function(RayMemberFunc(&Base::overload_func, cv_none, int, int)),
-      expected_func1);
+  EXPECT_EQ(get_function(RayMemberFunc(&Base::overload_func, cv_none, int, int)),
+            expected_func1);
 }
 
 TEST(RayApiTestV2, CallFunction) {
@@ -140,7 +132,8 @@ TEST(RayApiTestV2, CallFunction) {
   EXPECT_EQ(call_func(f3), 0);
 
   auto f4 = get_function(RayFunc(overload_func, int, int));
-  // The function was not registered, call_func with nullptr will throw std::invalid_argument.
+  // The function was not registered, call_func with nullptr will throw
+  // std::invalid_argument.
   EXPECT_THROW(call_func(f4, 1, 2), std::invalid_argument);
 
   Base base{};
@@ -204,10 +197,10 @@ TEST(RayApiTestV2, OverlaodNormalTask) {
 TEST(RayApiTestV2, CreateActor) {
   auto actor_handle = ray::Actor<Base>().Remote();
   EXPECT_EQ(typeid(actor_handle), typeid(ray::ActorHandle<Base>));
-  
+
   auto actor_handle2 = ray::Actor<Base>().Remote(1);
   EXPECT_EQ(typeid(actor_handle2), typeid(ray::ActorHandle<Base>));
-  
+
   auto actor_handle3 = ray::Actor<Base>().Remote(1, ObjectRef<int>{});
   EXPECT_EQ(typeid(actor_handle3), typeid(ray::ActorHandle<Base>));
 
@@ -219,11 +212,11 @@ TEST(RayApiTestV2, ActorTask) {
   auto obj = ray::Actor<Base>().Remote().Task(&Base::bar).Remote(1);
   EXPECT_EQ(obj.Get(), 1);
 
-  //Pass ObjectRef<int> to bar
+  // Pass ObjectRef<int> to bar
   auto obj2 = ray::Actor<Base>().Remote().Task(&Base::bar).Remote(ObjectRef<int>{2});
   EXPECT_EQ(obj2.Get(), 2);
 
-  //Overload function
+  // Overload function
   auto obj3 = ray::Actor<Base>()
                   .Remote()
                   .Task(RayMemberFunc(&Base::overload_func, cv_none, int))
