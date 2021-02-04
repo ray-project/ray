@@ -102,6 +102,7 @@ py_test_module_list(
     "test_queue.py",
     "test_ray_debugger.py",
     "test_ray_init.py",
+    "test_shuffle.py",
     "test_tempfile.py",
   ],
   size = "small",

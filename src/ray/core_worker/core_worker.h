@@ -1255,6 +1255,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Whether we are shutting down and not running further tasks.
   bool exiting_ = false;
 
+  int64_t max_direct_call_object_size_;
+
   friend class CoreWorkerTest;
 };
 

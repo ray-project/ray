@@ -75,6 +75,7 @@ class TrialRunnerCallbacks(unittest.TestCase):
     def setUp(self):
         os.environ["TUNE_PLACEMENT_GROUP_WAIT_S"] = "1"
 
+        ray.init()
         self.tmpdir = tempfile.mkdtemp()
         self.callback = TestCallback()
         self.executor = _MockTrialExecutor()
