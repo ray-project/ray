@@ -220,12 +220,6 @@ worker_nodes:
                   # This memory limit will be detected by ray and split into
                   # 30% for plasma, and 70% for workers.
                   memory: 2Gi
-          env:
-              # Used in Ray client start commmands
-              - name: POD_IP
-                valueFrom:
-                    fieldRef:
-                        fieldPath: status.podIP
 
 # Files or directories to copy to the head and worker nodes. The format is a
 # dictionary from REMOTE_PATH: LOCAL_PATH, e.g.

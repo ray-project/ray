@@ -10,9 +10,9 @@ Before running this script, you must port-forward from the local host to
 the relevant Kubernetes head service e.g.
 kubectl -n ray port-forward service/example-cluster-ray-head 50051:50051.
 
-Set the constant LOCAL_PORT below to the local port being forwarded from.
+Set the constant LOCAL_PORT below to the local port being forwarded.
 """
-LOCAL_PORT = 50051
+LOCAL_PORT = 50050
 
 
 @ray.remote
@@ -37,7 +37,7 @@ def wait_for_nodes(expected):
 
 
 def main():
-    wait_for_nodes(4)
+    wait_for_nodes(3)
 
     # Check that objects can be transferred from each node to each other node.
     for i in range(10):
@@ -53,5 +53,5 @@ def main():
 
 
 if __name__ == "__main__":
-    ray.util.connect(f"0.0.0.0:{LOCAL_PORT}")
+    ray.util.connect(f"127.0.0.1:{LOCAL_PORT}")
     main()

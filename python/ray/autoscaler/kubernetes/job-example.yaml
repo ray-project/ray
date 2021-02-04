@@ -11,14 +11,14 @@ spec:
       restartPolicy: Never
       containers:
         - name: ray
-          image: rayproject/ray:nightly
+          image: ray-dev
           imagePullPolicy: IfNotPresent
-          command: [ "python" ]
+          command: ["python"]
           args:
-            - "$EXAMPLE_PROGRAM_PATH"
+            - "$(EXAMPLE_PROGRAM_PATH)"
           env:
             - name: EXAMPLE_PROGRAM_PATH
-              value: "anaconda3/lib/python3.7/site-packages/ray/autoscaler/kubernetes/job_example.py"
+              value: "/home/ray/anaconda3/lib/python3.7/site-packages/ray/autoscaler/kubernetes/job-example.py"
           resources:
             requests:
               cpu: 100m
