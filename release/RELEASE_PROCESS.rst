@@ -144,11 +144,11 @@ is generally the easiest way to run release tests.
 
    Run the ``ci/asan_tests`` with the commit. This will enable ASAN build and run the whole Python tests to detect memory leaks.
 
-6. **K8s operator tests**
+7. **K8s operator tests**
 
    Run the ``python/ray/tests/test_k8s_*`` to make sure K8s cluster launcher and operator works. Make sure the docker image is the released version.
 
-6. **Data processing tests**
+8. **Data processing tests**
 
    .. code-block:: bash
 
@@ -162,7 +162,26 @@ is generally the easiest way to run release tests.
 
    **IMPORTANT** Check if the workload scripts has terminated. If so, please record the result (both read/write bandwidth and the shuffle result) to the ``release_logs/data_processing_tests/[test_name]``.
    Both shuffling runtime and read/write bandwidth shouldn't be decreasing more than 15% compared to the previous release.
-  
+
+9. **Ray Tune release tests**
+
+   General Ray Tune functionality is implicitly tested via RLLib and XGBoost release tests.
+   We are in the process of introducing scalability envelopes for Ray Tune.
+   This is an ongoing effort and will only be introduced in the next release.
+   For now, **you can ignore the tune_tests directory**.
+
+10. **XGBoost release tests**
+
+    .. code-block:: bash
+
+       xgboost_tests/README.rst
+
+    Follow the instructions to kick off the tests and check the status of the workloads.
+    The XGBoost release tests use assertions or fail with exceptions and thus
+    should automatically tell you if they failed or not.
+    Only in the case of the fault tolerance tests you might want
+    to check the logs. See the readme for more information.
+
 
 Identify and Resolve Release Blockers
 -------------------------------------
