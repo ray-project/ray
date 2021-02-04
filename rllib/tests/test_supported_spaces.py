@@ -47,6 +47,8 @@ OBSERVATION_SPACES_TO_TEST = {
 
 def check_support(alg, config, train=True, check_bounds=False, tfe=False):
     config["log_level"] = "ERROR"
+    config["train_batch_size"] = 10
+    config["rollout_fragment_length"] = 10
 
     def _do_check(alg, config, a_name, o_name):
         fw = config["framework"]
@@ -126,8 +128,6 @@ class TestSupportedSpacesPG(unittest.TestCase):
         config = {
             "num_workers": 1,
             "num_sgd_iter": 1,
-            "train_batch_size": 10,
-            "rollout_fragment_length": 10,
             "sgd_minibatch_size": 1,
         }
         check_support("PPO", config, check_bounds=True, tfe=True)
