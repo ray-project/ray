@@ -1,14 +1,15 @@
-from typing import TypeVar, List, Iterable, Tuple, Callable, Any
+from typing import List, Iterable, Tuple, Callable, Any
 
 import ray
 from ray import ObjectRef
 
-PartitionID = int
+# TODO(ekl) why doesn't TypeVar() deserialize properly in Ray?
 InType = Any
 OutType = Any
+PartitionID = int
 
 
-class InputCombiner:
+class ObjectStoreWriter:
     def __init__(self):
         self.results = []
 
@@ -33,36 +34,35 @@ def simple_shuffle(
         input_reader: Callable[[PartitionID], Iterable[InType]],
         input_num_partitions: int,
         output_num_partitions: int,
-        output_writer: Callable[[PartitionID, List[ObjectRef]],
-                                OutType],
+        output_writer: Callable[[PartitionID, List[ObjectRef]], OutType],
         partitioner: Callable[[Iterable[InType], int], Iterable[
             PartitionID]] = round_robin_partitioner,
-        input_combiner: InputCombiner = InputCombiner,
+        object_store_writer: ObjectStoreWriter = ObjectStoreWriter,
 ) -> List[OutType]:
-
     @ray.remote(num_returns=output_num_partitions)
     def shuffle_map(i: PartitionID) -> List[List[ObjectRef]]:
-        combiners = [input_combiner() for _ in range(output_num_partitions)]
+        writers = [object_store_writer() for _ in range(output_num_partitions)]
         for out_i, item in partitioner(input_reader(i), output_num_partitions):
-            combiners[out_i].add(item)
-        return [c.finish() for c in combiners]
+            writers[out_i].add(item)
+        return [c.finish() for c in writers]
 
     @ray.remote
     def shuffle_reduce(i: PartitionID,
                        *mapper_outputs: List[List[ObjectRef]]) -> OutType:
-        combined_outputs = []
+        input_objects = []
         assert len(mapper_outputs) == input_num_partitions
-        for m in mapper_outputs:
-            for combiner_output_ref in m:
-                combined_outputs.append(combiner_output_ref)
-        return output_writer(i, combined_outputs)
+        for obj_refs in mapper_outputs:
+            for obj_ref in obj_refs:
+                input_objects.append(obj_ref)
+        return output_writer(i, input_objects)
 
-    shuffle_map_out = [shuffle_map.remote(i) for i in range(input_num_partitions)]
+    shuffle_map_out = [
+        shuffle_map.remote(i) for i in range(input_num_partitions)
+    ]
 
     shuffle_reduce_out = [
         shuffle_reduce.remote(
-            j,
-            *[shuffle_map_out[i][j] for i in range(input_num_partitions)])
+            j, *[shuffle_map_out[i][j] for i in range(input_num_partitions)])
         for j in range(output_num_partitions)
     ]
 
@@ -85,15 +85,23 @@ class _StatusTracker:
 
 
 if __name__ == "__main__":
+    import argparse
     import numpy as np
     import time
 
-    ray.init()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--ray-address", type=str, default=None)
+    parser.add_argument("--object-store-memory", type=float, default=1e9)
+    parser.add_argument("--num-partitions", type=int, default=5)
+    parser.add_argument("--partition-size", type=float, default=200e6)
+    args = parser.parse_args()
 
-    partition_size = int(200e6)
-    num_partitions = 5
+    ray.init(
+        address=args.ray_address, object_store_memory=args.object_store_memory)
+
+    partition_size = int(args.partition_size)
+    num_partitions = args.num_partitions
     rows_per_partition = partition_size // (8 * 2)
-
     tracker = _StatusTracker.remote()
 
     def input_reader(i: PartitionID) -> Iterable[InType]:
@@ -120,7 +128,9 @@ if __name__ == "__main__":
         output_writer=output_writer)
     delta = time.time() - start
 
-    time.sleep(1)
+    time.sleep(.5)
+    print()
     print(ray.internal.internal_api.memory_summary(stats_only=True))
+    print()
     print("Shuffled", int(sum(output_sizes) / (1024 * 1024)), "MiB in", delta,
           "seconds")
