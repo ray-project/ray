@@ -230,8 +230,9 @@ def get_placement_group(placement_group_name: str):
         raise ValueError(
             f"Failed to look up actor with name: {placement_group_name}")
     else:
-        return PlacementGroup(PlacementGroupID(hex_to_binary(
-            placement_group_info["placement_group_id"])))
+        return PlacementGroup(
+            PlacementGroupID(
+                hex_to_binary(placement_group_info["placement_group_id"])))
 
 
 def placement_group_table(placement_group: PlacementGroup = None) -> list:
