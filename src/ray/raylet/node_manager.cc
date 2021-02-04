@@ -410,7 +410,7 @@ void NodeManager::Heartbeat() {
   uint64_t now_ms = current_time_ms();
   uint64_t interval = now_ms - last_heartbeat_at_ms_;
   if (interval > RayConfig::instance().num_heartbeats_warning() *
-                     RayConfig::instance().raylet_heartbeat_timeout_milliseconds()) {
+                     RayConfig::instance().raylet_heartbeat_period_milliseconds()) {
     RAY_LOG(WARNING)
         << "Last heartbeat was sent " << interval
         << " ms ago. There might be resource pressure on this node. If heartbeat keeps "
@@ -456,6 +456,7 @@ void NodeManager::Heartbeat() {
 void NodeManager::ReportResourceUsage() {
   auto resources_data = std::make_shared<rpc::ResourcesData>();
   resources_data->set_node_id(self_node_id_.Binary());
+  resources_data->set_node_manager_address(initial_config_.node_manager_address);
   // Update local chche from gcs remote cache, this is needed when gcs restart.
   // We should always keep the cache view consistent.
   cluster_resource_scheduler_->UpdateLastResourceUsage(
@@ -722,7 +723,7 @@ void NodeManager::NodeRemoved(const NodeID &node_id) {
       << "Exiting because this node manager has mistakenly been marked dead by the "
       << "monitor: GCS didn't receive heartbeats within timeout "
       << RayConfig::instance().num_heartbeats_timeout() *
-             RayConfig::instance().raylet_heartbeat_timeout_milliseconds()
+             RayConfig::instance().raylet_heartbeat_period_milliseconds()
       << " ms. This is likely since the machine or raylet became overloaded.";
 
   // Below, when we remove node_id from all of these data structures, we could
@@ -2383,7 +2384,9 @@ bool NodeManager::GetObjectsFromPlasma(const std::vector<ObjectID> &object_ids,
   // heavy load, then this request can still block the NodeManager event loop
   // since we must wait for the plasma store's reply. We should consider using
   // an `AsyncGet` instead.
-  if (!store_client_.Get(object_ids, /*timeout_ms=*/0, &plasma_results).ok()) {
+  if (!store_client_
+           .Get(object_ids, /*timeout_ms=*/0, &plasma_results, /*is_from_worker=*/false)
+           .ok()) {
     return false;
   }
 
@@ -2545,6 +2548,8 @@ rpc::ObjectStoreStats AccumulateStoreStats(
                                              cur_store.object_store_bytes_avail());
     store_stats.set_num_local_objects(store_stats.num_local_objects() +
                                       cur_store.num_local_objects());
+    store_stats.set_consumed_bytes(store_stats.consumed_bytes() +
+                                   cur_store.consumed_bytes());
   }
   return store_stats;
 }

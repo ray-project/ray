@@ -185,6 +185,7 @@ void ReferenceCounter::UpdateObjectSize(const ObjectID &object_id, int64_t objec
   auto it = object_id_refs_.find(object_id);
   if (it != object_id_refs_.end()) {
     it->second.object_size = object_size;
+    PushToLocationSubscribers(it);
   }
 }
 
@@ -915,11 +916,12 @@ bool ReferenceCounter::AddObjectLocation(const ObjectID &object_id,
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
-    RAY_LOG(WARNING) << "Tried to add an object location for an object " << object_id
-                     << " that doesn't exist in the reference table";
+    RAY_LOG(INFO) << "Tried to add an object location for an object " << object_id
+                  << " that doesn't exist in the reference table";
     return false;
   }
   it->second.locations.insert(node_id);
+  PushToLocationSubscribers(it);
   return true;
 }
 
@@ -928,11 +930,12 @@ bool ReferenceCounter::RemoveObjectLocation(const ObjectID &object_id,
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
-    RAY_LOG(WARNING) << "Tried to remove an object location for an object " << object_id
-                     << " that doesn't exist in the reference table";
+    RAY_LOG(INFO) << "Tried to remove an object location for an object " << object_id
+                  << " that doesn't exist in the reference table";
     return false;
   }
   it->second.locations.erase(node_id);
+  PushToLocationSubscribers(it);
   return true;
 }
 
@@ -1001,6 +1004,39 @@ absl::optional<LocalityData> ReferenceCounter::GetLocalityData(
   absl::optional<LocalityData> locality_data(
       {static_cast<uint64_t>(object_size), {node_id.value()}});
   return locality_data;
+}
+
+void ReferenceCounter::PushToLocationSubscribers(ReferenceTable::iterator it) {
+  const auto callbacks = it->second.location_subscription_callbacks;
+  it->second.location_subscription_callbacks.clear();
+  it->second.location_version++;
+  for (const auto callback : callbacks) {
+    callback(it->second.locations, it->second.object_size, it->second.location_version);
+  }
+}
+
+Status ReferenceCounter::SubscribeObjectLocations(
+    const ObjectID &object_id, int64_t last_location_version,
+    const LocationSubscriptionCallback &callback) {
+  absl::MutexLock lock(&mutex_);
+  auto it = object_id_refs_.find(object_id);
+  if (it == object_id_refs_.end()) {
+    RAY_LOG(INFO) << "Tried to register a location subscriber for an object " << object_id
+                  << " that doesn't exist in the reference table."
+                  << " The object has probably already been freed.";
+    return Status::ObjectNotFound("Object " + object_id.Hex() + " not found");
+  }
+
+  if (last_location_version < it->second.location_version) {
+    // If the last location version is less than the current location version, we
+    // already have location data that the subscriber hasn't seen yet, so we immediately
+    // invoke the callback.
+    callback(it->second.locations, it->second.object_size, it->second.location_version);
+  } else {
+    // Otherwise, save the callback for later invocation.
+    it->second.location_subscription_callbacks.push_back(callback);
+  }
+  return Status::OK();
 }
 
 ReferenceCounter::Reference ReferenceCounter::Reference::FromProto(

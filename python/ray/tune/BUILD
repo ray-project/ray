@@ -164,6 +164,14 @@ py_test(
 )
 
 py_test(
+    name = "test_remote",
+    size = "medium",
+    srcs = ["tests/test_remote.py"],
+    deps = [":tune_lib"],
+    tags = ["exclusive"],
+)
+
+py_test(
     name = "test_sample",
     size = "medium",
     srcs = ["tests/test_sample.py"],

@@ -99,3 +99,16 @@ def translate(configuration: Dict[str, Any],
         dictionary[field]: configuration[field]
         for field in dictionary if field in configuration
     }
+
+
+def set_status(cluster_cr: Dict[str, Any], cluster_name: str,
+               status: str) -> None:
+    # TODO: Add retry logic in case of 409 due to old resource version.
+    cluster_cr["status"] = {"phase": status}
+    custom_objects_api()\
+        .patch_namespaced_custom_object_status(namespace=RAY_NAMESPACE,
+                                               group="cluster.ray.io",
+                                               version="v1",
+                                               plural="rayclusters",
+                                               name=cluster_name,
+                                               body=cluster_cr)
