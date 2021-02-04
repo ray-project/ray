@@ -462,7 +462,7 @@ def load_newest_checkpoint(dirpath: str, ckpt_pattern: str) -> dict:
     return checkpoint_state
 
 
-def wait_for_gpu(gpu_id=None, util_limit=0.01, retry=20,
+def wait_for_gpu(gpu_id=None, target_util=0.01, retry=20,
                  gpu_memory_limit=None):
     """Checks if a given GPU has freed memory.
 
@@ -474,8 +474,8 @@ def wait_for_gpu(gpu_id=None, util_limit=0.01, retry=20,
             the first item returned from `ray.get_gpu_ids()`.
         retry (int): Number of times to check GPU limit. Sleeps 5
             seconds between checks.
-        util_limit (float): Threshold to unblock. You can set this to
-            0 to block until the GPU is completely free.
+        target_util (float): The utilization threshold to reach to unblock.
+            Set this to 0 to block until the GPU is completely free.
         gpu_memory_limit (float): Deprecated.
 
     Returns:
@@ -497,7 +497,7 @@ def wait_for_gpu(gpu_id=None, util_limit=0.01, retry=20,
     """
     if gpu_memory_limit:
         raise ValueError("'gpu_memory_limit' is deprecated. "
-                         "Use 'util_limit' instead.")
+                         "Use 'target_util' instead.")
     if GPUtil is None:
         raise RuntimeError(
             "GPUtil must be installed if calling `wait_for_gpu`.")
@@ -529,9 +529,9 @@ def wait_for_gpu(gpu_id=None, util_limit=0.01, retry=20,
         else:
             gpu_object = [g for g in GPUtil.getGPUs() if g.uuid == gpu_id][0]
 
-        if gpu_object.memoryUtil > util_limit:
-            logger.info(f"Waiting for GPU util to reach {util_limit}. "
-                        f"Mem: {gpu_object.memoryUtil:0.3f}")
+        if gpu_object.memoryUtil > target_util:
+            logger.info(f"Waiting for GPU util to reach {target_util}. "
+                        f"Util: {gpu_object.memoryUtil:0.3f}")
             time.sleep(5)
         else:
             return True
