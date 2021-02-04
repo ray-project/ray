@@ -469,8 +469,8 @@ def wait_for_gpu(gpu_id=None, util_limit=0.01, retry=20,
     Requires ``gputil`` to be installed: ``pip install gputil``.
 
     Args:
-        gpu_id (Optional[str]): GPU id to check. Must be found
-            within GPUtil.getGPUs(). If none, resorts to
+        gpu_id (Optional[Union[int, str]]): GPU id or uuid to check.
+            Must be found within GPUtil.getGPUs(). If none, resorts to
             the first item returned from `ray.get_gpu_ids()`.
         retry (int): Number of times to check GPU limit. Sleeps 5
             seconds between checks.
@@ -507,8 +507,28 @@ def wait_for_gpu(gpu_id=None, util_limit=0.01, retry=20,
             raise RuntimeError(f"No GPU ids found from {ray.get_gpu_ids()}. "
                                "Did you set Tune resources correctly?")
         gpu_id = gpu_id_list[0]
+
+    if isinstance(gpu_id, int):
+        list_gpu_ids = [g.id for g in GPUtil.getGPUs()]
+        if gpu_id not in list_gpu_ids:
+            raise ValueError(
+                f"{gpu_id} (int) not found in GPU ids: {list_gpu_ids}. "
+                "wait_for_gpu takes either int (gpu id) or str (gpu uuid).")
+    elif isinstance(gpu_id, str):
+        list_uuids = [g.uuid for g in GPUtil.getGPUs()]
+        if gpu_id not in list_uuids:
+            raise ValueError(
+                f"{gpu_id} (str) not found in GPU uuids: {list_uuids}. "
+                "wait_for_gpu takes either int (gpu id) or str (gpu uuid).")
+    else:
+        raise ValueError(f"gpu_id must be int or str -- got ({type(gpu_id)})")
+
     for i in range(int(retry)):
-        gpu_object = [g for g in GPUtil.getGPUs() if g.uuid == gpu_id][0]
+        if isinstance(gpu_id, int):
+            gpu_object = [g for g in GPUtil.getGPUs() if g.id == gpu_id][0]
+        else:
+            gpu_object = [g for g in GPUtil.getGPUs() if g.uuid == gpu_id][0]
+
         if gpu_object.memoryUtil > util_limit:
             logger.info(f"Waiting for GPU util to reach {util_limit}. "
                         f"Mem: {gpu_object.memoryUtil:0.3f}")
