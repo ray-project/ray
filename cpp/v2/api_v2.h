@@ -17,3 +17,4 @@
 #include "include/ray_register.h"
 #include "include/init.h"
 #include "include/normal_task.h"
+#include "include/actor.h"

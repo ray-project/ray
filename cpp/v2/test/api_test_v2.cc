@@ -45,6 +45,14 @@ int overload_func(int i, int j){
 }
 
 struct Base{
+  Base() =default;
+  Base(int){}
+  Base(int, ObjectRef<int>){}
+
+  static Base Create(int){
+    return {};
+  }
+
   int bar(int i){
     std::cout<<"bar\n";
     return i;
@@ -182,9 +190,23 @@ TEST(RayApiTestV2, OverlaodNormalTask) {
 }
 
 TEST(RayApiTestV2, CreateActor) {
+  auto actor_handle = ray::Actor<Base>().Remote();
+  EXPECT_EQ(typeid(actor_handle), typeid(ray::ActorHandle<Base>));
+  
+  auto actor_handle2 = ray::Actor<Base>().Remote(1);
+  EXPECT_EQ(typeid(actor_handle2), typeid(ray::ActorHandle<Base>));
+  
+  auto actor_handle3 = ray::Actor<Base>().Remote(1, ObjectRef<int>{});
+  EXPECT_EQ(typeid(actor_handle3), typeid(ray::ActorHandle<Base>));
+
+  auto actor_handle4 = ray::Actor(Base::Create).Remote(1);
+  EXPECT_EQ(typeid(actor_handle4), typeid(ray::ActorHandle<Base>));
 }
 
 TEST(RayApiTestV2, ActorTask) {
+}
+
+TEST(RayApiTestV2, ActorTaskObjectRef) {
 }
 
 TEST(RayApiTestV2, PolymorphicActorTask) {
