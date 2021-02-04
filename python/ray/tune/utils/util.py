@@ -462,7 +462,9 @@ def load_newest_checkpoint(dirpath: str, ckpt_pattern: str) -> dict:
     return checkpoint_state
 
 
-def wait_for_gpu(gpu_id=None, target_util=0.01, retry=20,
+def wait_for_gpu(gpu_id=None,
+                 target_util=0.01,
+                 retry=20,
                  gpu_memory_limit=None):
     """Checks if a given GPU has freed memory.
 
