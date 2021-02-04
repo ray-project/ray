@@ -243,6 +243,7 @@ def test_async_callback(ray_start_regular_shared):
     signal.send.remote()
     wait_for_condition(lambda: "completed-2" in global_set)
 
+
 def test_async_function_errored(ray_start_regular_shared):
     @ray.remote
     async def f():
