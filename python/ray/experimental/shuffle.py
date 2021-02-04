@@ -41,7 +41,9 @@ class ObjectStoreWriter:
     """This class is used to stream shuffle map outputs to the object store.
 
     It can be subclassed to optimize writing (e.g., batching together small
-    records into larger objects).
+    records into larger objects). This will be performance critical if your
+    input records are small (the example shuffle uses very large records, so
+    the naive strategy works well).
     """
 
     def __init__(self):
