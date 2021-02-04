@@ -474,10 +474,10 @@ def wait_for_gpu(gpu_id=None,
         gpu_id (Optional[Union[int, str]]): GPU id or uuid to check.
             Must be found within GPUtil.getGPUs(). If none, resorts to
             the first item returned from `ray.get_gpu_ids()`.
-        retry (int): Number of times to check GPU limit. Sleeps 5
-            seconds between checks.
         target_util (float): The utilization threshold to reach to unblock.
             Set this to 0 to block until the GPU is completely free.
+        retry (int): Number of times to check GPU limit. Sleeps 5
+            seconds between checks.
         gpu_memory_limit (float): Deprecated.
 
     Returns:
