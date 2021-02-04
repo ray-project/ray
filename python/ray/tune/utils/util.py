@@ -503,7 +503,7 @@ def wait_for_gpu(gpu_id=None, gpu_memory_limit=0.1, retry=20):
                                "Did you set Tune resources correctly?")
         gpu_id = gpu_id_list[0]
     for i in range(int(retry)):
-        gpu_object = [g for g in GPUtil.getGPUs() if g.id == gpu_id][0]
+        gpu_object = [g for g in GPUtil.getGPUs() if g.uuid == gpu_id][0]
         if gpu_object.memoryUsed > gpu_memory_limit:
             logger.info(f"Waiting for GPU {gpu_id} memory to free. "
                         f"Mem: {gpu_object.memoryUsed:0.3f}")
