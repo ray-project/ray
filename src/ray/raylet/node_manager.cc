@@ -410,7 +410,7 @@ void NodeManager::Heartbeat() {
   uint64_t now_ms = current_time_ms();
   uint64_t interval = now_ms - last_heartbeat_at_ms_;
   if (interval > RayConfig::instance().num_heartbeats_warning() *
-                     RayConfig::instance().raylet_heartbeat_timeout_milliseconds()) {
+                     RayConfig::instance().raylet_heartbeat_period_milliseconds()) {
     RAY_LOG(WARNING)
         << "Last heartbeat was sent " << interval
         << " ms ago. There might be resource pressure on this node. If heartbeat keeps "
@@ -723,7 +723,7 @@ void NodeManager::NodeRemoved(const NodeID &node_id) {
       << "Exiting because this node manager has mistakenly been marked dead by the "
       << "monitor: GCS didn't receive heartbeats within timeout "
       << RayConfig::instance().num_heartbeats_timeout() *
-             RayConfig::instance().raylet_heartbeat_timeout_milliseconds()
+             RayConfig::instance().raylet_heartbeat_period_milliseconds()
       << " ms. This is likely since the machine or raylet became overloaded.";
 
   // Below, when we remove node_id from all of these data structures, we could
