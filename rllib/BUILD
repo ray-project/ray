@@ -1479,7 +1479,7 @@ py_test(
     name = "tests/test_supported_spaces_pg",
     main = "tests/test_supported_spaces.py",
     tags = ["tests_dir", "tests_dir_S"],
-    size = "enormous",
+    size = "large",
     srcs = ["tests/test_supported_spaces.py"],
     args = ["TestSupportedSpacesPG"]
 )
@@ -1488,7 +1488,7 @@ py_test(
     name = "tests/test_supported_spaces_off_policy",
     main = "tests/test_supported_spaces.py",
     tags = ["tests_dir", "tests_dir_S"],
-    size = "enormous",
+    size = "medium",
     srcs = ["tests/test_supported_spaces.py"],
     args = ["TestSupportedSpacesOffPolicy"]
 )
@@ -1497,7 +1497,7 @@ py_test(
     name = "tests/test_supported_spaces_evolution_algos",
     main = "tests/test_supported_spaces.py",
     tags = ["tests_dir", "tests_dir_S"],
-    size = "large",
+    size = "medium",
     srcs = ["tests/test_supported_spaces.py"],
     args = ["TestSupportedSpacesEvolutionAlgos"]
 )
