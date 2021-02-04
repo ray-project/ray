@@ -513,7 +513,6 @@ void CoreWorkerDirectTaskReceiver::RunNormalTasksFromQueue() {
   normal_scheduling_queue_->ScheduleRequests();
 }
 
-
 void CoreWorkerDirectTaskReceiver::HandleStealTasks(
     const rpc::StealTasksRequest &request, rpc::StealTasksReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
