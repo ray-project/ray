@@ -183,7 +183,6 @@ def main():
         return total
 
     start = time.time()
-
     output_sizes = simple_shuffle(
         input_reader=input_reader,
         input_num_partitions=num_partitions,
