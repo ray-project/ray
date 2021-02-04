@@ -1,5 +1,6 @@
-"""Tests launch and teardown of multiple Ray clusters using Kubernetes
+"""Tests launch, teardown, and update of multiple Ray clusters using Kubernetes
 operator."""
+import copy
 import sys
 import os
 import subprocess
@@ -129,6 +130,17 @@ class KubernetesOperatorTest(unittest.TestCase):
 
             # Four pods remain
             wait_for_pods(4)
+
+            # Check that cluster updates work: increase minWorkers to 3
+            # and check that one worker is created.
+            example_cluster_edit = copy.deepcopy(example_cluster_config)
+            example_cluster_edit["spec"]["podTypes"][1]["minWorkers"] = 3
+            yaml.dump(example_cluster_edit, example_cluster_file)
+            example_cluster_file.flush()
+            cm = f"kubectl -n {NAMESPACE} apply -f {example_cluster_file.name}"
+            subprocess.check_call(cm, shell=True)
+
+            wait_for_pods(5)
 
             # Delete the first cluster
             cmd = f"kubectl -n {NAMESPACE} delete -f"\

@@ -13,6 +13,16 @@ spec:
   - name: v1
     served: true
     storage: true
+    subresources:
+      status: {}
+    additionalPrinterColumns:
+      - name: status
+        type: string
+        description: Running or Error
+        jsonPath: .status.phase
+      - name: age
+        type: date
+        jsonPath: .metadata.creationTimestamp
     schema:
       openAPIV3Schema:
         description: Ray cluster configuration
@@ -20,6 +30,12 @@ spec:
         required:
         - spec
         properties:
+          status:
+            type: object
+            properties:
+              phase:
+                description: Running or Error
+                type: string
           spec:
             type: object
             required:
