@@ -100,6 +100,8 @@ class PullManager {
   /// The number of ongoing object pulls.
   int NumActiveRequests() const;
 
+  std::string DebugString() const;
+
  private:
   /// A helper structure for tracking information about each ongoing object pull.
   struct ObjectPullRequest {

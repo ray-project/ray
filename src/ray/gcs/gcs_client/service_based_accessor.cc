@@ -1102,7 +1102,7 @@ Status ServiceBasedObjectInfoAccessor::AsyncAddLocation(const ObjectID &object_i
 
 Status ServiceBasedObjectInfoAccessor::AsyncAddSpilledUrl(
     const ObjectID &object_id, const std::string &spilled_url,
-    const NodeID &spilled_node_id, const StatusCallback &callback) {
+    const NodeID &spilled_node_id, size_t object_size, const StatusCallback &callback) {
   RAY_LOG(DEBUG) << "Adding object spilled location, object id = " << object_id
                  << ", spilled_url = " << spilled_url
                  << ", job id = " << object_id.TaskId().JobId();
@@ -1110,6 +1110,7 @@ Status ServiceBasedObjectInfoAccessor::AsyncAddSpilledUrl(
   request.set_object_id(object_id.Binary());
   request.set_spilled_url(spilled_url);
   request.set_spilled_node_id(spilled_node_id.Binary());
+  request.set_size(object_size);
 
   auto operation = [this, request, callback](const SequencerDoneCallback &done_callback) {
     client_impl_->GetGcsRpcClient().AddObjectLocation(

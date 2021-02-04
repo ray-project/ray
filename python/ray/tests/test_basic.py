@@ -261,6 +261,9 @@ def test_ray_options(shutdown_only):
     "ray_start_cluster_head", [{
         "num_cpus": 0,
         "object_store_memory": 75 * 1024 * 1024,
+        "_system_config": {
+            "automatic_object_spilling_enabled": False
+        }
     }],
     indirect=True)
 def test_fetch_local(ray_start_cluster_head):
