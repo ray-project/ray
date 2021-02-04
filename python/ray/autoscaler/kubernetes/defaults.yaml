@@ -3,11 +3,11 @@ cluster_name: example-cluster
 
 # The minimum number of workers nodes to launch in addition to the head
 # node. This number should be >= 0.
-min_workers: 0
+min_workers: 2
 
 # The maximum number of workers nodes to launch in addition to the head
 # node. This takes precedence over min_workers.
-max_workers: 2
+max_workers: 3
 
 # The autoscaler will scale up the cluster faster with higher upscaling speed.
 # E.g., if the task requires adding more nodes then autoscaler will gradually
@@ -78,11 +78,11 @@ provider:
             # NOTE: If you're running multiple Ray clusters with services
             # on one Kubernetes cluster, they must have unique service
             # names.
-            name: ray-head
+            name: example-cluster-ray-head
         spec:
             # This selector must match the head node pod's selector below.
             selector:
-                component: ray-head
+                component: example-cluster-ray-head
             ports:
                 - name: client
                   protocol: TCP
@@ -93,22 +93,6 @@ provider:
                   port: 8265
                   targetPort: 8265
 
-      # Service that maps to the worker nodes of the Ray cluster.
-      - apiVersion: v1
-        kind: Service
-        metadata:
-            # NOTE: If you're running multiple Ray clusters with services
-            # in one Kubernetes namespace, they must have unique service
-            # names.
-            name: ray-workers
-        spec:
-            # This selector must match the worker node pods' selector below.
-            selector:
-                component: ray-worker
-            ports:
-                - protocol: TCP
-                  port: 8000
-                  targetPort: 8000
 
 # Kubernetes pod config for the head node pod.
 head_node:
@@ -116,12 +100,12 @@ head_node:
     kind: Pod
     metadata:
         # Automatically generates a name for the pod with this prefix.
-        generateName: ray-head-
+        generateName: example-cluster-ray-head-
 
         # Must match the head node service selector above if a head node
         # service is required.
         labels:
-            component: ray-head
+            component: example-cluster-ray-head
     spec:
         # Change this if you altered the autoscaler_service_account above
         # or want to provide your own.
@@ -177,7 +161,7 @@ head_node:
                   # cause problems for other pods.
                   memory: 2Gi
           env:
-              # Used in Ray client start commmands
+              # Used in Ray client start commmand
               - name: POD_IP
                 valueFrom:
                     fieldRef:
@@ -189,7 +173,7 @@ worker_nodes:
     kind: Pod
     metadata:
         # Automatically generates a name for the pod with this prefix.
-        generateName: ray-worker-
+        generateName: example-cluster-ray-worker-
 
         # Must match the worker node service selector above if a worker node
         # service is required.
@@ -236,12 +220,6 @@ worker_nodes:
                   # This memory limit will be detected by ray and split into
                   # 30% for plasma, and 70% for workers.
                   memory: 2Gi
-          env:
-              # Used in Ray client start commmand
-              - name: POD_IP
-                valueFrom:
-                    fieldRef:
-                        fieldPath: status.podIP
 
 # Files or directories to copy to the head and worker nodes. The format is a
 # dictionary from REMOTE_PATH: LOCAL_PATH, e.g.
@@ -281,8 +259,8 @@ worker_setup_commands: []
 # Note dashboard-host is set to 0.0.0.0 so that kubernetes can port forward.
 head_start_ray_commands:
     - ray stop
-    - ulimit -n 65536; ray start --head --dashboard-host 0.0.0.0
-    - python -m ray.util.client.server --redis-address=$POD_IP:6379 &
+    - ulimit -n 65536; ray start --head --autoscaling-config=~/ray_bootstrap_config.yaml --dashboard-host 0.0.0.0
+    - python -m ray.util.client.server --redis-address=0.0.0.0:6379 &
 
 # Command to start ray on worker nodes. You don't need to change this.
 worker_start_ray_commands:
