@@ -37,7 +37,6 @@ PROVIDER_CONFIG = {
     "namespace": RAY_NAMESPACE
 }
 
-
 root_logger = logging.getLogger("ray")
 root_logger.setLevel(logging.getLevelName("DEBUG"))
 
@@ -62,8 +61,8 @@ def cr_to_config(cluster_resource: Dict[str, Any]) -> Dict[str, Any]:
     autoscaler."""
     config = translate(cluster_resource["spec"], dictionary=CONFIG_FIELDS)
     cluster_name = cluster_resource["metadata"]["name"]
-    config["available_node_types"] = get_node_types(
-        cluster_resource, cluster_name)
+    config["available_node_types"] = get_node_types(cluster_resource,
+                                                    cluster_name)
     config["cluster_name"] = cluster_name
     config["provider"] = get_provider_config(cluster_name)
     return config
@@ -111,8 +110,8 @@ def head_service_selector(cluster_name):
     return {"component": f"{cluster_name}-ray-head"}
 
 
-def get_cluster_owner_reference(
-        cluster_resource: Dict[str, Any], cluster_name: str) -> Dict[str, Any]:
+def get_cluster_owner_reference(cluster_resource: Dict[str, Any],
+                                cluster_name: str) -> Dict[str, Any]:
     return {
         "apiVersion": cluster_resource["apiVersion"],
         "kind": cluster_resource["kind"],

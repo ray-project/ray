@@ -101,12 +101,10 @@ class KubernetesOperatorTest(unittest.TestCase):
             # Fill image fields
             podTypes = example_cluster_config["spec"]["podTypes"]
             podTypes2 = example_cluster2_config["spec"]["podTypes"]
-            pod_specs = ([operator_config[-1]["spec"]]
-                         + [job_config["spec"]["template"]["spec"]]
-                         + [podType["podConfig"]["spec"]
-                            for podType in podTypes]
-                         + [podType["podConfig"]["spec"]
-                            for podType in podTypes2])
+            pod_specs = ([operator_config[-1]["spec"]] + [
+                job_config["spec"]["template"]["spec"]
+            ] + [podType["podConfig"]["spec"] for podType in podTypes
+                 ] + [podType["podConfig"]["spec"] for podType in podTypes2])
             for pod_spec in pod_specs:
                 pod_spec["containers"][0]["image"] = IMAGE
                 pod_spec["containers"][0]["imagePullPolicy"] = "IfNotPresent"
@@ -157,8 +155,7 @@ class KubernetesOperatorTest(unittest.TestCase):
 
             cmd = f"kubectl -n {NAMESPACE} get pods --no-headers -o"\
                 " custom-columns=\":metadata.name\""
-            pods = subprocess.check_output(
-                cmd, shell=True).decode().split()
+            pods = subprocess.check_output(cmd, shell=True).decode().split()
             job_pod = [pod for pod in pods if "job" in pod].pop()
             time.sleep(10)
             wait_for_job(job_pod)
@@ -167,8 +164,7 @@ class KubernetesOperatorTest(unittest.TestCase):
 
             # Check that cluster updates work: increase minWorkers to 3
             # and check that one worker is created.
-            example_cluster_edit = copy.deepcopy(
-                example_cluster_config)
+            example_cluster_edit = copy.deepcopy(example_cluster_config)
             example_cluster_edit["spec"]["podTypes"][1]["minWorkers"] = 3
             yaml.dump(example_cluster_edit, example_cluster_file)
             example_cluster_file.flush()

@@ -56,3 +56,26 @@ provider:
             kind: Role
             name: autoscaler
             apiGroup: rbac.authorization.k8s.io
+
+    services:
+      # Service that maps to the head node of the Ray cluster.
+      - apiVersion: v1
+        kind: Service
+        metadata:
+            # NOTE: If you're running multiple Ray clusters with services
+            # on one Kubernetes cluster, they must have unique service
+            # names.
+            name: example-cluster-ray-head
+        spec:
+            # This selector must match the head node pod's selector below.
+            selector:
+                component: example-cluster-ray-head
+            ports:
+                - name: client
+                  protocol: TCP
+                  port: 50051
+                  targetPort: 50051
+                - name: dashboard
+                  protocol: TCP
+                  port: 8265
+                  targetPort: 8265
