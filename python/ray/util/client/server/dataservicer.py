@@ -3,7 +3,7 @@ import logging
 import grpc
 import sys
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable
 from threading import Lock
 
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
@@ -17,10 +17,12 @@ logger = logging.getLogger(__name__)
 
 
 class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
-    def __init__(self, basic_service: "RayletServicer"):
+    def __init__(self, basic_service: "RayletServicer",
+                 ray_connect_handler: Callable):
         self.basic_service = basic_service
         self._clients_lock = Lock()
         self._num_clients = 0  # guarded by self._clients_lock
+        self.ray_connect_handler = ray_connect_handler
 
     def Datapath(self, request_iterator, context):
         metadata = {k: v for k, v in context.invocation_metadata()}
@@ -31,6 +33,8 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
         logger.info(f"New data connection from client {client_id}")
         try:
             with self._clients_lock:
+                if self._num_clients == 0 and not ray.is_initialized():
+                    self.ray_connect_handler()
                 self._num_clients += 1
             for req in request_iterator:
                 resp = None
@@ -63,8 +67,12 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
         finally:
             logger.info(f"Lost data connection from client {client_id}")
             self.basic_service.release_all(client_id)
+
             with self._clients_lock:
                 self._num_clients -= 1
+
+            if self._num_clients == 0:
+                ray.shutdown()
 
     def _build_connection_response(self):
         with self._clients_lock:

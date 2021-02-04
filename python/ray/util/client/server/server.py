@@ -422,10 +422,11 @@ class ClientServerHandle:
         return getattr(self.grpc_server, attr)
 
 
-def serve(connection_str):
+def serve(connection_str, ray_connect_handler):
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
     task_servicer = RayletServicer()
-    data_servicer = DataServicer(task_servicer)
+    data_servicer = DataServicer(
+        task_servicer, ray_connect_handler=ray_connect_handler)
     logs_servicer = LogstreamServicer()
     ray_client_pb2_grpc.add_RayletDriverServicer_to_server(
         task_servicer, server)
@@ -477,18 +478,21 @@ def main():
         help="Password for connecting to Redis")
     args = parser.parse_args()
     logging.basicConfig(level="INFO")
-    if args.redis_address:
-        if args.redis_password:
-            ray.init(
-                address=args.redis_address,
-                _redis_password=args.redis_password)
+
+    def ray_connect_handler():
+        if args.redis_address:
+            if args.redis_password:
+                ray.init(
+                    address=args.redis_address,
+                    _redis_password=args.redis_password)
+            else:
+                ray.init(address=args.redis_address)
         else:
-            ray.init(address=args.redis_address)
-    else:
-        ray.init()
+            ray.init()
+
     hostport = "%s:%d" % (args.host, args.port)
     logger.info(f"Starting Ray Client server on {hostport}")
-    server = serve(hostport)
+    server = serve(hostport, ray_connect_handler)
     try:
         while True:
             time.sleep(1000)
