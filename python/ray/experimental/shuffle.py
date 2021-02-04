@@ -147,7 +147,7 @@ class _StatusTracker:
         print("Num reduce tasks finished", self.num_reduce)
 
 
-if __name__ == "__main__":
+def main():
     import argparse
     import numpy as np
     import time
@@ -197,3 +197,7 @@ if __name__ == "__main__":
     print()
     print("Shuffled", int(sum(output_sizes) / (1024 * 1024)), "MiB in", delta,
           "seconds")
+
+
+if __name__ == "__main__":
+    main()
