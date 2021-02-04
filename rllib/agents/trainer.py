@@ -671,7 +671,6 @@ class Trainer(Trainable):
                     extra_config["in_evaluation"] is True
                 extra_config.update({
                     "batch_mode": "complete_episodes",
-                    "rollout_fragment_length": 1,
                     "in_evaluation": True,
                 })
                 logger.debug(
