@@ -1,4 +1,5 @@
 # coding: utf-8
+import os
 import unittest
 from unittest.mock import patch
 
@@ -18,6 +19,11 @@ from ray.tune.utils.placement_groups import PlacementGroupFactory
 
 class RayTrialExecutorTest(unittest.TestCase):
     def setUp(self):
+        # Wait up to five seconds for placement groups when starting a trial
+        os.environ["TUNE_PLACEMENT_GROUP_WAIT_S"] = "5"
+        # Block for results even when placement groups are pending
+        os.environ["TUNE_TRIAL_STARTUP_GRACE_PERIOD"] = "0"
+
         self.trial_executor = RayTrialExecutor(queue_trials=False)
         ray.init(num_cpus=2, ignore_reinit_error=True)
         _register_all()  # Needed for flaky tests
@@ -242,6 +248,9 @@ class RayExecutorQueueTest(unittest.TestCase):
         self.assertTrue(self.trial_executor.has_resources(gpu_only.resources))
 
     def testHeadBlocking(self):
+        # Once resource requests are deprecated, remove this test
+        os.environ["TUNE_PLACEMENT_GROUP_AUTO_DISABLED"] = "1"
+
         def create_trial(cpu, gpu=0):
             return Trial("__fake", resources=Resources(cpu=cpu, gpu=gpu))
 
