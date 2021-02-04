@@ -8,15 +8,12 @@ from threading import Lock
 
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
+from ray.util.client import CURRENT_PROTOCOL_VERSION
 
 if TYPE_CHECKING:
     from ray.util.client.server.server import RayletServicer
 
 logger = logging.getLogger(__name__)
-
-# This version string is incremented to indicate breaking changes in the
-# protocol that require upgrading the client version.
-CURRENT_PROTOCOL_VERSION = "2020-02-01"
 
 
 class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
