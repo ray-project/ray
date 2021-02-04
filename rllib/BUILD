@@ -1466,14 +1466,14 @@ py_test(
     args = ["TestSupportedMultiAgentPG"]
 )
 
-#py_test(
-#    name = "tests/test_supported_multi_agent_off_policy",
-#    main = "tests/test_supported_multi_agent.py",
-#    tags = ["tests_dir", "tests_dir_S"],
-#    size = "medium",
-#    srcs = ["tests/test_supported_multi_agent.py"],
-#    args = ["TestSupportedMultiAgentOffPolicy"]
-#)
+py_test(
+    name = "tests/test_supported_multi_agent_off_policy",
+    main = "tests/test_supported_multi_agent.py",
+    tags = ["tests_dir", "tests_dir_S"],
+    size = "medium",
+    srcs = ["tests/test_supported_multi_agent.py"],
+    args = ["TestSupportedMultiAgentOffPolicy"]
+)
 
 py_test(
     name = "tests/test_supported_spaces_pg",
