@@ -12,7 +12,7 @@ kubectl -n ray port-forward service/example-cluster-ray-head 50051:50051.
 
 Set the constant LOCAL_PORT below to the local port being forwarded.
 """
-LOCAL_PORT = 50050
+LOCAL_PORT = 50049
 
 
 @ray.remote
