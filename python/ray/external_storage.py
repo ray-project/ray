@@ -322,7 +322,6 @@ class ExternalStorageSmartOpenImpl(ExternalStorage):
         # Setup boto3. It is essential because if we don't create boto
         # session, smart_open will create a new session for every
         # open call.
-        import boto3
         self.s3 = boto3.resource(service_name="s3")
 
         # smart_open always seek to 0 if we don't set this argument.
