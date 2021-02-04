@@ -65,6 +65,12 @@ spec:
               # allocate a very large object store in each pod that may
               # cause problems for other pods.
               memory: 512Mi
+          env:
+            # Used in Ray client start commmands
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
   - name: worker-nodes
     # Minimum number of Ray workers of this Pod type.
     minWorkers: 1
@@ -73,8 +79,6 @@ spec:
     # User-specified custom resources for use by Ray 
     rayResources: {"Custom1": 1, "is_spot": 1}
     # Optional commands to run before starting the Ray runtime.
-    setupCommands: 
-      - pip install numpy # Example
     podConfig:
       apiVersion: v1
       kind: Pod
@@ -118,9 +122,10 @@ spec:
   # Commands to start Ray on the head node. You don't need to change this.
   # Note dashboard-host is set to 0.0.0.0 so that Kubernetes can port forward.
   headStartRayCommands:
-      - ray stop
-      - ulimit -n 65536; ray start --head --no-monitor --port=6379 --object-manager-port=8076  --dashboard-host 0.0.0.0
+    - ray stop
+    - ulimit -n 65536; ray start --head --no-monitor --dashboard-host 0.0.0.0
+    - python -m ray.util.client.server --redis-address=$POD_IP:6379 &
   # Commands to start Ray on worker nodes. You don't need to change this.
   workerStartRayCommands:
-      - ray stop
-      - ulimit -n 65536; ray start --address=$RAY_HEAD_IP:6379 --object-manager-port=8076
+    - ray stop
+    - ulimit -n 65536; ray start --address=$RAY_HEAD_IP:6379

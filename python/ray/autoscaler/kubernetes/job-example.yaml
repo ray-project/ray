@@ -1,0 +1,25 @@
+# Job to run a Ray program in its own pod. Assumes that a Ray cluster is already
+# running.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  namespace: ray
+  generateName: ray-test-job-
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: ray
+          image: rayproject/ray:nightly
+          imagePullPolicy: IfNotPresent
+          command: [ "python" ]
+          args:
+            - "$EXAMPLE_PROGRAM_PATH"
+          env:
+            - name: EXAMPLE_PROGRAM_PATH
+              value: "anaconda3/lib/python3.7/site-packages/ray/autoscaler/kubernetes/job_example.py"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 512Mi

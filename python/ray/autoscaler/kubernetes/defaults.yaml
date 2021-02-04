@@ -1,5 +1,5 @@
-# An unique identifier for the head node and workers of this cluster.
-cluster_name: default
+# A unique identifier for the head node and workers of this cluster.
+cluster_name: example-cluster
 
 # The minimum number of workers nodes to launch in addition to the head
 # node. This number should be >= 0.
@@ -84,16 +84,21 @@ provider:
             selector:
                 component: ray-head
             ports:
-                - protocol: TCP
-                  port: 8000
-                  targetPort: 8000
+                - name: client
+                  protocol: TCP
+                  port: 50051
+                  targetPort: 50051
+                - name: dashboard
+                  protocol: TCP
+                  port: 8265
+                  targetPort: 8265
 
       # Service that maps to the worker nodes of the Ray cluster.
       - apiVersion: v1
         kind: Service
         metadata:
             # NOTE: If you're running multiple Ray clusters with services
-            # on one Kubernetes cluster, they must have unique service
+            # in one Kubernetes namespace, they must have unique service
             # names.
             name: ray-workers
         spec:
@@ -148,11 +153,9 @@ head_node:
           command: ["/bin/bash", "-c", "--"]
           args: ["trap : TERM INT; sleep infinity & wait;"]
           ports:
-              - containerPort: 6379 # Redis port.
-              - containerPort: 6380 # Redis port.
-              - containerPort: 6381 # Redis port.
-              - containerPort: 12345 # Ray internal communication.
-              - containerPort: 12346 # Ray internal communication.
+          - containerPort: 6379  # Redis port
+          - containerPort: 50051  # Used by Ray Client
+          - containerPort: 8265  # Used by Ray Dashboard
 
           # This volume allocates shared memory for Ray to use for its plasma
           # object store. If you do not provide this, Ray will fall back to
@@ -174,13 +177,11 @@ head_node:
                   # cause problems for other pods.
                   memory: 2Gi
           env:
-              # This is used in the head_start_ray_commands below so that
-              # Ray can spawn the correct number of processes. Omitting this
-              # may lead to degraded performance.
-              - name: MY_CPU_REQUEST
+              # Used in Ray client start commmands
+              - name: POD_IP
                 valueFrom:
-                    resourceFieldRef:
-                        resource: requests.cpu
+                    fieldRef:
+                        fieldPath: status.podIP
 
 # Kubernetes pod config for worker node pods.
 worker_nodes:
@@ -220,9 +221,6 @@ worker_nodes:
           # explicitly killed.
           command: ["/bin/bash", "-c", "--"]
           args: ["trap : TERM INT; sleep infinity & wait;"]
-          ports:
-              - containerPort: 12345 # Ray internal communication.
-              - containerPort: 12346 # Ray internal communication.
 
           # This volume allocates shared memory for Ray to use for its plasma
           # object store. If you do not provide this, Ray will fall back to
@@ -239,13 +237,11 @@ worker_nodes:
                   # 30% for plasma, and 70% for workers.
                   memory: 2Gi
           env:
-              # This is used in the head_start_ray_commands below so that
-              # Ray can spawn the correct number of processes. Omitting this
-              # may lead to degraded performance.
-              - name: MY_CPU_REQUEST
+              # Used in Ray client start commmand
+              - name: POD_IP
                 valueFrom:
-                    resourceFieldRef:
-                        resource: requests.cpu
+                    fieldRef:
+                        fieldPath: status.podIP
 
 # Files or directories to copy to the head and worker nodes. The format is a
 # dictionary from REMOTE_PATH: LOCAL_PATH, e.g.
@@ -266,16 +262,6 @@ cluster_synced_files: []
 # should sync to the worker node continuously
 file_mounts_sync_continuously: False
 
-# Patterns for files to exclude when running rsync up or rsync down.
-# This is not supported on kubernetes.
-# rsync_exclude: []
-
-# Pattern files to use for filtering out files when running rsync up or rsync down. The file is searched for
-# in the source directory and recursively through all subdirectories. For example, if .gitignore is provided
-# as a value, the behavior will match git's behavior for finding and using .gitignore files.
-# This is not supported on kubernetes.
-# rsync_filter: []
-
 
 # List of commands that will be run before `setup_commands`. If docker is
 # enabled, these commands will run outside the container and before docker
@@ -292,12 +278,13 @@ head_setup_commands: []
 worker_setup_commands: []
 
 # Command to start ray on the head node. You don't need to change this.
-# Note webui-host is set to 0.0.0.0 so that kubernetes can port forward.
+# Note dashboard-host is set to 0.0.0.0 so that kubernetes can port forward.
 head_start_ray_commands:
     - ray stop
-    - ulimit -n 65536; ray start --head --num-cpus=$MY_CPU_REQUEST --port=6379 --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml --dashboard-host 0.0.0.0
+    - ulimit -n 65536; ray start --head --dashboard-host 0.0.0.0
+    - python -m ray.util.client.server --redis-address=$POD_IP:6379 &
 
 # Command to start ray on worker nodes. You don't need to change this.
 worker_start_ray_commands:
     - ray stop
-    - ulimit -n 65536; ray start --num-cpus=$MY_CPU_REQUEST --address=$RAY_HEAD_IP:6379 --object-manager-port=8076
+    - ulimit -n 65536; ray start --address=$RAY_HEAD_IP:6379
