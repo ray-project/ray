@@ -1,27 +1,70 @@
+"""A simple distributed shuffle implementation in Ray.
+
+This utility provides a `simple_shuffle` function that can be used to
+redistribute M input partitions into N output partitions. It does this with
+a single wave of shuffle map tasks followed by a single wave of shuffle reduce
+tasks. Each shuffle map task generates O(N) output objects, and each shuffle
+reduce task consumes O(M) input objects, for a total of O(N*M) objects.
+
+To try an example 10GB shuffle, run:
+
+    $ python -m ray.experimental.shuffle \
+        --num-partitions=50 --partition-size=200e6 \
+        --object-store-memory=1e9
+
+This will print out some statistics on the shuffle execution.
+"""
+
 from typing import List, Iterable, Tuple, Callable, Any
 
 import ray
 from ray import ObjectRef
 
 # TODO(ekl) why doesn't TypeVar() deserialize properly in Ray?
+# The type produced by the input reader function.
 InType = Any
+# The type produced by the output writer function.
 OutType = Any
+# Integer identifying the partition number.
 PartitionID = int
 
 
 class ObjectStoreWriter:
+    """This class is used to stream shuffle map outputs to the object store.
+
+    It can be subclassed to optimize writing (e.g., batching together small
+    records into larger objects).
+    """
+
     def __init__(self):
         self.results = []
 
-    def add(self, data: InType) -> None:
-        self.results.append(ray.put(data))
+    def add(self, item: InType) -> None:
+        """Queue a single item to be written to the object store.
+
+        This base implementation immediately writes each given item to the
+        object store as a standalone object.
+        """
+        self.results.append(ray.put(item))
 
     def finish(self) -> List[ObjectRef]:
+        """Return list of object refs representing written items."""
         return self.results
 
 
 def round_robin_partitioner(input_stream: Iterable[InType], num_partitions: int
                             ) -> Iterable[Tuple[PartitionID, InType]]:
+    """Round robin partitions items from the input reader.
+
+    You can write custom partitioning functions for your use case.
+
+    Args:
+        input_stream: Iterator over items from the input reader.
+        num_partitions: Number of output partitions.
+
+    Yields:
+        Tuples of (partition id, input item).
+    """
     i = 0
     for item in input_stream:
         yield (i, item)
@@ -39,6 +82,26 @@ def simple_shuffle(
             PartitionID]] = round_robin_partitioner,
         object_store_writer: ObjectStoreWriter = ObjectStoreWriter,
 ) -> List[OutType]:
+    """Simple distributed shuffle in Ray.
+
+    Args:
+        input_reader: Function that generates the input items for a
+            partition (e.g., data records).
+        input_num_partitions: The number of input partitions.
+        output_num_partitions: The desired number of output partitions.
+        output_writer: Function that consumes a iterator of items for a
+            given output partition. It returns a single value that will be
+            collected across all output partitions.
+        partitioner: Partitioning function to use. Defaults to round-robin
+            partitioning of input items.
+        object_store_writer: Class used to write input items to the
+            object store in an efficient way. Defaults to a naive
+            implementation that writes each input record as one object.
+
+    Returns:
+        List of outputs from the output writers.
+    """
+
     @ray.remote(num_returns=output_num_partitions)
     def shuffle_map(i: PartitionID) -> List[List[ObjectRef]]:
         writers = [object_store_writer() for _ in range(output_num_partitions)]
