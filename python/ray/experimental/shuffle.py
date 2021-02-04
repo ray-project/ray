@@ -186,6 +186,7 @@ def main():
     def output_writer(i: PartitionID,
                       shuffle_inputs: List[ObjectRef]) -> OutType:
         total = 0
+        # TODO(ekl) using ray.wait can be more efficient.
         for obj_ref in shuffle_inputs:
             arr = ray.get(obj_ref)
             total += arr.size * arr.itemsize
