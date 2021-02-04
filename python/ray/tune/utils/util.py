@@ -501,7 +501,7 @@ def wait_for_gpu(gpu_id=None, util_limit=0.01, retry=20,
     if GPUtil is None:
         raise RuntimeError(
             "GPUtil must be installed if calling `wait_for_gpu`.")
-    if not gpu_id:
+    if gpu_id is None:
         gpu_id_list = ray.get_gpu_ids()
         if not gpu_id_list:
             raise RuntimeError(f"No GPU ids found from {ray.get_gpu_ids()}. "
