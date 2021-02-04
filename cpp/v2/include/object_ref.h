@@ -21,7 +21,7 @@ template <typename T> struct ObjectRef {
 
   auto Get() const {
     //TODO
-    return T{};
+    return t_; // Just for test.
   }
 
   T t_;

@@ -16,6 +16,7 @@
 #include "object_ref.h"
 #include "ray_register.h"
 #include "function_traits.h"
+#include "absl/utility/utility.h"
 
 namespace ray {
 
@@ -35,7 +36,9 @@ template <typename F> struct NormalTask {
     (void)tp;
 
     using R = typename function_traits<F>::return_type;
-    return ObjectRef<R>{};
+    return get_result<R>(tp);
+    // R result = absl::apply(f_, tp);// Just for test.
+    // return ObjectRef<R>{result};
   }
 
   auto Remote() {
@@ -43,13 +46,35 @@ template <typename F> struct NormalTask {
     // send function name and arguments to the remote node
 
     using R = std::result_of_t<decltype(f_)()>;
-    return ObjectRef<R>{};
+    return get_result<R>();
   }
 
   absl::string_view func_name_;
   const F &f_;
 
 private:
+  template<typename R>
+  std::enable_if_t<std::is_void<R>::value, ObjectRef<R>> get_result() {
+    f_();
+    return ObjectRef<R>{};
+  }
+
+  template<typename R>
+  std::enable_if_t<!std::is_void<R>::value, ObjectRef<R>> get_result() {
+    return ObjectRef<R>{f_()};
+  }
+
+  template<typename R, typename Tuple>
+  std::enable_if_t<std::is_void<R>::value, ObjectRef<R>> get_result(const Tuple& tp) {
+    absl::apply(f_, tp);// Just for test.
+    return ObjectRef<R>{};
+  }
+
+  template<typename R, typename Tuple>
+  std::enable_if_t<!std::is_void<R>::value, ObjectRef<R>> get_result(const Tuple& tp) {
+    return ObjectRef<R>{absl::apply(f_, tp)};
+  }
+
   template <typename OriginTuple, typename BareInput, typename InputTuple>
   std::enable_if_t<std::is_same<OriginTuple, BareInput>::value, OriginTuple>
   get_arguments(const InputTuple &input_tp) {

@@ -100,6 +100,7 @@ cc_library(
         "@boost//:any",
         "@boost//:parameter",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/utility",
         "@com_google_absl//absl/synchronization",
         "@msgpack",
     ],

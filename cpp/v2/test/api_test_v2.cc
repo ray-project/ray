@@ -17,6 +17,13 @@ int bar(int a){
   return a;
 }
 
+namespace my_namespace {
+  int bar(int a){
+    std::cout<<"bar in namespace"<<", arg: "<<a<<"\n";
+    return a + 1;
+  }
+}
+
 int add(int a, int b) {
   return a + b;
 }
@@ -61,7 +68,7 @@ struct Base{
   }
 };
 
-RAY_REGISTER(hello, bar, add, &Base::foo, &Base::bar,
+RAY_REGISTER(hello, bar, add, my_namespace::bar, &Base::foo, &Base::bar,
              RayFunc(overload_func),
              RayFunc(overload_func, int),
              RayMemberFunc(&Base::overload_func, cv_none, int),
@@ -142,15 +149,46 @@ TEST(RayApiTestV2, NormalTask) {
   obj.Get();
 
   auto obj1 = ray::Task(bar).Remote(1);
-  EXPECT_EQ(obj1.Get(), 0);
+  EXPECT_EQ(obj1.Get(), 1);
 
   EXPECT_THROW(ray::Task(not_registered_func).Remote(), std::invalid_argument);
 
   auto obj2 = ray::Task(RayFunc(overload_func, int)).Remote(1);
-  EXPECT_EQ(obj2.Get(), 0);
+  EXPECT_EQ(obj2.Get(), 1);
 
-  EXPECT_EQ(ray::Task(add).Remote(2, 3).Get(), 0);
-  EXPECT_EQ(ray::Task(add).Remote(ray::Put(1), 3).Get(), 0);
-  EXPECT_EQ(ray::Task(add).Remote(2, ray::Put(1)).Get(), 0);
+  EXPECT_EQ(ray::Task(add).Remote(2, 3).Get(), 5);
+  EXPECT_EQ(ray::Task(add).Remote(ray::Put(1), 3).Get(), 3);
+  EXPECT_EQ(ray::Task(add).Remote(2, ray::Put(1)).Get(), 2);
   EXPECT_EQ(ray::Task(add).Remote(ray::Put(1), ray::Put(2)).Get(), 0);
+}
+
+TEST(RayApiTestV2, NamespaceNormalTask) {
+  auto obj1 = ray::Task(bar).Remote(2);
+  EXPECT_EQ(obj1.Get(), 2);
+
+  auto obj2 = ray::Task(my_namespace::bar).Remote(2);
+  EXPECT_EQ(obj2.Get(), 3);
+
+  EXPECT_EQ(ray::Task(bar).Remote(2).Get(), 2);
+  EXPECT_EQ(ray::Task(my_namespace::bar).Remote(2).Get(), 3);
+}
+
+TEST(RayApiTestV2, OverlaodNormalTask) {
+  auto obj = ray::Task(RayFunc(overload_func)).Remote();
+  EXPECT_EQ(obj.Get(), 0);
+
+  auto obj1 = ray::Task(RayFunc(overload_func, int)).Remote(2);
+  EXPECT_EQ(obj1.Get(), 2);
+}
+
+TEST(RayApiTestV2, CreateActor) {
+}
+
+TEST(RayApiTestV2, ActorTask) {
+}
+
+TEST(RayApiTestV2, PolymorphicActorTask) {
+}
+
+TEST(RayApiTestV2, OverloadActorTask) {
 }
