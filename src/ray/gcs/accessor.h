@@ -565,7 +565,7 @@ class NodeResourceInfoAccessor {
   virtual void AsyncReReportResourceUsage() = 0;
 
   /// Return resources in last report. Used by light heartbeat.
-  std::shared_ptr<SchedulingResources> &GetLastResourceUsage() {
+  const std::shared_ptr<SchedulingResources> &GetLastResourceUsage() {
     return last_resource_usage_;
   }
 
