@@ -15,12 +15,12 @@ To try an example 10GB shuffle, run:
 This will print out some statistics on the shuffle execution such as:
 
     --- Aggregate object store stats across all nodes ---
-    Plasma memory usage 801 MiB, 21 objects, 84.0% full
-    Spilled 915 MiB, 24 objects, avg write throughput 1306 MiB/s
-    Restored 152 MiB, 4 objects, avg read throughput 2584 MiB/s
-    Objects consumed by Ray tasks: 953 MiB.
+    Plasma memory usage 0 MiB, 0 objects, 0.0% full
+    Spilled 9487 MiB, 2487 objects, avg write throughput 1023 MiB/s
+    Restored 9487 MiB, 2487 objects, avg read throughput 1358 MiB/s
+    Objects consumed by Ray tasks: 9537 MiB.
 
-    Shuffled 953 MiB in 0.8846073150634766 seconds
+    Shuffled 9536 MiB in 16.579771757125854 seconds
 """
 
 from typing import List, Iterable, Tuple, Callable, Any
