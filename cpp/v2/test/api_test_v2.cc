@@ -48,13 +48,14 @@ struct Base{
   Base() =default;
   Base(int){}
   Base(int, ObjectRef<int>){}
+  ~Base() = default;
 
   static Base Create(int){
     return {};
   }
 
-  int bar(int i){
-    std::cout<<"bar\n";
+  virtual int bar(int i){
+    std::cout<<"bar in Base\n";
     return i;
   }
   int foo(int i){
@@ -66,6 +67,10 @@ struct Base{
     std::cout<<"Base::overload_func one argument\n";
     return i;
   }
+  int overload_func(int i) const {
+    std::cout<<"Base::overload_func one argument\n";
+    return i;
+  }
   int overload_func(int i, int j){
     std::cout<<"Base::overload_func two arguments\n";
     return i + j;
@@ -73,6 +78,13 @@ struct Base{
   int overload_func(int i, int j, int k){
     std::cout<<"Base::overload_func two arguments\n";
     return i + j + k;
+  }
+};
+
+struct Derived : public Base{
+  int bar(int i) override {
+    std::cout<<"bar in Derived\n";
+    return i+1;
   }
 };
 
@@ -204,13 +216,46 @@ TEST(RayApiTestV2, CreateActor) {
 }
 
 TEST(RayApiTestV2, ActorTask) {
-}
+  auto obj = ray::Actor<Base>().Remote().Task(&Base::bar).Remote(1);
+  EXPECT_EQ(obj.Get(), 1);
 
-TEST(RayApiTestV2, ActorTaskObjectRef) {
+  //Pass ObjectRef<int> to bar
+  auto obj2 = ray::Actor<Base>().Remote().Task(&Base::bar).Remote(ObjectRef<int>{2});
+  EXPECT_EQ(obj2.Get(), 2);
+
+  //Overload function
+  auto obj3 = ray::Actor<Base>()
+                  .Remote()
+                  .Task(RayMemberFunc(&Base::overload_func, cv_none, int))
+                  .Remote(ObjectRef<int>{1});
+  EXPECT_EQ(obj3.Get(), 1);
+
+  auto obj4 = ray::Actor<Base>()
+                  .Remote()
+                  .Task(RayMemberFunc(&Base::overload_func, cv_none, int, int))
+                  .Remote(1, ObjectRef<int>{2});
+
+  EXPECT_EQ(obj4.Get(), 3);
+
+  auto obj5 = ray::Actor<Base>()
+                  .Remote()
+                  .Task(RayMemberFunc(&Base::overload_func, cv_none, int, int))
+                  .Remote(1, 2);
+
+  EXPECT_EQ(obj5.Get(), 3);
+
+  auto obj6 = ray::Actor<Base>()
+                  .Remote()
+                  .Task(RayMemberFunc(&Base::overload_func, cv_none, int, int))
+                  .Remote(ObjectRef<int>{2}, 1);
+
+  EXPECT_EQ(obj6.Get(), 3);
 }
 
 TEST(RayApiTestV2, PolymorphicActorTask) {
-}
+  auto base_obj = ray::Actor<Base>().Remote().Task(&Base::bar).Remote(1);
+  EXPECT_EQ(base_obj.Get(), 1);
 
-TEST(RayApiTestV2, OverloadActorTask) {
+  auto derived_obj = ray::Actor<Derived>().Remote().Task(&Base::bar).Remote(1);
+  EXPECT_EQ(derived_obj.Get(), 2);
 }

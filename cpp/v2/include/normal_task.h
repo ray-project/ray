@@ -16,6 +16,7 @@
 #include "object_ref.h"
 #include "ray_register.h"
 #include "function_traits.h"
+#include "util.h"
 #include "absl/utility/utility.h"
 
 namespace ray {
@@ -29,6 +30,10 @@ template <typename F> struct NormalTask {
     using input_args_tuple =
         std::tuple<std::remove_const_t<std::remove_reference_t<Arg>>,
                    std::remove_const_t<std::remove_reference_t<Args>>...>;
+
+    static_assert(std::tuple_size<args_tuple>::value ==
+                      std::tuple_size<input_args_tuple>::value,
+                  "arguments not match");
 
     auto tp = get_arguments<args_tuple, input_args_tuple>(
         std::make_tuple(arg, args...));
@@ -73,42 +78,6 @@ private:
   template<typename R, typename Tuple>
   std::enable_if_t<!std::is_void<R>::value, ObjectRef<R>> get_result(const Tuple& tp) {
     return ObjectRef<R>{absl::apply(f_, tp)};
-  }
-
-  template <typename OriginTuple, typename BareInput, typename InputTuple>
-  std::enable_if_t<std::is_same<OriginTuple, BareInput>::value, OriginTuple>
-  get_arguments(const InputTuple &input_tp) {
-    return input_tp;
-  }
-
-  template <typename OriginTuple, typename BareInput, typename InputTuple>
-  std::enable_if_t<!std::is_same<OriginTuple, BareInput>::value, OriginTuple>
-  get_arguments(const InputTuple &input_tp) {
-    OriginTuple tp;
-    apply(tp, input_tp);
-    return tp;
-  }
-
-  template <class OriginTuple, class Tuple>
-  constexpr decltype(auto) apply(OriginTuple &origin, Tuple &&tp) {
-    apply_impl(origin, std::forward<Tuple>(tp),
-               std::make_index_sequence<
-                   std::tuple_size<std::remove_reference_t<Tuple>>::value>{});
-  }
-
-  template <class OriginTuple, class Tuple, std::size_t... I>
-  constexpr decltype(auto) apply_impl(OriginTuple &origin, Tuple &&tp,
-                                      std::index_sequence<I...>) {
-    (void)std::initializer_list<int>{
-        (std::get<I>(origin) =
-             transform<std::tuple_element_t<I, OriginTuple>>(std::get<I>(tp)),
-         0)...};
-  }
-
-  template <typename R, typename T> R transform(T t) { return R{t}; }
-
-  template <typename R, typename T> T transform(const ObjectRef<T> &t) {
-    return t.Get();
   }
 };
 
