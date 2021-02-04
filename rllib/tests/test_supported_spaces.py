@@ -88,19 +88,18 @@ def check_support(alg, config, train=True, check_bounds=False, tfe=False):
 
     frameworks = ("tf", "torch")
     if tfe:
-        frameworks += ("tfe", )
+        frameworks += ("tf2", "tfe", )
     for _ in framework_iterator(config, frameworks=frameworks):
-        # Check all action spaces (using a discrete obs-space).
-        for a_name in ACTION_SPACES_TO_TEST.keys():
-            _do_check(alg, config, a_name, "discrete")
-        # Check all obs spaces (using a supported action-space).
-        for o_name in OBSERVATION_SPACES_TO_TEST.keys():
-            # We already tested discrete observation spaces against all action
-            # spaces above -> skip.
-            if o_name == "discrete":
-                continue
-            a_name = "discrete" if alg not in ["DDPG", "SAC"] else "vector"
+        # Zip through action- and obs-spaces.
+        for a_name, o_name in zip(ACTION_SPACES_TO_TEST.keys(),
+                                  OBSERVATION_SPACES_TO_TEST.keys()):
             _do_check(alg, config, a_name, o_name)
+        # Do the remaining obs spaces.
+        assert len(OBSERVATION_SPACES_TO_TEST) >= len(ACTION_SPACES_TO_TEST)
+        for i, o_name in enumerate(OBSERVATION_SPACES_TO_TEST.keys()):
+            if i < len(ACTION_SPACES_TO_TEST):
+                continue
+            _do_check(alg, config, "discrete", o_name)
 
 
 class TestSupportedSpacesPG(unittest.TestCase):
