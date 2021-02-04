@@ -88,7 +88,7 @@ def check_support(alg, config, train=True, check_bounds=False, tfe=False):
 
     frameworks = ("tf", "torch")
     if tfe:
-        frameworks += ("tf2", "tfe", )
+        frameworks += ("tf2", "tfe")
     for _ in framework_iterator(config, frameworks=frameworks):
         # Zip through action- and obs-spaces.
         for a_name, o_name in zip(ACTION_SPACES_TO_TEST.keys(),
