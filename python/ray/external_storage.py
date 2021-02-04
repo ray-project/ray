@@ -308,13 +308,13 @@ class ExternalStorageSmartOpenImpl(ExternalStorage):
                  override_transport_params: dict = None):
         try:
             from smart_open import open  # noqa
-            import boto3 # noqa
+            import boto3  # noqa
         except ModuleNotFoundError as e:
             raise ModuleNotFoundError(
                 "Smart open is chosen to be a object spilling "
                 "external storage, but smart_open and boto3 "
                 f"is not downloaded. Original error: {e}")
-        
+
         self.uri = uri.strip("/")
         self.prefix = prefix
         self.override_transport_params = override_transport_params or {}
