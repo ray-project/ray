@@ -2114,7 +2114,7 @@ py_test(
     tags = ["examples", "examples_T"],
     size = "medium",
     srcs = ["examples/trajectory_view_api.py"],
-    args = ["--as-test", "--framework=tf", "--stop-reward=80.0"]
+    args = ["--as-test", "--framework=tf", "--stop-reward=100.0"]
 )
 
 py_test(
@@ -2123,7 +2123,7 @@ py_test(
     tags = ["examples", "examples_T"],
     size = "medium",
     srcs = ["examples/trajectory_view_api.py"],
-    args = ["--as-test", "--framework=torch", "--stop-reward=80.0"]
+    args = ["--as-test", "--framework=torch", "--stop-reward=100.0"]
 )
 
 py_test(

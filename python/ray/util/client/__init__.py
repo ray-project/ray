@@ -5,6 +5,10 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+# This version string is incremented to indicate breaking changes in the
+# protocol that require upgrading the client version.
+CURRENT_PROTOCOL_VERSION = "2020-02-01"
+
 
 class RayAPIStub:
     """This class stands in as the replacement API for the `import ray` module.
@@ -35,6 +39,9 @@ class RayAPIStub:
             conn_str: Connection string, in the form "[host]:port"
             secure: Whether to use a TLS secured gRPC channel
             metadata: gRPC metadata to send on connect
+            connection_retries: number of connection attempts to make
+            ignore_version: whether to ignore Python or Ray version mismatches.
+                This should only be used for debugging purposes.
 
         Returns:
             Dictionary of connection info, e.g., {"num_clients": 1}.
@@ -66,13 +73,22 @@ class RayAPIStub:
             self.disconnect()
             raise
 
-    def _check_versions(self, conn_info, ignore_version: bool) -> None:
+    def _check_versions(self, conn_info: Dict[str, Any],
+                        ignore_version: bool) -> None:
         local_major_minor = f"{sys.version_info[0]}.{sys.version_info[1]}"
         if not conn_info["python_version"].startswith(local_major_minor):
             version_str = f"{local_major_minor}.{sys.version_info[2]}"
             msg = "Python minor versions differ between client and server:" + \
                   f" client is {version_str}," + \
                   f" server is {conn_info['python_version']}"
+            if ignore_version:
+                logger.warning(msg)
+            else:
+                raise RuntimeError(msg)
+        if CURRENT_PROTOCOL_VERSION < conn_info["protocol_version"]:
+            msg = "Client Ray installation out of date:" + \
+                  f" client is {CURRENT_PROTOCOL_VERSION}," + \
+                  f" server is {conn_info['protocol_version']}"
             if ignore_version:
                 logger.warning(msg)
             else:
