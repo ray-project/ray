@@ -252,3 +252,11 @@ TEST(RayApiTestV2, PolymorphicActorTask) {
   auto derived_obj = ray::Actor<Derived>().Remote().Task(&Base::bar).Remote(1);
   EXPECT_EQ(derived_obj.Get(), 2);
 }
+
+TEST(RayApiTestV2, TaskByName) {
+  int r = ray::Task("bar").Remote<int>(1).Get();
+  EXPECT_EQ(r, 1);
+
+  int r1 = ray::Actor<Base>().Remote().Task("&Base::bar").Remote<int>(2).Get();
+  EXPECT_EQ(r1, 2);
+}

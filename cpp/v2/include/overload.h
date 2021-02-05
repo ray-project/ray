@@ -55,6 +55,7 @@ struct underload : underload_free<Ts...>,
   using underload<cv_const, Ts...>::operator();
   using underload<cv_volatile, Ts...>::operator();
   using underload<cv_cv, Ts...>::operator();
+  static constexpr bool is_overload_v = true;
 };
 
 //

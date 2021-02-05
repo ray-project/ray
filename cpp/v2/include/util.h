@@ -57,4 +57,19 @@ inline static constexpr decltype(auto) apply_impl(OriginTuple &origin, Tuple &&t
            transform<std::tuple_element_t<I, OriginTuple>>(std::get<I>(tp)),
        0)...};
 }
+
+template <class F, class T, class Tuple, std::size_t... I>
+inline static constexpr decltype(auto)
+apply_func_impl(const F &f, T &t, Tuple &&tp, std::index_sequence<I...>) {
+  return (t.*f)(std::get<I>(std::forward<Tuple>(tp))...);
+}
+
+template <class F, class T, class Tuple>
+inline static constexpr decltype(auto) apply_func(const F &f, T &t,
+                                                  Tuple &&tp) {
+  return apply_func_impl(
+      f, t, std::forward<Tuple>(tp),
+      std::make_index_sequence<
+          std::tuple_size<std::remove_reference_t<Tuple>>::value>{});
+}
 }  // namespace ray

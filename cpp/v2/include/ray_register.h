@@ -57,6 +57,16 @@ static inline absl::string_view get_function_name(F f) {
   return it->second;
 }
 
+static inline boost::any get_function(absl::string_view func_name) {
+  auto it = ray::g_name_to_func_map.find(func_name);
+  if (it == ray::g_name_to_func_map.end()) {
+    std::cout << "func not exist\n";
+    return {};
+  }
+
+  return it->second;
+}
+
 template <typename F, typename... Args>
 inline static auto call_func(F f, Args &&...args) {
   if (f == nullptr) {

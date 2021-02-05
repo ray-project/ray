@@ -95,12 +95,50 @@ private:
   }
 };
 
+template <typename T> struct ActorTask0 {
+  template <typename R, typename... Args> auto Remote(Args... args) {
+    // TODO
+    // send function name and arguments to the remote node.
+
+    //    using FN = R(T::*)(Args...);
+    //    FN f = std::any_cast<FN>(any);
+    //    return apply(f, t, tp);
+
+    using FN = R (T::*)(Args...);
+    FN f = boost::any_cast<FN>(f_);
+    auto result = apply_func(f, t_, std::make_tuple(args...));
+    return ObjectRef<R>{result};
+  }
+
+  template <typename R> auto Remote() {
+    // TODO
+    // send function name and arguments to the remote node
+
+    // using R = std::result_of_t<decltype(f_)()>;
+    return ObjectRef<R>{};
+  }
+
+  T t_;
+  boost::any f_;
+};
+
 template <typename T> struct ActorHandle {
 
-  template<typename F>
-  auto Task(F f){
-    //check if is exist
+  template <typename F, typename = std::enable_if_t<
+                            std::is_function<F>::value ||
+                            std::is_member_function_pointer<F>::value>>
+  auto Task(F f) {
+    // check if is exist
     return ActorTask<T, F>{t_, f};
+  }
+
+  auto Task(absl::string_view func_name) {
+    auto any = get_function(func_name);
+    if (any.empty()) {
+      throw std::invalid_argument("no such function!");
+    }
+
+    return ActorTask0<T>{t_, any};
   }
 
   T t_;//Just for test
