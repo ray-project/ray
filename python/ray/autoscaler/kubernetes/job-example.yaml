@@ -10,9 +10,8 @@ spec:
       restartPolicy: Never
       containers:
         - name: ray
-          image: ray-dev
-          #image: rayproject/ray:nightly
-          imagePullPolicy: IfNotPresent
+          image: rayproject/ray:nightly
+          imagePullPolicy: Always
           command: ["python"]
           args:
             - "$(EXAMPLE_PROGRAM_PATH)"
