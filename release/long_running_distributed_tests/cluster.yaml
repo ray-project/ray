@@ -6,7 +6,7 @@ max_workers: 3
 idle_timeout_minutes: 15
 
 docker:
-    image: rayproject/ray-ml:latest-gpu
+    image: rayproject/ray-ml:1.2.0-gpu
     container_name: ray_container
     pull_before_run: True
 
