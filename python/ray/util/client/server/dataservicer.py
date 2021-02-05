@@ -9,6 +9,7 @@ from threading import Lock
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 from ray.util.client import CURRENT_PROTOCOL_VERSION
+from ray._private.client_mode_hook import disable_client_hook
 
 if TYPE_CHECKING:
     from ray.util.client.server.server import RayletServicer
@@ -33,8 +34,9 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
         logger.info(f"New data connection from client {client_id}")
         try:
             with self._clients_lock:
-                if self._num_clients == 0 and not ray.is_initialized():
-                    self.ray_connect_handler()
+                with disable_client_hook():
+                    if self._num_clients == 0 and not ray.is_initialized():
+                        self.ray_connect_handler()
                 self._num_clients += 1
             for req in request_iterator:
                 resp = None
@@ -72,7 +74,8 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                 self._num_clients -= 1
 
             if self._num_clients == 0:
-                ray.shutdown()
+                with disable_client_hook():
+                    ray.shutdown()
 
     def _build_connection_response(self):
         with self._clients_lock:
