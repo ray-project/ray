@@ -511,19 +511,23 @@ def wait_for_gpu(gpu_id=None,
                                "Did you set Tune resources correctly?")
         gpu_id = gpu_id_list[0]
 
-    gpu_attr = 'id'
+    gpu_attr = "id"
     if isinstance(gpu_id, str):
-        try:
+        if gpu_id.isdigit():
             # GPU ID returned from `ray.get_gpu_ids()` is a str representation
-            # of the int GPU ID, so check for this case
+            # of the int GPU ID
             gpu_id = int(gpu_id)
-        except ValueError:
-            # Could not coerce gpu_id to int, so assume UUID and compare against `uuid` attribute
-            # e.g., 'GPU-04546190-b68d-65ac-101b-035f8faed77d'
-            gpu_attr = 'uuid'
+        else:
+            # Could not coerce gpu_id to int, so assume UUID
+            # and compare against `uuid` attribute e.g.,
+            # 'GPU-04546190-b68d-65ac-101b-035f8faed77d'
+            gpu_attr = "uuid"
+    elif not isinstance(gpu_id, int):
+        raise ValueError(f"gpu_id ({type(gpu_id)}) must be type str/int.")
 
     def gpu_id_fn(g):
-        # Returns either `g.id` or `g.uuid` depending on the format of the input `gpu_id`
+        # Returns either `g.id` or `g.uuid` depending on
+        # the format of the input `gpu_id`
         return getattr(g, gpu_attr)
 
     gpu_ids = {gpu_id_fn(g) for g in GPUtil.getGPUS()}
@@ -534,7 +538,8 @@ def wait_for_gpu(gpu_id=None,
             "UUID (e.g., 'GPU-04546190-b68d-65ac-101b-035f8faed77d').")
 
     for i in range(int(retry)):
-        gpu_object = next(g for g in GPUtil.getGPUs() if gpu_id_fn(g) == gpu_id)
+        gpu_object = next(
+            g for g in GPUtil.getGPUs() if gpu_id_fn(g) == gpu_id)
         if gpu_object.memoryUtil > target_util:
             logger.info(f"Waiting for GPU util to reach {target_util}. "
                         f"Util: {gpu_object.memoryUtil:0.3f}")
