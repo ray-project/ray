@@ -23,7 +23,7 @@ and connect Modin to Ray.
 Using Modin with Ray's autoscaler
 ---------------------------------
 
-In order to use Modin with Ray's autoscaler, you need to ensure that the
+In order to use Modin with :ref:`Ray's autoscaler <cluster-index>`, you need to ensure that the
 correct dependencies are installed at startup. Modin's repository has an
 example `yaml file and set of tutorial notebooks`_ to ensure that the Ray
 cluster has the correct dependencies. Once the cluster is up, connect Modin
@@ -43,7 +43,7 @@ will be able to connect to and use the Ray cluster.
 Modin with the Ray Client
 -------------------------
 
-When using Modin with the Ray Client, it is important to ensure that the
+When using Modin with the :ref:`Ray Client <ray-client>`, it is important to ensure that the
 cluster has all dependencies installed.
 
 .. code-block:: python
