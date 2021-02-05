@@ -1,5 +1,5 @@
-Modin
-=====
+Modin (Pandas on Ray)
+=====================
 
 Modin_, previously Pandas on Ray, is a dataframe manipulation library that
 allows users to speed up their pandas workloads by acting as a drop-in
