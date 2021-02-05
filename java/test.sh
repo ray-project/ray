@@ -78,7 +78,7 @@ run_testng java -cp "$ROOT_DIR"/../bazel-bin/java/all_tests_deploy.jar org.testn
 echo Finished cluster mode test round $round
 date
 round=$((round+1))
-if [ $round -gt $MAX_ROUNDS ]; then
+if (( $round > $MAX_ROUNDS )); then
   break
 fi
 done
