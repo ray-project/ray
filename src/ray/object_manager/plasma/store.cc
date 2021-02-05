@@ -1002,14 +1002,14 @@ void PlasmaStore::ProcessCreateRequests() {
 
   if (retry_after_ms > 0) {
     // Try to process requests later, after space has been made.
-    create_timer_ = execute_after(
-        io_context_,
-        [this]() {
-          RAY_LOG(DEBUG) << "OOM timer finished, retrying create requests";
-          create_timer_ = nullptr;
-          ProcessCreateRequests();
-        },
-        retry_after_ms);
+    create_timer_ = execute_after(io_context_,
+                                  [this]() {
+                                    RAY_LOG(DEBUG)
+                                        << "OOM timer finished, retrying create requests";
+                                    create_timer_ = nullptr;
+                                    ProcessCreateRequests();
+                                  },
+                                  retry_after_ms);
   }
 }
 

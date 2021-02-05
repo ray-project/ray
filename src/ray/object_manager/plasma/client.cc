@@ -19,15 +19,17 @@
 
 #include "ray/object_manager/plasma/client.h"
 
-#include <algorithm>
-#include <boost/asio.hpp>
 #include <cstring>
+
+#include <algorithm>
 #include <deque>
 #include <mutex>
 #include <tuple>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
+
+#include <boost/asio.hpp>
 
 #include "ray/object_manager/plasma/connection.h"
 #include "ray/object_manager/plasma/plasma.h"
