@@ -503,34 +503,38 @@ def wait_for_gpu(gpu_id=None,
     if GPUtil is None:
         raise RuntimeError(
             "GPUtil must be installed if calling `wait_for_gpu`.")
+
     if gpu_id is None:
         gpu_id_list = ray.get_gpu_ids()
         if not gpu_id_list:
-            raise RuntimeError(f"No GPU ids found from {ray.get_gpu_ids()}. "
+            raise RuntimeError("No GPU ids found from `ray.get_gpu_ids()`. "
                                "Did you set Tune resources correctly?")
         gpu_id = gpu_id_list[0]
 
-    if isinstance(gpu_id, int):
-        list_gpu_ids = [g.id for g in GPUtil.getGPUs()]
-        if gpu_id not in list_gpu_ids:
-            raise ValueError(
-                f"{gpu_id} (int) not found in GPU ids: {list_gpu_ids}. "
-                "wait_for_gpu takes either int (gpu id) or str (gpu uuid).")
-    elif isinstance(gpu_id, str):
-        list_uuids = [g.uuid for g in GPUtil.getGPUs()]
-        if gpu_id not in list_uuids:
-            raise ValueError(
-                f"{gpu_id} (str) not found in GPU uuids: {list_uuids}. "
-                "wait_for_gpu takes either int (gpu id) or str (gpu uuid).")
-    else:
-        raise ValueError(f"gpu_id must be int or str -- got ({type(gpu_id)})")
+    gpu_attr = 'id'
+    if isinstance(gpu_id, str):
+        try:
+            # GPU ID returned from `ray.get_gpu_ids()` is a str representation
+            # of the int GPU ID, so check for this case
+            gpu_id = int(gpu_id)
+        except ValueError:
+            # Could not coerce gpu_id to int, so assume UUID and compare against `uuid` attribute
+            # e.g., 'GPU-04546190-b68d-65ac-101b-035f8faed77d'
+            gpu_attr = 'uuid'
+
+    def gpu_id_fn(g):
+        # Returns either `g.id` or `g.uuid` depending on the format of the input `gpu_id`
+        return getattr(g, gpu_attr)
+
+    gpu_ids = {gpu_id_fn(g) for g in GPUtil.getGPUS()}
+    if gpu_id not in gpu_ids:
+        raise ValueError(
+            f"{gpu_id} not found in set of available GPUs: {gpu_ids}. "
+            "`wait_for_gpu` takes either GPU ordinal ID (e.g., '0') or "
+            "UUID (e.g., 'GPU-04546190-b68d-65ac-101b-035f8faed77d').")
 
     for i in range(int(retry)):
-        if isinstance(gpu_id, int):
-            gpu_object = [g for g in GPUtil.getGPUs() if g.id == gpu_id][0]
-        else:
-            gpu_object = [g for g in GPUtil.getGPUs() if g.uuid == gpu_id][0]
-
+        gpu_object = next(g for g in GPUtil.getGPUs() if gpu_id_fn(g) == gpu_id)
         if gpu_object.memoryUtil > target_util:
             logger.info(f"Waiting for GPU util to reach {target_util}. "
                         f"Util: {gpu_object.memoryUtil:0.3f}")
