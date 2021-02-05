@@ -139,6 +139,7 @@ message ClusterInfoType {
     CLUSTER_RESOURCES = 2;
     AVAILABLE_RESOURCES = 3;
     RUNTIME_CONTEXT = 4;
+    IS_ALIVE = 5;
   }
 }
 

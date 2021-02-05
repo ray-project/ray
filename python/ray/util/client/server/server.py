@@ -104,6 +104,8 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             data = ray.nodes()
         elif request.type == ray_client_pb2.ClusterInfoType.IS_INITIALIZED:
             data = ray.is_initialized()
+        elif request.type == ray_client_pb2.ClusterInfoType.IS_ALIVE:
+            data = True
         else:
             raise TypeError("Unsupported cluster info type")
         return json.dumps(data)
