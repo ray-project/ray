@@ -57,11 +57,27 @@ if ! git diff --exit-code -- java src/ray/core_worker/lib/java; then
   exit 1
 fi
 
+# NOTE(kfstrom): Java test troubleshooting only.
+# Set MAX_ROUNDS to a big number (e.g. 1000) to run Java tests repeatedly.
+# You may also want to modify java/testng.xml to run only a subset of test cases.
+MAX_ROUNDS=1
+round=1
+while true; do
+echo Starting cluster mode test round $round
+
 echo "Running tests under cluster mode."
 # TODO(hchen): Ideally, we should use the following bazel command to run Java tests. However, if there're skipped tests,
 # TestNG will exit with code 2. And bazel treats it as test failure.
 # bazel test //java:all_tests --config=ci || cluster_exit_code=$?
 run_testng java -cp "$ROOT_DIR"/../bazel-bin/java/all_tests_deploy.jar org.testng.TestNG -d /tmp/ray_java_test_output "$ROOT_DIR"/testng.xml
+
+echo Finished cluster mode test round $round
+date
+round=$((round+1))
+if [ $round -gt $MAX_ROUNDS ]; then
+  break
+fi
+done
 
 echo "Running tests under single-process mode."
 # bazel test //java:all_tests --jvmopt="-Dray.run-mode=SINGLE_PROCESS" --config=ci || single_exit_code=$?
