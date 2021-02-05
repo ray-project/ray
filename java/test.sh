@@ -61,6 +61,10 @@ fi
 # Set MAX_ROUNDS to a big number (e.g. 1000) to run Java tests repeatedly.
 # You may also want to modify java/testng.xml to run only a subset of test cases.
 MAX_ROUNDS=1000
+if [ $MAX_ROUNDS -gt 1 ]; then
+  export RAY_BACKEND_LOG_LEVEL=debug
+fi
+
 round=1
 while true; do
 echo Starting cluster mode test round $round
