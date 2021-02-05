@@ -270,7 +270,7 @@ class RayTrialExecutor(TrialExecutor):
 
         _actor_cls = _class_cache.get(trial.get_trainable_cls())
         if trial.uses_placement_groups:
-            if not self._pg_manager.has_ready(trial):
+            if not self._pg_manager.has_ready(trial, update=True):
                 just_staged = False
                 if trial not in self._staged_trials:
                     if self._pg_manager.stage_trial_pg(trial):

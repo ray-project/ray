@@ -233,16 +233,19 @@ class PlacementGroupManager:
             num_gpus=num_gpus,
             resources=resources)
 
-    def has_ready(self, trial: "Trial") -> bool:
+    def has_ready(self, trial: "Trial", update: bool = False) -> bool:
         """Return True if placement group for trial is ready.
 
         Args:
             trial (Trial): :obj:`Trial` object.
+            update (bool): Update status first.
 
         Returns:
             Boolean.
 
         """
+        if update:
+            self.update_status()
         return bool(self._ready[trial.placement_group_factory])
 
     def trial_in_use(self, trial: "Trial"):
