@@ -237,7 +237,7 @@ class PlacementGroupManager:
         """Return True if placement group for trial is ready.
 
         Args:
-            trial (Trial): Trial object.
+            trial (Trial): :obj:`Trial` object.
 
         Returns:
             Boolean.
@@ -259,7 +259,7 @@ class PlacementGroupManager:
         group that is not yet being used by another trial.
 
         Args:
-            trial ("Trial"): "Trial" object.
+            trial ("Trial"): :obj:`Trial` object.
 
         Returns:
             PlacementGroup or None.
