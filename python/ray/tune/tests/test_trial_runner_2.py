@@ -133,6 +133,9 @@ class TrialRunnerTest2(unittest.TestCase):
         self.assertEqual(len(scheduler.errored_trials), 0)
 
     def testFailureRecoveryNodeRemoval(self):
+        # Node removal simulation only works with resource requests
+        os.environ["TUNE_PLACEMENT_GROUP_AUTO_DISABLED"] = "1"
+
         ray.init(num_cpus=1, num_gpus=1)
         searchalg, scheduler = create_mock_components()
 

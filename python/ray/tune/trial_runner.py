@@ -1107,7 +1107,6 @@ class TrialRunner:
                     trials=self._trials,
                     trial=trial)
                 error = True
-
         self.trial_executor.stop_trial(trial, error=error, error_msg=error_msg)
 
     def cleanup_trials(self):

@@ -33,11 +33,6 @@ BOTTLENECK_WARN_PERIOD_S = 60
 NONTRIVIAL_WAIT_TIME_THRESHOLD_S = 1e-3
 DEFAULT_GET_TIMEOUT = 60.0  # seconds
 TRIAL_CLEANUP_THRESHOLD = 100
-TUNE_RESULT_BUFFER_LENGTH = int(os.getenv("TUNE_RESULT_BUFFER_LENGTH", 1000))
-TUNE_RESULT_BUFFER_MIN_TIME_S = float(
-    os.getenv("TUNE_RESULT_BUFFER_MIN_TIME_S", 0.))
-TUNE_RESULT_BUFFER_MAX_TIME_S = float(
-    os.getenv("TUNE_RESULT_BUFFER_MAX_TIME_S", 100.))
 
 
 class _ActorClassCache:
@@ -187,6 +182,12 @@ class RayTrialExecutor(TrialExecutor):
             os.environ.get("TUNE_PLACEMENT_GROUP_WAIT_S", "-1"))
         if self._wait_for_pg < 0:
             self._wait_for_pg = None
+
+        self._buffer_length = int(os.getenv("TUNE_RESULT_BUFFER_LENGTH", 1000))
+        self._buffer_min_time_s = float(
+            os.getenv("TUNE_RESULT_BUFFER_MIN_TIME_S", 0.))
+        self._buffer_max_time_s = float(
+            os.getenv("TUNE_RESULT_BUFFER_MAX_TIME_S", 100.))
 
         self._last_resource_refresh = float("-inf")
         self._last_ip_refresh = float("-inf")
@@ -345,12 +346,12 @@ class RayTrialExecutor(TrialExecutor):
 
         assert trial.status == Trial.RUNNING, trial.status
         buffer_time_s = max(
-            TUNE_RESULT_BUFFER_MIN_TIME_S,
-            min(TUNE_RESULT_BUFFER_MAX_TIME_S,
+            self._buffer_min_time_s,
+            min(self._buffer_max_time_s,
                 len(self._running) // 10))
         with self._change_working_directory(trial):
-            if TUNE_RESULT_BUFFER_LENGTH > 1:
-                buffer_length = TUNE_RESULT_BUFFER_LENGTH
+            if self._buffer_length > 1:
+                buffer_length = self._buffer_length
                 if trial.checkpoint_freq > 0:
                     buffer_length = min(buffer_length, trial.checkpoint_freq)
 
@@ -386,6 +387,7 @@ class RayTrialExecutor(TrialExecutor):
         See `RayTrialExecutor.restore` for possible errors raised.
         """
         prior_status = trial.status
+        self.set_status(trial, Trial.PENDING)
         if runner is None:
             runner = self._setup_remote_runner(trial)
             if not runner:

@@ -599,9 +599,10 @@ class TrialRunnerTest3(unittest.TestCase):
         self.assertEqual(count_checkpoints(tmpdir), 2)
         shutil.rmtree(tmpdir)
 
-    @patch("ray.tune.ray_trial_executor.TUNE_RESULT_BUFFER_MIN_TIME_S", 0.5)
-    @patch("ray.tune.ray_trial_executor.TUNE_RESULT_BUFFER_LENGTH", 7)
     def testCheckpointFreqBuffered(self):
+        os.environ["TUNE_RESULT_BUFFER_LENGTH"] = "7"
+        os.environ["TUNE_RESULT_BUFFER_MIN_TIME_S"] = "1"
+
         def num_checkpoints(trial):
             return sum(
                 item.startswith("checkpoint_")
@@ -653,9 +654,10 @@ class TrialRunnerTest3(unittest.TestCase):
         trials2 = runner2.get_trials()
         self.assertEqual(ray.get(trials2[0].runner.get_info.remote()), 1)
 
-    @patch("ray.tune.ray_trial_executor.TUNE_RESULT_BUFFER_MIN_TIME_S", 1)
-    @patch("ray.tune.ray_trial_executor.TUNE_RESULT_BUFFER_LENGTH", 8)
     def testUserCheckpointBuffered(self):
+        os.environ["TUNE_RESULT_BUFFER_LENGTH"] = "8"
+        os.environ["TUNE_RESULT_BUFFER_MIN_TIME_S"] = "1"
+
         def num_checkpoints(trial):
             return sum(
                 item.startswith("checkpoint_")
