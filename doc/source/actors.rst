@@ -172,20 +172,15 @@ have these resources (see `configuration instructions
 
 .. note::
 
-  * If you do not specify CPU resources, by default, actor creation requires 0 cpu.
-.. tabs::
-  .. code-tab:: python
-
-    @ray.remote
-    class Actor:
-        pass
-    
-    a = Actor.remote() # By default, num_cpus=0 for actors.
-
   * If you specify resource requirements in an actor class's remote decorator,
-    then the actor will acquire those resources for its entire lifetime, 
-    even if it is not executing any methods. The actor will not acquire any 
-    additional resources when executing methods.
+    then the actor will acquire those resources for its entire lifetime (if you
+    do not specify CPU resources, the default is 1), even if it is not executing
+    any methods. The actor will not acquire any additional resources when
+    executing methods.
+  * If you do not specify any resource requirements in the actor class's remote
+    decorator, then by default, the actor will not acquire any resources for its
+    lifetime, but every time it executes a method, it will need to acquire 1 CPU
+    resource.
 
 
 .. tabs::
