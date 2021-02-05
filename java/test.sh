@@ -16,30 +16,27 @@ pushd "$ROOT_DIR"
   mvn -T16 checkstyle:check
 popd
 
-on_exit() {
-  exit_code=$?
-  if [ $exit_code -ne 0 ]; then
-    echo "Exit trap, printing ray logs"
-    cat /tmp/ray/session_latest/logs/*
-  fi
-}
-
-trap on_exit EXIT
-
 run_testng() {
+    local pid
     local exit_code
-    if "$@"; then
+    "$@" &
+    pid=$!
+    if wait $pid; then
         exit_code=0
     else
         exit_code=$?
     fi
     # exit_code == 2 means there are skipped tests.
     if [ $exit_code -ne 2 ] && [ $exit_code -ne 0 ] ; then
-        if [ $exit_code -gt 128 ] ; then
-            # Test crashed. Print the driver log for diagnosis.
-            cat /tmp/ray/session_latest/logs/java-core-driver-*
+        # Only print log files if it ran in cluster mode
+        if [[ ! "$*" =~ SINGLE_PROCESS ]]; then
+          if [ $exit_code -gt 128 ] ; then
+              # Test crashed. Print the driver log for diagnosis.
+              cat /tmp/ray/session_latest/logs/java-core-driver-*$pid*
+          fi
         fi
-        find . -name "hs_err_*log" -exec cat {} +
+        # Only print the hs_err_pid file of TestNG process
+        find . -name "hs_err_pid$pid.log" -exec cat {} +
         exit $exit_code
     fi
 }
