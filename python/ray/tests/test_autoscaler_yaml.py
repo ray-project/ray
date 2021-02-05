@@ -25,6 +25,7 @@ CONFIG_PATHS += recursive_fnmatch(
 def ignore_k8s_operator_configs(paths):
     return [
         path for path in paths if "kubernetes/operator_configs" not in path
+        and "kubernetes/job-example.yaml" not in path
     ]
 
 
@@ -43,7 +44,8 @@ class AutoscalingConfigTest(unittest.TestCase):
             try:
                 validate_config(config)
             except Exception:
-                self.fail("Config did not pass validation test!")
+                self.fail(
+                    f"Config {config_path} did not pass validation test!")
 
     @pytest.mark.skipif(
         sys.platform.startswith("win"), reason="Fails on Windows.")
