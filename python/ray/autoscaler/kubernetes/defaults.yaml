@@ -253,8 +253,7 @@ worker_setup_commands: []
 # Note dashboard-host is set to 0.0.0.0 so that kubernetes can port forward.
 head_start_ray_commands:
     - ray stop
-    - ulimit -n 65536; ray start --head --autoscaling-config=~/ray_bootstrap_config.yaml --dashboard-host 0.0.0.0
-    - python -m ray.util.client.server --redis-address=0.0.0.0:6379 &
+    - ulimit -n 65536; ray start --head --autoscaling-config=~/ray_bootstrap_config.yaml --dashboard-host 0.0.0.0 --ray-client-server-port 50051
 
 # Command to start ray on worker nodes. You don't need to change this.
 worker_start_ray_commands:
