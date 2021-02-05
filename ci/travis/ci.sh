@@ -170,6 +170,7 @@ test_python() {
       -python/ray/tests:test_stress_sharded  # timeout
       -python/ray/tests:test_k8s_cluster_launcher
       -python/ray/tests:test_k8s_operator_examples
+      -python/ray/tests:test_k8s_operator_mock
     )
   fi
   if [ 0 -lt "${#args[@]}" ]; then  # Any targets to test?
