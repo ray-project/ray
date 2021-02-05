@@ -121,7 +121,7 @@ class Worker:
             timeout = backoff(timeout)
 
         # If we made it through the loop without service_ready, it means
-        #  we've used up our retries and should error back to the user.
+        # we've used up our retries and should error back to the user.
         if not service_ready:
             raise ConnectionError("ray client connection timeout")
 
