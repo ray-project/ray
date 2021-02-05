@@ -62,6 +62,7 @@ def timed_tune_run(name: str,
         function_trainable,
         config=config,
         num_samples=num_samples,
+        raise_on_failed_trial=False,
         **run_kwargs)
     time_taken = time.monotonic() - start_time
 
