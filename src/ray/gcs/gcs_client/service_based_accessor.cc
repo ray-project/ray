@@ -707,6 +707,12 @@ Status ServiceBasedNodeResourceInfoAccessor::AsyncUpdateResources(
 Status ServiceBasedNodeResourceInfoAccessor::AsyncReportResourceUsage(
     const std::shared_ptr<rpc::ResourcesData> &data_ptr, const StatusCallback &callback) {
   absl::MutexLock lock(&mutex_);
+  last_resource_usage_->SetAvailableResources(
+      ResourceSet(MapFromProtobuf(data_ptr->resources_available())));
+  last_resource_usage_->SetTotalResources(
+      ResourceSet(MapFromProtobuf(data_ptr->resources_total())));
+  last_resource_usage_->SetLoadResources(
+      ResourceSet(MapFromProtobuf(data_ptr->resource_load())));
   cached_resource_usage_.mutable_resources()->CopyFrom(*data_ptr);
   client_impl_->GetGcsRpcClient().ReportResourceUsage(
       cached_resource_usage_,
@@ -1462,6 +1468,26 @@ Status ServiceBasedPlacementGroupInfoAccessor::AsyncGet(
         }
         RAY_LOG(DEBUG) << "Finished getting placement group info, placement group id = "
                        << placement_group_id;
+      });
+  return Status::OK();
+}
+
+Status ServiceBasedPlacementGroupInfoAccessor::AsyncGetByName(
+    const std::string &name,
+    const OptionalItemCallback<rpc::PlacementGroupTableData> &callback) {
+  RAY_LOG(DEBUG) << "Getting named placement group info, name = " << name;
+  rpc::GetNamedPlacementGroupRequest request;
+  request.set_name(name);
+  client_impl_->GetGcsRpcClient().GetNamedPlacementGroup(
+      request, [name, callback](const Status &status,
+                                const rpc::GetNamedPlacementGroupReply &reply) {
+        if (reply.has_placement_group_table_data()) {
+          callback(status, reply.placement_group_table_data());
+        } else {
+          callback(status, boost::none);
+        }
+        RAY_LOG(DEBUG) << "Finished getting named placement group info, status = "
+                       << status << ", name = " << name;
       });
   return Status::OK();
 }

@@ -398,10 +398,9 @@ as shown below.
 
 The dependencies required in the backend may be different than
 the dependencies installed in the driver program (the one running Serve API
-calls). In this case, you can use an
-:mod:`ImportedBackend <ray.serve.backends.ImportedBackend>` to specify a
-backend based on a class that is installed in the Python environment that
-the workers will run in. Example:
+calls). In this case, you can pass the backend in as an import path that will
+be imported in the Python environment in the workers, but not the driver.
+Example:
 
 .. literalinclude:: ../../../python/ray/serve/examples/doc/imported_backend.py
 

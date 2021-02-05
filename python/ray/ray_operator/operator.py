@@ -62,7 +62,8 @@ class RayCluster():
             no_restart=False,
             restart_only=False,
             yes=True,
-            no_config_cache=True)
+            no_config_cache=True,
+            no_monitor_on_head=True)
         self.write_config()
 
     def start_monitor(self) -> None:
