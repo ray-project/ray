@@ -160,12 +160,6 @@ head_node:
                   # allocate a very large object store in each pod that may
                   # cause problems for other pods.
                   memory: 2Gi
-          env:
-              # Used in Ray client start commmand
-              - name: POD_IP
-                valueFrom:
-                    fieldRef:
-                        fieldPath: status.podIP
 
 # Kubernetes pod config for worker node pods.
 worker_nodes:

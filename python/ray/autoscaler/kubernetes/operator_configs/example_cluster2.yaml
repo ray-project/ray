@@ -42,9 +42,9 @@ spec:
           command: ["/bin/bash", "-c", "--"]
           args: ['trap : TERM INT; sleep infinity & wait;']
           ports:
-          - containerPort: 6379 # Redis port.
-          - containerPort: 12345 # Ray internal communication.
-          - containerPort: 12346 # Ray internal communication.
+          - containerPort: 6379  # Redis port
+          - containerPort: 50051  # Used by Ray Client
+          - containerPort: 8265  # Used by Ray Dashboard
 
           # This volume allocates shared memory for Ray to use for its plasma
           # object store. If you do not provide this, Ray will fall back to
@@ -65,12 +65,6 @@ spec:
               # allocate a very large object store in each pod that may
               # cause problems for other pods.
               memory: 512Mi
-          env:
-            # Used in Ray client start commmands
-            - name: POD_IP
-              valueFrom:
-                fieldRef:
-                  fieldPath: status.podIP
   - name: worker-nodes
     # Minimum number of Ray workers of this Pod type.
     minWorkers: 1
@@ -97,9 +91,6 @@ spec:
           image: rayproject/ray:nightly
           command: ["/bin/bash", "-c", "--"]
           args: ["trap : TERM INT; sleep infinity & wait;"]
-          ports:
-          - containerPort: 12345 # Ray internal communication.
-          - containerPort: 12346 # Ray internal communication.
           # This volume allocates shared memory for Ray to use for its plasma
           # object store. If you do not provide this, Ray will fall back to
           # /tmp which cause slowdowns if is not a shared memory volume.
@@ -124,7 +115,7 @@ spec:
   headStartRayCommands:
     - ray stop
     - ulimit -n 65536; ray start --head --no-monitor --dashboard-host 0.0.0.0
-    - python -m ray.util.client.server --redis-address=$POD_IP:6379 &
+    - python -m ray.util.client.server --redis-address=0.0.0.0:6379 &
   # Commands to start Ray on worker nodes. You don't need to change this.
   workerStartRayCommands:
     - ray stop
