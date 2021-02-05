@@ -89,7 +89,7 @@ py_test_module_list(
     "test_component_failures.py",
     "test_coordinator_server.py",
     "test_dask_callback.py",
-    #"test_dask_scheduler.py", # Skipped 13943
+    "test_dask_scheduler.py",
     "test_debug_tools.py",
     "test_job.py",
     "test_k8s_operator_mock.py",
