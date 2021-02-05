@@ -71,8 +71,6 @@ void OldClusterResourceScheduler::FillResourceUsage(
       (*resources_data->mutable_resources_total())[resource_pair.first] =
           resource_pair.second;
     }
-    last_heartbeat_resources_->SetTotalResources(
-        ResourceSet(local_resources.GetTotalResources()));
   }
 
   if (!last_heartbeat_resources_->GetAvailableResources().IsEqual(
@@ -83,8 +81,6 @@ void OldClusterResourceScheduler::FillResourceUsage(
       (*resources_data->mutable_resources_available())[resource_pair.first] =
           resource_pair.second;
     }
-    last_heartbeat_resources_->SetAvailableResources(
-        ResourceSet(local_resources.GetAvailableResources()));
   }
 }
 

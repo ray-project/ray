@@ -111,7 +111,7 @@ class ServeController:
         while True:
             async with self.write_lock:
                 self.http_state.update()
-                await self.backend_state.update()
+                self.backend_state.update()
 
             await asyncio.sleep(CONTROL_LOOP_PERIOD_S)
 

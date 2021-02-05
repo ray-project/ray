@@ -13,6 +13,7 @@ from typing import Dict
 from typing import List
 from typing import Tuple
 from typing import Optional
+from typing import TYPE_CHECKING
 
 import grpc
 
@@ -22,11 +23,18 @@ import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 from ray.util.client.client_pickler import convert_to_arg
 from ray.util.client.client_pickler import dumps_from_client
 from ray.util.client.client_pickler import loads_from_server
+from ray.util.client.common import ClientStub
 from ray.util.client.common import ClientActorHandle
+from ray.util.client.common import ClientActorClass
+from ray.util.client.common import ClientRemoteFunc
 from ray.util.client.common import ClientActorRef
 from ray.util.client.common import ClientObjectRef
 from ray.util.client.dataclient import DataClient
 from ray.util.client.logsclient import LogstreamClient
+
+if TYPE_CHECKING:
+    from ray.actor import ActorClass
+    from ray.remote_function import RemoteFunction
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +70,7 @@ class Worker:
         self.channel = None
         self._conn_state = grpc.ChannelConnectivity.IDLE
         self._client_id = make_client_id()
+        self._converted: Dict[str, ClientStub] = {}
         if secure:
             credentials = grpc.ssl_channel_credentials()
             self.channel = grpc.secure_channel(conn_str, credentials)
@@ -101,17 +110,11 @@ class Worker:
                 # Note that channel_ready_future constitutes its own timeout,
                 # which is why we do not sleep here.
             except grpc.RpcError as e:
-                if e.code() == grpc.StatusCode.UNAVAILABLE:
-                    # UNAVAILABLE is gRPC's retryable error,
-                    # so we do that here.
-                    logger.info("Ray client server unavailable, "
-                                f"retrying in {timeout}s...")
-                    logger.debug(f"Received when checking init: {e.details()}")
-                    # Ray is not ready yet, wait a timeout
-                    time.sleep(timeout)
-                else:
-                    # Any other gRPC error gets a reraise
-                    raise e
+                logger.info("Ray client server unavailable, "
+                            f"retrying in {timeout}s...")
+                logger.debug(f"Received when checking init: {e.details()}")
+                # Ray is not ready yet, wait a timeout.
+                time.sleep(timeout)
             # Fallthrough, backoff, and retry at the top of the loop
             logger.info("Waiting for Ray to become ready on the server, "
                         f"retry in {timeout}s...")
@@ -145,6 +148,7 @@ class Worker:
             "python_version": data.python_version,
             "ray_version": data.ray_version,
             "ray_commit": data.ray_commit,
+            "protocol_version": data.protocol_version,
         }
 
     def get(self, vals, *, timeout: Optional[float] = None) -> Any:
@@ -172,7 +176,11 @@ class Worker:
         except grpc.RpcError as e:
             raise e.details()
         if not data.valid:
-            err = cloudpickle.loads(data.error)
+            try:
+                err = cloudpickle.loads(data.error)
+            except Exception:
+                logger.exception("Failed to deserialize {}".format(data.error))
+                raise
             logger.error(err)
             raise err
         return loads_from_server(data.data)
@@ -256,7 +264,12 @@ class Worker:
         except grpc.RpcError as e:
             raise decode_exception(e.details)
         if not ticket.valid:
-            raise cloudpickle.loads(ticket.error)
+            try:
+                raise cloudpickle.loads(ticket.error)
+            except Exception:
+                logger.exception("Failed to deserialize {}".format(
+                    ticket.error))
+                raise
         return ticket.return_ids
 
     def call_release(self, id: bytes) -> None:
@@ -366,6 +379,47 @@ class Worker:
 
     def is_connected(self) -> bool:
         return self._conn_state == grpc.ChannelConnectivity.READY
+
+    def _convert_actor(self, actor: "ActorClass") -> str:
+        """Register a ClientActorClass for the ActorClass and return a UUID"""
+        key = uuid.uuid4().hex
+        md = actor.__ray_metadata__
+        cls = md.modified_class
+        self._converted[key] = ClientActorClass(
+            cls,
+            options={
+                "max_restarts": md.max_restarts,
+                "max_task_retries": md.max_task_retries,
+                "num_cpus": md.num_cpus,
+                "num_gpus": md.num_gpus,
+                "memory": md.memory,
+                "object_store_memory": md.object_store_memory,
+                "resources": md.resources,
+                "accelerator_type": md.accelerator_type,
+            })
+        return key
+
+    def _convert_function(self, func: "RemoteFunction") -> str:
+        """Register a ClientRemoteFunc for the ActorClass and return a UUID"""
+        key = uuid.uuid4().hex
+        f = func._function
+        self._converted[key] = ClientRemoteFunc(
+            f,
+            options={
+                "num_cpus": func._num_cpus,
+                "num_gpus": func._num_gpus,
+                "max_calls": func._max_calls,
+                "max_retries": func._max_retries,
+                "resources": func._resources,
+                "accelerator_type": func._accelerator_type,
+                "num_returns": func._num_returns,
+                "memory": func._memory
+            })
+        return key
+
+    def _get_converted(self, key: str) -> "ClientStub":
+        """Given a UUID, return the converted object"""
+        return self._converted[key]
 
 
 def make_client_id() -> str:
