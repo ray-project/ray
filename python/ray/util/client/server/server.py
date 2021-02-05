@@ -459,6 +459,19 @@ def shutdown_with_server(server, _exiting_interpreter=False):
         ray.shutdown(_exiting_interpreter)
 
 
+def create_ray_handler(redis_address, redis_password):
+    def ray_connect_handler():
+        if redis_address:
+            if redis_password:
+                ray.init(address=redis_address, _redis_password=redis_password)
+            else:
+                ray.init(address=redis_address)
+        else:
+            ray.init()
+
+    return ray_connect_handler
+
+
 def main():
     import argparse
     parser = argparse.ArgumentParser()
@@ -479,16 +492,8 @@ def main():
     args = parser.parse_args()
     logging.basicConfig(level="INFO")
 
-    def ray_connect_handler():
-        if args.redis_address:
-            if args.redis_password:
-                ray.init(
-                    address=args.redis_address,
-                    _redis_password=args.redis_password)
-            else:
-                ray.init(address=args.redis_address)
-        else:
-            ray.init()
+    ray_connect_handler = create_ray_handler(args.redis_address,
+                                             args.redis_password)
 
     hostport = "%s:%d" % (args.host, args.port)
     logger.info(f"Starting Ray Client server on {hostport}")
