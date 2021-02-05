@@ -18,8 +18,7 @@ You can use Modin on Ray with your laptop or cluster. In this document,
 we show instructions for how to set up a Modin compatible Ray cluster
 and connect Modin to Ray.
 
-**Note: in previous versions of Modin you had to initialize Ray before
-importing Modin. This is no longer the case**
+.. note:: In previous versions of Modin, you had to initialize Ray before importing Modin. This is no longer the case.
 
 Using Modin with Ray's autoscaler
 ---------------------------------
