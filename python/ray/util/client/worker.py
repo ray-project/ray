@@ -83,7 +83,7 @@ class Worker:
         # looking like a gRPC connection, though it may be a proxy.
         conn_attempts = 0
         timeout = INITIAL_TIMEOUT_SEC
-        service_ready = False
+        ray_ready = False
         while conn_attempts < max(connection_retries, 1):
             conn_attempts += 1
             try:
@@ -94,16 +94,16 @@ class Worker:
                 # RayletDriverStub, allowing for unary requests.
                 self.server = ray_client_pb2_grpc.RayletDriverStub(
                     self.channel)
-                # Now the HTTP2 channel is ready, or proxied, but the
-                # servicer may not be ready. Call is_initialized() and if
-                # it throws, the servicer is not ready. On success, the
-                # `service_ready` result is checked.
-                service_ready = self.is_service_alive()
-                if service_ready:
-                    # Service is ready! Break out of the retry loop
-                    break
-                # Service is not ready yet, wait a timeout
-                time.sleep(timeout)
+                # # Now the HTTP2 channel is ready, or proxied, but the
+                # # servicer may not be ready. Call is_initialized() and if
+                # # it throws, the servicer is not ready. On success, the
+                # # `ray_ready` result is checked.
+                # ray_ready = self.is_initialized()
+                # if ray_ready:
+                #     # Ray is ready! Break out of the retry loop
+                #     break
+                # # Ray is not ready yet, wait a timeout
+                # time.sleep(timeout)
             except grpc.FutureTimeoutError:
                 logger.info(
                     f"Couldn't connect channel in {timeout} seconds, retrying")
@@ -120,10 +120,10 @@ class Worker:
                         f"retry in {timeout}s...")
             timeout = backoff(timeout)
 
-        # If we made it through the loop without service_ready, it means
-        # we've used up our retries and should error back to the user.
-        if not service_ready:
-            raise ConnectionError("ray client connection timeout")
+        # # If we made it through the loop without ray_ready it means we've used
+        # # up our retries and should error back to the user.
+        # if not ray_ready:
+        #     raise ConnectionError("ray client connection timeout")
 
         # Initialize the streams to finish protocol negotiation.
         self.data_client = DataClient(self.channel, self._client_id,
@@ -375,12 +375,6 @@ class Worker:
         if self.server is not None:
             return self.get_cluster_info(
                 ray_client_pb2.ClusterInfoType.IS_INITIALIZED)
-        return False
-
-    def is_service_alive(self) -> bool:
-        if self.server is not None:
-            return self.get_cluster_info(
-                ray_client_pb2.ClusterInfoType.IS_ALIVE)
         return False
 
     def is_connected(self) -> bool:
