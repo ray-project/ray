@@ -127,6 +127,9 @@ class RayTrialExecutorTest(unittest.TestCase):
         os.environ["TUNE_RESULT_BUFFER_LENGTH"] = f"{result_buffer_length}"
         os.environ["TUNE_RESULT_BUFFER_MIN_TIME_S"] = "1"
 
+        # Need a new trial executor so the ENV vars are parsed again
+        self.trial_executor = RayTrialExecutor(queue_trials=False)
+
         base = max(result_buffer_length, 1)
 
         trial = Trial("__fake")

@@ -354,7 +354,6 @@ class RayTrialExecutor(TrialExecutor):
                 buffer_length = self._buffer_length
                 if trial.checkpoint_freq > 0:
                     buffer_length = min(buffer_length, trial.checkpoint_freq)
-
                 remote = trial.runner.train_buffered.remote(
                     buffer_time_s, buffer_length)
             else:

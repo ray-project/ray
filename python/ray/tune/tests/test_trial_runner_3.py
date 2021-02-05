@@ -112,6 +112,7 @@ class TrialRunnerTest3(unittest.TestCase):
         self.assertEqual(trials[1].status, Trial.RUNNING)
         self.assertEqual(trials[-1].status, Trial.TERMINATED)
 
+        time.sleep(2)  # Wait for stopped placement group to free resources
         runner.step()
         self.assertEqual(trials[0].status, Trial.TERMINATED)
         self.assertEqual(trials[1].status, Trial.RUNNING)
