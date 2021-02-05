@@ -4,6 +4,7 @@ from typing import (List, Dict, Optional, Union)
 
 import ray
 from ray._raylet import PlacementGroupID, ObjectRef
+from ray.utils import hex_to_binary
 
 bundle_reservation_check = None
 
@@ -223,10 +224,15 @@ def get_placement_group(placement_group_name: str):
             "Please supply a non-empty value to get_placement_group")
     worker = ray.worker.global_worker
     worker.check_connected()
-    placement_group_id = ray.state.state.get_placement_group_by_name(
+    placement_group_info = ray.state.state.get_placement_group_by_name(
         placement_group_name)
-    return PlacementGroup(
-        placement_group_id) if placement_group_id is not None else None
+    if placement_group_info is None:
+        raise ValueError(
+            f"Failed to look up actor with name: {placement_group_name}")
+    else:
+        return PlacementGroup(
+            PlacementGroupID(
+                hex_to_binary(placement_group_info["placement_group_id"])))
 
 
 def placement_group_table(placement_group: PlacementGroup = None) -> list:

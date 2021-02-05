@@ -990,7 +990,7 @@ def test_raylet_crash_when_get(ray_start_regular):
 def test_connect_with_disconnected_node(shutdown_only):
     config = {
         "num_heartbeats_timeout": 50,
-        "raylet_heartbeat_timeout_milliseconds": 10,
+        "raylet_heartbeat_period_milliseconds": 10,
     }
     cluster = Cluster()
     cluster.add_node(num_cpus=0, _system_config=config)
@@ -1039,7 +1039,10 @@ def test_parallel_actor_fill_plasma_retry(ray_start_cluster_head):
 
 
 def test_fill_object_store_exception(shutdown_only):
-    ray.init(num_cpus=2, object_store_memory=10**8)
+    ray.init(
+        num_cpus=2,
+        object_store_memory=10**8,
+        _system_config={"automatic_object_spilling_enabled": False})
 
     @ray.remote
     def expensive_task():
@@ -1199,7 +1202,7 @@ def test_serialized_id(ray_start_cluster):
 def test_fate_sharing(ray_start_cluster, use_actors, node_failure):
     config = {
         "num_heartbeats_timeout": 10,
-        "raylet_heartbeat_timeout_milliseconds": 100,
+        "raylet_heartbeat_period_milliseconds": 100,
     }
     cluster = Cluster()
     # Head node with no resources.

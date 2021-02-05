@@ -147,7 +147,6 @@ cdef class GlobalStateAccessor:
         if result:
             return c_string(result.get().data(), result.get().size())
         return None
-    
     def get_placement_group_by_name(self, placement_group_name):
         cdef unique_ptr[c_string] result
         cdef c_string cplacement_group_name = placement_group_name

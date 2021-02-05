@@ -204,7 +204,7 @@ async def test_replica_set(ray_instance):
             return self._num_queries
 
     # We will test a scenario with two replicas in the replica set.
-    rs = ReplicaSet()
+    rs = ReplicaSet("my_backend")
     workers = [MockWorker.remote() for _ in range(2)]
     rs.set_max_concurrent_queries(1)
     rs.update_worker_replicas(workers)

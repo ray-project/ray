@@ -1,25 +1,36 @@
 {
-  "name": "client",
-  "version": "0.1.0",
+  "name": "ray-dashboard-client",
+  "version": "1.0.0",
   "private": true,
   "dependencies": {
     "@material-ui/core": "4.11.0",
     "@material-ui/icons": "^4.9.1",
     "@material-ui/lab": "^4.0.0-alpha.56",
+    "@material-ui/pickers": "^3.2.10",
     "@reduxjs/toolkit": "^1.3.1",
     "@types/classnames": "^2.2.10",
     "@types/jest": "25.1.4",
+    "@types/lodash": "^4.14.161",
+    "@types/lowlight": "^0.0.1",
     "@types/node": "13.9.5",
+    "@types/numeral": "^0.0.26",
     "@types/react": "16.9.26",
     "@types/react-dom": "16.9.5",
     "@types/react-redux": "^7.1.7",
     "@types/react-router-dom": "^5.1.3",
+    "@types/react-window": "^1.8.2",
+    "axios": "^0.21.1",
     "classnames": "^2.2.6",
+    "dayjs": "^1.9.4",
+    "lodash": "^4.17.20",
+    "lowlight": "^1.14.0",
+    "numeral": "^2.0.6",
     "react": "^16.13.1",
     "react-dom": "^16.13.1",
     "react-redux": "^7.2.0",
     "react-router-dom": "^5.1.2",
     "react-scripts": "^3.4.3",
+    "react-window": "^1.8.5",
     "typeface-roboto": "0.0.75",
     "typescript": "3.8.3",
     "use-debounce": "^3.4.3"
@@ -40,6 +51,7 @@
     "eslint": "./node_modules/.bin/eslint \"src/**\""
   },
   "eslintConfig": {
+    "ignorePatterns": ["*.svg", "*.css"],
     "extends": [
       "plugin:import/warnings",
       "react-app"
@@ -110,5 +122,6 @@
       "last 1 firefox version",
       "last 1 safari version"
     ]
-  }
+  },
+  "proxy": "http://localhost:8265"
 }

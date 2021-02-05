@@ -506,7 +506,7 @@ message WaitPlacementGroupUntilReadyReply {
 
 message GetNamedPlacementGroupRequest {
   // Name of the placement group.
-  string name = 2;
+  string name = 1;
 }
 
 message GetNamedPlacementGroupReply {
@@ -526,7 +526,8 @@ service PlacementGroupInfoGcsService {
   // Get placement group information via gcs service.
   rpc GetPlacementGroup(GetPlacementGroupRequest) returns (GetPlacementGroupReply);
   // Get named placement group information via gcs service.
-  rpc GetNamedPlacementGroup(GetNamedPlacementGroupRequest) returns (GetNamedPlacementGroupReply);
+  rpc GetNamedPlacementGroup(GetNamedPlacementGroupRequest)
+      returns (GetNamedPlacementGroupReply);
   // Get information of all placement group from GCS Service.
   rpc GetAllPlacementGroup(GetAllPlacementGroupRequest)
       returns (GetAllPlacementGroupReply);

@@ -1,8 +1,12 @@
 
+/// This is a complete example of writing a distributed program using the C ++ worker API.
+
+/// including the header
 #include <ray/api.h>
 #include <ray/api/ray_config.h>
-#include <ray/experimental/default_worker.h>
+#include "gflags/gflags.h"
 
+/// using namespace
 using namespace ::ray::api;
 
 /// general function of user code
@@ -32,22 +36,25 @@ class Counter {
   }
 };
 
+DEFINE_string(redis_address, "", "The ip address of redis server.");
+
+DEFINE_string(dynamic_library_path, "", "The local path of the dynamic library.");
+
 int main(int argc, char **argv) {
-  /// Currently, we compile `default_worker` and `example` in one single binary,
-  /// to work around a symbol conflicting issue.
-  /// This is the main function of the binary, and we use the `is_default_worker` arg to
-  /// tell if this binary is used as `default_worker` or `example`.
-  const char *default_worker_magic = "is_default_worker";
-  /// `is_default_worker` is the last arg of `argv`
-  if (argc > 1 &&
-      memcmp(argv[argc - 1], default_worker_magic, strlen(default_worker_magic)) == 0) {
-    default_worker_main(argc, argv);
-    return 0;
+  /// configuration
+  gflags::ParseCommandLineFlags(&argc, &argv, true);
+  const std::string dynamic_library_path = FLAGS_dynamic_library_path;
+  const std::string redis_address = FLAGS_redis_address;
+  gflags::ShutDownCommandLineFlags();
+  RAY_CHECK(!dynamic_library_path.empty())
+      << "Please add a local dynamic library by '--dynamic-library-path'";
+  ray::api::RayConfig::GetInstance()->lib_name = dynamic_library_path;
+  if (!redis_address.empty()) {
+    ray::api::RayConfig::GetInstance()->SetRedisAddress(redis_address);
   }
-  /// initialization to cluster mode
-  ray::api::RayConfig::GetInstance()->run_mode = RunMode::CLUSTER;
-  /// Dynamic library loading is not supported yet.
-  ray::api::RayConfig::GetInstance()->lib_name = "";
+  ::ray::api::RayConfig::GetInstance()->run_mode = RunMode::CLUSTER;
+
+  /// initialization
   Ray::Init();
 
   /// put and get object
@@ -86,7 +93,6 @@ int main(int argc, char **argv) {
   /// general function remote call（args passed by value）
   auto r0 = Ray::Task(Return1).Remote();
   auto r2 = Ray::Task(Plus, 3, 22).Remote();
-
   int task_result3 = *(Ray::Get(r2));
   std::cout << "task_result3 = " << task_result3 << std::endl;
 
@@ -95,7 +101,6 @@ int main(int argc, char **argv) {
   auto r4 = Ray::Task(Plus1, r3).Remote();
   auto r5 = Ray::Task(Plus, r4, r3).Remote();
   auto r6 = Ray::Task(Plus, r4, 10).Remote();
-
   int task_result4 = *(Ray::Get(r6));
   int task_result5 = *(Ray::Get(r5));
   std::cout << "task_result4 = " << task_result4 << ", task_result5 = " << task_result5
@@ -104,31 +109,30 @@ int main(int argc, char **argv) {
   /// create actor and actor function remote call with args passed by value
   ActorHandle<Counter> actor4 = Ray::Actor(Counter::FactoryCreate, 10).Remote();
   auto r10 = actor4.Task(&Counter::Add, 8).Remote();
-
   int actor_result4 = *(Ray::Get(r10));
   std::cout << "actor_result4 = " << actor_result4 << std::endl;
 
   /// create actor and task function remote call with args passed by reference
   ActorHandle<Counter> actor5 = Ray::Actor(Counter::FactoryCreate, r10, 0).Remote();
-
   auto r11 = actor5.Task(&Counter::Add, r0).Remote();
   auto r12 = actor5.Task(&Counter::Add, r11).Remote();
   auto r13 = actor5.Task(&Counter::Add, r10).Remote();
   auto r14 = actor5.Task(&Counter::Add, r13).Remote();
   auto r15 = Ray::Task(Plus, r0, r11).Remote();
   auto r16 = Ray::Task(Plus1, r15).Remote();
-
   int result12 = *(Ray::Get(r12));
   int result14 = *(Ray::Get(r14));
   int result11 = *(Ray::Get(r11));
   int result13 = *(Ray::Get(r13));
   int result16 = *(Ray::Get(r16));
   int result15 = *(Ray::Get(r15));
-
   std::cout << "Final result:" << std::endl;
   std::cout << "result11 = " << result11 << ", result12 = " << result12
             << ", result13 = " << result13 << ", result14 = " << result14
             << ", result15 = " << result15 << ", result16 = " << result16 << std::endl;
+
+  /// shutdown
   Ray::Shutdown();
+
   return 0;
 }

@@ -157,7 +157,7 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
 
   void HandleGetNamedPlacementGroup(const rpc::GetNamedPlacementGroupRequest &request,
                                     rpc::GetNamedPlacementGroupReply *reply,
-                                    rpc::SendReplyCallback send_reply_callback)  override;
+                                    rpc::SendReplyCallback send_reply_callback) override;
 
   void HandleGetAllPlacementGroup(const rpc::GetAllPlacementGroupRequest &request,
                                   rpc::GetAllPlacementGroupReply *reply,

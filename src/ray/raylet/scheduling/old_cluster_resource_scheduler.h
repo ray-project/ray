@@ -23,7 +23,7 @@ class OldClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   explicit OldClusterResourceScheduler(
       const NodeID &self_node_id, ResourceIdSet &local_available_resources,
       std::unordered_map<NodeID, SchedulingResources> &cluster_resource_map,
-      std::shared_ptr<SchedulingResources> last_heartbeat_resources);
+      const std::shared_ptr<SchedulingResources> last_heartbeat_resources);
 
   /// Remove node from the cluster data structure. This happens
   /// when a node fails or it is removed from the cluster.
@@ -67,6 +67,6 @@ class OldClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   std::string self_node_id_string_;
   ResourceIdSet &local_available_resources_;
   std::unordered_map<NodeID, SchedulingResources> &cluster_resource_map_;
-  std::shared_ptr<SchedulingResources> last_heartbeat_resources_;
+  const std::shared_ptr<SchedulingResources> last_heartbeat_resources_;
 };
 }  // namespace ray
