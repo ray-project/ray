@@ -134,7 +134,7 @@ public class TestProgressListener implements IInvokedMethodListener, ITestListen
         String.format("LAST %d LINES OF LOG FILE %s", TAIL_NO_OF_LINES, filePath.getFileName()));
     LinkedList<String> lastLines = new LinkedList<>();
     try (Stream<String> stream = Files.lines(filePath)) {
-      stream.forEach(
+      stream.forEachOrdered(
           line -> {
             lastLines.push(line);
             if (lastLines.size() > TAIL_NO_OF_LINES) {
