@@ -707,6 +707,12 @@ Status ServiceBasedNodeResourceInfoAccessor::AsyncUpdateResources(
 Status ServiceBasedNodeResourceInfoAccessor::AsyncReportResourceUsage(
     const std::shared_ptr<rpc::ResourcesData> &data_ptr, const StatusCallback &callback) {
   absl::MutexLock lock(&mutex_);
+  last_resource_usage_->SetAvailableResources(
+      ResourceSet(MapFromProtobuf(data_ptr->resources_available())));
+  last_resource_usage_->SetTotalResources(
+      ResourceSet(MapFromProtobuf(data_ptr->resources_total())));
+  last_resource_usage_->SetLoadResources(
+      ResourceSet(MapFromProtobuf(data_ptr->resource_load())));
   cached_resource_usage_.mutable_resources()->CopyFrom(*data_ptr);
   client_impl_->GetGcsRpcClient().ReportResourceUsage(
       cached_resource_usage_,
