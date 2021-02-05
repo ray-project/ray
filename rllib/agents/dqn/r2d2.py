@@ -53,7 +53,7 @@ DEFAULT_CONFIG = dqn.DQNTrainer.merge_trainer_configs(
 
         # === Hyperparameters from the paper [1] ===
         # Size of the replay buffer (in sequences, not timesteps).
-        "replay_buffer_size": 100000,
+        "buffer_size": 100000,
         # If True prioritized replay buffer will be used.
         # Note: Not supported yet by R2D2!
         "prioritized_replay": False,
@@ -66,8 +66,8 @@ DEFAULT_CONFIG = dqn.DQNTrainer.merge_trainer_configs(
         # Discount factor.
         "gamma": 0.997,
         "rollout_fragment_length": 200,
-        # Train batch size (in number of sequences, not single timesteps).
-        "train_batch_size": 64,
+        # Train batch size (in number of single timesteps).
+        "train_batch_size": 64 * 20, #TODO: Make this sequences, not timesteps
         # Learning rate for adam optimizer
         "lr": 1e-4,
         # Adam epsilon hyper parameter

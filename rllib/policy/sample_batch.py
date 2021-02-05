@@ -267,13 +267,13 @@ class SampleBatch:
                 if count >= end:
                     state_idx = 0
                     state_key = "state_in_{}".format(state_idx)
+                    if state_start is None:
+                        state_start = i
                     while state_key in self.data:
                         data[state_key] = self.data[state_key][state_start:i +
                                                                1]
                         state_idx += 1
                         state_key = "state_in_{}".format(state_idx)
-                    if state_start is None:
-                        state_start = i
                     seq_lens = list(self.seq_lens[state_start:i]) + [
                         seq_len - (count - end)
                     ]
@@ -308,7 +308,18 @@ class SampleBatch:
                 size k).
         """
         slices = self._get_slice_indices(k)
-        return [self.slice(i, j) for i, j in slices]
+        timeslices = [self.slice(i, j) for i, j in slices]
+
+        #TODO: remove entire block
+        for i, ts in enumerate(timeslices):
+            try:
+                assert len(ts.seq_lens) == ts["state_in_0"].shape[0]
+            except Exception as e:
+                self.slice(slices[i][0], slices[i][1])
+                raise e
+
+
+        return timeslices
         #out = []
         #i = 0
         #while i < self.count:
