@@ -1,13 +1,16 @@
 """APIs exposed under the namespace ray.util.collective."""
 import logging
 
+import os
+import shutil
 import numpy as np
 import ray
 from ray.util.collective import types
-from ray.util.collective.const import get_nccl_store_name
+from ray.util.collective.const import get_nccl_store_name, get_gloo_store_name
 
 _MPI_AVAILABLE = False
 _NCCL_AVAILABLE = True
+_GLOO_AVAILABLE = True
 
 # try:
 #     from ray.util.collective.collective_group.mpi_collective_group \
@@ -20,6 +23,12 @@ try:
 except ImportError:
     _NCCL_AVAILABLE = False
 
+try:
+    from ray.util.collective.collective_group import GLOOGroup
+    from ray.util.collective.collective_group import gloo_util
+except ImportError:
+    _GLOO_AVAILABLE = False
+
 logger = logging.getLogger(__name__)
 
 
@@ -29,6 +38,10 @@ def nccl_available():
 
 def mpi_available():
     return _MPI_AVAILABLE
+
+
+def gloo_available():
+    return _GLOO_AVAILABLE
 
 
 class GroupManager(object):
@@ -54,6 +67,24 @@ class GroupManager(object):
         backend = types.Backend(backend)
         if backend == types.Backend.MPI:
             raise NotImplementedError()
+        elif backend == types.Backend.GLOO:
+            logger.debug("creating GLOO group: '{}'".format(group_name))
+            store_name = get_gloo_store_name(group_name)
+            store_path = gloo_util.get_gloo_store_path(store_name)
+            if rank == 0:
+                if not os.path.exists(store_path):
+                    os.makedirs(store_path)
+                elif os.listdir(store_path) and os.listdir(store_path):
+                    shutil.rmtree(store_path)
+                    os.makedirs(store_path)
+            else:
+                import time
+                while not os.path.exists(store_path):
+                    time.sleep(0.1)
+            g = GLOOGroup(world_size, rank, group_name,
+                          store_type='file', device_type='tcp')
+            self._name_group_map[group_name] = g
+            self._group_name_map[g] = group_name
         elif backend == types.Backend.NCCL:
             # create the ncclUniqueID
             if rank == 0:
@@ -104,6 +135,12 @@ class GroupManager(object):
                 store = ray.get_actor(store_name)
                 ray.wait([store.__ray_terminate__.remote()])
                 ray.kill(store)
+        elif backend == types.Backend.GLOO:
+            if rank == 0:
+                store_name = get_gloo_store_name(group_name)
+                store_path = gloo_util.get_gloo_store_path(store_name)
+                if os.path.exists(store_path):
+                    shutil.rmtree(store_path)
         # Release the communicator resources
         g.destroy_group()
 

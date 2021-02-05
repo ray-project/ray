@@ -57,11 +57,7 @@ void def_transport_tcp_module(pybind11::module &m) {
 #endif
 
 #if GLOO_HAVE_TRANSPORT_UV
-#include <gloo/transport/uv/address.h>
-#include <gloo/transport/uv/context.h>
-#include <gloo/transport/uv/device.h>
-#include <gloo/transport/uv/pair.h>
-#include <gloo/transport/uv/unbound_buffer.h>
+
 
 void def_transport_uv_module(pybind11::module &m) {
   pybind11::module uv = m.def_submodule("uv", "This is a uv module");

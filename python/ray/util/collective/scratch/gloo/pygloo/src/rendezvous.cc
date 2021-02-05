@@ -42,6 +42,7 @@ void def_rendezvous_module(pybind11::module &m) {
   pybind11::class_<gloo::rendezvous::HashStore, gloo::rendezvous::Store,
                    std::shared_ptr<gloo::rendezvous::HashStore>>(rendezvous,
                                                                  "HashStore")
+      .def(pybind11::init([]() { return new gloo::rendezvous::HashStore(); }))
       .def("set", &gloo::rendezvous::HashStore::set)
       .def("get", &gloo::rendezvous::HashStore::get);
 

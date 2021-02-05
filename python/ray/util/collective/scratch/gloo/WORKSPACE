@@ -1,4 +1,4 @@
-workspace(name = "rules_foreign_cc_usage_example")
+workspace(name = "pygloo")
 
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
@@ -63,13 +63,23 @@ http_archive(
    sha256 = "70fe1c9ba4f2c509e8166c0ca2351000237da573bb6c82092339207a9715ba6b",
 )
 
+http_archive(
+   name = "hiredis",
+   build_file_content = all_content,
+   strip_prefix = "hiredis-1.0.0",
+   urls = ["https://github.com/redis/hiredis/archive/v1.0.0.tar.gz"],
+   sha256 = "2a0b5fe5119ec973a0c1966bfc4bd7ed39dbce1cb6d749064af9121fe971936f",
+)
+
 # gloo source code repository
 http_archive(
    name = "gloo",
    build_file_content = all_content,
-   strip_prefix = "gloo-4279d78bcc7b04e975f94840a6ef30b086a8b6fe",
-   urls = ["https://github.com/Ezra-H/gloo/archive/4279d78bcc7b04e975f94840a6ef30b086a8b6fe.tar.gz"],
+   strip_prefix = "gloo-864e75091c31986479edddfd9f873b7f9f89a339",
+   urls = ["https://github.com/Ezra-H/gloo/archive/864e75091c31986479edddfd9f873b7f9f89a339.tar.gz"],
    # urls = ["https://github.com/Ezra-H/gloo/archive/1da21174054eaabbbd189b7f657ea24842d821e2.tar.gz"],
+
+   # 4279d78bcc7b04e975f94840a6ef30b086a8b6fe worked
 )
 
 load("@pybind11_bazel//:python_configure.bzl", "python_configure_pybind")

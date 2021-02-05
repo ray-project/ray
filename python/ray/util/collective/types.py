@@ -30,6 +30,7 @@ class Backend(object):
     """A class to represent different backends."""
     NCCL = "nccl"
     MPI = "mpi"
+    GLOO = "gloo"
     UNRECOGNIZED = "unrecognized"
 
     def __new__(cls, name: str):
