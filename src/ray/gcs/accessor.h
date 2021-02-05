@@ -727,12 +727,20 @@ class PlacementGroupInfoAccessor {
   virtual Status AsyncCreatePlacementGroup(
       const PlacementGroupSpecification &placement_group_spec) = 0;
 
-  /// Get a placement group data from GCS asynchronously.
+  /// Get a placement group data from GCS asynchronously by id.
   ///
   /// \param placement_group_id The id of a placement group to obtain from GCS.
   /// \return Status.
   virtual Status AsyncGet(
       const PlacementGroupID &placement_group_id,
+      const OptionalItemCallback<rpc::PlacementGroupTableData> &callback) = 0;
+
+  /// Get a placement group data from GCS asynchronously by name.
+  ///
+  /// \param placement_group_name The name of a placement group to obtain from GCS.
+  /// \return Status.
+  virtual Status AsyncGetByName(
+      const std::string &placement_group_name,
       const OptionalItemCallback<rpc::PlacementGroupTableData> &callback) = 0;
 
   /// Get all placement group info from GCS asynchronously.

@@ -375,6 +375,7 @@ def test_remove_pending_placement_group(ray_start_cluster):
     # Create a placement group that cannot be scheduled now.
     placement_group = ray.util.placement_group([{"GPU": 2}, {"CPU": 2}])
     ray.util.remove_placement_group(placement_group)
+
     # TODO(sang): Add state check here.
     @ray.remote(num_cpus=4)
     def f():
@@ -797,10 +798,10 @@ def test_mini_integration(ray_start_cluster):
     pg_tasks = []
     # total bundle gpu usage = bundles_per_pg * total_num_pg * per_bundle_gpus
     # Note this is half of total
-    for _ in range(total_num_pg):
+    for index in range(total_num_pg):
         pgs.append(
             ray.util.placement_group(
-                name="name",
+                name=f"name{index}",
                 strategy="PACK",
                 bundles=[{
                     "GPU": per_bundle_gpus
@@ -1421,6 +1422,87 @@ ray.shutdown()
     # We should have 2 alive pgs and 4 alive actors.
     assert assert_alive_num_pg(2)
     assert assert_alive_num_actor(4)
+
+
+def test_named_placement_group(ray_start_cluster):
+    cluster = ray_start_cluster
+    for _ in range(2):
+        cluster.add_node(num_cpus=3)
+    cluster.wait_for_nodes()
+    info = ray.init(address=cluster.address)
+    global_placement_group_name = "named_placement_group"
+
+    # Create a detached placement group with name.
+    driver_code = f"""
+import ray
+
+ray.init(address="{info["redis_address"]}")
+
+pg = ray.util.placement_group(
+        [{{"CPU": 1}} for _ in range(2)],
+        strategy="STRICT_SPREAD",
+        name="{global_placement_group_name}",
+        lifetime="detached")
+ray.get(pg.ready())
+
+ray.shutdown()
+    """
+
+    run_string_as_driver(driver_code)
+
+    # Wait until the driver is reported as dead by GCS.
+    def is_job_done():
+        jobs = ray.jobs()
+        for job in jobs:
+            if "StopTime" in job:
+                return True
+        return False
+
+    wait_for_condition(is_job_done)
+
+    @ray.remote(num_cpus=1)
+    class Actor:
+        def ping(self):
+            return "pong"
+
+    # Get the named placement group and schedule a actor.
+    placement_group = ray.util.get_placement_group(global_placement_group_name)
+    assert placement_group is not None
+    assert placement_group.wait(5)
+    actor = Actor.options(
+        placement_group=placement_group,
+        placement_group_bundle_index=0).remote()
+
+    ray.get(actor.ping.remote())
+
+    # Create another placement group and make sure its creation will failed.
+    same_name_pg = ray.util.placement_group(
+        [{
+            "CPU": 1
+        } for _ in range(2)],
+        strategy="STRICT_SPREAD",
+        name=global_placement_group_name)
+    assert not same_name_pg.wait(10)
+
+    # Remove a named placement group and make sure the second creation
+    # will successful.
+    ray.util.remove_placement_group(placement_group)
+    same_name_pg = ray.util.placement_group(
+        [{
+            "CPU": 1
+        } for _ in range(2)],
+        strategy="STRICT_SPREAD",
+        name=global_placement_group_name)
+    assert same_name_pg.wait(10)
+
+    # Get a named placement group with a name that doesn't exist
+    # and make sure it will raise ValueError correctly.
+    error_count = 0
+    try:
+        ray.util.get_placement_group("inexistent_pg")
+    except ValueError:
+        error_count = error_count + 1
+    assert error_count == 1
 
 
 if __name__ == "__main__":

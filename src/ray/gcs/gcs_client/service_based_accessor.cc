@@ -1466,6 +1466,26 @@ Status ServiceBasedPlacementGroupInfoAccessor::AsyncGet(
   return Status::OK();
 }
 
+Status ServiceBasedPlacementGroupInfoAccessor::AsyncGetByName(
+    const std::string &name,
+    const OptionalItemCallback<rpc::PlacementGroupTableData> &callback) {
+  RAY_LOG(DEBUG) << "Getting named placement group info, name = " << name;
+  rpc::GetNamedPlacementGroupRequest request;
+  request.set_name(name);
+  client_impl_->GetGcsRpcClient().GetNamedPlacementGroup(
+      request, [name, callback](const Status &status,
+                                const rpc::GetNamedPlacementGroupReply &reply) {
+        if (reply.has_placement_group_table_data()) {
+          callback(status, reply.placement_group_table_data());
+        } else {
+          callback(status, boost::none);
+        }
+        RAY_LOG(DEBUG) << "Finished getting named placement group info, status = "
+                       << status << ", name = " << name;
+      });
+  return Status::OK();
+}
+
 Status ServiceBasedPlacementGroupInfoAccessor::AsyncGetAll(
     const MultiItemCallback<rpc::PlacementGroupTableData> &callback) {
   RAY_LOG(DEBUG) << "Getting all placement group info.";

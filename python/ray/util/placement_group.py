@@ -4,6 +4,7 @@ from typing import (List, Dict, Optional, Union)
 
 import ray
 from ray._raylet import PlacementGroupID, ObjectRef
+from ray.utils import hex_to_binary
 
 bundle_reservation_check = None
 
@@ -145,7 +146,7 @@ class PlacementGroup:
 
 def placement_group(bundles: List[Dict[str, float]],
                     strategy: str = "PACK",
-                    name: str = "unnamed_group",
+                    name: str = "",
                     lifetime=None) -> PlacementGroup:
     """Asynchronously creates a PlacementGroup.
 
@@ -209,6 +210,29 @@ def remove_placement_group(placement_group: PlacementGroup):
     worker.check_connected()
 
     worker.core_worker.remove_placement_group(placement_group.id)
+
+
+def get_placement_group(placement_group_name: str):
+    """Get a placement group object with a global name.
+
+    Returns:
+        None if can't find a placement group with the given name.
+        The placement group object otherwise.
+    """
+    if not placement_group_name:
+        raise ValueError(
+            "Please supply a non-empty value to get_placement_group")
+    worker = ray.worker.global_worker
+    worker.check_connected()
+    placement_group_info = ray.state.state.get_placement_group_by_name(
+        placement_group_name)
+    if placement_group_info is None:
+        raise ValueError(
+            f"Failed to look up actor with name: {placement_group_name}")
+    else:
+        return PlacementGroup(
+            PlacementGroupID(
+                hex_to_binary(placement_group_info["placement_group_id"])))
 
 
 def placement_group_table(placement_group: PlacementGroup = None) -> list:
