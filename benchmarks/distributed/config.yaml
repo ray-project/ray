@@ -15,7 +15,7 @@ auth:
 available_node_types:
     head_node:
         node_config:
-            InstanceType: m5.16xlarge
+            InstanceType: r5.16xlarge
             ImageId: ami-098555c9b343eb09c 
         resources:
           node: 1
@@ -23,7 +23,7 @@ available_node_types:
         max_workers: 999999
     worker_node:
         node_config:
-            InstanceType: m5.16xlarge
+            InstanceType: r5.16xlarge
             ImageId: ami-098555c9b343eb09c 
         resources:
           node: 1
@@ -31,7 +31,7 @@ available_node_types:
         max_workers: 63
     small_worker_node:
         node_config:
-            InstanceType: m5.xlarge
+            InstanceType: r5.xlarge
             ImageId: ami-098555c9b343eb09c 
         resources:
           node: 1
@@ -42,7 +42,7 @@ head_node_type: head_node
 worker_default_node_type: worker_node
 
 setup_commands:
-  - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl
+  - pip install -U https://ray-wheels.s3-us-west-2.amazonaws.com/releases/1.2.0/4c71f76b25bde02f208bfb21451347834994a72a/ray-1.2.0-cp37-cp37m-manylinux2014_x86_64.whl
   - pip install tqdm
   - sudo bash -c 'rm -rf /etc/security/limits.d; echo "* soft nofile 65535" >> /etc/security/limits.conf; echo "* hard nofile 65535" >> /etc/security/limits.conf;'
 
@@ -50,6 +50,7 @@ idle_timeout_minutes: 1
 
 head_start_ray_commands:
     - ray stop
+    - ulimit -a 
     - ulimit -n 65535; ray start --head --port=6379 --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml
 
 # Command to start ray on worker nodes. You don't need to change this.
