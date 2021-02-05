@@ -8,6 +8,7 @@ from threading import Lock
 
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
+from ray.util.client import CURRENT_PROTOCOL_VERSION
 
 if TYPE_CHECKING:
     from ray.util.client.server.server import RayletServicer
@@ -73,4 +74,5 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
             python_version="{}.{}.{}".format(
                 sys.version_info[0], sys.version_info[1], sys.version_info[2]),
             ray_version=ray.__version__,
-            ray_commit=ray.__commit__)
+            ray_commit=ray.__commit__,
+            protocol_version=CURRENT_PROTOCOL_VERSION)

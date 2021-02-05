@@ -285,7 +285,7 @@ def debug(address):
     "--ray-client-server-port",
     required=False,
     type=int,
-    default=None,
+    default=10001,
     help="the port number the ray client server will bind on. If not set, "
     "the ray client server will not be started.")
 @click.option(
@@ -1372,7 +1372,13 @@ def timeline(address):
     type=str,
     default=ray_constants.REDIS_DEFAULT_PASSWORD,
     help="Connect to ray with redis_password.")
-def memory(address, redis_password):
+@click.option(
+    "--stats-only",
+    is_flag=True,
+    type=bool,
+    default=False,
+    help="Connect to ray with redis_password.")
+def memory(address, redis_password, stats_only):
     """Print object references held in a Ray cluster."""
     if not address:
         address = services.get_ray_address_to_use_or_die()
@@ -1381,7 +1387,8 @@ def memory(address, redis_password):
     raylet = state.node_table()[0]
     print(
         ray.internal.internal_api.memory_summary(raylet["NodeManagerAddress"],
-                                                 raylet["NodeManagerPort"]))
+                                                 raylet["NodeManagerPort"],
+                                                 stats_only))
 
 
 @cli.command()

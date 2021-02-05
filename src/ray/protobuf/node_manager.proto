@@ -138,6 +138,8 @@ message ObjectStoreStats {
   int64 object_store_bytes_avail = 8;
   // The number of local objects total.
   int64 num_local_objects = 9;
+  // The number of plasma object bytes that are consumed by core workers.
+  int64 consumed_bytes = 10;
 }
 
 message GetNodeStatsReply {

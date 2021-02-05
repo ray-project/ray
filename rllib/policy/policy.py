@@ -709,7 +709,8 @@ class Policy(metaclass=ABCMeta):
         ret = {}
         for view_col, view_req in self.view_requirements.items():
             if isinstance(view_req.space, (gym.spaces.Dict, gym.spaces.Tuple)):
-                _, shape = ModelCatalog.get_action_shape(view_req.space)
+                _, shape = ModelCatalog.get_action_shape(
+                    view_req.space, framework=self.config["framework"])
                 ret[view_col] = \
                     np.zeros((batch_size, ) + shape[1:], np.float32)
             else:
