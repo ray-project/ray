@@ -530,7 +530,7 @@ def wait_for_gpu(gpu_id=None,
         # the format of the input `gpu_id`
         return getattr(g, gpu_attr)
 
-    gpu_ids = {gpu_id_fn(g) for g in GPUtil.getGPUS()}
+    gpu_ids = {gpu_id_fn(g) for g in GPUtil.getGPUs()}
     if gpu_id not in gpu_ids:
         raise ValueError(
             f"{gpu_id} not found in set of available GPUs: {gpu_ids}. "
