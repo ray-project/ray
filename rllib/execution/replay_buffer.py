@@ -255,9 +255,9 @@ _local_replay_buffer = None
 
 
 class LocalReplayBuffer(ParallelIteratorWorker):
-    """A replay buffer shard.
+    """A replay buffer shard storing data for all policies (in multiagent setup).
 
-    Ray actors are single-threaded, so for scalability multiple replay actors
+    Ray actors are single-threaded, so for scalability, multiple replay actors
     may be created to increase parallelism."""
 
     def __init__(self,
@@ -270,6 +270,31 @@ class LocalReplayBuffer(ParallelIteratorWorker):
                  prioritized_replay_eps: float = 1e-6,
                  replay_mode: str = "independent",
                  replay_sequence_length: int = 1):
+        """Initializes a LocalReplayBuffer instance.
+
+        Args:
+            num_shards (int): The number of buffer shards that exist in total (including
+                this one).
+            learning_starts (int): Number of timesteps after which a call to `replay()`
+                will yield samples (before that, `replay()` will return None).
+            buffer_size (int): The size of the buffer. Note that when
+                `replay_sequence_length` > 1, this is the number of sequences
+                (not single timesteps) stored.
+            replay_batch_size (int): The batch size to be sampled (in timesteps).
+                Note that if `replay_sequence_length` > 1, `self.replay_batch_size`
+                will be set to the number of sequences sampled (B).
+            prioritized_replay_alpha (float): Alpha parameter for a prioritized replay
+                buffer.
+            prioritized_replay_beta (float): Beta parameter for a prioritized replay
+                buffer.
+            prioritized_replay_eps (float): Epsilon parameter for a prioritized replay
+                buffer.
+            replay_mode (str): One of "independent" or "lockstep". Determined, whether
+                in the multiagent case, sampling is done across all agents/policies
+                equally.
+            replay_sequence_length (int): The sequence length (T) of a single sample.
+                If > 1, we will sample B x T from this buffer.
+        """
         self.replay_starts = learning_starts // num_shards
         self.buffer_size = buffer_size // num_shards
         self.replay_batch_size = replay_batch_size
@@ -329,6 +354,8 @@ class LocalReplayBuffer(ParallelIteratorWorker):
         if isinstance(batch, SampleBatch):
             batch = MultiAgentBatch({DEFAULT_POLICY_ID: batch}, batch.count)
         with self.add_batch_timer:
+            # Lockstep mode: Store under _ALL_POLICIES key (we will always only sample
+            # from all policies at the same time).
             if self.replay_mode == "lockstep":
                 # Note that prioritization is not supported in this mode.
                 for s in batch.timeslices(self.replay_sequence_length):
@@ -336,6 +363,8 @@ class LocalReplayBuffer(ParallelIteratorWorker):
             else:
                 for policy_id, b in batch.policy_batches.items():
                     for s in b.timeslices(self.replay_sequence_length):
+                        # If SampleBatch has prio-replay weights, average over these
+                        # to use as a weight for the entire sequence.
                         if "weights" in s:
                             weight = np.mean(s["weights"])
                         else:
@@ -354,6 +383,8 @@ class LocalReplayBuffer(ParallelIteratorWorker):
             return None
 
         with self.replay_timer:
+            # Lockstep mode: Sample from all policies at the same time an equal amount
+            # of steps.
             if self.replay_mode == "lockstep":
                 return self.replay_buffers[_ALL_POLICIES].sample(
                     self.replay_batch_size, beta=self.prioritized_replay_beta)

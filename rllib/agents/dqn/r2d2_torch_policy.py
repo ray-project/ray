@@ -1,12 +1,13 @@
 """PyTorch policy class used for R2D2."""
 
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import gym
 import ray
 from ray.rllib.agents.dqn.dqn_tf_policy import (
     PRIO_WEIGHTS, Q_SCOPE, Q_TARGET_SCOPE, postprocess_nstep_and_prio)
 from ray.rllib.agents.dqn.dqn_torch_model import DQNTorchModel
+from ray.rllib.agents.dqn.dqn_torch_policy import build_q_model_and_distribution
 from ray.rllib.agents.dqn.simple_q_torch_policy import TargetNetworkMixin
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
@@ -21,7 +22,7 @@ from ray.rllib.utils.exploration.parameter_noise import ParameterNoise
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.torch_ops import apply_grad_clipping, FLOAT_MIN, \
     huber_loss, reduce_mean_ignore_inf, softmax_cross_entropy_with_logits
-from ray.rllib.utils.typing import TensorType, TrainerConfigDict
+from ray.rllib.utils.typing import ModelInputDict, TensorType, TrainerConfigDict
 
 torch, nn = try_import_torch()
 F = None
@@ -42,119 +43,146 @@ def r2d2_loss(policy: Policy, model, _,
         TensorType: A single loss tensor.
     """
     config = policy.config
+    i = 0
+    state_batches = []
+    while "state_in_{}".format(i) in train_batch:
+        state_batches.append(train_batch["state_in_{}".format(i)])
+        i += 1
     # Q-network evaluation.
-    q_t, q_logits_t, q_probs_t = compute_q_values(
+    q, q_logits, q_probs, state_out = compute_q_values(
         policy,
         policy.q_model,
-        train_batch[SampleBatch.CUR_OBS],
+        train_batch,
+        state_batches=state_batches,
+        seq_lens=train_batch.get("seq_lens"),
         explore=False,
         is_training=True)
 
     # Target Q-network evaluation.
-    q_tp1, q_logits_tp1, q_probs_tp1 = compute_q_values(
+    q_target, q_logits_target, q_probs_target, state_out_target = compute_q_values(
         policy,
         policy.target_q_model,
-        train_batch[SampleBatch.NEXT_OBS],
+        train_batch,
+        state_batches=state_batches,
+        seq_lens=train_batch.get("seq_lens"),
         explore=False,
         is_training=True)
 
     # Q scores for actions which we know were selected in the given state.
     one_hot_selection = F.one_hot(train_batch[SampleBatch.ACTIONS].long(),
                                   policy.action_space.n)
-    q_t_selected = torch.sum(
-        torch.where(q_t > FLOAT_MIN, q_t,
+    q_selected = torch.sum(
+        torch.where(q > FLOAT_MIN, q,
                     torch.tensor(0.0, device=policy.device)) *
         one_hot_selection, 1)
-    q_logits_t_selected = torch.sum(
-        q_logits_t * torch.unsqueeze(one_hot_selection, -1), 1)
+    #q_logits_selected = torch.sum(
+    #    q_logits * torch.unsqueeze(one_hot_selection, -1), 1)
 
-    # compute estimate of best possible value starting from state at t + 1
     if config["double_q"]:
-        q_tp1_using_online_net, q_logits_tp1_using_online_net, \
-            q_dist_tp1_using_online_net = compute_q_values(
-                policy,
-                policy.q_model,
-                train_batch[SampleBatch.NEXT_OBS],
-                explore=False,
-                is_training=True)
-        q_tp1_best_using_online_net = torch.argmax(q_tp1_using_online_net, 1)
-        q_tp1_best_one_hot_selection = F.one_hot(q_tp1_best_using_online_net,
-                                                 policy.action_space.n)
-        q_tp1_best = torch.sum(
-            torch.where(q_tp1 > FLOAT_MIN, q_tp1,
+        best_actions = torch.argmax(q, 1)
+        best_actions_one_hot = F.one_hot(best_actions, policy.action_space.n)
+        q_target_best = torch.sum(
+            torch.where(q_target > FLOAT_MIN, q_target,
                         torch.tensor(0.0, device=policy.device)) *
-            q_tp1_best_one_hot_selection, 1)
-        q_probs_tp1_best = torch.sum(
-            q_probs_tp1 * torch.unsqueeze(q_tp1_best_one_hot_selection, -1), 1)
+            best_actions_one_hot, 1)
+
     else:
-        q_tp1_best_one_hot_selection = F.one_hot(
-            torch.argmax(q_tp1, 1), policy.action_space.n)
-        q_tp1_best = torch.sum(
-            torch.where(q_tp1 > FLOAT_MIN, q_tp1,
-                        torch.tensor(0.0, device=policy.device)) *
-            q_tp1_best_one_hot_selection, 1)
-        q_probs_tp1_best = torch.sum(
-            q_probs_tp1 * torch.unsqueeze(q_tp1_best_one_hot_selection, -1), 1)
+        raise ValueError("non-double Q not supported for R2D2 yet!")
+        #q_tp1_best_one_hot_selection = F.one_hot(
+        #    torch.argmax(q_tp1, 1), policy.action_space.n)
+        #q_tp1_best = torch.sum(
+        #    torch.where(q_tp1 > FLOAT_MIN, q_tp1,
+        #                torch.tensor(0.0, device=policy.device)) *
+        #    q_tp1_best_one_hot_selection, 1)
+        #q_probs_tp1_best = torch.sum(
+        #    q_probs_tp1 * torch.unsqueeze(q_tp1_best_one_hot_selection, -1), 1)
 
     if config["num_atoms"] > 1:
-        # Distributional Q-learning which corresponds to an entropy loss
-        z = torch.range(
-            0.0, config["num_atoms"] - 1, dtype=torch.float32).to(train_batch[SampleBatch.REWARDS].device)
-        z = config["v_min"] + z * (config["v_max"] - config["v_min"]) / float(config["num_atoms"] - 1)
+        raise ValueError("Distributional R2D2 not supported yet!")
+        ## Distributional Q-learning which corresponds to an entropy loss
+        #z = torch.range(
+        #    0.0, config["num_atoms"] - 1, dtype=torch.float32).to(train_batch[SampleBatch.REWARDS].device)
+        #z = config["v_min"] + z * (config["v_max"] - config["v_min"]) / float(config["num_atoms"] - 1)
 
-        # (batch_size, 1) * (1, num_atoms) = (batch_size, num_atoms)
-        r_tau = torch.unsqueeze(
-            train_batch[SampleBatch.REWARDS], -1) + config["gamma"]**config["n_step"] * torch.unsqueeze(
-                1.0 - train_batch[SampleBatch.DONES].float(), -1) * torch.unsqueeze(z, 0)
-        r_tau = torch.clamp(r_tau, config["v_min"], config["v_max"])
-        b = (r_tau - config["v_min"]) / ((config["v_max"] - config["v_min"]) / float(config["num_atoms"] - 1))
-        lb = torch.floor(b)
-        ub = torch.ceil(b)
+        ## (batch_size, 1) * (1, num_atoms) = (batch_size, num_atoms)
+        #r_tau = torch.unsqueeze(
+        #    train_batch[SampleBatch.REWARDS], -1) + config["gamma"]**config["n_step"] * torch.unsqueeze(
+        #        1.0 - train_batch[SampleBatch.DONES].float(), -1) * torch.unsqueeze(z, 0)
+        #r_tau = torch.clamp(r_tau, config["v_min"], config["v_max"])
+        #b = (r_tau - config["v_min"]) / ((config["v_max"] - config["v_min"]) / float(config["num_atoms"] - 1))
+        #lb = torch.floor(b)
+        #ub = torch.ceil(b)
 
-        # Indispensable judgement which is missed in most implementations
-        # when b happens to be an integer, lb == ub, so pr_j(s', a*) will
-        # be discarded because (ub-b) == (b-lb) == 0.
-        floor_equal_ceil = (ub - lb < 0.5).float()
+        ## Indispensable judgement which is missed in most implementations
+        ## when b happens to be an integer, lb == ub, so pr_j(s', a*) will
+        ## be discarded because (ub-b) == (b-lb) == 0.
+        #floor_equal_ceil = (ub - lb < 0.5).float()
 
-        # (batch_size, num_atoms, num_atoms)
-        l_project = F.one_hot(lb.long(), config["num_atoms"])
-        # (batch_size, num_atoms, num_atoms)
-        u_project = F.one_hot(ub.long(), config["num_atoms"])
-        ml_delta = q_probs_tp1_best * (ub - b + floor_equal_ceil)
-        mu_delta = q_probs_tp1_best * (b - lb)
-        ml_delta = torch.sum(
-            l_project * torch.unsqueeze(ml_delta, -1), dim=1)
-        mu_delta = torch.sum(
-            u_project * torch.unsqueeze(mu_delta, -1), dim=1)
-        m = ml_delta + mu_delta
+        ## (batch_size, num_atoms, num_atoms)
+        #l_project = F.one_hot(lb.long(), config["num_atoms"])
+        ## (batch_size, num_atoms, num_atoms)
+        #u_project = F.one_hot(ub.long(), config["num_atoms"])
+        #ml_delta = q_probs_tp1_best * (ub - b + floor_equal_ceil)
+        #mu_delta = q_probs_tp1_best * (b - lb)
+        #ml_delta = torch.sum(
+        #    l_project * torch.unsqueeze(ml_delta, -1), dim=1)
+        #mu_delta = torch.sum(
+        #    u_project * torch.unsqueeze(mu_delta, -1), dim=1)
+        #m = ml_delta + mu_delta
 
-        # Rainbow paper claims that using this cross entropy loss for
-        # priority is robust and insensitive to `prioritized_replay_alpha`
-        policy._td_error = softmax_cross_entropy_with_logits(
-            logits=q_logits_t_selected, labels=m)
-        policy._total_loss = torch.mean(policy._td_error * train_batch[PRIO_WEIGHTS])
-        policy._loss_stats = {
-            # TODO: better Q stats for dist dqn
-            "mean_td_error": torch.mean(policy._td_error),
-        }
+        ## Rainbow paper claims that using this cross entropy loss for
+        ## priority is robust and insensitive to `prioritized_replay_alpha`
+        #policy._td_error = softmax_cross_entropy_with_logits(
+        #    logits=q_logits_t_selected, labels=m)
+        #policy._total_loss = torch.mean(policy._td_error * train_batch[PRIO_WEIGHTS])
+        #policy._loss_stats = {
+        #    # TODO: better Q stats for dist dqn
+        #    "mean_td_error": torch.mean(policy._td_error),
+        #}
     else:
-        q_tp1_best_masked = (1.0 - train_batch[SampleBatch.DONES].float()) * q_tp1_best
+        q_target_best_masked = (1.0 - train_batch[SampleBatch.DONES].float()) * q_target_best
 
-        # compute RHS of bellman equation
-        q_t_selected_target = train_batch[SampleBatch.REWARDS] + config["gamma"]**config["n_step"] * q_tp1_best_masked
+        #import numpy as np
+        #a = torch.from_numpy(np.arange(-10, 11, dtype=np.float32))
+        #print(h_inverse(h(a)))
 
-        # compute the error (potentially clipped)
-        policy._td_error = q_t_selected - q_t_selected_target.detach()
+        target = h(train_batch[SampleBatch.REWARDS] + \
+            config["gamma"]**config["n_step"] * h_inverse(q_target_best_masked, config["epsilon"]), config["epsilon"])
+
+        # Compute the error (potentially clipped).
+        policy._td_error = q_selected - target.detach()
         policy._total_loss = torch.mean(
             train_batch[PRIO_WEIGHTS].float() * huber_loss(policy._td_error))
         policy._loss_stats = {
-            "mean_q": torch.mean(q_t_selected),
-            "min_q": torch.min(q_t_selected),
-            "max_q": torch.max(q_t_selected),
+            "mean_q": torch.mean(q_selected),
+            "min_q": torch.min(q_selected),
+            "max_q": torch.max(q_selected),
             "mean_td_error": torch.mean(policy._td_error),
         }
 
     return policy._total_loss
+
+
+def h(x, epsilon=1.0):
+    """h-function described in the paper [1].
+
+    h(x) = sign(x) * [sqrt(abs(x) + 1) - 1] + epsilon * x
+    """
+    return torch.sign(x) * (torch.sqrt(torch.abs(x) + 1.0) - 1.0) + epsilon * x
+
+
+def h_inverse(x, epsilon=1.0):
+    """h-function described in the paper [1].
+
+    If x > 0.0:
+        h-1(x) = [2eps * x + (2eps + 1) - sqrt(4eps x + (2eps + 1)^2)] / (2 * eps^2)
+    If x < 0.0:
+        h-1(x) = [2eps * x + (2eps + 1) + sqrt(-4eps x + (2eps + 1)^2)] / (2 * eps^2)
+    """
+    two_epsilon = epsilon * 2
+    if_x_pos = (two_epsilon * x + (two_epsilon + 1.0) - torch.sqrt(4.0 * epsilon * x + (two_epsilon + 1.0)**2)) / (2.0 * epsilon ** 2)
+    if_x_neg = (two_epsilon * x - (two_epsilon + 1.0) + torch.sqrt(-4.0 * epsilon * x + (two_epsilon + 1.0)**2)) / (2.0 * epsilon ** 2)
+    return torch.where(x < 0.0, if_x_neg, if_x_pos)
 
 
 class ComputeTDErrorMixin:
@@ -181,98 +209,21 @@ class ComputeTDErrorMixin:
         self.compute_td_error = compute_td_error
 
 
-def build_q_model_and_distribution(
-        policy: Policy, obs_space: gym.spaces.Space,
-        action_space: gym.spaces.Space,
-        config: TrainerConfigDict) -> Tuple[ModelV2, TorchDistributionWrapper]:
-    """Build q_model and target_q_model for DQN
-
-    Args:
-        policy (Policy): The policy, which will use the model for optimization.
-        obs_space (gym.spaces.Space): The policy's observation space.
-        action_space (gym.spaces.Space): The policy's action space.
-        config (TrainerConfigDict):
-
-    Returns:
-        (q_model, TorchCategorical)
-            Note: The target q model will not be returned, just assigned to
-            `policy.target_q_model`.
-    """
-    if not isinstance(action_space, gym.spaces.Discrete):
-        raise UnsupportedSpaceException(
-            "Action space {} is not supported for DQN.".format(action_space))
-
-    if config["hiddens"]:
-        # try to infer the last layer size, otherwise fall back to 256
-        num_outputs = ([256] + config["model"]["fcnet_hiddens"])[-1]
-        config["model"]["no_final_linear"] = True
-    else:
-        num_outputs = action_space.n
-
-    # TODO(sven): Move option to add LayerNorm after each Dense
-    #  generically into ModelCatalog.
-    add_layer_norm = (
-        isinstance(getattr(policy, "exploration", None), ParameterNoise)
-        or config["exploration_config"]["type"] == "ParameterNoise")
-
-    policy.q_model = ModelCatalog.get_model_v2(
-        obs_space=obs_space,
-        action_space=action_space,
-        num_outputs=num_outputs,
-        model_config=config["model"],
-        framework="torch",
-        model_interface=DQNTorchModel,
-        name=Q_SCOPE,
-        q_hiddens=config["hiddens"],
-        dueling=config["dueling"],
-        num_atoms=config["num_atoms"],
-        use_noisy=config["noisy"],
-        v_min=config["v_min"],
-        v_max=config["v_max"],
-        sigma0=config["sigma0"],
-        # TODO(sven): Move option to add LayerNorm after each Dense
-        #  generically into ModelCatalog.
-        add_layer_norm=add_layer_norm)
-
-    policy.q_func_vars = policy.q_model.variables()
-
-    policy.target_q_model = ModelCatalog.get_model_v2(
-        obs_space=obs_space,
-        action_space=action_space,
-        num_outputs=num_outputs,
-        model_config=config["model"],
-        framework="torch",
-        model_interface=DQNTorchModel,
-        name=Q_TARGET_SCOPE,
-        q_hiddens=config["hiddens"],
-        dueling=config["dueling"],
-        num_atoms=config["num_atoms"],
-        use_noisy=config["noisy"],
-        v_min=config["v_min"],
-        v_max=config["v_max"],
-        sigma0=config["sigma0"],
-        # TODO(sven): Move option to add LayerNorm after each Dense
-        #  generically into ModelCatalog.
-        add_layer_norm=add_layer_norm)
-
-    policy.target_q_func_vars = policy.target_q_model.variables()
-
-    return policy.q_model, TorchCategorical
-
-
 def get_distribution_inputs_and_class(
         policy: Policy,
         model: ModelV2,
-        obs_batch: TensorType,
         *,
+        input_dict: ModelInputDict,
+        state_batches: Optional[List[TensorType]] = None,
+        seq_lens: Optional[TensorType] = None,
         explore: bool = True,
         is_training: bool = False,
         **kwargs) -> Tuple[TensorType, type, List[TensorType]]:
-    q_vals = compute_q_values(policy, model, obs_batch, explore, is_training)
-    q_vals = q_vals[0] if isinstance(q_vals, tuple) else q_vals
+    q_vals, logits, probs_or_logits, state_out = compute_q_values(policy, model, input_dict, state_batches, seq_lens, explore, is_training)
+    #q_vals = q_vals[0] if isinstance(q_vals, tuple) else q_vals
 
     policy.q_values = q_vals
-    return policy.q_values, TorchCategorical, []  # state-out
+    return policy.q_values, TorchCategorical, state_out  # state-out
 
 
 def adam_optimizer(policy: Policy,
@@ -304,15 +255,15 @@ def before_loss_init(policy: Policy, obs_space: gym.spaces.Space,
 
 def compute_q_values(policy: Policy,
                      model: ModelV2,
-                     obs: TensorType,
+                     input_dict,
+                     state_batches,
+                     seq_lens,
                      explore,
                      is_training: bool = False):
     config = policy.config
 
-    model_out, state = model({
-        SampleBatch.CUR_OBS: obs,
-        "is_training": is_training,
-    }, [], None)
+    input_dict["is_training"] = is_training
+    model_out, state = model(input_dict, state_batches, seq_lens)
 
     if config["num_atoms"] > 1:
         (action_scores, z, support_logits_per_action, logits,
@@ -344,7 +295,7 @@ def compute_q_values(policy: Policy,
     else:
         value = action_scores
 
-    return value, logits, probs_or_logits
+    return value, logits, probs_or_logits, state
 
 
 def grad_process_and_td_error_fn(policy: Policy,

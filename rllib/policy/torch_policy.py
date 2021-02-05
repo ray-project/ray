@@ -20,8 +20,8 @@ from ray.rllib.utils.threading import with_lock
 from ray.rllib.utils.torch_ops import convert_to_non_torch_type, \
     convert_to_torch_tensor
 from ray.rllib.utils.tracking_dict import UsageTrackingDict
-from ray.rllib.utils.typing import ModelGradients, ModelWeights, \
-    TensorType, TrainerConfigDict
+from ray.rllib.utils.typing import ModelGradients, ModelInputDict, \
+    ModelWeights, TensorType, TrainerConfigDict
 
 torch, _ = try_import_torch()
 
@@ -86,7 +86,7 @@ class TorchPolicy(Policy):
                 sampled action and its log-likelihood given Policy, ModelV2,
                 input_dict, explore, timestep, and is_training.
             action_distribution_fn (Optional[Callable[[Policy, ModelV2,
-                Dict[str, TensorType], TensorType, TensorType],
+                ModelInputDict, TensorType, TensorType],
                 Tuple[TensorType, type, List[TensorType]]]]): A callable
                 returning distribution inputs (parameters), a dist-class to
                 generate an action distribution object from, and
@@ -96,7 +96,7 @@ class TorchPolicy(Policy):
                 forward pass through some model.
                 If None, pass inputs through `self.model()` to get distribution
                 inputs.
-                The callable takes as inputs: Policy, ModelV2, input_dict,
+                The callable takes as inputs: Policy, ModelV2, ModelInputDict,
                 explore, timestep, is_training.
             max_seq_len (int): Max sequence length for LSTM training.
             get_batch_divisibility_req (Optional[Callable[[Policy], int]]]):
@@ -232,14 +232,31 @@ class TorchPolicy(Policy):
             self.exploration.before_compute_actions(
                 explore=explore, timestep=timestep)
             if self.action_distribution_fn:
-                dist_inputs, dist_class, state_out = \
-                    self.action_distribution_fn(
-                        self,
-                        self.model,
-                        input_dict[SampleBatch.CUR_OBS],
-                        explore=explore,
-                        timestep=timestep,
-                        is_training=False)
+                # Try new action_distribution_fn signature, supporting state_batches
+                # and seq_lens.
+                #TODO: Do the same for TF and eager.
+                try:
+                    dist_inputs, dist_class, state_out = \
+                        self.action_distribution_fn(
+                            self,
+                            self.model,
+                            input_dict=input_dict,
+                            state_batches=state_batches,
+                            seq_lens=seq_lens,
+                            explore=explore,
+                            timestep=timestep,
+                            is_training=False)
+                # Trying the old way (to stay backward compatible).
+                # TODO: Remove in future.
+                except Exception as e:
+                    dist_inputs, dist_class, state_out = \
+                        self.action_distribution_fn(
+                            self,
+                            self.model,
+                            input_dict[SampleBatch.CUR_OBS],
+                            explore=explore,
+                            timestep=timestep,
+                            is_training=False)
             else:
                 dist_class = self.dist_class
                 dist_inputs, state_out = self.model(input_dict, state_batches,

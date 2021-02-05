@@ -2,6 +2,9 @@
 Recurrent Experience Replay in Distributed Reinforcement Learning (R2D2)
 ========================================================================
 
+[1] Recurrent Experience Replay in Distributed Reinforcement Learning -
+    S Kapturowski, G Ostrovski, J Quan, R Munos, W Dabney - 2019, DeepMind
+
 This file defines the distributed Trainer class for the R2D2
 algorithm. See `r2d2_[tf|torch]_policy.py` for the definition of the policies.
 
@@ -47,6 +50,32 @@ DEFAULT_CONFIG = dqn.DQNTrainer.merge_trainer_configs(
         # the actual length of the sequence used for loss calculation is `n - burn_in`
         # time steps (n=LSTM’s/attention net’s max_seq_len).
         "burn_in": 0,
+
+        # === Hyperparameters from the paper [1] ===
+        # Size of the replay buffer (in sequences, not timesteps).
+        "replay_buffer_size": 100000,
+        # If True prioritized replay buffer will be used.
+        # Note: Not supported yet by R2D2!
+        "prioritized_replay": False,
+        # Set automatically: The number of contiguous environment steps to replay at
+        # once. Will be calculated via model->max_seq_len + burn_in.
+        # Do not set this to any valid value!
+        "replay_sequence_length": -1,
+        # Update the target network every `target_network_update_freq` steps.
+        "target_network_update_freq": 2500,
+        # Discount factor.
+        "gamma": 0.997,
+        "rollout_fragment_length": 200,
+        # Train batch size (in number of sequences, not single timesteps).
+        "train_batch_size": 64,
+        # Learning rate for adam optimizer
+        "lr": 1e-4,
+        # Adam epsilon hyper parameter
+        "adam_epsilon": 1e-3,
+        # The epsilon parameter from the R2D2 loss function.
+        "epsilon": 1e-3,
+        # Run in parallel by default.
+        "num_workers": 2,
     },
     _allow_unknown_configs=True,
 )
@@ -71,11 +100,21 @@ def validate_config(config: TrainerConfigDict) -> None:
     #            "used at the same time!")
 
     # Update effective batch size to include n-step
-    #adjusted_batch_size = max(config["rollout_fragment_length"],
-    #                          config.get("n_step", 1))
-    #config["rollout_fragment_length"] = adjusted_batch_size
+    adjusted_batch_size = max(config["rollout_fragment_length"],
+                              config.get("n_step", 1))
+    config["rollout_fragment_length"] = adjusted_batch_size
 
-    #if config.get("prioritized_replay"):
+    if config["replay_sequence_length"] != -1:
+        raise ValueError(
+            "`replay_sequence_length` is calculated automatically to be "
+            "model->max_seq_len + burn_in!")
+    # Add the `burn_in` to the Model's max_seq_len.
+    config["model"]["max_seq_len"] += config["burn_in"]
+    # Set the replay sequence length to the max_seq_len of the model.
+    config["replay_sequence_length"] = config["model"]["max_seq_len"]
+
+    if config.get("prioritized_replay"):
+        raise ValueError("Prioritized replay is not supported for R2D2 yet!")
     #    if config["multiagent"]["replay_mode"] == "lockstep":
     #        raise ValueError("Prioritized replay is not supported when "
     #                         "replay_mode=lockstep.")
@@ -180,7 +219,7 @@ def get_policy_class(config: TrainerConfigDict) -> Optional[Type[Policy]]:
         config (TrainerConfigDict): The trainer's configuration dict.
 
     Returns:
-        Optional[Type[Policy]]: The Policy class to use with DQNTrainer.
+        Optional[Type[Policy]]: The Policy class to use with R2D2Trainer.
             If None, use `default_policy` provided in build_trainer().
     """
     if config["framework"] == "torch":
@@ -190,6 +229,11 @@ def get_policy_class(config: TrainerConfigDict) -> Optional[Type[Policy]]:
 # Build a DQN trainer, which uses the framework specific Policy
 # determined in `get_policy_class()` above.
 R2D2Trainer = dqn.DQNTrainer.with_updates(
-    name="DQN", default_policy=R2D2TorchPolicy, default_config=DEFAULT_CONFIG)
+    name="R2D2",
+    default_policy=R2D2TorchPolicy,
+    default_config=DEFAULT_CONFIG,
+    validate_config=validate_config,
+    get_policy_class=get_policy_class,
+)
 
-#TODO ^^TFPolicy
+#TODO ^^default_policy=TFPolicy

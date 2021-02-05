@@ -163,7 +163,9 @@ class SampleBatch:
         return SampleBatch(
             {k: np.array(v, copy=True)
              for (k, v) in self.data.items()},
-            _seq_lens=self.seq_lens)
+            _seq_lens=self.seq_lens,
+            _dont_check_lens=self.dont_check_lens,
+        )
 
     @PublicAPI
     def rows(self) -> Dict[str, TensorType]:
@@ -270,6 +272,8 @@ class SampleBatch:
                                                                1]
                         state_idx += 1
                         state_key = "state_in_{}".format(state_idx)
+                    if state_start is None:
+                        state_start = i
                     seq_lens = list(self.seq_lens[state_start:i]) + [
                         seq_len - (count - end)
                     ]
@@ -303,12 +307,14 @@ class SampleBatch:
             List[SampleBatch]: The list of (new) SampleBatches (each one of
                 size k).
         """
-        out = []
-        i = 0
-        while i < self.count:
-            out.append(self.slice(i, i + k))
-            i += k
-        return out
+        slices = self._get_slice_indices(k)
+        return [self.slice(i, j) for i, j in slices]
+        #out = []
+        #i = 0
+        #while i < self.count:
+        #    out.append(self.slice(i, i + k))
+        #    i += k
+        #return out
 
     @PublicAPI
     def keys(self) -> Iterable[str]:
@@ -426,6 +432,33 @@ class SampleBatch:
 
     def __contains__(self, x):
         return x in self.data
+
+    def _get_slice_indices(self, slice_size):
+        i = 0
+        slices = []
+        if self.seq_lens is not None and len(self.seq_lens) > 0:
+            start_pos = 0
+            current_slize_size = 0
+            idx = 0
+            while idx < len(self.seq_lens):
+                seq_len = self.seq_lens[idx]
+                current_slize_size += seq_len
+                # Complete minibatch -> Append to slices.
+                if current_slize_size >= slice_size:
+                    slices.append((start_pos, start_pos + slice_size))
+                    start_pos += slice_size
+                    if current_slize_size > slice_size:
+                        overhead = current_slize_size - slice_size
+                        start_pos -= (seq_len - overhead)
+                        idx -= 1
+                    current_slize_size = 0
+                idx += 1
+        else:
+            while i < self.count:
+                slices.append((i, i + slice_size))
+                i += slice_size
+        #random.shuffle(slices)
+        return slices
 
 
 @PublicAPI
