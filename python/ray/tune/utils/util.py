@@ -21,10 +21,14 @@ import psutil
 
 logger = logging.getLogger(__name__)
 
-try:
-    import GPUtil
-except ImportError:
-    GPUtil = None
+
+def _import_gputil():
+    try:
+        import GPUtil
+    except ImportError:
+        GPUtil = None
+    return GPUtil
+
 
 _pinned_objects = []
 PINNED_OBJECT_PREFIX = "ray.tune.PinnedObject:"
@@ -43,6 +47,8 @@ class UtilMonitor(Thread):
 
     def __init__(self, start=True, delay=0.7):
         self.stopped = True
+        GPUtil = _import_gputil()
+        self.GPUtil = GPUtil
         if GPUtil is None and start:
             logger.warning("Install gputil for GPU system monitoring.")
 
@@ -67,10 +73,10 @@ class UtilMonitor(Thread):
                     float(psutil.cpu_percent(interval=None)))
                 self.values["ram_util_percent"].append(
                     float(getattr(psutil.virtual_memory(), "percent")))
-            if GPUtil is not None:
+            if self.GPUtil is not None:
                 gpu_list = []
                 try:
-                    gpu_list = GPUtil.getGPUs()
+                    gpu_list = self.GPUtil.getGPUs()
                 except Exception:
                     logger.debug("GPUtil failed to retrieve GPUs.")
                 for gpu in gpu_list:
@@ -465,6 +471,7 @@ def load_newest_checkpoint(dirpath: str, ckpt_pattern: str) -> dict:
 def wait_for_gpu(gpu_id=None,
                  target_util=0.01,
                  retry=20,
+                 delay_s=5,
                  gpu_memory_limit=None):
     """Checks if a given GPU has freed memory.
 
@@ -476,8 +483,9 @@ def wait_for_gpu(gpu_id=None,
             the first item returned from `ray.get_gpu_ids()`.
         target_util (float): The utilization threshold to reach to unblock.
             Set this to 0 to block until the GPU is completely free.
-        retry (int): Number of times to check GPU limit. Sleeps 5
+        retry (int): Number of times to check GPU limit. Sleeps `delay_s`
             seconds between checks.
+        delay_s (int): Seconds to wait before check.
         gpu_memory_limit (float): Deprecated.
 
     Returns:
@@ -497,6 +505,7 @@ def wait_for_gpu(gpu_id=None,
 
         tune.run(tune_func, resources_per_trial={"GPU": 1}, num_samples=10)
     """
+    GPUtil = _import_gputil()
     if gpu_memory_limit:
         raise ValueError("'gpu_memory_limit' is deprecated. "
                          "Use 'target_util' instead.")
@@ -543,7 +552,7 @@ def wait_for_gpu(gpu_id=None,
         if gpu_object.memoryUtil > target_util:
             logger.info(f"Waiting for GPU util to reach {target_util}. "
                         f"Util: {gpu_object.memoryUtil:0.3f}")
-            time.sleep(5)
+            time.sleep(delay_s)
         else:
             return True
     raise RuntimeError("GPU memory was not freed.")
