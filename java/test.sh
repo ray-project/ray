@@ -60,7 +60,7 @@ fi
 # NOTE(kfstrom): Java test troubleshooting only.
 # Set MAX_ROUNDS to a big number (e.g. 1000) to run Java tests repeatedly.
 # You may also want to modify java/testng.xml to run only a subset of test cases.
-MAX_ROUNDS=1
+MAX_ROUNDS=1000
 round=1
 while true; do
 echo Starting cluster mode test round $round
