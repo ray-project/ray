@@ -215,11 +215,9 @@ class RayTrialExecutor(TrialExecutor):
             if self._pg_manager.trial_in_use(trial):
                 continue
 
-            if not self._pg_manager.stage_trial_pg(
-                    trial.placement_group_factory):
+            if not self._pg_manager.stage_trial_pg(trial):
                 # Break if we reached the limit of pending placement groups.
                 break
-
             self._staged_trials.add(trial)
 
         self._pg_manager.update_status()
@@ -234,7 +232,7 @@ class RayTrialExecutor(TrialExecutor):
 
         """
         for trial in self._staged_trials:
-            if self._pg_manager.has_ready(trial.placement_group_factory):
+            if self._pg_manager.has_ready(trial):
                 return trial
 
         return None
@@ -271,11 +269,10 @@ class RayTrialExecutor(TrialExecutor):
 
         _actor_cls = _class_cache.get(trial.get_trainable_cls())
         if trial.uses_placement_groups:
-            if not self._pg_manager.has_ready(trial.placement_group_factory):
+            if not self._pg_manager.has_ready(trial):
                 just_staged = False
                 if trial not in self._staged_trials:
-                    if self._pg_manager.stage_trial_pg(
-                            trial.placement_group_factory):
+                    if self._pg_manager.stage_trial_pg(trial):
                         self._staged_trials.add(trial)
                         just_staged = True
 
@@ -287,14 +284,13 @@ class RayTrialExecutor(TrialExecutor):
                     wait_end = time.monotonic() + self._wait_for_pg
                     while time.monotonic() < wait_end:
                         self._pg_manager.update_status()
-                        if self._pg_manager.has_ready(
-                                trial.placement_group_factory):
+                        if self._pg_manager.has_ready(trial):
                             break
                         time.sleep(0.1)
                 else:
                     return None
 
-            if not self._pg_manager.has_ready(trial.placement_group_factory):
+            if not self._pg_manager.has_ready(trial):
                 # PG may have become ready during waiting period
                 return None
 
@@ -719,6 +715,25 @@ class RayTrialExecutor(TrialExecutor):
             custom_resources=custom_resources)
         self._last_resource_refresh = time.time()
         self._resources_initialized = True
+
+    def has_resources_for_trial(self, trial: Trial):
+        """Returns whether this runner has resources available for this trial.
+
+        If using placement groups, this will return True as long as we
+        didn't reach the maximum number of pending trials. It will also return
+        True if the trial placement group is already staged.
+
+        Args:
+            trial: Trial object which should be scheduled.
+
+        Returns:
+            boolean
+
+        """
+        if trial.uses_placement_groups:
+            return trial in self._staged_trials or self._pg_manager.can_stage()
+
+        return self.has_resources(trial.resources)
 
     def has_resources(self, resources):
         """Returns whether this runner has at least the specified resources.

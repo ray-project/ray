@@ -241,11 +241,11 @@ class RayExecutorQueueTest(unittest.TestCase):
             return Trial("__fake", resources=Resources(cpu=cpu, gpu=gpu))
 
         cpu_only = create_trial(1, 0)
-        self.assertTrue(self.trial_executor.has_resources(cpu_only.resources))
+        self.assertTrue(self.trial_executor.has_resources_for_trial(cpu_only))
         self.trial_executor.start_trial(cpu_only)
 
         gpu_only = create_trial(0, 1)
-        self.assertTrue(self.trial_executor.has_resources(gpu_only.resources))
+        self.assertTrue(self.trial_executor.has_resources_for_trial(gpu_only))
 
     def testHeadBlocking(self):
         # Once resource requests are deprecated, remove this test
@@ -255,30 +255,30 @@ class RayExecutorQueueTest(unittest.TestCase):
             return Trial("__fake", resources=Resources(cpu=cpu, gpu=gpu))
 
         gpu_trial = create_trial(1, 1)
-        self.assertTrue(self.trial_executor.has_resources(gpu_trial.resources))
+        self.assertTrue(self.trial_executor.has_resources_for_trial(gpu_trial))
         self.trial_executor.start_trial(gpu_trial)
 
         # TODO(rliaw): This behavior is probably undesirable, but right now
         # trials with different resource requirements is not often used.
         cpu_only_trial = create_trial(1, 0)
         self.assertFalse(
-            self.trial_executor.has_resources(cpu_only_trial.resources))
+            self.trial_executor.has_resources_for_trial(cpu_only_trial))
 
         self.cluster.add_node(num_cpus=1, num_gpus=1)
         self.cluster.wait_for_nodes()
 
         self.assertTrue(
-            self.trial_executor.has_resources(cpu_only_trial.resources))
+            self.trial_executor.has_resources_for_trial(cpu_only_trial))
         self.trial_executor.start_trial(cpu_only_trial)
 
         cpu_only_trial2 = create_trial(1, 0)
         self.assertTrue(
-            self.trial_executor.has_resources(cpu_only_trial2.resources))
+            self.trial_executor.has_resources_for_trial(cpu_only_trial2))
         self.trial_executor.start_trial(cpu_only_trial2)
 
         cpu_only_trial3 = create_trial(1, 0)
         self.assertFalse(
-            self.trial_executor.has_resources(cpu_only_trial3.resources))
+            self.trial_executor.has_resources_for_trial(cpu_only_trial3))
 
 
 class RayExecutorPlacementGroupTest(unittest.TestCase):

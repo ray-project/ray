@@ -261,6 +261,9 @@ class _MockTrialRunner():
     def get_trials(self):
         return self.trials
 
+    def has_resources_for_trial(self, trial):
+        return True
+
     def has_resources(self, resources):
         return True
 

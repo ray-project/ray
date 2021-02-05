@@ -144,14 +144,14 @@ class PlacementGroupManager:
         self._grace_period = float(
             os.getenv("TUNE_TRIAL_STARTUP_GRACE_PERIOD", 10.))
 
-    def stage_trial_pg(self, pgf: PlacementGroupFactory):
+    def stage_trial_pg(self, trial: "Trial"):
         """Stage a trial placement group.
 
         Create the trial placement group if maximum number of pending
         placement groups is not exhausted.
 
         Args:
-            pgf (PlacementGroupFactory): Placement group factory to stage.
+            trial (Trial): Trial whose placement group to stage.
 
         Returns:
             False if placement group has not been staged, True otherwise.
@@ -161,6 +161,7 @@ class PlacementGroupManager:
         if not self.can_stage():
             return False
 
+        pgf = trial.placement_group_factory
         pg = pgf()  # This creates the placement group
 
         self._staging[pgf].add(pg)
@@ -172,7 +173,7 @@ class PlacementGroupManager:
 
     def can_stage(self):
         """Return True if we can stage another placement group."""
-        return len(self._staging) < TUNE_MAX_PENDING_TRIALS_PG
+        return len(self._staging_futures) < TUNE_MAX_PENDING_TRIALS_PG
 
     def update_status(self):
         """Update placement group status.
@@ -232,17 +233,17 @@ class PlacementGroupManager:
             num_gpus=num_gpus,
             resources=resources)
 
-    def has_ready(self, pgf: PlacementGroupFactory) -> bool:
-        """Return True if placement group is ready.
+    def has_ready(self, trial: "Trial") -> bool:
+        """Return True if placement group for trial is ready.
 
         Args:
-            pgf (PlacementGroupFactory): PlacementGroupFactory object.
+            trial (Trial): Trial object.
 
         Returns:
             Boolean.
 
         """
-        return bool(self._ready[pgf])
+        return bool(self._ready[trial.placement_group_factory])
 
     def trial_in_use(self, trial: "Trial"):
         return trial in self._in_use_trials

@@ -6,6 +6,8 @@ import shutil
 import tempfile
 import time
 import unittest
+from unittest.mock import patch
+
 import skopt
 import numpy as np
 from hyperopt import hp
@@ -176,7 +178,9 @@ class TuneFailResumeGridTest(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        ray.init(local_mode=True, num_cpus=2)
+        # Change back to local_mode=True after this is resolved:
+        # https://github.com/ray-project/ray/issues/13932
+        ray.init(local_mode=False, num_cpus=2)
 
     @classmethod
     def tearDownClass(cls):
@@ -185,6 +189,11 @@ class TuneFailResumeGridTest(unittest.TestCase):
     def setUp(self):
         self.logdir = tempfile.mkdtemp()
         os.environ["TUNE_GLOBAL_CHECKPOINT_S"] = "0"
+        # Wait up to five seconds for placement groups when starting a trial
+        os.environ["TUNE_PLACEMENT_GROUP_WAIT_S"] = "5"
+        # Block for results even when placement groups are pending
+        os.environ["TUNE_TRIAL_STARTUP_GRACE_PERIOD"] = "0"
+
         from ray.tune import register_trainable
         register_trainable("trainable", MyTrainableClass)
 
@@ -192,6 +201,8 @@ class TuneFailResumeGridTest(unittest.TestCase):
         os.environ.pop("TUNE_GLOBAL_CHECKPOINT_S")
         shutil.rmtree(self.logdir)
 
+    @patch("ray.tune.utils.placement_groups.TUNE_MAX_PENDING_TRIALS_PG", 1)
+    @patch("ray.tune.trial_runner.TUNE_MAX_PENDING_TRIALS_PG", 1)
     def testFailResumeGridSearch(self):
         config = dict(
             num_samples=3,
@@ -221,6 +232,8 @@ class TuneFailResumeGridTest(unittest.TestCase):
         test2_counter = Counter([t.config["test2"] for t in analysis.trials])
         assert all(v == 9 for v in test2_counter.values())
 
+    @patch("ray.tune.utils.placement_groups.TUNE_MAX_PENDING_TRIALS_PG", 1)
+    @patch("ray.tune.trial_runner.TUNE_MAX_PENDING_TRIALS_PG", 1)
     def testFailResumeWithPreset(self):
         search_alg = BasicVariantGenerator(points_to_evaluate=[{
             "test": -1,
@@ -262,6 +275,8 @@ class TuneFailResumeGridTest(unittest.TestCase):
         assert test2_counter.pop(-1) == 4
         assert all(v == 10 for v in test2_counter.values())
 
+    @patch("ray.tune.utils.placement_groups.TUNE_MAX_PENDING_TRIALS_PG", 1)
+    @patch("ray.tune.trial_runner.TUNE_MAX_PENDING_TRIALS_PG", 1)
     def testFailResumeAfterPreset(self):
         search_alg = BasicVariantGenerator(points_to_evaluate=[{
             "test": -1,
@@ -304,6 +319,8 @@ class TuneFailResumeGridTest(unittest.TestCase):
         assert test2_counter.pop(-1) == 4
         assert all(v == 10 for v in test2_counter.values())
 
+    @patch("ray.tune.utils.placement_groups.TUNE_MAX_PENDING_TRIALS_PG", 1)
+    @patch("ray.tune.trial_runner.TUNE_MAX_PENDING_TRIALS_PG", 1)
     def testMultiExperimentFail(self):
         experiments = []
         for i in range(3):

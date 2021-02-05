@@ -494,7 +494,6 @@ class TrialRunner:
                 if next_trial is not None:
                     if _start_trial(next_trial):
                         may_handle_events = False
-
         if may_handle_events:
             if self.trial_executor.get_running_trials():
                 timeout = None
@@ -564,6 +563,10 @@ class TrialRunner:
             trial_progress_str(self.get_trials(), metrics),
         ]
         return delim.join(messages)
+
+    def has_resources_for_trial(self, trial: "Trial"):
+        """Returns whether this runner has at least the specified resources."""
+        return self.trial_executor.has_resources_for_trial(trial)
 
     def has_resources(self, resources):
         """Returns whether this runner has at least the specified resources."""
@@ -976,7 +979,7 @@ class TrialRunner:
             trial.clear_checkpoint()
         self.trial_executor.stop_trial(
             trial, error=error_msg is not None, error_msg=error_msg)
-        if self.trial_executor.has_resources(trial.resources):
+        if self.trial_executor.has_resources_for_trial(trial):
             logger.info(
                 "Trial %s: Attempting to restore "
                 "trial state from last checkpoint.", trial)
