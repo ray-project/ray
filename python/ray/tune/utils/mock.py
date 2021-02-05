@@ -1,7 +1,6 @@
 import logging
 import os
 
-import click
 import numpy as np
 import json
 import random
@@ -115,6 +114,7 @@ class FailureInjectorCallback(Callback):
         self.disable = disable
 
     def on_step_begin(self, **info):
+        import click
         from ray.autoscaler._private.commands import kill_node
         failures = 0
         max_failures = 3
