@@ -1,0 +1,46 @@
+cluster_name: long-running-distributed-tests
+
+min_workers: 3
+max_workers: 3
+
+idle_timeout_minutes: 15
+
+docker:
+    image: rayproject/ray-ml:1.2.0-gpu
+    container_name: ray_container
+    pull_before_run: True
+
+provider:
+    type: aws
+    region: us-west-2
+    availability_zone: us-west-2a
+    cache_stopped_nodes: False
+
+auth:
+    ssh_user: ubuntu
+
+head_node:
+    InstanceType: g3.8xlarge
+    ImageId: ami-0828a1066dc750737
+
+worker_nodes:
+  InstanceType: g3.8xlarge
+  ImageId: ami-0828a1066dc750737
+  InstanceMarketOptions:
+    MarketType: spot
+
+setup_commands:
+  - sudo apt-get install -y libglib2.0-0 libcudnn7=7.6.5.32-1+cuda10.1
+  - pip install -U https://ray-wheels.s3-us-west-2.amazonaws.com/releases/1.2.0/4c71f76b25bde02f208bfb21451347834994a72a/ray-1.2.0-cp37-cp37m-manylinux2014_x86_64.whl
+
+# Command to start ray on the head node. You don't need to change this.
+head_start_ray_commands:
+    - ray stop
+    - export RAY_BACKEND_LOG_LEVEL=debug
+    - ray start --head --port=6379 --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml
+
+# Command to start ray on worker nodes. You don't need to change this.
+worker_start_ray_commands:
+    - ray stop
+    - export RAY_BACKEND_LOG_LEVEL=debug
+    - ray start --address=$RAY_HEAD_IP:6379 --object-manager-port=8076
