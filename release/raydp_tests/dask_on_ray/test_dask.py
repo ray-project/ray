@@ -15,7 +15,7 @@ from dask.distributed import Client
 import time
 
 # DATA_DIR = "~/dask-on-ray-data"
-DATA_DIR = "obj-data"
+DATA_DIR = "/obj-data"
 
 
 def load_dataset(nbytes, npartitions, sort):
@@ -143,21 +143,21 @@ if __name__ == '__main__':
         client = Client('127.0.0.1:8786')
         ray.init()
     if args.ray:
-        # ray.init(address="auto")
+        ray.init(address="auto")
         # ray.init()
-        ray.init(
-            num_cpus=16,
-            _system_config={
-                "max_io_workers": 1,
-                "object_spilling_config": json.dumps(
-                    {
-                        "type": "filesystem",
-                        "params": {
-                            "directory_path": "/tmp/spill"
-                        }
-                    },
-                    separators=(",", ":"))
-            })
+        #ray.init(
+        #    num_cpus=16,
+        #    _system_config={
+        #        "max_io_workers": 1,
+        #        "object_spilling_config": json.dumps(
+        #            {
+        #                "type": "filesystem",
+        #                "params": {
+        #                    "directory_path": "/tmp/spill"
+        #                }
+        #            #},
+                    #separators=(",", ":"))
+            #})
         dask.config.set(scheduler=ray_dask_get_sync)
 
     system = "dask" if args.dask else "ray"
