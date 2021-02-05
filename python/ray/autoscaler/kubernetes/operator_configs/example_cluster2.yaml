@@ -70,9 +70,9 @@ spec:
     minWorkers: 1
     # Maximum number of Ray workers of this Pod type. Takes precedence over minWorkers.
     maxWorkers: 3
-    # User-specified custom resources for use by Ray 
+    # User-specified custom resources for use by Ray.
+    # (Ray detects CPU and GPU from pod spec resource requests and limits, so no need to fill those here.)
     rayResources: {"Custom1": 1, "is_spot": 1}
-    # Optional commands to run before starting the Ray runtime.
     podConfig:
       apiVersion: v1
       kind: Pod
