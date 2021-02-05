@@ -1,5 +1,7 @@
 package io.ray.test;
 
+import com.google.common.collect.ImmutableList;
+import io.ray.runtime.runner.RunManager;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -64,6 +66,7 @@ public class TestProgressListener implements IInvokedMethodListener, ITestListen
                   for (StackTraceElement element : testMainThread.getStackTrace()) {
                     System.out.println(element.toString());
                   }
+                  printJps();
                   printLogFiles();
                   printSection("ABORT TEST");
                   System.exit(1);
@@ -106,6 +109,17 @@ public class TestProgressListener implements IInvokedMethodListener, ITestListen
 
   @Override
   public void onFinish(ITestContext context) {}
+
+  private void printJps() {
+    printSection("JPS RESULT");
+    try {
+      System.out.println(RunManager.runCommand(ImmutableList.of("jps")));
+    } catch (Exception e) {
+      System.out.println("Failed to get jps result.");
+      e.printStackTrace();
+    }
+    printSection("JPS RESULT END");
+  }
 
   private void printLogFiles() {
     Collection<File> logFiles =
