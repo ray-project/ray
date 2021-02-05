@@ -373,6 +373,11 @@ class Worker:
         return False
 
     def ping_server(self) -> bool:
+        """Simple health check.
+
+        Piggybacks the IS_INITIALIZED call to check if the server provides
+        an actual response.
+        """
         if self.server is not None:
             result = self.get_cluster_info(
                 ray_client_pb2.ClusterInfoType.IS_INITIALIZED)
