@@ -85,8 +85,8 @@ class RayAPIStub:
                 logger.warning(msg)
             else:
                 raise RuntimeError(msg)
-        if CURRENT_PROTOCOL_VERSION < conn_info["protocol_version"]:
-            msg = "Client Ray installation out of date:" + \
+        if CURRENT_PROTOCOL_VERSION != conn_info["protocol_version"]:
+            msg = "Client Ray installation incompatible with server:" + \
                   f" client is {CURRENT_PROTOCOL_VERSION}," + \
                   f" server is {conn_info['protocol_version']}"
             if ignore_version:
