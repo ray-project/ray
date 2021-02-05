@@ -449,7 +449,17 @@ def init_and_serve(connection_str, *args, **kwargs):
     with disable_client_hook():
         # Disable client mode inside the worker's environment
         info = ray.init(*args, **kwargs)
-    server_handle = serve(connection_str)
+
+    def ray_connect_handler():
+        # Ray client will disconnect from ray when
+        # num_clients == 0.
+        if ray.is_initialized():
+            return info
+        else:
+            return ray.init(*args, **kwargs)
+
+    server_handle = serve(
+        connection_str, ray_connect_handler=ray_connect_handler)
     return (server_handle, info)
 
 

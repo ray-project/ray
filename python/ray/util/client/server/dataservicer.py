@@ -73,8 +73,8 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
             with self._clients_lock:
                 self._num_clients -= 1
 
-            if self._num_clients == 0:
-                with disable_client_hook():
+            with disable_client_hook():
+                if self._num_clients == 0:
                     ray.shutdown()
 
     def _build_connection_response(self):
