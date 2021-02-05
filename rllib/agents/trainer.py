@@ -1094,7 +1094,7 @@ class Trainer(Trainable):
             if model_config.get("_time_major"):
                 raise ValueError("`model._time_major` only supported "
                                  "iff `_use_trajectory_view_api` is True!")
-            elif traj_view_framestacks != "auto":
+            elif traj_view_framestacks not in ["auto", 0]:
                 raise ValueError("`model.num_framestacks` only supported "
                                  "iff `_use_trajectory_view_api` is True!")
             model_config["num_framestacks"] = 0

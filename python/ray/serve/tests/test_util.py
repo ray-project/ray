@@ -9,7 +9,7 @@ import pytest
 import ray
 from ray.serve.utils import (ServeEncoder, chain_future, unpack_future,
                              try_schedule_resources_on_nodes,
-                             get_conda_env_dir, import_class)
+                             get_conda_env_dir, import_attr)
 
 
 def test_bytes_encoder():
@@ -126,11 +126,11 @@ def test_get_conda_env_dir(tmp_path):
     os.environ["CONDA_PREFIX"] = ""
 
 
-def test_import_class():
-    assert import_class("ray.serve.Client") == ray.serve.api.Client
-    assert import_class("ray.serve.api.Client") == ray.serve.api.Client
+def test_import_attr():
+    assert import_attr("ray.serve.Client") == ray.serve.api.Client
+    assert import_attr("ray.serve.api.Client") == ray.serve.api.Client
 
-    policy_cls = import_class("ray.serve.controller.TrafficPolicy")
+    policy_cls = import_attr("ray.serve.controller.TrafficPolicy")
     assert policy_cls == ray.serve.controller.TrafficPolicy
 
     policy = policy_cls({"endpoint1": 0.5, "endpoint2": 0.5})
@@ -139,6 +139,10 @@ def test_import_class():
     policy.set_traffic_dict({"endpoint1": 0.4, "endpoint2": 0.6})
 
     print(repr(policy))
+
+    # Very meta...
+    import_attr_2 = import_attr("ray.serve.utils.import_attr")
+    assert import_attr_2 == import_attr
 
 
 if __name__ == "__main__":

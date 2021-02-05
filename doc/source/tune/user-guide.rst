@@ -261,6 +261,7 @@ You can restore a single trial checkpoint by using ``tune.run(restore=<checkpoin
         config={"env": "CartPole-v0"},
     )
 
+
 Distributed Checkpointing
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -275,6 +276,60 @@ disable cross-node syncing:
 
     sync_config = tune.SyncConfig(sync_to_driver=False)
     tune.run(func, sync_config=sync_config)
+
+
+Stopping and resuming a tuning run
+----------------------------------
+Ray Tune periodically checkpoints the experiment state so that it can be
+restarted when it fails or stops. The checkpointing period is
+dynamically adjusted so that at least 95% of the time is used for handling
+training results and scheduling.
+
+If you send a SIGINT signal to the process running ``tune.run()`` (which is
+usually what happens when you press Ctrl+C in the console), Ray Tune shuts
+down training gracefully and saves a final experiment-level checkpoint. You
+can then call ``tune.run()`` with ``resume=True`` to continue this run in
+the future:
+
+.. code-block:: python
+    :emphasize-lines: 14
+
+    tune.run(
+        train,
+        # ...
+        name="my_experiment"
+    )
+
+    # This is interrupted e.g. by sending a SIGINT signal
+    # Next time, continue the run like so:
+
+    tune.run(
+        train,
+        # ...
+        name="my_experiment",
+        resume=True
+    )
+
+You will have to pass a ``name`` if you are using ``resume=True`` so that
+Ray Tune can detect the experiment folder (which is usually stored at e.g.
+``~/ray_results/my_experiment``). If you forgot to pass a name in the first
+call, you can still pass the name when you resume the run. Please note that
+in this case it is likely that your experiment name has a date suffix, so if you
+ran ``tune.run(my_trainable)``, the ``name`` might look like something like this:
+``my_trainable_2021-01-29_10-16-44``.
+
+You can see which name you need to pass by taking a look at the results table
+of your original tuning run:
+
+.. code-block::
+    :emphasize-lines: 5
+
+    == Status ==
+    Memory usage on this node: 11.0/16.0 GiB
+    Using FIFO scheduling algorithm.
+    Resources requested: 1/16 CPUs, 0/0 GPUs, 0.0/4.69 GiB heap, 0.0/1.61 GiB objects
+    Result logdir: /Users/ray/ray_results/my_trainable_2021-01-29_10-16-44
+    Number of trials: 1/1 (1 RUNNING)
 
 
 Handling Large Datasets
@@ -682,6 +737,10 @@ These are the environment variables Ray Tune currently considers:
   or a search algorithm, Tune will error
   if the metric was not reported in the result. Setting this environment variable
   to ``1`` will disable this check.
+* **TUNE_DISABLE_SIGINT_HANDLER**: Ray Tune catches SIGINT signals (e.g. sent by
+  Ctrl+C) to gracefully shutdown and do a final checkpoint. Setting this variable
+  to ``1`` will disable signal handling and stop execution right away. Defaults to
+  ``0``.
 * **TUNE_FUNCTION_THREAD_TIMEOUT_S**: Time in seconds the function API waits
   for threads to finish after instructing them to complete. Defaults to ``2``.
 * **TUNE_GLOBAL_CHECKPOINT_S**: Time in seconds that limits how often Tune's
