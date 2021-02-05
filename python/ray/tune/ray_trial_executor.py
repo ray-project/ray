@@ -164,6 +164,7 @@ class RayTrialExecutor(TrialExecutor):
         self._trial_cleanup = _TrialCleanup()
         self._reuse_actors = reuse_actors
         self._cached_actor = None
+        self._cached_pg = None
 
         self._avail_resources = Resources(cpu=0, gpu=0)
         self._committed_resources = Resources(cpu=0, gpu=0)
@@ -238,18 +239,31 @@ class RayTrialExecutor(TrialExecutor):
 
         return None
 
+    def _unstage_trial(self, trial: "Trial"):
+        if trial in self._staged_trials:
+            self._staged_trials.remove(trial)
+            own_pg = self._pg_manager.clean_trial_placement_group(trial)
+
+            if own_pg:
+                remove_placement_group(own_pg)
+
     def _setup_remote_runner(self, trial):
         trial.init_logdir()
         # We checkpoint metadata here to try mitigating logdir duplication
         self.try_checkpoint_metadata(trial)
         logger_creator = partial(noop_logger_creator, logdir=trial.logdir)
 
-        if (self._reuse_actors and self._cached_actor is not None):
+        if self._reuse_actors and self._cached_actor is not None:
             logger.debug("Trial %s: Reusing cached runner %s", trial,
                          self._cached_actor)
             existing_runner = self._cached_actor
             self._cached_actor = None
+
             trial.set_runner(existing_runner)
+            if self._pg_manager.has_ready(trial):
+                # When using a cached actor+PG, unstage the trial
+                self._unstage_trial(trial)
+                self._pg_manager.assign_pg(trial)
 
             if not self.reset_trial(trial, trial.config, trial.experiment_tag,
                                     logger_creator):
@@ -262,10 +276,8 @@ class RayTrialExecutor(TrialExecutor):
             logger.debug("Cannot reuse cached runner {} for new trial".format(
                 self._cached_actor))
             with self._change_working_directory(trial):
-                pg = self._pg_manager.clean_trial_placement_group(trial)
-
                 self._trial_cleanup.add(
-                    trial, actor=self._cached_actor, placement_group=pg)
+                    trial, actor=self._cached_actor, placement_group=None)
             self._cached_actor = None
 
         _actor_cls = _class_cache.get(trial.get_trainable_cls())
@@ -425,14 +437,16 @@ class RayTrialExecutor(TrialExecutor):
                         and self._cached_actor is None):
                     logger.debug("Reusing actor for %s", trial.runner)
                     self._cached_actor = trial.runner
+                    self._pg_manager.return_pg(trial)
                 else:
                     logger.debug("Trial %s: Destroying actor.", trial)
                     pg = self._pg_manager.clean_trial_placement_group(trial)
                     with self._change_working_directory(trial):
                         self._trial_cleanup.add(
                             trial, actor=trial.runner, placement_group=pg)
-                    if trial in self._staged_trials:
-                        self._staged_trials.remove(trial)
+
+                if trial in self._staged_trials:
+                    self._staged_trials.remove(trial)
 
         except Exception:
             logger.exception("Trial %s: Error stopping runner.", trial)

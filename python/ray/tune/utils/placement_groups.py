@@ -208,14 +208,10 @@ class PlacementGroupManager:
             Configured ActorClass or None
 
         """
-        pgf = trial.placement_group_factory
+        pg = self.assign_pg(trial)
 
-        if not self._ready[pgf]:
+        if not pg:
             return None
-
-        pg = self._ready[pgf].pop()
-        self._in_use_pgs[pg] = trial
-        self._in_use_trials[trial] = pg
 
         # We still have to pass resource specs
         # Pass the full resource specs of the first bundle per default
@@ -250,6 +246,25 @@ class PlacementGroupManager:
 
     def trial_in_use(self, trial: "Trial"):
         return trial in self._in_use_trials
+
+    def return_pg(self, trial: "Trial"):
+        """Return pg, making it available for other trials to use."""
+        pg = self._in_use_trials.pop(trial)
+        self._in_use_pgs.pop(pg)
+        self._ready[trial.placement_group_factory].add(pg)
+
+    def assign_pg(self, trial: "Trial") -> Optional[PlacementGroup]:
+        """Assign a ready pg to a trial."""
+        pgf = trial.placement_group_factory
+
+        if not self._ready[pgf]:
+            return None
+
+        pg = self._ready[pgf].pop()
+        self._in_use_pgs[pg] = trial
+        self._in_use_trials[trial] = pg
+
+        return pg
 
     def clean_trial_placement_group(
             self, trial: "Trial") -> Optional[PlacementGroup]:
