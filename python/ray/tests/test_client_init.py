@@ -1,4 +1,3 @@
-# flake8: noqa
 """Client tests that run their own init (as with init_and_serve) live here"""
 import pytest
 
@@ -85,8 +84,6 @@ def test_num_clients(init_and_serve_lazy):
     def get_job_id(api):
         return api.get_runtime_context().worker.current_job_id
 
-    server_handle = init_and_serve_lazy
-    server = server_handle.grpc_server
     api1 = RayAPIStub()
     info1 = api1.connect("localhost:50051")
     job_id_1 = get_job_id(api1)
@@ -118,7 +115,6 @@ def test_num_clients(init_and_serve_lazy):
 
 
 def test_python_version(init_and_serve):
-    from ray.util.client import ray
     server_handle = init_and_serve
     ray = RayAPIStub()
     info1 = ray.connect("localhost:50051")
@@ -151,7 +147,6 @@ def test_python_version(init_and_serve):
 
 
 def test_protocol_version(init_and_serve):
-    from ray.util.client import ray
     server_handle = init_and_serve
     ray = RayAPIStub()
     info1 = ray.connect("localhost:50051")
