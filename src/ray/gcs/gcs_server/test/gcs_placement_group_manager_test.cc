@@ -103,6 +103,23 @@ class GcsPlacementGroupManagerTest : public ::testing::Test {
     promise.get_future().get();
   }
 
+  // We need invoke this before `OnPlacementGroupCreationSuccess`, or it will return directly.
+  void RegisterPlacementGroupCreationCallback(const PlacementGroupID placement_group_id) {
+    std::promise<void> promise;
+    auto creation_callback = [&promise](Status status) {
+      RAY_CHECK_OK(status);
+      promise.set_value();
+    };
+    creation_callbacks[placement_group_id] = promise;
+  }
+
+  void WaitPlacementGroupCreationSuccessful(const PlacementGroupID placement_group_id) {
+    auto iter = creation_callbacks.find(placement_group_id);
+    RAY_CHECK(iter != creation_callbacks.end());
+    auto promise = iter->second;
+    promise.get_future().get();
+  }
+
   void WaitForExpectedPgCount(int expected_count) {
     auto condition = [this, expected_count]() {
       return mock_placement_group_scheduler_->GetPlacementGroupCount() == expected_count;
@@ -120,6 +137,7 @@ class GcsPlacementGroupManagerTest : public ::testing::Test {
   std::shared_ptr<gcs::GcsResourceManager> gcs_resource_manager_;
   std::shared_ptr<GcsServerMocker::MockGcsPubSub> gcs_pub_sub_;
   std::shared_ptr<gcs::RedisClient> redis_client_;
+  std::unordered_map<PlacementGroupID, std::promise<void>> creation_callbacks;
 };
 
 TEST_F(GcsPlacementGroupManagerTest, TestBasic) {
@@ -134,7 +152,9 @@ TEST_F(GcsPlacementGroupManagerTest, TestBasic) {
   auto placement_group = mock_placement_group_scheduler_->placement_groups_.back();
   mock_placement_group_scheduler_->placement_groups_.pop_back();
 
+  RegisterPlacementGroupCreationCallback(placement_group->GetPlacementGroupID());
   gcs_placement_group_manager_->OnPlacementGroupCreationSuccess(placement_group);
+  WaitPlacementGroupCreationSuccessful(placement_group->GetPlacementGroupID());
   ASSERT_EQ(placement_group->GetState(), rpc::PlacementGroupTableData::CREATED);
 }
 
@@ -468,6 +488,6 @@ TEST_F(GcsPlacementGroupManagerTest,
 
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
-  //::testing::GTEST_FLAG(filter) = "*TestRescheduleWhenNodeDead*";
+  ::testing::GTEST_FLAG(filter) = "*TestRemovingCreatedPlacementGroup*";
   return RUN_ALL_TESTS();
 }

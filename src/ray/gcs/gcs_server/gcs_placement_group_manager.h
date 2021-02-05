@@ -164,6 +164,14 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
       rpc::WaitPlacementGroupUntilReadyReply *reply,
       rpc::SendReplyCallback send_reply_callback) override;
 
+  /// Register a callback of placement group creation.
+  /// 
+  /// \param placement_group_id The placement group id which we want to listen.
+  /// \param callback Will be invoked after the placement group is created successfully or
+  /// be invoked if the placement group is deleted before create successfully.
+  void WaitPlacementGroup(const PlacementGroupID &placement_group_id,
+                            StatusCallback callback);
+
   /// Register placement_group asynchronously.
   ///
   /// \param placement_group The placement group to be created.
