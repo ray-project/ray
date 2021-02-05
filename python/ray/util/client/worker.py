@@ -68,6 +68,7 @@ class Worker:
         """
         self.metadata = metadata if metadata else []
         self.channel = None
+        self.server = None
         self._conn_state = grpc.ChannelConnectivity.IDLE
         self._client_id = make_client_id()
         self._converted: Dict[str, ClientStub] = {}
@@ -94,11 +95,9 @@ class Worker:
                 # RayletDriverStub, allowing for unary requests.
                 self.server = ray_client_pb2_grpc.RayletDriverStub(
                     self.channel)
-                # Initialize the streams to finish protocol negotiation.
-                self.data_client = DataClient(self.channel, self._client_id,
-                                              self.metadata)
-                service_ready = True
-                break
+                service_ready = bool(self.ping_server())
+                if service_ready:
+                    break
             except grpc.FutureTimeoutError:
                 logger.info(
                     f"Couldn't connect channel in {timeout} seconds, retrying")
@@ -120,6 +119,10 @@ class Worker:
         # should error back to the user.
         if not service_ready:
             raise ConnectionError("ray client connection timeout")
+
+        # Initialize the streams to finish protocol negotiation.
+        self.data_client = DataClient(self.channel, self._client_id,
+                                      self.metadata)
         self.reference_count: Dict[bytes, int] = defaultdict(int)
 
         self.log_client = LogstreamClient(self.channel, self.metadata)
@@ -367,6 +370,13 @@ class Worker:
         if self.server is not None:
             return self.get_cluster_info(
                 ray_client_pb2.ClusterInfoType.IS_INITIALIZED)
+        return False
+
+    def ping_server(self) -> bool:
+        if self.server is not None:
+            result = self.get_cluster_info(
+                ray_client_pb2.ClusterInfoType.IS_INITIALIZED)
+            return result is not None
         return False
 
     def is_connected(self) -> bool:
