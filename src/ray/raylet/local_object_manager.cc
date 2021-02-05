@@ -270,11 +270,15 @@ void LocalObjectManager::AddSpilledUrls(
     // don't need to report where this object is spilled.
     const auto node_id_object_spilled =
         is_external_storage_type_fs_ ? self_node_id_ : NodeID::Nil();
+
+    auto it = objects_pending_spill_.find(object_id);
+    RAY_CHECK(it != objects_pending_spill_.end());
+
     // Write to object directory. Wait for the write to finish before
     // releasing the object to make sure that the spilled object can
     // be retrieved by other raylets.
     RAY_CHECK_OK(object_info_accessor_.AsyncAddSpilledUrl(
-        object_id, object_url, node_id_object_spilled,
+        object_id, object_url, node_id_object_spilled, it->second->GetSize(),
         [this, object_id, object_url, callback, num_remaining](Status status) {
           RAY_CHECK_OK(status);
           // Unpin the object.

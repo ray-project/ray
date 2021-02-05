@@ -69,7 +69,7 @@ namespace plasma {
 
 struct GetRequest {
   GetRequest(boost::asio::io_service &io_context, const std::shared_ptr<Client> &client,
-             const std::vector<ObjectID> &object_ids);
+             const std::vector<ObjectID> &object_ids, bool is_from_worker);
   /// The client that called get.
   std::shared_ptr<Client> client;
   /// The object IDs involved in this request. This is used in the reply.
@@ -82,6 +82,9 @@ struct GetRequest {
   /// The number of object requests in this wait request that are already
   /// satisfied.
   int64_t num_satisfied;
+  /// Whether or not the request comes from the core worker. It is used to track the size
+  /// of total objects that are consumed by core worker.
+  bool is_from_worker;
 
   void AsyncWait(int64_t timeout_ms,
                  std::function<void(const boost::system::error_code &)> on_timeout) {
@@ -100,11 +103,12 @@ struct GetRequest {
 
 GetRequest::GetRequest(boost::asio::io_service &io_context,
                        const std::shared_ptr<Client> &client,
-                       const std::vector<ObjectID> &object_ids)
+                       const std::vector<ObjectID> &object_ids, bool is_from_worker)
     : client(client),
       object_ids(object_ids.begin(), object_ids.end()),
       objects(object_ids.size()),
       num_satisfied(0),
+      is_from_worker(is_from_worker),
       timer_(io_context) {
   std::unordered_set<ObjectID> unique_ids(object_ids.begin(), object_ids.end());
   num_objects_to_wait_for = unique_ids.size();
@@ -159,6 +163,7 @@ void PlasmaStore::AddToClientObjectIds(const ObjectID &object_id, ObjectTableEnt
   if (entry->ref_count == 0) {
     // Tell the eviction policy that this object is being used.
     eviction_policy_.BeginObjectAccess(object_id);
+    num_bytes_in_use_ += entry->data_size + entry->metadata_size;
   }
   // Increase reference count.
   entry->ref_count++;
@@ -392,6 +397,9 @@ void PlasmaStore::ReturnFromGet(GetRequest *get_req) {
       fds_to_send.insert(fd);
       store_fds.push_back(fd);
       mmap_sizes.push_back(GetMmapSize(fd));
+      if (get_req->is_from_worker) {
+        total_consumed_bytes_ += object.data_size + object.metadata_size;
+      }
     }
   }
   // Send the get reply to the client.
@@ -464,9 +472,9 @@ void PlasmaStore::UpdateObjectGetRequests(const ObjectID &object_id) {
 
 void PlasmaStore::ProcessGetRequest(const std::shared_ptr<Client> &client,
                                     const std::vector<ObjectID> &object_ids,
-                                    int64_t timeout_ms) {
+                                    int64_t timeout_ms, bool is_from_worker) {
   // Create a get request for this object.
-  auto get_req = new GetRequest(io_context_, client, object_ids);
+  auto get_req = new GetRequest(io_context_, client, object_ids, is_from_worker);
   for (auto object_id : object_ids) {
     // Check if this object is already present
     // locally. If so, record that the object is being used and mark it as accounted for.
@@ -537,6 +545,7 @@ int PlasmaStore::RemoveFromClientObjectIds(const ObjectID &object_id,
     // If no more clients are using this object, notify the eviction policy
     // that the object is no longer being used.
     if (entry->ref_count == 0) {
+      num_bytes_in_use_ -= entry->data_size + entry->metadata_size;
       RAY_LOG(DEBUG) << "Releasing object no longer in use " << object_id;
       if (deletion_cache_.count(object_id) == 0) {
         // Tell the eviction policy that this object is no longer being used.
@@ -892,8 +901,10 @@ Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client,
   case fb::MessageType::PlasmaGetRequest: {
     std::vector<ObjectID> object_ids_to_get;
     int64_t timeout_ms;
-    RAY_RETURN_NOT_OK(ReadGetRequest(input, input_size, object_ids_to_get, &timeout_ms));
-    ProcessGetRequest(client, object_ids_to_get, timeout_ms);
+    bool is_from_worker;
+    RAY_RETURN_NOT_OK(ReadGetRequest(input, input_size, object_ids_to_get, &timeout_ms,
+                                     &is_from_worker));
+    ProcessGetRequest(client, object_ids_to_get, timeout_ms, is_from_worker);
   } break;
   case fb::MessageType::PlasmaReleaseRequest: {
     RAY_RETURN_NOT_OK(ReadReleaseRequest(input, input_size, &object_id));
@@ -1016,6 +1027,11 @@ void PlasmaStore::ReplyToCreateClient(const std::shared_ptr<Client> &client,
   } else {
     static_cast<void>(SendUnfinishedCreateReply(client, object_id, req_id));
   }
+}
+
+int64_t PlasmaStore::GetConsumedBytes() {
+  std::lock_guard<std::recursive_mutex> guard(mutex_);
+  return total_consumed_bytes_;
 }
 
 bool PlasmaStore::IsObjectSpillable(const ObjectID &object_id) {

@@ -167,6 +167,11 @@ class Node:
 
         self._init_temp(redis_client)
 
+        # If it is a head node, try validating if
+        # external storage is configurable.
+        if head:
+            self.validate_external_storage()
+
         if connect_only:
             # Get socket names from the configuration.
             self._plasma_store_socket_name = (
@@ -1164,3 +1169,44 @@ class Node:
             storage = external_storage.setup_external_storage(
                 object_spilling_config)
             storage.destroy_external_storage()
+
+    def validate_external_storage(self):
+        """Make sure we can setup the object spilling external storage.
+        This will also fill up the default setting for object spilling
+        if not specified.
+        """
+        object_spilling_config = self._config.get("object_spilling_config", {})
+        automatic_spilling_enabled = self._config.get(
+            "automatic_object_spilling_enabled", True)
+        if not automatic_spilling_enabled:
+            return
+
+        # If the config is not specified, we fill up the default.
+        if not object_spilling_config:
+            object_spilling_config = json.dumps({
+                "type": "filesystem",
+                "params": {
+                    "directory_path": self._session_dir
+                }
+            })
+
+        # Try setting up the storage.
+        # Configure the proper system config.
+        # We need to set both ray param's system config and self._config
+        # because they could've been diverged at this point.
+        deserialized_config = json.loads(object_spilling_config)
+        self._ray_params._system_config["object_spilling_config"] = (
+            object_spilling_config)
+        self._config["object_spilling_config"] = object_spilling_config
+
+        is_external_storage_type_fs = (
+            deserialized_config["type"] == "filesystem")
+        self._ray_params._system_config["is_external_storage_type_fs"] = (
+            is_external_storage_type_fs)
+        self._config["is_external_storage_type_fs"] = (
+            is_external_storage_type_fs)
+
+        # Validate external storage usage.
+        from ray import external_storage
+        external_storage.setup_external_storage(deserialized_config)
+        external_storage.reset_external_storage()

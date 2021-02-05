@@ -841,6 +841,48 @@ TEST_F(SingleNodeTest, TestNormalTaskLocal) {
   TestNormalTask(resources);
 }
 
+TEST_F(SingleNodeTest, TestCancelTasks) {
+  auto &driver = CoreWorkerProcess::GetCoreWorker();
+
+  // Create two functions, each implementing a while(true) loop.
+  RayFunction func1(ray::Language::PYTHON, ray::FunctionDescriptorBuilder::BuildPython(
+                                               "WhileTrueLoop", "", "", ""));
+  RayFunction func2(ray::Language::PYTHON, ray::FunctionDescriptorBuilder::BuildPython(
+                                               "WhileTrueLoop", "", "", ""));
+  // Return IDs for the two functions that implement while(true) loops.
+  std::vector<ObjectID> return_ids1;
+  std::vector<ObjectID> return_ids2;
+
+  // Create default args and options needed to submit the tasks that encapsulate func1 and
+  // func2.
+  std::vector<std::unique_ptr<TaskArg>> args;
+  TaskOptions options;
+
+  // Submit func1. The function should start looping forever.
+  driver.SubmitTask(func1, args, options, &return_ids1, /*max_retries=*/0,
+                    std::make_pair(PlacementGroupID::Nil(), -1), true,
+                    /*debugger_breakpoint=*/"");
+  ASSERT_EQ(return_ids1.size(), 1);
+
+  // Submit func2. The function should be queued at the worker indefinitely.
+  driver.SubmitTask(func2, args, options, &return_ids2, /*max_retries=*/0,
+                    std::make_pair(PlacementGroupID::Nil(), -1), true,
+                    /*debugger_breakpoint=*/"");
+  ASSERT_EQ(return_ids2.size(), 1);
+
+  // Cancel func2 by removing it from the worker's queue
+  RAY_CHECK_OK(driver.CancelTask(return_ids2[0], true, false));
+
+  // Cancel func1, which is currently running.
+  RAY_CHECK_OK(driver.CancelTask(return_ids1[0], true, false));
+
+  // TestNormalTask will get stuck unless both func1 and func2 have been cancelled. Thus,
+  // if TestNormalTask succeeds, we know that func2 must have been removed from the
+  // worker's queue.
+  std::unordered_map<std::string, double> resources;
+  TestNormalTask(resources);
+}
+
 TEST_F(TwoNodeTest, TestNormalTaskCrossNodes) {
   std::unordered_map<std::string, double> resources;
   resources.emplace("resource1", 1);

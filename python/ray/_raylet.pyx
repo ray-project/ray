@@ -477,6 +477,12 @@ cdef execute_task(
                         if debugger_breakpoint != b"":
                             ray.util.pdb.set_trace(
                                 breakpoint_uuid=debugger_breakpoint)
+                        if inspect.iscoroutinefunction(function_executor):
+                            raise ValueError(
+                                "'async def' should not be used for remote "
+                                "tasks. You can wrap the async function with "
+                                "`asyncio.get_event_loop.run_until(f())`. "
+                                "See more at docs.ray.io/async_api.html")
                         outputs = function_executor(*args, **kwargs)
                         next_breakpoint = (
                             ray.worker.global_worker.debugger_breakpoint)
@@ -896,6 +902,18 @@ cdef class CoreWorker:
             check_status(CCoreWorkerProcess.GetCoreWorker().Get(
                 c_object_ids, timeout_ms, &results, _plasma_objects_only))
 
+        return RayObjectsToDataMetadataPairs(results)
+
+    def get_if_local(self, object_refs):
+        """Get objects from local plasma store directly
+        without a fetch request to raylet."""
+        cdef:
+            c_vector[shared_ptr[CRayObject]] results
+            c_vector[CObjectID] c_object_ids = ObjectRefsToVector(object_refs)
+        with nogil:
+            check_status(
+                CCoreWorkerProcess.GetCoreWorker().GetIfLocal(
+                    c_object_ids, &results))
         return RayObjectsToDataMetadataPairs(results)
 
     def object_exists(self, ObjectRef object_ref):
