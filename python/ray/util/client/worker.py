@@ -83,7 +83,7 @@ class Worker:
         # looking like a gRPC connection, though it may be a proxy.
         conn_attempts = 0
         timeout = INITIAL_TIMEOUT_SEC
-        ray_ready = False
+        service_ready = False
         while conn_attempts < max(connection_retries, 1):
             conn_attempts += 1
             try:
@@ -94,16 +94,11 @@ class Worker:
                 # RayletDriverStub, allowing for unary requests.
                 self.server = ray_client_pb2_grpc.RayletDriverStub(
                     self.channel)
-                # # Now the HTTP2 channel is ready, or proxied, but the
-                # # servicer may not be ready. Call is_initialized() and if
-                # # it throws, the servicer is not ready. On success, the
-                # # `ray_ready` result is checked.
-                # ray_ready = self.is_initialized()
-                # if ray_ready:
-                #     # Ray is ready! Break out of the retry loop
-                #     break
-                # # Ray is not ready yet, wait a timeout
-                # time.sleep(timeout)
+                # Initialize the streams to finish protocol negotiation.
+                self.data_client = DataClient(self.channel, self._client_id,
+                                              self.metadata)
+                service_ready = True
+                break
             except grpc.FutureTimeoutError:
                 logger.info(
                     f"Couldn't connect channel in {timeout} seconds, retrying")
@@ -120,14 +115,10 @@ class Worker:
                         f"retry in {timeout}s...")
             timeout = backoff(timeout)
 
-        # # If we made it through the loop without ray_ready it means we've used
-        # # up our retries and should error back to the user.
-        # if not ray_ready:
-        #     raise ConnectionError("ray client connection timeout")
-
-        # Initialize the streams to finish protocol negotiation.
-        self.data_client = DataClient(self.channel, self._client_id,
-                                      self.metadata)
+        # If we made it through the loop without service_ready it means we've used
+        # up our retries and should error back to the user.
+        if not service_ready:
+            raise ConnectionError("ray client connection timeout")
         self.reference_count: Dict[bytes, int] = defaultdict(int)
 
         self.log_client = LogstreamClient(self.channel, self.metadata)
