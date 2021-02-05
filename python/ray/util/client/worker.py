@@ -98,6 +98,8 @@ class Worker:
                 service_ready = bool(self.ping_server())
                 if service_ready:
                     break
+                # Ray is not ready yet, wait a timeout
+                time.sleep(timeout)
             except grpc.FutureTimeoutError:
                 logger.info(
                     f"Couldn't connect channel in {timeout} seconds, retrying")
