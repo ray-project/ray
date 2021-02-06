@@ -57,6 +57,13 @@ if ! git diff --exit-code -- java src/ray/core_worker/lib/java; then
   exit 1
 fi
 
+# Install gdb on travis CI machine to get pstack output
+if ! command -v gdb; then
+  if [[ "${osversion}" == linux-gnu-ubuntu* ]]; then
+    sudo apt-get install -qq -o=Dpkg::Use-Pty=0 gdb
+  fi
+fi
+
 # NOTE(kfstrom): Java test troubleshooting only.
 # Set MAX_ROUNDS to a big number (e.g. 1000) to run Java tests repeatedly.
 # You may also want to modify java/testng.xml to run only a subset of test cases.
