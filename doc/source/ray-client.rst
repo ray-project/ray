@@ -1,3 +1,5 @@
+.. _ray-client:
+
 **********
 Ray Client
 **********
@@ -33,8 +35,7 @@ From here, another Ray script can access that server from a networked machine wi
    do_work.remote(2)
    #....
 
-When the client disconnects, any object or actor references held by the server on behalf of the client are dropped, as if directly disconnecting from the cluster
-
+When the client disconnects, any object or actor references held by the server on behalf of the client are dropped, as if directly disconnecting from the cluster.
 
 ===================
 ``RAY_CLIENT_MODE``
