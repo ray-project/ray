@@ -40,6 +40,9 @@ void LocalObjectManager::PinObjects(const std::vector<ObjectID> &object_ids,
 void LocalObjectManager::WaitForObjectFree(const rpc::Address &owner_address,
                                            const std::vector<ObjectID> &object_ids) {
   for (const auto &object_id : object_ids) {
+    // Save the object's owner in case we need to communicate with the owner upon an
+    // object spill.
+    pinned_object_owners_.emplace(object_id, owner_address);
     // Send a long-running RPC request to the owner for each object. When we get a
     // response or the RPC fails (due to the owner crashing), unpin the object.
     // TODO(edoakes): we should be batching these requests instead of sending one per
@@ -73,6 +76,7 @@ void LocalObjectManager::ReleaseFreedObject(const ObjectID &object_id) {
     if (pinned_objects_.count(object_id)) {
       pinned_objects_size_ -= pinned_objects_[object_id]->GetSize();
       pinned_objects_.erase(object_id);
+      pinned_object_owners_.erase(object_id);
     }
   }
 
@@ -155,7 +159,13 @@ bool LocalObjectManager::SpillObjectsOfSize(int64_t num_bytes_to_spill) {
     SpillObjectsInternal(objects_to_spill, [this, bytes_to_spill, objects_to_spill,
                                             start_time](const Status &status) {
       if (!status.ok()) {
-        RAY_LOG(ERROR) << "Error spilling objects " << status.ToString();
+        if (status.IsObjectNotFound()) {
+          RAY_LOG(INFO)
+              << "Failed to spill objects because they were not found, probably "
+              << "already freed";
+        } else {
+          RAY_LOG(INFO) << "Failed to spill objects: " << status.ToString();
+        }
       } else {
         auto now = absl::GetCurrentTimeNanos();
         RAY_LOG(DEBUG) << "Spilled " << bytes_to_spill << " bytes in "
@@ -228,6 +238,9 @@ void LocalObjectManager::SpillObjectsInternal(
         for (const auto &object_id : objects_to_spill) {
           RAY_LOG(DEBUG) << "Sending spill request for object " << object_id;
           request.add_object_ids_to_spill(object_id.Binary());
+          auto owner_it = pinned_object_owners_.find(object_id);
+          RAY_CHECK(owner_it != pinned_object_owners_.end());
+          request.add_owner_addresses()->MergeFrom(owner_it->second);
         }
         io_worker->rpc_client()->SpillObjects(
             request, [this, objects_to_spill, callback, io_worker](
@@ -274,41 +287,82 @@ void LocalObjectManager::AddSpilledUrls(
     auto it = objects_pending_spill_.find(object_id);
     RAY_CHECK(it != objects_pending_spill_.end());
 
-    // Write to object directory. Wait for the write to finish before
-    // releasing the object to make sure that the spilled object can
-    // be retrieved by other raylets.
-    RAY_CHECK_OK(object_info_accessor_.AsyncAddSpilledUrl(
-        object_id, object_url, node_id_object_spilled, it->second->GetSize(),
-        [this, object_id, object_url, callback, num_remaining](Status status) {
-          RAY_CHECK_OK(status);
-          // Unpin the object.
-          auto it = objects_pending_spill_.find(object_id);
-          RAY_CHECK(it != objects_pending_spill_.end());
-          num_bytes_pending_spill_ -= it->second->GetSize();
-          objects_pending_spill_.erase(it);
+    const auto unpin_callback = [this, object_id, object_url, callback,
+                                 num_remaining](Status status) {
+      if (!status.ok()) {
+        if (status.IsObjectNotFound()) {
+          RAY_LOG(INFO)
+              << "Failed to send spilled url for object " << object_id
+              << " to object directory, object not found, must already be freed";
+        } else {
+          RAY_LOG(INFO)
+              << "Failed to send spilled url for object " << object_id
+              << " to object directory, considering the object to have been freed: "
+              << status.ToString();
+        }
+      } else {
+        RAY_LOG(DEBUG) << "Object " << object_id << " spilled to " << object_url
+                       << " and object directory has been informed";
+      }
+      RAY_LOG(DEBUG) << "Unpinning pending spill object " << object_id;
+      // Unpin the object.
+      auto it = objects_pending_spill_.find(object_id);
+      RAY_CHECK(it != objects_pending_spill_.end());
+      num_bytes_pending_spill_ -= it->second->GetSize();
+      objects_pending_spill_.erase(it);
 
-          // Update the object_id -> url_ref_count to use it for deletion later.
-          // We need to track the references here because a single file can contain
-          // multiple objects, and we shouldn't delete the file until
-          // all the objects are gone out of scope.
-          // object_url is equivalent to url_with_offset.
-          auto parsed_url = ParseURL(object_url);
-          const auto base_url_it = parsed_url->find("url");
-          RAY_CHECK(base_url_it != parsed_url->end());
-          if (!url_ref_count_.contains(base_url_it->second)) {
-            url_ref_count_[base_url_it->second] = 1;
-          } else {
-            url_ref_count_[base_url_it->second] += 1;
-          }
-          spilled_objects_url_.emplace(object_id, object_url);
+      // Update the object_id -> url_ref_count to use it for deletion later.
+      // We need to track the references here because a single file can contain
+      // multiple objects, and we shouldn't delete the file until
+      // all the objects are gone out of scope.
+      // object_url is equivalent to url_with_offset.
+      auto parsed_url = ParseURL(object_url);
+      const auto base_url_it = parsed_url->find("url");
+      RAY_CHECK(base_url_it != parsed_url->end());
+      if (!url_ref_count_.contains(base_url_it->second)) {
+        url_ref_count_[base_url_it->second] = 1;
+      } else {
+        url_ref_count_[base_url_it->second] += 1;
+      }
+      spilled_objects_url_.emplace(object_id, object_url);
 
-          (*num_remaining)--;
-          if (*num_remaining == 0 && callback) {
-            callback(status);
-          }
-        }));
+      (*num_remaining)--;
+      if (*num_remaining == 0 && callback) {
+        callback(status);
+      }
+    };
+
+    if (RayConfig::instance().ownership_based_object_directory_enabled()) {
+      // TODO(Clark): Don't send RPC to owner if we're fulfilling an owner-initiated
+      // spill RPC.
+      rpc::AddSpilledUrlRequest request;
+      request.set_object_id(object_id.Binary());
+      request.set_spilled_url(object_url);
+      request.set_spilled_node_id(node_id_object_spilled.Binary());
+      request.set_size(it->second->GetSize());
+
+      auto owner_it = pinned_object_owners_.find(object_id);
+      RAY_CHECK(owner_it != pinned_object_owners_.end());
+      auto owner_client = owner_client_pool_.GetOrConnect(owner_it->second);
+      RAY_LOG(DEBUG) << "Sending spilled URL " << object_url << " for object "
+                     << object_id << " to owner "
+                     << WorkerID::FromBinary(owner_it->second.worker_id());
+      // Send spilled URL, spilled node ID, and object size to owner.
+      owner_client->AddSpilledUrl(
+          request, [unpin_callback, object_id](Status status,
+                                               const rpc::AddSpilledUrlReply &reply) {
+            unpin_callback(status);
+          });
+    } else {
+      // Write to object directory. Wait for the write to finish before
+      // releasing the object to make sure that the spilled object can
+      // be retrieved by other raylets.
+      RAY_CHECK_OK(object_info_accessor_.AsyncAddSpilledUrl(
+          object_id, object_url, node_id_object_spilled, it->second->GetSize(),
+          unpin_callback));
+    }
   }
-}
+}  // namespace raylet
 
 void LocalObjectManager::AsyncRestoreSpilledObject(
     const ObjectID &object_id, const std::string &object_url, const NodeID &node_id,
@@ -321,11 +375,11 @@ void LocalObjectManager::AsyncRestoreSpilledObject(
   if (!node_id.IsNil() && node_id != self_node_id_) {
     // If we know where this object was spilled, and the current node is not that one,
     // send a RPC to a remote node that spilled the object to restore it.
-    RAY_LOG(DEBUG) << "Send a object restoration request of id: " << object_id
+    RAY_LOG(DEBUG) << "Send an object restoration request of id: " << object_id
                    << " to a remote node: " << node_id;
     // TODO(sang): We need to deduplicate this remote RPC. Since restore request
-    // is retried every 10ms without exponential backoff, this can add huge overhead to a
-    // remote node that spilled the object.
+    // is retried every 10ms without exponential backoff, this can add huge overhead to
+    // a remote node that spilled the object.
     restore_object_from_remote_node_(object_id, object_url, node_id);
     if (callback) {
       callback(Status::OK());
@@ -395,9 +449,9 @@ void LocalObjectManager::ProcessSpilledObjectsDeleteQueue(uint32_t max_batch_siz
          object_urls_to_delete.size() < max_batch_size) {
     auto &object_id = spilled_object_pending_delete_.front();
     // If the object is still spilling, do nothing. This will block other entries to be
-    // processed, but it should be fine because the spilling will be eventually done, and
-    // deleting objects is the low priority tasks.
-    // This will instead enable simpler logic after this block.
+    // processed, but it should be fine because the spilling will be eventually done,
+    // and deleting objects is the low priority tasks. This will instead enable simpler
+    // logic after this block.
     if (objects_pending_spill_.contains(object_id)) {
       break;
     }
@@ -405,8 +459,8 @@ void LocalObjectManager::ProcessSpilledObjectsDeleteQueue(uint32_t max_batch_siz
     // Object id is either spilled or not spilled at this point.
     const auto spilled_objects_url_it = spilled_objects_url_.find(object_id);
     if (spilled_objects_url_it != spilled_objects_url_.end()) {
-      // If the object was spilled, see if we can delete it. We should first check the ref
-      // count.
+      // If the object was spilled, see if we can delete it. We should first check the
+      // ref count.
       std::string &object_url = spilled_objects_url_it->second;
       // Note that here, we need to parse the object url to obtain the base_url.
       auto parsed_url = ParseURL(object_url);
@@ -475,5 +529,4 @@ std::string LocalObjectManager::DebugString() const {
 }
 
 };  // namespace raylet
-
 };  // namespace ray

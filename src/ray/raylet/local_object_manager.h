@@ -208,6 +208,9 @@ class LocalObjectManager {
   // Total size of objects pinned on this node.
   size_t pinned_objects_size_ = 0;
 
+  // Owners of objects that are pinned on this node.
+  absl::flat_hash_map<ObjectID, rpc::Address> pinned_object_owners_;
+
   // Objects that were pinned on this node but that are being spilled.
   // These objects will be released once spilling is complete and the URL is
   // written to the object directory.
