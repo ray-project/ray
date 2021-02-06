@@ -544,6 +544,7 @@ def start(
     instance will instead persist until client.shutdown() is called and clients
     to it can be connected using serve.connect(). This is only relevant if
     connecting to a long-running Ray cluster (e.g., with address="auto").
+    REMOVE_ME
 
     Args:
         detached (bool): Whether not the instance should be detached from this
