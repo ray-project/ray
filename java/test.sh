@@ -58,7 +58,7 @@ if ! git diff --exit-code -- java src/ray/core_worker/lib/java; then
 fi
 
 # Install gdb on travis CI machine to get pstack output
-if ! command -v gdb; then
+if ! command -v pstack; then
   if [[ "${osversion}" == linux-gnu-ubuntu* ]]; then
     sudo apt-get install -qq -o=Dpkg::Use-Pty=0 gdb
   fi
