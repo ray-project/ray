@@ -59,7 +59,7 @@ fi
 
 # Install gdb on travis CI machine to get pstack output
 if ! command -v pstack; then
-  if [[ "${osversion}" == linux-gnu-ubuntu* ]]; then
+  if command -v apt-get; then
     sudo apt-get install -qq -o=Dpkg::Use-Pty=0 gdb
   fi
 fi
