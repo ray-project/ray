@@ -8,9 +8,13 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.LinkedList;
+import java.util.List;
+import java.util.Set;
 import java.util.stream.Stream;
 import org.apache.commons.io.FileUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.testng.IInvokedMethod;
 import org.testng.IInvokedMethodListener;
 import org.testng.ITestContext;
@@ -61,12 +65,15 @@ public class TestProgressListener implements IInvokedMethodListener, ITestListen
                     Thread.sleep(1000);
                   }
                   printSection("TEST CASE HANGED");
-                  // TODO(kfstorm): Print stack of other threads (and other Ray processes).
                   printSection("STACK TRACE OF TEST THREAD");
                   for (StackTraceElement element : testMainThread.getStackTrace()) {
                     System.out.println(element.toString());
                   }
-                  printJavaProcesses();
+                  Set<Integer> javaPids = getJavaPids();
+                  for (Integer pid : javaPids) {
+                    runCommandSafely(ImmutableList.of("jstack", pid.toString()));
+                    runCommandSafely(ImmutableList.of("pstack", pid.toString()));
+                  }
                   printLogFiles();
                   printSection("ABORT TEST");
                   System.exit(1);
@@ -110,24 +117,51 @@ public class TestProgressListener implements IInvokedMethodListener, ITestListen
   @Override
   public void onFinish(ITestContext context) {}
 
-  private void printJavaProcesses() {
-    printSection("JPS RESULT");
+  private String runCommandSafely(List<String> command) {
+    String output;
+    String commandString = String.join(" ", command);
+    printSection(commandString);
     try {
-      System.out.println(RunManager.runCommand(ImmutableList.of("jps")));
+      output = RunManager.runCommand(command);
+      System.out.println(output);
     } catch (Exception e) {
-      System.out.println("Failed to get jps result.");
+      System.out.println("Failed to execute command: " + commandString);
       e.printStackTrace();
+      output = "";
     }
-    printSection("JPS RESULT END");
+    return output;
+  }
 
-    printSection("PGREP JAVA RESULT");
+  private Set<Integer> getJavaPids() {
+    Set<Integer> javaPids = new HashSet<>();
+    String jpsOutput = runCommandSafely(ImmutableList.of("jps", "-v"));
     try {
-      System.out.println(RunManager.runCommand(ImmutableList.of("pgrep", "java")));
+      for (String line : StringUtils.split(jpsOutput, "\n")) {
+        String[] parts = StringUtils.split(line);
+        if (parts.length > 1 && parts[1].toLowerCase().equals("jps")) {
+          // Skip jps.
+          continue;
+        }
+        Integer pid = Integer.valueOf(parts[0]);
+        javaPids.add(pid);
+      }
     } catch (Exception e) {
-      System.out.println("Failed to get pgrep java result.");
+      System.out.println("Failed to parse jps output.");
       e.printStackTrace();
     }
-    printSection("PGREP JAVA RESULT END");
+
+    String pgrepJavaResult = runCommandSafely(ImmutableList.of("pgrep", "java"));
+    try {
+      for (String line : StringUtils.split(pgrepJavaResult, "\n")) {
+        Integer pid = Integer.valueOf(line);
+        javaPids.add(pid);
+      }
+    } catch (Exception e) {
+      System.out.println("Failed to parse pgrep java output.");
+      e.printStackTrace();
+    }
+
+    return javaPids;
   }
 
   private void printLogFiles() {
@@ -156,6 +190,5 @@ public class TestProgressListener implements IInvokedMethodListener, ITestListen
     while (lastLines.size() > 0) {
       System.out.println(lastLines.pop());
     }
-    printSection(String.format("END OF LOG FILE %s", filePath.getFileName()));
   }
 }
