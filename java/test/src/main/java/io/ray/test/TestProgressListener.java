@@ -3,16 +3,11 @@ package io.ray.test;
 import com.google.common.collect.ImmutableList;
 import io.ray.runtime.runner.RunManager;
 import java.io.File;
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.HashSet;
-import java.util.LinkedList;
 import java.util.List;
 import java.util.Set;
-import java.util.stream.Stream;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.testng.IInvokedMethod;
@@ -168,27 +163,8 @@ public class TestProgressListener implements IInvokedMethodListener, ITestListen
     Collection<File> logFiles =
         FileUtils.listFiles(new File("/tmp/ray/session_latest/logs"), null, false);
     for (File file : logFiles) {
-      tailFile(file.toPath());
-    }
-  }
-
-  private void tailFile(Path filePath) {
-    printSection(
-        String.format("LAST %d LINES OF LOG FILE %s", TAIL_NO_OF_LINES, filePath.getFileName()));
-    LinkedList<String> lastLines = new LinkedList<>();
-    try (Stream<String> stream = Files.lines(filePath)) {
-      stream.forEachOrdered(
-          line -> {
-            lastLines.push(line);
-            if (lastLines.size() > TAIL_NO_OF_LINES) {
-              lastLines.pop();
-            }
-          });
-    } catch (IOException e) {
-      throw new RuntimeException(e);
-    }
-    while (lastLines.size() > 0) {
-      System.out.println(lastLines.pop());
+      runCommandSafely(
+          ImmutableList.of("tail", "-n", String.valueOf(TAIL_NO_OF_LINES), file.getAbsolutePath()));
     }
   }
 }
