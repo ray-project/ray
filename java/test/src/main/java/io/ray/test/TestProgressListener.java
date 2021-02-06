@@ -66,7 +66,7 @@ public class TestProgressListener implements IInvokedMethodListener, ITestListen
                   for (StackTraceElement element : testMainThread.getStackTrace()) {
                     System.out.println(element.toString());
                   }
-                  printJps();
+                  printJavaProcesses();
                   printLogFiles();
                   printSection("ABORT TEST");
                   System.exit(1);
@@ -110,7 +110,7 @@ public class TestProgressListener implements IInvokedMethodListener, ITestListen
   @Override
   public void onFinish(ITestContext context) {}
 
-  private void printJps() {
+  private void printJavaProcesses() {
     printSection("JPS RESULT");
     try {
       System.out.println(RunManager.runCommand(ImmutableList.of("jps")));
@@ -119,6 +119,15 @@ public class TestProgressListener implements IInvokedMethodListener, ITestListen
       e.printStackTrace();
     }
     printSection("JPS RESULT END");
+
+    printSection("PGREP JAVA RESULT");
+    try {
+      System.out.println(RunManager.runCommand(ImmutableList.of("pgrep", "java")));
+    } catch (Exception e) {
+      System.out.println("Failed to get pgrep java result.");
+      e.printStackTrace();
+    }
+    printSection("PGREP JAVA RESULT END");
   }
 
   private void printLogFiles() {
