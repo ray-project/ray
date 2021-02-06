@@ -73,8 +73,8 @@ provider:
             ports:
                 - name: client
                   protocol: TCP
-                  port: 50051
-                  targetPort: 50051
+                  port: 10001
+                  targetPort: 10001
                 - name: dashboard
                   protocol: TCP
                   port: 8265

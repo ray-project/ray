@@ -43,7 +43,7 @@ spec:
           args: ['trap : TERM INT; sleep infinity & wait;']
           ports:
           - containerPort: 6379  # Redis port
-          - containerPort: 50051  # Used by Ray Client
+          - containerPort: 10001  # Used by Ray Client
           - containerPort: 8265  # Used by Ray Dashboard
 
           # This volume allocates shared memory for Ray to use for its plasma
@@ -114,7 +114,7 @@ spec:
   # Note dashboard-host is set to 0.0.0.0 so that Kubernetes can port forward.
   headStartRayCommands:
     - ray stop
-    - ulimit -n 65536; ray start --head --no-monitor --dashboard-host 0.0.0.0 --ray-client-server-port 50051
+    - ulimit -n 65536; ray start --head --no-monitor --dashboard-host 0.0.0.0
   # Commands to start Ray on worker nodes. You don't need to change this.
   workerStartRayCommands:
     - ray stop

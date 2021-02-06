@@ -7,11 +7,11 @@ Kubernetes.
 
 Before running this script, you must port-forward from the local host to
 the relevant Kubernetes head service e.g.
-kubectl -n ray port-forward service/example-cluster-ray-head 50051:50051.
+kubectl -n ray port-forward service/example-cluster-ray-head 10001:10001.
 
 Set the constant LOCAL_PORT below to the local port being forwarded.
 """
-LOCAL_PORT = 50051
+LOCAL_PORT = 10001
 
 
 @ray.remote
