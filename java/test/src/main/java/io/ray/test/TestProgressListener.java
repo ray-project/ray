@@ -67,7 +67,15 @@ public class TestProgressListener implements IInvokedMethodListener, ITestListen
                   Set<Integer> javaPids = getJavaPids();
                   for (Integer pid : javaPids) {
                     runCommandSafely(ImmutableList.of("jstack", pid.toString()));
-                    runCommandSafely(ImmutableList.of("pstack", pid.toString()));
+                    runCommandSafely(
+                        ImmutableList.of(
+                            "sudo",
+                            "gdb",
+                            "-ex",
+                            "thread apply all bt",
+                            "-batch",
+                            "-p",
+                            pid.toString()));
                   }
                   printLogFiles();
                   printSection("ABORT TEST");

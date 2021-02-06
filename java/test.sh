@@ -57,13 +57,6 @@ if ! git diff --exit-code -- java src/ray/core_worker/lib/java; then
   exit 1
 fi
 
-# Install gdb on travis CI machine to get pstack output
-if ! command -v pstack; then
-  if command -v apt-get; then
-    sudo apt-get install -qq -o=Dpkg::Use-Pty=0 gdb
-  fi
-fi
-
 # NOTE(kfstrom): Java test troubleshooting only.
 # Set MAX_ROUNDS to a big number (e.g. 1000) to run Java tests repeatedly.
 # You may also want to modify java/testng.xml to run only a subset of test cases.
@@ -85,7 +78,7 @@ run_testng java -cp "$ROOT_DIR"/../bazel-bin/java/all_tests_deploy.jar org.testn
 echo Finished cluster mode test round $round
 date
 round=$((round+1))
-if (( $round > $MAX_ROUNDS )); then
+if (( round > MAX_ROUNDS )); then
   break
 fi
 done
