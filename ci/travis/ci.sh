@@ -140,6 +140,7 @@ test_python() {
       python/ray/serve/...
       python/ray/tests/...
       -python/ray/serve:test_api # segfault on windows? https://github.com/ray-project/ray/issues/12541
+      -python/ray/serve:test_handle # "fatal error" (?) https://github.com/ray-project/ray/pull/13695
       -python/ray/tests:test_actor_advanced # timeout
       -python/ray/tests:test_advanced_2
       -python/ray/tests:test_advanced_3  # test_invalid_unicode_in_worker_log() fails on Windows
@@ -169,6 +170,7 @@ test_python() {
       -python/ray/tests:test_stress_sharded  # timeout
       -python/ray/tests:test_k8s_cluster_launcher
       -python/ray/tests:test_k8s_operator_examples
+      -python/ray/tests:test_k8s_operator_mock
     )
   fi
   if [ 0 -lt "${#args[@]}" ]; then  # Any targets to test?

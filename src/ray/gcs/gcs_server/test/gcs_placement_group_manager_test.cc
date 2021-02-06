@@ -174,6 +174,31 @@ TEST_F(GcsPlacementGroupManagerTest, TestGetPlacementGroupIDByName) {
       PlacementGroupID::FromBinary(request.placement_group_spec().placement_group_id()));
 }
 
+TEST_F(GcsPlacementGroupManagerTest, TestRemoveNamedPlacementGroup) {
+  auto request = Mocker::GenCreatePlacementGroupRequest("test_name");
+  std::atomic<int> finished_placement_group_count(0);
+  gcs_placement_group_manager_->RegisterPlacementGroup(
+      std::make_shared<gcs::GcsPlacementGroup>(request),
+      [&finished_placement_group_count](const Status &status) {
+        ++finished_placement_group_count;
+      });
+
+  ASSERT_EQ(finished_placement_group_count, 0);
+  WaitForExpectedPgCount(1);
+  auto placement_group = mock_placement_group_scheduler_->placement_groups_.back();
+  mock_placement_group_scheduler_->placement_groups_.pop_back();
+
+  gcs_placement_group_manager_->OnPlacementGroupCreationSuccess(placement_group);
+  WaitForExpectedCount(finished_placement_group_count, 1);
+  ASSERT_EQ(placement_group->GetState(), rpc::PlacementGroupTableData::CREATED);
+  // Remove the named placement group.
+  gcs_placement_group_manager_->RemovePlacementGroup(
+      placement_group->GetPlacementGroupID(),
+      [](const Status &status) { ASSERT_TRUE(status.ok()); });
+  ASSERT_EQ(gcs_placement_group_manager_->GetPlacementGroupIDByName("test_name"),
+            PlacementGroupID::Nil());
+}
+
 TEST_F(GcsPlacementGroupManagerTest, TestRescheduleWhenNodeAdd) {
   auto request = Mocker::GenCreatePlacementGroupRequest();
   std::atomic<int> finished_placement_group_count(0);
