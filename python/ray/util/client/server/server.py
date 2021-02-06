@@ -422,7 +422,13 @@ class ClientServerHandle:
         return getattr(self.grpc_server, attr)
 
 
-def serve(connection_str, ray_connect_handler):
+def serve(connection_str, ray_connect_handler=None):
+    def default_connect_handler():
+        with disable_client_hook():
+            if not ray.is_initialized():
+                return ray.init()
+
+    ray_connect_handler = ray_connect_handler or default_connect_handler
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
     task_servicer = RayletServicer()
     data_servicer = DataServicer(
