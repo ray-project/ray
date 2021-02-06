@@ -1,7 +1,7 @@
 cluster_name: ray-xgboost-release-cpu-small
 
-min_workers: 3
-max_workers: 3
+min_workers: 31
+max_workers: 31
 
 idle_timeout_minutes: 15
 
@@ -35,7 +35,7 @@ setup_commands:
     - sudo chown ray:1000 /data || true
     - sudo chown ray /
     - rm -rf /data/classification.parquet || true
-    - python /create_test_data.py /data/classification.parquet --seed 1234 --num-rows 1000000 --num-cols 40 --num-partitions 100 --num-classes 2
+    - python create_test_data.py /data/classification.parquet --seed 1234 --num-rows 1000000 --num-cols 40 --num-partitions 100 --num-classes 2
 
 file_mounts:
     /create_test_data.py : ./create_test_data.py
