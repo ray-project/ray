@@ -18,7 +18,6 @@ except ImportError:
     # SimpleShuffleLayer doesn't exist in this version of Dask.
     SimpleShuffleLayer = None
 
-
 if SimpleShuffleLayer is not None:
 
     class MultipleReturnSimpleShuffleLayer(SimpleShuffleLayer):
@@ -39,9 +38,8 @@ if SimpleShuffleLayer is not None:
             )
 
         def __repr__(self):
-            return "MultipleReturnSimpleShuffleLayer<name='{}', npartitions={}>".format(
-                self.name, self.npartitions
-            )
+            return (f"MultipleReturnSimpleShuffleLayer<name='{self.name}', "
+                    f"npartitions={self.npartitions}>")
 
         def __reduce__(self):
             attrs = [
@@ -55,7 +53,8 @@ if SimpleShuffleLayer is not None:
                 "parts_out",
                 "annotations",
             ]
-            return (MultipleReturnSimpleShuffleLayer, tuple(getattr(self, attr) for attr in attrs))
+            return (MultipleReturnSimpleShuffleLayer,
+                    tuple(getattr(self, attr) for attr in attrs))
 
         def _cull(self, parts_out):
             return MultipleReturnSimpleShuffleLayer(
@@ -79,12 +78,10 @@ if SimpleShuffleLayer is not None:
             n_parts_out = len(self.parts_out)
             for part_out in self.parts_out:
                 # TODO(Clark): Find better pattern than in-scheduler concat.
-                _concat_list = [
-                    (shuffle_split_name, part_out, part_in)
-                    for part_in in range(self.npartitions_input)
-                ]
-                dsk[(self.name, part_out)] = (
-                    _concat, _concat_list, self.ignore_index)
+                _concat_list = [(shuffle_split_name, part_out, part_in)
+                                for part_in in range(self.npartitions_input)]
+                dsk[(self.name, part_out)] = (_concat, _concat_list,
+                                              self.ignore_index)
                 for _, _part_out, _part_in in _concat_list:
                     dsk[(shuffle_split_name, _part_out, _part_in)] = (
                         multiple_return_get,
@@ -108,10 +105,10 @@ if SimpleShuffleLayer is not None:
 
             return dsk
 
-
     def rewrite_simple_shuffle_layer(dsk, keys):
         if not isinstance(dsk, HighLevelGraph):
-            dsk = HighLevelGraph.from_collections(id(dsk), dsk, dependencies=())
+            dsk = HighLevelGraph.from_collections(
+                id(dsk), dsk, dependencies=())
         else:
             dsk = dsk.copy()
 
@@ -123,9 +120,10 @@ if SimpleShuffleLayer is not None:
                 layer = copy.copy(layer)
                 for inner_key, inner_layer in layer.items():
                     if type(inner_layer) is SimpleShuffleLayer:
-                        dsk.layers[key].layers[inner_key] = MultipleReturnSimpleShuffleLayer.clone(inner_layer)
+                        dsk.layers[key].layers[inner_key] = (
+                            MultipleReturnSimpleShuffleLayer.clone(inner_layer)
+                        )
         return dsk
-
 
     def dataframe_optimize(dsk, keys, **kwargs):
         if not isinstance(keys, (list, set)):
@@ -133,7 +131,8 @@ if SimpleShuffleLayer is not None:
         keys = list(core.flatten(keys))
 
         if not isinstance(dsk, HighLevelGraph):
-            dsk = HighLevelGraph.from_collections(id(dsk), dsk, dependencies=())
+            dsk = HighLevelGraph.from_collections(
+                id(dsk), dsk, dependencies=())
 
         dsk = rewrite_simple_shuffle_layer(dsk, keys=keys)
         return optimize(dask, keys, **kwargs)
@@ -162,9 +161,8 @@ def fuse_splits_into_multiple_return(dsk, keys):
             # Only rewrite shuffle group split if all downstream dependencies
             # are splits.
             if all(
-                istask(dsk[dep]) and dsk[dep][0] == operator.getitem
-                for dep in task_deps
-            ):
+                    istask(dsk[dep]) and dsk[dep][0] == operator.getitem
+                    for dep in task_deps):
                 for dep in task_deps:
                     # Rewrite split
                     pass

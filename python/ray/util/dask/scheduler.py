@@ -280,11 +280,8 @@ def _rayify_task(
         # Submit the task using a wrapper function.
         object_refs = dask_task_wrapper.options(
             name=f"dask:{key!s}",
-            num_returns=(
-                1
-                if not isinstance(func, MultipleReturnFunc)
-                else func.num_returns
-            ),
+            num_returns=(1 if not isinstance(func, MultipleReturnFunc) else
+                         func.num_returns),
         ).remote(
             func,
             repack,
