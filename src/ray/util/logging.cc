@@ -55,17 +55,6 @@
 
 namespace ray {
 
-RayLogLevel RayLog::severity_threshold_ = RayLogLevel::INFO;
-std::string RayLog::app_name_ = "";
-std::string RayLog::log_dir_ = "";
-// Format pattern is 2020-08-21 17:00:00,000 I 100 1001 msg.
-// %L is loglevel, %P is process id, %t for thread id.
-std::string RayLog::log_format_pattern_ = "[%Y-%m-%d %H:%M:%S,%e %L %P %t] %v";
-std::string RayLog::logger_name_ = "ray_log_sink";
-long RayLog::log_rotation_max_size_ = 1 << 29;
-long RayLog::log_rotation_file_num_ = 10;
-bool RayLog::is_failure_signal_handler_installed_ = false;
-
 std::string GetCallTrace() {
   std::string return_message = "Cannot get callstack information.";
 #if defined(RAY_USE_GLOG) || defined(RAY_USE_SPDLOG)
@@ -102,34 +91,23 @@ inline const char *ConstBasename(const char *filepath) {
   return base ? (base + 1) : filepath;
 }
 
-/// A logger that prints logs to stderr.
-/// This is the default logger if logging is not initialized.
-class DefaultStdErrLogger final {
- public:
-  DefaultStdErrLogger() {
-    default_stderr_logger_ = spdlog::stderr_color_mt("stderr");
-    default_stderr_logger_->set_pattern(RayLog::GetLogFormatPattern());
-  }
-  std::shared_ptr<spdlog::logger> GetDefaultLogger() { return default_stderr_logger_; }
-
- private:
-  std::shared_ptr<spdlog::logger> default_stderr_logger_;
-};
-
-/// NOTE(lingxuan.zlx): Default stderr logger must be singleton and global
-/// variable so core worker process can invoke `RAY_LOG` in its whole lifecyle.
-std::unique_ptr<DefaultStdErrLogger> default_stderr_logger(new DefaultStdErrLogger());
-
 class SpdLogMessage final {
  public:
   explicit SpdLogMessage(const char *file, int line, int loglevel) : loglevel_(loglevel) {
     stream() << ConstBasename(file) << ":" << line << ": ";
   }
+  inline std::shared_ptr<spdlog::logger> GetDefaultLogger() {
+    // We just emit all log informations to stderr when no default logger has been created
+    // before starting ray log, which is for glog compatible.
+    static auto logger = spdlog::stderr_color_mt("stderr");
+    logger->set_pattern(RayLog::GetLogFormatPattern());
+    return logger;
+  }
 
   inline void Flush() {
     auto logger = spdlog::get(RayLog::GetLoggerName());
     if (!logger) {
-      logger = default_stderr_logger->GetDefaultLogger();
+      logger = GetDefaultLogger();
     }
     // To avoid dump duplicated stacktrace with installed failure signal
     // handler, we have to check whether glog failure signal handler is enabled.
@@ -151,12 +129,11 @@ class SpdLogMessage final {
   inline std::ostream &stream() { return str_; }
 
  private:
-  SpdLogMessage(const SpdLogMessage &) = delete;
-  SpdLogMessage &operator=(const SpdLogMessage &) = delete;
-
- private:
   std::ostringstream str_;
   int loglevel_;
+
+  SpdLogMessage(const SpdLogMessage &) = delete;
+  SpdLogMessage &operator=(const SpdLogMessage &) = delete;
 };
 #endif
 
@@ -210,6 +187,17 @@ typedef ray::SpdLogMessage LoggingProvider;
 #else
 typedef ray::CerrLog LoggingProvider;
 #endif
+
+RayLogLevel RayLog::severity_threshold_ = RayLogLevel::INFO;
+std::string RayLog::app_name_ = "";
+std::string RayLog::log_dir_ = "";
+// Format pattern is 2020-08-21 17:00:00,000 I 100 1001 msg.
+// %L is loglevel, %P is process id, %t for thread id.
+std::string RayLog::log_format_pattern_ = "[%Y-%m-%d %H:%M:%S,%e %L %P %t] %v";
+std::string RayLog::logger_name_ = "ray_log_sink";
+long RayLog::log_rotation_max_size_ = 1 << 29;
+long RayLog::log_rotation_file_num_ = 10;
+bool RayLog::is_failure_signal_handler_installed_ = false;
 
 #ifdef RAY_USE_GLOG
 using namespace google;
