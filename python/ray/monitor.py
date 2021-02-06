@@ -8,6 +8,10 @@ import time
 import traceback
 import json
 
+import asyncio
+from grpc.experimental import aio
+import aioredis
+
 import ray
 from ray.autoscaler._private.autoscaler import StandardAutoscaler
 from ray.autoscaler._private.commands import teardown_cluster
@@ -17,11 +21,12 @@ from ray.autoscaler._private.load_metrics import LoadMetrics
 from ray.autoscaler._private.constants import \
     AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE
 from ray.autoscaler._private.util import DEBUG_AUTOSCALING_STATUS
+
+from ray.core.generated import gcs_service_pb2, gcs_service_pb2_grpc
 import ray.gcs_utils
 import ray.utils
 import ray.ray_constants as ray_constants
 from ray.ray_logging import setup_component_logger
-from ray._raylet import GlobalStateAccessor
 from ray.experimental.internal_kv import _internal_kv_put, \
     _internal_kv_initialized, _internal_kv_get
 
@@ -70,6 +75,23 @@ def parse_resource_demands(resource_load_by_shape):
     return waiting_bundles, infeasible_bundles
 
 
+async def _get_gcs_address(redis_address: str, redis_password: str) -> str:
+    aioredis_client = await aioredis.create_redis_pool(
+        address="redis://" + redis_address, password=redis_password)
+    gcs_address = await aioredis_client.get("GcsServerAddress")
+    return gcs_address
+
+
+def get_gcs_node_resources_stub(
+        redis_address: str, redis_password: str
+) -> gcs_service_pb2_grpc.NodeResourceInfoGcsServiceStub:
+    loop = asyncio.get_event_loop()
+    gcs_address = loop.run_until_complete(
+        _get_gcs_address(redis_address, redis_password))
+    gcs_channel = aio.insecure_channel(gcs_address)
+    return gcs_service_pb2_grpc.NodeResourceInfoGcsServiceStub(gcs_channel)
+
+
 class Monitor:
     """Autoscaling monitor.
 
@@ -90,16 +112,16 @@ class Monitor:
             redis_address, redis_password=redis_password)
         self.redis = ray._private.services.create_redis_client(
             redis_address, password=redis_password)
-        self.global_state_accessor = GlobalStateAccessor(
-            redis_address, redis_password, False)
-        self.global_state_accessor.connect()
+
+        # Initialize the gcs channel and stub for getting all resource usage.
+
+        self.gcs_node_resources_stub = get_gcs_node_resources_stub(
+            redis_address, redis_password)
+
         # Set the redis client and mode so _internal_kv works for autoscaler.
         worker = ray.worker.global_worker
         worker.redis_client = self.redis
         worker.mode = 0
-        # Keep a mapping from raylet client ID to IP address to use
-        # for updating the load metrics.
-        self.raylet_id_to_ip_map = {}
         head_node_ip = redis_address.split(":")[0]
         self.load_metrics = LoadMetrics(local_ip=head_node_ip)
         self.last_avail_resources = None
@@ -117,19 +139,19 @@ class Monitor:
 
         logger.info("Monitor: Started")
 
-    def __del__(self):
-        """Destruct the monitor object."""
-        # We close the pubsub client to avoid leaking file descriptors.
-        if self.global_state_accessor is not None:
-            self.global_state_accessor.disconnect()
-            self.global_state_accessor = None
+    def _get_all_resource_usage(self, timeout_s: int = 3
+                                ) -> gcs_service_pb2.GetAllResourceUsageReply:
+        request = gcs_service_pb2.GetAllResourceUsageRequest()
+        loop = asyncio.get_event_loop()
+        return loop.run_until_complete(
+            self.gcs_node_resources_stub.GetAllResourceUsage(
+                request, timeout=timeout_s))
 
     def update_load_metrics(self):
         """Fetches resource usage data from GCS and updates load metrics."""
 
-        all_resources = self.global_state_accessor.get_all_resource_usage()
-        resources_batch_data = \
-            ray.gcs_utils.ResourceUsageBatchData.FromString(all_resources)
+        resources_batch_data = self._get_all_resource_usage(
+        ).resource_usage_data
         for resource_message in resources_batch_data.batch:
             resource_load = dict(resource_message.resource_load)
             total_resources = dict(resource_message.resources_total)
@@ -143,7 +165,7 @@ class Monitor:
 
             # Update the load metrics for this raylet.
             node_id = ray.utils.binary_to_hex(resource_message.node_id)
-            ip = self.raylet_id_to_ip_map.get(node_id)
+            ip = resource_message.node_manager_address
             if ip:
                 self.load_metrics.update(ip, total_resources,
                                          available_resources, resource_load,
@@ -166,29 +188,10 @@ class Monitor:
             except Exception:
                 logger.exception("Error parsing resource requests")
 
-    def update_raylet_map(self, _append_port=False):
-        """Updates internal raylet map.
-
-        Args:
-            _append_port (bool): Defaults to False. Appending the port is
-                useful in testing, as mock clusters have many nodes with
-                the same IP and cannot be uniquely identified.
-        """
-        all_raylet_nodes = ray.nodes()
-        self.raylet_id_to_ip_map = {}
-        for raylet_info in all_raylet_nodes:
-            node_id = (raylet_info.get("DBClientID") or raylet_info["NodeID"])
-            ip_address = (raylet_info.get("AuxAddress")
-                          or raylet_info["NodeManagerAddress"]).split(":")[0]
-            if _append_port:
-                ip_address += ":" + str(raylet_info["NodeManagerPort"])
-            self.raylet_id_to_ip_map[node_id] = ip_address
-
     def _run(self):
         """Run the monitor loop."""
 
         while True:
-            self.update_raylet_map()
             self.update_load_metrics()
             self.update_resource_requests()
             self.update_event_summary()
