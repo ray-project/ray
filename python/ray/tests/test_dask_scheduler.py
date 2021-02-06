@@ -36,7 +36,8 @@ def test_ray_dask_persist(ray_start_regular_shared):
     arr = da.ones(5) + 2
     result = arr.persist(scheduler=ray_dask_get)
     np.testing.assert_array_equal(
-        next(iter(result.dask.values())), np.ones(5) + 2)
+        next(iter(result.dask.values())),
+        np.ones(5) + 2)
 
 
 if __name__ == "__main__":
