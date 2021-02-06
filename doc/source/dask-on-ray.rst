@@ -9,8 +9,8 @@ entire Dask ecosystem can be executed on top of Ray.
 
 .. note::
 
-  Note that Ray does not currently support object spilling, and hence cannot
-  process datasets larger than cluster memory. This is a planned feature.
+  Note that Ray does not yet support object spilling, and hence cannot
+  process datasets larger than cluster memory. This feature is currently being developed.
 
 =========
 Scheduler
@@ -25,37 +25,33 @@ Here's an example:
 
    import ray
    from ray.util.dask import ray_dask_get
-   import dask.delayed
+   import dask.array as da
+   import dask.dataframe as dd
+   import numpy as np
+   import pandas as pd
    import time
 
    # Start Ray.
    # Tip: If you're connecting to an existing cluster, use ray.init(address="auto").
    ray.init()
 
+   d_arr = da.from_array(np.random.randint(0, 1000, size=(256, 256)))
 
-   @dask.delayed
-   def inc(x):
-       time.sleep(1)
-       return x + 1
-
-   @dask.delayed
-   def add(x, y):
-       time.sleep(3)
-       return x + y
-
-   x = inc(1)
-   y = inc(2)
-   z = add(x, y)
    # The Dask scheduler submits the underlying task graph to Ray.
-   z.compute(scheduler=ray_dask_get)
+   d_arr.mean().compute(scheduler=ray_dask_get)
+
+   # Set the scheduler to ray_dask_get in your config so you don't have to specify it on
+   # each compute call.
+   dask.config.set(scheduler=ray_dask_get)
+
+   df = dd.from_pandas(pd.DataFrame(np.random.randint(0, 100, size=(1024, 2)), columns=["age", "grade"]))
+   df.groupby(["age"]).mean().compute()
+
 
 Why use Dask on Ray?
 
-   1. If you'd like to create data analyses using the familiar NumPy and Pandas
-      APIs provided by Dask and execute them on a production-ready distributed
-      task execution system like Ray.
-   2. If you'd like to use Dask and Ray libraries in the same application
-      without having two different task execution backends.
+   1. If you'd like to create data analyses using the familiar NumPy and Pandas APIs provided by Dask and execute them on a fast, fault-tolerant distributed task execution system geared towards production, like Ray.
+   2. If you'd like to use Dask and Ray libraries in the same application without having two different clusters.
    3. To take advantage of Ray-specific features such as the
       :ref:`cluster launcher <ref-automatic-cluster>` and
       :ref:`shared-memory store <memory>`.
@@ -63,11 +59,38 @@ Why use Dask on Ray?
 Note that for execution on a Ray cluster, you should *not* use the
 `Dask.distributed <https://distributed.dask.org/en/latest/quickstart.html>`__
 client; simply use plain Dask and its collections, and pass ``ray_dask_get``
-to ``.compute()`` calls. Follow the instructions for
+to ``.compute()`` calls or set the scheduler in one of the other ways detailed `here <https://docs.dask.org/en/latest/scheduling.html#configuration>`__. Follow the instructions for
 :ref:`using Ray on a cluster <using-ray-on-a-cluster>` to modify the
 ``ray.init()`` call.
 
 Dask-on-Ray is an ongoing project and is not expected to achieve the same performance as using Ray directly.
+
+================================================
+Custom optimization for Dask DataFrame shuffling
+================================================
+
+We have also created a custom Dask DataFrame optimizer that leverages Ray's ability to
+execute multiple-return tasks in order to speed up shuffling by as much as 10x on Ray.
+Simply set the `dataframe_optimize` configuration option to our optimizer function, similar to how you specify the Dask-on-Ray scheduler:
+
+.. code-block:: python
+
+   import ray
+   from ray.util.dask import ray_dask_get, dataframe_optimize
+   import dask.dataframe as dd
+   import numpy as np
+   import pandas as pd
+   import time
+
+   # Start Ray.
+   # Tip: If you're connecting to an existing cluster, use ray.init(address="auto").
+   ray.init()
+
+   # Set the scheduler to ray_dask_get, and set the Dask DataFrame optimizer to our
+   # custom optimization function, this time using the config setter as a context manager.
+   with dask.config.set(scheduler=ray_dask_get, dataframe_optimize=dataframe_optimize):
+       df = dd.from_pandas(pd.DataFrame(np.random.randint(0, 100, size=(10000, 2)), columns=["age", "grade"]))
+       df.set_index(["age"]).head(10, npartitions=-1)
 
 =========
 Callbacks
