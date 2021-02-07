@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Set;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.SystemUtils;
 import org.testng.IInvokedMethod;
 import org.testng.IInvokedMethodListener;
 import org.testng.ITestContext;
@@ -19,7 +20,7 @@ import org.testng.ITestResult;
 public class TestProgressListener implements IInvokedMethodListener, ITestListener {
 
   // Travis aborts CI if no outputs for 10 minutes. So threshold needs to be smaller than 10m.
-  private static final long hangDetectionThresholdMillis = 5 * 60 * 1000;
+  private static final long hangDetectionThresholdMillis = 1 * 1000;
   private static final int TAIL_NO_OF_LINES = 500;
   private Thread testMainThread;
   private long testStartTimeMillis;
@@ -120,9 +121,15 @@ public class TestProgressListener implements IInvokedMethodListener, ITestListen
       Set<Integer> javaPids = getJavaPids();
       for (Integer pid : javaPids) {
         runCommandSafely(ImmutableList.of("jstack", pid.toString()));
-        runCommandSafely(
-            ImmutableList.of(
-                "sudo", "gdb", "-ex", "thread apply all bt", "-batch", "-p", pid.toString()));
+        // TODO(kfstorm): Check lldb or gdb exists rather than detecting OS type.
+        if (SystemUtils.IS_OS_MAC) {
+          runCommandSafely(
+              ImmutableList.of("lldb", "--batch", "-o", "bt all", "-p", pid.toString()));
+        } else {
+          runCommandSafely(
+              ImmutableList.of(
+                  "sudo", "gdb", "-batch", "-ex", "thread apply all bt", "-p", pid.toString()));
+        }
       }
     }
 
