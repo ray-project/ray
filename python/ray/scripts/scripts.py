@@ -1374,7 +1374,6 @@ def timeline(address):
     default=ray_constants.REDIS_DEFAULT_PASSWORD,
     help="Connect to ray with redis_password.")
 @click.option(
-<<<<<<< HEAD
     "--group-by",
     type=click.Choice([e.name for e in GroupByType]),
     default=GroupByType.NODE_ADDRESS.name,
@@ -1394,24 +1393,6 @@ def memory(address, redis_password, group_by, sort_by):
     header = "=" * 8 + f" Object references status: {time} " + "=" * 8
     mem_stats = memory_summary(address, redis_password, group_by, sort_by)
     print(f"{header}\n\{mem_stats}")
-=======
-    "--stats-only",
-    is_flag=True,
-    type=bool,
-    default=False,
-    help="Connect to ray with redis_password.")
-def memory(address, redis_password, stats_only):
-    """Print object references held in a Ray cluster."""
-    if not address:
-        address = services.get_ray_address_to_use_or_die()
-    state = GlobalState()
-    state._initialize_global_state(address, redis_password)
-    raylet = state.node_table()[0]
-    print(
-        ray.internal.internal_api.memory_summary(raylet["NodeManagerAddress"],
-                                                 raylet["NodeManagerPort"],
-                                                 stats_only))
->>>>>>> upstream/master
 
 
 @cli.command()

@@ -34,17 +34,11 @@ REFERENCE_TYPE = "reference type"
 
 def data_lines(memory_str):
     for line in memory_str.split("\n"):
-<<<<<<< HEAD
         if (PINNED_IN_MEMORY in line or LOCAL_REF in line
                 or USED_BY_PENDING_TASK in line or CAPTURED_IN_OBJECT in line
                 or ACTOR_HANDLE in line):
             yield line
         else:
-=======
-        if (not line or "---" in line or "===" in line or "Object ID" in line
-                or "pid=" in line or "Plasma memory" in line
-                or "Objects consumed" in line):
->>>>>>> upstream/master
             continue
 
 
