@@ -395,7 +395,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
         [this] { CheckForRayletFailure(); },
         boost::posix_time::milliseconds(
             RayConfig::instance().raylet_death_check_interval_milliseconds()),
-        death_check_timer);
+        death_check_timer_);
   }
 
   RunFnPeriodically([this] { InternalHeartbeat(); },

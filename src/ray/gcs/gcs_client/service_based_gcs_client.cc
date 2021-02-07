@@ -89,7 +89,7 @@ Status ServiceBasedGcsClient::Connect(boost::asio::io_service &io_service) {
       [this] { PeriodicallyCheckGcsServerAddress(); },
       boost::posix_time::milliseconds(
           RayConfig::instance().gcs_service_address_check_interval_milliseconds()),
-      detect_timer);
+      *detect_timer_);
 
   is_connected_ = true;
 
