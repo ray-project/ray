@@ -1010,7 +1010,7 @@ void ReferenceCounter::PushToLocationSubscribers(ReferenceTable::iterator it) {
   const auto callbacks = it->second.location_subscription_callbacks;
   it->second.location_subscription_callbacks.clear();
   it->second.location_version++;
-  for (const auto callback : callbacks) {
+  for (const auto &callback : callbacks) {
     callback(it->second.locations, it->second.object_size, it->second.location_version);
   }
 }
