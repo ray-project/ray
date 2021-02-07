@@ -2,10 +2,14 @@ import gym
 import numpy as np
 import random
 
-from ray.rllib.examples.env.rock_paper_scissors import RockPaperScissors
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.view_requirement import ViewRequirement
 
+ROCK = 0
+PAPER = 1
+SCISSORS = 2
+LIZARD = 3
+SPOCK = 4
 
 class AlwaysSameHeuristic(Policy):
     """Pick a random move and stick with it for the entire episode."""
@@ -23,8 +27,8 @@ class AlwaysSameHeuristic(Policy):
     def get_initial_state(self):
         return [
             random.choice([
-                RockPaperScissors.ROCK, RockPaperScissors.PAPER,
-                RockPaperScissors.SCISSORS
+                ROCK, PAPER,
+                SCISSORS
             ])
         ]
 
@@ -55,14 +59,14 @@ class BeatLastHeuristic(Policy):
                         episodes=None,
                         **kwargs):
         def successor(x):
-            if x[RockPaperScissors.ROCK] == 1:
-                return RockPaperScissors.PAPER
-            elif x[RockPaperScissors.PAPER] == 1:
-                return RockPaperScissors.SCISSORS
-            elif x[RockPaperScissors.SCISSORS] == 1:
-                return RockPaperScissors.ROCK
+            if x[ROCK] == 1:
+                return PAPER
+            elif x[PAPER] == 1:
+                return SCISSORS
+            elif x[SCISSORS] == 1:
+                return ROCK
             elif x[-1] == 1:
-                return RockPaperScissors.PAPER
+                return PAPER
 
         return [successor(x) for x in obs_batch], [], {}
 

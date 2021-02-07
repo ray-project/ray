@@ -81,6 +81,7 @@ def run_heuristic_vs_learned(args, use_lstm=False, trainer="PG"):
         "num_envs_per_worker": 4,
         "rollout_fragment_length": 10,
         "train_batch_size": 200,
+        "metrics_smoothing_episodes": 200,
         "multiagent": {
             "policies_to_train": ["learned"],
             "policies": {
@@ -105,19 +106,22 @@ def run_heuristic_vs_learned(args, use_lstm=False, trainer="PG"):
         results = trainer_obj.train()
         print(results)
         # Timesteps reached.
+        if 'policy_learned_reward' in results['hist_stats']:
+            # player_0_rewards = player_0_num_wins - player_1_num_wins
+            reward_diff = sum(results['hist_stats']['policy_learned_reward'])
+        else:
+            reward_diff = 0
         if results["timesteps_total"] > args.stop_timesteps:
             break
-        ''' MAY REQUIRE CHANGES TO RPS ENV IN PETTINGZOO
         # Reward (difference) reached -> all good, return.
-        elif env.player1_score - env.player2_score > args.stop_reward:
+        elif reward_diff > args.stop_reward:
             return
 
     # Reward (difference) not reached: Error if `as_test`.
     if args.as_test:
         raise ValueError(
             "Desired reward difference ({}) not reached! Only got to {}.".
-            format(args.stop_reward, env.player1_score - env.player2_score))
-        '''
+            format(args.stop_reward, reward_diff))
 
 def run_with_custom_entropy_loss(args, stop):
     """Example of customizing the loss function of an existing policy.
