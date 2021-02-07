@@ -453,7 +453,7 @@ with the remaining non-image (flat) inputs (the 1D Box and discrete/one-hot comp
 
 Take a look at this model example that does exactly that:
 
-.. literalinclude:: ../../rllib/examples/models/cnn_plus_fc_concat_model.py
+.. literalinclude:: ../../rllib/models/tf/complex_input_net.py
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__

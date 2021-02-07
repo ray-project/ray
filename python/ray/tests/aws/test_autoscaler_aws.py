@@ -1,6 +1,8 @@
 import pytest
 
-from ray.autoscaler._private.aws.config import _get_vpc_id_or_die
+from ray.autoscaler._private.aws.config import _get_vpc_id_or_die, \
+                                               bootstrap_aws, \
+                                               DEFAULT_AMI
 import ray.tests.aws.utils.stubs as stubs
 import ray.tests.aws.utils.helpers as helpers
 from ray.tests.aws.utils.constants import AUX_SUBNET, DEFAULT_SUBNET, \
@@ -109,6 +111,53 @@ def test_create_sg_with_custom_inbound_rules_and_name(iam_client_stub,
         "IpPermissions"] == CUSTOM_IN_BOUND_RULES
 
     # expect no pending responses left in IAM or EC2 client stub queues
+    iam_client_stub.assert_no_pending_responses()
+    ec2_client_stub.assert_no_pending_responses()
+
+
+def test_subnet_given_head_and_worker_sg(iam_client_stub, ec2_client_stub):
+    stubs.configure_iam_role_default(iam_client_stub)
+    stubs.configure_key_pair_default(ec2_client_stub)
+
+    # list a security group and a thousand subnets in different vpcs
+    stubs.describe_a_security_group(ec2_client_stub, DEFAULT_SG)
+    stubs.describe_a_thousand_subnets_in_different_vpcs(ec2_client_stub)
+
+    config = helpers.bootstrap_aws_example_config_file(
+        "example-head-and-worker-security-group.yaml")
+
+    # check that just the single subnet in the right vpc is filled
+    assert config["head_node"]["SubnetIds"] == [DEFAULT_SUBNET["SubnetId"]]
+    assert config["worker_nodes"]["SubnetIds"] == [DEFAULT_SUBNET["SubnetId"]]
+
+    # expect no pending responses left in IAM or EC2 client stub queues
+    iam_client_stub.assert_no_pending_responses()
+    ec2_client_stub.assert_no_pending_responses()
+
+
+def test_fills_out_amis(iam_client_stub, ec2_client_stub):
+    # Setup stubs to mock out boto3
+    stubs.configure_iam_role_default(iam_client_stub)
+    stubs.configure_key_pair_default(ec2_client_stub)
+    stubs.describe_a_security_group(ec2_client_stub, DEFAULT_SG)
+    stubs.configure_subnet_default(ec2_client_stub)
+
+    config = helpers.load_aws_example_config_file("example-full.yaml")
+    del config["head_node"]["ImageId"]
+    del config["worker_nodes"]["ImageId"]
+
+    # Pass in SG for stub to work
+    config["head_node"]["SecurityGroupIds"] = ["sg-1234abcd"]
+    config["worker_nodes"]["SecurityGroupIds"] = ["sg-1234abcd"]
+
+    defaults_filled = bootstrap_aws(config)
+
+    ami = DEFAULT_AMI.get(config.get("provider", {}).get("region"))
+
+    assert defaults_filled["head_node"].get("ImageId") == ami
+
+    assert defaults_filled["worker_nodes"].get("ImageId") == ami
+
     iam_client_stub.assert_no_pending_responses()
     ec2_client_stub.assert_no_pending_responses()
 

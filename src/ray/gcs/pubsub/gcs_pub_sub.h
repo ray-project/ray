@@ -45,7 +45,7 @@ class GcsPubSub {
   using Callback = std::function<void(const std::string &id, const std::string &data)>;
 
   explicit GcsPubSub(std::shared_ptr<RedisClient> redis_client)
-      : redis_client_(redis_client) {}
+      : redis_client_(redis_client), total_commands_queued_(0) {}
 
   virtual ~GcsPubSub() = default;
 

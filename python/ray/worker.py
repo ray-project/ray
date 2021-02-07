@@ -818,6 +818,8 @@ def shutdown(_exiting_interpreter=False):
     # Shut down the Ray processes.
     global _global_node
     if _global_node is not None:
+        if _global_node.is_head():
+            _global_node.destroy_external_storage()
         _global_node.kill_all_processes(check_alive=False, allow_graceful=True)
         _global_node = None
 
@@ -1766,7 +1768,6 @@ def make_decorator(num_returns=None,
     return decorator
 
 
-@client_mode_hook
 def remote(*args, **kwargs):
     """Defines a remote function or an actor class.
 

@@ -1,0 +1,14 @@
+======== Cluster status: .+
+Node status
+------------------------------------------------------------
+ 1 node\(s\) with resources: .+
+
+Resources
+------------------------------------------------------------
+Usage:
+ 0.+
+ 0.+
+ 0.+
+
+Demands:
+ \(no resource demands\)

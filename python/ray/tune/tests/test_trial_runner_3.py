@@ -695,6 +695,27 @@ class TrialRunnerTest3(unittest.TestCase):
         self.assertTrue(trials[0].has_checkpoint())
         self.assertEqual(num_checkpoints(trials[0]), 2)
 
+    @patch("ray.tune.syncer.CLOUD_SYNC_PERIOD", 0)
+    def testCheckpointAutoPeriod(self):
+        ray.init(num_cpus=3)
+
+        # This makes checkpointing take 2 seconds.
+        def sync_up(source, target):
+            time.sleep(2)
+            return True
+
+        runner = TrialRunner(
+            local_checkpoint_dir=self.tmpdir,
+            checkpoint_period="auto",
+            sync_to_cloud=sync_up,
+            remote_checkpoint_dir="fake")
+        runner.add_trial(Trial("__fake", config={"user_checkpoint_freq": 1}))
+
+        runner.step()  # Run one step, this will trigger checkpointing
+
+        self.assertGreaterEqual(runner._checkpoint_manager._checkpoint_period,
+                                38.)
+
 
 class SearchAlgorithmTest(unittest.TestCase):
     @classmethod

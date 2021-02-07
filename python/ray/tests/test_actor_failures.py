@@ -115,6 +115,8 @@ def test_actor_restart(ray_init_with_task_retry_delay):
             ray.get(results[0])
         except ray.exceptions.RayActorError:
             results.pop(0)
+        else:
+            break
     # Check all tasks that executed after the restart.
     if results:
         # The actor executed some tasks after the restart.
@@ -275,7 +277,7 @@ def test_named_actor_max_task_retries(ray_init_with_task_retry_delay):
 def test_actor_restart_on_node_failure(ray_start_cluster):
     config = {
         "num_heartbeats_timeout": 10,
-        "raylet_heartbeat_timeout_milliseconds": 100,
+        "raylet_heartbeat_period_milliseconds": 100,
         "object_timeout_milliseconds": 1000,
         "task_retry_delay_ms": 100,
     }

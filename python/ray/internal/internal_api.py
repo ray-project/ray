@@ -13,7 +13,9 @@ def global_gc():
     worker.core_worker.global_gc()
 
 
-def memory_summary(node_manager_address=None, node_manager_port=None):
+def memory_summary(node_manager_address=None,
+                   node_manager_port=None,
+                   stats_only=False):
     """Returns a formatted string describing memory usage in the cluster."""
 
     import grpc
@@ -97,7 +99,16 @@ def store_stats_summary(reply):
                 reply.store_stats.restored_objects_total,
                 int(reply.store_stats.restored_bytes_total / (1024 * 1024) /
                     reply.store_stats.restore_time_total_s)))
+<<<<<<< HEAD
     return store_summary
+=======
+    if reply.store_stats.consumed_bytes > 0:
+        store_summary += ("Objects consumed by Ray tasks: {} MiB.".format(
+            int(reply.store_stats.consumed_bytes / (1024 * 1024))))
+    if stats_only:
+        return store_summary
+    return reply.memory_summary + "\n" + store_summary
+>>>>>>> upstream/master
 
 
 def free(object_refs, local_only=False):

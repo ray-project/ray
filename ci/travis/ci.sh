@@ -140,13 +140,17 @@ test_python() {
       python/ray/serve/...
       python/ray/tests/...
       -python/ray/serve:test_api # segfault on windows? https://github.com/ray-project/ray/issues/12541
+      -python/ray/serve:test_handle # "fatal error" (?) https://github.com/ray-project/ray/pull/13695
       -python/ray/tests:test_actor_advanced # timeout
       -python/ray/tests:test_advanced_2
       -python/ray/tests:test_advanced_3  # test_invalid_unicode_in_worker_log() fails on Windows
       -python/ray/tests:test_autoscaler_aws
       -python/ray/tests:test_component_failures
+      -python/ray/tests:test_component_failures_3 # timeout
       -python/ray/tests:test_basic_2  # hangs on shared cluster tests
       -python/ray/tests:test_basic_2_client_mode
+      -python/ray/tests:test_basic_3  # timeout
+      -python/ray/tests:test_basic_3_client_mode
       -python/ray/tests:test_cli
       -python/ray/tests:test_failure
       -python/ray/tests:test_global_gc
@@ -156,6 +160,7 @@ test_python() {
       -python/ray/tests:test_metrics_agent # timeout
       -python/ray/tests:test_multi_node
       -python/ray/tests:test_multi_node_2
+      -python/ray/tests:test_multi_node_3
       -python/ray/tests:test_multiprocessing  # test_connect_to_ray() fails to connect to raylet
       -python/ray/tests:test_node_manager
       -python/ray/tests:test_object_manager
@@ -165,6 +170,7 @@ test_python() {
       -python/ray/tests:test_stress_sharded  # timeout
       -python/ray/tests:test_k8s_cluster_launcher
       -python/ray/tests:test_k8s_operator_examples
+      -python/ray/tests:test_k8s_operator_mock
     )
   fi
   if [ 0 -lt "${#args[@]}" ]; then  # Any targets to test?
@@ -184,6 +190,9 @@ test_cpp() {
   bazel build --config=ci //cpp:all
   # shellcheck disable=SC2046
   bazel test --config=ci $(./scripts/bazel_export_options) //cpp:all --build_tests_only
+  # run the cpp example
+  bazel run //cpp/example:example
+
 }
 
 test_wheels() {
@@ -353,9 +362,13 @@ lint_web() {
   (
     cd "${WORKSPACE_DIR}"/python/ray/new_dashboard/client
     set +x # suppress set -x since it'll get very noisy here
-    . "${HOME}/.nvm/nvm.sh"
+
+    if [ -z "${BUILDKITE-}" ]; then
+      . "${HOME}/.nvm/nvm.sh"
+      nvm use --silent node
+    fi
+
     install_npm_project
-    nvm use --silent node
     local filenames
     # shellcheck disable=SC2207
     filenames=($(find src -name "*.ts" -or -name "*.tsx"))

@@ -818,6 +818,7 @@ std::string ObjectManager::DebugString() const {
   result << "\n" << object_directory_->DebugString();
   result << "\n" << store_notification_->DebugString();
   result << "\n" << buffer_pool_.DebugString();
+  result << "\n" << pull_manager_->DebugString();
   return result.str();
 }
 
@@ -833,6 +834,9 @@ void ObjectManager::FillObjectStoreStats(rpc::GetNodeStatsReply *reply) const {
   stats->set_object_store_bytes_used(used_memory_);
   stats->set_object_store_bytes_avail(config_.object_store_memory);
   stats->set_num_local_objects(local_objects_.size());
+  if (plasma::plasma_store_runner) {
+    stats->set_consumed_bytes(plasma::plasma_store_runner->GetConsumedBytes());
+  }
 }
 
 void ObjectManager::Tick(const boost::system::error_code &e) {

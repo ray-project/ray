@@ -504,6 +504,17 @@ message WaitPlacementGroupUntilReadyReply {
   GcsStatus status = 1;
 }
 
+message GetNamedPlacementGroupRequest {
+  // Name of the placement group.
+  string name = 1;
+}
+
+message GetNamedPlacementGroupReply {
+  GcsStatus status = 1;
+  // Data of placement group.
+  PlacementGroupTableData placement_group_table_data = 2;
+}
+
 // Service for placement group info access.
 service PlacementGroupInfoGcsService {
   // Create placement group via gcs service.
@@ -514,6 +525,9 @@ service PlacementGroupInfoGcsService {
       returns (RemovePlacementGroupReply);
   // Get placement group information via gcs service.
   rpc GetPlacementGroup(GetPlacementGroupRequest) returns (GetPlacementGroupReply);
+  // Get named placement group information via gcs service.
+  rpc GetNamedPlacementGroup(GetNamedPlacementGroupRequest)
+      returns (GetNamedPlacementGroupReply);
   // Get information of all placement group from GCS Service.
   rpc GetAllPlacementGroup(GetAllPlacementGroupRequest)
       returns (GetAllPlacementGroupReply);

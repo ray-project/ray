@@ -154,15 +154,7 @@ class RayTrialExecutor(TrialExecutor):
     def __init__(self,
                  queue_trials: bool = False,
                  reuse_actors: bool = False,
-                 ray_auto_init: Optional[bool] = None,
                  refresh_period: Optional[float] = None):
-        if ray_auto_init is None:
-            if os.environ.get("TUNE_DISABLE_AUTO_INIT") == "1":
-                logger.info("'TUNE_DISABLE_AUTO_INIT=1' detected.")
-                ray_auto_init = False
-            else:
-                ray_auto_init = True
-
         super(RayTrialExecutor, self).__init__(queue_trials)
         # Check for if we are launching a trial without resources in kick off
         # autoscaler.
@@ -193,11 +185,6 @@ class RayTrialExecutor(TrialExecutor):
         self._last_ip_refresh = float("-inf")
         self._last_ip_addresses = set()
         self._last_nontrivial_wait = time.time()
-        if not ray.is_initialized() and ray_auto_init:
-            logger.info("Initializing Ray automatically."
-                        "For cluster usage or custom Ray initialization, "
-                        "call `ray.init(...)` before `tune.run`.")
-            ray.init()
 
         if ray.is_initialized():
             self._update_avail_resources()
@@ -573,6 +560,7 @@ class RayTrialExecutor(TrialExecutor):
             return None
         shuffled_results = list(self._running.keys())
         random.shuffle(shuffled_results)
+
         # Note: We shuffle the results because `ray.wait` by default returns
         # the first available result, and we want to guarantee that slower
         # trials (i.e. trials that run remotely) also get fairly reported.
