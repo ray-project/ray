@@ -392,13 +392,13 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
 
   if (options_.worker_type == ray::WorkerType::WORKER) {
     RunFnPeriodically(
-        [this] { CheckForRayletFailure() },
+        [this] { CheckForRayletFailure(); },
         boost::posix_time::milliseconds(
             RayConfig::instance().raylet_death_check_interval_milliseconds()),
-        deatch_check_timer);
+        death_check_timer);
   }
 
-  RunFnPeriodically([this] { InternalHeartbeat() },
+  RunFnPeriodically([this] { InternalHeartbeat(); },
                     boost::posix_time::milliseconds(kInternalHeartbeatMillis),
                     internal_timer_);
 

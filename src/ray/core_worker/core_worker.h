@@ -962,7 +962,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   void CheckForRayletFailure();
 
   /// Heartbeat for internal bookkeeping.
-  void InternalHeartbeat(const boost::system::error_code &error);
+  void InternalHeartbeat();
 
   ///
   /// Private methods related to task submission.
