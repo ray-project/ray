@@ -339,7 +339,7 @@
                        "resources": {
 						   "patternProperties": {
 							   ".*":{
-								   "type":"integer",
+								   "type": "integer",
 								   "minimum": 0
 							   }
 						   }
