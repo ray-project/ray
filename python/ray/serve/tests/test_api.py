@@ -989,6 +989,19 @@ def test_starlette_request(serve_instance):
     assert resp == long_string
 
 
+def test_variable_routes(serve_instance):
+    client = serve_instance
+
+    def f(starlette_request):
+        return starlette_request.path_params["username"]
+
+    client.create_backend("f", f)
+    client.create_endpoint("f", backend="f", route="/api/{username}")
+
+    resp = requests.get("http://127.0.0.1:8000/api/scaly").text
+    assert resp == "scaly"
+
+
 if __name__ == "__main__":
     import sys
     sys.exit(pytest.main(["-v", "-s", __file__]))
