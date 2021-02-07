@@ -36,11 +36,11 @@ public class NodeIpTest extends BaseTest {
 
   public void testNodeIp() {
     // this is on the driver node, and it should be equal with ray.node-ip
-    String node_ip = TestUtils.getRuntime().getRayConfig().nodeIp;
-    Assert.assertEquals(node_ip, NODE_IP);
+    String nodeIP = TestUtils.getRuntime().getRayConfig().nodeIp;
+    Assert.assertEquals(nodeIP, NODE_IP);
 
     // this is on the worker node, and it should be equal with node-ip-address
-    node_ip = Ray.task(NodeIpTest::getNodeIp).remote().get();
-    Assert.assertEquals(node_ip, NODE_IP);
+    nodeIP = Ray.task(NodeIpTest::getNodeIp).remote().get();
+    Assert.assertEquals(nodeIP, NODE_IP);
   }
 }
