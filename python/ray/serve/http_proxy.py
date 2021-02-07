@@ -32,8 +32,6 @@ class ServeStarletteEndpoint:
                 ServeStarletteEndpoint(self.client, endpoint_tag),
                 methods=methods)
         app = starlette.applications.Starlette(routes=[route])
-])
-])
     """
 
     def __init__(self, client, endpoint_tag: EndpointTag):
