@@ -291,8 +291,8 @@ class StandardAutoscaler:
                 T.append(
                     threading.Thread(
                         target=self.spawn_updater,
-                        args=(node_id, setup_commands, ray_start_commands, resources,
-                              docker_config)))
+                        args=(node_id, setup_commands, ray_start_commands,
+                              resources, docker_config)))
         for t in T:
             t.start()
         for t in T:
@@ -665,7 +665,8 @@ class StandardAutoscaler:
             initialization_commands=with_head_node_ip(
                 self._get_node_type_specific_fields(
                     node_id, "initialization_commands"), self.head_node_ip),
-            setup_commands=with_head_node_ip(setup_commands, self.head_node_ip),
+            setup_commands=with_head_node_ip(setup_commands,
+                                             self.head_node_ip),
             ray_start_commands=with_head_node_ip(ray_start_commands,
                                                  self.head_node_ip),
             runtime_hash=self.runtime_hash,
