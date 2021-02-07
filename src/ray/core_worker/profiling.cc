@@ -31,7 +31,7 @@ Profiler::Profiler(WorkerContext &worker_context, const std::string &node_ip_add
                    boost::asio::io_service &io_service,
                    const std::shared_ptr<gcs::GcsClient> &gcs_client)
     : io_service_(io_service),
-      timer_(io_service_, boost::asio::chrono::seconds(1)),
+      timer_(io_service_),
       rpc_profile_data_(new rpc::ProfileTableData()),
       gcs_client_(gcs_client) {
   rpc_profile_data_->set_component_type(WorkerTypeString(worker_context.GetWorkerType()));
