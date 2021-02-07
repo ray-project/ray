@@ -46,19 +46,6 @@ enum TaskType {
   DRIVER_TASK = 3;
 }
 
-// Type of placement group strategy.
-enum PlacementStrategy {
-  // Packs Bundles into as few nodes as possible.
-  PACK = 0;
-  // Places Bundles across distinct nodes or processes as even as possible.
-  SPREAD = 1;
-  // Packs Bundles within one node. The group is not allowed to span multiple nodes.
-  STRICT_PACK = 2;
-  // Places Bundles across distinct nodes.
-  // The group is not allowed to deploy more than one bundle on a node.
-  STRICT_SPREAD = 3;
-}
-
 // Address of a worker or node manager.
 message Address {
   bytes raylet_id = 1;
@@ -456,3 +443,20 @@ enum WorkerExitType {
   // Worker exit due to placement group removal.
   PLACEMENT_GROUP_REMOVED = 3;
 }
+
+// The following enum should never be modified to maintain
+// backward compatibility in autoscaler.
+
+// Type of placement group strategy.
+enum PlacementStrategy { // Do not change!
+  // Packs Bundles into as few nodes as possible.
+  PACK = 0; // Do not change!
+  // Places Bundles across distinct nodes or processes as even as possible.
+  SPREAD = 1; // Do not change!
+  // Packs Bundles within one node. The group is not allowed to span multiple nodes.
+  STRICT_PACK = 2; // Do not change!
+  // Places Bundles across distinct nodes.
+  // The group is not allowed to deploy more than one bundle on a node.
+  STRICT_SPREAD = 3; // Do not change!
+} // Do not change!
+
