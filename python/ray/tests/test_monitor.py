@@ -41,4 +41,5 @@ def test_parse_resource_demands():
 
 if __name__ == "__main__":
     import sys
+    import pytest
     sys.exit(pytest.main(["-v", __file__]))
