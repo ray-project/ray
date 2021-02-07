@@ -1,10 +1,12 @@
 package io.ray.test;
 
 import io.ray.api.Ray;
+import org.apache.commons.lang3.SystemUtils;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
+import org.testng.SkipException;
 
 @Test(groups = {"cluster"})
 public class NodeIpTest extends BaseTest{
@@ -13,14 +15,19 @@ public class NodeIpTest extends BaseTest{
 
   @BeforeClass
   public void setUp() {
+    if (SystemUtils.IS_OS_MAC) {
+      throw new SkipException("Skip NodeIpTest on Mac OS");
+    }
     System.setProperty("ray.head-args.0", "--node-ip-address=127.0.0.2");
     System.setProperty("ray.node-ip", "127.0.0.2");
   }
 
   @AfterClass
   public void tearDown() {
-    System.clearProperty("ray.head-args.0");
-    System.clearProperty("ray.node-ip");
+    if (!SystemUtils.IS_OS_MAC) {
+      System.clearProperty("ray.head-args.0");
+      System.clearProperty("ray.node-ip");
+    }
   }
 
   static String getNodeIp() {
