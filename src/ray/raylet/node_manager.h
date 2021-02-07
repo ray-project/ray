@@ -14,7 +14,7 @@
 
 #pragma once
 
-#include <boost/asio/steady_timer.hpp>
+#include <boost/asio/deadline_timer.hpp>
 
 // clang-format off
 #include "ray/rpc/grpc_client.h"
@@ -786,17 +786,17 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// The object table. This is shared with the object manager.
   std::shared_ptr<ObjectDirectoryInterface> object_directory_;
   /// The timer used to send heartbeats.
-  boost::asio::steady_timer heartbeat_timer_;
+  boost::asio::deadline_timer heartbeat_timer_;
   /// The timer used to dump debug state.
-  boost::asio::steady_timer debug_dump_timer_;
+  boost::asio::deadline_timer debug_dump_timer_;
   /// The timer used to record metrics.
-  boost::asio::steady_timer record_metrics_timer_;
+  boost::asio::deadline_timer record_metrics_timer_;
   /// The timer used to flush free objects.
-  boost::asio::steady_timer flush_free_objects_timer_;
+  boost::asio::deadline_timer flush_free_objects_timer_;
   /// The timer used to report resources.
-  boost::asio::steady_timer report_resources_timer_;
+  boost::asio::deadline_timer report_resources_timer_;
   /// The period used for the resources report timer.
-  std::chrono::milliseconds report_resources_period_;
+  boost::posix_time::milliseconds report_resources_period_;
   /// Whether to enable fair queueing between task classes in raylet.
   bool fair_queueing_enabled_;
   /// Whether to enable pinning for plasma objects.
@@ -810,7 +810,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   std::string temp_dir_;
   /// The timer used to get profiling information from the object manager and
   /// push it to the GCS.
-  boost::asio::steady_timer object_manager_profile_timer_;
+  boost::asio::deadline_timer object_manager_profile_timer_;
   /// The time that the last heartbeat was sent at. Used to make sure we are
   /// keeping up with heartbeats.
   uint64_t last_heartbeat_at_ms_;
@@ -915,7 +915,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// Fields that are used to report metrics.
   /// The period between debug state dumps.
-  std::chrono::milliseconds record_metrics_period_;
+  boost::posix_time::milliseconds record_metrics_period_;
 
   /// Last time metrics are recorded.
   uint64_t metrics_last_recorded_time_ms_;
