@@ -3,13 +3,13 @@ package io.ray.test;
 import io.ray.api.Ray;
 import org.apache.commons.lang3.SystemUtils;
 import org.testng.Assert;
+import org.testng.SkipException;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
-import org.testng.SkipException;
 
 @Test(groups = {"cluster"})
-public class NodeIpTest extends BaseTest{
+public class NodeIpTest extends BaseTest {
 
   private static final String NODE_IP = "127.0.0.2";
 
