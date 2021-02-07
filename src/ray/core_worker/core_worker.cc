@@ -182,9 +182,7 @@ void CoreWorkerProcess::EnsureInitialized() {
                        << "shutdown.";
 }
 
-void CoreWorkerProcess::HandleAtExit() {
-  instance_.reset();
-}
+void CoreWorkerProcess::HandleAtExit() { instance_.reset(); }
 
 std::shared_ptr<CoreWorker> CoreWorkerProcess::TryGetWorker(const WorkerID &worker_id) {
   if (!instance_) {
