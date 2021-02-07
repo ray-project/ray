@@ -99,13 +99,6 @@ void LocalObjectManager::FlushFreeObjects() {
   last_free_objects_at_ms_ = current_time_ms();
 }
 
-void LocalObjectManager::FlushFreeObjectsIfNeeded(int64_t now_ms) {
-  if (free_objects_period_ms_ > 0 &&
-      static_cast<int64_t>(now_ms - last_free_objects_at_ms_) > free_objects_period_ms_) {
-    FlushFreeObjects();
-  }
-}
-
 void LocalObjectManager::SpillObjectUptoMaxThroughput() {
   if (RayConfig::instance().object_spilling_config().empty() ||
       !RayConfig::instance().automatic_object_spilling_enabled()) {

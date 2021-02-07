@@ -85,12 +85,8 @@ struct NodeManagerConfig {
   WorkerCommandMap worker_commands;
   /// The command used to start agent.
   std::string agent_command;
-  /// The time between heartbeats in milliseconds.
-  uint64_t heartbeat_period_ms;
   /// The time between reports resources in milliseconds.
   uint64_t report_resources_period_ms;
-  /// The time between debug dumps in milliseconds, or -1 to disable.
-  uint64_t debug_dump_period_ms;
   /// Whether to enable fair queueing between task classes in raylet.
   bool fair_queueing_enabled;
   /// Whether to enable pinning for plasma objects.
@@ -791,14 +787,16 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   std::shared_ptr<ObjectDirectoryInterface> object_directory_;
   /// The timer used to send heartbeats.
   boost::asio::steady_timer heartbeat_timer_;
-  /// The period used for the heartbeat timer.
-  std::chrono::milliseconds heartbeat_period_;
+  /// The timer used to dump debug state.
+  boost::asio::steady_timer debug_dump_timer_;
+  /// The timer used to record metrics.
+  boost::asio::steady_timer record_metrics_timer_;
+  /// The timer used to flush free objects.
+  boost::asio::steady_timer flush_free_objects_timer_;
   /// The timer used to report resources.
   boost::asio::steady_timer report_resources_timer_;
   /// The period used for the resources report timer.
   std::chrono::milliseconds report_resources_period_;
-  /// The period between debug state dumps.
-  int64_t debug_dump_period_;
   /// Whether to enable fair queueing between task classes in raylet.
   bool fair_queueing_enabled_;
   /// Whether to enable pinning for plasma objects.
@@ -816,8 +814,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// The time that the last heartbeat was sent at. Used to make sure we are
   /// keeping up with heartbeats.
   uint64_t last_heartbeat_at_ms_;
-  /// The time that the last debug string was logged to the console.
-  uint64_t last_debug_dump_at_ms_;
   /// The number of heartbeats that we should wait before sending the
   /// next load report.
   uint8_t num_heartbeats_before_load_report_;
@@ -919,7 +915,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// Fields that are used to report metrics.
   /// The period between debug state dumps.
-  int64_t record_metrics_period_;
+  std::chrono::milliseconds record_metrics_period_;
 
   /// Last time metrics are recorded.
   uint64_t metrics_last_recorded_time_ms_;

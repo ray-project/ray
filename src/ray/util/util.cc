@@ -362,3 +362,13 @@ std::shared_ptr<std::unordered_map<std::string, std::string>> ParseURL(std::stri
   result->emplace(key_value_pair.first, key_value_pair.second);
   return result;
 }
+
+void RunFnPeriodically(std::function<void()> fn, std::chrono::milliseconds period,
+                       boost::asio::steady_timer &timer) {
+  fn();
+  timer.expires_from_now(period);
+  timer.async_wait([fn, period, &timer](const boost::system::error_code &error) {
+    RAY_CHECK(!error);
+    RunFnPeriodically(fn, period, timer);
+  });
+}
