@@ -242,3 +242,7 @@ head_setup_commands: []
 
 # Custom commands that will be run on worker nodes after common setup.
 worker_setup_commands: []
+
+head_node: {}
+
+worker_nodes: {}

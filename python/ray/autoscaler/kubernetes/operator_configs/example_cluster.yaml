@@ -65,14 +65,14 @@ spec:
               # allocate a very large object store in each pod that may
               # cause problems for other pods.
               memory: 512Mi
-  - name: worker-nodes
+  - name: worker-node
     # Minimum number of Ray workers of this Pod type.
     minWorkers: 2
     # Maximum number of Ray workers of this Pod type. Takes precedence over minWorkers.
     maxWorkers: 3
     # User-specified custom resources for use by Ray.
     # (Ray detects CPU and GPU from pod spec resource requests and limits, so no need to fill those here.)
-    rayResources: {"Custom1": 1, "is_spot": 1}
+    rayResources: {"foo": 1, "bar": 1.3}
     podConfig:
       apiVersion: v1
       kind: Pod

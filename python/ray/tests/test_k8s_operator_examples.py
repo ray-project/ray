@@ -47,7 +47,7 @@ def wait_for_logs():
     cmd = f"kubectl -n {NAMESPACE} logs ray-operator-pod"\
         "| grep ^example-cluster: | tail -n 100"
     log_tail = subprocess.check_output(cmd, shell=True).decode()
-    return ("head-node" in log_tail) and ("worker-nodes" in log_tail)
+    return ("head-node" in log_tail) and ("worker-node" in log_tail)
 
 
 @retry_until_true
