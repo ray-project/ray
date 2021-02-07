@@ -73,7 +73,6 @@ public class TestProgressListener implements IInvokedMethodListener, ITestListen
   @Override
   public void onTestSuccess(ITestResult result) {
     printTestStage("TEST SUCCESS", getFullTestName(result));
-    printDebugInfo(result, /*testHanged=*/ false);
   }
 
   @Override
