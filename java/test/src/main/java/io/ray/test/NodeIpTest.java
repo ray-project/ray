@@ -2,21 +2,37 @@ package io.ray.test;
 
 import io.ray.api.Ray;
 import org.testng.Assert;
+import org.testng.annotations.AfterClass;
+import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
-@Test(groups = {"additional"})
+@Test(groups = {"cluster"})
 public class NodeIpTest extends BaseTest{
 
   private static final String NODE_IP = "127.0.0.2";
+
+  @BeforeClass
+  public void setUp() {
+    System.setProperty("ray.head-args.0", "--node-ip-address=127.0.0.2");
+    System.setProperty("ray.node-ip", "127.0.0.2");
+  }
+
+  @AfterClass
+  public void tearDown() {
+    System.clearProperty("ray.head-args.0");
+    System.clearProperty("ray.node-ip");
+  }
 
   static String getNodeIp() {
     return TestUtils.getRuntime().getRayConfig().nodeIp;
   }
 
   public void testNodeIp() {
+    // this is on the driver node, and it should be equal with ray.node-ip
     String node_ip = TestUtils.getRuntime().getRayConfig().nodeIp;
     Assert.assertEquals(node_ip, NODE_IP);
 
+    // this is on the worker node, and it should be equal with node-ip-address
     node_ip = Ray.task(NodeIpTest::getNodeIp).remote().get();
     Assert.assertEquals(node_ip, NODE_IP);
   }
