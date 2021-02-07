@@ -11,6 +11,8 @@ import pytest
 
 from ray.autoscaler._private.util import prepare_config, validate_config
 from ray.autoscaler._private.providers import _NODE_PROVIDERS
+from ray.autoscaler._private.kubernetes.node_provider import\
+    KubernetesNodeProvider
 
 from ray.test_utils import recursive_fnmatch
 
@@ -41,6 +43,9 @@ class AutoscalingConfigTest(unittest.TestCase):
             with open(config_path) as f:
                 config = yaml.safe_load(f)
             config = prepare_config(config)
+            if config["provider"]["type"] == "kubernetes":
+                KubernetesNodeProvider.fillout_available_node_types_resources(
+                    config)
             try:
                 validate_config(config)
             except Exception:
