@@ -16,6 +16,7 @@ import org.testng.IInvokedMethodListener;
 import org.testng.ITestContext;
 import org.testng.ITestListener;
 import org.testng.ITestResult;
+import org.testng.SkipException;
 
 public class TestProgressListener implements IInvokedMethodListener, ITestListener {
 
@@ -102,7 +103,7 @@ public class TestProgressListener implements IInvokedMethodListener, ITestListen
     boolean testFailed = false;
     if (result != null) {
       Throwable throwable = result.getThrowable();
-      if (throwable != null) {
+      if (throwable != null && !(throwable instanceof SkipException)) {
         testFailed = true;
         throwable.printStackTrace();
       }
