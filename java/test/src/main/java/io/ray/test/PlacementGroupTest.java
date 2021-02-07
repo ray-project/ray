@@ -37,7 +37,8 @@ public class PlacementGroupTest extends BaseTest {
 
     // Test creating an actor from a constructor.
     ActorHandle<Counter> actor =
-        Ray.actor(Counter::new, 1).setPlacementGroup(placementGroup, 0).remote();
+        Ray.actor(Counter::new, 1).setResource("CPU",1.0)
+          .setPlacementGroup(placementGroup, 0).remote();
     Assert.assertNotEquals(actor.getId(), ActorId.NIL);
 
     // Test calling an actor.
@@ -48,11 +49,11 @@ public class PlacementGroupTest extends BaseTest {
   public void testGetPlacementGroup() {
     PlacementGroup firstPlacementGroup =
         PlacementGroupTestUtils.createNameSpecifiedSimpleGroup(
-            "CPU", 1, PlacementStrategy.PACK, 1.0, "first_placement_group");
+            "CPU", 1, PlacementStrategy.PACK, 1.0, "first_placement_group", false);
 
     PlacementGroup secondPlacementGroup =
         PlacementGroupTestUtils.createNameSpecifiedSimpleGroup(
-            "CPU", 1, PlacementStrategy.PACK, 1.0, "second_placement_group");
+            "CPU", 1, PlacementStrategy.PACK, 1.0, "second_placement_group", false);
     Assert.assertTrue(firstPlacementGroup.wait(10));
     Assert.assertTrue(secondPlacementGroup.wait(10));
 
@@ -63,7 +64,6 @@ public class PlacementGroupTest extends BaseTest {
     Assert.assertNotNull(secondPlacementGroupRes);
 
     Assert.assertEquals(firstPlacementGroup.getId(), firstPlacementGroupRes.getId());
-    Assert.assertEquals(firstPlacementGroup.getName(), firstPlacementGroupRes.getName());
     Assert.assertEquals(firstPlacementGroupRes.getBundles().size(), 1);
     Assert.assertEquals(firstPlacementGroupRes.getStrategy(), PlacementStrategy.PACK);
 
@@ -77,7 +77,6 @@ public class PlacementGroupTest extends BaseTest {
             ? firstPlacementGroup
             : secondPlacementGroup;
 
-    Assert.assertEquals(placementGroupRes.getName(), expectPlacementGroup.getName());
     Assert.assertEquals(
         placementGroupRes.getBundles().size(), expectPlacementGroup.getBundles().size());
     Assert.assertEquals(placementGroupRes.getStrategy(), expectPlacementGroup.getStrategy());
@@ -88,11 +87,11 @@ public class PlacementGroupTest extends BaseTest {
       enabled = false)
   public void testRemovePlacementGroup() {
     PlacementGroupTestUtils.createNameSpecifiedSimpleGroup(
-        "CPU", 1, PlacementStrategy.PACK, 1.0, "first_placement_group");
+        "CPU", 1, PlacementStrategy.PACK, 1.0, "first_placement_group", false);
 
     PlacementGroup secondPlacementGroup =
         PlacementGroupTestUtils.createNameSpecifiedSimpleGroup(
-            "CPU", 1, PlacementStrategy.PACK, 1.0, "second_placement_group");
+            "CPU", 1, PlacementStrategy.PACK, 1.0, "second_placement_group", false);
 
     List<PlacementGroup> allPlacementGroup = Ray.getAllPlacementGroups();
     Assert.assertEquals(allPlacementGroup.size(), 2);
@@ -141,5 +140,24 @@ public class PlacementGroupTest extends BaseTest {
     PlacementGroupTestUtils.createBundleResourceInvalidGroup();
   }
 
+  @Test
+  public void testNamedPlacementGroup() {
+    // Test Non-Global placement group.
+    String pgName = "named_placement_group";
+    PlacementGroupTestUtils.createNameSpecifiedSimpleGroup(
+      "CPU", 1, PlacementStrategy.PACK, 1.0, pgName, false);
+    // Make sure we can get it by name successfully.
+    PlacementGroup placementGroup = Ray.getPlacementGroup(pgName);
+    Assert.assertNotNull(placementGroup);
+    Assert.assertEquals(placementGroup.getBundles().size(), 1);
 
+    // Test global placement group.
+    String pgGlobalName = "global_placement_group";
+    PlacementGroupTestUtils.createNameSpecifiedSimpleGroup(
+      "CPU", 2, PlacementStrategy.PACK, 1.0, pgGlobalName, true);
+    // Make sure we can get it by name successfully.
+    placementGroup = Ray.getGlobalPlacementGroup(pgGlobalName);
+    Assert.assertNotNull(placementGroup);
+    Assert.assertEquals(placementGroup.getBundles().size(), 2);
+  }
 }

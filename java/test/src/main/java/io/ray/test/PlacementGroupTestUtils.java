@@ -17,7 +17,8 @@ public class PlacementGroupTestUtils {
       int bundleSize,
       PlacementStrategy strategy,
       Double resourceSize,
-      String groupName) {
+      String groupName,
+      boolean isGlobal) {
     List<Map<String, Double>> bundles = new ArrayList<>();
 
     for (int i = 0; i < bundleSize; i++) {
@@ -25,26 +26,33 @@ public class PlacementGroupTestUtils {
       bundle.put(resourceName, resourceSize);
       bundles.add(bundle);
     }
-    PlacementGroupCreationOptions creationOptions = new PlacementGroupCreationOptions.Builder()
-      .setName(groupName).setBundles(bundles).setStrategy(strategy).build();
-    return Ray.createPlacementGroup(creationOptions);
+    PlacementGroupCreationOptions.Builder builder = new PlacementGroupCreationOptions.Builder()
+      .setBundles(bundles).setStrategy(strategy);
+    if (isGlobal) {
+      builder.setGlobalName(groupName);
+    } else {
+      builder.setName(groupName);
+    }
+
+    return Ray.createPlacementGroup(builder.build());
   }
 
   public static PlacementGroup createSpecifiedSimpleGroup(
-      String resourceName, int bundleSize, PlacementStrategy strategy, Double resourceSize) {
+      String resourceName, int bundleSize, PlacementStrategy strategy,
+      Double resourceSize, boolean isGlobal) {
     return createNameSpecifiedSimpleGroup(
-        resourceName, bundleSize, strategy, resourceSize, "unnamed_group");
+        resourceName, bundleSize, strategy, resourceSize, "unnamed_group", isGlobal);
   }
 
   public static PlacementGroup createSimpleGroup() {
-    return createSpecifiedSimpleGroup("CPU", 1, PlacementStrategy.PACK, 1.0);
+    return createSpecifiedSimpleGroup("CPU", 1, PlacementStrategy.PACK, 1.0, false);
   }
 
   public static void createBundleSizeInvalidGroup() {
-    createSpecifiedSimpleGroup("CPU", 0, PlacementStrategy.PACK, 1.0);
+    createSpecifiedSimpleGroup("CPU", 0, PlacementStrategy.PACK, 1.0, false);
   }
 
   public static void createBundleResourceInvalidGroup() {
-    createSpecifiedSimpleGroup("CPU", 1, PlacementStrategy.PACK, 0.0);
+    createSpecifiedSimpleGroup("CPU", 1, PlacementStrategy.PACK, 0.0, false);
   }
 }

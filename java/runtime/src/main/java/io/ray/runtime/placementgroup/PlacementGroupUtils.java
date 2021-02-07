@@ -1,6 +1,5 @@
 package io.ray.runtime.placementgroup;
 
-import com.google.common.base.Preconditions;
 import com.google.protobuf.InvalidProtocolBufferException;
 import io.ray.api.id.PlacementGroupId;
 import io.ray.api.placementgroup.PlacementGroupState;
