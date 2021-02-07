@@ -59,27 +59,7 @@ public class TestProgressListener implements IInvokedMethodListener, ITestListen
                       < hangDetectionThresholdMillis) {
                     Thread.sleep(1000);
                   }
-                  printSection("TEST CASE HANGED");
-                  printSection("STACK TRACE OF TEST THREAD");
-                  for (StackTraceElement element : testMainThread.getStackTrace()) {
-                    System.out.println(element.toString());
-                  }
-                  Set<Integer> javaPids = getJavaPids();
-                  for (Integer pid : javaPids) {
-                    runCommandSafely(ImmutableList.of("jstack", pid.toString()));
-                    runCommandSafely(
-                        ImmutableList.of(
-                            "sudo",
-                            "gdb",
-                            "-ex",
-                            "thread apply all bt",
-                            "-batch",
-                            "-p",
-                            pid.toString()));
-                  }
-                  printLogFiles();
-                  printSection("ABORT TEST");
-                  System.exit(1);
+                  printDebugInfo(null, /*testHanged=*/ true);
                 } catch (InterruptedException e) {
                   // ignored
                 }
@@ -92,21 +72,19 @@ public class TestProgressListener implements IInvokedMethodListener, ITestListen
   @Override
   public void onTestSuccess(ITestResult result) {
     printTestStage("TEST SUCCESS", getFullTestName(result));
+    printDebugInfo(result, /*testHanged=*/ false);
   }
 
   @Override
   public void onTestFailure(ITestResult result) {
     printTestStage("TEST FAILURE", getFullTestName(result));
-    Throwable throwable = result.getThrowable();
-    if (throwable != null) {
-      throwable.printStackTrace();
-    }
-    printLogFiles();
+    printDebugInfo(result, /*testHanged=*/ false);
   }
 
   @Override
   public void onTestSkipped(ITestResult result) {
     printTestStage("TEST SKIPPED", getFullTestName(result));
+    printDebugInfo(result, /*testHanged=*/ false);
   }
 
   @Override
@@ -119,6 +97,42 @@ public class TestProgressListener implements IInvokedMethodListener, ITestListen
 
   @Override
   public void onFinish(ITestContext context) {}
+
+  private void printDebugInfo(ITestResult result, boolean testHanged) {
+    boolean testFailed = false;
+    if (result != null) {
+      Throwable throwable = result.getThrowable();
+      if (throwable != null) {
+        testFailed = true;
+        throwable.printStackTrace();
+      }
+    }
+    if (!testFailed && !testHanged) {
+      return;
+    }
+
+    if (testHanged) {
+      printSection("TEST CASE HANGED");
+      printSection("STACK TRACE OF TEST THREAD");
+      for (StackTraceElement element : testMainThread.getStackTrace()) {
+        System.out.println(element.toString());
+      }
+      Set<Integer> javaPids = getJavaPids();
+      for (Integer pid : javaPids) {
+        runCommandSafely(ImmutableList.of("jstack", pid.toString()));
+        runCommandSafely(
+            ImmutableList.of(
+                "sudo", "gdb", "-ex", "thread apply all bt", "-batch", "-p", pid.toString()));
+      }
+    }
+
+    printLogFiles();
+
+    if (testHanged) {
+      printSection("ABORT TEST");
+      System.exit(1);
+    }
+  }
 
   private String runCommandSafely(List<String> command) {
     String output;
