@@ -70,7 +70,7 @@ spec:
     minWorkers: 1
     # Maximum number of Ray workers of this Pod type. Takes precedence over minWorkers.
     maxWorkers: 3
-    # User-specified custom resources for use by Ray.
+    # User-specified custom resources for use by Ray. Object with string keys and integer values.
     # (Ray detects CPU and GPU from pod spec resource requests and limits, so no need to fill those here.)
     rayResources: {"baz": 5, "quux": 17}
     podConfig:
