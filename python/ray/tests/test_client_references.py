@@ -3,7 +3,6 @@ from ray.util.client.ray_client_helpers import ray_start_client_server
 from ray.util.client.ray_client_helpers import (
     ray_start_client_server_pair, ray_start_cluster_client_server_pair)
 from ray.test_utils import wait_for_condition
-import ray as real_ray
 from ray.core.generated.gcs_pb2 import ActorTableData
 
 
