@@ -20,7 +20,7 @@ import org.testng.ITestResult;
 public class TestProgressListener implements IInvokedMethodListener, ITestListener {
 
   // Travis aborts CI if no outputs for 10 minutes. So threshold needs to be smaller than 10m.
-  private static final long hangDetectionThresholdMillis = 1 * 1000;
+  private static final long hangDetectionThresholdMillis = 5 * 60 * 1000;
   private static final int TAIL_NO_OF_LINES = 500;
   private Thread testMainThread;
   private long testStartTimeMillis;
