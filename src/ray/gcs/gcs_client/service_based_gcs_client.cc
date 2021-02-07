@@ -85,7 +85,11 @@ Status ServiceBasedGcsClient::Connect(boost::asio::io_service &io_service) {
 
   // Init gcs service address check timer.
   detect_timer_.reset(new boost::asio::deadline_timer(io_service));
-  PeriodicallyCheckGcsServerAddress();
+  RunFnPeriodically(
+      [this] { PeriodicallyCheckGcsServerAddress(); },
+      boost::posix_time::milliseconds(
+          RayConfig::instance().gcs_service_address_check_interval_milliseconds()),
+      detect_timer);
 
   is_connected_ = true;
 
@@ -152,19 +156,6 @@ void ServiceBasedGcsClient::PeriodicallyCheckGcsServerAddress() {
       GcsServiceFailureDetected(rpc::GcsServiceFailureType::GCS_SERVER_RESTART);
     }
   }
-
-  auto check_period = boost::posix_time::milliseconds(
-      RayConfig::instance().gcs_service_address_check_interval_milliseconds());
-  detect_timer_->expires_from_now(check_period);
-  detect_timer_->async_wait([this](const boost::system::error_code &error) {
-    if (error == boost::asio::error::operation_aborted) {
-      // `operation_aborted` is set when `detect_timer_` is canceled or destroyed.
-      return;
-    }
-    RAY_CHECK(!error) << "Checking gcs server address failed with error: "
-                      << error.message();
-    PeriodicallyCheckGcsServerAddress();
-  });
 }
 
 void ServiceBasedGcsClient::GcsServiceFailureDetected(rpc::GcsServiceFailureType type) {

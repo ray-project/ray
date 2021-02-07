@@ -391,15 +391,16 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       });
 
   if (options_.worker_type == ray::WorkerType::WORKER) {
-    death_check_timer_.expires_from_now(boost::asio::chrono::milliseconds(
-        RayConfig::instance().raylet_death_check_interval_milliseconds()));
-    death_check_timer_.async_wait(
-        boost::bind(&CoreWorker::CheckForRayletFailure, this, _1));
+    RunFnPeriodically(
+        [this] { CheckForRayletFailure() },
+        boost::posix_time::milliseconds(
+            RayConfig::instance().raylet_death_check_interval_milliseconds()),
+        deatch_check_timer);
   }
 
-  internal_timer_.expires_from_now(
-      boost::asio::chrono::milliseconds(kInternalHeartbeatMillis));
-  internal_timer_.async_wait(boost::bind(&CoreWorker::InternalHeartbeat, this, _1));
+  RunFnPeriodically([this] { InternalHeartbeat() },
+                    boost::posix_time::milliseconds(kInternalHeartbeatMillis),
+                    internal_timer_);
 
   plasma_store_provider_.reset(new CoreWorkerPlasmaStoreProvider(
       options_.store_socket, local_raylet_client_, reference_counter_,
@@ -737,30 +738,14 @@ void CoreWorker::RegisterToGcs() {
   RAY_CHECK_OK(gcs_client_->Workers().AsyncAdd(worker_data, nullptr));
 }
 
-void CoreWorker::CheckForRayletFailure(const boost::system::error_code &error) {
-  if (error == boost::asio::error::operation_aborted) {
-    return;
-  }
-
+void CoreWorker::CheckForRayletFailure() {
   if (!IsParentProcessAlive()) {
     RAY_LOG(ERROR) << "Raylet failed. Shutting down.";
     Shutdown();
   }
-
-  // Reset the timer from the previous expiration time to avoid drift.
-  death_check_timer_.expires_at(
-      death_check_timer_.expiry() +
-      boost::asio::chrono::milliseconds(
-          RayConfig::instance().raylet_death_check_interval_milliseconds()));
-  death_check_timer_.async_wait(
-      boost::bind(&CoreWorker::CheckForRayletFailure, this, _1));
 }
 
-void CoreWorker::InternalHeartbeat(const boost::system::error_code &error) {
-  if (error == boost::asio::error::operation_aborted) {
-    return;
-  }
-
+void CoreWorker::InternalHeartbeat() {
   absl::MutexLock lock(&mutex_);
 
   while (!to_resubmit_.empty() && current_time_ms() > to_resubmit_.front().first) {
@@ -772,9 +757,6 @@ void CoreWorker::InternalHeartbeat(const boost::system::error_code &error) {
     }
     to_resubmit_.pop_front();
   }
-  internal_timer_.expires_at(internal_timer_.expiry() +
-                             boost::asio::chrono::milliseconds(kInternalHeartbeatMillis));
-  internal_timer_.async_wait(boost::bind(&CoreWorker::InternalHeartbeat, this, _1));
 }
 
 std::unordered_map<ObjectID, std::pair<size_t, size_t>>

@@ -62,17 +62,9 @@ class GcsHeartbeatManager : public rpc::HeartbeatInfoHandler {
   void AddNode(const NodeID &node_id);
 
  protected:
-  /// A periodic timer that fires on every heartbeat period. Raylets that have
-  /// not sent a heartbeat within the last num_heartbeats_timeout ticks will be
-  /// marked as dead in the client table.
-  void Tick();
-
   /// Check that if any raylet is inactive due to no heartbeat for a period of time.
   /// If found any, mark it as dead.
   void DetectDeadNodes();
-
-  /// Schedule another tick after a short time.
-  void ScheduleTick();
 
  private:
   /// The main event loop for node failure detector.

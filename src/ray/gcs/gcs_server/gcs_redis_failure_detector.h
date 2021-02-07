@@ -44,12 +44,6 @@ class GcsRedisFailureDetector {
   void Start();
 
  protected:
-  /// A periodic timer that fires on every gcs detect period.
-  void Tick();
-
-  /// Schedule another tick after a short time.
-  void ScheduleTick();
-
   /// Check that if redis is inactive.
   void DetectRedis();
 

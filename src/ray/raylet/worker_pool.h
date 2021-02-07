@@ -428,9 +428,6 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// reasonable size.
   void TryKillingIdleWorkers();
 
-  /// Schedule the periodic killing of idle workers.
-  void ScheduleIdleWorkerKilling();
-
   /// Get all workers of the given process.
   ///
   /// \param process The process of workers.

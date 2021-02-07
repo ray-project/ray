@@ -37,7 +37,8 @@ Profiler::Profiler(WorkerContext &worker_context, const std::string &node_ip_add
   rpc_profile_data_->set_component_type(WorkerTypeString(worker_context.GetWorkerType()));
   rpc_profile_data_->set_component_id(worker_context.GetWorkerID().Binary());
   rpc_profile_data_->set_node_ip_address(node_ip_address);
-  timer_.async_wait(boost::bind(&Profiler::FlushEvents, this));
+  RunFnPeriodically([this] { FlushEvents(); }, boost::posix_time::milliseconds(1000),
+                    timer_);
 }
 
 void Profiler::AddEvent(const rpc::ProfileTableData::ProfileEvent &event) {
@@ -67,10 +68,6 @@ void Profiler::FlushEvents() {
                      << " events to GCS.";
     }
   }
-
-  // Reset the timer to 1 second from the previous expiration time to avoid drift.
-  timer_.expires_at(timer_.expiry() + boost::asio::chrono::seconds(1));
-  timer_.async_wait(boost::bind(&Profiler::FlushEvents, this));
 }
 
 }  // namespace worker

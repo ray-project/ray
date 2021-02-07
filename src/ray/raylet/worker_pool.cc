@@ -104,7 +104,12 @@ WorkerPool::WorkerPool(boost::asio::io_service &io_service, int num_workers_soft
       free_ports_->push(port);
     }
   }
-  ScheduleIdleWorkerKilling();
+  if (RayConfig::instance().kill_idle_workers_interval_ms() > 0) {
+    RunFnPeriodically([this] { TryKillingIdleWorkers(); },
+                      boost::posix_time::milliseconds(
+                          RayConfig::instance().kill_idle_workers_interval_ms()),
+                      kill_idle_workers_timer_);
+  }
 }
 
 WorkerPool::~WorkerPool() {
@@ -629,20 +634,6 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
     int64_t now = current_time_ms();
     idle_of_all_languages_.emplace_back(worker, now);
     idle_of_all_languages_map_[worker] = now;
-  }
-}
-
-void WorkerPool::ScheduleIdleWorkerKilling() {
-  if (RayConfig::instance().kill_idle_workers_interval_ms() > 0) {
-    kill_idle_workers_timer_.expires_from_now(boost::posix_time::milliseconds(
-        RayConfig::instance().kill_idle_workers_interval_ms()));
-    kill_idle_workers_timer_.async_wait([this](const boost::system::error_code &error) {
-      if (error == boost::asio::error::operation_aborted) {
-        return;
-      }
-      TryKillingIdleWorkers();
-      ScheduleIdleWorkerKilling();
-    });
   }
 }
 

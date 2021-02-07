@@ -77,7 +77,9 @@ ObjectManager::ObjectManager(asio::io_service &main_service, const NodeID &self_
       static_cast<int64_t>(1L),
       static_cast<int64_t>(config_.max_bytes_in_flight / config_.object_chunk_size))));
 
-  pull_retry_timer_.async_wait([this](const boost::system::error_code &e) { Tick(e); });
+  RunFnPeriodically([this] { Tick(); },
+                    boost::posix_time::milliseconds(config_.timer_freq_ms),
+                    pull_retry_timer_);
 
   if (plasma::plasma_store_runner) {
     store_notification_ = std::make_shared<ObjectStoreNotificationManager>(main_service);
@@ -839,11 +841,7 @@ void ObjectManager::FillObjectStoreStats(rpc::GetNodeStatsReply *reply) const {
   }
 }
 
-void ObjectManager::Tick(const boost::system::error_code &e) {
-  RAY_CHECK(!e) << "The raylet's object manager has failed unexpectedly with error: " << e
-                << ". Please file a bug report on here: "
-                   "https://github.com/ray-project/ray/issues";
-
+void ObjectManager::Tick() {
   // Request the current available memory from the object
   // store.
   if (plasma::plasma_store_runner) {
@@ -855,10 +853,6 @@ void ObjectManager::Tick(const boost::system::error_code &e) {
   }
 
   pull_manager_->Tick();
-
-  auto interval = boost::posix_time::milliseconds(config_.timer_freq_ms);
-  pull_retry_timer_.expires_from_now(interval);
-  pull_retry_timer_.async_wait([this](const boost::system::error_code &e) { Tick(e); });
 }
 
 }  // namespace ray

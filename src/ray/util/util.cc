@@ -368,6 +368,11 @@ void RunFnPeriodically(std::function<void()> fn, boost::posix_time::milliseconds
   fn();
   timer.expires_from_now(period);
   timer.async_wait([fn, period, &timer](const boost::system::error_code &error) {
+    if (error == boost::asio::error::operation_aborted) {
+      // `operation_aborted` is set when `timer` is canceled or destroyed.
+      // The Monitor lifetime may be short than the object who use it. (e.g. gcs_server)
+      return;
+    }
     RAY_CHECK(!error) << error.message();
     RunFnPeriodically(fn, period, timer);
   });
