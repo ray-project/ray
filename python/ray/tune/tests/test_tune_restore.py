@@ -92,6 +92,12 @@ class TuneRestoreTest(unittest.TestCase):
 
 
 class TuneInterruptionTest(unittest.TestCase):
+    def setUp(self) -> None:
+        # Wait up to five seconds for placement groups when starting a trial
+        os.environ["TUNE_PLACEMENT_GROUP_WAIT_S"] = "5"
+        # Block for results even when placement groups are pending
+        os.environ["TUNE_TRIAL_STARTUP_GRACE_PERIOD"] = "0"
+
     def testExperimentInterrupted(self):
         import multiprocessing
 

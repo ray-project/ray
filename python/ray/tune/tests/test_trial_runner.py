@@ -1,6 +1,7 @@
 import os
 import sys
 import unittest
+from unittest.mock import patch
 
 import ray
 from ray.rllib import _register_all
@@ -293,6 +294,8 @@ class TrialRunnerTest(unittest.TestCase):
         self.assertEqual(trials[0].status, Trial.RUNNING)
         self.assertEqual(runner.trial_executor._committed_resources.cpu, 2)
 
+    @patch("ray.tune.trial_runner.TUNE_MAX_PENDING_TRIALS_PG", 1)
+    @patch("ray.tune.utils.placement_groups.TUNE_MAX_PENDING_TRIALS_PG", 1)
     def testQueueFilling(self):
         ray.init(num_cpus=4)
 
@@ -322,10 +325,10 @@ class TrialRunnerTest(unittest.TestCase):
         runner.step()
         runner.step()
         runner.step()
-        self.assertEqual(len(runner._trials), 100)
+        self.assertEqual(len(runner._trials), 3)
 
         runner.step()
-        self.assertEqual(len(runner._trials), 100)
+        self.assertEqual(len(runner._trials), 3)
 
         self.assertEqual(runner._trials[0].status, Trial.RUNNING)
         self.assertEqual(runner._trials[1].status, Trial.RUNNING)

@@ -170,6 +170,7 @@ class RayTrialExecutor(TrialExecutor):
         self._committed_resources = Resources(cpu=0, gpu=0)
         self._pg_manager = PlacementGroupManager()
         self._staged_trials = set()
+        self._just_staged_trials = set()
 
         self._resources_initialized = False
 
@@ -221,6 +222,7 @@ class RayTrialExecutor(TrialExecutor):
                 # Break if we reached the limit of pending placement groups.
                 break
             self._staged_trials.add(trial)
+            self._just_staged_trials.add(trial)
 
         self._pg_manager.update_status()
 
@@ -283,17 +285,18 @@ class RayTrialExecutor(TrialExecutor):
         _actor_cls = _class_cache.get(trial.get_trainable_cls())
         if trial.uses_placement_groups:
             if not self._pg_manager.has_ready(trial, update=True):
-                just_staged = False
                 if trial not in self._staged_trials:
                     if self._pg_manager.stage_trial_pg(trial):
                         self._staged_trials.add(trial)
-                        just_staged = True
+                        self._just_staged_trials.add(trial)
+
+                just_staged = trial in self._just_staged_trials
 
                 if self._wait_for_pg is not None and (
                         just_staged or not self.get_running_trials()):
                     logger.debug(
                         f"Waiting up to {self._wait_for_pg} seconds for "
-                        f"placement group to become ready.")
+                        f"placement group of trial {trial} to become ready.")
                     wait_end = time.monotonic() + self._wait_for_pg
                     while time.monotonic() < wait_end:
                         self._pg_manager.update_status()
@@ -842,6 +845,9 @@ class RayTrialExecutor(TrialExecutor):
     def on_step_begin(self, trial_runner):
         """Before step() called, update the available resources."""
         self._update_avail_resources()
+
+    def on_step_end(self, trial_runner):
+        self._just_staged_trials.clear()
 
     def save(self, trial, storage=Checkpoint.PERSISTENT, result=None):
         """Saves the trial's state to a checkpoint asynchronously.
