@@ -152,3 +152,9 @@ def test_simple_multiple_references(ray_start_regular):
         del ref1
         assert ray.get(ref2) == "hi"
         del ref2
+
+
+if __name__ == "__main__":
+    import sys
+    import pytest
+    sys.exit(pytest.main(["-v", __file__]))
