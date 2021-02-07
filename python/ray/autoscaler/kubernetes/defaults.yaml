@@ -1,5 +1,5 @@
 # A unique identifier for the head node and workers of this cluster.
-cluster_name: example-cluster
+cluster_name: defaults
 
 # The minimum number of workers nodes to launch in addition to the head
 # node. This number should be >= 0.
