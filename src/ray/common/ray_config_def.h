@@ -320,7 +320,7 @@ RAY_CONFIG(int64_t, kill_idle_workers_interval_ms, 200)
 RAY_CONFIG(int64_t, idle_worker_killing_time_threshold_ms, 1000)
 
 /// Whether start the Plasma Store as a Raylet thread.
-RAY_CONFIG(bool, ownership_based_object_directory_enabled, false)
+RAY_CONFIG(bool, ownership_based_object_directory_enabled, true)
 
 // The interval where metrics are exported in milliseconds.
 RAY_CONFIG(uint64_t, metrics_report_interval_ms, 10000)
