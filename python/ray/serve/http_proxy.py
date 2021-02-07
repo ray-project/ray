@@ -21,8 +21,8 @@ logger = _get_logger()
 
 class ServeStarletteEndpoint:
     """Wraps the given Serve endpoint in a Starlette endpoint.
-    
-    Implements the ASGI protocol.  Constructs a Starlette endpoint for use by 
+
+    Implements the ASGI protocol.  Constructs a Starlette endpoint for use by
     a Starlette app or Starlette Router which calls the given Serve endpoint
     using the given Serve client.
 
