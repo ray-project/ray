@@ -27,6 +27,8 @@ from ft_small_non_elastic import FailureState, FailureInjection, \
 
 if __name__ == "__main__":
     ray.init(address="auto")
+    from xgboost_ray.main import logger
+    logger.setLevel(10)
 
     failure_state = FailureState.remote()
 
