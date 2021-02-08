@@ -12,8 +12,8 @@ public class PlacementGroupCreationOptions {
   public final List<Map<String, Double>> bundles;
   public final PlacementStrategy strategy;
 
-  public PlacementGroupCreationOptions(boolean global, String name,
-    List<Map<String, Double>> bundles, PlacementStrategy strategy) {
+  public PlacementGroupCreationOptions(
+      boolean global, String name, List<Map<String, Double>> bundles, PlacementStrategy strategy) {
     this.global = global;
     this.name = name;
     this.bundles = bundles;
@@ -29,9 +29,9 @@ public class PlacementGroupCreationOptions {
 
     /**
      * Set the name of a named placement group. This named placement group is only accessible from
-     * this job by this name via {@link Ray#getPlacementGroup(java.lang.String)}.
-     * If you want create a named placement group that is accessible from all jobs, use
-     * {@link Builder#setGlobalName(java.lang.String)} instead.
+     * this job by this name via {@link Ray#getPlacementGroup(java.lang.String)}. If you want create
+     * a named placement group that is accessible from all jobs, use {@link
+     * Builder#setGlobalName(java.lang.String)} instead.
      *
      * @param name The name of the named placement group.
      * @return self
@@ -44,9 +44,9 @@ public class PlacementGroupCreationOptions {
 
     /**
      * Set the name of a named placement group. This placement group will be accessible from all
-     * jobs by this name via {@link Ray#getGlobalPlacementGroup(java.lang.String)}.
-     * If you want to create a named placement group that is only accessible from this job,
-     * use {@link Builder#setName(java.lang.String)} instead.
+     * jobs by this name via {@link Ray#getGlobalPlacementGroup(java.lang.String)}. If you want to
+     * create a named placement group that is only accessible from this job, use {@link
+     * Builder#setName(java.lang.String)} instead.
      *
      * @param name The name of the named placement group.
      * @return self
@@ -60,6 +60,7 @@ public class PlacementGroupCreationOptions {
     /**
      * Set the Pre-allocated resource list. Bundle is a collection of resources used to reserve
      * resource on the raylet side.
+     *
      * @param bundles The Pre-allocated resource list.
      * @return self
      */
@@ -69,8 +70,9 @@ public class PlacementGroupCreationOptions {
     }
 
     /**
-     * Set the placement strategy used to control the placement relationship between bundles.
-     * More details refer to {@link PlacementStrategy}
+     * Set the placement strategy used to control the placement relationship between bundles. More
+     * details refer to {@link PlacementStrategy}
+     *
      * @param strategy the placement strategy between bundles.
      * @return self
      */

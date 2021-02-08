@@ -26,8 +26,8 @@ public class PlacementGroupTestUtils {
       bundle.put(resourceName, resourceSize);
       bundles.add(bundle);
     }
-    PlacementGroupCreationOptions.Builder builder = new PlacementGroupCreationOptions.Builder()
-      .setBundles(bundles).setStrategy(strategy);
+    PlacementGroupCreationOptions.Builder builder =
+        new PlacementGroupCreationOptions.Builder().setBundles(bundles).setStrategy(strategy);
     if (isGlobal) {
       builder.setGlobalName(groupName);
     } else {
@@ -38,8 +38,11 @@ public class PlacementGroupTestUtils {
   }
 
   public static PlacementGroup createSpecifiedSimpleGroup(
-      String resourceName, int bundleSize, PlacementStrategy strategy,
-      Double resourceSize, boolean isGlobal) {
+      String resourceName,
+      int bundleSize,
+      PlacementStrategy strategy,
+      Double resourceSize,
+      boolean isGlobal) {
     return createNameSpecifiedSimpleGroup(
         resourceName, bundleSize, strategy, resourceSize, "unnamed_group", isGlobal);
   }

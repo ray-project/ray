@@ -165,8 +165,9 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
 
   @Override
   public PlacementGroup createPlacementGroup(PlacementGroupCreationOptions creationOptions) {
-    Preconditions.checkNotNull(creationOptions,
-      "`PlacementGroupCreationOptions` must be specified when create a new placement group.");
+    Preconditions.checkNotNull(
+        creationOptions,
+        "`PlacementGroupCreationOptions` must be specified when create a new placement group.");
     List<Map<String, Double>> bundles = creationOptions.bundles;
     boolean bundleResourceValid =
         bundles.stream()
@@ -176,8 +177,9 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
       throw new IllegalArgumentException(
           "Bundles cannot be empty or bundle's resource must be positive.");
     }
-    Preconditions.checkNotNull(creationOptions.strategy,
-      "`PlacementStrategy` must be specified when create a new placement group.");
+    Preconditions.checkNotNull(
+        creationOptions.strategy,
+        "`PlacementStrategy` must be specified when create a new placement group.");
     return taskSubmitter.createPlacementGroup(creationOptions);
   }
 

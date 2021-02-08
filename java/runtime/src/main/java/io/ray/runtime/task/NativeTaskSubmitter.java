@@ -91,13 +91,14 @@ public class NativeTaskSubmitter implements TaskSubmitter {
   @Override
   public PlacementGroup createPlacementGroup(PlacementGroupCreationOptions creationOptions) {
     if (StringUtils.isNotBlank(creationOptions.name)) {
-      PlacementGroup placementGroup = creationOptions.global ?
-        Ray.getGlobalPlacementGroup(creationOptions.name) :
-        Ray.getPlacementGroup(creationOptions.name);
+      PlacementGroup placementGroup =
+          creationOptions.global
+              ? Ray.getGlobalPlacementGroup(creationOptions.name)
+              : Ray.getPlacementGroup(creationOptions.name);
 
       Preconditions.checkArgument(
-        placementGroup == null, String.format("Placement group with name %s exists!",
-          creationOptions.name));
+          placementGroup == null,
+          String.format("Placement group with name %s exists!", creationOptions.name));
     }
     byte[] bytes = nativeCreatePlacementGroup(creationOptions);
     return new PlacementGroupImpl.Builder()
@@ -139,8 +140,8 @@ public class NativeTaskSubmitter implements TaskSubmitter {
       int numReturns,
       CallOptions callOptions);
 
-  private static native byte[] nativeCreatePlacementGroup(PlacementGroupCreationOptions
-    creationOptions);
+  private static native byte[] nativeCreatePlacementGroup(
+      PlacementGroupCreationOptions creationOptions);
 
   private static native void nativeRemovePlacementGroup(byte[] placementGroupId);
 

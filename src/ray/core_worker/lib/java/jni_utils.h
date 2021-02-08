@@ -576,7 +576,8 @@ inline NativeT JavaProtobufObjectToNativeProtobufObject(JNIEnv *env, jobject jav
   return native_obj;
 }
 
-// Return an actor or a placement group fullname with job id prepended if this is a global actor or placement group.
+// Return an actor or a placement group fullname with job id prepended if this is a global
+// actor or placement group.
 inline std::string GetFullName(bool global, std::string name) {
   if (name.empty()) {
     return "";

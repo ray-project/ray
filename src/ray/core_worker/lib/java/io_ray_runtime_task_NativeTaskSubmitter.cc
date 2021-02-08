@@ -187,18 +187,20 @@ inline ray::PlacementStrategy ConvertStrategy(jint java_strategy) {
 inline ray::PlacementGroupCreationOptions ToPlacementGroupCreationOptions(
     JNIEnv *env, jobject placementGroupCreationOptions) {
   // We have make sure the placementGroupCreationOptions is not null in java api.
-  bool global = env->GetBooleanField(placementGroupCreationOptions, java_placement_group_creation_options_global);
+  bool global = env->GetBooleanField(placementGroupCreationOptions,
+                                     java_placement_group_creation_options_global);
   std::string name = "";
-  jstring java_name = (jstring)env->GetObjectField(placementGroupCreationOptions,
-                                                  java_placement_group_creation_options_name);
+  jstring java_name = (jstring)env->GetObjectField(
+      placementGroupCreationOptions, java_placement_group_creation_options_name);
   if (java_name) {
     name = JavaStringToNativeString(env, java_name);
   }
-  jobject java_obj_strategy = env->GetObjectField(placementGroupCreationOptions,
-                                                  java_placement_group_creation_options_strategy);
-  jint java_strategy = env->CallIntMethod(java_obj_strategy, java_placement_group_creation_options_strategy_value);
-  jobject java_bundles = env->GetObjectField(placementGroupCreationOptions,
-                                                  java_placement_group_creation_options_bundles);
+  jobject java_obj_strategy = env->GetObjectField(
+      placementGroupCreationOptions, java_placement_group_creation_options_strategy);
+  jint java_strategy = env->CallIntMethod(
+      java_obj_strategy, java_placement_group_creation_options_strategy_value);
+  jobject java_bundles = env->GetObjectField(
+      placementGroupCreationOptions, java_placement_group_creation_options_bundles);
   std::vector<std::unordered_map<std::string, double>> bundles;
   JavaListToNativeVector<std::unordered_map<std::string, double>>(
       env, java_bundles, &bundles, [](JNIEnv *env, jobject java_bundle) {
@@ -214,7 +216,8 @@ inline ray::PlacementGroupCreationOptions ToPlacementGroupCreationOptions(
             });
       });
   auto full_name = GetFullName(global, name);
-  return ray::PlacementGroupCreationOptions(full_name, ConvertStrategy(java_strategy), bundles,
+  return ray::PlacementGroupCreationOptions(full_name, ConvertStrategy(java_strategy),
+                                            bundles,
                                             /*is_detached=*/false);
 }
 

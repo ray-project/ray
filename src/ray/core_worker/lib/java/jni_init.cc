@@ -238,18 +238,19 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
 
   java_placement_group_creation_options_class =
       LoadClass(env, "io/ray/api/options/PlacementGroupCreationOptions");
-  java_placement_group_creation_options_strategy_class = 
+  java_placement_group_creation_options_strategy_class =
       LoadClass(env, "io/ray/api/placementgroup/PlacementStrategy");
   java_placement_group_creation_options_global =
       env->GetFieldID(java_placement_group_creation_options_class, "global", "Z");
-  java_placement_group_creation_options_name =
-      env->GetFieldID(java_placement_group_creation_options_class, "name", "Ljava/lang/String;");
-  java_placement_group_creation_options_bundles = 
-      env->GetFieldID(java_placement_group_creation_options_class, "bundles", "Ljava/util/List;");
-  java_placement_group_creation_options_strategy = 
-      env->GetFieldID(java_placement_group_creation_options_class, "strategy", "Lio/ray/api/placementgroup/PlacementStrategy;");
-  java_placement_group_creation_options_strategy_value =
-      env->GetMethodID(java_placement_group_creation_options_strategy_class, "value", "()I");
+  java_placement_group_creation_options_name = env->GetFieldID(
+      java_placement_group_creation_options_class, "name", "Ljava/lang/String;");
+  java_placement_group_creation_options_bundles = env->GetFieldID(
+      java_placement_group_creation_options_class, "bundles", "Ljava/util/List;");
+  java_placement_group_creation_options_strategy =
+      env->GetFieldID(java_placement_group_creation_options_class, "strategy",
+                      "Lio/ray/api/placementgroup/PlacementStrategy;");
+  java_placement_group_creation_options_strategy_value = env->GetMethodID(
+      java_placement_group_creation_options_strategy_class, "value", "()I");
 
   java_actor_creation_options_class =
       LoadClass(env, "io/ray/api/options/ActorCreationOptions");

@@ -37,8 +37,10 @@ public class PlacementGroupTest extends BaseTest {
 
     // Test creating an actor from a constructor.
     ActorHandle<Counter> actor =
-        Ray.actor(Counter::new, 1).setResource("CPU",1.0)
-          .setPlacementGroup(placementGroup, 0).remote();
+        Ray.actor(Counter::new, 1)
+            .setResource("CPU", 1.0)
+            .setPlacementGroup(placementGroup, 0)
+            .remote();
     Assert.assertNotEquals(actor.getId(), ActorId.NIL);
 
     // Test calling an actor.
@@ -145,7 +147,7 @@ public class PlacementGroupTest extends BaseTest {
     // Test Non-Global placement group.
     String pgName = "named_placement_group";
     PlacementGroupTestUtils.createNameSpecifiedSimpleGroup(
-      "CPU", 1, PlacementStrategy.PACK, 1.0, pgName, false);
+        "CPU", 1, PlacementStrategy.PACK, 1.0, pgName, false);
     // Make sure we can get it by name successfully.
     PlacementGroup placementGroup = Ray.getPlacementGroup(pgName);
     Assert.assertNotNull(placementGroup);
@@ -154,7 +156,7 @@ public class PlacementGroupTest extends BaseTest {
     // Test global placement group.
     String pgGlobalName = "global_placement_group";
     PlacementGroupTestUtils.createNameSpecifiedSimpleGroup(
-      "CPU", 2, PlacementStrategy.PACK, 1.0, pgGlobalName, true);
+        "CPU", 2, PlacementStrategy.PACK, 1.0, pgGlobalName, true);
     // Make sure we can get it by name successfully.
     placementGroup = Ray.getGlobalPlacementGroup(pgGlobalName);
     Assert.assertNotNull(placementGroup);

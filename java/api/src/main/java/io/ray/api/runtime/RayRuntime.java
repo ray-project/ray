@@ -170,6 +170,7 @@ public interface RayRuntime {
 
   /**
    * Create a placement group on remote nodes.
+   *
    * @param creationOptions Creation options of the placement group.
    * @return A handle to the created placement group.
    */
