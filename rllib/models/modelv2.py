@@ -224,7 +224,7 @@ class ModelV2:
             raise ValueError("State output is not a list: {}".format(state))
 
         self._last_output = outputs
-        return outputs, state
+        return outputs#, state
 
     @PublicAPI
     def from_batch(self, train_batch: SampleBatch,

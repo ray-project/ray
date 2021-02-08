@@ -2,6 +2,7 @@ import functools
 import gym
 import logging
 import numpy as np
+import os
 import time
 import threading
 from typing import Callable, Dict, List, Optional, Tuple, Type, Union
@@ -242,7 +243,8 @@ class TorchPolicy(Policy):
                         is_training=False)
             else:
                 dist_class = self.dist_class
-                dist_inputs, state_out = self.model(input_dict, state_batches,
+                state_out=None#
+                dist_inputs = self.model(input_dict, state_batches,#, state_out
                                                     seq_lens)
 
             if not (isinstance(dist_class, functools.partial)
@@ -598,9 +600,24 @@ class TorchPolicy(Policy):
     @override(Policy)
     @DeveloperAPI
     def export_model(self, export_dir: str) -> None:
-        """TODO(sven): implement for torch.
+        """Exports the Policy's Model to local directory for serving.
+
+        Creates a TorchScript model and saves it.
+
+        Args:
+            export_dir (str): Local writable directory or filename.
         """
-        raise NotImplementedError
+        dummy_inputs = self._lazy_tensor_dict(self._dummy_batch.data)
+        # Provide dummy state inputs if not an RNN (torch cannot jit with empty list).
+        if "state_in_0" not in dummy_inputs:
+            dummy_inputs["state_in_0"] = dummy_inputs["seq_lens"] = np.array([1.0])
+        dummy_inputs = {k: dummy_inputs[k] for k in dummy_inputs.keys()}
+        traced = torch.jit.trace(self.model, dummy_inputs)
+        if os.path.isfile(export_dir):
+            file_name = export_dir
+        else:
+            file_name = os.path.join("model.pt", export_dir)
+        traced.save(file_name)
 
     @override(Policy)
     @DeveloperAPI
