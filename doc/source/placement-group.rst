@@ -252,6 +252,41 @@ Note that you can anytime remove the placement group to clean up resources.
 
   ray.shutdown()
 
+Named Placement Groups
+----------------------
+
+A placement group can be given a globally unique name.
+This allows you to retrieve the placement group from any job in the Ray cluster.
+This can be useful if you cannot directly pass the placement group handle to
+the actor or task that needs it, or if you are trying to
+access a placement group launched by another driver.
+Note that the placement group will still be destroyed if it's lifetime isn't `detached`.
+See :ref:`placement-group-lifetimes` for more details.
+
+.. tabs::
+  .. group-tab:: Python
+
+    .. code-block:: python
+
+      # first_driver.py
+      # Create a placement group with a global name.
+      pg = placement_group([{"CPU": 2}, {"CPU": 2}], strategy="STRICT_SPREAD", lifetime="detached", name="global_name")
+      ray.get(pg.ready())
+
+    Then, we can retrieve the actor later somewhere.
+
+    .. code-block:: python
+
+      # second_driver.py
+      # Retrieve a placement group with a global name.
+      pg = ray.util.get_placement_group("global_name")
+
+  .. group-tab:: Java
+
+    The named placement group is not implemented for Java APIs yet.
+
+.. _placement-group-lifetimes:
+
 Placement Group Lifetimes
 -------------------------
 

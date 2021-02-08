@@ -32,7 +32,7 @@ from ray.rllib.policy.torch_policy import TorchPolicy
 from ray.rllib.utils import merge_dicts
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.debug import summarize
-from ray.rllib.utils.deprecation import deprecation_warning
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.utils.filter import get_filter, Filter
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.sgd import do_minibatch_sgd
@@ -396,15 +396,22 @@ class RolloutWorker(ParallelIteratorWorker):
                 if clip_rewards is None:
                     clip_rewards = True
 
-                # framestacking via trajectory view API is enabled.
-                num_framestacks = model_config.get("num_framestacks", 0)
-                if not policy_config["_use_trajectory_view_api"]:
-                    model_config["num_framestacks"] = num_framestacks = 0
-                elif num_framestacks == "auto":
-                    model_config["num_framestacks"] = num_framestacks = 4
-                framestack_traj_view = num_framestacks > 1
                 # Deprecated way of framestacking is used.
                 framestack = model_config.get("framestack") is True
+                # framestacking via trajectory view API is enabled.
+                num_framestacks = model_config.get("num_framestacks", 0)
+
+                # No trajectory view API: No traj. view based framestacking.
+                if not policy_config["_use_trajectory_view_api"]:
+                    model_config["num_framestacks"] = num_framestacks = 0
+                # Trajectory view API is on and num_framestacks=auto: Only
+                # stack traj. view based if old `framestack=[invalid value]`.
+                elif num_framestacks == "auto":
+                    if framestack == DEPRECATED_VALUE:
+                        model_config["num_framestacks"] = num_framestacks = 4
+                    else:
+                        model_config["num_framestacks"] = num_framestacks = 0
+                framestack_traj_view = num_framestacks > 1
 
                 def wrap(env):
                     env = wrap_deepmind(
@@ -539,7 +546,9 @@ class RolloutWorker(ParallelIteratorWorker):
                 make_env=make_env,
                 num_envs=num_envs,
                 remote_envs=remote_worker_envs,
-                remote_env_batch_wait_ms=remote_env_batch_wait_ms)
+                remote_env_batch_wait_ms=remote_env_batch_wait_ms,
+                policy_config=policy_config,
+            )
 
         # `truncate_episodes`: Allow a batch to contain more than one episode
         # (fragments) and always make the batch `rollout_fragment_length`
@@ -576,6 +585,11 @@ class RolloutWorker(ParallelIteratorWorker):
                 raise ValueError(
                     "Unknown evaluation method: {}".format(method))
 
+        render = False
+        if policy_config.get("render_env") is True and \
+                (num_workers == 0 or worker_index == 1):
+            render = True
+
         if self.env is None:
             self.sampler = None
         elif sample_async:
@@ -601,6 +615,7 @@ class RolloutWorker(ParallelIteratorWorker):
                 _use_trajectory_view_api=_use_trajectory_view_api,
                 sample_collector_class=policy_config.get(
                     "sample_collector_class"),
+                render=render,
             )
             # Start the Sampler thread.
             self.sampler.start()
@@ -626,6 +641,7 @@ class RolloutWorker(ParallelIteratorWorker):
                 _use_trajectory_view_api=_use_trajectory_view_api,
                 sample_collector_class=policy_config.get(
                     "sample_collector_class"),
+                render=render,
             )
 
         self.input_reader: InputReader = input_creator(self.io_context)

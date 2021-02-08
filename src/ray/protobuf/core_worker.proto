@@ -182,11 +182,17 @@ message RemoveObjectLocationOwnerReply {
 message GetObjectLocationsOwnerRequest {
   bytes intended_worker_id = 1;
   bytes object_id = 2;
+  // The version of the last location update. Only updates more recent than this version
+  // will be returned. -1 indicates that the current location data should
+  // always be returned.
+  int64 last_version = 3;
 }
 
 message GetObjectLocationsOwnerReply {
   repeated bytes node_ids = 1;
   uint64 object_size = 2;
+  // The version of the returned location updates.
+  int64 current_version = 3;
 }
 
 message KillActorRequest {

@@ -19,6 +19,9 @@ The rest of this document explains step-by-step how to use the Ray Kubernetes Op
 .. role:: bash(code)
    :language: bash
 
+.. note::
+   The Ray Kubernetes Operator is still experimental. For the yaml files in the examples below, we recomend using the latest master version of Ray.
+
 .. warning::
    The Ray Kubernetes Operator requires Kubernetes version at least ``v1.17.0``. Check Kubernetes version info with the command
    :bash:`kubectl version`.
