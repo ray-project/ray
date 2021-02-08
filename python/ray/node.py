@@ -11,6 +11,7 @@ import socket
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 
 from typing import Optional, Dict
@@ -91,6 +92,7 @@ class Node:
         self.kernel_fate_share = bool(
             spawn_reaper and ray.utils.detect_fate_sharing_support())
         self.all_processes = {}
+        self.removal_lock = threading.Lock()
 
         # Try to get node IP address with the parameters.
         if ray_params.node_ip_address:
@@ -923,6 +925,23 @@ class Node:
                 2. The process had been started in valgrind and had a non-zero
                    exit code.
         """
+
+        # Ensure thread safety
+        with self.removal_lock:
+            self._kill_process_impl(
+                process_type,
+                allow_graceful=allow_graceful,
+                check_alive=check_alive,
+                wait=wait)
+
+    def _kill_process_impl(self,
+                           process_type,
+                           allow_graceful=False,
+                           check_alive=True,
+                           wait=False):
+        """See `_kill_process_type`."""
+        if process_type not in self.all_processes:
+            return
         process_infos = self.all_processes[process_type]
         if process_type != ray_constants.PROCESS_TYPE_REDIS_SERVER:
             assert len(process_infos) == 1
