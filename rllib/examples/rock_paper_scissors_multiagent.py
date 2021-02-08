@@ -13,7 +13,7 @@ import random
 
 from ray import tune
 from ray.rllib.agents.pg import PGTrainer, PGTFPolicy, PGTorchPolicy
-from ray.rllib.agents.registry import get_agent_class
+from ray.rllib.agents.registry import get_trainer_class
 from pettingzoo.classic import rps_v1
 from ray.rllib.examples.policy.rock_paper_scissors_dummies import \
     BeatLastHeuristic, AlwaysSameHeuristic
@@ -101,7 +101,7 @@ def run_heuristic_vs_learned(args, use_lstm=False, trainer="PG"):
         },
         "framework": "torch" if args.torch else "tf",
     }
-    cls = get_agent_class(trainer) if isinstance(trainer, str) else trainer
+    cls = get_trainer_class(trainer) if isinstance(trainer, str) else trainer
     trainer_obj = cls(config=config)
     for _ in range(args.stop_iters):
         results = trainer_obj.train()
