@@ -113,6 +113,8 @@ def start_connected_emptyhead_cluster():
 
 def test_counting_resources(start_connected_cluster):
     """Tests that Tune accounting is consistent with actual cluster."""
+    os.environ["TUNE_PLACEMENT_GROUP_AUTO_DISABLED"] = "1"
+
     cluster = start_connected_cluster
     nodes = []
     assert ray.cluster_resources()["CPU"] == 1
