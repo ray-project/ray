@@ -488,9 +488,9 @@ void PlasmaStore::ProcessGetRequest(const std::shared_ptr<Client> &client,
       RAY_CHECK(!entry->pointer);
 
       PlasmaError error = PlasmaError::OK;
-      entry->pointer = AllocateMemory(entry->data_size + entry->metadata_size,
-                                      &entry->fd, &entry->map_size,
-                                      &entry->offset, client, false, &error);
+      entry->pointer =
+          AllocateMemory(entry->data_size + entry->metadata_size, &entry->fd,
+                         &entry->map_size, &entry->offset, client, false, &error);
       if (entry->pointer) {
         // TODO(suquark): Not sure if this old behavior is still compatible
         // with our current object spilling mechanics.
