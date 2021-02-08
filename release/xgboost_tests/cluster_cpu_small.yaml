@@ -32,4 +32,4 @@ setup_commands:
     - sudo mkdir -p /data || true
     - sudo chown ray:1000 /data || true
     - rm -rf /data/classification.parquet || true
-    - python ${ANYSCALE_WORKING_DIR}/create_test_data.py /data/classification.parquet --seed 1234 --num-rows 1000000 --num-cols 40 --num-partitions 100 --num-classes 2
+    - python ~/release-automation-xgboost_tests/create_test_data.py /data/classification.parquet --seed 1234 --num-rows 1000000 --num-cols 40 --num-partitions 100 --num-classes 2
