@@ -1088,6 +1088,7 @@ def test_automatic_cleanup_detached_actors(ray_start_cluster):
     for _ in range(num_nodes):
         cluster.add_node(num_cpus=num_cpu_per_node)
 
+    cluster.wait_for_nodes()
     info = ray.init(address=cluster.address)
     available_cpus = ray.available_resources()["CPU"]
     assert available_cpus == num_nodes * num_cpu_per_node
@@ -1149,7 +1150,7 @@ ray.shutdown()
         return ray.available_resources()["CPU"] == expected_num_cpus
 
     wait_for_condition(is_job_done)
-    assert assert_num_cpus(num_nodes)
+    wait_for_condition(lambda: assert_num_cpus(num_nodes))
     # Make sure when a child actor spawned by a detached actor
     # is killed, the placement group is removed.
     a = ray.get_actor("A")
