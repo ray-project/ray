@@ -648,7 +648,10 @@ def get_or_create_head_node(config: Dict[str, Any],
         if restart_only:
             # Some Command Runners may re-launch nodes, requiring setup
             # commands to be rerun.
-            setup_commands = config["head_setup_commands"]
+            if config.get("docker").get("container_name"):
+                setup_commands = config["head_setup_commands"]
+            else:
+                setup_commands = []
             ray_start_commands = config["head_start_ray_commands"]
         elif no_restart:
             setup_commands = config["head_setup_commands"]
