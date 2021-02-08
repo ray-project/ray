@@ -1,11 +1,11 @@
 import logging
 
-import ray
 from ray.rllib.agents.model_based.dreamer.utils import FreezeParameters
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.torch_ops import apply_grad_clipping
+from ray.rllib.agents.model_based.dreamer.dreamer import Dreamer
 
 torch, nn = try_import_torch()
 if torch:
@@ -239,8 +239,7 @@ def dreamer_optimizer_fn(policy, config):
 DreamerTorchPolicy = build_policy_class(
     name="DreamerTorchPolicy",
     framework="torch",
-    get_default_config=
-    lambda: ray.rllib.agents.model_based.dreamer.dreamer.DEFAULT_CONFIG,
+    get_default_config=lambda: Dreamer.DEFAULT_CONFIG,
     action_sampler_fn=action_sampler_fn,
     loss_fn=dreamer_loss,
     stats_fn=dreamer_stats,
