@@ -32,7 +32,6 @@ def ray_init_with_task_retry_delay():
 @pytest.mark.parametrize(
     "ray_start_regular", [{
         "object_store_memory": 150 * 1024 * 1024,
-        "_lru_evict": True,
     }],
     indirect=True)
 def test_actor_eviction(ray_start_regular):

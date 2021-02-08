@@ -57,10 +57,6 @@ RAY_CONFIG(int64_t, debug_dump_period_milliseconds, 10000)
 /// type of task from starving other types (see issue #3664).
 RAY_CONFIG(bool, fair_queueing_enabled, true)
 
-/// Whether to enable object pinning for plasma objects. When this is
-/// enabled, objects in scope in the cluster will not be LRU evicted.
-RAY_CONFIG(bool, object_pinning_enabled, true)
-
 /// Whether to enable distributed reference counting for objects. When this is
 /// enabled, an object's ref count will include any references held by other
 /// processes, such as when an ObjectID is serialized and passed as an argument
@@ -70,11 +66,9 @@ RAY_CONFIG(bool, object_pinning_enabled, true)
 /// information:
 ///  1. Local Python references to the ObjectID.
 ///  2. Pending tasks submitted by the local process that depend on the object.
-/// If both this flag and object_pinning_enabled are turned on, then an object
+/// If both this flag is turned on, then an object
 /// will not be LRU evicted until it is out of scope in ALL processes in the
-/// cluster and all objects that contain it are also out of scope. If this flag
-/// is off and object_pinning_enabled is turned on, then an object will not be
-/// LRU evicted until it is out of scope on the CREATOR of the ObjectID.
+/// cluster and all objects that contain it are also out of scope.
 RAY_CONFIG(bool, distributed_ref_counting_enabled, true)
 
 /// Whether to record the creation sites of object references. This adds more
@@ -82,7 +76,7 @@ RAY_CONFIG(bool, distributed_ref_counting_enabled, true)
 /// creating object references.
 RAY_CONFIG(bool, record_ref_creation_sites, true)
 
-/// If object_pinning_enabled is on, then objects that have been unpinned are
+/// Objects that have been unpinned are
 /// added to a local cache. When the cache is flushed, all objects in the cache
 /// will be eagerly evicted in a batch by freeing all plasma copies in the
 /// cluster. If set, then this is the duration between attempts to flush the
@@ -96,7 +90,7 @@ RAY_CONFIG(bool, record_ref_creation_sites, true)
 /// raylet_heartbeat_period_milliseconds.
 RAY_CONFIG(int64_t, free_objects_period_milliseconds, 1000)
 
-/// If object_pinning_enabled is on, then objects that have been unpinned are
+/// Objects that have been unpinned are
 /// added to a local cache. When the cache is flushed, all objects in the cache
 /// will be eagerly evicted in a batch by freeing all plasma copies in the
 /// cluster. This is the maximum number of objects in the local cache before it

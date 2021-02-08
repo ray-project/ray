@@ -77,10 +77,6 @@ class PlasmaStore {
   /// \param owner_ip_address IP address of the object's owner.
   /// \param owner_port Port of the object's owner.
   /// \param owner_worker_id Worker ID of the object's owner.
-  /// \param evict_if_full If this is true, then when the object store is full,
-  ///        try to evict objects that are not currently referenced before
-  ///        creating the object. Else, do not evict any objects and
-  ///        immediately return an PlasmaError::OutOfMemory.
   /// \param data_size Size in bytes of the object to be created.
   /// \param metadata_size Size in bytes of the object metadata.
   /// \param device_num The number of the device where the object is being
@@ -100,8 +96,8 @@ class PlasmaStore {
   ///    plasma_release.
   PlasmaError CreateObject(const ObjectID &object_id, const NodeID &owner_raylet_id,
                            const std::string &owner_ip_address, int owner_port,
-                           const WorkerID &owner_worker_id, bool evict_if_full,
-                           int64_t data_size, int64_t metadata_size, int device_num,
+                           const WorkerID &owner_worker_id, int64_t data_size,
+                           int64_t metadata_size, int device_num,
                            const std::shared_ptr<Client> &client, PlasmaObject *result);
 
   /// Abort a created but unsealed object. If the client is not the
@@ -224,7 +220,7 @@ class PlasmaStore {
  private:
   PlasmaError HandleCreateObjectRequest(const std::shared_ptr<Client> &client,
                                         const std::vector<uint8_t> &message,
-                                        bool evict_if_full, PlasmaObject *object);
+                                        PlasmaObject *object);
 
   void ReplyToCreateClient(const std::shared_ptr<Client> &client,
                            const ObjectID &object_id, uint64_t req_id);
@@ -255,10 +251,9 @@ class PlasmaStore {
 
   void EraseFromObjectTable(const ObjectID &object_id);
 
-  uint8_t *AllocateMemory(size_t size, bool evict_if_full, MEMFD_TYPE *fd,
-                          int64_t *map_size, ptrdiff_t *offset,
-                          const std::shared_ptr<Client> &client, bool is_create,
-                          PlasmaError *error);
+  uint8_t *AllocateMemory(size_t size, MEMFD_TYPE *fd, int64_t *map_size,
+                          ptrdiff_t *offset, const std::shared_ptr<Client> &client,
+                          bool is_create, PlasmaError *error);
 
   // Start listening for clients.
   void DoAccept();
