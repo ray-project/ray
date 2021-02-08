@@ -29,11 +29,6 @@ class MockParam(object):
 
 class PopulationBasedTrainingMemoryTest(unittest.TestCase):
     def setUp(self):
-        # Wait up to five seconds for placement groups when starting a trial
-        os.environ["TUNE_PLACEMENT_GROUP_WAIT_S"] = "5"
-        # Block for results even when placement groups are pending
-        os.environ["TUNE_TRIAL_STARTUP_GRACE_PERIOD"] = "0"
-
         ray.init(num_cpus=1, object_store_memory=100 * MB)
 
     def tearDown(self):
