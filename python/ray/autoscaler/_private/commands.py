@@ -646,7 +646,7 @@ def get_or_create_head_node(config: Dict[str, Any],
             cli_logger.print("Prepared bootstrap config")
 
         if restart_only:
-            # Some Command Runners may re-launch nodes, requiring setup
+            # Docker may re-launch nodes, requiring setup
             # commands to be rerun.
             if config.get("docker").get("container_name"):
                 setup_commands = config["head_setup_commands"]
