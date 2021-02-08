@@ -2,7 +2,7 @@
 cluster_name: example-cluster
 
 # The maximum number of workers nodes to launch in addition to the head
-# node. This takes precedence over min_workers. min_workers default to 0.
+# node.
 max_workers: 2
 
 # Kubernetes resources that need to be configured for the autoscaler to be

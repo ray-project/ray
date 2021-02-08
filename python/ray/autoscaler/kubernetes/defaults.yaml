@@ -2,7 +2,7 @@
 cluster_name: defaults
 
 # The maximum number of workers nodes to launch in addition to the head
-# node. This takes precedence over min_workers.
+# node.
 max_workers: 2
 
 # The autoscaler will scale up the cluster faster with higher upscaling speed.
@@ -96,8 +96,8 @@ available_node_types:
   worker_node:
     # Minimum number of Ray workers of this Pod type.
     min_workers: 0
-    # Maximum number of Ray workers of this Pod type. Takes precedence over minWorkers.
-    max_workers: 1
+    # Maximum number of Ray workers of this Pod type. Takes precedence over min_workers.
+    max_workers: 2
     node_config:
       apiVersion: v1
       kind: Pod

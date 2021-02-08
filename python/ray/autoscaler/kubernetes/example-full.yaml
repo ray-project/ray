@@ -2,8 +2,8 @@
 cluster_name: example-cluster
 
 # The maximum number of workers nodes to launch in addition to the head
-# node. This takes precedence over min_workers.
-max_workers: 3
+# node.
+max_workers: 2
 
 # The autoscaler will scale up the cluster faster with higher upscaling speed.
 # E.g., if the task requires adding more nodes then autoscaler will gradually
@@ -95,12 +95,12 @@ head_node_type: head_node
 available_node_types:
   worker_node:
     # Minimum number of Ray workers of this Pod type.
-    min_workers: 2
-    # Maximum number of Ray workers of this Pod type. Takes precedence over minWorkers.
-    max_workers: 3
+    min_workers: 0
+    # Maximum number of Ray workers of this Pod type. Takes precedence over min_workers.
+    max_workers: 2
     # User-specified custom resources for use by Ray. Object with string keys and integer values.
     # (Ray detects CPU and GPU from pod spec resource requests and limits, so no need to fill those here.)
-    resources: {"foo": 1, "bar": 1}
+    resources: {"foo": 1, "bar": 2}
     node_config:
       apiVersion: v1
       kind: Pod
