@@ -1022,6 +1022,7 @@ def test_automatic_cleanup_job(ray_start_cluster):
     for _ in range(num_nodes):
         cluster.add_node(num_cpus=num_cpu_per_node)
 
+    cluster.wait_for_nodes()
     info = ray.init(address=cluster.address)
     available_cpus = ray.available_resources()["CPU"]
     assert available_cpus == num_nodes * num_cpu_per_node
