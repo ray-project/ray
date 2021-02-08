@@ -1,4 +1,3 @@
-import copy
 import operator
 import warnings
 
@@ -116,13 +115,6 @@ if SimpleShuffleLayer is not None:
         for key, layer in layers.items():
             if type(layer) is SimpleShuffleLayer:
                 dsk.layers[key] = MultipleReturnSimpleShuffleLayer.clone(layer)
-            else:
-                layer = copy.copy(layer)
-                for inner_key, inner_layer in layer.items():
-                    if type(inner_layer) is SimpleShuffleLayer:
-                        dsk.layers[key].layers[inner_key] = (
-                            MultipleReturnSimpleShuffleLayer.clone(inner_layer)
-                        )
         return dsk
 
     def dataframe_optimize(dsk, keys, **kwargs):
@@ -135,7 +127,7 @@ if SimpleShuffleLayer is not None:
                 id(dsk), dsk, dependencies=())
 
         dsk = rewrite_simple_shuffle_layer(dsk, keys=keys)
-        return optimize(dask, keys, **kwargs)
+        return optimize(dsk, keys, **kwargs)
 else:
 
     def dataframe_optimize(dsk, keys, **kwargs):
