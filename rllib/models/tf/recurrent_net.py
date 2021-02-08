@@ -50,7 +50,6 @@ class RecurrentNetwork(TFModelV2):
             self.rnn_model = tf.keras.Model(
                 inputs=[input_layer, seq_in, state_in_h, state_in_c],
                 outputs=[output_layer, state_h, state_c])
-            self.register_variables(self.rnn_model.variables)
             self.rnn_model.summary()
     """
 
@@ -179,7 +178,6 @@ class LSTMWrapper(RecurrentNetwork):
         self._rnn_model = tf.keras.Model(
             inputs=[input_layer, seq_in, state_in_h, state_in_c],
             outputs=[logits, values, state_h, state_c])
-        self.register_variables(self._rnn_model.variables)
         self._rnn_model.summary()
 
         # Add prev-a/r to this model's view, if required.

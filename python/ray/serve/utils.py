@@ -103,7 +103,8 @@ def parse_request_item(request_item):
 def _get_logger():
     logger = logging.getLogger("ray.serve")
     # TODO(simon): Make logging level configurable.
-    if os.environ.get("SERVE_LOG_DEBUG"):
+    log_level = os.environ.get("SERVE_LOG_DEBUG")
+    if log_level and int(log_level):
         logger.setLevel(logging.DEBUG)
     else:
         logger.setLevel(logging.INFO)
@@ -358,22 +359,26 @@ def get_node_id_for_actor(actor_handle):
     return ray.actors()[actor_handle._actor_id.hex()]["Address"]["NodeID"]
 
 
-def import_class(full_path: str):
-    """Given a full import path to a class name, return the imported class.
+def import_attr(full_path: str):
+    """Given a full import path to a module attr, return the imported attr.
 
     For example, the following are equivalent:
-        MyClass = import_class("module.submodule.MyClass")
+        MyClass = import_attr("module.submodule.MyClass")
         from module.submodule import MyClass
 
     Returns:
-        Imported class
+        Imported attr
     """
 
     last_period_idx = full_path.rfind(".")
-    class_name = full_path[last_period_idx + 1:]
+    attr_name = full_path[last_period_idx + 1:]
     module_name = full_path[:last_period_idx]
     module = importlib.import_module(module_name)
-    return getattr(module, class_name)
+    return getattr(module, attr_name)
+
+
+async def mock_imported_function(batch):
+    return [await request.body() for request in batch]
 
 
 class MockImportedBackend:
@@ -391,11 +396,17 @@ class MockImportedBackend:
     def reconfigure(self, config):
         self.config = config
 
-    def __call__(self, *args):
-        return {"arg": self.arg, "config": self.config}
+    def __call__(self, batch):
+        return [{
+            "arg": self.arg,
+            "config": self.config
+        } for _ in range(len(batch))]
 
-    async def other_method(self, request):
-        return await request.body()
+    async def other_method(self, batch):
+        responses = []
+        for request in batch:
+            responses.append(await request.body())
+        return responses
 
 
 def compute_iterable_delta(old: Iterable,
@@ -405,7 +416,7 @@ def compute_iterable_delta(old: Iterable,
     Usage:
         >>> old = {"a", "b"}
         >>> new = {"a", "d"}
-        >>> compute_dict_delta(old, new)
+        >>> compute_iterable_delta(old, new)
         ({"d"}, {"b"}, {"a"})
     """
     old_keys, new_keys = set(old), set(new)

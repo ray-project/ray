@@ -222,29 +222,29 @@ To use Tune's checkpointing features, you must expose a ``checkpoint_dir`` argum
 
 .. code-block:: python
 
-        import os
-        import time
-        from ray import tune
+    import os
+    import time
+    from ray import tune
 
-        def train_func(config, checkpoint_dir=None):
-            start = 0
-            if checkpoint_dir:
-                with open(os.path.join(checkpoint_dir, "checkpoint")) as f:
-                    state = json.loads(f.read())
-                    start = state["step"] + 1
+    def train_func(config, checkpoint_dir=None):
+        start = 0
+        if checkpoint_dir:
+            with open(os.path.join(checkpoint_dir, "checkpoint")) as f:
+                state = json.loads(f.read())
+                start = state["step"] + 1
 
-            for step in range(start, 100):
-                time.sleep(1)
+        for step in range(start, 100):
+            time.sleep(1)
 
-                # Obtain a checkpoint directory
-                with tune.checkpoint_dir(step=step) as checkpoint_dir:
-                    path = os.path.join(checkpoint_dir, "checkpoint")
-                    with open(path, "w") as f:
-                        f.write(json.dumps({"step": start}))
+            # Obtain a checkpoint directory
+            with tune.checkpoint_dir(step=step) as checkpoint_dir:
+                path = os.path.join(checkpoint_dir, "checkpoint")
+                with open(path, "w") as f:
+                    f.write(json.dumps({"step": step}))
 
-                tune.report(hello="world", ray="tune")
+            tune.report(hello="world", ray="tune")
 
-        tune.run(train_func)
+    tune.run(train_func)
 
 In this example, checkpoints will be saved by training iteration to ``local_dir/exp_name/trial_name/checkpoint_<step>``.
 
@@ -261,6 +261,7 @@ You can restore a single trial checkpoint by using ``tune.run(restore=<checkpoin
         config={"env": "CartPole-v0"},
     )
 
+
 Distributed Checkpointing
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -275,6 +276,60 @@ disable cross-node syncing:
 
     sync_config = tune.SyncConfig(sync_to_driver=False)
     tune.run(func, sync_config=sync_config)
+
+
+Stopping and resuming a tuning run
+----------------------------------
+Ray Tune periodically checkpoints the experiment state so that it can be
+restarted when it fails or stops. The checkpointing period is
+dynamically adjusted so that at least 95% of the time is used for handling
+training results and scheduling.
+
+If you send a SIGINT signal to the process running ``tune.run()`` (which is
+usually what happens when you press Ctrl+C in the console), Ray Tune shuts
+down training gracefully and saves a final experiment-level checkpoint. You
+can then call ``tune.run()`` with ``resume=True`` to continue this run in
+the future:
+
+.. code-block:: python
+    :emphasize-lines: 14
+
+    tune.run(
+        train,
+        # ...
+        name="my_experiment"
+    )
+
+    # This is interrupted e.g. by sending a SIGINT signal
+    # Next time, continue the run like so:
+
+    tune.run(
+        train,
+        # ...
+        name="my_experiment",
+        resume=True
+    )
+
+You will have to pass a ``name`` if you are using ``resume=True`` so that
+Ray Tune can detect the experiment folder (which is usually stored at e.g.
+``~/ray_results/my_experiment``). If you forgot to pass a name in the first
+call, you can still pass the name when you resume the run. Please note that
+in this case it is likely that your experiment name has a date suffix, so if you
+ran ``tune.run(my_trainable)``, the ``name`` might look like something like this:
+``my_trainable_2021-01-29_10-16-44``.
+
+You can see which name you need to pass by taking a look at the results table
+of your original tuning run:
+
+.. code-block::
+    :emphasize-lines: 5
+
+    == Status ==
+    Memory usage on this node: 11.0/16.0 GiB
+    Using FIFO scheduling algorithm.
+    Resources requested: 1/16 CPUs, 0/0 GPUs, 0.0/4.69 GiB heap, 0.0/1.61 GiB objects
+    Result logdir: /Users/ray/ray_results/my_trainable_2021-01-29_10-16-44
+    Number of trials: 1/1 (1 RUNNING)
 
 
 Handling Large Datasets
@@ -682,12 +737,18 @@ These are the environment variables Ray Tune currently considers:
   or a search algorithm, Tune will error
   if the metric was not reported in the result. Setting this environment variable
   to ``1`` will disable this check.
+* **TUNE_DISABLE_SIGINT_HANDLER**: Ray Tune catches SIGINT signals (e.g. sent by
+  Ctrl+C) to gracefully shutdown and do a final checkpoint. Setting this variable
+  to ``1`` will disable signal handling and stop execution right away. Defaults to
+  ``0``.
 * **TUNE_FUNCTION_THREAD_TIMEOUT_S**: Time in seconds the function API waits
   for threads to finish after instructing them to complete. Defaults to ``2``.
 * **TUNE_GLOBAL_CHECKPOINT_S**: Time in seconds that limits how often Tune's
   experiment state is checkpointed. If not set this will default to ``10``.
 * **TUNE_MAX_LEN_IDENTIFIER**: Maximum length of trial subdirectory names (those
   with the parameter values in them)
+* **TUNE_MAX_PENDING_TRIALS_PG**: Maximum number of pending trials when placement groups are used. Defaults
+  to ``1000``.
 * **TUNE_RESULT_DIR**: Directory where Ray Tune trial results are stored. If this
   is not set, ``~/ray_results`` will be used.
 * **TUNE_RESULT_BUFFER_LENGTH**: Ray Tune can buffer results from trainables before they are passed
@@ -697,6 +758,9 @@ These are the environment variables Ray Tune currently considers:
   but never longer than this value. Defaults to 100 (seconds).
 * **TUNE_RESULT_BUFFER_MIN_TIME_S**: Additionally, you can specify a minimum time to buffer results. Defaults to 0.
 * **TUNE_SYNCER_VERBOSITY**: Amount of command output when using Tune with Docker Syncer. Defaults to 0.
+* **TUNE_TRIAL_STARTUP_GRACE_PERIOD**: Amount of time after starting a trial that Ray Tune checks for successful
+  trial startups. After the grace period, Tune will block until a result from a running trial is received. Can
+  be disabled by setting this to lower or equal to 0.
 * **TUNE_WARN_THRESHOLD_S**: Threshold for logging if an Tune event loop operation takes too long. Defaults to 0.5 (seconds).
 * **TUNE_STATE_REFRESH_PERIOD**: Frequency of updating the resource tracking from Ray. Defaults to 10 (seconds).
 

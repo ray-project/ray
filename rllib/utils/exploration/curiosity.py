@@ -208,7 +208,6 @@ class Curiosity(Exploration):
                 self._curiosity_feature_net.base_model.variables + \
                 self._curiosity_inverse_fcnet.variables + \
                 self._curiosity_forward_fcnet.variables
-            self.model.register_variables(self._optimizer_var_list)
             self._optimizer = tf1.train.AdamOptimizer(learning_rate=self.lr)
             # Create placeholders and initialize the loss.
             if self.framework == "tf":

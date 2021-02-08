@@ -210,6 +210,8 @@ table PlasmaGetRequest {
   object_ids: [string];
   // The number of milliseconds before the request should timeout.
   timeout_ms: long;
+  // Whether or not the get request is from the core worker. It is used to record how many bytes are consumed by core workers.
+  is_from_worker: bool;
 }
 
 table PlasmaGetReply {

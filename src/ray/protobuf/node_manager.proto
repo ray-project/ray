@@ -138,6 +138,8 @@ message ObjectStoreStats {
   int64 object_store_bytes_avail = 8;
   // The number of local objects total.
   int64 num_local_objects = 9;
+  // The number of plasma object bytes that are consumed by core workers.
+  int64 consumed_bytes = 10;
 }
 
 message GetNodeStatsReply {
@@ -177,6 +179,18 @@ message RequestObjectSpillageRequest {
 message RequestObjectSpillageReply {
   // Whether the object spilling was successful or not.
   bool success = 1;
+}
+
+message RestoreSpilledObjectRequest {
+  // ObjectID to restore.
+  bytes object_id = 1;
+  // Object URL where the object is spilled.
+  string object_url = 2;
+  // The node id of a node where the object is spilled.
+  bytes spilled_node_id = 3;
+}
+
+message RestoreSpilledObjectReply {
 }
 
 message ReleaseUnusedBundlesRequest {
@@ -224,6 +238,9 @@ service NodeManagerService {
   // Ask the raylet to spill an object to external storage.
   rpc RequestObjectSpillage(RequestObjectSpillageRequest)
       returns (RequestObjectSpillageReply);
+  // Ask the raylet to restore the object from the external storage.
+  rpc RestoreSpilledObject(RestoreSpilledObjectRequest)
+      returns (RestoreSpilledObjectReply);
   // This method is only used by GCS, and the purpose is to release bundles
   // that may be leaked. When GCS restarts, it doesn't know which bundles it has leased
   // in the previous lifecycle. In this case, GCS will send a list of bundles that

@@ -13,7 +13,9 @@ def global_gc():
     worker.core_worker.global_gc()
 
 
-def memory_summary():
+def memory_summary(node_manager_address=None,
+                   node_manager_port=None,
+                   stats_only=False):
     """Returns a formatted string describing memory usage in the cluster."""
 
     import grpc
@@ -22,9 +24,13 @@ def memory_summary():
 
     # We can ask any Raylet for the global memory info, that Raylet internally
     # asks all nodes in the cluster for memory stats.
-    raylet = ray.nodes()[0]
-    raylet_address = "{}:{}".format(raylet["NodeManagerAddress"],
-                                    ray.nodes()[0]["NodeManagerPort"])
+    if (node_manager_address is None or node_manager_port is None):
+        raylet = ray.nodes()[0]
+        raylet_address = "{}:{}".format(raylet["NodeManagerAddress"],
+                                        raylet["NodeManagerPort"])
+    else:
+        raylet_address = "{}:{}".format(node_manager_address,
+                                        node_manager_port)
     channel = grpc.insecure_channel(
         raylet_address,
         options=[
@@ -59,6 +65,11 @@ def memory_summary():
                 reply.store_stats.restored_objects_total,
                 int(reply.store_stats.restored_bytes_total / (1024 * 1024) /
                     reply.store_stats.restore_time_total_s)))
+    if reply.store_stats.consumed_bytes > 0:
+        store_summary += ("Objects consumed by Ray tasks: {} MiB.".format(
+            int(reply.store_stats.consumed_bytes / (1024 * 1024))))
+    if stats_only:
+        return store_summary
     return reply.memory_summary + "\n" + store_summary
 
 

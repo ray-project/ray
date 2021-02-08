@@ -37,7 +37,6 @@ class TaskDependencyManagerInterface {
   virtual bool RequestTaskDependencies(
       const TaskID &task_id,
       const std::vector<rpc::ObjectReference> &required_objects) = 0;
-  virtual bool IsTaskReady(const TaskID &task_id) const = 0;
   virtual void RemoveTaskDependencies(const TaskID &task_id) = 0;
   virtual ~TaskDependencyManagerInterface(){};
 };
@@ -130,14 +129,6 @@ class DependencyManager : public TaskDependencyManagerInterface {
   /// \return Void.
   bool RequestTaskDependencies(const TaskID &task_id,
                                const std::vector<rpc::ObjectReference> &required_objects);
-
-  /// Check whether a task is ready to run. The task ID must have been
-  /// previously added by the caller.
-  ///
-  /// \param task_id The ID of the task to check.
-  /// \return Whether all of the dependencies for the task are
-  /// local.
-  bool IsTaskReady(const TaskID &task_id) const;
 
   /// Cancel a task's dependencies. We will no longer attempt to fetch any
   /// remote dependencies, if no other task or worker requires them.

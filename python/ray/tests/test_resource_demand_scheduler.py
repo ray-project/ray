@@ -28,7 +28,7 @@ from ray.core.generated.common_pb2 import Bundle, PlacementStrategy
 from ray.autoscaler.tags import TAG_RAY_USER_NODE_TYPE, TAG_RAY_NODE_KIND, \
                                 NODE_KIND_WORKER, TAG_RAY_NODE_STATUS, \
                                 STATUS_UP_TO_DATE, STATUS_UNINITIALIZED, \
-                                STATUS_UPDATE_FAILED, \
+                                STATUS_UPDATE_FAILED, STATUS_WAITING_FOR_SSH, \
                                 NODE_KIND_HEAD, NODE_TYPE_LEGACY_WORKER, \
                                 NODE_TYPE_LEGACY_HEAD
 from ray.test_utils import same_elements
@@ -87,8 +87,7 @@ TYPES_A = {
 MULTI_WORKER_CLUSTER = dict(
     SMALL_CLUSTER, **{
         "available_node_types": TYPES_A,
-        "head_node_type": "empty_node",
-        "worker_default_node_type": "m4.large",
+        "head_node_type": "empty_node"
     })
 
 
@@ -104,6 +103,14 @@ def test_util_score():
     assert _utilization_score({"CPU": 64}, [{"CPU": 32}]) == (8, 8)
     assert _utilization_score({"CPU": 64}, [{"CPU": 16}, {"CPU": 16}]) == \
         (8, 8)
+
+
+def test_gpu_node_util_score():
+    # Avoid scheduling CPU tasks on GPU node.
+    assert _utilization_score({"GPU": 1, "CPU": 1}, [{"CPU": 1}]) is None
+    assert _utilization_score({"GPU": 1, "CPU": 1}, [{"CPU": 1, "GPU": 1}]) \
+        == (1.0, 1.0)
+    assert _utilization_score({"GPU": 1, "CPU": 1}, [{"GPU": 1}]) == (0.0, 0.5)
 
 
 def test_bin_pack():
@@ -246,6 +253,32 @@ def test_get_nodes_packing_heuristic():
         }] * 8, strict_spread=True) == {
             "p2.xlarge": 8
         }
+
+
+def test_gpu_node_avoid_cpu_task():
+    types = {
+        "cpu": {
+            "resources": {
+                "CPU": 1
+            },
+            "max_workers": 10,
+        },
+        "gpu": {
+            "resources": {
+                "GPU": 1,
+                "CPU": 100,
+            },
+            "max_workers": 10,
+        },
+    }
+    r1 = [{"CPU": 1}] * 100
+    assert get_nodes_for(types, {}, "empty_node", 100, r1) == {"cpu": 10}
+    r2 = [{"GPU": 1}] + [{"CPU": 1}] * 100
+    assert get_nodes_for(types, {}, "empty_node", 100, r2) == \
+        {"gpu": 1}
+    r3 = [{"GPU": 1}] * 4 + [{"CPU": 1}] * 404
+    assert get_nodes_for(types, {}, "empty_node", 100, r3) == \
+        {"gpu": 4, "cpu": 4}
 
 
 def test_get_nodes_respects_max_limit():
@@ -1419,7 +1452,8 @@ class AutoscalingTest(unittest.TestCase):
         assert summary.active_nodes["empty_node"] == 1
         assert len(summary.active_nodes) == 2, summary.active_nodes
 
-        assert summary.pending_nodes == [("172.0.0.3", "p2.xlarge")]
+        assert summary.pending_nodes == [("172.0.0.3", "p2.xlarge",
+                                          STATUS_WAITING_FOR_SSH)]
         assert summary.pending_launches == {"m4.16xlarge": 2}
 
         assert summary.failed_nodes == [("172.0.0.4", "m4.4xlarge")]
@@ -2029,7 +2063,6 @@ class AutoscalingTest(unittest.TestCase):
                 "node_config": {},
                 "resources": {
                     "CPU": 2,
-                    "GPU": 1,
                     "WORKER": 1
                 },
                 "max_workers": 3
@@ -2146,7 +2179,6 @@ class AutoscalingTest(unittest.TestCase):
                 "node_config": {},
                 "resources": {
                     "CPU": 2,
-                    "GPU": 1,
                     "WORKER": 1
                 },
                 "max_workers": 3,
@@ -2260,7 +2292,6 @@ class AutoscalingTest(unittest.TestCase):
                 "node_config": {},
                 "resources": {
                     "CPU": 2,
-                    "GPU": 1,
                     "WORKER": 1
                 },
                 "max_workers": 3,
@@ -2403,7 +2434,8 @@ def test_info_string():
             "p3.2xlarge": 2,
             "m4.4xlarge": 20
         },
-        pending_nodes=[("1.2.3.4", "m4.4xlarge"), ("1.2.3.5", "m4.4xlarge")],
+        pending_nodes=[("1.2.3.4", "m4.4xlarge", STATUS_WAITING_FOR_SSH),
+                       ("1.2.3.5", "m4.4xlarge", STATUS_WAITING_FOR_SSH)],
         pending_launches={"m4.4xlarge": 2},
         failed_nodes=[("1.2.3.6", "p3.2xlarge")])
 
@@ -2416,8 +2448,8 @@ Healthy:
  20 m4.4xlarge
 Pending:
  m4.4xlarge, 2 launching
- 1.2.3.4: m4.4xlarge, setting up
- 1.2.3.5: m4.4xlarge, setting up
+ 1.2.3.4: m4.4xlarge, waiting-for-ssh
+ 1.2.3.5: m4.4xlarge, waiting-for-ssh
 Recent failures:
  (no failures)
 

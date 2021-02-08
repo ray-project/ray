@@ -56,6 +56,24 @@ This checklist is meant to be used in conjunction with the RELEASE_PROCESS.rst d
 			- [ ] Results added to `release/release_logs`
 	- [ ] stress_tests
 	- [ ] unit_gpu_tests
+- [ ] ASAN Test
+- [ ] K8s Test
+	- [ ] K8s cluster launcher test
+	- [ ] K8s operator test
+- [ ] Data processing tests
+    - [ ] streaming_shuffle
+- [x] Tune tests
+    - [x] ignore for now
+- [ ] XGBoost Tests
+    - [ ] distributed_api_test
+    - [ ] train_small
+    - [ ] train_moderate
+    - [ ] train_gpu
+    - [ ] tune_small
+    - [ ] tune_4x32
+    - [ ] tune_32x4
+    - [ ] ft_small_non_elastic (flaky!)
+    - [ ] ft_small_elastic (flaky!)
 
 ## Final Steps
 - [ ] Wheels uploaded to Test PyPI

@@ -37,6 +37,10 @@ parser.add_argument(
     "--yaml-dir",
     type=str,
     help="The directory in which to find all yamls to test.")
+parser.add_argument(
+    "--local-mode",
+    action="store_true",
+    help="Run ray in local mode for easier debugging.")
 
 # Obsoleted arg, use --framework=torch instead.
 parser.add_argument(
