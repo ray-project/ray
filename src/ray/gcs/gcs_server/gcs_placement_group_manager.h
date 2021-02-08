@@ -289,9 +289,11 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   /// execute_after).
   boost::asio::io_context &io_context_;
 
-  /// Callback of placement_group registration requests that are not yet flushed.
-  absl::flat_hash_map<PlacementGroupID, StatusCallback>
-      placement_group_to_register_callback_;
+  /// Callbacks of pending `RegisterPlacementGroup` requests.
+  /// Maps placement group ID to placement group registration callbacks, which is used to filter duplicated
+  /// messages from a driver/worker caused by some network problems.
+  absl::flat_hash_map<PlacementGroupID, std::vector<StatusCallback>>
+      placement_group_to_register_callbacks_;
 
   /// Callback of `WaitPlacementGroupUntilReady` requests.
   absl::flat_hash_map<PlacementGroupID, std::vector<StatusCallback>>

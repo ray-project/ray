@@ -130,12 +130,12 @@ void GcsPlacementGroupManager::RegisterPlacementGroup(
   auto iter = registered_placement_groups_.find(placement_group_id);
   if (iter != registered_placement_groups_.end()) {
     auto pending_register_iter =
-        placement_group_to_register_callback_.find(placement_group_id);
-    if (pending_register_iter != placement_group_to_register_callback_.end()) {
+        placement_group_to_register_callbacks_.find(placement_group_id);
+    if (pending_register_iter != placement_group_to_register_callbacks_.end()) {
       // 1. The GCS client sends the `RegisterPlacementGroup` request to the GCS server.
       // 2. The GCS client receives some network errors.
       // 3. The GCS client resends the `RegisterPlacementGroup` request to the GCS server.
-      pending_register_iter->second = std::move(callback);
+      pending_register_iter->second.emplace_back(std::move(callback));
     } else {
       // 1. The GCS client sends the `RegisterPlacementGroup` request to the GCS server.
       // 2. The GCS server flushes the placement group to the storage and restarts before
@@ -148,8 +148,8 @@ void GcsPlacementGroupManager::RegisterPlacementGroup(
     return;
   }
 
-  placement_group_to_register_callback_[placement_group->GetPlacementGroupID()] =
-      std::move(callback);
+  placement_group_to_register_callbacks_[placement_group->GetPlacementGroupID()].emplace_back(
+      std::move(callback));
   registered_placement_groups_.emplace(placement_group->GetPlacementGroupID(),
                                        placement_group);
   pending_placement_groups_.emplace_back(placement_group);
@@ -159,8 +159,8 @@ void GcsPlacementGroupManager::RegisterPlacementGroup(
       [this, placement_group_id, placement_group](Status status) {
         // The backend storage is supposed to be reliable, so the status must be ok.
         RAY_CHECK_OK(status);
-        auto iter = placement_group_to_register_callback_.find(placement_group_id);
-        RAY_CHECK(iter != placement_group_to_register_callback_.end());
+        auto iter = placement_group_to_register_callbacks_.find(placement_group_id);
+        RAY_CHECK(iter != placement_group_to_register_callbacks_.end() && !iter->second.empty());
         if (!registered_placement_groups_.contains(placement_group_id)) {
           // Return failed in sync if the placement group has removed already.
           std::stringstream stream;
