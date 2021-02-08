@@ -16,30 +16,27 @@ pushd "$ROOT_DIR"
   mvn -T16 checkstyle:check
 popd
 
-on_exit() {
-  exit_code=$?
-  if [ $exit_code -ne 0 ]; then
-    echo "Exit trap, printing ray logs"
-    cat /tmp/ray/session_latest/logs/*
-  fi
-}
-
-trap on_exit EXIT
-
 run_testng() {
+    local pid
     local exit_code
-    if "$@"; then
+    "$@" &
+    pid=$!
+    if wait $pid; then
         exit_code=0
     else
         exit_code=$?
     fi
     # exit_code == 2 means there are skipped tests.
     if [ $exit_code -ne 2 ] && [ $exit_code -ne 0 ] ; then
-        if [ $exit_code -gt 128 ] ; then
-            # Test crashed. Print the driver log for diagnosis.
-            cat /tmp/ray/session_latest/logs/java-core-driver-*
+        # Only print log files if it ran in cluster mode
+        if [[ ! "$*" =~ SINGLE_PROCESS ]]; then
+          if [ $exit_code -gt 128 ] ; then
+              # Test crashed. Print the driver log for diagnosis.
+              cat /tmp/ray/session_latest/logs/java-core-driver-*$pid*
+          fi
         fi
-        find . -name "hs_err_*log" -exec cat {} +
+        # Only print the hs_err_pid file of TestNG process
+        find . -name "hs_err_pid$pid.log" -exec cat {} +
         exit $exit_code
     fi
 }
@@ -60,11 +57,31 @@ if ! git diff --exit-code -- java src/ray/core_worker/lib/java; then
   exit 1
 fi
 
-echo "Running tests under cluster mode."
-# TODO(hchen): Ideally, we should use the following bazel command to run Java tests. However, if there're skipped tests,
-# TestNG will exit with code 2. And bazel treats it as test failure.
-# bazel test //java:all_tests --config=ci || cluster_exit_code=$?
-run_testng java -cp "$ROOT_DIR"/../bazel-bin/java/all_tests_deploy.jar org.testng.TestNG -d /tmp/ray_java_test_output "$ROOT_DIR"/testng.xml
+# NOTE(kfstrom): Java test troubleshooting only.
+# Set MAX_ROUNDS to a big number (e.g. 1000) to run Java tests repeatedly.
+# You may also want to modify java/testng.xml to run only a subset of test cases.
+MAX_ROUNDS=1
+if [ $MAX_ROUNDS -gt 1 ]; then
+  export RAY_BACKEND_LOG_LEVEL=debug
+fi
+
+round=1
+while true; do
+  echo Starting cluster mode test round $round
+
+  echo "Running tests under cluster mode."
+  # TODO(hchen): Ideally, we should use the following bazel command to run Java tests. However, if there're skipped tests,
+  # TestNG will exit with code 2. And bazel treats it as test failure.
+  # bazel test //java:all_tests --config=ci || cluster_exit_code=$?
+  run_testng java -cp "$ROOT_DIR"/../bazel-bin/java/all_tests_deploy.jar org.testng.TestNG -d /tmp/ray_java_test_output "$ROOT_DIR"/testng.xml
+
+  echo Finished cluster mode test round $round
+  date
+  round=$((round+1))
+  if (( round > MAX_ROUNDS )); then
+    break
+  fi
+done
 
 echo "Running tests under single-process mode."
 # bazel test //java:all_tests --jvmopt="-Dray.run-mode=SINGLE_PROCESS" --config=ci || single_exit_code=$?

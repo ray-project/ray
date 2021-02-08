@@ -4,7 +4,7 @@ import numpy as np
 import unittest
 
 import ray
-from ray.rllib.agents.registry import get_agent_class
+from ray.rllib.agents.registry import get_trainer_class
 from ray.rllib.utils.test_utils import check, framework_iterator
 
 
@@ -69,7 +69,7 @@ def ckpt_restore_test(alg_name, tfe=False):
     for fw in framework_iterator(config, frameworks=frameworks):
         for use_object_store in [False, True]:
             print("use_object_store={}".format(use_object_store))
-            cls = get_agent_class(alg_name)
+            cls = get_trainer_class(alg_name)
             if "DDPG" in alg_name or "SAC" in alg_name:
                 alg1 = cls(config=config, env="Pendulum-v0")
                 alg2 = cls(config=config, env="Pendulum-v0")

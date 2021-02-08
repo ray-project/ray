@@ -152,6 +152,7 @@ test_python() {
       -python/ray/tests:test_basic_3  # timeout
       -python/ray/tests:test_basic_3_client_mode
       -python/ray/tests:test_cli
+      -python/ray/tests:test_client_init # timeout
       -python/ray/tests:test_failure
       -python/ray/tests:test_global_gc
       -python/ray/tests:test_job

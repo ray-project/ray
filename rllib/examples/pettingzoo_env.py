@@ -4,7 +4,7 @@ import os
 from supersuit import normalize_obs_v0, dtype_v0, color_reduction_v0
 
 import ray
-from ray.rllib.agents.registry import get_agent_class
+from ray.rllib.agents.registry import get_trainer_class
 from ray.rllib.env import PettingZooEnv
 from pettingzoo.butterfly import pistonball_v1
 
@@ -33,7 +33,7 @@ if __name__ == "__main__":
     num_rollouts = 2
 
     # 1. Gets default training configuration and specifies the POMgame to load.
-    config = deepcopy(get_agent_class(alg_name)._default_config)
+    config = deepcopy(get_trainer_class(alg_name)._default_config)
 
     # 2. Set environment config. This will be passed to
     # the env_creator function via the register env lambda below.
@@ -76,7 +76,7 @@ if __name__ == "__main__":
 
     # 6. Initialize ray and trainer object
     ray.init(num_cpus=num_cpus + 1)
-    trainer = get_agent_class(alg_name)(env="pistonball", config=config)
+    trainer = get_trainer_class(alg_name)(env="pistonball", config=config)
 
     # 7. Train once
     trainer.train()
