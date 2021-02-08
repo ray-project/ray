@@ -1,9 +1,9 @@
 cluster_name: ray-tune-scalability-tests-128x64_data
 
-min_workers: 127
 max_workers: 127
+upscaling_speed: 127
 
-idle_timeout_minutes: 15
+idle_timeout_minutes: 0
 
 docker:
     image: anyscale/ray:nightly
@@ -16,14 +16,27 @@ provider:
     availability_zone: us-west-2a
     cache_stopped_nodes: false
 
+available_node_types:
+    cpu_64_ondemand:
+        node_config:
+            InstanceType: m5.16xlarge
+        resources: {"CPU": 64}
+        min_workers: 0
+        max_workers: 0
+    cpu_64_spot:
+        node_config:
+            InstanceType: m5.16xlarge
+            InstanceMarketOptions:
+                MarketType: spot
+        resources: {"CPU": 64}
+        min_workers: 127
+        max_workers: 127
+
 auth:
     ssh_user: ubuntu
 
-head_node:
-    InstanceType: m5.16xlarge  # 64 CPUs
-
-worker_nodes:
-    InstanceType: m5.16xlarge  # 64 CPUs
+head_node_type: cpu_64_ondemand
+worker_default_node_type: cpu_64_spot
 
 setup_commands:
     - ray install-nightly

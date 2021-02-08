@@ -1,7 +1,7 @@
 cluster_name: ray-tune-scalability-tests-1x16
 
-min_workers: 0
 max_workers: 0
+upscaling_speed: 1
 
 idle_timeout_minutes: 0
 
@@ -16,14 +16,19 @@ provider:
     availability_zone: us-west-2a
     cache_stopped_nodes: false
 
+available_node_types:
+    cpu_4_ondemand:
+        node_config:
+            InstanceType: m5.xlarge
+        resources: {"CPU": 4}
+        min_workers: 0
+        max_workers: 0
+
 auth:
     ssh_user: ubuntu
 
-head_node:
-    InstanceType: m5.4xlarge  # 16 CPUs
-
-worker_nodes:
-    InstanceType: m5.4xlarge  # 16 CPUs
+head_node_type: cpu_4_ondemand
+worker_default_node_type: cpu_4_ondemand
 
 setup_commands:
     - ray install-nightly

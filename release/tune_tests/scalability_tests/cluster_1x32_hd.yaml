@@ -1,7 +1,7 @@
 cluster_name: ray-tune-scalability-tests-1x32_hd
 
-min_workers: 0
 max_workers: 0
+upscaling_speed: 1
 
 idle_timeout_minutes: 0
 
@@ -16,19 +16,25 @@ provider:
     availability_zone: us-west-2a
     cache_stopped_nodes: false
 
+available_node_types:
+    cpu_32_hd_ondemand:
+        node_config:
+            InstanceType: m5.8xlarge
+
+            BlockDeviceMappings:
+                - DeviceName: /dev/sda1
+                  Ebs:
+                      VolumeSize: 160
+
+        resources: {"CPU": 32}  # 128 GB memory
+        min_workers: 0
+        max_workers: 0
+
 auth:
     ssh_user: ubuntu
 
-head_node:
-    InstanceType: m5.8xlarge  # 32 CPUs, 128 GB memory
-
-    BlockDeviceMappings:
-        - DeviceName: /dev/sda1
-          Ebs:
-              VolumeSize: 160
-
-worker_nodes:
-    InstanceType: m5.8xlarge  # 32 CPUs, 128 GB memory
+head_node_type: cpu_32_hd_ondemand
+worker_default_node_type: cpu_32_hd_ondemand
 
 setup_commands:
     - ray install-nightly
