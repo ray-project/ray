@@ -26,7 +26,7 @@ All single node benchmarks are run on a single m4.16xlarge.
 
 | Dimension                                      | Quantity   |
 | ---------                                      | --------   |
-| # of object artuments to  a single task        | 10000+     |
+| # of object arguments to a single task         | 10000+     |
 | # of objects returned from a single task       | 3000+     |
 | # of plasma objects in a single `ray.get` call | 10000+     |
 | # of tasks queued on a single node             | 1,000,000+ |

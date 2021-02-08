@@ -12,16 +12,21 @@ from ray import monitor
 from ray.ray_operator import operator_utils
 from ray import ray_constants
 
+logger = logging.getLogger(__name__)
+
 
 class RayCluster():
     def __init__(self, config: Dict[str, Any]):
-        self.config = config
+        self.set_config(config)
         self.name = self.config["cluster_name"]
         self.config_path = operator_utils.config_path(self.name)
 
         self.setup_logging()
 
         self.subprocess = None  # type: Optional[mp.Process]
+
+    def set_config(self, config: Dict[str, Any]) -> None:
+        self.config = config
 
     def do_in_subprocess(self,
                          f: Callable[[], None],
@@ -57,7 +62,8 @@ class RayCluster():
             no_restart=False,
             restart_only=False,
             yes=True,
-            no_config_cache=True)
+            no_config_cache=True,
+            no_monitor_on_head=True)
         self.write_config()
 
     def start_monitor(self) -> None:
@@ -96,18 +102,42 @@ class RayCluster():
 
 
 ray_clusters = {}
+last_generation = {}
 
 
-def cluster_action(cluster_config: Dict[str, Any], event_type: str) -> None:
+def handle_event(event_type, cluster_cr, cluster_name):
+    # TODO: This only detects errors in the parent process and thus doesn't
+    # catch cluster-specific autoscaling failures. Fix that (perhaps at
+    # the same time that we eliminate subprocesses).
+    try:
+        cluster_action(event_type, cluster_cr, cluster_name)
+    except Exception:
+        logger.exception(f"Error while updating RayCluster {cluster_name}.")
+        operator_utils.set_status(cluster_cr, cluster_name, "Error")
+
+
+def cluster_action(event_type, cluster_cr, cluster_name) -> None:
+
+    cluster_config = operator_utils.cr_to_config(cluster_cr)
     cluster_name = cluster_config["cluster_name"]
+
     if event_type == "ADDED":
+        operator_utils.set_status(cluster_cr, cluster_name, "Running")
         ray_clusters[cluster_name] = RayCluster(cluster_config)
         ray_clusters[cluster_name].create_or_update()
+        last_generation[cluster_name] = cluster_cr["metadata"]["generation"]
     elif event_type == "MODIFIED":
-        ray_clusters[cluster_name].create_or_update()
+        # Check metadata.generation to determine if there's a spec change.
+        current_generation = cluster_cr["metadata"]["generation"]
+        if current_generation > last_generation[cluster_name]:
+            ray_clusters[cluster_name].set_config(cluster_config)
+            ray_clusters[cluster_name].create_or_update()
+            last_generation[cluster_name] = current_generation
+
     elif event_type == "DELETED":
         ray_clusters[cluster_name].clean_up()
         del ray_clusters[cluster_name]
+        del last_generation[cluster_name]
 
 
 def main() -> None:
@@ -119,9 +149,9 @@ def main() -> None:
     try:
         for event in cluster_cr_stream:
             cluster_cr = event["object"]
+            cluster_name = cluster_cr["metadata"]["name"]
             event_type = event["type"]
-            cluster_config = operator_utils.cr_to_config(cluster_cr)
-            cluster_action(cluster_config, event_type)
+            handle_event(event_type, cluster_cr, cluster_name)
     except ApiException as e:
         if e.status == 404:
             raise Exception(

@@ -1,4 +1,6 @@
+import logging
 import os
+
 import numpy as np
 import json
 import random
@@ -17,6 +19,8 @@ MOCK_REMOTE_DIR = os.path.join(ray.utils.get_user_temp_dir(),
 # Sync and delete templates that operate on local directories.
 LOCAL_SYNC_TEMPLATE = "mkdir -p {target} && rsync -avz {source}/ {target}/"
 LOCAL_DELETE_TEMPLATE = "rm -rf {target}"
+
+logger = logging.getLogger(__name__)
 
 
 def mock_storage_client():
@@ -110,13 +114,25 @@ class FailureInjectorCallback(Callback):
         self.disable = disable
 
     def on_step_begin(self, **info):
+        import click
         from ray.autoscaler._private.commands import kill_node
+        failures = 0
+        max_failures = 3
         # With 10% probability inject failure to a worker.
         if random.random() < self.probability and not self.disable:
             # With 10% probability fully terminate the node.
             should_terminate = random.random() < self.probability
-            kill_node(
-                self.config_path,
-                yes=True,
-                hard=should_terminate,
-                override_cluster_name=None)
+            while failures < max_failures:
+                try:
+                    kill_node(
+                        self.config_path,
+                        yes=True,
+                        hard=should_terminate,
+                        override_cluster_name=None)
+                except click.exceptions.ClickException:
+                    failures += 1
+                    logger.exception("Killing random node failed in attempt "
+                                     "{}. "
+                                     "Retrying {} more times".format(
+                                         str(failures),
+                                         str(max_failures - failures)))
