@@ -33,9 +33,12 @@ def main():
         max_runtime=max_runtime,
         checkpoint_freq_s=10,  # Once every 10 seconds
         checkpoint_size_b=int(10 * 1000**2),  # 10 MB
-        keep_checkpoints_num=2,  # 2 * 16 * 4 = 128 GB
+        keep_checkpoints_num=2,
         resources_per_trial={"cpu": 2},
-        sync_config=tune.SyncConfig(sync_to_driver=False))
+        sync_config=tune.SyncConfig(
+            sync_to_driver=False,
+            upload_dir="s3://ray-tune-scalability-test/durable/",
+        ))
 
 
 if __name__ == "__main__":

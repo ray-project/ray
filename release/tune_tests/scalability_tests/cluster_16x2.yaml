@@ -29,8 +29,8 @@ available_node_types:
             InstanceMarketOptions:
                 MarketType: spot
         resources: {"CPU": 2}
-        min_workers: 199
-        max_workers: 199
+        min_workers: 15
+        max_workers: 15
 
 auth:
     ssh_user: ubuntu
@@ -40,3 +40,7 @@ worker_default_node_type: cpu_2_spot
 
 setup_commands:
     - ray install-nightly
+
+file_mounts: {
+    "~/release-automation-tune_scalability_tests": "."
+}

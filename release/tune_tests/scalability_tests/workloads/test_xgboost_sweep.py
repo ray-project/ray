@@ -19,8 +19,8 @@ from xgboost_ray import train, RayParams, RayDMatrix
 
 
 def xgboost_train(config, num_actors=128):
-    train_set = RayDMatrix("~/data/train.parquet", "label")
-    test_set = RayDMatrix("~/data/test.parquet", "label")
+    train_set = RayDMatrix("/home/ray/data/train.parquet", "labels")
+    test_set = RayDMatrix("/home/ray/data/test.parquet", "labels")
 
     evals_result = {}
 
@@ -49,7 +49,7 @@ def main():
     ray.init(address="auto")
 
     num_samples = 64
-    num_actors_per_sample = 128
+    num_actors_per_sample = 16
 
     max_runtime = 3600
 

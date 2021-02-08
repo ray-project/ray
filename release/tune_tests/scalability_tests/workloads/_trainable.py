@@ -6,6 +6,40 @@ import pickle
 
 from ray import tune
 
+from ray.tune.durable_trainable import DurableTrainable
+
+
+class TestDurableTrainable(DurableTrainable):
+    def setup(self, config):
+        self._num_iters = int(config["num_iters"])
+        self._sleep_time = config["sleep_time"]
+        self._score = config["score"]
+
+        self._checkpoint_iters = config["checkpoint_iters"]
+        self._checkpoint_size_b = config["checkpoint_size_b"]
+        self._checkpoint_num_items = self._checkpoint_size_b // 8  # np.float64
+
+        self._iter = 0
+
+    def step(self):
+        if self._iter > 0:
+            time.sleep(self._sleep_time)
+
+        res = dict(score=self._iter + self._score)
+        self._iter += 1
+        return res
+
+    def save_checkpoint(self, tmp_checkpoint_dir):
+        checkpoint_file = os.path.join(tmp_checkpoint_dir, "bogus.ckpt")
+        checkpoint_data = np.random.uniform(
+            0, 1, size=self._checkpoint_num_items)
+        with open(checkpoint_file, "wb") as fp:
+            pickle.dump(checkpoint_data, fp)
+        return checkpoint_file
+
+    def load_checkpoint(self, checkpoint):
+        pass
+
 
 def function_trainable(config):
     num_iters = int(config["num_iters"])
@@ -38,6 +72,9 @@ def timed_tune_run(name: str,
                    checkpoint_freq_s: int = -1,
                    checkpoint_size_b: int = 0,
                    **tune_kwargs):
+    durable = "sync_config" in tune_kwargs and \
+              tune_kwargs["sync_config"].upload_dir.startswith("s3://")
+
     sleep_time = 1. / results_per_second
     num_iters = int(trial_length_s / sleep_time)
     checkpoint_iters = -1
@@ -57,9 +94,15 @@ def timed_tune_run(name: str,
     run_kwargs = {"reuse_actors": True, "verbose": 2}
     run_kwargs.update(tune_kwargs)
 
+    _trainable = function_trainable
+
+    if durable:
+        _trainable = TestDurableTrainable
+        run_kwargs["checkpoint_freq"] = checkpoint_iters
+
     start_time = time.monotonic()
     tune.run(
-        function_trainable,
+        _trainable,
         config=config,
         num_samples=num_samples,
         raise_on_failed_trial=False,
