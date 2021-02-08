@@ -74,7 +74,7 @@ class FailureInjection(TrainingCallback):
 
 
 class TrackingCallback(TrainingCallback):
-    def after_iteration(self, model, epoch, evals_log):
+    def before_iteration(self, model, epoch, evals_log):
         put_queue(get_world_size())
 
 
