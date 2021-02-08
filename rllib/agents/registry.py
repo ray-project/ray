@@ -31,17 +31,17 @@ def _import_appo():
 
 
 def _import_ars():
-    from ray.rllib.agents import ars
+    from ray.rllib.agents.evolutionary import ars
     return ars.ARSTrainer
 
 
 def _import_bc():
-    from ray.rllib.agents import marwil
+    from ray.rllib.agents.offline import marwil
     return marwil.BCTrainer
 
 
 def _import_cql():
-    from ray.rllib.agents import cql
+    from ray.rllib.agents.offline import cql
     return cql.CQLTrainer
 
 
@@ -61,12 +61,12 @@ def _import_dqn():
 
 
 def _import_dreamer():
-    from ray.rllib.agents import dreamer
+    from ray.rllib.agents.model_based import dreamer
     return dreamer.DREAMERTrainer
 
 
 def _import_es():
-    from ray.rllib.agents import es
+    from ray.rllib.agents.evolutionary import es
     return es.ESTrainer
 
 
@@ -76,17 +76,17 @@ def _import_impala():
 
 
 def _import_maml():
-    from ray.rllib.agents import maml
+    from ray.rllib.agents.meta import maml
     return maml.MAMLTrainer
 
 
 def _import_marwil():
-    from ray.rllib.agents import marwil
+    from ray.rllib.agents.offline import marwil
     return marwil.MARWILTrainer
 
 
 def _import_mbmpo():
-    from ray.rllib.agents import mbmpo
+    from ray.rllib.agents.model_based import mbmpo
     return mbmpo.MBMPOTrainer
 
 
@@ -101,7 +101,7 @@ def _import_ppo():
 
 
 def _import_qmix():
-    from ray.rllib.agents import qmix
+    from ray.rllib.agents.multi_agent import qmix
     return qmix.QMixTrainer
 
 
@@ -116,7 +116,7 @@ def _import_simple_q():
 
 
 def _import_slate_q():
-    from ray.rllib.agents import slateq
+    from ray.rllib.agents.misc import slateq
     return slateq.SlateQTrainer
 
 

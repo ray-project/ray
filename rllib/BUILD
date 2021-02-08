@@ -457,7 +457,7 @@ py_test(
     name = "test_ars",
     tags = ["agents_dir"],
     size = "medium",
-    srcs = ["agents/ars/tests/test_ars.py"]
+    srcs = ["agents/evolutionary/ars/tests/test_ars.py"]
 )
 
 # DDPGTrainer
@@ -488,7 +488,7 @@ py_test(
 #    name = "test_dreamer",
 #    tags = ["agents_dir"],
 #    size = "small",
-#    srcs = ["agents/dreamer/tests/test_dreamer.py"]
+#    srcs = ["agents/model_based/dreamer/tests/test_dreamer.py"]
 #)
 
 # ES
@@ -496,7 +496,7 @@ py_test(
     name = "test_es",
     tags = ["agents_dir"],
     size = "medium",
-    srcs = ["agents/es/tests/test_es.py"]
+    srcs = ["agents/evolutionary/es/tests/test_es.py"]
 )
 
 # IMPALA
@@ -520,7 +520,7 @@ py_test(
     size = "medium",
     # Include the json data file.
     data = ["tests/data/cartpole/large.json"],
-    srcs = ["agents/marwil/tests/test_marwil.py"]
+    srcs = ["agents/offline/marwil/tests/test_marwil.py"]
 )
 
 # BCTrainer (sub-type of MARWIL)
@@ -530,7 +530,7 @@ py_test(
     size = "medium",
     # Include the json data file.
     data = ["tests/data/cartpole/large.json"],
-    srcs = ["agents/marwil/tests/test_bc.py"]
+    srcs = ["agents/offline/marwil/tests/test_bc.py"]
 )
 
 # MAMLTrainer
@@ -538,7 +538,7 @@ py_test(
     name = "test_maml",
     tags = ["agents_dir"],
     size = "medium",
-    srcs = ["agents/maml/tests/test_maml.py"]
+    srcs = ["agents/meta/maml/tests/test_maml.py"]
 )
 
 # MBMPOTrainer
@@ -546,7 +546,7 @@ py_test(
 #    name = "test_mbmpo",
 #    tags = ["agents_dir"],
 #    size = "medium",
-#    srcs = ["agents/mbmpo/tests/test_mbmpo.py"]
+#    srcs = ["agents/model_based/mbmpo/tests/test_mbmpo.py"]
 #)
 
 # PGTrainer
@@ -586,7 +586,7 @@ py_test(
     name = "test_qmix",
     tags = ["agents_dir"],
     size = "medium",
-    srcs = ["agents/qmix/tests/test_qmix.py"]
+    srcs = ["agents/multi_agent/qmix/tests/test_qmix.py"]
 )
 
 # SACTrainer

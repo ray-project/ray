@@ -5,9 +5,9 @@ from datetime import datetime
 
 import ray
 from ray import tune
-from ray.rllib.agents import slateq
+from ray.rllib.agents.misc import slateq
 from ray.rllib.agents import dqn
-from ray.rllib.agents.slateq.slateq import ALL_SLATEQ_STRATEGIES
+from ray.rllib.agents.misc.slateq.slateq import ALL_SLATEQ_STRATEGIES
 from ray.rllib.env.wrappers.recsim_wrapper import env_name as recsim_env_name
 from ray.tune.logger import pretty_print
 
