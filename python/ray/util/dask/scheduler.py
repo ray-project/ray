@@ -149,7 +149,11 @@ def _apply_async_wrapper(apply_async, real_func, *extra_args, **extra_kwargs):
         pass `real_func` in its place. To be passed to `dask.local.get_async`.
     """
 
-    def wrapper(func, args=(), kwds={}, callback=None):  # noqa: M511
+    def wrapper(func, args=None, kwds=None, callback=None):  # noqa: M511
+        if not args:
+            args = ()
+        if not kwds:
+            kwds = {}
         return apply_async(
             real_func,
             args=args + extra_args,
