@@ -532,8 +532,3 @@ class FunctionApiTest(unittest.TestCase):
 
         self.assertEquals(trial_1.last_result["m"], 4 + 9)
         self.assertEquals(trial_2.last_result["m"], 8 + 9)
-
-
-if __name__ == "__main__":
-    import pytest
-    sys.exit(pytest.main(["-v", __file__]))
