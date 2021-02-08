@@ -4,7 +4,8 @@ import argparse
 
 import ray
 from ray import tune
-from ray.rllib.contrib.agents.alpha_zero.models.custom_torch_models import DenseModel
+from ray.rllib.contrib.agents.alpha_zero.models.custom_torch_models import \
+    DenseModel
 from ray.rllib.contrib.agents.alpha_zero.environments.cartpole import CartPole
 from ray.rllib.models.catalog import ModelCatalog
 
