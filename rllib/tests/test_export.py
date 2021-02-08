@@ -86,20 +86,21 @@ def export_test(alg_name, failures, framework="tf"):
         failures.append(alg_name)
     shutil.rmtree(export_dir)
 
-    print("Exporting checkpoint", alg_name, export_dir)
-    algo.export_policy_checkpoint(export_dir)
-    if framework == "tf" and not valid_tf_checkpoint(export_dir):
-        failures.append(alg_name)
-    shutil.rmtree(export_dir)
+    if framework == "tf":
+        print("Exporting checkpoint", alg_name, export_dir)
+        algo.export_policy_checkpoint(export_dir)
+        if framework == "tf" and not valid_tf_checkpoint(export_dir):
+            failures.append(alg_name)
+        shutil.rmtree(export_dir)
 
-    print("Exporting default policy", alg_name, export_dir)
-    algo.export_model([ExportFormat.CHECKPOINT, ExportFormat.MODEL],
-                      export_dir)
-    if not valid_tf_model(os.path.join(export_dir, ExportFormat.MODEL)) \
-            or not valid_tf_checkpoint(os.path.join(export_dir,
-                                                    ExportFormat.CHECKPOINT)):
-        failures.append(alg_name)
-    shutil.rmtree(export_dir)
+        print("Exporting default policy", alg_name, export_dir)
+        algo.export_model([ExportFormat.CHECKPOINT, ExportFormat.MODEL],
+                          export_dir)
+        if not valid_tf_model(os.path.join(export_dir, ExportFormat.MODEL)) \
+                or not valid_tf_checkpoint(
+                    os.path.join(export_dir, ExportFormat.CHECKPOINT)):
+            failures.append(alg_name)
+        shutil.rmtree(export_dir)
 
 
 class TestExport(unittest.TestCase):

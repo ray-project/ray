@@ -43,9 +43,7 @@ def ppo_surrogate_loss(
         Union[TensorType, List[TensorType]]: A single loss tensor or a list
             of loss tensors.
     """
-    #, state#TODO
-    state=None#
-    logits = model.from_batch(train_batch, is_training=True)
+    logits, state = model.from_batch(train_batch, is_training=True)
     curr_action_dist = dist_class(logits, model)
 
     # RNN case: Mask away 0-padded chunks at end of time axis.
@@ -219,8 +217,7 @@ class ValueNetworkMixin:
             if config["_use_trajectory_view_api"]:
 
                 def value(**input_dict):
-                    #, _
-                    model_out = self.model.from_batch(
+                    model_out, _ = self.model.from_batch(
                         convert_to_torch_tensor(input_dict, self.device),
                         is_training=False)
                     # [0] = remove the batch dim.

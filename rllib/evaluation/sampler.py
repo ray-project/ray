@@ -1438,13 +1438,13 @@ def _process_policy_eval_results(
 
         # Store RNN state ins/outs and extra-action fetches to episode.
         if _use_trajectory_view_api:
-            for f_i, column in enumerate(rnn_out_cols or []):
+            for f_i, column in enumerate(rnn_out_cols):
                 pi_info_cols["state_out_{}".format(f_i)] = column
         else:
             rnn_in_cols: StateBatch = _to_column_format(
                 [t.rnn_state for t in eval_data])
 
-            if len(rnn_in_cols) != len(rnn_out_cols or []):
+            if len(rnn_in_cols) != len(rnn_out_cols):
                 raise ValueError(
                     "Length of RNN in did not match RNN out, got: "
                     "{} vs {}".format(rnn_in_cols, rnn_out_cols))
