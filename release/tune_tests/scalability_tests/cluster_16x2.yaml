@@ -1,7 +1,7 @@
-cluster_name: ray-tune-scalability-tests-200x2
+cluster_name: ray-tune-scalability-tests-16x2
 
-max_workers: 199
-upscaling_speed: 199
+max_workers: 15
+upscaling_speed: 15
 
 idle_timeout_minutes: 0
 

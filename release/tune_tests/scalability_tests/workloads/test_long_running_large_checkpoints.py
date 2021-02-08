@@ -1,6 +1,6 @@
 """Large checkpoints in long running trials (16 trials, 4 GB checkpoints).
 
-In this run, we will start 16 trials on a single cluster. The trials create
+In this run, we will start 16 trials on a single node. The trials create
 4 GB checkpoints every 15 minutes and should only keep 2 of these. This test
 ensures that handling large checkpoints don't lead to much overhead.
 

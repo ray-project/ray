@@ -38,11 +38,16 @@ auth:
 head_node_type: cpu_64_ondemand
 worker_default_node_type: cpu_64_spot
 
+file_mounts: {
+    "~/release-automation-tune_scalability_tests": "."
+}
+
 setup_commands:
     - ray install-nightly
     - pip install pytest xgboost_ray
     - mkdir -p ~/data || true
     - rm -rf ~/data/train.parquet || true
     - rm -rf ~/data/test.parquet || true
-    - python ${ANYSCALE_WORKING_DIR}/create_test_data.py ~/data/train.parquet --seed 1234 --num-rows 40000000 --num-cols 40 --num-partitions 128 --num-classes 2
-    - python ${ANYSCALE_WORKING_DIR}/create_test_data.py ~/data/test.parquet --seed 1234 --num-rows 10000000 --num-cols 40 --num-partitions 128 --num-classes 2
+    - cp -R /tmp/ray_tmp_mount/release-automation-tune_scalability_tests ~/release-automation-tune_scalability_tests || echo "Copy failed"
+    - python ~/release-automation-tune_scalability_tests/create_test_data.py ~/data/train.parquet --seed 1234 --num-rows 40000000 --num-cols 40 --num-partitions 128 --num-classes 2
+    - python ~/release-automation-tune_scalability_tests/create_test_data.py ~/data/test.parquet --seed 1234 --num-rows 10000000 --num-cols 40 --num-partitions 128 --num-classes 2
