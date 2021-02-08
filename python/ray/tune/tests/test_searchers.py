@@ -176,6 +176,9 @@ class InvalidValuesTest(unittest.TestCase):
         self.assertLessEqual(best_trial.config["report"], 2.0)
 
     def testZOOpt(self):
+        self.skipTest(
+            "Recent ZOOpt versions fail handling invalid values gracefully. "
+            "Skipping until we or they found a workaround. ")
         from ray.tune.suggest.zoopt import ZOOptSearch
 
         np.random.seed(1000)  # At least one nan, inf, -inf and float

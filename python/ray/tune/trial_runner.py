@@ -658,10 +658,11 @@ class TrialRunner:
 
             # `self._queued_trial_decisions` now contains a final decision
             # based on all results
-            final_decision = self._queued_trial_decisions.pop(
-                trial.trial_id, None)
-            if final_decision:
-                self._execute_action(trial, final_decision)
+            if trial not in self._cached_trial_decisions:
+                final_decision = self._queued_trial_decisions.pop(
+                    trial.trial_id, None)
+                if final_decision:
+                    self._execute_action(trial, final_decision)
 
     def _process_trial(self, trial):
         """Processes a trial result.

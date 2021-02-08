@@ -123,6 +123,8 @@ class TrialRunnerTest3(unittest.TestCase):
     @patch("ray.tune.utils.placement_groups.TUNE_MAX_PENDING_TRIALS_PG", 1)
     def testSearchAlgNotification(self):
         """Checks notification of trial to the Search Algorithm."""
+        os.environ["TUNE_RESULT_BUFFER_LENGTH"] = "1"  # Don't finish early
+
         ray.init(num_cpus=4, num_gpus=2)
         experiment_spec = {"run": "__fake", "stop": {"training_iteration": 2}}
         experiments = [Experiment.from_json("test", experiment_spec)]
@@ -641,6 +643,8 @@ class TrialRunnerTest3(unittest.TestCase):
     @patch("ray.tune.trial_runner.TUNE_MAX_PENDING_TRIALS_PG", 1)
     @patch("ray.tune.utils.placement_groups.TUNE_MAX_PENDING_TRIALS_PG", 1)
     def testUserCheckpoint(self):
+        os.environ["TUNE_RESULT_BUFFER_LENGTH"] = "1"  # Don't finish early
+
         ray.init(num_cpus=3)
         runner = TrialRunner(
             local_checkpoint_dir=self.tmpdir, checkpoint_period=0)
