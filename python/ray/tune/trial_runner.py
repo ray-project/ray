@@ -463,13 +463,15 @@ class TrialRunner:
         # This will contain the next trial to start
         next_trial = self._get_next_trial()  # blocking
 
-        # Create pending trials
-        num_pending_trials = len(
-            [t for t in self._trials if t.status == Trial.PENDING])
-        while num_pending_trials < self._max_pending_trials:
-            if not self._update_trial_queue(blocking=False):
-                break
-            num_pending_trials += 1
+        # Create pending trials. Skip if next_trial is None (then there
+        # are no new trials to create)
+        if next_trial:
+            num_pending_trials = len(
+                [t for t in self._trials if t.status == Trial.PENDING])
+            while num_pending_trials < self._max_pending_trials:
+                if not self._update_trial_queue(blocking=False):
+                    break
+                num_pending_trials += 1
 
         # Update status of staged placement groups
         self.trial_executor.stage_and_update_status(self._trials)
