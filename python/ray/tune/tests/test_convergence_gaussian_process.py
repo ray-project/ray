@@ -45,3 +45,9 @@ class ConvergenceTest(unittest.TestCase):
         assert len(analysis.trials) == 41
 
         ray.shutdown()
+
+
+if __name__ == "__main__":
+    import pytest
+    import sys
+    sys.exit(pytest.main(["-v", __file__]))
