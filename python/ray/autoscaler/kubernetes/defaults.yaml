@@ -99,9 +99,9 @@ head_node_type: head_node
 available_node_types:
   worker_node:
     # Minimum number of Ray workers of this Pod type.
-    min_workers: 2
+    min_workers: 0
     # Maximum number of Ray workers of this Pod type. Takes precedence over minWorkers.
-    max_workers: 3
+    max_workers: 1
     node_config:
       apiVersion: v1
       kind: Pod
