@@ -298,7 +298,7 @@ class ObjectManager : public ObjectManagerInterface,
   /// \param Output parameter.
   void FillObjectStoreStats(rpc::GetNodeStatsReply *reply) const;
 
-  void Tick();
+  void Tick(const boost::system::error_code &e);
 
  private:
   friend class TestObjectManager;
