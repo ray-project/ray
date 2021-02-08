@@ -265,6 +265,8 @@ class CoreWorkerProcess {
   /// \return Void.
   static void EnsureInitialized();
 
+  static void HandleAtExit();
+
   /// Get the `CoreWorker` instance by worker ID.
   ///
   /// \param[in] workerId The worker ID.
@@ -1254,6 +1256,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   /// Whether we are shutting down and not running further tasks.
   bool exiting_ = false;
+
+  int64_t max_direct_call_object_size_;
 
   friend class CoreWorkerTest;
 };

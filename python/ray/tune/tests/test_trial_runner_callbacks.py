@@ -73,6 +73,7 @@ class _MockTrialExecutor(RayTrialExecutor):
 
 class TrialRunnerCallbacks(unittest.TestCase):
     def setUp(self):
+        ray.init()
         self.tmpdir = tempfile.mkdtemp()
         self.callback = TestCallback()
         self.executor = _MockTrialExecutor()

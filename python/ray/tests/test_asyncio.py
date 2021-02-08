@@ -244,6 +244,17 @@ def test_async_callback(ray_start_regular_shared):
     wait_for_condition(lambda: "completed-2" in global_set)
 
 
+def test_async_function_errored(ray_start_regular_shared):
+    @ray.remote
+    async def f():
+        pass
+
+    ref = f.remote()
+
+    with pytest.raises(ValueError):
+        ray.get(ref)
+
+
 if __name__ == "__main__":
     import pytest
     sys.exit(pytest.main(["-v", __file__]))

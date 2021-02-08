@@ -1,15 +1,16 @@
 import ray
-from ray.serve.backends import ImportedBackend
 from ray.serve.config import BackendConfig
 
 
 def test_imported_backend(serve_instance):
     client = serve_instance
 
-    backend_class = ImportedBackend("ray.serve.utils.MockImportedBackend")
-    config = BackendConfig(user_config="config")
+    config = BackendConfig(user_config="config", max_batch_size=2)
     client.create_backend(
-        "imported", backend_class, "input_arg", config=config)
+        "imported",
+        "ray.serve.utils.MockImportedBackend",
+        "input_arg",
+        config=config)
     client.create_endpoint("imported", backend="imported")
 
     # Basic sanity check.
@@ -26,4 +27,13 @@ def test_imported_backend(serve_instance):
 
     # Check that other call methods work.
     handle = handle.options(method_name="other_method")
+    assert ray.get(handle.remote("hello")) == "hello"
+
+    # Check that functions work as well.
+    client.create_backend(
+        "imported_func",
+        "ray.serve.utils.mock_imported_function",
+        config=BackendConfig(max_batch_size=2))
+    client.create_endpoint("imported_func", backend="imported_func")
+    handle = client.get_handle("imported_func")
     assert ray.get(handle.remote("hello")) == "hello"

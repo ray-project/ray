@@ -13,6 +13,7 @@ from typing import Dict
 from typing import List
 from typing import Tuple
 from typing import Optional
+from typing import TYPE_CHECKING
 
 import grpc
 
@@ -22,11 +23,18 @@ import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 from ray.util.client.client_pickler import convert_to_arg
 from ray.util.client.client_pickler import dumps_from_client
 from ray.util.client.client_pickler import loads_from_server
+from ray.util.client.common import ClientStub
 from ray.util.client.common import ClientActorHandle
+from ray.util.client.common import ClientActorClass
+from ray.util.client.common import ClientRemoteFunc
 from ray.util.client.common import ClientActorRef
 from ray.util.client.common import ClientObjectRef
 from ray.util.client.dataclient import DataClient
 from ray.util.client.logsclient import LogstreamClient
+
+if TYPE_CHECKING:
+    from ray.actor import ActorClass
+    from ray.remote_function import RemoteFunction
 
 logger = logging.getLogger(__name__)
 
@@ -60,8 +68,10 @@ class Worker:
         """
         self.metadata = metadata if metadata else []
         self.channel = None
+        self.server = None
         self._conn_state = grpc.ChannelConnectivity.IDLE
         self._client_id = make_client_id()
+        self._converted: Dict[str, ClientStub] = {}
         if secure:
             credentials = grpc.ssl_channel_credentials()
             self.channel = grpc.secure_channel(conn_str, credentials)
@@ -74,7 +84,7 @@ class Worker:
         # looking like a gRPC connection, though it may be a proxy.
         conn_attempts = 0
         timeout = INITIAL_TIMEOUT_SEC
-        ray_ready = False
+        service_ready = False
         while conn_attempts < max(connection_retries, 1):
             conn_attempts += 1
             try:
@@ -85,13 +95,8 @@ class Worker:
                 # RayletDriverStub, allowing for unary requests.
                 self.server = ray_client_pb2_grpc.RayletDriverStub(
                     self.channel)
-                # Now the HTTP2 channel is ready, or proxied, but the
-                # servicer may not be ready. Call is_initialized() and if
-                # it throws, the servicer is not ready. On success, the
-                # `ray_ready` result is checked.
-                ray_ready = self.is_initialized()
-                if ray_ready:
-                    # Ray is ready! Break out of the retry loop
+                service_ready = bool(self.ping_server())
+                if service_ready:
                     break
                 # Ray is not ready yet, wait a timeout
                 time.sleep(timeout)
@@ -111,9 +116,10 @@ class Worker:
                         f"retry in {timeout}s...")
             timeout = backoff(timeout)
 
-        # If we made it through the loop without ray_ready it means we've used
-        # up our retries and should error back to the user.
-        if not ray_ready:
+        # If we made it through the loop without service_ready
+        # it means we've used up our retries and
+        # should error back to the user.
+        if not service_ready:
             raise ConnectionError("ray client connection timeout")
 
         # Initialize the streams to finish protocol negotiation.
@@ -368,8 +374,61 @@ class Worker:
                 ray_client_pb2.ClusterInfoType.IS_INITIALIZED)
         return False
 
+    def ping_server(self) -> bool:
+        """Simple health check.
+
+        Piggybacks the IS_INITIALIZED call to check if the server provides
+        an actual response.
+        """
+        if self.server is not None:
+            result = self.get_cluster_info(
+                ray_client_pb2.ClusterInfoType.IS_INITIALIZED)
+            return result is not None
+        return False
+
     def is_connected(self) -> bool:
         return self._conn_state == grpc.ChannelConnectivity.READY
+
+    def _convert_actor(self, actor: "ActorClass") -> str:
+        """Register a ClientActorClass for the ActorClass and return a UUID"""
+        key = uuid.uuid4().hex
+        md = actor.__ray_metadata__
+        cls = md.modified_class
+        self._converted[key] = ClientActorClass(
+            cls,
+            options={
+                "max_restarts": md.max_restarts,
+                "max_task_retries": md.max_task_retries,
+                "num_cpus": md.num_cpus,
+                "num_gpus": md.num_gpus,
+                "memory": md.memory,
+                "object_store_memory": md.object_store_memory,
+                "resources": md.resources,
+                "accelerator_type": md.accelerator_type,
+            })
+        return key
+
+    def _convert_function(self, func: "RemoteFunction") -> str:
+        """Register a ClientRemoteFunc for the ActorClass and return a UUID"""
+        key = uuid.uuid4().hex
+        f = func._function
+        self._converted[key] = ClientRemoteFunc(
+            f,
+            options={
+                "num_cpus": func._num_cpus,
+                "num_gpus": func._num_gpus,
+                "max_calls": func._max_calls,
+                "max_retries": func._max_retries,
+                "resources": func._resources,
+                "accelerator_type": func._accelerator_type,
+                "num_returns": func._num_returns,
+                "memory": func._memory
+            })
+        return key
+
+    def _get_converted(self, key: str) -> "ClientStub":
+        """Given a UUID, return the converted object"""
+        return self._converted[key]
 
 
 def make_client_id() -> str:

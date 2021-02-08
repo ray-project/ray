@@ -109,7 +109,7 @@ class FullyConnectedNetwork(TorchModelV2, nn.Module):
         self._value_branch = SlimFC(
             in_size=prev_layer_size,
             out_size=1,
-            initializer=normc_initializer(1.0),
+            initializer=normc_initializer(0.01),
             activation_fn=None)
         # Holds the current "base" output (before logits layer).
         self._features = None

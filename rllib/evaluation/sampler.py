@@ -65,17 +65,16 @@ class _PerfStats:
 
     def __init__(self):
         self.iters = 0
-        self.env_wait_time = 0.0
         self.raw_obs_processing_time = 0.0
         self.inference_time = 0.0
         self.action_processing_time = 0.0
+        self.env_wait_time = 0.0
+        self.env_render_time = 0.0
 
     def get(self):
         # Mean multiplicator (1000 = ms -> sec).
         factor = 1000 / self.iters
         return {
-            # Waiting for environment (during poll).
-            "mean_env_wait_ms": self.env_wait_time * factor,
             # Raw observation preprocessing.
             "mean_raw_obs_processing_ms": self.raw_obs_processing_time *
             factor,
@@ -83,6 +82,10 @@ class _PerfStats:
             "mean_inference_ms": self.inference_time * factor,
             # Processing actions (to be sent to env, e.g. clipping).
             "mean_action_processing_ms": self.action_processing_time * factor,
+            # Waiting for environment (during poll).
+            "mean_env_wait_ms": self.env_wait_time * factor,
+            # Environment rendering (False by default).
+            "mean_env_render_ms": self.env_render_time * factor,
         }
 
 
@@ -141,7 +144,9 @@ class SyncSampler(SamplerInput):
             no_done_at_end: bool = False,
             observation_fn: "ObservationFunction" = None,
             _use_trajectory_view_api: bool = False,
-            sample_collector_class: Optional[Type[SampleCollector]] = None):
+            sample_collector_class: Optional[Type[SampleCollector]] = None,
+            render: bool = False,
+    ):
         """Initializes a SyncSampler object.
 
         Args:
@@ -184,6 +189,8 @@ class SyncSampler(SamplerInput):
             sample_collector_class (Optional[Type[SampleCollector]]): An
                 optional Samplecollector sub-class to use to collect, store,
                 and retrieve environment-, model-, and sampler data.
+            render (bool): Whether to try to render the environment after each
+                step.
         """
 
         self.base_env = BaseEnv.to_base_env(env)
@@ -207,6 +214,7 @@ class SyncSampler(SamplerInput):
                 count_steps_by=count_steps_by)
         else:
             self.sample_collector = None
+        self.render = render
 
         # Create the rollout generator to use for calls to `get_data()`.
         self.rollout_provider = _env_runner(
@@ -215,7 +223,7 @@ class SyncSampler(SamplerInput):
             self.preprocessors, self.obs_filters, clip_rewards, clip_actions,
             multiple_episodes_in_batch, callbacks, tf_sess, self.perf_stats,
             soft_horizon, no_done_at_end, observation_fn,
-            _use_trajectory_view_api, self.sample_collector)
+            _use_trajectory_view_api, self.sample_collector, self.render)
         self.metrics_queue = queue.Queue()
 
     @override(SamplerInput)
@@ -280,6 +288,7 @@ class AsyncSampler(threading.Thread, SamplerInput):
             observation_fn: "ObservationFunction" = None,
             _use_trajectory_view_api: bool = False,
             sample_collector_class: Optional[Type[SampleCollector]] = None,
+            render: bool = False,
     ):
         """Initializes a AsyncSampler object.
 
@@ -327,6 +336,8 @@ class AsyncSampler(threading.Thread, SamplerInput):
             sample_collector_class (Optional[Type[SampleCollector]]): An
                 optional Samplecollector sub-class to use to collect, store,
                 and retrieve environment-, model-, and sampler data.
+            render (bool): Whether to try to render the environment after each
+                step.
         """
         for _, f in obs_filters.items():
             assert getattr(f, "is_concurrent", False), \
@@ -356,6 +367,7 @@ class AsyncSampler(threading.Thread, SamplerInput):
         self.shutdown = False
         self.observation_fn = observation_fn
         self._use_trajectory_view_api = _use_trajectory_view_api
+        self.render = render
         if _use_trajectory_view_api:
             if not sample_collector_class:
                 sample_collector_class = SimpleListCollector
@@ -392,7 +404,7 @@ class AsyncSampler(threading.Thread, SamplerInput):
             self.clip_actions, self.multiple_episodes_in_batch, self.callbacks,
             self.tf_sess, self.perf_stats, self.soft_horizon,
             self.no_done_at_end, self.observation_fn,
-            self._use_trajectory_view_api, self.sample_collector)
+            self._use_trajectory_view_api, self.sample_collector, self.render)
         while not self.shutdown:
             # The timeout variable exists because apparently, if one worker
             # dies, the other workers won't die with it, unless the timeout is
@@ -458,6 +470,7 @@ def _env_runner(
         observation_fn: "ObservationFunction",
         _use_trajectory_view_api: bool = False,
         sample_collector: Optional[SampleCollector] = None,
+        render: bool = None,
 ) -> Iterable[SampleBatchType]:
     """This implements the common experience collection logic.
 
@@ -497,7 +510,9 @@ def _env_runner(
             `_use_trajectory_view_api` to make generic trajectory views
             available to Models. Default: False.
         sample_collector (Optional[SampleCollector]): An optional
-            SampleCollector object to use
+            SampleCollector object to use.
+        render (bool): Whether to try to render the environment after each
+            step.
 
     Yields:
         rollout (SampleBatch): Object containing state, action, reward,
@@ -685,6 +700,12 @@ def _env_runner(
         t4 = time.time()
         base_env.send_actions(actions_to_send)
         perf_stats.env_wait_time += time.time() - t4
+
+        # Try to render the env, if required.
+        if render:
+            t5 = time.time()
+            base_env.try_render()
+            perf_stats.env_render_time += time.time() - t5
 
 
 def _process_observations(
