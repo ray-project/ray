@@ -453,6 +453,10 @@ class ServiceBasedPlacementGroupInfoAccessor : public PlacementGroupInfoAccessor
       const PlacementGroupID &placement_group_id,
       const OptionalItemCallback<rpc::PlacementGroupTableData> &callback) override;
 
+  Status AsyncGetByName(
+      const std::string &name,
+      const OptionalItemCallback<rpc::PlacementGroupTableData> &callback) override;
+
   Status AsyncGetAll(
       const MultiItemCallback<rpc::PlacementGroupTableData> &callback) override;
 

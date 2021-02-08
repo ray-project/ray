@@ -517,7 +517,7 @@ py_test(
 py_test(
     name = "test_marwil",
     tags = ["agents_dir"],
-    size = "medium",
+    size = "large",
     # Include the json data file.
     data = ["tests/data/cartpole/large.json"],
     srcs = ["agents/marwil/tests/test_marwil.py"]
@@ -527,7 +527,7 @@ py_test(
 py_test(
     name = "test_bc",
     tags = ["agents_dir"],
-    size = "medium",
+    size = "large",
     # Include the json data file.
     data = ["tests/data/cartpole/large.json"],
     srcs = ["agents/marwil/tests/test_bc.py"]
@@ -1753,7 +1753,7 @@ py_test(
     name = "examples/custom_eval_tf",
     main = "examples/custom_eval.py",
     tags = ["examples", "examples_C"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/custom_eval.py"],
     args = ["--num-cpus=4", "--as-test"]
 )
@@ -1762,7 +1762,7 @@ py_test(
     name = "examples/custom_eval_torch",
     main = "examples/custom_eval.py",
     tags = ["examples", "examples_C"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/custom_eval.py"],
     args = ["--num-cpus=4", "--as-test", "--torch"]
 )

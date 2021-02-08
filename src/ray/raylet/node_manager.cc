@@ -1267,7 +1267,7 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
     }
 
     // Remove the dead client from the pool and stop listening for messages.
-    worker_pool_.DisconnectWorker(worker);
+    worker_pool_.DisconnectWorker(worker, disconnect_type);
 
     // Return the resources that were being used by this worker.
     cluster_task_manager_->ReleaseWorkerResources(worker);

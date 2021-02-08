@@ -422,10 +422,17 @@ class ClientServerHandle:
         return getattr(self.grpc_server, attr)
 
 
-def serve(connection_str):
+def serve(connection_str, ray_connect_handler=None):
+    def default_connect_handler():
+        with disable_client_hook():
+            if not ray.is_initialized():
+                return ray.init()
+
+    ray_connect_handler = ray_connect_handler or default_connect_handler
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
     task_servicer = RayletServicer()
-    data_servicer = DataServicer(task_servicer)
+    data_servicer = DataServicer(
+        task_servicer, ray_connect_handler=ray_connect_handler)
     logs_servicer = LogstreamServicer()
     ray_client_pb2_grpc.add_RayletDriverServicer_to_server(
         task_servicer, server)
@@ -448,7 +455,17 @@ def init_and_serve(connection_str, *args, **kwargs):
     with disable_client_hook():
         # Disable client mode inside the worker's environment
         info = ray.init(*args, **kwargs)
-    server_handle = serve(connection_str)
+
+    def ray_connect_handler():
+        # Ray client will disconnect from ray when
+        # num_clients == 0.
+        if ray.is_initialized():
+            return info
+        else:
+            return ray.init(*args, **kwargs)
+
+    server_handle = serve(
+        connection_str, ray_connect_handler=ray_connect_handler)
     return (server_handle, info)
 
 
@@ -456,6 +473,19 @@ def shutdown_with_server(server, _exiting_interpreter=False):
     server.stop(1)
     with disable_client_hook():
         ray.shutdown(_exiting_interpreter)
+
+
+def create_ray_handler(redis_address, redis_password):
+    def ray_connect_handler():
+        if redis_address:
+            if redis_password:
+                ray.init(address=redis_address, _redis_password=redis_password)
+            else:
+                ray.init(address=redis_address)
+        else:
+            ray.init()
+
+    return ray_connect_handler
 
 
 def main():
@@ -477,18 +507,13 @@ def main():
         help="Password for connecting to Redis")
     args = parser.parse_args()
     logging.basicConfig(level="INFO")
-    if args.redis_address:
-        if args.redis_password:
-            ray.init(
-                address=args.redis_address,
-                _redis_password=args.redis_password)
-        else:
-            ray.init(address=args.redis_address)
-    else:
-        ray.init()
+
+    ray_connect_handler = create_ray_handler(args.redis_address,
+                                             args.redis_password)
+
     hostport = "%s:%d" % (args.host, args.port)
     logger.info(f"Starting Ray Client server on {hostport}")
-    server = serve(hostport)
+    server = serve(hostport, ray_connect_handler)
     try:
         while True:
             time.sleep(1000)
