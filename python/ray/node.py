@@ -940,6 +940,8 @@ class Node:
                            check_alive=True,
                            wait=False):
         """See `_kill_process_type`."""
+        if process_type not in self.all_processes:
+            return
         process_infos = self.all_processes[process_type]
         if process_type != ray_constants.PROCESS_TYPE_REDIS_SERVER:
             assert len(process_infos) == 1
