@@ -24,9 +24,11 @@ available_node_types:
         resources: {"CPU": 4}
         min_workers: 0
         max_workers: 0
-    gpu_1_ondemand:
+    gpu_1_spot:
         node_config:
             InstanceType: p2.xlarge
+            InstanceMarketOptions:
+                MarketType: spot
         resources: {"CPU": 4, "GPU": 1}
         min_workers: 4
         max_workers: 4
@@ -35,7 +37,7 @@ auth:
     ssh_user: ubuntu
 
 head_node_type: cpu_4_ondemand
-worker_default_node_type: gpu_1_ondemand
+worker_default_node_type: gpu_1_spot
 
 file_mounts: {
     "~/release-automation-xgboost_tests": "."
