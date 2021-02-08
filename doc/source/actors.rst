@@ -174,7 +174,7 @@ have these resources (see `configuration instructions
 
   * If you specify resource requirements in an actor class's remote decorator,
     then the actor will acquire those resources for its entire lifetime (if you
-    do not specify CPU resources together, the default is 0), even if it is not executing
+    do not specify CPU resources, the default is 0), even if it is not executing
     any methods. The actor will not acquire any additional resources when
     executing methods.
   * If you do not specify any resource requirements in the actor class's remote
