@@ -287,9 +287,6 @@ class ExternalStorageSmartOpenImpl(ExternalStorage):
     For example, if your uri is a local file path, you should pre-create
     the directory.
 
-    Currently, this plugin only supports S3. Please feel free to contribute
-    to the support for other storage systems.
-
     Args:
         uri(str): Storage URI used for smart open.
         prefix(str): Prefix of objects that are stored.
@@ -305,7 +302,8 @@ class ExternalStorageSmartOpenImpl(ExternalStorage):
     def __init__(self,
                  uri: str,
                  prefix: str = DEFAULT_OBJECT_PREFIX,
-                 override_transport_params: dict = None):
+                 override_transport_params: dict = None,
+                 is_for_s3: bool = True):
         try:
             from smart_open import open  # noqa
             import boto3  # noqa
@@ -318,16 +316,18 @@ class ExternalStorageSmartOpenImpl(ExternalStorage):
         self.uri = uri.strip("/")
         self.prefix = prefix
         self.override_transport_params = override_transport_params or {}
+        self.is_for_s3 = is_for_s3
 
-        # Setup boto3. It is essential because if we don't create boto
-        # session, smart_open will create a new session for every
-        # open call.
-        self.s3 = boto3.resource(service_name="s3")
+        if is_for_s3:
+            # Setup boto3. It is essential because if we don't create boto
+            # session, smart_open will create a new session for every
+            # open call.
+            self.s3 = boto3.resource(service_name="s3")
 
-        # smart_open always seek to 0 if we don't set this argument.
-        # This will lead us to call a Object.get when it is not necessary,
-        # so defer seek and call seek before reading objects instead.
-        self.transport_params = {"defer_seek": True, "resource": self.s3}
+            # smart_open always seek to 0 if we don't set this argument.
+            # This will lead us to call a Object.get when it is not necessary,
+            # so defer seek and call seek before reading objects instead.
+            self.transport_params = {"defer_seek": True, "resource": self.s3}
         self.transport_params.update(self.override_transport_params)
 
     def spill_objects(self, object_refs) -> List[str]:
