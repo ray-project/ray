@@ -128,11 +128,11 @@ Status ReadSealReply(uint8_t *data, size_t size, ObjectID *object_id);
 /* Plasma Get message functions. */
 
 Status SendGetRequest(const std::shared_ptr<StoreConn> &store_conn,
-                      const ObjectID *object_ids, int64_t num_objects,
-                      int64_t timeout_ms);
+                      const ObjectID *object_ids, int64_t num_objects, int64_t timeout_ms,
+                      bool is_from_worker);
 
 Status ReadGetRequest(uint8_t *data, size_t size, std::vector<ObjectID> &object_ids,
-                      int64_t *timeout_ms);
+                      int64_t *timeout_ms, bool *is_from_worker);
 
 Status SendGetReply(const std::shared_ptr<Client> &client, ObjectID object_ids[],
                     std::unordered_map<ObjectID, PlasmaObject> &plasma_objects,

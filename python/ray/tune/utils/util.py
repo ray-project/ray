@@ -21,10 +21,14 @@ import psutil
 
 logger = logging.getLogger(__name__)
 
-try:
-    import GPUtil
-except ImportError:
-    GPUtil = None
+
+def _import_gputil():
+    try:
+        import GPUtil
+    except ImportError:
+        GPUtil = None
+    return GPUtil
+
 
 _pinned_objects = []
 PINNED_OBJECT_PREFIX = "ray.tune.PinnedObject:"
@@ -43,6 +47,8 @@ class UtilMonitor(Thread):
 
     def __init__(self, start=True, delay=0.7):
         self.stopped = True
+        GPUtil = _import_gputil()
+        self.GPUtil = GPUtil
         if GPUtil is None and start:
             logger.warning("Install gputil for GPU system monitoring.")
 
@@ -67,10 +73,10 @@ class UtilMonitor(Thread):
                     float(psutil.cpu_percent(interval=None)))
                 self.values["ram_util_percent"].append(
                     float(getattr(psutil.virtual_memory(), "percent")))
-            if GPUtil is not None:
+            if self.GPUtil is not None:
                 gpu_list = []
                 try:
-                    gpu_list = GPUtil.getGPUs()
+                    gpu_list = self.GPUtil.getGPUs()
                 except Exception:
                     logger.debug("GPUtil failed to retrieve GPUs.")
                 for gpu in gpu_list:
@@ -462,27 +468,31 @@ def load_newest_checkpoint(dirpath: str, ckpt_pattern: str) -> dict:
     return checkpoint_state
 
 
-def wait_for_gpu(gpu_id=None, gpu_memory_limit=0.1, retry=20):
+def wait_for_gpu(gpu_id=None,
+                 target_util=0.01,
+                 retry=20,
+                 delay_s=5,
+                 gpu_memory_limit=None):
     """Checks if a given GPU has freed memory.
 
     Requires ``gputil`` to be installed: ``pip install gputil``.
 
     Args:
-        gpu_id (Optional[str]): GPU id to check. Must be found
-            within GPUtil.getGPUs(). If none, resorts to
+        gpu_id (Optional[Union[int, str]]): GPU id or uuid to check.
+            Must be found within GPUtil.getGPUs(). If none, resorts to
             the first item returned from `ray.get_gpu_ids()`.
-        gpu_memory_limit (float): If memory usage is below
-            this quantity, the check will break.
-        retry (int): Number of times to check GPU limit. Sleeps 5
+        target_util (float): The utilization threshold to reach to unblock.
+            Set this to 0 to block until the GPU is completely free.
+        retry (int): Number of times to check GPU limit. Sleeps `delay_s`
             seconds between checks.
+        delay_s (int): Seconds to wait before check.
+        gpu_memory_limit (float): Deprecated.
 
     Returns:
-        bool
-            True if free.
+        bool: True if free.
 
     Raises:
-        RuntimeError
-            If GPUtil is not found, if no GPUs are detected
+        RuntimeError: If GPUtil is not found, if no GPUs are detected
             or if the check fails.
 
     Example:
@@ -495,21 +505,54 @@ def wait_for_gpu(gpu_id=None, gpu_memory_limit=0.1, retry=20):
 
         tune.run(tune_func, resources_per_trial={"GPU": 1}, num_samples=10)
     """
+    GPUtil = _import_gputil()
+    if gpu_memory_limit:
+        raise ValueError("'gpu_memory_limit' is deprecated. "
+                         "Use 'target_util' instead.")
     if GPUtil is None:
         raise RuntimeError(
             "GPUtil must be installed if calling `wait_for_gpu`.")
-    if not gpu_id:
+
+    if gpu_id is None:
         gpu_id_list = ray.get_gpu_ids()
         if not gpu_id_list:
-            raise RuntimeError(f"No GPU ids found from {ray.get_gpu_ids()}. "
+            raise RuntimeError("No GPU ids found from `ray.get_gpu_ids()`. "
                                "Did you set Tune resources correctly?")
         gpu_id = gpu_id_list[0]
-    gpu_object = GPUtil.getGPUs()[gpu_id]
+
+    gpu_attr = "id"
+    if isinstance(gpu_id, str):
+        if gpu_id.isdigit():
+            # GPU ID returned from `ray.get_gpu_ids()` is a str representation
+            # of the int GPU ID
+            gpu_id = int(gpu_id)
+        else:
+            # Could not coerce gpu_id to int, so assume UUID
+            # and compare against `uuid` attribute e.g.,
+            # 'GPU-04546190-b68d-65ac-101b-035f8faed77d'
+            gpu_attr = "uuid"
+    elif not isinstance(gpu_id, int):
+        raise ValueError(f"gpu_id ({type(gpu_id)}) must be type str/int.")
+
+    def gpu_id_fn(g):
+        # Returns either `g.id` or `g.uuid` depending on
+        # the format of the input `gpu_id`
+        return getattr(g, gpu_attr)
+
+    gpu_ids = {gpu_id_fn(g) for g in GPUtil.getGPUs()}
+    if gpu_id not in gpu_ids:
+        raise ValueError(
+            f"{gpu_id} not found in set of available GPUs: {gpu_ids}. "
+            "`wait_for_gpu` takes either GPU ordinal ID (e.g., '0') or "
+            "UUID (e.g., 'GPU-04546190-b68d-65ac-101b-035f8faed77d').")
+
     for i in range(int(retry)):
-        if gpu_object.memoryUsed > gpu_memory_limit:
-            logger.info(f"Waiting for GPU {gpu_id} memory to free. "
-                        f"Mem: {gpu_object.memoryUsed:0.3f}")
-            time.sleep(5)
+        gpu_object = next(
+            g for g in GPUtil.getGPUs() if gpu_id_fn(g) == gpu_id)
+        if gpu_object.memoryUtil > target_util:
+            logger.info(f"Waiting for GPU util to reach {target_util}. "
+                        f"Util: {gpu_object.memoryUtil:0.3f}")
+            time.sleep(delay_s)
         else:
             return True
     raise RuntimeError("GPU memory was not freed.")

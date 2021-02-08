@@ -3,7 +3,7 @@ import numpy as np
 import unittest
 
 import ray
-from ray.rllib.agents.registry import get_agent_class
+from ray.rllib.agents.registry import get_trainer_class
 from ray.rllib.examples.env.random_env import RandomEnv
 from ray.rllib.models.tf.fcnet import FullyConnectedNetwork as FCNetV2
 from ray.rllib.models.tf.visionnet import VisionNetwork as VisionNetV2
@@ -65,7 +65,7 @@ def check_support(alg, config, train=True, check_bounds=False, tfe=False):
         stat = "ok"
 
         try:
-            a = get_agent_class(alg)(config=config, env=RandomEnv)
+            a = get_trainer_class(alg)(config=config, env=RandomEnv)
         except UnsupportedSpaceException:
             stat = "unsupported"
         else:

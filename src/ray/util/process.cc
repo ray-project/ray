@@ -139,15 +139,6 @@ class ProcessFD {
         STARTUPINFO si = {sizeof(si)};
         RAY_UNUSED(
             new_env_block.c_str());  // Ensure there's a final terminator for Windows
-        // MSDN:
-        // https://docs.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-createprocessa
-        // Note that an ANSI environment block is terminated by two zero bytes:
-        // one for the last string, one more to terminate the block.
-        // A Unicode environment block is terminated by four zero bytes:
-        // two for the last string, two more to terminate the block.
-        if (!new_env_block.empty()) {
-          new_env_block += '\0';
-        }
         char *const envp = &new_env_block[0];
         if (CreateProcessA(NULL, cmdline, NULL, NULL, FALSE, 0, envp, NULL, &si, &pi)) {
           succeeded = true;
