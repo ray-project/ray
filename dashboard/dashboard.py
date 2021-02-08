@@ -1,8 +1,9 @@
+import sys
+
 try:
     import aiohttp.web
 except ImportError:
     print("The dashboard requires aiohttp to run.")
-    import sys
     # Set an exit code different from throwing an exception.
     sys.exit(2)
 
@@ -31,12 +32,16 @@ logger = logging.getLogger(__name__)
 routes = dashboard_utils.ClassMethodRouteTable
 
 
+class FrontendNotFoundError(OSError):
+    pass
+
+
 def setup_static_dir():
     build_dir = os.path.join(
         os.path.dirname(os.path.abspath(__file__)), "client", "build")
     module_name = os.path.basename(os.path.dirname(__file__))
     if not os.path.isdir(build_dir):
-        raise OSError(
+        raise FrontendNotFoundError(
             errno.ENOENT, "Dashboard build directory not found. If installing "
             "from source, please follow the additional steps "
             "required to build the dashboard"
@@ -82,8 +87,17 @@ class Dashboard:
             log_dir=log_dir)
 
         # Setup Dashboard Routes
-        build_dir = setup_static_dir()
-        logger.info("Setup static dir for dashboard: %s", build_dir)
+        try:
+            build_dir = setup_static_dir()
+            logger.info("Setup static dir for dashboard: %s", build_dir)
+        except FrontendNotFoundError as ex:
+            # Not to raise FrontendNotFoundError due to NPM incompatibilities
+            # with Windows.
+            # Please refer to ci.sh::build_dashboard_front_end()
+            if sys.platform in ["win32", "cygwin"]:
+                logger.warning(ex)
+            else:
+                raise ex
         dashboard_utils.ClassMethodRouteTable.bind(self)
 
     @routes.get("/")
@@ -216,7 +230,7 @@ if __name__ == "__main__":
                   f"error:\n{traceback_str}"
         ray.utils.push_error_to_driver_through_redis(
             redis_client, ray_constants.DASHBOARD_DIED_ERROR, message)
-        if isinstance(e, OSError) and e.errno == errno.ENOENT:
+        if isinstance(e, FrontendNotFoundError):
             logger.warning(message)
         else:
             logger.error(message)

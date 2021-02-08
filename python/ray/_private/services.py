@@ -1216,9 +1216,9 @@ def start_dashboard(require_dashboard,
                 raise Exception("Failed to start the dashboard"
                                 f"{returncode_str}.{last_log_str}")
 
-        logger.info("View the Ray dashboard at {}{}http://{}{}{}".format(
-            colorama.Style.BRIGHT, colorama.Fore.GREEN, dashboard_url,
-            colorama.Fore.RESET, colorama.Style.NORMAL))
+        logger.info("View the Ray dashboard at %s%shttp://%s%s%s",
+                    colorama.Style.BRIGHT, colorama.Fore.GREEN, dashboard_url,
+                    colorama.Fore.RESET, colorama.Style.NORMAL)
 
         return dashboard_url, process_info
     else:
