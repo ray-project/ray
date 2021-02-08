@@ -121,8 +121,7 @@ class Monitor:
         self.redis = ray._private.services.create_redis_client(
             redis_address, password=redis_password)
 
-        # Initialize the gcs channel and stub for getting all resource usage.
-
+        # Initialize the gcs stub for getting all node resource usage.
         self.gcs_node_resources_stub = get_gcs_node_resources_stub(
             redis_address, redis_password)
 
