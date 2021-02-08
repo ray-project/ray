@@ -107,7 +107,7 @@ def check_support(alg, config, train=True, check_bounds=False, tfe=False):
 class TestSupportedSpacesPG(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init(num_cpus=4)
+        ray.init(num_cpus=6)
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -126,9 +126,11 @@ class TestSupportedSpacesPG(unittest.TestCase):
 
     def test_ppo(self):
         config = {
-            "num_workers": 1,
+            "num_workers": 0,
+            "train_batch_size": 100,
+            "rollout_fragment_length": 10,
             "num_sgd_iter": 1,
-            "sgd_minibatch_size": 1,
+            "sgd_minibatch_size": 10,
         }
         check_support("PPO", config, check_bounds=True, tfe=True)
 

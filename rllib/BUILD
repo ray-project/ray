@@ -1475,14 +1475,14 @@ py_test(
     args = ["TestSupportedMultiAgentOffPolicy"]
 )
 
-py_test(
-    name = "tests/test_supported_spaces_pg",
-    main = "tests/test_supported_spaces.py",
-    tags = ["tests_dir", "tests_dir_S"],
-    size = "enormous",
-    srcs = ["tests/test_supported_spaces.py"],
-    args = ["TestSupportedSpacesPG"]
-)
+# py_test(
+#     name = "tests/test_supported_spaces_pg",
+#     main = "tests/test_supported_spaces.py",
+#     tags = ["tests_dir", "tests_dir_S"],
+#     size = "enormous",
+#     srcs = ["tests/test_supported_spaces.py"],
+#     args = ["TestSupportedSpacesPG"]
+# )
 
 py_test(
     name = "tests/test_supported_spaces_off_policy",
