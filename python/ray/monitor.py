@@ -75,14 +75,6 @@ def parse_resource_demands(resource_load_by_shape):
     return waiting_bundles, infeasible_bundles
 
 
-# Copy pasted from ray.utils to remove dependency on ray.utils.
-def binary_to_hex(identifier):
-    hex_identifier = binascii.hexlify(identifier)
-    if sys.version_info >= (3, 0):
-        hex_identifier = hex_identifier.decode()
-    return hex_identifier
-
-
 async def _get_gcs_address(redis_address: str, redis_password: str) -> str:
     aioredis_client = await aioredis.create_redis_pool(
         address="redis://" + redis_address, password=redis_password)
