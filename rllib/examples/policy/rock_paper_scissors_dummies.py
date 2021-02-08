@@ -11,6 +11,7 @@ SCISSORS = 2
 LIZARD = 3
 SPOCK = 4
 
+
 class AlwaysSameHeuristic(Policy):
     """Pick a random move and stick with it for the entire episode."""
 
@@ -25,12 +26,7 @@ class AlwaysSameHeuristic(Policy):
         })
 
     def get_initial_state(self):
-        return [
-            random.choice([
-                ROCK, PAPER,
-                SCISSORS
-            ])
-        ]
+        return [random.choice([ROCK, PAPER, SCISSORS])]
 
     def compute_actions(self,
                         obs_batch,

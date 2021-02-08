@@ -8,7 +8,6 @@ This demonstrates running the following policies in competition:
 """
 
 import argparse
-from gym.spaces import Discrete
 import os
 import random
 
@@ -33,20 +32,24 @@ parser.add_argument("--stop-iters", type=int, default=150)
 parser.add_argument("--stop-reward", type=float, default=1000.0)
 parser.add_argument("--stop-timesteps", type=int, default=100000)
 
+
 def env_creator(args):
     env = rps_v1.env()
     return env
 
-register_env('RockPaperScissors', lambda config: PettingZooEnv(env_creator(config)))
+
+register_env("RockPaperScissors",
+             lambda config: PettingZooEnv(env_creator(config)))
 
 env_for_spaces = PettingZooEnv(env_creator({}))
 obs_space = env_for_spaces.observation_space
 act_space = env_for_spaces.action_space
 
+
 def run_same_policy(args, stop):
     """Use the same policy for both agents (trivial case)."""
     config = {
-        "env": 'RockPaperScissors',
+        "env": "RockPaperScissors",
         "framework": "torch" if args.torch else "tf",
     }
 
@@ -73,7 +76,7 @@ def run_heuristic_vs_learned(args, use_lstm=False, trainer="PG"):
             return random.choice(["always_same", "beat_last"])
 
     config = {
-        "env": 'RockPaperScissors',
+        "env": "RockPaperScissors",
         "gamma": 0.9,
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
@@ -85,8 +88,7 @@ def run_heuristic_vs_learned(args, use_lstm=False, trainer="PG"):
         "multiagent": {
             "policies_to_train": ["learned"],
             "policies": {
-                "always_same": (AlwaysSameHeuristic, obs_space, act_space,
-                                {}),
+                "always_same": (AlwaysSameHeuristic, obs_space, act_space, {}),
                 "beat_last": (BeatLastHeuristic, obs_space, act_space, {}),
                 "learned": (None, obs_space, act_space, {
                     "model": {
@@ -101,14 +103,13 @@ def run_heuristic_vs_learned(args, use_lstm=False, trainer="PG"):
     }
     cls = get_agent_class(trainer) if isinstance(trainer, str) else trainer
     trainer_obj = cls(config=config)
-    env = trainer_obj.workers.local_worker().env
     for _ in range(args.stop_iters):
         results = trainer_obj.train()
         print(results)
         # Timesteps reached.
-        if 'policy_learned_reward' in results['hist_stats']:
+        if "policy_learned_reward" in results["hist_stats"]:
             # player_0_rewards = player_0_num_wins - player_1_num_wins
-            reward_diff = sum(results['hist_stats']['policy_learned_reward'])
+            reward_diff = sum(results["hist_stats"]["policy_learned_reward"])
         else:
             reward_diff = 0
         if results["timesteps_total"] > args.stop_timesteps:
@@ -122,6 +123,7 @@ def run_heuristic_vs_learned(args, use_lstm=False, trainer="PG"):
         raise ValueError(
             "Desired reward difference ({}) not reached! Only got to {}.".
             format(args.stop_reward, reward_diff))
+
 
 def run_with_custom_entropy_loss(args, stop):
     """Example of customizing the loss function of an existing policy.
