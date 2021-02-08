@@ -83,9 +83,7 @@ public class PlacementGroupTest extends BaseTest {
     Assert.assertEquals(placementGroupRes.getStrategy(), expectPlacementGroup.getStrategy());
   }
 
-  @Test(
-      groups = {"cluster"},
-      enabled = false)
+  @Test(groups = {"cluster"})
   public void testRemovePlacementGroup() {
     PlacementGroupTestUtils.createNameSpecifiedSimpleGroup(
         "CPU", 1, PlacementStrategy.PACK, 1.0, "first_placement_group");
