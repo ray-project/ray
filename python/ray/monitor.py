@@ -4,9 +4,11 @@ import argparse
 import logging
 import logging.handlers
 import os
+import sys
 import time
 import traceback
 import json
+import binascii
 
 import asyncio
 from grpc.experimental import aio
@@ -23,8 +25,6 @@ from ray.autoscaler._private.constants import \
 from ray.autoscaler._private.util import DEBUG_AUTOSCALING_STATUS
 
 from ray.core.generated import gcs_service_pb2, gcs_service_pb2_grpc
-import ray.gcs_utils
-import ray.utils
 import ray.ray_constants as ray_constants
 from ray.ray_logging import setup_component_logger
 from ray.experimental.internal_kv import _internal_kv_put, \
@@ -73,6 +73,14 @@ def parse_resource_demands(resource_load_by_shape):
         logger.exception("Failed to parse resource demands.")
 
     return waiting_bundles, infeasible_bundles
+
+
+# Copy pasted from ray.utils to remove dependency on ray.utils.
+def binary_to_hex(identifier):
+    hex_identifier = binascii.hexlify(identifier)
+    if sys.version_info >= (3, 0):
+        hex_identifier = hex_identifier.decode()
+    return hex_identifier
 
 
 async def _get_gcs_address(redis_address: str, redis_password: str) -> str:
@@ -164,7 +172,9 @@ class Monitor:
                 resources_batch_data.placement_group_load.placement_group_data)
 
             # Update the load metrics for this raylet.
-            node_id = ray.utils.binary_to_hex(resource_message.node_id)
+            node_id = binary_to_hex(resource_message.node_id)
+            # Make sure the node_id size never changes for backward compat.
+            assert len(resource_message.node_id) == 28
             ip = resource_message.node_manager_address
             if ip:
                 self.load_metrics.update(ip, total_resources,
@@ -367,6 +377,7 @@ if __name__ == "__main__":
         # Something went wrong, so push an error to all drivers.
         redis_client = ray._private.services.create_redis_client(
             args.redis_address, password=args.redis_password)
+        import ray.utils
         traceback_str = ray.utils.format_error_message(traceback.format_exc())
         message = ("The monitor failed with the "
                    f"following error:\n{traceback_str}")
