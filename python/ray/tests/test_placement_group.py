@@ -13,6 +13,7 @@ from ray.test_utils import (generate_system_config_map, get_other_nodes,
                             run_string_as_driver, wait_for_condition,
                             get_error_message)
 import ray.cluster_utils
+from ray.exceptions import RaySystemError
 from ray._raylet import PlacementGroupID
 from ray.util.placement_group import (PlacementGroup, placement_group,
                                       remove_placement_group,
@@ -1476,13 +1477,17 @@ ray.shutdown()
     ray.get(actor.ping.remote())
 
     # Create another placement group and make sure its creation will failed.
-    same_name_pg = ray.util.placement_group(
-        [{
-            "CPU": 1
-        } for _ in range(2)],
-        strategy="STRICT_SPREAD",
-        name=global_placement_group_name)
-    assert not same_name_pg.wait(10)
+    error_creation_count = 0
+    try:
+        ray.util.placement_group(
+            [{
+                "CPU": 1
+            } for _ in range(2)],
+            strategy="STRICT_SPREAD",
+            name=global_placement_group_name)
+    except RaySystemError:
+        error_creation_count += 1
+    assert error_creation_count == 1
 
     # Remove a named placement group and make sure the second creation
     # will successful.
