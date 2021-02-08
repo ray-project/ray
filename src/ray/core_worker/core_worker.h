@@ -265,8 +265,6 @@ class CoreWorkerProcess {
   /// \return Void.
   static void EnsureInitialized();
 
-  static void HandleAtExit();
-
   /// Get the `CoreWorker` instance by worker ID.
   ///
   /// \param[in] workerId The worker ID.
