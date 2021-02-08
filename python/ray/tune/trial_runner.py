@@ -462,7 +462,6 @@ class TrialRunner:
 
         # This will contain the next trial to start
         next_trial = self._get_next_trial()  # blocking
-
         # Create pending trials. Skip if next_trial is None (then there
         # are no new trials to create)
         if next_trial:
@@ -496,6 +495,7 @@ class TrialRunner:
                 if next_trial is not None:
                     if _start_trial(next_trial):
                         may_handle_events = False
+
         if may_handle_events:
             if self.trial_executor.get_running_trials():
                 timeout = None

@@ -171,6 +171,8 @@ class RayTrialExecutor(TrialExecutor):
         self._pg_manager = PlacementGroupManager()
         self._staged_trials = set()
         self._just_staged_trials = set()
+        self._trial_just_finished = False
+        self._trial_just_finished_before = False
 
         self._resources_initialized = False
 
@@ -293,7 +295,8 @@ class RayTrialExecutor(TrialExecutor):
                 just_staged = trial in self._just_staged_trials
 
                 if self._wait_for_pg is not None and (
-                        just_staged or not self.get_running_trials()):
+                        just_staged or self._trial_just_finished_before
+                        or not self.get_running_trials()):
                     logger.debug(
                         f"Waiting up to {self._wait_for_pg} seconds for "
                         f"placement group of trial {trial} to become ready.")
@@ -431,6 +434,7 @@ class RayTrialExecutor(TrialExecutor):
             error_msg (str): Optional error message.
         """
         self.set_status(trial, Trial.ERROR if error else Trial.TERMINATED)
+        self._trial_just_finished = True
         trial.set_location(Location())
 
         try:
@@ -845,6 +849,8 @@ class RayTrialExecutor(TrialExecutor):
     def on_step_begin(self, trial_runner):
         """Before step() called, update the available resources."""
         self._update_avail_resources()
+        self._trial_just_finished_before = self._trial_just_finished
+        self._trial_just_finished = False
 
     def on_step_end(self, trial_runner):
         self._just_staged_trials.clear()

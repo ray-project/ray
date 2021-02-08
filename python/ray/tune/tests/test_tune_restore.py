@@ -168,6 +168,8 @@ class TuneFailResumeGridTest(unittest.TestCase):
         def on_trial_start(self, trials, **info):
             self._step += 1
             if self._step >= self.steps:
+                print(f"Failing after step {self._step} with "
+                      f"{len(trials)} trials")
                 raise RuntimeError
 
     class CheckStateCallback(Callback):
@@ -182,23 +184,17 @@ class TuneFailResumeGridTest(unittest.TestCase):
                 assert len(trials) == self.expected_trials
                 self._checked = True
 
-    @classmethod
-    def setUpClass(cls):
-        # Change back to local_mode=True after this is resolved:
-        # https://github.com/ray-project/ray/issues/13932
-        ray.init(local_mode=False, num_cpus=2)
-
-    @classmethod
-    def tearDownClass(cls):
-        ray.shutdown()
-
     def setUp(self):
         self.logdir = tempfile.mkdtemp()
         os.environ["TUNE_GLOBAL_CHECKPOINT_S"] = "0"
-        # Wait up to five seconds for placement groups when starting a trial
-        os.environ["TUNE_PLACEMENT_GROUP_WAIT_S"] = "5"
+        # Wait up to 1.5 seconds for placement groups when starting a trial
+        os.environ["TUNE_PLACEMENT_GROUP_WAIT_S"] = "1.5"
         # Block for results even when placement groups are pending
         os.environ["TUNE_TRIAL_STARTUP_GRACE_PERIOD"] = "0"
+
+        # Change back to local_mode=True after this is resolved:
+        # https://github.com/ray-project/ray/issues/13932
+        ray.init(local_mode=False, num_cpus=2)
 
         from ray.tune import register_trainable
         register_trainable("trainable", MyTrainableClass)
@@ -206,6 +202,7 @@ class TuneFailResumeGridTest(unittest.TestCase):
     def tearDown(self):
         os.environ.pop("TUNE_GLOBAL_CHECKPOINT_S")
         shutil.rmtree(self.logdir)
+        ray.shutdown()
 
     @patch("ray.tune.utils.placement_groups.TUNE_MAX_PENDING_TRIALS_PG", 1)
     @patch("ray.tune.trial_runner.TUNE_MAX_PENDING_TRIALS_PG", 1)
