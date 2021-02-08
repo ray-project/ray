@@ -1,4 +1,5 @@
 import json
+import uuid
 from collections import defaultdict
 from inspect import signature
 from typing import Dict, List, Optional, Set, TYPE_CHECKING, Tuple
@@ -9,7 +10,9 @@ import ray
 from ray import ObjectRef
 from ray.actor import ActorClass
 from ray.tune.resources import Resources
-from ray.util.placement_group import PlacementGroup, placement_group
+from ray.util.placement_group import PlacementGroup, get_placement_group, \
+    placement_group, \
+    placement_group_table, remove_placement_group
 
 if TYPE_CHECKING:
     from ray.tune.trial import Trial
@@ -47,8 +50,9 @@ class PlacementGroupFactory:
                 "object.") from exc
 
     def __call__(self, *args, **kwargs):
+        kwargs.update(self._bound.kwargs)
         # Call with bounded *args and **kwargs
-        return placement_group(*self._bound.args, **self._bound.kwargs)
+        return placement_group(*self._bound.args, **kwargs)
 
     def __eq__(self, other):
         return self._bound == other._bound
@@ -119,9 +123,14 @@ class PlacementGroupManager:
     If two trials share the same placement group factory, both could use
     resulting placement groups from it. Thus this manager associates
     placement groups with their factory methods.
+
+    Args:
+        prefix (str): Prefix for the placement group names that are created.
     """
 
-    def __init__(self):
+    def __init__(self, prefix: str = "_tune__"):
+        self._prefix = prefix
+
         # Sets of staged placement groups by factory
         self._staging: Dict[PlacementGroupFactory, Set[
             PlacementGroup]] = defaultdict(set)
@@ -144,6 +153,27 @@ class PlacementGroupManager:
         self._grace_period = float(
             os.getenv("TUNE_TRIAL_STARTUP_GRACE_PERIOD", 10.))
 
+    def cleanup_existing_pg(self):
+        """Clean up (remove) all existing placement groups.
+
+        This scans through the placement_group_table to discover existing
+        placement groups and calls remove_placement_group on all that
+        match the ``_tune__`` prefix. This method is called at the beginning
+        of the tuning run to clean up existing placement groups should the
+        experiment be interrupted by a driver failure and resumed in the
+        same driver script.
+        """
+        should_cleanup = not int(
+            os.getenv("TUNE_PLACEMENT_GROUP_CLEANUP_DISABLED", "0"))
+        if should_cleanup:
+            for pid, info in placement_group_table().items():
+                if not info["name"].startswith(self._prefix):
+                    continue
+                if info["state"] == "REMOVED":
+                    continue
+                pg = get_placement_group(info["name"])
+                remove_placement_group(pg)
+
     def stage_trial_pg(self, trial: "Trial"):
         """Stage a trial placement group.
 
@@ -162,7 +192,8 @@ class PlacementGroupManager:
             return False
 
         pgf = trial.placement_group_factory
-        pg = pgf()  # This creates the placement group
+        # This creates the placement group
+        pg = pgf(name=f"{self._prefix}{uuid.uuid4().hex[:8]}")
 
         self._staging[pgf].add(pg)
         self._staging_futures[pg.ready()] = (pgf, pg)

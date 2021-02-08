@@ -751,6 +751,11 @@ These are the environment variables Ray Tune currently considers:
   to ``1000``.
 * **TUNE_PLACEMENT_GROUP_AUTO_DISABLED**: Ray Tune automatically uses placement groups
   instead of the legacy resource requests. Setting this to 1 enables legacy placement.
+* **TUNE_PLACEMENT_GROUP_CLEANUP_DISABLED**: Ray Tune cleans up existing placement groups
+  with the ``_tune__`` prefix in their name before starting a run. This is used to make sure
+  that scheduled placement groups are removed when multiple calls to ``tune.run()`` are
+  done in the same script. You might want to disable this if you run multiple Tune runs in
+  parallel from different scripts. Set to 1 to disable.
 * **TUNE_PLACEMENT_GROUP_WAIT_S**: Default time the trial executor waits for placement
   groups to be placed before continuing the tuning loop. Setting this to a float
   will block for that many seconds. This is mostly used for testing purposes. Defaults
