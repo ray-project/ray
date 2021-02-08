@@ -1,8 +1,8 @@
 from ray.rllib.agents.evolutionary.es.es import ESTrainer, \
-	DEFAULT_CONFIG
+ DEFAULT_CONFIG
 from ray.rllib.agents.evolutionary.es.es_tf_policy import \
-	ESTFPolicy
+ ESTFPolicy
 from ray.rllib.agents.evolutionary.es.es_torch_policy import \
-	ESTorchPolicy
+ ESTorchPolicy
 
 __all__ = ["ESTFPolicy", "ESTorchPolicy", "ESTrainer", "DEFAULT_CONFIG"]

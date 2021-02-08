@@ -1,9 +1,9 @@
 from ray.rllib.agents.evolutionary.ars.ars import \
-	ARSTrainer, DEFAULT_CONFIG
+ ARSTrainer, DEFAULT_CONFIG
 from ray.rllib.agents.evolutionary.ars.ars_tf_policy import  \
-	ARSTFPolicy
+ ARSTFPolicy
 from ray.rllib.agents.evolutionary.ars.ars_torch_policy import \
-	ARSTorchPolicy
+ ARSTorchPolicy
 
 __all__ = [
     "ARSTFPolicy",

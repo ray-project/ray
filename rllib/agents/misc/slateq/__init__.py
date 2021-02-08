@@ -1,7 +1,7 @@
 from ray.rllib.agents.misc.slateq.slateq import SlateQTrainer, \
-	DEFAULT_CONFIG
+ DEFAULT_CONFIG
 from ray.rllib.agents.misc.slateq.slateq_torch_policy import \
-	SlateQTorchPolicy
+ SlateQTorchPolicy
 
 __all__ = [
     "SlateQTrainer",

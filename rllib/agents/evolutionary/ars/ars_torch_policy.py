@@ -3,7 +3,7 @@
 
 import ray
 from ray.rllib.agents.evolutionary.es.es_torch_policy import after_init, \
-	before_init, make_model_and_action_dist
+ before_init, make_model_and_action_dist
 from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.agents.evolutionary.ars.ars import DEFAULT_CONFIG
 
