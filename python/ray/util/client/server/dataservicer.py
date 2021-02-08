@@ -3,12 +3,13 @@ import logging
 import grpc
 import sys
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable
 from threading import Lock
 
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 from ray.util.client import CURRENT_PROTOCOL_VERSION
+from ray._private.client_mode_hook import disable_client_hook
 
 if TYPE_CHECKING:
     from ray.util.client.server.server import RayletServicer
@@ -17,10 +18,12 @@ logger = logging.getLogger(__name__)
 
 
 class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
-    def __init__(self, basic_service: "RayletServicer"):
+    def __init__(self, basic_service: "RayletServicer",
+                 ray_connect_handler: Callable):
         self.basic_service = basic_service
         self._clients_lock = Lock()
         self._num_clients = 0  # guarded by self._clients_lock
+        self.ray_connect_handler = ray_connect_handler
 
     def Datapath(self, request_iterator, context):
         metadata = {k: v for k, v in context.invocation_metadata()}
@@ -31,6 +34,9 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
         logger.info(f"New data connection from client {client_id}")
         try:
             with self._clients_lock:
+                with disable_client_hook():
+                    if self._num_clients == 0 and not ray.is_initialized():
+                        self.ray_connect_handler()
                 self._num_clients += 1
             for req in request_iterator:
                 resp = None
@@ -63,8 +69,13 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
         finally:
             logger.info(f"Lost data connection from client {client_id}")
             self.basic_service.release_all(client_id)
+
             with self._clients_lock:
                 self._num_clients -= 1
+
+            with disable_client_hook():
+                if self._num_clients == 0:
+                    ray.shutdown()
 
     def _build_connection_response(self):
         with self._clients_lock:

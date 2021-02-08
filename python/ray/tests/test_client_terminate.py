@@ -83,3 +83,9 @@ def test_cancel_chain(ray_start_regular, use_force):
 
         signaler2.send.remote()
         ray.get(obj1)
+
+
+if __name__ == "__main__":
+    import sys
+    import pytest
+    sys.exit(pytest.main(["-v", __file__]))

@@ -115,6 +115,8 @@ def test_actor_restart(ray_init_with_task_retry_delay):
             ray.get(results[0])
         except ray.exceptions.RayActorError:
             results.pop(0)
+        else:
+            break
     # Check all tasks that executed after the restart.
     if results:
         # The actor executed some tasks after the restart.

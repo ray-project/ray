@@ -522,6 +522,10 @@ class PlacementGroupInfoGcsServiceHandler {
       const WaitPlacementGroupUntilReadyRequest &request,
       WaitPlacementGroupUntilReadyReply *reply,
       SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleGetNamedPlacementGroup(const GetNamedPlacementGroupRequest &request,
+                                            GetNamedPlacementGroupReply *reply,
+                                            SendReplyCallback send_reply_callback) = 0;
 };
 
 /// The `GrpcService` for `PlacementGroupInfoGcsService`.
@@ -543,6 +547,7 @@ class PlacementGroupInfoGrpcService : public GrpcService {
     PLACEMENT_GROUP_INFO_SERVICE_RPC_HANDLER(CreatePlacementGroup);
     PLACEMENT_GROUP_INFO_SERVICE_RPC_HANDLER(RemovePlacementGroup);
     PLACEMENT_GROUP_INFO_SERVICE_RPC_HANDLER(GetPlacementGroup);
+    PLACEMENT_GROUP_INFO_SERVICE_RPC_HANDLER(GetNamedPlacementGroup);
     PLACEMENT_GROUP_INFO_SERVICE_RPC_HANDLER(GetAllPlacementGroup);
     PLACEMENT_GROUP_INFO_SERVICE_RPC_HANDLER(WaitPlacementGroupUntilReady);
   }
