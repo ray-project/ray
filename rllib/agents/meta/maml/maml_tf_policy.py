@@ -9,7 +9,6 @@ from ray.rllib.models.utils import get_activation_fn
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.utils import try_import_tf
-from ray.rllib.agents.meta.maml.maml import DEFAULT_CONFIG
 
 tf1, tf, tfv = try_import_tf()
 
@@ -418,7 +417,7 @@ def setup_mixins(policy, obs_space, action_space, config):
 
 MAMLTFPolicy = build_tf_policy(
     name="MAMLTFPolicy",
-    get_default_config=lambda: DEFAULT_CONFIG,
+    get_default_config=lambda: ray.rllib.agents.meta.maml.maml.DEFAULT_CONFIG,
     loss_fn=maml_loss,
     stats_fn=maml_stats,
     optimizer_fn=maml_optimizer_fn,

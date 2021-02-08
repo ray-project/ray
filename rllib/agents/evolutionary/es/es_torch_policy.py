@@ -5,7 +5,6 @@ import gym
 import numpy as np
 import tree
 
-import ray
 from ray.rllib.models import ModelCatalog
 from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.sample_batch import SampleBatch

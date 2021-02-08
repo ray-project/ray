@@ -6,7 +6,6 @@ from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.torch_ops import apply_grad_clipping, explained_variance
-from ray.rllib.agents.offline.marwil.marwil import DEFAULT_CONFIG
 
 torch, _ = try_import_torch()
 
@@ -97,7 +96,7 @@ MARWILTorchPolicy = build_policy_class(
     name="MARWILTorchPolicy",
     framework="torch",
     loss_fn=marwil_loss,
-    get_default_config=lambda: DEFAULT_CONFIG,
+    get_default_config=lambda: ray.rllib.agents.offline.marwil.marwil.DEFAULT_CONFIG,
     stats_fn=stats,
     postprocess_fn=postprocess_advantages,
     extra_grad_process_fn=apply_grad_clipping,

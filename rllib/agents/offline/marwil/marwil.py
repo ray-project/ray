@@ -1,6 +1,6 @@
 from ray.rllib.agents.trainer import with_common_config
 from ray.rllib.agents.trainer_template import build_trainer
-from ray.rllib.agents.marwil.marwil_tf_policy import MARWILTFPolicy
+from ray.rllib.agents.offline.marwil.marwil_tf_policy import MARWILTFPolicy
 from ray.rllib.execution.replay_ops import SimpleReplayBuffer, Replay, \
     StoreToReplayBuffer
 from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches

@@ -10,7 +10,6 @@ from ray.rllib.agents.ppo.ppo_torch_policy import vf_preds_fetches, \
     ValueNetworkMixin
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.torch_ops import apply_grad_clipping
-from ray.rllib.agents.meta.maml.maml import DEFAULT_CONFIG
 
 torch, nn = try_import_torch()
 
@@ -351,7 +350,7 @@ def setup_mixins(policy, obs_space, action_space, config):
 MAMLTorchPolicy = build_policy_class(
     name="MAMLTorchPolicy",
     framework="torch",
-    get_default_config=lambda: DEFAULT_CONFIG,
+    get_default_config=lambda: ray.rllib.agents.meta.maml.maml.DEFAULT_CONFIG,
     loss_fn=maml_loss,
     stats_fn=maml_stats,
     optimizer_fn=maml_optimizer_fn,

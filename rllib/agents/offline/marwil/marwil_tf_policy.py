@@ -8,7 +8,6 @@ from ray.rllib.evaluation.postprocessing import compute_advantages, \
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.utils.framework import try_import_tf, get_variable
 from ray.rllib.utils.tf_ops import explained_variance, make_tf_callable
-from ray.rllib.agents.marwil.marwil import DEFAULT_CONFIG
 
 tf1, tf, tfv = try_import_tf()
 
@@ -197,7 +196,7 @@ def setup_mixins(policy, obs_space, action_space, config):
 
 MARWILTFPolicy = build_tf_policy(
     name="MARWILTFPolicy",
-    get_default_config=lambda: DEFAULT_CONFIG,
+    get_default_config=lambda: ray.rllib.agents.marwil.marwil.DEFAULT_CONFIG,
     loss_fn=marwil_loss,
     stats_fn=stats,
     postprocess_fn=postprocess_advantages,

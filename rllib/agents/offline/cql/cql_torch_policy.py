@@ -23,7 +23,6 @@ from ray.rllib.utils.typing import LocalOptimizer, TensorType, \
     TrainerConfigDict
 from ray.rllib.utils.torch_ops import apply_grad_clipping, \
     convert_to_torch_tensor
-from ray.rllib.agents.cql.cql import CQL_DEFAULT_CONFIG
 
 torch, nn = try_import_torch()
 F = nn.functional
@@ -289,7 +288,7 @@ CQLTorchPolicy = build_policy_class(
     name="CQLTorchPolicy",
     framework="torch",
     loss_fn=cql_loss,
-    get_default_config=lambda: CQL_DEFAULT_CONFIG,
+    get_default_config=lambda: ray.rllib.agents.cql.cql.CQL_DEFAULT_CONFIG,
     stats_fn=cql_stats,
     postprocess_fn=postprocess_trajectory,
     extra_grad_process_fn=apply_grad_clipping,
