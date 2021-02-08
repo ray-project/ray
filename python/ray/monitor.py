@@ -170,19 +170,11 @@ class Monitor:
             pending_placement_groups = list(
                 resources_batch_data.placement_group_load.placement_group_data)
 
-            # Update the load metrics for this raylet.
-            node_id = binary_to_hex(resource_message.node_id)
-            # Make sure the node_id size never changes for backward compat.
-            assert len(resource_message.node_id) == 28
             ip = resource_message.node_manager_address
-            if ip:
-                self.load_metrics.update(ip, total_resources,
-                                         available_resources, resource_load,
-                                         waiting_bundles, infeasible_bundles,
-                                         pending_placement_groups)
-            else:
-                logger.warning(
-                    f"Monitor: could not find ip for node {node_id}")
+            self.load_metrics.update(ip, total_resources,
+                                     available_resources, resource_load,
+                                     waiting_bundles, infeasible_bundles,
+                                     pending_placement_groups)
 
     def update_resource_requests(self):
         """Fetches resource requests from the internal KV and updates load."""
