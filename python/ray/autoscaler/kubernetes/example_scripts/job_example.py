@@ -36,7 +36,9 @@ def gethostname(x):
 def wait_for_nodes(expected):
     # Wait for all nodes to join the cluster.
     while True:
-        num_nodes = len(ray.nodes())
+        resources = ray.cluster_resources()
+        node_keys = [key for key in resources if "node" in key]
+        num_nodes = sum(resources[node_key] for node_key in node_keys)
         if num_nodes < expected:
             print("{} nodes have joined so far, waiting for {} more.".format(
                 num_nodes, expected - num_nodes))
