@@ -1,5 +1,7 @@
 import errno
 import logging
+from typing import Dict, List, Any
+
 import numpy as np
 import os
 
@@ -474,6 +476,20 @@ class TFPolicy(Policy):
     def extra_compute_grad_fetches(self):
         """Extra values to fetch and return from compute_gradients()."""
         return {LEARNER_STATS_KEY: {}}  # e.g, stats, td error, etc.
+
+    @DeveloperAPI
+    def aggregate_dict_metric(self, name: str, dict_list: List[dict]) -> Any:
+        """ Aggregate dictonary metrics created by extra grad fetches. By default return the first
+        element only."""
+        return dict_list[0]
+
+    @DeveloperAPI
+    def check_sgd_iter_errors(self, minibatch_fetches: Any) -> bool:
+        """
+        Check (and possibly log) sgd iteration errors based on evaluated metrics.
+        :return: True if there are errors that must break optimization loop.
+        """
+        return False
 
     @DeveloperAPI
     def optimizer(self):

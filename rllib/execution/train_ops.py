@@ -192,11 +192,13 @@ class TrainTFMultiGPU:
             # (2) Execute minibatch SGD on loaded data.
             fetches = {}
             for policy_id, tuples_per_device in num_loaded_tuples.items():
+                policy = self.workers.local_worker().get_policy(policy_id)
                 optimizer = self.optimizers[policy_id]
                 num_batches = max(
                     1,
                     int(tuples_per_device) // int(self.per_device_batch_size))
                 logger.debug("== sgd epochs for {} ==".format(policy_id))
+                sgd_error = False
                 for i in range(self.num_sgd_iter):
                     iter_extra_fetches = defaultdict(list)
                     permutation = np.random.permutation(num_batches)
@@ -204,12 +206,22 @@ class TrainTFMultiGPU:
                         batch_fetches = optimizer.optimize(
                             self.sess, permutation[batch_index] *
                             self.per_device_batch_size)
+                        sgd_error = policy.check_sgd_iter_errors(batch_fetches)
                         for k, v in batch_fetches[LEARNER_STATS_KEY].items():
                             iter_extra_fetches[k].append(v)
+                        if sgd_error:
+                            break
                     if logger.getEffectiveLevel() <= logging.DEBUG:
                         avg = averaged(iter_extra_fetches)
                         logger.debug("{} {}".format(i, avg))
-                fetches[policy_id] = averaged(iter_extra_fetches, axis=0)
+                        # Stop policy updates on any runtime errors
+                    if sgd_error:
+                        break
+                # Note: This captures only last SGD iteration.
+                fetches[policy_id] = averaged(
+                    iter_extra_fetches,
+                    axis=0,
+                    dict_averaging_func=policy.aggregate_dict_metric)
 
         load_timer.push_units_processed(samples.count)
         learn_timer.push_units_processed(samples.count)
