@@ -79,7 +79,7 @@ class BackendReplica:
             # Fetch actor handles for all backend replicas in the system.
             # The actors must exist if this class was checkpointed in the
             # RUNNING state.
-            self._placement_group = ray.get_placement_group(
+            self._placement_group = ray.util.get_placement_group(
                 self._placement_group_name)
             self._actor_handle = ray.get_actor(self._actor_name)
         elif self._state == ReplicaState.STOPPING:
@@ -96,14 +96,14 @@ class BackendReplica:
         actor_options = copy.copy(
             backend_info.replica_config.ray_actor_options)
         try:
-            self._placement_group = ray.get_placement_group(
+            self._placement_group = ray.util.get_placement_group(
                 self._placement_group_name)
         except ValueError:
             logger.debug(
                 "Creating placement group '{}' for backend '{}'".format(
                     self._replica_tag, self._backend_tag))
             # TODO(edoakes): what if it's empty?
-            self._placement_group = ray.placement_group(
+            self._placement_group = ray.util.placement_group(
                 [actor_options.pop("resources")],
                 lifetime="detached",
                 name=self._placement_group_name)
@@ -188,7 +188,7 @@ class BackendReplica:
                     f"{self._graceful_shutdown_timeout_s}s, force-killing.")
 
             ray.kill(replica, no_restart=True)
-            ray.remove_placement_group(self._placement_group)
+            ray.util.remove_placement_group(self._placement_group)
             self._state = ReplicaState.STOPPED
             return True
         return False
