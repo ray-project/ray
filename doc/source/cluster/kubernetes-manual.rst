@@ -3,7 +3,7 @@
 Manually Deploying a Static Cluster
 ===================================
 
-This document gives an example of how to manually deployi a non-autoscaling Ray cluster on Kubernetes.
+This document gives an example of how to manually deploy a non-autoscaling Ray cluster on Kubernetes.
 
 To learn about deploying an autoscaling Ray cluster using :ref:`Ray's Kubernetes operator<k8s-operator>`, read
 :ref:`here<k8s-operator>`.
@@ -23,7 +23,7 @@ flag passed to ``kubectl``.
 
 .. code-block:: shell
 
-  $ kubectl create -f ray/doc/kubernetes/ray-namespace.yaml
+  $ kubectl create namespace ray
 
 Starting a Ray Cluster
 ----------------------
@@ -34,6 +34,7 @@ provided ``ray-cluster.yaml`` file will start 3 worker nodes). In the example
 Kubernetes configuration, this is implemented as:
 
 - A ``ray-head`` `Kubernetes Service`_ that enables the worker nodes to discover the location of the head node on start up.
+  This Service also enables access to the Ray Client and Ray Dashboard.
 - A ``ray-head`` `Kubernetes Deployment`_ that backs the ``ray-head`` Service with a single head node pod (replica).
 - A ``ray-worker`` `Kubernetes Deployment`_ with multiple worker node pods (replicas) that connect to the ``ray-head`` pod using the ``ray-head`` Service.
 
@@ -133,137 +134,7 @@ and checking that they are restarted by Kubernetes:
   ray-worker-5c49b7cc57-6m4kp   1/1     Running   0          10s
   ray-worker-5c49b7cc57-jx2w2   1/1     Running   0          10s
 
-
-Running Ray Programs
---------------------
-
-This section assumes that you have a running Ray cluster (if you don't, please
-refer to the section above to get started) and will walk you through three
-different options to run a Ray program on it:
-
-1. Using `kubectl exec` to run a Python script.
-2. Using `kubectl exec -it bash` to work interactively in a remote shell.
-3. Submitting a `Kubernetes Job`_.
-
-Running a program using 'kubectl exec'
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-To run an example program that tests object transfers between nodes in the
-cluster, try the following commands (don't forget to replace the head pod name
-- you can find it by running ``kubectl -n ray get pods``):
-
-.. code-block:: shell
-
-  # Copy the test script onto the head node.
-  $ kubectl -n ray cp ray/doc/kubernetes/example.py ray-head-5455bb66c9-7l6xj:/example.py
-
-  # Run the example program on the head node.
-  $ kubectl -n ray exec ray-head-5455bb66c9-7l6xj -- python example.py
-  # You should see repeated output for 10 iterations and then 'Success!'
-
-Running a program in a remote shell
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-You can also run tasks interactively on the cluster by connecting a remote
-shell to one of the pods.
-
-.. code-block:: shell
-
-  # Copy the test script onto the head node.
-  $ kubectl -n ray cp ray/doc/kubernetes/example.py ray-head-5455bb66c9-7l6xj:/example.py
-
-  # Get a remote shell to the head node.
-  $ kubectl -n ray exec -it ray-head-5455bb66c9-7l6xj -- bash
-
-  # Run the example program on the head node.
-  root@ray-head-6f566446c-5rdmb:/# python example.py
-  # You should see repeated output for 10 iterations and then 'Success!'
-
-You can also start an IPython interpreter to work interactively:
-
-.. code-block:: shell
-
-  # From your local machine.
-  $ kubectl -n ray exec -it ray-head-5455bb66c9-7l6xj -- ipython
-
-  # From a remote shell on the head node.
-  $ kubectl -n ray exec -it ray-head-5455bb66c9-7l6xj -- bash
-  root@ray-head-6f566446c-5rdmb:/# ipython
-
-Once you have the IPython interpreter running, try running the following example
-program:
-
-.. code-block:: python
-
-  from collections import Counter
-  import platform
-  import time
-  import ray
-
-  ray.init(address="$RAY_HEAD_SERVICE_HOST:$RAY_HEAD_SERVICE_PORT_REDIS_PRIMARY")
-
-  @ray.remote
-  def f(x):
-      time.sleep(0.01)
-      return x + (platform.node(), )
-
-  # Check that objects can be transferred from each node to each other node.
-  %time Counter(ray.get([f.remote(f.remote(())) for _ in range(100)]))
-
-Submitting a Job
-~~~~~~~~~~~~~~~~
-
-You can also submit a Ray application to run on the cluster as a `Kubernetes
-Job`_. The Job will run a single pod running the Ray driver program to
-completion, then terminate the pod but allow you to access the logs.
-
-To submit a Job that downloads and executes an `example program`_ that tests
-object transfers between nodes in the cluster, run the following command:
-
-.. code-block:: shell
-
-  $ kubectl create -f ray/doc/kubernetes/ray-job.yaml
-  job.batch/ray-test-job-kw5gn created
-
-.. _`example program`: https://github.com/ray-project/ray/blob/master/doc/kubernetes/example.py
-
-To view the output of the Job, first find the name of the pod that ran it,
-then fetch its logs:
-
-.. code-block:: shell
-
-  $ kubectl -n ray get pods
-  NAME                          READY   STATUS      RESTARTS   AGE
-  ray-head-5455bb66c9-7l6xj     1/1     Running     0          15s
-  ray-test-job-kw5gn-5g7tv      0/1     Completed   0          10s
-  ray-worker-5c49b7cc57-57tpv   1/1     Running     0          15s
-  ray-worker-5c49b7cc57-6m4kp   1/1     Running     0          15s
-  ray-worker-5c49b7cc57-jx2w2   1/1     Running     0          15s
-
-  # Fetch the logs. You should see repeated output for 10 iterations and then
-  # 'Success!'
-  $ kubectl -n ray logs ray-test-job-kw5gn-5g7tv
-
-To clean up the resources created by the Job after checking its output, run
-the following:
-
-.. code-block:: shell
-
-  # List Jobs run in the Ray namespace.
-  $ kubectl -n ray get jobs
-  NAME                 COMPLETIONS   DURATION   AGE
-  ray-test-job-kw5gn   1/1           10s        30s
-
-  # Delete the finished Job.
-  $ kubectl -n ray delete job ray-test-job-kw5gn
-
-  # Verify that the Job's pod was cleaned up.
-  $ kubectl -n ray get pods
-  NAME                          READY   STATUS      RESTARTS   AGE
-  ray-head-5455bb66c9-7l6xj     1/1     Running     0          60s
-  ray-worker-5c49b7cc57-57tpv   1/1     Running     0          60s
-  ray-worker-5c49b7cc57-6m4kp   1/1     Running     0          60s
-  ray-worker-5c49b7cc57-jx2w2   1/1     Running     0          60s
+Now that we have a running cluster, :ref:`we can execute Ray programs <ray-k8s-run>`.
 
 Cleaning Up
 -----------
