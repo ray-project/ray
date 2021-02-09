@@ -96,7 +96,6 @@ class BackendReplica:
             logger.debug(
                 "Creating placement group '{}' for backend '{}'".format(
                     self._placement_group_name, self._backend_tag))
-            # TODO(edoakes): what if it's empty?
             self._placement_group = ray.util.placement_group(
                 [backend_info.replica_config.resource_dict],
                 lifetime="detached",
