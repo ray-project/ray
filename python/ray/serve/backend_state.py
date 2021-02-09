@@ -46,6 +46,7 @@ class BackendReplica:
         self._replica_tag = replica_tag
         self._backend_tag = backend_tag
         self._actor_handle = None
+        self._placement_group = None
         self._start_time = None
         self._prev_slow_startup_warning_time = None
         self._startup_obj_ref = None
