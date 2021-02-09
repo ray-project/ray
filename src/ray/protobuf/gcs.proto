@@ -17,6 +17,8 @@ syntax = "proto3";
 package ray.rpc;
 
 import "src/ray/protobuf/common.proto";
+import "src/ray/protobuf/autoscaler.proto";
+
 
 option java_package = "io.ray.runtime.generated";
 
@@ -356,103 +358,3 @@ message PubSubMessage {
   bytes id = 1;
   bytes data = 2;
 }
-
-// The following messages/services/enums should never be modified to maintain
-// backward compatibility in autoscaler.
-
-// Represents the demand for a particular resource shape.
-message ResourceDemand { // Do not change!
-  // The resource shape requested. This is a map from the resource string
-  // (e.g., "CPU") to the amount requested.
-  map<string, double> shape = 1; // Do not change!
-  // The number of requests that are ready to run (i.e., dependencies have been
-  // fulfilled), but that are waiting for resources.
-  uint64 num_ready_requests_queued = 2; // Do not change!
-  // The number of requests for which there is no node that is a superset of
-  // the requested resource shape.
-  uint64 num_infeasible_requests_queued = 3; // Do not change!
-  // The number of requests of this shape still queued in CoreWorkers that this
-  // raylet knows about.
-  int64 backlog_size = 4; // Do not change!
-} // Do not change!
-
-// Represents the demand sorted by resource shape.
-message ResourceLoad { // Do not change!
-  // A list of all resource demands. The resource shape in each demand is
-  // unique.
-  repeated ResourceDemand resource_demands = 1; // Do not change!
-} // Do not change!
-
-message ResourcesData { // Do not change!
-  // Node id.
-  bytes node_id = 1; // Do not change!
-  // Resource capacity currently available on this node manager.
-  map<string, double> resources_available = 2; // Do not change!
-  // Indicates whether available resources is changed. Only used when light
-  // heartbeat enabled.
-  bool resources_available_changed = 3; // Do not change!
-  // Total resource capacity configured for this node manager.
-  map<string, double> resources_total = 4; // Do not change!
-  // Aggregate outstanding resource load on this node manager.
-  map<string, double> resource_load = 5; // Do not change!
-  // Indicates whether resource load is changed. Only used when
-  // light heartbeat enabled.
-  bool resource_load_changed = 6; // Do not change!
-  // The resource load on this node, sorted by resource shape.
-  ResourceLoad resource_load_by_shape = 7; // Do not change!
-  // Whether this node manager is requesting global GC.
-  bool should_global_gc = 8; // Do not change!
-  // IP address of the node.
-  string node_manager_address = 9; // Do not change!
-} // Do not change!
-
-message ResourceUsageBatchData { // Do not change!
-  repeated ResourcesData batch = 1; // Do not change!
-  // The total resource demand on all nodes included in the batch, sorted by
-  // resource shape.
-  ResourceLoad resource_load_by_shape = 2; // Do not change!
-  // The pending list of placement groups.
-  PlacementGroupLoad placement_group_load = 3; // Do not change!
-} // Do not change!
-
-message PlacementGroupLoad { // Do not change!
-  // The list of pending placement group specifications.
-  repeated PlacementGroupTableData placement_group_data = 1; // Do not change!
-} // Do not change!
-
-message PlacementGroupTableData { // Do not change!
-  // State of a placement group.
-  enum PlacementGroupState { // Do not change!
-    // Placement Group is pending or scheduling
-    PENDING = 0; // Do not change!
-    // Placement Group is created.
-    CREATED = 1; // Do not change!
-    // Placement Group is already removed and won't be reschedule.
-    REMOVED = 2; // Do not change!
-    // Placement Group is rescheduling because the node it placed is dead.
-    RESCHEDULING = 3; // Do not change!
-  } // Do not change!
-
-  // ID of the PlacementGroup.
-  bytes placement_group_id = 1; // Do not change!
-  // The name of the placement group.
-  string name = 2; // Do not change!
-  // The array of the bundle in Placement Group.
-  repeated Bundle bundles = 3; // Do not change!
-  // The schedule strategy of this Placement Group.
-  PlacementStrategy strategy = 4; // Do not change!
-  // Current state of this placement group.
-  PlacementGroupState state = 5; // Do not change!
-  // Fields to detect the owner of the placement group
-  // for automatic lifecycle management.
-  // The job id that created this placement group.
-  bytes creator_job_id = 6; // Do not change!
-  // The actor id that created this placement group.
-  bytes creator_actor_id = 7; // Do not change!
-  // Whether or not if the creator job is dead.
-  bool creator_job_dead = 8; // Do not change!
-  // Whether or not if the creator actor is dead.
-  bool creator_actor_dead = 9; // Do not change!
-  // Whether the placement group is persistent.
-  bool is_detached = 10; // Do not change!
-} // Do not change!

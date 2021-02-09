@@ -24,7 +24,10 @@ proto_library(
     name = "gcs_proto",
     srcs = ["gcs.proto"],
     visibility = ["//java:__subpackages__"],
-    deps = [":common_proto"],
+    deps = [
+        ":common_proto",
+        ":autoscaler_proto",
+    ],
 )
 
 cc_proto_library(
@@ -78,6 +81,7 @@ proto_library(
     deps = [
         ":common_proto",
         ":gcs_proto",
+        ":autoscaler_proto",
     ],
 )
 
