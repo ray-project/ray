@@ -25,19 +25,19 @@ fi
 REDIS_MODULE="./bazel-bin/libray_redis_module.so"
 LOAD_MODULE_ARGS=(--loadmodule "${REDIS_MODULE}")
 STORE_EXEC="./bazel-bin/plasma_store_server"
+GCS_SERVER_EXEC="./bazel-bin/gcs_server"
 
 # Allow cleanup commands to fail.
 bazel run //:redis-cli -- -p 6379 shutdown || true
+bazel run //:redis-cli -- -p 6380 shutdown || true
 sleep 1s
 bazel run //:redis-server -- --loglevel warning "${LOAD_MODULE_ARGS[@]}" --port 6379 &
+bazel run //:redis-server -- --loglevel warning "${LOAD_MODULE_ARGS[@]}" --port 6380 &
 sleep 1s
 # Run tests.
-./bazel-bin/object_manager_stress_test $STORE_EXEC
+./bazel-bin/object_manager_stress_test $STORE_EXEC $GCS_SERVER_EXEC
 sleep 1s
 # Use timeout=1000ms for the Wait tests.
-./bazel-bin/object_manager_test $STORE_EXEC 1000
+./bazel-bin/object_manager_test $STORE_EXEC 1000 $GCS_SERVER_EXEC
 bazel run //:redis-cli -- -p 6379 shutdown
-sleep 1s
-
-# Include raylet integration test once it's ready.
-# ./bazel-bin/object_manager_integration_test $STORE_EXEC
+bazel run //:redis-cli -- -p 6380 shutdown

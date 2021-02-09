@@ -5,7 +5,7 @@ import numpy as np
 from ray.rllib.utils.framework import try_import_jax, try_import_tf, \
     try_import_torch
 
-jax = try_import_jax()
+jax, _ = try_import_jax()
 tf1, tf, tfv = try_import_tf()
 if tf1:
     eager_mode = None
@@ -321,6 +321,12 @@ def check_compute_single_action(trainer,
                     call_kwargs["clip_actions"] = True
 
                 obs = obs_space.sample()
+                # Framestacking w/ traj. view API.
+                framestacks = pol.config["model"].get("num_framestacks",
+                                                      "auto")
+                if isinstance(framestacks, int) and framestacks > 1:
+                    obs = np.stack(
+                        [obs] * pol.config["model"]["num_framestacks"])
                 if isinstance(obs_space, gym.spaces.Box):
                     obs = np.clip(obs, -1.0, 1.0)
                 state_in = None

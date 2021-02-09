@@ -226,6 +226,7 @@ class WarpFrame(gym.ObservationWrapper):
         return frame[:, :, None]
 
 
+# TODO: (sven) Deprecated class. Remove once traj. view is the norm.
 class FrameStack(gym.Wrapper):
     def __init__(self, env, k):
         """Stack k last frames."""
@@ -255,6 +256,22 @@ class FrameStack(gym.Wrapper):
         return np.concatenate(self.frames, axis=2)
 
 
+class FrameStackTrajectoryView(gym.ObservationWrapper):
+    def __init__(self, env):
+        """No stacking. Trajectory View API takes care of this."""
+        gym.Wrapper.__init__(self, env)
+        shp = env.observation_space.shape
+        assert shp[2] == 1
+        self.observation_space = spaces.Box(
+            low=0,
+            high=255,
+            shape=(shp[0], shp[1]),
+            dtype=env.observation_space.dtype)
+
+    def observation(self, observation):
+        return np.squeeze(observation, axis=-1)
+
+
 class ScaledFloatFrame(gym.ObservationWrapper):
     def __init__(self, env):
         gym.ObservationWrapper.__init__(self, env)
@@ -267,7 +284,12 @@ class ScaledFloatFrame(gym.ObservationWrapper):
         return np.array(observation).astype(np.float32) / 255.0
 
 
-def wrap_deepmind(env, dim=84, framestack=True):
+def wrap_deepmind(
+        env,
+        dim=84,
+        # TODO: (sven) Remove once traj. view is norm.
+        framestack=True,
+        framestack_via_traj_view_api=False):
     """Configure environment for DeepMind-style Atari.
 
     Note that we assume reward clipping is done outside the wrapper.
@@ -278,7 +300,7 @@ def wrap_deepmind(env, dim=84, framestack=True):
     """
     env = MonitorEnv(env)
     env = NoopResetEnv(env, noop_max=30)
-    if "NoFrameskip" in env.spec.id:
+    if env.spec is not None and "NoFrameskip" in env.spec.id:
         env = MaxAndSkipEnv(env, skip=4)
     env = EpisodicLifeEnv(env)
     if "FIRE" in env.unwrapped.get_action_meanings():
@@ -286,6 +308,12 @@ def wrap_deepmind(env, dim=84, framestack=True):
     env = WarpFrame(env, dim)
     # env = ScaledFloatFrame(env)  # TODO: use for dqn?
     # env = ClipRewardEnv(env)  # reward clipping is handled by policy eval
-    if framestack:
+    # New way of frame stacking via the trajectory view API (model config key:
+    # `num_framestacks=[int]`.
+    if framestack_via_traj_view_api:
+        env = FrameStackTrajectoryView(env)
+    # Old way (w/o traj. view API) via model config key: `framestack=True`.
+    # TODO: (sven) Remove once traj. view is norm.
+    elif framestack is True:
         env = FrameStack(env, 4)
     return env

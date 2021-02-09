@@ -60,6 +60,7 @@ void AgentManager::StartAgent() {
   // Set node id to agent.
   ProcessEnvironment env;
   env.insert({"RAY_NODE_ID", options_.node_id.Hex()});
+  env.insert({"RAY_RAYLET_PID", std::to_string(getpid())});
   Process child(argv.data(), nullptr, ec, false, env);
   if (!child.IsValid() || ec) {
     // The worker failed to start. This is a fatal error.

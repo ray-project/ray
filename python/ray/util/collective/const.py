@@ -7,8 +7,7 @@ import hashlib
 
 
 def get_nccl_store_name(group_name):
-    """
-    Generate the unique name for the NCCLUniqueID store (named actor).
+    """Generate the unique name for the NCCLUniqueID store (named actor).
 
     Args:
         group_name (str): unique user name for the store.

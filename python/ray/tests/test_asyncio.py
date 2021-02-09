@@ -198,6 +198,32 @@ async def test_asyncio_double_await(ray_start_regular_shared):
     await waiting
 
 
+@pytest.mark.asyncio
+async def test_asyncio_exit_actor(ray_start_regular_shared):
+    # https://github.com/ray-project/ray/issues/12649
+    # The test should just hang without the fix.
+
+    @ray.remote
+    class Actor:
+        async def exit(self):
+            ray.actor.exit_actor()
+
+        async def ping(self):
+            return "pong"
+
+        async def loop_forever(self):
+            while True:
+                await asyncio.sleep(5)
+
+    a = Actor.options(max_task_retries=0).remote()
+    a.loop_forever.remote()
+    # Make sure exit_actor exits immediately, not once all tasks completed.
+    ray.get(a.exit.remote())
+
+    with pytest.raises(ray.exceptions.RayActorError):
+        ray.get(a.ping.remote())
+
+
 if __name__ == "__main__":
     import pytest
     sys.exit(pytest.main(["-v", __file__]))

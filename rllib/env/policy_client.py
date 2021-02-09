@@ -269,7 +269,8 @@ class _LocalInferenceThread(threading.Thread):
                 if isinstance(samples, MultiAgentBatch):
                     logger.info(
                         "Sending batch of {} env steps ({} agent steps) to "
-                        "server.".format(samples.count, samples.total()))
+                        "server.".format(samples.env_steps(),
+                                         samples.agent_steps()))
                 else:
                     logger.info(
                         "Sending batch of {} steps back to server.".format(

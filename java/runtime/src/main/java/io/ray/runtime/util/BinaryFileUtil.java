@@ -16,13 +16,12 @@ public class BinaryFileUtil {
   public static final String CORE_WORKER_JAVA_LIBRARY = "core_worker_library_java";
 
   /**
-   * Extract a platform-native resource file to <code>destDir</code>.
-   * Note that this a process-safe operation. If multi processes extract the file to same
-   * directory concurrently, this operation will be protected by a file lock.
+   * Extract a platform-native resource file to <code>destDir</code>. Note that this a process-safe
+   * operation. If multi processes extract the file to same directory concurrently, this operation
+   * will be protected by a file lock.
    *
-   * @param destDir  a directory to extract resource file to
-   * @param fileName resource file name
-   * @return extracted resource file
+   * @param destDir a directory to extract resource file to
+   * @param fileName resource file name Returns extracted resource file
    */
   public static File getNativeFile(String destDir, String fileName) {
     final File dir = new File(destDir);
@@ -34,8 +33,7 @@ public class BinaryFileUtil {
       }
     }
     String lockFilePath = destDir + File.separator + "file_lock";
-    try (FileLock ignored = new RandomAccessFile(lockFilePath, "rw")
-        .getChannel().lock()) {
+    try (FileLock ignored = new RandomAccessFile(lockFilePath, "rw").getChannel().lock()) {
       String resourceDir;
       if (SystemUtils.IS_OS_MAC) {
         resourceDir = "native/darwin/";

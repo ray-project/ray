@@ -340,10 +340,6 @@ class Node:
         return self._ray_params.redis_password
 
     @property
-    def load_code_from_local(self):
-        return self._ray_params.load_code_from_local
-
-    @property
     def object_ref_seed(self):
         """Get the seed for deterministic generation of object refs"""
         return self._ray_params.object_ref_seed
@@ -723,14 +719,12 @@ class Node:
             stderr_file=stderr_file,
             config=self._config,
             java_worker_options=self._ray_params.java_worker_options,
-            load_code_from_local=self._ray_params.load_code_from_local,
             huge_pages=self._ray_params.huge_pages,
             fate_share=self.kernel_fate_share,
             socket_to_use=self.socket,
             head_node=self.head,
             start_initial_python_workers_for_first_job=self._ray_params.
-            start_initial_python_workers_for_first_job,
-            code_search_path=self._ray_params.code_search_path)
+            start_initial_python_workers_for_first_job)
         assert ray_constants.PROCESS_TYPE_RAYLET not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_RAYLET] = [process_info]
 
@@ -739,17 +733,41 @@ class Node:
         raise NotImplementedError
 
     def start_monitor(self):
-        """Start the monitor."""
+        """Start the monitor.
+
+        Autoscaling output goes to these monitor.err/out files, and
+        any modification to these files may break existing
+        cluster launching commands.
+        """
+        stdout_file, stderr_file = self.get_log_file_handles(
+            "monitor", unique=True)
         process_info = ray._private.services.start_monitor(
             self._redis_address,
             self._logs_dir,
-            stdout_file=subprocess.DEVNULL,
-            stderr_file=subprocess.DEVNULL,
+            stdout_file=stdout_file,
+            stderr_file=stderr_file,
             autoscaling_config=self._ray_params.autoscaling_config,
             redis_password=self._ray_params.redis_password,
             fate_share=self.kernel_fate_share)
         assert ray_constants.PROCESS_TYPE_MONITOR not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_MONITOR] = [process_info]
+
+    def start_ray_client_server(self):
+        """Start the ray client server process."""
+        stdout_file, stderr_file = self.get_log_file_handles(
+            "ray_client_server", unique=True)
+        process_info = ray._private.services.start_ray_client_server(
+            self._redis_address,
+            self._ray_params.ray_client_server_port,
+            stdout_file=stdout_file,
+            stderr_file=stderr_file,
+            redis_password=self._ray_params.redis_password,
+            fate_share=self.kernel_fate_share)
+        assert (ray_constants.PROCESS_TYPE_RAY_CLIENT_SERVER not in
+                self.all_processes)
+        self.all_processes[ray_constants.PROCESS_TYPE_RAY_CLIENT_SERVER] = [
+            process_info
+        ]
 
     def start_head_processes(self):
         """Start head processes on the node."""
@@ -762,6 +780,9 @@ class Node:
         self.start_gcs_server()
 
         self.start_monitor()
+
+        if self._ray_params.ray_client_server_port:
+            self.start_ray_client_server()
 
         if self._ray_params.include_dashboard:
             self.start_dashboard(require_dashboard=True)

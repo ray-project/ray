@@ -12,9 +12,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
-/**
- * Utils for placement group.
- */
+/** Utils for placement group. */
 public class PlacementGroupUtils {
 
   private static List<Map<String, Double>> covertToUserSpecifiedBundles(List<Bundle> bundles) {
@@ -62,45 +60,50 @@ public class PlacementGroupUtils {
 
   /**
    * Generate a PlacementGroupImpl from placementGroupTableData protobuf data.
-   * @param placementGroupTableData protobuf data.
-   * @return placement group info {@link PlacementGroupImpl}
+   *
+   * @param placementGroupTableData protobuf data. Returns placement group info {@link
+   *     PlacementGroupImpl}
    */
   private static PlacementGroupImpl generatePlacementGroupFromPbData(
       PlacementGroupTableData placementGroupTableData) {
 
-    PlacementGroupState state = covertToUserSpecifiedState(
-        placementGroupTableData.getState());
-    PlacementStrategy strategy = covertToUserSpecifiedStrategy(
-        placementGroupTableData.getStrategy());
+    PlacementGroupState state = covertToUserSpecifiedState(placementGroupTableData.getState());
+    PlacementStrategy strategy =
+        covertToUserSpecifiedStrategy(placementGroupTableData.getStrategy());
 
-    List<Map<String, Double>> bundles = covertToUserSpecifiedBundles(
-        placementGroupTableData.getBundlesList());
+    List<Map<String, Double>> bundles =
+        covertToUserSpecifiedBundles(placementGroupTableData.getBundlesList());
 
-    PlacementGroupId placementGroupId = PlacementGroupId.fromByteBuffer(
-        placementGroupTableData.getPlacementGroupId().asReadOnlyByteBuffer());
+    PlacementGroupId placementGroupId =
+        PlacementGroupId.fromByteBuffer(
+            placementGroupTableData.getPlacementGroupId().asReadOnlyByteBuffer());
 
     return new PlacementGroupImpl.Builder()
-      .setId(placementGroupId).setName(placementGroupTableData.getName())
-      .setState(state).setStrategy(strategy).setBundles(bundles)
-      .build();
+        .setId(placementGroupId)
+        .setName(placementGroupTableData.getName())
+        .setState(state)
+        .setStrategy(strategy)
+        .setBundles(bundles)
+        .build();
   }
 
   /**
    * Generate a PlacementGroupImpl from byte array.
-   * @param placementGroupByteArray bytes array from native method.
-   * @return placement group info {@link PlacementGroupImpl}
+   *
+   * @param placementGroupByteArray bytes array from native method. Returns placement group info
+   *     {@link PlacementGroupImpl}
    */
   public static PlacementGroupImpl generatePlacementGroupFromByteArray(
       byte[] placementGroupByteArray) {
-    Preconditions.checkNotNull(placementGroupByteArray,
-        "Can't generate a placement group from empty byte array.");
+    Preconditions.checkNotNull(
+        placementGroupByteArray, "Can't generate a placement group from empty byte array.");
 
     PlacementGroupTableData placementGroupTableData;
     try {
       placementGroupTableData = PlacementGroupTableData.parseFrom(placementGroupByteArray);
     } catch (InvalidProtocolBufferException e) {
       throw new RuntimeException(
-        "Received invalid placement group table protobuf data from GCS.", e);
+          "Received invalid placement group table protobuf data from GCS.", e);
     }
 
     return generatePlacementGroupFromPbData(placementGroupTableData);

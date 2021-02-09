@@ -73,7 +73,7 @@ class TestPPO(unittest.TestCase):
     def test_ppo_compilation_and_lr_schedule(self):
         """Test whether a PPOTrainer can be built with all frameworks."""
         config = copy.deepcopy(ppo.DEFAULT_CONFIG)
-        # for checking lr-schedule correctness
+        # For checking lr-schedule correctness.
         config["callbacks"] = MyCallbacks
 
         config["num_workers"] = 1

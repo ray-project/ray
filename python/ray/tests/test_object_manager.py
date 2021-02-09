@@ -254,6 +254,48 @@ def test_many_small_transfers(ray_start_cluster_with_resource):
     do_transfers()
 
 
+# This is a basic test to ensure that the pull request retry timer is
+# integrated properly. To test it, we create a 2 node cluster then do the
+# following:
+# (1) Fill up the driver's object store.
+# (2) Fill up the remote node's object store.
+# (3) Try to get the remote object. This should fail due to an OOM error caused
+#     by step 1.
+# (4) Allow the local object to be evicted.
+# (5) Try to get the object again. Now the retry timer should kick in and
+#     successfuly pull the remote object.
+@pytest.mark.timeout(30)
+def test_pull_request_retry(shutdown_only):
+    cluster = Cluster()
+    cluster.add_node(num_cpus=0, num_gpus=1, object_store_memory=100 * 2**20)
+    cluster.add_node(num_cpus=1, num_gpus=0, object_store_memory=100 * 2**20)
+    cluster.wait_for_nodes()
+    ray.init(address=cluster.address)
+
+    @ray.remote
+    def put():
+        return np.zeros(64 * 2**20, dtype=np.int8)
+
+    @ray.remote(num_cpus=0, num_gpus=1)
+    def driver():
+        local_ref = ray.put(np.zeros(64 * 2**20, dtype=np.int8))
+
+        remote_ref = put.remote()
+
+        ready, _ = ray.wait([remote_ref], timeout=1)
+        assert len(ready) == 0
+
+        del local_ref
+
+        # This should always complete within 10 seconds.
+        ready, _ = ray.wait([remote_ref], timeout=20)
+        assert len(ready) > 0
+
+    # Pretend the GPU node is the driver. We do this to force the placement of
+    # the driver and `put` task on different nodes.
+    ray.get(driver.remote())
+
+
 if __name__ == "__main__":
     import pytest
     import sys

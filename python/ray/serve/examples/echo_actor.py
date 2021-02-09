@@ -1,6 +1,6 @@
 """
 Example actor that adds an increment to a number. This number can
-come from either web (parsing Flask request) or python call.
+come from either web (parsing Starlette request) or python call.
 
 This actor can be called from HTTP as well as from Python.
 """
@@ -30,9 +30,10 @@ class MagicCounter:
     def __init__(self, increment):
         self.increment = increment
 
-    def __call__(self, flask_request, base_number=None):
+    def __call__(self, starlette_request, base_number=None):
         if serve.context.web:
-            base_number = int(flask_request.args.get("base_number", "0"))
+            base_number = int(
+                starlette_request.query_params.get("base_number", "0"))
         return base_number + self.increment
 
 

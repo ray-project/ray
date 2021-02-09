@@ -43,7 +43,18 @@ if __name__ == "__main__":
     #     "activation": ["relu", "tanh"]
     # }
 
-    previously_run_params = [[10, 0, "relu"], [15, -20, "tanh"]]
+    previously_run_params = [
+        {
+            "width": 10,
+            "height": 0,
+            "activation": "relu"  # Activation will be relu
+        },
+        {
+            "width": 15,
+            "height": -20,
+            "activation": "tanh"  # Activation will be tanh
+        }
+    ]
     known_rewards = [-189, -1144]
 
     algo = SkOptSearch(

@@ -52,7 +52,7 @@ void GcsWorkerManager::HandleReportWorkerFailure(
                      << ", address = " << worker_address.ip_address();
     } else {
       stats::UnintentionalWorkerFailures.Record(1);
-      RAY_CHECK_OK(gcs_pub_sub_->Publish(WORKER_CHANNEL, worker_id.Binary(),
+      RAY_CHECK_OK(gcs_pub_sub_->Publish(WORKER_CHANNEL, worker_id.Hex(),
                                          worker_failure_data->SerializeAsString(),
                                          nullptr));
     }

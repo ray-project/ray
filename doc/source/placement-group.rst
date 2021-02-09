@@ -124,7 +124,6 @@ Let's create a placement group. Recall that each bundle is a collection of resou
 
   - "CPU" will correspond with `num_cpus` as used in `ray.remote`
   - "GPU" will correspond with `num_gpus` as used in `ray.remote`
-  - "MEM" will correspond with `memory` as used in `ray.remote`
   - Other resources will correspond with `resources` as used in `ray.remote`.
 
   Once the placement group reserves resources, original resources are unavailable until the placement group is removed. For example:
@@ -217,7 +216,7 @@ because they are scheduled on a placement group with the STRICT_PACK strategy.
         # The child task is scheduled with the same placement group as its parent
         # although child.options(placement_group=pg).remote() wasn't called.
         ray.get(child.remote())
-    
+
     ray.get(parent.options(placement_group=pg).remote())
 
   To avoid it, you should specify `options(placement_group=None)` in a child task/actor remote call.

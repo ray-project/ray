@@ -28,9 +28,10 @@ Gang Scheduling
 ---------------
 **Recommended Strategy**: `STRICT_SPREAD`.
 
-Sometimes, you'd like to schedule multiple tasks/actors in a separate physical machine (node) "at the same time". For example, "write the gang scheduling example".
+Sometimes, you'd like to schedule multiple tasks/actors in a separate physical machine (node) "at the same time". For example, you may use a collective communication library like NCCL and form a communication group with a set of actors. In creating this set of actors, you may want to ensure that all actors are separated and placed evenly across available nodes (creating a homogenous cluster).
 
 You can use placement groups' `STRICT_SPREAD` strategy to achieve it. `STRICT_SPREAD` ensures that all actors and tasks scheduled with the placement group will be located in a separate node.
+Also, since the placement group creation is atomic, you can always guarantee that tasks and actors are scheduled at the same time.
 
 Improve Fault tolerance
 -----------------------

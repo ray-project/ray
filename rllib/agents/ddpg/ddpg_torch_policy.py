@@ -7,8 +7,8 @@ from ray.rllib.agents.ddpg.ddpg_tf_policy import build_ddpg_models, \
 from ray.rllib.agents.dqn.dqn_tf_policy import postprocess_nstep_and_prio, \
     PRIO_WEIGHTS
 from ray.rllib.models.torch.torch_action_dist import TorchDeterministic
+from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.torch_policy_template import build_torch_policy
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.torch_ops import huber_loss, l2_loss
 
@@ -264,8 +264,9 @@ def setup_late_mixins(policy, obs_space, action_space, config):
     TargetNetworkMixin.__init__(policy)
 
 
-DDPGTorchPolicy = build_torch_policy(
+DDPGTorchPolicy = build_policy_class(
     name="DDPGTorchPolicy",
+    framework="torch",
     loss_fn=ddpg_actor_critic_loss,
     get_default_config=lambda: ray.rllib.agents.ddpg.ddpg.DEFAULT_CONFIG,
     stats_fn=build_ddpg_stats,

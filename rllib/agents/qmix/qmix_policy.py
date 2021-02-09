@@ -143,7 +143,7 @@ class QMixLoss(nn.Module):
         return loss, mask, masked_td_error, chosen_action_qvals, targets
 
 
-# TODO(sven): Make this a TorchPolicy child via `build_torch_policy`.
+# TODO(sven): Make this a TorchPolicy child via `build_policy_class`.
 class QMixTorchPolicy(Policy):
     """QMix impl. Assumes homogeneous agents for now.
 
@@ -214,9 +214,6 @@ class QMixTorchPolicy(Policy):
             framework="torch",
             name="target_model",
             default_model=RNNModel).to(self.device)
-
-        # Combine view_requirements for Model and Policy.
-        self.view_requirements.update(self.model.inference_view_requirements)
 
         self.exploration = self._create_exploration()
 

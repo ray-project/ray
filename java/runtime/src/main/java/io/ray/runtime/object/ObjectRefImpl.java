@@ -17,9 +17,7 @@ import java.lang.ref.Reference;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-/**
- * Implementation of {@link ObjectRef}.
- */
+/** Implementation of {@link ObjectRef}. */
 public final class ObjectRefImpl<T> implements ObjectRef<T>, Externalizable {
 
   private static final FinalizableReferenceQueue REFERENCE_QUEUE = new FinalizableReferenceQueue();
@@ -40,8 +38,7 @@ public final class ObjectRefImpl<T> implements ObjectRef<T>, Externalizable {
     addLocalReference();
   }
 
-  public ObjectRefImpl() {
-  }
+  public ObjectRefImpl() {}
 
   @Override
   public synchronized T get() {
@@ -81,8 +78,10 @@ public final class ObjectRefImpl<T> implements ObjectRef<T>, Externalizable {
     in.readFully(ownerAddress);
     addLocalReference();
     RayRuntimeInternal runtime = (RayRuntimeInternal) Ray.internal();
-    runtime.getObjectStore().registerOwnershipInfoAndResolveFuture(
-        this.id, ObjectSerializer.getOuterObjectId(), ownerAddress);
+    runtime
+        .getObjectStore()
+        .registerOwnershipInfoAndResolveFuture(
+            this.id, ObjectSerializer.getOuterObjectId(), ownerAddress);
   }
 
   private void addLocalReference() {
@@ -93,8 +92,8 @@ public final class ObjectRefImpl<T> implements ObjectRef<T>, Externalizable {
     new ObjectRefImplReference(this);
   }
 
-  private static final class ObjectRefImplReference extends
-      FinalizableWeakReference<ObjectRefImpl<?>> {
+  private static final class ObjectRefImplReference
+      extends FinalizableWeakReference<ObjectRefImpl<?>> {
 
     private final UniqueId workerId;
     private final ObjectId objectId;
@@ -116,7 +115,8 @@ public final class ObjectRefImpl<T> implements ObjectRef<T>, Externalizable {
         REFERENCES.remove(this);
         // It's possible that GC is executed after the runtime is shutdown.
         if (Ray.isInitialized()) {
-          ((RayRuntimeInternal) (Ray.internal())).getObjectStore()
+          ((RayRuntimeInternal) (Ray.internal()))
+              .getObjectStore()
               .removeLocalReference(workerId, objectId);
         }
       }

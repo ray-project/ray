@@ -21,9 +21,11 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "ray/gcs/callback.h"
-#include "ray/gcs/redis_accessor.h"
+#include "ray/gcs/gcs_client/service_based_accessor.h"
+#include "ray/gcs/gcs_client/service_based_gcs_client.h"
 #include "ray/object_manager/object_directory.h"
 #include "ray/raylet/format/node_manager_generated.h"
+#include "ray/raylet/reconstruction_policy.h"
 
 namespace ray {
 
@@ -97,17 +99,18 @@ class MockObjectDirectory : public ObjectDirectoryInterface {
   std::unordered_map<ObjectID, std::unordered_set<NodeID>> locations_;
 };
 
-class MockNodeInfoAccessor : public gcs::RedisNodeInfoAccessor {
+class MockNodeInfoAccessor : public gcs::ServiceBasedNodeInfoAccessor {
  public:
-  MockNodeInfoAccessor(gcs::RedisGcsClient *client)
-      : gcs::RedisNodeInfoAccessor(client) {}
+  MockNodeInfoAccessor(gcs::ServiceBasedGcsClient *client)
+      : gcs::ServiceBasedNodeInfoAccessor(client) {}
 
   bool IsRemoved(const NodeID &node_id) const override { return false; }
 };
 
-class MockTaskInfoAccessor : public gcs::RedisTaskInfoAccessor {
+class MockTaskInfoAccessor : public gcs::ServiceBasedTaskInfoAccessor {
  public:
-  MockTaskInfoAccessor(gcs::RedisGcsClient *client) : RedisTaskInfoAccessor(client) {}
+  MockTaskInfoAccessor(gcs::ServiceBasedGcsClient *client)
+      : ServiceBasedTaskInfoAccessor(client) {}
 
   Status AsyncSubscribeTaskLease(
       const TaskID &task_id,
@@ -180,9 +183,9 @@ class MockTaskInfoAccessor : public gcs::RedisTaskInfoAccessor {
       task_reconstruction_log_;
 };
 
-class MockGcs : public gcs::RedisGcsClient {
+class MockGcs : public gcs::ServiceBasedGcsClient {
  public:
-  MockGcs() : gcs::RedisGcsClient(gcs::GcsClientOptions("", 0, "")){};
+  MockGcs() : gcs::ServiceBasedGcsClient(gcs::GcsClientOptions("", 0, "")){};
 
   void Init(gcs::TaskInfoAccessor *task_accessor, gcs::NodeInfoAccessor *node_accessor) {
     task_accessor_.reset(task_accessor);

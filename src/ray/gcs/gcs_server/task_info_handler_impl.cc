@@ -68,30 +68,6 @@ void DefaultTaskInfoHandler::HandleGetTask(const GetTaskRequest &request,
   ++counts_[CountType::GET_TASK_REQUEST];
 }
 
-void DefaultTaskInfoHandler::HandleDeleteTasks(const DeleteTasksRequest &request,
-                                               DeleteTasksReply *reply,
-                                               SendReplyCallback send_reply_callback) {
-  std::vector<TaskID> task_ids = IdVectorFromProtobuf<TaskID>(request.task_id_list());
-  JobID job_id = task_ids.empty() ? JobID::Nil() : task_ids[0].JobId();
-  RAY_LOG(DEBUG) << "Deleting tasks, job id = " << job_id
-                 << ", task id list size = " << task_ids.size();
-  auto on_done = [job_id, task_ids, request, reply, send_reply_callback](Status status) {
-    if (!status.ok()) {
-      RAY_LOG(ERROR) << "Failed to delete tasks, job id = " << job_id
-                     << ", task id list size = " << task_ids.size();
-    }
-    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
-  };
-
-  Status status = gcs_table_storage_->TaskTable().BatchDelete(task_ids, on_done);
-  if (!status.ok()) {
-    on_done(status);
-  }
-  RAY_LOG(DEBUG) << "Finished deleting tasks, job id = " << job_id
-                 << ", task id list size = " << task_ids.size();
-  ++counts_[CountType::DELETE_TASKS_REQUEST];
-}
-
 void DefaultTaskInfoHandler::HandleAddTaskLease(const AddTaskLeaseRequest &request,
                                                 AddTaskLeaseReply *reply,
                                                 SendReplyCallback send_reply_callback) {
@@ -183,7 +159,6 @@ std::string DefaultTaskInfoHandler::DebugString() const {
   stream << "DefaultTaskInfoHandler: {AddTask request count: "
          << counts_[CountType::ADD_TASK_REQUEST]
          << ", GetTask request count: " << counts_[CountType::GET_TASK_REQUEST]
-         << ", DeleteTasks request count: " << counts_[CountType::DELETE_TASKS_REQUEST]
          << ", AddTaskLease request count: " << counts_[CountType::ADD_TASK_LEASE_REQUEST]
          << ", GetTaskLease request count: " << counts_[CountType::GET_TASK_LEASE_REQUEST]
          << ", AttemptTaskReconstruction request count: "

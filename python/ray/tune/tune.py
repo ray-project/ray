@@ -171,7 +171,8 @@ def run(
             samples are generated until a stopping condition is met.
         local_dir (str): Local dir to save training results to.
             Defaults to ``~/ray_results``.
-        search_alg (Searcher): Search algorithm for optimization.
+        search_alg (Searcher|SearchAlgorithm): Search algorithm for
+            optimization.
         scheduler (TrialScheduler): Scheduler for executing
             the experiment. Choose among FIFO (default), MedianStopping,
             AsyncHyperBand, HyperBand and PopulationBasedTraining. Refer to

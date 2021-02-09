@@ -1,6 +1,11 @@
 name: CI
 
-on: [push, pull_request]
+on:
+  push:
+    branches-ignore:
+      # Don't run CI for Dependabot branch pushes.
+      - "dependabot/**"
+  pull_request:
 
 env:
   # Git GITHUB_... variables are useful for translating Travis environment variables
@@ -89,6 +94,17 @@ jobs:
         . ./ci/travis/ci.sh test_python
         . ./ci/travis/ci.sh test_core
         . ./ci/travis/ci.sh test_wheels
+    - name: Upload test result
+      if: github.repository == 'ray-project/ray' && github.event_name != 'pull_request'
+      shell: bash -e -o pipefail -l {0}
+      env:
+        # TODO: upload this secret to github
+        BAZEL_LOG_BUCKET_ACCESS_KEY: ${{ secrets.BAZEL_LOG_BUCKET_ACCESS_KEY }}
+        TRAVIS_BRANCH: ${{ github.ref	}}
+        TRAVIS_COMMIT: ${{ github.sha }}
+        TRAVIS_JOB_ID: ${{ github.run_id }}
+      run: |
+        ./ci/travis/upload_build_info.sh
     - name: Run Clang Include-What-You-Use
       continue-on-error: true
       if: runner.os == 'Linux'

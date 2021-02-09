@@ -207,4 +207,5 @@ if __name__ == "__main__":
         if isinstance(e, OSError) and e.errno == errno.ENOENT:
             logger.warning(message)
         else:
+            logger.exception(message)
             raise e

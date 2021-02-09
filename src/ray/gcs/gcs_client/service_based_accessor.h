@@ -16,7 +16,6 @@
 
 #include "ray/common/task/task_spec.h"
 #include "ray/gcs/accessor.h"
-#include "ray/gcs/subscription_executor.h"
 #include "ray/util/sequencer.h"
 #include "src/ray/protobuf/gcs_service.pb.h"
 
@@ -38,12 +37,12 @@ class ServiceBasedJobInfoAccessor : public JobInfoAccessor {
 
   virtual ~ServiceBasedJobInfoAccessor() = default;
 
-  Status AsyncAdd(const std::shared_ptr<JobTableData> &data_ptr,
+  Status AsyncAdd(const std::shared_ptr<rpc::JobTableData> &data_ptr,
                   const StatusCallback &callback) override;
 
   Status AsyncMarkFinished(const JobID &job_id, const StatusCallback &callback) override;
 
-  Status AsyncSubscribeAll(const SubscribeCallback<JobID, JobTableData> &subscribe,
+  Status AsyncSubscribeAll(const SubscribeCallback<JobID, rpc::JobTableData> &subscribe,
                            const StatusCallback &done) override;
 
   Status AsyncGetAll(const MultiItemCallback<rpc::JobTableData> &callback) override;
@@ -70,8 +69,6 @@ class ServiceBasedActorInfoAccessor : public ActorInfoAccessor {
   explicit ServiceBasedActorInfoAccessor(ServiceBasedGcsClient *client_impl);
 
   virtual ~ServiceBasedActorInfoAccessor() = default;
-
-  Status GetAll(std::vector<ActorTableData> *actor_table_data_list) override;
 
   Status AsyncGet(const ActorID &actor_id,
                   const OptionalItemCallback<rpc::ActorTableData> &callback) override;
@@ -136,32 +133,88 @@ class ServiceBasedNodeInfoAccessor : public NodeInfoAccessor {
 
   virtual ~ServiceBasedNodeInfoAccessor() = default;
 
-  Status RegisterSelf(const GcsNodeInfo &local_node_info,
+  Status RegisterSelf(const rpc::GcsNodeInfo &local_node_info,
                       const StatusCallback &callback) override;
 
   Status UnregisterSelf() override;
 
   const NodeID &GetSelfId() const override;
 
-  const GcsNodeInfo &GetSelfInfo() const override;
+  const rpc::GcsNodeInfo &GetSelfInfo() const override;
 
   Status AsyncRegister(const rpc::GcsNodeInfo &node_info,
                        const StatusCallback &callback) override;
 
   Status AsyncUnregister(const NodeID &node_id, const StatusCallback &callback) override;
 
-  Status AsyncGetAll(const MultiItemCallback<GcsNodeInfo> &callback) override;
+  Status AsyncGetAll(const MultiItemCallback<rpc::GcsNodeInfo> &callback) override;
 
   Status AsyncSubscribeToNodeChange(
-      const SubscribeCallback<NodeID, GcsNodeInfo> &subscribe,
+      const SubscribeCallback<NodeID, rpc::GcsNodeInfo> &subscribe,
       const StatusCallback &done) override;
 
-  boost::optional<GcsNodeInfo> Get(const NodeID &node_id,
-                                   bool filter_dead_nodes = false) const override;
+  boost::optional<rpc::GcsNodeInfo> Get(const NodeID &node_id,
+                                        bool filter_dead_nodes = false) const override;
 
-  const std::unordered_map<NodeID, GcsNodeInfo> &GetAll() const override;
+  const std::unordered_map<NodeID, rpc::GcsNodeInfo> &GetAll() const override;
 
   bool IsRemoved(const NodeID &node_id) const override;
+
+  Status AsyncReportHeartbeat(const std::shared_ptr<rpc::HeartbeatTableData> &data_ptr,
+                              const StatusCallback &callback) override;
+
+  void AsyncResubscribe(bool is_pubsub_server_restarted) override;
+
+  Status AsyncSetInternalConfig(
+      std::unordered_map<std::string, std::string> &config) override;
+
+  Status AsyncGetInternalConfig(
+      const OptionalItemCallback<std::unordered_map<std::string, std::string>> &callback)
+      override;
+
+ private:
+  /// Save the subscribe operation in this function, so we can call it again when PubSub
+  /// server restarts from a failure.
+  SubscribeOperation subscribe_node_operation_;
+
+  /// Save the fetch data operation in this function, so we can call it again when GCS
+  /// server restarts from a failure.
+  FetchDataOperation fetch_node_data_operation_;
+
+  // Mutex to protect the cached_resource_usage_ field.
+  absl::Mutex mutex_;
+
+  /// Save the resource usage data, so we can resend it again when GCS server restarts
+  /// from a failure.
+  rpc::ReportResourceUsageRequest cached_resource_usage_ GUARDED_BY(mutex_);
+
+  void HandleNotification(const rpc::GcsNodeInfo &node_info);
+
+  ServiceBasedGcsClient *client_impl_;
+
+  using NodeChangeCallback =
+      std::function<void(const NodeID &id, const rpc::GcsNodeInfo &node_info)>;
+
+  rpc::GcsNodeInfo local_node_info_;
+  NodeID local_node_id_;
+
+  /// The callback to call when a new node is added or a node is removed.
+  NodeChangeCallback node_change_callback_{nullptr};
+
+  /// A cache for information about all nodes.
+  std::unordered_map<NodeID, rpc::GcsNodeInfo> node_cache_;
+  /// The set of removed nodes.
+  std::unordered_set<NodeID> removed_nodes_;
+};
+
+/// \class ServiceBasedNodeResourceInfoAccessor
+/// ServiceBasedNodeResourceInfoAccessor is an implementation of
+/// `NodeResourceInfoAccessor` that uses GCS Service as the backend.
+class ServiceBasedNodeResourceInfoAccessor : public NodeResourceInfoAccessor {
+ public:
+  explicit ServiceBasedNodeResourceInfoAccessor(ServiceBasedGcsClient *client_impl);
+
+  virtual ~ServiceBasedNodeResourceInfoAccessor() = default;
 
   Status AsyncGetResources(const NodeID &node_id,
                            const OptionalItemCallback<ResourceMap> &callback) override;
@@ -179,67 +232,39 @@ class ServiceBasedNodeInfoAccessor : public NodeInfoAccessor {
   Status AsyncSubscribeToResources(const ItemCallback<rpc::NodeResourceChange> &subscribe,
                                    const StatusCallback &done) override;
 
-  Status AsyncReportHeartbeat(const std::shared_ptr<rpc::HeartbeatTableData> &data_ptr,
-                              const StatusCallback &callback) override;
+  Status AsyncReportResourceUsage(const std::shared_ptr<rpc::ResourcesData> &data_ptr,
+                                  const StatusCallback &callback) override;
 
-  void AsyncReReportHeartbeat() override;
+  void AsyncReReportResourceUsage() override;
 
-  /// Fill resource fields with cached resources. Used by light heartbeat.
-  void FillHeartbeatRequest(rpc::ReportHeartbeatRequest &heartbeat);
+  /// Fill resource fields with cached resources. Used by light resource usage report.
+  void FillResourceUsageRequest(rpc::ReportResourceUsageRequest &resource_usage);
 
-  Status AsyncGetAllHeartbeat(
-      const ItemCallback<rpc::HeartbeatBatchTableData> &callback) override;
+  Status AsyncGetAllResourceUsage(
+      const ItemCallback<rpc::ResourceUsageBatchData> &callback) override;
 
-  Status AsyncSubscribeBatchHeartbeat(
-      const ItemCallback<rpc::HeartbeatBatchTableData> &subscribe,
+  Status AsyncSubscribeBatchedResourceUsage(
+      const ItemCallback<rpc::ResourceUsageBatchData> &subscribe,
       const StatusCallback &done) override;
 
   void AsyncResubscribe(bool is_pubsub_server_restarted) override;
 
-  Status AsyncSetInternalConfig(
-      std::unordered_map<std::string, std::string> &config) override;
-
-  Status AsyncGetInternalConfig(
-      const OptionalItemCallback<std::unordered_map<std::string, std::string>> &callback)
-      override;
-
  private:
-  /// Save the subscribe operation in this function, so we can call it again when PubSub
-  /// server restarts from a failure.
-  SubscribeOperation subscribe_node_operation_;
-  SubscribeOperation subscribe_resource_operation_;
-  SubscribeOperation subscribe_batch_heartbeat_operation_;
-
-  /// Save the fetch data operation in this function, so we can call it again when GCS
-  /// server restarts from a failure.
-  FetchDataOperation fetch_node_data_operation_;
-
-  // Mutex to protect the cached_heartbeat_ field.
+  // Mutex to protect the cached_resource_usage_ field.
   absl::Mutex mutex_;
 
-  /// Save the heartbeat data, so we can resend it again when GCS server restarts from a
-  /// failure.
-  rpc::ReportHeartbeatRequest cached_heartbeat_ GUARDED_BY(mutex_);
+  /// Save the resource usage data, so we can resend it again when GCS server restarts
+  /// from a failure.
+  rpc::ReportResourceUsageRequest cached_resource_usage_ GUARDED_BY(mutex_);
 
-  void HandleNotification(const GcsNodeInfo &node_info);
+  /// Save the subscribe operation in this function, so we can call it again when PubSub
+  /// server restarts from a failure.
+  SubscribeOperation subscribe_resource_operation_;
+  SubscribeOperation subscribe_batch_resource_usage_operation_;
 
   ServiceBasedGcsClient *client_impl_;
 
-  using NodeChangeCallback =
-      std::function<void(const NodeID &id, const GcsNodeInfo &node_info)>;
-
-  GcsNodeInfo local_node_info_;
-  NodeID local_node_id_;
-
   Sequencer<NodeID> sequencer_;
-
-  /// The callback to call when a new node is added or a node is removed.
-  NodeChangeCallback node_change_callback_{nullptr};
-
-  /// A cache for information about all nodes.
-  std::unordered_map<NodeID, GcsNodeInfo> node_cache_;
-  /// The set of removed nodes.
-  std::unordered_set<NodeID> removed_nodes_;
 };
 
 /// \class ServiceBasedTaskInfoAccessor
@@ -256,9 +281,6 @@ class ServiceBasedTaskInfoAccessor : public TaskInfoAccessor {
 
   Status AsyncGet(const TaskID &task_id,
                   const OptionalItemCallback<rpc::TaskTableData> &callback) override;
-
-  Status AsyncDelete(const std::vector<TaskID> &task_ids,
-                     const StatusCallback &callback) override;
 
   Status AsyncSubscribe(const TaskID &task_id,
                         const SubscribeCallback<TaskID, rpc::TaskTableData> &subscribe,
@@ -404,7 +426,7 @@ class ServiceBasedWorkerInfoAccessor : public WorkerInfoAccessor {
   virtual ~ServiceBasedWorkerInfoAccessor() = default;
 
   Status AsyncSubscribeToWorkerFailures(
-      const SubscribeCallback<WorkerID, rpc::WorkerTableData> &subscribe,
+      const ItemCallback<rpc::WorkerTableData> &subscribe,
       const StatusCallback &done) override;
 
   Status AsyncReportWorkerFailure(const std::shared_ptr<rpc::WorkerTableData> &data_ptr,
@@ -451,6 +473,9 @@ class ServiceBasedPlacementGroupInfoAccessor : public PlacementGroupInfoAccessor
 
   Status AsyncGetAll(
       const MultiItemCallback<rpc::PlacementGroupTableData> &callback) override;
+
+  Status AsyncWaitUntilReady(const PlacementGroupID &placement_group_id,
+                             const StatusCallback &callback) override;
 
  private:
   ServiceBasedGcsClient *client_impl_;

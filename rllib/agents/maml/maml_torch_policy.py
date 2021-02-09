@@ -2,8 +2,8 @@ import logging
 
 import ray
 from ray.rllib.evaluation.postprocessing import Postprocessing
+from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.torch_policy_template import build_torch_policy
 from ray.rllib.agents.ppo.ppo_tf_policy import postprocess_ppo_gae, \
     setup_config
 from ray.rllib.agents.ppo.ppo_torch_policy import vf_preds_fetches, \
@@ -347,8 +347,9 @@ def setup_mixins(policy, obs_space, action_space, config):
     KLCoeffMixin.__init__(policy, config)
 
 
-MAMLTorchPolicy = build_torch_policy(
+MAMLTorchPolicy = build_policy_class(
     name="MAMLTorchPolicy",
+    framework="torch",
     get_default_config=lambda: ray.rllib.agents.maml.maml.DEFAULT_CONFIG,
     loss_fn=maml_loss,
     stats_fn=maml_stats,

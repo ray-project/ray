@@ -1,5 +1,7 @@
 #!/usr/bin/env python
-"""This script allows you to develop RLlib without needing to compile Ray."""
+"""This script allows you to develop Ray Python code without needing to compile
+Ray.
+See https://docs.ray.io/en/master/development.html#building-ray-python-only"""
 
 import argparse
 import click
@@ -46,6 +48,9 @@ def do_link(package, force=False, local_path=None):
             print("You don't have write permission "
                   f"to {package_home}, using sudo:")
             sudo = ["sudo"]
+        print(
+            f"Creating symbolic link from \n {local_home} to \n {package_home}"
+        )
         subprocess.check_call(sudo + ["rm", "-rf", package_home])
         subprocess.check_call(sudo + ["ln", "-s", local_home, package_home])
 
@@ -61,12 +66,14 @@ if __name__ == "__main__":
     do_link("rllib", force=args.yes, local_path="../../../rllib")
     do_link("tune", force=args.yes)
     do_link("autoscaler", force=args.yes)
+    do_link("operator", force=args.yes)
     do_link("cloudpickle", force=args.yes)
     do_link("scripts", force=args.yes)
     do_link("internal", force=args.yes)
     do_link("tests", force=args.yes)
     do_link("experimental", force=args.yes)
     do_link("util", force=args.yes)
+    do_link("serve", force=args.yes)
     # Link package's `new_dashboard` directly to local (repo's) dashboard.
     # The repo's `new_dashboard` is a file, soft-linking to which will not work
     # on Mac.

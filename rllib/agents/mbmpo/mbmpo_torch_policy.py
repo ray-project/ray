@@ -13,7 +13,7 @@ from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
 from ray.rllib.policy.policy import Policy
-from ray.rllib.policy.torch_policy_template import build_torch_policy
+from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.typing import TrainerConfigDict
 
@@ -76,8 +76,9 @@ def make_model_and_action_dist(
 
 # Build a child class of `TorchPolicy`, given the custom functions defined
 # above.
-MBMPOTorchPolicy = build_torch_policy(
+MBMPOTorchPolicy = build_policy_class(
     name="MBMPOTorchPolicy",
+    framework="torch",
     get_default_config=lambda: ray.rllib.agents.mbmpo.mbmpo.DEFAULT_CONFIG,
     make_model_and_action_dist=make_model_and_action_dist,
     loss_fn=maml_loss,

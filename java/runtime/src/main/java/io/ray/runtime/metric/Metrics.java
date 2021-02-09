@@ -5,9 +5,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-/**
- * The entry of metrics for easy use.
- */
+/** The entry of metrics for easy use. */
 public final class Metrics {
 
   private static MetricRegistry metricRegistry;
@@ -113,7 +111,7 @@ public final class Metrics {
     /**
      * Creates a metric by sub-class.
      *
-     * @return a metric
+     * <p>Returns a metric
      */
     protected abstract M create();
 
@@ -126,10 +124,11 @@ public final class Metrics {
 
   private static Map<TagKey, String> generateTagKeysMap(Map<String, String> tags) {
     Map<TagKey, String> tagKeys = new HashMap<>(tags.size() * 2);
-    tags.forEach((key, value) -> {
-      TagKey tagKey = new TagKey(key);
-      tagKeys.put(tagKey, value);
-    });
+    tags.forEach(
+        (key, value) -> {
+          TagKey tagKey = new TagKey(key);
+          tagKeys.put(tagKey, value);
+        });
     return tagKeys;
   }
 
@@ -144,5 +143,4 @@ public final class Metrics {
       }
     }
   }
-
 }

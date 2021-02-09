@@ -38,6 +38,7 @@ tensorboardX
 uvicorn
 pydantic<1.7
 dataclasses; python_version < '3.7'
+starlette
 
 # Requirements for running tests
 blist; platform_system != "Windows"
@@ -57,6 +58,7 @@ numba
 # higher version of llvmlite breaks windows
 llvmlite==0.34.0
 openpyxl
+pexpect
 Pillow; platform_system != "Windows"
 pygments
 pytest==5.4.3

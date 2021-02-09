@@ -2,7 +2,7 @@
 name: Feature request/Question
 about: For feature requests or questions, post on https://discuss.ray.io/ instead!
 title: ''
-labels: enhancement, triage
+labels: enhancement
 assignees: ''
 
 ---

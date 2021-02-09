@@ -28,7 +28,9 @@ GcsActorScheduler::GcsActorScheduler(
     std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
     std::function<void(std::shared_ptr<GcsActor>)> schedule_failure_handler,
     std::function<void(std::shared_ptr<GcsActor>)> schedule_success_handler,
-    LeaseClientFactoryFn lease_client_factory, rpc::ClientFactoryFn client_factory)
+    std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool,
+    std::shared_ptr<GcsActorScheduleStrategyInterface> actor_schedule_strategy,
+    rpc::ClientFactoryFn client_factory)
     : io_context_(io_context),
       gcs_actor_table_(gcs_actor_table),
       gcs_node_manager_(gcs_node_manager),
@@ -36,7 +38,8 @@ GcsActorScheduler::GcsActorScheduler(
       schedule_failure_handler_(std::move(schedule_failure_handler)),
       schedule_success_handler_(std::move(schedule_success_handler)),
       report_worker_backlog_(RayConfig::instance().report_worker_backlog()),
-      lease_client_factory_(std::move(lease_client_factory)),
+      raylet_client_pool_(raylet_client_pool),
+      actor_schedule_strategy_(actor_schedule_strategy),
       core_worker_clients_(client_factory) {
   RAY_CHECK(schedule_failure_handler_ != nullptr && schedule_success_handler_ != nullptr);
 }
@@ -45,7 +48,8 @@ void GcsActorScheduler::Schedule(std::shared_ptr<GcsActor> actor) {
   RAY_CHECK(actor->GetNodeID().IsNil() && actor->GetWorkerID().IsNil());
 
   // Select a node to lease worker for the actor.
-  auto node = SelectNodeRandomly();
+  const auto &node = actor_schedule_strategy_->Schedule(actor);
+
   if (node == nullptr) {
     // There are no available nodes to schedule the actor, so just trigger the failed
     // handler.
@@ -118,10 +122,7 @@ std::vector<ActorID> GcsActorScheduler::CancelOnNode(const NodeID &node_id) {
     }
   }
 
-  // Remove the related remote lease client from remote_lease_clients_.
-  // There is no need to check in this place, because it is possible that there are no
-  // workers leased on this node.
-  remote_lease_clients_.erase(node_id);
+  raylet_client_pool_->Disconnect(node_id);
 
   return actor_ids;
 }
@@ -286,7 +287,7 @@ void GcsActorScheduler::HandleWorkerLeasedReply(
     // node, and then try again on the new node.
     RAY_CHECK(!retry_at_raylet_address.raylet_id().empty());
     auto spill_back_node_id = NodeID::FromBinary(retry_at_raylet_address.raylet_id());
-    auto maybe_spill_back_node = gcs_node_manager_.GetNode(spill_back_node_id);
+    auto maybe_spill_back_node = gcs_node_manager_.GetAliveNode(spill_back_node_id);
     if (maybe_spill_back_node.has_value()) {
       auto spill_back_node = maybe_spill_back_node.value();
       actor->UpdateAddress(retry_at_raylet_address);
@@ -314,6 +315,7 @@ void GcsActorScheduler::HandleWorkerLeasedReply(
                   .emplace(leased_worker->GetWorkerID(), leased_worker)
                   .second);
     actor->UpdateAddress(leased_worker->GetAddress());
+    actor->GetMutableActorTableData()->set_pid(reply.worker_pid());
     // Make sure to connect to the client before persisting actor info to GCS.
     // Without this, there could be a possible race condition. Related issues:
     // https://github.com/ray-project/ray/pull/9215/files#r449469320
@@ -423,13 +425,7 @@ std::shared_ptr<rpc::GcsNodeInfo> GcsActorScheduler::SelectNodeRandomly() const 
 
 std::shared_ptr<WorkerLeaseInterface> GcsActorScheduler::GetOrConnectLeaseClient(
     const rpc::Address &raylet_address) {
-  auto node_id = NodeID::FromBinary(raylet_address.raylet_id());
-  auto iter = remote_lease_clients_.find(node_id);
-  if (iter == remote_lease_clients_.end()) {
-    auto lease_client = lease_client_factory_(raylet_address);
-    iter = remote_lease_clients_.emplace(node_id, std::move(lease_client)).first;
-  }
-  return iter->second;
+  return raylet_client_pool_->GetOrConnectByAddress(raylet_address);
 }
 
 }  // namespace gcs

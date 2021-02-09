@@ -43,7 +43,7 @@ worker_nodes:
         #     MaxPrice: "9.0"
 
 setup_commands:
-    - ray || pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-1.1.0.dev0-cp36-cp36m-manylinux2014_x86_64.whl
+    - ray || pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-1.2.0.dev0-cp36-cp36m-manylinux2014_x86_64.whl
     - pip install -U ipdb ray[rllib] torch torchvision
     # Install apex.
     # - rm -rf apex || true

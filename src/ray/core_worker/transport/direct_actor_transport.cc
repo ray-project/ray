@@ -162,9 +162,9 @@ void CoreWorkerDirectActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
   // TODO(swang): This assumes that all replies from the previous incarnation
   // of the actor have been received. Fix this by setting an epoch for each
   // actor task, so we can ignore completed tasks from old epochs.
-  RAY_LOG(INFO) << "Resetting caller starts at for actor " << actor_id << " from "
-                << queue->second.caller_starts_at << " to "
-                << queue->second.next_task_reply_position;
+  RAY_LOG(DEBUG) << "Resetting caller starts at for actor " << actor_id << " from "
+                 << queue->second.caller_starts_at << " to "
+                 << queue->second.next_task_reply_position;
   queue->second.caller_starts_at = queue->second.next_task_reply_position;
 
   ResendOutOfOrderTasks(actor_id);

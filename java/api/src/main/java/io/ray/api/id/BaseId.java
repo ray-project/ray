@@ -11,34 +11,30 @@ public abstract class BaseId implements Serializable {
   private int hashCodeCache = 0;
   private Boolean isNilCache = null;
 
-  /**
-   * Create a BaseId instance according to the input byte array.
-   */
+  /** Create a BaseId instance according to the input byte array. */
   protected BaseId(byte[] id) {
     if (id.length != size()) {
-      throw new IllegalArgumentException("Failed to construct BaseId, expect " + size()
-              + " bytes, but got " + id.length + " bytes.");
+      throw new IllegalArgumentException(
+          "Failed to construct BaseId, expect "
+              + size()
+              + " bytes, but got "
+              + id.length
+              + " bytes.");
     }
     this.id = id;
   }
 
-  /**
-   * Get the byte data of this id.
-   */
+  /** Get the byte data of this id. */
   public byte[] getBytes() {
     return id;
   }
 
-  /**
-   * Convert the byte data to a ByteBuffer.
-   */
+  /** Convert the byte data to a ByteBuffer. */
   public ByteBuffer toByteBuffer() {
     return ByteBuffer.wrap(id);
   }
 
-  /**
-   * @return True if this id is nil.
-   */
+  /** Returns true if this id is nil. */
   public boolean isNil() {
     if (isNilCache == null) {
       boolean localIsNil = true;
@@ -55,7 +51,8 @@ public abstract class BaseId implements Serializable {
 
   /**
    * Derived class should implement this function.
-   * @return The length of this id in bytes.
+   *
+   * <p>Returns The length of this id in bytes.
    */
   public abstract int size();
 
@@ -96,5 +93,4 @@ public abstract class BaseId implements Serializable {
     bb.get(id);
     return id;
   }
-
 }

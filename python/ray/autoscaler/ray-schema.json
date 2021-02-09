@@ -20,7 +20,7 @@
     "additionalProperties": false,
 	"properties": {
         "cluster_name": {
-            "description": "An unique identifier for the head node and workers of this cluster.",
+            "description": "A unique identifier for the head node and workers of this cluster.",
             "type": "string"
         },
         "min_workers": {

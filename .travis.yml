@@ -7,6 +7,10 @@ git:
   depth: false  # Shallow clones can prevent diff against base branch
   quiet: true
 
+branches:
+  except:
+    - /dependabot.*/
+
 before_install:
   - unset -f cd  # Travis defines this on Mac for RVM, but it breaks the Mac build
   - |
@@ -20,50 +24,6 @@ before_install:
 
 matrix:
   include:
-    - os: linux
-      env:
-        - PYTHON=3.6 SMALL_AND_LARGE_TESTS=1 RAY_ENABLE_NEW_SCHEDULER=1
-        - PYTHONWARNINGS=ignore
-        - RAY_DEFAULT_BUILD=1
-        - RAY_CYTHON_EXAMPLES=1
-        - RAY_USE_RANDOM_PORTS=1
-      install:
-        - . ./ci/travis/ci.sh init RAY_CI_SERVE_AFFECTED,RAY_CI_TUNE_AFFECTED,RAY_CI_PYTHON_AFFECTED,RAY_CI_DASHBOARD_AFFECTED
-      before_script:
-        - . ./ci/travis/ci.sh build
-      script:
-      # bazel python tests. This should be run last to keep its logs at the end of travis logs.
-      - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then ./ci/keep_alive bazel test --config=ci $(./scripts/bazel_export_options) --test_tag_filters=-jenkins_only,-medium_size_python_tests_a_to_j,-medium_size_python_tests_k_to_z,-new_scheduler_broken python/ray/tests/...; fi
-
-    - os: linux
-      env:
-        - PYTHON=3.6 MEDIUM_TESTS_A_TO_J=1 RAY_ENABLE_NEW_SCHEDULER=1
-        - PYTHONWARNINGS=ignore
-        - RAY_DEFAULT_BUILD=1
-        - RAY_CYTHON_EXAMPLES=1
-        - RAY_USE_RANDOM_PORTS=1
-      install:
-        - . ./ci/travis/ci.sh init RAY_CI_SERVE_AFFECTED,RAY_CI_TUNE_AFFECTED,RAY_CI_PYTHON_AFFECTED,RAY_CI_DASHBOARD_AFFECTED
-      before_script:
-        - . ./ci/travis/ci.sh build
-      script:
-        # bazel python tests for medium size tests. Used for parallelization.
-        - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then ./ci/keep_alive bazel test --config=ci $(./scripts/bazel_export_options) --test_tag_filters=-jenkins_only,medium_size_python_tests_a_to_j,-new_scheduler_broken python/ray/tests/...; fi
-
-    - os: linux
-      env:
-        - PYTHON=3.6 MEDIUM_TESTS_K_TO_Z=1 RAY_ENABLE_NEW_SCHEDULER=1
-        - PYTHONWARNINGS=ignore
-        - RAY_DEFAULT_BUILD=1
-        - RAY_CYTHON_EXAMPLES=1
-        - RAY_USE_RANDOM_PORTS=1
-      install:
-        - . ./ci/travis/ci.sh init RAY_CI_SERVE_AFFECTED,RAY_CI_TUNE_AFFECTED,RAY_CI_PYTHON_AFFECTED,RAY_CI_DASHBOARD_AFFECTED
-      before_script:
-        - . ./ci/travis/ci.sh build
-      script:
-        # bazel python tests for medium size tests. Used for parallelization.
-        - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then ./ci/keep_alive bazel test --config=ci $(./scripts/bazel_export_options) --test_tag_filters=-jenkins_only,medium_size_python_tests_k_to_z,-new_scheduler_broken python/ray/tests/...; fi
     - os: linux
       env:
         - PYTHON=3.6 SMALL_AND_LARGE_TESTS=1
@@ -89,7 +49,8 @@ matrix:
         - . ./ci/travis/ci.sh build
       script:
         # bazel python tests for medium size tests. Used for parallelization.
-        - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then ./ci/keep_alive bazel test --config=ci $(./scripts/bazel_export_options) --test_tag_filters=-jenkins_only,medium_size_python_tests_a_to_j python/ray/tests/...; fi
+        - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then ./ci/keep_alive bazel test --config=ci $(./scripts/bazel_export_options) --test_tag_filters=-kubernetes,-jenkins_only,medium_size_python_tests_a_to_j python/ray/tests/...; fi
+        - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then ./ci/keep_alive bazel test --config=ci $(./scripts/bazel_export_options) --test_tag_filters=-kubernetes,-jenkins_only,client_tests --test_env=RAY_CLIENT_MODE=1 python/ray/tests/...; fi
 
     - os: linux
       env:
@@ -104,7 +65,7 @@ matrix:
         - . ./ci/travis/ci.sh build
       script:
         # bazel python tests for medium size tests. Used for parallelization.
-        - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then ./ci/keep_alive bazel test --config=ci $(./scripts/bazel_export_options) --test_tag_filters=-jenkins_only,medium_size_python_tests_k_to_z python/ray/tests/...; fi
+        - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then ./ci/keep_alive bazel test --config=ci $(./scripts/bazel_export_options) --test_tag_filters=-kubernetes,-jenkins_only,medium_size_python_tests_k_to_z python/ray/tests/...; fi
 
     - os: linux
       env:
@@ -146,7 +107,7 @@ matrix:
         - . ./ci/travis/ci.sh build
       script:
         # bazel python tests for medium size tests. Used for parallelization.
-        - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then ./ci/keep_alive bazel test --config=ci $(./scripts/bazel_export_options) --test_tag_filters=-jenkins_only,medium_size_python_tests_a_to_j python/ray/tests/...; fi
+        - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then ./ci/keep_alive bazel test --config=ci $(./scripts/bazel_export_options) --test_tag_filters=-kubernetes,-jenkins_only,medium_size_python_tests_a_to_j python/ray/tests/...; fi
 
     - os: osx
       osx_image: xcode7
@@ -162,7 +123,7 @@ matrix:
         - . ./ci/travis/ci.sh build
       script:
         # bazel python tests for medium size tests. Used for parallelization.
-        - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then ./ci/keep_alive bazel test --config=ci $(./scripts/bazel_export_options) --test_tag_filters=-jenkins_only,medium_size_python_tests_k_to_z python/ray/tests/...; fi
+        - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then ./ci/keep_alive bazel test --config=ci $(./scripts/bazel_export_options) --test_tag_filters=-kubernetes,-jenkins_only,medium_size_python_tests_k_to_z python/ray/tests/...; fi
 
     - os: linux
       env:
@@ -184,6 +145,7 @@ matrix:
         - RAY_INSTALL_JAVA=1
         - PYTHON=3.6 PYTHONWARNINGS=ignore
         - RAY_USE_RANDOM_PORTS=1
+        - RAY_ENABLE_NEW_SCHEDULER=0
       language: java
       jdk: openjdk8
       install:
@@ -193,8 +155,9 @@ matrix:
       script:
         # Streaming cpp test.
         - if [ $RAY_CI_STREAMING_CPP_AFFECTED == "1" ]; then bazel test --config=ci $(./scripts/bazel_export_options) --test_output=all //streaming:all && bash streaming/src/test/run_streaming_queue_test.sh; fi
-        - if [ $RAY_CI_STREAMING_PYTHON_AFFECTED == "1" ]; then python -m pytest -v --durations=5 --timeout=300 streaming/python/tests/; fi
-        - if [ $RAY_CI_STREAMING_JAVA_AFFECTED == "1" ]; then ./streaming/java/test.sh; fi
+        # BROKEN
+        # - if [ $RAY_CI_STREAMING_PYTHON_AFFECTED == "1" ]; then python -m pytest -v --durations=5 --timeout=300 streaming/python/tests/; fi
+        # - if [ $RAY_CI_STREAMING_JAVA_AFFECTED == "1" ]; then ./streaming/java/test.sh; fi
 
     - os: linux
       env:
@@ -219,7 +182,7 @@ matrix:
         - . ./ci/travis/ci.sh init RAY_CI_MACOS_WHEELS_AFFECTED,RAY_CI_JAVA_AFFECTED,RAY_CI_STREAMING_JAVA_AFFECTED
       before_script:
         - brew tap adoptopenjdk/openjdk
-        - brew cask install adoptopenjdk8
+        - brew install --cask adoptopenjdk8
         - export JAVA_HOME=/Library/Java/JavaVirtualMachines/adoptopenjdk-8.jdk/Contents/Home
         - java -version
         - . ./ci/travis/ci.sh build
@@ -399,9 +362,6 @@ matrix:
       env:
         - TUNE_TESTING=1
         - PYTHON=3.6
-        - TF_VERSION=2.2.0
-        - TFP_VERSION=0.8
-        - TORCH_VERSION=1.6
         - PYTHONWARNINGS=ignore
       install:
         - . ./ci/travis/ci.sh init RAY_CI_TUNE_AFFECTED
@@ -419,9 +379,6 @@ matrix:
       env:
         - SGD_TESTING=1
         - PYTHON=3.6
-        - TF_VERSION=2.1.0
-        - TFP_VERSION=0.8
-        - TORCH_VERSION=1.5
         - PYTHONWARNINGS=ignore
       install:
         - . ./ci/travis/ci.sh init RAY_CI_SGD_AFFECTED
@@ -432,16 +389,13 @@ matrix:
         # - ./ci/keep_alive bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=-tf,-pytorch,-py37 python/ray/util/sgd/...
         - ./ci/keep_alive bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=tf,-pytorch,-py37 python/ray/util/sgd/...
         - ./ci/keep_alive bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=-tf,pytorch,-py37 python/ray/util/sgd/...
-        - ./ci/keep_alive bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only python/ray/util/xgboost/...
+        # - ./ci/keep_alive bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only python/ray/util/xgboost/...
 
     # Docs: Tests and examples.
     - os: linux
       env:
         - DOC_TESTING=1
         - PYTHON=3.6
-        - TF_VERSION=2.1.0
-        - TFP_VERSION=0.8
-        - TORCH_VERSION=1.5
         - PYTHONWARNINGS=ignore
       install:
         - . ./ci/travis/ci.sh init RAY_CI_PYTHON_AFFECTED,RAY_CI_TUNE_AFFECTED,RAY_CI_DOC_AFFECTED
@@ -457,9 +411,6 @@ matrix:
       env:
         - PYTHON=3.7 TUNE_TESTING=1
         - INSTALL_HOROVOD=1
-        - TF_VERSION=2.1.0
-        - TFP_VERSION=0.8
-        - TORCH_VERSION=1.5
         - PYTHONWARNINGS=ignore
       install:
         - . ./ci/travis/ci.sh init RAY_CI_TUNE_AFFECTED,RAY_CI_SGD_AFFECTED
@@ -497,7 +448,7 @@ script:
   - if [ "$RAY_CI_DASHBOARD_AFFECTED" == "1" ]; then ./ci/keep_alive bazel test python/ray/new_dashboard/...; fi
 
   # bazel python tests. This should be run last to keep its logs at the end of travis logs.
-  - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then ./ci/keep_alive bazel test --config=ci $(./scripts/bazel_export_options) --test_tag_filters=-jenkins_only,-medium_size_python_tests_a_to_j,-medium_size_python_tests_k_to_z python/ray/tests/...; fi
+  - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then ./ci/keep_alive bazel test --config=ci $(./scripts/bazel_export_options) --test_tag_filters=-kubernetes,-jenkins_only,-medium_size_python_tests_a_to_j,-medium_size_python_tests_k_to_z python/ray/tests/...; fi
   # NO MORE TESTS BELOW, keep them above.
 
 after_script:
@@ -577,4 +528,3 @@ deploy:
       repo: ray-project/ray
       branch: master
       condition: $MULTIPLATFORM_JARS = 1 || $MAC_JARS = 1 || $LINUX_JARS = 1
-

@@ -180,14 +180,18 @@ VERBOSE_TRIAL_DETAIL = """+-------------------+----------+-------+----------+
 VERBOSE_CMD = """from ray import tune
 import random
 import numpy as np
+import time
 
 
 def train(config):
     if config["do"] == "complete":
+        time.sleep(0.1)
         tune.report(acc=5, done=True)
     elif config["do"] == "once":
+        time.sleep(0.5)
         tune.report(6)
     else:
+        time.sleep(1.0)
         tune.report(acc=7)
         tune.report(acc=8)
 

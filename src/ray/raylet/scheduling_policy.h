@@ -50,17 +50,6 @@ class SchedulingPolicy {
       std::unordered_map<NodeID, SchedulingResources> &cluster_resources,
       const NodeID &local_node_id);
 
-  /// \param cluster_resources: a set of cluster resources containing resource and load
-  /// information for some subset of the cluster.
-  /// \param local_node_id The ID of the node manager that owns this
-  /// SchedulingPolicy object.
-  /// \param bundle_spec the description of a bundle which include the resource the bundle
-  /// need. \return If this bundle can be scheduled in this node, return true; else return
-  /// false.
-  bool ScheduleBundle(std::unordered_map<NodeID, SchedulingResources> &cluster_resources,
-                      const NodeID &local_node_id,
-                      const ray::BundleSpecification &bundle_spec);
-
   /// \brief Given a set of cluster resources, try to spillover infeasible tasks.
   ///
   /// \param node_resources The resource information for a node. This may be

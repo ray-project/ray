@@ -200,6 +200,9 @@ message TaskSpec {
   // the receiver will not execute the task. This field is used by async actors
   // to guarantee task submission order after restart.
   bool skip_execution = 22;
+  // Breakpoint if this task should drop into the debugger when it starts executing
+  // and "" if the task should not drop into the debugger.
+  bytes debugger_breakpoint = 23;
 }
 
 message Bundle {
@@ -255,24 +258,29 @@ message TaskArg {
 message ActorCreationTaskSpec {
   // ID of the actor that will be created by this task.
   bytes actor_id = 2;
-  // The max number of times this actor should be recontructed.
+  // The max number of times this actor should be restarted.
   // If this number is 0 the actor won't be restarted.
   // If this number is -1 the actor will be restarted indefinitely.
   int64 max_actor_restarts = 3;
+  // The max number of times tasks submitted on this actor should be retried
+  // if the actor fails and is restarted.
+  // If this number is 0 the tasks won't be resubmitted.
+  // If this number is -1 the tasks will be resubmitted indefinitely.
+  int64 max_task_retries = 4;
   // The dynamic options used in the worker command when starting a worker process for
   // an actor creation task. If the list isn't empty, the options will be used to replace
   // the placeholder string `RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER` in the worker command.
-  repeated string dynamic_worker_options = 4;
+  repeated string dynamic_worker_options = 5;
   // The max number of concurrent calls for direct call actors.
-  int32 max_concurrency = 5;
+  int32 max_concurrency = 6;
   // Whether the actor is persistent.
-  bool is_detached = 6;
+  bool is_detached = 7;
   // Globally-unique name of the actor. Should only be populated when is_detached is true.
-  string name = 7;
+  string name = 8;
   // Whether the actor use async actor calls.
-  bool is_asyncio = 8;
+  bool is_asyncio = 9;
   // Field used for storing application-level extensions to the actor definition.
-  string extension_data = 9;
+  string extension_data = 10;
 }
 
 // Task spec of an actor task.

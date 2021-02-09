@@ -14,14 +14,12 @@ import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/**
- * Object store methods for local mode.
- */
+/** Object store methods for local mode. */
 public class LocalModeObjectStore extends ObjectStore {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(LocalModeObjectStore.class);
 
-  private static final int GET_CHECK_INTERVAL_MS = 100;
+  private static final int GET_CHECK_INTERVAL_MS = 1;
 
   private final Map<ObjectId, NativeRayObject> pool = new ConcurrentHashMap<>();
   private final List<Consumer<ObjectId>> objectPutCallbacks = new ArrayList<>();
@@ -93,19 +91,17 @@ public class LocalModeObjectStore extends ObjectStore {
   }
 
   @Override
-  public void delete(List<ObjectId> objectIds, boolean localOnly, boolean deleteCreatingTasks) {
+  public void delete(List<ObjectId> objectIds, boolean localOnly) {
     for (ObjectId objectId : objectIds) {
       pool.remove(objectId);
     }
   }
 
   @Override
-  public void addLocalReference(UniqueId workerId, ObjectId objectId) {
-  }
+  public void addLocalReference(UniqueId workerId, ObjectId objectId) {}
 
   @Override
-  public void removeLocalReference(UniqueId workerId, ObjectId objectId) {
-  }
+  public void removeLocalReference(UniqueId workerId, ObjectId objectId) {}
 
   @Override
   public Address getOwnerAddress(ObjectId id) {
@@ -119,6 +115,5 @@ public class LocalModeObjectStore extends ObjectStore {
 
   @Override
   public void registerOwnershipInfoAndResolveFuture(
-      ObjectId objectId, ObjectId outerObjectId, byte[] ownerAddress) {
-  }
+      ObjectId objectId, ObjectId outerObjectId, byte[] ownerAddress) {}
 }

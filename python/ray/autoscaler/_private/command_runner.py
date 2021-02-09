@@ -29,14 +29,14 @@ from ray.autoscaler._private.subprocess_output_util import (
 from ray.autoscaler._private.cli_logger import cli_logger, cf
 from ray.util.debug import log_once
 
-from ray.autoscaler._private.constants import RAY_HOME
-
 logger = logging.getLogger(__name__)
 
 # How long to wait for a node to start, in seconds
 HASH_MAX_LENGTH = 10
 KUBECTL_RSYNC = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "kubernetes/kubectl-rsync.sh")
+MAX_HOME_RETRIES = 3
+HOME_RETRY_DELAY_S = 5
 
 _config = {"use_login_shells": True, "silent_rsync": True}
 
@@ -114,6 +114,7 @@ class KubernetesCommandRunner(CommandRunnerInterface):
         self.node_id = str(node_id)
         self.namespace = namespace
         self.kubectl = ["kubectl", "-n", self.namespace]
+        self._home_cached = None
 
     def run(
             self,
@@ -195,7 +196,7 @@ class KubernetesCommandRunner(CommandRunnerInterface):
                 logger.warning("'rsync_filter' detected but is currently "
                                "unsupported for k8s.")
         if target.startswith("~"):
-            target = RAY_HOME + target[1:]
+            target = self._home + target[1:]
 
         try:
             flags = "-aqz" if is_rsync_silent() else "-avz"
@@ -211,7 +212,7 @@ class KubernetesCommandRunner(CommandRunnerInterface):
                 "rsync failed: '{}'. Falling back to 'kubectl cp'".format(e),
                 UserWarning)
             if target.startswith("~"):
-                target = RAY_HOME + target[1:]
+                target = self._home + target[1:]
 
             self.process_runner.check_call(self.kubectl + [
                 "cp", source, "{}/{}:{}".format(self.namespace, self.node_id,
@@ -219,8 +220,8 @@ class KubernetesCommandRunner(CommandRunnerInterface):
             ])
 
     def run_rsync_down(self, source, target, options=None):
-        if target.startswith("~"):
-            target = RAY_HOME + target[1:]
+        if source.startswith("~"):
+            source = self._home + source[1:]
 
         try:
             flags = "-aqz" if is_rsync_silent() else "-avz"
@@ -236,7 +237,7 @@ class KubernetesCommandRunner(CommandRunnerInterface):
                 "rsync failed: '{}'. Falling back to 'kubectl cp'".format(e),
                 UserWarning)
             if target.startswith("~"):
-                target = RAY_HOME + target[1:]
+                target = self._home + target[1:]
 
             self.process_runner.check_call(self.kubectl + [
                 "cp", "{}/{}:{}".format(self.namespace, self.node_id, source),
@@ -244,8 +245,36 @@ class KubernetesCommandRunner(CommandRunnerInterface):
             ])
 
     def remote_shell_command_str(self):
-        return "{} exec -it {} bash".format(" ".join(self.kubectl),
-                                            self.node_id)
+        return "{} exec -it {} -- bash".format(" ".join(self.kubectl),
+                                               self.node_id)
+
+    @property
+    def _home(self):
+        if self._home_cached is not None:
+            return self._home_cached
+        for _ in range(MAX_HOME_RETRIES - 1):
+            try:
+                self._home_cached = self._try_to_get_home()
+                return self._home_cached
+            except Exception:
+                # TODO (Dmitri): Identify the exception we're trying to avoid.
+                logger.info("Error reading container's home directory. "
+                            f"Retrying in {HOME_RETRY_DELAY_S} seconds.")
+                time.sleep(HOME_RETRY_DELAY_S)
+        # Last try
+        self._home_cached = self._try_to_get_home()
+        return self._home_cached
+
+    def _try_to_get_home(self):
+        # TODO (Dmitri): Think about how to use the node's HOME variable
+        # without making an extra kubectl exec call.
+        cmd = self.kubectl + [
+            "exec", "-it", self.node_id, "--", "printenv", "HOME"
+        ]
+        joined_cmd = " ".join(cmd)
+        raw_out = self.process_runner.check_output(joined_cmd, shell=True)
+        home = raw_out.decode().strip("\n\r")
+        return home
 
 
 class SSHOptions:
@@ -689,21 +718,67 @@ class DockerCommandRunner(CommandRunnerInterface):
 
         return string
 
-    def run_init(self, *, as_head, file_mounts):
+    def _check_if_container_restart_is_needed(
+            self, image: str, cleaned_bind_mounts: Dict[str, str]) -> bool:
+        re_init_required = False
+        running_image = self.run(
+            check_docker_image(self.container_name),
+            with_output=True,
+            run_env="host").decode("utf-8").strip()
+        if running_image != image:
+            cli_logger.error(
+                "A container with name {} is running image {} instead " +
+                "of {} (which was provided in the YAML)", self.container_name,
+                running_image, image)
+        mounts = self.run(
+            check_bind_mounts_cmd(self.container_name),
+            with_output=True,
+            run_env="host").decode("utf-8").strip()
+        try:
+            active_mounts = json.loads(mounts)
+            active_remote_mounts = {
+                mnt["Destination"].strip("/")
+                for mnt in active_mounts
+            }
+            # Ignore ray bootstrap files.
+            requested_remote_mounts = {
+                self._docker_expand_user(remote).strip("/")
+                for remote in cleaned_bind_mounts.keys()
+            }
+            unfulfilled_mounts = (
+                requested_remote_mounts - active_remote_mounts)
+            if unfulfilled_mounts:
+                re_init_required = True
+                cli_logger.warning(
+                    "This Docker Container is already running. "
+                    "Restarting the Docker container on "
+                    "this node to pick up the following file_mounts {}",
+                    unfulfilled_mounts)
+        except json.JSONDecodeError:
+            cli_logger.verbose(
+                "Unable to check if file_mounts specified in the YAML "
+                "differ from those on the running container.")
+        return re_init_required
+
+    def run_init(self, *, as_head, file_mounts, sync_run_yet):
         BOOTSTRAP_MOUNTS = [
             "~/ray_bootstrap_config.yaml", "~/ray_bootstrap_key.pem"
         ]
 
-        image = self.docker_config.get("image")
-        image = self.docker_config.get(
-            f"{'head' if as_head else 'worker'}_image", image)
+        specific_image = self.docker_config.get(
+            f"{'head' if as_head else 'worker'}_image",
+            self.docker_config.get("image"))
 
         self._check_docker_installed()
         if self.docker_config.get("pull_before_run", True):
-            assert image, "Image must be included in config if " + \
+            assert specific_image, "Image must be included in config if " + \
                 "pull_before_run is specified"
+            self.run("docker pull {}".format(specific_image), run_env="host")
+        else:
 
-            self.run("docker pull {}".format(image), run_env="host")
+            self.run(
+                f"docker image inspect {specific_image} 1> /dev/null  2>&1 || "
+                f"docker pull {specific_image}")
 
         # Bootstrap files cannot be bind mounted because docker opens the
         # underlying inode. When the file is switched, docker becomes outdated.
@@ -711,10 +786,20 @@ class DockerCommandRunner(CommandRunnerInterface):
         for mnt in BOOTSTRAP_MOUNTS:
             cleaned_bind_mounts.pop(mnt, None)
 
-        if not self._check_container_status():
+        docker_run_executed = False
+
+        container_running = self._check_container_status()
+        requires_re_init = False
+        if container_running:
+            requires_re_init = self._check_if_container_restart_is_needed(
+                specific_image, cleaned_bind_mounts)
+            if requires_re_init:
+                self.run(f"docker stop {self.container_name}", run_env="host")
+
+        if (not container_running) or requires_re_init:
             # Get home directory
             image_env = self.ssh_command_runner.run(
-                "docker inspect -f '{{json .Config.Env}}' " + image,
+                "docker inspect -f '{{json .Config.Env}}' " + specific_image,
                 with_output=True).decode().strip()
             home_directory = "/root"
             for env_var in json.loads(image_env):
@@ -723,47 +808,24 @@ class DockerCommandRunner(CommandRunnerInterface):
                     break
 
             start_command = docker_start_cmds(
-                self.ssh_command_runner.ssh_user, image, cleaned_bind_mounts,
-                self.container_name,
+                self.ssh_command_runner.ssh_user, specific_image,
+                cleaned_bind_mounts, self.container_name,
                 self.docker_config.get(
                     "run_options", []) + self.docker_config.get(
                         f"{'head' if as_head else 'worker'}_run_options", []) +
                 self._configure_runtime() + self._auto_configure_shm(),
                 self.ssh_command_runner.cluster_name, home_directory)
             self.run(start_command, run_env="host")
-        else:
-            running_image = self.run(
-                check_docker_image(self.container_name),
-                with_output=True,
-                run_env="host").decode("utf-8").strip()
-            if running_image != image:
-                logger.error(f"A container with name {self.container_name} " +
-                             f"is running image {running_image} instead " +
-                             f"of {image} (which was provided in the YAML")
-            mounts = self.run(
-                check_bind_mounts_cmd(self.container_name),
-                with_output=True,
-                run_env="host").decode("utf-8").strip()
-            try:
-                active_mounts = json.loads(mounts)
-                active_remote_mounts = [
-                    mnt["Destination"] for mnt in active_mounts
-                ]
-                # Ignore ray bootstrap files.
-                for remote, local in cleaned_bind_mounts.items():
-                    remote = self._docker_expand_user(remote)
-                    if remote not in active_remote_mounts:
-                        cli_logger.error(
-                            "Please ray stop & restart cluster to "
-                            f"allow mount {remote}:{local} to take hold")
-            except json.JSONDecodeError:
-                cli_logger.verbose(
-                    "Unable to check if file_mounts specified in the YAML "
-                    "differ from those on the running container.")
+            docker_run_executed = True
 
         # Explicitly copy in ray bootstrap files.
         for mount in BOOTSTRAP_MOUNTS:
             if mount in file_mounts:
+                if not sync_run_yet:
+                    # NOTE(ilr) This rsync is needed because when starting from
+                    #  a stopped instance,  /tmp may be deleted and `run_init`
+                    # is called before the first `file_sync` happens
+                    self.run_rsync_up(file_mounts[mount], mount)
                 self.ssh_command_runner.run(
                     "docker cp {src} {container}:{dst}".format(
                         src=os.path.join(
@@ -772,6 +834,7 @@ class DockerCommandRunner(CommandRunnerInterface):
                         container=self.container_name,
                         dst=self._docker_expand_user(mount)))
         self.initialized = True
+        return docker_run_executed
 
     def _configure_runtime(self):
         if self.docker_config.get("disable_automatic_runtime_detection"):

@@ -6,10 +6,10 @@ import ray
 from ray.rllib.agents.a3c.a3c_torch_policy import apply_grad_clipping
 import ray.rllib.agents.impala.vtrace_torch as vtrace
 from ray.rllib.models.torch.torch_action_dist import TorchCategorical
+from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy import LearningRateSchedule, \
     EntropyCoeffSchedule
-from ray.rllib.policy.torch_policy_template import build_torch_policy
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.torch_ops import explained_variance, global_norm, \
     sequence_mask
@@ -246,7 +246,7 @@ def choose_optimizer(policy, config):
         return torch.optim.Adam(
             params=policy.model.parameters(), lr=policy.cur_lr)
     else:
-        return torch.optim.RMSProp(
+        return torch.optim.RMSprop(
             params=policy.model.parameters(),
             lr=policy.cur_lr,
             weight_decay=config["decay"],
@@ -260,8 +260,9 @@ def setup_mixins(policy, obs_space, action_space, config):
     LearningRateSchedule.__init__(policy, config["lr"], config["lr_schedule"])
 
 
-VTraceTorchPolicy = build_torch_policy(
+VTraceTorchPolicy = build_policy_class(
     name="VTraceTorchPolicy",
+    framework="torch",
     loss_fn=build_vtrace_loss,
     get_default_config=lambda: ray.rllib.agents.impala.impala.DEFAULT_CONFIG,
     stats_fn=stats,

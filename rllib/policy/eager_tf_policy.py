@@ -194,7 +194,6 @@ def build_eager_tf_policy(name,
                           action_sampler_fn=None,
                           action_distribution_fn=None,
                           mixins=None,
-                          view_requirements_fn=None,
                           obs_include_prev_action_reward=True,
                           get_batch_divisibility_req=None):
     """Build an eager TF policy.
@@ -257,29 +256,17 @@ def build_eager_tf_policy(name,
                     framework=self.framework,
                 )
             # Auto-update model's inference view requirements, if recurrent.
-            self._update_model_inference_view_requirements_from_init_state()
+            self._update_model_view_requirements_from_init_state()
 
             self.exploration = self._create_exploration()
-            self._state_in = [
-                tf.convert_to_tensor([s])
-                for s in self.model.get_initial_state()
-            ]
+            self._state_inputs = self.model.get_initial_state()
+            self._is_recurrent = len(self._state_inputs) > 0
 
-            # Update this Policy's ViewRequirements (if function given).
-            if callable(view_requirements_fn):
-                self.view_requirements.update(view_requirements_fn(self))
             # Combine view_requirements for Model and Policy.
-            self.view_requirements.update(
-                self.model.inference_view_requirements)
+            self.view_requirements.update(self.model.view_requirements)
 
             if before_loss_init:
                 before_loss_init(self, observation_space, action_space, config)
-
-            self._initialize_loss_from_dummy_batch(
-                auto_remove_unneeded_view_reqs=True,
-                stats_fn=stats_fn,
-            )
-            self._loss_initialized = True
 
             if optimizer_fn:
                 optimizers = optimizer_fn(self, config)
@@ -293,10 +280,16 @@ def build_eager_tf_policy(name,
             #  Just like torch Policy does.
             self._optimizer = optimizers[0] if optimizers else None
 
+            self._initialize_loss_from_dummy_batch(
+                auto_remove_unneeded_view_reqs=True,
+                stats_fn=stats_fn,
+            )
+            self._loss_initialized = True
+
             if after_init:
                 after_init(self, observation_space, action_space, config)
 
-            # Got to reset global_timestep again after this fake run-through.
+            # Got to reset global_timestep again after fake run-throughs.
             self.global_timestep = 0
 
         @override(Policy)
@@ -318,12 +311,16 @@ def build_eager_tf_policy(name,
             self.callbacks.on_learn_on_batch(
                 policy=self, train_batch=postprocessed_batch)
 
-            # Get batch ready for RNNs, if applicable.
             pad_batch_to_sequences_of_same_size(
                 postprocessed_batch,
                 shuffle=False,
                 max_seq_len=self._max_seq_len,
-                batch_divisibility_req=self.batch_divisibility_req)
+                batch_divisibility_req=self.batch_divisibility_req,
+                view_requirements=self.view_requirements,
+            )
+
+            self._is_training = True
+            postprocessed_batch["is_training"] = True
             return self._learn_on_batch_eager(postprocessed_batch)
 
         @convert_eager_inputs
@@ -336,12 +333,14 @@ def build_eager_tf_policy(name,
 
         @override(Policy)
         def compute_gradients(self, samples):
-            # Get batch ready for RNNs, if applicable.
             pad_batch_to_sequences_of_same_size(
                 samples,
                 shuffle=False,
                 max_seq_len=self._max_seq_len,
                 batch_divisibility_req=self.batch_divisibility_req)
+
+            self._is_training = True
+            samples["is_training"] = True
             return self._compute_gradients_eager(samples)
 
         @convert_eager_inputs
@@ -373,7 +372,9 @@ def build_eager_tf_policy(name,
 
             # TODO: remove python side effect to cull sources of bugs.
             self._is_training = False
-            self._state_in = state_batches
+            self._is_recurrent = \
+                state_batches is not None and state_batches != []
+            self._state_in = state_batches or []
 
             if not tf1.executing_eagerly():
                 tf1.enable_eager_execution()
@@ -397,7 +398,7 @@ def build_eager_tf_policy(name,
                 if action_sampler_fn:
                     dist_inputs = None
                     state_out = []
-                    actions, logp = self.action_sampler_fn(
+                    actions, logp = action_sampler_fn(
                         self,
                         self.model,
                         input_dict[SampleBatch.CUR_OBS],
@@ -410,7 +411,7 @@ def build_eager_tf_policy(name,
                         timestep=timestep, explore=explore)
 
                     if action_distribution_fn:
-                        dist_inputs, dist_class, state_out = \
+                        dist_inputs, self.dist_class, state_out = \
                             action_distribution_fn(
                                 self, self.model,
                                 input_dict[SampleBatch.CUR_OBS],
@@ -418,11 +419,10 @@ def build_eager_tf_policy(name,
                                 timestep=timestep,
                                 is_training=False)
                     else:
-                        dist_class = self.dist_class
                         dist_inputs, state_out = self.model(
                             input_dict, state_batches, seq_lens)
 
-                    action_dist = dist_class(dist_inputs, self.model)
+                    action_dist = self.dist_class(dist_inputs, self.model)
 
                     # Get the exploration action from the forward results.
                     actions, logp = self.exploration.get_exploration_action(
@@ -466,12 +466,12 @@ def build_eager_tf_policy(name,
                 "is_training": tf.constant(False),
             }
             if obs_include_prev_action_reward:
-                input_dict.update({
-                    SampleBatch.PREV_ACTIONS: tf.convert_to_tensor(
-                        prev_action_batch),
-                    SampleBatch.PREV_REWARDS: tf.convert_to_tensor(
-                        prev_reward_batch),
-                })
+                if prev_action_batch is not None:
+                    input_dict[SampleBatch.PREV_ACTIONS] = \
+                        tf.convert_to_tensor(prev_action_batch)
+                if prev_reward_batch is not None:
+                    input_dict[SampleBatch.PREV_REWARDS] = \
+                        tf.convert_to_tensor(prev_reward_batch)
 
             # Exploration hook before each forward pass.
             self.exploration.before_compute_actions(explore=False)
@@ -551,15 +551,17 @@ def build_eager_tf_policy(name,
 
         @override(Policy)
         def is_recurrent(self):
-            return len(self._state_in) > 0
+            return self._is_recurrent
 
         @override(Policy)
         def num_state_tensors(self):
-            return len(self._state_in)
+            return len(self._state_inputs)
 
         @override(Policy)
         def get_initial_state(self):
-            return self.model.get_initial_state()
+            if hasattr(self, "model"):
+                return self.model.get_initial_state()
+            return []
 
         def get_session(self):
             return None  # None implies eager
@@ -594,17 +596,7 @@ def build_eager_tf_policy(name,
         def _compute_gradients(self, samples):
             """Computes and returns grads as eager tensors."""
 
-            self._is_training = True
-
             with tf.GradientTape(persistent=gradients_fn is not None) as tape:
-                # TODO: set seq len and state-in properly
-                state_in = []
-                for i in range(self.num_state_tensors()):
-                    state_in.append(samples["state_in_{}".format(i)])
-                self._state_in = state_in
-
-                model_out, _ = self.model(samples, self._state_in,
-                                          samples.get("seq_lens"))
                 loss = loss_fn(self, self.model, self.dist_class, samples)
 
             variables = self.model.trainable_variables()

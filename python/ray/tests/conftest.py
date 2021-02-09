@@ -23,7 +23,7 @@ def get_default_fixure_system_config():
         "object_timeout_milliseconds": 200,
         "num_heartbeats_timeout": 10,
         "object_store_full_max_retries": 3,
-        "object_store_full_initial_delay_ms": 100,
+        "object_store_full_delay_ms": 100,
     }
     return system_config
 
@@ -44,6 +44,7 @@ def _ray_start(**kwargs):
     init_kwargs.update(kwargs)
     # Start the Ray processes.
     address_info = ray.init(**init_kwargs)
+
     yield address_info
     # The code after the yield will run as teardown code.
     ray.shutdown()

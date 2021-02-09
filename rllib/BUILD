@@ -59,7 +59,7 @@ py_test(
     size = "medium",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/a3c/cartpole-a2c.yaml"],
-    args = ["--yaml-dir=tuned_examples/a3c", "--torch"]
+    args = ["--yaml-dir=tuned_examples/a3c", "--framework=torch"]
 )
 
 py_test(
@@ -79,7 +79,7 @@ py_test(
     size = "medium",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/a3c/cartpole-a3c.yaml"],
-    args = ["--yaml-dir=tuned_examples/a3c", "--torch"]
+    args = ["--yaml-dir=tuned_examples/a3c", "--framework=torch"]
 )
 
 # APPO
@@ -106,7 +106,7 @@ py_test(
         "tuned_examples/ppo/cartpole-appo.yaml",
         "tuned_examples/ppo/cartpole-appo-vtrace.yaml"
     ],
-    args = ["--yaml-dir=tuned_examples/ppo", "--torch"]
+    args = ["--yaml-dir=tuned_examples/ppo", "--framework=torch"]
 )
 
 # ARS
@@ -127,7 +127,7 @@ py_test(
     size = "medium",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/ars/cartpole-ars.yaml"],
-    args = ["--yaml-dir=tuned_examples/ars", "--torch"]
+    args = ["--yaml-dir=tuned_examples/ars", "--framework=torch"]
 )
 
 # DDPG
@@ -148,7 +148,7 @@ py_test(
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = glob(["tuned_examples/ddpg/pendulum-ddpg.yaml"]),
-    args = ["--torch", "--yaml-dir=tuned_examples/ddpg"]
+    args = ["--yaml-dir=tuned_examples/ddpg", "--framework=torch"]
 )
 
 # DDPPO
@@ -159,7 +159,7 @@ py_test(
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = glob(["tuned_examples/ppo/cartpole-ddppo.yaml"]),
-    args = ["--yaml-dir=tuned_examples/ppo", "--torch"]
+    args = ["--yaml-dir=tuned_examples/ppo", "--framework=torch"]
 )
 
 # DQN/Simple-Q
@@ -172,6 +172,7 @@ py_test(
     data = [
         "tuned_examples/dqn/cartpole-simpleq.yaml",
         "tuned_examples/dqn/cartpole-dqn.yaml",
+        "tuned_examples/dqn/cartpole-dqn-softq.yaml",
         "tuned_examples/dqn/cartpole-dqn-param-noise.yaml",
     ],
     args = ["--yaml-dir=tuned_examples/dqn"]
@@ -186,9 +187,10 @@ py_test(
     data = [
         "tuned_examples/dqn/cartpole-simpleq.yaml",
         "tuned_examples/dqn/cartpole-dqn.yaml",
+        "tuned_examples/dqn/cartpole-dqn-softq.yaml",
         "tuned_examples/dqn/cartpole-dqn-param-noise.yaml",
     ],
-    args = ["--yaml-dir=tuned_examples/dqn", "--torch"]
+    args = ["--yaml-dir=tuned_examples/dqn", "--framework=torch"]
 )
 
 # ES
@@ -209,7 +211,7 @@ py_test(
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/es/cartpole-es.yaml"],
-    args = ["--yaml-dir=tuned_examples/es", "--torch"]
+    args = ["--yaml-dir=tuned_examples/es", "--framework=torch"]
 )
 
 # IMPALA
@@ -230,7 +232,7 @@ py_test(
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/impala/cartpole-impala.yaml"],
-    args = ["--yaml-dir=tuned_examples/impala", "--torch"]
+    args = ["--yaml-dir=tuned_examples/impala", "--framework=torch"]
 )
 
 # Working, but takes a long time to learn (>15min).
@@ -264,7 +266,7 @@ py_test(
     size = "medium",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/pg/cartpole-pg.yaml"],
-    args = ["--yaml-dir=tuned_examples/pg", "--torch"]
+    args = ["--yaml-dir=tuned_examples/pg", "--framework=torch"]
 )
 
 # PPO
@@ -285,7 +287,7 @@ py_test(
     size = "medium",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/ppo/cartpole-ppo.yaml"],
-    args = ["--yaml-dir=tuned_examples/ppo", "--torch"]
+    args = ["--yaml-dir=tuned_examples/ppo", "--framework=torch"]
 )
 
 py_test(
@@ -305,7 +307,7 @@ py_test(
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/ppo/pendulum-ppo.yaml"],
-    args = ["--torch", "--yaml-dir=tuned_examples/ppo"]
+    args = ["--yaml-dir=tuned_examples/ppo", "--framework=torch"]
 )
 
 py_test(
@@ -325,7 +327,7 @@ py_test(
     size = "medium",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/ppo/repeatafterme-ppo-lstm.yaml"],
-    args = ["--torch", "--yaml-dir=tuned_examples/ppo"]
+    args = ["--yaml-dir=tuned_examples/ppo", "--framework=torch"]
 )
 
 # SAC
@@ -356,7 +358,7 @@ py_test(
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/sac/cartpole-sac.yaml"],
-    args = ["--yaml-dir=tuned_examples/sac", "--torch"]
+    args = ["--yaml-dir=tuned_examples/sac", "--framework=torch"]
 )
 
 py_test(
@@ -366,7 +368,7 @@ py_test(
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/sac/cartpole-continuous-pybullet-sac.yaml"],
-    args = ["--yaml-dir=tuned_examples/sac", "--torch"]
+    args = ["--yaml-dir=tuned_examples/sac", "--framework=torch"]
 )
 
 py_test(
@@ -386,7 +388,7 @@ py_test(
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/sac/pendulum-sac.yaml"],
-    args = ["--yaml-dir=tuned_examples/sac", "--torch"]
+    args = ["--yaml-dir=tuned_examples/sac", "--framework=torch"]
 )
 
 
@@ -408,7 +410,7 @@ py_test(
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/ddpg/pendulum-td3.yaml"],
-    args = ["--yaml-dir=tuned_examples/ddpg", "--torch"]
+    args = ["--yaml-dir=tuned_examples/ddpg", "--framework=torch"]
 )
 
 
@@ -1073,13 +1075,6 @@ py_test(
 # --------------------------------------------------------------------
 
 py_test(
-    name = "test_attention_nets",
-    tags = ["models"],
-    size = "small",
-    srcs = ["models/tests/test_attention_nets.py"]
-)
-
-py_test(
     name = "test_convtranspose2d_stack",
     tags = ["models"],
     size = "small",
@@ -1092,6 +1087,20 @@ py_test(
     tags = ["models"],
     size = "medium",
     srcs = ["models/tests/test_distributions.py"]
+)
+
+py_test(
+    name = "test_models",
+    tags = ["models"],
+    size = "small",
+    srcs = ["models/tests/test_models.py"]
+)
+
+py_test(
+    name = "test_preprocessors",
+    tags = ["models"],
+    size = "small",
+    srcs = ["models/tests/test_preprocessors.py"]
 )
 
 # --------------------------------------------------------------------
@@ -1107,6 +1116,13 @@ py_test(
 #    size = "medium",
 #    srcs = ["evaluation/tests/test_trajectory_view_api.py"]
 #)
+
+py_test(
+    name = "evaluation/tests/test_rollout_worker",
+    tags = ["evaluation"],
+    size = "medium",
+    srcs = ["evaluation/tests/test_rollout_worker.py"]
+)
 
 
 # --------------------------------------------------------------------
@@ -1412,13 +1428,6 @@ py_test(
 )
 
 py_test(
-    name = "tests/test_rollout_worker",
-    tags = ["tests_dir", "tests_dir_R"],
-    size = "medium",
-    srcs = ["tests/test_rollout_worker.py"]
-)
-
-py_test(
     name = "tests/test_supported_multi_agent_pg",
     main = "tests/test_supported_multi_agent.py",
     tags = ["tests_dir", "tests_dir_S"],
@@ -1485,20 +1494,19 @@ py_test(
     name = "examples/attention_net_tf",
     main = "examples/attention_net.py",
     tags = ["examples", "examples_A"],
-    size = "large",
+    size = "medium",
     srcs = ["examples/attention_net.py"],
     args = ["--as-test", "--stop-reward=80"]
 )
 
-# TODO(sven): GTrXL PyTorch.
-# py_test(
-#    name = "examples/attention_net_torch",
-#    main = "examples/attention_net.py",
-#    tags = ["examples", "examples_A"],
-#    size = "large",
-#    srcs = ["examples/attention_net.py"],
-#    args = ["--as-test", "--torch", "--stop-reward=90"]
-# )
+py_test(
+    name = "examples/attention_net_torch",
+    main = "examples/attention_net.py",
+    tags = ["examples", "examples_A"],
+    size = "medium",
+    srcs = ["examples/attention_net.py"],
+    args = ["--as-test", "--stop-reward=80", "--torch"]
+)
 
 py_test(
     name = "examples/autoregressive_action_dist_tf",
@@ -1540,7 +1548,7 @@ py_test(
     name = "examples/batch_norm_model_dqn_tf",
     main = "examples/batch_norm_model.py",
     tags = ["examples", "examples_B"],
-    size = "large",  # DQN learns much slower with BatchNorm.
+    size = "medium",
     srcs = ["examples/batch_norm_model.py"],
     args = ["--as-test", "--run=DQN", "--stop-reward=70"]
 )
@@ -1558,7 +1566,7 @@ py_test(
     name = "examples/batch_norm_model_ddpg_tf",
     main = "examples/batch_norm_model.py",
     tags = ["examples", "examples_B"],
-    size = "medium",
+    size = "small",
     srcs = ["examples/batch_norm_model.py"],
     args = ["--run=DDPG", "--stop-iters=1"]
 )
@@ -1808,6 +1816,23 @@ py_test(
 )
 
 py_test(
+    name = "examples/custom_model_api_tf",
+    main = "examples/custom_model_api.py",
+    tags = ["examples", "examples_C"],
+    size = "small",
+    srcs = ["examples/custom_model_api.py"],
+)
+
+py_test(
+    name = "examples/custom_model_api_torch",
+    main = "examples/custom_model_api.py",
+    tags = ["examples", "examples_C"],
+    size = "small",
+    srcs = ["examples/custom_model_api.py"],
+    args = ["--framework=torch"],
+)
+
+py_test(
     name = "examples/custom_observation_filters",
     main = "examples/custom_observation_filters.py",
     tags = ["examples", "examples_C"],
@@ -2047,6 +2072,24 @@ py_test(
 )
 
 py_test(
+    name = "examples/trajectory_view_api_tf",
+    main = "examples/trajectory_view_api.py",
+    tags = ["examples", "examples_T"],
+    size = "medium",
+    srcs = ["examples/trajectory_view_api.py"],
+    args = ["--as-test", "--framework=tf", "--stop-reward=80.0"]
+)
+
+py_test(
+    name = "examples/trajectory_view_api_torch",
+    main = "examples/trajectory_view_api.py",
+    tags = ["examples", "examples_T"],
+    size = "medium",
+    srcs = ["examples/trajectory_view_api.py"],
+    args = ["--as-test", "--framework=torch", "--stop-reward=80.0"]
+)
+
+py_test(
     name = "examples/two_trainer_workflow_tf",
     main = "examples/two_trainer_workflow.py",
     tags = ["examples", "examples_T"],
@@ -2077,9 +2120,9 @@ py_test(
     name = "examples/two_step_game_maddpg",
     main = "examples/two_step_game.py",
     tags = ["examples", "examples_T"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/two_step_game.py"],
-    args = ["--as-test", "--stop-reward=7.5", "--run=contrib/MADDPG"]
+    args = ["--as-test", "--stop-reward=7.1", "--run=contrib/MADDPG"]
 )
 
 py_test(

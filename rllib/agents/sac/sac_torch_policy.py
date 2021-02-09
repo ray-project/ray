@@ -17,8 +17,8 @@ from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_action_dist import \
     TorchDistributionWrapper, TorchDirichlet
 from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.torch_policy_template import build_torch_policy
 from ray.rllib.models.torch.torch_action_dist import (
     TorchCategorical, TorchSquashedGaussian, TorchDiagGaussian, TorchBeta)
 from ray.rllib.utils.framework import try_import_torch
@@ -441,12 +441,12 @@ class TargetNetworkMixin:
         model_state_dict = self.model.state_dict()
         # Support partial (soft) synching.
         # If tau == 1.0: Full sync from Q-model to target Q-model.
-        if tau != 1.0:
-            target_state_dict = self.target_model.state_dict()
-            model_state_dict = {
-                k: tau * model_state_dict[k] + (1 - tau) * v
-                for k, v in target_state_dict.items()
-            }
+        target_state_dict = self.target_model.state_dict()
+        model_state_dict = {
+            k: tau * model_state_dict[k] + (1 - tau) * v
+            for k, v in target_state_dict.items()
+        }
+
         self.target_model.load_state_dict(model_state_dict)
 
 
@@ -480,8 +480,9 @@ def setup_late_mixins(policy: Policy, obs_space: gym.spaces.Space,
 
 # Build a child class of `TorchPolicy`, given the custom functions defined
 # above.
-SACTorchPolicy = build_torch_policy(
+SACTorchPolicy = build_policy_class(
     name="SACTorchPolicy",
+    framework="torch",
     loss_fn=actor_critic_loss,
     get_default_config=lambda: ray.rllib.agents.sac.sac.DEFAULT_CONFIG,
     stats_fn=stats,

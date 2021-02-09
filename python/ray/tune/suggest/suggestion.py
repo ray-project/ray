@@ -391,6 +391,12 @@ class ConcurrencyLimiter(Searcher):
     def set_state(self, state: Dict):
         self.__dict__.update(state)
 
+    def save(self, checkpoint_path: str):
+        self.searcher.save(checkpoint_path)
+
+    def restore(self, checkpoint_path: str):
+        self.searcher.restore(checkpoint_path)
+
     def on_pause(self, trial_id: str):
         self.searcher.on_pause(trial_id)
 

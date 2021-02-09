@@ -64,11 +64,11 @@ std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> ObjectBufferPool::Ge
           errored_chunk_,
           ray::Status::IOError("Unable to obtain object chunk, object not local."));
     }
-    RAY_CHECK(object_buffer.metadata->data() ==
-              object_buffer.data->data() + object_buffer.data->size());
-    RAY_CHECK(data_size == static_cast<uint64_t>(object_buffer.data->size() +
-                                                 object_buffer.metadata->size()));
-    auto *data = const_cast<uint8_t *>(object_buffer.data->data());
+    RAY_CHECK(object_buffer.metadata->Data() ==
+              object_buffer.data->Data() + object_buffer.data->Size());
+    RAY_CHECK(data_size == static_cast<uint64_t>(object_buffer.data->Size() +
+                                                 object_buffer.metadata->Size()));
+    auto *data = object_buffer.data->Data();
     uint64_t num_chunks = GetNumChunks(data_size);
     get_buffer_state_.emplace(
         std::piecewise_construct, std::forward_as_tuple(object_id),
@@ -115,7 +115,7 @@ std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> ObjectBufferPool::Cr
           errored_chunk_, ray::Status::IOError(s.message()));
     }
     // Read object into store.
-    uint8_t *mutable_data = data->mutable_data();
+    uint8_t *mutable_data = data->Data();
     uint64_t num_chunks = GetNumChunks(data_size);
     create_buffer_state_.emplace(
         std::piecewise_construct, std::forward_as_tuple(object_id),

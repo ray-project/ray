@@ -13,14 +13,12 @@ public class RaySerializerTest extends BaseTest {
 
   @Test
   public void testSerializePyActor() {
-    PyActorHandle pyActor = Ray.actor(
-        PyActorClass.of("test", "RaySerializerTest")).remote();
+    PyActorHandle pyActor = Ray.actor(PyActorClass.of("test", "RaySerializerTest")).remote();
     NativeRayObject nativeRayObject = ObjectSerializer.serialize(pyActor);
-    PyActorHandle result = (PyActorHandle) ObjectSerializer
-        .deserialize(nativeRayObject, null, Object.class);
+    PyActorHandle result =
+        (PyActorHandle) ObjectSerializer.deserialize(nativeRayObject, null, Object.class);
     Assert.assertEquals(result.getId(), pyActor.getId());
     Assert.assertEquals(result.getModuleName(), "test");
     Assert.assertEquals(result.getClassName(), "RaySerializerTest");
   }
-
 }

@@ -70,6 +70,11 @@ Take a look at any of the below tutorials to get started with Tune.
    :figure: /images/wandb_logo.png
    :description: :doc:`Track your experiment process with the Weights & Biases tools <tune-wandb>`
 
+.. customgalleryitem::
+    :tooltip: Use MLFlow with Ray Tune.
+    :figure: /images/mlflow.png
+    :description: :doc:`Log and track your hyperparameter sweep with MLFlow Tracking & AutoLogging <tune-mlflow>`
+
 
 .. raw:: html
 
@@ -81,12 +86,13 @@ Take a look at any of the below tutorials to get started with Tune.
 
    tune-tutorial.rst
    tune-advanced-tutorial.rst
-   tune-lifecycle.rst
    tune-distributed.rst
-   tune-sklearn.rst
+   tune-lifecycle.rst
+   tune-mlflow.rst
    tune-pytorch-cifar.rst
    tune-pytorch-lightning.rst
    tune-serve-integration-mnist.rst
+   tune-sklearn.rst
    tune-xgboost.rst
    tune-wandb.rst
 

@@ -49,6 +49,7 @@ class CreateRequestQueueTest : public ::testing::Test {
       : queue_(
             /*max_retries=*/2,
             /*evict_if_full=*/true,
+            /*spill_object_callback=*/[&]() { return false; },
             /*on_global_gc=*/[&]() { num_global_gc_++; }) {}
 
   void AssertNoLeaks() {
@@ -117,7 +118,7 @@ TEST_F(CreateRequestQueueTest, TestOom) {
   // Retries used up. The first request should reply with OOM and the second
   // request should also be served.
   ASSERT_TRUE(queue_.ProcessRequests().ok());
-  ASSERT_EQ(num_global_gc_, 2);
+  ASSERT_EQ(num_global_gc_, 3);
 
   // Both requests fulfilled.
   ASSERT_REQUEST_FINISHED(queue_, req_id1, PlasmaError::OutOfMemory);
@@ -131,6 +132,8 @@ TEST(CreateRequestQueueParameterTest, TestOomInfiniteRetry) {
   CreateRequestQueue queue(
       /*max_retries=*/-1,
       /*evict_if_full=*/true,
+      // Spilling is failing.
+      /*spill_object_callback=*/[&]() { return false; },
       /*on_global_gc=*/[&]() { num_global_gc_++; });
 
   auto oom_request = [&](bool evict_if_full, PlasmaObject *result) {
@@ -156,7 +159,13 @@ TEST(CreateRequestQueueParameterTest, TestOomInfiniteRetry) {
 }
 
 TEST_F(CreateRequestQueueTest, TestTransientOom) {
-  auto return_status = PlasmaError::TransientOutOfMemory;
+  CreateRequestQueue queue(
+      /*max_retries=*/2,
+      /*evict_if_full=*/false,
+      /*spill_object_callback=*/[&]() { return true; },
+      /*on_global_gc=*/[&]() { num_global_gc_++; });
+
+  auto return_status = PlasmaError::OutOfMemory;
   auto oom_request = [&](bool evict_if_full, PlasmaObject *result) {
     if (return_status == PlasmaError::OK) {
       result->data_size = 1234;
@@ -169,28 +178,35 @@ TEST_F(CreateRequestQueueTest, TestTransientOom) {
   };
 
   auto client = std::make_shared<MockClient>();
-  auto req_id1 = queue_.AddRequest(ObjectID::Nil(), client, oom_request);
-  auto req_id2 = queue_.AddRequest(ObjectID::Nil(), client, blocked_request);
+  auto req_id1 = queue.AddRequest(ObjectID::Nil(), client, oom_request);
+  auto req_id2 = queue.AddRequest(ObjectID::Nil(), client, blocked_request);
 
   // Transient OOM should not use up any retries.
   for (int i = 0; i < 3; i++) {
-    ASSERT_TRUE(queue_.ProcessRequests().IsTransientObjectStoreFull());
-    ASSERT_REQUEST_UNFINISHED(queue_, req_id1);
-    ASSERT_REQUEST_UNFINISHED(queue_, req_id2);
-    ASSERT_EQ(num_global_gc_, 0);
+    ASSERT_TRUE(queue.ProcessRequests().IsTransientObjectStoreFull());
+    ASSERT_REQUEST_UNFINISHED(queue, req_id1);
+    ASSERT_REQUEST_UNFINISHED(queue, req_id2);
+    ASSERT_EQ(num_global_gc_, i + 1);
   }
 
   // Return OK for the first request. The second request should also be served.
   return_status = PlasmaError::OK;
-  ASSERT_TRUE(queue_.ProcessRequests().ok());
-  ASSERT_REQUEST_FINISHED(queue_, req_id1, PlasmaError::OK);
-  ASSERT_REQUEST_FINISHED(queue_, req_id2, PlasmaError::OK);
+  ASSERT_TRUE(queue.ProcessRequests().ok());
+  ASSERT_REQUEST_FINISHED(queue, req_id1, PlasmaError::OK);
+  ASSERT_REQUEST_FINISHED(queue, req_id2, PlasmaError::OK);
 
   AssertNoLeaks();
 }
 
 TEST_F(CreateRequestQueueTest, TestTransientOomThenOom) {
-  auto return_status = PlasmaError::TransientOutOfMemory;
+  bool is_spilling_possible = true;
+  CreateRequestQueue queue(
+      /*max_retries=*/2,
+      /*evict_if_full=*/false,
+      /*spill_object_callback=*/[&]() { return is_spilling_possible; },
+      /*on_global_gc=*/[&]() { num_global_gc_++; });
+
+  auto return_status = PlasmaError::OutOfMemory;
   auto oom_request = [&](bool evict_if_full, PlasmaObject *result) {
     if (return_status == PlasmaError::OK) {
       result->data_size = 1234;
@@ -203,31 +219,31 @@ TEST_F(CreateRequestQueueTest, TestTransientOomThenOom) {
   };
 
   auto client = std::make_shared<MockClient>();
-  auto req_id1 = queue_.AddRequest(ObjectID::Nil(), client, oom_request);
-  auto req_id2 = queue_.AddRequest(ObjectID::Nil(), client, blocked_request);
+  auto req_id1 = queue.AddRequest(ObjectID::Nil(), client, oom_request);
+  auto req_id2 = queue.AddRequest(ObjectID::Nil(), client, blocked_request);
 
   // Transient OOM should not use up any retries.
   for (int i = 0; i < 3; i++) {
-    ASSERT_TRUE(queue_.ProcessRequests().IsTransientObjectStoreFull());
-    ASSERT_REQUEST_UNFINISHED(queue_, req_id1);
-    ASSERT_REQUEST_UNFINISHED(queue_, req_id2);
-    ASSERT_EQ(num_global_gc_, 0);
+    ASSERT_TRUE(queue.ProcessRequests().IsTransientObjectStoreFull());
+    ASSERT_REQUEST_UNFINISHED(queue, req_id1);
+    ASSERT_REQUEST_UNFINISHED(queue, req_id2);
+    ASSERT_EQ(num_global_gc_, i + 1);
   }
 
-  // Now we are actually OOM.
-  return_status = PlasmaError::OutOfMemory;
-  ASSERT_TRUE(queue_.ProcessRequests().IsObjectStoreFull());
-  ASSERT_TRUE(queue_.ProcessRequests().IsObjectStoreFull());
-  ASSERT_REQUEST_UNFINISHED(queue_, req_id1);
-  ASSERT_REQUEST_UNFINISHED(queue_, req_id2);
-  ASSERT_EQ(num_global_gc_, 2);
+  // Now spilling is not possible. We should start raising OOM with retry.
+  is_spilling_possible = false;
+  ASSERT_TRUE(queue.ProcessRequests().IsObjectStoreFull());
+  ASSERT_TRUE(queue.ProcessRequests().IsObjectStoreFull());
+  ASSERT_REQUEST_UNFINISHED(queue, req_id1);
+  ASSERT_REQUEST_UNFINISHED(queue, req_id2);
+  ASSERT_EQ(num_global_gc_, 5);
 
   // Retries used up. The first request should reply with OOM and the second
   // request should also be served.
-  ASSERT_TRUE(queue_.ProcessRequests().ok());
-  ASSERT_REQUEST_FINISHED(queue_, req_id1, PlasmaError::OutOfMemory);
-  ASSERT_REQUEST_FINISHED(queue_, req_id2, PlasmaError::OK);
-  ASSERT_EQ(num_global_gc_, 2);
+  ASSERT_TRUE(queue.ProcessRequests().ok());
+  ASSERT_REQUEST_FINISHED(queue, req_id1, PlasmaError::OutOfMemory);
+  ASSERT_REQUEST_FINISHED(queue, req_id2, PlasmaError::OK);
+  ASSERT_EQ(num_global_gc_, 6);
 
   AssertNoLeaks();
 }
@@ -248,6 +264,7 @@ TEST(CreateRequestQueueParameterTest, TestNoEvictIfFull) {
   CreateRequestQueue queue(
       /*max_retries=*/2,
       /*evict_if_full=*/false,
+      /*spill_object_callback=*/[&]() { return false; },
       /*on_global_gc=*/[&]() {});
 
   bool first_try = true;

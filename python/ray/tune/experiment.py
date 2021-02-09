@@ -167,6 +167,13 @@ class Experiment:
         stopping_criteria = {}
         if not stop:
             pass
+        elif isinstance(stop, list):
+            if any(not isinstance(s, Stopper) for s in stop):
+                raise ValueError(
+                    "If you pass a list as the `stop` argument to "
+                    "`tune.run()`, each element must be an instance of "
+                    "`tune.stopper.Stopper`.")
+            self._stopper = CombinedStopper(*stop)
         elif isinstance(stop, dict):
             stopping_criteria = stop
         elif callable(stop):

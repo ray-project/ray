@@ -2,9 +2,7 @@ package io.ray.streaming.runtime.config.global;
 
 import io.ray.streaming.runtime.config.Config;
 
-/**
- * Job common config.
- */
+/** Job common config. */
 public interface CommonConfig extends Config {
 
   String JOB_ID = "streaming.job.id";
@@ -13,7 +11,7 @@ public interface CommonConfig extends Config {
   /**
    * Ray streaming job id. Non-custom.
    *
-   * @return Job id with string type.
+   * <p>Returns Job id with string type.
    */
   @DefaultValue(value = "default-job-id")
   @Key(value = JOB_ID)
@@ -22,7 +20,7 @@ public interface CommonConfig extends Config {
   /**
    * Ray streaming job name. Non-custom.
    *
-   * @return Job name with string type.
+   * <p>Returns Job name with string type.
    */
   @DefaultValue(value = "default-job-name")
   @Key(value = JOB_NAME)

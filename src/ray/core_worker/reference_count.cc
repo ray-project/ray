@@ -543,16 +543,17 @@ void ReferenceCounter::UpdateObjectPinnedAtRaylet(const ObjectID &object_id,
 }
 
 bool ReferenceCounter::IsPlasmaObjectPinnedOrSpilled(const ObjectID &object_id,
-                                                     NodeID *pinned_at,
+                                                     bool *owned_by_us, NodeID *pinned_at,
                                                      bool *spilled) const {
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
   if (it != object_id_refs_.end()) {
     if (it->second.owned_by_us) {
+      *owned_by_us = true;
       *spilled = it->second.spilled;
       *pinned_at = it->second.pinned_at_raylet_id.value_or(NodeID::Nil());
-      return true;
     }
+    return true;
   }
   return false;
 }
@@ -936,6 +937,39 @@ void ReferenceCounter::HandleObjectSpilled(const ObjectID &object_id) {
   it->second.spilled = true;
   // Release the primary plasma copy, if any.
   ReleasePlasmaObject(it);
+}
+
+absl::optional<LocalityData> ReferenceCounter::GetLocalityData(
+    const ObjectID &object_id) {
+  absl::MutexLock lock(&mutex_);
+  // Uses the reference table to return locality data for an object.
+  auto it = object_id_refs_.find(object_id);
+  if (it == object_id_refs_.end()) {
+    RAY_LOG(DEBUG) << "Object " << object_id
+                   << " not in reference table, locality data not available";
+    return absl::nullopt;
+  }
+
+  const auto &node_id = it->second.pinned_at_raylet_id;
+  if (!node_id.has_value()) {
+    RAY_LOG(DEBUG)
+        << "Reference " << it->second.call_site << " for object " << object_id
+        << " doesn't have a defined pinned raylet ID, locality data not available";
+    return absl::nullopt;
+  }
+  // The raylet ID to which this reference is pinned is defined.
+
+  const auto object_size = it->second.object_size;
+  if (object_size < 0) {
+    RAY_LOG(DEBUG) << "Reference " << it->second.call_site << " for object " << object_id
+                   << " has an unknown object size, locality data not available";
+    return absl::nullopt;
+  }
+  // The object size of this reference is known.
+
+  absl::optional<LocalityData> locality_data(
+      {static_cast<uint64_t>(object_size), {node_id.value()}});
+  return locality_data;
 }
 
 ReferenceCounter::Reference ReferenceCounter::Reference::FromProto(

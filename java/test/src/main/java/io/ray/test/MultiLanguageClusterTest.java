@@ -17,5 +17,4 @@ public class MultiLanguageClusterTest extends BaseTest {
     ObjectRef<String> obj = Ray.task(MultiLanguageClusterTest::echo, "hello").remote();
     Assert.assertEquals("hello", obj.get());
   }
-
 }

@@ -33,9 +33,6 @@ class MockWorker : public WorkerInterface {
 
   void AssignTaskId(const TaskID &task_id) {}
 
-  // TODO(kfstorm): Remove this once `enable_multi_tenancy` is deleted.
-  void AssignJobId(const JobID &job_id) {}
-
   void SetAssignedTask(const Task &assigned_task) {}
 
   const std::string IpAddress() const { return address_.ip_address(); }
@@ -69,10 +66,7 @@ class MockWorker : public WorkerInterface {
     return false;
   }
 
-  Process GetProcess() const {
-    RAY_CHECK(false) << "Method unused";
-    return Process::CreateNewDummy();
-  }
+  Process GetProcess() const { return Process::CreateNewDummy(); }
   void SetProcess(Process proc) { RAY_CHECK(false) << "Method unused"; }
   Language GetLanguage() const {
     RAY_CHECK(false) << "Method unused";
@@ -164,20 +158,12 @@ class MockWorker : public WorkerInterface {
 
   void ClearLifetimeAllocatedInstances() { lifetime_allocated_instances_ = nullptr; }
 
-  void SetBorrowedCPUInstances(std::vector<double> &cpu_instances) {
-    borrowed_cpu_instances_ = cpu_instances;
-  }
-
   const BundleID &GetBundleId() const {
     RAY_CHECK(false) << "Method unused";
     return bundle_id_;
   }
 
-  void SetBundleId(const BundleID &bundle_id) { RAY_CHECK(false) << "Method unused"; }
-
-  std::vector<double> &GetBorrowedCPUInstances() { return borrowed_cpu_instances_; }
-
-  void ClearBorrowedCPUInstances() { RAY_CHECK(false) << "Method unused"; }
+  void SetBundleId(const BundleID &bundle_id) { bundle_id_ = bundle_id; }
 
   Task &GetAssignedTask() {
     RAY_CHECK(false) << "Method unused";

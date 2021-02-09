@@ -10,23 +10,17 @@ import java.util.Map;
 import java.util.stream.Collectors;
 import org.powermock.api.mockito.PowerMockito;
 
-/**
- * Mockitools is a tool based on powermock and mokito to mock external service api
- */
+/** Mockitools is a tool based on powermock and mokito to mock external service api */
 public class Mockitools {
 
-  /**
-   * Mock GCS get node info api
-   */
+  /** Mock GCS get node info api */
   public static void mockGscApi() {
     PowerMockito.mockStatic(RayUtils.class);
     PowerMockito.when(RayUtils.getAliveNodeInfoMap())
         .thenReturn(mockGetNodeInfoMap(mockGetAllNodeInfo()));
   }
 
-  /**
-   * Mock get all node info from GCS
-   */
+  /** Mock get all node info from GCS */
   public static List<NodeInfo> mockGetAllNodeInfo() {
     List<NodeInfo> nodeInfos = new LinkedList<>();
 
@@ -55,25 +49,18 @@ public class Mockitools {
   /**
    * Mock get node info map
    *
-   * @param nodeInfos all node infos fetched from GCS
-   * @return node info map, key is node unique id, value is node info
+   * @param nodeInfos all node infos fetched from GCS Returns node info map, key is node unique id,
+   *     value is node info
    */
   public static Map<UniqueId, NodeInfo> mockGetNodeInfoMap(List<NodeInfo> nodeInfos) {
-    return nodeInfos.stream().filter(nodeInfo -> nodeInfo.isAlive).collect(
-        Collectors.toMap(nodeInfo -> nodeInfo.nodeId, nodeInfo -> nodeInfo));
+    return nodeInfos.stream()
+        .filter(nodeInfo -> nodeInfo.isAlive)
+        .collect(Collectors.toMap(nodeInfo -> nodeInfo.nodeId, nodeInfo -> nodeInfo));
   }
 
   private static NodeInfo mockNodeInfo(int i, Map<String, Double> resources) {
     return new NodeInfo(
-        createNodeId(i),
-        "localhost" + i,
-        "localhost" + i,
-        -1,
-        "",
-        "",
-
-        true,
-        resources);
+        createNodeId(i), "localhost" + i, "localhost" + i, -1, "", "", true, resources);
   }
 
   private static UniqueId createNodeId(int id) {

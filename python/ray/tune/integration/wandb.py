@@ -75,7 +75,7 @@ def _clean_log(obj: Any):
 def wandb_mixin(func: Callable):
     """wandb_mixin
 
-    Weights and biases (https://www.wandb.com/) is a tool for experiment
+    Weights and biases (https://www.wandb.ai/) is a tool for experiment
     tracking, model optimization, and dataset versioning. This Ray Tune
     Trainable mixin helps initializing the Wandb API for use with the
     ``Trainable`` class or with `@wandb_mixin` for the function API.
@@ -109,7 +109,7 @@ def wandb_mixin(func: Callable):
     values.
 
     Please see here for all other valid configuration settings:
-    https://docs.wandb.com/library/init
+    https://docs.wandb.ai/library/init
 
     Example:
 
@@ -139,7 +139,10 @@ def wandb_mixin(func: Callable):
             })
 
     """
-    func.__mixins__ = (WandbTrainableMixin, )
+    if hasattr(func, "__mixins__"):
+        func.__mixins__ = func.__mixins__ + (WandbTrainableMixin, )
+    else:
+        func.__mixins__ = (WandbTrainableMixin, )
     return func
 
 
@@ -222,7 +225,7 @@ class _WandbLoggingProcess(Process):
 class WandbLoggerCallback(LoggerCallback):
     """WandbLoggerCallback
 
-    Weights and biases (https://www.wandb.com/) is a tool for experiment
+    Weights and biases (https://www.wandb.ai/) is a tool for experiment
     tracking, model optimization, and dataset versioning. This Ray Tune
     ``LoggerCallback`` sends metrics to Wandb for automatic tracking and
     visualization.
@@ -248,7 +251,7 @@ class WandbLoggerCallback(LoggerCallback):
     values.
 
     Please see here for all other valid configuration settings:
-    https://docs.wandb.com/library/init
+    https://docs.wandb.ai/library/init
 
     Example:
 
@@ -379,7 +382,7 @@ class WandbLogger(Logger):
         This `Logger` class is deprecated. Use the `WandbLoggerCallback`
         callback instead.
 
-    Weights and biases (https://www.wandb.com/) is a tool for experiment
+    Weights and biases (https://www.wandb.ai/) is a tool for experiment
     tracking, model optimization, and dataset versioning. This Ray Tune
     ``Logger`` sends metrics to Wandb for automatic tracking and
     visualization.
@@ -412,7 +415,7 @@ class WandbLogger(Logger):
     values.
 
     Please see here for all other valid configuration settings:
-    https://docs.wandb.com/library/init
+    https://docs.wandb.ai/library/init
 
     Example:
 

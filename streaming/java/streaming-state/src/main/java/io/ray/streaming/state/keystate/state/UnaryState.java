@@ -18,15 +18,13 @@
 
 package io.ray.streaming.state.keystate.state;
 
-/**
- * one value per state.
- */
+/** one value per state. */
 public interface UnaryState<O> extends State {
 
   /**
    * get the value in state
    *
-   * @return the value in state
+   * <p>Returns the value in state
    */
   O get();
 }

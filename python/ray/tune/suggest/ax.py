@@ -1,3 +1,4 @@
+import copy
 from typing import Dict, List, Optional, Union
 
 from ax.service.ax_client import AxClient
@@ -7,8 +8,7 @@ from ray.tune.sample import Categorical, Float, Integer, LogUniform, \
 from ray.tune.suggest.suggestion import UNRESOLVED_SEARCH_SPACE, \
     UNDEFINED_METRIC_MODE, UNDEFINED_SEARCH_SPACE
 from ray.tune.suggest.variant_generator import parse_spec_vars
-from ray.tune.utils import flatten_dict
-from ray.tune.utils.util import unflatten_dict
+from ray.tune.utils.util import flatten_dict, unflatten_dict
 
 try:
     import ax
@@ -50,6 +50,11 @@ class AxSearch(Searcher):
             the `ray.tune.result.DEFAULT_METRIC` will be used per default.
         mode (str): One of {min, max}. Determines whether objective is
             minimizing or maximizing the metric attribute. Defaults to "max".
+        points_to_evaluate (list): Initial parameter suggestions to be run
+            first. This is for when you already have some good parameters
+            you want to run first to help the algorithm make better suggestions
+            for future parameters. Needs to be a list of dicts containing the
+            configurations.
         parameter_constraints (list[str]): Parameter constraints, such as
             "x3 >= x4" or "x3 + x4 >= 2".
         outcome_constraints (list[str]): Outcome constraints of form
@@ -110,6 +115,7 @@ class AxSearch(Searcher):
                  space: Optional[Union[Dict, List[Dict]]] = None,
                  metric: Optional[str] = None,
                  mode: Optional[str] = None,
+                 points_to_evaluate: Optional[List[Dict]] = None,
                  parameter_constraints: Optional[List] = None,
                  outcome_constraints: Optional[List] = None,
                  ax_client: Optional[AxClient] = None,
@@ -140,6 +146,8 @@ class AxSearch(Searcher):
         self._space = space
         self._parameter_constraints = parameter_constraints
         self._outcome_constraints = outcome_constraints
+
+        self._points_to_evaluate = copy.deepcopy(points_to_evaluate)
 
         self.max_concurrent = max_concurrent
 
@@ -226,7 +234,13 @@ class AxSearch(Searcher):
         if self.max_concurrent:
             if len(self._live_trial_mapping) >= self.max_concurrent:
                 return None
-        parameters, trial_index = self._ax.get_next_trial()
+
+        if self._points_to_evaluate:
+            config = self._points_to_evaluate.pop(0)
+            parameters, trial_index = self._ax.attach_trial(config)
+        else:
+            parameters, trial_index = self._ax.get_next_trial()
+
         self._live_trial_mapping[trial_id] = trial_index
         return unflatten_dict(parameters)
 
@@ -254,13 +268,16 @@ class AxSearch(Searcher):
 
     @staticmethod
     def convert_search_space(spec: Dict):
-        spec = flatten_dict(spec, prevent_delimiter=True)
         resolved_vars, domain_vars, grid_vars = parse_spec_vars(spec)
 
         if grid_vars:
             raise ValueError(
                 "Grid search parameters cannot be automatically converted "
                 "to an Ax search space.")
+
+        # Flatten and resolve again after checking for grid search.
+        spec = flatten_dict(spec, prevent_delimiter=True)
+        resolved_vars, domain_vars, grid_vars = parse_spec_vars(spec)
 
         def resolve_value(par, domain):
             sampler = domain.get_sampler()

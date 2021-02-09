@@ -1,6 +1,7 @@
 import inspect
 import logging
 import weakref
+import _thread
 
 import ray.ray_constants as ray_constants
 import ray._raylet
@@ -11,6 +12,7 @@ from ray.util.placement_group import (
 
 from ray import ActorClassID, Language
 from ray._raylet import PythonFunctionDescriptor
+from ray._private.client_mode_hook import client_mode_hook
 from ray import cross_language
 from ray.util.inspect import (
     is_function_or_method,
@@ -21,6 +23,7 @@ from ray.util.inspect import (
 logger = logging.getLogger(__name__)
 
 
+@client_mode_hook
 def method(*args, **kwargs):
     """Annotate an actor method.
 
@@ -177,7 +180,7 @@ class ActorClassMethodMetadata(object):
             each actor method.
     """
 
-    _cache = {}  # This cache will be cleared in ray.disconnect()
+    _cache = {}  # This cache will be cleared in ray.worker.disconnect()
 
     def __init__(self):
         class_name = type(self).__name__
@@ -1006,6 +1009,7 @@ def exit_actor():
     """Intentionally exit the current actor.
 
     This function is used to disconnect an actor and exit the worker.
+    Any ``atexit`` handlers installed in the actor will be run.
 
     Raises:
         Exception: An exception is raised if this is a driver or this
@@ -1015,9 +1019,17 @@ def exit_actor():
     if worker.mode == ray.WORKER_MODE and not worker.actor_id.is_nil():
         # Intentionally disconnect the core worker from the raylet so the
         # raylet won't push an error message to the driver.
-        ray.disconnect()
+        ray.worker.disconnect()
         # Disconnect global state from GCS.
         ray.state.state.disconnect()
+
+        # In asyncio actor mode, we can't raise SystemExit because it will just
+        # quit the asycnio event loop thread, not the main thread. Instead, we
+        # raise an interrupt signal to the main thread to tell it to exit.
+        if worker.core_worker.current_actor_is_asyncio():
+            _thread.interrupt_main()
+            return
+
         # Set a flag to indicate this is an intentional actor exit. This
         # reduces log verbosity.
         exit = SystemExit(0)

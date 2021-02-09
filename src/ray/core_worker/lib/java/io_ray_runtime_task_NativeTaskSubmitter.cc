@@ -222,7 +222,9 @@ JNIEXPORT jobject JNICALL Java_io_ray_runtime_task_NativeTaskSubmitter_nativeSub
       ray_function, task_args, task_options, &return_ids,
       /*max_retries=*/0,
       /*placement_options=*/
-      std::pair<ray::PlacementGroupID, int64_t>(ray::PlacementGroupID::Nil(), 0), true);
+      std::pair<ray::PlacementGroupID, int64_t>(ray::PlacementGroupID::Nil(), 0),
+      /*placement_group_capture_child_tasks=*/true,
+      /*debugger_breakpoint*/ "");
 
   // This is to avoid creating an empty java list and boost performance.
   if (return_ids.empty()) {
@@ -291,6 +293,19 @@ Java_io_ray_runtime_task_NativeTaskSubmitter_nativeRemovePlacementGroup(
   auto status =
       ray::CoreWorkerProcess::GetCoreWorker().RemovePlacementGroup(placement_group_id);
   THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, (void)0);
+}
+
+JNIEXPORT jboolean JNICALL
+Java_io_ray_runtime_task_NativeTaskSubmitter_nativeWaitPlacementGroupReady(
+    JNIEnv *env, jclass p, jbyteArray placement_group_id_bytes, jint timeout_seconds) {
+  const auto placement_group_id =
+      JavaByteArrayToId<ray::PlacementGroupID>(env, placement_group_id_bytes);
+  auto status = ray::CoreWorkerProcess::GetCoreWorker().WaitPlacementGroupReady(
+      placement_group_id, timeout_seconds);
+  if (status.IsNotFound()) {
+    env->ThrowNew(java_ray_exception_class, status.message().c_str());
+  }
+  return status.ok();
 }
 
 #ifdef __cplusplus

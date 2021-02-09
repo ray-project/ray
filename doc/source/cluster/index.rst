@@ -21,26 +21,34 @@ Clusters are started with the :ref:`Ray Cluster Launcher <ref-automatic-cluster>
 
 You can also create a Ray cluster using a standard cluster manager such as :ref:`Kubernetes <ray-k8s-deploy>`, :ref:`YARN <ray-yarn-deploy>`, or :ref:`SLURM <ray-slurm-deploy>`.
 
-After a cluster is started, you need to connect your program to the Ray cluster.
+After a cluster is started, you need to connect your program to the Ray cluster by starting a driver process on the same node as where you ran ``ray start``:
 
 .. tabs::
-  .. group-tab:: python
+  .. code-tab:: python
 
-    You can connect to this Ray runtime by starting a Python process that calls the following on the same node as where you ran ``ray start``:
-
-    .. code-block:: python
-
-      # This must
-      import ray
-      ray.init(address='auto')
+    # This must
+    import ray
+    ray.init(address='auto')
 
   .. group-tab:: java
 
-    If you want to run Java code, you need to specify the classpath via the ``--code-search-path`` option. See :ref:`code_search_path` for more details.
+    .. code-block:: java
+
+      import io.ray.api.Ray;
+
+      public class MyRayApp {
+
+        public static void main(String[] args) {
+          Ray.init();
+          ...
+        }
+      }
 
     .. code-block:: bash
 
-      $ ray start ... --code-search-path=/path/to/jars
+      java -classpath <classpath> \
+        -Dray.address=<address> \
+        <classname> <args>
 
 and then the rest of your script should be able to leverage Ray as a distributed framework!
 
@@ -73,8 +81,6 @@ The most preferable way to run a Ray cluster is via the :ref:`Ray Cluster Launch
 
 This section assumes that you have a list of machines and that the nodes in the cluster can communicate with each other. It also assumes that Ray is installed
 on each machine. To install Ray, follow the `installation instructions`_.
-
-To configure the Ray cluster to run Java code, you need to add the ``--code-search-path`` option. See :ref:`code_search_path` for more details.
 
 .. _`installation instructions`: http://docs.ray.io/en/master/installation.html
 
@@ -199,7 +205,7 @@ To run a distributed Ray program, you'll need to execute your program on the sam
 
         .. code-block:: bash
 
-            java -classpath /path/to/jars/ \
+            java -classpath <classpath> \
               -Dray.address=<address> \
               <classname> <args>
 
