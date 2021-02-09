@@ -98,12 +98,12 @@ class OptunaSearch(Searcher):
             param.suggest_uniform("b", 10, 20)
         ]
 
-        algo = OptunaSearch(
+        optuna_search = OptunaSearch(
             space,
             metric="loss",
             mode="min")
 
-        tune.run(trainable, search_alg=optuna_search)
+        tune.run(trainable, search_alg=algo)
 
     .. versionadded:: 0.8.8
 
