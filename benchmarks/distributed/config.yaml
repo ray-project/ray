@@ -1,0 +1,58 @@
+cluster_name: distributed-benchmarks
+min_workers: 0
+max_workers: 999999
+
+upscaling_speed: 9999999
+
+provider:
+    type: aws
+    region: us-west-2
+    availability_zone: us-west-2a, us-west-2b, us-west-2c, us-west-2d
+
+auth:
+    ssh_user: ubuntu
+
+available_node_types:
+    head_node:
+        node_config:
+            InstanceType: m5.16xlarge
+            ImageId: ami-098555c9b343eb09c 
+        resources:
+          node: 1
+          small: 1
+        max_workers: 999999
+    worker_node:
+        node_config:
+            InstanceType: m5.16xlarge
+            ImageId: ami-098555c9b343eb09c 
+        resources:
+          node: 1
+        min_workers: 63
+        max_workers: 63
+    small_worker_node:
+        node_config:
+            InstanceType: m5.xlarge
+            ImageId: ami-098555c9b343eb09c 
+        resources:
+          node: 1
+        max_workers: 999999
+
+head_node_type: head_node
+
+worker_default_node_type: worker_node
+
+setup_commands:
+  - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl
+  - pip install tqdm
+  - sudo bash -c 'rm -rf /etc/security/limits.d; echo "* soft nofile 65535" >> /etc/security/limits.conf; echo "* hard nofile 65535" >> /etc/security/limits.conf;'
+
+idle_timeout_minutes: 1
+
+head_start_ray_commands:
+    - ray stop
+    - ulimit -n 65535; ray start --head --port=6379 --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml
+
+# Command to start ray on worker nodes. You don't need to change this.
+worker_start_ray_commands:
+    - ray stop
+    - ulimit -n 65535; ray start --address=$RAY_HEAD_IP:6379 --object-manager-port=8076

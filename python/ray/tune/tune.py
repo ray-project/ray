@@ -1,24 +1,37 @@
+from typing import Any, Callable, Dict, Mapping, Optional, Sequence, Type, \
+    Union
+
+import datetime
 import logging
+import os
+import signal
 import sys
 import time
 
-from ray.tune.error import TuneError
-from ray.tune.experiment import convert_to_experiment_list, Experiment
+import ray
 from ray.tune.analysis import ExperimentAnalysis
-from ray.tune.suggest import BasicVariantGenerator, SearchGenerator
+from ray.tune.callback import Callback
+from ray.tune.error import TuneError
+from ray.tune.experiment import Experiment, convert_to_experiment_list
+from ray.tune.logger import Logger
+from ray.tune.progress_reporter import CLIReporter, JupyterNotebookReporter, \
+    ProgressReporter
+from ray.tune.ray_trial_executor import RayTrialExecutor
+from ray.tune.registry import get_trainable_cls
+from ray.tune.stopper import Stopper
+from ray.tune.suggest import BasicVariantGenerator, SearchAlgorithm, \
+    SearchGenerator
 from ray.tune.suggest.suggestion import Searcher
 from ray.tune.suggest.variant_generator import has_unresolved_values
-from ray.tune.trial import Trial
+from ray.tune.syncer import SyncConfig, set_sync_periods, wait_for_sync
 from ray.tune.trainable import Trainable
-from ray.tune.ray_trial_executor import RayTrialExecutor
-from ray.tune.utils.callback import create_default_callbacks
-from ray.tune.registry import get_trainable_cls
-from ray.tune.syncer import wait_for_sync, set_sync_periods, \
-    SyncConfig
+from ray.tune.trial import Trial
 from ray.tune.trial_runner import TrialRunner
-from ray.tune.progress_reporter import CLIReporter, JupyterNotebookReporter
-from ray.tune.schedulers import FIFOScheduler
+from ray.tune.utils.callback import create_default_callbacks
 from ray.tune.utils.log import Verbosity, has_verbosity, set_verbosity
+
+# Must come last to avoid circular imports
+from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 
 logger = logging.getLogger(__name__)
 
@@ -55,51 +68,57 @@ def _report_progress(runner, reporter, done=False):
 
 
 def run(
-        run_or_experiment,
-        name=None,
-        metric=None,
-        mode=None,
-        stop=None,
-        time_budget_s=None,
-        config=None,
-        resources_per_trial=None,
-        num_samples=1,
-        local_dir=None,
-        search_alg=None,
-        scheduler=None,
-        keep_checkpoints_num=None,
-        checkpoint_score_attr=None,
-        checkpoint_freq=0,
-        checkpoint_at_end=False,
-        verbose=Verbosity.V3_TRIAL_DETAILS,
-        progress_reporter=None,
-        log_to_file=False,
-        trial_name_creator=None,
-        trial_dirname_creator=None,
-        sync_config=None,
-        export_formats=None,
-        max_failures=0,
-        fail_fast=False,
-        restore=None,
-        server_port=None,
-        resume=False,
-        queue_trials=False,
-        reuse_actors=False,
-        trial_executor=None,
-        raise_on_failed_trial=True,
-        callbacks=None,
+        run_or_experiment: Union[str, Callable, Type],
+        name: Optional[str] = None,
+        metric: Optional[str] = None,
+        mode: Optional[str] = None,
+        stop: Union[None, Mapping, Stopper, Callable[[str, Mapping],
+                                                     bool]] = None,
+        time_budget_s: Union[None, int, float, datetime.timedelta] = None,
+        config: Optional[Dict[str, Any]] = None,
+        resources_per_trial: Optional[Mapping[str, Union[float, int]]] = None,
+        num_samples: int = 1,
+        local_dir: Optional[str] = None,
+        search_alg: Optional[Union[Searcher, SearchAlgorithm]] = None,
+        scheduler: Optional[TrialScheduler] = None,
+        keep_checkpoints_num: Optional[int] = None,
+        checkpoint_score_attr: Optional[str] = None,
+        checkpoint_freq: int = 0,
+        checkpoint_at_end: bool = False,
+        verbose: Union[int, Verbosity] = Verbosity.V3_TRIAL_DETAILS,
+        progress_reporter: Optional[ProgressReporter] = None,
+        log_to_file: bool = False,
+        trial_name_creator: Optional[Callable[[Trial], str]] = None,
+        trial_dirname_creator: Optional[Callable[[Trial], str]] = None,
+        sync_config: Optional[SyncConfig] = None,
+        export_formats: Optional[Sequence] = None,
+        max_failures: int = 0,
+        fail_fast: bool = False,
+        restore: Optional[str] = None,
+        server_port: Optional[int] = None,
+        resume: bool = False,
+        queue_trials: bool = False,
+        reuse_actors: bool = False,
+        trial_executor: Optional[RayTrialExecutor] = None,
+        raise_on_failed_trial: bool = True,
+        callbacks: Optional[Sequence[Callback]] = None,
         # Deprecated args
-        loggers=None,
-        ray_auto_init=None,
-        run_errored_only=None,
-        global_checkpoint_period=None,
-        with_server=None,
-        upload_dir=None,
-        sync_to_cloud=None,
-        sync_to_driver=None,
-        sync_on_checkpoint=None,
-):
+        loggers: Optional[Sequence[Type[Logger]]] = None,
+        ray_auto_init: Optional = None,
+        run_errored_only: Optional = None,
+        global_checkpoint_period: Optional = None,
+        with_server: Optional = None,
+        upload_dir: Optional = None,
+        sync_to_cloud: Optional = None,
+        sync_to_driver: Optional = None,
+        sync_on_checkpoint: Optional = None,
+        _remote: bool = None,
+) -> ExperimentAnalysis:
     """Executes training.
+
+    When a SIGINT signal is received (e.g. through Ctrl+C), the tuning run
+    will gracefully shut down and checkpoint the latest experiment state.
+    Sending SIGINT again (or SIGKILL/SIGTERM instead) will skip this step.
 
     Examples:
 
@@ -253,7 +272,9 @@ def run(
             ``ray.tune.callback.Callback`` class. If not passed,
             `LoggerCallback` and `SyncerCallback` callbacks are automatically
             added.
-
+        _remote (bool): Whether to run the Tune driver in a remote function.
+            This is disabled automatically if a custom trial executor is
+            passed in. This is enabled by default in Ray client mode.
 
     Returns:
         ExperimentAnalysis: Object for experiment analysis.
@@ -261,6 +282,64 @@ def run(
     Raises:
         TuneError: Any trials failed and `raise_on_failed_trial` is True.
     """
+
+    if _remote is None:
+        _remote = ray.util.client.ray.is_connected()
+
+    if _remote is True and trial_executor:
+        raise ValueError("cannot use custom trial executor")
+
+    if not trial_executor or isinstance(trial_executor, RayTrialExecutor):
+        _ray_auto_init()
+
+    if _remote:
+        return ray.get(
+            ray.remote(num_cpus=0)(run).remote(
+                run_or_experiment,
+                name,
+                metric,
+                mode,
+                stop,
+                time_budget_s,
+                config,
+                resources_per_trial,
+                num_samples,
+                local_dir,
+                search_alg,
+                scheduler,
+                keep_checkpoints_num,
+                checkpoint_score_attr,
+                checkpoint_freq,
+                checkpoint_at_end,
+                verbose,
+                progress_reporter,
+                log_to_file,
+                trial_name_creator,
+                trial_dirname_creator,
+                sync_config,
+                export_formats,
+                max_failures,
+                fail_fast,
+                restore,
+                server_port,
+                resume,
+                queue_trials,
+                reuse_actors,
+                trial_executor,
+                raise_on_failed_trial,
+                callbacks,
+                # Deprecated args
+                loggers,
+                ray_auto_init,
+                run_errored_only,
+                global_checkpoint_period,
+                with_server,
+                upload_dir,
+                sync_to_cloud,
+                sync_to_driver,
+                sync_on_checkpoint,
+                _remote=False))
+
     all_start = time.time()
     if global_checkpoint_period:
         raise ValueError("global_checkpoint_period is deprecated. Set env var "
@@ -416,8 +495,24 @@ def run(
                            "`Trainable.default_resource_request` if using the "
                            "Trainable API.")
 
+    original_handler = signal.getsignal(signal.SIGINT)
+    state = {signal.SIGINT: False}
+
+    def sigint_handler(sig, frame):
+        logger.warning(
+            "SIGINT received (e.g. via Ctrl+C), ending Ray Tune run. "
+            "This will try to checkpoint the experiment state one last time. "
+            "Press CTRL+C one more time (or send SIGINT/SIGKILL/SIGTERM) "
+            "to skip. ")
+        state[signal.SIGINT] = True
+        # Restore original signal handler to react to future SIGINT signals
+        signal.signal(signal.SIGINT, original_handler)
+
+    if not int(os.getenv("TUNE_DISABLE_SIGINT_HANDLER", "0")):
+        signal.signal(signal.SIGINT, sigint_handler)
+
     tune_start = time.time()
-    while not runner.is_finished():
+    while not runner.is_finished() and not state[signal.SIGINT]:
         runner.step()
         if has_verbosity(Verbosity.V1_EXPERIMENT):
             _report_progress(runner, progress_reporter)
@@ -440,7 +535,7 @@ def run(
             incomplete_trials += [trial]
 
     if incomplete_trials:
-        if raise_on_failed_trial:
+        if raise_on_failed_trial and not state[signal.SIGINT]:
             raise TuneError("Trials did not complete", incomplete_trials)
         else:
             logger.error("Trials did not complete: %s", incomplete_trials)
@@ -450,6 +545,12 @@ def run(
         logger.info(f"Total run time: {all_taken:.2f} seconds "
                     f"({tune_taken:.2f} seconds for the tuning loop).")
 
+    if state[signal.SIGINT]:
+        logger.warning(
+            "Experiment has been interrupted, but the most recent state was "
+            "saved. You can continue running this experiment by passing "
+            "`resume=True` to `tune.run()`")
+
     trials = runner.get_trials()
     return ExperimentAnalysis(
         runner.checkpoint_file,
@@ -458,18 +559,21 @@ def run(
         default_mode=mode)
 
 
-def run_experiments(experiments,
-                    scheduler=None,
-                    server_port=None,
-                    verbose=Verbosity.V3_TRIAL_DETAILS,
-                    progress_reporter=None,
-                    resume=False,
-                    queue_trials=False,
-                    reuse_actors=False,
-                    trial_executor=None,
-                    raise_on_failed_trial=True,
-                    concurrent=True,
-                    callbacks=None):
+def run_experiments(
+        experiments: Union[Experiment, Mapping, Sequence[Union[Experiment,
+                                                               Mapping]]],
+        scheduler: Optional[TrialScheduler] = None,
+        server_port: Optional[int] = None,
+        verbose: Union[int, Verbosity] = Verbosity.V3_TRIAL_DETAILS,
+        progress_reporter: Optional[ProgressReporter] = None,
+        resume: bool = False,
+        queue_trials: bool = False,
+        reuse_actors: bool = False,
+        trial_executor: Optional[RayTrialExecutor] = None,
+        raise_on_failed_trial: bool = True,
+        concurrent: bool = True,
+        callbacks: Optional[Sequence[Callback]] = None,
+        _remote: bool = None):
     """Runs and blocks until all trials finish.
 
     Examples:
@@ -483,6 +587,32 @@ def run_experiments(experiments,
         List of Trial objects, holding data for each executed trial.
 
     """
+    if _remote is None:
+        _remote = ray.util.client.ray.is_connected()
+
+    if _remote is True and trial_executor:
+        raise ValueError("cannot use custom trial executor")
+
+    if not trial_executor or isinstance(trial_executor, RayTrialExecutor):
+        _ray_auto_init()
+
+    if _remote:
+        return ray.get(
+            ray.remote(num_cpus=0)(run_experiments).remote(
+                experiments,
+                scheduler,
+                server_port,
+                verbose,
+                progress_reporter,
+                resume,
+                queue_trials,
+                reuse_actors,
+                trial_executor,
+                raise_on_failed_trial,
+                concurrent,
+                callbacks,
+                _remote=False))
+
     # This is important to do this here
     # because it schematize the experiments
     # and it conducts the implicit registration.
@@ -517,3 +647,14 @@ def run_experiments(experiments,
                 scheduler=scheduler,
                 callbacks=callbacks).trials
         return trials
+
+
+def _ray_auto_init():
+    """Initialize Ray unless already configured."""
+    if os.environ.get("TUNE_DISABLE_AUTO_INIT") == "1":
+        logger.info("'TUNE_DISABLE_AUTO_INIT=1' detected.")
+    elif not ray.is_initialized():
+        logger.info("Initializing Ray automatically."
+                    "For cluster usage or custom Ray initialization, "
+                    "call `ray.init(...)` before `tune.run`.")
+        ray.init()

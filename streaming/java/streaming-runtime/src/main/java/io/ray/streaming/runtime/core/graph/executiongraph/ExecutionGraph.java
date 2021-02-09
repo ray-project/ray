@@ -156,7 +156,7 @@ public class ExecutionGraph implements Serializable {
   /**
    * Get all execution vertices from current execution graph.
    *
-   * <p>Returns all execution vertices.
+   * @return all execution vertices.
    */
   public List<ExecutionVertex> getAllExecutionVertices() {
     return executionJobVertexMap.values().stream()
@@ -168,7 +168,7 @@ public class ExecutionGraph implements Serializable {
   /**
    * Get all execution vertices whose status is 'TO_ADD' from current execution graph.
    *
-   * <p>Returns all added execution vertices.
+   * @return all added execution vertices.
    */
   public List<ExecutionVertex> getAllAddedExecutionVertices() {
     return executionJobVertexMap.values().stream()
@@ -181,7 +181,8 @@ public class ExecutionGraph implements Serializable {
   /**
    * Get specified execution vertex from current execution graph by execution vertex id.
    *
-   * @param executionVertexId execution vertex id. Returns the specified execution vertex.
+   * @param executionVertexId execution vertex id.
+   * @return the specified execution vertex.
    */
   public ExecutionVertex getExecutionVertexByExecutionVertexId(int executionVertexId) {
     if (executionVertexMap.containsKey(executionVertexId)) {
@@ -193,7 +194,8 @@ public class ExecutionGraph implements Serializable {
   /**
    * Get specified execution vertex from current execution graph by actor id.
    *
-   * @param actorId the actor id of execution vertex. Returns the specified execution vertex.
+   * @param actorId the actor id of execution vertex.
+   * @return the specified execution vertex.
    */
   public ExecutionVertex getExecutionVertexByActorId(ActorId actorId) {
     return actorIdExecutionVertexMap.get(actorId);
@@ -202,7 +204,8 @@ public class ExecutionGraph implements Serializable {
   /**
    * Get specified actor by actor id.
    *
-   * @param actorId the actor id of execution vertex. Returns the specified actor handle.
+   * @param actorId the actor id of execution vertex.
+   * @return the specified actor handle.
    */
   public Optional<BaseActorHandle> getActorById(ActorId actorId) {
     return getAllActors().stream().filter(actor -> actor.getId().equals(actorId)).findFirst();
@@ -212,7 +215,8 @@ public class ExecutionGraph implements Serializable {
    * Get the peer actor in the other side of channelName of a given actor
    *
    * @param actor actor in this side
-   * @param channelName the channel name Returns the peer actor in the other side
+   * @param channelName the channel name
+   * @return the peer actor in the other side
    */
   public BaseActorHandle getPeerActor(BaseActorHandle actor, String channelName) {
     Set<BaseActorHandle> set = getActorsByChannelId(channelName);
@@ -229,7 +233,8 @@ public class ExecutionGraph implements Serializable {
   /**
    * Get actors in both sides of a channelId
    *
-   * @param channelId the channelId Returns actors in both sides
+   * @param channelId the channelId
+   * @return actors in both sides
    */
   public Set<BaseActorHandle> getActorsByChannelId(String channelId) {
     return channelGroupedActors.getOrDefault(channelId, Sets.newHashSet());
@@ -238,7 +243,7 @@ public class ExecutionGraph implements Serializable {
   /**
    * Get all actors by graph.
    *
-   * <p>Returns actor list
+   * @return actor list
    */
   public List<BaseActorHandle> getAllActors() {
     return getActorsFromJobVertices(getExecutionJobVertexList());
@@ -247,7 +252,7 @@ public class ExecutionGraph implements Serializable {
   /**
    * Get source actors by graph.
    *
-   * <p>Returns actor list
+   * @return actor list
    */
   public List<BaseActorHandle> getSourceActors() {
     List<ExecutionJobVertex> executionJobVertices =
@@ -261,7 +266,7 @@ public class ExecutionGraph implements Serializable {
   /**
    * Get transformation and sink actors by graph.
    *
-   * <p>Returns actor list
+   * @return actor list
    */
   public List<BaseActorHandle> getNonSourceActors() {
     List<ExecutionJobVertex> executionJobVertices =
@@ -278,7 +283,7 @@ public class ExecutionGraph implements Serializable {
   /**
    * Get sink actors by graph.
    *
-   * <p>Returns actor list
+   * @return actor list
    */
   public List<BaseActorHandle> getSinkActors() {
     List<ExecutionJobVertex> executionJobVertices =
@@ -292,7 +297,8 @@ public class ExecutionGraph implements Serializable {
   /**
    * Get actors according to job vertices.
    *
-   * @param executionJobVertices specified job vertices Returns actor list
+   * @param executionJobVertices specified job vertices
+   * @return actor list
    */
   public List<BaseActorHandle> getActorsFromJobVertices(
       List<ExecutionJobVertex> executionJobVertices) {

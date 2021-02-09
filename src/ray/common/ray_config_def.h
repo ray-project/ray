@@ -35,7 +35,7 @@ RAY_CONFIG(int64_t, ray_cookie, 0x5241590000000000)
 RAY_CONFIG(int64_t, handler_warning_timeout_ms, 1000)
 
 /// The duration between heartbeats sent by the raylets.
-RAY_CONFIG(int64_t, raylet_heartbeat_timeout_milliseconds, 100)
+RAY_CONFIG(int64_t, raylet_heartbeat_period_milliseconds, 100)
 /// If a component has not sent a heartbeat in the last num_heartbeats_timeout
 /// heartbeat intervals, the raylet monitor process will report
 /// it as dead to the db_client table.
@@ -93,7 +93,7 @@ RAY_CONFIG(bool, record_ref_creation_sites, true)
 /// serialized, then either passed as an argument or returned from a task.
 /// NOTE(swang): The timer is checked by the raylet during every heartbeat, so
 /// this should be set to a value larger than
-/// raylet_heartbeat_timeout_milliseconds.
+/// raylet_heartbeat_period_milliseconds.
 RAY_CONFIG(int64_t, free_objects_period_milliseconds, 1000)
 
 /// If object_pinning_enabled is on, then objects that have been unpinned are
@@ -361,7 +361,20 @@ RAY_CONFIG(bool, automatic_object_deletion_enabled, true)
 /// Grace period until we throw the OOM error to the application in seconds.
 RAY_CONFIG(int64_t, oom_grace_period_s, 10)
 
+/// Whether or not the external storage is file system.
+/// This is configured based on object_spilling_config.
+RAY_CONFIG(bool, is_external_storage_type_fs, true)
+
 /* Configuration parameters for locality-aware scheduling. */
 /// Whether to enable locality-aware leasing. If enabled, then Ray will consider task
 /// dependency locality when choosing a worker for leasing.
 RAY_CONFIG(bool, locality_aware_leasing_enabled, true)
+
+/* Configuration parameters for logging */
+/// Parameters for log rotation. This value is equivalent to RotatingFileHandler's
+/// maxBytes argument.
+RAY_CONFIG(int64_t, log_rotation_max_bytes, 100 * 1024 * 1024)
+
+/// Parameters for log rotation. This value is equivalent to RotatingFileHandler's
+/// backupCount argument.
+RAY_CONFIG(int64_t, log_rotation_backup_count, 5)

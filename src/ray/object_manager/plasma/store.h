@@ -33,6 +33,7 @@
 #include "ray/object_manager/plasma/connection.h"
 #include "ray/object_manager/plasma/create_request_queue.h"
 #include "ray/object_manager/plasma/plasma.h"
+#include "ray/object_manager/plasma/plasma_allocator.h"
 #include "ray/object_manager/plasma/protocol.h"
 #include "ray/object_manager/plasma/quota_aware_policy.h"
 
@@ -138,7 +139,8 @@ class PlasmaStore {
   /// \param object_ids Object IDs of the objects to be gotten.
   /// \param timeout_ms The timeout for the get request in milliseconds.
   void ProcessGetRequest(const std::shared_ptr<Client> &client,
-                         const std::vector<ObjectID> &object_ids, int64_t timeout_ms);
+                         const std::vector<ObjectID> &object_ids, int64_t timeout_ms,
+                         bool is_from_worker);
 
   /// Seal a vector of objects. The objects are now immutable and can be accessed with
   /// get.
@@ -189,6 +191,9 @@ class PlasmaStore {
   /// before the object is pinned by raylet for the first time.
   bool IsObjectSpillable(const ObjectID &object_id);
 
+  /// Return the plasma object bytes that are consumed by core workers.
+  int64_t GetConsumedBytes();
+
   void SetNotificationListener(
       const std::shared_ptr<ray::ObjectStoreNotificationManager> &notification_listener) {
     notification_listener_ = notification_listener;
@@ -208,6 +213,13 @@ class PlasmaStore {
 
   /// Process queued requests to create an object.
   void ProcessCreateRequests();
+
+  void GetAvailableMemory(std::function<void(size_t)> callback) const {
+    int64_t num_bytes_in_use = static_cast<int64_t>(num_bytes_in_use_);
+    RAY_CHECK(PlasmaAllocator::GetFootprintLimit() >= num_bytes_in_use);
+    size_t available = PlasmaAllocator::GetFootprintLimit() - num_bytes_in_use;
+    callback(available);
+  }
 
  private:
   PlasmaError HandleCreateObjectRequest(const std::shared_ptr<Client> &client,
@@ -306,6 +318,11 @@ class PlasmaStore {
   /// interface that node manager or object manager can access the plasma store with this
   /// mutex if it is not absolutely necessary.
   std::recursive_mutex mutex_;
+
+  size_t num_bytes_in_use_ = 0;
+
+  /// Total plasma object bytes that are consumed by core workers.
+  int64_t total_consumed_bytes_ = 0;
 };
 
 }  // namespace plasma

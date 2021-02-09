@@ -1,6 +1,184 @@
-- label: "Ray Core Tests (:buildkite: Experimental)"
+- label: ":book: Lint"
   commands:
-  - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only -- //:all -rllib/...
-- label: "Ray Dashboard Tests"
+    - export LINT=1
+    - ./ci/travis/install-dependencies.sh
+    - ./ci/travis/ci.sh lint
+    - ./ci/travis/ci.sh build
+
+- label: ":java: Java"
+  conditions: ["RAY_CI_JAVA_AFFECTED"]
   commands:
-  - bazel test --config=ci $(./scripts/bazel_export_options) python/ray/new_dashboard/...
+    - apt-get install -y openjdk-8-jdk maven clang-format
+    # Compile Java again so bazel will compile Java as a language.
+    - RAY_INSTALL_JAVA=1 ./ci/travis/ci.sh build
+    - ./java/test.sh
+
+- label: ":java: Streaming"
+  conditions:
+    ["RAY_CI_STREAMING_PYTHON_AFFECTED", "RAY_CI_STREAMING_JAVA_AFFECTED"]
+  commands:
+    - apt-get install -y openjdk-8-jdk maven
+    # Compile Java again so bazel will compile Java as a language.
+    - RAY_INSTALL_JAVA=1 ./ci/travis/ci.sh build
+    - bazel test --config=ci $(./scripts/bazel_export_options)
+      //streaming:all
+    - bash streaming/src/test/run_streaming_queue_test.sh
+
+- label: ":cpp: Worker"
+  commands:
+    - ./ci/travis/ci.sh test_cpp
+
+- label: ":cpp: Tests"
+  commands:
+    - bazel test --config=ci $(./scripts/bazel_export_options)
+      --build_tests_only
+      -- //:all -rllib/... -core_worker_test
+
+- label: ":cpp: Tests (ASAN)"
+  commands:
+    - bazel test --config=ci --config=asan $(./scripts/bazel_export_options)
+      --build_tests_only
+      --config=asan-buildkite
+      --jobs=2
+      -- //:all -//:core_worker_test
+
+- label: ":serverless: Dashboard + Serve Tests"
+  conditions:
+    [
+      "RAY_CI_SERVE_AFFECTED",
+      "RAY_CI_DASHBOARD_AFFECTED",
+      "RAY_CI_PYTHON_AFFECTED",
+    ]
+  commands:
+    - TORCH_VERSION=1.6 ./ci/travis/install-dependencies.sh
+    - bazel test --config=ci $(./scripts/bazel_export_options)
+      python/ray/new_dashboard/...
+    - bazel test --config=ci $(./scripts/bazel_export_options)
+      python/ray/serve/...
+
+- label: ":python: (Small & Large)"
+  conditions: ["RAY_CI_PYTHON_AFFECTED"]
+  commands:
+    - bazel test --config=ci $(./scripts/bazel_export_options)
+      --test_tag_filters=-kubernetes,-jenkins_only,-medium_size_python_tests_a_to_j,-medium_size_python_tests_k_to_z
+      python/ray/tests/...
+    - bazel test --config=ci $(./scripts/bazel_export_options)
+      --test_tag_filters=-kubernetes,-jenkins_only,client_tests
+      --test_env=RAY_CLIENT_MODE=1
+      python/ray/tests/...
+- label: ":python: (Medium A-J)"
+  conditions: ["RAY_CI_PYTHON_AFFECTED"]
+  commands:
+    - bazel test --config=ci $(./scripts/bazel_export_options)
+      --test_tag_filters=-kubernetes,-jenkins_only,medium_size_python_tests_a_to_j
+      python/ray/tests/...
+- label: ":python: (Medium K-Z)"
+  conditions: ["RAY_CI_PYTHON_AFFECTED"]
+  commands:
+    - bazel test --config=ci $(./scripts/bazel_export_options)
+      --test_tag_filters=-kubernetes,-jenkins_only,medium_size_python_tests_k_to_z
+      python/ray/tests/...
+
+- label: ":brain: RLlib: Learning tests (from rllib/tuned_examples/*.yaml)"
+  conditions: ["RAY_CI_RLLIB_AFFECTED"]
+  commands:
+    - RLLIB_TESTING=1 TF_VERSION=2.1.0 TFP_VERSION=0.8 TORCH_VERSION=1.6 ./ci/travis/install-dependencies.sh
+    - bazel test --config=ci $(./scripts/bazel_export_options)
+      --build_tests_only
+      --test_tag_filters=learning_tests_tf
+      rllib/...
+- label: ":brain: RLlib: Learning tests with tf=1.x (from rllib/tuned_examples/*.yaml)"
+  conditions: ["RAY_CI_RLLIB_AFFECTED"]
+  commands:
+    - RLLIB_TESTING=1 TF_VERSION=1.14.0 TFP_VERSION=0.7 TORCH_VERSION=1.6 ./ci/travis/install-dependencies.sh
+    - bazel test --config=ci $(./scripts/bazel_export_options)
+      --build_tests_only
+      --test_tag_filters=learning_tests_tf
+      rllib/...
+- label: ":brain: RLlib: Learning tests with Torch (from rllib/tuned_examples/*.yaml)"
+  conditions: ["RAY_CI_RLLIB_AFFECTED"]
+  commands:
+    - RLLIB_TESTING=1 TF_VERSION=2.1.0 TFP_VERSION=0.8 TORCH_VERSION=1.6 ./ci/travis/install-dependencies.sh
+    - bazel test --config=ci $(./scripts/bazel_export_options)
+      --build_tests_only
+      --test_tag_filters=learning_tests_torch
+      rllib/...
+- label: ":brain: RLlib: Quick Agent train.py runs"
+  conditions: ["RAY_CI_RLLIB_AFFECTED"]
+  commands:
+    - RLLIB_TESTING=1 TF_VERSION=2.1.0 TFP_VERSION=0.8 TORCH_VERSION=1.6 ./ci/travis/install-dependencies.sh
+    - bazel test --config=ci $(./scripts/bazel_export_options)
+      --build_tests_only
+      --test_tag_filters=quick_train
+      --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1
+      rllib/...
+    # Test everything that does not have any of the "main" labels:
+    # "learning_tests|quick_train|examples|tests_dir".
+    - bazel test --config=ci $(./scripts/bazel_export_options)
+      --build_tests_only
+      --test_tag_filters=-learning_tests_tf,-learning_tests_torch,-quick_train,-examples,-tests_dir
+      --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1
+      rllib/...
+- label: ":brain: RLlib: rllib/examples/"
+  conditions: ["RAY_CI_RLLIB_AFFECTED"]
+  commands:
+    - RLLIB_TESTING=1 TF_VERSION=2.1.0 TFP_VERSION=0.8 TORCH_VERSION=1.6 ./ci/travis/install-dependencies.sh
+    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only
+      --test_tag_filters=examples_A,examples_B --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1 rllib/...
+    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only
+      --test_tag_filters=examples_C,examples_D --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1 rllib/...
+    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only
+      --test_tag_filters=examples_E,examples_F,examples_G,examples_H,examples_I,examples_J,examples_K,examples_L,examples_M,examples_N,examples_O,examples_P --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1
+      rllib/...
+    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only
+      --test_tag_filters=examples_Q,examples_R,examples_S,examples_T,examples_U,examples_V,examples_W,examples_X,examples_Y,examples_Z --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1
+      rllib/...
+- label: ":brain: RLlib: rllib/tests/ (A-L)"
+  conditions: ["RAY_CI_RLLIB_AFFECTED"]
+  commands:
+    - RLLIB_TESTING=1 TF_VERSION=2.1.0 TFP_VERSION=0.8 TORCH_VERSION=1.6 ./ci/travis/install-dependencies.sh
+    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only
+      --test_tag_filters=tests_dir_A,tests_dir_B,tests_dir_C,tests_dir_D,tests_dir_E,tests_dir_F,tests_dir_G,tests_dir_H,tests_dir_I,tests_dir_J,tests_dir_K,tests_dir_L --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1
+      rllib/...
+- label: ":brain: RLlib: rllib/tests/ (M-Z)"
+  conditions: ["RAY_CI_RLLIB_AFFECTED"]
+  commands:
+    - RLLIB_TESTING=1 TF_VERSION=2.1.0 TFP_VERSION=0.8 TORCH_VERSION=1.6 ./ci/travis/install-dependencies.sh
+    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only
+      --test_tag_filters=tests_dir_M,tests_dir_N,tests_dir_O,tests_dir_P,tests_dir_Q,tests_dir_R,tests_dir_S,tests_dir_T,tests_dir_U,tests_dir_V,tests_dir_W,tests_dir_X,tests_dir_Y,tests_dir_Z --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1
+      rllib/...
+
+- label: ":octopus: Tune tests and examples"
+  conditions: ["RAY_CI_TUNE_AFFECTED"]
+  commands:
+    - TUNE_TESTING=1 ./ci/travis/install-dependencies.sh
+    - bazel test --config=ci $(./scripts/bazel_export_options) --test_tag_filters=-jenkins_only,-example python/ray/tune/...
+    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=example,-tf,-pytorch,-py37,-flaky python/ray/tune/...
+    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=tf,-pytorch,-py37,-flaky python/ray/tune/...
+    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=-tf,pytorch,-py37,-flaky python/ray/tune/...
+    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=-py37,flaky python/ray/tune/...
+
+- label: ":octopus: SGD tests and examples"
+  conditions: ["RAY_CI_SGD_AFFECTED"]
+  commands:
+    - SGD_TESTING=1 ./ci/travis/install-dependencies.sh
+    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=tf,-pytorch,-py37 python/ray/util/sgd/...
+    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=-tf,pytorch,-py37 python/ray/util/sgd/...
+
+- label: ":octopus: Tune/SGD tests and examples. Python 3.7"
+  conditions: ["RAY_CI_TUNE_AFFECTED", "RAY_CI_SGD_AFFECTED"]
+  commands:
+    - TUNE_TESTING=1 PYTHON=3.7 INSTALL_HOROVOD=1 ./ci/travis/install-dependencies.sh
+    # Bcause Python version changed, we need to re-install Ray here
+    - rm -rf ./python/ray/thirdparty_files; ./ci/travis/ci.sh build
+    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=py37 python/ray/tune/...
+    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only python/ray/util/xgboost/...
+
+- label: ":book: Doc tests and examples"
+  conditions:
+    ["RAY_CI_PYTHON_AFFECTED", "RAY_CI_TUNE_AFFECTED", "RAY_CI_DOC_AFFECTED"]
+  commands:
+    - DOC_TESTING=1 ./ci/travis/install-dependencies.sh
+    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=-tf,-pytorch,-py37 doc/...
+    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=tf,-pytorch,-py37 doc/...
+    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=-tf,pytorch,-py37 doc/...

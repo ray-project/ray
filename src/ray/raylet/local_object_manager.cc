@@ -32,6 +32,7 @@ void LocalObjectManager::PinObjects(const std::vector<ObjectID> &object_ids,
       continue;
     }
     RAY_LOG(DEBUG) << "Pinning object " << object_id;
+    pinned_objects_size_ += object->GetSize();
     pinned_objects_.emplace(object_id, std::move(object));
   }
 }
@@ -69,7 +70,10 @@ void LocalObjectManager::ReleaseFreedObject(const ObjectID &object_id) {
     if (automatic_object_deletion_enabled_) {
       spilled_object_pending_delete_.push(object_id);
     }
-    pinned_objects_.erase(object_id);
+    if (pinned_objects_.count(object_id)) {
+      pinned_objects_size_ -= pinned_objects_[object_id]->GetSize();
+      pinned_objects_.erase(object_id);
+    }
   }
 
   // Try to evict all copies of the object from the cluster.
@@ -237,6 +241,7 @@ void LocalObjectManager::SpillObjectsInternal(
                 for (const auto &object_id : objects_to_spill) {
                   auto it = objects_pending_spill_.find(object_id);
                   RAY_CHECK(it != objects_pending_spill_.end());
+                  pinned_objects_size_ += it->second->GetSize();
                   pinned_objects_.emplace(object_id, std::move(it->second));
                   objects_pending_spill_.erase(it);
                 }
@@ -261,11 +266,19 @@ void LocalObjectManager::AddSpilledUrls(
     const ObjectID &object_id = object_ids[i];
     const std::string &object_url = worker_reply.spilled_objects_url(i);
     RAY_LOG(DEBUG) << "Object " << object_id << " spilled at " << object_url;
+    // Choose a node id to report. If an external storage type is not a filesystem, we
+    // don't need to report where this object is spilled.
+    const auto node_id_object_spilled =
+        is_external_storage_type_fs_ ? self_node_id_ : NodeID::Nil();
+
+    auto it = objects_pending_spill_.find(object_id);
+    RAY_CHECK(it != objects_pending_spill_.end());
+
     // Write to object directory. Wait for the write to finish before
     // releasing the object to make sure that the spilled object can
     // be retrieved by other raylets.
     RAY_CHECK_OK(object_info_accessor_.AsyncAddSpilledUrl(
-        object_id, object_url,
+        object_id, object_url, node_id_object_spilled, it->second->GetSize(),
         [this, object_id, object_url, callback, num_remaining](Status status) {
           RAY_CHECK_OK(status);
           // Unpin the object.
@@ -298,14 +311,35 @@ void LocalObjectManager::AddSpilledUrls(
 }
 
 void LocalObjectManager::AsyncRestoreSpilledObject(
-    const ObjectID &object_id, const std::string &object_url,
+    const ObjectID &object_id, const std::string &object_url, const NodeID &node_id,
     std::function<void(const ray::Status &)> callback) {
-  RAY_LOG(DEBUG) << "Restoring spilled object " << object_id << " from URL "
-                 << object_url;
   if (objects_pending_restore_.count(object_id) > 0) {
     // If the same object is restoring, we dedup here.
     return;
   }
+
+  if (!node_id.IsNil() && node_id != self_node_id_) {
+    // If we know where this object was spilled, and the current node is not that one,
+    // send a RPC to a remote node that spilled the object to restore it.
+    RAY_LOG(DEBUG) << "Send a object restoration request of id: " << object_id
+                   << " to a remote node: " << node_id;
+    // TODO(sang): We need to deduplicate this remote RPC. Since restore request
+    // is retried every 10ms without exponential backoff, this can add huge overhead to a
+    // remote node that spilled the object.
+    restore_object_from_remote_node_(object_id, object_url, node_id);
+    if (callback) {
+      callback(Status::OK());
+    }
+    return;
+  }
+
+  // Restore the object.
+  RAY_LOG(DEBUG) << "Restoring spilled object " << object_id << " from URL "
+                 << object_url;
+  if (!node_id.IsNil()) {
+    RAY_CHECK(spilled_objects_url_.count(object_id) > 0);
+  }
+
   RAY_CHECK(objects_pending_restore_.emplace(object_id).second)
       << "Object dedupe wasn't done properly. Please report if you see this issue.";
   io_worker_pool_.PopRestoreWorker([this, object_id, object_url, callback](
@@ -427,6 +461,17 @@ void LocalObjectManager::FillObjectSpillingStats(rpc::GetNodeStatsReply *reply) 
   stats->set_restore_time_total_s(restore_time_total_s_);
   stats->set_restored_bytes_total(restored_bytes_total_);
   stats->set_restored_objects_total(restored_objects_total_);
+}
+
+std::string LocalObjectManager::DebugString() const {
+  std::stringstream result;
+  result << "LocalObjectManager:\n";
+  result << "- num pinned objects: " << pinned_objects_.size() << "\n";
+  result << "- pinned objects size: " << pinned_objects_size_ << "\n";
+  result << "- num objects pending restore: " << objects_pending_restore_.size() << "\n";
+  result << "- num objects pending spill: " << objects_pending_spill_.size() << "\n";
+  result << "- num bytes pending spill: " << num_bytes_pending_spill_ << "\n";
+  return result.str();
 }
 
 };  // namespace raylet

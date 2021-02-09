@@ -2,7 +2,6 @@
 #include <gtest/gtest.h>
 #include <ray/api.h>
 #include <ray/api/ray_config.h>
-#include <ray/experimental/default_worker.h>
 
 using namespace ::ray::api;
 
@@ -33,11 +32,16 @@ class Counter {
   }
 };
 
+std::string lib_name = "";
+
+std::string redis_ip = "";
+
 TEST(RayClusterModeTest, FullTest) {
   /// initialization to cluster mode
   ray::api::RayConfig::GetInstance()->run_mode = RunMode::CLUSTER;
   /// TODO(Guyang Song): add the dynamic library name
-  ray::api::RayConfig::GetInstance()->lib_name = "";
+  ray::api::RayConfig::GetInstance()->lib_name = lib_name;
+  ray::api::RayConfig::GetInstance()->redis_ip = redis_ip;
   Ray::Init();
 
   /// put and get object
@@ -144,18 +148,11 @@ TEST(RayClusterModeTest, FullTest) {
   Ray::Shutdown();
 }
 
-/// TODO(Guyang Song): Separate default worker from this test.
-/// Currently, we compile `default_worker` and `cluster_mode_test` in one single binary,
-/// to work around a symbol conflicting issue.
-/// This is the main function of the binary, and we use the `is_default_worker` arg to
-/// tell if this binary is used as `default_worker` or `cluster_mode_test`.
 int main(int argc, char **argv) {
-  const char *default_worker_magic = "is_default_worker";
-  /// `is_default_worker` is the last arg of `argv`
-  if (argc > 1 &&
-      memcmp(argv[argc - 1], default_worker_magic, strlen(default_worker_magic)) == 0) {
-    default_worker_main(argc, argv);
-    return 0;
+  RAY_CHECK(argc == 2 || argc == 3);
+  lib_name = std::string(argv[1]);
+  if (argc == 3) {
+    redis_ip = std::string(argv[2]);
   }
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();

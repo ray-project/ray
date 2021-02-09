@@ -191,7 +191,8 @@ Status CoreWorkerPlasmaStoreProvider::FetchAndGetFromPlasmaStore(
   std::vector<plasma::ObjectBuffer> plasma_results;
   {
     std::lock_guard<std::mutex> guard(store_client_mutex_);
-    RAY_RETURN_NOT_OK(store_client_.Get(batch_ids, timeout_ms, &plasma_results));
+    RAY_RETURN_NOT_OK(store_client_.Get(batch_ids, timeout_ms, &plasma_results,
+                                        /*is_from_worker=*/true));
   }
 
   // Add successfully retrieved objects to the result map and remove them from
@@ -222,6 +223,40 @@ Status CoreWorkerPlasmaStoreProvider::FetchAndGetFromPlasmaStore(
     }
   }
 
+  return Status::OK();
+}
+
+Status CoreWorkerPlasmaStoreProvider::GetIfLocal(
+    const std::vector<ObjectID> &object_ids,
+    absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results) {
+  std::vector<plasma::ObjectBuffer> plasma_results;
+  {
+    std::lock_guard<std::mutex> guard(store_client_mutex_);
+    // Since this path is used only for spilling, we should set is_from_worker: false.
+    RAY_RETURN_NOT_OK(store_client_.Get(object_ids, /*timeout_ms=*/0, &plasma_results,
+                                        /*is_from_worker=*/false));
+  }
+
+  for (size_t i = 0; i < object_ids.size(); i++) {
+    if (plasma_results[i].data != nullptr || plasma_results[i].metadata != nullptr) {
+      const auto &object_id = object_ids[i];
+      std::shared_ptr<TrackedBuffer> data = nullptr;
+      std::shared_ptr<Buffer> metadata = nullptr;
+      if (plasma_results[i].data && plasma_results[i].data->Size()) {
+        // We track the set of active data buffers in active_buffers_. On destruction,
+        // the buffer entry will be removed from the set via callback.
+        data = std::make_shared<TrackedBuffer>(plasma_results[i].data, buffer_tracker_,
+                                               object_id);
+        buffer_tracker_->Record(object_id, data.get(), get_current_call_site_());
+      }
+      if (plasma_results[i].metadata && plasma_results[i].metadata->Size()) {
+        metadata = plasma_results[i].metadata;
+      }
+      const auto result_object =
+          std::make_shared<RayObject>(data, metadata, std::vector<ObjectID>());
+      (*results)[object_id] = result_object;
+    }
+  }
   return Status::OK();
 }
 
@@ -429,7 +464,7 @@ Status CoreWorkerPlasmaStoreProvider::WarmupStore() {
   RAY_RETURN_NOT_OK(Create(nullptr, 8, object_id, rpc::Address(), &data));
   RAY_RETURN_NOT_OK(Seal(object_id));
   RAY_RETURN_NOT_OK(Release(object_id));
-  RAY_RETURN_NOT_OK(Delete({object_id}, false));
+  RAY_RETURN_NOT_OK(Delete({object_id}, true));
   return Status::OK();
 }
 

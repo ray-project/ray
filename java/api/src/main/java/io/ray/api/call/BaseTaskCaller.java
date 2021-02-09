@@ -14,7 +14,8 @@ public class BaseTaskCaller<T extends BaseTaskCaller<T>> {
   /**
    * Set a name for this task.
    *
-   * @param name task name Returns self
+   * @param name task name
+   * @return self
    * @see CallOptions.Builder#setName(java.lang.String)
    */
   public T setName(String name) {
@@ -27,7 +28,8 @@ public class BaseTaskCaller<T extends BaseTaskCaller<T>> {
    * times. If the same resource is set multiple times, the latest quantity will be used.
    *
    * @param name resource name
-   * @param value resource capacity Returns self
+   * @param value resource capacity
+   * @return self
    * @see CallOptions.Builder#setResource(java.lang.String, java.lang.Double)
    */
   public T setResource(String name, Double value) {
@@ -39,7 +41,8 @@ public class BaseTaskCaller<T extends BaseTaskCaller<T>> {
    * Set custom requirements for multiple resources. This method can be called multiple times. If
    * the same resource is set multiple times, the latest quantity will be used.
    *
-   * @param resources requirements for multiple resources. Returns self
+   * @param resources requirements for multiple resources.
+   * @return self
    * @see CallOptions.Builder#setResources(java.util.Map)
    */
   public T setResources(Map<String, Double> resources) {

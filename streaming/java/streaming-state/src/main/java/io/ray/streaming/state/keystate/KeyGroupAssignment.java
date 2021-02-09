@@ -50,8 +50,8 @@ public final class KeyGroupAssignment {
    * Assigning the key to a key-group index.
    *
    * @param key the key to assign.
-   * @param maxParallelism the maximum parallelism. Returns the key-group index to which the given
-   *     key is assigned.
+   * @param maxParallelism the maximum parallelism.
+   * @return the key-group index to which the given key is assigned.
    */
   public static int assignKeyGroupIndexForKey(Object key, int maxParallelism) {
     return Math.abs(key.hashCode() % maxParallelism);

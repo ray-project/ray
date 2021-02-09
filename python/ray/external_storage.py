@@ -1,5 +1,7 @@
 import abc
+import logging
 import os
+import shutil
 import urllib
 from collections import namedtuple
 from typing import List, IO, Tuple
@@ -9,6 +11,7 @@ from ray.ray_constants import DEFAULT_OBJECT_PREFIX
 from ray._raylet import ObjectRef
 
 ParsedURL = namedtuple("ParsedURL", "base_url, offset, size")
+logger = logging.getLogger(__name__)
 
 
 def create_url_with_offset(*, url: str, offset: int, size: int) -> str:
@@ -79,11 +82,11 @@ class ExternalStorage(metaclass=abc.ABCMeta):
 
     def _get_objects_from_store(self, object_refs):
         worker = ray.worker.global_worker
-        ray_object_pairs = worker.core_worker.get_objects(
-            object_refs,
-            worker.current_task_id,
-            timeout_ms=0,
-            plasma_objects_only=True)
+        # Since the object should always exist in the plasma store before
+        # spilling, it can directly get the object from the local plasma
+        # store.
+        # issue: https://github.com/ray-project/ray/pull/13831
+        ray_object_pairs = worker.core_worker.get_if_local(object_refs)
         return ray_object_pairs
 
     def _put_object_to_store(self, metadata, data_size, file_like, object_ref):
@@ -176,6 +179,14 @@ class ExternalStorage(metaclass=abc.ABCMeta):
             urls: URLs that store spilled object files.
         """
 
+    @abc.abstractmethod
+    def destroy_external_storage(self):
+        """Destroy external storage when a head node is down.
+
+        NOTE: This is currently working when the cluster is
+        started by ray.init
+        """
+
 
 class NullStorage(ExternalStorage):
     """The class that represents an uninitialized external storage."""
@@ -189,6 +200,9 @@ class NullStorage(ExternalStorage):
     def delete_spilled_objects(self, urls: List[str]):
         raise NotImplementedError("External storage is not initialized")
 
+    def destroy_external_storage(self):
+        raise NotImplementedError("External storage is not initialized")
+
 
 class FileSystemStorage(ExternalStorage):
     """The class for filesystem-like external storage.
@@ -199,8 +213,8 @@ class FileSystemStorage(ExternalStorage):
     """
 
     def __init__(self, directory_path):
-        self.directory_path = directory_path
-        self.prefix = DEFAULT_OBJECT_PREFIX
+        self.spill_dir_name = DEFAULT_OBJECT_PREFIX
+        self.directory_path = os.path.join(directory_path, self.spill_dir_name)
         os.makedirs(self.directory_path, exist_ok=True)
         if not os.path.exists(self.directory_path):
             raise ValueError("The given directory path to store objects, "
@@ -211,7 +225,7 @@ class FileSystemStorage(ExternalStorage):
             return []
         # Always use the first object ref as a key when fusioning objects.
         first_ref = object_refs[0]
-        filename = f"{self.prefix}-{first_ref.hex()}-multi-{len(object_refs)}"
+        filename = f"{first_ref.hex()}-multi-{len(object_refs)}"
         url = f"{os.path.join(self.directory_path, filename)}"
         with open(url, "wb") as f:
             return self._write_multiple_objects(f, object_refs, url)
@@ -242,6 +256,25 @@ class FileSystemStorage(ExternalStorage):
         for url in urls:
             filename = parse_url_with_offset(url.decode()).base_url
             os.remove(os.path.join(self.directory_path, filename))
+
+    def destroy_external_storage(self):
+        # Q: Should we add stdout here to
+        # indicate we are deleting a directory?
+
+        # There's a race condition where IO workers are still
+        # deleting each objects while we try deleting the
+        # whole directory. So we should keep trying it until
+        # The directory is actually deleted.
+        while os.path.isdir(self.directory_path):
+            try:
+                shutil.rmtree(self.directory_path)
+            except FileNotFoundError:
+                # If excpetion occurs when other IO workers are
+                # deleting the file at the same time.
+                pass
+            except Exception:
+                logger.exception("Error cleaning up spill files")
+                break
 
 
 class ExternalStorageSmartOpenImpl(ExternalStorage):
@@ -331,6 +364,9 @@ class ExternalStorageSmartOpenImpl(ExternalStorage):
     def delete_spilled_objects(self, urls: List[str]):
         pass
 
+    def destroy_external_storage(self):
+        pass
+
 
 _external_storage = NullStorage()
 
@@ -345,10 +381,15 @@ def setup_external_storage(config):
         elif storage_type == "smart_open":
             _external_storage = ExternalStorageSmartOpenImpl(
                 **config["params"])
+        elif storage_type == "mock_distributed_fs":
+            # This storage is used to unit test distributed external storages.
+            # TODO(sang): Delete it after introducing the mock S3 test.
+            _external_storage = FileSystemStorage(**config["params"])
         else:
             raise ValueError(f"Unknown external storage type: {storage_type}")
     else:
         _external_storage = NullStorage()
+    return _external_storage
 
 
 def reset_external_storage():

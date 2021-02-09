@@ -1,7 +1,7 @@
 import unittest
 
 import ray
-from ray.rllib.agents.registry import get_agent_class
+from ray.rllib.agents.registry import get_trainer_class
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole, \
     MultiAgentMountainCar
 from ray.rllib.utils.test_utils import framework_iterator
@@ -19,10 +19,11 @@ def check_support_multiagent(alg, config):
                 alg in ["A3C", "APEX", "APEX_DDPG", "IMPALA"]:
             continue
         if alg in ["DDPG", "APEX_DDPG", "SAC"]:
-            a = get_agent_class(alg)(
+            a = get_trainer_class(alg)(
                 config=config, env="multi_agent_mountaincar")
         else:
-            a = get_agent_class(alg)(config=config, env="multi_agent_cartpole")
+            a = get_trainer_class(alg)(
+                config=config, env="multi_agent_cartpole")
 
         print(a.train())
         a.stop()
@@ -65,7 +66,7 @@ class TestSupportedMultiAgentPG(unittest.TestCase):
 class TestSupportedMultiAgentOffPolicy(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init(num_cpus=4)
+        ray.init(num_cpus=6)
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -81,6 +82,9 @@ class TestSupportedMultiAgentOffPolicy(unittest.TestCase):
                 "min_iter_time_s": 1,
                 "learning_starts": 10,
                 "target_network_update_freq": 100,
+                "optimizer": {
+                    "num_replay_buffer_shards": 1,
+                },
             })
 
     def test_apex_ddpg_multiagent(self):

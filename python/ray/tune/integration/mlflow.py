@@ -274,8 +274,8 @@ def mlflow_mixin(func: Callable):
         @mlflow_mixin
         def train_fn(config):
             for i in range(10):
-                loss = self.config["a"] + self.config["b"]
-                mlflow.log_metric(key="loss", value=loss})
+                loss = config["a"] + config["b"]
+                mlflow.log_metric(key="loss", value=loss)
             tune.report(loss=loss, done=True)
 
         tune.run(

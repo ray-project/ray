@@ -85,6 +85,9 @@ class ServiceBasedActorInfoAccessor : public ActorInfoAccessor {
   Status AsyncCreateActor(const TaskSpecification &task_spec,
                           const StatusCallback &callback) override;
 
+  Status AsyncKillActor(const ActorID &actor_id, bool force_kill, bool no_restart,
+                        const StatusCallback &callback) override;
+
   Status AsyncSubscribeAll(
       const SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
       const StatusCallback &done) override;
@@ -323,9 +326,10 @@ class ServiceBasedObjectInfoAccessor : public ObjectInfoAccessor {
   Status AsyncGetAll(const MultiItemCallback<rpc::ObjectLocationInfo> &callback) override;
 
   Status AsyncAddLocation(const ObjectID &object_id, const NodeID &node_id,
-                          const StatusCallback &callback) override;
+                          size_t object_size, const StatusCallback &callback) override;
 
   Status AsyncAddSpilledUrl(const ObjectID &object_id, const std::string &spilled_url,
+                            const NodeID &node_id, size_t object_size,
                             const StatusCallback &callback) override;
 
   Status AsyncRemoveLocation(const ObjectID &object_id, const NodeID &node_id,
@@ -450,6 +454,10 @@ class ServiceBasedPlacementGroupInfoAccessor : public PlacementGroupInfoAccessor
 
   Status AsyncGet(
       const PlacementGroupID &placement_group_id,
+      const OptionalItemCallback<rpc::PlacementGroupTableData> &callback) override;
+
+  Status AsyncGetByName(
+      const std::string &name,
       const OptionalItemCallback<rpc::PlacementGroupTableData> &callback) override;
 
   Status AsyncGetAll(

@@ -158,19 +158,29 @@ NodeManager::NodeManager(boost::asio::io_service &io_service, const NodeID &self
       agent_manager_service_(io_service, *agent_manager_service_handler_),
       client_call_manager_(io_service),
       worker_rpc_pool_(client_call_manager_),
-      local_object_manager_(io_service_, RayConfig::instance().free_objects_batch_size(),
-                            RayConfig::instance().free_objects_period_milliseconds(),
-                            worker_pool_, gcs_client_->Objects(), worker_rpc_pool_,
-                            /* object_pinning_enabled */ config.object_pinning_enabled,
-                            /* automatic_object_deletion_enabled */
-                            config.automatic_object_deletion_enabled,
-                            /*max_io_workers*/ config.max_io_workers,
-                            /*min_spilling_size*/ config.min_spilling_size,
-                            [this](const std::vector<ObjectID> &object_ids) {
-                              object_manager_.FreeObjects(object_ids,
-                                                          /*local_only=*/false);
-                            },
-                            is_plasma_object_spillable),
+      local_object_manager_(
+          self_node_id_, RayConfig::instance().free_objects_batch_size(),
+          RayConfig::instance().free_objects_period_milliseconds(), worker_pool_,
+          gcs_client_->Objects(), worker_rpc_pool_,
+          /* object_pinning_enabled */ config.object_pinning_enabled,
+          /* automatic_object_deletion_enabled */
+          config.automatic_object_deletion_enabled,
+          /*max_io_workers*/ config.max_io_workers,
+          /*min_spilling_size*/ config.min_spilling_size,
+          /*is_external_storage_type_fs*/
+          RayConfig::instance().is_external_storage_type_fs(),
+          /*on_objects_freed*/
+          [this](const std::vector<ObjectID> &object_ids) {
+            object_manager_.FreeObjects(object_ids,
+                                        /*local_only=*/false);
+          },
+          is_plasma_object_spillable,
+          /*restore_object_from_remote_node*/
+          [this](const ObjectID &object_id, const std::string &spilled_url,
+                 const NodeID &node_id) {
+            SendSpilledObjectRestorationRequestToRemoteNode(object_id, spilled_url,
+                                                            node_id);
+          }),
       report_worker_backlog_(RayConfig::instance().report_worker_backlog()),
       last_local_gc_ns_(absl::GetCurrentTimeNanos()),
       local_gc_interval_ns_(RayConfig::instance().local_gc_interval_s() * 1e9),
@@ -212,7 +222,11 @@ NodeManager::NodeManager(boost::asio::io_service &io_service, const NodeID &self
         self_node_id_,
         std::dynamic_pointer_cast<ClusterResourceScheduler>(cluster_resource_scheduler_),
         dependency_manager_, is_owner_alive, get_node_info_func, announce_infeasible_task,
-        worker_pool_, leased_workers_));
+        worker_pool_, leased_workers_,
+        [this](const std::vector<ObjectID> &object_ids,
+               std::vector<std::unique_ptr<RayObject>> *results) {
+          return GetObjectsFromPlasma(object_ids, results);
+        }));
     placement_group_resource_manager_ =
         std::make_shared<NewPlacementGroupResourceManager>(
             std::dynamic_pointer_cast<ClusterResourceScheduler>(
@@ -396,7 +410,7 @@ void NodeManager::Heartbeat() {
   uint64_t now_ms = current_time_ms();
   uint64_t interval = now_ms - last_heartbeat_at_ms_;
   if (interval > RayConfig::instance().num_heartbeats_warning() *
-                     RayConfig::instance().raylet_heartbeat_timeout_milliseconds()) {
+                     RayConfig::instance().raylet_heartbeat_period_milliseconds()) {
     RAY_LOG(WARNING)
         << "Last heartbeat was sent " << interval
         << " ms ago. There might be resource pressure on this node. If heartbeat keeps "
@@ -442,6 +456,7 @@ void NodeManager::Heartbeat() {
 void NodeManager::ReportResourceUsage() {
   auto resources_data = std::make_shared<rpc::ResourcesData>();
   resources_data->set_node_id(self_node_id_.Binary());
+  resources_data->set_node_manager_address(initial_config_.node_manager_address);
   // Update local chche from gcs remote cache, this is needed when gcs restart.
   // We should always keep the cache view consistent.
   cluster_resource_scheduler_->UpdateLastResourceUsage(
@@ -509,6 +524,24 @@ void NodeManager::HandleRequestObjectSpillage(
         }
         send_reply_callback(Status::OK(), nullptr, nullptr);
       });
+}
+
+void NodeManager::HandleRestoreSpilledObject(
+    const rpc::RestoreSpilledObjectRequest &request,
+    rpc::RestoreSpilledObjectReply *reply, rpc::SendReplyCallback send_reply_callback) {
+  const auto object_id = ObjectID::FromBinary(request.object_id());
+  const auto spilled_node_id = NodeID::FromBinary(request.spilled_node_id());
+  const auto object_url = request.object_url();
+  RAY_CHECK(spilled_node_id == self_node_id_);
+  RAY_LOG(DEBUG) << "Restore spilled object request received. Object id: " << object_id
+                 << " spilled_node_id: " << self_node_id_
+                 << " object url: " << object_url;
+  local_object_manager_.AsyncRestoreSpilledObject(object_id, object_url, spilled_node_id,
+                                                  nullptr);
+  // Just reply right away. The caller will keep hitting this RPC endpoint until
+  // restoration succeeds, so we can safely reply here without waiting for the
+  // restoreSpilledObject to be done.
+  send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
 void NodeManager::HandleReleaseUnusedBundles(
@@ -690,7 +723,7 @@ void NodeManager::NodeRemoved(const NodeID &node_id) {
       << "Exiting because this node manager has mistakenly been marked dead by the "
       << "monitor: GCS didn't receive heartbeats within timeout "
       << RayConfig::instance().num_heartbeats_timeout() *
-             RayConfig::instance().raylet_heartbeat_timeout_milliseconds()
+             RayConfig::instance().raylet_heartbeat_period_milliseconds()
       << " ms. This is likely since the machine or raylet became overloaded.";
 
   // Below, when we remove node_id from all of these data structures, we could
@@ -1214,8 +1247,9 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
     if ((!task_id.IsNil() || !actor_id.IsNil()) && !worker->IsDead()) {
       // If the worker was an actor, it'll be cleaned by GCS.
       if (actor_id.IsNil()) {
+        // Return the resources that were being used by this worker.
         Task task;
-        static_cast<void>(local_queues_.RemoveTask(task_id, &task));
+        cluster_task_manager_->TaskFinished(worker, &task);
       }
 
       if (disconnect_type == rpc::WorkerExitType::SYSTEM_ERROR_EXIT) {
@@ -1233,7 +1267,7 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
     }
 
     // Remove the dead client from the pool and stop listening for messages.
-    worker_pool_.DisconnectWorker(worker);
+    worker_pool_.DisconnectWorker(worker, disconnect_type);
 
     // Return the resources that were being used by this worker.
     cluster_task_manager_->ReleaseWorkerResources(worker);
@@ -2301,6 +2335,7 @@ std::string NodeManager::DebugString() const {
   for (auto &pair : cluster_resource_map_) {
     result << "\n" << pair.first.Hex() << ": " << pair.second.DebugString();
   }
+  result << "\n" << local_object_manager_.DebugString();
   result << "\n" << object_manager_.DebugString();
   result << "\n" << gcs_client_->DebugString();
   result << "\n" << worker_pool_.DebugString();
@@ -2337,6 +2372,35 @@ std::string compact_tag_string(const opencensus::stats::ViewDescriptor &view,
   return result.str();
 }
 
+bool NodeManager::GetObjectsFromPlasma(const std::vector<ObjectID> &object_ids,
+                                       std::vector<std::unique_ptr<RayObject>> *results) {
+  // Pin the objects in plasma by getting them and holding a reference to
+  // the returned buffer.
+  // NOTE: the caller must ensure that the objects already exist in plasma before
+  // sending a PinObjectIDs request.
+  std::vector<plasma::ObjectBuffer> plasma_results;
+  // TODO(swang): This `Get` has a timeout of 0, so the plasma store will not
+  // block when serving the request. However, if the plasma store is under
+  // heavy load, then this request can still block the NodeManager event loop
+  // since we must wait for the plasma store's reply. We should consider using
+  // an `AsyncGet` instead.
+  if (!store_client_
+           .Get(object_ids, /*timeout_ms=*/0, &plasma_results, /*is_from_worker=*/false)
+           .ok()) {
+    return false;
+  }
+
+  for (const auto &plasma_result : plasma_results) {
+    if (plasma_result.data == nullptr) {
+      results->push_back(nullptr);
+    } else {
+      results->emplace_back(std::unique_ptr<RayObject>(
+          new RayObject(plasma_result.data, plasma_result.metadata, {})));
+    }
+  }
+  return true;
+}
+
 void NodeManager::HandlePinObjectIDs(const rpc::PinObjectIDsRequest &request,
                                      rpc::PinObjectIDsReply *reply,
                                      rpc::SendReplyCallback send_reply_callback) {
@@ -2346,33 +2410,16 @@ void NodeManager::HandlePinObjectIDs(const rpc::PinObjectIDsRequest &request,
     object_ids.push_back(ObjectID::FromBinary(object_id_binary));
   }
   if (object_pinning_enabled_) {
-    // Pin the objects in plasma by getting them and holding a reference to
-    // the returned buffer.
-    // NOTE: the caller must ensure that the objects already exist in plasma before
-    // sending a PinObjectIDs request.
-    std::vector<plasma::ObjectBuffer> plasma_results;
-    // TODO(swang): This `Get` has a timeout of 0, so the plasma store will not
-    // block when serving the request. However, if the plasma store is under
-    // heavy load, then this request can still block the NodeManager event loop
-    // since we must wait for the plasma store's reply. We should consider using
-    // an `AsyncGet` instead.
-    if (!store_client_.Get(object_ids, /*timeout_ms=*/0, &plasma_results).ok()) {
-      RAY_LOG(WARNING) << "Failed to get objects to be pinned from object store.";
+    std::vector<std::unique_ptr<RayObject>> results;
+    if (!GetObjectsFromPlasma(object_ids, &results)) {
+      RAY_LOG(WARNING)
+          << "Failed to get objects that should have been in the object store. These "
+             "objects may have been evicted while there are still references in scope.";
       // TODO(suquark): Maybe "Status::ObjectNotFound" is more accurate here.
       send_reply_callback(Status::Invalid("Failed to get objects."), nullptr, nullptr);
       return;
     }
-
-    std::vector<std::unique_ptr<RayObject>> objects;
-    for (int64_t i = 0; i < request.object_ids().size(); i++) {
-      if (plasma_results[i].data == nullptr) {
-        objects.push_back(nullptr);
-      } else {
-        objects.emplace_back(std::unique_ptr<RayObject>(
-            new RayObject(plasma_results[i].data, plasma_results[i].metadata, {})));
-      }
-    }
-    local_object_manager_.PinObjects(object_ids, std::move(objects));
+    local_object_manager_.PinObjects(object_ids, std::move(results));
   }
   // Wait for the object to be freed by the owner, which keeps the ref count.
   local_object_manager_.WaitForObjectFree(request.owner_address(), object_ids);
@@ -2481,14 +2528,16 @@ rpc::ObjectStoreStats AccumulateStoreStats(
   rpc::ObjectStoreStats store_stats;
   for (const auto &reply : node_stats) {
     auto cur_store = reply.store_stats();
-    store_stats.set_spill_time_total_s(store_stats.spill_time_total_s() +
-                                       cur_store.spill_time_total_s());
+    // Use max aggregation for time, since the nodes are spilling concurrently.
+    store_stats.set_spill_time_total_s(
+        std::max(store_stats.spill_time_total_s(), cur_store.spill_time_total_s()));
+    store_stats.set_restore_time_total_s(
+        std::max(store_stats.restore_time_total_s(), cur_store.restore_time_total_s()));
+    // Use sum aggregation for the rest of the metrics.
     store_stats.set_spilled_bytes_total(store_stats.spilled_bytes_total() +
                                         cur_store.spilled_bytes_total());
     store_stats.set_spilled_objects_total(store_stats.spilled_objects_total() +
                                           cur_store.spilled_objects_total());
-    store_stats.set_restore_time_total_s(store_stats.restore_time_total_s() +
-                                         cur_store.restore_time_total_s());
     store_stats.set_restored_bytes_total(store_stats.restored_bytes_total() +
                                          cur_store.restored_bytes_total());
     store_stats.set_restored_objects_total(store_stats.restored_objects_total() +
@@ -2499,6 +2548,8 @@ rpc::ObjectStoreStats AccumulateStoreStats(
                                              cur_store.object_store_bytes_avail());
     store_stats.set_num_local_objects(store_stats.num_local_objects() +
                                       cur_store.num_local_objects());
+    store_stats.set_consumed_bytes(store_stats.consumed_bytes() +
+                                   cur_store.consumed_bytes());
   }
   return store_stats;
 }
@@ -2712,6 +2763,30 @@ void NodeManager::PublishInfeasibleTaskError(const Task &task) const {
                                   task.GetTaskSpecification().JobId());
     RAY_CHECK_OK(gcs_client_->Errors().AsyncReportJobError(error_data_ptr, nullptr));
   }
+}
+
+void NodeManager::SendSpilledObjectRestorationRequestToRemoteNode(
+    const ObjectID &object_id, const std::string &spilled_url, const NodeID &node_id) {
+  // Fetch from a remote node.
+  if (!remote_node_manager_addresses_.contains(node_id)) {
+    // It is possible the new node information is not received at this point.
+    // In this case, the PullManager will handle retry, so we just return.
+    return;
+  }
+  const auto &entry = remote_node_manager_addresses_.find(node_id);
+  // TODO(sang): Use a node manager pool instead.
+  auto raylet_client =
+      std::make_shared<ray::raylet::RayletClient>(rpc::NodeManagerWorkerClient::make(
+          entry->second.first, entry->second.second, client_call_manager_));
+  raylet_client->RestoreSpilledObject(
+      object_id, spilled_url, node_id,
+      [](const ray::Status &status, const rpc::RestoreSpilledObjectReply &r) {
+        if (!status.ok()) {
+          RAY_LOG(WARNING) << "Failed to send a spilled object restoration request to a "
+                              "remote node. This request will be retried. Error message: "
+                           << status.ToString();
+        }
+      });
 }
 
 }  // namespace raylet

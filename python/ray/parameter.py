@@ -1,4 +1,3 @@
-import json
 import logging
 import os
 
@@ -18,9 +17,12 @@ class RayParams:
             raylet, a plasma store, a plasma manager, and some workers.
             It will also kill these processes when Python exits.
         redis_port (int): The port that the primary Redis shard should listen
-            to. If None, then a random port will be chosen.
+            to. If None, then it will fall back to
+            ray.ray_constants.DEFAULT_PORT, or a random port if the default is
+            not available.
         redis_shard_ports: A list of the ports to use for the non-primary Redis
-            shards.
+            shards. If None, then it will fall back to the ports right after
+            redis_port, or random ports if those are not available.
         num_cpus (int): Number of CPUs to configure the raylet with.
         num_gpus (int): Number of GPUs to configure the raylet with.
         resources: A dictionary mapping the name of a resource to the quantity
@@ -320,13 +322,3 @@ class RayParams:
         if numpy_major <= 1 and numpy_minor < 16:
             logger.warning("Using ray with numpy < 1.16.0 will result in slow "
                            "serialization. Upgrade numpy if using with ray.")
-
-        # Make sure object spilling configuration is applicable.
-        object_spilling_config = self._system_config.get(
-            "object_spilling_config", {})
-        if object_spilling_config:
-            object_spilling_config = json.loads(object_spilling_config)
-            from ray import external_storage
-            # Validate external storage usage.
-            external_storage.setup_external_storage(object_spilling_config)
-            external_storage.reset_external_storage()
