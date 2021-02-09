@@ -90,7 +90,11 @@ def resource_dict_to_pg_factory(spec: Optional[Dict[str, float]]):
     if isinstance(spec, Resources):
         spec = spec._asdict()
 
-    if any(k.startswith("extra_") and spec[k] for k in spec):
+    spec = spec.copy()
+    extra_custom = spec.pop("extra_custom_resources", {}) or {}
+
+    if any(k.startswith("extra_") and spec[k]
+           for k in spec) or any(extra_custom[k] for k in extra_custom):
         raise ValueError(
             "Passing `extra_*` resource requirements to `resources_per_trial` "
             "is deprecated. Please use a `PlacementGroupFactory` object "
@@ -101,7 +105,7 @@ def resource_dict_to_pg_factory(spec: Optional[Dict[str, float]]):
     memory = spec.pop("memory", 0.)
     object_store_memory = spec.pop("object_store_memory", 0.)
 
-    bundle = {k: v for k, v in spec.pop("custom_resources", {})}
+    bundle = {k: v for k, v in spec.pop("custom_resources", {}).items()}
 
     bundle.update({
         "CPU": cpus,
@@ -346,3 +350,13 @@ class PlacementGroupManager:
     def in_staging_grace_period(self):
         return self._staging_futures and self._grace_period and time.time(
         ) <= self._latest_staging_start_time + self._grace_period
+
+    def occupied_resources(self):
+        """Return a dictionary of currently in-use resources."""
+        resources = {"CPU": 0, "GPU": 0}
+        for pg in self._in_use_pgs:
+            for bundle_resources in pg.bundle_specs:
+                for key, val in bundle_resources.items():
+                    resources[key] = resources.get(key, 0) + val
+
+        return resources

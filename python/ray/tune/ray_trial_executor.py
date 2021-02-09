@@ -678,9 +678,6 @@ class RayTrialExecutor(TrialExecutor):
             custom_resources=custom_resources)
 
     def _return_resources(self, resources):
-        if resources.has_placement_group:
-            return
-
         committed = self._committed_resources
 
         all_keys = set(resources.custom_resources).union(
@@ -697,6 +694,36 @@ class RayTrialExecutor(TrialExecutor):
 
         assert self._committed_resources.is_nonnegative(), (
             "Resource invalid: {}".format(resources))
+
+    @property
+    def total_used_resources(self) -> dict:
+        """Dict of total used resources incl. placement groups"""
+        committed = self._committed_resources._asdict()
+
+        # Make dict compatible with pg resource dict
+        committed.pop("has_placement_group", None)
+        committed["CPU"] = committed.pop("cpu", 0) + committed.pop(
+            "extra_cpu", 0)
+        committed["GPU"] = committed.pop("gpu", 0) + committed.pop(
+            "extra_gpu", 0)
+        committed["memory"] += committed.pop("extra_memory", 0.)
+        committed["object_store_memory"] += committed.pop(
+            "extra_object_store_memory", 0.)
+
+        custom = committed.pop("custom_resources", {})
+        extra_custom = committed.pop("extra_custom_resources", {})
+
+        for k, v in extra_custom.items():
+            custom[k] = custom.get(k, 0.) + v
+
+        committed.update(custom)
+
+        pg_resources = self._pg_manager.occupied_resources()
+
+        for k, v in committed.items():
+            pg_resources[k] = pg_resources.get(k, 0.) + v
+
+        return pg_resources
 
     def _update_avail_resources(self, num_retries=5):
         if time.time() - self._last_resource_refresh < self._refresh_period:
@@ -809,21 +836,23 @@ class RayTrialExecutor(TrialExecutor):
 
     def debug_string(self):
         """Returns a human readable message for printing to the console."""
+        total_resources = self.total_used_resources
+
         if self._resources_initialized:
             status = ("Resources requested: {}/{} CPUs, {}/{} GPUs, "
                       "{}/{} GiB heap, {}/{} GiB objects".format(
-                          self._committed_resources.cpu,
-                          self._avail_resources.cpu,
-                          self._committed_resources.gpu,
+                          total_resources.pop("CPU",
+                                              0), self._avail_resources.cpu,
+                          total_resources.pop("GPU", 0),
                           self._avail_resources.gpu,
-                          _to_gb(self._committed_resources.memory),
+                          _to_gb(total_resources.pop("memory", 0.)),
                           _to_gb(self._avail_resources.memory),
                           _to_gb(
-                              self._committed_resources.object_store_memory),
+                              total_resources.pop("object_store_memory", 0.)),
                           _to_gb(self._avail_resources.object_store_memory)))
             customs = ", ".join([
                 "{}/{} {}".format(
-                    self._committed_resources.get_res_total(name),
+                    total_resources.get(name, 0.),
                     self._avail_resources.get_res_total(name), name)
                 for name in self._avail_resources.custom_resources
                 if not name.startswith(ray.resource_spec.NODE_ID_PREFIX)
