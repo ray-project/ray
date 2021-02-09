@@ -133,6 +133,8 @@ matrix:
         - PYTHON=3.6 PYTHONWARNINGS=ignore
         - RAY_INSTALL_JAVA=1
         - BAZEL_CONFIG="asan"
+        - ASAN_OPTIONS="detect_leaks=0"
+        - LD_PRELOAD="/usr/lib/x86_64-linux-gnu/libasan.so.2 /usr/lib/gcc/x86_64-linux-gnu/7/libasan.so"
       language: java
       jdk: openjdk8
       install:
