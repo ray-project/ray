@@ -1216,15 +1216,19 @@ class LoadMetricsTest(unittest.TestCase):
                 strategy=PlacementStrategy.PACK,
                 bundles=([Bundle(unit_resources={"GPU": 2})] * 2)),
         ]
-        lm.update("1.1.1.1", {
+        lm.update(
+            "1.1.1.1",
+            {
                 "CPU": 64,
-                "memory": 20, # 1000 MiB
-                "object_store_memory": 40 # 2000 MiB
-            }, {
+                "memory": 20,  # 1000 MiB
+                "object_store_memory": 40  # 2000 MiB
+            },
+            {
                 "CPU": 2,
-                "memory": 10, # 500 MiB
-                "object_store_memory": 20 # 1000 MiB
-        },{})
+                "memory": 10,  # 500 MiB
+                "object_store_memory": 20  # 1000 MiB
+            },
+            {})
         lm.update("1.1.1.2", {
             "CPU": 64,
             "GPU": 8,
@@ -2426,7 +2430,7 @@ def test_info_string():
             "GPU": (2, 2),
             "AcceleratorType:V100": (0, 2),
             "memory": (2 * 2**30, 2**33),
-            "object_store_memory": (3.14 * 2**30, 2 ** 34)
+            "object_store_memory": (3.14 * 2**30, 2**34)
         },
         resource_demand=[({
             "CPU": 1
@@ -2497,7 +2501,7 @@ def test_info_string_no_node_type():
             "GPU": (2, 2),
             "AcceleratorType:V100": (0, 2),
             "memory": (2 * 2**30, 2**33),
-            "object_store_memory": (3.14 * 2**30, 2 ** 34)
+            "object_store_memory": (3.14 * 2**30, 2**34)
         },
         resource_demand=[({
             "CPU": 1
