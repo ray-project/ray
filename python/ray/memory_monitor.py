@@ -73,7 +73,7 @@ class MemoryMonitor:
     to overwrite the default error_threshold setting.
     """
 
-    def __init__(self, error_threshold=0.0, check_interval=1):
+    def __init__(self, error_threshold=0.95, check_interval=1):
         # Note: it takes ~50us to check the memory usage through psutil, so
         # throttle this check at most once a second or so.
         self.check_interval = check_interval
