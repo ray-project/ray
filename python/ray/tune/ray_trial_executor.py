@@ -104,18 +104,17 @@ class _TrialCleanup:
             actor (ActorHandle): Handle to the trainable to be stopped.
             placement_group (PlacementGroup): Placement group to stop.
         """
-        future = actor.stop.remote()
+        actor.stop.remote()
+        future = actor.__ray_terminate__.remote()
 
-        if placement_group:
-            remove_placement_group(placement_group)
-        else:
-            actor.__ray_terminate__.remote()
+        self._cleanup_map[future] = (trial, placement_group)
 
-        self._cleanup_map[future] = trial
         if len(self._cleanup_map) > self.threshold:
-            self.cleanup(partial=True)
+            self.cleanup(partial=True, timeout=DEFAULT_GET_TIMEOUT)
+        else:
+            self.cleanup(partial=True, timeout=None)
 
-    def cleanup(self, partial: bool = True):
+    def cleanup(self, partial: bool = True, timeout: Optional[float] = None):
         """Waits for cleanup to finish.
 
         If partial=False, all futures are expected to return. If a future
@@ -123,16 +122,18 @@ class _TrialCleanup:
         """
         logger.debug("Cleaning up futures")
         num_to_keep = int(self.threshold) / 2 if partial else 0
-        while len(self._cleanup_map) > num_to_keep:
-            dones, _ = ray.wait(
-                list(self._cleanup_map), timeout=DEFAULT_GET_TIMEOUT)
-            if not dones:
+        dones = True
+        while len(self._cleanup_map) > num_to_keep or dones:
+            dones, _ = ray.wait(list(self._cleanup_map), timeout=timeout)
+            if not dones and timeout:
                 logger.warning(
                     "Skipping cleanup - trainable.stop did not return in "
                     "time. Consider making `stop` a faster operation.")
-            else:
-                done = dones[0]
-                del self._cleanup_map[done]
+            elif dones:
+                for done in dones:
+                    trial, pg = self._cleanup_map[done]
+                    remove_placement_group(pg)
+                    del self._cleanup_map[done]
 
 
 def noop_logger_creator(config, logdir):
@@ -216,6 +217,9 @@ class RayTrialExecutor(TrialExecutor):
             # run step() method for the first time
             self._pg_manager.cleanup_existing_pg()
             self._has_cleaned_up_pgs = True
+
+        # Remove placement groups from terminated/errored trials
+        self._trial_cleanup.cleanup(partial=True, timeout=None)
 
         for trial in trials:
             if trial.status != Trial.PENDING:
