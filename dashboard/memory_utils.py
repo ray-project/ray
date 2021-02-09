@@ -401,9 +401,10 @@ def get_memory_summary(redis_address, redis_password, group_by, sort_by,
             ) + " MiB" if entry["object_size"] > -1 else "?"
             num_lines = 1
             if size > line_wrap_threshold and line_wrap:
+                call_site_length = 22
                 entry["call_site"] = [
-                    entry["call_site"][i:i + 22]
-                    for i in range(0, len(entry["call_site"]), 22)
+                    entry["call_site"][i:i + call_site_length] for i in range(
+                        0, len(entry["call_site"]), call_site_length)
                 ]
                 num_lines = len(entry["call_site"])
             object_ref_values = [
