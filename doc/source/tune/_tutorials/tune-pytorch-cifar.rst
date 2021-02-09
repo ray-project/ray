@@ -217,7 +217,8 @@ available for each trial:
     # ...
     result = tune.run(
         partial(train_cifar, data_dir=data_dir),
-        resources_per_trial={"cpu": 8, "gpu": gpus_per_trial},
+        resources_per_trial=tune.PlacementGroupFactory(
+            [{"CPU": 8, "GPU": gpus_per_trial}]),
         config=config,
         num_samples=num_samples,
         scheduler=scheduler,

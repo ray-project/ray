@@ -311,7 +311,7 @@ a few changes to our code-block:
         }
         analysis = tune.run(
             train_breast_cancer,
-            resources_per_trial={"cpu": 1},
+            resources_per_trial=tune.PlacementGroupFactory([{"CPU": 1}]),
             config=config,
             num_samples=10)
 
@@ -464,7 +464,7 @@ of the GPU memory for training. For 10 tasks, this could look like this:
     }
     tune.run(
         train_breast_cancer,
-        resources_per_trial={"cpu": 1, "gpu": 0.1},
+        resources_per_trial=tune.PlacementGroupFactory([{"CPU": 1, "GPU": 0.1}]),
         config=config,
         num_samples=10,
         scheduler=scheduler)

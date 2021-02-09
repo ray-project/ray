@@ -21,7 +21,46 @@ TUNE_MAX_PENDING_TRIALS_PG = int(os.getenv("TUNE_MAX_PENDING_TRIALS_PG", 1000))
 
 
 class PlacementGroupFactory:
-    """Wrapper class to identify placement group factory methods."""
+    """Wrapper class that creates placement groups for trials.
+
+    This function should be used to define resource requests for Ray Tune
+    trials. It holds the parameters to create placement groups.
+    At a minimum, this will hold at least one bundle specifying the
+    resource requirements for each trial:
+
+    .. code-block:: python
+
+        from ray import tune
+
+        tune.run(
+            train,
+            tune.PlacementGroupFactory([
+                {"CPU": 1, "GPU": 0.5, "custom_resource": 2}
+            ]))
+
+    If the trial itself schedules further remote workers, the resource
+    requirements should be specified in additional bundles. You can also
+    pass the placement strategy for these bundles, e.g. to enforce
+    co-located placement:
+
+    .. code-block:: python
+
+        from ray import tune
+
+        tune.run(
+            train,
+            tune.PlacementGroupFactory([
+                {"CPU": 1, "GPU": 0.5, "custom_resource": 2},
+                {"CPU": 2},
+                {"CPU": 2},
+            ], strategy="PACK"))
+
+    The example above will reserve 1 CPU, 0.5 GPUs and 2 custom_resources
+    for the trainable itself, and reserve another 2 bundles of 2 CPUs each.
+    The trial will only start when alle these resources are available. This
+    could be used e.g. if you had one learner running in the main trainable
+    that schedules two remote workers that need access to 2 CPUs each.
+    """
 
     def __init__(self,
                  bundles: List[Dict[str, float]],
