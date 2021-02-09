@@ -30,7 +30,7 @@ Ray Serve can be used in two primary ways to deploy your models at scale:
 
 
 .. tip::
-  Chat with Ray Serve users and developers on our `community Slack <https://forms.gle/9TSdDYUgxYs8SA9e8>`_ in the #serve channel and on our `forum <https://discuss.ray.io/>`_!
+  Chat with Ray Serve users and developers on our `forum <https://discuss.ray.io/>`_!
 
 .. note::
   Starting with Ray version 1.2.0, Ray Serve backends take in a Starlette Request object instead of a Flask Request object.

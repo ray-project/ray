@@ -54,7 +54,7 @@ class ClusterResourceSchedulerInterface {
   ///
   /// \param gcs_resources: The remote cache from gcs.
   virtual void UpdateLastResourceUsage(
-      std::shared_ptr<SchedulingResources> gcs_resources) {}
+      const std::shared_ptr<SchedulingResources> gcs_resources) {}
 
   /// Populate the relevant parts of the heartbeat table. This is intended for
   /// sending raylet <-> gcs heartbeats. In particular, this should fill in

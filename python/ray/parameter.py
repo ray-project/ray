@@ -17,9 +17,12 @@ class RayParams:
             raylet, a plasma store, a plasma manager, and some workers.
             It will also kill these processes when Python exits.
         redis_port (int): The port that the primary Redis shard should listen
-            to. If None, then a random port will be chosen.
+            to. If None, then it will fall back to
+            ray.ray_constants.DEFAULT_PORT, or a random port if the default is
+            not available.
         redis_shard_ports: A list of the ports to use for the non-primary Redis
-            shards.
+            shards. If None, then it will fall back to the ports right after
+            redis_port, or random ports if those are not available.
         num_cpus (int): Number of CPUs to configure the raylet with.
         num_gpus (int): Number of GPUs to configure the raylet with.
         resources: A dictionary mapping the name of a resource to the quantity

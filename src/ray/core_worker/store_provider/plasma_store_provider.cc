@@ -191,7 +191,8 @@ Status CoreWorkerPlasmaStoreProvider::FetchAndGetFromPlasmaStore(
   std::vector<plasma::ObjectBuffer> plasma_results;
   {
     std::lock_guard<std::mutex> guard(store_client_mutex_);
-    RAY_RETURN_NOT_OK(store_client_.Get(batch_ids, timeout_ms, &plasma_results));
+    RAY_RETURN_NOT_OK(store_client_.Get(batch_ids, timeout_ms, &plasma_results,
+                                        /*is_from_worker=*/true));
   }
 
   // Add successfully retrieved objects to the result map and remove them from
@@ -231,7 +232,9 @@ Status CoreWorkerPlasmaStoreProvider::GetIfLocal(
   std::vector<plasma::ObjectBuffer> plasma_results;
   {
     std::lock_guard<std::mutex> guard(store_client_mutex_);
-    RAY_RETURN_NOT_OK(store_client_.Get(object_ids, /*timeout_ms=*/0, &plasma_results));
+    // Since this path is used only for spilling, we should set is_from_worker: false.
+    RAY_RETURN_NOT_OK(store_client_.Get(object_ids, /*timeout_ms=*/0, &plasma_results,
+                                        /*is_from_worker=*/false));
   }
 
   for (size_t i = 0; i < object_ids.size(); i++) {
