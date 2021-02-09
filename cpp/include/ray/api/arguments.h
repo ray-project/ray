@@ -49,6 +49,8 @@ class Arguments {
   static void WrapArgs(std::vector<std::unique_ptr<::ray::TaskArg>> *task_args,
                        OtherArgTypes &...args) {
     (void)std::initializer_list<int>{(WrapArgsImpl(task_args, args), 0)...};
+    /// Silence gcc warning error.
+    (void)task_args;
   }
 
   template <typename ArgType>
