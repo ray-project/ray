@@ -455,6 +455,7 @@ class FunctionApiTest(unittest.TestCase):
         self.assertEquals(trial_1.last_result["hundred"], 1)
         self.assertEquals(trial_2.last_result["metric"], 500_000)
         self.assertEquals(trial_2.last_result["hundred"], 1)
+        self.assertTrue(str(trial_1).startswith("train_"))
 
         # With checkpoint dir parameter
         def train(config, checkpoint_dir="DIR", data=None):
@@ -469,6 +470,7 @@ class FunctionApiTest(unittest.TestCase):
         self.assertEquals(trial_1.last_result["cp"], "DIR")
         self.assertEquals(trial_2.last_result["metric"], 500_000)
         self.assertEquals(trial_2.last_result["cp"], "DIR")
+        self.assertTrue(str(trial_1).startswith("train_"))
 
     def testWithParameters2(self):
         class Data:

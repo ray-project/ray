@@ -5,7 +5,7 @@ import shutil
 import unittest
 
 import ray
-from ray.rllib.agents.registry import get_agent_class
+from ray.rllib.agents.registry import get_trainer_class
 from ray.tune.trial import ExportFormat
 
 CONFIGS = {
@@ -74,7 +74,7 @@ def export_test(alg_name, failures):
             and os.path.exists(os.path.join(checkpoint_dir, "model.index")) \
             and os.path.exists(os.path.join(checkpoint_dir, "checkpoint"))
 
-    cls = get_agent_class(alg_name)
+    cls = get_trainer_class(alg_name)
     if "DDPG" in alg_name or "SAC" in alg_name:
         algo = cls(config=CONFIGS[alg_name], env="Pendulum-v0")
     else:

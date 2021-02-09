@@ -42,9 +42,9 @@ spec:
           command: ["/bin/bash", "-c", "--"]
           args: ['trap : TERM INT; sleep infinity & wait;']
           ports:
-          - containerPort: 6379 # Redis port.
-          - containerPort: 12345 # Ray internal communication.
-          - containerPort: 12346 # Ray internal communication.
+          - containerPort: 6379  # Redis port
+          - containerPort: 10001  # Used by Ray Client
+          - containerPort: 8265  # Used by Ray Dashboard
 
           # This volume allocates shared memory for Ray to use for its plasma
           # object store. If you do not provide this, Ray will fall back to
@@ -65,16 +65,14 @@ spec:
               # allocate a very large object store in each pod that may
               # cause problems for other pods.
               memory: 512Mi
-  - name: worker-nodes
+  - name: worker-node
     # Minimum number of Ray workers of this Pod type.
     minWorkers: 1
     # Maximum number of Ray workers of this Pod type. Takes precedence over minWorkers.
     maxWorkers: 3
-    # User-specified custom resources for use by Ray 
-    rayResources: {"Custom1": 1, "is_spot": 1}
-    # Optional commands to run before starting the Ray runtime.
-    setupCommands: 
-      - pip install numpy # Example
+    # User-specified custom resources for use by Ray. Object with string keys and integer values.
+    # (Ray detects CPU and GPU from pod spec resource requests and limits, so no need to fill those here.)
+    rayResources: {"baz": 5, "quux": 17}
     podConfig:
       apiVersion: v1
       kind: Pod
@@ -93,9 +91,6 @@ spec:
           image: rayproject/ray:nightly
           command: ["/bin/bash", "-c", "--"]
           args: ["trap : TERM INT; sleep infinity & wait;"]
-          ports:
-          - containerPort: 12345 # Ray internal communication.
-          - containerPort: 12346 # Ray internal communication.
           # This volume allocates shared memory for Ray to use for its plasma
           # object store. If you do not provide this, Ray will fall back to
           # /tmp which cause slowdowns if is not a shared memory volume.
@@ -118,9 +113,9 @@ spec:
   # Commands to start Ray on the head node. You don't need to change this.
   # Note dashboard-host is set to 0.0.0.0 so that Kubernetes can port forward.
   headStartRayCommands:
-      - ray stop
-      - ulimit -n 65536; ray start --head --no-monitor --port=6379 --object-manager-port=8076  --dashboard-host 0.0.0.0
+    - ray stop
+    - ulimit -n 65536; ray start --head --no-monitor --dashboard-host 0.0.0.0
   # Commands to start Ray on worker nodes. You don't need to change this.
   workerStartRayCommands:
-      - ray stop
-      - ulimit -n 65536; ray start --address=$RAY_HEAD_IP:6379 --object-manager-port=8076
+    - ray stop
+    - ulimit -n 65536; ray start --address=$RAY_HEAD_IP:6379
