@@ -63,6 +63,8 @@ fi
 MAX_ROUNDS=1000
 if [ $MAX_ROUNDS -gt 1 ]; then
   export RAY_BACKEND_LOG_LEVEL=debug
+  export ASAN_OPTIONS="detect_leaks=0"
+  export LD_PRELOAD=/usr/lib/gcc/x86_64-linux-gnu/7/libasan.so
 fi
 
 round=1
