@@ -902,10 +902,8 @@ def test_capture_child_actors(ray_start_cluster):
 
     # Kill an actor and wait until it is killed.
     ray.kill(a)
-    try:
+    with pytest.raises(ray.exceptions.RayActorError):
         ray.get(a.ready.remote())
-    except ray.exceptions.RayActorError:
-        pass
 
     # Now create an actor, but do not capture the current tasks
     a = Actor.options(
@@ -927,10 +925,8 @@ def test_capture_child_actors(ray_start_cluster):
 
     # Kill an actor and wait until it is killed.
     ray.kill(a)
-    try:
+    with pytest.raises(ray.exceptions.RayActorError):
         ray.get(a.ready.remote())
-    except ray.exceptions.RayActorError:
-        pass
 
     # Lastly, make sure when None is specified, actors are not scheduled
     # on the same placement group.
@@ -1420,10 +1416,8 @@ ray.shutdown()
 
     # Kill an actor and wait until it is killed.
     ray.kill(a)
-    try:
+    with pytest.raises(ray.exceptions.RayActorError):
         ray.get(a.ready.remote())
-    except ray.exceptions.RayActorError:
-        pass
 
     # We should have 2 alive pgs and 4 alive actors.
     assert assert_alive_num_pg(2)
