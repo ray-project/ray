@@ -94,6 +94,7 @@ cc_library(
         ":gcs_service_cc_grpc",
         ":grpc_common_lib",
         ":ray_common",
+        "//src/ray/protobuf:autoscaler_cc_proto",
         "@boost//:asio",
         "@com_github_grpc_grpc//:grpc++",
     ],
