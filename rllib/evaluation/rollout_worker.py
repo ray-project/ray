@@ -546,7 +546,9 @@ class RolloutWorker(ParallelIteratorWorker):
                 make_env=make_env,
                 num_envs=num_envs,
                 remote_envs=remote_worker_envs,
-                remote_env_batch_wait_ms=remote_env_batch_wait_ms)
+                remote_env_batch_wait_ms=remote_env_batch_wait_ms,
+                policy_config=policy_config,
+            )
 
         # `truncate_episodes`: Allow a batch to contain more than one episode
         # (fragments) and always make the batch `rollout_fragment_length`
@@ -583,6 +585,11 @@ class RolloutWorker(ParallelIteratorWorker):
                 raise ValueError(
                     "Unknown evaluation method: {}".format(method))
 
+        render = False
+        if policy_config.get("render_env") is True and \
+                (num_workers == 0 or worker_index == 1):
+            render = True
+
         if self.env is None:
             self.sampler = None
         elif sample_async:
@@ -608,6 +615,7 @@ class RolloutWorker(ParallelIteratorWorker):
                 _use_trajectory_view_api=_use_trajectory_view_api,
                 sample_collector_class=policy_config.get(
                     "sample_collector_class"),
+                render=render,
             )
             # Start the Sampler thread.
             self.sampler.start()
@@ -633,6 +641,7 @@ class RolloutWorker(ParallelIteratorWorker):
                 _use_trajectory_view_api=_use_trajectory_view_api,
                 sample_collector_class=policy_config.get(
                     "sample_collector_class"),
+                render=render,
             )
 
         self.input_reader: InputReader = input_creator(self.io_context)
