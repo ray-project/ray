@@ -562,7 +562,7 @@ class TrialRunner:
         messages = [
             self._scheduler_alg.debug_string(),
             self.trial_executor.debug_string(),
-            trial_progress_str(self.get_trials(), metrics),
+            trial_progress_str(self.get_trials(), metrics, force_table=True),
         ]
         return delim.join(messages)
 
