@@ -59,9 +59,11 @@ class SampleBatch:
         self.time_major = kwargs.pop("_time_major", None)
         self.seq_lens = kwargs.pop("_seq_lens", None)
         self.dont_check_lens = kwargs.pop("_dont_check_lens", False)
-        self.max_seq_len = None
-        if self.seq_lens is not None and len(self.seq_lens) > 0:
+        self.max_seq_len = kwargs.pop("_max_seq_len", None)
+        if self.max_seq_len is None and self.seq_lens is not None and \
+                len(self.seq_lens) > 0:
             self.max_seq_len = max(self.seq_lens)
+        self.zero_padded = kwargs.pop("_zero_padded", False)
 
         # The actual data, accessible by column name (str).
         self.data = dict(*args, **kwargs)
@@ -108,8 +110,13 @@ class SampleBatch:
             return MultiAgentBatch.concat_samples(samples)
         seq_lens = []
         concat_samples = []
+        zero_padded = samples[0].zero_padded
+        max_seq_len = samples[0].max_seq_len
         for s in samples:
             if s.count > 0:
+                assert s.zero_padded == zero_padded
+                if zero_padded:
+                    assert s.max_seq_len == max_seq_len
                 concat_samples.append(s)
                 if s.seq_lens is not None:
                     seq_lens.extend(s.seq_lens)
@@ -123,7 +130,10 @@ class SampleBatch:
             out,
             _seq_lens=np.array(seq_lens, dtype=np.int32),
             _time_major=concat_samples[0].time_major,
-            _dont_check_lens=True)
+            _dont_check_lens=True,
+            _zero_padded=zero_padded,
+            _max_seq_len=max_seq_len,
+        )
 
     @PublicAPI
     def concat(self, other: "SampleBatch") -> "SampleBatch":
@@ -309,23 +319,80 @@ class SampleBatch:
         """
         slices = self._get_slice_indices(k)
         timeslices = [self.slice(i, j) for i, j in slices]
+        return timeslices
 
-        #TODO: remove entire block
-        for i, ts in enumerate(timeslices):
-            try:
-                assert len(ts.seq_lens) == ts["state_in_0"].shape[0]
-            except Exception as e:
-                self.slice(slices[i][0], slices[i][1])
-                raise e
+    @PublicAPI
+    def timeslices_along_seq_lens(self, zero_pad=False) -> List["SampleBatch"]:
+        """Slice self along `seq_lens` (each seq-len produces one batch).
 
+        Asserts that self.seq_lens not None.
+
+        Args:
+            zero_pad (bool): If True, already zero-pad the resulting
+                slices.
+
+        Returns:
+            List[SampleBatch]: The list of (new) SampleBatches.
+        """
+        assert self.seq_lens is not None and self.seq_lens != [], \
+            "Cannot timeslice along `seq_lens` when `seq_lens` is empty or None!"
+        start = 0
+        slices = []
+        for seq_len in self.seq_lens:
+            slices.append((start, start + seq_len))
+            start += seq_len
+        timeslices = [self.slice(i, j) for i, j in slices]
+        if zero_pad:
+            assert isinstance(zero_pad, int)
+            for ts in timeslices:
+                ts.zero_pad(max_seq_len=zero_pad, exclude_states=True)
 
         return timeslices
-        #out = []
-        #i = 0
-        #while i < self.count:
-        #    out.append(self.slice(i, i + k))
-        #    i += k
-        #return out
+
+    def zero_pad(self, max_seq_len: int, exclude_states=True):
+        """Zero pad the data in this SampleBatch in place.
+
+        Args:
+            max_len (int): The max length to zero pad to.
+            exclude_states (bool): If False, also zero-pad all `state_in_x` data.
+                If False, leave `state_in_x` keys as-is.
+        """
+        for col in self.data.keys():
+            # Skip state in columns.
+            if col.startswith("state_in_") and exclude_states is True:
+                continue
+
+            f = self.data[col]
+            # Save unnecessary copy.
+            if not isinstance(f, np.ndarray):
+                f = np.array(f)
+            # Already good length, can skip.
+            if f.shape[0] == max_seq_len:
+                continue
+            # Generate zero-filled primer.
+            length = len(self.seq_lens) * max_seq_len
+            if f.dtype == np.object or f.dtype.type is np.str_:
+                f_pad = [None] * length
+            else:
+                # Make sure type doesn't change.
+                f_pad = np.zeros((length, ) + np.shape(f)[1:], dtype=f.dtype)
+            # Fill primer with data.
+            f_pad_base = f_base = 0
+            #i = 0
+            for len_ in self.seq_lens:
+                #for seq_offset in range(len_):
+                #    f_pad[f_pad_base + seq_offset] = f[i]
+                #    i += 1
+                f_pad[f_pad_base:f_pad_base + len_] = f[f_base:f_base + len_]
+                f_pad_base += max_seq_len
+                f_base += len_
+            assert f_base == len(f), f
+            # Update our data.
+            self.data[col] = f_pad
+
+        # Set flags to indicate, we are now zero-padded (and to what extend).
+        self.zero_padded = True
+        self.max_seq_len = max_seq_len
 
     @PublicAPI
     def keys(self) -> Iterable[str]:

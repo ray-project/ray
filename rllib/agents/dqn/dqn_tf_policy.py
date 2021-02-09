@@ -1,4 +1,4 @@
-"""Tensorflow policy class used for DQN"""
+"""TensorFlow policy class used for DQN"""
 
 from typing import Dict
 
@@ -249,7 +249,8 @@ def build_q_losses(policy: Policy, model, _,
         policy.target_q_model,
         train_batch[SampleBatch.NEXT_OBS],
         explore=False)
-    policy.target_q_func_vars = policy.target_q_model.variables()
+    if not hasattr(policy, "target_q_func_vars"):
+        policy.target_q_func_vars = policy.target_q_model.variables()
 
     # q scores for actions which we know were selected in the given state.
     one_hot_selection = tf.one_hot(
@@ -433,7 +434,7 @@ DQNTFPolicy = build_tf_policy(
     postprocess_fn=postprocess_nstep_and_prio,
     optimizer_fn=adam_optimizer,
     gradients_fn=clip_gradients,
-    extra_action_fetches_fn=lambda policy: {"q_values": policy.q_values},
+    extra_action_out_fn=lambda policy: {"q_values": policy.q_values},
     extra_learn_fetches_fn=lambda policy: {"td_error": policy.q_loss.td_error},
     before_init=setup_early_mixins,
     before_loss_init=setup_mid_mixins,

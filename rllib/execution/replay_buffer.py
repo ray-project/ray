@@ -73,12 +73,6 @@ class ReplayBuffer:
             item=item, num_items=self._maxsize / item.count)
         assert item.count > 0, item
 
-        #TODO: remove this entire block, also the assert!
-        try:#TODO
-            assert len(item.seq_lens) == item["state_in_0"].shape[0]#TODO
-        except Exception as e:
-            raise e
-
         self._num_timesteps_added += item.count
         self._num_timesteps_added_wrap += item.count
 
@@ -207,15 +201,19 @@ class PrioritizedReplayBuffer(ReplayBuffer):
             p_sample = self._it_sum[idx] / self._it_sum.sum()
             weight = (p_sample * len(self._storage))**(-beta)
             count = self._storage[idx].count
-            weights.extend([weight / max_weight] * count)
-            batch_indexes.extend([idx] * count)
+            # If zero-padded, count will not be the actual batch size of the
+            # data.
+            if self._storage[idx].zero_padded:
+                actual_size = self._storage[idx].max_seq_len
+            else:
+                actual_size = count
+            weights.extend([weight / max_weight] * actual_size)
+            batch_indexes.extend([idx] * actual_size)
             self._num_timesteps_sampled += count
         batch = self._encode_sample(idxes)
 
         # Note: prioritization is not supported in lockstep replay mode.
         if isinstance(batch, SampleBatch):
-            assert len(weights) == batch.count
-            assert len(batch_indexes) == batch.count
             batch["weights"] = np.array(weights)
             batch["batch_indexes"] = np.array(batch_indexes)
 
@@ -280,27 +278,29 @@ class LocalReplayBuffer(ParallelIteratorWorker):
         """Initializes a LocalReplayBuffer instance.
 
         Args:
-            num_shards (int): The number of buffer shards that exist in total (including
-                this one).
-            learning_starts (int): Number of timesteps after which a call to `replay()`
-                will yield samples (before that, `replay()` will return None).
+            num_shards (int): The number of buffer shards that exist in total
+                (including this one).
+            learning_starts (int): Number of timesteps after which a call to
+                `replay()` will yield samples (before that, `replay()` will
+                return None).
             buffer_size (int): The size of the buffer. Note that when
                 `replay_sequence_length` > 1, this is the number of sequences
                 (not single timesteps) stored.
-            replay_batch_size (int): The batch size to be sampled (in timesteps).
-                Note that if `replay_sequence_length` > 1, `self.replay_batch_size`
-                will be set to the number of sequences sampled (B).
-            prioritized_replay_alpha (float): Alpha parameter for a prioritized replay
-                buffer.
-            prioritized_replay_beta (float): Beta parameter for a prioritized replay
-                buffer.
-            prioritized_replay_eps (float): Epsilon parameter for a prioritized replay
-                buffer.
-            replay_mode (str): One of "independent" or "lockstep". Determined, whether
-                in the multiagent case, sampling is done across all agents/policies
-                equally.
-            replay_sequence_length (int): The sequence length (T) of a single sample.
-                If > 1, we will sample B x T from this buffer.
+            replay_batch_size (int): The batch size to be sampled (in
+                timesteps). Note that if `replay_sequence_length` > 1,
+                `self.replay_batch_size` will be set to the number of
+                sequences sampled (B).
+            prioritized_replay_alpha (float): Alpha parameter for a prioritized
+                replay buffer.
+            prioritized_replay_beta (float): Beta parameter for a prioritized
+                replay buffer.
+            prioritized_replay_eps (float): Epsilon parameter for a prioritized
+                replay buffer.
+            replay_mode (str): One of "independent" or "lockstep". Determined,
+                whether in the multiagent case, sampling is done across all
+                agents/policies equally.
+            replay_sequence_length (int): The sequence length (T) of a single
+                sample. If > 1, we will sample B x T from this buffer.
         """
         self.replay_starts = learning_starts // num_shards
         self.buffer_size = buffer_size // num_shards
@@ -361,17 +361,23 @@ class LocalReplayBuffer(ParallelIteratorWorker):
         if isinstance(batch, SampleBatch):
             batch = MultiAgentBatch({DEFAULT_POLICY_ID: batch}, batch.count)
         with self.add_batch_timer:
-            # Lockstep mode: Store under _ALL_POLICIES key (we will always only sample
-            # from all policies at the same time).
+            # Lockstep mode: Store under _ALL_POLICIES key (we will always
+            # only sample from all policies at the same time).
             if self.replay_mode == "lockstep":
                 # Note that prioritization is not supported in this mode.
                 for s in batch.timeslices(self.replay_sequence_length):
                     self.replay_buffers[_ALL_POLICIES].add(s, weight=None)
             else:
                 for policy_id, b in batch.policy_batches.items():
-                    for s in b.timeslices(self.replay_sequence_length):
-                        # If SampleBatch has prio-replay weights, average over these
-                        # to use as a weight for the entire sequence.
+                    if self.replay_sequence_length == 1:
+                        timeslices = b.timeslices(1)
+                    else:
+                        timeslices = b.timeslices_along_seq_lens(
+                            zero_pad=self.replay_sequence_length)
+                    for s in timeslices:
+                        # If SampleBatch has prio-replay weights, average
+                        # over these to use as a weight for the entire
+                        # sequence.
                         if "weights" in s:
                             weight = np.mean(s["weights"])
                         else:

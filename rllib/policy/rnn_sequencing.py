@@ -196,14 +196,14 @@ def chop_into_sequences(*,
     """Truncate and pad experiences into fixed-length sequences.
 
     Args:
+        feature_columns (list): List of arrays containing features.
+        state_columns (list): List of arrays containing LSTM state values.
+        max_seq_len (int): Max length of sequences before truncation.
         episode_ids (List[EpisodeID]): List of episode ids for each step.
         unroll_ids (List[UnrollID]): List of identifiers for the sample batch.
             This is used to make sure sequences are cut between sample batches.
         agent_indices (List[AgentID]): List of agent ids for each step. Note
             that this has to be combined with episode_ids for uniqueness.
-        feature_columns (list): List of arrays containing features.
-        state_columns (list): List of arrays containing LSTM state values.
-        max_seq_len (int): Max length of sequences before truncation.
         dynamic_max (bool): Whether to dynamically shrink the max seq len.
             For example, if max len is 20 and the actual max seq len in the
             data is 7, it will be shrunk to 7.

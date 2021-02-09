@@ -1,39 +1,32 @@
-"""PyTorch policy class used for R2D2."""
+"""TensorFlow policy class used for R2D2."""
 
-from typing import Dict, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import gym
 import ray
-from ray.rllib.agents.dqn.dqn_tf_policy import (PRIO_WEIGHTS,
-                                                postprocess_nstep_and_prio)
-from ray.rllib.agents.dqn.dqn_torch_policy import \
-    build_q_model_and_distribution
-from ray.rllib.agents.dqn.r2d2_tf_policy import \
-    get_distribution_inputs_and_class
-from ray.rllib.agents.dqn.simple_q_torch_policy import TargetNetworkMixin
+from ray.rllib.agents.dqn.dqn_tf_policy import clip_gradients, PRIO_WEIGHTS, \
+    postprocess_nstep_and_prio
+from ray.rllib.agents.dqn.dqn_tf_policy import build_q_model
+from ray.rllib.agents.dqn.simple_q_tf_policy import TargetNetworkMixin
+from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.modelv2 import ModelV2
-from ray.rllib.models.torch.torch_action_dist import \
-    TorchDistributionWrapper
+from ray.rllib.models.tf.tf_action_dist import Categorical
+from ray.rllib.models.torch.torch_action_dist import TorchCategorical
 from ray.rllib.policy.policy import Policy
-from ray.rllib.policy.policy_template import build_policy_class
+from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.torch_policy import LearningRateSchedule
-from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.torch_ops import apply_grad_clipping, FLOAT_MIN, \
-    huber_loss, reduce_mean_ignore_inf
-from ray.rllib.utils.typing import TensorType, TrainerConfigDict
+from ray.rllib.policy.tf_policy import LearningRateSchedule
+from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.tf_ops import huber_loss, reduce_mean_ignore_inf
+from ray.rllib.utils.typing import ModelInputDict, TensorType, \
+    TrainerConfigDict
 
-torch, nn = try_import_torch()
-F = None
-if nn:
-    F = nn.functional
+tf1, tf, tfv = try_import_tf()
 
 
-def build_r2d2_model_and_distribution(
-    policy: Policy, obs_space: gym.spaces.Space,
-    action_space: gym.spaces.Space,
-    config: TrainerConfigDict) -> \
-        Tuple[ModelV2, TorchDistributionWrapper]:
+def build_r2d2_model(policy: Policy, obs_space: gym.spaces.Space,
+                     action_space: gym.spaces.Space, config: TrainerConfigDict
+                     ) -> Tuple[ModelV2, ActionDistribution]:
     """Build q_model and target_q_model for DQN
 
     Args:
@@ -43,14 +36,13 @@ def build_r2d2_model_and_distribution(
         config (TrainerConfigDict):
 
     Returns:
-        (q_model, TorchCategorical)
+        q_model
             Note: The target q model will not be returned, just assigned to
             `policy.target_q_model`.
     """
 
-    # Create the policy's models and action dist class.
-    model, distribution_cls = build_q_model_and_distribution(
-        policy, obs_space, action_space, config)
+    # Create the policy's models.
+    model = build_q_model(policy, obs_space, action_space, config)
 
     # Assert correct model type.
     assert model.get_initial_state() != [], \
@@ -58,12 +50,12 @@ def build_r2d2_model_and_distribution(
         "`model.use_lstm` or `model.use_attention` in your config " \
         "to auto-wrap your model with an LSTM- or attention net."
 
-    return model, distribution_cls
+    return model
 
 
 def r2d2_loss(policy: Policy, model, _,
               train_batch: SampleBatch) -> TensorType:
-    """Constructs the loss for R2D2TorchPolicy.
+    """Constructs the loss for R2D2TFPolicy.
 
     Args:
         policy (Policy): The Policy to calculate the loss for.
@@ -90,48 +82,40 @@ def r2d2_loss(policy: Policy, model, _,
         is_training=True)
 
     # Target Q-network evaluation.
-    q_target, q_logits_target, q_probs_target, state_out_target = compute_q_values(
-        policy,
-        policy.target_q_model,
-        train_batch,
-        state_batches=state_batches,
-        seq_lens=train_batch.get("seq_lens"),
-        explore=False,
-        is_training=True)
+    q_target, q_logits_target, q_probs_target, state_out_target = \
+        compute_q_values(
+            policy,
+            policy.target_q_model,
+            train_batch,
+            state_batches=state_batches,
+            seq_lens=train_batch.get("seq_lens"),
+            explore=False,
+            is_training=True)
+    if not hasattr(policy, "target_q_func_vars"):
+        policy.target_q_func_vars = policy.target_q_model.variables()
 
     # Q scores for actions which we know were selected in the given state.
-    one_hot_selection = F.one_hot(train_batch[SampleBatch.ACTIONS].long(),
-                                  policy.action_space.n)
-    q_selected = torch.sum(
-        torch.where(q > FLOAT_MIN, q, torch.tensor(0.0, device=policy.device))
-        * one_hot_selection, 1)
-    #q_logits_selected = torch.sum(
-    #    q_logits * torch.unsqueeze(one_hot_selection, -1), 1)
+    one_hot_selection = tf.one_hot(
+        tf.cast(train_batch[SampleBatch.ACTIONS], tf.int64),
+        policy.action_space.n)
+    q_selected = tf.reduce_sum(
+        tf.where(q > tf.float32.min, q, 0.0) * one_hot_selection, axis=1)
 
     if config["double_q"]:
-        best_actions = torch.argmax(q, 1)
-        best_actions_one_hot = F.one_hot(best_actions, policy.action_space.n)
-        q_target_best = torch.sum(
-            torch.where(q_target > FLOAT_MIN, q_target,
-                        torch.tensor(0.0, device=policy.device)) *
+        best_actions = tf.argmax(q, 1)
+        best_actions_one_hot = tf.one_hot(best_actions, policy.action_space.n)
+        q_target_best = tf.reduce_sum(
+            tf.where(q_target > tf.float32.min, q_target, 0.0) *
             best_actions_one_hot, 1)
 
     else:
         raise ValueError("non-double Q not supported for R2D2 yet!")
-        #q_tp1_best_one_hot_selection = F.one_hot(
-        #    torch.argmax(q_tp1, 1), policy.action_space.n)
-        #q_tp1_best = torch.sum(
-        #    torch.where(q_tp1 > FLOAT_MIN, q_tp1,
-        #                torch.tensor(0.0, device=policy.device)) *
-        #    q_tp1_best_one_hot_selection, 1)
-        #q_probs_tp1_best = torch.sum(
-        #    q_probs_tp1 * torch.unsqueeze(q_tp1_best_one_hot_selection, -1), 1)
 
     if config["num_atoms"] > 1:
         raise ValueError("Distributional R2D2 not supported yet!")
     else:
-        q_target_best_masked = (
-            1.0 - train_batch[SampleBatch.DONES].float()) * q_target_best
+        q_target_best_masked = (1.0 - tf.cast(train_batch[SampleBatch.DONES],
+                                              tf.float32)) * q_target_best
 
         h_inv = h_inverse(q_target_best_masked, config["epsilon"])
 
@@ -140,14 +124,15 @@ def r2d2_loss(policy: Policy, model, _,
                    config["epsilon"])
 
         # Compute the error (potentially clipped).
-        policy._td_error = q_selected - target.detach()
-        policy._total_loss = torch.mean(
-            train_batch[PRIO_WEIGHTS].float() * huber_loss(policy._td_error))
+        policy._td_error = q_selected - tf.stop_gradient(target)
+        policy._total_loss = tf.reduce_mean(
+            tf.cast(train_batch[PRIO_WEIGHTS], tf.float32) * huber_loss(
+                policy._td_error))
         policy._loss_stats = {
-            "mean_q": torch.mean(q_selected),
-            "min_q": torch.min(q_selected),
-            "max_q": torch.max(q_selected),
-            "mean_td_error": torch.mean(policy._td_error),
+            "mean_q": tf.reduce_mean(q_selected),
+            "min_q": tf.reduce_min(q_selected),
+            "max_q": tf.reduce_max(q_selected),
+            "mean_td_error": tf.reduce_mean(policy._td_error),
         }
 
     return policy._total_loss
@@ -158,7 +143,7 @@ def h(x, epsilon=1.0):
 
     h(x) = sign(x) * [sqrt(abs(x) + 1) - 1] + epsilon * x
     """
-    return torch.sign(x) * (torch.sqrt(torch.abs(x) + 1.0) - 1.0) + epsilon * x
+    return tf.sign(x) * (tf.sqrt(tf.abs(x) + 1.0) - 1.0) + epsilon * x
 
 
 def h_inverse(x, epsilon=1.0):
@@ -174,16 +159,16 @@ def h_inverse(x, epsilon=1.0):
     """
     two_epsilon = epsilon * 2
     if_x_pos = (two_epsilon * x + (two_epsilon + 1.0) -
-                torch.sqrt(4.0 * epsilon * x +
-                           (two_epsilon + 1.0)**2)) / (2.0 * epsilon**2)
+                tf.sqrt(4.0 * epsilon * x +
+                        (two_epsilon + 1.0)**2)) / (2.0 * epsilon**2)
     if_x_neg = (two_epsilon * x - (two_epsilon + 1.0) +
-                torch.sqrt(-4.0 * epsilon * x +
-                           (two_epsilon + 1.0)**2)) / (2.0 * epsilon**2)
-    return torch.where(x < 0.0, if_x_neg, if_x_pos)
+                tf.sqrt(-4.0 * epsilon * x +
+                        (two_epsilon + 1.0)**2)) / (2.0 * epsilon**2)
+    return tf.where(x < 0.0, if_x_neg, if_x_pos)
 
 
 class ComputeTDErrorMixin:
-    """Assign the `compute_td_error` method to the R2D2TorchPolicy
+    """Assign the `compute_td_error` method to the R2D2TFPolicy
 
     This allows us to prioritize on the worker side.
     """
@@ -206,10 +191,34 @@ class ComputeTDErrorMixin:
         self.compute_td_error = compute_td_error
 
 
-def adam_optimizer(policy: Policy,
-                   config: TrainerConfigDict) -> "torch.optim.Optimizer":
-    return torch.optim.Adam(
-        policy.q_func_vars, lr=policy.cur_lr, eps=config["adam_epsilon"])
+def get_distribution_inputs_and_class(
+        policy: Policy,
+        model: ModelV2,
+        *,
+        input_dict: ModelInputDict,
+        state_batches: Optional[List[TensorType]] = None,
+        seq_lens: Optional[TensorType] = None,
+        explore: bool = True,
+        is_training: bool = False,
+        **kwargs) -> Tuple[TensorType, type, List[TensorType]]:
+
+    q_vals, logits, probs_or_logits, state_out = compute_q_values(
+        policy, model, input_dict, state_batches, seq_lens, explore,
+        is_training)
+
+    policy.q_values = q_vals
+    policy.q_func_vars = model.variables()
+
+    action_dist_class = TorchCategorical if policy.config["framework"] == "torch" else \
+        Categorical
+
+    return policy.q_values, action_dist_class, state_out  # state-out
+
+
+def adam_optimizer(policy: Policy, config: TrainerConfigDict
+                   ) -> "tf.keras.optimizers.Optimizer":
+    return tf1.train.AdamOptimizer(
+        learning_rate=policy.cur_lr, epsilon=config["adam_epsilon"])
 
 
 def build_q_stats(policy: Policy, batch) -> Dict[str, TensorType]:
@@ -228,9 +237,9 @@ def before_loss_init(policy: Policy, obs_space: gym.spaces.Space,
                      config: TrainerConfigDict) -> None:
     ComputeTDErrorMixin.__init__(policy)
     TargetNetworkMixin.__init__(policy, obs_space, action_space, config)
-    # Move target net to device (this is done automatically for the
-    # policy.model, but not for any other models the policy has).
-    policy.target_q_model = policy.target_q_model.to(policy.device)
+    ## Move target net to device (this is done automatically for the
+    ## policy.model, but not for any other models the policy has).
+    #policy.target_q_model = policy.target_q_model.to(policy.device)
 
 
 def compute_q_values(policy: Policy,
@@ -255,22 +264,21 @@ def compute_q_values(policy: Policy,
     if config["dueling"]:
         state_score = model.get_state_value(model_out)
         if policy.config["num_atoms"] > 1:
-            support_logits_per_action_mean = torch.mean(
-                support_logits_per_action, dim=1)
+            support_logits_per_action_mean = tf.reduce_mean(
+                support_logits_per_action, axis=1)
             support_logits_per_action_centered = (
-                support_logits_per_action - torch.unsqueeze(
-                    support_logits_per_action_mean, dim=1))
-            support_logits_per_action = torch.unsqueeze(
-                state_score, dim=1) + support_logits_per_action_centered
-            support_prob_per_action = nn.functional.softmax(
-                support_logits_per_action)
-            value = torch.sum(z * support_prob_per_action, dim=-1)
+                support_logits_per_action - tf.expand_dims(
+                    support_logits_per_action_mean, axis=1))
+            support_logits_per_action = tf.expand_dims(
+                state_score, axis=1) + support_logits_per_action_centered
+            support_prob_per_action = tf.nn.softmax(support_logits_per_action)
+            value = tf.reduce_sum(z * support_prob_per_action, axis=-1)
             logits = support_logits_per_action
             probs_or_logits = support_prob_per_action
         else:
             advantages_mean = reduce_mean_ignore_inf(action_scores, 1)
-            advantages_centered = action_scores - torch.unsqueeze(
-                advantages_mean, 1)
+            advantages_centered = action_scores - tf.expand_dims(
+                advantages_mean, axis=1)
             value = state_score + advantages_centered
     else:
         value = action_scores
@@ -278,31 +286,18 @@ def compute_q_values(policy: Policy,
     return value, logits, probs_or_logits, state
 
 
-def grad_process_and_td_error_fn(policy: Policy,
-                                 optimizer: "torch.optim.Optimizer",
-                                 loss: TensorType) -> Dict[str, TensorType]:
-    # Clip grads if configured.
-    return apply_grad_clipping(policy, optimizer, loss)
-
-
-def extra_action_out_fn(policy: Policy, input_dict, state_batches, model,
-                        action_dist) -> Dict[str, TensorType]:
-    return {"q_values": policy.q_values}
-
-
-R2D2TorchPolicy = build_policy_class(
-    name="R2D2TorchPolicy",
-    framework="torch",
+R2D2TFPolicy = build_tf_policy(
+    name="R2D2TFPolicy",
     loss_fn=r2d2_loss,
     get_default_config=lambda: ray.rllib.agents.dqn.r2d2.DEFAULT_CONFIG,
-    make_model_and_action_dist=build_r2d2_model_and_distribution,
-    action_distribution_fn=get_distribution_inputs_and_class,
-    stats_fn=build_q_stats,
     postprocess_fn=postprocess_nstep_and_prio,
+    stats_fn=build_q_stats,
+    make_model=build_r2d2_model,
+    action_distribution_fn=get_distribution_inputs_and_class,
     optimizer_fn=adam_optimizer,
-    extra_grad_process_fn=grad_process_and_td_error_fn,
+    extra_action_out_fn=lambda policy: {"q_values": policy.q_values},
+    gradients_fn=clip_gradients,
     extra_learn_fetches_fn=lambda policy: {"td_error": policy._td_error},
-    extra_action_out_fn=extra_action_out_fn,
     before_init=setup_early_mixins,
     before_loss_init=before_loss_init,
     mixins=[

@@ -234,7 +234,6 @@ class TorchPolicy(Policy):
             if self.action_distribution_fn:
                 # Try new action_distribution_fn signature, supporting state_batches
                 # and seq_lens.
-                #TODO: Do the same for TF and eager.
                 try:
                     dist_inputs, dist_class, state_out = \
                         self.action_distribution_fn(
@@ -248,15 +247,18 @@ class TorchPolicy(Policy):
                             is_training=False)
                 # Trying the old way (to stay backward compatible).
                 # TODO: Remove in future.
-                except Exception as e:
-                    dist_inputs, dist_class, state_out = \
-                        self.action_distribution_fn(
-                            self,
-                            self.model,
-                            input_dict[SampleBatch.CUR_OBS],
-                            explore=explore,
-                            timestep=timestep,
-                            is_training=False)
+                except TypeError as e:
+                    if "takes 2 positional arguments" in e.args[0]:
+                        dist_inputs, dist_class, state_out = \
+                            self.action_distribution_fn(
+                                self,
+                                self.model,
+                                input_dict[SampleBatch.CUR_OBS],
+                                explore=explore,
+                                timestep=timestep,
+                                is_training=False)
+                    else:
+                        raise e
             else:
                 dist_class = self.dist_class
                 dist_inputs, state_out = self.model(input_dict, state_batches,
@@ -388,13 +390,16 @@ class TorchPolicy(Policy):
     def compute_gradients(self,
                           postprocessed_batch: SampleBatch) -> ModelGradients:
 
-        pad_batch_to_sequences_of_same_size(
-            postprocessed_batch,
-            max_seq_len=self.max_seq_len,
-            shuffle=False,
-            batch_divisibility_req=self.batch_divisibility_req,
-            view_requirements=self.view_requirements,
-        )
+        if not postprocessed_batch.zero_padded:
+            pad_batch_to_sequences_of_same_size(
+                postprocessed_batch,
+                max_seq_len=self.max_seq_len,
+                shuffle=False,
+                batch_divisibility_req=self.batch_divisibility_req,
+                view_requirements=self.view_requirements,
+            )
+        else:
+            postprocessed_batch["seq_lens"] = postprocessed_batch.seq_lens
 
         # Mark the batch as "is_training" so the Model can use this
         # information.

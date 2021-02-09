@@ -17,6 +17,7 @@ import logging
 from typing import List, Optional, Type
 
 import ray.rllib.agents.dqn as dqn
+from ray.rllib.agents.dqn.r2d2_tf_policy import R2D2TFPolicy
 from ray.rllib.agents.dqn.r2d2_torch_policy import R2D2TorchPolicy
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.concurrency_ops import Concurrently
@@ -36,19 +37,20 @@ logger = logging.getLogger(__name__)
 DEFAULT_CONFIG = dqn.DQNTrainer.merge_trainer_configs(
     dqn.DEFAULT_CONFIG,  # See keys in impala.py, which are also supported.
     {
-        # If True, assume a zero-initialized state input (no matter where in the episode
-        # the sequence is located).
-        # If False, store the initial states along with each SampleBatch, use it (as
-        # initial state when running through the network for training), and update that
-        # initial state during training (from the internal state outputs of the
-        # immediately preceding sequence).
+        # If True, assume a zero-initialized state input (no matter where in
+        # the episode the sequence is located).
+        # If False, store the initial states along with each SampleBatch, use
+        # it (as initial state when running through the network for training),
+        # and update that initial state during training (from the internal
+        # state outputs of the immediately preceding sequence).
         "zero_init_states": True,
         # If > 0, use the `burn_in` first steps of each replay-sampled sequence
-        # (starting either from all 0.0-values if `zero_init_state=True` or from the
-        # already stored values) to calculate an even more accurate initial states for
-        # the actual sequence (starting after this burn-in window). In the burn-in case,
-        # the actual length of the sequence used for loss calculation is `n - burn_in`
-        # time steps (n=LSTM’s/attention net’s max_seq_len).
+        # (starting either from all 0.0-values if `zero_init_state=True` or
+        # from the already stored values) to calculate an even more accurate
+        # initial states for the actual sequence (starting after this burn-in
+        # window). In the burn-in case, the actual length of the sequence
+        # used for loss calculation is `n - burn_in` time steps
+        # (n=LSTM’s/attention net’s max_seq_len).
         "burn_in": 0,
 
         # === Hyperparameters from the paper [1] ===
@@ -57,8 +59,9 @@ DEFAULT_CONFIG = dqn.DQNTrainer.merge_trainer_configs(
         # If True prioritized replay buffer will be used.
         # Note: Not supported yet by R2D2!
         "prioritized_replay": False,
-        # Set automatically: The number of contiguous environment steps to replay at
-        # once. Will be calculated via model->max_seq_len + burn_in.
+        # Set automatically: The number of contiguous environment steps to
+        # replay at once. Will be calculated via
+        # model->max_seq_len + burn_in.
         # Do not set this to any valid value!
         "replay_sequence_length": -1,
         # Update the target network every `target_network_update_freq` steps.
@@ -88,17 +91,6 @@ def validate_config(config: TrainerConfigDict) -> None:
 
     Rewrites rollout_fragment_length to take into account n_step truncation.
     """
-    #if config["exploration_config"]["type"] == "ParameterNoise":
-    #    if config["batch_mode"] != "complete_episodes":
-    #        logger.warning(
-    #            "ParameterNoise Exploration requires `batch_mode` to be "
-    #            "'complete_episodes'. Setting batch_mode=complete_episodes.")
-    #        config["batch_mode"] = "complete_episodes"
-    #    if config.get("noisy", False):
-    #        raise ValueError(
-    #            "ParameterNoise Exploration and `noisy` network cannot be "
-    #            "used at the same time!")
-
     # Update effective batch size to include n-step
     adjusted_batch_size = max(config["rollout_fragment_length"],
                               config.get("n_step", 1))
@@ -115,12 +107,6 @@ def validate_config(config: TrainerConfigDict) -> None:
 
     if config.get("prioritized_replay"):
         raise ValueError("Prioritized replay is not supported for R2D2 yet!")
-    #    if config["multiagent"]["replay_mode"] == "lockstep":
-    #        raise ValueError("Prioritized replay is not supported when "
-    #                         "replay_mode=lockstep.")
-    #    elif config["replay_sequence_length"] > 1:
-    #        raise ValueError("Prioritized replay is not supported when "
-    #                         "replay_sequence_length > 1.")
 
 
 def execution_plan(workers: WorkerSet,
@@ -226,14 +212,12 @@ def get_policy_class(config: TrainerConfigDict) -> Optional[Type[Policy]]:
         return R2D2TorchPolicy
 
 
-# Build a DQN trainer, which uses the framework specific Policy
+# Build an R2D2 trainer, which uses the framework specific Policy
 # determined in `get_policy_class()` above.
 R2D2Trainer = dqn.DQNTrainer.with_updates(
     name="R2D2",
-    default_policy=R2D2TorchPolicy,
+    default_policy=R2D2TFPolicy,
     default_config=DEFAULT_CONFIG,
     validate_config=validate_config,
     get_policy_class=get_policy_class,
 )
-
-#TODO ^^default_policy=TFPolicy
