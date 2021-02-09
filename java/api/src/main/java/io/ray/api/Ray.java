@@ -260,7 +260,7 @@ public final class Ray extends RayCall {
    * for the resource to be updated and rescheduled. This function only works when gcs actor manager
    * is turned on.
    *
-   * @deprecated This method is no longer acceptable to create a new placement group, use {@link
+   * @deprecated This method is no longer recommended to create a new placement group, use {@link
    *     Ray#createPlacementGroup(PlacementGroupCreationOptions)} instead.
    * @param name Name of the placement group.
    * @param bundles Pre-allocated resource list.
@@ -282,7 +282,7 @@ public final class Ray extends RayCall {
   /**
    * Create a placement group with an empty name.
    *
-   * @deprecated This method is no longer acceptable to create a new placement group, use {@link
+   * @deprecated This method is no longer recommended to create a new placement group, use {@link
    *     Ray#createPlacementGroup(PlacementGroupCreationOptions)} instead.
    */
   @Deprecated
