@@ -162,6 +162,7 @@ CoreWorkerProcess::CoreWorkerProcess(const CoreWorkerOptions &options)
   // for java worker or in constructor of CoreWorker for python worker.
   ray::stats::Init(global_tags, options_.metrics_agent_port);
 
+#ifndef _WIN32
   // NOTE(kfstorm): std::atexit should be put at the end of `CoreWorkerProcess`
   // constructor. We assume that spdlog has been initialized before this line. When the
   // process is exiting, `HandleAtExit` will be invoked before destructing spdlog static
@@ -170,6 +171,7 @@ CoreWorkerProcess::CoreWorkerProcess(const CoreWorkerOptions &options)
   // usable. This prevents crashing (or hanging) when using `RAY_LOG` in
   // `CoreWorkerProcess` destructor.
   RAY_CHECK(std::atexit(CoreWorkerProcess::HandleAtExit) == 0);
+#endif
 }
 
 CoreWorkerProcess::~CoreWorkerProcess() {
