@@ -107,17 +107,22 @@ def timed_tune_run(name: str,
 
     _train = function_trainable
 
-    AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID", "")
-    AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY", "")
-    AWS_SESSION_TOKEN = os.getenv("AWS_SESSION_TOKEN", "")
+    aws_key_id = os.getenv("AWS_ACCESS_KEY_ID", "")
+    aws_secret = os.getenv("AWS_SECRET_ACCESS_KEY", "")
+    aws_session = os.getenv("AWS_SESSION_TOKEN", "")
 
     if durable:
 
         class AwsDurableTrainable(TestDurableTrainable):
+            AWS_ACCESS_KEY_ID = aws_key_id
+            AWS_SECRET_ACCESS_KEY = aws_secret
+            AWS_SESSION_TOKEN = aws_session
+
             def setup_env(self):
-                os.environ["AWS_ACCESS_KEY_ID"] = AWS_ACCESS_KEY_ID
-                os.environ["AWS_SECRET_ACCESS_KEY"] = AWS_SECRET_ACCESS_KEY
-                os.environ["AWS_SESSION_TOKEN"] = AWS_SESSION_TOKEN
+                os.environ["AWS_ACCESS_KEY_ID"] = self.AWS_ACCESS_KEY_ID
+                os.environ[
+                    "AWS_SECRET_ACCESS_KEY"] = self.AWS_SECRET_ACCESS_KEY
+                os.environ["AWS_SESSION_TOKEN"] = self.AWS_SESSION_TOKEN
 
         _train = AwsDurableTrainable
         run_kwargs["checkpoint_freq"] = checkpoint_iters
