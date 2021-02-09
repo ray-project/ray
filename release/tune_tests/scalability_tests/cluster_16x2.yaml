@@ -40,6 +40,7 @@ worker_default_node_type: cpu_2_spot
 
 setup_commands:
     - ray install-nightly
+    - pip install -U awscli
 
 file_mounts: {
     "~/release-automation-tune_scalability_tests": "."

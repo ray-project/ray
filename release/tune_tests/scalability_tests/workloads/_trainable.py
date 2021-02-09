@@ -10,6 +10,17 @@ from ray.tune.durable_trainable import DurableTrainable
 
 
 class TestDurableTrainable(DurableTrainable):
+    def __init__(self, remote_checkpoint_dir, config, logger_creator=None):
+        self.setup_env()
+
+        super(TestDurableTrainable, self).__init__(
+            remote_checkpoint_dir,
+            config=config,
+            logger_creator=logger_creator)
+
+    def setup_env(self):
+        pass
+
     def setup(self, config):
         self._num_iters = int(config["num_iters"])
         self._sleep_time = config["sleep_time"]
@@ -86,7 +97,7 @@ def timed_tune_run(name: str,
         "num_iters": num_iters,
         "sleep_time": sleep_time,
         "checkpoint_iters": checkpoint_iters,
-        "checkpoint_size_b": checkpoint_size_b
+        "checkpoint_size_b": checkpoint_size_b,
     }
 
     print(f"Starting benchmark with config: {config}")
@@ -94,15 +105,26 @@ def timed_tune_run(name: str,
     run_kwargs = {"reuse_actors": True, "verbose": 2}
     run_kwargs.update(tune_kwargs)
 
-    _trainable = function_trainable
+    _train = function_trainable
+
+    AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID", "")
+    AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY", "")
+    AWS_SESSION_TOKEN = os.getenv("AWS_SESSION_TOKEN", "")
 
     if durable:
-        _trainable = TestDurableTrainable
+
+        class AwsDurableTrainable(TestDurableTrainable):
+            def setup_env(self):
+                os.environ["AWS_ACCESS_KEY_ID"] = AWS_ACCESS_KEY_ID
+                os.environ["AWS_SECRET_ACCESS_KEY"] = AWS_SECRET_ACCESS_KEY
+                os.environ["AWS_SESSION_TOKEN"] = AWS_SESSION_TOKEN
+
+        _train = AwsDurableTrainable
         run_kwargs["checkpoint_freq"] = checkpoint_iters
 
     start_time = time.monotonic()
     tune.run(
-        _trainable,
+        _train,
         config=config,
         num_samples=num_samples,
         raise_on_failed_trial=False,
