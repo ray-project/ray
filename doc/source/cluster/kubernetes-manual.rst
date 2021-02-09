@@ -1,6 +1,6 @@
 .. _ray-k8s-deploy:
 
-Manually Deploying a Static Cluster
+Deploying a Static Cluster
 ===================================
 
 This document gives an example of how to manually deploy a non-autoscaling Ray cluster on Kubernetes.
@@ -18,7 +18,7 @@ Creating a Ray Namespace
 First, create a `Kubernetes Namespace`_ for Ray resources on your cluster. The
 following commands will create resources under this Namespace, so if you want
 to use a different one than ``ray``, please be sure to also change the
-`namespace` fields in the provided ``yaml`` files and anytime you see a ``-n``
+``namespace`` fields in the provided ``yaml`` files and anytime you see a ``-n``
 flag passed to ``kubectl``.
 
 .. code-block:: shell

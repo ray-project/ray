@@ -2,6 +2,7 @@
 
 GPU Usage
 =========
+This document provides some notes on GPU usage with Kubernetes.
 
 To use GPUs on Kubernetes, you will need to configure both your Kubernetes setup and add additional values to your Ray cluster configuration.
 
@@ -71,6 +72,11 @@ about Kubernetes GPU plugins `here <https://kubernetes.io/docs/tasks/manage-gpus
 and about Nvidia's GPU plugin for Kubernetes `here <https://github.com/NVIDIA/k8s-device-plugin>`__.
 
 If you run into problems setting up GPUs for your Ray cluster on Kubernetes, please reach out to us at `<https://discuss.ray.io>`_.
+
+Questions or Issues?
+--------------------
+
+.. include:: /_help.rst
 
 .. _`GKE`: https://cloud.google.com/kubernetes-engine/docs/how-to/gpus
 .. _`EKS`: https://docs.aws.amazon.com/eks/latest/userguide/eks-optimized-ami.html
