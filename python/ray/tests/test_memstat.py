@@ -75,6 +75,7 @@ def test_driver_put_ref(ray_start_regular):
 
 def test_worker_task_refs(ray_start_regular):
     address = ray_start_regular["redis_address"]
+
     @ray.remote
     def f(y):
         from ray.new_dashboard.memory_utils import memory_summary
@@ -113,6 +114,7 @@ def test_worker_task_refs(ray_start_regular):
 
 def test_actor_task_refs(ray_start_regular):
     address = ray_start_regular["redis_address"]
+
     @ray.remote
     class Actor:
         def __init__(self):
@@ -233,22 +235,17 @@ def test_multi_node_stats(shutdown_only):
 
 def test_group_by_sort_by(ray_start_regular):
     address = ray_start_regular["redis_address"]
+
     @ray.remote
     def f(y):
         from ray.new_dashboard.memory_utils import memory_summary
         x_id = ray.put("HI")
         info_a = memory_summary(
-            address,
-            group_by="STACK_TRACE",
-            sort_by="REFERENCE_TYPE")
+            address, group_by="STACK_TRACE", sort_by="REFERENCE_TYPE")
         info_b = memory_summary(
-            address,
-            group_by="NODE_ADDRESS",
-            sort_by="OBJECT_SIZE")
+            address, group_by="NODE_ADDRESS", sort_by="OBJECT_SIZE")
         info_c = memory_summary(
-            address,
-            group_by="NODE_ADDRESS",
-            sort_by="PID")
+            address, group_by="NODE_ADDRESS", sort_by="PID")
         del x_id
         return info_a, info_b, info_c
 

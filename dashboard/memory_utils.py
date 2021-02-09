@@ -330,10 +330,16 @@ def construct_memory_table(workers_stats: List,
     return memory_table
 
 
-def get_memory_summary(redis_address, redis_password, group_by,
-                       sort_by) -> str:
+def get_memory_summary(redis_address, redis_password, group_by, sort_by,
+                       line_wrap) -> str:
     from ray.new_dashboard.modules.stats_collector.stats_collector_head\
          import node_stats_to_dict
+
+    # Get terminal size
+    import os
+    size = os.get_terminal_size().columns
+    line_wrap_threshold = 137
+
     # Fetch core memory worker stats, store as a dictionary
     state = GlobalState()
     state._initialize_global_state(redis_address, redis_password)
@@ -344,23 +350,33 @@ def get_memory_summary(redis_address, redis_password, group_by,
                        raylet["NodeManagerPort"]))
         core_worker_stats.extend(stats["coreWorkersStats"])
         assert type(stats) is dict and "coreWorkersStats" in stats
+
     # Build memory table with "group_by" and "sort_by" parameters
     group_by, sort_by = get_group_by_type(group_by), get_sorting_type(sort_by)
     memory_table = construct_memory_table(core_worker_stats, group_by,
                                           sort_by).as_dict()
     assert "summary" in memory_table and "group" in memory_table
+
     # Build memory summary
     mem = ""
     group_by, sort_by = group_by.name.lower().replace(
         "_", " "), sort_by.name.lower().replace("_", " ")
     summary_labels = [
-        "Memory Used by Objects", "Local Reference Ct", "Pinned in Memory Ct",
-        "Used by Pending Tasks Ct", "Captured in Objects Ct", "Actor Handle Ct"
+        "Mem Used by Objects", "Local References", "Pinned Count",
+        "Pending Tasks", "Captured in Objects", "Actor Handles"
     ]
+    summary_string = "{:<19}  {:<16}  {:<12}  {:<13}  {:<19}  {:<13}\n"
+
     object_ref_labels = [
-        "IP Address", "PID", "Type", "Object Ref", "Object Size",
-        "Reference Type", "Call Site"
+        "IP Address", "PID", "Type", "Object Ref", "Size", "Reference Type",
+        "Call Site"
     ]
+    object_ref_string = "{:<8}  {:<3}  {:<4}  {:<10}  {:<4}  {:<14}  {:<9}\n"
+    print(line_wrap)
+    if size > line_wrap_threshold and line_wrap:
+        object_ref_string = "{:<12}  {:<5}  {:<6}  {:<56}  {:<6}  {:<18}  \
+{:<22}\n"
+
     mem += f"Grouping by {group_by}...\
         Sorting by {sort_by}...\n\n\n\n"
 
@@ -370,28 +386,26 @@ def get_memory_summary(redis_address, redis_password, group_by,
         summary["total_object_size"] = str(
             summary["total_object_size"]) + " MiB"
         mem += f"--- Summary for {group_by}: {key} ---\n"
-        mem += "{:<25}  {:<25}  {:<25}  {:<25}  {:<25}  {:<25}\n"\
+        mem += summary_string\
             .format(*summary_labels)
-        mem += "{:<25}  {:<25}  {:<25}  {:<25}  {:<25}  {:<25}\n\n"\
-            .format(*summary.values())
+        mem += summary_string\
+            .format(*summary.values()) + "\n"
 
         # Memory table per group
         mem += f"--- Object references for {group_by}: {key} ---\n"
-        mem += "{:<14}  {:<8}  {:<8}  {:<39}  {:<14}  {:<22}  {:<39}\n"\
+        mem += object_ref_string\
             .format(*object_ref_labels)
         for entry in group["entries"]:
             entry["object_size"] = str(
                 entry["object_size"]
             ) + " MiB" if entry["object_size"] > -1 else "?"
-            entry["object_ref"] = [
-                entry["object_ref"][i:i + 39]
-                for i in range(0, len(entry["object_ref"]), 39)
-            ]
-            entry["call_site"] = [
-                entry["call_site"][i:i + 39]
-                for i in range(0, len(entry["call_site"]), 39)
-            ]
-            num_lines = max(len(entry["object_ref"]), len(entry["call_site"]))
+            num_lines = 1
+            if size > line_wrap_threshold and line_wrap:
+                entry["call_site"] = [
+                    entry["call_site"][i:i + 22]
+                    for i in range(0, len(entry["call_site"]), 22)
+                ]
+                num_lines = len(entry["call_site"])
             object_ref_values = [
                 entry["node_ip_address"], entry["pid"], entry["type"],
                 entry["object_ref"], entry["object_size"],
@@ -404,7 +418,7 @@ def get_memory_summary(redis_address, redis_password, group_by,
                     ["" for x in range(num_lines - len(object_ref_values[i]))])
             for i in range(num_lines):
                 row = [elem[i] for elem in object_ref_values]
-                mem += "{:<14}  {:<8}  {:<8}  {:39}  {:<14}  {:<22} {:<39}\n"\
+                mem += object_ref_string\
                     .format(*row)
             mem += "\n"
         mem += "\n\n\n"
@@ -423,7 +437,8 @@ def get_store_stats_summary(redis_address, redis_password) -> str:
 def memory_summary(redis_address,
                    redis_password=REDIS_DEFAULT_PASSWORD,
                    group_by="NODE_ADDRESS",
-                   sort_by="OBJECT_SIZE"):
-    return get_memory_summary(redis_address, redis_password, group_by,
-                              sort_by) + get_store_stats_summary(
+                   sort_by="OBJECT_SIZE",
+                   line_wrap=True):
+    return get_memory_summary(redis_address, redis_password, group_by, sort_by,
+                              line_wrap) + get_store_stats_summary(
                                   redis_address, redis_password)

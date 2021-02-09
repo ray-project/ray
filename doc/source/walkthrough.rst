@@ -292,7 +292,7 @@ Cancelling tasks
 
       from ray.exceptions import TaskCancelledError
 
-      try: 
+      try:
           ray.get(obj_ref)
       except TaskCancelledError: 
           print("Object reference was cancelled.")

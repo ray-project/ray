@@ -1397,7 +1397,8 @@ def memory(address, redis_password, group_by, sort_by, line_wrap):
         address = services.get_ray_address_to_use_or_die()
     time = datetime.now()
     header = "=" * 8 + f" Object references status: {time} " + "=" * 8
-    mem_stats = memory_summary(address, redis_password, group_by, sort_by, line_wrap)
+    mem_stats = memory_summary(address, redis_password, group_by, sort_by,
+                               line_wrap)
     print(f"{header}\n\{mem_stats}")
 
 
