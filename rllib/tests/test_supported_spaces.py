@@ -47,6 +47,8 @@ OBSERVATION_SPACES_TO_TEST = {
 
 def check_support(alg, config, train=True, check_bounds=False, tfe=False):
     config["log_level"] = "ERROR"
+    config["train_batch_size"] = 10
+    config["rollout_fragment_length"] = 10
 
     def _do_check(alg, config, a_name, o_name):
         fw = config["framework"]
@@ -88,25 +90,24 @@ def check_support(alg, config, train=True, check_bounds=False, tfe=False):
 
     frameworks = ("tf", "torch")
     if tfe:
-        frameworks += ("tfe", )
+        frameworks += ("tf2", "tfe")
     for _ in framework_iterator(config, frameworks=frameworks):
-        # Check all action spaces (using a discrete obs-space).
-        for a_name in ACTION_SPACES_TO_TEST.keys():
-            _do_check(alg, config, a_name, "discrete")
-        # Check all obs spaces (using a supported action-space).
-        for o_name in OBSERVATION_SPACES_TO_TEST.keys():
-            # We already tested discrete observation spaces against all action
-            # spaces above -> skip.
-            if o_name == "discrete":
-                continue
-            a_name = "discrete" if alg not in ["DDPG", "SAC"] else "vector"
+        # Zip through action- and obs-spaces.
+        for a_name, o_name in zip(ACTION_SPACES_TO_TEST.keys(),
+                                  OBSERVATION_SPACES_TO_TEST.keys()):
             _do_check(alg, config, a_name, o_name)
+        # Do the remaining obs spaces.
+        assert len(OBSERVATION_SPACES_TO_TEST) >= len(ACTION_SPACES_TO_TEST)
+        for i, o_name in enumerate(OBSERVATION_SPACES_TO_TEST.keys()):
+            if i < len(ACTION_SPACES_TO_TEST):
+                continue
+            _do_check(alg, config, "discrete", o_name)
 
 
 class TestSupportedSpacesPG(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init(num_cpus=4)
+        ray.init(num_cpus=6)
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -125,11 +126,11 @@ class TestSupportedSpacesPG(unittest.TestCase):
 
     def test_ppo(self):
         config = {
-            "num_workers": 1,
-            "num_sgd_iter": 1,
-            "train_batch_size": 10,
+            "num_workers": 0,
+            "train_batch_size": 100,
             "rollout_fragment_length": 10,
-            "sgd_minibatch_size": 1,
+            "num_sgd_iter": 1,
+            "sgd_minibatch_size": 10,
         }
         check_support("PPO", config, check_bounds=True, tfe=True)
 

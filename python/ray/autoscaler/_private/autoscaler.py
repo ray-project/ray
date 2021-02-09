@@ -43,7 +43,7 @@ logger = logging.getLogger(__name__)
 # that will be passed into a NodeUpdaterThread.
 UpdateInstructions = namedtuple(
     "UpdateInstructions",
-    ["node_id", "init_commands", "start_ray_commands", "docker_config"])
+    ["node_id", "setup_commands", "ray_start_commands", "docker_config"])
 
 AutoscalerSummary = namedtuple(
     "AutoscalerSummary",
@@ -283,7 +283,7 @@ class StandardAutoscaler:
         # problems. They should at a minimum be spawned as daemon threads.
         # See https://github.com/ray-project/ray/pull/5903 for more info.
         T = []
-        for node_id, commands, ray_start, docker_config in (
+        for node_id, setup_commands, ray_start_commands, docker_config in (
                 self.should_update(node_id) for node_id in nodes):
             if node_id is not None:
                 resources = self._node_resources(node_id)
@@ -291,8 +291,8 @@ class StandardAutoscaler:
                 T.append(
                     threading.Thread(
                         target=self.spawn_updater,
-                        args=(node_id, commands, ray_start, resources,
-                              docker_config)))
+                        args=(node_id, setup_commands, ray_start_commands,
+                              resources, docker_config)))
         for t in T:
             t.start()
         for t in T:
@@ -633,25 +633,25 @@ class StandardAutoscaler:
 
         successful_updated = self.num_successful_updates.get(node_id, 0) > 0
         if successful_updated and self.config.get("restart_only", False):
-            init_commands = []
-            ray_commands = self.config["worker_start_ray_commands"]
+            setup_commands = []
+            ray_start_commands = self.config["worker_start_ray_commands"]
         elif successful_updated and self.config.get("no_restart", False):
-            init_commands = self._get_node_type_specific_fields(
+            setup_commands = self._get_node_type_specific_fields(
                 node_id, "worker_setup_commands")
-            ray_commands = []
+            ray_start_commands = []
         else:
-            init_commands = self._get_node_type_specific_fields(
+            setup_commands = self._get_node_type_specific_fields(
                 node_id, "worker_setup_commands")
-            ray_commands = self.config["worker_start_ray_commands"]
+            ray_start_commands = self.config["worker_start_ray_commands"]
 
         docker_config = self._get_node_specific_docker_config(node_id)
         return UpdateInstructions(
             node_id=node_id,
-            init_commands=init_commands,
-            start_ray_commands=ray_commands,
+            setup_commands=setup_commands,
+            ray_start_commands=ray_start_commands,
             docker_config=docker_config)
 
-    def spawn_updater(self, node_id, init_commands, ray_start_commands,
+    def spawn_updater(self, node_id, setup_commands, ray_start_commands,
                       node_resources, docker_config):
         logger.info(f"Creating new (spawn_updater) updater thread for node"
                     f" {node_id}.")
@@ -665,7 +665,8 @@ class StandardAutoscaler:
             initialization_commands=with_head_node_ip(
                 self._get_node_type_specific_fields(
                     node_id, "initialization_commands"), self.head_node_ip),
-            setup_commands=with_head_node_ip(init_commands, self.head_node_ip),
+            setup_commands=with_head_node_ip(setup_commands,
+                                             self.head_node_ip),
             ray_start_commands=with_head_node_ip(ray_start_commands,
                                                  self.head_node_ip),
             runtime_hash=self.runtime_hash,
