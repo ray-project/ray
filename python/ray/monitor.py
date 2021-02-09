@@ -4,15 +4,11 @@ import argparse
 import logging
 import logging.handlers
 import os
-import sys
 import time
 import traceback
 import json
-import binascii
 
-import asyncio
-from grpc.experimental import aio
-import aioredis
+import grpc
 
 import ray
 from ray.autoscaler._private.autoscaler import StandardAutoscaler
@@ -75,23 +71,6 @@ def parse_resource_demands(resource_load_by_shape):
     return waiting_bundles, infeasible_bundles
 
 
-async def _get_gcs_address(redis_address: str, redis_password: str) -> str:
-    aioredis_client = await aioredis.create_redis_pool(
-        address="redis://" + redis_address, password=redis_password)
-    gcs_address = await aioredis_client.get("GcsServerAddress")
-    return gcs_address
-
-
-def get_gcs_node_resources_stub(
-        redis_address: str, redis_password: str
-) -> gcs_service_pb2_grpc.NodeResourceInfoGcsServiceStub:
-    loop = asyncio.get_event_loop()
-    gcs_address = loop.run_until_complete(
-        _get_gcs_address(redis_address, redis_password))
-    gcs_channel = aio.insecure_channel(gcs_address)
-    return gcs_service_pb2_grpc.NodeResourceInfoGcsServiceStub(gcs_channel)
-
-
 class Monitor:
     """Autoscaling monitor.
 
@@ -114,8 +93,10 @@ class Monitor:
             redis_address, password=redis_password)
 
         # Initialize the gcs stub for getting all node resource usage.
-        self.gcs_node_resources_stub = get_gcs_node_resources_stub(
-            redis_address, redis_password)
+        gcs_address = self.redis.get("GcsServerAddress").decode("utf-8")
+        gcs_channel = grpc.insecure_channel(gcs_address)
+        self.gcs_node_resources_stub = \
+            gcs_service_pb2_grpc.NodeResourceInfoGcsServiceStub(gcs_channel)
 
         # Set the redis client and mode so _internal_kv works for autoscaler.
         worker = ray.worker.global_worker
@@ -138,19 +119,14 @@ class Monitor:
 
         logger.info("Monitor: Started")
 
-    def _get_all_resource_usage(self, timeout_s: int = 3
-                                ) -> gcs_service_pb2.GetAllResourceUsageReply:
-        request = gcs_service_pb2.GetAllResourceUsageRequest()
-        loop = asyncio.get_event_loop()
-        return loop.run_until_complete(
-            self.gcs_node_resources_stub.GetAllResourceUsage(
-                request, timeout=timeout_s))
-
     def update_load_metrics(self):
         """Fetches resource usage data from GCS and updates load metrics."""
 
-        resources_batch_data = self._get_all_resource_usage(
-        ).resource_usage_data
+        request = gcs_service_pb2.GetAllResourceUsageRequest()
+        response = self.gcs_node_resources_stub.GetAllResourceUsage(
+            request, timeout=3)
+        resources_batch_data = response.resource_usage_data
+
         for resource_message in resources_batch_data.batch:
             resource_load = dict(resource_message.resource_load)
             total_resources = dict(resource_message.resources_total)
@@ -163,10 +139,9 @@ class Monitor:
                 resources_batch_data.placement_group_load.placement_group_data)
 
             ip = resource_message.node_manager_address
-            self.load_metrics.update(ip, total_resources,
-                                     available_resources, resource_load,
-                                     waiting_bundles, infeasible_bundles,
-                                     pending_placement_groups)
+            self.load_metrics.update(
+                ip, total_resources, available_resources, resource_load,
+                waiting_bundles, infeasible_bundles, pending_placement_groups)
 
     def update_resource_requests(self):
         """Fetches resource requests from the internal KV and updates load."""
@@ -360,10 +335,9 @@ if __name__ == "__main__":
         # Something went wrong, so push an error to all drivers.
         redis_client = ray._private.services.create_redis_client(
             args.redis_address, password=args.redis_password)
-        import ray.utils
-        traceback_str = ray.utils.format_error_message(traceback.format_exc())
         message = ("The monitor failed with the "
-                   f"following error:\n{traceback_str}")
-        ray.utils.push_error_to_driver_through_redis(
+                   f"following error:\n{traceback.format_exc()}")
+        from ray.utils import push_error_to_driver_through_redis
+        push_error_to_driver_through_redis(
             redis_client, ray_constants.MONITOR_DIED_ERROR, message)
         raise e
