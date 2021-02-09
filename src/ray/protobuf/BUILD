@@ -90,6 +90,16 @@ cc_proto_library(
     deps = [":gcs_service_proto"],
 )
 
+proto_library(
+    name = "autoscaler_proto",
+    srcs = ["autoscaler.proto"],
+)
+
+cc_proto_library(
+    name = "autoscaler_cc_proto",
+    deps = [":autoscaler_proto"],
+)
+
 python_grpc_compile(
     name = "gcs_service_py_proto",
     deps = [":gcs_service_proto"],
