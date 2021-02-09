@@ -10,6 +10,7 @@ Test owner: krfricke
 Acceptance criteria: Should run faster than 3600 seconds. Should run without
 errors.
 """
+import os
 import time
 
 import ray
@@ -18,9 +19,10 @@ from ray import tune
 from xgboost_ray import train, RayParams, RayDMatrix
 
 
-def xgboost_train(config, num_actors=128):
-    train_set = RayDMatrix("/home/ray/data/train.parquet", "labels")
-    test_set = RayDMatrix("/home/ray/data/test.parquet", "labels")
+def xgboost_train(config, num_actors=128, num_boost_round=200):
+    train_set = RayDMatrix(
+        os.path.expanduser("~/data/train.parquet"), "labels")
+    test_set = RayDMatrix(os.path.expanduser("~/data/test.parquet"), "labels")
 
     evals_result = {}
 
@@ -35,7 +37,7 @@ def xgboost_train(config, num_actors=128):
             cpus_per_actor=1,
             num_actors=num_actors),
         verbose_eval=False,
-        num_boost_round=200)
+        num_boost_round=num_boost_round)
 
     model_path = "tuned.xgb"
     bst.save_model(model_path)
@@ -64,7 +66,10 @@ def main():
 
     start_time = time.monotonic()
     tune.run(
-        tune.with_parameters(xgboost_train, num_actors=num_actors_per_sample),
+        tune.with_parameters(
+            xgboost_train,
+            num_actors=num_actors_per_sample,
+            num_boost_round=200),
         config=config,
         num_samples=num_samples)
     time_taken = time.monotonic() - start_time
