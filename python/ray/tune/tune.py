@@ -77,8 +77,8 @@ def run(
                                                      bool]] = None,
         time_budget_s: Union[None, int, float, datetime.timedelta] = None,
         config: Optional[Dict[str, Any]] = None,
-        resources_per_trial: Union[None, Mapping[str, Union[float, int]],
-                                   PlacementGroupFactory] = None,
+        resources_per_trial: Union[None, Mapping[str, Union[
+            float, int, Mapping]], PlacementGroupFactory] = None,
         num_samples: int = 1,
         local_dir: Optional[str] = None,
         search_alg: Optional[Union[Searcher, SearchAlgorithm]] = None,

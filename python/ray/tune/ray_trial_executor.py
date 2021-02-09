@@ -291,7 +291,13 @@ class RayTrialExecutor(TrialExecutor):
                     trial, actor=self._cached_actor, placement_group=None)
             self._cached_actor = None
 
-        _actor_cls = _class_cache.get(trial.get_trainable_cls())
+        trainable_cls = trial.get_trainable_cls()
+        if not trainable_cls:
+            raise AbortTrialExecution(
+                f"Invalid trainable: {trial.trainable_name}. If you passed "
+                f"a string, make sure the trainable was registered before.")
+        _actor_cls = _class_cache.get(trainable_cls)
+
         if trial.uses_placement_groups:
             if not self._pg_manager.has_ready(trial, update=True):
                 if trial not in self._staged_trials:
@@ -480,7 +486,8 @@ class RayTrialExecutor(TrialExecutor):
             train (bool): Whether or not to start training.
 
         Returns:
-            True if trial was started successfully, False otherwise.
+            True if the remote runner has been started (even if it failed
+            afterwards). False otherwise.
         """
         if not trial.uses_placement_groups:
             self._commit_resources(trial.resources)
@@ -492,7 +499,9 @@ class RayTrialExecutor(TrialExecutor):
             time.sleep(2)
             error_msg = traceback.format_exc()
             self._stop_trial(trial, error=True, error_msg=error_msg)
-            return False
+            # Return True here so we don't try to start a new trial
+            # in the main event loop
+            return True
         except Exception:
             logger.exception("Trial %s: Unexpected error starting runner.",
                              trial)
@@ -501,7 +510,7 @@ class RayTrialExecutor(TrialExecutor):
             self._stop_trial(trial, error=True, error_msg=error_msg)
             # Note that we don't return the resources, since they may
             # have been lost. TODO(ujvl): is this the right thing to do?
-            return False
+            return True
 
     def _find_item(self, dictionary, item):
         out = [rid for rid, t in dictionary.items() if t is item]
