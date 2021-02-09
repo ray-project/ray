@@ -109,10 +109,10 @@ Simply set the `dataframe_optimize` configuration option to our optimizer functi
    with dask.config.set(scheduler=ray_dask_get, dataframe_optimize=dataframe_optimize):
        npartitions = 100
        df = dd.from_pandas(pd.DataFrame(np.random.randint(0, 100, size=(10000, 2)), columns=["age", "grade"]), npartitions=npartitions)
-       # We set max_branch=npartitions in order to ensure that the task-based shuffle
+       # We set max_branch to infinity in order to ensure that the task-based shuffle
        # happens in a single stage, which is required in order for our optimization to
        # work.
-       df.set_index(["age"], shuffle="tasks", max_branch=npartitions).head(10, npartitions=-1)
+       df.set_index(["age"], shuffle="tasks", max_branch=float("inf")).head(10, npartitions=-1)
 
 =========
 Callbacks
