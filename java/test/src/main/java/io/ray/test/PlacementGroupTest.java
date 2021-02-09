@@ -7,7 +7,10 @@ import io.ray.api.placementgroup.PlacementGroup;
 import io.ray.api.placementgroup.PlacementGroupState;
 import io.ray.api.placementgroup.PlacementStrategy;
 import io.ray.runtime.exception.RayException;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -149,7 +152,7 @@ public class PlacementGroupTest extends BaseTest {
     PlacementGroup firstPlacementGroup =
         PlacementGroupTestUtils.createNameSpecifiedSimpleGroup(
             "CPU", 1, PlacementStrategy.PACK, 1.0, pgName, false);
-    firstPlacementGroup.wait(60);
+    Assert.assertTrue(firstPlacementGroup.wait(60));
     // Make sure we can get it by name successfully.
     PlacementGroup placementGroup = Ray.getPlacementGroup(pgName);
     Assert.assertNotNull(placementGroup);
@@ -160,10 +163,49 @@ public class PlacementGroupTest extends BaseTest {
     PlacementGroup secondPlacementGroup =
         PlacementGroupTestUtils.createNameSpecifiedSimpleGroup(
             "CPU", 2, PlacementStrategy.PACK, 1.0, pgGlobalName, true);
-    secondPlacementGroup.wait(60);
+    Assert.assertTrue(secondPlacementGroup.wait(60));
     // Make sure we can get it by name successfully.
     placementGroup = Ray.getGlobalPlacementGroup(pgGlobalName);
     Assert.assertNotNull(placementGroup);
     Assert.assertEquals(placementGroup.getBundles().size(), 2);
+  }
+
+  @Test(expectedExceptions = {IllegalArgumentException.class})
+  public void testCreatePlacementGroupWithSameName() {
+    String pgName = "named_placement_group";
+    PlacementGroup firstPlacementGroup =
+        PlacementGroupTestUtils.createNameSpecifiedSimpleGroup(
+            "CPU", 1, PlacementStrategy.PACK, 1.0, pgName, false);
+    Assert.assertTrue(firstPlacementGroup.wait(60));
+    PlacementGroupTestUtils.createNameSpecifiedSimpleGroup(
+        "CPU", 1, PlacementStrategy.PACK, 1.0, pgName, false);
+  }
+
+  @Test(expectedExceptions = {IllegalArgumentException.class})
+  public void testCreateGlobalPlacementGroupWithSameName() {
+    String pgGlobalName = "global_placement_group";
+    PlacementGroup firstPlacementGroup =
+        PlacementGroupTestUtils.createNameSpecifiedSimpleGroup(
+            "CPU", 1, PlacementStrategy.PACK, 1.0, pgGlobalName, true);
+    Assert.assertTrue(firstPlacementGroup.wait(60));
+    PlacementGroupTestUtils.createNameSpecifiedSimpleGroup(
+        "CPU", 1, PlacementStrategy.PACK, 1.0, pgGlobalName, true);
+  }
+
+  public void testCompatibleForPreviousApi() {
+    String pgName = "named_placement_group";
+    List<Map<String, Double>> bundles = new ArrayList<>();
+    for (int i = 0; i < 1; i++) {
+      Map<String, Double> bundle = new HashMap<>();
+      bundle.put("CPU", 1.0);
+      bundles.add(bundle);
+    }
+    PlacementGroup placementGroup =
+        Ray.createPlacementGroup(pgName, bundles, PlacementStrategy.PACK);
+    Assert.assertTrue(placementGroup.wait(60));
+    // Make sure we can get it by name successfully.
+    PlacementGroup resPlacementGroup = Ray.getPlacementGroup(pgName);
+    Assert.assertNotNull(resPlacementGroup);
+    Assert.assertEquals(resPlacementGroup.getBundles().size(), 1);
   }
 }
