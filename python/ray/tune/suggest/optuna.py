@@ -103,7 +103,7 @@ class OptunaSearch(Searcher):
             metric="loss",
             mode="min")
 
-        tune.run(trainable, search_alg=algo)
+        tune.run(trainable, search_alg=optuna_search)
 
     .. versionadded:: 0.8.8
 
