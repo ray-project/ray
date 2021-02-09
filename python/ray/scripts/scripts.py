@@ -1385,13 +1385,19 @@ def timeline(address):
     default=SortingType.OBJECT_SIZE.name,
     help="Sort object references in ascending order by a SortingType \
 (e.g. PID, OBJECT_SIZE, or REFERENCE_TYPE).")
-def memory(address, redis_password, group_by, sort_by):
+@click.option(
+    "--line-wrap",
+    type=bool,
+    default=True,
+    help="Wrap lines when displaying output. \
+Terminal must be sufficiently large.")
+def memory(address, redis_password, group_by, sort_by, line_wrap):
     """Print object references held in a Ray cluster."""
     if not address:
         address = services.get_ray_address_to_use_or_die()
     time = datetime.now()
     header = "=" * 8 + f" Object references status: {time} " + "=" * 8
-    mem_stats = memory_summary(address, redis_password, group_by, sort_by)
+    mem_stats = memory_summary(address, redis_password, group_by, sort_by, line_wrap)
     print(f"{header}\n\{mem_stats}")
 
 

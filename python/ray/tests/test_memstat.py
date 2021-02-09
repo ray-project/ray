@@ -59,25 +59,27 @@ def count(memory_str, substr):
 
 
 def test_driver_put_ref(ray_start_regular):
-    info = memory_summary(ray_start_regular["redis_address"])
+    address = ray_start_regular["redis_address"]
+    info = memory_summary(address)
     assert num_objects(info) == 0, info
     x_id = ray.put("HI")
-    info = memory_summary(ray_start_regular["redis_address"])
+    info = memory_summary(address)
     print(info)
     assert num_objects(info) == 1, info
     assert count(info, DRIVER_PID) == 1, info
     assert count(info, WORKER_PID) == 0, info
     del x_id
-    info = memory_summary(ray_start_regular["redis_address"])
+    info = memory_summary(address)
     assert num_objects(info) == 0, info
 
 
 def test_worker_task_refs(ray_start_regular):
+    address = ray_start_regular["redis_address"]
     @ray.remote
     def f(y):
         from ray.new_dashboard.memory_utils import memory_summary
         x_id = ray.put("HI")
-        info = memory_summary(ray_start_regular["redis_address"])
+        info = memory_summary(address)
         del x_id
         return info
 
@@ -96,7 +98,7 @@ def test_worker_task_refs(ray_start_regular):
     assert count(info, UNKNOWN_SIZE) == 1, info
 
     print(ray_start_regular)
-    info = memory_summary(ray_start_regular["redis_address"])
+    info = memory_summary(address)
     print(info)
     assert num_objects(info) == 1, info
     assert count(info, DRIVER_PID) == 1, info
@@ -105,11 +107,12 @@ def test_worker_task_refs(ray_start_regular):
     assert count(info, x_id.hex()) == 1, info
 
     del x_id
-    info = memory_summary(ray_start_regular["redis_address"])
+    info = memory_summary(address)
     assert num_objects(info) == 0, info
 
 
 def test_actor_task_refs(ray_start_regular):
+    address = ray_start_regular["redis_address"]
     @ray.remote
     class Actor:
         def __init__(self):
@@ -118,7 +121,7 @@ def test_actor_task_refs(ray_start_regular):
         def f(self, x):
             from ray.new_dashboard.memory_utils import memory_summary
             self.refs.append(x)
-            return memory_summary(ray_start_regular["redis_address"])
+            return memory_summary(address)
 
     def make_actor():
         return Actor.remote()
@@ -142,7 +145,7 @@ def test_actor_task_refs(ray_start_regular):
     # These should accumulate in the actor.
     for _ in range(5):
         ray.get(actor.f.remote([ray.put(np.zeros(100000))]))
-    info = memory_summary(ray_start_regular["redis_address"])
+    info = memory_summary(address)
     print(info)
     assert count(info, DESER_ACTOR_TASK_ARG) == 5, info
     assert count(info, ACTOR_TASK_CALL_OBJ) == 1, info
@@ -150,16 +153,17 @@ def test_actor_task_refs(ray_start_regular):
     # Cleanup.
     del actor
     time.sleep(1)
-    info = memory_summary(ray_start_regular["redis_address"])
+    info = memory_summary(address)
     assert num_objects(info) == 0, info
 
 
 def test_nested_object_refs(ray_start_regular):
+    address = ray_start_regular["redis_address"]
     x_id = ray.put(np.zeros(100000))
     y_id = ray.put([x_id])
     z_id = ray.put([y_id])
     del x_id, y_id
-    info = memory_summary(ray_start_regular["redis_address"])
+    info = memory_summary(address)
     print(info)
     assert num_objects(info) == 3, info
     assert count(info, LOCAL_REF) == 1, info
@@ -168,9 +172,10 @@ def test_nested_object_refs(ray_start_regular):
 
 
 def test_pinned_object_call_site(ray_start_regular):
+    address = ray_start_regular["redis_address"]
     # Local ref only.
     x_id = ray.put(np.zeros(100000))
-    info = memory_summary(ray_start_regular["redis_address"])
+    info = memory_summary(address)
     print(info)
     assert num_objects(info) == 1, info
     assert count(info, LOCAL_REF) == 1, info
@@ -178,7 +183,7 @@ def test_pinned_object_call_site(ray_start_regular):
 
     # Local ref + pinned buffer.
     buf = ray.get(x_id)
-    info = memory_summary(ray_start_regular["redis_address"])
+    info = memory_summary(address)
     print(info)
     assert num_objects(info) == 1, info
     assert count(info, LOCAL_REF) == 0, info
@@ -186,7 +191,7 @@ def test_pinned_object_call_site(ray_start_regular):
 
     # Just pinned buffer.
     del x_id
-    info = memory_summary(ray_start_regular["redis_address"])
+    info = memory_summary(address)
     print(info)
     assert num_objects(info) == 1, info
     assert count(info, LOCAL_REF) == 0, info
@@ -194,7 +199,7 @@ def test_pinned_object_call_site(ray_start_regular):
 
     # Nothing.
     del buf
-    info = memory_summary(ray_start_regular["redis_address"])
+    info = memory_summary(address)
     print(info)
     assert num_objects(info) == 0, info
 
@@ -227,20 +232,21 @@ def test_multi_node_stats(shutdown_only):
 
 
 def test_group_by_sort_by(ray_start_regular):
+    address = ray_start_regular["redis_address"]
     @ray.remote
     def f(y):
         from ray.new_dashboard.memory_utils import memory_summary
         x_id = ray.put("HI")
         info_a = memory_summary(
-            ray_start_regular["redis_address"],
+            address,
             group_by="STACK_TRACE",
             sort_by="REFERENCE_TYPE")
         info_b = memory_summary(
-            ray_start_regular["redis_address"],
+            address,
             group_by="NODE_ADDRESS",
             sort_by="OBJECT_SIZE")
         info_c = memory_summary(
-            ray_start_regular["redis_address"],
+            address,
             group_by="NODE_ADDRESS",
             sort_by="PID")
         del x_id
