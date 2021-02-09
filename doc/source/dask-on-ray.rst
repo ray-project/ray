@@ -70,7 +70,7 @@ Why use Dask on Ray?
       :ref:`cluster launcher <ref-automatic-cluster>` and
       :ref:`shared-memory store <memory>`.
 
-Dask-on-Ray is an ongoing project and is not expected to achieve the same performance as using Ray directly. All `Dask abstractions <https://docs.dask.org/en/latest/user-interfaces.html>`__ should run seamlessly on top of Ray using this scheduler, so if you find that one of these abstractions doesn't run on Ray, please open an issue on the `Ray GitHub repo <https://github.com/ray-project/ray>`__.
+Dask-on-Ray is an ongoing project and is not expected to achieve the same performance as using Ray directly. All `Dask abstractions <https://docs.dask.org/en/latest/user-interfaces.html>`__ should run seamlessly on top of Ray using this scheduler, so if you find that one of these abstractions doesn't run on Ray, please `open an issue <https://github.com/ray-project/ray/issues/new/choose>`__.
 
 ================================================
 Out-of-Core Data Processing
