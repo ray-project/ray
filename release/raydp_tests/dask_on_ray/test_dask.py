@@ -15,7 +15,7 @@ from dask.distributed import Client
 import time
 
 # DATA_DIR = "~/dask-on-ray-data"
-DATA_DIR = "/parquet-data"
+DATA_DIR = "parquet-data"
 
 
 def load_dataset(nbytes, npartitions, sort):
@@ -77,10 +77,12 @@ def trial(nbytes, n_partitions, sort, generate_only, custom_shuffle_optimization
         if sort:
             # pr.enable()
             if custom_shuffle_optimization:
+                # with dask.config.set(dataframe_optimize=dataframe_optimize, **{"dask.optimization.fuse.active": False}):
                 with dask.config.set(dataframe_optimize=dataframe_optimize):
                     a = df.set_index('a', shuffle='tasks', max_branch=n_partitions)
                     #a.visualize(filename=f'a-{i}.svg')
-                    a.head(10, npartitions=-1)
+                    a.head(10, npartitions=-1, compute=False)
+                    a.compute()
             else:
                 a = df.set_index('a', shuffle='tasks', max_branch=n_partitions)
                 # a.visualize(filename=f'a-{i}.svg')
@@ -143,26 +145,26 @@ if __name__ == '__main__':
         client = Client('127.0.0.1:8786')
         ray.init()
     if args.ray:
-        ray.init(address="auto")
+        # ray.init(address="auto")
         # ray.init()
-        #ray.init(
-        #    num_cpus=16,
-        #    _system_config={
-        #        "max_io_workers": 1,
-        #        "object_spilling_config": json.dumps(
-        #            {
-        #                "type": "filesystem",
-        #                "params": {
-        #                    "directory_path": "/tmp/spill"
-        #                }
-        #            #},
-                    #separators=(",", ":"))
-            #})
+        ray.init(
+            num_cpus=8,
+            _system_config={
+                "max_io_workers": 1,
+                "object_spilling_config": json.dumps(
+                    {
+                        "type": "filesystem",
+                        "params": {
+                            "directory_path": "/tmp/spill"
+                        }
+                    },
+                    separators=(",", ":"))
+            })
         dask.config.set(scheduler=ray_dask_get_sync)
 
     system = "dask" if args.dask else "ray"
 
-    print(system, trial(1000, 10, args.sort, args.generate_only, args.custom_shuffle_optimization))
+    # print(system, trial(1000, 10, args.sort, args.generate_only, args.custom_shuffle_optimization))
     print("WARMUP DONE")
 
     npartitions = args.npartitions

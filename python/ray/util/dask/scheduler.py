@@ -1,4 +1,5 @@
 import atexit
+import pprint
 from collections import defaultdict
 from multiprocessing.pool import ThreadPool
 from dataclasses import dataclass
@@ -273,6 +274,9 @@ def _rayify_task(
         func, args = task[0], task[1:]
         if func is multiple_return_get:
             return _execute_task(task, deps)
+        if ((isinstance(key, str) and "shuffle" in key)
+                or (isinstance(key, tuple) and "shuffle" in key[0])):
+            print(f"task {key} reached, will be launched as Ray task")
         # If the function's arguments contain nested object references, we must
         # unpack said object references into a flat set of arguments so that
         # Ray properly tracks the object dependencies between Ray tasks.
@@ -422,6 +426,10 @@ def ray_dask_get_sync(dsk, keys, **kwargs):
             ray_postsubmit_all_cbs,
             ray_finish_cbs,
         ) = unpack_ray_callbacks(ray_callbacks)
+
+        pp = pprint.PrettyPrinter(depth=4)
+        print(f"dsk:")
+        pp.pprint(dsk)
         # NOTE: We hijack Dask's `get_async` function, injecting a different
         # task executor.
         object_refs = get_async(

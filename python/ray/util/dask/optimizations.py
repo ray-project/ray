@@ -1,5 +1,7 @@
 import copy
 import operator
+import json
+import pprint
 
 from dask import core, config
 from dask.core import istask
@@ -143,6 +145,9 @@ def dataframe_optimize(dsk, keys, **kwargs):
     fuse_subgraphs = config.get("optimization.fuse.subgraphs")
     if fuse_subgraphs is None:
         fuse_subgraphs = True
+    # pp = pprint.PrettyPrinter(depth=4)
+    # print(f"dsk before:")
+    # pp.pprint(dsk)
     dsk, _ = fuse(
         dsk,
         keys,
@@ -150,6 +155,8 @@ def dataframe_optimize(dsk, keys, **kwargs):
         fuse_subgraphs=fuse_subgraphs,
     )
     dsk, _ = cull(dsk, keys)
+    # print("dsk after:")
+    # pp.pprint(dsk)
     return dsk
 
 
