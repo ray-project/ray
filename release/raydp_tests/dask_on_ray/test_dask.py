@@ -15,7 +15,7 @@ from dask.distributed import Client
 import time
 
 # DATA_DIR = "~/dask-on-ray-data"
-DATA_DIR = "/obj-data"
+DATA_DIR = "/parquet-data"
 
 
 def load_dataset(nbytes, npartitions, sort):
@@ -79,7 +79,7 @@ def trial(nbytes, n_partitions, sort, generate_only, custom_shuffle_optimization
             if custom_shuffle_optimization:
                 with dask.config.set(dataframe_optimize=dataframe_optimize):
                     a = df.set_index('a', shuffle='tasks', max_branch=n_partitions)
-                    # a.visualize(filename=f'a-{i}.svg')
+                    #a.visualize(filename=f'a-{i}.svg')
                     a.head(10, npartitions=-1)
             else:
                 a = df.set_index('a', shuffle='tasks', max_branch=n_partitions)
@@ -173,6 +173,7 @@ if __name__ == '__main__':
     print("{} mean over {} trials: {} +- {}".format(system, len(output),
                                                     np.mean(output),
                                                     np.std(output)))
+    print(ray.internal.internal_api.memory_summary(stats_only=True))
 
     write_header = not os.path.exists("output.csv") or os.path.getsize(
         "output.csv") == 0

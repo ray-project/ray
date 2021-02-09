@@ -278,6 +278,8 @@ def _rayify_task(
         # Ray properly tracks the object dependencies between Ray tasks.
         arg_object_refs, repack = unpack_object_refs(args, deps)
         # Submit the task using a wrapper function.
+        for ref in arg_object_refs:
+            print(f"[GET] object_id:{ref.hex()} size:0 func:{key}")
         object_refs = dask_task_wrapper.options(
             name=f"dask:{key!s}",
             num_returns=(

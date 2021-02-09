@@ -1,0 +1,32 @@
+Clearing old data from /parquet-data.
+Using task-based Dask shuffle
+[2m[36m(pid=113487)[0m Partition file /parquet-data/df-sort-100-0.parquet.gzip
+[2m[36m(pid=113487)[0m Allocating dataset with 12 rows
+[2m[36m(pid=113487)[0m Done allocating
+[2m[36m(pid=113505)[0m Partition file /parquet-data/df-sort-100-3.parquet.gzip
+[2m[36m(pid=113505)[0m Allocating dataset with 12 rows
+[2m[36m(pid=113505)[0m Done allocating
+[2m[36m(pid=113507)[0m Partition file /parquet-data/df-sort-100-1.parquet.gzip
+[2m[36m(pid=113507)[0m Allocating dataset with 12 rows
+[2m[36m(pid=113507)[0m Done allocating
+[2m[36m(pid=113504)[0m Partition file /parquet-data/df-sort-100-9.parquet.gzip
+[2m[36m(pid=113504)[0m Allocating dataset with 12 rows
+[2m[36m(pid=113504)[0m Done allocating
+[2m[36m(pid=113508)[0m Partition file /parquet-data/df-sort-100-7.parquet.gzip
+[2m[36m(pid=113508)[0m Allocating dataset with 12 rows
+[2m[36m(pid=113508)[0m Done allocating
+[2m[36m(pid=113506)[0m Partition file /parquet-data/df-sort-100-2.parquet.gzip
+[2m[36m(pid=113506)[0m Allocating dataset with 12 rows
+[2m[36m(pid=113506)[0m Done allocating
+[2m[36m(pid=113509)[0m Partition file /parquet-data/df-sort-100-4.parquet.gzip
+[2m[36m(pid=113509)[0m Allocating dataset with 12 rows
+[2m[36m(pid=113509)[0m Done allocating
+[2m[36m(pid=113512)[0m Partition file /parquet-data/df-sort-100-6.parquet.gzip
+[2m[36m(pid=113512)[0m Allocating dataset with 12 rows
+[2m[36m(pid=113512)[0m Done allocating
+[2m[36m(pid=113511)[0m Partition file /parquet-data/df-sort-100-8.parquet.gzip
+[2m[36m(pid=113511)[0m Allocating dataset with 12 rows
+[2m[36m(pid=113511)[0m Done allocating
+[2m[36m(pid=113510)[0m Partition file /parquet-data/df-sort-100-5.parquet.gzip
+[2m[36m(pid=113510)[0m Allocating dataset with 12 rows
+[2m[36m(pid=113510)[0m Done allocating

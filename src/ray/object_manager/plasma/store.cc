@@ -398,6 +398,7 @@ void PlasmaStore::ReturnFromGet(GetRequest *get_req) {
       store_fds.push_back(fd);
       mmap_sizes.push_back(GetMmapSize(fd));
       if (get_req->is_from_worker) {
+	      RAY_LOG(ERROR) << "[GET] object_id:" << object_id << " size:" << (object.data_size + object.metadata_size);
         total_referenced_bytes_ += object.data_size + object.metadata_size;
       }
     }

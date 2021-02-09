@@ -1,0 +1,1452 @@
+total object refs: 709
+total object refs: 41638
+099618e5e640613effffffffffffffffffffffff0100000001000000 uses 190.7374610900879MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+671ea7d5322daa9affffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+ef01aff961e140ffffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+da417cf8b9a19d09ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+ec49c09ab8d5ba02ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+919a45ef3888a87affffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+6dcffd2ea8538809ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+de45d7128577d2d2ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+beeb98b72e2c2f40ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+22c467953099947fffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+27b757da15f99fd8ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+cd02104ee5868014ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+36a95edd4fac8d4cffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+a6c6f26acd330281ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+d74ee889103a0be6ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+4b206361a8c224ecffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+a588627715887834ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+6e12118fa4238458ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+72aff9355831c99cffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+5fb55ef7a1c498f7ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+5df04495cec55ef7ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+31ef6b1b6ec46408ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+dddeeeaeeeebfe7dffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+8028a08212150b3dffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+5bf3639a3854aeb2ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+3bc7829716533f00ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+5b4f04929fdd0816ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+a6b00a3bd59cc9d6ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+587d36ff2f25987cffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+0f7739530230c98cffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+54fda68149ca9b69ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+1d6d9e272e79131affffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+c19bf06888c2486cffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+40e32c9b835cbfd8ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+2c6d43be18a2cb70ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+aaf92344829b6509ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+39bb0a6a45a338feffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+d4469b64a495f76cffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+d9c3dffcec5b8b0cffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+486778d5ced92324ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+cbca54a550de6e96ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+021213835fefda6dffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+5eec4591e5464cceffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+f65be19f265e225fffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+96898ea7f26184d3ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+e76c82687a5729c2ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+822b76d6eee5df0fffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+af5afe03bcb5815effffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+5afe341e942acfc4ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+fb6ea5d606e68188ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+32e68576e255e667ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+2db76e682f5eaca4ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+68071b79bdc86471ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+6e69162f955e35a6ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+cd0ea63fbd97e2d3ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+36e5b6a25c0e45d4ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+ddb04bf4855695c1ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+e255b8faacff0e81ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+ae94541b15ea3b23ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+23f1925d415cef78ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+ec66b27450c1a3aeffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+21db955a3293dc25ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+1ef96a335eedaf60ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+0d5d10e0b8da4342ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+5f38d4f2216f6822ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+42938d49f60e9738ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+f633ad87cda6c534ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+66a5fac262ae5d64ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+c2c3a1401ac2de40ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+479ea8f78ed915f2ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+c6a4d4b5fba9f9ebffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+619d951b2d25164bffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+897a345c22af2114ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+dd5c612b22c5e4a7ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+c7a4d6d1a8ee6ab0ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+84e24c0c833d34dfffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+c999847a65aec974ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+6bb57e8aa54ade23ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+a6b89c51c937b3c6ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+c582c784b49041e0ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+b04dd7ad7a071ef9ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+265b5bb8687fc8bbffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+c0fc0c7f783d42aaffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+e6d20de4a701a93fffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+4be8d0badc2f46bcffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+68cad02c5eb6179dffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+ed2ad1554373f61affffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+856e9af04b7d4afeffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+ab375229e45f0d44ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+ccea5ba0b3e576f0ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+021b9f43c02cf503ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+03ddbf64a09e83b0ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+790889c6abd83fa2ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+82f9b4a64691edd7ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+0ed2f3db448b4072ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+758436585cd5f2e6ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+0ed31ea1ba34c3e7ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+d54fd29cec7fa32fffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+9cc77c7a1aa68b80ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+0628fa69bffb3dcfffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+2bc58617ea7bef49ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+f1f0294bc57fb5ecffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+097d292dbe2a43cdffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+1fcd0ef4c0847d8effffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+552b55113ab0d503ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+559d96ec53415fc1ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+4464b8ef87506e2dffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+a84719d1a428f418ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+f0afecb1caa4c667ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+53dd893f8d81d584ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+2ae2edc6eff29ce8ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+90ec2346da370dceffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+b89cf68966494364ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+5706ea85ddb41fafffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+a4af88d7019947daffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+6634c015306cc76affffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+87b1bb8439b71445ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+cdafb5bf0285b383ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+e3e1ece37ac0a9b6ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+39f9b76e2f232599ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+8b65256f68443584ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+a07e08f8f781bd62ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+bbb1b38fe2ec7ce9ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+cdc1eb1f7b794404ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+650f212bcadd5c1dffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+77a9c6b41cb5632cffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+05f932e62ed1627effffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+c8291da89a02cc0dffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+30b1c38189d5cfe8ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+aaa34c85a00fb221ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+4561abbc71aa04fcffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+25ee2c8c32cc0c53ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+ee588199615e69b8ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+e31d29760ad7936bffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+8a9f77b57c0a8536ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+66469807082b66f7ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+0d3d8df9065bb531ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+4dd3ed3f1e8163f3ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+94b97a75ff09a37effffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+c0e8024b9f4de0a0ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+870d214139610642ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+e14f76339ee66fd4ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+2120963ae1b2a3ffffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+c3869ede6739bc84ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+13f38d94edeb3a01ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+c7a8f595ed9370e1ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+88fec40a9f02917fffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+d659051b0988d6b8ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+e42204c52265d5c5ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+4e838b33308f15b2ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+ede1a26a22166399ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+d49b34377de54683ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+f1e54b3071a1252dffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+1aa088303b1111d5ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+2a6367e7ecd3dbe8ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+e91fbd73ac6e96ecffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+a51285f06a87f16affffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+3d0c9ebb4a6f5ca2ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+7f5abe7bef8d6bafffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+44ae930bb177dfb6ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+609fe9662dc84b82ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+0069743cd78ceb10ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+1fd3413e1d03a3c8ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+25640ed81a1a6d80ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+60a24bba6d2b5babffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+65324364817f634bffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+1561f1e52213d27dffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+f0ec54908f1feb21ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+cb0dd84d16fd48efffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+072961b5dae74088ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+22b71fb63630b6d2ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+bf9672e8b1e3fbc5ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+92dbebbc7574b46bffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+5846e84972a21ffdffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+9771a94219ae5b5cffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+17c7f640d11aa044ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+f23987b4794b2c9cffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+fc9cf3ee7e89d1c4ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+034ffd0d628852abffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+8b9c26c7543d88e5ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+c01f40fa855a482bffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+34a9d25379929fefffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+6c34f21cc46570c5ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+c92a31f9487566d5ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+c1f14d2165288327ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+06244fc294b8626effffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+d23deb4b893e438dffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+c8e36a972190e385ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+711d7a56ddb753a0ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+04573073eb5fc0daffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+4681c513c0a5a131ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+6d9e6e4ed2c94edbffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+aa33a331939feab7ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+282662756bbdef9effffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+779e9833dfc94b68ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+63c9237867bf9574ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+a9f989a9fbf63571ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+7e169a18bc38a250ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+fa866d16ef4067eeffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+c518757de9244bc2ffffffffffffffffffffffff0100000001000000 uses 143.05309581756592MB, referenced: 1
+functions: {"('read-parquet-getitem-64676364404be36e59912f19b7b9193d',"}
+ed028e1431b46d39ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+b4fed2854f1a2d3affffffffffffffffffffffff0100000001000000 uses 19083.820915222168MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+b842dbe8ba7668ebffffffffffffffffffffffff0100000001000000 uses 0.8588685989379883MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+f33d6fcd63fb5cd0ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+1f06a7847e417e35ffffffffffffffffffffffff0100000001000000 uses 19083.69960784912MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+ee18cc3bbe34c17fffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+abb1e86dbffa2833ffffffffffffffffffffffff0100000001000000 uses 19083.723640441895MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+d333e86cb6b28100ffffffffffffffffffffffff0100000001000000 uses 1.150650978088379MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+b5256d68d6c224c1ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+ae26a0d1905672e7ffffffffffffffffffffffff0100000001000000 uses 19083.766746520996MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+6dbae04578677feeffffffffffffffffffffffff0100000001000000 uses 0.4804658889770508MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+b6683c390a15d029ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+f73fd5bc9e099edeffffffffffffffffffffffff0100000001000000 uses 19083.696937561035MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+03994a49aaaa0199ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+f28e6ab2135f1e49ffffffffffffffffffffffff0100000001000000 uses 19083.812522888184MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+06ce4baf7770cd47ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+678e9db856e08323ffffffffffffffffffffffff0100000001000000 uses 19083.792686462402MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+85411e076222356affffffffffffffffffffffff0100000001000000 uses 0.7759065628051758MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+29bad1bebadbf3cfffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+123cbd52bd112b35ffffffffffffffffffffffff0100000001000000 uses 19083.791160583496MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+daacb853b9b12853ffffffffffffffffffffffff0100000001000000 uses 0.7918672561645508MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+ecac36c262e6898affffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+c9377ffa817d165cffffffffffffffffffffffff0100000001000000 uses 19083.810234069824MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+b78aced5cdc3bc09ffffffffffffffffffffffff0100000001000000 uses 1.4152841567993164MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+8f7062ac0ab6f11fffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+9e4299f5144aa28cffffffffffffffffffffffff0100000001000000 uses 19083.766746520996MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+4e35904f0ee89c50ffffffffffffffffffffffff0100000001000000 uses 0.5830049514770508MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+450271138172482effffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+8b0ebc564e6aa49fffffffffffffffffffffffff0100000001000000 uses 19083.763313293457MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+64e4aebde4525c72ffffffffffffffffffffffff0100000001000000 uses 1.0292978286743164MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+28e8f37cb0d9cb94ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+f39422fcfb4ac14dffffffffffffffffffffffff0100000001000000 uses 19083.71524810791MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+87a7e6fb7c357a98ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+daa732592a8c0337ffffffffffffffffffffffff0100000001000000 uses 19083.726692199707MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+fabbc68707f52edbffffffffffffffffffffffff0100000001000000 uses 0.8648653030395508MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+8f13113e03ff5277ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+2857a3e7090b18e2ffffffffffffffffffffffff0100000001000000 uses 19083.826637268066MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+58f15e9aebd2e7b6ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+ce0efeb475fa2781ffffffffffffffffffffffff0100000001000000 uses 19083.742713928223MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+6222b73d2ee74d34ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+797c0a18c1e57aebffffffffffffffffffffffff0100000001000000 uses 19083.745002746582MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+cb62e65ddf667eceffffffffffffffffffffffff0100000001000000 uses 0.19625473022460938MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+1831786635abeffaffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+ca04bec58b3dae10ffffffffffffffffffffffff0100000001000000 uses 19083.86859893799MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+3331c7a87edc4fe8ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+e3de0934c4ba3097ffffffffffffffffffffffff0100000001000000 uses 19083.815574645996MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+25248ad7c36e0054ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+bcdc61fb514dd678ffffffffffffffffffffffff0100000001000000 uses 19083.805656433105MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+b42defc86babd283ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+20249b83e7a8c32affffffffffffffffffffffff0100000001000000 uses 19083.79192352295MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+5c5e61d678e3af1fffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+0f337552c53b0308ffffffffffffffffffffffff0100000001000000 uses 19083.739280700684MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+220fd080ff83c2dcffffffffffffffffffffffff0100000001000000 uses 0.7552156448364258MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+d79e02b370568850ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+d8ed349a07943951ffffffffffffffffffffffff0100000001000000 uses 19083.72745513916MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+26d718de44693dd3ffffffffffffffffffffffff0100000001000000 uses 0.9406099319458008MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+1c50675949528c2dffffffffffffffffffffffff0100000001000000 uses 0.3983888626098633MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+3a3dcee5562f0c74ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+321d5a233fff40d5ffffffffffffffffffffffff0100000001000000 uses 19083.736610412598MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+b39576a178ceb64affffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+d1d1f9ed4f26fcd0ffffffffffffffffffffffff0100000001000000 uses 19083.770179748535MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+4be704fad3edde0bffffffffffffffffffffffff0100000001000000 uses 0.3374910354614258MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+94922c89edb8cd6cffffffffffffffffffffffff0100000001000000 uses 0.8892641067504883MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+a3cc564777a1414bffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+a855d0280114df6fffffffffffffffffffffffff0100000001000000 uses 19083.779335021973MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+98440b8c74887712ffffffffffffffffffffffff0100000001000000 uses 0.8985719680786133MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+308627cf03a5b140ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+2367be3cee23b6c8ffffffffffffffffffffffff0100000001000000 uses 19083.781242370605MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+d097a47ea38fb811ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+66bab13c47e46e43ffffffffffffffffffffffff0100000001000000 uses 19083.782386779785MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+ed5404c53322c1d1ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+7d290b6bea3d1239ffffffffffffffffffffffff0100000001000000 uses 19083.827781677246MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+38b87ed0e91d694cffffffffffffffffffffffff0100000001000000 uses 0.7260255813598633MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+1c0c41ac625728cfffffffffffffffffffffffff0100000001000000 uses 0.5045900344848633MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+e693e059d0c06486ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+661d9bcc7ec0edfaffffffffffffffffffffffff0100000001000000 uses 19083.799171447754MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+3216cfea69f9e3cfffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+baa61a851546efb5ffffffffffffffffffffffff0100000001000000 uses 19083.79306793213MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+3ec8d7f65d1fa411ffffffffffffffffffffffff0100000001000000 uses 0.9382600784301758MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+3a694ed4d17dab3affffffffffffffffffffffff0100000001000000 uses 0.9344911575317383MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+6afea9c0b297e464ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+bdbe79af53dacba0ffffffffffffffffffffffff0100000001000000 uses 19083.74614715576MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+8b5e6d501c5d794affffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+6205387edaec4111ffffffffffffffffffffffff0100000001000000 uses 19083.802223205566MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+edc6a9003427abc4ffffffffffffffffffffffff0100000001000000 uses 0.9407320022583008MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+3bb0cb09245120fdffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+375b7e3a49f0ef73ffffffffffffffffffffffff0100000001000000 uses 19083.85829925537MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+b90f61d491e348aeffffffffffffffffffffffff0100000001000000 uses 1.5342111587524414MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+1b38d73801528fceffffffffffffffffffffffff0100000001000000 uses 0.8229341506958008MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+f6d4912be9b2366effffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+8dce30c8d3a8dca6ffffffffffffffffffffffff0100000001000000 uses 19083.729362487793MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+030f835453b3446effffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+ca419ee0b8ceccbdffffffffffffffffffffffff0100000001000000 uses 19083.723640441895MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+1fff4d3d4c1d03abffffffffffffffffffffffff0100000001000000 uses 1.472641944885254MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+11ebf5acc917cbf1ffffffffffffffffffffffff0100000001000000 uses 1.1444406509399414MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+6359e08548bc22d8ffffffffffffffffffffffff0100000001000000 uses 0.6201143264770508MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+f834bff875cc8088ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+92ae09b33ad933c2ffffffffffffffffffffffff0100000001000000 uses 19083.82396697998MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+428ca548477f2403ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+e5cbbd651367570fffffffffffffffffffffffff0100000001000000 uses 19083.65421295166MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+38f0be5b4e1d3dfaffffffffffffffffffffffff0100000001000000 uses 0.8558473587036133MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+74b0ecacbe489a71ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+7cdf1247b6498215ffffffffffffffffffffffff0100000001000000 uses 19083.843421936035MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+e6fb286fc68e5292ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+4b5f3f8e5f03c6d5ffffffffffffffffffffffff0100000001000000 uses 19083.723258972168MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+47996d19750a17cdffffffffffffffffffffffff0100000001000000 uses 1.460373878479004MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+fb33810857416d35ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+fe26c43563d68877ffffffffffffffffffffffff0100000001000000 uses 19083.748817443848MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+052e9c6b1981e7f7ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+201a59f91550e238ffffffffffffffffffffffff0100000001000000 uses 19083.773231506348MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+16ee8bb2bf37b8acffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+16630d31633c9b9cffffffffffffffffffffffff0100000001000000 uses 19083.78276824951MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+209cb31d3ea8e1c3ffffffffffffffffffffffff0100000001000000 uses 1.4494943618774414MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+eb455b5ba8782549ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+557fd6527919e895ffffffffffffffffffffffff0100000001000000 uses 19083.70532989502MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+640dda27f1e8f8b7ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+6e538c83db086ab8ffffffffffffffffffffffff0100000001000000 uses 19083.74309539795MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+ff364ca043ed7b1bffffffffffffffffffffffff0100000001000000 uses 1.345475196838379MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+c733ba93761ad233ffffffffffffffffffffffff0100000001000000 uses 1.119400978088379MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+0b900155e1b6b06effffffffffffffffffffffff0100000001000000 uses 0.8830080032348633MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+c11aed3ce1357685ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+fbc7fc4e2088b664ffffffffffffffffffffffff0100000001000000 uses 19083.80947113037MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+31a70ad0d2997fa4ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+b97251ae96b60088ffffffffffffffffffffffff0100000001000000 uses 19083.785438537598MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+7212a6b3889a808effffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+3e07951c1d240ba7ffffffffffffffffffffffff0100000001000000 uses 19083.819007873535MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+e13516f4764af209ffffffffffffffffffffffff0100000001000000 uses 0.4258699417114258MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+e74bf468ac918c71ffffffffffffffffffffffff0100000001000000 uses 1.104416847229004MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+b829088df24e74acffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+b7524bf01e948d7affffffffffffffffffffffff0100000001000000 uses 19083.791542053223MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+9cb211970aa0174effffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+930f696790c68ae9ffffffffffffffffffffffff0100000001000000 uses 19083.683586120605MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+872e3bd0f8758417ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+7b7d5b1f01788e1dffffffffffffffffffffffff0100000001000000 uses 19083.843421936035MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+25d221af0669bcf9ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+18749187989b35ddffffffffffffffffffffffff0100000001000000 uses 19083.77513885498MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+f8c950da91fae31bffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+4ed2475a5ee30bf7ffffffffffffffffffffffff0100000001000000 uses 19083.809852600098MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+6d80a61609eff8bdffffffffffffffffffffffff0100000001000000 uses 1.096390724182129MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+e134a1028a3c2e5bffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+4fd4e5e8b5471cafffffffffffffffffffffffff0100000001000000 uses 19083.799934387207MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+6a4979120b780629ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+ae548444fbc83a91ffffffffffffffffffffffff0100000001000000 uses 19083.74614715576MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+1d53340a0ae8e7daffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+54ee0d7be2241b78ffffffffffffffffffffffff0100000001000000 uses 19083.796501159668MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+7376654fbadbb7ebffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+8967f4865eb9fdaaffffffffffffffffffffffff0100000001000000 uses 19083.80947113037MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+e84d3fea2b01cbc3ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+7da2205c5bd1d1d0ffffffffffffffffffffffff0100000001000000 uses 19083.754539489746MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+05dad5dd50d9a6f3ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+9bc4d0121c332cc9ffffffffffffffffffffffff0100000001000000 uses 19083.74843597412MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+3f065c4fb61554aeffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+5f3c95f327cea495ffffffffffffffffffffffff0100000001000000 uses 19083.74652862549MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+48b767448f26194dffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+aed638e32817dec4ffffffffffffffffffffffff0100000001000000 uses 19083.82167816162MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+974ea49e05468de0ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+73921ad8c926ecddffffffffffffffffffffffff0100000001000000 uses 19083.82740020752MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+29cac75cea255974ffffffffffffffffffffffff0100000001000000 uses 0.9193544387817383MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+752e6233e99747f6ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+ab449850614be788ffffffffffffffffffffffff0100000001000000 uses 19083.71181488037MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+2df256d60728c347ffffffffffffffffffffffff0100000001000000 uses 0.7473878860473633MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+87a8ec39c2bf8cb7ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+4f7795b77cfdb347ffffffffffffffffffffffff0100000001000000 uses 19083.745765686035MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+894ee5bd9e2a1beaffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+31c2f3fcbe6ced7dffffffffffffffffffffffff0100000001000000 uses 19083.72230529785MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+72204699fbdab52affffffffffffffffffffffff0100000001000000 uses 0.8273591995239258MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+1a4c6b86cfd81b11ffffffffffffffffffffffff0100000001000000 uses 0.7394533157348633MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+90233e15980d0d4bffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+b544d0d759dc04a9ffffffffffffffffffffffff0100000001000000 uses 19083.74538421631MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+d2dea2e304c0fa81ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+cae080992ae878d2ffffffffffffffffffffffff0100000001000000 uses 19083.784294128418MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+981d779f2842b403ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+ab14258f0d7dcd27ffffffffffffffffffffffff0100000001000000 uses 19083.748054504395MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+9d53d1574e9479e6ffffffffffffffffffffffff0100000001000000 uses 0.4168672561645508MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+a7eefe07f39484e0ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+dd18426dc67ee99affffffffffffffffffffffff0100000001000000 uses 19083.778953552246MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+24ae8eb2e1a15759ffffffffffffffffffffffff0100000001000000 uses 0.6156435012817383MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+7705706b894bfdb5ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+5920a3e3b1d0c28bffffffffffffffffffffffff0100000001000000 uses 19083.74195098877MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+4b6b5706fc31e4c6ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+de4290c3462ff065ffffffffffffffffffffffff0100000001000000 uses 19083.739280700684MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+b47fed02706e88a7ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+2460737678fc1131ffffffffffffffffffffffff0100000001000000 uses 19083.787727355957MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+596e9136833ac116ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+14c4d401c5ab6ba3ffffffffffffffffffffffff0100000001000000 uses 19083.809089660645MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+aa45324b9f2f042bffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+b68ab190e0e430d8ffffffffffffffffffffffff0100000001000000 uses 19083.757972717285MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+951d6b5a4ed82eb3ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+e43ee9bd83e1af97ffffffffffffffffffffffff0100000001000000 uses 19083.802604675293MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+373b559665c3611fffffffffffffffffffffffff0100000001000000 uses 0.6344423294067383MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+5b21ce91240254e2ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+4f7f2fa22247deb9ffffffffffffffffffffffff0100000001000000 uses 19083.801078796387MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+cd4856172442c367ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+0ed2c2224366f3ccffffffffffffffffffffffff0100000001000000 uses 19083.781623840332MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+a27150110d491058ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+d13818395c2ba46fffffffffffffffffffffffff0100000001000000 uses 19083.721351623535MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+8666ef557984b47affffffffffffffffffffffff0100000001000000 uses 0.10332870483398438MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+23f71ad23e675dafffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+582ae46cca434879ffffffffffffffffffffffff0100000001000000 uses 19083.716011047363MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+d105e0fd6113f94dffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+5754080cbe3148aaffffffffffffffffffffffff0100000001000000 uses 19083.86859893799MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+0f3e98026414280fffffffffffffffffffffffff0100000001000000 uses 0.7140169143676758MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+3fe5b64f75d59447ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+13ae018e58e4a6ceffffffffffffffffffffffff0100000001000000 uses 19083.798027038574MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+ca693e1c9b091f23ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+6b9802014d2d43c3ffffffffffffffffffffffff0100000001000000 uses 19083.787727355957MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+a8f006880b8e24e8ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+6969fa5873d9d65bffffffffffffffffffffffff0100000001000000 uses 19083.714485168457MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+173b66852d583301ffffffffffffffffffffffff0100000001000000 uses 0.9163179397583008MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+b512c27fe46b6d3fffffffffffffffffffffffff0100000001000000 uses 0.7192659378051758MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+645c27b386c4929cffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+411c6dd6cdac7c81ffffffffffffffffffffffff0100000001000000 uses 19083.74538421631MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+40a493fa31cf6980ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+bb9917637208c485ffffffffffffffffffffffff0100000001000000 uses 19083.775901794434MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+df003fda6f4e878effffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+9026664ea58c6dc6ffffffffffffffffffffffff0100000001000000 uses 19083.81862640381MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+74ade3b8b14d446cffffffffffffffffffffffff0100000001000000 uses 1.2102060317993164MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+2771d53f71e7f57affffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+127ee6ca81f9ee2affffffffffffffffffffffff0100000001000000 uses 19083.77857208252MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+24f1d1325860a221ffffffffffffffffffffffff0100000001000000 uses 1.054612159729004MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+41b7def62bfff41fffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+571bac42c1d5e721ffffffffffffffffffffffff0100000001000000 uses 19083.78505706787MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+11dd189b512a82b0ffffffffffffffffffffffff0100000001000000 uses 0.8401613235473633MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+eefdb01f8de9d848ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+3b924e8dbf13dd80ffffffffffffffffffffffff0100000001000000 uses 19083.764457702637MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+84787af4c335ed0affffffffffffffffffffffff0100000001000000 uses 1.267960548400879MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+af144168019244cfffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+3d08fbac79baa609ffffffffffffffffffffffff0100000001000000 uses 19083.720588684082MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+05ed19929f8e4cabffffffffffffffffffffffff0100000001000000 uses 0.5676393508911133MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+f6faf7bc53bd4ac0ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+c7b0205da56e16d7ffffffffffffffffffffffff0100000001000000 uses 19083.825874328613MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+6a2bfe320a226571ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+e6591215bf916009ffffffffffffffffffffffff0100000001000000 uses 19083.757209777832MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+ef14ea4099f17e2bffffffffffffffffffffffff0100000001000000 uses 0.9391908645629883MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+448b1397f7f33865ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+7e675c26ebc2c585ffffffffffffffffffffffff0100000001000000 uses 19083.736610412598MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+991b1820cfff0817ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+18902fbd9899c09dffffffffffffffffffffffff0100000001000000 uses 19083.757972717285MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+c855acf08b4dfb78ffffffffffffffffffffffff0100000001000000 uses 1.134415626525879MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+152c4d7a17720032ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+c1c0363517d07d01ffffffffffffffffffffffff0100000001000000 uses 19083.763313293457MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+a06e9f2623cd527fffffffffffffffffffffffff0100000001000000 uses 0.8363618850708008MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+9bf8447e8c1a04e7ffffffffffffffffffffffff0100000001000000 uses 0.9727449417114258MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+730ab6ab5249c4dbffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+940d08583e46448dffffffffffffffffffffffff0100000001000000 uses 19083.738708496094MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+7706fe2f623accf0ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+c810b2d99ae36b2bffffffffffffffffffffffff0100000001000000 uses 19083.824729919434MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+b149904182ea1e2dffffffffffffffffffffffff0100000001000000 uses 0.17150497436523438MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+65e10be7f0339553ffffffffffffffffffffffff0100000001000000 uses 0.9553804397583008MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+832ad1812750399fffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+49d06cafc9901768ffffffffffffffffffffffff0100000001000000 uses 19083.73622894287MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+0092d2cf58ba3ae7ffffffffffffffffffffffff0100000001000000 uses 1.061783790588379MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+a4dc20b2ab7f4fc9ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+414aa34bb8b20ebeffffffffffffffffffffffff0100000001000000 uses 19083.763694763184MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+aeeb94050c47ae10ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+67188ca4f2c1e156ffffffffffffffffffffffff0100000001000000 uses 19083.75072479248MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+903bcfeae11b22e9ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+50299105bb456b4bffffffffffffffffffffffff0100000001000000 uses 19083.822059631348MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+7ef972c2b2463477ffffffffffffffffffffffff0100000001000000 uses 0.7201967239379883MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+13a4ac17ce1ee36dffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+3e732b97164470c2ffffffffffffffffffffffff0100000001000000 uses 19083.79497528076MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+f666341ecae8ad51ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+b9b8c013474a09faffffffffffffffffffffffff0100000001000000 uses 19083.696746826172MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+e85ae0b4fe81adf7ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+d8e3cbee51c87e3cffffffffffffffffffffffff0100000001000000 uses 19083.852577209473MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+8234c43aea813e6cffffffffffffffffffffffff0100000001000000 uses 1.050309181213379MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+3a8b91b8c6406d72ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+a234e4b64164a96affffffffffffffffffffffff0100000001000000 uses 19083.84838104248MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+6138a29ae5ea2456ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+6bc602a2d588730fffffffffffffffffffffffff0100000001000000 uses 19083.745765686035MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+fa6d4af99431b465ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+b9ce727eabcba288ffffffffffffffffffffffff0100000001000000 uses 19083.874320983887MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+c42607790f64a6d3ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+33c1972421fc3005ffffffffffffffffffffffff0100000001000000 uses 19083.837699890137MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+61a26312c9721fe6ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+8dca23b31ade8109ffffffffffffffffffffffff0100000001000000 uses 19083.773231506348MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+28b24b3694ff132affffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+d72aad734aee3778ffffffffffffffffffffffff0100000001000000 uses 19083.725929260254MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+14ab4f0b1b45f315ffffffffffffffffffffffff0100000001000000 uses 1.1738595962524414MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+5b443adb1ee22cedffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+531e68a96cf56779ffffffffffffffffffffffff0100000001000000 uses 19083.754920959473MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+c6ad77dda25030f5ffffffffffffffffffffffff0100000001000000 uses 0.6138734817504883MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+d76c9b543ea2dd3bffffffffffffffffffffffff0100000001000000 uses 1.490708351135254MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+5a145877ca5d7093ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+600f58c75d47959affffffffffffffffffffffff0100000001000000 uses 19083.629035949707MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+386b73df63dea552ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+d9d97fdb03edbdbaffffffffffffffffffffffff0100000001000000 uses 19083.873558044434MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+280436fc49e2e9b0ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+579d5d4cd2a4cbb6ffffffffffffffffffffffff0100000001000000 uses 19083.769035339355MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+c641f79cf507e82effffffffffffffffffffffff0100000001000000 uses 1.2074899673461914MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+24cf7c196852ef27ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+7ec99d9fb88ddd7dffffffffffffffffffffffff0100000001000000 uses 19083.738899230957MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+5bdc3f4c4e8eebecffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+cc2961febcabb018ffffffffffffffffffffffff0100000001000000 uses 19083.79726409912MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+c9cd15ab611fc176ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+da94cab261d69d40ffffffffffffffffffffffff0100000001000000 uses 19083.748054504395MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+1e6bc2eea19b9685ffffffffffffffffffffffff0100000001000000 uses 0.4497194290161133MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+6bc13ff2ace57fc0ffffffffffffffffffffffff0100000001000000 uses 0.7301149368286133MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+f2d3ebc0d6137eb2ffffffffffffffffffffffff0100000001000000 uses 1.1792612075805664MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+7aceb10ef71d9f19ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+f128385faf944bfcffffffffffffffffffffffff0100000001000000 uses 19083.72097015381MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+d7e18b4070c3bbdeffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+f678148a15fd90c5ffffffffffffffffffffffff0100000001000000 uses 19083.84609222412MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+8f42c8041249bc0fffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+4239117b71f96184ffffffffffffffffffffffff0100000001000000 uses 19083.875846862793MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+688ca2ad34b311c5ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+25679fea2f55a3cbffffffffffffffffffffffff0100000001000000 uses 19083.708000183105MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+ed5530325137d5cbffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+9f1aef1064f13679ffffffffffffffffffffffff0100000001000000 uses 19083.775901794434MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+6a19cfa79c0f8842ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+110debde5c250e52ffffffffffffffffffffffff0100000001000000 uses 19083.766746520996MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+eb0abe09c52b5cd8ffffffffffffffffffffffff0100000001000000 uses 1.0334177017211914MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+7b8f1c17fb371928ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+0d75e8ccf3064445ffffffffffffffffffffffff0100000001000000 uses 19083.796882629395MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+4a70bb8f36264bfcffffffffffffffffffffffff0100000001000000 uses 0.8251314163208008MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+641e30adec86e910ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+2ff8985b6456e521ffffffffffffffffffffffff0100000001000000 uses 19083.70761871338MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+4387195f835ba854ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+7591e2c683bbc9e0ffffffffffffffffffffffff0100000001000000 uses 19083.71181488037MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+349b1d6e70de287cffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+5be3e52f981c6bbdffffffffffffffffffffffff0100000001000000 uses 19083.836936950684MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+0098efba70a296dcffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+7f4e1a806853caffffffffffffffffffffffffff0100000001000000 uses 19083.78276824951MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+8516ca2395e18c28ffffffffffffffffffffffff0100000001000000 uses 1.1203927993774414MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+4ce1c9c11179ab38ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+1208b6c506b1e2a8ffffffffffffffffffffffff0100000001000000 uses 19083.671379089355MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+50d5deb2d21faf1dffffffffffffffffffffffff0100000001000000 uses 0.10493087768554688MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+3743f6e72475b0a7ffffffffffffffffffffffff0100000001000000 uses 1.1439218521118164MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+37f262b213332863ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+b7147baa7ae166a2ffffffffffffffffffffffff0100000001000000 uses 19083.672523498535MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+28d7f8f75a71b77affffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+cd11a95994cc6fa7ffffffffffffffffffffffff0100000001000000 uses 19083.717155456543MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+2f6e1cb868136537ffffffffffffffffffffffff0100000001000000 uses 0.3116731643676758MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+db2dd7d8543fceebffffffffffffffffffffffff0100000001000000 uses 1.485154151916504MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+46fb5e11929dc354ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+c0f1cad270199faaffffffffffffffffffffffff0100000001000000 uses 19083.727073669434MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+23f6545e954683f2ffffffffffffffffffffffff0100000001000000 uses 0.7168855667114258MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+39302ffd814a9c8bffffffffffffffffffffffff0100000001000000 uses 1.0395517349243164MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+57010e3102a5f813ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+eee01b7a3f379ed8ffffffffffffffffffffffff0100000001000000 uses 19083.790397644043MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+ebdcb388cc20474effffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+389dbdabf674591fffffffffffffffffffffffff0100000001000000 uses 19083.787727355957MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+ab72f71d9c3cfa94ffffffffffffffffffffffff0100000001000000 uses 1.4464731216430664MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+87160d471c5fdc68ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+36e06ee07065a5abffffffffffffffffffffffff0100000001000000 uses 19083.79726409912MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+91ba9a3ad36e432dffffffffffffffffffffffff0100000001000000 uses 0.8583192825317383MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+5469d1ab8a03a051ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+906bf8ccbe77d4d7ffffffffffffffffffffffff0100000001000000 uses 19083.772468566895MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+3abec89bf699771cffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+1e4d7e3e9202c5a5ffffffffffffffffffffffff0100000001000000 uses 19083.698081970215MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+0a02e523e90044f2ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+4b8d9178dca3053fffffffffffffffffffffffff0100000001000000 uses 19083.683967590332MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+f008eb674f92abd1ffffffffffffffffffffffff0100000001000000 uses 0.7571382522583008MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+0cb516f286ef6dc1ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+bbde7c88ab5dc632ffffffffffffffffffffffff0100000001000000 uses 19083.83731842041MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+f4a166f58adba9c1ffffffffffffffffffffffff0100000001000000 uses 1.040024757385254MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+a52b83a48601ab4bffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+f8ad19913e1c2b1fffffffffffffffffffffffff0100000001000000 uses 19083.796501159668MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+aeac1b78cbd94603ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+77b204fc49f15970ffffffffffffffffffffffff0100000001000000 uses 19083.78562927246MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+3058332b4c37e72affffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+4ea33147f31d5855ffffffffffffffffffffffff0100000001000000 uses 19083.721351623535MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+1e52ca31ef7f8919ffffffffffffffffffffffff0100000001000000 uses 0.6484346389770508MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+d86f6597cdfda3d4ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+2692070d013c0cbcffffffffffffffffffffffff0100000001000000 uses 19083.776664733887MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+ce275799d04be9ebffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+ece22db6ff22a00dffffffffffffffffffffffff0100000001000000 uses 19083.777046203613MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+920d6e4bafb9af77ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+a8ee826c63d62794ffffffffffffffffffffffff0100000001000000 uses 19083.75835418701MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+7dce135c1aa9ec55ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+3d53d9c45294ddbdffffffffffffffffffffffff0100000001000000 uses 19083.76979827881MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+cceccc213f15e03cffffffffffffffffffffffff0100000001000000 uses 0.9344911575317383MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+5775b24554e326d5ffffffffffffffffffffffff0100000001000000 uses 0.6765260696411133MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+539adafdced55989ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+36c2b576101f38dfffffffffffffffffffffffff0100000001000000 uses 19083.79077911377MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+bcc5402aa2954d77ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+a82fd92affd90c45ffffffffffffffffffffffff0100000001000000 uses 19083.748054504395MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+a7f59e09ce4da22affffffffffffffffffffffff0100000001000000 uses 0.9396486282348633MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+9a1c8cef15927e80ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+77c3f18b0be7a485ffffffffffffffffffffffff0100000001000000 uses 19083.791542053223MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+9bb18b9578cf8fe1ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+216662f52b7953eeffffffffffffffffffffffff0100000001000000 uses 19083.76979827881MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+163540346170be42ffffffffffffffffffffffff0100000001000000 uses 0.9327669143676758MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+bad230dd531d7ed5ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+78606eb14bfd9ac2ffffffffffffffffffffffff0100000001000000 uses 19083.762550354004MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+c6459d8e78340450ffffffffffffffffffffffff0100000001000000 uses 1.0058908462524414MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+b0990b0ed594d887ffffffffffffffffffffffff0100000001000000 uses 0.5084047317504883MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+583b1e5d30ebb82affffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+405aba9639fee157ffffffffffffffffffffffff0100000001000000 uses 19083.773231506348MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+014ac93ca1afd140ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+6b95fdd26f120669ffffffffffffffffffffffff0100000001000000 uses 19083.812522888184MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+ae07a4098b3ea864ffffffffffffffffffffffff0100000001000000 uses 0.8203554153442383MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+26b250f90056084affffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+c9f098f6071d8e37ffffffffffffffffffffffff0100000001000000 uses 19083.73966217041MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+997cb343b8e18d7bffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+cee40123e4953ad3ffffffffffffffffffffffff0100000001000000 uses 19083.766746520996MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+211dad70c43161e7ffffffffffffffffffffffff0100000001000000 uses 0.8583955764770508MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+d249390686ccdd2dffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+09ba1e9b97a43c4affffffffffffffffffffffff0100000001000000 uses 19083.822059631348MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+77fe3f803662b9aeffffffffffffffffffffffff0100000001000000 uses 0.8789491653442383MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+89d741a321eb96a3ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+2475a4e49e6b31b7ffffffffffffffffffffffff0100000001000000 uses 19083.806800842285MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+5bbadf17f0cb9cc1ffffffffffffffffffffffff0100000001000000 uses 0.5871400833129883MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+f14fd0241707803dffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+499e105504efdf3affffffffffffffffffffffff0100000001000000 uses 19083.764457702637MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+0eb89920ec251b94ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+3389e1eed02f1a03ffffffffffffffffffffffff0100000001000000 uses 19083.81633758545MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+35309ac4d7d8c450ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+f2116251eb5de049ffffffffffffffffffffffff0100000001000000 uses 19083.766746520996MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+4ddc4d4dfe602436ffffffffffffffffffffffff0100000001000000 uses 0.9296998977661133MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+8427d2a5c01abf09ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+45692ef9bb9e9886ffffffffffffffffffffffff0100000001000000 uses 19083.864402770996MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+2b48971893d8f7cfffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+2c11e084c4e3a032ffffffffffffffffffffffff0100000001000000 uses 19083.781623840332MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+a2bd80ee2db17769ffffffffffffffffffffffff0100000001000000 uses 1.0624094009399414MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+38ab294b57553194ffffffffffffffffffffffff0100000001000000 uses 1.3917245864868164MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+c5d79f14e27f33dcffffffffffffffffffffffff0100000001000000 uses 0.6189546585083008MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+0754061bc36a59c9ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+f73ee0d3ec78c728ffffffffffffffffffffffff0100000001000000 uses 19083.797645568848MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+0c919c8f7fbe6fb2ffffffffffffffffffffffff0100000001000000 uses 1.121415138244629MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+60a5e6a3789948d4ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+d2bb1d505ba69f15ffffffffffffffffffffffff0100000001000000 uses 19083.78200531006MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+e271698af834ee1effffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+4d71b4e572dadb41ffffffffffffffffffffffff0100000001000000 uses 19083.687782287598MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+e750778ee4ce7ca0ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+7723c8ab80827d9effffffffffffffffffffffff0100000001000000 uses 19083.674812316895MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+679cbef57b8d41edffffffffffffffffffffffff0100000001000000 uses 1.1151742935180664MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+42da25d3773bbea7ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+e601936ff10cc77affffffffffffffffffffffff0100000001000000 uses 19083.757972717285MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+695d015cb7e2ac0cffffffffffffffffffffffff0100000001000000 uses 0.2572603225708008MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+4317b9b8e60540b7ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+68f200f40347d0e2ffffffffffffffffffffffff0100000001000000 uses 19083.692741394043MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+a072597a2014b34cffffffffffffffffffffffff0100000001000000 uses 1.280533790588379MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+ab7bb3553523e779ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+86ff087b99c335bfffffffffffffffffffffffff0100000001000000 uses 19083.773231506348MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+a24f330785fce1a3ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+de4e997d3c571cc4ffffffffffffffffffffffff0100000001000000 uses 19083.63857269287MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+998ab36171602f01ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+ab1e5f9f9c93cdd4ffffffffffffffffffffffff0100000001000000 uses 19083.715629577637MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+628d7715ba0904c2ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+7062e24f74615f68ffffffffffffffffffffffff0100000001000000 uses 19083.730125427246MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+391d7bbe215da5d0ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+52834de6b11cf71affffffffffffffffffffffff0100000001000000 uses 19083.82740020752MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+8a937f3e2081ff9affffffffffffffffffffffff0100000001000000 uses 0.8411989212036133MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+d50ce8b149518788ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+81dc8bcb23e1c4e4ffffffffffffffffffffffff0100000001000000 uses 19083.83617401123MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+e034763673ed582cffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+8c3486eb1d37c148ffffffffffffffffffffffff0100000001000000 uses 19083.766746520996MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+7189afcca6907470ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+d3caa967feffd0d5ffffffffffffffffffffffff0100000001000000 uses 19083.681297302246MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+b94fb455913578afffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+36a25b5022fd1f0fffffffffffffffffffffffff0100000001000000 uses 19083.74309539795MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+d52db89bbb40f6acffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+da54a66fc4ac94a2ffffffffffffffffffffffff0100000001000000 uses 19083.784675598145MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+5243de3b88c3072affffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+19f26978839450b9ffffffffffffffffffffffff0100000001000000 uses 19083.71181488037MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+b31e548ce999bb70ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+9a0d9ef10470ebe5ffffffffffffffffffffffff0100000001000000 uses 19083.75415802002MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+ce5ac3a402726687ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+942aac92dd3743e7ffffffffffffffffffffffff0100000001000000 uses 19083.80947113037MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+d21c747e91022e0fffffffffffffffffffffffff0100000001000000 uses 0.8360567092895508MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+7650c0433c69ae01ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+f00b1d0c37904c2affffffffffffffffffffffff0100000001000000 uses 19083.75415802002MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+06d9ff9d375f77b6ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+f644d28ba5bb2d45ffffffffffffffffffffffff0100000001000000 uses 19083.764457702637MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+d05038a6c94005faffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+2d2dcd8c9898e390ffffffffffffffffffffffff0100000001000000 uses 19083.709144592285MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+65880c4431bad6d5ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+01d3e5dd03eb48a1ffffffffffffffffffffffff0100000001000000 uses 19083.782386779785MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+5d7005c76cd66307ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+a50fc8a7d5d9a8a0ffffffffffffffffffffffff0100000001000000 uses 19083.818244934082MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+3abcaf3eca4a3215ffffffffffffffffffffffff0100000001000000 uses 0.2675142288208008MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+d6f26fd0dfda06feffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+3f99885743c15167ffffffffffffffffffffffff0100000001000000 uses 19083.7553024292MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+1108bb67347cfdffffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+f4d32c4b49f4392affffffffffffffffffffffff0100000001000000 uses 19083.736991882324MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+612c5957e64b5b56ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+bf07b1caf8a68746ffffffffffffffffffffffff0100000001000000 uses 19083.711433410645MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+6f42e01b80f898caffffffffffffffffffffffff0100000001000000 uses 0.7755556106567383MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+e13b9eaaf73e7b17ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+794bf433058f9520ffffffffffffffffffffffff0100000001000000 uses 19083.782386779785MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+58a235a7e512ecafffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+1ba39debc8b244b9ffffffffffffffffffffffff0100000001000000 uses 19083.687019348145MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+8bb0f8394b354893ffffffffffffffffffffffff0100000001000000 uses 1.0897531509399414MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+cba3ae86535171beffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+7d02cf9329d597d7ffffffffffffffffffffffff0100000001000000 uses 19083.724403381348MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+abe22a4c3097a326ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+81e5f60dc3510ce1ffffffffffffffffffffffff0100000001000000 uses 19083.83731842041MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+6937352c8c5f313fffffffffffffffffffffffff0100000001000000 uses 0.8336153030395508MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+f9a78b5e50bd8cb2ffffffffffffffffffffffff0100000001000000 uses 0.2944459915161133MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+633f52286773fa08ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+e3178f79fc09016dffffffffffffffffffffffff0100000001000000 uses 19083.706092834473MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+fb368610ddf15c85ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+6b4ea6d7c3098781ffffffffffffffffffffffff0100000001000000 uses 19083.727073669434MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+fdce94d2a8785f64ffffffffffffffffffffffff0100000001000000 uses 0.7756929397583008MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+bee1e959852e70e0ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+808dbff25256cd88ffffffffffffffffffffffff0100000001000000 uses 19083.81748199463MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+ea820ece3b3a3ebbffffffffffffffffffffffff0100000001000000 uses 0.9899415969848633MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+c7f28358eb89e3c0ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+caae5c8dde50bc8cffffffffffffffffffffffff0100000001000000 uses 19083.745002746582MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+af5071574533068dffffffffffffffffffffffff0100000001000000 uses 0.7599306106567383MB, referenced: 1
+functions: {"('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+87c06f7e73e0e24fffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+32f39319ee9d7c75ffffffffffffffffffffffff0100000001000000 uses 19083.733558654785MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+00f23cad2ca1021effffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+39797bd2e1b7ede9ffffffffffffffffffffffff0100000001000000 uses 19083.70532989502MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+07ceb01bf87cec4fffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+26bdbe4531d377f6ffffffffffffffffffffffff0100000001000000 uses 19083.7797164917MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+6792ff55dbaeda75ffffffffffffffffffffffff0100000001000000 uses 95.36838054656982MB, referenced: 1
+functions: {"('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',"}
+38b31410f1ae5655ffffffffffffffffffffffff0100000001000000 uses 19083.71753692627MB, referenced: 1
+functions: {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',"}
+function counts:
+defaultdict(<class 'int'>,
+            {"('group-simple-shuffle-44a9f0dced5fc0644db707dd0f741a6f',": 10,
+             "('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',": 200,
+             "('head-10-10-sort_index-e6b97d94a3a8d437f84be0e0f141c56c',": 1,
+             "('head-200-10-sort_index-4c88a5063ada114fe14a6d8e7bfd7a8e',": 1,
+             "('max-2e9a58f778052c1dc844da33996e5d18',": 10,
+             "('max-5ff0d9194e94de9454282295fc734e55',": 200,
+             "('min-c60af2a31e2184e1f77746dcc6b40bdd',": 10,
+             "('min-f8a6082a0c12b44e74804267875d0b64',": 200,
+             "('re-quantiles-0-5cdb849a1ff6d4dc2959ee25b8ae11fd',": 1,
+             "('re-quantiles-0-f839f5a1ab35cd2d9ed757980a3304fb',": 1,
+             "('re-quantiles-1-5cdb849a1ff6d4dc2959ee25b8ae11fd',": 10,
+             "('re-quantiles-1-f839f5a1ab35cd2d9ed757980a3304fb',": 200,
+             "('re-quantiles-2-5cdb849a1ff6d4dc2959ee25b8ae11fd',": 7,
+             "('re-quantiles-2-f839f5a1ab35cd2d9ed757980a3304fb',": 55,
+             "('re-quantiles-3-5cdb849a1ff6d4dc2959ee25b8ae11fd',": 1,
+             "('re-quantiles-3-f839f5a1ab35cd2d9ed757980a3304fb',": 1,
+             "('read-parquet-assign-cc40317fd337b2063e929432ab7e0b58',": 10,
+             "('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',": 200,
+             "('read-parquet-getitem-4fe55691431d46222e0dba7698d87256',": 10,
+             "('read-parquet-getitem-64676364404be36e59912f19b7b9193d',": 200,
+             "('simple-shuffle-sort_index-head-partial-10-sort_index-4c88a5063ada114fe14a6d8e7bfd7a8e',": 200,
+             "('simple-shuffle-sort_index-head-partial-10-sort_index-e6b97d94a3a8d437f84be0e0f141c56c',": 10,
+             "('split-simple-shuffle-44a9f0dced5fc0644db707dd0f741a6f',": 100,
+             "('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',": 40000})
+function sizes:
+defaultdict(<class 'int'>,
+            {"('group-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',": 3816753.443145752,
+             "('read-parquet-assign-f1eab58741fd5ce52a08c5f280c80e23',": 19073.676109313965,
+             "('read-parquet-getitem-64676364404be36e59912f19b7b9193d',": 28658.303528785706,
+             "('split-simple-shuffle-cb248df51b05e1b2093522d53a5495c7',": 94.64055347442627})
