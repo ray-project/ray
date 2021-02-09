@@ -54,7 +54,9 @@ class RayOutOfMemoryError(Exception):
                     round(get_shared(psutil.virtual_memory()) / (1024**3), 2))
                 + "currently being used by the Ray object store.\n---\n"
                 "--- Tip: Use the `ray memory` command to list active "
-                "objects in the cluster.\n---\n")
+                "objects in the cluster.\n"
+                "--- To disable OOM exceptions, set "
+                "RAY_DISABLE_MEMORY_MONITOR=1.\n---\n")
 
 
 class MemoryMonitor:
@@ -71,7 +73,7 @@ class MemoryMonitor:
     to overwrite the default error_threshold setting.
     """
 
-    def __init__(self, error_threshold=0.95, check_interval=1):
+    def __init__(self, error_threshold=0.0, check_interval=1):
         # Note: it takes ~50us to check the memory usage through psutil, so
         # throttle this check at most once a second or so.
         self.check_interval = check_interval
@@ -120,8 +122,9 @@ class MemoryMonitor:
 
     def raise_if_low_memory(self):
         if time.time() - self.last_checked > self.check_interval:
-            if "RAY_DEBUG_DISABLE_MEMORY_MONITOR" in os.environ:
-                return  # escape hatch, not intended for user use
+            if ("RAY_DEBUG_DISABLE_MEMORY_MONITOR" in os.environ
+                    or "RAY_DISABLE_MEMORY_MONITOR" in os.environ):
+                return
 
             self.last_checked = time.time()
             used_gb, total_gb = self.get_memory_usage()
