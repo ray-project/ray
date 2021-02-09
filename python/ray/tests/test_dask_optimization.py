@@ -38,6 +38,7 @@ def test_rewrite_simple_shuffle_layer():
 def test_dataframe_optimize(mock_rewrite):
     def side_effect(dsk, keys):
         return rewrite_simple_shuffle_layer(dsk, keys)
+
     mock_rewrite.side_effect = side_effect
     with dask.config.set(dataframe_optimize=dataframe_optimize):
         npartitions = 10
