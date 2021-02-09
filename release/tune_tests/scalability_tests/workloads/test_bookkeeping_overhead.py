@@ -1,4 +1,4 @@
-"""Book keeping overhead (1 node, 10k trials)
+"""Bookkeeping overhead (1 node, 10k trials)
 
 In this run, we will start a large number of trials (10k) that take just a
 second to run. We thus measure overhead that comes with dealing with a
