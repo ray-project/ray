@@ -15,6 +15,7 @@ def loss(config, reporter):
 
 class ConvergenceTest(unittest.TestCase):
     """Test convergence in gaussian process."""
+
     def shutDown(self):
         ray.shutdown()
 
@@ -22,9 +23,8 @@ class ConvergenceTest(unittest.TestCase):
         np.random.seed(0)
         ray.init(local_mode=True, num_cpus=1, num_gpus=1)
 
-        space = {
-            "x": tune.uniform(0, 20)  # This is the space of parameters to explore
-        }
+        # This is the space of parameters to explore
+        space = {"x": tune.uniform(0, 20)}
 
         resources_per_trial = {"cpu": 1, "gpu": 0}
 
