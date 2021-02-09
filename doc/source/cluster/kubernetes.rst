@@ -331,7 +331,7 @@ If you like, you can delete the RayCluster customer resource definition.
 
 Interacting with a Ray Cluster
 ==============================
-Ray Client allows you to connect to your Ray cluster on Kubernetes and execute Ray programs.
+:ref:`Ray Client <ray-client>` allows you to connect to your Ray cluster on Kubernetes and execute Ray programs.
 https://docs.ray.io/en/master/ray-client.html?highlight=ray%20client
 The Ray Client server runs the Ray head node, by default on port 10001.
 

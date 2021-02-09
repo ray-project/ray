@@ -152,7 +152,6 @@ Questions or Issues?
 .. include:: /_help.rst
 
 
-.. _`Kubernetes Horizontal Pod Autoscaler`: https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale/
 .. _`Kubernetes Namespace`: https://kubernetes.io/docs/concepts/overview/working-with-objects/namespaces/
 .. _`Kubernetes Service`: https://kubernetes.io/docs/concepts/services-networking/service/
 .. _`Kubernetes Deployment`: https://kubernetes.io/docs/concepts/workloads/controllers/deployment/
