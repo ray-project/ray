@@ -1490,7 +1490,9 @@ def start_raylet(redis_address,
         use_perftools_profiler=("RAYLET_PERFTOOLS_PATH" in os.environ),
         stdout_file=stdout_file,
         stderr_file=stderr_file,
-        fate_share=fate_share)
+        fate_share=fate_share,
+        env_updates={"ASAN_OPTIONS": "detect_leaks=0"},
+    )
 
     return process_info
 
