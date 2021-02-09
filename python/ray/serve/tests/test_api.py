@@ -683,38 +683,6 @@ def test_endpoint_input_validation(serve_instance):
     client.create_endpoint("endpoint", backend="backend")
 
 
-# This error is only printed because creation is run in the control loop, not
-# in the API path.
-@pytest.mark.skip()
-def test_create_infeasible_error(serve_instance):
-    client = serve_instance
-
-    def f():
-        pass
-
-    # Non existent resource should be infeasible.
-    with pytest.raises(RayServeException, match="Cannot scale backend"):
-        client.create_backend(
-            "f:1",
-            f,
-            ray_actor_options={"resources": {
-                "MagicMLResource": 100
-            }})
-
-    # Even though each replica might be feasible, the total might not be.
-    current_cpus = int(ray.nodes()[0]["Resources"]["CPU"])
-    num_replicas = current_cpus + 20
-    config = BackendConfig(num_replicas=num_replicas)
-    with pytest.raises(RayServeException, match="Cannot scale backend"):
-        client.create_backend(
-            "f:1",
-            f,
-            ray_actor_options={"resources": {
-                "CPU": 1,
-            }},
-            config=config)
-
-
 def test_shutdown():
     def f():
         pass
