@@ -146,8 +146,10 @@ public class PlacementGroupTest extends BaseTest {
   public void testNamedPlacementGroup() {
     // Test Non-Global placement group.
     String pgName = "named_placement_group";
-    PlacementGroupTestUtils.createNameSpecifiedSimpleGroup(
-        "CPU", 1, PlacementStrategy.PACK, 1.0, pgName, false);
+    PlacementGroup firstPlacementGroup =
+        PlacementGroupTestUtils.createNameSpecifiedSimpleGroup(
+            "CPU", 1, PlacementStrategy.PACK, 1.0, pgName, false);
+    firstPlacementGroup.wait(60);
     // Make sure we can get it by name successfully.
     PlacementGroup placementGroup = Ray.getPlacementGroup(pgName);
     Assert.assertNotNull(placementGroup);
@@ -155,8 +157,10 @@ public class PlacementGroupTest extends BaseTest {
 
     // Test global placement group.
     String pgGlobalName = "global_placement_group";
-    PlacementGroupTestUtils.createNameSpecifiedSimpleGroup(
-        "CPU", 2, PlacementStrategy.PACK, 1.0, pgGlobalName, true);
+    PlacementGroup secondPlacementGroup =
+        PlacementGroupTestUtils.createNameSpecifiedSimpleGroup(
+            "CPU", 2, PlacementStrategy.PACK, 1.0, pgGlobalName, true);
+    secondPlacementGroup.wait(60);
     // Make sure we can get it by name successfully.
     placementGroup = Ray.getGlobalPlacementGroup(pgGlobalName);
     Assert.assertNotNull(placementGroup);
