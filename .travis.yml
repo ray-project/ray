@@ -132,6 +132,7 @@ matrix:
         - JAVA_TESTS=1
         - PYTHON=3.6 PYTHONWARNINGS=ignore
         - RAY_INSTALL_JAVA=1
+        - BAZEL_CONFIG="asan"
       language: java
       jdk: openjdk8
       install:
