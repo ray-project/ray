@@ -74,6 +74,7 @@ public class TestProgressListener implements IInvokedMethodListener, ITestListen
   @Override
   public void onTestSuccess(ITestResult result) {
     printTestStage("TEST SUCCESS", getFullTestName(result));
+    runCommandSafely(ImmutableList.of("rm", "-rf", "/tmp/ray"));
   }
 
   @Override
