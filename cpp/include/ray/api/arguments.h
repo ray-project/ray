@@ -47,7 +47,7 @@ class Arguments {
 
   template <typename... OtherArgTypes>
   static void WrapArgs(std::vector<std::unique_ptr<::ray::TaskArg>> *task_args,
-                       OtherArgTypes &...args) {
+                       OtherArgTypes &... args) {
     (void)std::initializer_list<int>{(WrapArgsImpl(task_args, args), 0)...};
     /// Silence gcc warning error.
     (void)task_args;
@@ -68,7 +68,7 @@ class Arguments {
 
   template <typename... OtherArgTypes>
   static void UnwrapArgs(const std::vector<std::shared_ptr<RayObject>> &args_buffer,
-                         int &arg_index, std::shared_ptr<OtherArgTypes> *...args) {
+                         int &arg_index, std::shared_ptr<OtherArgTypes> *... args) {
     (void)std::initializer_list<int>{
         (UnwrapArgsImpl(args_buffer, arg_index, args), 0)...};
   }
