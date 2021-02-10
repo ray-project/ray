@@ -136,6 +136,8 @@ class DynamicsEnsembleCustomModel(TorchModelV2, nn.Module):
                 obs_space.low[0],
                 obs_space.high[0],
                 shape=(obs_space.shape[0] + action_space.shape[0], ))
+        else:
+            raise NotImplementedError
         super(DynamicsEnsembleCustomModel, self).__init__(
             input_space, action_space, num_outputs, model_config, name)
 
