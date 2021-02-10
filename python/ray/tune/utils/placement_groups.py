@@ -172,6 +172,8 @@ def resource_dict_to_pg_factory(spec: Optional[Dict[str, float]]):
 class PlacementGroupManager:
     """PlacementGroupManager to stage and manage placement groups.
 
+    .. versionadded:: 1.3.0
+
     This class schedules placement groups for trials, keeps track of
     their state, and can return a fully configured actor class using
     this placement group.
@@ -209,7 +211,7 @@ class PlacementGroupManager:
         self._grace_period = float(
             os.getenv("TUNE_TRIAL_STARTUP_GRACE_PERIOD", 10.))
 
-    def cleanup_existing_pg(self):
+    def cleanup_existing_pg(self, block: bool = False):
         """Clean up (remove) all existing placement groups.
 
         This scans through the placement_group_table to discover existing
@@ -218,17 +220,27 @@ class PlacementGroupManager:
         of the tuning run to clean up existing placement groups should the
         experiment be interrupted by a driver failure and resumed in the
         same driver script.
+
+        Args:
+            block (bool): If True, will wait until all placement groups are
+                shut down.
         """
         should_cleanup = not int(
             os.getenv("TUNE_PLACEMENT_GROUP_CLEANUP_DISABLED", "0"))
         if should_cleanup:
-            for pid, info in placement_group_table().items():
-                if not info["name"].startswith(self._prefix):
-                    continue
-                if info["state"] == "REMOVED":
-                    continue
-                pg = get_placement_group(info["name"])
-                remove_placement_group(pg)
+            has_non_removed_pg_left = True
+            while has_non_removed_pg_left:
+                has_non_removed_pg_left = False
+                for pid, info in placement_group_table().items():
+                    if not info["name"].startswith(self._prefix):
+                        continue
+                    if info["state"] == "REMOVED":
+                        continue
+                    # If block=False, only run once
+                    has_non_removed_pg_left = block
+                    pg = get_placement_group(info["name"])
+                    remove_placement_group(pg)
+                time.sleep(0.1)
 
     def stage_trial_pg(self, trial: "Trial"):
         """Stage a trial placement group.

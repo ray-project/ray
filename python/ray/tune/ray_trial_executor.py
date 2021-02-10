@@ -1019,6 +1019,7 @@ class RayTrialExecutor(TrialExecutor):
 
     def cleanup(self):
         self._trial_cleanup.cleanup(partial=False)
+        self._pg_manager.cleanup_existing_pg(block=True)
 
     @contextmanager
     def _change_working_directory(self, trial):

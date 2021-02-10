@@ -1,7 +1,6 @@
 import os
 import json
 import random
-import time
 import unittest
 
 import numpy as np
@@ -1736,8 +1735,6 @@ class PopulationBasedTestingSuite(unittest.TestCase):
 
         out = tune.run(
             train, config={"x": tune.grid_search(vals)}, scheduler=scheduler)
-
-        time.sleep(1)  # Time to shut down placement groups
 
         ever_active = set()
         active = set()
