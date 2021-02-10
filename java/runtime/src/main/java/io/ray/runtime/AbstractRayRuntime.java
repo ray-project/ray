@@ -38,7 +38,6 @@ import io.ray.runtime.task.TaskExecutor;
 import io.ray.runtime.task.TaskSubmitter;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.Callable;
 import java.util.stream.Collectors;
@@ -168,18 +167,6 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
     Preconditions.checkNotNull(
         creationOptions,
         "`PlacementGroupCreationOptions` must be specified when create a new placement group.");
-    List<Map<String, Double>> bundles = creationOptions.bundles;
-    boolean bundleResourceValid =
-        bundles.stream()
-            .allMatch(bundle -> bundle.values().stream().allMatch(resource -> resource > 0));
-
-    if (bundles.isEmpty() || !bundleResourceValid) {
-      throw new IllegalArgumentException(
-          "Bundles cannot be empty or bundle's resource must be positive.");
-    }
-    Preconditions.checkNotNull(
-        creationOptions.strategy,
-        "`PlacementStrategy` must be specified when create a new placement group.");
     return taskSubmitter.createPlacementGroup(creationOptions);
   }
 

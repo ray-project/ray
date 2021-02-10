@@ -257,8 +257,7 @@ public final class Ray extends RayCall {
    * Create a placement group. A placement group is used to place actors according to a specific
    * strategy and resource constraints. It will sends a request to GCS to preallocate the specified
    * resources, which is asynchronous. If the specified resource cannot be allocated, it will wait
-   * for the resource to be updated and rescheduled. This function only works when gcs actor manager
-   * is turned on.
+   * for the resource to be updated and rescheduled.
    *
    * @deprecated This method is no longer recommended to create a new placement group, use {@link
    *     Ray#createPlacementGroup(PlacementGroupCreationOptions)} instead.
@@ -295,8 +294,7 @@ public final class Ray extends RayCall {
    * Create a placement group. A placement group is used to place actors according to a specific
    * strategy and resource constraints. It will sends a request to GCS to preallocate the specified
    * resources, which is asynchronous. If the specified resource cannot be allocated, it will wait
-   * for the resource to be updated and rescheduled. This function only works when gcs actor manager
-   * is turned on.
+   * for the resource to be updated and rescheduled.
    *
    * @param creationOptions Creation options of the placement group.
    * @return A handle to the created placement group.

@@ -212,7 +212,7 @@ public interface RayRuntime {
   /**
    * Get a placement group by name.
    *
-   * @param name placement group name.
+   * @param name The name of the placement group.
    * @param global Whether the named placement group is global.
    * @return The placement group.
    */

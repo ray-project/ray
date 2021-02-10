@@ -1,5 +1,6 @@
 package io.ray.api.options;
 
+import com.google.common.base.Preconditions;
 import io.ray.api.Ray;
 import io.ray.api.placementgroup.PlacementStrategy;
 import java.util.List;
@@ -14,6 +15,18 @@ public class PlacementGroupCreationOptions {
 
   public PlacementGroupCreationOptions(
       boolean global, String name, List<Map<String, Double>> bundles, PlacementStrategy strategy) {
+    Preconditions.checkNotNull(
+        bundles, "`Bundles` must be specified when create a new placement group.");
+    boolean bundleResourceValid =
+        bundles.stream()
+            .allMatch(bundle -> bundle.values().stream().allMatch(resource -> resource > 0));
+
+    if (bundles.isEmpty() || !bundleResourceValid) {
+      throw new IllegalArgumentException(
+          "Bundles cannot be empty or bundle's resource must be positive.");
+    }
+    Preconditions.checkNotNull(
+        strategy, "`PlacementStrategy` must be specified when create a new placement group.");
     this.global = global;
     this.name = name;
     this.bundles = bundles;
