@@ -1,21 +1,26 @@
-*********************
+********************
 RayDP (Spark on Ray)
-*********************
+********************
 
-The RayDP project offers PySpark, using Ray as Spark's cluster manager. It also
-offers convenient tooling to integrate PySpark's
-`DataFrame API <https://spark.apache.org/docs/latest/api/python/pyspark.sql.html>`_
-with your favorite deep learning libarires (PyTorch and TensorFlow).
+RayDP combines your Spark and Ray clusters, making it easy to do large scale
+data processing using the PySpark API and seemlessly use that data to train
+your models using TensorFlow and PyTorch.
 
-=======================
+For more information and examples, see the RayDP Github page:
+https://github.com/oap_project/raydp
+
+================
 Installing RayDP
-=======================
+================
 
 RayDP can be installed from PyPI and supports PySpark 3.0 and 3.1.
 
 .. code-block bash
 
   pip install raydp
+
+.. note::
+  RayDP requires ray >= 1.2.0
 
 .. note::
   In order to run Spark, the head and worker nodes will need Java installed.
@@ -39,9 +44,9 @@ For example,
     memory_per_executor = "256GB"
   )
 
-=======================================
+====================================
 Deep Learning with a Spark DataFrame
-=======================================
+====================================
 
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 Training a Spark DataFrame with TensorFlow
@@ -102,11 +107,6 @@ PyTorch.
 Conclusion
 ==========
 
-RayDP combines your Spark and Ray clusters, making it easy to do large scale
-data processing using the PySpark API and seemlessly use that data to train
-your models using TensorFlow and PyTorch.
 
-For more information and examples, see the RayDP Github page:
-https://github.com/oap_project/raydp
   
 
