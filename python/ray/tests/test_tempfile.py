@@ -77,8 +77,11 @@ def test_raylet_tempfiles(shutdown_only):
         "log_monitor.log", "plasma_store.out", "plasma_store.err",
         "monitor.log", "redis-shard_0.out", "redis-shard_0.err", "redis.out",
         "redis.err", "raylet.out", "raylet.err", "gcs_server.out",
-        "gcs_server.err", "dashboard.log", "dashboard_agent.log"
+        "gcs_server.err"
     }
+    if sys.platform != "win32":
+        log_files_expected.add("dashboard.log")
+        log_files_expected.add("dashboard_agent.log")
 
     def check_all_log_file_exists():
         for expected in log_files_expected:
