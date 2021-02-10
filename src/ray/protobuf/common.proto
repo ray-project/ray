@@ -443,3 +443,18 @@ enum WorkerExitType {
   // Worker exit due to placement group removal.
   PLACEMENT_GROUP_REMOVED = 3;
 }
+
+// Type of placement group strategy.
+// Please do not modify the enum below.
+// Check autoscaler.proto for more details.
+enum PlacementStrategy {
+  // Packs Bundles into as few nodes as possible.
+  PACK = 0;
+  // Places Bundles across distinct nodes or processes as even as possible.
+  SPREAD = 1;
+  // Packs Bundles within one node. The group is not allowed to span multiple nodes.
+  STRICT_PACK = 2;
+  // Places Bundles across distinct nodes.
+  // The group is not allowed to deploy more than one bundle on a node.
+  STRICT_SPREAD = 3;
+}

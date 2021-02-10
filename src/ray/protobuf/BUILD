@@ -93,6 +93,7 @@ cc_proto_library(
 proto_library(
     name = "autoscaler_proto",
     srcs = ["autoscaler.proto"],
+    deps = [":common_proto"],
 )
 
 cc_proto_library(
