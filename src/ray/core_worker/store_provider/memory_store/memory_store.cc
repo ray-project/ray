@@ -118,11 +118,13 @@ CoreWorkerMemoryStore::CoreWorkerMemoryStore(
     std::function<void(const RayObject &, const ObjectID &)> store_in_plasma,
     std::shared_ptr<ReferenceCounter> counter,
     std::shared_ptr<raylet::RayletClient> raylet_client,
-    std::function<Status()> check_signals)
+    std::function<Status()> check_signals,
+    std::function<void(const RayObject &)> unhandled_exception_handler)
     : store_in_plasma_(store_in_plasma),
       ref_counter_(counter),
       raylet_client_(raylet_client),
-      check_signals_(check_signals) {}
+      check_signals_(check_signals),
+      unhandled_exception_handler_(unhandled_exception_handler) {}
 
 void CoreWorkerMemoryStore::GetAsync(
     const ObjectID &object_id, std::function<void(std::shared_ptr<RayObject>)> callback) {
@@ -463,7 +465,10 @@ bool CoreWorkerMemoryStore::Contains(const ObjectID &object_id, bool *in_plasma)
 }
 
 void CoreWorkerMemoryStore::OnErase(std::shared_ptr<RayObject> obj) {
-  RAY_LOG(ERROR) << "object was erased " << obj->IsException() << " " << obj->WasAccessed();
+  if (obj->IsException() && !obj->WasAccessed() &&
+      unhandled_exception_handler_ != nullptr) {
+    unhandled_exception_handler_(*obj);
+  }
 }
 
 MemoryStoreStats CoreWorkerMemoryStore::GetMemoryStoreStatisticalData() {

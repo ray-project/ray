@@ -279,7 +279,9 @@ class Worker:
 
     def deserialize_objects(self, data_metadata_pairs, object_refs):
         context = self.get_serialization_context()
-        return context.deserialize_objects(data_metadata_pairs, object_refs)
+        out = context.deserialize_objects(data_metadata_pairs, object_refs)
+        print("RES", out)
+        return out
 
     def get_objects(self, object_refs, timeout=None):
         """Get the values in the object store associated with the IDs.
@@ -1049,10 +1051,13 @@ def print_error_messages_raylet(task_error_queue, threads_stopped):
             threads_stopped.wait(timeout=1)
             if threads_stopped.is_set():
                 break
-        if t < last_task_error_raise_time + UNCAUGHT_ERROR_GRACE_PERIOD:
-            logger.debug(f"Suppressing error from worker: {error}")
-        else:
-            logger.error(f"Possible unhandled error from worker: {error}")
+
+
+#        if t < last_task_error_raise_time + UNCAUGHT_ERROR_GRACE_PERIOD:
+#            logger.debug(f"Suppressing error from worker: {error}")
+#        else:
+#            logger.error(f"Possible unhandled error from worker: {error}")
+#
 
 
 def listen_error_messages_raylet(worker, task_error_queue, threads_stopped):

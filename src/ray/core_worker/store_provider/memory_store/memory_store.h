@@ -35,7 +35,8 @@ class CoreWorkerMemoryStore {
       std::function<void(const RayObject &, const ObjectID &)> store_in_plasma = nullptr,
       std::shared_ptr<ReferenceCounter> counter = nullptr,
       std::shared_ptr<raylet::RayletClient> raylet_client = nullptr,
-      std::function<Status()> check_signals = nullptr);
+      std::function<Status()> check_signals = nullptr,
+      std::function<void(const RayObject &)> unhandled_exception_handler = nullptr);
   ~CoreWorkerMemoryStore(){};
 
   /// Put an object with specified ID into object store.
@@ -176,6 +177,9 @@ class CoreWorkerMemoryStore {
 
   /// Function passed in to be called to check for signals (e.g., Ctrl-C).
   std::function<Status()> check_signals_;
+
+  /// Functoin called to report unhandled exceptions.
+  std::function<void(const RayObject &)> unhandled_exception_handler_;
 };
 
 }  // namespace ray
