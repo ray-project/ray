@@ -1,7 +1,7 @@
 .. _ray-k8s-deploy:
 
 Deploying a Static Cluster
-===================================
+==========================
 
 This document gives an example of how to manually deploy a non-autoscaling Ray cluster on Kubernetes.
 
