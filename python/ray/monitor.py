@@ -20,7 +20,7 @@ from ray.autoscaler._private.constants import \
     AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE
 from ray.autoscaler._private.util import DEBUG_AUTOSCALING_STATUS
 
-from ray.core.generated import autoscaler_pb2, gcs_service_pb2_grpc
+from ray.core.generated import gcs_service_pb2, gcs_service_pb2_grpc
 import ray.ray_constants as ray_constants
 from ray.ray_logging import setup_component_logger
 from ray.experimental.internal_kv import _internal_kv_put, \
@@ -122,7 +122,7 @@ class Monitor:
     def update_load_metrics(self):
         """Fetches resource usage data from GCS and updates load metrics."""
 
-        request = autoscaler_pb2.GetAllResourceUsageRequest()
+        request = gcs_service_pb2.GetAllResourceUsageRequest()
         response = self.gcs_node_resources_stub.GetAllResourceUsage(
             request, timeout=3)
         resources_batch_data = response.resource_usage_data

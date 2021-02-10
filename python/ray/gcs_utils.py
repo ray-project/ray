@@ -1,11 +1,4 @@
 from ray.core.generated.common_pb2 import ErrorType
-from ray.core.generated.autoscaler_pb2 import (
-    ResourceUsageBatchData,
-    ResourcesData,
-    ResourceDemand,
-    ResourceLoad,
-    PlacementGroupTableData,
-)
 from ray.core.generated.gcs_pb2 import (
     ActorTableData,
     GcsNodeInfo,
@@ -14,16 +7,21 @@ from ray.core.generated.gcs_pb2 import (
     JobConfig,
     ErrorTableData,
     GcsEntry,
+    ResourceUsageBatchData,
+    ResourcesData,
     ObjectTableData,
     ProfileTableData,
     TablePrefix,
     TablePubsub,
     TaskTableData,
+    ResourceDemand,
+    ResourceLoad,
     ResourceMap,
     ResourceTableData,
     ObjectLocationInfo,
     PubSubMessage,
     WorkerTableData,
+    PlacementGroupTableData,
 )
 
 __all__ = [

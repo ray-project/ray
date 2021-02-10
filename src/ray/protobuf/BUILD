@@ -24,10 +24,7 @@ proto_library(
     name = "gcs_proto",
     srcs = ["gcs.proto"],
     visibility = ["//java:__subpackages__"],
-    deps = [
-        ":common_proto",
-        ":autoscaler_proto",
-    ],
+    deps = [":common_proto"],
 )
 
 cc_proto_library(
@@ -81,24 +78,12 @@ proto_library(
     deps = [
         ":common_proto",
         ":gcs_proto",
-        ":autoscaler_proto",
     ],
 )
 
 cc_proto_library(
     name = "gcs_service_cc_proto",
     deps = [":gcs_service_proto"],
-)
-
-proto_library(
-    name = "autoscaler_proto",
-    srcs = ["autoscaler.proto"],
-    deps = [":common_proto"],
-)
-
-cc_proto_library(
-    name = "autoscaler_cc_proto",
-    deps = [":autoscaler_proto"],
 )
 
 python_grpc_compile(
