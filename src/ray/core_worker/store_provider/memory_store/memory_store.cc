@@ -93,6 +93,7 @@ void GetRequest::Set(const ObjectID &object_id, std::shared_ptr<RayObject> objec
   if (is_ready_) {
     return;  // We have already hit the number of objects to return limit.
   }
+  object->SetAccessed();
   objects_.emplace(object_id, object);
   if (objects_.size() == num_objects_ ||
       (abort_if_any_object_is_exception_ && object->IsException() &&
@@ -106,6 +107,7 @@ std::shared_ptr<RayObject> GetRequest::Get(const ObjectID &object_id) const {
   std::unique_lock<std::mutex> lock(mutex_);
   auto iter = objects_.find(object_id);
   if (iter != objects_.end()) {
+    iter->second->SetAccessed();
     return iter->second;
   }
 
@@ -146,6 +148,7 @@ std::shared_ptr<RayObject> CoreWorkerMemoryStore::GetOrPromoteToPlasma(
   auto iter = objects_.find(object_id);
   if (iter != objects_.end()) {
     auto obj = iter->second;
+    obj->SetAccessed();
     if (obj->IsInPlasmaError()) {
       return nullptr;
     }
@@ -210,6 +213,8 @@ bool CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &object_
     if (should_add_entry) {
       // If there is no existing get request, then add the `RayObject` to map.
       objects_.emplace(object_id, object_entry);
+    } else {
+      OnErase(object_entry);
     }
   }
 
@@ -257,6 +262,7 @@ Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
       const auto &object_id = object_ids[i];
       auto iter = objects_.find(object_id);
       if (iter != objects_.end()) {
+        iter->second->SetAccessed();
         (*results)[i] = iter->second;
         if (remove_after_get) {
           // Note that we cannot remove the object_id from `objects_` now,
@@ -426,6 +432,7 @@ void CoreWorkerMemoryStore::Delete(const absl::flat_hash_set<ObjectID> &object_i
       if (it->second->IsInPlasmaError()) {
         plasma_ids_to_delete->insert(object_id);
       } else {
+        OnErase(it->second);
         objects_.erase(it);
       }
     }
@@ -435,7 +442,11 @@ void CoreWorkerMemoryStore::Delete(const absl::flat_hash_set<ObjectID> &object_i
 void CoreWorkerMemoryStore::Delete(const std::vector<ObjectID> &object_ids) {
   absl::MutexLock lock(&mu_);
   for (const auto &object_id : object_ids) {
-    objects_.erase(object_id);
+    auto it = objects_.find(object_id);
+    if (it != objects_.end()) {
+      OnErase(it->second);
+      objects_.erase(it);
+    }
   }
 }
 
@@ -449,6 +460,10 @@ bool CoreWorkerMemoryStore::Contains(const ObjectID &object_id, bool *in_plasma)
     return true;
   }
   return false;
+}
+
+void CoreWorkerMemoryStore::OnErase(std::shared_ptr<RayObject> obj) {
+  RAY_LOG(ERROR) << "object was erased " << obj->IsException() << " " << obj->WasAccessed();
 }
 
 MemoryStoreStats CoreWorkerMemoryStore::GetMemoryStoreStatisticalData() {
