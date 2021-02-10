@@ -423,9 +423,18 @@ class TFPolicy(Policy):
     def learn_on_batch(
             self, postprocessed_batch: SampleBatch) -> Dict[str, TensorType]:
         assert self.loss_initialized()
+
         builder = TFRunBuilder(self._sess, "learn_on_batch")
+
+        # Callback handling.
+        learn_stats = {}
+        self.callbacks.on_learn_on_batch(
+            policy=self, train_batch=postprocessed_batch, result=learn_stats)
+
         fetches = self._build_learn_on_batch(builder, postprocessed_batch)
-        return builder.get(fetches)
+        stats = builder.get(fetches)
+        stats.update({"custom_metrics": learn_stats})
+        return stats
 
     @override(Policy)
     @DeveloperAPI
@@ -840,10 +849,6 @@ class TFPolicy(Policy):
 
     def _build_learn_on_batch(self, builder, postprocessed_batch):
         self._debug_vars()
-
-        # Callback handling.
-        self.callbacks.on_learn_on_batch(
-            policy=self, train_batch=postprocessed_batch)
 
         builder.add_feed_dict(self.extra_compute_grad_feed_dict())
         builder.add_feed_dict(
