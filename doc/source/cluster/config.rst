@@ -521,7 +521,7 @@ If enabled, Ray will not try to use the NVIDIA Container Runtime if GPUs are pre
 ``docker.disable_shm_size_detection``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-If enabled, Ray will not automatically specify the size /dev/shm for the started container.
+If enabled, Ray will not automatically specify the size /dev/shm for the started container and the runtime's default value (64MiB for Docker) will be used.
 
 * **Required:** No
 * **Importance:** Low
