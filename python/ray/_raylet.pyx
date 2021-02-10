@@ -733,18 +733,7 @@ cdef void unhandled_exception_handler(const CRayObject& error) nogil:
             data = Buffer.make(error.GetData())
         if error.HasMetadata():
             metadata = Buffer.make(error.GetMetadata()).to_pybytes()
-        results = worker.deserialize_objects(
-            [(data, metadata)], [ray.ObjectRef.nil()])
-        print("DESERIALIZATION DONE")
-        for failure_object in results:
-#            logger.error(
-#                "Possible unhandled error from worker: {}".format(
-#                    failure_object))
-            ray.utils.push_error_to_driver(
-                worker,
-                ray_constants.TASK_PUSH_ERROR,
-                str(failure_object),
-                job_id=worker.current_job_id)
+        worker.raise_errors([(data, metadata)], [ray.ObjectRef.nil()])
 
 
 # This function introduces ~2-7us of overhead per call (i.e., it can be called

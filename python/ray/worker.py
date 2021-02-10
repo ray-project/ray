@@ -277,11 +277,15 @@ class Worker:
             self.core_worker.put_serialized_object(
                 serialized_value, object_ref=object_ref))
 
-    def deserialize_objects(self, data_metadata_pairs, object_refs):
+    def raise_errors(self, data_metadata_pairs, object_refs):
         context = self.get_serialization_context()
         out = context.deserialize_objects(data_metadata_pairs, object_refs)
-        print("DESERIALIZATION RESULT", out)
-        return out
+        for r in out:
+            logger.error("Possible unhandled error: {}".format(r))
+
+    def deserialize_objects(self, data_metadata_pairs, object_refs):
+        context = self.get_serialization_context()
+        return context.deserialize_objects(data_metadata_pairs, object_refs)
 
     def get_objects(self, object_refs, timeout=None):
         """Get the values in the object store associated with the IDs.
