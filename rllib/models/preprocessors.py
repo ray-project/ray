@@ -263,7 +263,7 @@ class DictFlatteningPreprocessor(Preprocessor):
     def write(self, observation: TensorType, array: np.ndarray,
               offset: int) -> None:
         if not isinstance(observation, OrderedDict):
-            observation = OrderedDict(sorted(observation.items()))
+            observation = OrderedDict(observation.items())
         assert len(observation) == len(self.preprocessors), \
             (len(observation), len(self.preprocessors))
         for o, p in zip(observation.values(), self.preprocessors):
