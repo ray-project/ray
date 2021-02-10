@@ -16,7 +16,7 @@ https://docs.ray.io/en/master/rllib-algorithms.html#deep-q-networks-dqn-rainbow-
 import logging
 from typing import List, Optional, Type
 
-import ray.rllib.agents.dqn as dqn
+from ray.rllib.agents import dqn
 from ray.rllib.agents.dqn.r2d2_tf_policy import R2D2TFPolicy
 from ray.rllib.agents.dqn.r2d2_torch_policy import R2D2TorchPolicy
 from ray.rllib.evaluation.worker_set import WorkerSet
