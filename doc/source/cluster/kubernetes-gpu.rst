@@ -1,6 +1,6 @@
 .. _k8s-gpus:
 
-GPU Usage
+GPU Usage with Kubernetes
 =========
 This document provides some notes on GPU usage with Kubernetes.
 
