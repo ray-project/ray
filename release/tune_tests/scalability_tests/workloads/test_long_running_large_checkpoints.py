@@ -4,6 +4,8 @@ In this run, we will start 16 trials on a single node. The trials create
 4 GB checkpoints every 15 minutes and should only keep 2 of these. This test
 ensures that handling large checkpoints don't lead to much overhead.
 
+Cluster: cluster_1x32_hd.yaml
+
 Test owner: krfricke
 
 Acceptance criteria: Should run faster than 90,000 seconds.

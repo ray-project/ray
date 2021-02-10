@@ -4,6 +4,8 @@ In this run, we will start 96 trials concurrently that report very often
 (500 results per second). We thus measure the amount of overhead incurred when
 dealing with a large number of results.
 
+Cluster: cluster_1x96.yaml
+
 Test owner: krfricke
 
 Acceptance criteria: Should run faster than 120 seconds.

@@ -167,8 +167,14 @@ is generally the easiest way to run release tests.
 
    General Ray Tune functionality is implicitly tested via RLLib and XGBoost release tests.
    We are in the process of introducing scalability envelopes for Ray Tune.
-   This is an ongoing effort and will only be introduced in the next release.
-   For now, **you can ignore the tune_tests directory**.
+
+   Of the seven existing tests, three are currently not reaching their target time.
+   These three tests (test_result_throughput_cluster, test_result_throughput_single_node, and
+   test_network_overhead) are marked in the release checklist and don't have to be run at this time.
+
+   The other release tests are expected to run through without errors and to pass within a pre-specified time.
+   The time is checked in the test function and the output will let you know if a run was fast enough and
+   thus passed the test.
 
 10. **XGBoost release tests**
 

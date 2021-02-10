@@ -4,9 +4,11 @@ In this run, we will start 16 trials on a cluster. The trials create
 10 MB checkpoints every 10 seconds and should only keep 2 of these. This test
 ensures that durable checkpoints don't slow down experiment progress too much.
 
+Cluster: cluster_16x2.yaml
+
 Test owner: krfricke
 
-Acceptance criteria: Should run faster than 800 seconds.
+Acceptance criteria: Should run faster than 500 seconds.
 
 Theoretical minimum time: 300 seconds
 """
@@ -23,7 +25,7 @@ def main():
     results_per_second = 10 / 60
     trial_length_s = 300
 
-    max_runtime = 800
+    max_runtime = 500
 
     timed_tune_run(
         name="durable trainable",

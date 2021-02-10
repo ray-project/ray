@@ -4,6 +4,8 @@ In this run, we will start 200 trials and run them on 200 different nodes.
 This test will thus measure the overhead that comes with network communication
 and specifically log synchronization.
 
+Cluster: cluster_200x2.yaml
+
 Test owner: krfricke
 
 Acceptance criteria: Should run faster than 500 seconds.

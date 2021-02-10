@@ -1,13 +1,20 @@
 """Large-scale XGBoost parameter sweep
 
-In this run, we will start 64 trials of 128 actors each running distributed
+In this run, we will start 32 trials of 32 actors each running distributed
 XGBoost training. This test is more about making sure that the run succeeds
 than about total runtime. However, it is expected that this is faster than
 1 hour.
 
+We fix the max_depth to 4 and the number of boosting rounds to 100. The
+fastest observed training time for 32 actors (1 CPU each) was about 2000
+seconds. We allow up to 10 minutes of slack, so aim for 2600 seconds total
+tuning time.
+
+Cluster: cluster_16x64_data.yaml
+
 Test owner: krfricke
 
-Acceptance criteria: Should run faster than 3600 seconds. Should run without
+Acceptance criteria: Should run faster than 2600 seconds. Should run without
 errors.
 """
 import os
