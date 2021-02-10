@@ -217,6 +217,7 @@ To enable LRU eviction when the object store is full, initialize ray with the ``
 
 Object Spilling
 ---------------
+.. _object-spilling:
 
 Ray 1.2.0+ has *beta* support for spilling objects to external storage once the capacity
 of the object store is used up. Please file a `GitHub issue <https://github.com/ray-project/ray/issues/>`__
