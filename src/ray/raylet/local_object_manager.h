@@ -70,8 +70,10 @@ class LocalObjectManager {
   /// \param object_ids The objects to be pinned.
   /// \param objects Pointers to the objects to be pinned. The pointer should
   /// be kept in scope until the object can be released.
+  /// \param owner_address The owner of the objects to be pinned.
   void PinObjects(const std::vector<ObjectID> &object_ids,
-                  std::vector<std::unique_ptr<RayObject>> &&objects);
+                  std::vector<std::unique_ptr<RayObject>> &&objects,
+                  const rpc::Address &owner_address);
 
   /// Wait for the objects' owner to free the object.  The objects will be
   /// released when the owner at the given address fails or replies that the
@@ -203,18 +205,17 @@ class LocalObjectManager {
   std::function<void(const std::vector<ObjectID> &)> on_objects_freed_;
 
   // Objects that are pinned on this node.
-  absl::flat_hash_map<ObjectID, std::unique_ptr<RayObject>> pinned_objects_;
+  absl::flat_hash_map<ObjectID, std::pair<std::unique_ptr<RayObject>, rpc::Address>>
+      pinned_objects_;
 
   // Total size of objects pinned on this node.
   size_t pinned_objects_size_ = 0;
 
-  // Owners of objects that are pinned on this node.
-  absl::flat_hash_map<ObjectID, rpc::Address> pinned_object_owners_;
-
   // Objects that were pinned on this node but that are being spilled.
   // These objects will be released once spilling is complete and the URL is
   // written to the object directory.
-  absl::flat_hash_map<ObjectID, std::unique_ptr<RayObject>> objects_pending_spill_;
+  absl::flat_hash_map<ObjectID, std::pair<std::unique_ptr<RayObject>, rpc::Address>>
+      objects_pending_spill_;
 
   /// Objects that were spilled on this node but that are being restored.
   /// The field is used to dedup the same restore request while restoration is in
