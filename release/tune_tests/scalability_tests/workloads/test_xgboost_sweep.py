@@ -53,7 +53,7 @@ def main():
     num_samples = 32
     num_actors_per_sample = 32
 
-    max_runtime = 3600
+    max_runtime = 2600
 
     config = {
         "tree_method": "approx",
@@ -61,7 +61,7 @@ def main():
         "eval_metric": ["logloss", "error"],
         "eta": tune.loguniform(1e-4, 1e-1),
         "subsample": tune.uniform(0.5, 1.0),
-        "max_depth": tune.randint(1, 9)
+        "max_depth": 4
     }
 
     start_time = time.monotonic()
