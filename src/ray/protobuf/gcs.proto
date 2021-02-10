@@ -158,6 +158,43 @@ message ErrorTableData {
   double timestamp = 4;
 }
 
+message PlacementGroupTableData {
+  // State of a placement group.
+  enum PlacementGroupState {
+    // Placement Group is pending or scheduling
+    PENDING = 0;
+    // Placement Group is created.
+    CREATED = 1;
+    // Placement Group is already removed and won't be reschedule.
+    REMOVED = 2;
+    // Placement Group is rescheduling because the node it placed is dead.
+    RESCHEDULING = 3;
+  }
+
+  // ID of the PlacementGroup.
+  bytes placement_group_id = 1;
+  // The name of the placement group.
+  string name = 2;
+  // The array of the bundle in Placement Group.
+  repeated Bundle bundles = 3;
+  // The schedule strategy of this Placement Group.
+  PlacementStrategy strategy = 4;
+  // Current state of this placement group.
+  PlacementGroupState state = 5;
+  // Fields to detect the owner of the placement group
+  // for automatic lifecycle management.
+  // The job id that created this placement group.
+  bytes creator_job_id = 6;
+  // The actor id that created this placement group.
+  bytes creator_actor_id = 7;
+  // Whether or not if the creator job is dead.
+  bool creator_job_dead = 8;
+  // Whether or not if the creator actor is dead.
+  bool creator_actor_dead = 9;
+  // Whether the placement group is persistent.
+  bool is_detached = 10;
+}
+
 message ScheduleData {
   map<string, bytes> schedule_plan = 1;
 }
@@ -238,9 +275,69 @@ message GcsNodeInfo {
   int64 timestamp = 10;
 }
 
+// Represents the demand for a particular resource shape.
+message ResourceDemand {
+  // The resource shape requested. This is a map from the resource string
+  // (e.g., "CPU") to the amount requested.
+  map<string, double> shape = 1;
+  // The number of requests that are ready to run (i.e., dependencies have been
+  // fulfilled), but that are waiting for resources.
+  uint64 num_ready_requests_queued = 2;
+  // The number of requests for which there is no node that is a superset of
+  // the requested resource shape.
+  uint64 num_infeasible_requests_queued = 3;
+  // The number of requests of this shape still queued in CoreWorkers that this
+  // raylet knows about.
+  int64 backlog_size = 4;
+}
+
+// Represents the demand sorted by resource shape.
+message ResourceLoad {
+  // A list of all resource demands. The resource shape in each demand is
+  // unique.
+  repeated ResourceDemand resource_demands = 1;
+}
+
+message PlacementGroupLoad {
+  // The list of pending placement group specifications.
+  repeated PlacementGroupTableData placement_group_data = 1;
+}
+
 message HeartbeatTableData {
   // Node id.
   bytes node_id = 1;
+}
+
+message ResourcesData {
+  // Node id.
+  bytes node_id = 1;
+  // Resource capacity currently available on this node manager.
+  map<string, double> resources_available = 2;
+  // Indicates whether available resources is changed. Only used when light
+  // heartbeat enabled.
+  bool resources_available_changed = 3;
+  // Total resource capacity configured for this node manager.
+  map<string, double> resources_total = 4;
+  // Aggregate outstanding resource load on this node manager.
+  map<string, double> resource_load = 5;
+  // Indicates whether resource load is changed. Only used when
+  // light heartbeat enabled.
+  bool resource_load_changed = 6;
+  // The resource load on this node, sorted by resource shape.
+  ResourceLoad resource_load_by_shape = 7;
+  // Whether this node manager is requesting global GC.
+  bool should_global_gc = 8;
+  // IP address of the node.
+  string node_manager_address = 9;
+}
+
+message ResourceUsageBatchData {
+  repeated ResourcesData batch = 1;
+  // The total resource demand on all nodes included in the batch, sorted by
+  // resource shape.
+  ResourceLoad resource_load_by_shape = 2;
+  // The pending list of placement groups.
+  PlacementGroupLoad placement_group_load = 3;
 }
 
 // Data for a lease on task execution.
@@ -356,109 +453,3 @@ message PubSubMessage {
   bytes id = 1;
   bytes data = 2;
 }
-
-///////////////////////////////////////////////////////////////////////////////
-/* Please do not modify/remove/change the following messages to maintain
-backwards compatibility in autoscaler. This is necessary to make sure we can
-run autoscaler with any version of ray. For example, the K8s operator runs
-autoscaler in a separate pod, if the user upgrades the ray version on the head
-pod autoscaler can crash (if the newer version of ray modified the messages
-below). */
-
-// Represents the demand for a particular resource shape.
-message ResourceDemand {
-  // The resource shape requested. This is a map from the resource string
-  // (e.g., "CPU") to the amount requested.
-  map<string, double> shape = 1;
-  // The number of requests that are ready to run (i.e., dependencies have been
-  // fulfilled), but that are waiting for resources.
-  uint64 num_ready_requests_queued = 2;
-  // The number of requests for which there is no node that is a superset of
-  // the requested resource shape.
-  uint64 num_infeasible_requests_queued = 3;
-  // The number of requests of this shape still queued in CoreWorkers that this
-  // raylet knows about.
-  int64 backlog_size = 4;
-}
-
-// Represents the demand sorted by resource shape.
-message ResourceLoad {
-  // A list of all resource demands. The resource shape in each demand is
-  // unique.
-  repeated ResourceDemand resource_demands = 1;
-}
-
-message ResourcesData {
-  // Node id.
-  bytes node_id = 1;
-  // Resource capacity currently available on this node manager.
-  map<string, double> resources_available = 2;
-  // Indicates whether available resources is changed. Only used when light
-  // heartbeat enabled.
-  bool resources_available_changed = 3;
-  // Total resource capacity configured for this node manager.
-  map<string, double> resources_total = 4;
-  // Aggregate outstanding resource load on this node manager.
-  map<string, double> resource_load = 5;
-  // Indicates whether resource load is changed. Only used when
-  // light heartbeat enabled.
-  bool resource_load_changed = 6;
-  // The resource load on this node, sorted by resource shape.
-  ResourceLoad resource_load_by_shape = 7;
-  // Whether this node manager is requesting global GC.
-  bool should_global_gc = 8;
-  // IP address of the node.
-  string node_manager_address = 9;
-}
-
-message ResourceUsageBatchData {
-  repeated ResourcesData batch = 1;
-  // The total resource demand on all nodes included in the batch, sorted by
-  // resource shape.
-  ResourceLoad resource_load_by_shape = 2;
-  // The pending list of placement groups.
-  PlacementGroupLoad placement_group_load = 3;
-}
-
-message PlacementGroupLoad {
-  // The list of pending placement group specifications.
-  repeated PlacementGroupTableData placement_group_data = 1;
-}
-
-message PlacementGroupTableData {
-  // State of a placement group.
-  enum PlacementGroupState {
-    // Placement Group is pending or scheduling
-    PENDING = 0;
-    // Placement Group is created.
-    CREATED = 1;
-    // Placement Group is already removed and won't be reschedule.
-    REMOVED = 2;
-    // Placement Group is rescheduling because the node it placed is dead.
-    RESCHEDULING = 3;
-  }
-
-  // ID of the PlacementGroup.
-  bytes placement_group_id = 1;
-  // The name of the placement group.
-  string name = 2;
-  // The array of the bundle in Placement Group.
-  repeated Bundle bundles = 3;
-  // The schedule strategy of this Placement Group.
-  PlacementStrategy strategy = 4;
-  // Current state of this placement group.
-  PlacementGroupState state = 5;
-  // Fields to detect the owner of the placement group
-  // for automatic lifecycle management.
-  // The job id that created this placement group.
-  bytes creator_job_id = 6;
-  // The actor id that created this placement group.
-  bytes creator_actor_id = 7;
-  // Whether or not if the creator job is dead.
-  bool creator_job_dead = 8;
-  // Whether or not if the creator actor is dead.
-  bool creator_actor_dead = 9;
-  // Whether the placement group is persistent.
-  bool is_detached = 10;
-}
-///////////////////////////////////////////////////////////////////////////////

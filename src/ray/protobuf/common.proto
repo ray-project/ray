@@ -46,6 +46,19 @@ enum TaskType {
   DRIVER_TASK = 3;
 }
 
+// Type of placement group strategy.
+enum PlacementStrategy {
+  // Packs Bundles into as few nodes as possible.
+  PACK = 0;
+  // Places Bundles across distinct nodes or processes as even as possible.
+  SPREAD = 1;
+  // Packs Bundles within one node. The group is not allowed to span multiple nodes.
+  STRICT_PACK = 2;
+  // Places Bundles across distinct nodes.
+  // The group is not allowed to deploy more than one bundle on a node.
+  STRICT_SPREAD = 3;
+}
+
 // Address of a worker or node manager.
 message Address {
   bytes raylet_id = 1;
@@ -443,24 +456,3 @@ enum WorkerExitType {
   // Worker exit due to placement group removal.
   PLACEMENT_GROUP_REMOVED = 3;
 }
-///////////////////////////////////////////////////////////////////////////////
-/* Please do not modify/remove/change the following enum to maintain
-backwards compatibility in autoscaler. This is necessary to make sure we can
-run autoscaler with any version of ray. For example, the K8s operator runs
-autoscaler in a separate pod, if the user upgrades the ray version on the head
-pod autoscaler can crash (if the newer version of ray modified the messages
-below). */
-
-// Type of placement group strategy.
-enum PlacementStrategy {
-  // Packs Bundles into as few nodes as possible.
-  PACK = 0;
-  // Places Bundles across distinct nodes or processes as even as possible.
-  SPREAD = 1;
-  // Packs Bundles within one node. The group is not allowed to span multiple nodes.
-  STRICT_PACK = 2;
-  // Places Bundles across distinct nodes.
-  // The group is not allowed to deploy more than one bundle on a node.
-  STRICT_SPREAD = 3;
-}
-///////////////////////////////////////////////////////////////////////////////
