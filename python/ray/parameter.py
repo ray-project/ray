@@ -1,5 +1,6 @@
 import logging
 import os
+import sys
 
 import numpy as np
 
@@ -226,6 +227,11 @@ class RayParams:
             print(self._system_config)
             self._system_config["lineage_pinning_enabled"] = True
             self._system_config["free_objects_period_milliseconds"] = -1
+
+        # The dashboard is currently broken on Windows.
+        # https://github.com/ray-project/ray/issues/14026.
+        if sys.platform == "win32" and self.include_dashboard is None:
+            self.include_dashboard = False
 
     def update(self, **kwargs):
         """Update the settings according to the keyword arguments.
