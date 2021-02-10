@@ -709,8 +709,13 @@ class TFPolicy(Policy):
             input_signature["prev_reward"] = \
                 tf1.saved_model.utils.build_tensor_info(
                     self._prev_reward_input)
+
         input_signature["is_training"] = \
             tf1.saved_model.utils.build_tensor_info(self._is_training)
+
+        if self._timestep is not None:
+            input_signature["timestep"] = \
+                tf1.saved_model.utils.build_tensor_info(self._timestep)
 
         for state_input in self._state_inputs:
             input_signature[state_input.name] = \
