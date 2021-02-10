@@ -64,9 +64,9 @@ class MockProcessRunner:
             if token in str(cmd):
                 raise CalledProcessError(1, token,
                                          "Failing command on purpose")
-        self.calls.append(cmd)
+        self.calls.append((cmd, (args, kwargs)))
 
-    def check_output(self, cmd):
+    def check_output(self, cmd, *args, **kwargs):
         self.check_call(cmd)
         return_string = "command-output"
         key_to_shrink = None
@@ -126,7 +126,7 @@ class MockProcessRunner:
         self.calls = []
 
     def command_history(self):
-        return [" ".join(cmd) for cmd in self.calls]
+        return [" ".join(cmd) for cmd, _ in self.calls]
 
     def respond_to_call(self, pattern, response_list):
         self.call_response[pattern] = response_list
@@ -2050,6 +2050,14 @@ MemAvailable:   33000000 kB
         assert min(x[0]
                    for x in first_pull) < min(x[0]
                                               for x in first_targeted_inspect)
+
+    def testUpdaterLogging(self):
+        config = copy.deepcopy(SMALL_CLUSTER)
+        config["min_workers"] = 2
+        config["max_workers"] = 2
+        config_path = self.write_config(config)
+        self.provider = MockProvider()
+        runner = MockProcessRunner()
 
 
 if __name__ == "__main__":
