@@ -477,6 +477,7 @@ class NCCLGroup(BaseGroup):
             with nccl_util.Device(device):
                 stream: cupy.cuda.Stream = streams[i]
                 event: cupy.cuda.Event = events[i]
+                print("Stream: ", stream)
                 event.record(cupy.cuda.get_current_stream())
                 stream.wait_event(event)
 
@@ -677,7 +678,7 @@ class NCCLGroup(BaseGroup):
         events = self._dev_event_map[comm_key]
 
         # TODO(Hao): sync streams and events
-        self._sync_streams([my_gpu_idx], streams, events)
+        self._sync_streams([my_gpu_idx], events, streams)
 
         # We have made sure that self.rank != peer_rank during API check.
         peer_p2p_rank = 0 if self.rank > peer_rank else 1
