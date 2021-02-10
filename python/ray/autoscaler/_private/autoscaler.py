@@ -31,6 +31,8 @@ from ray.autoscaler._private.resource_demand_scheduler import \
 from ray.autoscaler._private.util import ConcurrentCounter, validate_config, \
     with_head_node_ip, hash_launch_conf, hash_runtime_conf, \
     DEBUG_AUTOSCALING_ERROR, format_info_string
+from ray.autoscaler._private.process_runner_interceptor \
+    import ProcessRunnerInterceptor
 from ray.autoscaler._private.constants import \
     AUTOSCALER_MAX_NUM_FAILURES, AUTOSCALER_MAX_LAUNCH_BATCH, \
     AUTOSCALER_MAX_CONCURRENT_LAUNCHES, AUTOSCALER_UPDATE_INTERVAL_S, \
@@ -93,6 +95,8 @@ class StandardAutoscaler:
         self.max_concurrent_launches = max_concurrent_launches
         self.process_runner = process_runner
         self.event_summarizer = event_summarizer or EventSummarizer()
+
+        self.node_tracker = NodeTracker(process_runner)
 
         # Map from node_id to NodeUpdater processes
         self.updaters = {}
@@ -430,9 +434,13 @@ class StandardAutoscaler:
 
         return False
 
-    def _node_resources(self, node_id):
-        node_type = self.provider.node_tags(node_id).get(
+    def get_node_type(self, node_id):
+        return self.provider.node_tags(node_id).get(
             TAG_RAY_USER_NODE_TYPE)
+
+
+    def _node_resources(self, node_id):
+        node_type = self.get_node_type(node_id)
         if self.available_node_types:
             return self.available_node_types.get(node_type, {}).get(
                 "resources", {})
@@ -573,6 +581,7 @@ class StandardAutoscaler:
             " (lost contact with raylet).",
             quantity=1,
             aggregate=operator.add)
+        interceptor = self.node_tracker.get_or_create_process_runner(node_id)
         updater = NodeUpdaterThread(
             node_id=node_id,
             provider_config=self.config["provider"],
@@ -586,7 +595,7 @@ class StandardAutoscaler:
                 self.config["worker_start_ray_commands"], self.head_node_ip),
             runtime_hash=self.runtime_hash,
             file_mounts_contents_hash=self.file_mounts_contents_hash,
-            process_runner=self.process_runner,
+            process_runner=interceptor,
             use_internal_ip=True,
             is_head_node=False,
             docker_config=self.config.get("docker"),
@@ -655,6 +664,9 @@ class StandardAutoscaler:
                       node_resources, docker_config):
         logger.info(f"Creating new (spawn_updater) updater thread for node"
                     f" {node_id}.")
+        node_type = self.get_node_type(node_id)
+        interceptor = self.node_tracker.get_or_create_process_runner(
+            node_id, node_type)
         updater = NodeUpdaterThread(
             node_id=node_id,
             provider_config=self.config["provider"],
@@ -677,7 +689,7 @@ class StandardAutoscaler:
                 "rsync_exclude": self.config.get("rsync_exclude"),
                 "rsync_filter": self.config.get("rsync_filter")
             },
-            process_runner=self.process_runner,
+            process_runner=interceptor,
             use_internal_ip=True,
             docker_config=docker_config,
             node_resources=node_resources)
@@ -791,3 +803,25 @@ class StandardAutoscaler:
         lm_summary = self.load_metrics.summary()
         autoscaler_summary = self.summary()
         return "\n" + format_info_string(lm_summary, autoscaler_summary)
+
+
+class NodeTracker:
+
+    def __init__(self, process_runner):
+        self.process_runner = process_runner
+
+        # Mapping from node_id -> (node type, stdout_path, process runner)
+        self.node_mapping = {}
+
+    def get_or_create_process_runner(self, node_id, node_type=None):
+        if node_id not in self.node_mapping:
+            stdout_path = f"{node_id}.out"
+            stdout_obj = open(stdout_path, "a")
+            process_runner = ProcessRunnerInterceptor(
+                stdout_obj, process_runner=self.process_runner)
+            self.node_mapping[node_id] = (
+                node_type, stdout_path, process_runner)
+
+        _, _, process_runner = self.node_mapping[node_id]
+        return process_runner
+
