@@ -580,12 +580,13 @@ cdef CRayStatus task_execution_handler(
                     "worker_crash",
                     traceback_str,
                     job_id=None)
-                # Cython's bug that doesn't allow reference assignment, workaroud.
+                # Cython's bug that doesn't allow reference assignment
+                # , this is a workaroud.
                 # See https://github.com/cython/cython/issues/1863
                 (&error_message)[0] = traceback_str
                 sys_exit = SystemExit(1)
-                # assign all attrs like is_ray_terminate, is_creation_task_error
-                # to new exception
+                # assign all attrs like is_ray_terminate,
+                # is_creation_task_error to new exception
                 for attr in e.__dict__.keys():
                     setattr(sys_exit, attr, getattr(e, attr))
                 raise sys_exit from e

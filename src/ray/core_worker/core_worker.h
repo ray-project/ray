@@ -331,7 +331,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// disconnect.
   ///
   /// \return Void.
-  void Disconnect(rpc::WorkerExitType exit_type=rpc::WorkerExitType::INTENDED_EXIT, const std::string &error_message="Intentionally disconnect.");
+  void Disconnect(rpc::WorkerExitType exit_type = rpc::WorkerExitType::INTENDED_EXIT,
+                  const std::string &error_message = "Intentionally disconnect.");
 
   /// Shut down the worker completely.
   ///

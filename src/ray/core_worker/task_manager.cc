@@ -440,7 +440,8 @@ bool TaskManager::MarkTaskCanceled(const TaskID &task_id) {
 
 void TaskManager::MarkPendingTaskFailed(const TaskID &task_id,
                                         const TaskSpecification &spec,
-                                        rpc::ErrorType error_type, const std::string &error_message) {
+                                        rpc::ErrorType error_type,
+                                        const std::string &error_message) {
   RAY_LOG(DEBUG) << "Treat task as failed. task_id: " << task_id
                  << ", error_type: " << ErrorType_Name(error_type);
   int64_t num_returns = spec.NumReturns();

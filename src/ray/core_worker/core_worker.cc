@@ -578,7 +578,8 @@ void CoreWorker::Shutdown() {
   }
 }
 
-void CoreWorker::Disconnect(rpc::WorkerExitType exit_type, const std::string &error_message) {
+void CoreWorker::Disconnect(rpc::WorkerExitType exit_type,
+                            const std::string &error_message) {
   if (connected_) {
     connected_ = false;
     if (local_raylet_client_) {
@@ -588,9 +589,9 @@ void CoreWorker::Disconnect(rpc::WorkerExitType exit_type, const std::string &er
 }
 
 void CoreWorker::Exit(rpc::WorkerExitType exit_type, const std::string &error_message) {
-  RAY_LOG(INFO)
-      << "Exit signal received, this process will exit after all outstanding tasks have finished"
-      << ", exit_type=" << rpc::WorkerExitType_Name(exit_type);
+  RAY_LOG(INFO) << "Exit signal received, this process will exit after all outstanding "
+                   "tasks have finished"
+                << ", exit_type=" << rpc::WorkerExitType_Name(exit_type);
   exiting_ = true;
   // Release the resources early in case draining takes a long time.
   RAY_CHECK_OK(
@@ -601,7 +602,8 @@ void CoreWorker::Exit(rpc::WorkerExitType exit_type, const std::string &error_me
     // To avoid problems, make sure shutdown is always called from the same
     // event loop each time.
     task_execution_service_.post([this, exit_type, error_message]() {
-      if (exit_type == rpc::WorkerExitType::CREATION_TASK_ERROR || exit_type == rpc::WorkerExitType::INTENDED_EXIT) {
+      if (exit_type == rpc::WorkerExitType::CREATION_TASK_ERROR ||
+          exit_type == rpc::WorkerExitType::INTENDED_EXIT) {
         // Notify the raylet about this exit.
         // Only CREATION_TASK_ERROR and INTENDED_EXIT needs to disconnect manually.
         Disconnect(exit_type, error_message);

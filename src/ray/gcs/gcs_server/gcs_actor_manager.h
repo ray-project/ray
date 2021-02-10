@@ -240,12 +240,11 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// \param worker_id ID of the dead worker.
   /// \param exit_type exit reason of the dead worker.
   /// \param exit_info reason describing why worker died.
-  void OnWorkerDead(
-      const NodeID &node_id, const WorkerID &worker_id,
-      const rpc::WorkerExitType disconnect_type, const std::string &exit_info);
+  void OnWorkerDead(const NodeID &node_id, const WorkerID &worker_id,
+                    const rpc::WorkerExitType disconnect_type,
+                    const std::string &exit_info);
 
-  void OnWorkerDead(
-      const NodeID &node_id, const WorkerID &worker_id);
+  void OnWorkerDead(const NodeID &node_id, const WorkerID &worker_id);
 
   /// Handle actor creation task failure. This should be called when scheduling
   /// an actor creation task is infeasible.
@@ -329,8 +328,8 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// again.
   /// \param exit_info Only applies when need_reschedule=false, decribing why this actor
   /// failed.
-  void ReconstructActor(const ActorID &actor_id, bool need_reschedule, const std::string &exit_info);
-  
+  void ReconstructActor(const ActorID &actor_id, bool need_reschedule,
+                        const std::string &exit_info);
 
   /// Reconstruct the specified actor and reschedule it.
   void ReconstructActor(const ActorID &actor_id);

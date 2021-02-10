@@ -542,19 +542,20 @@ void GcsActorManager::CollectStats() const {
 
 void GcsActorManager::OnWorkerDead(const ray::NodeID &node_id,
                                    const ray::WorkerID &worker_id) {
-  OnWorkerDead(node_id, worker_id, rpc::WorkerExitType::SYSTEM_ERROR_EXIT, "No message avaliable.");
+  OnWorkerDead(node_id, worker_id, rpc::WorkerExitType::SYSTEM_ERROR_EXIT,
+               "No message avaliable.");
 }
 
 void GcsActorManager::OnWorkerDead(const ray::NodeID &node_id,
                                    const ray::WorkerID &worker_id,
                                    const rpc::WorkerExitType disconnect_type,
                                    const std::string &exit_info) {
-  RAY_LOG(INFO) << "Worker " << worker_id << " on node " << node_id << " exited, type="
-                << rpc::WorkerExitType_Name(disconnect_type) << ", exit_info=" << exit_info;
+  RAY_LOG(INFO) << "Worker " << worker_id << " on node " << node_id
+                << " exited, type=" << rpc::WorkerExitType_Name(disconnect_type)
+                << ", exit_info=" << exit_info;
 
-  bool need_reconstruct = 
-    disconnect_type != rpc::WorkerExitType::INTENDED_EXIT &&
-    disconnect_type != rpc::WorkerExitType::CREATION_TASK_ERROR; 
+  bool need_reconstruct = disconnect_type != rpc::WorkerExitType::INTENDED_EXIT &&
+                          disconnect_type != rpc::WorkerExitType::CREATION_TASK_ERROR;
   // Destroy all actors that are owned by this worker.
   const auto it = owners_.find(node_id);
   if (it != owners_.end() && it->second.count(worker_id)) {
@@ -646,10 +647,12 @@ void GcsActorManager::OnNodeDead(const NodeID &node_id) {
 }
 
 void GcsActorManager::ReconstructActor(const ActorID &actor_id) {
-  ReconstructActor(actor_id, /*need_reschedule=*/true, /*exit_info=*/"No exit info available.");
+  ReconstructActor(actor_id, /*need_reschedule=*/true,
+                   /*exit_info=*/"No exit info available.");
 }
 
-void GcsActorManager::ReconstructActor(const ActorID &actor_id, bool need_reschedule, const std::string &exit_info) {
+void GcsActorManager::ReconstructActor(const ActorID &actor_id, bool need_reschedule,
+                                       const std::string &exit_info) {
   auto &actor = registered_actors_[actor_id];
   // If the owner and this actor is dead at the same time, the actor
   // could've been destroyed and dereigstered before reconstruction.

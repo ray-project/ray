@@ -51,8 +51,8 @@ class CoreWorkerDirectActorTaskSubmitterInterface {
   virtual void AddActorQueueIfNotExists(const ActorID &actor_id) = 0;
   virtual void ConnectActor(const ActorID &actor_id, const rpc::Address &address,
                             int64_t num_restarts) = 0;
-  virtual void DisconnectActor(const ActorID &actor_id, int64_t num_restarts,
-                               bool dead, const std::string &dead_info) = 0;
+  virtual void DisconnectActor(const ActorID &actor_id, int64_t num_restarts, bool dead,
+                               const std::string &dead_info) = 0;
   virtual void KillActor(const ActorID &actor_id, bool force_kill, bool no_restart) = 0;
 
   virtual void CheckTimeoutTasks() = 0;
@@ -115,7 +115,8 @@ class CoreWorkerDirectActorTaskSubmitter
   /// pending tasks for the actor should be failed.
   /// \param[in] dead_info Reason why the actor is dead, only applies when
   /// dead = true
-  void DisconnectActor(const ActorID &actor_id, int64_t num_restarts, bool dead, const std::string &dead_info);
+  void DisconnectActor(const ActorID &actor_id, int64_t num_restarts, bool dead,
+                       const std::string &dead_info);
 
   /// Set the timerstamp for the caller.
   void SetCallerCreationTimestamp(int64_t timestamp);

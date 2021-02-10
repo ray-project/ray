@@ -101,12 +101,13 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spe
     // Do not hold the lock while calling into task_finisher_.
     task_finisher_->MarkTaskCanceled(task_spec.TaskId());
     auto queue = client_queues_.find(task_spec.ActorId());
-    std::string error_message = "cancelling task of dead actor, dead_info=" + queue->second.dead_info;
+    std::string error_message =
+        "cancelling task of dead actor, dead_info=" + queue->second.dead_info;
     auto status = Status::IOError(error_message);
     // No need to increment the number of completed tasks since the actor is
     // dead.
-    RAY_UNUSED(!task_finisher_->PendingTaskFailed(task_spec.TaskId(),
-                                                  rpc::ErrorType::ACTOR_DIED, &status, error_message));
+    RAY_UNUSED(!task_finisher_->PendingTaskFailed(
+        task_spec.TaskId(), rpc::ErrorType::ACTOR_DIED, &status, error_message));
   }
 
   // If the task submission subsequently fails, then the client will receive
@@ -174,8 +175,8 @@ void CoreWorkerDirectActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
 }
 
 void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(const ActorID &actor_id,
-                                                         int64_t num_restarts,
-                                                         bool dead, const std::string &dead_info) {
+                                                         int64_t num_restarts, bool dead,
+                                                         const std::string &dead_info) {
   RAY_LOG(DEBUG) << "Disconnecting from actor " << actor_id;
   absl::MutexLock lock(&mu_);
   auto queue = client_queues_.find(actor_id);
@@ -208,8 +209,8 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(const ActorID &actor_id
       task_finisher_->MarkTaskCanceled(task_spec.TaskId());
       // No need to increment the number of completed tasks since the actor is
       // dead.
-      RAY_UNUSED(!task_finisher_->PendingTaskFailed(task_spec.TaskId(),
-                                                    rpc::ErrorType::ACTOR_DIED, &status, error_message));
+      RAY_UNUSED(!task_finisher_->PendingTaskFailed(
+          task_spec.TaskId(), rpc::ErrorType::ACTOR_DIED, &status, error_message));
       head = requests.erase(head);
     }
 

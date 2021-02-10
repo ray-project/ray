@@ -32,7 +32,8 @@ RayObject::RayObject(rpc::ErrorType error_type)
     : RayObject(nullptr, MakeErrorMetadataBuffer(error_type), {}) {}
 
 RayObject::RayObject(rpc::ErrorType error_type, const std::string error_message)
-    : RayObject(MakeBufferFromString(error_message), MakeErrorMetadataBuffer(error_type), {}) {}
+    : RayObject(MakeBufferFromString(error_message), MakeErrorMetadataBuffer(error_type),
+                {}) {}
 
 bool RayObject::IsException(rpc::ErrorType *error_type) const {
   if (metadata_ == nullptr) {

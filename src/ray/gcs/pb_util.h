@@ -86,8 +86,8 @@ inline std::shared_ptr<ray::rpc::ActorTableData> CreateActorTableData(
 /// Helper function to produce worker failure data.
 inline std::shared_ptr<ray::rpc::WorkerTableData> CreateWorkerFailureData(
     const NodeID &raylet_id, const WorkerID &worker_id, const std::string &address,
-    int32_t port, int64_t timestamp,
-    rpc::WorkerExitType disconnect_type, const std::string exit_info) {
+    int32_t port, int64_t timestamp, rpc::WorkerExitType disconnect_type,
+    const std::string exit_info) {
   auto worker_failure_info_ptr = std::make_shared<ray::rpc::WorkerTableData>();
   worker_failure_info_ptr->mutable_worker_address()->set_raylet_id(raylet_id.Binary());
   worker_failure_info_ptr->mutable_worker_address()->set_worker_id(worker_id.Binary());

@@ -174,7 +174,7 @@ class RAY_EXPORT Status {
 
   static Status CreationTaskError() {
     return Status(StatusCode::CreationTaskError,
-     "error raised in creation task, cause worker to exit");
+                  "error raised in creation task, cause worker to exit");
   }
 
   static Status NotFound(const std::string &msg) {
@@ -226,9 +226,7 @@ class RAY_EXPORT Status {
   bool IsIntentionalSystemExit() const {
     return code() == StatusCode::IntentionalSystemExit;
   }
-  bool IsCreationTaskError() const {
-    return code() == StatusCode::CreationTaskError;
-  }
+  bool IsCreationTaskError() const { return code() == StatusCode::CreationTaskError; }
   bool IsNotFound() const { return code() == StatusCode::NotFound; }
   bool IsDisconnected() const { return code() == StatusCode::Disconnected; }
   bool IsObjectExists() const { return code() == StatusCode::ObjectExists; }

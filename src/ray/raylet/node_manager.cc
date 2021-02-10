@@ -365,7 +365,8 @@ void NodeManager::DestroyWorker(std::shared_ptr<WorkerInterface> worker,
   // We should disconnect the client first. Otherwise, we'll remove bundle resources
   // before actual resources are returned. Subsequent disconnect request that comes
   // due to worker dead will be ignored.
-  DisconnectClient(worker->Connection(), disconnect_type, "Disconnect client when destroy worker.");
+  DisconnectClient(worker->Connection(), disconnect_type,
+                   "Disconnect client when destroy worker.");
   worker->MarkDead();
   KillWorker(worker);
 }
@@ -1190,7 +1191,8 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
 }
 
 void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &client,
-                                   rpc::WorkerExitType disconnect_type, const std::string &client_error_message) {
+                                   rpc::WorkerExitType disconnect_type,
+                                   const std::string &client_error_message) {
   std::shared_ptr<WorkerInterface> worker = worker_pool_.GetRegisteredWorker(client);
   bool is_worker = false, is_driver = false;
   if (worker) {
@@ -1232,9 +1234,9 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
   leased_workers_.erase(worker->WorkerId());
 
   // Publish the worker failure.
-  auto worker_failure_data_ptr =
-      gcs::CreateWorkerFailureData(self_node_id_, worker->WorkerId(), worker->IpAddress(),
-                                   worker->Port(), time(nullptr), disconnect_type, client_error_message);
+  auto worker_failure_data_ptr = gcs::CreateWorkerFailureData(
+      self_node_id_, worker->WorkerId(), worker->IpAddress(), worker->Port(),
+      time(nullptr), disconnect_type, client_error_message);
   RAY_CHECK_OK(
       gcs_client_->Workers().AsyncReportWorkerFailure(worker_failure_data_ptr, nullptr));
 

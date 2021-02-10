@@ -45,22 +45,22 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
       auto actor_id = task_spec.ActorCreationId();
       auto task_id = task_spec.TaskId();
       RAY_LOG(INFO) << "Creating actor via GCS actor id = : " << actor_id;
-      RAY_CHECK_OK(actor_creator_->AsyncCreateActor(
-          task_spec, [this, actor_id, task_id](Status status) {
-            if (status.ok()) {
-              RAY_LOG(DEBUG) << "Created actor, actor id = " << actor_id;
-              task_finisher_->CompletePendingTask(task_id, rpc::PushTaskReply(),
-                                                  rpc::Address());
-            } else {
-              std::ostringstream stream;
-              stream << "Failed to create actor " << actor_id
-                        << " with status: " << status.ToString();
-              std::string error_message = stream.str();
-              RAY_LOG(ERROR) << error_message;
-              RAY_UNUSED(task_finisher_->PendingTaskFailed(
-                  task_id, rpc::ErrorType::ACTOR_CREATION_FAILED, &status, error_message));
-            }
-          }));
+      RAY_CHECK_OK(actor_creator_->AsyncCreateActor(task_spec, [this, actor_id,
+                                                                task_id](Status status) {
+        if (status.ok()) {
+          RAY_LOG(DEBUG) << "Created actor, actor id = " << actor_id;
+          task_finisher_->CompletePendingTask(task_id, rpc::PushTaskReply(),
+                                              rpc::Address());
+        } else {
+          std::ostringstream stream;
+          stream << "Failed to create actor " << actor_id
+                 << " with status: " << status.ToString();
+          std::string error_message = stream.str();
+          RAY_LOG(ERROR) << error_message;
+          RAY_UNUSED(task_finisher_->PendingTaskFailed(
+              task_id, rpc::ErrorType::ACTOR_CREATION_FAILED, &status, error_message));
+        }
+      }));
       return;
     }
 
@@ -108,8 +108,9 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
       }
     }
     if (!keep_executing) {
-      RAY_UNUSED(task_finisher_->PendingTaskFailed(
-          task_spec.TaskId(), rpc::ErrorType::TASK_CANCELLED, nullptr, "Max retry time exceed."));
+      RAY_UNUSED(task_finisher_->PendingTaskFailed(task_spec.TaskId(),
+                                                   rpc::ErrorType::TASK_CANCELLED,
+                                                   nullptr, "Max retry time exceed."));
     }
   });
   return Status::OK();
@@ -443,7 +444,8 @@ Status CoreWorkerDirectTaskSubmitter::CancelTask(TaskSpecification task_spec,
             CancelWorkerLeaseIfNeeded(scheduling_key);
           }
           RAY_UNUSED(task_finisher_->PendingTaskFailed(task_spec.TaskId(),
-                                                       rpc::ErrorType::TASK_CANCELLED, nullptr, "Task was canceled"));
+                                                       rpc::ErrorType::TASK_CANCELLED,
+                                                       nullptr, "Task was canceled"));
           return Status::OK();
         }
       }
