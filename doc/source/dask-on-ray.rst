@@ -54,7 +54,9 @@ Here's an example:
    # each compute call.
    dask.config.set(scheduler=ray_dask_get)
 
-   df = dd.from_pandas(pd.DataFrame(np.random.randint(0, 100, size=(1024, 2)), columns=["age", "grade"]))
+   df = dd.from_pandas(pd.DataFrame(
+       np.random.randint(0, 100, size=(1024, 2)),
+       columns=["age", "grade"]))
    df.groupby(["age"]).mean().compute()
 
 
@@ -113,11 +115,14 @@ Simply set the `dataframe_optimize` configuration option to our optimizer functi
    # custom optimization function, this time using the config setter as a context manager.
    with dask.config.set(scheduler=ray_dask_get, dataframe_optimize=dataframe_optimize):
        npartitions = 100
-       df = dd.from_pandas(pd.DataFrame(np.random.randint(0, 100, size=(10000, 2)), columns=["age", "grade"]), npartitions=npartitions)
+       df = dd.from_pandas(pd.DataFrame(
+           np.random.randint(0, 100, size=(10000, 2)),
+           columns=["age", "grade"]), npartitions=npartitions)
        # We set max_branch to infinity in order to ensure that the task-based shuffle
        # happens in a single stage, which is required in order for our optimization to
        # work.
-       df.set_index(["age"], shuffle="tasks", max_branch=float("inf")).head(10, npartitions=-1)
+       df.set_index(
+           ["age"], shuffle="tasks", max_branch=float("inf")).head(10, npartitions=-1)
 
 Callbacks
 ---------
