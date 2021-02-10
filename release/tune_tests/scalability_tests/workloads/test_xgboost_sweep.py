@@ -50,8 +50,8 @@ def main():
 
     ray.init(address="auto")
 
-    num_samples = 64
-    num_actors_per_sample = 16
+    num_samples = 32
+    num_actors_per_sample = 32
 
     max_runtime = 3600
 
@@ -69,7 +69,7 @@ def main():
         tune.with_parameters(
             xgboost_train,
             num_actors=num_actors_per_sample,
-            num_boost_round=200),
+            num_boost_round=100),
         config=config,
         num_samples=num_samples)
     time_taken = time.monotonic() - start_time

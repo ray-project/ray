@@ -37,6 +37,10 @@ class TestDurableTrainable(DurableTrainable):
             time.sleep(self._sleep_time)
 
         res = dict(score=self._iter + self._score)
+
+        if self._iter >= self._num_iters:
+            res["done"] = True
+
         self._iter += 1
         return res
 
