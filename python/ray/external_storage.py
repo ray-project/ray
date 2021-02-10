@@ -80,6 +80,8 @@ class ExternalStorage(metaclass=abc.ABCMeta):
             the external storage is invalid.
     """
 
+    HEADER_LENGTH = 24
+
     def _get_objects_from_store(self, object_refs):
         worker = ray.worker.global_worker
         # Since the object should always exist in the plasma store before
@@ -121,7 +123,8 @@ class ExternalStorage(metaclass=abc.ABCMeta):
             metadata_len = len(metadata)
             buf_len = len(buf)
             # 24 bytes to store owner address, metadata, and buffer lengths.
-            data_size_in_bytes = address_len + metadata_len + buf_len + 24
+            data_size_in_bytes = (
+                address_len + metadata_len + buf_len + self.HEADER_LENGTH)
             f.write(address_len.to_bytes(8, byteorder="little"))
             f.write(metadata_len.to_bytes(8, byteorder="little"))
             f.write(buf_len.to_bytes(8, byteorder="little"))
@@ -149,7 +152,8 @@ class ExternalStorage(metaclass=abc.ABCMeta):
             address_len + metadata_len + buffer_len +
             24 (first 8 bytes to store length).
         """
-        data_size_in_bytes = address_len + metadata_len + buffer_len + 24
+        data_size_in_bytes = (
+            address_len + metadata_len + buffer_len + self.HEADER_LENGTH)
         if data_size_in_bytes != obtained_data_size:
             raise ValueError(
                 f"Obtained data has a size of {data_size_in_bytes}, "

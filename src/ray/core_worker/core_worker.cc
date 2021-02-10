@@ -2452,9 +2452,9 @@ void CoreWorker::HandleSpillObjects(const rpc::SpillObjectsRequest &request,
 void CoreWorker::HandleAddSpilledUrl(const rpc::AddSpilledUrlRequest &request,
                                      rpc::AddSpilledUrlReply *reply,
                                      rpc::SendReplyCallback send_reply_callback) {
-  const ObjectID &object_id = ObjectID::FromBinary(request.object_id());
+  const ObjectID object_id = ObjectID::FromBinary(request.object_id());
   const std::string &spilled_url = request.spilled_url();
-  const NodeID &node_id = NodeID::FromBinary(request.spilled_node_id());
+  const NodeID node_id = NodeID::FromBinary(request.spilled_node_id());
   RAY_LOG(DEBUG) << "Received AddSpilledUrl request for object " << object_id
                  << ", which has been spilled to " << spilled_url << " on node "
                  << node_id;

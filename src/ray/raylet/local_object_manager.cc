@@ -156,13 +156,7 @@ bool LocalObjectManager::SpillObjectsOfSize(int64_t num_bytes_to_spill) {
     SpillObjectsInternal(objects_to_spill, [this, bytes_to_spill, objects_to_spill,
                                             start_time](const Status &status) {
       if (!status.ok()) {
-        if (status.IsObjectNotFound()) {
-          RAY_LOG(INFO)
-              << "Failed to spill objects because they were not found, probably "
-              << "already freed";
-        } else {
-          RAY_LOG(INFO) << "Failed to spill objects: " << status.ToString();
-        }
+        RAY_LOG(INFO) << "Failed to spill objects: " << status.ToString();
       } else {
         auto now = absl::GetCurrentTimeNanos();
         RAY_LOG(DEBUG) << "Spilled " << bytes_to_spill << " bytes in "
@@ -284,16 +278,10 @@ void LocalObjectManager::AddSpilledUrls(
     const auto unpin_callback = [this, object_id, object_url, callback,
                                  num_remaining](Status status) {
       if (!status.ok()) {
-        if (status.IsObjectNotFound()) {
-          RAY_LOG(INFO)
-              << "Failed to send spilled url for object " << object_id
-              << " to object directory, object not found, must already be freed";
-        } else {
-          RAY_LOG(INFO)
-              << "Failed to send spilled url for object " << object_id
-              << " to object directory, considering the object to have been freed: "
-              << status.ToString();
-        }
+        RAY_LOG(INFO)
+            << "Failed to send spilled url for object " << object_id
+            << " to object directory, considering the object to have been freed: "
+            << status.ToString();
       } else {
         RAY_LOG(DEBUG) << "Object " << object_id << " spilled to " << object_url
                        << " and object directory has been informed";
@@ -344,8 +332,7 @@ void LocalObjectManager::AddSpilledUrls(
                      << WorkerID::FromBinary(it->second.second.worker_id());
       // Send spilled URL, spilled node ID, and object size to owner.
       owner_client->AddSpilledUrl(
-          request, [unpin_callback, object_id](Status status,
-                                               const rpc::AddSpilledUrlReply &reply) {
+          request, [unpin_callback](Status status, const rpc::AddSpilledUrlReply &reply) {
             unpin_callback(status);
           });
     } else {
@@ -357,7 +344,7 @@ void LocalObjectManager::AddSpilledUrls(
           unpin_callback));
     }
   }
-}  // namespace raylet
+}
 
 void LocalObjectManager::AsyncRestoreSpilledObject(
     const ObjectID &object_id, const std::string &object_url, const NodeID &node_id,
