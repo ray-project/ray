@@ -11,7 +11,7 @@ from ray.rllib.utils.test_utils import check, check_compute_single_action, \
 class TestDQN(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init(local_mode=True)#TODO
+        ray.init(local_mode=True)  #TODO
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -58,11 +58,9 @@ class TestDQN(unittest.TestCase):
         config["num_gpus"] = 2
         config["_fake_gpus"] = True
         config["framework"] = "tf"
-        # Mimick tuned_example for PPO CartPole.
-        config["num_workers"] = 1
-        config["lr"] = 0.0003
-        #config["observation_filter"] = "MeanStdFilter"
-        config["model"]["fcnet_hiddens"] = [32]
+        # Mimick tuned_example for DQN CartPole.
+        config["n_step"] = 3
+        config["model"]["fcnet_hiddens"] = [64]
         config["model"]["fcnet_activation"] = "linear"
 
         trainer = dqn.DQNTrainer(config=config, env="CartPole-v0")

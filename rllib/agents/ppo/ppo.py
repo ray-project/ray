@@ -188,7 +188,7 @@ class UpdateKL:
                 ("{} should be nested under policy id key".format(
                     LEARNER_STATS_KEY), fetches)
             if pi_id in fetches:
-                kl = fetches[pi_id].get(LEARNER_STATS_KEY, {}).get("kl")
+                kl = fetches[pi_id].get("kl")
                 assert kl is not None, (fetches, pi_id)
                 # Make the actual `Policy.update_kl()` call.
                 pi.update_kl(kl)
@@ -207,9 +207,9 @@ def warn_about_bad_reward_scales(config, result):
     # Warn about excessively high VF loss.
     learner_stats = result["info"]["learner"]
     if DEFAULT_POLICY_ID in learner_stats:
-        scaled_vf_loss = (config["vf_loss_coeff"] *
-                          learner_stats[DEFAULT_POLICY_ID]["vf_loss"])
-        policy_loss = learner_stats[DEFAULT_POLICY_ID]["policy_loss"]
+        scaled_vf_loss = config["vf_loss_coeff"] * \
+            learner_stats[DEFAULT_POLICY_ID][LEARNER_STATS_KEY]["vf_loss"]
+        policy_loss = learner_stats[DEFAULT_POLICY_ID][LEARNER_STATS_KEY]["policy_loss"]
         if config.get("model", {}).get("vf_share_layers") and \
                 scaled_vf_loss > 100:
             logger.warning(
@@ -274,13 +274,10 @@ def execution_plan(workers: WorkerSet,
     else:
         train_op = rollouts.for_each(
             TrainTFMultiGPU(
-                workers,
+                workers=workers,
                 sgd_minibatch_size=config["sgd_minibatch_size"],
                 num_sgd_iter=config["num_sgd_iter"],
                 num_gpus=config["num_gpus"],
-                rollout_fragment_length=config["rollout_fragment_length"],
-                num_envs_per_worker=config["num_envs_per_worker"],
-                train_batch_size=config["train_batch_size"],
                 shuffle_sequences=config["shuffle_sequences"],
                 _fake_gpus=config["_fake_gpus"],
                 framework=config.get("framework")))

@@ -24,7 +24,7 @@ from ray.rllib.execution.replay_ops import Replay, StoreToReplayBuffer
 from ray.rllib.execution.rollout_ops import ParallelRollouts
 from ray.rllib.execution.train_ops import TrainOneStep, UpdateTargetNetwork, \
     TrainTFMultiGPU
-from ray.rllib.policy.policy import LEARNER_STATS_KEY, Policy
+from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.typing import TrainerConfigDict
 from ray.util.iter import LocalIterator
 
@@ -233,9 +233,7 @@ def execution_plan(workers: WorkerSet,
         if config.get("prioritized_replay"):
             prio_dict = {}
             for policy_id, info in info_dict.items():
-                #TODO: check, whether correct now and resolve below disambiguation
                 td_error = info.get("td_error")
-                                    #info[LEARNER_STATS_KEY].get("td_error"))
                 prio_dict[policy_id] = (samples.policy_batches[policy_id]
                                         .data.get("batch_indexes"), td_error)
             local_replay_buffer.update_priorities(prio_dict)
@@ -250,16 +248,13 @@ def execution_plan(workers: WorkerSet,
         train_op = TrainOneStep(workers)
     else:
         train_op = TrainTFMultiGPU(
-                workers,
-                sgd_minibatch_size=config["train_batch_size"],
-                num_sgd_iter=1,
-                num_gpus=config["num_gpus"],
-                rollout_fragment_length="doesnt_matter", # :) config["rollout_fragment_length"],
-                num_envs_per_worker="doesnt_matter", # :) config["num_envs_per_worker"],
-                train_batch_size="doesnt_matter", # :)
-                shuffle_sequences=True,#DQN: always shuffle, no sequences.
-                _fake_gpus=config.get("_fake_gpus", False),
-                framework=config.get("framework"))
+            workers=workers,
+            sgd_minibatch_size=config["train_batch_size"],
+            num_sgd_iter=1,
+            num_gpus=config["num_gpus"],
+            shuffle_sequences=True,  #DQN: always shuffle, no sequences.
+            _fake_gpus=config.get("_fake_gpus", False),
+            framework=config.get("framework"))
 
 
     replay_op = Replay(local_buffer=local_replay_buffer) \

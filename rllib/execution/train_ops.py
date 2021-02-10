@@ -107,13 +107,11 @@ class TrainTFMultiGPU:
     """
 
     def __init__(self,
+                 *,
                  workers: WorkerSet,
                  sgd_minibatch_size: int,
                  num_sgd_iter: int,
                  num_gpus: int,
-                 rollout_fragment_length: int,
-                 num_envs_per_worker: int,
-                 train_batch_size: int,
                  shuffle_sequences: bool,
                  policies: List[PolicyID] = frozenset([]),
                  _fake_gpus: bool = False,
@@ -208,37 +206,20 @@ class TrainTFMultiGPU:
                     1,
                     int(tuples_per_device) // int(self.per_device_batch_size))
                 logger.debug("== sgd epochs for {} ==".format(policy_id))
-                for i in range(self.num_sgd_iter):
-                    iter_extra_fetches = defaultdict(list)
+                for _ in range(self.num_sgd_iter):
                     permutation = np.random.permutation(num_batches)
+                    batch_fetches_all_towers = []
                     for batch_index in range(num_batches):
                         batch_fetches = optimizer.optimize(
                             self.sess, permutation[batch_index] *
                             self.per_device_batch_size)
 
-                        #def mapping_fn(*s):
-                        #    s
+                        batch_fetches_all_towers.append(tree.map_structure(
+                            lambda *s: np.nanmean(s),
+                            *(batch_fetches["tower_{}".format(tower_num)]
+                              for tower_num in range(len(self.devices)))))
 
-                        iter_extra_fetches = tree.map_structure(
-                            lambda *s: np.array(s),
-                            *(batch_fetches["tower_{}".format(i)] for i in range(len(self.devices))))
-                        
-                        #for k, v in batch_fetches.items():
-                        #    if k == LEARNER_STATS_KEY:
-                        #        for k, v in batch_fetches[LEARNER_STATS_KEY].items():
-                        #    #TODO: multi-GPU optimizer here does not collect td_error (which is stored outside LEARNER_STATS_KEY)
-                        #    #that's why it doesn't show up in the returned fetches.
-                        #            iter_extra_fetches[k].append(v)
-                        #    elif k == "train_op":
-                        #        continue
-                        #    else:
-                        #        iter_extra_fetches[k].append(v)
-                    if logger.getEffectiveLevel() <= logging.DEBUG:
-                        avg = tree.map_structure_with_path(lambda p, s: np.nanmean(s, axis=0) if p[0] != "td_error" else np.concatenate(s, axis=0), iter_extra_fetches)
-                        logger.debug("{} {}".format(i, avg))
-                fetches[policy_id] = tree.map_structure_with_path(lambda p, s: np.nanmean(s, axis=0) if p[0] != "td_error" else np.concatenate(s, axis=0), iter_extra_fetches)
-                #fetches[policy_id] = tree.map_structure(lambda s: np.nanmean(s, axis=0), iter_extra_fetches)#averaged(iter_extra_fetches, axis=0)
-                #fetches[policy_id] = tree.unflatten_as()
+                fetches[policy_id] = tree.map_structure(lambda *s: np.nanmean(s), *batch_fetches_all_towers)
 
         load_timer.push_units_processed(samples.count)
         learn_timer.push_units_processed(samples.count)
