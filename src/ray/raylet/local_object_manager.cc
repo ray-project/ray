@@ -262,6 +262,46 @@ void LocalObjectManager::SpillObjectsInternal(
       });
 }
 
+void LocalObjectManager::UnpinSpilledObjectCallback(
+    const ObjectID &object_id, const std::string &object_url,
+    std::shared_ptr<size_t> num_remaining,
+    std::function<void(const ray::Status &)> callback, ray::Status status) {
+  if (!status.ok()) {
+    RAY_LOG(INFO) << "Failed to send spilled url for object " << object_id
+                  << " to object directory, considering the object to have been freed: "
+                  << status.ToString();
+  } else {
+    RAY_LOG(DEBUG) << "Object " << object_id << " spilled to " << object_url
+                   << " and object directory has been informed";
+  }
+  RAY_LOG(DEBUG) << "Unpinning pending spill object " << object_id;
+  // Unpin the object.
+  auto it = objects_pending_spill_.find(object_id);
+  RAY_CHECK(it != objects_pending_spill_.end());
+  num_bytes_pending_spill_ -= it->second.first->GetSize();
+  objects_pending_spill_.erase(it);
+
+  // Update the object_id -> url_ref_count to use it for deletion later.
+  // We need to track the references here because a single file can contain
+  // multiple objects, and we shouldn't delete the file until
+  // all the objects are gone out of scope.
+  // object_url is equivalent to url_with_offset.
+  auto parsed_url = ParseURL(object_url);
+  const auto base_url_it = parsed_url->find("url");
+  RAY_CHECK(base_url_it != parsed_url->end());
+  if (!url_ref_count_.contains(base_url_it->second)) {
+    url_ref_count_[base_url_it->second] = 1;
+  } else {
+    url_ref_count_[base_url_it->second] += 1;
+  }
+  spilled_objects_url_.emplace(object_id, object_url);
+
+  (*num_remaining)--;
+  if (*num_remaining == 0 && callback) {
+    callback(status);
+  }
+}
+
 void LocalObjectManager::AddSpilledUrls(
     const std::vector<ObjectID> &object_ids, const rpc::SpillObjectsReply &worker_reply,
     std::function<void(const ray::Status &)> callback) {
@@ -275,47 +315,12 @@ void LocalObjectManager::AddSpilledUrls(
     const auto node_id_object_spilled =
         is_external_storage_type_fs_ ? self_node_id_ : NodeID::Nil();
 
-    const auto unpin_callback = [this, object_id, object_url, callback,
-                                 num_remaining](Status status) {
-      if (!status.ok()) {
-        RAY_LOG(INFO)
-            << "Failed to send spilled url for object " << object_id
-            << " to object directory, considering the object to have been freed: "
-            << status.ToString();
-      } else {
-        RAY_LOG(DEBUG) << "Object " << object_id << " spilled to " << object_url
-                       << " and object directory has been informed";
-      }
-      RAY_LOG(DEBUG) << "Unpinning pending spill object " << object_id;
-      // Unpin the object.
-      auto it = objects_pending_spill_.find(object_id);
-      RAY_CHECK(it != objects_pending_spill_.end());
-      num_bytes_pending_spill_ -= it->second.first->GetSize();
-      objects_pending_spill_.erase(it);
-
-      // Update the object_id -> url_ref_count to use it for deletion later.
-      // We need to track the references here because a single file can contain
-      // multiple objects, and we shouldn't delete the file until
-      // all the objects are gone out of scope.
-      // object_url is equivalent to url_with_offset.
-      auto parsed_url = ParseURL(object_url);
-      const auto base_url_it = parsed_url->find("url");
-      RAY_CHECK(base_url_it != parsed_url->end());
-      if (!url_ref_count_.contains(base_url_it->second)) {
-        url_ref_count_[base_url_it->second] = 1;
-      } else {
-        url_ref_count_[base_url_it->second] += 1;
-      }
-      spilled_objects_url_.emplace(object_id, object_url);
-
-      (*num_remaining)--;
-      if (*num_remaining == 0 && callback) {
-        callback(status);
-      }
-    };
-
     auto it = objects_pending_spill_.find(object_id);
     RAY_CHECK(it != objects_pending_spill_.end());
+
+    auto unpin_callback =
+        std::bind(&LocalObjectManager::UnpinSpilledObjectCallback, this, object_id,
+                  object_url, num_remaining, callback, std::placeholders::_1);
 
     if (RayConfig::instance().ownership_based_object_directory_enabled()) {
       // TODO(Clark): Don't send RPC to owner if we're fulfilling an owner-initiated

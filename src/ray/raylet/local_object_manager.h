@@ -166,6 +166,14 @@ class LocalObjectManager {
   /// objects.
   void FlushFreeObjects();
 
+  // A callback for unpinning spilled objects. This should be invoked after the object
+  // has been spilled and after the object directory has been sent the spilled URL.
+  void UnpinSpilledObjectCallback(const ObjectID &object_id,
+                                  const std::string &object_url,
+                                  std::shared_ptr<size_t> num_remaining,
+                                  std::function<void(const ray::Status &)> callback,
+                                  ray::Status status);
+
   /// Add objects' spilled URLs to the global object directory. Call the
   /// callback once all URLs have been added.
   void AddSpilledUrls(const std::vector<ObjectID> &object_ids,
