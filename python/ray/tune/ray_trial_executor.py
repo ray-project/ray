@@ -115,10 +115,14 @@ class _TrialCleanup:
             self.cleanup(partial=True, timeout=None)
 
     def cleanup(self, partial: bool = True, timeout: Optional[float] = None):
-        """Waits for cleanup to finish.
+        """Cleans up trial shutdown futures.
 
-        If partial=False, all futures are expected to return. If a future
-        does not return within the timeout period, the cleanup terminates.
+        If a timeout is specified, this function will block for this time
+        until either all (``partial=False``) or a number (``partial=True``)
+        futures returned. If a future does not return within the timeout
+        period, the cleanup terminates.
+
+        This will also shutdown placement groups associated with trials.
         """
         logger.debug("Cleaning up futures")
         num_to_keep = int(self.threshold) / 2 if partial else 0
@@ -132,7 +136,8 @@ class _TrialCleanup:
             elif dones:
                 for done in dones:
                     trial, pg = self._cleanup_map[done]
-                    remove_placement_group(pg)
+                    if pg:
+                        remove_placement_group(pg)
                     del self._cleanup_map[done]
 
 
