@@ -591,6 +591,9 @@ class PopulationBasedTraining(FIFOScheduler):
                 while not trial_executor.start_trial(
                         trial, new_state.last_checkpoint,
                         train=False) and time.monotonic() < timeout:
+                    if trial.status == Trial.ERROR:
+                        # If this errored, do not try to start anymore
+                        break
                     time.sleep(0.1)
                 if not trial.status == Trial.RUNNING:
                     logger.warning(

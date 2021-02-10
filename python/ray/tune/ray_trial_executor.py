@@ -316,6 +316,15 @@ class RayTrialExecutor(TrialExecutor):
 
                 just_staged = trial in self._just_staged_trials
 
+                # This part of the code is mostly here for testing
+                # purposes. If self._wait_for_pg is set, we will wait here
+                # for that many seconds until the placement group is ready.
+                # This ensures that the trial can be started right away and
+                # not just in the next step() of the trial runner.
+                # We only do this if we have reason to believe that resources
+                # will be ready, soon, i.e. when a) we just staged the PG,
+                # b) another trial just exited, freeing resources, or c)
+                # when there are no currently running trials.
                 if self._wait_for_pg is not None and (
                         just_staged or self._trial_just_finished_before
                         or not self.get_running_trials()):
@@ -495,8 +504,8 @@ class RayTrialExecutor(TrialExecutor):
             train (bool): Whether or not to start training.
 
         Returns:
-            True if the remote runner has been started (even if it failed
-            afterwards). False otherwise.
+            True if the remote runner has been started. False if trial was
+            not started (e.g. because of lacking resources/pending PG).
         """
         if not trial.uses_placement_groups:
             self._commit_resources(trial.resources)
@@ -510,7 +519,7 @@ class RayTrialExecutor(TrialExecutor):
             self._stop_trial(trial, error=True, error_msg=error_msg)
             # Return True here so we don't try to start a new trial
             # in the main event loop
-            return True
+            return False
         except Exception:
             logger.exception("Trial %s: Unexpected error starting runner.",
                              trial)
@@ -519,7 +528,7 @@ class RayTrialExecutor(TrialExecutor):
             self._stop_trial(trial, error=True, error_msg=error_msg)
             # Note that we don't return the resources, since they may
             # have been lost. TODO(ujvl): is this the right thing to do?
-            return True
+            return False
 
     def _find_item(self, dictionary, item):
         out = [rid for rid, t in dictionary.items() if t is item]

@@ -493,7 +493,10 @@ class TrialRunner:
         if next_trial is not None:
             if _start_trial(next_trial):
                 may_handle_events = False
-            else:
+            elif next_trial.status != Trial.ERROR:
+                # Only try to start another trial if previous trial startup
+                # did not error (e.g. it just didn't start because its
+                # placement group is not ready, yet).
                 next_trial = self.trial_executor.get_staged_trial()
                 if next_trial is not None:
                     if _start_trial(next_trial):

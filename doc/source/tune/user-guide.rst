@@ -26,19 +26,20 @@ By default, Tune automatically runs N concurrent trials, where N is the number o
     tune.run(trainable, num_samples=10)
 
 You can override this parallelism with ``resources_per_trial``. Here you can
-specify properties of :ref:`placement groups <ray-placement-group-doc-ref>` that
-will be started for each trial and reserve a number of resources:
+specify your resource requests using either a dictionary or a
+:class:`PlacementGroupFactory <ray.tune.utils.placement_groups.PlacementGroupFactory>`
+object. In any case, Ray Tune will try to start a placement group for each trial.
 
 .. code-block:: python
 
     # If you have 4 CPUs on your machine, this will run 2 concurrent trials at a time.
-    tune.run(trainable, num_samples=10, resources_per_trial=tune.PlacementGroupFactory([{"CPU": 2}]))
+    tune.run(trainable, num_samples=10, resources_per_trial={"cpu": 2})
 
     # If you have 4 CPUs on your machine, this will run 1 trial at a time.
-    tune.run(trainable, num_samples=10, resources_per_trial=tune.PlacementGroupFactory([{"CPU": 4}]))
+    tune.run(trainable, num_samples=10, resources_per_trial={"cpu": 4})
 
     # Fractional values are also supported, (i.e., {"cpu": 0.5}).
-    tune.run(trainable, num_samples=10, resources_per_trial=tune.PlacementGroupFactory([{"CPU": 0.5}]))
+    tune.run(trainable, num_samples=10, resources_per_trial={"cpu": 0.5})
 
 
 Tune will allocate the specified GPU and CPU from ``resources_per_trial`` to each individual trial.
@@ -46,7 +47,9 @@ Even if the trial cannot be scheduled right now, Ray Tune will still try to star
 the respective placement group. If not enough resources are available, this will trigger
 :ref:`autoscaling behavior<ref-autoscaling>` if you're using the Ray cluster launcher.
 
-See the :class:`PlacementGroupFactory documentation <ray.tune.utils.placement_groups.PlacementGroupFactory>`
+If your trainable function starts more remote workers, you will need to pass placement groups
+factory objects to request these resources. See the
+:class:`PlacementGroupFactory documentation <ray.tune.utils.placement_groups.PlacementGroupFactory>`
 for further information.
 
 Using GPUs
@@ -57,10 +60,10 @@ To leverage GPUs, you must set ``gpu`` in ``tune.run(resources_per_trial)``. Thi
 .. code-block:: python
 
     # If you have 8 GPUs, this will run 8 trials at once.
-    tune.run(trainable, num_samples=10, resources_per_trial=tune.PlacementGroupFactory([{"GPU": 1}]))
+    tune.run(trainable, num_samples=10, resources_per_trial={"gpu": 1})
 
     # If you have 4 CPUs on your machine and 1 GPU, this will run 1 trial at a time.
-    tune.run(trainable, num_samples=10, resources_per_trial=tune.PlacementGroupFactory([{"CPU": 2, "GPU": 1}]))
+    tune.run(trainable, num_samples=10, resources_per_trial={"cpu": 2, "gpu": 1})
 
 You can find an example of this in the :doc:`Keras MNIST example </tune/examples/tune_mnist_keras>`.
 

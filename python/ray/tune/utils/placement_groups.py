@@ -49,7 +49,7 @@ class PlacementGroupFactory:
 
         tune.run(
             train,
-            tune.PlacementGroupFactory([
+            resources_per_trial=tune.PlacementGroupFactory([
                 {"CPU": 1, "GPU": 0.5, "custom_resource": 2},
                 {"CPU": 2},
                 {"CPU": 2},
@@ -60,6 +60,19 @@ class PlacementGroupFactory:
     The trial will only start when alle these resources are available. This
     could be used e.g. if you had one learner running in the main trainable
     that schedules two remote workers that need access to 2 CPUs each.
+
+    Args:
+        bundles(List[Dict]): A list of bundles which
+            represent the resources requirements.
+        strategy(str): The strategy to create the placement group.
+
+         - "PACK": Packs Bundles into as few nodes as possible.
+         - "SPREAD": Places Bundles across distinct nodes as even as possible.
+         - "STRICT_PACK": Packs Bundles into one node. The group is
+           not allowed to span multiple nodes.
+         - "STRICT_SPREAD": Packs Bundles across distinct nodes.
+        *args, **kwargs: Passed to the call of ``placement_group()``
+
     """
 
     def __init__(self,
