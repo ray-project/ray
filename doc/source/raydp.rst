@@ -101,12 +101,4 @@ PyTorch.
   estimator.fit_on_spark(df, test_df=None)
 
   pytorch_model = estimator.get_model()
-
-
-==========
-Conclusion
-==========
-
-
   
-
