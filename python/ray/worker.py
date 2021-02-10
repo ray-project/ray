@@ -280,7 +280,7 @@ class Worker:
     def deserialize_objects(self, data_metadata_pairs, object_refs):
         context = self.get_serialization_context()
         out = context.deserialize_objects(data_metadata_pairs, object_refs)
-        print("RES", out)
+        print("DESERIALIZATION RESULT", out)
         return out
 
     def get_objects(self, object_refs, timeout=None):

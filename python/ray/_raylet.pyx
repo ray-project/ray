@@ -731,13 +731,11 @@ cdef void unhandled_exception_handler(const CRayObject& error) nogil:
         metadata = None
         if error.HasData():
             data = Buffer.make(error.GetData())
-            print("got data", data.to_pybytes())
         if error.HasMetadata():
             metadata = Buffer.make(error.GetMetadata()).to_pybytes()
-            print("got meta", metadata)
         results = worker.deserialize_objects(
             [(data, metadata)], [ray.ObjectRef.nil()])
-        print("DS OK")
+        print("DESERIALIZATION DONE")
         for failure_object in results:
 #            logger.error(
 #                "Possible unhandled error from worker: {}".format(
