@@ -132,7 +132,7 @@ This example runs a parallel grid search to optimize an example objective functi
             "beta": tune.choice([1, 2, 3])
         })
 
-    print("Best config: ", analysis.get_best_config(metric="mean_loss"))
+    print("Best config: ", analysis.get_best_config(metric="mean_loss", mode="min"))
 
     # Get a dataframe for analyzing trial results.
     df = analysis.results_df
