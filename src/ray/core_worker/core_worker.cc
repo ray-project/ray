@@ -761,6 +761,7 @@ void CoreWorker::InternalHeartbeat(const boost::system::error_code &error) {
     return;
   }
 
+  // retry tasks
   absl::MutexLock lock(&mutex_);
   while (!to_resubmit_.empty() && current_time_ms() > to_resubmit_.front().first) {
     auto &spec = to_resubmit_.front().second;
@@ -771,6 +772,10 @@ void CoreWorker::InternalHeartbeat(const boost::system::error_code &error) {
     }
     to_resubmit_.pop_front();
   }
+
+  // check timeout tasks that are waiting for dead info
+  direct_actor_submitter_->CheckTimeoutTasks();
+
   internal_timer_.expires_at(internal_timer_.expiry() +
                              boost::asio::chrono::milliseconds(kInternalHeartbeatMillis));
   internal_timer_.async_wait(boost::bind(&CoreWorker::InternalHeartbeat, this, _1));

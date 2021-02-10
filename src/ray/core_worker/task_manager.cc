@@ -266,7 +266,8 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
 }
 
 bool TaskManager::PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_type,
-                                    Status *status, const std::string &error_message) {
+                                    Status *status, const std::string &error_message,
+                                    bool immediately_mark_object_fail) {
   // Note that this might be the __ray_terminate__ task, so we don't log
   // loudly with ERROR here.
   RAY_LOG(DEBUG) << "Task " << task_id << " failed with error "
@@ -330,7 +331,9 @@ bool TaskManager::PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_
     // objects.
     RemoveFinishedTaskReferences(spec, release_lineage, rpc::Address(),
                                  ReferenceCounter::ReferenceTableProto());
-    MarkPendingTaskFailed(task_id, spec, error_type, error_message);
+    if (immediately_mark_object_fail) {
+      MarkPendingTaskFailed(task_id, spec, error_type, error_message);
+    }
   }
 
   ShutdownIfNeeded();

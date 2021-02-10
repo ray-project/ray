@@ -55,6 +55,8 @@ class CoreWorkerDirectActorTaskSubmitterInterface {
                                bool dead, const std::string &dead_info) = 0;
   virtual void KillActor(const ActorID &actor_id, bool force_kill, bool no_restart) = 0;
 
+  virtual void CheckTimeoutTasks() = 0;
+
   virtual ~CoreWorkerDirectActorTaskSubmitterInterface() {}
 };
 
@@ -117,6 +119,9 @@ class CoreWorkerDirectActorTaskSubmitter
 
   /// Set the timerstamp for the caller.
   void SetCallerCreationTimestamp(int64_t timestamp);
+
+  /// Check timeout tasks that are waiting for dead info.
+  void CheckTimeoutTasks() EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
  private:
   struct ClientQueue {
@@ -196,6 +201,15 @@ class CoreWorkerDirectActorTaskSubmitter
     // NOTE(simon): consider absl::btree_set for performance, but it requires updating
     // abseil.
     std::map<uint64_t, TaskSpecification> out_of_order_completed_tasks;
+
+    /// Tasks that can't be sent because 1) the callee actor is dead. 2) network error.
+    /// For 1) the task will wait for the DEAD state notification, then mark task as
+    /// failed using the dead_info in notification. For 2) we'll never receive a DEAD
+    /// notification, in this case we'll wait for a fixed timeout value and then mark it
+    /// as failed.
+    /// key: timestamp in ms when this task should be considered as timeout.
+    /// value: task specification
+    std::map<int64_t, TaskSpecification> wait_for_dead_info_tasks;
 
     /// A force-kill request that should be sent to the actor once an RPC
     /// client to the actor is available.

@@ -31,13 +31,18 @@ class TaskFinisherInterface {
                                    const rpc::Address &actor_addr) = 0;
 
   virtual bool PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_type,
-                                 Status *status, const std::string &error_message) = 0;
+                                 Status *status, const std::string &error_message,
+                                 bool immediately_mark_object_fail = true) = 0;
 
   virtual void OnTaskDependenciesInlined(
       const std::vector<ObjectID> &inlined_dependency_ids,
       const std::vector<ObjectID> &contained_ids) = 0;
 
   virtual bool MarkTaskCanceled(const TaskID &task_id) = 0;
+
+  virtual void MarkPendingTaskFailed(const TaskID &task_id, const TaskSpecification &spec,
+                                     rpc::ErrorType error_type,
+                                     const std::string &error_message) = 0;
 
   virtual ~TaskFinisherInterface() {}
 };
@@ -116,9 +121,19 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// \param[in] error_type The type of the specific error.
   /// \param[in] status Optional status message.
   /// \param[in] error_message Extra message about the reason of failed task
+  /// \param[in] immediately_mark_object_fail whether immediately mark the task
+  /// result object as failed.
   /// \return Whether the task will be retried or not.
-  bool PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_type,
-                         Status *status, const std::string &error_message) override;
+  bool PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_type, Status *status,
+                         const std::string &error_message,
+                         bool immediately_mark_object_fail = true) override;
+
+  /// Treat a pending task as failed. The lock should not be held when calling
+  /// this method because it may trigger callbacks in this or other classes.
+  void MarkPendingTaskFailed(const TaskID &task_id, const TaskSpecification &spec,
+                             rpc::ErrorType error_type,
+                             const std::string &error_message) override
+      LOCKS_EXCLUDED(mu_);
 
   /// A task's dependencies were inlined in the task spec. This will decrement
   /// the ref count for the dependency IDs. If the dependencies contained other
@@ -210,11 +225,6 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// whenever a task that depended on this object ID can no longer be retried.
   void RemoveLineageReference(const ObjectID &object_id,
                               std::vector<ObjectID> *ids_to_release) LOCKS_EXCLUDED(mu_);
-
-  /// Treat a pending task as failed. The lock should not be held when calling
-  /// this method because it may trigger callbacks in this or other classes.
-  void MarkPendingTaskFailed(const TaskID &task_id, const TaskSpecification &spec,
-                             rpc::ErrorType error_type, const std::string &error_message) LOCKS_EXCLUDED(mu_);
 
   /// Helper function to call RemoveSubmittedTaskReferences on the remaining
   /// dependencies of the given task spec after the task has finished or
