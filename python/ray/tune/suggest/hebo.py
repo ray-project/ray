@@ -154,8 +154,8 @@ class HEBOSearch(Searcher):
             "#subdirectory=HEBO`.")
         if mode:
             assert mode in ["min", "max"], "`mode` must be 'min' or 'max'."
-        if random_state_seed:
-            assert random_state_seed is None or isinstance(
+        if random_state_seed is not None:
+            assert isinstance(
                 random_state_seed, int
             ), "random_state_seed must be None or int, got '{}'.".format(
                 type(random_state_seed))
