@@ -77,7 +77,7 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
             "node_cpu": Gauge("node_cpu", "Total CPU usage on a ray node",
                               "percentage", ["ip"]),
             "node_mem": Gauge("node_mem", "Total memory usage on a ray node",
-                              "mb", ["ip"]),
+                              "bytes", ["ip"]),
             "raylet_cpu": Gauge("raylet_cpu",
                                 "CPU usage of the raylet on a node.",
                                 "percentage", ["ip", "pid"]),
@@ -264,7 +264,7 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
 
         # -- Mem per node --
         total, avail, _ = stats["mem"]
-        mem_usage = float(total - avail) / 1e6
+        mem_usage = float(total - avail)
         mem_record = Record(
             gauge=self._gauges["node_mem"], value=mem_usage, tags={"ip": ip})
 
