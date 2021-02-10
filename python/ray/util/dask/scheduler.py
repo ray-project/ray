@@ -1,6 +1,7 @@
 import atexit
 from collections import defaultdict
 from multiprocessing.pool import ThreadPool
+from dataclasses import dataclass
 import threading
 
 import ray
@@ -270,19 +271,31 @@ def _rayify_task(
                     return alternate_return
 
         func, args = task[0], task[1:]
+        if func is multiple_return_get:
+            return _execute_task(task, deps)
         # If the function's arguments contain nested object references, we must
         # unpack said object references into a flat set of arguments so that
         # Ray properly tracks the object dependencies between Ray tasks.
-        object_refs, repack = unpack_object_refs(args, deps)
+        arg_object_refs, repack = unpack_object_refs(args, deps)
         # Submit the task using a wrapper function.
-        object_ref = dask_task_wrapper.options(name=f"dask:{key!s}").remote(
-            func, repack, key, ray_pretask_cbs, ray_posttask_cbs, *object_refs)
+        object_refs = dask_task_wrapper.options(
+            name=f"dask:{key!s}",
+            num_returns=(1 if not isinstance(func, MultipleReturnFunc) else
+                         func.num_returns),
+        ).remote(
+            func,
+            repack,
+            key,
+            ray_pretask_cbs,
+            ray_posttask_cbs,
+            *arg_object_refs,
+        )
 
         if ray_postsubmit_cbs is not None:
             for cb in ray_postsubmit_cbs:
-                cb(task, key, deps, object_ref)
+                cb(task, key, deps, object_refs)
 
-        return object_ref
+        return object_refs
     elif not ishashable(task):
         return task
     elif task in deps:
@@ -434,3 +447,16 @@ def ray_dask_get_sync(dsk, keys, **kwargs):
                 cb(result)
 
         return result
+
+
+@dataclass
+class MultipleReturnFunc:
+    func: callable
+    num_returns: int
+
+    def __call__(self, *args, **kwargs):
+        return self.func(*args, **kwargs)
+
+
+def multiple_return_get(multiple_returns, idx):
+    return multiple_returns[idx]
