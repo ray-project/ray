@@ -25,9 +25,7 @@ below). */
 
 import "src/ray/protobuf/common.proto";
 
-
-message GetAllResourceUsageRequest {
-}
+message GetAllResourceUsageRequest {}
 
 message GetAllResourceUsageReply {
   GcsStatus status = 1;
