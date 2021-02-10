@@ -1,6 +1,7 @@
-***********
 Dask on Ray
-***********
+===========
+
+.. _dask-on-ray:
 
 `Dask <https://dask.org/>`__ is a Python parallel computing library geared towards scaling analytics and
 scientific computing workloads. It provides `big data collections
@@ -18,9 +19,10 @@ the underlying tasks on a Ray cluster. We use Dask's scheduler API, which allows
 specify any callable as the scheduler that you would like Dask to use to execute your
 workload. Using the Dask-on-Ray scheduler, the entire Dask ecosystem can be executed on top of Ray.
 
-=========
 Scheduler
-=========
+---------
+
+.. _dask-on-ray-scheduler:
 
 The Dask-on-Ray scheduler can execute any valid Dask graph, and can be used with
 any Dask `.compute() <https://docs.dask.org/en/latest/api.html#dask.compute>`__
@@ -64,28 +66,29 @@ Here's an example:
 
 Why use Dask on Ray?
 
-   1. If you'd like to create data analyses using the familiar NumPy and Pandas APIs provided by Dask and execute them on a fast, fault-tolerant distributed task execution system geared towards production, like Ray.
-   2. If you'd like to use Dask and Ray libraries in the same application without having two different clusters.
-   3. To take advantage of Ray-specific features such as the
+   1. To take advantage of Ray-specific features such as the
       :ref:`cluster launcher <ref-automatic-cluster>` and
       :ref:`shared-memory store <memory>`.
+   2. If you'd like to use Dask and Ray libraries in the same application without having two different clusters.
+   3. If you'd like to create data analyses using the familiar NumPy and Pandas APIs provided by Dask and execute them on a fast, fault-tolerant distributed task execution system geared towards production, like Ray.
 
 Dask-on-Ray is an ongoing project and is not expected to achieve the same performance as using Ray directly. All `Dask abstractions <https://docs.dask.org/en/latest/user-interfaces.html>`__ should run seamlessly on top of Ray using this scheduler, so if you find that one of these abstractions doesn't run on Ray, please `open an issue <https://github.com/ray-project/ray/issues/new/choose>`__.
 
-================================================
 Out-of-Core Data Processing
-================================================
+---------------------------
 
-Processing datasets larger than cluster memory is supported via Ray's `object spilling
-<https://docs.ray.io/en/master/memory-management.html#object-spilling>`__: if
+.. _dask-on-ray-out-of-core:
+
+Processing datasets larger than cluster memory is supported via Ray's :ref:`object spilling <object-spilling>`: if
 the in-memory object store is full, objects will be spilled to external storage (local disk by
 default). This feature is available but off by default in Ray 1.2, and is on by default
 in Ray 1.3+. Please see your Ray version's object spilling documentation for steps to enable and/or configure
 object spilling.
 
-================================================
 Custom optimization for Dask DataFrame shuffling
-================================================
+------------------------------------------------
+
+.. _dask-on-ray-shuffle-optimization:
 
 We have also created a custom Dask DataFrame optimizer that leverages Ray's ability to
 execute multiple-return tasks in order to speed up shuffling by as much as 4x on Ray.
@@ -114,9 +117,10 @@ Simply set the `dataframe_optimize` configuration option to our optimizer functi
        # work.
        df.set_index(["age"], shuffle="tasks", max_branch=float("inf")).head(10, npartitions=-1)
 
-=========
 Callbacks
-=========
+---------
+
+.. _dask-on-ray-callbacks:
 
 Dask's `custom callback abstraction <https://docs.dask.org/en/latest/diagnostics-local.html#custom-callbacks>`__
 is extended with Ray-specific callbacks, allowing the user to hook into the
