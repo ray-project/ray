@@ -507,13 +507,12 @@ The extra options to pass to ``docker run``.
 ``docker.disable_automatic_runtime_detection``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-If enabled, Ray will not try to use the NVIDIA runtime if GPUs are present.
+If enabled, Ray will not try to use the NVIDIA Container Runtime if GPUs are present.
 
 * **Required:** No
-* **Importance:** Medium
+* **Importance:** Low
 * **Type:** Boolean
 * **Default:** ``False``
-* **Update requires:** Restart
 
 
 ### disable_shm_size_detection
@@ -525,10 +524,9 @@ If enabled, Ray will not try to use the NVIDIA runtime if GPUs are present.
 If enabled, Ray will not automatically specify the size /dev/shm for the started container.
 
 * **Required:** No
-* **Importance:** Medium
+* **Importance:** Low
 * **Type:** Boolean
 * **Default:** ``False``
-* **Update requires:** Restart
 
 .. _cluster-configuration-ssh-user:
 
