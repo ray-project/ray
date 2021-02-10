@@ -849,26 +849,18 @@ def _process_observations(
         # type: AgentID, EnvObsType
         for agent_id, raw_obs in agent_obs.items():
             assert agent_id != "__all__"
-
-            last_observation: EnvObsType = episode.last_observation_for(
-                agent_id)
-            agent_done = bool(all_agents_done or dones[env_id].get(agent_id))
-
-            # A new agent (initial obs) is already done -> Skip entirely.
-            if last_observation is None and agent_done:
-                continue
-
             policy_id: PolicyID = episode.policy_for(agent_id)
-
-            prep_obs: EnvObsType = _get_or_raise(preprocessors,
-                                                 policy_id).transform(raw_obs)
+            prepr = _get_or_raise(preprocessors, policy_id)
+            prep_obs: EnvObsType = prepr.transform(raw_obs)
             if log_once("prep_obs"):
                 logger.info("Preprocessed obs: {}".format(summarize(prep_obs)))
-            filtered_obs: EnvObsType = _get_or_raise(obs_filters,
-                                                     policy_id)(prep_obs)
+
+            filter = _get_or_raise(obs_filters, policy_id)
+            filtered_obs: EnvObsType = filter(prep_obs)
             if log_once("filtered_obs"):
                 logger.info("Filtered obs: {}".format(summarize(filtered_obs)))
 
+            agent_done = bool(all_agents_done or dones[env_id].get(agent_id))
             if not agent_done:
                 item = PolicyEvalData(env_id, agent_id, filtered_obs,
                                       infos[env_id].get(agent_id, {}),
@@ -877,6 +869,8 @@ def _process_observations(
                                       rewards[env_id][agent_id] or 0.0)
                 to_eval[policy_id].append(item)
 
+            last_observation: EnvObsType = episode.last_observation_for(
+                agent_id)
             episode._set_last_observation(agent_id, filtered_obs)
             episode._set_last_raw_obs(agent_id, raw_obs)
             episode._set_last_info(agent_id, infos[env_id].get(agent_id, {}))
@@ -1078,21 +1072,26 @@ def _process_observations_w_trajectory_view_api(
         # type: AgentID, EnvObsType
         for agent_id, raw_obs in all_agents_obs.items():
             assert agent_id != "__all__"
+
+            last_observation: EnvObsType = episode.last_observation_for(
+                agent_id)
+            agent_done = bool(all_agents_done or dones[env_id].get(agent_id))
+
+            # A new agent (initial obs) is already done -> Skip entirely.
+            if last_observation is None and agent_done:
+                continue
+
             policy_id: PolicyID = episode.policy_for(agent_id)
+
             prep_obs: EnvObsType = _get_or_raise(preprocessors,
                                                  policy_id).transform(raw_obs)
             if log_once("prep_obs"):
                 logger.info("Preprocessed obs: {}".format(summarize(prep_obs)))
-
             filtered_obs: EnvObsType = _get_or_raise(obs_filters,
                                                      policy_id)(prep_obs)
             if log_once("filtered_obs"):
                 logger.info("Filtered obs: {}".format(summarize(filtered_obs)))
 
-            agent_done = bool(all_agents_done or dones[env_id].get(agent_id))
-
-            last_observation: EnvObsType = episode.last_observation_for(
-                agent_id)
             episode._set_last_observation(agent_id, filtered_obs)
             episode._set_last_raw_obs(agent_id, raw_obs)
             # Infos from the environment.
