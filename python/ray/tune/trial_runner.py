@@ -252,6 +252,7 @@ class TrialRunner:
         self._trials = []
         self._cached_trial_decisions = {}
         self._queued_trial_decisions = {}
+        self._updated_queue = False
 
         self._stop_queue = []
         self._should_stop_experiment = False  # used by TuneServer
@@ -452,6 +453,8 @@ class TrialRunner:
         Callers should typically run this method repeatedly in a loop. They
         may inspect or modify the runner's state in between calls to step().
         """
+        self._updated_queue = False
+
         if self.is_finished():
             raise TuneError("Called step when all trials finished?")
         with warn_if_slow("on_step_begin"):
@@ -464,7 +467,7 @@ class TrialRunner:
         next_trial = self._get_next_trial()  # blocking
         # Create pending trials. Skip if next_trial is None (then there
         # are no new trials to create)
-        if next_trial:
+        if self._updated_queue:
             num_pending_trials = len(
                 [t for t in self._trials if t.status == Trial.PENDING])
             while num_pending_trials < self._max_pending_trials:
@@ -1040,6 +1043,8 @@ class TrialRunner:
         Returns:
             Boolean indicating if a new trial was created or not.
         """
+        self._updated_queue = True
+
         trial = self._search_alg.next_trial()
         if blocking and not trial:
             start = time.time()
