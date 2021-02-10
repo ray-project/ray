@@ -477,7 +477,6 @@ class NCCLGroup(BaseGroup):
             with nccl_util.Device(device):
                 stream: cupy.cuda.Stream = streams[i]
                 event: cupy.cuda.Event = events[i]
-                print("Stream: ", stream)
                 event.record(cupy.cuda.get_current_stream())
                 stream.wait_event(event)
 
@@ -629,9 +628,9 @@ class NCCLGroup(BaseGroup):
             preprocess_fn(streams)
         nccl_util.groupStart()
         # recordStreams for synchronization as per nccl document
-        for i, tensor in enumerate(input_tensors):
-            # TODO(Fu): device guard?
-            stream = streams[i]
+        # for i, tensor in enumerate(input_tensors):
+        #     # TODO(Fu): device guard?
+        #     stream = streams[i]
             # TODO(Fu): how to recordStreams as there are no library functions
             # We also need to make sure input tensors are not freed before their 
             # usages on ncclStreams finish. This can be achieved by calling 
