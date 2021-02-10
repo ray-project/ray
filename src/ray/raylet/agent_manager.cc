@@ -72,6 +72,7 @@ void AgentManager::StartAgent() {
   }
 
   std::thread monitor_thread([this, child]() mutable {
+    SetThreadName("agent.monitor");
     RAY_LOG(INFO) << "Monitor agent process with pid " << child.GetId()
                   << ", register timeout "
                   << RayConfig::instance().agent_register_timeout_ms() << "ms.";

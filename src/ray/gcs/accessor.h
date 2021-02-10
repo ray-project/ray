@@ -64,6 +64,16 @@ class ActorInfoAccessor {
   virtual Status AsyncRegisterActor(const TaskSpecification &task_spec,
                                     const StatusCallback &callback) = 0;
 
+  /// Kill actor via GCS asynchronously.
+  ///
+  /// \param actor_id The ID of actor to destroy.
+  /// \param force_kill Whether to force kill an actor by killing the worker.
+  /// \param no_restart If set to true, the killed actor will not be restarted anymore.
+  /// \param callback Callback that will be called after the actor is destroyed.
+  /// \return Status
+  virtual Status AsyncKillActor(const ActorID &actor_id, bool force_kill, bool no_restart,
+                                const StatusCallback &callback) = 0;
+
   /// Asynchronously request GCS to create the actor.
   ///
   /// This should be called after the worker has resolved the actor dependencies.
@@ -202,23 +212,6 @@ class TaskInfoAccessor {
   virtual Status AsyncGet(const TaskID &task_id,
                           const OptionalItemCallback<rpc::TaskTableData> &callback) = 0;
 
-  /// Subscribe asynchronously to the event that the given task is added in GCS.
-  ///
-  /// \param task_id The ID of the task to be subscribed to.
-  /// \param subscribe Callback that will be called each time when the task is updated.
-  /// \param done Callback that will be called when subscription is complete.
-  /// \return Status
-  virtual Status AsyncSubscribe(
-      const TaskID &task_id,
-      const SubscribeCallback<TaskID, rpc::TaskTableData> &subscribe,
-      const StatusCallback &done) = 0;
-
-  /// Cancel subscription to a task asynchronously.
-  ///
-  /// \param task_id The ID of the task to be unsubscribed to.
-  /// \return Status
-  virtual Status AsyncUnsubscribe(const TaskID &task_id) = 0;
-
   /// Add a task lease to GCS asynchronously.
   ///
   /// \param data_ptr The task lease that will be added to GCS.
@@ -274,12 +267,6 @@ class TaskInfoAccessor {
   /// \param is_pubsub_server_restarted Whether pubsub server is restarted.
   virtual void AsyncResubscribe(bool is_pubsub_server_restarted) = 0;
 
-  /// Check if the specified task is unsubscribed.
-  ///
-  /// \param task_id The ID of the task.
-  /// \return Whether the specified task is unsubscribed.
-  virtual bool IsTaskUnsubscribed(const TaskID &task_id) = 0;
-
   /// Check if the specified task lease is unsubscribed.
   ///
   /// \param task_id The ID of the task.
@@ -320,16 +307,18 @@ class ObjectInfoAccessor {
   /// \param callback Callback that will be called after object has been added to GCS.
   /// \return Status
   virtual Status AsyncAddLocation(const ObjectID &object_id, const NodeID &node_id,
-                                  const StatusCallback &callback) = 0;
+                                  size_t object_size, const StatusCallback &callback) = 0;
 
   /// Add spilled location of object to GCS asynchronously.
   ///
   /// \param object_id The ID of object which location will be added to GCS.
   /// \param spilled_url The URL where the object has been spilled.
+  /// \param spilled_node_id The NodeID where the object has been spilled.
   /// \param callback Callback that will be called after object has been added to GCS.
   /// \return Status
   virtual Status AsyncAddSpilledUrl(const ObjectID &object_id,
                                     const std::string &spilled_url,
+                                    const NodeID &spilled_node_id, size_t object_size,
                                     const StatusCallback &callback) = 0;
 
   /// Remove location of object from GCS asynchronously.
@@ -586,7 +575,7 @@ class NodeResourceInfoAccessor {
   virtual void AsyncReReportResourceUsage() = 0;
 
   /// Return resources in last report. Used by light heartbeat.
-  std::shared_ptr<SchedulingResources> &GetLastResourceUsage() {
+  const std::shared_ptr<SchedulingResources> &GetLastResourceUsage() {
     return last_resource_usage_;
   }
 
@@ -610,7 +599,6 @@ class NodeResourceInfoAccessor {
  protected:
   NodeResourceInfoAccessor() = default;
 
- private:
   /// Cache which stores resource usage in last report used to check if they are changed.
   /// Used by light resource usage report.
   std::shared_ptr<SchedulingResources> last_resource_usage_ =
@@ -680,13 +668,14 @@ class WorkerInfoAccessor {
   virtual ~WorkerInfoAccessor() = default;
 
   /// Subscribe to all unexpected failure of workers from GCS asynchronously.
-  /// Note that this does not include workers that failed due to node failure.
+  /// Note that this does not include workers that failed due to node failure
+  /// and only fileds in WorkerDeltaData would be published.
   ///
   /// \param subscribe Callback that will be called each time when a worker failed.
   /// \param done Callback that will be called when subscription is complete.
   /// \return Status
   virtual Status AsyncSubscribeToWorkerFailures(
-      const ItemCallback<rpc::WorkerTableData> &subscribe,
+      const ItemCallback<rpc::WorkerDeltaData> &subscribe,
       const StatusCallback &done) = 0;
 
   /// Report a worker failure to GCS asynchronously.
@@ -747,12 +736,20 @@ class PlacementGroupInfoAccessor {
   virtual Status AsyncCreatePlacementGroup(
       const PlacementGroupSpecification &placement_group_spec) = 0;
 
-  /// Get a placement group data from GCS asynchronously.
+  /// Get a placement group data from GCS asynchronously by id.
   ///
   /// \param placement_group_id The id of a placement group to obtain from GCS.
   /// \return Status.
   virtual Status AsyncGet(
       const PlacementGroupID &placement_group_id,
+      const OptionalItemCallback<rpc::PlacementGroupTableData> &callback) = 0;
+
+  /// Get a placement group data from GCS asynchronously by name.
+  ///
+  /// \param placement_group_name The name of a placement group to obtain from GCS.
+  /// \return Status.
+  virtual Status AsyncGetByName(
+      const std::string &placement_group_name,
       const OptionalItemCallback<rpc::PlacementGroupTableData> &callback) = 0;
 
   /// Get all placement group info from GCS asynchronously.

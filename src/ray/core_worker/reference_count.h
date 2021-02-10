@@ -49,6 +49,10 @@ class ReferenceCounterInterface {
   virtual ~ReferenceCounterInterface() {}
 };
 
+// Callback for location subscriptions.
+using LocationSubscriptionCallback =
+    std::function<void(const absl::flat_hash_set<NodeID> &, int64_t, int64_t)>;
+
 /// Class used by the core worker to keep track of ObjectID reference counts for garbage
 /// collection. This class is thread safe.
 class ReferenceCounter : public ReferenceCounterInterface,
@@ -171,6 +175,15 @@ class ReferenceCounter : public ReferenceCounterInterface,
       const int64_t object_size, bool is_reconstructable,
       const absl::optional<NodeID> &pinned_at_raylet_id = absl::optional<NodeID>())
       LOCKS_EXCLUDED(mutex_);
+
+  /// Remove reference for an object that we own. The reference will only be
+  /// removed if the object's ref count is 0. This should only be used when
+  /// speculatively adding an owned reference that may need to be rolled back, e.g. if
+  /// the creation of the corresponding Plasma object fails. All other references will
+  /// be cleaned up via the reference counting protocol.
+  ///
+  /// \param[in] object_id The ID of the object that we own and wish to remove.
+  void RemoveOwnedObject(const ObjectID &object_id) LOCKS_EXCLUDED(mutex_);
 
   /// Update the size of the object.
   ///
@@ -361,26 +374,51 @@ class ReferenceCounter : public ReferenceCounterInterface,
       const absl::flat_hash_map<ObjectID, std::pair<int64_t, std::string>> pinned_objects,
       rpc::CoreWorkerStats *stats) const LOCKS_EXCLUDED(mutex_);
 
-  /// Add location to the location table of the given object.
+  /// Add a new location for the given object. The owner must have the object ref in
+  /// scope.
   ///
   /// \param[in] object_id The object to update.
-  /// \param[in] node_id The node to be added to the location table.
-  void AddObjectLocation(const ObjectID &object_id, const NodeID &node_id)
+  /// \param[in] node_id The new object location to be added.
+  /// \return True if the reference exists, false otherwise.
+  bool AddObjectLocation(const ObjectID &object_id, const NodeID &node_id)
       LOCKS_EXCLUDED(mutex_);
 
-  /// Remove location from the location table of the given object.
+  /// Remove a location for the given object. The owner must have the object ref in
+  /// scope.
   ///
   /// \param[in] object_id The object to update.
-  /// \param[in] node_id The node to be removed from the location table.
-  void RemoveObjectLocation(const ObjectID &object_id, const NodeID &node_id)
+  /// \param[in] node_id The object location to be removed.
+  /// \return True if the reference exists, false otherwise.
+  bool RemoveObjectLocation(const ObjectID &object_id, const NodeID &node_id)
       LOCKS_EXCLUDED(mutex_);
 
-  /// Get the locations from the location table of the given object.
+  /// Get the locations of the given object. The owner must have the object ref in
+  /// scope.
   ///
   /// \param[in] object_id The object to get locations for.
-  /// \return The nodes that have the object.
-  std::unordered_set<NodeID> GetObjectLocations(const ObjectID &object_id)
+  /// \return The nodes that have the object if the reference exists, empty optional
+  ///         otherwise.
+  absl::optional<absl::flat_hash_set<NodeID>> GetObjectLocations(
+      const ObjectID &object_id) LOCKS_EXCLUDED(mutex_);
+
+  /// Subscribe to object location changes that are more recent than the given version.
+  /// The provided callback will be invoked when new locations become available.
+  ///
+  /// \param[in] object_id The object whose locations we want.
+  /// \param[in] last_location_version The version of the last location update the
+  /// caller received. Only more recent location updates will be returned.
+  /// \param[in] callback The callback to invoke with the location update.
+  /// \return The status of the location get.
+  Status SubscribeObjectLocations(const ObjectID &object_id,
+                                  int64_t last_location_version,
+                                  const LocationSubscriptionCallback &callback)
       LOCKS_EXCLUDED(mutex_);
+
+  /// Get an object's size. This will return 0 if the object is out of scope.
+  ///
+  /// \param[in] object_id The object whose size to get.
+  /// \return Object size, or 0 if the object is out of scope.
+  size_t GetObjectSize(const ObjectID &object_id) const;
 
   /// Handle an object has been spilled to external storage.
   ///
@@ -471,10 +509,17 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// process is a borrower, the borrower must add the owner's address before
     /// using the ObjectID.
     absl::optional<rpc::Address> owner_address;
-    // If this object is owned by us and stored in plasma, and reference
-    // counting is enabled, then some raylet must be pinning the object value.
-    // This is the address of that raylet.
+    /// If this object is owned by us and stored in plasma, and reference
+    /// counting is enabled, then some raylet must be pinning the object value.
+    /// This is the address of that raylet.
     absl::optional<NodeID> pinned_at_raylet_id;
+    /// If this object is owned by us and stored in plasma, this contains all
+    /// object locations.
+    absl::flat_hash_set<NodeID> locations;
+    /// A logical counter for object location updates, used for object location
+    /// subscriptions. Subscribers use -1 to indicate that they want us to
+    /// immediately send them the current location data.
+    int64_t location_version = 0;
     // Whether this object can be reconstructed via lineage. If false, then the
     // object's value will be pinned as long as it is referenced by any other
     // object's lineage.
@@ -541,7 +586,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
     size_t lineage_ref_count = 0;
     /// Whether this object has been spilled to external storage.
     bool spilled = false;
-
+    /// Location subscription callbacks registered by async location get requests.
+    /// These will be invoked whenever locations or object_size are changed.
+    std::vector<LocationSubscriptionCallback> location_subscription_callbacks;
     /// Callback that will be called when this ObjectID no longer has
     /// references.
     std::function<void(const ObjectID &)> on_delete;
@@ -665,6 +712,12 @@ class ReferenceCounter : public ReferenceCounterInterface,
   void ReleaseLineageReferencesInternal(const std::vector<ObjectID> &argument_ids)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
+  /// Pushes location updates to subscribers of a particular reference, invoking all
+  /// callbacks registered for the reference by GetLocationsAsync calls. This method
+  /// also increments the reference's location version counter.
+  void PushToLocationSubscribers(ReferenceTable::iterator it)
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
   /// Address of our RPC server. This is used to determine whether we own a
   /// given object or not, by comparing our WorkerID with the WorkerID of the
   /// object's owner.
@@ -694,14 +747,6 @@ class ReferenceCounter : public ReferenceCounterInterface,
 
   /// Holds all reference counts and dependency information for tracked ObjectIDs.
   ReferenceTable object_id_refs_ GUARDED_BY(mutex_);
-
-  using LocationTable = absl::flat_hash_map<ObjectID, absl::flat_hash_set<NodeID>>;
-
-  /// Holds the client information for the owned objects. This table is seperate from
-  /// the reference table because we add object reference after putting object into the
-  /// plasma store and add the location to the object directory. Therefore we will receive
-  /// object location information before the reference is created.
-  LocationTable object_id_locations_ GUARDED_BY(mutex_);
 
   /// Objects whose values have been freed by the language frontend.
   /// The values in plasma will not be pinned. An object ID is

@@ -169,19 +169,23 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CRayStatus Put(const CRayObject &object,
                        const c_vector[CObjectID] &contained_object_ids,
                        const CObjectID &object_id)
-        CRayStatus Create(const shared_ptr[CBuffer] &metadata,
-                          const size_t data_size,
-                          const c_vector[CObjectID] &contained_object_ids,
-                          CObjectID *object_id, shared_ptr[CBuffer] *data)
-        CRayStatus Create(const shared_ptr[CBuffer] &metadata,
-                          const size_t data_size,
-                          const CObjectID &object_id,
-                          const CAddress &owner_address,
-                          shared_ptr[CBuffer] *data)
-        CRayStatus Seal(const CObjectID &object_id, c_bool pin_object)
+        CRayStatus CreateOwned(const shared_ptr[CBuffer] &metadata,
+                               const size_t data_size,
+                               const c_vector[CObjectID] &contained_object_ids,
+                               CObjectID *object_id, shared_ptr[CBuffer] *data)
+        CRayStatus CreateExisting(const shared_ptr[CBuffer] &metadata,
+                                  const size_t data_size,
+                                  const CObjectID &object_id,
+                                  const CAddress &owner_address,
+                                  shared_ptr[CBuffer] *data)
+        CRayStatus SealOwned(const CObjectID &object_id, c_bool pin_object)
+        CRayStatus SealExisting(const CObjectID &object_id, c_bool pin_object)
         CRayStatus Get(const c_vector[CObjectID] &ids, int64_t timeout_ms,
                        c_vector[shared_ptr[CRayObject]] *results,
                        c_bool plasma_objects_only)
+        CRayStatus GetIfLocal(
+            const c_vector[CObjectID] &ids,
+            c_vector[shared_ptr[CRayObject]] *results)
         CRayStatus Contains(const CObjectID &object_id, c_bool *has_object)
         CRayStatus Wait(const c_vector[CObjectID] &object_ids, int num_objects,
                         int64_t timeout_ms, c_vector[c_bool] *results,

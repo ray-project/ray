@@ -321,6 +321,10 @@ The following metrics are exposed by Ray Serve:
      - The number of HTTP requests processed.
    * - ``serve_num_router_requests``
      - The number of requests processed by the router.
+   * - ``serve_handle_request_counter``
+     - The number of requests processed by this ServeHandle.
+   * - ``backend_queued_queries`` 
+     - The number of queries for this backend waiting to be assigned to a replica.
 
 To see this in action, run ``ray start --head --metrics-export-port=8080`` in your terminal, and then run the following script:
 
@@ -394,10 +398,9 @@ as shown below.
 
 The dependencies required in the backend may be different than
 the dependencies installed in the driver program (the one running Serve API
-calls). In this case, you can use an
-:mod:`ImportedBackend <ray.serve.backends.ImportedBackend>` to specify a
-backend based on a class that is installed in the Python environment that
-the workers will run in. Example:
+calls). In this case, you can pass the backend in as an import path that will
+be imported in the Python environment in the workers, but not the driver.
+Example:
 
 .. literalinclude:: ../../../python/ray/serve/examples/doc/imported_backend.py
 

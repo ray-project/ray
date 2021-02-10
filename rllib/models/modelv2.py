@@ -203,9 +203,13 @@ class ModelV2:
         restored = input_dict.copy()
         restored["obs"] = restore_original_dimensions(
             input_dict["obs"], self.obs_space, self.framework)
-        if len(input_dict["obs"].shape) > 2:
-            restored["obs_flat"] = flatten(input_dict["obs"], self.framework)
-        else:
+        try:
+            if len(input_dict["obs"].shape) > 2:
+                restored["obs_flat"] = flatten(input_dict["obs"],
+                                               self.framework)
+            else:
+                restored["obs_flat"] = input_dict["obs"]
+        except AttributeError:
             restored["obs_flat"] = input_dict["obs"]
         with self.context():
             res = self.forward(restored, state or [], seq_lens)
@@ -216,15 +220,6 @@ class ModelV2:
                 "got {}".format(res))
         outputs, state = res
 
-        try:
-            shape = outputs.shape
-        except AttributeError:
-            raise ValueError("Output is not a tensor: {}".format(outputs))
-        else:
-            if len(shape) != 2 or int(shape[1]) != self.num_outputs:
-                raise ValueError(
-                    "Expected output shape of [None, {}], got {}".format(
-                        self.num_outputs, shape))
         if not isinstance(state, list):
             raise ValueError("State output is not a list: {}".format(state))
 
@@ -418,15 +413,15 @@ def restore_original_dimensions(obs: TensorType,
         observation space.
     """
 
-    if hasattr(obs_space, "original_space"):
-        if tensorlib == "tf":
-            tensorlib = tf
-        elif tensorlib == "torch":
-            assert torch is not None
-            tensorlib = torch
-        return _unpack_obs(obs, obs_space.original_space, tensorlib=tensorlib)
-    else:
+    if tensorlib == "tf":
+        tensorlib = tf
+    elif tensorlib == "torch":
+        assert torch is not None
+        tensorlib = torch
+    original_space = getattr(obs_space, "original_space", obs_space)
+    if original_space is obs_space:
         return obs
+    return _unpack_obs(obs, original_space, tensorlib=tensorlib)
 
 
 # Cache of preprocessors, for if the user is calling unpack obs often.
@@ -490,7 +485,8 @@ def _unpack_obs(obs: TensorType, space: gym.Space,
                     tensorlib.reshape(obs_slice, batch_dims + list(p.shape)),
                     v,
                     tensorlib=tensorlib)
-        elif isinstance(space, Repeated):
+        # Repeated space.
+        else:
             assert isinstance(prep, RepeatedValuesPreprocessor), prep
             child_size = prep.child_preprocessor.size
             # The list lengths are stored in the first slot of the flat obs.
@@ -503,8 +499,6 @@ def _unpack_obs(obs: TensorType, space: gym.Space,
                 with_repeat_dim, space.child_space, tensorlib=tensorlib)
             return RepeatedValues(
                 u, lengths=lengths, max_len=prep._obs_space.max_len)
-        else:
-            assert False, space
         return u
     else:
         return obs

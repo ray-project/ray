@@ -18,8 +18,10 @@ logger = logging.getLogger(__name__)
 
 @pytest.fixture
 def one_worker_100MiB(request):
+    # It has lots of tests that don't require object spilling.
     config = {
         "task_retry_delay_ms": 0,
+        "automatic_object_spilling_enabled": False
     }
     yield ray.init(
         num_cpus=1,
@@ -468,8 +470,10 @@ def test_actor_holding_serialized_reference(one_worker_100MiB, use_ray_put,
         # Test that the actor exiting stops the reference from being pinned.
         ray.kill(actor)
         # Wait for the actor to exit.
-        with pytest.raises(ray.exceptions.RayActorError):
+        try:
             ray.get(actor.delete_ref1.remote())
+        except ray.exceptions.RayActorError:
+            pass
     else:
         # Test that deleting the second reference stops it from being pinned.
         ray.get(actor.delete_ref2.remote())

@@ -138,6 +138,7 @@ message ClusterInfoType {
     NODES = 1;
     CLUSTER_RESOURCES = 2;
     AVAILABLE_RESOURCES = 3;
+    RUNTIME_CONTEXT = 4;
   }
 }
 
@@ -149,10 +150,18 @@ message ClusterInfoResponse {
   message ResourceTable {
     map<string, double> table = 1;
   }
+
+  message RuntimeContext {
+    bytes job_id = 1;
+    bytes node_id = 2;
+    bool capture_client_tasks = 3;
+  }
+
   ClusterInfoType.TypeEnum type = 1;
   oneof response_type {
     string json = 2;
     ResourceTable resource_table = 3;
+    RuntimeContext runtime_context = 4;
   }
 }
 
@@ -251,6 +260,14 @@ message ConnectionInfoRequest {
 message ConnectionInfoResponse {
   // The number of data clients connected to the server, including the caller.
   int32 num_clients = 1;
+  // The Ray version (e.g., "1.2.0").
+  string ray_version = 2;
+  // The Ray commit (git sha1 hash).
+  string ray_commit = 3;
+  // The Python version (e.g., "3.7.2").
+  string python_version = 4;
+  // The protocol version of the server (e.g., "2020-02-01").
+  string protocol_version = 5;
 }
 
 message DataRequest {

@@ -6,7 +6,7 @@ from pathlib import Path
 import unittest
 
 import ray
-from ray.rllib.agents.registry import get_agent_class
+from ray.rllib.agents.registry import get_trainer_class
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.tf.misc import normc_initializer
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
@@ -48,8 +48,6 @@ class MyKerasModel(TFModelV2):
                                              [layer_out, value_out])
         else:
             self.base_model = tf.keras.Model(self.inputs, layer_out)
-
-        self.register_variables(self.base_model.variables)
 
     def forward(self, input_dict, state, seq_lens):
         if self.model_config["vf_share_layers"]:
@@ -129,7 +127,7 @@ def model_import_test(algo, config, env):
     rllib_dir = Path(__file__).parent.parent
     import_file = str(rllib_dir) + "/tests/data/model_weights/weights.h5"
 
-    agent_cls = get_agent_class(algo)
+    agent_cls = get_trainer_class(algo)
 
     for fw in framework_iterator(config, ["tf", "torch"]):
         config["model"]["custom_model"] = "keras_model" if fw != "torch" else \
@@ -187,8 +185,9 @@ class TestModelImport(unittest.TestCase):
             "PPO",
             config={
                 "num_workers": 0,
-                "vf_share_layers": True,
-                "model": {}
+                "model": {
+                    "vf_share_layers": True,
+                },
             },
             env="CartPole-v0")
 

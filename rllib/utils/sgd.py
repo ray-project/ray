@@ -104,12 +104,12 @@ def do_minibatch_sgd(samples, policies, local_worker, num_sgd_iter,
     """Execute minibatch SGD.
 
     Args:
-        samples (SampleBatch): batch of samples to optimize.
-        policies (dict): dictionary of policies to optimize.
-        local_worker (RolloutWorker): master rollout worker instance.
-        num_sgd_iter (int): number of epochs of optimization to take.
-        sgd_minibatch_size (int): size of minibatches to use for optimization.
-        standardize_fields (list): list of sample field names that should be
+        samples (SampleBatch): Batch of samples to optimize.
+        policies (dict): Dictionary of policies to optimize.
+        local_worker (RolloutWorker): Master rollout worker instance.
+        num_sgd_iter (int): Number of epochs of optimization to take.
+        sgd_minibatch_size (int): Size of minibatches to use for optimization.
+        standardize_fields (list): List of sample field names that should be
             normalized prior to optimization.
 
     Returns:

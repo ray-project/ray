@@ -1,0 +1,7 @@
+Attempting to establish dashboard locally at localhost:8265 connected to remote port 8265
+Loaded cached provider configuration
+If you experience issues with the cloud provider, try re-running the command with --no-config-cache.
+Fetched IP: .+
+Forwarding ports
+ubuntu@ip-.+:~\$ exit
+Successfully established connection.

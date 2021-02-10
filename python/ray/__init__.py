@@ -92,7 +92,7 @@ from ray import util  # noqa: E402
 
 # Replaced with the current commit when building the wheels.
 __commit__ = "{{RAY_COMMIT_SHA}}"
-__version__ = "1.2.0.dev0"
+__version__ = "2.0.0.dev0"
 
 __all__ = [
     "__version__",
@@ -130,7 +130,6 @@ __all__ = [
     "util",
     "wait",
     "LOCAL_MODE",
-    "PYTHON_MODE",
     "SCRIPT_MODE",
     "WORKER_MODE",
 ]

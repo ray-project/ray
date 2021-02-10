@@ -61,9 +61,9 @@ class ServerPickler(cloudpickle.CloudPickler):
             actor_id = obj._actor_id.binary()
             if actor_id not in self.server.actor_refs:
                 # We're passing back a handle, probably inside a reference.
-                self.actor_refs[actor_id] = obj
-            if actor_id not in self.actor_owners[self.client_id]:
-                self.actor_owners[self.client_id].add(actor_id)
+                self.server.actor_refs[actor_id] = obj
+            if actor_id not in self.server.actor_owners[self.client_id]:
+                self.server.actor_owners[self.client_id].add(actor_id)
             return PickleStub(
                 type="Actor",
                 client_id=self.client_id,

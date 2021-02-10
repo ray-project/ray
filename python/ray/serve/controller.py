@@ -4,6 +4,7 @@ from typing import Dict, Any, List, Optional
 
 import ray
 from ray.actor import ActorHandle
+from ray.serve.async_goal_manager import AsyncGoalManager
 from ray.serve.backend_state import BackendState
 from ray.serve.common import (
     BackendTag,
@@ -76,18 +77,20 @@ class ServeController:
         # optimize the logic to support subscription by key.
         self.long_poll_host = LongPollHost()
 
+        self.goal_manager = AsyncGoalManager()
         self.http_state = HTTPState(controller_name, detached, http_config)
         self.endpoint_state = EndpointState(self.kv_store, self.long_poll_host)
         self.backend_state = BackendState(controller_name, detached,
-                                          self.kv_store, self.long_poll_host)
+                                          self.kv_store, self.long_poll_host,
+                                          self.goal_manager)
 
         asyncio.get_event_loop().create_task(self.run_control_loop())
 
     async def wait_for_goal(self, goal_id: GoalId) -> None:
-        await self.backend_state.wait_for_goal(goal_id)
+        await self.goal_manager.wait_for_goal(goal_id)
 
     async def _num_pending_goals(self) -> int:
-        return self.backend_state.num_pending_goals()
+        return self.goal_manager.num_pending_goals()
 
     async def listen_for_change(self, keys_to_snapshot_ids: Dict[str, int]):
         """Proxy long pull client's listen request.
@@ -108,14 +111,14 @@ class ServeController:
         while True:
             async with self.write_lock:
                 self.http_state.update()
-                await self.backend_state.update()
+                self.backend_state.update()
 
             await asyncio.sleep(CONTROL_LOOP_PERIOD_S)
 
     def _all_replica_handles(
             self) -> Dict[BackendTag, Dict[ReplicaTag, ActorHandle]]:
         """Used for testing."""
-        return self.backend_state.get_replica_handles()
+        return self.backend_state.get_running_replica_handles()
 
     def get_all_backends(self) -> Dict[BackendTag, BackendConfig]:
         """Returns a dictionary of backend tag to backend config."""
@@ -232,7 +235,7 @@ class ServeController:
         async with self.write_lock:
             for proxy in self.http_state.get_http_proxy_handles().values():
                 ray.kill(proxy, no_restart=True)
-            for replica_dict in self.backend_state.get_replica_handles(
+            for replica_dict in self.backend_state.get_running_replica_handles(
             ).values():
                 for replica in replica_dict.values():
                     ray.kill(replica, no_restart=True)

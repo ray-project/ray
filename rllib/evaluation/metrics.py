@@ -1,7 +1,7 @@
 import logging
 import numpy as np
 import collections
-from typing import List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import ray
 from ray.rllib.evaluation.rollout_metrics import RolloutMetrics
@@ -12,6 +12,19 @@ from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.typing import GradInfoDict, LearnerStatsDict, ResultDict
 
 logger = logging.getLogger(__name__)
+
+
+def extract_stats(stats: Dict, key: str) -> Dict[str, Any]:
+    if key in stats:
+        return stats[key]
+
+    multiagent_stats = {}
+    for k, v in stats.items():
+        if isinstance(v, dict):
+            if key in v:
+                multiagent_stats[k] = v[key]
+
+    return multiagent_stats
 
 
 @DeveloperAPI

@@ -33,11 +33,11 @@ ray::Status PutSerializedObject(JNIEnv *env, jobject obj, ray::ObjectID object_i
   std::shared_ptr<ray::Buffer> data;
   ray::Status status;
   if (object_id.IsNil()) {
-    status = ray::CoreWorkerProcess::GetCoreWorker().Create(
+    status = ray::CoreWorkerProcess::GetCoreWorker().CreateOwned(
         native_ray_object->GetMetadata(), data_size, native_ray_object->GetNestedIds(),
         out_object_id, &data);
   } else {
-    status = ray::CoreWorkerProcess::GetCoreWorker().Create(
+    status = ray::CoreWorkerProcess::GetCoreWorker().CreateExisting(
         native_ray_object->GetMetadata(), data_size, object_id,
         ray::CoreWorkerProcess::GetCoreWorker().GetRpcAddress(), &data);
     *out_object_id = object_id;
@@ -53,8 +53,13 @@ ray::Status PutSerializedObject(JNIEnv *env, jobject obj, ray::ObjectID object_i
     if (data->Size() > 0) {
       memcpy(data->Data(), native_ray_object->GetData()->Data(), data->Size());
     }
-    RAY_CHECK_OK(ray::CoreWorkerProcess::GetCoreWorker().Seal(
-        *out_object_id, pin_object && object_id.IsNil()));
+    if (object_id.IsNil()) {
+      RAY_CHECK_OK(
+          ray::CoreWorkerProcess::GetCoreWorker().SealOwned(*out_object_id, pin_object));
+    } else {
+      RAY_CHECK_OK(ray::CoreWorkerProcess::GetCoreWorker().SealExisting(
+          *out_object_id, /* pin_object = */ false));
+    }
   }
   return ray::Status::OK();
 }

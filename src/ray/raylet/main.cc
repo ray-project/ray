@@ -82,7 +82,6 @@ int main(int argc, char *argv[]) {
   const int maximum_startup_concurrency =
       static_cast<int>(FLAGS_maximum_startup_concurrency);
   const std::string static_resource_list = FLAGS_static_resource_list;
-  const std::string config_list = FLAGS_config_list;
   const std::string python_worker_command = FLAGS_python_worker_command;
   const std::string java_worker_command = FLAGS_java_worker_command;
   const std::string agent_command = FLAGS_agent_command;
@@ -90,7 +89,6 @@ int main(int argc, char *argv[]) {
   const std::string redis_password = FLAGS_redis_password;
   const std::string temp_dir = FLAGS_temp_dir;
   const std::string session_dir = FLAGS_session_dir;
-  const bool head_node = FLAGS_head_node;
   const int64_t object_store_memory = FLAGS_object_store_memory;
   const std::string plasma_directory = FLAGS_plasma_directory;
   const bool huge_pages = FLAGS_huge_pages;
@@ -116,21 +114,6 @@ int main(int argc, char *argv[]) {
   gcs_client = std::make_shared<ray::gcs::ServiceBasedGcsClient>(client_options);
 
   RAY_CHECK_OK(gcs_client->Connect(main_service));
-
-  // The system_config is only set on the head node--other nodes get it from GCS.
-  if (head_node) {
-    // Parse the configuration list.
-    std::istringstream config_string(config_list);
-    std::string config_name;
-    std::string config_value;
-
-    while (std::getline(config_string, config_name, ',')) {
-      RAY_CHECK(std::getline(config_string, config_value, ';'));
-      // TODO(rkn): The line below could throw an exception. What should we do about this?
-      raylet_config[config_name] = config_value;
-    }
-    RAY_CHECK_OK(gcs_client->Nodes().AsyncSetInternalConfig(raylet_config));
-  }
 
   std::unique_ptr<ray::raylet::Raylet> server(nullptr);
 
@@ -213,7 +196,7 @@ int main(int argc, char *argv[]) {
         }
 
         node_manager_config.heartbeat_period_ms =
-            RayConfig::instance().raylet_heartbeat_timeout_milliseconds();
+            RayConfig::instance().raylet_heartbeat_period_milliseconds();
         node_manager_config.report_resources_period_ms =
             RayConfig::instance().raylet_report_resources_period_milliseconds();
         node_manager_config.debug_dump_period_ms =
@@ -262,7 +245,7 @@ int main(int argc, char *argv[]) {
         // Initialize stats.
         const ray::stats::TagsType global_tags = {
             {ray::stats::ComponentKey, "raylet"},
-            {ray::stats::VersionKey, "1.2.0.dev0"},
+            {ray::stats::VersionKey, "2.0.0.dev0"},
             {ray::stats::NodeAddressKey, node_ip_address}};
         ray::stats::Init(global_tags, metrics_agent_port);
 

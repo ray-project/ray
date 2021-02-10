@@ -754,12 +754,15 @@ def test_warning_for_too_many_actors(shutdown_only):
         def __init__(self):
             time.sleep(1000)
 
-    [Foo.remote() for _ in range(num_cpus * 3)]
+    # NOTE: We should save actor, otherwise it will be out of scope.
+    actors = [Foo.remote() for _ in range(num_cpus * 3)]
+    assert len(actors) == num_cpus * 3
     errors = get_error_message(p, 1, ray_constants.WORKER_POOL_LARGE_ERROR)
     assert len(errors) == 1
     assert errors[0].type == ray_constants.WORKER_POOL_LARGE_ERROR
 
-    [Foo.remote() for _ in range(num_cpus)]
+    actors = [Foo.remote() for _ in range(num_cpus)]
+    assert len(actors) == num_cpus
     errors = get_error_message(p, 1, ray_constants.WORKER_POOL_LARGE_ERROR)
     assert len(errors) == 1
     assert errors[0].type == ray_constants.WORKER_POOL_LARGE_ERROR
@@ -990,7 +993,7 @@ def test_raylet_crash_when_get(ray_start_regular):
 def test_connect_with_disconnected_node(shutdown_only):
     config = {
         "num_heartbeats_timeout": 50,
-        "raylet_heartbeat_timeout_milliseconds": 10,
+        "raylet_heartbeat_period_milliseconds": 10,
     }
     cluster = Cluster()
     cluster.add_node(num_cpus=0, _system_config=config)
@@ -1023,9 +1026,6 @@ def test_connect_with_disconnected_node(shutdown_only):
     "ray_start_cluster_head", [{
         "num_cpus": 5,
         "object_store_memory": 10**8,
-        "_system_config": {
-            "object_store_full_max_retries": 0
-        }
     }],
     indirect=True)
 def test_parallel_actor_fill_plasma_retry(ray_start_cluster_head):
@@ -1045,7 +1045,7 @@ def test_fill_object_store_exception(shutdown_only):
     ray.init(
         num_cpus=2,
         object_store_memory=10**8,
-        _system_config={"object_store_full_max_retries": 0})
+        _system_config={"automatic_object_spilling_enabled": False})
 
     @ray.remote
     def expensive_task():
@@ -1205,7 +1205,7 @@ def test_serialized_id(ray_start_cluster):
 def test_fate_sharing(ray_start_cluster, use_actors, node_failure):
     config = {
         "num_heartbeats_timeout": 10,
-        "raylet_heartbeat_timeout_milliseconds": 100,
+        "raylet_heartbeat_period_milliseconds": 100,
     }
     cluster = Cluster()
     # Head node with no resources.
