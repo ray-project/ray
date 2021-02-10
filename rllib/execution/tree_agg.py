@@ -3,8 +3,8 @@ import platform
 from typing import List, Dict, Any
 
 import ray
-from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER, \
-    _get_shared_metrics
+from ray.rllib.execution.common import AGENT_STEPS_SAMPLED_COUNTER, \
+    STEPS_SAMPLED_COUNTER, _get_shared_metrics
 from ray.rllib.execution.replay_ops import MixInReplay
 from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches
 from ray.rllib.utils.actors import create_colocated
@@ -100,6 +100,7 @@ def gather_experiences_tree_aggregation(workers: WorkerSet,
     def record_steps_sampled(batch):
         metrics = _get_shared_metrics()
         metrics.counters[STEPS_SAMPLED_COUNTER] += batch.count
+        metrics.counters[AGENT_STEPS_SAMPLED_COUNTER] += batch.agent_steps()
         return batch
 
     return train_batches.gather_async().for_each(record_steps_sampled)

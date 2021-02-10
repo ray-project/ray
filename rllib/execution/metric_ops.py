@@ -3,8 +3,8 @@ import time
 
 from ray.util.iter import LocalIterator
 from ray.rllib.evaluation.metrics import collect_episodes, summarize_episodes
-from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER, \
-    _get_shared_metrics
+from ray.rllib.execution.common import AGENT_STEPS_SAMPLED_COUNTER, \
+    STEPS_SAMPLED_COUNTER, _get_shared_metrics
 from ray.rllib.evaluation.worker_set import WorkerSet
 
 
@@ -103,6 +103,8 @@ class CollectMetrics:
         res.update({
             "num_healthy_workers": len(self.workers.remote_workers()),
             "timesteps_total": metrics.counters[STEPS_SAMPLED_COUNTER],
+            "agent_timesteps_total": metrics.counters[
+                AGENT_STEPS_SAMPLED_COUNTER],
         })
         res["timers"] = timers
         res["info"] = info
