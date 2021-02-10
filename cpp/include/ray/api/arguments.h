@@ -54,7 +54,8 @@ class Arguments {
   static void UnwrapArgsImpl(const std::vector<std::shared_ptr<RayObject>> &args_buffer,
                              int &arg_index, std::shared_ptr<ArgType> *arg) {
     auto arg_buffer = args_buffer[arg_index]->GetData();
-    *arg = Serializer::Deserialize<std::shared_ptr<ArgType>>((const char *)arg_buffer->Data(), arg_buffer->Size());
+    *arg = Serializer::Deserialize<std::shared_ptr<ArgType>>(
+        (const char *)arg_buffer->Data(), arg_buffer->Size());
 
     arg_index++;
   }
