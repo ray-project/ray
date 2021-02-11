@@ -465,9 +465,11 @@ class TrialRunner:
 
         # This will contain the next trial to start
         next_trial = self._get_next_trial()  # blocking
-        # Create pending trials. Skip if next_trial is None (then there
-        # are no new trials to create)
-        if self._updated_queue:
+
+        # Create pending trials. Skip if the queue was updated but we
+        # still got no next trial (then there are currently no new
+        # trials to enqueue)
+        if self._updated_queue and next_trial:
             num_pending_trials = len(
                 [t for t in self._trials if t.status == Trial.PENDING])
             while num_pending_trials < self._max_pending_trials:
