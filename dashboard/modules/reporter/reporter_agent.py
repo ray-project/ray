@@ -78,6 +78,12 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
                               "percentage", ["ip"]),
             "node_mem": Gauge("node_mem", "Total memory usage on a ray node",
                               "bytes", ["ip"]),
+            # "node_disk": Gauge("node_disk", "Total disk usage on a ray node",
+            #                   "bytes", ["ip"]),
+            "node_network_sent": Gauge("node_network_sent", "Total network sent",
+                              "bytes", ["ip"]),
+            "node_network_received": Gauge("node_network_received", "Total network received",
+                              "bytes", ["ip"]),
             "raylet_cpu": Gauge("raylet_cpu",
                                 "CPU usage of the raylet on a node.",
                                 "percentage", ["ip", "pid"]),
@@ -268,6 +274,19 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
         mem_record = Record(
             gauge=self._gauges["node_mem"], value=mem_usage, tags={"ip": ip})
 
+        # -- Disk per node --
+        # total, used, free, _ = 0
+        # total, used, free, percent = stats["disk"]
+        # disk_record = Record(
+        #     gauge=self._gauges["node_disk"], value=disk_usage,tags={"ip": ip})
+
+        # -- Network (sent/received) stats --
+        netstats = stats["net"]
+        net_sent_record = Record(
+            gauge=self._gauges["node_network_sent"], value=netstats[0], tags={"ip": ip})
+        net_received_record = Record(
+            gauge=self._gauges["node_network_received"], value=netstats[1], tags={"ip": ip})
+
         raylet_stats = self._get_raylet_stats()
         raylet_pid = str(raylet_stats["pid"])
         # -- raylet CPU --
@@ -291,7 +310,7 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
             })
 
         self._metrics_agent.record_reporter_stats(
-            [cpu_record, mem_record, raylet_cpu_record, raylet_mem_record])
+            [cpu_record, mem_record, net_sent_record, net_received_record, raylet_cpu_record, raylet_mem_record])
 
     async def _perform_iteration(self, aioredis_client):
         """Get any changes to the log files and push updates to Redis."""
