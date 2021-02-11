@@ -41,7 +41,7 @@ Below is a brief overview of the two tools.
 
 The Ray Cluster Launcher
 ------------------------
-The Ray Cluster Launcher is geared towards experimentation and development.
+The Ray Cluster Launcher is geared towards experimentation and development and can be used to launch Ray clusters on Kubernetes (among other backends).
 It allows you to manage an autoscaling Ray Cluster from your local environment using the :ref:`Ray CLI <ray-cli>`.
 For example, you can use ``ray up`` to launch a Ray cluster on Kubernetes and ``ray exec`` to execute commands in the Ray head node's pod.
 Note that using the Cluster Launcher requires Ray to be :ref:`installed locally <installation>`.
