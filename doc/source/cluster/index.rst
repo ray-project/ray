@@ -15,9 +15,13 @@ Distributed Ray is powered by the Ray Cluster Launcher, which automatically prov
 How does it work?
 -----------------
 
-The Ray Cluster Launcher will automatically enable a load-based autoscaler. The scheduler will look at the task, actor, and placement group resource demands from the cluster, and tries to add the minimum set of nodes that can fulfill these demands. When nodes are idle for more than a timeout, they will be removed. The head node is never removed.
+The Ray Cluster Launcher will automatically enable a load-based autoscaler. The autoscaler resource demand scheduler will look at the task, actor, and placement group resource demands from the cluster, and try to add the minimum list of nodes that can fulfill these demands. When nodes are idle for more than :ref:`idle_timeout_minutes <cluster-configuration-idle-timeout-minutes>`, they will be removed. The head node is never removed.
 
-**TODO: ADD HIGH-LEVEL DESCRIPTION OF HOW AUTOSCALING WORKS (ALGORITHM/SCHEDULER)**
+Autoscaler uses a simple binpacking algorithm to binpack the user demands into the available cluster resources. The remaining unfulfilled demands are placed on the smallest list of nodes the satisfies the demand while maximizing utilization (starting from the smallest node).
+
+**Here is "A Glimpse into the Ray Autoscaler" and how to debug/monitor your cluster:**
+
+.. youtube:: BJ06eJasdu4
 
 Supported features
 ------------------
@@ -27,4 +31,3 @@ Distributed Ray can deliver support for a broad set of requirements. Among other
 * **Multiple node type autoscaling**: Ray supports the use of :ref:`multiple node types <cluster-configuration-available-node-types>` in a single cluster. In this mode of operation, the scheduler will choose the types of nodes to add based on the resource demands, instead of always adding the same kind of node type.
 * **Placement groups**: :ref:`Placement groups <ray-placement-group-doc-ref>` allow users to atomically reserve groups of resources across multiple nodes (i.e., gang scheduling).
 * **Programatically scaling a cluster**: The cluster can be directly scaled up to a desired size from within a Ray program via the ``request_resources()`` :ref:`API <ref-autoscaler-sdk-request-resources>`.
-* **TODO: ADD ANY ADDITIONAL FEATURES WE WANT TO HIGHLIGHT**

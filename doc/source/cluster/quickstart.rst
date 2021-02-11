@@ -1,7 +1,7 @@
 .. _ref-cluster-quick-start:
 
-Cloud Clusters Quick Start
-==========================
+Quick Start Cluster Autoscaling Demo
+====================================
 
 This quick start demonstrates the capabilities of Distributed Ray. Using Distributed Ray, we'll take a sample application designed to run on a laptop and scale it up in the cloud. Ray will launch clusters and scale Python with just a few commands.
 
@@ -199,7 +199,7 @@ A minimal sample cluster configuration file looks as follows:
                 type: gcp
                 region: us-west1
 
-Save this configuration file as ``config.yaml``. You can specify a lot more details in the configuration file: instance types to use, minimum and maximum number of workers to start, autoscaling strategy, files to sync, and more. For a full reference on the available configuration properties, please refer to the :ref:`configuration options reference <cluster-config>`.
+Save this configuration file as ``config.yaml``. You can specify a lot more details in the configuration file: instance types to use, minimum and maximum number of workers to start, autoscaling strategy, files to sync, and more. For a full reference on the available configuration properties, please refer to the :ref:`cluster yaml configuration options reference <cluster-config>`.
 
 After defining our configuration, we will use the Ray Cluster Launcher to start a cluster on the cloud, creating a designated "head node" and worker nodes. To start the Ray cluster, we will use the Ray CLI. Run the following command:
 

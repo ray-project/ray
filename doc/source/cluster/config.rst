@@ -1,7 +1,7 @@
 .. _cluster-config:
 
-Configuration Options
-=====================
+Cluster Yaml Configuration Options
+==================================
 
 The cluster configuration is defined within a YAML file that will be used by the Cluster Launcher to launch the head node, and by the Autoscaler to launch worker nodes. Once the cluster configuration is defined, you will need to use the :ref:`Ray CLI <package-ref-command-line-api>` to perform any operations such as starting and stopping the cluster.
 
@@ -210,8 +210,8 @@ File mounts
     <path2_on_remote_machine>: str # Path 2 on local machine
     ...
 
-Properties
-----------
+Properties and Definitions
+--------------------------
 
 .. _cluster-configuration-cluster-name:
 
@@ -326,32 +326,33 @@ The key is the name of the node type, which is just for debugging purposes.
 * **Default:**
 .. tabs::
     .. group-tab:: AWS
-        available_node_types:
-          ray.head.default:
-              node_config:
-                InstanceType: m5.large
-                BlockDeviceMappings:
-                    - DeviceName: /dev/sda1
-                      Ebs:
-                          VolumeSize: 100
-              resources: {"CPU": 2}
-              min_workers: 0
-              max_workers: 0
-          ray.worker.small:
-              node_config:
-                InstanceType: m5.large
-                InstanceMarketOptions:
-                    MarketType: spot
-              resources: {"CPU": 2}
-              min_workers: 0
-              max_workers: 1
+        .. code-block:: yaml
+          available_node_types:
+            ray.head.default:
+                node_config:
+                  InstanceType: m5.large
+                  BlockDeviceMappings:
+                      - DeviceName: /dev/sda1
+                        Ebs:
+                            VolumeSize: 100
+                resources: {"CPU": 2}
+                min_workers: 0
+                max_workers: 0
+            ray.worker.small:
+                node_config:
+                  InstanceType: m5.large
+                  InstanceMarketOptions:
+                      MarketType: spot
+                resources: {"CPU": 2}
+                min_workers: 0
+                max_workers: 1
 
 .. _cluster-configuration-head-node-type:
 
 ``head_node_type``
 ~~~~~~~~~~~~~~~~~~
 
-The key for one of the node types in ``available_node_types``. This node type will be used to launch the head node.
+The key for one of the node types in :ref:`available_node_types cluster-configuration-available-node-types`. This node type will be used to launch the head node.
 
 * **Required:** Yes
 * **Importance:** High
@@ -387,7 +388,7 @@ The files or directories to copy to the head and worker nodes.
 ``cluster_synced_files``
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
-A list of paths to the files or directories to copy from the head node to the worker nodes. The same path on the head node will be copied to the worker node. This behavior is a subset of the file_mounts behavior, so in the vast majority of cases one should just use ``file_mounts``.
+A list of paths to the files or directories to copy from the head node to the worker nodes. The same path on the head node will be copied to the worker node. This behavior is a subset of the file_mounts behavior, so in the vast majority of cases one should just use :ref:`file_mounts <cluster-configuration-file-mounts>`.
 
 * **Required:** No
 * **Importance:** Low
@@ -400,7 +401,9 @@ A list of paths to the files or directories to copy from the head node to the wo
 ~~~~~~~~~~~~~~~~~
 
 A list of patterns for files to exclude when running ``rsync up`` or ``rsync down``. The filter is applied on the source directory only.
-E.g., \*\*/.git/\*\*.
+
+Example for a pattern in the list: ``**/.git/**``.
+
 * **Required:** No
 * **Importance:** Medium
 * **Type:** List of String
@@ -412,7 +415,8 @@ E.g., \*\*/.git/\*\*.
 ~~~~~~~~~~~~~~~~
 
 A list of patterns for files to exclude when running ``rsync up`` or ``rsync down``. The filter is applied on the source directory and recursively through all subdirectories.
-E.g., .gitignore.
+
+Example for a pattern in the list: ``.gitignore``.
 
 * **Required:** No
 * **Importance:** Low
@@ -444,14 +448,20 @@ A list of commands to run to set up nodes. These commands will always run on the
 * **Default:**
 .. tabs::
     .. group-tab:: AWS
-        setup_commands:
-          - echo 'export PATH="$HOME/anaconda3/envs/tensorflow_p36/bin:$PATH"' >> ~/.bashrc
-          - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp36-cp36m-manylinux2014_x86_64.whl
+        .. code-block:: yaml
+            # Default setup_commands:
+            setup_commands:
+              - echo 'export PATH="$HOME/anaconda3/envs/tensorflow_p36/bin:$PATH"' >> ~/.bashrc
+              - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp36-cp36m-manylinux2014_x86_64.whl
 
-Setup commands should ideally be *idempotent* (i.e., can be run multiple times without changing the result); this allows Ray to safely update nodes after they have been created. You can usually make commands idempotent with small modifications, e.g. ``git clone foo`` can be rewritten as ``test -e foo || git clone foo`` which checks if the repo is already cloned first.
-Setup commands are run sequentially but separately. For example, if you are using anaconda, you need to run ``conda activate env && pip install -U ray`` because splitting the command into two setup commands will not work.
-Ideally, you should avoid using setup_commands by creating a docker image with all the dependencies preinstalled to minimize startup time.
-Tip: if you also want to run apt-get commands during setup add the following list of commands:
+- Setup commands should ideally be *idempotent* (i.e., can be run multiple times without changing the result); this allows Ray to safely update nodes after they have been created. You can usually make commands idempotent with small modifications, e.g. ``git clone foo`` can be rewritten as ``test -e foo || git clone foo`` which checks if the repo is already cloned first.
+
+- Setup commands are run sequentially but separately. For example, if you are using anaconda, you need to run ``conda activate env && pip install -U ray`` because splitting the command into two setup commands will not work.
+
+- Ideally, you should avoid using setup_commands by creating a docker image with all the dependencies preinstalled to minimize startup time.
+
+- Tip: if you also want to run apt-get commands during setup add the following list of commands:
+
 .. code-block:: yaml
     setup_commands:
       - sudo pkill -9 apt-get || true
@@ -495,16 +505,17 @@ Commands to start ray on the head node. You don't need to change this.
 * **Default:**
 .. tabs::
     .. group-tab:: AWS
-        head_start_ray_commands:
-          - ray stop
-          - ulimit -n 65536; ray start --head --port=6379 --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml
+        .. code-block:: yaml
+            head_start_ray_commands:
+              - ray stop
+              - ulimit -n 65536; ray start --head --port=6379 --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml
 
 .. _cluster-configuration-worker-start-ray-commands:
 
 ``worker_start_ray_commands``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-# Command to start ray on worker nodes. You don't need to change this.
+Command to start ray on worker nodes. You don't need to change this.
 
 * **Required:** No
 * **Importance:** Low
@@ -512,16 +523,17 @@ Commands to start ray on the head node. You don't need to change this.
 * **Default:**
 .. tabs::
     .. group-tab:: AWS
-        worker_start_ray_commands:
-          - ray stop
-          - ulimit -n 65536; ray start --address=$RAY_HEAD_IP:6379 --object-manager-port=8076
+        .. code-block:: yaml
+            worker_start_ray_commands:
+              - ray stop
+              - ulimit -n 65536; ray start --address=$RAY_HEAD_IP:6379 --object-manager-port=8076
 
 .. _cluster-configuration-image:
 
 ``docker.image``
 ~~~~~~~~~~~~~~~~
 
-The default Docker image to pull in the head and worker nodes. This can be overridden by the :ref:`head_image <cluster-configuration-head-image>` and :ref:`worker_image <cluster-configuration-worker-image>` fields. If neither `image` nor (`head_image <cluster-configuration-head-image>` and :ref:`worker_image <cluster-configuration-worker-image>`) are specified, Ray will not use Docker.
+The default Docker image to pull in the head and worker nodes. This can be overridden by the :ref:`head_image <cluster-configuration-head-image>` and :ref:`worker_image <cluster-configuration-worker-image>` fields. If neither `image` nor (:ref:`head_image <cluster-configuration-head-image>` and :ref:`worker_image <cluster-configuration-worker-image>`) are specified, Ray will not use Docker.
 
 * **Required:** Yes (If Docker is in use.)
 * **Importance:** High
@@ -888,7 +900,7 @@ The user that Ray will authenticate with when launching new nodes.
 ``provider.cache_stopped_nodes``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-If enabled, nodes will be _stopped_ when the cluster scales down. If disabled, nodes will be _terminated_ instead. Stopped nodes launch faster than terminated nodes.
+If enabled, nodes will be *stopped* when the cluster scales down. If disabled, nodes will be *terminated* instead. Stopped nodes launch faster than terminated nodes.
 
 
 * **Required:** No
