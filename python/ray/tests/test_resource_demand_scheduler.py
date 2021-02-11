@@ -1435,15 +1435,11 @@ class AutoscalingTest(unittest.TestCase):
         lm.set_resource_requests([{"CPU": 64}] * 2)
         autoscaler.update()
 
-        self.provider.create_node(
-            {}, {
-                TAG_RAY_NODE_KIND: NODE_KIND_WORKER,
-                TAG_RAY_USER_NODE_TYPE: "m4.4xlarge",
-                TAG_RAY_NODE_STATUS: STATUS_UPDATE_FAILED
-            },
-            1,
-            _skip_wait=True)
-        self.waitForNodes(5)
+        # TODO (Alex): We should find a more robust way of simulating a node
+        # failure here.
+        autoscaler.node_tracker.node_mapping[4] = \
+            ("172.0.0.4", "m4.4xlarge",
+             "/tmp/ray/session_latests/logs/4.out", None)
 
         print(f"Head ip: {head_ip}")
         summary = autoscaler.summary()
@@ -1456,7 +1452,7 @@ class AutoscalingTest(unittest.TestCase):
                                           STATUS_WAITING_FOR_SSH)]
         assert summary.pending_launches == {"m4.16xlarge": 2}
 
-        assert summary.failed_nodes == [("172.0.0.4", "m4.4xlarge")]
+        assert summary.failed_nodes == [("172.0.0.4", "m4.4xlarge", "/tmp/ray/session_latests/logs/4.out")]
 
         # Make sure we return something (and don't throw exceptions). Let's not
         # get bogged down with a full cli test here.
@@ -2437,7 +2433,7 @@ def test_info_string():
         pending_nodes=[("1.2.3.4", "m4.4xlarge", STATUS_WAITING_FOR_SSH),
                        ("1.2.3.5", "m4.4xlarge", STATUS_WAITING_FOR_SSH)],
         pending_launches={"m4.4xlarge": 2},
-        failed_nodes=[("1.2.3.6", "p3.2xlarge")])
+        failed_nodes=[("abcdef", "p3.2xlarge", "/tmp/ray/session_latest/abcdef.out")])
 
     expected = """
 ======== Autoscaler status: 2020-12-28 01:02:03 ========

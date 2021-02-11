@@ -777,7 +777,7 @@ class DockerCommandRunner(CommandRunnerInterface):
                 "differ from those on the running container.")
         return re_init_required
 
-    def run_init(self, *, as_head, file_mounts, sync_run_yet, with_output=False):
+    def run_init(self, *, as_head, file_mounts, sync_run_yet, with_output=True):
         BOOTSTRAP_MOUNTS = [
             "~/ray_bootstrap_config.yaml", "~/ray_bootstrap_key.pem"
         ]

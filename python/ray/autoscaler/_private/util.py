@@ -371,8 +371,8 @@ def format_info_string(lm_summary, autoscaler_summary, time=None):
         pending_report = " (no pending nodes)"
 
     failure_lines = []
-    for ip, node_type in autoscaler_summary.failed_nodes:
-        line = f" {ip}: {node_type}"
+    for ip, node_type, log_path in autoscaler_summary.failed_nodes:
+        line = f" {ip}: {node_type}, {log_path}"
     failure_report = "Recent failures:\n"
     if failure_lines:
         failure_report += "\n".join(failure_lines)

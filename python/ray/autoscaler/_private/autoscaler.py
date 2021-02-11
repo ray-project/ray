@@ -306,6 +306,8 @@ class StandardAutoscaler:
         for node_id in nodes:
             self.recover_if_needed(node_id, now)
 
+        print("Nodes: ", nodes)
+        print("All: ", self.provider.non_terminated_nodes(tag_filters={}))
         logger.info(self.info_string())
         legacy_log_info_string(self, nodes)
 
@@ -582,6 +584,7 @@ class StandardAutoscaler:
             quantity=1,
             aggregate=operator.add)
         interceptor = self.node_tracker.get_or_create_process_runner(node_id)
+        print("ATTEMPTING TO RECOVER", node_id)
         updater = NodeUpdaterThread(
             node_id=node_id,
             provider_config=self.config["provider"],
@@ -666,9 +669,10 @@ class StandardAutoscaler:
                       node_resources, docker_config):
         logger.info(f"Creating new (spawn_updater) updater thread for node"
                     f" {node_id}.")
+        ip = self.provider.internal_ip(node_id)
         node_type = self.get_node_type(node_id)
         interceptor = self.node_tracker.get_or_create_process_runner(
-            node_id, node_type)
+            node_id, ip, node_type)
         updater = NodeUpdaterThread(
             node_id=node_id,
             provider_config=self.config["provider"],
@@ -762,12 +766,16 @@ class StandardAutoscaler:
         pending_nodes = []
         failed_nodes = []
 
+        non_failed = set()
+
         for node_id in all_node_ids:
             ip = self.provider.internal_ip(node_id)
             node_tags = self.provider.node_tags(node_id)
             if node_tags[TAG_RAY_NODE_KIND] == NODE_KIND_UNMANAGED:
                 continue
             node_type = node_tags[TAG_RAY_USER_NODE_TYPE]
+
+            failed = False
 
             # TODO (Alex): If a node's raylet has died, it shouldn't be marked
             # as active.
@@ -784,11 +792,13 @@ class StandardAutoscaler:
                 if is_pending:
                     pending_nodes.append((ip, node_type, status))
                 else:
-                    # TODO (Alex): Failed nodes are now immediately killed, so
-                    # this list will almost always be empty. We should ideally
-                    # keep a cache of recently failed nodes and their startup
-                    # logs.
-                    failed_nodes.append((ip, node_type))
+                    failed = True
+
+            if not failed:
+                non_failed.add(node_id)
+
+        print("Non failed nodes: ", non_failed)
+        failed_nodes = self.node_tracker.get_all_failed_node_info(non_failed)
 
         # The concurrent counter leaves some 0 counts in, so we need to
         # manually filter those out.
@@ -816,23 +826,39 @@ class NodeTracker:
     ip can be interchangeably use, but the node_id -> ip relation is not
     bijective _across time_ since IP addresses can be reused. Therefore, we
     should treat node_id as the only unique identifier.
+
     """
 
     def __init__(self, process_runner):
         self.process_runner = process_runner
 
-        # Mapping from node_id -> (node type, stdout_path, process runner)
+        # Mapping from node_id -> (ip, node type, stdout_path, process runner)
+        # TODO(Alex): In the spirit of statelessness, we should try to load
+        # this mapping from the filesystem. _Technically_ this tracker is only
+        # used for "recent" failures though, so remembering old nodes is a best
+        # effort, therefore it's already correct
         self.node_mapping = {}
 
-    def get_or_create_process_runner(self, node_id, node_type=None):
+    def get_or_create_process_runner(self, node_id, ip=None, node_type=None):
         if node_id not in self.node_mapping:
             stdout_path = f"{node_id}.out"
             stdout_obj = open(stdout_path, "a")
             process_runner = ProcessRunnerInterceptor(
                 stdout_obj, process_runner=self.process_runner)
             self.node_mapping[node_id] = (
-                node_type, stdout_path, process_runner)
+                ip, node_type, stdout_path, process_runner)
 
-        _, _, process_runner = self.node_mapping[node_id]
+        _, _, _, process_runner = self.node_mapping[node_id]
         return process_runner
+
+    def get_all_failed_node_info(self, non_failed_ids):
+        print("All nodes ever: ", self.node_mapping.keys())
+        failed_nodes = self.node_mapping.keys() - non_failed_ids
+        failed_info = []
+        for node_id in failed_nodes:
+            ip, node_type, stdout_path, _ = self.node_mapping[node_id]
+            failed_info.append(
+                (ip, node_type, stdout_path)
+            )
+        return failed_info
 
