@@ -877,13 +877,6 @@ def custom_excepthook(type, value, tb):
 
 sys.excepthook = custom_excepthook
 
-# The last time we raised a TaskError in this process. We use this value to
-# suppress redundant error messages pushed from the workers.
-last_task_error_raise_time = 0
-
-# The max amount of seconds to wait before printing out an uncaught error.
-UNCAUGHT_ERROR_GRACE_PERIOD = 5
-
 
 def print_logs(redis_client, threads_stopped, job_id):
     """Prints log messages from workers on all of the nodes.
@@ -1034,7 +1027,7 @@ def print_worker_logs(data: Dict[str, str], print_file: Any):
                 file=print_file)
 
 
-def listen_error_messages_raylet(worker, task_error_queue, threads_stopped):
+def listen_error_messages_raylet(worker, threads_stopped):
     """Listen to error messages in the background on the driver.
 
     This runs in a separate thread on the driver and pushes (error, time)
@@ -1042,8 +1035,6 @@ def listen_error_messages_raylet(worker, task_error_queue, threads_stopped):
 
     Args:
         worker: The worker class that this thread belongs to.
-        task_error_queue (queue.Queue): A queue used to communicate with the
-            thread that prints the errors found by this thread.
         threads_stopped (threading.Event): A threading event used to signal to
             the thread that it should exit.
     """
@@ -1082,8 +1073,9 @@ def listen_error_messages_raylet(worker, task_error_queue, threads_stopped):
 
             error_message = error_data.error_message
             if (error_data.type == ray_constants.TASK_PUSH_ERROR):
-                # Delay it a bit to see if we can suppress it
-                task_error_queue.put((error_message, time.time()))
+                # TODO(ekl) remove task push errors entirely now that we have
+                # the separate unhandled exception handler.
+                pass
             else:
                 logger.warning(error_message)
     except (OSError, redis.exceptions.ConnectionError) as e:
@@ -1416,13 +1408,11 @@ def get(object_refs, *, timeout=None):
             raise ValueError("'object_refs' must either be an object ref "
                              "or a list of object refs.")
 
-        global last_task_error_raise_time
         # TODO(ujvl): Consider how to allow user to retrieve the ready objects.
         values, debugger_breakpoint = worker.get_objects(
             object_refs, timeout=timeout)
         for i, value in enumerate(values):
             if isinstance(value, RayError):
-                last_task_error_raise_time = time.time()
                 if isinstance(value, ray.exceptions.ObjectLostError):
                     worker.core_worker.dump_object_store_memory_usage()
                 if isinstance(value, RayTaskError):
