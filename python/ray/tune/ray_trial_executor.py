@@ -484,17 +484,17 @@ class RayTrialExecutor(TrialExecutor):
                         trial, replace_pending=free)
                     if pg:  # Always true if replace_pending=False
                         self._cached_actor_pg = (trial.runner, pg)
-                        should_destroy = False
+                        should_destroy_actor = False
                     else:
                         logger.debug(
                             "Could not cache of trial {trial} actor for "
                             "reuse, as there are no pending trials "
                             "requiring its resources.")
-                        should_destroy = True
+                        should_destroy_actor = True
                 else:
-                    should_destroy = True
+                    should_destroy_actor = True
 
-                if should_destroy:
+                if should_destroy_actor:
                     logger.debug("Trial %s: Destroying actor.", trial)
 
                     # Try to return the placement group for other trials to use
@@ -534,7 +534,7 @@ class RayTrialExecutor(TrialExecutor):
 
         Returns:
             True if the remote runner has been started. False if trial was
-            not started (e.g. because of lacking resources/pending PG).
+                not started (e.g. because of lacking resources/pending PG).
         """
         if not trial.uses_placement_groups:
             self._commit_resources(trial.resources)
@@ -546,8 +546,6 @@ class RayTrialExecutor(TrialExecutor):
             time.sleep(2)
             error_msg = traceback.format_exc()
             self._stop_trial(trial, error=True, error_msg=error_msg)
-            # Return True here so we don't try to start a new trial
-            # in the main event loop
             return False
         except Exception:
             logger.exception("Trial %s: Unexpected error starting runner.",
