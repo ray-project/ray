@@ -98,7 +98,7 @@ class StandardAutoscaler:
         self.process_runner = process_runner
         self.event_summarizer = event_summarizer or EventSummarizer()
 
-        self.node_tracker = NodeTracker(process_runner)
+        self.node_tracker = NodeTracker(self.log_dir, process_runner)
 
         # Map from node_id to NodeUpdater processes
         self.updaters = {}
