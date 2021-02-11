@@ -254,7 +254,7 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
         self._network_stats_hist.append((now, network_stats))
         self._network_stats_hist = self._network_stats_hist[-7:]
         then, prev_network_stats = self._network_stats_hist[0]
-        net_speed_stats = ((network_stats[0] - prev_network_stats[0]) /
+        network_speed_stats = ((network_stats[0] - prev_network_stats[0]) /
                            (now - then),
                            (network_stats[1] - prev_network_stats[1]) /
                            (now - then))
