@@ -54,6 +54,26 @@ def client_mode_should_convert():
     return client_mode_enabled and _client_hook_enabled
 
 
+def client_mode_wrap(func):
+    """Decorator to wrap a function call in a task.
+
+    This is useful for functions where the goal isn't to delegate
+    module calls to the ray client equivalent, but to instead implement
+    ray client features that can be executed by tasks on the server side.
+    """
+    from ray.util.client import ray
+
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        if client_mode_should_convert():
+            f = ray.remote(func)
+            ref = f.remote(*args, **kwargs)
+            return ray.get(ref)
+        return func(*args, **kwargs)
+
+    return wrapper
+
+
 def client_mode_convert_function(func_cls, in_args, in_kwargs, **kwargs):
     """Runs a preregistered ray RemoteFunction through the ray client.
 
