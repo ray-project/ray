@@ -7,7 +7,7 @@ import os
 import time
 
 import ray
-from ray import ObjectRef
+from ray import ObjectRef, logger
 from ray.actor import ActorClass
 from ray.tune.resources import Resources
 from ray.util.placement_group import PlacementGroup, get_placement_group, \
@@ -330,7 +330,7 @@ class PlacementGroupManager:
         # Only custom resources remain in `first_bundle`
         resources = first_bundle or None
 
-        print(f"For trial {trial} use pg {pg.id}")
+        logger.debug(f"For trial {trial} use pg {pg.id}")
 
         return actor_cls.options(
             placement_group=pg,
@@ -409,7 +409,7 @@ class PlacementGroupManager:
         assert pgf == trial_pgf, f"Cannot assign placement group with a " \
                                  f"non-matching factory to trial {trial}"
 
-        print(f"For trial {trial} RE-use pg {pg.id}")
+        logger.debug(f"For trial {trial} RE-use pg {pg.id}")
 
         self._in_use_pgs[pg] = trial
         self._in_use_trials[trial] = pg

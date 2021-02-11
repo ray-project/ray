@@ -440,7 +440,9 @@ class RayTrialExecutor(TrialExecutor):
         trial.set_runner(runner)
         self.restore(trial, checkpoint)
         self.set_status(trial, Trial.RUNNING)
-        self._staged_trials.remove(trial)
+
+        if trial in self._staged_trials:
+            self._staged_trials.remove(trial)
 
         previous_run = self._find_item(self._paused, trial)
         if prior_status == Trial.PAUSED and previous_run:
@@ -451,16 +453,21 @@ class RayTrialExecutor(TrialExecutor):
             self._train(trial)
         return True
 
-    def _stop_trial(self, trial, error=False, error_msg=None):
+    def _stop_trial(self, trial, error=False, error_msg=None, pause=False):
         """Stops this trial.
 
         Stops this trial, releasing all allocating resources. If stopping the
         trial fails, the run will be marked as terminated in error, but no
         exception will be thrown.
 
+        If the trial should be paused (``pause=True``), we do not remove
+        its placement group (or a surrogate placement group).
+
         Args:
             error (bool): Whether to mark this trial as terminated in error.
             error_msg (str): Optional error message.
+            pause (bool): Whether this trial was paused instead of permanently
+                stopped.
         """
         self.set_status(trial, Trial.ERROR if error else Trial.TERMINATED)
         self._trial_just_finished = True
@@ -474,8 +481,8 @@ class RayTrialExecutor(TrialExecutor):
                     logger.debug("Reusing actor for %s", trial.runner)
                     # Move PG into cache (disassociate from trial)
                     pg = self._pg_manager.cache_trial_pg(
-                        trial, replace_pending=True)
-                    if pg:
+                        trial, replace_pending=not pause)
+                    if pg:  # Always true if replace_pending=False
                         self._cached_actor_pg = (trial.runner, pg)
                         should_destroy = False
                     else:
@@ -492,12 +499,13 @@ class RayTrialExecutor(TrialExecutor):
 
                     # Try to return the placement group for other trials to use
                     if not self._pg_manager.return_pg(
-                            trial, replace_pending=True):
+                            trial, replace_pending=not pause):
                         # If we could not replace a pending pg, it might not
                         # be needed anymore. Remove instead.
                         pg = self._pg_manager.clean_trial_placement_group(
                             trial)
                     else:
+                        # Always true if replace_pending=False
                         pg = None
 
                     with self._change_working_directory(trial):
@@ -555,10 +563,10 @@ class RayTrialExecutor(TrialExecutor):
         out = [rid for rid, t in dictionary.items() if t is item]
         return out
 
-    def stop_trial(self, trial, error=False, error_msg=None):
+    def stop_trial(self, trial, error=False, error_msg=None, pause=False):
         """Only returns resources if resources allocated."""
         prior_status = trial.status
-        self._stop_trial(trial, error=error, error_msg=error_msg)
+        self._stop_trial(trial, error=error, error_msg=error_msg, pause=pause)
         if prior_status == Trial.RUNNING:
             logger.debug("Trial %s: Returning resources.", trial)
             if not trial.uses_placement_groups:
