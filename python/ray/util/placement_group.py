@@ -19,6 +19,7 @@ _bundle_reservation_check = None
 def _ensure_bundle_reservation_check():
     global _bundle_reservation_check
     if _bundle_reservation_check is None:
+
         @ray.remote(num_cpus=0, max_calls=0)
         def bundle_reservation_check_func(placement_group):
             return placement_group
@@ -118,7 +119,7 @@ class PlacementGroup:
 
     def _fill_bundle_cache_if_needed(self):
         if not self.bundle_cache:
-            self.bundle_cache = _get_bundle_cache()
+            self.bundle_cache = _get_bundle_cache(self.id)
 
 
 @client_mode_wrap
@@ -130,7 +131,7 @@ def _call_placement_group_ready(id, timeout_seconds):
 
 
 @client_mode_wrap
-def _get_bundle_cache():
+def _get_bundle_cache(id):
     # Since creating placement group is async, it is
     # possible table is not ready yet. To avoid the
     # problem, we should keep trying with timeout.
@@ -141,7 +142,7 @@ def _get_bundle_cache():
     worker.check_connected()
 
     while timeout_cnt < int(TIMEOUT_SECOND / WAIT_INTERVAL):
-        pg_info = ray.state.state.placement_group_table(self.id)
+        pg_info = ray.state.state.placement_group_table(id)
         if pg_info:
             return list(pg_info["bundles"].values())
         time.sleep(WAIT_INTERVAL)
@@ -149,7 +150,7 @@ def _get_bundle_cache():
 
     raise RuntimeError(
         "Couldn't get the bundle information of placement group id "
-        f"{self.id} in {TIMEOUT_SECOND} seconds. It is likely "
+        f"{id} in {TIMEOUT_SECOND} seconds. It is likely "
         "because GCS server is too busy.")
 
 
