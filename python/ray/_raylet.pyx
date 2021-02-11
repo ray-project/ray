@@ -724,7 +724,6 @@ cdef void delete_spilled_objects_handler(
 
 
 cdef void unhandled_exception_handler(const CRayObject& error) nogil:
-
     with gil:
         worker = ray.worker.global_worker
         data = None
@@ -733,7 +732,9 @@ cdef void unhandled_exception_handler(const CRayObject& error) nogil:
             data = Buffer.make(error.GetData())
         if error.HasMetadata():
             metadata = Buffer.make(error.GetMetadata()).to_pybytes()
-        worker.raise_errors([(data, metadata)], [ray.ObjectRef.nil()])
+        # TODO(ekl) why does passing a ObjectRef.nil() lead to shutdown errors?
+        object_ids = [None]
+        worker.raise_errors([(data, metadata)], object_ids)
 
 
 # This function introduces ~2-7us of overhead per call (i.e., it can be called

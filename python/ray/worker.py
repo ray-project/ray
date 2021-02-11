@@ -281,7 +281,7 @@ class Worker:
         context = self.get_serialization_context()
         out = context.deserialize_objects(data_metadata_pairs, object_refs)
         for r in out:
-            logger.error("Possible unhandled error: {}".format(r))
+            logger.error("Possible unhandled error from worker: {}".format(r))
 
     def deserialize_objects(self, data_metadata_pairs, object_refs):
         context = self.get_serialization_context()
