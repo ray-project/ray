@@ -69,6 +69,12 @@ ERROR_KEY_PREFIX = b"Error:"
 logger = logging.getLogger(__name__)
 
 
+# Visible for testing.
+def _unhandled_error_handler(e: Exception):
+    logger.error("Unhandled error (suppress with "
+                 "RAY_IGNORE_UNHANDLED_ERRORS=1): {}".format(e))
+
+
 class Worker:
     """A class used to define the control flow of a worker process.
 
@@ -283,8 +289,7 @@ class Worker:
         if "RAY_IGNORE_UNHANDLED_ERRORS" in os.environ:
             return
         for e in out:
-            logger.error("Unhandled error (suppress with "
-                         "RAY_IGNORE_UNHANDLED_ERRORS=1): {}".format(e))
+            _unhandled_error_handler(e)
 
     def deserialize_objects(self, data_metadata_pairs, object_refs):
         context = self.get_serialization_context()
