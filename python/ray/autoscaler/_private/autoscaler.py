@@ -71,6 +71,7 @@ class StandardAutoscaler:
 
     def __init__(self,
                  config_path,
+                 log_dir,
                  load_metrics,
                  max_launch_batch=AUTOSCALER_MAX_LAUNCH_BATCH,
                  max_concurrent_launches=AUTOSCALER_MAX_CONCURRENT_LAUNCHES,
@@ -80,6 +81,7 @@ class StandardAutoscaler:
                  prefix_cluster_info=False,
                  event_summarizer=None):
         self.config_path = config_path
+        self.log_dir = log_dir
         # Prefix each line of info string with cluster name if True
         self.prefix_cluster_info = prefix_cluster_info
         # Keep this before self.reset (self.provider needs to be created
@@ -825,7 +827,8 @@ class NodeTracker:
 
     """
 
-    def __init__(self, process_runner):
+    def __init__(self, log_dir, process_runner):
+        self.log_dir = log_dir
         self.process_runner = process_runner
 
         # Mapping from node_id -> (ip, node type, stdout_path, process runner)
@@ -837,7 +840,8 @@ class NodeTracker:
 
     def get_or_create_process_runner(self, node_id, ip=None, node_type=None):
         if node_id not in self.node_mapping:
-            stdout_path = f"{node_id}.out"
+            stdout_name = f"{node_id}.out"
+            stdout_path = os.path.join(self.log_dir, stdout_name)
             stdout_obj = open(stdout_path, "a")
             process_runner = ProcessRunnerInterceptor(
                 stdout_obj, process_runner=self.process_runner)

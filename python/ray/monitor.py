@@ -81,10 +81,12 @@ class Monitor:
     """
 
     def __init__(self,
+                 log_dir,
                  redis_address,
                  autoscaling_config,
                  redis_password=None,
                  prefix_cluster_info=False):
+        self.log_dir = log_dir
         # Initialize the Redis clients.
         ray.state.state._initialize_global_state(
             redis_address, redis_password=redis_password)
@@ -107,6 +109,7 @@ class Monitor:
         if autoscaling_config:
             self.autoscaler = StandardAutoscaler(
                 autoscaling_config,
+                log_dir,
                 self.load_metrics,
                 prefix_cluster_info=prefix_cluster_info,
                 event_summarizer=self.event_summarizer)
@@ -351,6 +354,7 @@ if __name__ == "__main__":
         autoscaling_config = None
 
     monitor = Monitor(
+        args.logs_dir,
         args.redis_address,
         autoscaling_config,
         redis_password=args.redis_password)
