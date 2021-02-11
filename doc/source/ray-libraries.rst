@@ -47,9 +47,11 @@ Hugging Face Transformers |hugging|
 State-of-the-art Natural Language Processing for Pytorch and TensorFlow 2.0.
 
 It integrates with Ray for distributed hyperparameter tuning of transformer models:
+
 [`Link to integration <https://huggingface.co/transformers/master/main_classes/trainer.html#transformers.Trainer.hyperparameter_search>`__]
 
 As well as for distributed document retrieval for Retrieval Augmented Generation Models
+
 [`Link to integration <https://github.com/huggingface/transformers/tree/master/examples/research_projects/rag#document-retrieval>`__]
 
 Intel Analytics Zoo |zoo|
