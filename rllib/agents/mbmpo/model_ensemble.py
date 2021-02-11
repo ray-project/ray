@@ -200,6 +200,9 @@ class DynamicsEnsembleCustomModel(TorchModelV2, nn.Module):
     def fit(self):
         # Add env samples to Replay Buffer
         local_worker = get_global_worker()
+        for pid, pol in local_worker.policy_map.items():
+            pol.view_requirements[
+                SampleBatch.NEXT_OBS].used_for_training = True
         new_samples = local_worker.sample()
         # Initial Exploration of 8000 timesteps
         if not self.global_itr:

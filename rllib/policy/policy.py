@@ -668,11 +668,16 @@ class Policy(metaclass=ABCMeta):
                 if key not in self.view_requirements:
                     self.view_requirements[key] = ViewRequirement()
             if self._loss:
-                # Tag those only needed for post-processing.
+                # Tag those only needed for post-processing (with some
+                # exceptions).
                 for key in batch_for_postproc.accessed_keys:
                     if key not in train_batch.accessed_keys and \
                             key in self.view_requirements and \
-                            key not in self.model.view_requirements:
+                            key not in self.model.view_requirements and \
+                            key not in [
+                                SampleBatch.EPS_ID, SampleBatch.AGENT_INDEX,
+                                SampleBatch.UNROLL_ID, SampleBatch.DONES,
+                                SampleBatch.REWARDS, SampleBatch.INFOS]:
                         self.view_requirements[key].used_for_training = False
                 # Remove those not needed at all (leave those that are needed
                 # by Sampler to properly execute sample collection).
