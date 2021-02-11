@@ -42,7 +42,7 @@ Below is a brief overview of the two tools.
 The Ray Cluster Launcher
 ------------------------
 The :ref:`Ray Cluster Launcher <ref-automatic-cluster>` is geared towards experimentation and development and can be used to launch Ray clusters on Kubernetes (among other backends).
-It allows you to manage an autoscaling Ray Cluster from your local environment using the :ref:`Ray CLI <ray-cli>`.
+It allows you to manage an autoscaling Ray Cluster from your local environment using the :ref:`Ray CLI <cluster-commands>`.
 For example, you can use ``ray up`` to launch a Ray cluster on Kubernetes and ``ray exec`` to execute commands in the Ray head node's pod.
 Note that using the Cluster Launcher requires Ray to be :ref:`installed locally <installation>`.
 
@@ -332,7 +332,7 @@ By default, the dashboard uses port 8265 on the Ray head node.
 Configuring a head node service
 -------------------------------
 To use Ray Client and Ray Dashboard,
-you can connect via a Kubernetes Service targeting the relevant ports on the head node:
+you can connect via a `Kubernetes Service`_ targeting the relevant ports on the head node:
 
 .. _svc-example:
 
@@ -377,7 +377,7 @@ The head node pod's ``metadata`` should have a ``label`` matching the service's 
   for example by using the tools ``kubectl edit``, ``kubectl create``, or ``kubectl apply``.
 
 - The Ray Cluster launcher does not automatically configure a service targeting the head node. A \
-  head node service can be specified in the cluster launching config's `provider.services` field. The example cluster lauching \
+  head node service can be specified in the cluster launching config's ``provider.services`` field. The example cluster lauching \
   config `example-full.yaml <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/kubernetes/example-full.yaml>`__ includes \
   the :ref:`above <svc-example>` service configuration as an example.
 
@@ -483,7 +483,9 @@ the following command:
 
 .. code-block:: shell
 
-  $ kubectl blah
+  # Substitute the name of your Ray cluster if using a name other than "example-cluster".
+  $ kubectl -n ray port-forward \
+    $(kubectl -n ray get pods -l ray-cluster-name=example-cluster -l  ray-node-type=head -o custom-columns=:metadata.name) 10001:10001
 
 Then open a new shell and try out a sample program:
 
@@ -597,6 +599,7 @@ Questions or Issues?
 
 
 .. _`Kubernetes Job`: https://kubernetes.io/docs/concepts/workloads/controllers/jobs-run-to-completion/
+.. _`Kubernetes Service`: https://kubernetes.io/docs/concepts/services-networking/service/
 .. _`Kubernetes Operator`: https://kubernetes.io/docs/concepts/extend-kubernetes/operator/
 .. _`Kubernetes Custom Resource`: https://kubernetes.io/docs/concepts/extend-kubernetes/api-extension/custom-resources/
 .. _`Kubernetes Custom Resource Definition`: https://kubernetes.io/docs/tasks/extend-kubernetes/custom-resources/custom-resource-definitions/
