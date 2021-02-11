@@ -152,7 +152,6 @@ cdef int check_status(const CRayStatus& status) nogil except -1:
     else:
         raise RaySystemError(message)
 
-
 cdef RayObjectsToDataMetadataPairs(
         const c_vector[shared_ptr[CRayObject]] objects):
     data_metadata_pairs = []

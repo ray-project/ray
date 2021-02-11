@@ -280,8 +280,8 @@ class Worker:
     def raise_errors(self, data_metadata_pairs, object_refs):
         context = self.get_serialization_context()
         out = context.deserialize_objects(data_metadata_pairs, object_refs)
-        for r in out:
-            logger.error("Possible unhandled error from worker: {}".format(r))
+        for e in out:
+            logger.error("Possible unhandled error from worker: {}".format(e))
 
     def deserialize_objects(self, data_metadata_pairs, object_refs):
         context = self.get_serialization_context()
@@ -1026,44 +1026,6 @@ def print_worker_logs(data: Dict[str, str], print_file: Any):
                 file=print_file)
 
 
-def print_error_messages_raylet(task_error_queue, threads_stopped):
-    """Prints message received in the given output queue.
-
-    This checks periodically if any un-raised errors occurred in the
-    background.
-
-    Args:
-        task_error_queue (queue.Queue): A queue used to receive errors from the
-            thread that listens to Redis.
-        threads_stopped (threading.Event): A threading event used to signal to
-            the thread that it should exit.
-    """
-
-    while True:
-        # Exit if we received a signal that we should stop.
-        if threads_stopped.is_set():
-            return
-
-        try:
-            error, t = task_error_queue.get(block=False)
-        except queue.Empty:
-            threads_stopped.wait(timeout=0.01)
-            continue
-        # Delay errors a little bit of time to attempt to suppress redundant
-        # messages originating from the worker.
-        while t + UNCAUGHT_ERROR_GRACE_PERIOD > time.time():
-            threads_stopped.wait(timeout=1)
-            if threads_stopped.is_set():
-                break
-
-
-#        if t < last_task_error_raise_time + UNCAUGHT_ERROR_GRACE_PERIOD:
-#            logger.debug(f"Suppressing error from worker: {error}")
-#        else:
-#            logger.error(f"Possible unhandled error from worker: {error}")
-#
-
-
 def listen_error_messages_raylet(worker, task_error_queue, threads_stopped):
     """Listen to error messages in the background on the driver.
 
@@ -1281,14 +1243,8 @@ def connect(node,
             target=listen_error_messages_raylet,
             name="ray_listen_error_messages",
             args=(worker, q, worker.threads_stopped))
-        worker.printer_thread = threading.Thread(
-            target=print_error_messages_raylet,
-            name="ray_print_error_messages",
-            args=(q, worker.threads_stopped))
         worker.listener_thread.daemon = True
         worker.listener_thread.start()
-        worker.printer_thread.daemon = True
-        worker.printer_thread.start()
         if log_to_driver:
             global_worker_stdstream_dispatcher.add_handler(
                 "ray_print_logs", print_to_stdstream)
@@ -1341,8 +1297,6 @@ def disconnect(exiting_interpreter=False):
             worker.import_thread.join_import_thread()
         if hasattr(worker, "listener_thread"):
             worker.listener_thread.join()
-        if hasattr(worker, "printer_thread"):
-            worker.printer_thread.join()
         if hasattr(worker, "logger_thread"):
             worker.logger_thread.join()
         worker.threads_stopped.clear()
