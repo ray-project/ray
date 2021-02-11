@@ -583,7 +583,8 @@ class DynamicTFPolicy(TFPolicy):
             # Tag those only needed for post-processing (with some exceptions).
             for key in batch_for_postproc.accessed_keys:
                 if key not in train_batch.accessed_keys and \
-                        key not in self.model.view_requirements and key not in [
+                        key not in self.model.view_requirements and \
+                        key not in [
                             SampleBatch.EPS_ID, SampleBatch.AGENT_INDEX,
                             SampleBatch.UNROLL_ID, SampleBatch.DONES,
                             SampleBatch.REWARDS, SampleBatch.INFOS]:
