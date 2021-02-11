@@ -280,7 +280,7 @@ Configure Ray to run in Docker containers.
 * **Type:** :ref:`Docker <cluster-configuration-docker-type>`
 * **Default:** ``{}``
 
-In rare cases when Docker is not available on the system by default (e.g., bad AMI), add the following commands to ``initialization_commands`` to install it.
+In rare cases when Docker is not available on the system by default (e.g., bad AMI), add the following commands to :ref:`initialization_commands <cluster-configuration-initialization-commands>` to install it.
 
 .. code-block:: yaml
 
@@ -324,9 +324,12 @@ The key is the name of the node type, which is just for debugging purposes.
 * **Importance:** High
 * **Type:** :ref:`Node types <cluster-configuration-node-types-type>`
 * **Default:**
+
 .. tabs::
     .. group-tab:: AWS
+
         .. code-block:: yaml
+
           available_node_types:
             ray.head.default:
                 node_config:
@@ -352,7 +355,8 @@ The key is the name of the node type, which is just for debugging purposes.
 ``head_node_type``
 ~~~~~~~~~~~~~~~~~~
 
-The key for one of the node types in :ref:`available_node_types cluster-configuration-available-node-types`. This node type will be used to launch the head node.
+The key for one of the node types in :ref:`available_node_types <cluster-configuration-available-node-types>`. This node type will be used to launch the head node.
+
 
 * **Required:** Yes
 * **Importance:** High
@@ -367,7 +371,7 @@ The key for one of the node types in :ref:`available_node_types cluster-configur
 The configuration to be used to launch worker nodes on the cloud service provider. Generally, node configs are set in the :ref:`node config of each node type <cluster-configuration-node-config>`. Setting this property allows propagation of a default value to all the node types when they launch as workers (e.g., using spot instances across all workers can be configured here so that it doesn't have to be set across all instance types).
 
 * **Required:** No
-* **Importance:** Medium
+* **Importance:** Low
 * **Type:** :ref:`Node config <cluster-configuration-node-config-type>`
 * **Default:** ``{}``
 
@@ -405,7 +409,7 @@ A list of patterns for files to exclude when running ``rsync up`` or ``rsync dow
 Example for a pattern in the list: ``**/.git/**``.
 
 * **Required:** No
-* **Importance:** Medium
+* **Importance:** Low
 * **Type:** List of String
 * **Default:** ``[]``
 
@@ -446,9 +450,12 @@ A list of commands to run to set up nodes. These commands will always run on the
 * **Importance:** Medium
 * **Type:** List of String
 * **Default:**
+
 .. tabs::
     .. group-tab:: AWS
+
         .. code-block:: yaml
+
             # Default setup_commands:
             setup_commands:
               - echo 'export PATH="$HOME/anaconda3/envs/tensorflow_p36/bin:$PATH"' >> ~/.bashrc
@@ -460,13 +467,14 @@ A list of commands to run to set up nodes. These commands will always run on the
 
 - Ideally, you should avoid using setup_commands by creating a docker image with all the dependencies preinstalled to minimize startup time.
 
-- Tip: if you also want to run apt-get commands during setup add the following list of commands:
+- **Tip**: if you also want to run apt-get commands during setup add the following list of commands:
 
-.. code-block:: yaml
-    setup_commands:
-      - sudo pkill -9 apt-get || true
-      - sudo pkill -9 dpkg || true
-      - sudo dpkg --configure -a
+    .. code-block:: yaml
+
+        setup_commands:
+          - sudo pkill -9 apt-get || true
+          - sudo pkill -9 dpkg || true
+          - sudo dpkg --configure -a
 
 .. _cluster-configuration-head-setup-commands:
 
@@ -503,9 +511,12 @@ Commands to start ray on the head node. You don't need to change this.
 * **Importance:** Low
 * **Type:** List of String
 * **Default:**
+
 .. tabs::
     .. group-tab:: AWS
+
         .. code-block:: yaml
+
             head_start_ray_commands:
               - ray stop
               - ulimit -n 65536; ray start --head --port=6379 --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml
@@ -521,9 +532,12 @@ Command to start ray on worker nodes. You don't need to change this.
 * **Importance:** Low
 * **Type:** List of String
 * **Default:**
+
 .. tabs::
     .. group-tab:: AWS
+
         .. code-block:: yaml
+
             worker_start_ray_commands:
               - ray stop
               - ulimit -n 65536; ray start --address=$RAY_HEAD_IP:6379 --object-manager-port=8076
@@ -904,7 +918,7 @@ If enabled, nodes will be *stopped* when the cluster scales down. If disabled, n
 
 
 * **Required:** No
-* **Importance:** Medium
+* **Importance:** Low
 * **Type:** Boolean
 * **Default:** ``True``
 
@@ -946,7 +960,6 @@ The minimum number of workers to maintain for this node type regardless of utili
 * **Default:** ``0``
 * **Minimum:** ``0``
 * **Maximum:** Unbounded
-* **Update requires:** Restart
 
 .. _cluster-configuration-node-max-workers:
 

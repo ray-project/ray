@@ -21,6 +21,8 @@ Autoscaler uses a simple binpacking algorithm to binpack the user demands into t
 
 **Here is "A Glimpse into the Ray Autoscaler" and how to debug/monitor your cluster:**
 
+2021-19-01 by Ameer Haj-Ali, Anyscale, Inc.
+
 .. youtube:: BJ06eJasdu4
 
 Supported features
