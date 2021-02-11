@@ -5,7 +5,6 @@ import math
 import os
 import random
 import shutil
-import time
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
 from ray.tune import trial_runner
@@ -583,19 +582,9 @@ class PopulationBasedTraining(FIFOScheduler):
                 trial_executor.stop_trial(trial)
                 trial.set_experiment_tag(new_tag)
                 trial.set_config(new_config)
-                # With placement groups, trial startup might not work
-                # first. This blocks until the trial has been started.
-                # We might want to introduce a timeout here or refactor
-                # how trials can be started/stopped with public methods.
-                timeout = time.monotonic() + 5  # hardcoded
-                while not trial_executor.start_trial(
-                        trial, new_state.last_checkpoint,
-                        train=False) and time.monotonic() < timeout:
-                    if trial.status == Trial.ERROR:
-                        # If this errored, do not try to start anymore
-                        break
-                    time.sleep(0.1)
-                if not trial.status == Trial.RUNNING:
+
+                if not trial_executor.start_trial(
+                        trial, new_state.last_checkpoint, train=False):
                     logger.warning(
                         f"Trial couldn't be reset: {trial}. Terminating "
                         f"instead.")

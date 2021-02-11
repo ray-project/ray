@@ -27,6 +27,7 @@ from ray.tune.suggest._mock import _MockSuggestionAlgorithm
 from ray.tune.suggest.suggestion import Searcher, ConcurrencyLimiter
 from ray.tune.suggest.search_generator import SearchGenerator
 from ray.tune.utils.placement_groups import PlacementGroupFactory
+from ray.util import placement_group_table
 
 
 class TrialRunnerTest3(unittest.TestCase):
@@ -996,7 +997,25 @@ class TrialRunnerPlacementGroupTest(unittest.TestCase):
         self.cluster.shutdown()
         _register_all()  # re-register the evicted objects
 
-    def testPlacementGroupRequests(self, scheduled=10):
+    def _assertCleanup(self, trial_executor):
+        # Assert proper cleanup
+        pg_manager = trial_executor._pg_manager
+        self.assertFalse(pg_manager._in_use_trials)
+        self.assertFalse(pg_manager._in_use_pgs)
+        self.assertFalse(pg_manager._staging_futures)
+        for pgf in pg_manager._staging:
+            self.assertFalse(pg_manager._staging[pgf])
+        for pgf in pg_manager._ready:
+            self.assertFalse(pg_manager._ready[pgf])
+        self.assertTrue(pg_manager._latest_staging_start_time)
+
+        num_non_removed_pgs = len([
+            p for pid, p in placement_group_table().items()
+            if p["state"] != "REMOVED"
+        ])
+        self.assertEqual(num_non_removed_pgs, 0)
+
+    def testPlacementGroupRequests(self, reuse_actors=False, scheduled=10):
         """In this test we try to start 10 trials but only have resources
         for 2. Placement groups should still be created and PENDING.
 
@@ -1014,23 +1033,48 @@ class TrialRunnerPlacementGroupTest(unittest.TestCase):
         placement_group_factory = PlacementGroupFactory(
             [head_bundle, child_bundle, child_bundle])
 
-        trial_executor = RayTrialExecutor()
+        trial_executor = RayTrialExecutor(reuse_actors=reuse_actors)
 
         this = self
 
         class _TestCallback(Callback):
             def on_step_end(self, iteration, trials, **info):
-                if iteration == 1:
-                    this.assertEqual(scheduled, len(trials))
-                    this.assertEqual(
-                        scheduled,
-                        sum(
-                            len(s) for s in
-                            trial_executor._pg_manager._staging.values()) +
-                        sum(
-                            len(s)
-                            for s in trial_executor._pg_manager._ready.values(
-                            )) + len(trial_executor._pg_manager._in_use_pgs))
+                num_finished = len([
+                    t for t in trials
+                    if t.status == Trial.TERMINATED or t.status == Trial.ERROR
+                ])
+
+                num_staging = sum(
+                    len(s)
+                    for s in trial_executor._pg_manager._staging.values())
+                num_ready = sum(
+                    len(s) for s in trial_executor._pg_manager._ready.values())
+                num_in_use = len(trial_executor._pg_manager._in_use_pgs)
+                num_cached = len(trial_executor._pg_manager._cached_pgs)
+
+                total_num_tracked = num_staging + num_ready + \
+                    num_in_use + num_cached
+
+                num_non_removed_pgs = len([
+                    p for pid, p in placement_group_table().items()
+                    if p["state"] != "REMOVED"
+                ])
+
+                # All trials should be scheduled
+                this.assertEqual(
+                    scheduled,
+                    min(scheduled, len(trials)),
+                    msg=f"Num trials iter {iteration}")
+                # The number of PGs should decrease when trials finish
+                this.assertEqual(
+                    max(scheduled, len(trials)) - num_finished,
+                    total_num_tracked,
+                    msg=f"Num tracked iter {iteration}")
+                # The number of actual placement groups should match this
+                this.assertEqual(
+                    max(scheduled, len(trials)) - num_finished,
+                    num_non_removed_pgs,
+                    msg=f"Num actual iter {iteration}")
 
         start = time.time()
         out = tune.run(
@@ -1039,18 +1083,26 @@ class TrialRunnerPlacementGroupTest(unittest.TestCase):
             resources_per_trial=placement_group_factory,
             num_samples=10,
             trial_executor=trial_executor,
-            callbacks=[_TestCallback()])
+            callbacks=[_TestCallback()],
+            reuse_actors=reuse_actors,
+            verbose=2)
 
         trial_end_times = sorted(t.last_result["end"] for t in out.trials)
         print("Trial end times:", trial_end_times)
         max_diff = trial_end_times[-1] - trial_end_times[0]
 
         # Not all trials have been run in parallel
-        self.assertGreater(max_diff, 5)
+        self.assertGreater(max_diff, 3)
 
         # Some trials should have run in parallel
         # Todo: Re-enable when using buildkite
         # self.assertLess(max_diff, 10)
+
+        self._assertCleanup(trial_executor)
+
+    def testPlacementGroupRequestsWithActorReuse(self):
+        """Assert that reuse actors doesn't leak placement groups"""
+        self.testPlacementGroupRequests(reuse_actors=True)
 
     @patch("ray.tune.trial_runner.TUNE_MAX_PENDING_TRIALS_PG", 6)
     @patch("ray.tune.utils.placement_groups.TUNE_MAX_PENDING_TRIALS_PG", 6)
@@ -1058,7 +1110,12 @@ class TrialRunnerPlacementGroupTest(unittest.TestCase):
         """Assert that maximum number of placement groups is enforced."""
         self.testPlacementGroupRequests(scheduled=6)
 
-    def testPlacementGroupDistributedTraining(self):
+    @patch("ray.tune.trial_runner.TUNE_MAX_PENDING_TRIALS_PG", 6)
+    @patch("ray.tune.utils.placement_groups.TUNE_MAX_PENDING_TRIALS_PG", 6)
+    def testPlacementGroupLimitedRequestsWithActorReuse(self):
+        self.testPlacementGroupRequests(reuse_actors=True, scheduled=6)
+
+    def testPlacementGroupDistributedTraining(self, reuse_actors=False):
         """Run distributed training using placement groups.
 
         Each trial requests 4 CPUs and starts 4 remote training workers.
@@ -1088,7 +1145,7 @@ class TrialRunnerPlacementGroupTest(unittest.TestCase):
             end = time.time() - config["start_time"]
             tune.report(avg=np.mean(results), end=end)
 
-        trial_executor = RayTrialExecutor()
+        trial_executor = RayTrialExecutor(reuse_actors=reuse_actors)
 
         start = time.time()
         out = tune.run(
@@ -1099,7 +1156,9 @@ class TrialRunnerPlacementGroupTest(unittest.TestCase):
             },
             resources_per_trial=placement_group_factory,
             num_samples=1,
-            trial_executor=trial_executor)
+            trial_executor=trial_executor,
+            reuse_actors=reuse_actors,
+            verbose=2)
 
         avgs = sorted(t.last_result["avg"] for t in out.trials)
         self.assertSequenceEqual(avgs, list(range(3, 103, 10)))
@@ -1109,22 +1168,16 @@ class TrialRunnerPlacementGroupTest(unittest.TestCase):
         max_diff = trial_end_times[-1] - trial_end_times[0]
 
         # Not all trials have been run in parallel
-        self.assertGreater(max_diff, 5)
+        self.assertGreater(max_diff, 3)
 
         # Some trials should have run in parallel
         # Todo: Re-enable when using buildkite
         # self.assertLess(max_diff, 10)
 
-        # Assert proper cleanup
-        pg_manager = trial_executor._pg_manager
-        self.assertFalse(pg_manager._in_use_trials)
-        self.assertFalse(pg_manager._in_use_pgs)
-        self.assertFalse(pg_manager._staging_futures)
-        for pgf in pg_manager._staging:
-            self.assertFalse(pg_manager._staging[pgf])
-        for pgf in pg_manager._ready:
-            self.assertFalse(pg_manager._ready[pgf])
-        self.assertTrue(pg_manager._latest_staging_start_time)
+        self._assertCleanup(trial_executor)
+
+    def testPlacementGroupDistributedTrainingWithActorReuse(self):
+        self.testPlacementGroupDistributedTraining(reuse_actors=True)
 
 
 if __name__ == "__main__":
