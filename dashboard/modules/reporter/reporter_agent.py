@@ -78,12 +78,18 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
                               "percentage", ["ip"]),
             "node_mem": Gauge("node_mem", "Total memory usage on a ray node",
                               "bytes", ["ip"]),
-            # "node_disk": Gauge("node_disk", "Total disk usage on a ray node",
-            #                   "bytes", ["ip"]),
+            "node_disk_usage": Gauge("node_disk_usage", "Total disk usage (bytes) on a ray node",
+                              "bytes", ["ip"]),
+            "node_disk_utilization_percentage": Gauge("node_disk_utilization_percentage", "Total disk utilization (percentage) on a ray node",
+                              "percentage", ["ip"]),
             "node_network_sent": Gauge("node_network_sent", "Total network sent",
                               "bytes", ["ip"]),
             "node_network_received": Gauge("node_network_received", "Total network received",
                               "bytes", ["ip"]),
+            "node_network_send_speed": Gauge("node_network_send_speed", "Network send speed",
+                              "bytes/sec", ["ip"]),
+            "node_network_receive_speed": Gauge("node_network_receive_speed", "Network receive speed",
+                              "bytes/sec", ["ip"]),
             "raylet_cpu": Gauge("raylet_cpu",
                                 "CPU usage of the raylet on a node.",
                                 "percentage", ["ip", "pid"]),
@@ -243,7 +249,7 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
         self._network_stats_hist.append((now, network_stats))
         self._network_stats_hist = self._network_stats_hist[-7:]
         then, prev_network_stats = self._network_stats_hist[0]
-        netstats = ((network_stats[0] - prev_network_stats[0]) / (now - then),
+        net_speed_stats = ((network_stats[0] - prev_network_stats[0]) / (now - then),
                     (network_stats[1] - prev_network_stats[1]) / (now - then))
         return {
             "now": now,
@@ -257,7 +263,8 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
             "loadAvg": self._get_load_avg(),
             "disk": self._get_disk_usage(),
             "gpus": self._get_gpu_usage(),
-            "net": netstats,
+            "net": network_stats,
+            "net_speed": net_speed_stats,
             "cmdline": self._get_raylet_cmdline(),
         }
 
@@ -275,17 +282,29 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
             gauge=self._gauges["node_mem"], value=mem_usage, tags={"ip": ip})
 
         # -- Disk per node --
-        # total, used, free, _ = 0
-        # total, used, free, percent = stats["disk"]
-        # disk_record = Record(
-        #     gauge=self._gauges["node_disk"], value=disk_usage,tags={"ip": ip})
+        used, free = 0, 0
+        for entry in stats["disk"].values():
+            used += entry.used
+            free += entry.free
+        disk_utilization = float(used / (used + free)) * 100
+        disk_usage_record = Record(
+            gauge=self._gauges["node_disk_usage"], value=used, tags={"ip": ip})
+        disk_utilization_percentage_record = Record(
+            gauge=self._gauges["node_disk_utilization_percentage"], value=disk_utilization,tags={"ip": ip})
 
-        # -- Network (sent/received) stats --
-        netstats = stats["net"]
+        # -- Network speed (send/receive) stats per node --
+        network_stats = stats["net"]
         net_sent_record = Record(
-            gauge=self._gauges["node_network_sent"], value=netstats[0], tags={"ip": ip})
+            gauge=self._gauges["node_network_sent"], value=network_stats[0], tags={"ip": ip})
         net_received_record = Record(
-            gauge=self._gauges["node_network_received"], value=netstats[1], tags={"ip": ip})
+            gauge=self._gauges["node_network_received"], value=network_stats[1], tags={"ip": ip})
+
+        # -- Network speed (send/receive) per node --
+        net_speed_stats = stats["net_speed"]
+        net_send_speed_record = Record(
+            gauge=self._gauges["node_network_send_speed"], value=net_speed_stats[0], tags={"ip": ip})
+        net_receive_speed_record = Record(
+            gauge=self._gauges["node_network_receive_speed"], value=net_speed_stats[1], tags={"ip": ip})
 
         raylet_stats = self._get_raylet_stats()
         raylet_pid = str(raylet_stats["pid"])
@@ -310,7 +329,7 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
             })
 
         self._metrics_agent.record_reporter_stats(
-            [cpu_record, mem_record, net_sent_record, net_received_record, raylet_cpu_record, raylet_mem_record])
+            [cpu_record, mem_record, disk_usage_record, disk_utilization_percentage_record, net_sent_record, net_received_record, net_send_speed_record, net_receive_speed_record, raylet_cpu_record, raylet_mem_record])
 
     async def _perform_iteration(self, aioredis_client):
         """Get any changes to the log files and push updates to Redis."""
