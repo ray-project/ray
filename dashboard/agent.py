@@ -302,8 +302,9 @@ if __name__ == "__main__":
 
         # The dashboard is currently broken on Windows.
         # https://github.com/ray-project/ray/issues/14026.
-        if sys.platform == "win32" and self.include_dashboard is None:
-            logger.warning("The dashboard is currently disabled on windows."
+        if sys.platform == "win32":
+            logger.warning(
+                "The dashboard is currently disabled on windows."
                 "See https://github.com/ray-project/ray/issues/14026"
                 "for more details")
             while True:
