@@ -20,7 +20,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy import LearningRateSchedule
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.torch_ops import apply_grad_clipping, FLOAT_MIN, \
-    huber_loss, reduce_mean_ignore_inf
+    huber_loss, reduce_mean_ignore_inf, sequence_mask
 from ray.rllib.utils.typing import TensorType, TrainerConfigDict
 
 torch, nn = try_import_torch()
@@ -79,6 +79,8 @@ def r2d2_loss(policy: Policy, model, _,
     while "state_in_{}".format(i) in train_batch:
         state_batches.append(train_batch["state_in_{}".format(i)])
         i += 1
+    assert state_batches
+
     # Q-network evaluation.
     q, q_logits, q_probs, state_out = compute_q_values(
         policy,
@@ -88,6 +90,10 @@ def r2d2_loss(policy: Policy, model, _,
         seq_lens=train_batch.get("seq_lens"),
         explore=False,
         is_training=True)
+
+    B = state_batches[0].shape[0]
+    #T = q.shape[0] // B
+    T = torch.max(train_batch["seq_lens"])
 
     # Target Q-network evaluation.
     q_target, q_logits_target, q_probs_target, state_out_target = compute_q_values(
@@ -139,10 +145,19 @@ def r2d2_loss(policy: Policy, model, _,
                    config["gamma"] ** config["n_step"] * h_inv,
                    config["epsilon"])
 
+        # Seq-mask all loss-related terms.
+        seq_mask = sequence_mask(train_batch["seq_lens"], T)[:, :-1]
+
+        # Make sure use the correct time indices:
+        # Q(t) - [gamma * r + Q^(t+1)]
         # Compute the error (potentially clipped).
-        policy._td_error = q_selected - target.detach()
-        policy._total_loss = torch.mean(
-            train_batch[PRIO_WEIGHTS].float() * huber_loss(policy._td_error))
+        q_selected = q_selected.reshape([B, T])[:, :-1]
+        td_error = q_selected - target.reshape([B, T])[:, 1:].detach()
+        td_error = td_error * seq_mask
+        weights = train_batch[PRIO_WEIGHTS].reshape([B, T])[:, :-1].float()
+        policy._total_loss = torch.mean(weights * huber_loss(td_error))
+        policy._td_error = td_error.reshape([-1])
+        q_selected = q_selected * seq_mask
         policy._loss_stats = {
             "mean_q": torch.mean(q_selected),
             "min_q": torch.min(q_selected),

@@ -1,5 +1,6 @@
 import unittest
 
+import ray
 import ray.rllib.agents.dqn as dqn
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.test_utils import check_compute_single_action, \
@@ -9,13 +10,22 @@ tf1, tf, tfv = try_import_tf()
 
 
 class TestR2D2(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        ray.init()
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        ray.shutdown()
+
     def test_r2d2_compilation(self):
         """Test whether a R2D2Trainer can be built on all frameworks."""
         config = dqn.R2D2_DEFAULT_CONFIG.copy()
         config["num_workers"] = 0  # Run locally.
+        config["dueling"] = False#TEST
         config["model"]["use_lstm"] = True  # Wrap with an LSTM.
         config["model"]["max_seq_len"] = 20
-        num_iterations = 2
+        num_iterations = 100#TODO
 
         for _ in framework_iterator(config, frameworks="torch"):#TODO
             trainer = dqn.R2D2Trainer(config=config, env="CartPole-v0")

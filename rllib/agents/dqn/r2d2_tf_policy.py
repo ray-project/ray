@@ -205,7 +205,14 @@ def get_distribution_inputs_and_class(
         is_training: bool = False,
         **kwargs) -> Tuple[TensorType, type, List[TensorType]]:
 
-    q_vals, logits, probs_or_logits, state_out = compute_q_values(
+    if policy.config["framework"] == "torch":
+        from ray.rllib.agents.dqn.r2d2_torch_policy import compute_q_values as \
+            torch_compute_q_values
+        func = torch_compute_q_values
+    else:
+        func = compute_q_values
+
+    q_vals, logits, probs_or_logits, state_out = func(
         policy, model, input_dict, state_batches, seq_lens, explore,
         is_training)
 
@@ -215,7 +222,7 @@ def get_distribution_inputs_and_class(
     action_dist_class = TorchCategorical if policy.config["framework"] == "torch" else \
         Categorical
 
-    return policy.q_values, action_dist_class, state_out  # state-out
+    return policy.q_values, action_dist_class, state_out
 
 
 def adam_optimizer(policy: Policy, config: TrainerConfigDict
