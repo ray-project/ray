@@ -960,17 +960,33 @@ size_t ReferenceCounter::GetObjectSize(const ObjectID &object_id) const {
   return it->second.object_size;
 }
 
-void ReferenceCounter::HandleObjectSpilled(const ObjectID &object_id) {
+bool ReferenceCounter::HandleObjectSpilled(const ObjectID &object_id,
+                                           const std::string spilled_url,
+                                           const NodeID &spilled_node_id, int64_t size,
+                                           bool release) {
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
     RAY_LOG(WARNING) << "Spilled object " << object_id << " already out of scope";
-    return;
+    return false;
   }
 
   it->second.spilled = true;
-  // Release the primary plasma copy, if any.
-  ReleasePlasmaObject(it);
+  if (spilled_url != "") {
+    it->second.spilled_url = spilled_url;
+  }
+  if (!spilled_node_id.IsNil()) {
+    it->second.spilled_node_id = spilled_node_id;
+  }
+  if (size > 0) {
+    it->second.object_size = size;
+  }
+  PushToLocationSubscribers(it);
+  if (release) {
+    // Release the primary plasma copy, if any.
+    ReleasePlasmaObject(it);
+  }
+  return true;
 }
 
 absl::optional<LocalityData> ReferenceCounter::GetLocalityData(
@@ -1010,8 +1026,9 @@ void ReferenceCounter::PushToLocationSubscribers(ReferenceTable::iterator it) {
   const auto callbacks = it->second.location_subscription_callbacks;
   it->second.location_subscription_callbacks.clear();
   it->second.location_version++;
-  for (const auto &callback : callbacks) {
-    callback(it->second.locations, it->second.object_size, it->second.location_version);
+  for (const auto callback : callbacks) {
+    callback(it->second.locations, it->second.object_size, it->second.spilled_url,
+             it->second.spilled_node_id, it->second.location_version);
   }
 }
 
@@ -1031,7 +1048,8 @@ Status ReferenceCounter::SubscribeObjectLocations(
     // If the last location version is less than the current location version, we
     // already have location data that the subscriber hasn't seen yet, so we immediately
     // invoke the callback.
-    callback(it->second.locations, it->second.object_size, it->second.location_version);
+    callback(it->second.locations, it->second.object_size, it->second.spilled_url,
+             it->second.spilled_node_id, it->second.location_version);
   } else {
     // Otherwise, save the callback for later invocation.
     it->second.location_subscription_callbacks.push_back(callback);
