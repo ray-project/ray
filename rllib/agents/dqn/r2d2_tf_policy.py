@@ -66,12 +66,15 @@ def r2d2_loss(policy: Policy, model, _,
         TensorType: A single loss tensor.
     """
     config = policy.config
+
+    # Construct internal state inputs.
     i = 0
     state_batches = []
     while "state_in_{}".format(i) in train_batch:
         state_batches.append(train_batch["state_in_{}".format(i)])
         i += 1
-    # Q-network evaluation.
+
+    # Q-network evaluation (at t).
     q, q_logits, q_probs, state_out = compute_q_values(
         policy,
         policy.q_model,
@@ -81,7 +84,7 @@ def r2d2_loss(policy: Policy, model, _,
         explore=False,
         is_training=True)
 
-    # Target Q-network evaluation.
+    # Target Q-network evaluation (at t+1).
     q_target, q_logits_target, q_probs_target, state_out_target = \
         compute_q_values(
             policy,
