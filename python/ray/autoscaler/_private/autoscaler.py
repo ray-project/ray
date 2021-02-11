@@ -842,6 +842,7 @@ class NodeTracker:
         if node_id not in self.node_mapping:
             stdout_name = f"{node_id}.out"
             stdout_path = os.path.join(self.log_dir, stdout_name)
+            print("Creating log at: ", stdout_path)
             stdout_obj = open(stdout_path, "a")
             process_runner = ProcessRunnerInterceptor(
                 stdout_obj, process_runner=self.process_runner)
