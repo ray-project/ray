@@ -1242,7 +1242,7 @@ def connect(node,
         worker.listener_thread = threading.Thread(
             target=listen_error_messages_raylet,
             name="ray_listen_error_messages",
-            args=(worker, q, worker.threads_stopped))
+            args=(worker, worker.threads_stopped))
         worker.listener_thread.daemon = True
         worker.listener_thread.start()
         if log_to_driver:
