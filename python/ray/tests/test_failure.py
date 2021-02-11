@@ -48,7 +48,7 @@ def test_unhandled_errors(ray_start_regular):
     # Test we don't report handled exceptions.
     x1 = f.remote()
     x2 = a.f.remote()
-    with pytest.raises(ray.exceptions.RayError):
+    with pytest.raises(ray.exceptions.RayError) as err:  # noqa
         ray.get([x1, x2])
     del x1
     del x2
