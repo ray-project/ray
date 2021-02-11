@@ -147,7 +147,7 @@ The nodes types object's keys represent the names of the different node types.
             :ref:`Resources <cluster-configuration-resources-type>`
         :ref:`min_workers <cluster-configuration-node-min-workers>`: int
         :ref:`max_workers <cluster-configuration-node-max-workers>`: int
-        :ref:`worker_setup_commands <cluster-configuration-worker-setup-commands>`:
+        :ref:`worker_setup_commands <cluster-configuration-node-type-worker-setup-commands>`:
             - str
         :ref:`docker <cluster-configuration-node-docker>`:
             :ref:`Node Docker <cluster-configuration-node-docker-type>`
@@ -593,7 +593,7 @@ The extra options to pass to ``docker run``.
 .. _cluster-configuration-head-run-options:
 
 ``docker.head_run_options``
-~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 The extra options to pass to ``docker run`` for head node only.
 
@@ -605,7 +605,7 @@ The extra options to pass to ``docker run`` for head node only.
 .. _cluster-configuration-worker-run-options:
 
 ``docker.worker_run_options``
-~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 The extra options to pass to ``docker run`` for worker nodes only.
 
@@ -617,7 +617,7 @@ The extra options to pass to ``docker run`` for worker nodes only.
 .. _cluster-configuration-disable-automatic-runtime-detection:
 
 ``docker.disable_automatic_runtime_detection``
-~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 If enabled, Ray will not try to use the NVIDIA Container Runtime if GPUs are present.
 
@@ -631,7 +631,7 @@ If enabled, Ray will not try to use the NVIDIA Container Runtime if GPUs are pre
 .. _cluster-configuration-disable-shm-size-detection:
 
 ``docker.disable_shm_size_detection``
-~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 If enabled, Ray will not automatically specify the size ``/dev/shm`` for the started container and the runtime's default value (64MiB for Docker) will be used.
 
@@ -951,7 +951,7 @@ The maximum number of workers to have in the cluster for this node type regardle
 * **Minimum:** ``0``
 * **Maximum:** Unbounded
 
-.. _cluster-configuration-worker-setup-commands:
+.. _cluster-configuration-node-type-worker-setup-commands:
 
 ``available_node_types.<node_type_name>.node_type.worker_setup_commands``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
