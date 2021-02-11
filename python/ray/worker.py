@@ -283,9 +283,8 @@ class Worker:
         if "RAY_IGNORE_UNHANDLED_ERRORS" in os.environ:
             return
         for e in out:
-            logger.error(
-                "Unhandled error (suppress with "
-                "RAY_IGNORE_UNHANDLED_ERRORS=1): {}".format(e))
+            logger.error("Unhandled error (suppress with "
+                         "RAY_IGNORE_UNHANDLED_ERRORS=1): {}".format(e))
 
     def deserialize_objects(self, data_metadata_pairs, object_refs):
         context = self.get_serialization_context()
