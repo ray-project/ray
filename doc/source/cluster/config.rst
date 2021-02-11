@@ -224,7 +224,7 @@ The name of the cluster. This is the namespace of the cluster.
 * **Importance:** High
 * **Type:** String
 * **Default:** "default"
-* **Pattern:** [a-zA-Z0-9_]+
+* **Pattern:** ``[a-zA-Z0-9_]+``
 
 .. _cluster-configuration-max-workers:
 
@@ -356,7 +356,7 @@ The key for one of the node types in ``available_node_types``. This node type wi
 * **Required:** Yes
 * **Importance:** High
 * **Type:** String
-* **Pattern:** [a-zA-Z0-9_]+
+* **Pattern:** ``[a-zA-Z0-9_]+``
 
 .. _cluster-configuration-worker-nodes:
 
@@ -627,7 +627,6 @@ If enabled, Ray will not try to use the NVIDIA Container Runtime if GPUs are pre
 * **Default:** ``False``
 
 
-### disable_shm_size_detection
 .. _cluster-configuration-disable-shm-size-detection:
 
 ``docker.disable_shm_size_detection``
