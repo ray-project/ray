@@ -1,4 +1,4 @@
-.. _ray-k8s-deploy:
+.. _ray-k8s-static:
 
 Deploying a Static Cluster
 ==========================

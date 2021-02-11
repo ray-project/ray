@@ -1,7 +1,7 @@
 .. _k8s-gpus:
 
 GPU Usage with Kubernetes
-=========
+=========================
 This document provides some notes on GPU usage with Kubernetes.
 
 To use GPUs on Kubernetes, you will need to configure both your Kubernetes setup and add additional values to your Ray cluster configuration.

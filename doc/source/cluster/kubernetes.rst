@@ -2,83 +2,67 @@
 Deploying on Kubernetes
 ***********************
 
-.. toctree::
-    :hidden:
+.. _ray-k8s-deploy:
 
-    /cluster/kubernetes-manual.rst
-    /cluster/kubernetes-gpu.rst
+Introduction
+============
+The Ray Autoscaler allows you to leverage your Kubernetes cluster as a substrate for execution of distributed Ray programs.
+The autoscaler spins up and deletes Kubernetes pods according to resource demands of the Ray workload - each Ray node runs in its own Kubernetes pod.
 
+Quick Guide
+-----------
 
-Overview
-========
-The Ray Autoscaler uses the `NodeProvider interface`_ to manage Ray nodes.
-To autoscale in different contexts (e.g. on AWS, GCP, Azure, Kubernetes) the Autoscaler uses subclasses of this interface.
-The AWS, GCP, and Azure node providers provision one cloud instance per Ray node.
+This document covers the following topics:
 
-The Kubernetes node provider on the other hand, spins up one Kubernetes pod per Ray node.
-Thus, when using the Ray Autoscaler with Kubernetes, each Ray node runs in its `own Kubernetes pod <https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/_private/kubernetes/node_provider.py>`__.
+- :ref:`Overview of methods for launching a Ray Cluster on Kubernetes<k8s-overview>`
+- :ref:`Managing clusters with the Ray Cluster Launcher<k8s-cluster-launcher>`
+- :ref:`Managing clusters with the Ray Kubernetes Operator<k8s-operator>`
+- :ref:`Interacting with a Ray Cluster via a Kubernetes Service<ray-k8s-interact>`
+- :ref:`Comparison of the Ray Cluster Launcher and Ray Kubernetes Operator<k8s-comparison>`
+
+You can find more information at the following links:
+
+- :ref:`GPU usage with Kubernetes<k8s-gpus>`
+- :ref:`Gsing Ray Tune on your Kubernetes cluster<tune-kubernetes>`
+- :ref:`How to manually set up a non-autoscaling Ray cluster on Kubernetes<ray-k8s-static>`
+
+.. _k8s-overview:
+
+The Ray Autoscaler on Kubernetes
+================================
 
 Ray supports two ways of launching an autoscaling Ray cluster on Kubernetes.
 
 - Using the :ref:`Ray Cluster Launcher <k8s-cluster-launcher>`
 - Using the :ref:`Ray Kubernetes Operator <k8s-operator>`
 
+The Cluster Launcher and Ray Kubernetes Operator provide similar functionality; each serves as an `interface to the Ray autoscaler`.
+Below is a brief overview of the two tools.
 
-.. _`NodeProvider interface`: https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/node_provider.py
+The Ray Cluster Launcher
+------------------------
+The Ray Cluster Launcher is geared towards experimentation and development.
+It allows you to manage an autoscaling Ray Cluster from your local environment using the :ref:`Ray CLI <ray-cli>`.
+For example, you can use ``ray up`` to launch a Ray cluster on Kubernetes and ``ray exec`` to execute commands in the Ray head node's pod.
+Note that using the Cluster Launcher requires Ray to be :ref:`installed locally <installation>`.
 
+Read :ref:`here<k8s-cluster-launcher>` to get started with the Ray Cluster Launcher on Kubernetes.
 
-Comparision of the Cluster Launcher and Operator
-------------------------------------------------
+The Ray Kubernetes Operator
+---------------------------
+The Ray Kubernetes Operator is a Kubernetes-native solution geared towards production use cases.
+Rather than handling cluster launching locally, cluster launching and autoscaling are centralized in the Operator's Pod.
+The Operator follows the standard Kubernetes `pattern <https://kubernetes.io/docs/concepts/extend-kubernetes/operator/>`__ - it runs
+a control loop which manages a `Kubernetes Custom Resource`_ specifying the desired state of your Ray cluster.
+Using the Kubernetes Operator does not require a local installation of Ray - all interactions with your Ray cluster are mediated by Kubernetes.
 
-The Cluster Launcher and Operator provide similar functionality; both serve as an interface to the Ray autoscaler.
+Read :ref:`here<k8s-operator>` to get started with the Ray Kubernetes Operator.
 
-Comparison of use cases
-~~~~~~~~~~~~~~~~~~~~~~~
-- The Cluster Launcher is convenient for development and experimentation. Using the Cluster Launcher requires a local installation of Ray. The Ray CLI then provides a convenient interface for interacting with a Ray cluster.
+Further reading
+---------------
 
-- The Operator is geared towards production use cases. It does not require installing Ray locally - all interactions with your Ray cluster are mediated by Kubernetes.
-
-
-Comparison of architectures
-~~~~~~~~~~~~~~~~~~~~~~~~~~~
-- With the Cluster Launcher, the user launches a Ray cluster from their local environment by invoking ``ray up``. This provisions a pod for the Ray head node, which then runs the `autoscaling process <https://github.com/ray-project/ray/blob/master/python/ray/monitor.py>`__.
-
--  The `Operator <https://github.com/ray-project/ray/blob/master/python/ray/ray_operator/operator.py>`__ centralizes cluster launching and autoscaling in the `Operator pod <https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/kubernetes/operator_configs/operator.yaml>`__. \
-   The user creates a `Kubernetes Custom Resource`_ describing the intended state of the Ray cluster. \
-   The Operator then detects the resource, launches a Ray cluster, and runs the autoscaling process in the operator pod. \
-   The Operator can manage multiple Ray clusters by running an autoscaling process for each Ray cluster.
-
-Comparision of configuration options
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-The configuration options for the two methods are completely analogous - compare sample configurations for the `Cluster Launcher <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/kubernetes/example-full.yaml>`__
-and for the `Operator <https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/kubernetes/operator_configs/example_cluster.yaml>`__.
-With a few exceptions, the fields of the RayCluster resource managed by the Operator are camelCase versions of the corresponding snake_case Cluster Launcher fields.
-In fact, the Operator `internally <https://github.com/ray-project/ray/blob/master/python/ray/ray_operator/operator_utils.py>`__ converts
-RayCluster resources to Cluster Launching configs.
-
-The details of these configuration differences are not essential to getting started, but here's a summary:
-
-- The Cluster Launching field ``available_node_types`` for specifiying the types of pods available for autoscaling is renamed to ``podTypes`` in the Operator's RayCluster configuration.
-- The Cluster Launching field ``resources`` for specifying custom Ray resources provided by a node type is renamed to ``rayResources`` in the Operator's RayCluster configuration.
-- The ``provider`` field in the Cluster Launching config has no analogue in the Operator's RayCluster configuration. (The Operator fills this field internally.)
--  * When using the Cluster Launcher, ``head_ray_start_commands`` should include the argument ``--autoscaling-config=~/ray_bootstrap_config.yaml``; this is important for the configuration of the head node's autoscaler.
-   * On the other hand, the Operator's ``headRayStartCommands`` should include a ``--no-monitor`` flag to prevent the autoscaling/monitoring process from running on the head node.
-
-
-Quick Guide
------------
-
-The next two sections detail how to launch with the :ref:`Ray Cluster Launcher <k8s-cluster-launcher>`
-and with the :ref:`Ray Kubernetes Operator <k8s-operator>`, respectively.
-
-The section after that describes how to :ref:`interact <ray-k8s-interact>` with your Ray cluster
-via a :ref:`Service <k8s-service>` targeting the Pod running the Ray head node.
-
-It is also possible to manually deploy a non-autoscaling Ray cluster. You can read :ref:`here <ray-k8s-deploy>` for an example.
-
-For information on using GPUs with Ray on Kubernetes, see :ref:`here <k8s-gpus>`.
-
-If you would like to use Ray Tune in your Kubernetes cluster, have a look at :ref:`this short guide to make it work <tune-kubernetes>`.
+Read :ref:`here<k8s-comparison>` for more details on the comparison between the Operator and Cluster Launcher.
+Note that it is also possible to manually deploy a :ref:`non-autoscaling Ray cluster <ray-k8s-static>` on Kubernetes.
 
 .. note::
 
@@ -94,7 +78,7 @@ If you would like to use Ray Tune in your Kubernetes cluster, have a look at :re
 
 .. _k8s-cluster-launcher:
 
-Managing clusters with the Ray Cluster Launcher
+Managing Clusters with the Ray Cluster Launcher
 ===============================================
 
 This section briefly explains how to use the Ray Cluster Launcher to launch a Ray cluster on your existing Kubernetes cluster.
@@ -555,6 +539,50 @@ the :ref:`Ray Cluster Launcher <cluster-launcher-commands>`.
    The Dashboard currently shows resource limits of the physical host each Ray node is running on,
    rather than the limits of the container the node is running in.
    This is a known bug tracked `here <https://github.com/ray-project/ray/issues/11172>`_.
+
+
+.. _k8s-comparison:
+
+Cluster Launcher vs Operator
+============================
+
+We compare the Ray Cluster Launcher and Ray Kubernetes Operator as methods of managing an autoscaling Ray cluster.
+
+
+Comparison of use cases
+-----------------------
+
+- The Cluster Launcher is convenient for development and experimentation. Using the Cluster Launcher requires a local installation of Ray. The Ray CLI then provides a convenient interface for interacting with a Ray cluster.
+
+- The Operator is geared towards production use cases. It does not require installing Ray locally - all interactions with your Ray cluster are mediated by Kubernetes.
+
+
+Comparison of architectures
+---------------------------
+
+- With the Cluster Launcher, the user launches a Ray cluster from their local environment by invoking ``ray up``. This provisions a pod for the Ray head node, which then runs the `autoscaling process <https://github.com/ray-project/ray/blob/master/python/ray/monitor.py>`__.
+
+-  The `Operator <https://github.com/ray-project/ray/blob/master/python/ray/ray_operator/operator.py>`__ centralizes cluster launching and autoscaling in the `Operator pod <https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/kubernetes/operator_configs/operator.yaml>`__. \
+   The user creates a `Kubernetes Custom Resource`_ describing the intended state of the Ray cluster. \
+   The Operator then detects the resource, launches a Ray cluster, and runs the autoscaling process in the operator pod. \
+   The Operator can manage multiple Ray clusters by running an autoscaling process for each Ray cluster.
+
+Comparison of configuration options
+-----------------------------------
+
+The configuration options for the two methods are completely analogous - compare sample configurations for the `Cluster Launcher <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/kubernetes/example-full.yaml>`__
+and for the `Operator <https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/kubernetes/operator_configs/example_cluster.yaml>`__.
+With a few exceptions, the fields of the RayCluster resource managed by the Operator are camelCase versions of the corresponding snake_case Cluster Launcher fields.
+In fact, the Operator `internally <https://github.com/ray-project/ray/blob/master/python/ray/ray_operator/operator_utils.py>`__ converts
+RayCluster resources to Cluster Launching configs.
+
+A summary of the configuration differences:
+
+- The Cluster Launching field ``available_node_types`` for specifiying the types of pods available for autoscaling is renamed to ``podTypes`` in the Operator's RayCluster configuration.
+- The Cluster Launching field ``resources`` for specifying custom Ray resources provided by a node type is renamed to ``rayResources`` in the Operator's RayCluster configuration.
+- The ``provider`` field in the Cluster Launching config has no analogue in the Operator's RayCluster configuration. (The Operator fills this field internally.)
+-  * When using the Cluster Launcher, ``head_ray_start_commands`` should include the argument ``--autoscaling-config=~/ray_bootstrap_config.yaml``; this is important for the configuration of the head node's autoscaler.
+   * On the other hand, the Operator's ``headRayStartCommands`` should include a ``--no-monitor`` flag to prevent the autoscaling/monitoring process from running on the head node.
 
 Questions or Issues?
 --------------------
