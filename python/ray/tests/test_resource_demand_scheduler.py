@@ -28,7 +28,7 @@ from ray.core.generated.common_pb2 import Bundle, PlacementStrategy
 from ray.autoscaler.tags import TAG_RAY_USER_NODE_TYPE, TAG_RAY_NODE_KIND, \
                                 NODE_KIND_WORKER, TAG_RAY_NODE_STATUS, \
                                 STATUS_UP_TO_DATE, STATUS_UNINITIALIZED, \
-                                STATUS_UPDATE_FAILED, STATUS_WAITING_FOR_SSH, \
+                                STATUS_WAITING_FOR_SSH, \
                                 NODE_KIND_HEAD, NODE_TYPE_LEGACY_WORKER, \
                                 NODE_TYPE_LEGACY_HEAD
 from ray.test_utils import same_elements
@@ -1452,7 +1452,9 @@ class AutoscalingTest(unittest.TestCase):
                                           STATUS_WAITING_FOR_SSH)]
         assert summary.pending_launches == {"m4.16xlarge": 2}
 
-        assert summary.failed_nodes == [("172.0.0.4", "m4.4xlarge", "/tmp/ray/session_latests/logs/4.out")]
+        assert summary.failed_nodes == [
+            ("172.0.0.4", "m4.4xlarge", "/tmp/ray/session_latests/logs/4.out")
+        ]
 
         # Make sure we return something (and don't throw exceptions). Let's not
         # get bogged down with a full cli test here.
@@ -2433,7 +2435,8 @@ def test_info_string():
         pending_nodes=[("1.2.3.4", "m4.4xlarge", STATUS_WAITING_FOR_SSH),
                        ("1.2.3.5", "m4.4xlarge", STATUS_WAITING_FOR_SSH)],
         pending_launches={"m4.4xlarge": 2},
-        failed_nodes=[("abcdef", "p3.2xlarge", "/tmp/ray/session_latest/abcdef.out")])
+        failed_nodes=[("abcdef", "p3.2xlarge",
+                       "/tmp/ray/session_latest/abcdef.out")])
 
     expected = """
 ======== Autoscaler status: 2020-12-28 01:02:03 ========

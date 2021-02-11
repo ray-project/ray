@@ -777,7 +777,8 @@ class DockerCommandRunner(CommandRunnerInterface):
                 "differ from those on the running container.")
         return re_init_required
 
-    def run_init(self, *, as_head, file_mounts, sync_run_yet, with_output=True):
+    def run_init(self, *, as_head, file_mounts, sync_run_yet,
+                 with_output=True):
         BOOTSTRAP_MOUNTS = [
             "~/ray_bootstrap_config.yaml", "~/ray_bootstrap_key.pem"
         ]
@@ -793,14 +794,14 @@ class DockerCommandRunner(CommandRunnerInterface):
             self.run(
                 "{} pull {}".format(self.docker_cmd, specific_image),
                 run_env="host",
-                with_output=with_output
-            )
+                with_output=with_output)
         else:
 
-            self.run(f"{self.docker_cmd} image inspect {specific_image} "
-                     "1> /dev/null  2>&1 || "
-                     f"{self.docker_cmd} pull {specific_image}",
-                     with_output=with_output)
+            self.run(
+                f"{self.docker_cmd} image inspect {specific_image} "
+                "1> /dev/null  2>&1 || "
+                f"{self.docker_cmd} pull {specific_image}",
+                with_output=with_output)
 
         # Bootstrap files cannot be bind mounted because docker opens the
         # underlying inode. When the file is switched, docker becomes outdated.
@@ -861,8 +862,7 @@ class DockerCommandRunner(CommandRunnerInterface):
                                 self.ssh_command_runner.cluster_name), mount),
                         container=self.container_name,
                         dst=self._docker_expand_user(mount)),
-                    with_output=with_output
-                )
+                    with_output=with_output)
         self.initialized = True
         return docker_run_executed
 

@@ -437,9 +437,7 @@ class StandardAutoscaler:
         return False
 
     def get_node_type(self, node_id):
-        return self.provider.node_tags(node_id).get(
-            TAG_RAY_USER_NODE_TYPE)
-
+        return self.provider.node_tags(node_id).get(TAG_RAY_USER_NODE_TYPE)
 
     def _node_resources(self, node_id):
         node_type = self.get_node_type(node_id)
@@ -603,8 +601,7 @@ class StandardAutoscaler:
             is_head_node=False,
             docker_config=self.config.get("docker"),
             node_resources=self._node_resources(node_id),
-            with_output=True
-        )
+            with_output=True)
         updater.start()
         self.updaters[node_id] = updater
 
@@ -699,8 +696,7 @@ class StandardAutoscaler:
             use_internal_ip=True,
             docker_config=docker_config,
             node_resources=node_resources,
-            with_output=True
-        )
+            with_output=True)
         updater.start()
         self.updaters[node_id] = updater
 
@@ -845,8 +841,8 @@ class NodeTracker:
             stdout_obj = open(stdout_path, "a")
             process_runner = ProcessRunnerInterceptor(
                 stdout_obj, process_runner=self.process_runner)
-            self.node_mapping[node_id] = (
-                ip, node_type, stdout_path, process_runner)
+            self.node_mapping[node_id] = (ip, node_type, stdout_path,
+                                          process_runner)
 
         _, _, _, process_runner = self.node_mapping[node_id]
         return process_runner
@@ -857,8 +853,5 @@ class NodeTracker:
         failed_info = []
         for node_id in failed_nodes:
             ip, node_type, stdout_path, _ = self.node_mapping[node_id]
-            failed_info.append(
-                (ip, node_type, stdout_path)
-            )
+            failed_info.append((ip, node_type, stdout_path))
         return failed_info
-
