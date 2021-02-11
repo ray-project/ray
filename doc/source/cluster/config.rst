@@ -482,9 +482,9 @@ A list of commands to run to set up the worker nodes. These commands will be mer
 * **Type:** List of String
 * **Default:** ``[]``
 
-.. _cluster-configuration-head-ray-start-commands:
+.. _cluster-configuration-head-start-ray-commands:
 
-``head_ray_start_commands``
+``head_start_ray_commands``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Commands to start ray on the head node. You don't need to change this.
@@ -499,9 +499,9 @@ Commands to start ray on the head node. You don't need to change this.
           - ray stop
           - ulimit -n 65536; ray start --head --port=6379 --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml
 
-.. _cluster-configuration-worker-ray-start-commands:
+.. _cluster-configuration-worker-start-ray-commands:
 
-``worker_ray_start_commands``
+``worker_start_ray_commands``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 # Command to start ray on worker nodes. You don't need to change this.
@@ -521,7 +521,7 @@ Commands to start ray on the head node. You don't need to change this.
 ``docker.image``
 ~~~~~~~~~~~~~~~~
 
-The default Docker image to pull in the head and worker nodes. This can be overridden by the :ref:`head_image <cluster-cluster-configuration-head-image>` and :ref:`worker_image <cluster-cluster-configuration-worker-image>` fields. If neither `image` nor (`head_image <cluster-cluster-configuration-head-image>` and :ref:`worker_image <cluster-cluster-configuration-worker-image>`) are specified, Ray will not use Docker.
+The default Docker image to pull in the head and worker nodes. This can be overridden by the :ref:`head_image <cluster-configuration-head-image>` and :ref:`worker_image <cluster-configuration-worker-image>` fields. If neither `image` nor (`head_image <cluster-configuration-head-image>` and :ref:`worker_image <cluster-configuration-worker-image>`) are specified, Ray will not use Docker.
 
 * **Required:** Yes (If Docker is in use.)
 * **Importance:** High
@@ -538,7 +538,7 @@ The Ray project provides Docker images on `DockerHub <https://hub.docker.com/u/r
 
 ``docker.head_image``
 ~~~~~~~~~~~~~~~~~~~~~
-Docker image for the head node to override the default :ref:`docker image <cluster-cluster-configuration-image>`.
+Docker image for the head node to override the default :ref:`docker image <cluster-configuration-image>`.
 
 * **Required:** No
 * **Importance:** Low
@@ -548,7 +548,7 @@ Docker image for the head node to override the default :ref:`docker image <clust
 
 ``docker.worker_image``
 ~~~~~~~~~~~~~~~~~~~~~~~
-Docker image for the worker nodes to override the default :ref:`docker image <cluster-cluster-configuration-image>`.
+Docker image for the worker nodes to override the default :ref:`docker image <cluster-configuration-image>`.
 
 * **Required:** No
 * **Importance:** Low
