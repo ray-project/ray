@@ -178,7 +178,7 @@ class CoreWorkerMemoryStore {
   /// Function passed in to be called to check for signals (e.g., Ctrl-C).
   std::function<Status()> check_signals_;
 
-  /// Functoin called to report unhandled exceptions.
+  /// Function called to report unhandled exceptions.
   std::function<void(const RayObject &)> unhandled_exception_handler_;
 };
 
