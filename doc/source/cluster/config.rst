@@ -29,7 +29,6 @@ Syntax
         :ref:`file_mounts <cluster-configuration-file-mounts-type>`
     :ref:`cluster_synced_files <cluster-configuration-cluster-synced-files>`:
         - str
-    :ref:`file_mounts_sync_continuously <cluster-configuration-file-mounts-sync-continuously>`: bool
     :ref:`rsync_exclude <cluster-configuration-rsync-exclude>`:
         - str
     :ref:`rsync_filter <cluster-configuration-rsync-filter>`:
@@ -37,6 +36,14 @@ Syntax
     :ref:`initialization_commands <cluster-configuration-initialization-commands>`:
         - str
     :ref:`setup_commands <cluster-configuration-setup-commands>`:
+        - str
+    :ref:`head_setup_commands <cluster-configuration-head-setup-commands>`:
+        - str
+    :ref:`worker_setup_commands <cluster-configuration-worker-setup-commands>`:
+        - str
+    :ref:`head_start_ray_commands <cluster-configuration-head-start-ray-commands>`:
+        - str
+    :ref:`worker_start_ray_commands <cluster-configuration-worker-start-ray-commands>`:
         - str
 
 Custom types
@@ -49,10 +56,18 @@ Docker
 
 .. parsed-literal::
     :ref:`image <cluster-configuration-image>`: str
+    :ref:`head_image <cluster-configuration-head-image>`: str
+    :ref:`worker_image <cluster-configuration-worker-image>`: str
     :ref:`container_name <cluster-configuration-container-name>`: str
     :ref:`pull_before_run <cluster-configuration-pull-before-run>`: bool
     :ref:`run_options <cluster-configuration-run-options>`:
         - str
+    :ref:`head_run_options <cluster-configuration-head-run-options>`:
+        - str
+    :ref:`worker_run_options <cluster-configuration-worker-run-options>`:
+        - str
+    :ref:`disable_automatic_runtime_detection <cluster-configuration-disable-automatic-runtime-detection>`: bool
+    :ref:`disable_shm_size_detection <cluster-configuration-disable-shm-size-detection>`: bool
 
 .. _cluster-configuration-auth-type:
 
@@ -165,10 +180,12 @@ Node Docker
 
 .. parsed-literal::
 
-    :ref:`worker_image <cluster-configuration-image>`: str
+    :ref:`image <cluster-configuration-image>`: str
     :ref:`pull_before_run <cluster-configuration-pull-before-run>`: bool
-    :ref:`worker_run_options <cluster-configuration-run-options>`:
+    :ref:`run_options <cluster-configuration-run-options>`:
         - str
+    :ref:`disable_automatic_runtime_detection <cluster-configuration-disable-automatic-runtime-detection>`: bool
+    :ref:`disable_shm_size_detection <cluster-configuration-disable-shm-size-detection>`: bool
 
 .. _cluster-configuration-resources-type:
 
@@ -201,28 +218,27 @@ Properties
 ``cluster_name``
 ~~~~~~~~~~~~~~~~
 
-The name of the cluster.
+The name of the cluster. This is the namespace of the cluster.
 
 * **Required:** Yes
 * **Importance:** High
 * **Type:** String
-* **Pattern:** **TODO**
-* **Update requires:** Restart
+* **Default:** "default"
+* **Pattern:** [a-zA-Z0-9_]+
 
 .. _cluster-configuration-max-workers:
 
 ``max_workers``
 ~~~~~~~~~~~~~~~
 
-The maximum number of workers to maintain in the cluster regardless of utilization.
+The maximum number of workers the cluster will have at any given time.
 
 * **Required:** No
 * **Importance:** High
 * **Type:** Integer
-* **Default:** ``3``
+* **Default:** ``2``
 * **Minimum:** ``0``
 * **Maximum:** Unbounded
-* **Update requires:** Restart
 
 .. _cluster-configuration-upscaling-speed:
 
@@ -237,14 +253,13 @@ The number of nodes allowed to be pending as a multiple of the current number of
 * **Default:** ``1.0``
 * **Minimum:** ``0.0``
 * **Maximum:** Unbounded
-* **Update requires:** Restart
 
 .. _cluster-configuration-idle-timeout-minutes:
 
 ``idle_timeout_minutes``
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
-The number of minutes that need to elapse with an idle node before it is removed by the Autoscaler.
+The number of minutes that need to pass before an idle worker node is removed by the Autoscaler.
 
 * **Required:** No
 * **Importance:** Medium
@@ -252,22 +267,20 @@ The number of minutes that need to elapse with an idle node before it is removed
 * **Default:** ``5``
 * **Minimum:** ``0``
 * **Maximum:** Unbounded
-* **Update requires:** Restart
 
 .. _cluster-configuration-docker:
 
 ``docker``
 ~~~~~~~~~~
 
-Configure to execute all commands on all nodes and Ray tasks in the Docker container, and open all the necessary ports to support the Ray cluster.
+Configure Ray to run in Docker containers.
 
 * **Required:** No
 * **Importance:** High
 * **Type:** :ref:`Docker <cluster-configuration-docker-type>`
 * **Default:** ``{}``
-* **Update requires:** Restart
 
-If Docker is not installed, add the following commands to ``initialization_commands`` to install it.
+In rare cases when Docker is not available on the system by default (e.g., bad AMI), add the following commands to ``initialization_commands`` to install it.
 
 .. code-block:: yaml
 
@@ -287,32 +300,51 @@ The cloud provider-specific configuration properties.
 * **Required:** Yes
 * **Importance:** High
 * **Type:** :ref:`Provider <cluster-configuration-provider-type>`
-* **Update requires:** Restart
 
 .. _cluster-configuration-auth:
 
 ``auth``
 ~~~~~~~~
 
-A definition for how Ray will authenticate with newly launched nodes.
+Authentication credentials that Ray will use to launch nodes.
 
 * **Required:** Yes
 * **Importance:** High
 * **Type:** :ref:`Auth <cluster-configuration-auth-type>`
-* **Update requires:** Restart
 
 .. _cluster-configuration-available-node-types:
 
 ``available_node_types``
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
-The definition of node types that are available to launch and scale the Ray cluster.
+Tells the autoscaler the allowed node types and the resources they provide.
+The key is the name of the node type, which is just for debugging purposes.
 
 * **Required:** No
 * **Importance:** High
 * **Type:** :ref:`Node types <cluster-configuration-node-types-type>`
-* **Default:** **TODO**
-* **Update requires:** Restart
+* **Default:**
+.. tabs::
+    .. group-tab:: AWS
+        available_node_types:
+          ray.head.default:
+              node_config:
+                InstanceType: m5.large
+                BlockDeviceMappings:
+                    - DeviceName: /dev/sda1
+                      Ebs:
+                          VolumeSize: 100
+              resources: {"CPU": 2}
+              min_workers: 0
+              max_workers: 0
+          ray.worker.small:
+              node_config:
+                InstanceType: m5.large
+                InstanceMarketOptions:
+                    MarketType: spot
+              resources: {"CPU": 2}
+              min_workers: 0
+              max_workers: 1
 
 .. _cluster-configuration-head-node-type:
 
@@ -321,11 +353,10 @@ The definition of node types that are available to launch and scale the Ray clus
 
 The key for one of the node types in ``available_node_types``. This node type will be used to launch the head node.
 
-* **Required:** Yes (unless :ref:`node types <cluster-configuration-available-node-types>` is not configured either)
+* **Required:** Yes
 * **Importance:** High
 * **Type:** String
-* **Pattern:** **TODO**
-* **Update requires:** Restart
+* **Pattern:** [a-zA-Z0-9_]+
 
 .. _cluster-configuration-worker-nodes:
 
@@ -338,7 +369,6 @@ The configuration to be used to launch worker nodes on the cloud service provide
 * **Importance:** Medium
 * **Type:** :ref:`Node config <cluster-configuration-node-config-type>`
 * **Default:** ``{}``
-* **Update requires:** Restart
 
 .. _cluster-configuration-file-mounts:
 
@@ -351,7 +381,6 @@ The files or directories to copy to the head and worker nodes.
 * **Importance:** High
 * **Type:** :ref:`File mounts <cluster-configuration-file-mounts-type>`
 * **Default:** ``[]``
-* **Update requires:** Restart
 
 .. _cluster-configuration-cluster-synced-files:
 
@@ -364,20 +393,6 @@ A list of paths to the files or directories to copy from the head node to the wo
 * **Importance:** Low
 * **Type:** List of String
 * **Default:** ``[]``
-* **Update requires:** Restart
-
-.. _cluster-configuration-file-mounts-sync-continuously:
-
-``file_mounts_sync_continuously``
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-If enabled, changes to directories in ``file_mounts`` or ``cluster_synced_files`` in the head node should sync to the worker nodes continuously.
-
-* **Required:** No
-* **Importance:** Low
-* **Type:** Boolean
-* **Default:** ``False``
-* **Update requires:** Restart
 
 .. _cluster-configuration-rsync-exclude:
 
@@ -385,12 +400,11 @@ If enabled, changes to directories in ``file_mounts`` or ``cluster_synced_files`
 ~~~~~~~~~~~~~~~~~
 
 A list of patterns for files to exclude when running ``rsync up`` or ``rsync down``. The filter is applied on the source directory only.
-
+E.g., \*\*/.git/\*\*.
 * **Required:** No
 * **Importance:** Medium
 * **Type:** List of String
 * **Default:** ``[]``
-* **Update requires:** Restart
 
 .. _cluster-configuration-rsync-filter:
 
@@ -398,12 +412,12 @@ A list of patterns for files to exclude when running ``rsync up`` or ``rsync dow
 ~~~~~~~~~~~~~~~~
 
 A list of patterns for files to exclude when running ``rsync up`` or ``rsync down``. The filter is applied on the source directory and recursively through all subdirectories.
+E.g., .gitignore.
 
 * **Required:** No
 * **Importance:** Low
 * **Type:** List of String
 * **Default:** ``[]``
-* **Update requires:** Restart
 
 .. _cluster-configuration-initialization-commands:
 
@@ -416,36 +430,102 @@ A list of commands that will be run before the :ref:`setup commands <cluster-con
 * **Importance:** Medium
 * **Type:** List of String
 * **Default:** ``[]``
-* **Update requires:** Restart
 
 .. _cluster-configuration-setup-commands:
 
 ``setup_commands``
 ~~~~~~~~~~~~~~~~~~
 
-A list of commands to run to set up nodes. These commands will always run on the head node, and will run on the worker nodes unless overridden by :ref:`worker setup commands <cluster-configuration-worker-setup-commands>`.
+A list of commands to run to set up nodes. These commands will always run on the head and worker nodes and will be merged with :ref:`head setup commands <cluster-configuration-head-setup-commands>` for head and with :ref:`worker setup commands <cluster-configuration-worker-setup-commands>` for workers.
 
 * **Required:** No
-* **Importance:** High
+* **Importance:** Medium
+* **Type:** List of String
+* **Default:**
+.. tabs::
+    .. group-tab:: AWS
+        setup_commands:
+          - echo 'export PATH="$HOME/anaconda3/envs/tensorflow_p36/bin:$PATH"' >> ~/.bashrc
+          - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp36-cp36m-manylinux2014_x86_64.whl
+
+Setup commands should ideally be *idempotent* (i.e., can be run multiple times without changing the result); this allows Ray to safely update nodes after they have been created. You can usually make commands idempotent with small modifications, e.g. ``git clone foo`` can be rewritten as ``test -e foo || git clone foo`` which checks if the repo is already cloned first.
+Setup commands are run sequentially but separately. For example, if you are using anaconda, you need to run ``conda activate env && pip install -U ray`` because splitting the command into two setup commands will not work.
+Ideally, you should avoid using setup_commands by creating a docker image with all the dependencies preinstalled to minimize startup time.
+Tip: if you also want to run apt-get commands during setup add the following list of commands:
+.. code-block:: yaml
+    setup_commands:
+      - sudo pkill -9 apt-get || true
+      - sudo pkill -9 dpkg || true
+      - sudo dpkg --configure -a
+
+.. _cluster-configuration-head-setup-commands:
+
+``head_setup_commands``
+~~~~~~~~~~~~~~~~~~~~~~~
+
+A list of commands to run to set up the head node. These commands will be merged with the general :ref:`setup commands <cluster-configuration-setup-commands>`.
+
+* **Required:** No
+* **Importance:** Low
 * **Type:** List of String
 * **Default:** ``[]``
-* **Update requires:** Restart
 
-Setup commands you use should ideally be *idempotent* (i.e., can be run multiple times without changing the result); this allows Ray to safely update nodes after they have been created. You can usually make commands idempotent with small modifications, e.g. ``git clone foo`` can be rewritten as ``test -e foo || git clone foo`` which checks if the repo is already cloned first.
+.. _cluster-configuration-worker-setup-commands:
 
-After you have customized the nodes, create a new machine image (or docker container) and use that in the config file to reduce setup times.
+``worker_setup_commands``
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+A list of commands to run to set up the worker nodes. These commands will be merged with the general :ref:`setup commands <cluster-configuration-setup-commands>`.
+
+* **Required:** No
+* **Importance:** Low
+* **Type:** List of String
+* **Default:** ``[]``
+
+.. _cluster-configuration-head-ray-start-commands:
+
+``head_ray_start_commands``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Commands to start ray on the head node. You don't need to change this.
+
+* **Required:** No
+* **Importance:** Low
+* **Type:** List of String
+* **Default:**
+.. tabs::
+    .. group-tab:: AWS
+        head_start_ray_commands:
+          - ray stop
+          - ulimit -n 65536; ray start --head --port=6379 --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml
+
+.. _cluster-configuration-worker-ray-start-commands:
+
+``worker_ray_start_commands``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+# Command to start ray on worker nodes. You don't need to change this.
+
+* **Required:** No
+* **Importance:** Low
+* **Type:** List of String
+* **Default:**
+.. tabs::
+    .. group-tab:: AWS
+        worker_start_ray_commands:
+          - ray stop
+          - ulimit -n 65536; ray start --address=$RAY_HEAD_IP:6379 --object-manager-port=8076
 
 .. _cluster-configuration-image:
 
 ``docker.image``
 ~~~~~~~~~~~~~~~~
 
-The Docker image to pull in the head and worker nodes. If no image is specified, Ray will not use Docker.
+The default Docker image to pull in the head and worker nodes. This can be overridden by the :ref:`head_image <cluster-cluster-configuration-head-image>` and :ref:`worker_image <cluster-cluster-configuration-worker-image>` fields. If neither `image` nor (`head_image <cluster-cluster-configuration-head-image>` and :ref:`worker_image <cluster-cluster-configuration-worker-image>`) are specified, Ray will not use Docker.
 
-* **Required:** No
+* **Required:** Yes (If Docker is in use.)
 * **Importance:** High
 * **Type:** String
-* **Update requires:** Restart
 
 The Ray project provides Docker images on `DockerHub <https://hub.docker.com/u/rayproject>`_. The repository includes following images:
 
@@ -454,18 +534,37 @@ The Ray project provides Docker images on `DockerHub <https://hub.docker.com/u/r
 * ``rayproject/ray-ml:latest``: No CUDA support, includes ML dependencies.
 * ``rayproject/ray:latest``: No CUDA support, no ML dependencies.
 
+.. _cluster-configuration-head-image:
+
+``docker.head_image``
+~~~~~~~~~~~~~~~~~~~~~
+Docker image for the head node to override the default :ref:`docker image <cluster-cluster-configuration-image>`.
+
+* **Required:** No
+* **Importance:** Low
+* **Type:** String
+
+.. _cluster-configuration-worker-image:
+
+``docker.worker_image``
+~~~~~~~~~~~~~~~~~~~~~~~
+Docker image for the worker nodes to override the default :ref:`docker image <cluster-cluster-configuration-image>`.
+
+* **Required:** No
+* **Importance:** Low
+* **Type:** String
+
 .. _cluster-configuration-container-name:
 
 ``docker.container_name``
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The name to use when starting the Docker container. If no container name is specified, the container name will be automatically assigned.
+The name to use when starting the Docker container.
 
-* **Required:** No
+* **Required:** Yes (If Docker is in use.)
 * **Importance:** Low
 * **Type:** String
-* **Default:** ``[]``
-* **Update requires:** Restart
+* **Default:** ray_container
 
 .. _cluster-configuration-pull-before-run:
 
@@ -477,8 +576,7 @@ If enabled, the latest version of image will be pulled when starting Docker. If 
 * **Required:** No
 * **Importance:** Medium
 * **Type:** Boolean
-* **Default:** ``False``
-* **Update requires:** Restart
+* **Default:** ``True``
 
 .. _cluster-configuration-run-options:
 
@@ -491,7 +589,57 @@ The extra options to pass to ``docker run``.
 * **Importance:** Medium
 * **Type:** List of String
 * **Default:** ``[]``
-* **Update requires:** Restart
+
+.. _cluster-configuration-head-run-options:
+
+``docker.head_run_options``
+~~~~~~~~~~~~~~~~~~~~~~
+
+The extra options to pass to ``docker run`` for head node only.
+
+* **Required:** No
+* **Importance:** Low
+* **Type:** List of String
+* **Default:** ``[]``
+
+.. _cluster-configuration-worker-run-options:
+
+``docker.worker_run_options``
+~~~~~~~~~~~~~~~~~~~~~~
+
+The extra options to pass to ``docker run`` for worker nodes only.
+
+* **Required:** No
+* **Importance:** Low
+* **Type:** List of String
+* **Default:** ``[]``
+
+.. _cluster-configuration-disable-automatic-runtime-detection:
+
+``docker.disable_automatic_runtime_detection``
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+If enabled, Ray will not try to use the NVIDIA Container Runtime if GPUs are present.
+
+* **Required:** No
+* **Importance:** Low
+* **Type:** Boolean
+* **Default:** ``False``
+
+
+### disable_shm_size_detection
+.. _cluster-configuration-disable-shm-size-detection:
+
+``docker.disable_shm_size_detection``
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+If enabled, Ray will not automatically specify the size ``/dev/shm`` for the started container and the runtime's default value (64MiB for Docker) will be used.
+
+* **Required:** No
+* **Importance:** Low
+* **Type:** Boolean
+* **Default:** ``False``
+
 
 .. _cluster-configuration-ssh-user:
 
@@ -503,7 +651,6 @@ The user that Ray will authenticate with when launching new nodes.
 * **Required:** Yes
 * **Importance:** High
 * **Type:** String
-* **Update requires:** Restart
 
 .. _cluster-configuration-ssh-private-key:
 
@@ -518,7 +665,6 @@ The user that Ray will authenticate with when launching new nodes.
         * **Required:** No
         * **Importance:** Low
         * **Type:** String
-        * **Update requires:** Restart
 
     .. group-tab:: Azure
 
@@ -527,7 +673,6 @@ The user that Ray will authenticate with when launching new nodes.
         * **Required:** Yes
         * **Importance:** High
         * **Type:** String
-        * **Update requires:** Restart
 
         You may use ``ssh-keygen -t rsa -b 4096`` to generate a new ssh keypair.
 
@@ -538,7 +683,6 @@ The user that Ray will authenticate with when launching new nodes.
         * **Required:** No
         * **Importance:** Low
         * **Type:** String
-        * **Update requires:** Restart
 
 .. _cluster-configuration-ssh-public-key:
 
@@ -548,7 +692,7 @@ The user that Ray will authenticate with when launching new nodes.
 .. tabs::
     .. group-tab:: AWS
 
-        Not supported.
+        Not available.
 
     .. group-tab:: Azure
 
@@ -557,11 +701,10 @@ The user that Ray will authenticate with when launching new nodes.
         * **Required:** Yes
         * **Importance:** High
         * **Type:** String
-        * **Update requires:** Restart
 
     .. group-tab:: GCP
 
-        Not supported.
+        Not available.
 
 .. _cluster-configuration-type:
 
@@ -576,8 +719,6 @@ The user that Ray will authenticate with when launching new nodes.
         * **Required:** Yes
         * **Importance:** High
         * **Type:** String
-        * **Allowed values:** ``aws | azure | gcp``
-        * **Update requires:** Restart
 
     .. group-tab:: Azure
 
@@ -586,8 +727,6 @@ The user that Ray will authenticate with when launching new nodes.
         * **Required:** Yes
         * **Importance:** High
         * **Type:** String
-        * **Allowed values:** ``aws | azure | gcp``
-        * **Update requires:** Restart
 
     .. group-tab:: GCP
 
@@ -596,8 +735,6 @@ The user that Ray will authenticate with when launching new nodes.
         * **Required:** Yes
         * **Importance:** High
         * **Type:** String
-        * **Allowed values:** ``aws | azure | gcp``
-        * **Update requires:** Restart
 
 .. _cluster-configuration-region:
 
@@ -612,11 +749,11 @@ The user that Ray will authenticate with when launching new nodes.
         * **Required:** Yes
         * **Importance:** High
         * **Type:** String
-        * **Update requires:** Restart
+        * **Default:** us-west-2
 
     .. group-tab:: Azure
 
-        Not supported.
+        Not available.
 
     .. group-tab:: GCP
 
@@ -625,7 +762,7 @@ The user that Ray will authenticate with when launching new nodes.
         * **Required:** Yes
         * **Importance:** High
         * **Type:** String
-        * **Update requires:** Restart
+        * **Default:** us-west1
 
 .. _cluster-configuration-availability-zone:
 
@@ -640,12 +777,11 @@ The user that Ray will authenticate with when launching new nodes.
         * **Required:** No
         * **Importance:** Low
         * **Type:** String
-        * **Default:** **TODO: WHAT VALUE CAN YOU SET TO GET THE EQUIVALENT OF AN ABSENCE OF VALUE**
-        * **Update requires:** Restart
+        * **Default:** us-west-2a,us-west-2b
 
     .. group-tab:: Azure
 
-        Not supported.
+        Not available.
 
     .. group-tab:: GCP
 
@@ -654,8 +790,7 @@ The user that Ray will authenticate with when launching new nodes.
         * **Required:** No
         * **Importance:** Low
         * **Type:** String
-        * **Default:** **TODO: WHAT VALUE CAN YOU SET TO GET THE EQUIVALENT OF AN ABSENCE OF VALUE**
-        * **Update requires:** Restart
+        * **Default:** us-west1-a
 
 .. _cluster-configuration-location:
 
@@ -665,7 +800,7 @@ The user that Ray will authenticate with when launching new nodes.
 .. tabs::
     .. group-tab:: AWS
 
-        Not supported.
+        Not available.
 
     .. group-tab:: Azure
 
@@ -674,11 +809,11 @@ The user that Ray will authenticate with when launching new nodes.
         * **Required:** Yes
         * **Importance:** High
         * **Type:** String
-        * **Update requires:** Restart
+        * **Default:** westus2
 
     .. group-tab:: GCP
 
-        Not supported.
+        Not available.
 
 .. _cluster-configuration-resource-group:
 
@@ -688,7 +823,7 @@ The user that Ray will authenticate with when launching new nodes.
 .. tabs::
     .. group-tab:: AWS
 
-        Not supported.
+        Not available.
 
     .. group-tab:: Azure
 
@@ -697,11 +832,11 @@ The user that Ray will authenticate with when launching new nodes.
         * **Required:** Yes
         * **Importance:** High
         * **Type:** String
-        * **Update requires:** Restart
+        * **Default:** ray-cluster
 
     .. group-tab:: GCP
 
-        Not supported.
+        Not available.
 
 .. _cluster-configuration-subscription-id:
 
@@ -711,7 +846,7 @@ The user that Ray will authenticate with when launching new nodes.
 .. tabs::
     .. group-tab:: AWS
 
-        Not supported.
+        Not available.
 
     .. group-tab:: Azure
 
@@ -721,11 +856,10 @@ The user that Ray will authenticate with when launching new nodes.
         * **Importance:** High
         * **Type:** String
         * **Default:** ``""``
-        * **Update requires:** Restart
 
     .. group-tab:: GCP
 
-        Not supported.
+        Not available.
 
 .. _cluster-configuration-project-id:
 
@@ -735,11 +869,11 @@ The user that Ray will authenticate with when launching new nodes.
 .. tabs::
     .. group-tab:: AWS
 
-        Not supported.
+        Not available.
 
     .. group-tab:: Azure
 
-        Not supported.
+        Not available.
 
     .. group-tab:: GCP
 
@@ -749,20 +883,19 @@ The user that Ray will authenticate with when launching new nodes.
         * **Importance:** Low
         * **Type:** String
         * **Default:** ``null``
-        * **Update requires:** Restart
 
 .. _cluster-configuration-cache-stopped-nodes:
 
 ``provider.cache_stopped_nodes``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-If enabled, nodes will be stopped when the cluster scales down. If disabled, nodes will be terminated instead.
+If enabled, nodes will be _stopped_ when the cluster scales down. If disabled, nodes will be _terminated_ instead. Stopped nodes launch faster than terminated nodes.
+
 
 * **Required:** No
 * **Importance:** Medium
 * **Type:** Boolean
 * **Default:** ``True``
-* **Update requires:** Restart
 
 .. _cluster-configuration-node-config:
 
@@ -771,24 +904,21 @@ If enabled, nodes will be stopped when the cluster scales down. If disabled, nod
 
 The configuration to be used to launch the nodes on the cloud service provider. Among other things, this will specify the instance type to be launched.
 
-* **Required:** No
+* **Required:** Yes
 * **Importance:** High
 * **Type:** :ref:`Node config <cluster-configuration-node-config-type>`
-* **Default:** ``{}``
-* **Update requires:** Restart
 
 .. _cluster-configuration-resources:
 
 ``available_node_types.<node_type_name>.node_type.resources``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The resources that a node type provides, which enables the autoscaler to automatically select the right kind of nodes to launch given the resource demands of the application. The resources specified will be automatically passed to the ``ray start`` command for the node via an environment variable. If not provided, this is automatically set by the Autoscaler based on the instance type. For more information, see also the `resource demand scheduler <https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/_private/resource_demand_scheduler.py>`_
+The resources that a node type provides, which enables the autoscaler to automatically select the right type of nodes to launch given the resource demands of the application. The resources specified will be automatically passed to the ``ray start`` command for the node via an environment variable. If not provided, Autoscaler can automatically detect them only for AWS/Kubernetes cloud providers. For more information, see also the `resource demand scheduler <https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/_private/resource_demand_scheduler.py>`_
 
-* **Required:** No
-* **Importance:** Low
+* **Required:** Yes (except for AWS/K8s)
+* **Importance:** High
 * **Type:** :ref:`Resources <cluster-configuration-resources-type>`
 * **Default:** ``{}``
-* **Update requires:** Restart
 
 In some cases, adding special nodes without any resources may be desirable. Such nodes can be used as a driver which connects to the cluster to launch jobs. In order to manually add a node to an autoscaled cluster, the *ray-cluster-name* tag should be set and *ray-node-type* tag should be set to unmanaged. Unmanaged nodes can be created by setting the resources to ``{}`` and the :ref:`maximum workers <cluster-configuration-node-min-workers>` to 0. The Autoscaler will not attempt to start, stop, or update unmanaged nodes. The user is responsible for properly setting up and cleaning up unmanaged nodes.
 
@@ -812,28 +942,26 @@ The minimum number of workers to maintain for this node type regardless of utili
 ``available_node_types.<node_type_name>.node_type.max_workers``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The maximum number of workers to maintain for this node type regardless of utilization. If higher than the :ref:`minimum workers <cluster-configuration-node-min-workers>`, this value will apply.
+The maximum number of workers to have in the cluster for this node type regardless of utilization. This takes precedence over :ref:`minimum workers <cluster-configuration-node-min-workers>`.
 
 * **Required:** No
 * **Importance:** High
 * **Type:** Integer
-* **Default:** ``3``
+* **Default:** ``0``
 * **Minimum:** ``0``
 * **Maximum:** Unbounded
-* **Update requires:** Restart
 
 .. _cluster-configuration-worker-setup-commands:
 
 ``available_node_types.<node_type_name>.node_type.worker_setup_commands``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-A list of commands to run to set up worker nodes. These commands will only run if the node is started as a worker, and will override the general :ref:`setup commands <cluster-configuration-setup-commands>` for the node.
+A list of commands to run to set up worker nodes of this type. These commands will replace the general :ref:`worker setup commands <cluster-configuration-worker-setup-commands>` for the node.
 
 * **Required:** No
-* **Importance:** High
+* **Importance:** low
 * **Type:** List of String
 * **Default:** ``[]``
-* **Update requires:** Restart
 
 .. _cluster-configuration-cpu:
 
@@ -843,34 +971,27 @@ A list of commands to run to set up worker nodes. These commands will only run i
 .. tabs::
     .. group-tab:: AWS
 
-        The number of CPUs made available by this node. If not configured, the Autoscaler will automatically assign a value based on the instance type.
+        The number of CPUs made available by this node. If not configured, Autoscaler can automatically detect them only for AWS/Kubernetes cloud providers.
 
-        * **Required:** No
-        * **Importance:** Low
+        * **Required:** Yes (except for AWS/K8s)
+        * **Importance:** High
         * **Type:** Integer
-        * **Default:** **TODO: WHAT VALUE CAN YOU SET TO GET THE EQUIVALENT OF AN ABSENCE OF VALUE**
-        * **Update requires:** Restart
 
     .. group-tab:: Azure
 
         The number of CPUs made available by this node.
-        
+
         * **Required:** Yes
         * **Importance:** High
         * **Type:** Integer
-        * **Default:** ``0``
-        * **Update requires:** Restart
 
     .. group-tab:: GCP
 
         The number of CPUs made available by this node.
-        
+
         * **Required:** No
         * **Importance:** High
         * **Type:** Integer
-        * **Default:** ``0``
-        * **Update requires:** Restart
-
 
 
 .. _cluster-configuration-gpu:
@@ -881,33 +1002,27 @@ A list of commands to run to set up worker nodes. These commands will only run i
 .. tabs::
     .. group-tab:: AWS
 
-        The number of GPUs made available by this node. If not configured, the Autoscaler will automatically assign a value based on the instance type.
+        The number of GPUs made available by this node. If not configured, Autoscaler can automatically detect them only for AWS/Kubernetes cloud providers.
 
         * **Required:** No
         * **Importance:** Low
         * **Type:** Integer
-        * **Default:** **TODO: WHAT VALUE CAN YOU SET TO GET THE EQUIVALENT OF AN ABSENCE OF VALUE**
-        * **Update requires:** Restart
 
     .. group-tab:: Azure
 
         The number of GPUs made available by this node.
-        
+
         * **Required:** No
         * **Importance:** High
         * **Type:** Integer
-        * **Default:** ``0``
-        * **Update requires:** Restart
 
     .. group-tab:: GCP
 
         The number of GPUs made available by this node.
-        
+
         * **Required:** No
         * **Importance:** High
         * **Type:** Integer
-        * **Default:** ``0``
-        * **Update requires:** Restart
 
 .. _cluster-configuration-node-docker:
 
@@ -920,4 +1035,3 @@ A set of overrides to the top-level :ref:`Docker <cluster-configuration-docker>`
 * **Importance:** Low
 * **Type:** :ref:`docker <cluster-configuration-node-docker-type>`
 * **Default:** ``{}``
-* **Update requires:** Restart
