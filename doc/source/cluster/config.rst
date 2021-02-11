@@ -448,7 +448,7 @@ After you have customized the nodes, create a new machine image (or docker conta
 ``docker.image``
 ~~~~~~~~~~~~~~~~
 
-The Docker image to pull in the head and worker nodes. If no image is specified, Ray will not use Docker.
+The default Docker image to pull in the head and worker nodes. This is overridden by the `head_image` and `worker_image` fields. If neither `image` nor (`head_image` and `worker_image`) are specified, Ray will not use Docker.
 
 * **Required:** Yes (If Docker is in use.)
 * **Importance:** High
