@@ -6,7 +6,7 @@ Deploying on Kubernetes
 
 Introduction
 ============
-The Ray Autoscaler allows you to leverage your Kubernetes cluster as a substrate for execution of distributed Ray programs.
+You can leverage your Kubernetes cluster as a substrate for execution of distributed Ray programs.
 The autoscaler spins up and deletes Kubernetes pods according to resource demands of the Ray workload - each Ray node runs in its own Kubernetes pod.
 
 Quick Guide
