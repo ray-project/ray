@@ -579,7 +579,9 @@ class PopulationBasedTraining(FIFOScheduler):
                 trial_executor.restore(
                     trial, new_state.last_checkpoint, block=True)
             else:
-                trial_executor.stop_trial(trial)
+                # Stop trial, but do not free resources (so we can use them
+                # again right away)
+                trial_executor.stop_trial(trial, free=False)
                 trial.set_experiment_tag(new_tag)
                 trial.set_config(new_config)
 

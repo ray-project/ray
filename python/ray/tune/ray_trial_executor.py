@@ -453,7 +453,7 @@ class RayTrialExecutor(TrialExecutor):
             self._train(trial)
         return True
 
-    def _stop_trial(self, trial, error=False, error_msg=None, pause=False):
+    def _stop_trial(self, trial, error=False, error_msg=None, free=True):
         """Stops this trial.
 
         Stops this trial, releasing all allocating resources. If stopping the
@@ -466,8 +466,8 @@ class RayTrialExecutor(TrialExecutor):
         Args:
             error (bool): Whether to mark this trial as terminated in error.
             error_msg (str): Optional error message.
-            pause (bool): Whether this trial was paused instead of permanently
-                stopped.
+            free (bool): Whether this trials resources (placement groups)
+                should be free'd.
         """
         self.set_status(trial, Trial.ERROR if error else Trial.TERMINATED)
         self._trial_just_finished = True
@@ -481,7 +481,7 @@ class RayTrialExecutor(TrialExecutor):
                     logger.debug("Reusing actor for %s", trial.runner)
                     # Move PG into cache (disassociate from trial)
                     pg = self._pg_manager.cache_trial_pg(
-                        trial, replace_pending=not pause)
+                        trial, replace_pending=free)
                     if pg:  # Always true if replace_pending=False
                         self._cached_actor_pg = (trial.runner, pg)
                         should_destroy = False
@@ -499,7 +499,7 @@ class RayTrialExecutor(TrialExecutor):
 
                     # Try to return the placement group for other trials to use
                     if not self._pg_manager.return_pg(
-                            trial, replace_pending=not pause):
+                            trial, replace_pending=free):
                         # If we could not replace a pending pg, it might not
                         # be needed anymore. Remove instead.
                         pg = self._pg_manager.clean_trial_placement_group(
@@ -563,10 +563,10 @@ class RayTrialExecutor(TrialExecutor):
         out = [rid for rid, t in dictionary.items() if t is item]
         return out
 
-    def stop_trial(self, trial, error=False, error_msg=None, pause=False):
+    def stop_trial(self, trial, error=False, error_msg=None, free=True):
         """Only returns resources if resources allocated."""
         prior_status = trial.status
-        self._stop_trial(trial, error=error, error_msg=error_msg, pause=pause)
+        self._stop_trial(trial, error=error, error_msg=error_msg, free=free)
         if prior_status == Trial.RUNNING:
             logger.debug("Trial %s: Returning resources.", trial)
             if not trial.uses_placement_groups:

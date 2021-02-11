@@ -93,7 +93,7 @@ class TrialExecutor:
         raise NotImplementedError("Subclasses of TrialExecutor must provide "
                                   "start_trial() method")
 
-    def stop_trial(self, trial, error=False, error_msg=None, pause=False):
+    def stop_trial(self, trial, error=False, error_msg=None, free=True):
         """Stops the trial.
 
         Stops this trial, releasing all allocating resources.
@@ -103,8 +103,8 @@ class TrialExecutor:
         Args:
             error (bool): Whether to mark this trial as terminated in error.
             error_msg (str): Optional error message.
-            pause (bool): Whether this trial was paused instead of permanently
-                stopped.
+            free (bool): Whether this trials resources (placement groups)
+                should be free'd.
         """
         raise NotImplementedError("Subclasses of TrialExecutor must provide "
                                   "stop_trial() method")
