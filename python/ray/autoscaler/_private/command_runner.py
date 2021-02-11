@@ -396,7 +396,7 @@ class SSHCommandRunner(CommandRunnerInterface):
 
     def _run_helper(self,
                     final_cmd,
-                    with_output=False,
+                    with_output=True,
                     exit_on_fail=False,
                     silent=False):
         """Run a command that was already setup with SSH and `bash` settings.
@@ -421,15 +421,14 @@ class SSHCommandRunner(CommandRunnerInterface):
             # For now, if the output is needed we just skip the new logic.
             # In the future we could update the new logic to support
             # capturing output, but it is probably not needed.
-            if not with_output:
+            if with_output:
+                return self.process_runner.check_output(final_cmd)
+            else:
                 return run_cmd_redirected(
                     final_cmd,
                     process_runner=self.process_runner,
                     silent=silent,
                     use_login_shells=is_using_login_shells())
-            if with_output:
-                return self.process_runner.check_output(final_cmd)
-            else:
                 return self.process_runner.check_call(final_cmd)
         except subprocess.CalledProcessError as e:
             joined_cmd = " ".join(final_cmd)
@@ -778,7 +777,7 @@ class DockerCommandRunner(CommandRunnerInterface):
                 "differ from those on the running container.")
         return re_init_required
 
-    def run_init(self, *, as_head, file_mounts, sync_run_yet):
+    def run_init(self, *, as_head, file_mounts, sync_run_yet, with_output=False):
         BOOTSTRAP_MOUNTS = [
             "~/ray_bootstrap_config.yaml", "~/ray_bootstrap_key.pem"
         ]
@@ -793,12 +792,15 @@ class DockerCommandRunner(CommandRunnerInterface):
                 "pull_before_run is specified"
             self.run(
                 "{} pull {}".format(self.docker_cmd, specific_image),
-                run_env="host")
+                run_env="host",
+                with_output=with_output
+            )
         else:
 
             self.run(f"{self.docker_cmd} image inspect {specific_image} "
                      "1> /dev/null  2>&1 || "
-                     f"{self.docker_cmd} pull {specific_image}")
+                     f"{self.docker_cmd} pull {specific_image}",
+                     with_output=with_output)
 
         # Bootstrap files cannot be bind mounted because docker opens the
         # underlying inode. When the file is switched, docker becomes outdated.
@@ -816,7 +818,8 @@ class DockerCommandRunner(CommandRunnerInterface):
             if requires_re_init:
                 self.run(
                     f"{self.docker_cmd} stop {self.container_name}",
-                    run_env="host")
+                    run_env="host",
+                    with_output=with_output)
 
         if (not container_running) or requires_re_init:
             # Get home directory
@@ -839,7 +842,7 @@ class DockerCommandRunner(CommandRunnerInterface):
                 self._configure_runtime() + self._auto_configure_shm(),
                 self.ssh_command_runner.cluster_name, home_directory,
                 self.docker_cmd)
-            self.run(start_command, run_env="host")
+            self.run(start_command, run_env="host", with_output=with_output)
             docker_run_executed = True
 
         # Explicitly copy in ray bootstrap files.
@@ -857,7 +860,9 @@ class DockerCommandRunner(CommandRunnerInterface):
                             self._get_docker_host_mount_location(
                                 self.ssh_command_runner.cluster_name), mount),
                         container=self.container_name,
-                        dst=self._docker_expand_user(mount)))
+                        dst=self._docker_expand_user(mount)),
+                    with_output=with_output
+                )
         self.initialized = True
         return docker_run_executed
 

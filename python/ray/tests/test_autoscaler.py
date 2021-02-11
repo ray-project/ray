@@ -64,10 +64,21 @@ class MockProcessRunner:
             if token in str(cmd):
                 raise CalledProcessError(1, token,
                                          "Failing command on purpose")
+
+        try:
+            assert kwargs["stdout"].name != "<stdout>"
+        except Exception as e:
+            import traceback
+            # tracback.print_exc()
+            print(cmd, kwargs)
+            traceback.print_stack(file=sys.stdout)
+
+
+
         self.calls.append((cmd, (args, kwargs)))
 
     def check_output(self, cmd, *args, **kwargs):
-        self.check_call(cmd)
+        self.check_call(cmd, *args, **kwargs)
         return_string = "command-output"
         key_to_shrink = None
         for pattern, response_list in self.call_response.items():
@@ -127,6 +138,9 @@ class MockProcessRunner:
 
     def command_history(self):
         return [" ".join(cmd) for cmd, _ in self.calls]
+
+    def call_args_history(self):
+        return [args for _, args in self.calls]
 
     def respond_to_call(self, pattern, response_list):
         self.call_response[pattern] = response_list
@@ -2052,12 +2066,39 @@ MemAvailable:   33000000 kB
                                               for x in first_targeted_inspect)
 
     def testUpdaterLogging(self):
+        from ray.autoscaler._private.cli_logger import cli_logger
+        def do_nothing(*args, **kwargs):
+            pass
+
+        cli_logger._print = type(cli_logger._print)(do_nothing,
+                                                    type(cli_logger))
         config = copy.deepcopy(SMALL_CLUSTER)
         config["min_workers"] = 2
         config["max_workers"] = 2
         config_path = self.write_config(config)
         self.provider = MockProvider()
         runner = MockProcessRunner()
+        autoscaler = StandardAutoscaler(
+            config_path,
+            LoadMetrics(),
+            max_failures=0,
+            process_runner=runner,
+            update_interval_s=0)
+        autoscaler.update()
+        autoscaler.update()
+        self.waitForNodes(2)
+        autoscaler.update()
+        time.sleep(1)
+
+        files = set()
+        for cmd, (args, kwargs) in zip(runner.command_history(), runner.call_args_history()):
+            assert "stdout" in kwargs, cmd
+            assert "stderr" in kwargs, cmd
+            files.add(kwargs["stdout"].name)
+            files.add(kwargs["stderr"].name)
+            print(cmd, kwargs["stdout"].name)
+
+        assert len(files) == 2, files # One file per file
 
 
 if __name__ == "__main__":

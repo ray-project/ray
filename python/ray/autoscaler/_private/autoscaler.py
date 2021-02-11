@@ -599,7 +599,9 @@ class StandardAutoscaler:
             use_internal_ip=True,
             is_head_node=False,
             docker_config=self.config.get("docker"),
-            node_resources=self._node_resources(node_id))
+            node_resources=self._node_resources(node_id),
+            with_output=True
+        )
         updater.start()
         self.updaters[node_id] = updater
 
@@ -692,7 +694,9 @@ class StandardAutoscaler:
             process_runner=interceptor,
             use_internal_ip=True,
             docker_config=docker_config,
-            node_resources=node_resources)
+            node_resources=node_resources,
+            with_output=True
+        )
         updater.start()
         self.updaters[node_id] = updater
 

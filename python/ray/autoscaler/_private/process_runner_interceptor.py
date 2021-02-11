@@ -14,7 +14,7 @@ class ProcessRunnerInterceptor:
     def __init__(self, stream, err_stream=None, process_runner=None):
         self.stream = stream
         self.err_stream = err_stream or stream
-        self.process_runner = processs_runner or subprocess
+        self.process_runner = process_runner or subprocess
 
     def check_output(self, *args, **kwargs):
         with_defaults = {

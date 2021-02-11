@@ -48,6 +48,7 @@ class NodeUpdater:
         use_internal_ip: Wwhether the node_id belongs to an internal ip
             or external ip.
         docker_config: Docker section of autoscaler yaml
+        with_output: Whether to log the output of all remote calls or not.
     """
 
     def __init__(self,
@@ -68,7 +69,8 @@ class NodeUpdater:
                  rsync_options=None,
                  process_runner=subprocess,
                  use_internal_ip=False,
-                 docker_config=None):
+                 docker_config=None,
+                 with_output=False):
 
         self.log_prefix = "NodeUpdater: {}: ".format(node_id)
         use_internal_ip = (use_internal_ip
@@ -106,6 +108,7 @@ class NodeUpdater:
         self.auth_config = auth_config
         self.is_head_node = is_head_node
         self.docker_config = docker_config
+        self.with_output = with_output
 
     def run(self):
         if cmd_output_util.does_allow_interactive(
@@ -193,7 +196,9 @@ class NodeUpdater:
                     # The DockerCommandRunner handles this internally.
                     self.cmd_runner.run(
                         "mkdir -p {}".format(os.path.dirname(remote_path)),
-                        run_env="host")
+                        run_env="host",
+                        with_output=self.with_output
+                    )
                 sync_cmd(
                     local_path, remote_path, docker_mount_if_possible=True)
 
@@ -237,7 +242,9 @@ class NodeUpdater:
                     try:
                         # Run outside of the container
                         self.cmd_runner.run(
-                            "uptime", timeout=5, run_env="host")
+                            "uptime", timeout=5, run_env="host",
+                            with_output=self.with_output
+                        )
                         cli_logger.success("Success.")
                         return True
                     except ProcessRunnerError as e:
@@ -295,7 +302,9 @@ class NodeUpdater:
             init_required = self.cmd_runner.run_init(
                 as_head=self.is_head_node,
                 file_mounts=self.file_mounts,
-                sync_run_yet=False)
+                sync_run_yet=False,
+                with_output=self.with_output
+            )
             if init_required:
                 node_tags[TAG_RAY_RUNTIME_CONFIG] += "-invalidate"
 
@@ -355,7 +364,9 @@ class NodeUpdater:
                                         cmd,
                                         ssh_options_override_ssh_key=self.
                                         auth_config.get("ssh_private_key"),
-                                        run_env="host")
+                                        run_env="host",
+                                        with_output=self.with_output
+                                    )
                                 except ProcessRunnerError as e:
                                     if e.msg_type == "ssh_command_failed":
                                         cli_logger.error("Failed.")
@@ -376,7 +387,9 @@ class NodeUpdater:
                     self.cmd_runner.run_init(
                         as_head=self.is_head_node,
                         file_mounts=self.file_mounts,
-                        sync_run_yet=True)
+                        sync_run_yet=True,
+                        with_output=self.with_output
+                    )
                 if self.setup_commands:
                     with cli_logger.group(
                             "Running setup commands",
@@ -405,7 +418,9 @@ class NodeUpdater:
 
                                 try:
                                     # Runs in the container if docker is in use
-                                    self.cmd_runner.run(cmd, run_env="auto")
+                                    self.cmd_runner.run(
+                                        cmd, run_env="auto",
+                                        with_output=self.with_output)
                                 except ProcessRunnerError as e:
                                     if e.msg_type == "ssh_command_failed":
                                         cli_logger.error("Failed.")
@@ -440,7 +455,9 @@ class NodeUpdater:
                         self.cmd_runner.run(
                             cmd,
                             environment_variables=env_vars,
-                            run_env="auto")
+                            run_env="auto",
+                            with_output=self.with_output
+                        )
                         cmd_output_util.set_output_redirected(old_redirected)
                     except ProcessRunnerError as e:
                         if e.msg_type == "ssh_command_failed":
