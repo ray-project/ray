@@ -465,7 +465,7 @@ bool CoreWorkerMemoryStore::Contains(const ObjectID &object_id, bool *in_plasma)
 }
 
 void CoreWorkerMemoryStore::OnErase(std::shared_ptr<RayObject> obj) {
-  if (obj->IsException() && !obj->WasAccessed() &&
+  if (obj->IsException() && !obj->IsInPlasmaError() && !obj->WasAccessed() &&
       unhandled_exception_handler_ != nullptr) {
     unhandled_exception_handler_(*obj);
   }
