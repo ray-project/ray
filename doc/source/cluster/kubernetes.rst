@@ -28,7 +28,7 @@ You can find more information at the following links:
 
 .. _k8s-overview:
 
-The Ray Autoscaler on Kubernetes
+Ray on Kubernetes
 ================================
 
 Ray supports two ways of launching an autoscaling Ray cluster on Kubernetes.
