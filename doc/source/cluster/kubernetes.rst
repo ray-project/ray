@@ -7,7 +7,7 @@ Deploying on Kubernetes
 Introduction
 ============
 You can leverage your Kubernetes cluster as a substrate for execution of distributed Ray programs.
-The autoscaler spins up and deletes Kubernetes pods according to resource demands of the Ray workload - each Ray node runs in its own Kubernetes pod.
+The Ray Autoscaler spins up and deletes Kubernetes pods according to resource demands of the Ray workload - each Ray node runs in its own Kubernetes pod.
 
 Quick Guide
 -----------
@@ -23,13 +23,13 @@ This document covers the following topics:
 You can find more information at the following links:
 
 - :ref:`GPU usage with Kubernetes<k8s-gpus>`
-- :ref:`Gsing Ray Tune on your Kubernetes cluster<tune-kubernetes>`
+- :ref:`Using Ray Tune on your Kubernetes cluster<tune-kubernetes>`
 - :ref:`How to manually set up a non-autoscaling Ray cluster on Kubernetes<ray-k8s-static>`
 
 .. _k8s-overview:
 
 Ray on Kubernetes
-================================
+=================
 
 Ray supports two ways of launching an autoscaling Ray cluster on Kubernetes.
 
@@ -41,12 +41,12 @@ Below is a brief overview of the two tools.
 
 The Ray Cluster Launcher
 ------------------------
-The Ray Cluster Launcher is geared towards experimentation and development and can be used to launch Ray clusters on Kubernetes (among other backends).
+The :ref:`Ray Cluster Launcher <ref-automatic-cluster>` is geared towards experimentation and development and can be used to launch Ray clusters on Kubernetes (among other backends).
 It allows you to manage an autoscaling Ray Cluster from your local environment using the :ref:`Ray CLI <ray-cli>`.
 For example, you can use ``ray up`` to launch a Ray cluster on Kubernetes and ``ray exec`` to execute commands in the Ray head node's pod.
 Note that using the Cluster Launcher requires Ray to be :ref:`installed locally <installation>`.
 
-Read :ref:`here<k8s-cluster-launcher>` to get started with the Ray Cluster Launcher on Kubernetes.
+* Get started with the :ref:`Ray Cluster Launcher on Kubernetes<k8s-cluster-launcher>`.
 
 The Ray Kubernetes Operator
 ---------------------------
@@ -56,7 +56,8 @@ The Operator follows the standard Kubernetes `pattern <https://kubernetes.io/doc
 a control loop which manages a `Kubernetes Custom Resource`_ specifying the desired state of your Ray cluster.
 Using the Kubernetes Operator does not require a local installation of Ray - all interactions with your Ray cluster are mediated by Kubernetes.
 
-Read :ref:`here<k8s-operator>` to get started with the Ray Kubernetes Operator.
+* Get started with the :ref:`Ray Kubernetes Operator<k8s-operator>`.
+
 
 Further reading
 ---------------
@@ -113,31 +114,28 @@ Test that it works by running the following commands from your local machine:
     # Tear down the cluster
     $ ray down ray/python/ray/autoscaler/kubernetes/example-full.yaml
 
-To learn about running Ray programs on a running Ray cluster refer to the instructions :ref:`instructions<ray-k8s-run>`.
+* Learn about :ref:`running Ray programs on Kubernetes <ray-k8s-run>`
 
 .. _k8s-operator:
 
 Managing clusters with the Ray Kubernetes Operator
 ==================================================
 
-This section explains how to use the Ray Kubernetes Operator to launch a Ray cluster on your existing Kubernetes cluster.
-
 .. role:: bash(code)
    :language: bash
 
-.. note::
-   The Ray Kubernetes Operator is still experimental. For the yaml files in the examples below, we recommend using the latest master version of Ray.
+This section explains how to use the Ray Kubernetes Operator to launch a Ray cluster on your existing Kubernetes cluster.
 
-.. warning::
-   The Ray Kubernetes Operator requires Kubernetes version at least ``v1.17.0``. Check Kubernetes version info with the command
-   :bash:`kubectl version`.
+The example commands in this document launch six Kubernetes pods, using a total of 6 CPU and 3.5Gi memory.
+If you are experimenting using a test Kubernetes environment such as `minikube`_, make sure to provision sufficient resources, e.g.
+:bash:`minikube start --cpus=6 --memory=\"4G\"`.
+Alternatively, reduce resource usage by editing the ``yaml`` files referenced in this document; for example, reduce ``minWorkers``
+in ``example_cluster.yaml`` and ``example_cluster2.yaml``.
 
 .. note::
-   The example commands in this document launch six Kubernetes pods, using a total of 6 CPU and 3.5Gi memory.
-   If you are experimenting using a test Kubernetes environment such as `minikube`_, make sure to provision sufficient resources, e.g.
-   :bash:`minikube start --cpus=6 --memory=\"4G\"`.
-   Alternatively, reduce resource usage by editing the ``yaml`` files referenced in this document; for example, reduce ``minWorkers``
-   in ``example_cluster.yaml`` and ``example_cluster2.yaml``.
+
+   1. The Ray Kubernetes Operator is still experimental. For the yaml files in the examples below, we recommend using the latest master version of Ray.
+   2. The Ray Kubernetes Operator requires Kubernetes version at least ``v1.17.0``. Check Kubernetes version info with the command :bash:`kubectl version`.
 
 
 Applying the RayCluster Custom Resource Definition
@@ -326,7 +324,7 @@ Interacting with a Ray Cluster
 :ref:`Ray Client <ray-client>` allows you to connect to your Ray cluster on Kubernetes and execute Ray programs.
 The Ray Client server runs the Ray head node, by default on port 10001.
 
-Ray Dashboard gives visibility into the state of your cluster.
+:ref:`Ray Dashboard <ray-dashboard>` gives visibility into the state of your cluster.
 By default, the dashboard uses port 8265 on the Ray head node.
 
 .. _k8s-service:
@@ -479,6 +477,13 @@ Run the following command locally:
 .. code-block:: shell
 
   $ kubectl -n ray port-forward service/example-cluster-ray-head 10001:10001
+
+`Alternatively`, you can find the head node pod and connect to it directly with
+the following command:
+
+.. code-block:: shell
+
+  $ kubectl blah
 
 Then open a new shell and try out a sample program:
 
