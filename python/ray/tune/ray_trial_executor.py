@@ -154,7 +154,6 @@ class RayTrialExecutor(TrialExecutor):
         self._paused = {}
 
         self._trial_cleanup = _TrialCleanup()
-        self._has_cleaned_up_pgs = False
         self._reuse_actors = reuse_actors
         self._cached_actor_pg = (None, None)
 
@@ -202,12 +201,6 @@ class RayTrialExecutor(TrialExecutor):
 
         Stages placement groups of all trials.
         """
-        if not self._has_cleaned_up_pgs:
-            # Clean up existing placement groups after trigger the tuning
-            # run step() method for the first time
-            self._pg_manager.cleanup_existing_pg()
-            self._has_cleaned_up_pgs = True
-
         for trial in trials:
             if trial.status != Trial.PENDING:
                 continue
