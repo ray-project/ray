@@ -789,7 +789,8 @@ class StandardAutoscaler:
                 ]
                 is_pending = status in pending_states
                 if is_pending:
-                    pending_nodes.append((ip, node_type, status))
+                    path = self.node_tracker.get_log_path(node_id)
+                    pending_nodes.append((ip, node_type, status, path))
                 else:
                     failed = True
 
@@ -852,6 +853,11 @@ class NodeTracker:
 
         _, _, _, process_runner = self.node_mapping[node_id]
         return process_runner
+
+    def get_log_path(self, node_id):
+        if node_id in self.node_mapping:
+            return self.node_mapping[node_id][2]
+        return None
 
     def get_all_failed_node_info(self, non_failed_ids):
         print("All nodes ever: ", self.node_mapping.keys())

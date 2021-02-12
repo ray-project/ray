@@ -362,8 +362,8 @@ def format_info_string(lm_summary, autoscaler_summary, time=None):
     for node_type, count in autoscaler_summary.pending_launches.items():
         line = f" {node_type}, {count} launching"
         pending_lines.append(line)
-    for ip, node_type, status in autoscaler_summary.pending_nodes:
-        line = f" {ip}: {node_type}, {status.lower()}"
+    for ip, node_type, status, log_path in autoscaler_summary.pending_nodes:
+        line = f" {ip}: {node_type}, {status.lower()}, {log_path}"
         pending_lines.append(line)
     if pending_lines:
         pending_report = "\n".join(pending_lines)
@@ -373,6 +373,7 @@ def format_info_string(lm_summary, autoscaler_summary, time=None):
     failure_lines = []
     for ip, node_type, log_path in autoscaler_summary.failed_nodes:
         line = f" {ip}: {node_type}, {log_path}"
+        failure_lines.append(line)
     failure_report = "Recent failures:\n"
     if failure_lines:
         failure_report += "\n".join(failure_lines)

@@ -1418,7 +1418,9 @@ class AutoscalingTest(unittest.TestCase):
             max_launch_batch=1,
             max_concurrent_launches=10,
             process_runner=runner,
-            update_interval_s=0)
+            update_interval_s=0,
+            log_dir=self.tmpdir
+        )
         assert len(self.provider.non_terminated_nodes({})) == 1
         autoscaler.update()
         self.waitForNodes(3)
@@ -1464,8 +1466,11 @@ class AutoscalingTest(unittest.TestCase):
         assert summary.active_nodes["empty_node"] == 1
         assert len(summary.active_nodes) == 2, summary.active_nodes
 
-        assert summary.pending_nodes == [("172.0.0.3", "p2.xlarge",
-                                          STATUS_WAITING_FOR_SSH)]
+        assert summary.pending_nodes[0][:3] == ("172.0.0.3", "p2.xlarge",
+                                          STATUS_WAITING_FOR_SSH)
+        assert summary.pending_nodes[0][3], "This path includes a temp dir"
+        assert len(summary.pending_nodes) == 1
+
         assert summary.pending_launches == {"m4.16xlarge": 2}
 
         assert summary.failed_nodes == [
@@ -2448,10 +2453,13 @@ def test_info_string():
             "p3.2xlarge": 2,
             "m4.4xlarge": 20
         },
-        pending_nodes=[("1.2.3.4", "m4.4xlarge", STATUS_WAITING_FOR_SSH),
-                       ("1.2.3.5", "m4.4xlarge", STATUS_WAITING_FOR_SSH)],
+        pending_nodes=[("1.2.3.4", "m4.4xlarge", STATUS_WAITING_FOR_SSH,
+                        "/path/to/file.out"),
+                       ("1.2.3.5", "m4.4xlarge", STATUS_WAITING_FOR_SSH,
+                        "/path/to/file2.out"
+                        )],
         pending_launches={"m4.4xlarge": 2},
-        failed_nodes=[("abcdef", "p3.2xlarge",
+        failed_nodes=[("1.2.3.4.6", "p3.2xlarge",
                        "/tmp/ray/session_latest/abcdef.out")])
 
     expected = """
@@ -2463,10 +2471,10 @@ Healthy:
  20 m4.4xlarge
 Pending:
  m4.4xlarge, 2 launching
- 1.2.3.4: m4.4xlarge, waiting-for-ssh
- 1.2.3.5: m4.4xlarge, waiting-for-ssh
+ 1.2.3.4: m4.4xlarge, waiting-for-ssh, /path/to/file.out
+ 1.2.3.5: m4.4xlarge, waiting-for-ssh, /path/to/file2.out
 Recent failures:
- (no failures)
+ 1.2.3.4.6: p3.2xlarge, /tmp/ray/session_latest/abcdef.out
 
 Resources
 --------------------------------------------------------
