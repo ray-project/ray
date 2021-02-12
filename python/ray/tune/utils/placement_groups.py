@@ -57,7 +57,7 @@ class PlacementGroupFactory:
 
     The example above will reserve 1 CPU, 0.5 GPUs and 2 custom_resources
     for the trainable itself, and reserve another 2 bundles of 2 CPUs each.
-    The trial will only start when alle these resources are available. This
+    The trial will only start when all these resources are available. This
     could be used e.g. if you had one learner running in the main trainable
     that schedules two remote workers that need access to 2 CPUs each.
 
