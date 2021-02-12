@@ -35,10 +35,10 @@ class JsonReader(InputReader):
         """Initialize a JsonReader.
 
         Args:
-            inputs (str|list): either a glob expression for files, e.g.,
+            inputs (str|list): Either a glob expression for files, e.g.,
                 "/tmp/**/*.json", or a list of single file paths or URIs, e.g.,
                 ["s3://bucket/file.json", "s3://bucket/file2.json"].
-            ioctx (IOContext): current IO context object.
+            ioctx (IOContext): Current IO context object.
         """
 
         self.ioctx = ioctx or IOContext()
@@ -131,7 +131,15 @@ class JsonReader(InputReader):
         return line
 
     def _next_file(self) -> FileType:
-        path = random.choice(self.files)
+        # If this is the first time, we open a file, make sure all workers start 
+        # with a different one if possible.
+        if self.cur_file is None and self.ioctx.worker is not None:
+            idx = self.ioctx.worker.worker_index
+            total = self.ioctx.worker.num_workers
+            path = self.files[round((len(self.files) - 1) * (idx / total))]
+        # After the first file, pick all others randomly.
+        else:
+            path = random.choice(self.files)
         if urlparse(path).scheme not in [""] + WINDOWS_DRIVES:
             if smart_open is None:
                 raise ValueError(

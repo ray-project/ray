@@ -18,7 +18,7 @@ torch, _ = try_import_torch()
 class TestMARWIL(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init()
+        ray.init(num_cpus=4, local_mode=True)#TODO
 
     @classmethod
     def tearDownClass(cls):
@@ -40,7 +40,9 @@ class TestMARWIL(unittest.TestCase):
                                               os.path.isfile(data_file)))
 
         config = marwil.DEFAULT_CONFIG.copy()
-        config["num_workers"] = 0  # Run locally.
+        # Run with n RolloutWorkers (reading the input-file at the same time, but
+        # starting from different positions in the file).
+        config["num_workers"] = 2
         config["evaluation_num_workers"] = 1
         config["evaluation_interval"] = 1
         # Evaluate on actual environment.
