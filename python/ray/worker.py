@@ -9,7 +9,6 @@ import json
 import logging
 import os
 import redis
-from six.moves import queue
 import sys
 import threading
 import time
