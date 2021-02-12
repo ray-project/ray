@@ -1419,8 +1419,7 @@ class AutoscalingTest(unittest.TestCase):
             max_concurrent_launches=10,
             process_runner=runner,
             update_interval_s=0,
-            log_dir=self.tmpdir
-        )
+            log_dir=self.tmpdir)
         assert len(self.provider.non_terminated_nodes({})) == 1
         autoscaler.update()
         self.waitForNodes(3)
@@ -1467,7 +1466,7 @@ class AutoscalingTest(unittest.TestCase):
         assert len(summary.active_nodes) == 2, summary.active_nodes
 
         assert summary.pending_nodes[0][:3] == ("172.0.0.3", "p2.xlarge",
-                                          STATUS_WAITING_FOR_SSH)
+                                                STATUS_WAITING_FOR_SSH)
         assert summary.pending_nodes[0][3], "This path includes a temp dir"
         assert len(summary.pending_nodes) == 1
 
@@ -2456,8 +2455,7 @@ def test_info_string():
         pending_nodes=[("1.2.3.4", "m4.4xlarge", STATUS_WAITING_FOR_SSH,
                         "/path/to/file.out"),
                        ("1.2.3.5", "m4.4xlarge", STATUS_WAITING_FOR_SSH,
-                        "/path/to/file2.out"
-                        )],
+                        "/path/to/file2.out")],
         pending_launches={"m4.4xlarge": 2},
         failed_nodes=[("1.2.3.4.6", "p3.2xlarge",
                        "/tmp/ray/session_latest/abcdef.out")])
