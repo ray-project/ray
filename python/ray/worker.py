@@ -1238,7 +1238,6 @@ def connect(node,
     # temporarily using this implementation which constantly queries the
     # scheduler for new error messages.
     if mode == SCRIPT_MODE:
-        q = queue.Queue()
         worker.listener_thread = threading.Thread(
             target=listen_error_messages_raylet,
             name="ray_listen_error_messages",
