@@ -802,6 +802,10 @@ Approach 1: Use the Trainer API and update the environment between calls to ``tr
     ray.init()
     tune.run(
         train,
+        config={
+            "num_gpus": num_gpus,
+            "num_workers": num_workers,
+        },
         resources_per_trial=tune.PlacementGroupFactory(
             [{"CPU": 1}, {"GPU": num_gpus}] + [{"CPU": 1}] * num_workers
         ),

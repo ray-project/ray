@@ -308,6 +308,7 @@ Papers
    modin/index.rst
    dask-on-ray.rst
    mars-on-ray.rst
+   raydp.rst
    ray-client.rst
 
 .. toctree::

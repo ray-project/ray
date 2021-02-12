@@ -104,35 +104,41 @@ class _TrialCleanup:
             actor (ActorHandle): Handle to the trainable to be stopped.
             placement_group (PlacementGroup): Placement group to stop.
         """
-        future = actor.stop.remote()
+        actor.stop.remote()
+        future = actor.__ray_terminate__.remote()
 
-        if placement_group:
-            remove_placement_group(placement_group)
-        else:
-            actor.__ray_terminate__.remote()
+        self._cleanup_map[future] = (trial, placement_group)
 
-        self._cleanup_map[future] = trial
         if len(self._cleanup_map) > self.threshold:
-            self.cleanup(partial=True)
+            self.cleanup(partial=True, timeout=DEFAULT_GET_TIMEOUT)
+        else:
+            self.cleanup(partial=True, timeout=None)
 
-    def cleanup(self, partial: bool = True):
-        """Waits for cleanup to finish.
+    def cleanup(self, partial: bool = True, timeout: Optional[float] = None):
+        """Cleans up trial shutdown futures.
 
-        If partial=False, all futures are expected to return. If a future
-        does not return within the timeout period, the cleanup terminates.
+        If a timeout is specified, this function will block for this time
+        until either all (``partial=False``) or a number (``partial=True``)
+        futures returned. If a future does not return within the timeout
+        period, the cleanup terminates.
+
+        This will also shutdown placement groups associated with trials.
         """
         logger.debug("Cleaning up futures")
         num_to_keep = int(self.threshold) / 2 if partial else 0
-        while len(self._cleanup_map) > num_to_keep:
-            dones, _ = ray.wait(
-                list(self._cleanup_map), timeout=DEFAULT_GET_TIMEOUT)
-            if not dones:
+        dones = True
+        while len(self._cleanup_map) > num_to_keep or dones:
+            dones, _ = ray.wait(list(self._cleanup_map), timeout=timeout)
+            if not dones and timeout:
                 logger.warning(
                     "Skipping cleanup - trainable.stop did not return in "
                     "time. Consider making `stop` a faster operation.")
-            else:
-                done = dones[0]
-                del self._cleanup_map[done]
+            elif dones:
+                for done in dones:
+                    trial, pg = self._cleanup_map[done]
+                    if pg:
+                        remove_placement_group(pg)
+                    del self._cleanup_map[done]
 
 
 def noop_logger_creator(config, logdir):
@@ -164,8 +170,7 @@ class RayTrialExecutor(TrialExecutor):
         self._trial_cleanup = _TrialCleanup()
         self._has_cleaned_up_pgs = False
         self._reuse_actors = reuse_actors
-        self._cached_actor = None
-        self._cached_pg = None
+        self._cached_actor_pg = (None, None)
 
         self._avail_resources = Resources(cpu=0, gpu=0)
         self._committed_resources = Resources(cpu=0, gpu=0)
@@ -217,6 +222,9 @@ class RayTrialExecutor(TrialExecutor):
             self._pg_manager.cleanup_existing_pg()
             self._has_cleaned_up_pgs = True
 
+        # Remove placement groups from terminated/errored trials
+        self._trial_cleanup.cleanup(partial=True, timeout=None)
+
         for trial in trials:
             if trial.status != Trial.PENDING:
                 continue
@@ -250,31 +258,20 @@ class RayTrialExecutor(TrialExecutor):
 
         return None
 
-    def _unstage_trial(self, trial: "Trial"):
-        if trial in self._staged_trials:
-            self._staged_trials.remove(trial)
-            own_pg = self._pg_manager.clean_trial_placement_group(trial)
-
-            if own_pg:
-                remove_placement_group(own_pg)
-
     def _setup_remote_runner(self, trial):
         trial.init_logdir()
         # We checkpoint metadata here to try mitigating logdir duplication
         self.try_checkpoint_metadata(trial)
         logger_creator = partial(noop_logger_creator, logdir=trial.logdir)
 
-        if self._reuse_actors and self._cached_actor is not None:
-            logger.debug("Trial %s: Reusing cached runner %s", trial,
-                         self._cached_actor)
-            existing_runner = self._cached_actor
-            self._cached_actor = None
+        if self._reuse_actors and self._cached_actor_pg[0] is not None:
+            logger.debug(f"Trial {trial}: Reusing cached runner "
+                         f"{self._cached_actor_pg[0]}")
+            existing_runner, pg = self._cached_actor_pg
+            self._cached_actor_pg = (None, None)
 
             trial.set_runner(existing_runner)
-            if self._pg_manager.has_ready(trial):
-                # When using a cached actor+PG, unstage the trial
-                self._unstage_trial(trial)
-                self._pg_manager.assign_pg(trial)
+            self._pg_manager.assign_cached_pg(pg, trial)
 
             if not self.reset_trial(trial, trial.config, trial.experiment_tag,
                                     logger_creator):
@@ -283,13 +280,22 @@ class RayTrialExecutor(TrialExecutor):
                     "implemented and return True.")
             return existing_runner
 
-        if self._cached_actor:
+        if self._cached_actor_pg[0]:
             logger.debug("Cannot reuse cached runner {} for new trial".format(
-                self._cached_actor))
+                self._cached_actor_pg[0]))
+            existing_runner, pg = self._cached_actor_pg
+
+            if not self._pg_manager.return_cached_pg(pg, replace_pending=True):
+                # If we could not replace a pending pg, it might not be needed
+                # anymore. Remove instead.
+                self._pg_manager.clean_cached_pg(pg)
+            else:
+                pg = None
+
             with self._change_working_directory(trial):
                 self._trial_cleanup.add(
-                    trial, actor=self._cached_actor, placement_group=None)
-            self._cached_actor = None
+                    trial, actor=existing_runner, placement_group=pg)
+            self._cached_actor_pg = (None, None)
 
         trainable_cls = trial.get_trainable_cls()
         if not trainable_cls:
@@ -307,6 +313,15 @@ class RayTrialExecutor(TrialExecutor):
 
                 just_staged = trial in self._just_staged_trials
 
+                # This part of the code is mostly here for testing
+                # purposes. If self._wait_for_pg is set, we will wait here
+                # for that many seconds until the placement group is ready.
+                # This ensures that the trial can be started right away and
+                # not just in the next step() of the trial runner.
+                # We only do this if we have reason to believe that resources
+                # will be ready, soon, i.e. when a) we just staged the PG,
+                # b) another trial just exited, freeing resources, or c)
+                # when there are no currently running trials.
                 if self._wait_for_pg is not None and (
                         just_staged or self._trial_just_finished_before
                         or not self.get_running_trials()):
@@ -426,6 +441,9 @@ class RayTrialExecutor(TrialExecutor):
         self.restore(trial, checkpoint)
         self.set_status(trial, Trial.RUNNING)
 
+        if trial in self._staged_trials:
+            self._staged_trials.remove(trial)
+
         previous_run = self._find_item(self._paused, trial)
         if prior_status == Trial.PAUSED and previous_run:
             # If Trial was in flight when paused, self._paused stores result.
@@ -435,16 +453,21 @@ class RayTrialExecutor(TrialExecutor):
             self._train(trial)
         return True
 
-    def _stop_trial(self, trial, error=False, error_msg=None):
+    def _stop_trial(self, trial, error=False, error_msg=None, free=True):
         """Stops this trial.
 
         Stops this trial, releasing all allocating resources. If stopping the
         trial fails, the run will be marked as terminated in error, but no
         exception will be thrown.
 
+        If the trial should be paused (``pause=True``), we do not remove
+        its placement group (or a surrogate placement group).
+
         Args:
             error (bool): Whether to mark this trial as terminated in error.
             error_msg (str): Optional error message.
+            free (bool): Whether this trials resources (placement groups)
+                should be free'd.
         """
         self.set_status(trial, Trial.ERROR if error else Trial.TERMINATED)
         self._trial_just_finished = True
@@ -454,13 +477,37 @@ class RayTrialExecutor(TrialExecutor):
             trial.write_error_log(error_msg)
             if hasattr(trial, "runner") and trial.runner:
                 if (not error and self._reuse_actors
-                        and self._cached_actor is None):
+                        and self._cached_actor_pg[0] is None):
                     logger.debug("Reusing actor for %s", trial.runner)
-                    self._cached_actor = trial.runner
-                    self._pg_manager.return_pg(trial)
+                    # Move PG into cache (disassociate from trial)
+                    pg = self._pg_manager.cache_trial_pg(
+                        trial, replace_pending=free)
+                    if pg:  # Always true if replace_pending=False
+                        self._cached_actor_pg = (trial.runner, pg)
+                        should_destroy_actor = False
+                    else:
+                        logger.debug(
+                            "Could not cache of trial {trial} actor for "
+                            "reuse, as there are no pending trials "
+                            "requiring its resources.")
+                        should_destroy_actor = True
                 else:
+                    should_destroy_actor = True
+
+                if should_destroy_actor:
                     logger.debug("Trial %s: Destroying actor.", trial)
-                    pg = self._pg_manager.clean_trial_placement_group(trial)
+
+                    # Try to return the placement group for other trials to use
+                    if not self._pg_manager.return_pg(
+                            trial, replace_pending=free):
+                        # If we could not replace a pending pg, it might not
+                        # be needed anymore. Remove instead.
+                        pg = self._pg_manager.clean_trial_placement_group(
+                            trial)
+                    else:
+                        # Always true if replace_pending=False
+                        pg = None
+
                     with self._change_working_directory(trial):
                         self._trial_cleanup.add(
                             trial, actor=trial.runner, placement_group=pg)
@@ -486,8 +533,8 @@ class RayTrialExecutor(TrialExecutor):
             train (bool): Whether or not to start training.
 
         Returns:
-            True if the remote runner has been started (even if it failed
-            afterwards). False otherwise.
+            True if the remote runner has been started. False if trial was
+                not started (e.g. because of lacking resources/pending PG).
         """
         if not trial.uses_placement_groups:
             self._commit_resources(trial.resources)
@@ -499,9 +546,7 @@ class RayTrialExecutor(TrialExecutor):
             time.sleep(2)
             error_msg = traceback.format_exc()
             self._stop_trial(trial, error=True, error_msg=error_msg)
-            # Return True here so we don't try to start a new trial
-            # in the main event loop
-            return True
+            return False
         except Exception:
             logger.exception("Trial %s: Unexpected error starting runner.",
                              trial)
@@ -510,16 +555,16 @@ class RayTrialExecutor(TrialExecutor):
             self._stop_trial(trial, error=True, error_msg=error_msg)
             # Note that we don't return the resources, since they may
             # have been lost. TODO(ujvl): is this the right thing to do?
-            return True
+            return False
 
     def _find_item(self, dictionary, item):
         out = [rid for rid, t in dictionary.items() if t is item]
         return out
 
-    def stop_trial(self, trial, error=False, error_msg=None):
+    def stop_trial(self, trial, error=False, error_msg=None, free=True):
         """Only returns resources if resources allocated."""
         prior_status = trial.status
-        self._stop_trial(trial, error=error, error_msg=error_msg)
+        self._stop_trial(trial, error=error, error_msg=error_msg, free=free)
         if prior_status == Trial.RUNNING:
             logger.debug("Trial %s: Returning resources.", trial)
             if not trial.uses_placement_groups:
@@ -1001,6 +1046,7 @@ class RayTrialExecutor(TrialExecutor):
 
     def cleanup(self):
         self._trial_cleanup.cleanup(partial=False)
+        self._pg_manager.cleanup_existing_pg(block=True)
 
     @contextmanager
     def _change_working_directory(self, trial):

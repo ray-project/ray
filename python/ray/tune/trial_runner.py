@@ -252,6 +252,7 @@ class TrialRunner:
         self._trials = []
         self._cached_trial_decisions = {}
         self._queued_trial_decisions = {}
+        self._updated_queue = False
 
         self._stop_queue = []
         self._should_stop_experiment = False  # used by TuneServer
@@ -452,6 +453,8 @@ class TrialRunner:
         Callers should typically run this method repeatedly in a loop. They
         may inspect or modify the runner's state in between calls to step().
         """
+        self._updated_queue = False
+
         if self.is_finished():
             raise TuneError("Called step when all trials finished?")
         with warn_if_slow("on_step_begin"):
@@ -462,9 +465,10 @@ class TrialRunner:
 
         # This will contain the next trial to start
         next_trial = self._get_next_trial()  # blocking
-        # Create pending trials. Skip if next_trial is None (then there
-        # are no new trials to create)
-        if next_trial:
+
+        # Create pending trials. If the queue was updated before, only
+        # continue updating if this was successful (next_trial is not None)
+        if not self._updated_queue or (self._updated_queue and next_trial):
             num_pending_trials = len(
                 [t for t in self._trials if t.status == Trial.PENDING])
             while num_pending_trials < self._max_pending_trials:
@@ -490,7 +494,10 @@ class TrialRunner:
         if next_trial is not None:
             if _start_trial(next_trial):
                 may_handle_events = False
-            else:
+            elif next_trial.status != Trial.ERROR:
+                # Only try to start another trial if previous trial startup
+                # did not error (e.g. it just didn't start because its
+                # placement group is not ready, yet).
                 next_trial = self.trial_executor.get_staged_trial()
                 if next_trial is not None:
                     if _start_trial(next_trial):
@@ -981,22 +988,30 @@ class TrialRunner:
             # Restore was unsuccessful, try again without checkpoint.
             trial.clear_checkpoint()
         self.trial_executor.stop_trial(
-            trial, error=error_msg is not None, error_msg=error_msg)
+            trial,
+            error=error_msg is not None,
+            error_msg=error_msg,
+            free=False)
         if self.trial_executor.has_resources_for_trial(trial):
             logger.info(
                 "Trial %s: Attempting to restore "
                 "trial state from last checkpoint.", trial)
-            self.trial_executor.start_trial(trial)
+            started = self.trial_executor.start_trial(trial)
             if trial.status == Trial.ERROR:
                 logger.exception(
                     "Trial %s: Error restoring trial from checkpoint, abort.",
                     trial)
+                if started:
+                    # Clean up again if an actor was launched
+                    self.trial_executor.stop_trial(
+                        trial, error=True, free=True)
                 self._scheduler_alg.on_trial_error(self, trial)
                 self._search_alg.on_trial_complete(trial.trial_id, error=True)
                 self._callbacks.on_trial_error(
                     iteration=self._iteration,
                     trials=self._trials,
                     trial=trial)
+                # Free placement group
             else:
                 logger.debug("Trial %s: Restore dispatched correctly.", trial)
         else:
@@ -1040,6 +1055,8 @@ class TrialRunner:
         Returns:
             Boolean indicating if a new trial was created or not.
         """
+        self._updated_queue = True
+
         trial = self._search_alg.next_trial()
         if blocking and not trial:
             start = time.time()

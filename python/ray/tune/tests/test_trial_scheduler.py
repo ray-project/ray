@@ -1,7 +1,6 @@
 import os
 import json
 import random
-import time
 import unittest
 
 import numpy as np
@@ -219,8 +218,9 @@ class _MockTrialExecutor(TrialExecutor):
         trial.logger_running = True
         trial.restored_checkpoint = checkpoint_obj.value
         trial.status = Trial.RUNNING
+        return True
 
-    def stop_trial(self, trial, error=False, error_msg=None):
+    def stop_trial(self, trial, error=False, error_msg=None, free=True):
         trial.status = Trial.ERROR if error else Trial.TERMINATED
 
     def restore(self, trial, checkpoint=None, block=False):
@@ -1736,8 +1736,6 @@ class PopulationBasedTestingSuite(unittest.TestCase):
 
         out = tune.run(
             train, config={"x": tune.grid_search(vals)}, scheduler=scheduler)
-
-        time.sleep(1)  # Time to shut down placement groups
 
         ever_active = set()
         active = set()

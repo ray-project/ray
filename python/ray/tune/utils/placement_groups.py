@@ -7,7 +7,7 @@ import os
 import time
 
 import ray
-from ray import ObjectRef
+from ray import ObjectRef, logger
 from ray.actor import ActorClass
 from ray.tune.resources import Resources
 from ray.util.placement_group import PlacementGroup, get_placement_group, \
@@ -49,7 +49,7 @@ class PlacementGroupFactory:
 
         tune.run(
             train,
-            tune.PlacementGroupFactory([
+            resources_per_trial=tune.PlacementGroupFactory([
                 {"CPU": 1, "GPU": 0.5, "custom_resource": 2},
                 {"CPU": 2},
                 {"CPU": 2},
@@ -60,6 +60,20 @@ class PlacementGroupFactory:
     The trial will only start when alle these resources are available. This
     could be used e.g. if you had one learner running in the main trainable
     that schedules two remote workers that need access to 2 CPUs each.
+
+    Args:
+        bundles(List[Dict]): A list of bundles which
+            represent the resources requirements.
+        strategy(str): The strategy to create the placement group.
+
+         - "PACK": Packs Bundles into as few nodes as possible.
+         - "SPREAD": Places Bundles across distinct nodes as even as possible.
+         - "STRICT_PACK": Packs Bundles into one node. The group is
+           not allowed to span multiple nodes.
+         - "STRICT_SPREAD": Packs Bundles across distinct nodes.
+        *args: Passed to the call of ``placement_group()``
+        **kwargs: Passed to the call of ``placement_group()``
+
     """
 
     def __init__(self,
@@ -159,6 +173,8 @@ def resource_dict_to_pg_factory(spec: Optional[Dict[str, float]]):
 class PlacementGroupManager:
     """PlacementGroupManager to stage and manage placement groups.
 
+    .. versionadded:: 1.3.0
+
     This class schedules placement groups for trials, keeps track of
     their state, and can return a fully configured actor class using
     this placement group.
@@ -188,6 +204,10 @@ class PlacementGroupManager:
         self._in_use_pgs: Dict[PlacementGroup, "Trial"] = {}
         self._in_use_trials: Dict["Trial", PlacementGroup] = {}
 
+        # Placement groups used by remote actors but not trials
+        # (e.g. for reuse_actors=True)
+        self._cached_pgs: Dict[PlacementGroup, PlacementGroupFactory] = {}
+
         # Latest PG staging time to check if still in grace period.
         self._latest_staging_start_time = time.time()
 
@@ -196,7 +216,7 @@ class PlacementGroupManager:
         self._grace_period = float(
             os.getenv("TUNE_TRIAL_STARTUP_GRACE_PERIOD", 10.))
 
-    def cleanup_existing_pg(self):
+    def cleanup_existing_pg(self, block: bool = False):
         """Clean up (remove) all existing placement groups.
 
         This scans through the placement_group_table to discover existing
@@ -205,17 +225,27 @@ class PlacementGroupManager:
         of the tuning run to clean up existing placement groups should the
         experiment be interrupted by a driver failure and resumed in the
         same driver script.
+
+        Args:
+            block (bool): If True, will wait until all placement groups are
+                shut down.
         """
         should_cleanup = not int(
             os.getenv("TUNE_PLACEMENT_GROUP_CLEANUP_DISABLED", "0"))
         if should_cleanup:
-            for pid, info in placement_group_table().items():
-                if not info["name"].startswith(self._prefix):
-                    continue
-                if info["state"] == "REMOVED":
-                    continue
-                pg = get_placement_group(info["name"])
-                remove_placement_group(pg)
+            has_non_removed_pg_left = True
+            while has_non_removed_pg_left:
+                has_non_removed_pg_left = False
+                for pid, info in placement_group_table().items():
+                    if not info["name"].startswith(self._prefix):
+                        continue
+                    if info["state"] == "REMOVED":
+                        continue
+                    # If block=False, only run once
+                    has_non_removed_pg_left = block
+                    pg = get_placement_group(info["name"])
+                    remove_placement_group(pg)
+                time.sleep(0.1)
 
     def stage_trial_pg(self, trial: "Trial"):
         """Stage a trial placement group.
@@ -282,10 +312,14 @@ class PlacementGroupManager:
             Configured ActorClass or None
 
         """
-        pg = self.assign_pg(trial)
+        pgf = trial.placement_group_factory
 
-        if not pg:
+        if not self._ready[pgf]:
             return None
+
+        pg = self._ready[pgf].pop()
+        self._in_use_pgs[pg] = trial
+        self._in_use_trials[trial] = pg
 
         # We still have to pass resource specs
         # Pass the full resource specs of the first bundle per default
@@ -295,6 +329,8 @@ class PlacementGroupManager:
 
         # Only custom resources remain in `first_bundle`
         resources = first_bundle or None
+
+        logger.debug(f"For trial {trial} use pg {pg.id}")
 
         return actor_cls.options(
             placement_group=pg,
@@ -321,24 +357,182 @@ class PlacementGroupManager:
     def trial_in_use(self, trial: "Trial"):
         return trial in self._in_use_trials
 
-    def return_pg(self, trial: "Trial"):
-        """Return pg, making it available for other trials to use."""
-        pg = self._in_use_trials.pop(trial)
-        self._in_use_pgs.pop(pg)
-        self._ready[trial.placement_group_factory].add(pg)
+    def cache_trial_pg(self, trial: "Trial", replace_pending: bool = False
+                       ) -> Optional[PlacementGroup]:
+        """Disassociated placement group from trial object.
 
-    def assign_pg(self, trial: "Trial") -> Optional[PlacementGroup]:
-        """Assign a ready pg to a trial."""
+        This can be used to move placement groups into a cache so that
+        they can be reused by other trials. The difference to just making
+        them broadly available again is that they have to be specifically
+        re-assigned to a trial via :meth:`assign_cached_pg`. The reason
+        for this is that remote actors might already be scheduled on this
+        placement group, so it should only be associated to the trial that
+        actually re-uses the remote actor (e.g. when using ``reuse_trials``).
+
+        If ``replace_pending=True``, this will replace (unstage)
+        an existing placement group with the same factory object. If this
+        is unsuccessful (e.g. because no such pending placement group exists),
+        the placement group will *not* be cached and None will be returned.
+
+        Args:
+            trial (Trial): Trial object with the (currently in use) placement
+                group that should be cached.
+            replace_pending (bool): Boolean indicating whether this should
+                "replace" a pending placement group with the same factory
+                object. If True, such a PG will be unstaged (removed).
+
+        Returns:
+            PlacementGroup object that was cached or None if
+                ``replace_pending=True`` but no placement group was replaced.
+
+        """
         pgf = trial.placement_group_factory
 
-        if not self._ready[pgf]:
-            return None
+        if replace_pending:
+            staged_pg = self._unstage_unused_pg(pgf)
+            if not staged_pg:
+                return None
 
-        pg = self._ready[pgf].pop()
+            remove_placement_group(staged_pg)
+
+        pg = self._in_use_trials.pop(trial)
+        self._in_use_pgs.pop(pg)
+
+        self._cached_pgs[pg] = trial.placement_group_factory
+        return pg
+
+    def assign_cached_pg(self, pg: PlacementGroup, trial: "Trial") -> bool:
+        """Assign a cached pg to a trial."""
+        pgf = self._cached_pgs.pop(pg)
+        trial_pgf = trial.placement_group_factory
+
+        assert pgf == trial_pgf, f"Cannot assign placement group with a " \
+                                 f"non-matching factory to trial {trial}"
+
+        logger.debug(f"For trial {trial} RE-use pg {pg.id}")
+
         self._in_use_pgs[pg] = trial
         self._in_use_trials[trial] = pg
 
-        return pg
+        return True
+
+    def clean_cached_pg(self, pg: PlacementGroup):
+        self._cached_pgs.pop(pg)
+
+    def return_cached_pg(self,
+                         pg: PlacementGroup,
+                         replace_pending: bool = False):
+        """Return cached pg, making it available for other trials to use.
+
+        See docstring of :meth:`return_pg`. This is the same method but
+        for cached placement groups rather than in-use trial placement groups.
+
+        Args:
+            pg (PlacementGroup): Return this cached placement group.
+            replace_pending (bool): Boolean indicating whether this should
+                "replace" a pending placement group with the same factory
+                object. If True, such a PG will be unstaged (removed).
+
+        Returns:
+            Boolean indicating if the placement group was returned. This will
+                be false if ``replace_pending=True`` and no pending placement
+                group was unstaged.
+        """
+        pgf = self._cached_pgs[pg]
+
+        if replace_pending:
+            staged_pg = self._unstage_unused_pg(pgf)
+            if not staged_pg:
+                return False
+
+            remove_placement_group(staged_pg)
+
+        self._cached_pgs.pop(pg)
+        self._ready[pgf].add(pg)
+        return True
+
+    def return_pg(self, trial: "Trial", replace_pending: bool = False):
+        """Return pg, making it available for other trials to use.
+
+        If ``replace_pending=True``, a pending (not in use) placement group
+        with the same factory object will be removed. This can be used to
+        quickly re-use existing placement groups for new remote actors. If
+        this replacement is unsuccessful (e.g. because no pending placement
+        group exists), then the trial placement group will *not* be returned
+        and this method will return ``False``. In that case this function
+        can be called again (with ``replace_pending=False``) or the placement
+        group can be cleaned up completely
+        (with :meth:`clean_trial_placement_group`).
+
+        Args:
+            trial (Trial): Return placement group of this trial.
+            replace_pending (bool): Boolean indicating whether this should
+                "replace" a pending placement group with the same factory
+                object. If True, such a PG will be unstaged (removed).
+
+        Returns:
+            Boolean indicating if the placement group was returned. This will
+                be false if ``replace_pending=True`` and no pending placement
+                group was unstaged.
+        """
+        pgf = trial.placement_group_factory
+
+        if replace_pending:
+            staged_pg = self._unstage_unused_pg(pgf)
+            if not staged_pg:
+                return False
+
+            remove_placement_group(staged_pg)
+
+        pg = self._in_use_trials.pop(trial)
+        self._in_use_pgs.pop(pg)
+        self._ready[pgf].add(pg)
+
+        return True
+
+    def _unstage_unused_pg(
+            self, pgf: PlacementGroupFactory) -> Optional[PlacementGroup]:
+        """Unstage an unsued (i.e. staging or ready) placement group.
+
+        This method will find an unused placement group and remove it from
+        the tracked pool of placement groups (including e.g. the
+        staging futures). It will *not* call ``remove_placement_group()``
+        on the placement group - that is up to the calling method to do.
+
+        (The reason for this is that sometimes we would remove the placement
+        group directly, but sometimes we would like to enqueue removal.)
+
+        Args:
+            pgf (PlacementGroupFactory): Placement group factory object.
+                This method will try to remove a staged PG of this factory
+                first, then settle for a ready but unused. If none exist,
+                no placement group will be removed and None will be returned.
+
+        Returns:
+            Removed placement group object or None.
+
+        """
+        trial_pg = None
+
+        # If there are pending placement groups
+        # in staging, pop a random one.
+        if self._staging[pgf]:
+            trial_pg = self._staging[pgf].pop()
+
+            # For staging placement groups, we will also need to
+            # remove the future.
+            trial_future = None
+            for future, (pgf, pg) in self._staging_futures.items():
+                if pg == trial_pg:
+                    trial_future = future
+                    break
+            del self._staging_futures[trial_future]
+
+        elif self._ready[pgf]:
+            # Otherwise, return an unused ready placement group.
+            trial_pg = self._ready[pgf].pop()
+
+        return trial_pg
 
     def clean_trial_placement_group(
             self, trial: "Trial") -> Optional[PlacementGroup]:
@@ -359,30 +553,12 @@ class PlacementGroupManager:
         """
         pgf = trial.placement_group_factory
 
-        trial_pg = None
-
         if trial in self._in_use_trials:
             # "Trial" was in use. Just return its placement group.
             trial_pg = self._in_use_trials.pop(trial)
             self._in_use_pgs.pop(trial_pg)
         else:
-            # "Trial" was not in use. If there are pending placement groups
-            # in staging, pop a random one.
-            if self._staging[pgf]:
-                trial_pg = self._staging[pgf].pop()
-
-                # For staging placement groups, we will also need to
-                # remove the future.
-                trial_future = None
-                for future, (pgf, pg) in self._staging_futures.items():
-                    if pg == trial_pg:
-                        trial_future = future
-                        break
-                del self._staging_futures[trial_future]
-
-            elif self._ready[pgf]:
-                # Otherwise, return an unused ready placement group.
-                trial_pg = self._ready[pgf].pop()
+            trial_pg = self._unstage_unused_pg(pgf)
 
         return trial_pg
 

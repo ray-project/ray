@@ -93,7 +93,7 @@ class TrialExecutor:
         raise NotImplementedError("Subclasses of TrialExecutor must provide "
                                   "start_trial() method")
 
-    def stop_trial(self, trial, error=False, error_msg=None):
+    def stop_trial(self, trial, error=False, error_msg=None, free=True):
         """Stops the trial.
 
         Stops this trial, releasing all allocating resources.
@@ -103,6 +103,8 @@ class TrialExecutor:
         Args:
             error (bool): Whether to mark this trial as terminated in error.
             error_msg (str): Optional error message.
+            free (bool): Whether this trials resources (placement groups)
+                should be free'd.
         """
         raise NotImplementedError("Subclasses of TrialExecutor must provide "
                                   "stop_trial() method")
@@ -120,7 +122,7 @@ class TrialExecutor:
         assert trial.status == Trial.RUNNING, trial.status
         try:
             self.save(trial, Checkpoint.MEMORY)
-            self.stop_trial(trial)
+            self.stop_trial(trial, free=False)
             self.set_status(trial, Trial.PAUSED)
         except Exception:
             logger.exception("Error pausing runner.")

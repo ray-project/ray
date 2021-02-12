@@ -94,6 +94,11 @@ def get_autodetected_resources(container_data):
         for resource_name in ["cpu", "gpu"]
     }
 
+    # Throw out GPU from resource dict if the amount is 0.
+    for key in copy.deepcopy(node_type_resources):
+        if node_type_resources[key] == 0:
+            del node_type_resources[key]
+
     return node_type_resources
 
 

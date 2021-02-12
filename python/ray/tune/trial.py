@@ -310,6 +310,20 @@ class Trial:
         self._state_valid = False
 
     def _setup_resources(self, log_always: bool = False):
+        """Set up resource and placement group requirements.
+
+        This will try to convert the resource request in ``self.resources``
+        to a placement group factory object. If this is unsuccessful,
+        placement groups will not be used.
+
+        Args:
+            log_always (bool): If True, this will always log a warning if
+                conversion from a resource dict to a placement group
+                definition was unsuccessful (e.g. when passing ``extra_``
+                requests).
+
+
+        """
         if not self.placement_group_factory and \
            not int(os.getenv("TUNE_PLACEMENT_GROUP_AUTO_DISABLED", "0")):
             try:
