@@ -155,9 +155,9 @@ class MemoryTableEntry:
         # are not all 'f', that means it is an actor creation
         # task, which is an actor handle.
         random_bits = object_ref_hex[:TASKID_RANDOM_BITS_SIZE]
-        actor_random_bits = object_ref_hex[TASKID_RANDOM_BITS_SIZE:
-                                           TASKID_RANDOM_BITS_SIZE +
-                                           ACTORID_RANDOM_BITS_SIZE]
+        actor_random_bits = object_ref_hex[
+            TASKID_RANDOM_BITS_SIZE:TASKID_RANDOM_BITS_SIZE +
+            ACTORID_RANDOM_BITS_SIZE]
         if (random_bits == "f" * 16 and not actor_random_bits == "f" * 24):
             return True
         else:
@@ -279,8 +279,9 @@ class MemoryTable:
 
         # Build a group table.
         for group_key, entries in group.items():
-            self.group[group_key] = MemoryTable(
-                entries, group_by_type=None, sort_by_type=None)
+            self.group[group_key] = MemoryTable(entries,
+                                                group_by_type=None,
+                                                sort_by_type=None)
         for group_key, group_memory_table in self.group.items():
             group_memory_table.summarize()
         return self
@@ -318,15 +319,15 @@ def construct_memory_table(workers_stats: List,
         object_refs = core_worker_stats.get("objectRefs", [])
 
         for object_ref in object_refs:
-            memory_table_entry = MemoryTableEntry(
-                object_ref=object_ref,
-                node_address=node_address,
-                is_driver=is_driver,
-                pid=pid)
+            memory_table_entry = MemoryTableEntry(object_ref=object_ref,
+                                                  node_address=node_address,
+                                                  is_driver=is_driver,
+                                                  pid=pid)
             if memory_table_entry.is_valid():
                 memory_table_entries.append(memory_table_entry)
-    memory_table = MemoryTable(
-        memory_table_entries, group_by_type=group_by, sort_by_type=sort_by)
+    memory_table = MemoryTable(memory_table_entries,
+                               group_by_type=group_by,
+                               sort_by_type=sort_by)
     return memory_table
 
 
@@ -395,9 +396,8 @@ def get_memory_summary(redis_address, redis_password, group_by, sort_by,
         mem += object_ref_string\
             .format(*object_ref_labels)
         for entry in group["entries"]:
-            entry["object_size"] = str(
-                entry["object_size"]
-            ) + " MiB" if entry["object_size"] > -1 else "?"
+            entry["object_size"] = str(entry["object_size"]) + " MiB" if entry[
+                "object_size"] > -1 else "?"
             num_lines = 1
             if size > line_wrap_threshold and line_wrap:
                 call_site_length = 22
