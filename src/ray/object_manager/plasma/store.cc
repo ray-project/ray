@@ -571,6 +571,10 @@ void PlasmaStore::EraseFromObjectTable(const ObjectID &object_id) {
   if (object->device_num == 0) {
     PlasmaAllocator::Free(object->pointer, buff_size);
   }
+  if (object->ref_count > 0) {
+    // A client was using this object.
+    num_bytes_in_use_ -= object->data_size + object->metadata_size;
+  }
   store_info_.objects.erase(object_id);
 }
 
