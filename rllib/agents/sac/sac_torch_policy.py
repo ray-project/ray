@@ -32,6 +32,29 @@ F = nn.functional
 logger = logging.getLogger(__name__)
 
 
+def _get_dist_class(config: TrainerConfigDict, action_space: gym.spaces.Space
+                    ) -> Type[TorchDistributionWrapper]:
+    """Helper function to return a dist class based on config and action space.
+
+    Args:
+        config (TrainerConfigDict): The Trainer's config dict.
+        action_space (gym.spaces.Space): The action space used.
+
+    Returns:
+        Type[TFActionDistribution]: A TF distribution class.
+    """
+    if isinstance(action_space, Discrete):
+        return TorchCategorical
+    elif isinstance(action_space, Simplex):
+        return TorchDirichlet
+    else:
+        if config["normalize_actions"]:
+            return TorchSquashedGaussian if \
+                not config["_use_beta_distribution"] else TorchBeta
+        else:
+            return TorchDiagGaussian
+
+
 def build_sac_model_and_action_dist(
         policy: Policy,
         obs_space: gym.spaces.Space,
@@ -54,29 +77,6 @@ def build_sac_model_and_action_dist(
     model = build_sac_model(policy, obs_space, action_space, config)
     action_dist_class = _get_dist_class(config, action_space)
     return model, action_dist_class
-
-
-def _get_dist_class(config: TrainerConfigDict, action_space: gym.spaces.Space
-                    ) -> Type[TorchDistributionWrapper]:
-    """Helper function to return a dist class based on config and action space.
-
-    Args:
-        config (TrainerConfigDict): The Trainer's config dict.
-        action_space (gym.spaces.Space): The action space used.
-
-    Returns:
-        Type[TFActionDistribution]: A TF distribution class.
-    """
-    if isinstance(action_space, Discrete):
-        return TorchCategorical
-    elif isinstance(action_space, Simplex):
-        return TorchDirichlet
-    else:
-        if config["normalize_actions"]:
-            return TorchSquashedGaussian if \
-                not config["_use_beta_distribution"] else TorchBeta
-        else:
-            return TorchDiagGaussian
 
 
 def action_distribution_fn(
