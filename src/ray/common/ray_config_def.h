@@ -378,3 +378,9 @@ RAY_CONFIG(int64_t, log_rotation_max_bytes, 100 * 1024 * 1024)
 /// Parameters for log rotation. This value is equivalent to RotatingFileHandler's
 /// backupCount argument.
 RAY_CONFIG(int64_t, log_rotation_backup_count, 5)
+
+// Whether or not to supress the infeasible task warning. See
+// https://github.com/ray-project/ray/issues/14051
+RAY_CONFIG(bool, supress_infeasible_warning,
+           getenv("RAY_SUPRESS_INFEASIBLE_WARNING") != nullptr &&
+               getenv("RAY_SUPRESS_INFEASIBLE_WARNING") == std::string("1"))

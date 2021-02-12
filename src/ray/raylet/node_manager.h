@@ -935,6 +935,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// Managers all bundle-related operations.
   std::shared_ptr<PlacementGroupResourceManager> placement_group_resource_manager_;
+
+  // Whether or not to supress the infeasible task warning. See
+  // https://github.com/ray-project/ray/issues/14051
+  bool supress_infeasible_warning_;
 };
 
 }  // namespace raylet

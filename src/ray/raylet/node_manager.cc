@@ -185,7 +185,9 @@ NodeManager::NodeManager(boost::asio::io_service &io_service, const NodeID &self
       last_local_gc_ns_(absl::GetCurrentTimeNanos()),
       local_gc_interval_ns_(RayConfig::instance().local_gc_interval_s() * 1e9),
       local_gc_min_interval_ns_(RayConfig::instance().local_gc_min_interval_s() * 1e9),
-      record_metrics_period_(config.record_metrics_period_ms) {
+      record_metrics_period_(config.record_metrics_period_ms),
+      supress_infeasible_warning_(RayConfig::instance().supress_infeasible_warning())
+{
   RAY_LOG(INFO) << "Initializing NodeManager with ID " << self_node_id_;
   RAY_CHECK(heartbeat_period_.count() > 0);
   // Initialize the resource map with own cluster resource configuration.
@@ -2731,7 +2733,7 @@ void NodeManager::RecordMetrics() {
 
 void NodeManager::PublishInfeasibleTaskError(const Task &task) const {
   // This block is used to suppress infeasible task warning.
-  bool suppress_warning = false;
+  bool suppress_warning = supress_infeasible_warning_;
   const auto &required_resources = task.GetTaskSpecification().GetRequiredResources();
   const auto &resources_map = required_resources.GetResourceMap();
   const auto &it = resources_map.begin();
