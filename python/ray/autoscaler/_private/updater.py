@@ -71,7 +71,7 @@ class NodeUpdater:
                  process_runner=subprocess,
                  use_internal_ip=False,
                  docker_config=None,
-                 with_output=False
+                 with_output=False,
                  restart_only=False):
 
         self.log_prefix = "NodeUpdater: {}: ".format(node_id)
@@ -110,11 +110,8 @@ class NodeUpdater:
         self.auth_config = auth_config
         self.is_head_node = is_head_node
         self.docker_config = docker_config
-<<<<<<< HEAD
         self.with_output = with_output
-=======
         self.restart_only = restart_only
->>>>>>> 24e020b062db5d4e6bb23bd41f302294ba89912b
 
     def run(self):
         if cmd_output_util.does_allow_interactive(

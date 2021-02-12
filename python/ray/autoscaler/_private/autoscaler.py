@@ -71,7 +71,6 @@ class StandardAutoscaler:
 
     def __init__(self,
                  config_path,
-                 log_dir,
                  load_metrics,
                  max_launch_batch=AUTOSCALER_MAX_LAUNCH_BATCH,
                  max_concurrent_launches=AUTOSCALER_MAX_CONCURRENT_LAUNCHES,
@@ -79,7 +78,9 @@ class StandardAutoscaler:
                  process_runner=subprocess,
                  update_interval_s=AUTOSCALER_UPDATE_INTERVAL_S,
                  prefix_cluster_info=False,
-                 event_summarizer=None):
+                 event_summarizer=None,
+                 log_dir="/tmp"
+                 ):
         self.config_path = config_path
         self.log_dir = log_dir
         # Prefix each line of info string with cluster name if True

@@ -111,10 +111,11 @@ class Monitor:
         if autoscaling_config:
             self.autoscaler = StandardAutoscaler(
                 autoscaling_config,
-                log_dir,
                 self.load_metrics,
                 prefix_cluster_info=prefix_cluster_info,
-                event_summarizer=self.event_summarizer)
+                event_summarizer=self.event_summarizer,
+                log_dir=log_dir
+            )
             self.autoscaling_config = autoscaling_config
         else:
             self.autoscaler = None
