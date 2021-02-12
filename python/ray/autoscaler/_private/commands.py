@@ -646,7 +646,12 @@ def get_or_create_head_node(config: Dict[str, Any],
             cli_logger.print("Prepared bootstrap config")
 
         if restart_only:
-            setup_commands = []
+            # Docker may re-launch nodes, requiring setup
+            # commands to be rerun.
+            if config.get("docker", {}).get("container_name"):
+                setup_commands = config["head_setup_commands"]
+            else:
+                setup_commands = []
             ray_start_commands = config["head_start_ray_commands"]
         elif no_restart:
             setup_commands = config["head_setup_commands"]
@@ -678,7 +683,8 @@ def get_or_create_head_node(config: Dict[str, Any],
                 "rsync_exclude": config.get("rsync_exclude"),
                 "rsync_filter": config.get("rsync_filter")
             },
-            docker_config=config.get("docker"))
+            docker_config=config.get("docker"),
+            restart_only=restart_only)
         updater.start()
         updater.join()
 

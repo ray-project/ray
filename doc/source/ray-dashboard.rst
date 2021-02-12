@@ -1,3 +1,5 @@
+.. _ray-dashboard:
+
 Ray Dashboard
 =============
 Ray's built-in dashboard provides metrics, charts, and other features that help

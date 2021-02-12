@@ -500,7 +500,7 @@ class AutoscalingTest(unittest.TestCase):
             _provider=self.provider,
             _runner=runner)
         self.waitForNodes(1)
-        # Init & Setup commands msut be run for Docker!
+        # Init & Setup commands must be run for Docker!
         runner.assert_has_call("1.2.3.4", "init_cmd")
         runner.assert_has_call("1.2.3.4", "head_setup_cmd")
         runner.assert_has_call("1.2.3.4", "start_ray_head")
@@ -542,6 +542,34 @@ class AutoscalingTest(unittest.TestCase):
                 x[0] for x in docker_cp_commands if file_to_check in x[1])
             assert first_mkdir < first_rsync
             assert first_rsync < first_cp
+
+    def testGetOrCreateHeadNodeFromStoppedRestartOnly(self):
+        self.testGetOrCreateHeadNode()
+        self.provider.cache_stopped = True
+        existing_nodes = self.provider.non_terminated_nodes({})
+        assert len(existing_nodes) == 1
+        self.provider.terminate_node(existing_nodes[0])
+        config_path = self.write_config(SMALL_CLUSTER)
+        runner = MockProcessRunner()
+        runner.respond_to_call("json .Mounts", ["[]"])
+        # Two initial calls to docker cp, + 2 more calls during run_init
+        runner.respond_to_call(".State.Running",
+                               ["false", "false", "false", "false"])
+        runner.respond_to_call("json .Config.Env", ["[]"])
+        commands.get_or_create_head_node(
+            SMALL_CLUSTER,
+            printable_config_file=config_path,
+            no_restart=False,
+            restart_only=True,
+            yes=True,
+            override_cluster_name=None,
+            _provider=self.provider,
+            _runner=runner)
+        self.waitForNodes(1)
+        # Init & Setup commands must be run for Docker!
+        runner.assert_has_call("1.2.3.4", "init_cmd")
+        runner.assert_has_call("1.2.3.4", "head_setup_cmd")
+        runner.assert_has_call("1.2.3.4", "start_ray_head")
 
     @unittest.skipIf(sys.platform == "win32", "Failing on Windows.")
     def testDockerFileMountsAdded(self):
