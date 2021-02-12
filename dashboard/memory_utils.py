@@ -336,8 +336,8 @@ def get_memory_summary(redis_address, redis_password, group_by, sort_by,
          import node_stats_to_dict
 
     # Get terminal size
-    import os
-    size = os.get_terminal_size().columns
+    import shutil
+    size = shutil.get_terminal_size((80, 20)).columns
     line_wrap_threshold = 137
 
     # Fetch core memory worker stats, store as a dictionary
@@ -372,7 +372,6 @@ def get_memory_summary(redis_address, redis_password, group_by, sort_by,
         "Call Site"
     ]
     object_ref_string = "{:<8}  {:<3}  {:<4}  {:<10}  {:<4}  {:<14}  {:<9}\n"
-    print(line_wrap)
     if size > line_wrap_threshold and line_wrap:
         object_ref_string = "{:<12}  {:<5}  {:<6}  {:<56}  {:<6}  {:<18}  \
 {:<22}\n"
