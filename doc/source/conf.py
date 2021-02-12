@@ -236,6 +236,9 @@ language = None
 # directories to ignore when looking for source files.
 exclude_patterns = ['_build']
 exclude_patterns += sphinx_gallery_conf['examples_dirs']
+exclude_patterns += [
+    "cluster/kubernetes-gpu.rst", "cluster/kubernetes-manual.rst"
+]
 
 # The reST default role (used for this markup: `text`) to use for all
 # documents.
