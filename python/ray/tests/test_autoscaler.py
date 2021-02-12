@@ -2105,9 +2105,7 @@ MemAvailable:   33000000 kB
         files = set()
         for cmd, (args, kwargs) in zip(runner.command_history(),
                                        runner.call_args_history()):
-            assert "stdout" in kwargs, cmd
             assert "stderr" in kwargs, cmd
-            files.add(kwargs["stdout"].name)
             files.add(kwargs["stderr"].name)
 
         assert len(files) == 2, files  # One file per file
