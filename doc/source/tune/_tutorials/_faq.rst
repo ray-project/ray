@@ -194,29 +194,29 @@ If you want to allocate specific resources to a trial, you can use the
 ``resources_per_trial`` parameter of ``tune.run()``, to which you can pass
 a dict or a :class:`PlacementGroupFactory <ray.tune.utils.placement_groups.PlacementGroupFactory>` object:
 
+
 .. code-block:: python
 
     tune.run(
         train_fn,
-        resources_per_trial=tune.PlacementGroupFactory([
-            {"CPU": 2, "GPU": 0.5},
-            {"CPU": 1},
-            {"CPU": 1},
-        ])
+        resources_per_trial={
+            "cpu": 2,
+            "gpu": 0.5,
+            "custom_resources": {"hdd": 80}
+        }
+    )
 
 The example above showcases three things:
 
-1. The `CPU` and `GPU` options set how many CPUs and GPUs are available for
+1. The `cpu` and `gpu` options set how many CPUs and GPUs are available for
    each trial, respectively. **Trials cannot request more resources** than these
    (exception: see 3).
 2. It is possible to request **fractional GPUs**. A value of 0.5 means that
    half of the memory of the GPU is made available to the trial. You will have
    to make sure yourself that your model still fits on the fractional memory.
-3. You can **request extra resources** that are reserved for the trial by passing
-   additional bundles for the :ref:`placement group <ray-placement-group-doc-ref>`
-   into the factory. This is useful if your trainable starts another process that
-   requires resources. This is for instance the case in some distributed computing
-   settings, including when using RaySGD.
+3. You can request custom resources you supplied to Ray when starting the cluster.
+   Trials will only be scheduled on single nodes that can provide all resources you
+   requested.
 
 One important thing to keep in mind is that each Ray worker (and thus each
 Ray Tune Trial) will only be scheduled on **one machine**. That means if
@@ -225,6 +225,28 @@ of 4 machines with 1 GPU each, the trial will never be scheduled.
 
 In other words, you will have to make sure that your Ray cluster
 has machines that can actually fulfill your resource requests.
+
+In some cases your trainable might want to start other remote actors, for instance if you're
+leveraging distributed training via RaySGD. In these cases, you can use
+:ref:`placement groups <ray-placement-group-doc-ref>` to request additional resources:
+
+.. code-block:: python
+
+    tune.run(
+        train_fn,
+        resources_per_trial=tune.PlacementGroupFactory([
+            {"CPU": 2, "GPU": 0.5, "hdd": 80},
+            {"CPU": 1},
+            {"CPU": 1},
+        ], strategy="PACK")
+
+Here, you're requesting 2 additional CPUs for remote tasks. These two additional
+actors do not necessarily have to live on the same node as your main trainable.
+In fact, you can control this via the ``strategy`` parameter. In this example, ``PACK``
+will try to schedule the actors on the same node, but allows them to be scheduled
+on other nodes as well. Please refer to the
+:ref:`placement groups documentation <ray-placement-group-doc-ref>` to learn more
+about these placement strategies.
 
 
 How can I pass further parameter values to my trainable function?
