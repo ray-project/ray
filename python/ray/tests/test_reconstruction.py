@@ -163,6 +163,7 @@ def test_basic_reconstruction(ray_start_cluster, reconstruction_enabled):
                 raise e.as_instanceof_cause()
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Very flaky on Windows.")
 @pytest.mark.parametrize("reconstruction_enabled", [False, True])
 def test_basic_reconstruction_put(ray_start_cluster, reconstruction_enabled):
     config = {
