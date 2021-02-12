@@ -17,7 +17,7 @@ class ProcessRunnerInterceptor:
         self.process_runner = process_runner or subprocess
 
     def check_output(self, *args, **kwargs):
-        with_defaults = {"stdout": self.stream, "stderr": self.err_stream}
+        with_defaults = {"stderr": self.err_stream}
         with_defaults.update(kwargs)
         return self.process_runner.check_output(*args, **with_defaults)
 
