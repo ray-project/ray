@@ -265,6 +265,10 @@ class PlacementGroupManager:
             return False
 
         pgf = trial.placement_group_factory
+        return self._stage_pgf_pg(pgf)
+
+    def _stage_pgf_pg(self, pgf: PlacementGroupFactory):
+        """Create placement group for factory"""
         # This creates the placement group
         pg = pgf(name=f"{self._prefix}{uuid.uuid4().hex[:8]}")
 
@@ -357,8 +361,7 @@ class PlacementGroupManager:
     def trial_in_use(self, trial: "Trial"):
         return trial in self._in_use_trials
 
-    def cache_trial_pg(self, trial: "Trial", replace_pending: bool = False
-                       ) -> Optional[PlacementGroup]:
+    def cache_trial_pg(self, trial: "Trial") -> Optional[PlacementGroup]:
         """Disassociated placement group from trial object.
 
         This can be used to move placement groups into a cache so that
@@ -369,31 +372,30 @@ class PlacementGroupManager:
         placement group, so it should only be associated to the trial that
         actually re-uses the remote actor (e.g. when using ``reuse_trials``).
 
-        If ``replace_pending=True``, this will replace (unstage)
-        an existing placement group with the same factory object. If this
-        is unsuccessful (e.g. because no such pending placement group exists),
-        the placement group will *not* be cached and None will be returned.
+        This will replace (unstage) an existing placement group with the same
+        factory object. If this is unsuccessful (e.g. because no such
+        pending placement group exists), the placement group will *not* be
+        cached and None will be returned.
 
         Args:
             trial (Trial): Trial object with the (currently in use) placement
                 group that should be cached.
-            replace_pending (bool): Boolean indicating whether this should
-                "replace" a pending placement group with the same factory
-                object. If True, such a PG will be unstaged (removed).
 
         Returns:
             PlacementGroup object that was cached or None if
-                ``replace_pending=True`` but no placement group was replaced.
+                no placement group was replaced.
 
         """
+        if not trial.uses_placement_groups:
+            return None
+
         pgf = trial.placement_group_factory
 
-        if replace_pending:
-            staged_pg = self._unstage_unused_pg(pgf)
-            if not staged_pg:
-                return None
+        staged_pg = self._unstage_unused_pg(pgf)
+        if not staged_pg:
+            return None
 
-            remove_placement_group(staged_pg)
+        remove_placement_group(staged_pg)
 
         pg = self._in_use_trials.pop(trial)
         self._in_use_pgs.pop(pg)
@@ -419,70 +421,47 @@ class PlacementGroupManager:
     def clean_cached_pg(self, pg: PlacementGroup):
         self._cached_pgs.pop(pg)
 
-    def return_cached_pg(self,
-                         pg: PlacementGroup,
-                         replace_pending: bool = False):
+    def return_or_clean_cached_pg(self, pg: PlacementGroup):
         """Return cached pg, making it available for other trials to use.
 
-        See docstring of :meth:`return_pg`. This is the same method but
-        for cached placement groups rather than in-use trial placement groups.
+        This will try to replace another staged placement group. If this
+        is unsuccessful, destroy the placement group instead.
 
         Args:
             pg (PlacementGroup): Return this cached placement group.
-            replace_pending (bool): Boolean indicating whether this should
-                "replace" a pending placement group with the same factory
-                object. If True, such a PG will be unstaged (removed).
 
         Returns:
-            Boolean indicating if the placement group was returned. This will
-                be false if ``replace_pending=True`` and no pending placement
-                group was unstaged.
+            Boolean indicating if the placement group was returned (True)
+                or destroyed (False)
         """
-        pgf = self._cached_pgs[pg]
+        pgf = self._cached_pgs.pop(pg)
 
-        if replace_pending:
-            staged_pg = self._unstage_unused_pg(pgf)
-            if not staged_pg:
-                return False
+        # Replace staged placement group
+        staged_pg = self._unstage_unused_pg(pgf)
 
-            remove_placement_group(staged_pg)
+        # Could not replace
+        if not staged_pg:
+            remove_placement_group(pg)
+            return False
 
-        self._cached_pgs.pop(pg)
+        # Replace successful
+        remove_placement_group(staged_pg)
         self._ready[pgf].add(pg)
         return True
 
-    def return_pg(self, trial: "Trial", replace_pending: bool = False):
+    def return_pg(self, trial: "Trial"):
         """Return pg, making it available for other trials to use.
-
-        If ``replace_pending=True``, a pending (not in use) placement group
-        with the same factory object will be removed. This can be used to
-        quickly re-use existing placement groups for new remote actors. If
-        this replacement is unsuccessful (e.g. because no pending placement
-        group exists), then the trial placement group will *not* be returned
-        and this method will return ``False``. In that case this function
-        can be called again (with ``replace_pending=False``) or the placement
-        group can be cleaned up completely
-        (with :meth:`clean_trial_placement_group`).
 
         Args:
             trial (Trial): Return placement group of this trial.
-            replace_pending (bool): Boolean indicating whether this should
-                "replace" a pending placement group with the same factory
-                object. If True, such a PG will be unstaged (removed).
 
         Returns:
-            Boolean indicating if the placement group was returned. This will
-                be false if ``replace_pending=True`` and no pending placement
-                group was unstaged.
+            Boolean indicating if the placement group was returned.
         """
+        if not trial.uses_placement_groups:
+            return True
+
         pgf = trial.placement_group_factory
-
-        if replace_pending:
-            staged_pg = self._unstage_unused_pg(pgf)
-            if not staged_pg:
-                return False
-
-            remove_placement_group(staged_pg)
 
         pg = self._in_use_trials.pop(trial)
         self._in_use_pgs.pop(pg)
@@ -575,3 +554,58 @@ class PlacementGroupManager:
                     resources[key] = resources.get(key, 0) + val
 
         return resources
+
+    def reconcile_placement_groups(self, trials: List["Trial"]):
+        """Reconcile placement groups to match requirements.
+
+        This will loop through all trials and count their statuses by
+        placement group factory. This will make sure that only as many
+        placement groups are needed as there are trials left to run.
+
+        E.g. if PGF_A has 2 terminated, 1 errored, 2 paused, 1 running,
+        and 3 pending trials, a total of 6 placement groups
+        (paused+running+pending) should be in staging, use, or the cache.
+
+        Args:
+            trials (List[Trial]): List of trials.
+
+        """
+        # Keep track of the currently tracked placement groups
+        current_counts: Dict[PlacementGroupFactory, int] = defaultdict(int)
+
+        # Count number of expected placement groups
+        pgf_expected: Dict[PlacementGroupFactory, int] = defaultdict(int)
+        for trial in trials:
+            if not trial.uses_placement_groups:
+                continue
+
+            # Count in-use placement groups
+            if trial in self._in_use_trials:
+                current_counts[trial.placement_group_factory] += 1
+
+            pgf_expected[trial.placement_group_factory] += \
+                1 if trial.status in ["PAUSED", "PENDING", "RUNNING"] else 0
+
+        # Count cached placement groups
+        for pg, pgf in self._cached_pgs.items():
+            current_counts[pgf] += 1
+
+        # Compare current with expected
+        for pgf, expected in pgf_expected.items():
+            # Add staging and ready pgs
+            current_counts[pgf] += len(self._staging[pgf])
+            current_counts[pgf] += len(self._ready[pgf])
+
+            while current_counts[pgf] > expected:
+                pg = self._unstage_unused_pg(pgf)
+                if not pg:
+                    break
+                logger.debug(f"Removing unneeded placement group {pg.id}")
+                remove_placement_group(pg)
+                current_counts[pgf] -= 1
+
+            while expected > current_counts[pgf]:
+                self._stage_pgf_pg(pgf)
+                current_counts[pgf] += 1
+                logger.debug(f"Adding an expected but previously unstaged "
+                             f"placement group for factory {pgf}")

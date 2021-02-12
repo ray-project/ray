@@ -988,10 +988,7 @@ class TrialRunner:
             # Restore was unsuccessful, try again without checkpoint.
             trial.clear_checkpoint()
         self.trial_executor.stop_trial(
-            trial,
-            error=error_msg is not None,
-            error_msg=error_msg,
-            free=False)
+            trial, error=error_msg is not None, error_msg=error_msg)
         if self.trial_executor.has_resources_for_trial(trial):
             logger.info(
                 "Trial %s: Attempting to restore "
@@ -1003,8 +1000,7 @@ class TrialRunner:
                     trial)
                 if started:
                     # Clean up again if an actor was launched
-                    self.trial_executor.stop_trial(
-                        trial, error=True, free=True)
+                    self.trial_executor.stop_trial(trial, error=True)
                 self._scheduler_alg.on_trial_error(self, trial)
                 self._search_alg.on_trial_complete(trial.trial_id, error=True)
                 self._callbacks.on_trial_error(
