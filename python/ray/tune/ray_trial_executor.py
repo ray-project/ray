@@ -721,36 +721,6 @@ class RayTrialExecutor(TrialExecutor):
         assert self._committed_resources.is_nonnegative(), (
             "Resource invalid: {}".format(resources))
 
-    @property
-    def total_used_resources(self) -> dict:
-        """Dict of total used resources incl. placement groups"""
-        committed = self._committed_resources._asdict()
-
-        # Make dict compatible with pg resource dict
-        committed.pop("has_placement_group", None)
-        committed["CPU"] = committed.pop("cpu", 0) + committed.pop(
-            "extra_cpu", 0)
-        committed["GPU"] = committed.pop("gpu", 0) + committed.pop(
-            "extra_gpu", 0)
-        committed["memory"] += committed.pop("extra_memory", 0.)
-        committed["object_store_memory"] += committed.pop(
-            "extra_object_store_memory", 0.)
-
-        custom = committed.pop("custom_resources", {})
-        extra_custom = committed.pop("extra_custom_resources", {})
-
-        for k, v in extra_custom.items():
-            custom[k] = custom.get(k, 0.) + v
-
-        committed.update(custom)
-
-        pg_resources = self._pg_manager.occupied_resources()
-
-        for k, v in committed.items():
-            pg_resources[k] = pg_resources.get(k, 0.) + v
-
-        return pg_resources
-
     def _update_avail_resources(self, num_retries=5):
         if time.time() - self._last_resource_refresh < self._refresh_period:
             return
@@ -862,7 +832,8 @@ class RayTrialExecutor(TrialExecutor):
 
     def debug_string(self):
         """Returns a human readable message for printing to the console."""
-        total_resources = self.total_used_resources
+        total_resources = self._pg_manager.total_used_resources(
+            self._committed_resources)
 
         if self._resources_initialized:
             status = ("Resources requested: {}/{} CPUs, {}/{} GPUs, "

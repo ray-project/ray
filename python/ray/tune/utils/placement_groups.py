@@ -545,16 +545,6 @@ class PlacementGroupManager:
         return self._staging_futures and self._grace_period and time.time(
         ) <= self._latest_staging_start_time + self._grace_period
 
-    def occupied_resources(self):
-        """Return a dictionary of currently in-use resources."""
-        resources = {"CPU": 0, "GPU": 0}
-        for pg in self._in_use_pgs:
-            for bundle_resources in pg.bundle_specs:
-                for key, val in bundle_resources.items():
-                    resources[key] = resources.get(key, 0) + val
-
-        return resources
-
     def reconcile_placement_groups(self, trials: List["Trial"]):
         """Reconcile placement groups to match requirements.
 
@@ -609,3 +599,47 @@ class PlacementGroupManager:
                 current_counts[pgf] += 1
                 logger.debug(f"Adding an expected but previously unstaged "
                              f"placement group for factory {pgf}")
+
+    def occupied_resources(self):
+        """Return a dictionary of currently in-use resources."""
+        resources = {"CPU": 0, "GPU": 0}
+        for pg in self._in_use_pgs:
+            for bundle_resources in pg.bundle_specs:
+                for key, val in bundle_resources.items():
+                    resources[key] = resources.get(key, 0) + val
+
+        return resources
+
+    def total_used_resources(self, committed_resources: Resources) -> dict:
+        """Dict of total used resources incl. placement groups
+
+        Args:
+            committed_resources (Resources): Additional commited resources
+                from (legacy) Ray Tune resource management.
+        """
+        committed = committed_resources._asdict()
+
+        # Make dict compatible with pg resource dict
+        committed.pop("has_placement_group", None)
+        committed["CPU"] = committed.pop("cpu", 0) + committed.pop(
+            "extra_cpu", 0)
+        committed["GPU"] = committed.pop("gpu", 0) + committed.pop(
+            "extra_gpu", 0)
+        committed["memory"] += committed.pop("extra_memory", 0.)
+        committed["object_store_memory"] += committed.pop(
+            "extra_object_store_memory", 0.)
+
+        custom = committed.pop("custom_resources", {})
+        extra_custom = committed.pop("extra_custom_resources", {})
+
+        for k, v in extra_custom.items():
+            custom[k] = custom.get(k, 0.) + v
+
+        committed.update(custom)
+
+        pg_resources = self.occupied_resources()
+
+        for k, v in committed.items():
+            pg_resources[k] = pg_resources.get(k, 0.) + v
+
+        return pg_resources
