@@ -17,13 +17,11 @@ class ProcessRunnerInterceptor:
         self.process_runner = process_runner or subprocess
 
     def check_output(self, *args, **kwargs):
-        print("Intercepting check output", args, kwargs)
         with_defaults = {"stderr": self.err_stream}
         with_defaults.update(kwargs)
         return self.process_runner.check_output(*args, **with_defaults)
 
     def check_call(self, *args, **kwargs):
-        print("Intercepting check call", args, kwargs)
         with_defaults = {"stdout": self.stream, "stderr": self.err_stream}
         with_defaults.update(kwargs)
         return self.process_runner.check_call(*args, **with_defaults)

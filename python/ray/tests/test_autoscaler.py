@@ -219,7 +219,6 @@ class MockProvider(NodeProvider):
 
     def terminate_node(self, node_id):
         with self.lock:
-            print("TERMINATING NODE: ", node_id)
             if self.cache_stopped:
                 self.mock_nodes[node_id].state = "stopped"
             else:
@@ -2085,13 +2084,6 @@ MemAvailable:   33000000 kB
                                               for x in first_targeted_inspect)
 
     def testUpdaterLogging(self):
-        from ray.autoscaler._private.cli_logger import cli_logger
-
-        def do_nothing(*args, **kwargs):
-            pass
-
-        cli_logger._print = type(cli_logger._print)(do_nothing,
-                                                    type(cli_logger))
         config = copy.deepcopy(SMALL_CLUSTER)
         config["min_workers"] = 2
         config["max_workers"] = 2
@@ -2117,7 +2109,6 @@ MemAvailable:   33000000 kB
             assert "stderr" in kwargs, cmd
             files.add(kwargs["stdout"].name)
             files.add(kwargs["stderr"].name)
-            print(cmd, kwargs["stdout"].name)
 
         assert len(files) == 2, files  # One file per file
 

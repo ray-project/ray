@@ -308,8 +308,6 @@ class StandardAutoscaler:
         for node_id in nodes:
             self.recover_if_needed(node_id, now)
 
-        print("Nodes: ", nodes)
-        print("All: ", self.provider.non_terminated_nodes(tag_filters={}))
         logger.info(self.info_string())
         legacy_log_info_string(self, nodes)
 
@@ -584,7 +582,6 @@ class StandardAutoscaler:
             quantity=1,
             aggregate=operator.add)
         interceptor = self.node_tracker.get_or_create_process_runner(node_id)
-        print("ATTEMPTING TO RECOVER", node_id)
         updater = NodeUpdaterThread(
             node_id=node_id,
             provider_config=self.config["provider"],
@@ -796,7 +793,6 @@ class StandardAutoscaler:
             if not failed:
                 non_failed.add(node_id)
 
-        print("Non failed nodes: ", non_failed)
         failed_nodes = self.node_tracker.get_all_failed_node_info(non_failed)
 
         # The concurrent counter leaves some 0 counts in, so we need to
@@ -843,7 +839,6 @@ class NodeTracker:
         if node_id not in self.node_mapping:
             stdout_name = f"{node_id}.out"
             stdout_path = os.path.join(self.log_dir, stdout_name)
-            print("Creating log at: ", stdout_path)
             stdout_obj = open(stdout_path, "a")
             process_runner = ProcessRunnerInterceptor(
                 stdout_obj, process_runner=self.process_runner)
@@ -859,7 +854,6 @@ class NodeTracker:
         return None
 
     def get_all_failed_node_info(self, non_failed_ids):
-        print("All nodes ever: ", self.node_mapping.keys())
         failed_nodes = self.node_mapping.keys() - non_failed_ids
         failed_info = []
         for node_id in failed_nodes:
