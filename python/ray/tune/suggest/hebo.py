@@ -14,7 +14,7 @@ from ray.tune.suggest.variant_generator import parse_spec_vars
 from ray.tune.utils.util import is_nan_or_inf, unflatten_dict
 
 try:  # Python 3 only -- needed for lint test.
-    import bo as hebo
+    import hebo
     import torch  # hebo has torch as a dependency
 except ImportError:
     hebo = None
@@ -70,14 +70,13 @@ class HEBOSearch(Searcher):
 
     .. code-block:: bash
 
-        pip install git+https://github.com/huawei-noah/noah-research.git\
-            #subdirectory=HEBO
+        pip install HEBO
 
     `space` can either be a HEBO's `DesignSpace` object or a dict of Tune
     search spaces.
 
     Args:
-        space (dict|bo.design_space.design_space.DesignSpace):
+        space (dict|hebo.design_space.design_space.DesignSpace):
             A dict mapping parameter names to Tune search spaces or a
             HEBO DesignSpace object.
         metric (str): The training result objective value attribute. If None
@@ -123,7 +122,7 @@ class HEBOSearch(Searcher):
 
         from ray import tune
         from ray.tune.suggest.hebo import HEBOSearch
-        from bo.design_space.design_space import DesignSpace
+        from hebo.design_space.design_space import DesignSpace
 
         space_config = [
             {'name' : 'width', 'type' : 'num', 'lb' : 0, 'ub' : 20},
@@ -148,9 +147,7 @@ class HEBOSearch(Searcher):
             **kwargs):
         assert hebo is not None, (
             "HEBO must be installed!. You can install HEBO with"
-            " the command: `pip install "
-            "git+https://github.com/huawei-noah/noah-research.git"
-            "#subdirectory=HEBO`.")
+            " the command: `pip install HEBO`.")
         if mode:
             assert mode in ["min", "max"], "`mode` must be 'min' or 'max'."
         if random_state_seed is not None:
@@ -321,7 +318,7 @@ class HEBOSearch(Searcher):
                         "ub": domain.upper,
                         "base": sampler.base
                     }
-                else:
+                elif isinstance(sampler, Uniform):
                     return {
                         "name": par,
                         "type": "num",
@@ -330,7 +327,15 @@ class HEBOSearch(Searcher):
                     }
 
             elif isinstance(domain, Integer):
-                if isinstance(sampler, Uniform):
+                if isinstance(sampler, LogUniform):
+                    return {
+                        "name": par,
+                        "type": "pow_int",
+                        "lb": domain.lower,
+                        "ub": domain.upper,
+                        "base": sampler.base
+                    }
+                elif isinstance(sampler, Uniform):
                     return {
                         "name": par,
                         "type": "int",

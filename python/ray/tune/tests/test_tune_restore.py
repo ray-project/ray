@@ -9,7 +9,7 @@ import numpy as np
 from hyperopt import hp
 from nevergrad.optimization import optimizerlib
 from zoopt import ValueType
-from bo.design_space.design_space import DesignSpace as HEBODesignSpace
+from hebo.design_space.design_space import DesignSpace as HEBODesignSpace
 
 import ray
 from ray import tune

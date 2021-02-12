@@ -47,5 +47,4 @@ wandb==0.10.12
 xgboost==1.3.0.post0
 zoopt==0.4.1
 
-# change to a pypi package once that comes out
-git+https://github.com/huawei-noah/noah-research.git#egg=HEBO&subdirectory=HEBO
+HEBO==0.1.0
