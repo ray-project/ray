@@ -62,8 +62,14 @@ This checklist is meant to be used in conjunction with the RELEASE_PROCESS.rst d
 	- [ ] K8s operator test
 - [ ] Data processing tests
     - [ ] streaming_shuffle
-- [x] Tune tests
-    - [x] ignore for now
+- [ ] Tune tests
+    - [ ] test_bookkeeping_overhead
+    - [x] test_result_throughput_cluster (ignore final time)
+    - [x] test_result_throughput_single_node (ignore final time)
+    - [x] test_network_overhead (ignore final time)
+    - [ ] test_long_running_large_checkpoints
+    - [ ] test_xgboost_sweep
+    - [ ] test_durable_trainable
 - [ ] XGBoost Tests
     - [ ] distributed_api_test
     - [ ] train_small
