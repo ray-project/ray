@@ -92,8 +92,7 @@ def r2d2_loss(policy: Policy, model, _,
         is_training=True)
 
     B = state_batches[0].shape[0]
-    #T = q.shape[0] // B
-    T = torch.max(train_batch["seq_lens"])
+    T = q.shape[0] // B
 
     # Target Q-network evaluation.
     q_target, q_logits_target, q_probs_target, state_out_target = compute_q_values(
@@ -305,6 +304,25 @@ def extra_action_out_fn(policy: Policy, input_dict, state_batches, model,
     return {"q_values": policy.q_values}
 
 
+def postprocess_fn(policy: Policy,
+                               batch: SampleBatch,
+                               other_agent=None,
+                               episode=None) -> SampleBatch:
+    batch = postprocess_nstep_and_prio(policy, batch, other_agent, episode)
+
+    # Burn-in? If yes, assert complete_episodes and add zeros to beginning
+    # of the batch (length=burn-in).
+    if policy.config.get("burn_in", 0) > 0:
+        batch.seq_lens = []
+        # max_seq_len=40
+        # burn_in=20
+        # -20 0 20 40 60 80 100 120
+        # |---|-----|-----|-------|
+        batch.max_seq_len =
+
+    return batch
+
+
 R2D2TorchPolicy = build_policy_class(
     name="R2D2TorchPolicy",
     framework="torch",
@@ -313,7 +331,7 @@ R2D2TorchPolicy = build_policy_class(
     make_model_and_action_dist=build_r2d2_model_and_distribution,
     action_distribution_fn=get_distribution_inputs_and_class,
     stats_fn=build_q_stats,
-    postprocess_fn=postprocess_nstep_and_prio,
+    postprocess_fn=postprocess_fn,
     optimizer_fn=adam_optimizer,
     extra_grad_process_fn=grad_process_and_td_error_fn,
     extra_learn_fetches_fn=lambda policy: {"td_error": policy._td_error},

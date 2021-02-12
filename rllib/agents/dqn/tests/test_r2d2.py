@@ -22,7 +22,7 @@ class TestR2D2(unittest.TestCase):
         """Test whether a R2D2Trainer can be built on all frameworks."""
         config = dqn.R2D2_DEFAULT_CONFIG.copy()
         config["num_workers"] = 0  # Run locally.
-        config["dueling"] = False#TEST
+        #config["dueling"] = False#TEST
         config["model"]["use_lstm"] = True  # Wrap with an LSTM.
         config["model"]["max_seq_len"] = 20
         num_iterations = 100#TODO

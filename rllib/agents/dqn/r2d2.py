@@ -79,6 +79,9 @@ DEFAULT_CONFIG = dqn.DQNTrainer.merge_trainer_configs(
         "epsilon": 1e-3,
         # Run in parallel by default.
         "num_workers": 2,
+
+        # Batch mode must be complete_episodes.
+        "batch_mode": "complete_episodes",
     },
     _allow_unknown_configs=True,
 )
@@ -107,6 +110,9 @@ def validate_config(config: TrainerConfigDict) -> None:
 
     if config.get("prioritized_replay"):
         raise ValueError("Prioritized replay is not supported for R2D2 yet!")
+
+    if config.get("batch_mode") != "complete_episodes":
+        raise ValueError("`batch_mode` must be 'complete_episodes'!")
 
 
 def execution_plan(workers: WorkerSet,
