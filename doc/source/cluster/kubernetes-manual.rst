@@ -1,3 +1,5 @@
+:orphan:
+
 .. _ray-k8s-static:
 
 Deploying a Static Cluster

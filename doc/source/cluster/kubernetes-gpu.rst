@@ -1,3 +1,5 @@
+:orphan:
+
 .. _k8s-gpus:
 
 GPU Usage with Kubernetes
