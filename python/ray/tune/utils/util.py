@@ -441,7 +441,7 @@ def atomic_save(state: Dict, checkpoint_dir: str, file_name: str,
     with open(tmp_search_ckpt_path, "wb") as f:
         cloudpickle.dump(state, f)
 
-    os.rename(tmp_search_ckpt_path, os.path.join(checkpoint_dir, file_name))
+    os.replace(tmp_search_ckpt_path, os.path.join(checkpoint_dir, file_name))
 
 
 def load_newest_checkpoint(dirpath: str, ckpt_pattern: str) -> dict:
