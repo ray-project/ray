@@ -442,7 +442,7 @@ py_test(
     size = "small",
     srcs = ["examples/hebo_example.py"],
     deps = [":tune_lib"],
-    tags = ["exclusive", "example"]
+    tags = ["exclusive", "example"],
     args = ["--smoke-test"]
 )
 
