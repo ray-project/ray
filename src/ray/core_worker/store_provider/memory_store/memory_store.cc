@@ -231,6 +231,7 @@ bool CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &object_
 
   // It's important for performance to run the callbacks outside the lock.
   for (const auto &cb : async_callbacks) {
+    object_entry->SetAccessed();
     cb(object_entry);
   }
 

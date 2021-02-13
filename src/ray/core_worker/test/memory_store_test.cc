@@ -39,11 +39,11 @@ TEST(TestMemoryStore, TestReportUnhandledErrors) {
   ASSERT_EQ(unhandled_count, 0);
   provider->Delete({id1, id2});
   ASSERT_EQ(unhandled_count, 2);
+  unhandled_count = 0;
 
   // Check delete after get.
   RAY_CHECK(provider->Put(obj1, id1));
   RAY_CHECK(provider->Put(obj1, id2));
-  unhandled_count = 0;
   provider->Get({id1}, 1, 100, context, false, &results);
   provider->GetOrPromoteToPlasma(id2);
   provider->Delete({id1, id2});
@@ -53,7 +53,6 @@ TEST(TestMemoryStore, TestReportUnhandledErrors) {
   provider->GetAsync({id2}, [](std::shared_ptr<RayObject> obj) {});
   RAY_CHECK(provider->Put(obj1, id1));
   RAY_CHECK(provider->Put(obj2, id2));
-  unhandled_count = 0;
   provider->GetAsync({id1}, [](std::shared_ptr<RayObject> obj) {});
   provider->Delete({id1, id2});
   ASSERT_EQ(unhandled_count, 0);
