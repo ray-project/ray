@@ -169,8 +169,10 @@ def main():
     parser.add_argument("--partition-size", type=float, default=200e6)
     args = parser.parse_args()
 
-    ray.init(
-        address=args.ray_address, object_store_memory=args.object_store_memory)
+    if args.ray_address:
+        ray.init(address=args.ray_address)
+    else:
+        ray.init(object_store_memory=args.object_store_memory)
 
     partition_size = int(args.partition_size)
     num_partitions = args.num_partitions

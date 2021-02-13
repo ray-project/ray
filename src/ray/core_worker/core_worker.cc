@@ -161,15 +161,21 @@ CoreWorkerProcess::CoreWorkerProcess(const CoreWorkerOptions &options)
   // RayConfig is generated in Java_io_ray_runtime_RayNativeRuntime_nativeInitialize
   // for java worker or in constructor of CoreWorker for python worker.
   ray::stats::Init(global_tags, options_.metrics_agent_port);
+
+#ifndef _WIN32
+  // NOTE(kfstorm): std::atexit should be put at the end of `CoreWorkerProcess`
+  // constructor. We assume that spdlog has been initialized before this line. When the
+  // process is exiting, `HandleAtExit` will be invoked before destructing spdlog static
+  // variables. We explicitly destruct `CoreWorkerProcess` instance in the callback to
+  // ensure the static `CoreWorkerProcess` instance is destructed while spdlog is still
+  // usable. This prevents crashing (or hanging) when using `RAY_LOG` in
+  // `CoreWorkerProcess` destructor.
+  RAY_CHECK(std::atexit(CoreWorkerProcess::HandleAtExit) == 0);
+#endif
 }
 
 CoreWorkerProcess::~CoreWorkerProcess() {
   RAY_LOG(INFO) << "Destructing CoreWorkerProcess. pid: " << getpid();
-  {
-    // Check that all `CoreWorker` instances have been removed.
-    absl::ReaderMutexLock lock(&worker_map_mutex_);
-    RAY_CHECK(workers_.empty());
-  }
   RAY_LOG(DEBUG) << "Stats stop in core worker.";
   // Shutdown stats module if worker process exits.
   ray::stats::Shutdown();
@@ -182,6 +188,8 @@ void CoreWorkerProcess::EnsureInitialized() {
   RAY_CHECK(instance_) << "The core worker process is not initialized yet or already "
                        << "shutdown.";
 }
+
+void CoreWorkerProcess::HandleAtExit() { instance_.reset(); }
 
 std::shared_ptr<CoreWorker> CoreWorkerProcess::TryGetWorker(const WorkerID &worker_id) {
   if (!instance_) {
@@ -527,27 +535,56 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   actor_manager_ = std::unique_ptr<ActorManager>(
       new ActorManager(gcs_client_, direct_actor_submitter_, reference_counter_));
 
-  auto object_lookup_fn = [this](const ObjectID &object_id,
-                                 const ObjectLookupCallback &callback) {
-    return gcs_client_->Objects().AsyncGetLocations(
-        object_id, [this, object_id, callback](
-                       const Status &status,
-                       const boost::optional<rpc::ObjectLocationInfo> &result) {
-          RAY_CHECK_OK(status);
-          std::vector<rpc::Address> locations;
-          for (const auto &loc : result->locations()) {
-            const auto &node_id = NodeID::FromBinary(loc.manager());
-            auto node = gcs_client_->Nodes().Get(node_id);
-            RAY_CHECK(node.has_value());
-            rpc::Address address;
-            address.set_raylet_id(node->node_id());
-            address.set_ip_address(node->node_manager_address());
-            address.set_port(node->node_manager_port());
-            locations.push_back(address);
+  std::function<Status(const ObjectID &object_id, const ObjectLookupCallback &callback)>
+      object_lookup_fn;
+
+  if (RayConfig::instance().ownership_based_object_directory_enabled()) {
+    object_lookup_fn = [this, node_addr_factory](const ObjectID &object_id,
+                                                 const ObjectLookupCallback &callback) {
+      std::vector<rpc::Address> locations;
+      const absl::optional<absl::flat_hash_set<NodeID>> object_locations =
+          reference_counter_->GetObjectLocations(object_id);
+      if (object_locations.has_value()) {
+        locations.reserve(object_locations.value().size());
+        for (const auto &node_id : object_locations.value()) {
+          absl::optional<rpc::Address> addr = node_addr_factory(node_id);
+          if (addr.has_value()) {
+            locations.push_back(addr.value());
+          } else {
+            // We're getting potentially stale locations directly from the reference
+            // counter, so the location might be a dead node.
+            RAY_LOG(DEBUG) << "Location " << node_id
+                           << " is dead, not using it in the recovery of object "
+                           << object_id;
           }
-          callback(object_id, locations);
-        });
-  };
+        }
+      }
+      callback(object_id, locations);
+      return Status::OK();
+    };
+  } else {
+    object_lookup_fn = [this](const ObjectID &object_id,
+                              const ObjectLookupCallback &callback) {
+      return gcs_client_->Objects().AsyncGetLocations(
+          object_id, [this, object_id, callback](
+                         const Status &status,
+                         const boost::optional<rpc::ObjectLocationInfo> &result) {
+            RAY_CHECK_OK(status);
+            std::vector<rpc::Address> locations;
+            for (const auto &loc : result->locations()) {
+              const auto &node_id = NodeID::FromBinary(loc.manager());
+              auto node = gcs_client_->Nodes().Get(node_id);
+              RAY_CHECK(node.has_value());
+              rpc::Address address;
+              address.set_raylet_id(node->node_id());
+              address.set_ip_address(node->node_manager_address());
+              address.set_port(node->node_manager_port());
+              locations.push_back(address);
+            }
+            callback(object_id, locations);
+          });
+    };
+  }
   object_recovery_manager_ =
       std::unique_ptr<ObjectRecoveryManager>(new ObjectRecoveryManager(
           rpc_address_, raylet_client_factory, local_raylet_client_, object_lookup_fn,
@@ -1263,6 +1300,8 @@ void CoreWorker::SpillOwnedObject(const ObjectID &object_id,
           RAY_LOG(ERROR) << "Failed to spill object " << object_id
                          << ", raylet unreachable or object could not be spilled.";
         }
+        // TODO(Clark): Provide spilled URL and spilled node ID to callback so it can
+        // added them to the reference.
         callback();
       });
 }
@@ -1273,6 +1312,7 @@ Status CoreWorker::SpillObjects(const std::vector<ObjectID> &object_ids) {
   auto ready_promise = std::make_shared<std::promise<void>>(std::promise<void>());
   Status final_status;
 
+  // TODO(Clark): Add spilled URL and spilled node ID to reference in this callback.
   auto callback = [mutex, num_remaining, ready_promise]() {
     absl::MutexLock lock(mutex.get());
     (*num_remaining)--;
@@ -1312,7 +1352,10 @@ Status CoreWorker::SpillObjects(const std::vector<ObjectID> &object_ids) {
   ready_promise->get_future().wait();
 
   for (const auto &object_id : object_ids) {
-    reference_counter_->HandleObjectSpilled(object_id);
+    // TODO(Clark): Move this to the callback (unless we really wanted to batch it) and
+    // also include the spilled URL, spilled node ID, and updated object size.
+    reference_counter_->HandleObjectSpilled(object_id, "", NodeID::Nil(), -1,
+                                            /*release*/ true);
   }
   return final_status;
 }
@@ -1629,7 +1672,9 @@ Status CoreWorker::KillActor(const ActorID &actor_id, bool force_kill, bool no_r
     stream << "Failed to find a corresponding actor handle for " << actor_id;
     return Status::Invalid(stream.str());
   }
-  direct_actor_submitter_->KillActor(actor_id, force_kill, no_restart);
+
+  RAY_CHECK_OK(
+      gcs_client_->Actors().AsyncKillActor(actor_id, force_kill, no_restart, nullptr));
   return Status::OK();
 }
 
@@ -2221,15 +2266,19 @@ void CoreWorker::HandleGetObjectLocationsOwner(
   auto object_id = ObjectID::FromBinary(request.object_id());
   const auto &callback = [object_id, reply, send_reply_callback](
                              const absl::flat_hash_set<NodeID> &locations,
-                             int64_t object_size, int64_t current_version) {
+                             int64_t object_size, const std::string &spilled_url,
+                             const NodeID &spilled_node_id, int64_t current_version) {
     RAY_LOG(DEBUG) << "Replying to HandleGetObjectLocationsOwner for " << object_id
                    << " with location update version " << current_version << ", "
-                   << locations.size() << " locations, and " << object_size
-                   << " object size.";
+                   << locations.size() << " locations, " << spilled_url
+                   << " spilled url, " << spilled_node_id << " spilled node ID, and "
+                   << object_size << " object size.";
     for (const auto &node_id : locations) {
       reply->add_node_ids(node_id.Binary());
     }
     reply->set_object_size(object_size);
+    reply->set_spilled_url(spilled_url);
+    reply->set_spilled_node_id(spilled_node_id.Binary());
     reply->set_current_version(current_version);
     send_reply_callback(Status::OK(), nullptr, nullptr);
   };
@@ -2422,7 +2471,13 @@ void CoreWorker::HandleSpillObjects(const rpc::SpillObjectsRequest &request,
     for (const auto &id_binary : request.object_ids_to_spill()) {
       object_ids_to_spill.push_back(ObjectID::FromBinary(id_binary));
     }
-    std::vector<std::string> object_urls = options_.spill_objects(object_ids_to_spill);
+    std::vector<std::string> owner_addresses;
+    owner_addresses.reserve(request.owner_addresses_size());
+    for (const auto &owner_address : request.owner_addresses()) {
+      owner_addresses.push_back(owner_address.SerializeAsString());
+    }
+    std::vector<std::string> object_urls =
+        options_.spill_objects(object_ids_to_spill, owner_addresses);
     for (size_t i = 0; i < object_urls.size(); i++) {
       reply->add_spilled_objects_url(std::move(object_urls[i]));
     }
@@ -2431,6 +2486,24 @@ void CoreWorker::HandleSpillObjects(const rpc::SpillObjectsRequest &request,
     send_reply_callback(Status::NotImplemented("Spill objects callback not defined"),
                         nullptr, nullptr);
   }
+}
+
+void CoreWorker::HandleAddSpilledUrl(const rpc::AddSpilledUrlRequest &request,
+                                     rpc::AddSpilledUrlReply *reply,
+                                     rpc::SendReplyCallback send_reply_callback) {
+  const ObjectID object_id = ObjectID::FromBinary(request.object_id());
+  const std::string &spilled_url = request.spilled_url();
+  const NodeID node_id = NodeID::FromBinary(request.spilled_node_id());
+  RAY_LOG(DEBUG) << "Received AddSpilledUrl request for object " << object_id
+                 << ", which has been spilled to " << spilled_url << " on node "
+                 << node_id;
+  auto reference_exists = reference_counter_->HandleObjectSpilled(
+      object_id, spilled_url, node_id, request.size(), /*release*/ false);
+  Status status =
+      reference_exists
+          ? Status::OK()
+          : Status::ObjectNotFound("Object " + object_id.Hex() + " not found");
+  send_reply_callback(status, nullptr, nullptr);
 }
 
 void CoreWorker::HandleRestoreSpilledObjects(
