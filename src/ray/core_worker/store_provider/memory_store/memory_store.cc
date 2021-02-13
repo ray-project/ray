@@ -140,6 +140,7 @@ void CoreWorkerMemoryStore::GetAsync(
   }
   // It's important for performance to run the callback outside the lock.
   if (ptr != nullptr) {
+    ptr->SetAccessed();
     callback(ptr);
   }
 }
@@ -465,6 +466,7 @@ bool CoreWorkerMemoryStore::Contains(const ObjectID &object_id, bool *in_plasma)
 }
 
 void CoreWorkerMemoryStore::OnErase(std::shared_ptr<RayObject> obj) {
+  // TODO(ekl) note that this doesn't warn on errors that are stored in plasma.
   if (obj->IsException() && !obj->IsInPlasmaError() && !obj->WasAccessed() &&
       unhandled_exception_handler_ != nullptr) {
     unhandled_exception_handler_(*obj);
