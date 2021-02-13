@@ -387,7 +387,7 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   ///
   /// \param gcs_resources: The remote cache from gcs.
   void UpdateLastResourceUsage(
-      std::shared_ptr<SchedulingResources> gcs_resources) override;
+      const std::shared_ptr<SchedulingResources> gcs_resources) override;
 
   /// Return human-readable string for this scheduler state.
   std::string DebugString() const;

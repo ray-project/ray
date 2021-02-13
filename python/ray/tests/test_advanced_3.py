@@ -21,9 +21,8 @@ from ray import resource_spec
 import setproctitle
 import subprocess
 
-from ray.test_utils import (check_call_ray, RayTestTimeoutException,
-                            wait_for_condition, wait_for_num_actors,
-                            new_scheduler_enabled)
+from ray.test_utils import (check_call_ray, wait_for_condition,
+                            wait_for_num_actors, new_scheduler_enabled)
 
 logger = logging.getLogger(__name__)
 
@@ -154,15 +153,6 @@ def test_locality_aware_leasing(ray_start_cluster):
 
     # Test that task f() runs on the same node as non_local().
     assert ray.get(f.remote(non_local.remote())) == non_local_node.unique_id
-
-
-def wait_for_num_objects(num_objects, timeout=10):
-    start_time = time.time()
-    while time.time() - start_time < timeout:
-        if len(ray.objects()) >= num_objects:
-            return
-        time.sleep(0.1)
-    raise RayTestTimeoutException("Timed out while waiting for global state.")
 
 
 def test_global_state_api(shutdown_only):
@@ -624,7 +614,14 @@ def test_move_log_files_to_old(shutdown_only):
 
 
 def test_lease_request_leak(shutdown_only):
-    ray.init(num_cpus=1, _system_config={"object_timeout_milliseconds": 200})
+    ray.init(
+        num_cpus=1,
+        _system_config={
+            # This test uses ray.objects(), which only works with the GCS-based
+            # object directory
+            "ownership_based_object_directory_enabled": False,
+            "object_timeout_milliseconds": 200
+        })
     assert len(ray.objects()) == 0
 
     @ray.remote
