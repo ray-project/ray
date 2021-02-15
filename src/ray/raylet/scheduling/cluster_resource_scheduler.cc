@@ -296,7 +296,7 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(const TaskRequest &task
     if (min_violations > violations) {
       min_violations = violations;
       // Clear should be performed by O(1) by the compiler because the
-      // type is int64_t.
+      // vector entry type is int64_t.
       best_nodes.clear();
     }
     if (min_violations == violations) {
@@ -305,7 +305,7 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(const TaskRequest &task
   }
   *total_violations = min_violations;
 
-  // Randomly select one of the best nodes for spillback.
+  // Randomly select one of the best nodes to spillback.
   int64_t best_node;
   if (best_nodes.empty()) {
     best_node = -1;
