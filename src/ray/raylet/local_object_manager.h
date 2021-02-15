@@ -138,6 +138,9 @@ class LocalObjectManager {
   /// \param Output parameter.
   void FillObjectSpillingStats(rpc::GetNodeStatsReply *reply) const;
 
+  /// Record object spilling stats to metrics.
+  void RecordObjectSpillingStats() const;
+
   std::string DebugString() const;
 
  private:

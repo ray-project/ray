@@ -2734,6 +2734,7 @@ void NodeManager::RecordMetrics() {
 
   object_manager_.RecordMetrics();
   local_queues_.RecordMetrics();
+  local_object_manager_.RecordObjectSpillingStats();
 }
 
 void NodeManager::PublishInfeasibleTaskError(const Task &task) const {
