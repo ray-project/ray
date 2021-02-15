@@ -1,4 +1,5 @@
 from collections import deque, OrderedDict
+import difflib
 import numpy as np
 
 from ray.rllib.utils import force_list
@@ -179,19 +180,40 @@ class TensorFlowVariables:
             for name, var in self.variables.items():
                 var.assign(new_weights[name])
         else:
-            assign_list = [
-                self.assignment_nodes[name] for name in new_weights.keys()
-                if name in self.assignment_nodes
-            ]
-            assert assign_list, \
-                "No variables in the input matched those in the network. " \
-                "Possible cause: Two networks were defined in the same " \
-                "TensorFlow graph. To fix this, place each network " \
-                "definition in its own tf.Graph."
-            self.sess.run(
-                assign_list,
-                feed_dict={
-                    self.placeholders[name]: value
-                    for (name, value) in new_weights.items()
-                    if name in self.placeholders
-                })
+            assign_list, feed_dict = self._assign_weights(new_weights)
+            self.sess.run(assign_list, feed_dict=feed_dict)
+
+    def _assign_weights(self, weights):
+        """Sets weigths using exact or closest assignable variable name
+
+        Args:
+            weights (Dict): Dictionary mapping variable names to their
+                weights.
+        Returns:
+            Tuple[List, Dict]: assigned variables list, dict of
+                placeholders and weights
+        """
+
+        assigned = []
+        assignable = set(self.assignment_nodes.keys())
+        feed_dict = {}
+        for name, value in weights.items():
+            close_names = difflib.get_close_matches(
+                name, assignable, n=1, cutoff=0.6)
+            if close_names:
+                c_name = close_names[0]
+                if value.shape == self.assignment_nodes[c_name].shape:
+                    feed_dict[self.placeholders[c_name]] = value
+                    assigned.append(c_name)
+
+        assert assigned, \
+            "No variables in the input matched those in the network. " \
+            "Possible cause: Two networks were defined in the same " \
+            "TensorFlow graph. To fix this, place each network " \
+            "definition in its own tf.Graph."
+
+        assert len(assigned) == len(weights), \
+            "All weights couldn't be assigned because no variable " \
+            "had an exact/close name or had same shape"
+
+        return [self.assignment_nodes[v] for v in assigned], feed_dict
