@@ -320,11 +320,9 @@ class ExternalStorageSmartOpenImpl(ExternalStorage):
     def __init__(self,
                  uri: str,
                  prefix: str = DEFAULT_OBJECT_PREFIX,
-                 override_transport_params: dict = None,
-                 is_for_s3: bool = True):
+                 override_transport_params: dict = None):
         try:
             from smart_open import open  # noqa
-            import boto3  # noqa
         except ModuleNotFoundError as e:
             raise ModuleNotFoundError(
                 "Smart open is chosen to be a object spilling "
@@ -334,9 +332,10 @@ class ExternalStorageSmartOpenImpl(ExternalStorage):
         self.uri = uri.strip("/")
         self.prefix = prefix
         self.override_transport_params = override_transport_params or {}
-        self.is_for_s3 = is_for_s3
+        self.is_for_s3 = uri.startswith("s3")
 
-        if is_for_s3:
+        if self.is_for_s3:
+            import boto3  # noqa
             # Setup boto3. It is essential because if we don't create boto
             # session, smart_open will create a new session for every
             # open call.
