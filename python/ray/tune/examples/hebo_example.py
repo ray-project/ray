@@ -34,14 +34,31 @@ if __name__ == "__main__":
         "--smoke-test", action="store_true", help="Finish quickly for testing")
     args, _ = parser.parse_known_args()
 
-    # The config will be automatically converted to SkOpt's search space
+    # The config will be automatically converted to HEBO's DesignSpace
 
     # Optional: Pass the parameter space yourself
-    # space = {
-    #     "width": (0, 20),
-    #     "height": (-100, 100),
-    #     "activation": ["relu", "tanh"]
-    # }
+    #
+    # from hebo.design_space.design_space import DesignSpace
+    # space_cfg = [
+    #     {
+    #         "name": "width",
+    #         "type": "num",
+    #         "lb": 0,
+    #         "ub": 20
+    #     },
+    #     {
+    #         "name": "height",
+    #         "type": "num",
+    #         "lb": -100,
+    #         "ub": 100
+    #     },
+    #     {
+    #         "name": "activation",
+    #         "type": "cat",
+    #         "categories": ["relu", "tanh"]
+    #     },
+    # ]
+    # space = DesignSpace().parse(space_cfg)
 
     previously_run_params = [
         {
@@ -58,6 +75,7 @@ if __name__ == "__main__":
     known_rewards = [-189, -1144]
 
     algo = HEBOSearch(
+        # space = space, # If you want to set the space
         points_to_evaluate=previously_run_params,
         evaluated_rewards=known_rewards,
         random_state_seed=123,  # for reproducibility
