@@ -18,7 +18,9 @@ from typing import Union
 # drivers and really just feed initial things in and final results out, (when
 # not going to S3 or similar) then a large limit will suffice for many use
 # cases.
-GRPC_MAX_MESSAGE_SIZE = 4 * 1024 * 1024 * 1024
+#
+# Currently, this is 2GiB, the max for a signed int.
+GRPC_MAX_MESSAGE_SIZE = (2 * 1024 * 1024 * 1024) - 1
 
 
 class ClientBaseRef:
