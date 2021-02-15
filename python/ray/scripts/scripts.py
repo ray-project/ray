@@ -117,13 +117,13 @@ def cli(logging_level, logging_format):
     "-p",
     required=False,
     type=int,
-    default=8265,
+    default=ray_constants.DEFAULT_DASHBOARD_PORT,
     help="The local port to forward to the dashboard")
 @click.option(
     "--remote-port",
     required=False,
     type=int,
-    default=8265,
+    default=ray_constants.DEFAULT_DASHBOARD_PORT,
     help="The remote port your dashboard runs on")
 def dashboard(cluster_config_file, cluster_name, port, remote_port):
     """Port-forward a Ray cluster's dashboard to the local machine."""
