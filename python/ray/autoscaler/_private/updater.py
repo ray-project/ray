@@ -48,6 +48,7 @@ class NodeUpdater:
         use_internal_ip: Wwhether the node_id belongs to an internal ip
             or external ip.
         docker_config: Docker section of autoscaler yaml
+        restart_only: Whether to skip setup commands & just restart ray
     """
 
     def __init__(self,
@@ -68,7 +69,8 @@ class NodeUpdater:
                  rsync_options=None,
                  process_runner=subprocess,
                  use_internal_ip=False,
-                 docker_config=None):
+                 docker_config=None,
+                 restart_only=False):
 
         self.log_prefix = "NodeUpdater: {}: ".format(node_id)
         use_internal_ip = (use_internal_ip
@@ -106,6 +108,7 @@ class NodeUpdater:
         self.auth_config = auth_config
         self.is_head_node = is_head_node
         self.docker_config = docker_config
+        self.restart_only = restart_only
 
     def run(self):
         if cmd_output_util.does_allow_interactive(
@@ -298,6 +301,11 @@ class NodeUpdater:
                 sync_run_yet=False)
             if init_required:
                 node_tags[TAG_RAY_RUNTIME_CONFIG] += "-invalidate"
+                # This ensures that `setup_commands` are not removed
+                self.restart_only = False
+
+        if self.restart_only:
+            self.setup_commands = []
 
         # runtime_hash will only change whenever the user restarts
         # or updates their cluster with `get_or_create_head_node`
