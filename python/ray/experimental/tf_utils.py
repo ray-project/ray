@@ -30,7 +30,6 @@ class TensorFlowVariables:
         placeholders (Dict[str, tf.placeholders]): Placeholders for weights.
         assignment_nodes (Dict[str, tf.Tensor]): Nodes that assign weights.
     """
-
     def __init__(self, output, sess=None, input_variables=None):
         """Creates TensorFlowVariables containing extracted variables.
 
@@ -149,9 +148,8 @@ class TensorFlowVariables:
             placeholders = [
                 self.placeholders[k] for k, v in self.variables.items()
             ]
-            self.sess.run(
-                list(self.assignment_nodes.values()),
-                feed_dict=dict(zip(placeholders, arrays)))
+            self.sess.run(list(self.assignment_nodes.values()),
+                          feed_dict=dict(zip(placeholders, arrays)))
 
     def get_weights(self):
         """Returns a dictionary containing the weights of the network.
@@ -198,8 +196,10 @@ class TensorFlowVariables:
         assignable = set(self.assignment_nodes.keys())
         feed_dict = {}
         for name, value in weights.items():
-            close_names = difflib.get_close_matches(
-                name, assignable, n=1, cutoff=0.6)
+            close_names = difflib.get_close_matches(name,
+                                                    assignable,
+                                                    n=1,
+                                                    cutoff=0.6)
             if close_names:
                 c_name = close_names[0]
                 if value.shape == self.assignment_nodes[c_name].shape:
