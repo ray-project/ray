@@ -20,6 +20,7 @@ ENV BUILDKITE_PULL_REQUEST_BASE_BRANCH=${BUILDKITE_PULL_REQUEST_BASE_BRANCH}
 # https://github.com/docker-library/docker/blob/master/20.10/docker-entrypoint.sh
 ENV DOCKER_TLS_CERTDIR=/certs
 ENV DOCKER_HOST=tcp://docker:2376
+ENV DOCKER_TLS_VERIFY=1
 ENV DOCKER_CERT_PATH=/certs/client
 
 RUN apt-get update -qq
