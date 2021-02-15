@@ -246,7 +246,6 @@ Papers
 
    serve/index.rst
    serve/core-apis.rst
-   serve/calling-backends.rst
    serve/deployment.rst
    serve/ml-models.rst
    serve/advanced-traffic.rst
