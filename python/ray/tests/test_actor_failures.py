@@ -73,6 +73,7 @@ def test_actor_eviction(ray_start_regular):
     assert num_success > 0
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Very flaky on Windows.")
 def test_actor_restart(ray_init_with_task_retry_delay):
     """Test actor restart when actor process is killed."""
 
@@ -433,6 +434,7 @@ def test_caller_task_reconstruction(ray_start_regular):
     assert ray.get(RetryableTask.remote(remote_actor)) == 3
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Very flaky on Windows.")
 # NOTE(hchen): we set object_timeout_milliseconds to 1s for
 # this test. Because if this value is too small, suprious task reconstruction
 # may happen and cause the test fauilure. If the value is too large, this test
