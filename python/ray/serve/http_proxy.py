@@ -37,22 +37,22 @@ class ServeStarletteEndpoint:
     def __init__(self, client, endpoint_tag: EndpointTag):
         self.client = client
         self.endpoint_tag = endpoint_tag
+        self.handle = None
 
     async def __call__(self, scope, receive, send):
         http_body_bytes = await self.receive_http_body(scope, receive, send)
 
         headers = {k.decode(): v.decode() for k, v in scope["headers"]}
-
-        handle = self.client.get_handle(
-            self.endpoint_tag, sync=False).options(
-                method_name=headers.get("X-SERVE-CALL-METHOD".lower(),
-                                        DEFAULT.VALUE),
-                shard_key=headers.get("X-SERVE-SHARD-KEY".lower(),
-                                      DEFAULT.VALUE),
-                http_method=scope["method"].upper(),
-                http_headers=headers)
+        if self.handle is None:
+            self.handle = self.client.get_handle(self.endpoint_tag, sync=False)
+        self.handle = self.handle.options(
+            method_name=headers.get("X-SERVE-CALL-METHOD".lower(),
+                                    DEFAULT.VALUE),
+            shard_key=headers.get("X-SERVE-SHARD-KEY".lower(), DEFAULT.VALUE),
+            http_method=scope["method"].upper(),
+            http_headers=headers)
         request = build_starlette_request(scope, http_body_bytes)
-        object_ref = await handle.remote(request)
+        object_ref = await self.handle.remote(request)
         result = await object_ref
 
         if isinstance(result, RayTaskError):
