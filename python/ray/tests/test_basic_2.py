@@ -342,7 +342,7 @@ def test_call_chain(ray_start_cluster):
 
 @pytest.mark.skipif(client_test_enabled(), reason="message size")
 def test_system_config_when_connecting(ray_start_cluster):
-    config = {"object_pinning_enabled": 0, "object_timeout_milliseconds": 200}
+    config = {"object_timeout_milliseconds": 200}
     cluster = ray.cluster_utils.Cluster()
     cluster.add_node(
         _system_config=config, object_store_memory=100 * 1024 * 1024)
@@ -360,9 +360,7 @@ def test_system_config_when_connecting(ray_start_cluster):
         put_ref = ray.put(np.zeros(40 * 1024 * 1024, dtype=np.uint8))
     del put_ref
 
-    # This would not raise an exception if object pinning was enabled.
-    with pytest.raises(ray.exceptions.ObjectLostError):
-        ray.get(obj_ref)
+    ray.get(obj_ref)
 
 
 def test_get_multiple(ray_start_regular_shared):

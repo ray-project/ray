@@ -41,7 +41,7 @@ class LocalObjectManager {
       const NodeID &node_id, size_t free_objects_batch_size,
       int64_t free_objects_period_ms, IOWorkerPoolInterface &io_worker_pool,
       gcs::ObjectInfoAccessor &object_info_accessor,
-      rpc::CoreWorkerClientPool &owner_client_pool, bool object_pinning_enabled,
+      rpc::CoreWorkerClientPool &owner_client_pool,
       bool automatic_object_deletion_enabled, int max_io_workers,
       int64_t min_spilling_size, bool is_external_storage_type_fs,
       std::function<void(const std::vector<ObjectID> &)> on_objects_freed,
@@ -54,7 +54,6 @@ class LocalObjectManager {
         io_worker_pool_(io_worker_pool),
         object_info_accessor_(object_info_accessor),
         owner_client_pool_(owner_client_pool),
-        object_pinning_enabled_(object_pinning_enabled),
         automatic_object_deletion_enabled_(automatic_object_deletion_enabled),
         on_objects_freed_(on_objects_freed),
         last_free_objects_at_ms_(current_time_ms()),
@@ -202,9 +201,6 @@ class LocalObjectManager {
   /// Cache of gRPC clients to owners of objects pinned on
   /// this node.
   rpc::CoreWorkerClientPool &owner_client_pool_;
-
-  /// Whether to enable pinning for plasma objects.
-  bool object_pinning_enabled_;
 
   /// Whether to enable automatic deletion when refs are gone out of scope.
   bool automatic_object_deletion_enabled_;

@@ -601,12 +601,6 @@ def init(
             directory for the Ray process. Defaults to an OS-specific
             conventional location, e.g., "/tmp/ray".
         _java_worker_options: Overwrite the options to start Java workers.
-        _lru_evict (bool): If True, when an object store is full, it will evict
-            objects in LRU order to make more space and when under memory
-            pressure, ray.ObjectLostError may be thrown. If False, then
-            reference counting will be used to decide which objects are safe
-            to evict and when under memory pressure, ray.ObjectStoreFullError
-            may be thrown.
         _metrics_export_port(int): Port number Ray exposes system metrics
             through a Prometheus endpoint. It is currently under active
             development, and the API is subject to change.
@@ -744,9 +738,6 @@ def init(
         if _system_config is not None and len(_system_config) != 0:
             raise ValueError("When connecting to an existing cluster, "
                              "_system_config must not be provided.")
-        if _lru_evict:
-            raise ValueError("When connecting to an existing cluster, "
-                             "_lru_evict must not be provided.")
         if _enable_object_reconstruction:
             raise ValueError(
                 "When connecting to an existing cluster, "
