@@ -401,6 +401,7 @@ def test_trial_requeue(start_connected_emptyhead_cluster, trainable_id,
     assert _check_trial_running(running_trials[0])
     cluster.remove_node(node)
     cluster.wait_for_nodes()
+    time.sleep(0.1)  # Sleep so that next step() refreshes cluster resources
     runner.step()  # Process result, dispatch save
     runner.step()  # Process save (detect error), requeue trial
     assert all(
