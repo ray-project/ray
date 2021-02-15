@@ -1,7 +1,7 @@
 .. _cluster-reference:
 
-Config and CLI Reference
-=================================
+Config YAML and CLI Reference
+=============================
 
 .. toctree::
     :maxdepth: 2

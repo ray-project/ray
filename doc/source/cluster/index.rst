@@ -1,7 +1,7 @@
 .. _cluster-index:
 
-Distributed Ray Overview
-========================
+Ray Cluster Overview
+====================
 
 What is a Ray cluster?
 ------------------------
