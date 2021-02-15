@@ -11,13 +11,13 @@ from ray import ObjectRef, logger
 from ray.actor import ActorClass
 from ray.tune.resources import Resources
 from ray.util.placement_group import PlacementGroup, get_placement_group, \
-    placement_group, \
-    placement_group_table, remove_placement_group
+    placement_group, placement_group_table, remove_placement_group
 
 if TYPE_CHECKING:
     from ray.tune.trial import Trial
 
 TUNE_MAX_PENDING_TRIALS_PG = int(os.getenv("TUNE_MAX_PENDING_TRIALS_PG", 1000))
+TUNE_PLACEMENT_GROUP_REMOVAL_DELAY = 2.
 
 
 class PlacementGroupFactory:
@@ -208,6 +208,10 @@ class PlacementGroupManager:
         # (e.g. for reuse_actors=True)
         self._cached_pgs: Dict[PlacementGroup, PlacementGroupFactory] = {}
 
+        # Placement groups scheduled for delayed removal.
+        self._pgs_for_removal: Dict[PlacementGroup, float] = {}
+        self._removal_delay = TUNE_PLACEMENT_GROUP_REMOVAL_DELAY
+
         # Latest PG staging time to check if still in grace period.
         self._latest_staging_start_time = time.time()
 
@@ -215,6 +219,35 @@ class PlacementGroupManager:
         # to process events
         self._grace_period = float(
             os.getenv("TUNE_TRIAL_STARTUP_GRACE_PERIOD", 10.))
+
+    def remove_pg(self, pg: PlacementGroup):
+        """Schedule placement group for (delayed) removal.
+
+        Args:
+            pg (PlacementGroup): Placement group object.
+
+        """
+        self._pgs_for_removal[pg] = time.time()
+
+    def cleanup(self, force: bool = False):
+        """Remove placement groups that are scheduled for removal.
+
+        Currently, this will remove placement groups after they've been
+        marked for removal for ``self._removal_delay`` seconds.
+        If ``force=True``, this condition is disregarded and all placement
+        groups are removed instead.
+
+        Args:
+            force (bool): If True, all placement groups scheduled for removal
+                will be removed, disregarding any removal conditions.
+
+        """
+        # Wrap in list so we can modify the dict
+        for pg in list(self._pgs_for_removal):
+            if force or (time.time() -
+                         self._removal_delay) >= self._pgs_for_removal[pg]:
+                self._pgs_for_removal.pop(pg)
+                remove_placement_group(pg)
 
     def cleanup_existing_pg(self, block: bool = False):
         """Clean up (remove) all existing placement groups.
@@ -395,7 +428,7 @@ class PlacementGroupManager:
         if not staged_pg:
             return None
 
-        remove_placement_group(staged_pg)
+        self.remove_pg(staged_pg)
 
         pg = self._in_use_trials.pop(trial)
         self._in_use_pgs.pop(pg)
@@ -441,11 +474,11 @@ class PlacementGroupManager:
 
         # Could not replace
         if not staged_pg:
-            remove_placement_group(pg)
+            self.remove_pg(pg)
             return False
 
         # Replace successful
-        remove_placement_group(staged_pg)
+        self.remove_pg(staged_pg)
         self._ready[pgf].add(pg)
         return True
 
@@ -591,7 +624,7 @@ class PlacementGroupManager:
                 if not pg:
                     break
                 logger.debug(f"Removing unneeded placement group {pg.id}")
-                remove_placement_group(pg)
+                self.remove_pg(pg)
                 current_counts[pgf] -= 1
 
             while expected > current_counts[pgf]:

@@ -1011,7 +1011,6 @@ class TrialRunner:
                     iteration=self._iteration,
                     trials=self._trials,
                     trial=trial)
-                # Free placement group
             else:
                 logger.debug("Trial %s: Restore dispatched correctly.", trial)
         else:

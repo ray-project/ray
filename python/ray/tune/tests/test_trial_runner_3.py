@@ -1059,6 +1059,8 @@ class TrialRunnerPlacementGroupTest(unittest.TestCase):
                     p for pid, p in placement_group_table().items()
                     if p["state"] != "REMOVED"
                 ])
+                num_removal_scheduled_pgs = len(
+                    trial_executor._pg_manager._pgs_for_removal)
 
                 # All trials should be scheduled
                 this.assertEqual(
@@ -1073,7 +1075,7 @@ class TrialRunnerPlacementGroupTest(unittest.TestCase):
                 # The number of actual placement groups should match this
                 this.assertEqual(
                     max(scheduled, len(trials)) - num_finished,
-                    num_non_removed_pgs,
+                    num_non_removed_pgs - num_removal_scheduled_pgs,
                     msg=f"Num actual iter {iteration}")
 
         start = time.time()

@@ -800,7 +800,6 @@ class RayTrialExecutor(TrialExecutor):
         self._update_avail_resources()
         currently_available = Resources.subtract(self._avail_resources,
                                                  self._committed_resources)
-
         have_space = (
             resources.cpu_total() <= currently_available.cpu
             and resources.gpu_total() <= currently_available.gpu
@@ -889,6 +888,7 @@ class RayTrialExecutor(TrialExecutor):
         self._just_staged_trials.clear()
 
         self._pg_manager.reconcile_placement_groups(trial_runner.get_trials())
+        self._pg_manager.cleanup()
 
     def save(self, trial, storage=Checkpoint.PERSISTENT, result=None):
         """Saves the trial's state to a checkpoint asynchronously.
@@ -991,6 +991,7 @@ class RayTrialExecutor(TrialExecutor):
 
     def cleanup(self):
         self._trial_cleanup.cleanup(partial=False)
+        self._pg_manager.cleanup(force=True)
         self._pg_manager.cleanup_existing_pg(block=True)
 
     @contextmanager
