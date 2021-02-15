@@ -11,7 +11,8 @@ from ray.tune.sample import Categorical, Domain, Float, Integer, LogUniform, \
 from ray.tune.suggest.suggestion import UNRESOLVED_SEARCH_SPACE, \
     UNDEFINED_METRIC_MODE, UNDEFINED_SEARCH_SPACE
 from ray.tune.suggest.variant_generator import parse_spec_vars
-from ray.tune.utils.util import is_nan_or_inf, unflatten_dict
+from ray.tune.utils.util import is_nan_or_inf, unflatten_dict, \
+    validate_warmstart
 
 try:  # Python 3 only -- needed for lint test.
     import hebo
@@ -25,37 +26,6 @@ logger = logging.getLogger(__name__)
 
 SPACE_ERROR_MESSAGE = ("Space must be either a HEBO DesignSpace object"
                        "or a dictionary with ONLY tune search spaces.")
-
-
-def _validate_warmstart(parameter_names: List[str],
-                        points_to_evaluate: List[Union[List, Dict]],
-                        evaluated_rewards: List):
-    if points_to_evaluate:
-        if not isinstance(points_to_evaluate, list):
-            raise TypeError(
-                "points_to_evaluate expected to be a list, got {}.".format(
-                    type(points_to_evaluate)))
-        for point in points_to_evaluate:
-            if not isinstance(point, (dict, list)):
-                raise TypeError(
-                    f"points_to_evaluate expected to include list or dict, "
-                    f"got {point}.")
-
-            if not len(point) == len(parameter_names):
-                raise ValueError("Dim of point {}".format(point) +
-                                 " and parameter_names {}".format(
-                                     parameter_names) + " do not match.")
-
-    if points_to_evaluate and evaluated_rewards:
-        if not isinstance(evaluated_rewards, list):
-            raise TypeError(
-                "evaluated_rewards expected to be a list, got {}.".format(
-                    type(evaluated_rewards)))
-        if not len(evaluated_rewards) == len(points_to_evaluate):
-            raise ValueError(
-                "Dim of evaluated_rewards {}".format(evaluated_rewards) +
-                " and points_to_evaluate {}".format(points_to_evaluate) +
-                " do not match.")
 
 
 class HEBOSearch(Searcher):
@@ -202,9 +172,9 @@ class HEBOSearch(Searcher):
             space=self._space, **self._hebo_config)
 
         if self._points_to_evaluate:
-            _validate_warmstart(self._space.para_names,
-                                self._points_to_evaluate,
-                                self._evaluated_rewards)
+            validate_warmstart(self._space.para_names,
+                               self._points_to_evaluate,
+                               self._evaluated_rewards)
             if self._evaluated_rewards:
                 self._opt.observe(
                     pd.DataFrame(self._points_to_evaluate),
