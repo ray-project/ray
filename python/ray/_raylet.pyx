@@ -724,20 +724,6 @@ cdef void delete_spilled_objects_handler(
                 job_id=None)
 
 
-cdef void unhandled_exception_handler(const CRayObject& error) nogil:
-    with gil:
-        worker = ray.worker.global_worker
-        data = None
-        metadata = None
-        if error.HasData():
-            data = Buffer.make(error.GetData())
-        if error.HasMetadata():
-            metadata = Buffer.make(error.GetMetadata()).to_pybytes()
-        # TODO(ekl) why does passing a ObjectRef.nil() lead to shutdown errors?
-        object_ids = [None]
-        worker.raise_errors([(data, metadata)], object_ids)
-
-
 # This function introduces ~2-7us of overhead per call (i.e., it can be called
 # up to hundreds of thousands of times per second).
 cdef void get_py_stack(c_string* stack_out) nogil:
@@ -847,7 +833,6 @@ cdef class CoreWorker:
         options.spill_objects = spill_objects_handler
         options.restore_spilled_objects = restore_spilled_objects_handler
         options.delete_spilled_objects = delete_spilled_objects_handler
-        options.unhandled_exception_handler = unhandled_exception_handler
         options.get_lang_stack = get_py_stack
         options.ref_counting_enabled = True
         options.is_local_mode = local_mode
@@ -1458,13 +1443,9 @@ cdef class CoreWorker:
             object_ref.native())
 
     def remove_object_ref_reference(self, ObjectRef object_ref):
-        cdef:
-            CObjectID c_object_id = object_ref.native()
-        # We need to release the gil since object destruction may call the
-        # unhandled exception handler.
-        with nogil:
-            CCoreWorkerProcess.GetCoreWorker().RemoveLocalReference(
-                c_object_id)
+        # Note: faster to not release GIL for short-running op.
+        CCoreWorkerProcess.GetCoreWorker().RemoveLocalReference(
+            object_ref.native())
 
     def serialize_and_promote_object_ref(self, ObjectRef object_ref):
         cdef:
