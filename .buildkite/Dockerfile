@@ -17,7 +17,10 @@ ENV BUILDKITE_PULL_REQUEST=${BUILDKITE_PULL_REQUEST}
 ENV BUILDKITE_COMMIT=${BUILDKITE_COMMIT}
 ENV BUILDKITE_PULL_REQUEST_BASE_BRANCH=${BUILDKITE_PULL_REQUEST_BASE_BRANCH}
 # For wheel build
+# https://github.com/docker-library/docker/blob/master/20.10/docker-entrypoint.sh
 ENV DOCKER_TLS_CERTDIR=/certs
+ENV DOCKER_HOST=tcp://docker:2376
+ENV DOCKER_CERT_PATH=/certs/client
 
 RUN apt-get update -qq
 RUN apt-get install -y -qq \
