@@ -45,6 +45,10 @@ class HEBOSearch(Searcher):
     `space` can either be a HEBO's `DesignSpace` object or a dict of Tune
     search spaces.
 
+    Please note that the first few trials will be random and used
+    to kickstart the search process. In order to achieve good results,
+    we recommend setting the number of trials to at least 15.
+
     Args:
         space (dict|hebo.design_space.design_space.DesignSpace):
             A dict mapping parameter names to Tune search spaces or a
