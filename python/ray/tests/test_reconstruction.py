@@ -220,6 +220,7 @@ def test_basic_reconstruction_put(ray_start_cluster, reconstruction_enabled):
             pass
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Very flaky on Windows.")
 @pytest.mark.parametrize("reconstruction_enabled", [False, True])
 def test_basic_reconstruction_actor_task(ray_start_cluster,
                                          reconstruction_enabled):
