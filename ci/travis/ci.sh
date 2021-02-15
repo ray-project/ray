@@ -313,6 +313,8 @@ build_wheels() {
         -e "TRAVIS_COMMIT=${TRAVIS_COMMIT}"
         -e "CI=${CI}"
         -e "RAY_INSTALL_JAVA=${RAY_INSTALL_JAVA:-}"
+        -e "BUILDKITE=${BUILDKITE:-}"
+        -e "BUILDKITE_BAZEL_CACHE_URL=$=${BUILDKITE_BAZEL_CACHE_URL=$:-}"
       )
 
       # This command should be kept in sync with ray/python/README-building-wheels.md,
