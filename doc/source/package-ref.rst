@@ -196,6 +196,16 @@ Histogram
 .. autoclass:: ray.util.metrics.Histogram
    :members:
 
+.. _runtime-context-apis:
+
+Runtime Context APIs
+--------------------
+
+.. autofunction:: ray.runtime_context.get_runtime_context
+
+.. autoclass:: ray.runtime_context.RuntimeContext
+    :members:
+
 .. _package-ref-debugging-apis:
 
 Debugging APIs
