@@ -69,7 +69,7 @@ void LocalObjectManager::ReleaseFreedObject(const ObjectID &object_id) {
     spilled_object_pending_delete_.push(object_id);
   }
   if (pinned_objects_.count(object_id)) {
-    pinned_objects_size_ -= pinned_objects_[object_id]->GetSize();
+    pinned_objects_size_ -= pinned_objects_[object_id].first->GetSize();
     pinned_objects_.erase(object_id);
   }
 
