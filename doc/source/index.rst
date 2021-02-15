@@ -245,11 +245,13 @@ Papers
    :caption: Ray Serve
 
    serve/index.rst
-   serve/key-concepts.rst
-   serve/tutorials/index.rst
+   serve/core-apis.rst
+   serve/calling-backends.rst
    serve/deployment.rst
-   serve/advanced.rst
+   serve/ml-models.rst
+   serve/advanced-traffic.rst
    serve/architecture.rst
+   serve/tutorials/index.rst
    serve/faq.rst
    serve/package-ref.rst
 
