@@ -261,6 +261,8 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(const TaskRequest &task
 
   // Check whether any node in the request placement_hints, satisfes
   // all resource constraints of the request.
+  // TODO(sang): Uniform random distribution of tasks based on placement hint is not
+  // implemented yet because it is currently not used.
   for (const auto &task_req_placement_hint : task_req.placement_hints) {
     auto it = nodes_.find(task_req_placement_hint);
     if (it != nodes_.end()) {
@@ -284,9 +286,7 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(const TaskRequest &task
         // available but is feasible, then schedule to this node.
         // NOTE(swang): This is needed to make sure that tasks that are not
         // feasible on this node are spilled back to a node that does have the
-        // appropriate total resources in a timely manner. If there are
-        // multiple feasible nodes, this algorithm can still introduce delays
-        // because of inefficient load-balancing.
+        // appropriate total resources in a timely manner.
         best_nodes.emplace_back(node.first);
       }
       continue;

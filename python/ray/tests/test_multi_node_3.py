@@ -396,9 +396,11 @@ def test_spillback_distribution(ray_start_cluster):
     ray.init(address=cluster.address)
     cluster.wait_for_nodes()
 
+    num_nodes = 3
     # create 2 worker nodes.
-    for _ in range(2):
+    for _ in range(num_nodes):
         cluster.add_node(num_cpus=5)
+    cluster.wait_for_nodes()
 
     @ray.remote
     def task():
@@ -409,6 +411,33 @@ def test_spillback_distribution(ray_start_cluster):
     # Make sure tasks are spilled back undernimistically.
     task_refs = [task.remote() for _ in range(5)]
     assert len(set(ray.get(task_refs))) != 1
+
+    @ray.remote(num_cpus=1)
+    class Actor1:
+        def __init__(self):
+            pass
+
+        def get_location(self):
+            return ray.worker.global_worker.node.unique_id
+
+    # Create a bunch of actors.
+    num_actors = 10
+    num_attempts = 20
+    minimum_count = 2
+
+    # Make sure that actors are spread between the raylets.
+    attempts = 0
+    while attempts < num_attempts:
+        actors = [Actor1.remote() for _ in range(num_actors)]
+        locations = ray.get([actor.get_location.remote() for actor in actors])
+        names = set(locations)
+        counts = [locations.count(name) for name in names]
+        print("Counts are {}.".format(counts))
+        if (len(names) == num_nodes
+                and all(count >= minimum_count for count in counts)):
+            break
+        attempts += 1
+    assert attempts < num_attempts
 
 
 if __name__ == "__main__":
