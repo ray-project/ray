@@ -421,3 +421,36 @@ in :mod:`serve.start <ray.serve.start>`:
    Using the "EveryNode" option, you can point a cloud load balancer to the
    instance group of Ray cluster to achieve high availability of Serve's HTTP
    proxies.
+
+Variable HTTP Routes
+====================
+
+Ray Serve supports capturing path parameters.  For example, in a call of the form
+
+.. code-block:: python
+
+    client.create_endpoint("my_endpoint", backend="my_backend", route="/api/{username}")
+
+the ``username`` parameter will be accessible in your backend code as follows:
+
+.. code-block:: python
+
+    def my_backend(request):
+        username = request.path_params["username"]
+        ...
+
+Ray Serve uses Starlette's Router class under the hood for routing, so type
+conversion for path parameters is also supported, as well as multiple path parameters.  
+For example, suppose this route is used:
+
+.. code-block:: python
+    
+    client.create_endpoint(
+        "complex", backend="f", route="/api/{user_id:int}/{number:float}")
+
+Then for a query to the route ``/api/123/3.14``, the ``request.path_params`` dictionary 
+available in the backend will be ``{"user_id": 123, "number": 3.14}``, where ``123`` is
+a Python int and ``3.14`` is a Python float.
+
+For full details on the supported path parameters, see Starlette's
+`path parameters documentation <https://www.starlette.io/routing/#path-parameters>`_.
