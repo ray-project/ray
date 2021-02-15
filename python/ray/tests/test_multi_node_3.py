@@ -389,6 +389,28 @@ ray.get(main_wait.release.remote())
     assert driver2_out_split[1][-1] == "4", driver2_out_split
 
 
+def test_spillback_distribution(ray_start_cluster):
+    cluster = ray_start_cluster
+    # Create a head node and wait until it is up.
+    cluster.add_node(num_cpus=0)
+    ray.init(address=cluster.address)
+    cluster.wait_for_nodes()
+
+    # create 2 worker nodes.
+    for _ in range(2):
+        cluster.add_node(num_cpus=5)
+
+    @ray.remote
+    def task():
+        import time
+        time.sleep(1)
+        return ray.worker._global_node.unique_id
+
+    # Make sure tasks are spilled back undernimistically.
+    task_refs = [task.remote() for _ in range(5)]
+    assert len(set(ray.get(task_refs))) != 1
+
+
 if __name__ == "__main__":
     import pytest
     # Make subprocess happy in bazel.
