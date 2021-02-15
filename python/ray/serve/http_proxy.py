@@ -95,7 +95,7 @@ class HTTPProxy:
 
         self.router = starlette.routing.Router(default=self._not_found)
 
-        # route -> (endpoint_tag, methods).  Update via long polling.
+        # route -> (endpoint_tag, methods).  Updated via long polling.
         self.route_table: Dict[str, Tuple[EndpointTag, List[str]]] = {}
 
         self.long_poll_client = LongPollAsyncClient(controller, {
