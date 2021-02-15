@@ -705,6 +705,7 @@ cc_test(
 cc_test(
     name = "memory_store_test",
     srcs = ["src/ray/core_worker/test/memory_store_test.cc"],
+    copts = COPTS,
     deps = [
         ":core_worker_lib",
         "@com_google_googletest//:gtest_main",
