@@ -24,6 +24,8 @@ RUN apt-get install -y -qq \
     language-pack-en tmux cmake gdb vim htop \
     libgtk2.0-dev zlib1g-dev libgl1-mesa-dev
 
+RUN curl -o- https://get.docker.com | sh
+
 # System conf for tests
 RUN locale -a
 ENV LC_ALL=en_US.utf8
