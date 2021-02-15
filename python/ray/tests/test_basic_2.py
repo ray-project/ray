@@ -360,9 +360,7 @@ def test_system_config_when_connecting(ray_start_cluster):
         put_ref = ray.put(np.zeros(40 * 1024 * 1024, dtype=np.uint8))
     del put_ref
 
-    # This would not raise an exception if object pinning was enabled.
-    with pytest.raises(ray.exceptions.ObjectLostError):
-        ray.get(obj_ref)
+    ray.get(obj_ref)
 
 
 def test_get_multiple(ray_start_regular_shared):
