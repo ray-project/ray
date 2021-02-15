@@ -164,6 +164,13 @@ class HEBOSearch(Searcher):
             # If only a mode was passed, use anonymous metric
             self._metric = DEFAULT_METRIC
 
+        assert isinstance(
+            self._space, hebo.design_space.design_space.DesignSpace
+        ), "space must be a HEBO DesignSpace object, got '{}'.".format(
+            type(self._space))
+
+        assert self._space.num_paras > 0, "space must not be empty."
+
         if self._random_state_seed is not None:
             np.random.seed(self._random_state_seed)
             torch.random.manual_seed(self._random_state_seed)
