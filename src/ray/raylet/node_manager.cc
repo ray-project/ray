@@ -516,11 +516,17 @@ void NodeManager::DoLocalGC() {
 void NodeManager::HandleRequestObjectSpillage(
     const rpc::RequestObjectSpillageRequest &request,
     rpc::RequestObjectSpillageReply *reply, rpc::SendReplyCallback send_reply_callback) {
+  const auto &object_id = ObjectID::FromBinary(request.object_id());
+  RAY_LOG(DEBUG) << "Received RequestObjectSpillage for object " << object_id;
   local_object_manager_.SpillObjects(
-      {ObjectID::FromBinary(request.object_id())},
-      [reply, send_reply_callback](const ray::Status &status) {
+      {object_id}, [object_id, reply, send_reply_callback](const ray::Status &status) {
         if (status.ok()) {
+          RAY_LOG(DEBUG) << "Object " << object_id
+                         << " has been spilled, replying to owner";
           reply->set_success(true);
+          // TODO(Clark): Add spilled URLs and spilled node ID to owner RPC reply here
+          // if OBOD is enabled, instead of relying on automatic raylet spilling path to
+          // send an extra RPC to the owner.
         }
         send_reply_callback(Status::OK(), nullptr, nullptr);
       });
@@ -1267,7 +1273,7 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
     }
 
     // Remove the dead client from the pool and stop listening for messages.
-    worker_pool_.DisconnectWorker(worker);
+    worker_pool_.DisconnectWorker(worker, disconnect_type);
 
     // Return the resources that were being used by this worker.
     cluster_task_manager_->ReleaseWorkerResources(worker);
@@ -2406,6 +2412,7 @@ void NodeManager::HandlePinObjectIDs(const rpc::PinObjectIDsRequest &request,
                                      rpc::SendReplyCallback send_reply_callback) {
   std::vector<ObjectID> object_ids;
   object_ids.reserve(request.object_ids_size());
+  const auto &owner_address = request.owner_address();
   for (const auto &object_id_binary : request.object_ids()) {
     object_ids.push_back(ObjectID::FromBinary(object_id_binary));
   }
@@ -2419,10 +2426,10 @@ void NodeManager::HandlePinObjectIDs(const rpc::PinObjectIDsRequest &request,
       send_reply_callback(Status::Invalid("Failed to get objects."), nullptr, nullptr);
       return;
     }
-    local_object_manager_.PinObjects(object_ids, std::move(results));
+    local_object_manager_.PinObjects(object_ids, std::move(results), owner_address);
   }
   // Wait for the object to be freed by the owner, which keeps the ref count.
-  local_object_manager_.WaitForObjectFree(request.owner_address(), object_ids);
+  local_object_manager_.WaitForObjectFree(owner_address, object_ids);
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 

@@ -477,6 +477,12 @@ cdef execute_task(
                         if debugger_breakpoint != b"":
                             ray.util.pdb.set_trace(
                                 breakpoint_uuid=debugger_breakpoint)
+                        if inspect.iscoroutinefunction(function_executor):
+                            raise ValueError(
+                                "'async def' should not be used for remote "
+                                "tasks. You can wrap the async function with "
+                                "`asyncio.get_event_loop.run_until(f())`. "
+                                "See more at docs.ray.io/async_api.html")
                         outputs = function_executor(*args, **kwargs)
                         next_breakpoint = (
                             ray.worker.global_worker.debugger_breakpoint)
@@ -622,7 +628,8 @@ cdef void gc_collect() nogil:
 
 
 cdef c_vector[c_string] spill_objects_handler(
-        const c_vector[CObjectID]& object_ids_to_spill) nogil:
+        const c_vector[CObjectID]& object_ids_to_spill,
+        const c_vector[c_string]& owner_addresses) nogil:
     cdef c_vector[c_string] return_urls
     with gil:
         object_refs = VectorToObjectRefs(object_ids_to_spill)
@@ -630,7 +637,8 @@ cdef c_vector[c_string] spill_objects_handler(
             with ray.worker._changeproctitle(
                     ray_constants.WORKER_PROCESS_TYPE_SPILL_WORKER,
                     ray_constants.WORKER_PROCESS_TYPE_SPILL_WORKER_IDLE):
-                urls = external_storage.spill_objects(object_refs)
+                urls = external_storage.spill_objects(
+                    object_refs, owner_addresses)
             for url in urls:
                 return_urls.push_back(url)
         except Exception:
@@ -714,6 +722,20 @@ cdef void delete_spilled_objects_handler(
                 "delete_spilled_objects_error",
                 traceback.format_exc() + exception_str,
                 job_id=None)
+
+
+cdef void unhandled_exception_handler(const CRayObject& error) nogil:
+    with gil:
+        worker = ray.worker.global_worker
+        data = None
+        metadata = None
+        if error.HasData():
+            data = Buffer.make(error.GetData())
+        if error.HasMetadata():
+            metadata = Buffer.make(error.GetMetadata()).to_pybytes()
+        # TODO(ekl) why does passing a ObjectRef.nil() lead to shutdown errors?
+        object_ids = [None]
+        worker.raise_errors([(data, metadata)], object_ids)
 
 
 # This function introduces ~2-7us of overhead per call (i.e., it can be called
@@ -825,6 +847,7 @@ cdef class CoreWorker:
         options.spill_objects = spill_objects_handler
         options.restore_spilled_objects = restore_spilled_objects_handler
         options.delete_spilled_objects = delete_spilled_objects_handler
+        options.unhandled_exception_handler = unhandled_exception_handler
         options.get_lang_stack = get_py_stack
         options.ref_counting_enabled = True
         options.is_local_mode = local_mode
@@ -924,7 +947,11 @@ cdef class CoreWorker:
     cdef _create_put_buffer(self, shared_ptr[CBuffer] &metadata,
                             size_t data_size, ObjectRef object_ref,
                             c_vector[CObjectID] contained_ids,
-                            CObjectID *c_object_id, shared_ptr[CBuffer] *data):
+                            CObjectID *c_object_id, shared_ptr[CBuffer] *data,
+                            owner_address=None):
+        cdef:
+            CAddress c_owner_address
+
         if object_ref is None:
             with nogil:
                 check_status(CCoreWorkerProcess.GetCoreWorker().CreateOwned(
@@ -932,11 +959,16 @@ cdef class CoreWorker:
                              c_object_id, data))
         else:
             c_object_id[0] = object_ref.native()
+            if owner_address is None:
+                c_owner_address = CCoreWorkerProcess.GetCoreWorker(
+                    ).GetRpcAddress()
+            else:
+                c_owner_address = CAddress()
+                c_owner_address.ParseFromString(owner_address)
             with nogil:
                 check_status(CCoreWorkerProcess.GetCoreWorker().CreateExisting(
                             metadata, data_size, c_object_id[0],
-                            CCoreWorkerProcess.GetCoreWorker().GetRpcAddress(),
-                            data))
+                            c_owner_address, data))
 
         # If data is nullptr, that means the ObjectRef already existed,
         # which we ignore.
@@ -945,7 +977,8 @@ cdef class CoreWorker:
         return data.get() == NULL
 
     def put_file_like_object(
-            self, metadata, data_size, file_like, ObjectRef object_ref):
+            self, metadata, data_size, file_like, ObjectRef object_ref,
+            owner_address):
         """Directly create a new Plasma Store object from a file like
         object. This avoids extra memory copy.
 
@@ -955,6 +988,7 @@ cdef class CoreWorker:
             file_like: A python file object that provides the `readinto`
                 interface.
             object_ref: The new ObjectRef.
+            owner_address: Owner address for this object ref.
         """
         cdef:
             CObjectID c_object_id
@@ -969,7 +1003,7 @@ cdef class CoreWorker:
         object_already_exists = self._create_put_buffer(
             metadata_buf, data_size, object_ref,
             ObjectRefsToVector([]),
-            &c_object_id, &data_buf)
+            &c_object_id, &data_buf, owner_address)
         if object_already_exists:
             logger.debug("Object already exists in 'put_file_like_object'.")
             return
@@ -1424,9 +1458,13 @@ cdef class CoreWorker:
             object_ref.native())
 
     def remove_object_ref_reference(self, ObjectRef object_ref):
-        # Note: faster to not release GIL for short-running op.
-        CCoreWorkerProcess.GetCoreWorker().RemoveLocalReference(
-            object_ref.native())
+        cdef:
+            CObjectID c_object_id = object_ref.native()
+        # We need to release the gil since object destruction may call the
+        # unhandled exception handler.
+        with nogil:
+            CCoreWorkerProcess.GetCoreWorker().RemoveLocalReference(
+                c_object_id)
 
     def serialize_and_promote_object_ref(self, ObjectRef object_ref):
         cdef:

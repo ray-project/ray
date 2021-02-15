@@ -97,7 +97,7 @@ class BackendReplica:
                 max_task_retries=-1,
                 **backend_info.replica_config.ray_actor_options).remote(
                     self._backend_tag, self._replica_tag,
-                    backend_info.replica_config.actor_init_args,
+                    backend_info.replica_config.init_args,
                     backend_info.backend_config, self._controller_name)
         self._startup_obj_ref = self._actor_handle.ready.remote()
         self._state = ReplicaState.STARTING
@@ -277,7 +277,7 @@ class BackendState:
                 return None
 
         backend_replica_class = create_backend_replica(
-            replica_config.func_or_class)
+            replica_config.backend_def)
 
         # Save creator that starts replicas, the arguments to be passed in,
         # and the configuration for the backends.

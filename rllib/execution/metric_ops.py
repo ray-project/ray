@@ -88,6 +88,7 @@ class CollectMetrics:
 
         # Add in iterator metrics.
         metrics = _get_shared_metrics()
+        custom_metrics_from_info = metrics.info.pop("custom_metrics", {})
         timers = {}
         counters = {}
         info = {}
@@ -106,6 +107,8 @@ class CollectMetrics:
         res["timers"] = timers
         res["info"] = info
         res["info"].update(counters)
+        res["custom_metrics"] = res.get("custom_metrics", {})
+        res["custom_metrics"].update(custom_metrics_from_info)
         return res
 
 

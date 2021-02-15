@@ -517,7 +517,7 @@ py_test(
 py_test(
     name = "test_marwil",
     tags = ["agents_dir"],
-    size = "medium",
+    size = "large",
     # Include the json data file.
     data = ["tests/data/cartpole/large.json"],
     srcs = ["agents/marwil/tests/test_marwil.py"]
@@ -527,7 +527,7 @@ py_test(
 py_test(
     name = "test_bc",
     tags = ["agents_dir"],
-    size = "medium",
+    size = "large",
     # Include the json data file.
     data = ["tests/data/cartpole/large.json"],
     srcs = ["agents/marwil/tests/test_bc.py"]
@@ -542,12 +542,12 @@ py_test(
 )
 
 # MBMPOTrainer
-#py_test(
-#    name = "test_mbmpo",
-#    tags = ["agents_dir"],
-#    size = "medium",
-#    srcs = ["agents/mbmpo/tests/test_mbmpo.py"]
-#)
+py_test(
+    name = "test_mbmpo",
+    tags = ["agents_dir"],
+    size = "medium",
+    srcs = ["agents/mbmpo/tests/test_mbmpo.py"]
+)
 
 # PGTrainer
 py_test(
@@ -1466,29 +1466,29 @@ py_test(
     args = ["TestSupportedMultiAgentPG"]
 )
 
-#py_test(
-#    name = "tests/test_supported_multi_agent_off_policy",
-#    main = "tests/test_supported_multi_agent.py",
-#    tags = ["tests_dir", "tests_dir_S"],
-#    size = "medium",
-#    srcs = ["tests/test_supported_multi_agent.py"],
-#    args = ["TestSupportedMultiAgentOffPolicy"]
-#)
-
 py_test(
-    name = "tests/test_supported_spaces_pg",
-    main = "tests/test_supported_spaces.py",
+    name = "tests/test_supported_multi_agent_off_policy",
+    main = "tests/test_supported_multi_agent.py",
     tags = ["tests_dir", "tests_dir_S"],
-    size = "enormous",
-    srcs = ["tests/test_supported_spaces.py"],
-    args = ["TestSupportedSpacesPG"]
+    size = "medium",
+    srcs = ["tests/test_supported_multi_agent.py"],
+    args = ["TestSupportedMultiAgentOffPolicy"]
 )
+
+# py_test(
+#     name = "tests/test_supported_spaces_pg",
+#     main = "tests/test_supported_spaces.py",
+#     tags = ["tests_dir", "tests_dir_S"],
+#     size = "enormous",
+#     srcs = ["tests/test_supported_spaces.py"],
+#     args = ["TestSupportedSpacesPG"]
+# )
 
 py_test(
     name = "tests/test_supported_spaces_off_policy",
     main = "tests/test_supported_spaces.py",
     tags = ["tests_dir", "tests_dir_S"],
-    size = "enormous",
+    size = "medium",
     srcs = ["tests/test_supported_spaces.py"],
     args = ["TestSupportedSpacesOffPolicy"]
 )
@@ -1497,7 +1497,7 @@ py_test(
     name = "tests/test_supported_spaces_evolution_algos",
     main = "tests/test_supported_spaces.py",
     tags = ["tests_dir", "tests_dir_S"],
-    size = "large",
+    size = "medium",
     srcs = ["tests/test_supported_spaces.py"],
     args = ["TestSupportedSpacesEvolutionAlgos"]
 )
@@ -1753,7 +1753,7 @@ py_test(
     name = "examples/custom_eval_tf",
     main = "examples/custom_eval.py",
     tags = ["examples", "examples_C"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/custom_eval.py"],
     args = ["--num-cpus=4", "--as-test"]
 )
@@ -1762,7 +1762,7 @@ py_test(
     name = "examples/custom_eval_torch",
     main = "examples/custom_eval.py",
     tags = ["examples", "examples_C"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/custom_eval.py"],
     args = ["--num-cpus=4", "--as-test", "--torch"]
 )
