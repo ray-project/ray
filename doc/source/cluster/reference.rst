@@ -1,6 +1,6 @@
 .. _cluster-reference:
 
-Config YAML and Command Reference
+Config and CLI Reference
 =================================
 
 .. toctree::

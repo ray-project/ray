@@ -1059,3 +1059,44 @@ A set of overrides to the top-level :ref:`Docker <cluster-configuration-docker>`
 * **Importance:** Low
 * **Type:** :ref:`docker <cluster-configuration-node-docker-type>`
 * **Default:** ``{}``
+
+Examples
+--------
+
+Minimal configuration
+~~~~~~~~~~~~~~~~~~~~~
+
+.. tabs::
+    .. group-tab:: AWS
+
+        .. literalinclude:: ../../../python/ray/autoscaler/aws/example-minimal.yaml
+            :language: yaml
+
+    .. group-tab:: Azure
+    
+        .. literalinclude:: ../../../python/ray/autoscaler/azure/example-minimal.yaml
+            :language: yaml
+
+    .. group-tab:: GCP
+    
+        .. literalinclude:: ../../../python/ray/autoscaler/gcp/example-minimal.yaml
+            :language: yaml
+
+Full configuration
+~~~~~~~~~~~~~~~~~~
+
+.. tabs::
+    .. group-tab:: AWS
+
+        .. literalinclude:: ../../../python/ray/autoscaler/aws/example-full.yaml
+            :language: yaml
+
+    .. group-tab:: Azure
+    
+        .. literalinclude:: ../../../python/ray/autoscaler/azure/example-full.yaml
+            :language: yaml
+
+    .. group-tab:: GCP
+    
+        .. literalinclude:: ../../../python/ray/autoscaler/gcp/example-full.yaml
+            :language: yaml

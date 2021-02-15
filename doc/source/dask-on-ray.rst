@@ -57,7 +57,7 @@ Why use Dask on Ray?
    2. If you'd like to use Dask and Ray libraries in the same application
       without having two different task execution backends.
    3. To take advantage of Ray-specific features such as the
-      :ref:`cluster launcher <ref-automatic-cluster>` and
+      :ref:`cluster launcher <cluster-cloud>` and
       :ref:`shared-memory store <memory>`.
 
 Note that for execution on a Ray cluster, you should *not* use the

@@ -228,7 +228,7 @@ Papers
 .. toctree::
    :hidden:
    :maxdepth: -1
-   :caption: Ray Cluster/Autoscaler
+   :caption: Ray Clusters/Autoscaler
 
    cluster/index.rst
    cluster/quickstart.rst
