@@ -313,12 +313,12 @@ def format_pg(pg):
 
 def get_usage_report(lm_summary) -> str:
     usage_lines = []
-    for resource, (used, total) in lm_summary.usage.items():
+    for resource, (used, total) in sorted(lm_summary.usage.items()):
         if "node:" in resource:
             continue  # Skip the auto-added per-node "node:<ip>" resource.
         line = f" {used}/{total} {resource}"
         if resource in ["memory", "object_store_memory"]:
-            to_GiB = ray.ray_constants.MEMORY_RESOURCE_UNIT_BYTES / 2**30
+            to_GiB = 1 / 2**30
             used *= to_GiB
             total *= to_GiB
             line = f" {used:.2f}/{total:.3f} GiB {resource}"

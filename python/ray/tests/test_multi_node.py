@@ -178,6 +178,16 @@ print("success")
         assert "success" in out
 
 
+@pytest.mark.parametrize(
+    "call_ray_start",
+    [
+        "ray start --head --num-cpus=1 --min-worker-port=0 "
+        "--max-worker-port=0 --port 0 --system-config="
+        # This test uses ray.objects(), which only works with the GCS-based
+        # object directory
+        "{\"ownership_based_object_directory_enabled\":false}",
+    ],
+    indirect=True)
 def test_cleanup_on_driver_exit(call_ray_start):
     # This test will create a driver that creates a bunch of objects and then
     # exits. The entries in the object table should be cleaned up.
