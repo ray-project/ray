@@ -95,10 +95,10 @@ static Gauge AvgNumSpilledBackTasks("avg_num_spilled_back_tasks",
                                     "Number of spilled back tasks per second.", "tasks");
 
 static Gauge SpillingBandwidthMB("object_spilling_bandwidth_mb",
-                               "Bandwidth of object spilling.", "MB");
+                                 "Bandwidth of object spilling.", "MB");
 
 static Gauge RestoringBandwidthMB("object_restoration_bandwidth_mb",
-                                "Bandwidth of object restoration.", "MB");
+                                  "Bandwidth of object restoration.", "MB");
 
 ///
 /// GCS Server Metrics

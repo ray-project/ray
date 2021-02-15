@@ -506,8 +506,10 @@ void LocalObjectManager::FillObjectSpillingStats(rpc::GetNodeStatsReply *reply) 
 }
 
 void LocalObjectManager::RecordObjectSpillingStats() const {
-  stats::SpillingBandwidthMB.Record(spilled_bytes_total_ / 1024 / 1024 / spill_time_total_s_);
-  stats::RestoringBandwidthMB.Record(restored_bytes_total_ / 1024 / 1024 / restored_bytes_total_);
+  stats::SpillingBandwidthMB.Record(spilled_bytes_total_ / 1024 / 1024 /
+                                    spill_time_total_s_);
+  stats::RestoringBandwidthMB.Record(restored_bytes_total_ / 1024 / 1024 /
+                                     restored_bytes_total_);
 }
 
 std::string LocalObjectManager::DebugString() const {

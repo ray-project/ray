@@ -9,7 +9,6 @@ from typing import List, IO, Tuple
 import ray
 from ray.ray_constants import DEFAULT_OBJECT_PREFIX
 from ray._raylet import ObjectRef
-from ray.util.metrics import Gauge
 
 ParsedURL = namedtuple("ParsedURL", "base_url, offset, size")
 logger = logging.getLogger(__name__)
