@@ -11,6 +11,8 @@ import pytest
 
 from ray.autoscaler._private.util import prepare_config, validate_config
 from ray.autoscaler._private.providers import _NODE_PROVIDERS
+from ray.autoscaler._private.kubernetes.node_provider import\
+    KubernetesNodeProvider
 
 from ray.test_utils import recursive_fnmatch
 
@@ -25,6 +27,7 @@ CONFIG_PATHS += recursive_fnmatch(
 def ignore_k8s_operator_configs(paths):
     return [
         path for path in paths if "kubernetes/operator_configs" not in path
+        and "kubernetes/job-example.yaml" not in path
     ]
 
 
@@ -40,11 +43,17 @@ class AutoscalingConfigTest(unittest.TestCase):
             with open(config_path) as f:
                 config = yaml.safe_load(f)
             config = prepare_config(config)
+            if config["provider"]["type"] == "kubernetes":
+                KubernetesNodeProvider.fillout_available_node_types_resources(
+                    config)
             try:
                 validate_config(config)
             except Exception:
-                self.fail("Config did not pass validation test!")
+                self.fail(
+                    f"Config {config_path} did not pass validation test!")
 
+    @pytest.mark.skipif(
+        sys.platform.startswith("win"), reason="Fails on Windows.")
     def testValidateDefaultConfigMinMaxWorkers(self):
         aws_config_path = os.path.join(
             RAY_PATH, "autoscaler/aws/example-multi-node-type.yaml")
@@ -71,8 +80,7 @@ class AutoscalingConfigTest(unittest.TestCase):
             self.fail("Config did not pass validation test!")
 
     @pytest.mark.skipif(
-        sys.platform.startswith("win"),
-        reason="TODO(ameer): fails on Windows.")
+        sys.platform.startswith("win"), reason="Fails on Windows.")
     def testValidateDefaultConfigAWSMultiNodeTypes(self):
         aws_config_path = os.path.join(
             RAY_PATH, "autoscaler/aws/example-multi-node-type.yaml")

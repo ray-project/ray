@@ -35,7 +35,7 @@ RAY_CONFIG(int64_t, ray_cookie, 0x5241590000000000)
 RAY_CONFIG(int64_t, handler_warning_timeout_ms, 1000)
 
 /// The duration between heartbeats sent by the raylets.
-RAY_CONFIG(int64_t, raylet_heartbeat_timeout_milliseconds, 100)
+RAY_CONFIG(int64_t, raylet_heartbeat_period_milliseconds, 100)
 /// If a component has not sent a heartbeat in the last num_heartbeats_timeout
 /// heartbeat intervals, the raylet monitor process will report
 /// it as dead to the db_client table.
@@ -93,7 +93,7 @@ RAY_CONFIG(bool, record_ref_creation_sites, true)
 /// serialized, then either passed as an argument or returned from a task.
 /// NOTE(swang): The timer is checked by the raylet during every heartbeat, so
 /// this should be set to a value larger than
-/// raylet_heartbeat_timeout_milliseconds.
+/// raylet_heartbeat_period_milliseconds.
 RAY_CONFIG(int64_t, free_objects_period_milliseconds, 1000)
 
 /// If object_pinning_enabled is on, then objects that have been unpinned are

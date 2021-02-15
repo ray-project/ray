@@ -51,7 +51,7 @@ class TestMARWIL(unittest.TestCase):
         min_reward = 70.0
 
         # Test for all frameworks.
-        for _ in framework_iterator(config):
+        for _ in framework_iterator(config, frameworks=("tf", "torch")):
             trainer = marwil.MARWILTrainer(config=config, env="CartPole-v0")
             learnt = False
             for i in range(num_iterations):

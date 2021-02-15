@@ -116,8 +116,6 @@ void NodeManager::FillResourceUsage(std::shared_ptr<rpc::ResourcesData> resource
       (*resources_data->mutable_resource_load())[resource_pair.first] =
           resource_pair.second;
     }
-    last_heartbeat_resources->SetLoadResources(
-        ResourceSet(local_resources.GetLoadResources()));
   }
 
   // Add resource load by shape. This will be used by the new autoscaler.

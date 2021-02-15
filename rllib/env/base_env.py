@@ -5,8 +5,8 @@ from ray.rllib.env.external_multi_agent_env import ExternalMultiAgentEnv
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.env.vector_env import VectorEnv
 from ray.rllib.utils.annotations import override, PublicAPI
-from ray.rllib.utils.typing import EnvType, MultiEnvDict, EnvID, \
-    AgentID, MultiAgentDict
+from ray.rllib.utils.typing import AgentID, EnvID, EnvType, MultiAgentDict, \
+    MultiEnvDict, PartialTrainerConfigDict
 
 if TYPE_CHECKING:
     from ray.rllib.models.preprocessors import Preprocessor
@@ -80,11 +80,14 @@ class BaseEnv:
     """
 
     @staticmethod
-    def to_base_env(env: EnvType,
-                    make_env: Callable[[int], EnvType] = None,
-                    num_envs: int = 1,
-                    remote_envs: bool = False,
-                    remote_env_batch_wait_ms: int = 0) -> "BaseEnv":
+    def to_base_env(
+            env: EnvType,
+            make_env: Callable[[int], EnvType] = None,
+            num_envs: int = 1,
+            remote_envs: bool = False,
+            remote_env_batch_wait_ms: int = 0,
+            policy_config: PartialTrainerConfigDict = None,
+    ) -> "BaseEnv":
         """Wraps any env type as needed to expose the async interface."""
 
         from ray.rllib.env.remote_vector_env import RemoteVectorEnv
@@ -129,7 +132,9 @@ class BaseEnv:
                         existing_envs=[env],
                         num_envs=num_envs,
                         action_space=env.action_space,
-                        observation_space=env.observation_space)
+                        observation_space=env.observation_space,
+                        policy_config=policy_config,
+                    )
                     env = _VectorEnvToBaseEnv(env)
         assert isinstance(env, BaseEnv), env
         return env
@@ -204,6 +209,18 @@ class BaseEnv:
         for env in self.get_unwrapped():
             if hasattr(env, "close"):
                 env.close()
+
+    # Experimental method.
+    def try_render(self, env_id: Optional[EnvID] = None) -> None:
+        """Tries to render the environment.
+
+        Args:
+            env_id (Optional[int]): The sub-env ID if applicable. If None,
+                renders the entire Env (i.e. all sub-envs).
+        """
+
+        # By default, do nothing.
+        pass
 
 
 # Fixed agent identifier when there is only the single agent in the env
@@ -346,13 +363,18 @@ class _VectorEnvToBaseEnv(BaseEnv):
             self.vector_env.vector_step(action_vector)
 
     @override(BaseEnv)
-    def try_reset(self,
-                  env_id: Optional[EnvID] = None) -> Optional[MultiAgentDict]:
+    def try_reset(self, env_id: Optional[EnvID] = None) -> MultiAgentDict:
+        assert env_id is None or isinstance(env_id, int)
         return {_DUMMY_AGENT_ID: self.vector_env.reset_at(env_id)}
 
     @override(BaseEnv)
     def get_unwrapped(self) -> List[EnvType]:
         return self.vector_env.get_unwrapped()
+
+    @override(BaseEnv)
+    def try_render(self, env_id: Optional[EnvID] = None) -> None:
+        assert env_id is None or isinstance(env_id, int)
+        return self.vector_env.try_render_at(env_id)
 
 
 class _MultiAgentEnvToBaseEnv(BaseEnv):

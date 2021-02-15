@@ -1,8 +1,9 @@
 from collections import Counter
-import os
 import sys
 import time
 import ray
+
+# Run this script on the Ray head node using kubectl exec.
 
 
 @ray.remote
@@ -16,7 +17,9 @@ def gethostname(x):
 def wait_for_nodes(expected):
     # Wait for all nodes to join the cluster.
     while True:
-        num_nodes = len(ray.nodes())
+        resources = ray.cluster_resources()
+        node_keys = [key for key in resources if "node" in key]
+        num_nodes = sum(resources[node_key] for node_key in node_keys)
         if num_nodes < expected:
             print("{} nodes have joined so far, waiting for {} more.".format(
                 num_nodes, expected - num_nodes))
@@ -27,7 +30,7 @@ def wait_for_nodes(expected):
 
 
 def main():
-    wait_for_nodes(4)
+    wait_for_nodes(3)
 
     # Check that objects can be transferred from each node to each other node.
     for i in range(10):
@@ -43,13 +46,5 @@ def main():
 
 
 if __name__ == "__main__":
-    # NOTE: If you know you're running this on the head node, you can just
-    # use "localhost" here.
-    # redis_host = "localhost"
-    if ("RAY_HEAD_SERVICE_HOST" not in os.environ
-            or os.environ["RAY_HEAD_SERVICE_HOST"] == ""):
-        raise ValueError("RAY_HEAD_SERVICE_HOST environment variable empty."
-                         "Is there a ray cluster running?")
-    redis_host = os.environ["RAY_HEAD_SERVICE_HOST"]
-    ray.init(address=redis_host + ":6379")
+    ray.init(address="auto")
     main()

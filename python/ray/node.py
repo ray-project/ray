@@ -11,6 +11,7 @@ import socket
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 
 from typing import Optional, Dict
@@ -91,6 +92,7 @@ class Node:
         self.kernel_fate_share = bool(
             spawn_reaper and ray.utils.detect_fate_sharing_support())
         self.all_processes = {}
+        self.removal_lock = threading.Lock()
 
         # Try to get node IP address with the parameters.
         if ray_params.node_ip_address:
@@ -166,6 +168,11 @@ class Node:
             self.session_name = ray.utils.decode(session_name)
 
         self._init_temp(redis_client)
+
+        # If it is a head node, try validating if
+        # external storage is configurable.
+        if head:
+            self.validate_external_storage()
 
         if connect_only:
             # Get socket names from the configuration.
@@ -918,6 +925,23 @@ class Node:
                 2. The process had been started in valgrind and had a non-zero
                    exit code.
         """
+
+        # Ensure thread safety
+        with self.removal_lock:
+            self._kill_process_impl(
+                process_type,
+                allow_graceful=allow_graceful,
+                check_alive=check_alive,
+                wait=wait)
+
+    def _kill_process_impl(self,
+                           process_type,
+                           allow_graceful=False,
+                           check_alive=True,
+                           wait=False):
+        """See `_kill_process_type`."""
+        if process_type not in self.all_processes:
+            return
         process_infos = self.all_processes[process_type]
         if process_type != ray_constants.PROCESS_TYPE_REDIS_SERVER:
             assert len(process_infos) == 1
@@ -1164,3 +1188,44 @@ class Node:
             storage = external_storage.setup_external_storage(
                 object_spilling_config)
             storage.destroy_external_storage()
+
+    def validate_external_storage(self):
+        """Make sure we can setup the object spilling external storage.
+        This will also fill up the default setting for object spilling
+        if not specified.
+        """
+        object_spilling_config = self._config.get("object_spilling_config", {})
+        automatic_spilling_enabled = self._config.get(
+            "automatic_object_spilling_enabled", True)
+        if not automatic_spilling_enabled:
+            return
+
+        # If the config is not specified, we fill up the default.
+        if not object_spilling_config:
+            object_spilling_config = json.dumps({
+                "type": "filesystem",
+                "params": {
+                    "directory_path": self._session_dir
+                }
+            })
+
+        # Try setting up the storage.
+        # Configure the proper system config.
+        # We need to set both ray param's system config and self._config
+        # because they could've been diverged at this point.
+        deserialized_config = json.loads(object_spilling_config)
+        self._ray_params._system_config["object_spilling_config"] = (
+            object_spilling_config)
+        self._config["object_spilling_config"] = object_spilling_config
+
+        is_external_storage_type_fs = (
+            deserialized_config["type"] == "filesystem")
+        self._ray_params._system_config["is_external_storage_type_fs"] = (
+            is_external_storage_type_fs)
+        self._config["is_external_storage_type_fs"] = (
+            is_external_storage_type_fs)
+
+        # Validate external storage usage.
+        from ray import external_storage
+        external_storage.setup_external_storage(deserialized_config)
+        external_storage.reset_external_storage()

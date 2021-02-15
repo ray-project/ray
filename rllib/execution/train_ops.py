@@ -5,7 +5,8 @@ import math
 from typing import List, Tuple, Any
 
 import ray
-from ray.rllib.evaluation.metrics import get_learner_stats, LEARNER_STATS_KEY
+from ray.rllib.evaluation.metrics import extract_stats, get_learner_stats, \
+    LEARNER_STATS_KEY
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.common import \
     STEPS_SAMPLED_COUNTER, STEPS_TRAINED_COUNTER, LEARNER_INFO, \
@@ -58,18 +59,25 @@ class TrainOneStep:
         learn_timer = metrics.timers[LEARN_ON_BATCH_TIMER]
         with learn_timer:
             if self.num_sgd_iter > 1 or self.sgd_minibatch_size > 0:
-                w = self.workers.local_worker()
+                lw = self.workers.local_worker()
                 info = do_minibatch_sgd(
-                    batch, {p: w.get_policy(p)
-                            for p in self.policies}, w, self.num_sgd_iter,
+                    batch, {pid: lw.get_policy(pid)
+                            for pid in self.policies}, lw, self.num_sgd_iter,
                     self.sgd_minibatch_size, [])
                 # TODO(ekl) shouldn't be returning learner stats directly here
+                # TODO(sven): Skips `custom_metrics` key from on_learn_on_batch
+                #  callback (shouldn't).
                 metrics.info[LEARNER_INFO] = info
             else:
                 info = self.workers.local_worker().learn_on_batch(batch)
-                metrics.info[LEARNER_INFO] = get_learner_stats(info)
+                metrics.info[LEARNER_INFO] = extract_stats(
+                    info, LEARNER_STATS_KEY)
+                metrics.info["custom_metrics"] = extract_stats(
+                    info, "custom_metrics")
             learn_timer.push_units_processed(batch.count)
         metrics.counters[STEPS_TRAINED_COUNTER] += batch.count
+        # Update weights - after learning on the local worker - on all remote
+        # workers.
         if self.workers.remote_workers():
             with metrics.timers[WORKER_UPDATE_TIMER]:
                 weights = ray.put(self.workers.local_worker().get_weights(

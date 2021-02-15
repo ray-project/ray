@@ -96,7 +96,7 @@ public class RunManager {
    *
    * @param command The command to start the process with.
    */
-  private static String runCommand(List<String> command) throws IOException, InterruptedException {
+  public static String runCommand(List<String> command) throws IOException, InterruptedException {
     if (LOGGER.isDebugEnabled()) {
       LOGGER.debug("Starting process with command: {}", Joiner.on(" ").join(command));
     }
