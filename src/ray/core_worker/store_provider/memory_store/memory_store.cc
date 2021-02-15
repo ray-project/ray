@@ -93,7 +93,6 @@ void GetRequest::Set(const ObjectID &object_id, std::shared_ptr<RayObject> objec
   if (is_ready_) {
     return;  // We have already hit the number of objects to return limit.
   }
-  object->SetAccessed();
   objects_.emplace(object_id, object);
   if (objects_.size() == num_objects_ ||
       (abort_if_any_object_is_exception_ && object->IsException() &&
@@ -107,7 +106,6 @@ std::shared_ptr<RayObject> GetRequest::Get(const ObjectID &object_id) const {
   std::unique_lock<std::mutex> lock(mutex_);
   auto iter = objects_.find(object_id);
   if (iter != objects_.end()) {
-    iter->second->SetAccessed();
     return iter->second;
   }
 
@@ -118,13 +116,11 @@ CoreWorkerMemoryStore::CoreWorkerMemoryStore(
     std::function<void(const RayObject &, const ObjectID &)> store_in_plasma,
     std::shared_ptr<ReferenceCounter> counter,
     std::shared_ptr<raylet::RayletClient> raylet_client,
-    std::function<Status()> check_signals,
-    std::function<void(const RayObject &)> unhandled_exception_handler)
+    std::function<Status()> check_signals)
     : store_in_plasma_(store_in_plasma),
       ref_counter_(counter),
       raylet_client_(raylet_client),
-      check_signals_(check_signals),
-      unhandled_exception_handler_(unhandled_exception_handler) {}
+      check_signals_(check_signals) {}
 
 void CoreWorkerMemoryStore::GetAsync(
     const ObjectID &object_id, std::function<void(std::shared_ptr<RayObject>)> callback) {
@@ -140,7 +136,6 @@ void CoreWorkerMemoryStore::GetAsync(
   }
   // It's important for performance to run the callback outside the lock.
   if (ptr != nullptr) {
-    ptr->SetAccessed();
     callback(ptr);
   }
 }
@@ -151,7 +146,6 @@ std::shared_ptr<RayObject> CoreWorkerMemoryStore::GetOrPromoteToPlasma(
   auto iter = objects_.find(object_id);
   if (iter != objects_.end()) {
     auto obj = iter->second;
-    obj->SetAccessed();
     if (obj->IsInPlasmaError()) {
       return nullptr;
     }
@@ -216,8 +210,6 @@ bool CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &object_
     if (should_add_entry) {
       // If there is no existing get request, then add the `RayObject` to map.
       objects_.emplace(object_id, object_entry);
-    } else {
-      OnErase(object_entry);
     }
   }
 
@@ -231,7 +223,6 @@ bool CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &object_
 
   // It's important for performance to run the callbacks outside the lock.
   for (const auto &cb : async_callbacks) {
-    object_entry->SetAccessed();
     cb(object_entry);
   }
 
@@ -266,7 +257,6 @@ Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
       const auto &object_id = object_ids[i];
       auto iter = objects_.find(object_id);
       if (iter != objects_.end()) {
-        iter->second->SetAccessed();
         (*results)[i] = iter->second;
         if (remove_after_get) {
           // Note that we cannot remove the object_id from `objects_` now,
@@ -436,7 +426,6 @@ void CoreWorkerMemoryStore::Delete(const absl::flat_hash_set<ObjectID> &object_i
       if (it->second->IsInPlasmaError()) {
         plasma_ids_to_delete->insert(object_id);
       } else {
-        OnErase(it->second);
         objects_.erase(it);
       }
     }
@@ -446,11 +435,7 @@ void CoreWorkerMemoryStore::Delete(const absl::flat_hash_set<ObjectID> &object_i
 void CoreWorkerMemoryStore::Delete(const std::vector<ObjectID> &object_ids) {
   absl::MutexLock lock(&mu_);
   for (const auto &object_id : object_ids) {
-    auto it = objects_.find(object_id);
-    if (it != objects_.end()) {
-      OnErase(it->second);
-      objects_.erase(it);
-    }
+    objects_.erase(object_id);
   }
 }
 
@@ -464,14 +449,6 @@ bool CoreWorkerMemoryStore::Contains(const ObjectID &object_id, bool *in_plasma)
     return true;
   }
   return false;
-}
-
-void CoreWorkerMemoryStore::OnErase(std::shared_ptr<RayObject> obj) {
-  // TODO(ekl) note that this doesn't warn on errors that are stored in plasma.
-  if (obj->IsException() && !obj->IsInPlasmaError() && !obj->WasAccessed() &&
-      unhandled_exception_handler_ != nullptr) {
-    unhandled_exception_handler_(*obj);
-  }
 }
 
 MemoryStoreStats CoreWorkerMemoryStore::GetMemoryStoreStatisticalData() {
