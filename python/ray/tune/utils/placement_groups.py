@@ -322,6 +322,7 @@ class PlacementGroupManager:
         Moves ready placement groups from `self._staging` to
         `self._ready`.
         """
+        self.cleanup()
         ready = True
         while ready:
             # Use a loop as `ready` might return futures one by one
