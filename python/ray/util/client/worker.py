@@ -205,8 +205,9 @@ class Worker:
                 "do this, you can wrap the ObjectRef in a list and "
                 "call 'put' on it (or return it).")
         data = dumps_from_client(val, self._client_id)
-        send_ref_id = client_ref_id if client_ref_id is not None else b""
-        req = ray_client_pb2.PutRequest(data=data, client_ref_id=send_ref_id)
+        req = ray_client_pb2.PutRequest(data=data)
+        if client_ref_id is not None:
+            req.client_ref_id = client_ref_id
         resp = self.data_client.PutObject(req)
         return ClientObjectRef(resp.id)
 

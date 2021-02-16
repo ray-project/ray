@@ -137,7 +137,8 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             return
         count = len(self.object_refs[client_id])
         del self.object_refs[client_id]
-        del self.client_side_ref_map[client_id]
+        if client_id in self.client_side_ref_map:
+            del self.client_side_ref_map[client_id]
         logger.debug(f"Released all {count} objects for client {client_id}")
 
     def _release_actors(self, client_id):

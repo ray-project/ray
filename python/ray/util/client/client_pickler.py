@@ -89,10 +89,6 @@ class ClientPickler(cloudpickle.CloudPickler):
                 baseline_options=None,
             )
         elif isinstance(obj, ClientRemoteFunc):
-            # TODO(barakmich): This is going to have trouble with mutually
-            # recursive functions that haven't, as yet, been executed. It's
-            # relatively doable (keep track of intermediate refs in progress
-            # with ensure_ref and return appropriately) But punting for now.
             if obj._ref is None:
                 obj._ensure_ref()
             if type(obj._ref) == InProgressSentinel:
@@ -111,7 +107,6 @@ class ClientPickler(cloudpickle.CloudPickler):
                 baseline_options=obj._options,
             )
         elif isinstance(obj, ClientActorClass):
-            # TODO(barakmich): Mutual recursion, as above.
             if obj._ref is None:
                 obj._ensure_ref()
             if type(obj._ref) == InProgressSentinel:

@@ -132,6 +132,7 @@ class ClientActorClass(ClientStub):
 
     def __init__(self, actor_cls, options=None):
         self.actor_cls = actor_cls
+        self._lock = threading.Lock()
         self._name = actor_cls.__name__
         self._ref = None
         self._client_side_ref = ClientSideRefID.generate_id()
@@ -142,13 +143,14 @@ class ClientActorClass(ClientStub):
                         "Use {self._name}.remote() instead")
 
     def _ensure_ref(self):
-        if self._ref is None:
-            # As before, set the state of the reference to be an
-            # in-progress self reference value, which
-            # the encoding can detect and handle correctly.
-            self._ref = InProgressSentinel()
-            self._ref = ray.put(
-                self.actor_cls, client_ref_id=self._client_side_ref.id)
+        with self._lock:
+            if self._ref is None:
+                # As before, set the state of the reference to be an
+                # in-progress self reference value, which
+                # the encoding can detect and handle correctly.
+                self._ref = InProgressSentinel()
+                self._ref = ray.put(
+                    self.actor_cls, client_ref_id=self._client_side_ref.id)
 
     def remote(self, *args, **kwargs) -> "ClientActorHandle":
         # Actually instantiate the actor
