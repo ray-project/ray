@@ -255,6 +255,7 @@ def test_ray_options(shutdown_only):
     assert without_options != with_options
 
 
+@pytest.mark.skipif(client_test_enabled(), reason="internal api")
 @pytest.mark.parametrize(
     "ray_start_cluster_head", [{
         "num_cpus": 0,
