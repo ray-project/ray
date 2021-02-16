@@ -422,14 +422,13 @@ class SSHCommandRunner(CommandRunnerInterface):
             # In the future we could update the new logic to support
             # capturing output, but it is probably not needed.
             if with_output:
-                return self.process_runner.check_output(final_cmd)
+                return self.process_runner.check_call(final_cmd)
             else:
                 return run_cmd_redirected(
                     final_cmd,
                     process_runner=self.process_runner,
                     silent=silent,
                     use_login_shells=is_using_login_shells())
-                return self.process_runner.check_call(final_cmd)
         except subprocess.CalledProcessError as e:
             joined_cmd = " ".join(final_cmd)
             if not is_using_login_shells():
