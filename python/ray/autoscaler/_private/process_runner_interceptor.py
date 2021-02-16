@@ -1,4 +1,5 @@
 import subprocess
+import sys
 
 
 class ProcessRunnerInterceptor:
@@ -23,7 +24,7 @@ class ProcessRunnerInterceptor:
         # Poor man's `tee`
         # TODO (Alex): We're currently abusing check_output by trying to print
         # its output and parse it at the same time.
-        print(output, file=self.stream)
+        self.stream.write(output)
         return output
 
     def check_call(self, *args, **kwargs):
