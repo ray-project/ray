@@ -122,7 +122,7 @@ def test_ssh_command_runner():
     ]
 
     # Much easier to debug this loop than the function call.
-    for x, y in zip(process_runner.calls[0], expected):
+    for x, y in zip(process_runner.calls[0][0], expected):
         assert x == y
     process_runner.assert_has_call("1.2.3.4", exact=expected)
 
@@ -159,7 +159,7 @@ def test_kubernetes_command_runner():
         """\'true && source ~/.bashrc && export OMP_NUM_THREADS=1 PYTHONWARNINGS=ignore && (export var1=\'"\'"\'"quote between this \\" and this"\'"\'"\';export var2=\'"\'"\'"123"\'"\'"\';echo helloo)\'"""  # noqa: E501
     ]
 
-    assert process_runner.calls[0] == " ".join(expected)
+    assert process_runner.calls[0][0] == " ".join(expected)
 
     logger = logging.getLogger("ray.autoscaler._private.command_runner")
     with pytest.raises(SystemExit) as pytest_wrapped_e, patch.object(
@@ -214,7 +214,7 @@ def test_docker_command_runner():
         "bash", "--login", "-c", "-i", cmd
     ]
     # Much easier to debug this loop than the function call.
-    for x, y in zip(process_runner.calls[0], expected):
+    for x, y in zip(process_runner.calls[0][0], expected):
         print(f"expeted:\t{y}")
         print(f"actual: \t{x}")
         assert x == y
