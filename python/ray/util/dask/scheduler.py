@@ -3,6 +3,7 @@ from collections import defaultdict
 from multiprocessing.pool import ThreadPool
 from dataclasses import dataclass
 import threading
+import logging
 
 import ray
 
@@ -18,6 +19,8 @@ main_thread = threading.current_thread()
 default_pool = None
 pools = defaultdict(dict)
 pools_lock = threading.Lock()
+
+logger = logging.getLogger(__name__)
 
 
 def ray_dask_get(dsk, keys, **kwargs):
@@ -150,7 +153,9 @@ def _apply_async_wrapper(apply_async, real_func, *extra_args, **extra_kwargs):
         pass `real_func` in its place. To be passed to `dask.local.get_async`.
     """
 
-    def wrapper(func, args=(), kwds={}, callback=None):  # noqa: M511
+    def wrapper(func, args=(), kwds=None, callback=None):  # noqa: M511
+        if not kwds:
+            kwds = {}
         return apply_async(
             real_func,
             args=args + extra_args,
@@ -337,7 +342,18 @@ def dask_task_wrapper(func, repack, key, ray_pretask_cbs, ray_posttask_cbs,
     # Recursively execute Dask-inlined tasks.
     actual_args = [_execute_task(a, repacked_deps) for a in repacked_args]
     # Execute the actual underlying Dask task.
-    result = func(*actual_args)
+    try:
+        result = func(*actual_args)
+    except Exception as e:
+        print("\n")
+        print(f"type: {type(func)}")
+        print(f"args: {actual_args}")
+        print(f"func: {func}")
+        print(repacked_args)
+        print(repacked_deps)
+        logger.exception(e)
+        print('\n')
+        raise e
     if ray_posttask_cbs is not None:
         for cb, pre_state in zip(ray_posttask_cbs, pre_states):
             if cb is not None:
