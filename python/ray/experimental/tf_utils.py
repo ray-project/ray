@@ -1,5 +1,4 @@
 from collections import deque, OrderedDict
-import difflib
 import numpy as np
 
 from ray.rllib.utils import force_list
@@ -193,18 +192,34 @@ class TensorFlowVariables:
         """
 
         assigned = []
-        assignable = set(self.assignment_nodes.keys())
         feed_dict = {}
+        assignable = set(self.assignment_nodes.keys())
+
+        def nb_common_elem(l1, l2):
+            return len([e for e in l1 if e in l2])
+
+        def assign(name, value):
+            feed_dict[self.placeholders[name]] = value
+            assigned.append(name)
+            assignable.remove(name)
+
         for name, value in weights.items():
-            close_names = difflib.get_close_matches(name,
-                                                    assignable,
-                                                    n=1,
-                                                    cutoff=0.6)
-            if close_names:
-                c_name = close_names[0]
-                if value.shape == self.assignment_nodes[c_name].shape:
-                    feed_dict[self.placeholders[c_name]] = value
-                    assigned.append(c_name)
+            if name in assignable:
+                assign(name, value)
+            else:
+                s_name = name.split("/")
+                common = {
+                    var: nb_common_elem(s_name, var.split("/"))
+                    for var in assignable
+                }
+                select = [
+                    close_var for close_var, cn in sorted(common.items(),
+                                                          key=lambda i: -i[1])
+                    if cn > 0
+                    and value.shape == self.assignment_nodes[close_var].shape
+                ]
+                if select:
+                    assign(select[0], value)
 
         assert assigned, \
             "No variables in the input matched those in the network. " \
