@@ -506,10 +506,14 @@ void LocalObjectManager::FillObjectSpillingStats(rpc::GetNodeStatsReply *reply) 
 }
 
 void LocalObjectManager::RecordObjectSpillingStats() const {
-  stats::SpillingBandwidthMB.Record(spilled_bytes_total_ / 1024 / 1024 /
-                                    spill_time_total_s_);
-  stats::RestoringBandwidthMB.Record(restored_bytes_total_ / 1024 / 1024 /
-                                     restored_bytes_total_);
+  if (spilled_bytes_total_ != 0 && spill_time_total_s_ != 0) {
+    stats::SpillingBandwidthMB.Record(spilled_bytes_total_ / 1024 / 1024 /
+                                      spill_time_total_s_);
+  }
+  if (restored_bytes_total_ != 0 && restore_time_total_s_ != 0) {
+    stats::RestoringBandwidthMB.Record(restored_bytes_total_ / 1024 / 1024 /
+                                       restore_time_total_s_);
+  }
 }
 
 std::string LocalObjectManager::DebugString() const {
