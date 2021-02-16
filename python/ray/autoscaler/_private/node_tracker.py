@@ -5,6 +5,7 @@ from ray.autoscaler._private.process_runner_interceptor \
     import ProcessRunnerInterceptor
 from ray.autoscaler._private import constants
 
+
 class NodeTracker:
     """Map nodes to their corresponding logs.
 
@@ -30,7 +31,7 @@ class NodeTracker:
         self.lru_order = []
 
     def _add_node_mapping(self, node_id, value):
-        if node_id in node_mapping:
+        if node_id in self.node_mapping:
             return
 
         assert len(self.lru_order) == len(self.node_mapping)
@@ -55,8 +56,8 @@ class NodeTracker:
                 process_runner = ProcessRunnerInterceptor(
                     stdout_obj, process_runner=self.process_runner)
 
-            self._add_node_mapping(node_id, (ip, node_type, stdout_path,
-                                          process_runner))
+            self._add_node_mapping(
+                node_id, (ip, node_type, stdout_path, process_runner))
 
         _, _, _, process_runner = self.node_mapping[node_id]
         return process_runner
