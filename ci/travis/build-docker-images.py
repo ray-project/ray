@@ -32,11 +32,13 @@ PY_MATRIX = {"-py36": "3.6.12", "-py37": "3.7.7", "-py38": "3.8.5"}
 
 
 def _merge_build():
-    return os.environ.get("TRAVIS_PULL_REQUEST").lower() == "false"
+    return (os.environ.get("TRAVIS_PULL_REQUEST").lower() == "false"
+            or os.os.environ.get("BUILDKITE_PULL_REQUEST").lower() == "false")
 
 
 def _release_build():
-    branch = os.environ.get("TRAVIS_BRANCH")
+    branch = os.environ.get("TRAVIS_BRANCH",
+                            os.environ.get("BUILDKITE_BRANCH"))
     if not branch:
         print("Branch not found!")
         print(os.environ)
@@ -346,7 +348,7 @@ if __name__ == "__main__":
         else:
             PY_MATRIX.pop("-py37")
     print("Building the following python versions: ", PY_MATRIX)
-    if os.environ.get("TRAVIS") == "true":
+    if os.environ.get("TRAVIS") == "true" or os.environ.get("BUILDKITE"):
         is_docker_affected = _docker_affected()
         if _merge_build() or is_docker_affected:
             DOCKER_CLIENT = docker.from_env()
