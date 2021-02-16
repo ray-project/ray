@@ -839,7 +839,7 @@ class NodeTracker:
         if node_id not in self.node_mapping:
             stdout_name = f"{node_id}.out"
             stdout_path = os.path.join(self.log_dir, stdout_name)
-            stdout_obj = open(stdout_path, "a")
+            stdout_obj = open(stdout_path, "ab")
             process_runner = ProcessRunnerInterceptor(
                 stdout_obj, process_runner=self.process_runner)
             self.node_mapping[node_id] = (ip, node_type, stdout_path,
