@@ -39,7 +39,7 @@ dive.
 .. _serve-model-composition:
 
 Model Composition
-================
+=================
 
 Ray Serve supports composing individually scalable models into a single model
 out of the box. For instance, you can combine multiple models to perform
