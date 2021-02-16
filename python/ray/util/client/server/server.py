@@ -24,7 +24,7 @@ from ray.util.client.server.server_pickler import dumps_from_server
 from ray.util.client.server.server_pickler import loads_from_client
 from ray.util.client.server.dataservicer import DataServicer
 from ray.util.client.server.logservicer import LogstreamServicer
-from ray.util.client.server.server_stubs import current_server
+from ray.util.client.server.server_stubs import current_remote
 from ray._private.client_mode_hook import disable_client_hook
 
 logger = logging.getLogger(__name__)
@@ -32,16 +32,13 @@ logger = logging.getLogger(__name__)
 
 class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
     def __init__(self):
-        # Stores client_id -> (ref_id -> ObjectRef)
         self.object_refs: Dict[str, Dict[bytes, ray.ObjectRef]] = defaultdict(
-            dict)
-        # Stores client_id -> (client_ref_id -> ref_id (in self.object_refs))
-        self.client_side_ref_map: Dict[str, Dict[bytes, bytes]] = defaultdict(
             dict)
         self.function_refs = {}
         self.actor_refs: Dict[bytes, ray.ActorHandle] = {}
         self.actor_owners: Dict[str, Set[bytes]] = defaultdict(set)
         self.registered_actor_classes = {}
+        self._current_function_stub = None
 
     def KVPut(self, request, context=None) -> ray_client_pb2.KVPutResponse:
         with disable_client_hook():
@@ -138,8 +135,6 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             return
         count = len(self.object_refs[client_id])
         del self.object_refs[client_id]
-        if client_id in self.client_side_ref_map:
-            del self.client_side_ref_map[client_id]
         logger.debug(f"Released all {count} objects for client {client_id}")
 
     def _release_actors(self, client_id):
@@ -216,9 +211,6 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         with disable_client_hook():
             objectref = ray.put(obj)
         self.object_refs[client_id][objectref.binary()] = objectref
-        if len(request.client_ref_id) > 0:
-            self.client_side_ref_map[client_id][
-                request.client_ref_id] = objectref.binary()
         logger.debug("put: %s" % objectref)
         return ray_client_pb2.PutResponse(id=objectref.binary())
 
@@ -309,7 +301,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         opts = decode_options(task.options)
         if opts is not None:
             remote_class = remote_class.options(**opts)
-        with current_server(self):
+        with current_remote(remote_class):
             actor = remote_class.remote(*arglist, **kwargs)
         self.actor_refs[actor._actor_id.binary()] = actor
         self.actor_owners[task.client_id].add(actor._actor_id.binary())
@@ -325,7 +317,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         opts = decode_options(task.options)
         if opts is not None:
             remote_func = remote_func.options(**opts)
-        with current_server(self):
+        with current_remote(remote_func):
             output = remote_func.remote(*arglist, **kwargs)
         ids = self.unify_and_track_outputs(output, task.client_id)
         return ray_client_pb2.ClientTaskTicket(return_ids=ids)
