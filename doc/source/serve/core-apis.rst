@@ -183,8 +183,6 @@ If you *do* want to enable this parallelism in your Serve backend, just set OMP_
   For example, if you're using OpenCV, you'll need to manually set the number of threads using ``cv2.setNumThreads(num_threads)`` (set to 0 to disable multi-threading).
   You can check the configuration using ``cv2.getNumThreads()`` and ``cv2.getNumberOfCPUs()``.
 
-.. _serve-batching:
-
 Batching to Improve Performance
 -------------------------------
 
