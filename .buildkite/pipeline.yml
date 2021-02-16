@@ -8,8 +8,10 @@
   commands:
     - export BUILDKITE_JOB_ID=$BUILDKITE_JOB_ID
     - pip install -q docker aws_requests_auth boto3
-    - LINUX_WHEELS=1 LINUX_JARS=1 DOCKER_BUILD_PY37=1 RAY_INSTALL_JAVA=1 ./ci/travis/ci.sh build
-    - python .buildkite/copy_files --destination wheels --path ./.whl/ray-2.0.0.dev0-cp36-cp36m-manylinux2014_x86_64.whl
+    # - LINUX_WHEELS=1 LINUX_JARS=1 DOCKER_BUILD_PY37=1 RAY_INSTALL_JAVA=1 ./ci/travis/ci.sh build
+    - touch testing.whl
+    # - python .buildkite/copy_files --destination wheels --path ./.whl/ray-2.0.0.dev0-cp36-cp36m-manylinux2014_x86_64.whl
+    - python .buildkite/copy_files --destination wheels --path ./testing.whl
     # - python ./ci/travis/build-docker-images.py PY37
     # - bash ./java/build-jar-multiplatform.sh linux
 
