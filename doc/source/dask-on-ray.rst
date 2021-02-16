@@ -71,7 +71,7 @@ Here's an example:
 Why use Dask on Ray?
 
 1. To take advantage of Ray-specific features such as the
-      :ref:`cluster launcher <ref-automatic-cluster>` and
+      :ref:`launching cloud clusters <cluster-cloud>` and
       :ref:`shared-memory store <memory>`.
 2. If you'd like to use Dask and Ray libraries in the same application without having two different clusters.
 3. If you'd like to create data analyses using the familiar NumPy and Pandas APIs provided by Dask and execute them on a fast, fault-tolerant distributed task execution system geared towards production, like Ray.

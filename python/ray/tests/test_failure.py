@@ -20,6 +20,52 @@ from ray.test_utils import (wait_for_condition, SignalActor, init_error_pubsub,
                             get_error_message, Semaphore)
 
 
+def test_unhandled_errors(ray_start_regular):
+    @ray.remote
+    def f():
+        raise ValueError()
+
+    @ray.remote
+    class Actor:
+        def f(self):
+            raise ValueError()
+
+    a = Actor.remote()
+    num_exceptions = 0
+
+    def interceptor(e):
+        nonlocal num_exceptions
+        num_exceptions += 1
+
+    # Test we report unhandled exceptions.
+    ray.worker._unhandled_error_handler = interceptor
+    x1 = f.remote()
+    x2 = a.f.remote()
+    del x1
+    del x2
+    wait_for_condition(lambda: num_exceptions == 2)
+
+    # Test we don't report handled exceptions.
+    x1 = f.remote()
+    x2 = a.f.remote()
+    with pytest.raises(ray.exceptions.RayError) as err:  # noqa
+        ray.get([x1, x2])
+    del x1
+    del x2
+    time.sleep(1)
+    assert num_exceptions == 2, num_exceptions
+
+    # Test suppression with env var works.
+    try:
+        os.environ["RAY_IGNORE_UNHANDLED_ERRORS"] = "1"
+        x1 = f.remote()
+        del x1
+        time.sleep(1)
+        assert num_exceptions == 2, num_exceptions
+    finally:
+        del os.environ["RAY_IGNORE_UNHANDLED_ERRORS"]
+
+
 def test_failed_task(ray_start_regular, error_pubsub):
     @ray.remote
     def throw_exception_fct1():
@@ -1072,56 +1118,6 @@ def test_fill_object_store_exception(shutdown_only):
 
     with pytest.raises(ray.exceptions.ObjectStoreFullError):
         ray.put(np.zeros(10**8 + 2, dtype=np.uint8))
-
-
-def test_fill_object_store_lru_fallback(shutdown_only):
-    config = {
-        "free_objects_batch_size": 1,
-    }
-    ray.init(
-        num_cpus=2,
-        object_store_memory=10**8,
-        _lru_evict=True,
-        _system_config=config)
-
-    @ray.remote
-    def expensive_task():
-        return np.zeros((10**8) // 2, dtype=np.uint8)
-
-    # Check that objects out of scope are cleaned up quickly.
-    ray.get(expensive_task.remote())
-    start = time.time()
-    for _ in range(3):
-        ray.get(expensive_task.remote())
-    end = time.time()
-    assert end - start < 3
-
-    obj_refs = []
-    for _ in range(3):
-        obj_ref = expensive_task.remote()
-        ray.get(obj_ref)
-        obj_refs.append(obj_ref)
-
-    @ray.remote
-    class LargeMemoryActor:
-        def some_expensive_task(self):
-            return np.zeros(10**8 // 2, dtype=np.uint8)
-
-        def test(self):
-            return 1
-
-    actor = LargeMemoryActor.remote()
-    for _ in range(3):
-        obj_ref = actor.some_expensive_task.remote()
-        ray.get(obj_ref)
-        obj_refs.append(obj_ref)
-    # Make sure actor does not die
-    ray.get(actor.test.remote())
-
-    for _ in range(3):
-        obj_ref = ray.put(np.zeros(10**8 // 2, dtype=np.uint8))
-        ray.get(obj_ref)
-        obj_refs.append(obj_ref)
 
 
 @pytest.mark.parametrize(
