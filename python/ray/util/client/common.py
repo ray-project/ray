@@ -13,6 +13,16 @@ from typing import Dict
 from typing import Optional
 from typing import Union
 
+# TODO: Instead of just making the max message size large, the right thing to
+# do is to split up the bytes representation of serialized data into multiple
+# messages and reconstruct them on either end. That said, since clients are
+# drivers and really just feed initial things in and final results out, (when
+# not going to S3 or similar) then a large limit will suffice for many use
+# cases.
+#
+# Currently, this is 2GiB, the max for a signed int.
+GRPC_MAX_MESSAGE_SIZE = (2 * 1024 * 1024 * 1024) - 1
+
 
 class ClientBaseRef:
     def __init__(self, id: bytes):
