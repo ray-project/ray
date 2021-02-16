@@ -10,6 +10,7 @@ import ray  # noqa F401
 import psutil  # noqa E402
 
 from ray.rllib.execution.segment_tree import SumSegmentTree, MinSegmentTree
+from ray.rllib.policy.rnn_sequencing import timeslice_along_seq_lens_with_overlap
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch, \
     DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import DeveloperAPI
@@ -274,7 +275,9 @@ class LocalReplayBuffer(ParallelIteratorWorker):
                  prioritized_replay_beta: float = 0.4,
                  prioritized_replay_eps: float = 1e-6,
                  replay_mode: str = "independent",
-                 replay_sequence_length: int = 1):
+                 replay_sequence_length: int = 1,
+                 replay_burn_in: int = 0,
+                 replay_zero_init_states: bool = True):
         """Initializes a LocalReplayBuffer instance.
 
         Args:
@@ -301,6 +304,14 @@ class LocalReplayBuffer(ParallelIteratorWorker):
                 agents/policies equally.
             replay_sequence_length (int): The sequence length (T) of a single
                 sample. If > 1, we will sample B x T from this buffer.
+            replay_burn_in (int): The burn-in length in case
+                `replay_sequence_length` > 0. This is the number of timesteps
+                each sequence overlaps with the previous one to generate a better
+                internal state (=state after the burn-in), instead of starting
+                from 0.0 each RNN rollout.
+            replay_zero_init_states (bool): Whether the initial states in the buffer
+                (if replay_sequence_length > 0) are alwayas 0.0 or should be updated
+                with the previous train_batch state outputs.
         """
         self.replay_starts = learning_starts // num_shards
         self.buffer_size = buffer_size // num_shards
@@ -309,6 +320,8 @@ class LocalReplayBuffer(ParallelIteratorWorker):
         self.prioritized_replay_eps = prioritized_replay_eps
         self.replay_mode = replay_mode
         self.replay_sequence_length = replay_sequence_length
+        self.replay_burn_in = replay_burn_in
+        self.replay_zero_init_states = replay_zero_init_states
 
         if replay_sequence_length > 1:
             self.replay_batch_size = int(
@@ -368,21 +381,25 @@ class LocalReplayBuffer(ParallelIteratorWorker):
                 for s in batch.timeslices(self.replay_sequence_length):
                     self.replay_buffers[_ALL_POLICIES].add(s, weight=None)
             else:
-                for policy_id, b in batch.policy_batches.items():
+                for policy_id, sample_batch in batch.policy_batches.items():
                     if self.replay_sequence_length == 1:
-                        timeslices = b.timeslices(1)
+                        timeslices = sample_batch.timeslices(1)
                     else:
-                        timeslices = b.timeslices_along_seq_lens(
-                            zero_pad=self.replay_sequence_length)
-                    for s in timeslices:
+                        timeslices = timeslice_along_seq_lens_with_overlap(
+                            sample_batch=sample_batch,
+                            zero_pad_max_seq_len=self.replay_sequence_length,
+                            pre_overlap=self.replay_burn_in,
+                            zero_init_states=self.replay_zero_init_states,
+                        )
+                    for time_slice in timeslices:
                         # If SampleBatch has prio-replay weights, average
                         # over these to use as a weight for the entire
                         # sequence.
-                        if "weights" in s:
-                            weight = np.mean(s["weights"])
+                        if "weights" in time_slice:
+                            weight = np.mean(time_slice["weights"])
                         else:
                             weight = None
-                        self.replay_buffers[policy_id].add(s, weight=weight)
+                        self.replay_buffers[policy_id].add(time_slice, weight=weight)
         self.num_added += batch.count
 
     def replay(self) -> SampleBatchType:

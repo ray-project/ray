@@ -82,7 +82,7 @@ def r2d2_loss(policy: Policy, model, _,
     assert state_batches
 
     # Q-network evaluation.
-    q, q_logits, q_probs, state_out = compute_q_values(
+    q, _, _, _ = compute_q_values(
         policy,
         policy.q_model,
         train_batch,
@@ -91,11 +91,8 @@ def r2d2_loss(policy: Policy, model, _,
         explore=False,
         is_training=True)
 
-    B = state_batches[0].shape[0]
-    T = q.shape[0] // B
-
     # Target Q-network evaluation.
-    q_target, q_logits_target, q_probs_target, state_out_target = compute_q_values(
+    q_target, _, _, _ = compute_q_values(
         policy,
         policy.target_q_model,
         train_batch,
@@ -104,9 +101,27 @@ def r2d2_loss(policy: Policy, model, _,
         explore=False,
         is_training=True)
 
+    actions = train_batch[SampleBatch.ACTIONS].long()
+    dones = train_batch[SampleBatch.DONES].float()
+    rewards = train_batch[SampleBatch.REWARDS]
+    weights = train_batch[PRIO_WEIGHTS]
+
+    B = state_batches[0].shape[0]
+    T = q.shape[0] // B
+
+    # Clip away burn-in values.
+    #burn_in = policy.config["burn_in"]
+    #if burn_in > 0 and burn_in < T:
+    #    q = q[burn_in:]
+    #    q_target = q_target[burn_in:]
+    #    actions = actions[burn_in:]
+    #    dones = dones[burn_in:]
+    #    rewards = rewards[burn_in:]
+    #    weights = weights[burn_in:]
+    #    T -= burn_in
+
     # Q scores for actions which we know were selected in the given state.
-    one_hot_selection = F.one_hot(train_batch[SampleBatch.ACTIONS].long(),
-                                  policy.action_space.n)
+    one_hot_selection = F.one_hot(actions, policy.action_space.n)
     q_selected = torch.sum(
         torch.where(q > FLOAT_MIN, q, torch.tensor(0.0, device=policy.device))
         * one_hot_selection, 1)
@@ -114,7 +129,7 @@ def r2d2_loss(policy: Policy, model, _,
     #    q_logits * torch.unsqueeze(one_hot_selection, -1), 1)
 
     if config["double_q"]:
-        best_actions = torch.argmax(q, 1)
+        best_actions = torch.argmax(q, dim=1)
         best_actions_one_hot = F.one_hot(best_actions, policy.action_space.n)
         q_target_best = torch.sum(
             torch.where(q_target > FLOAT_MIN, q_target,
@@ -135,34 +150,47 @@ def r2d2_loss(policy: Policy, model, _,
     if config["num_atoms"] > 1:
         raise ValueError("Distributional R2D2 not supported yet!")
     else:
-        q_target_best_masked = (
-            1.0 - train_batch[SampleBatch.DONES].float()) * q_target_best
+        q_target_best_masked_tp1 = (1.0 - dones) * torch.cat([q_target_best[1:], torch.tensor([0.0], device=policy.device)])
 
-        h_inv = h_inverse(q_target_best_masked, config["epsilon"])
+        #h_inv = h_inverse(q_target_best_masked, config["epsilon"])
 
-        target = h(train_batch[SampleBatch.REWARDS] + \
-                   config["gamma"] ** config["n_step"] * h_inv,
-                   config["epsilon"])
+        #target = h(rewards + \
+        #           config["gamma"] ** config["n_step"] * h_inv,
+        #           config["epsilon"])
+
+        target = rewards + \
+            config["gamma"] ** config["n_step"] * q_target_best_masked_tp1
 
         # Seq-mask all loss-related terms.
         seq_mask = sequence_mask(train_batch["seq_lens"], T)[:, :-1]
+        # Mask away also the burn-in sequence at the beginning.
+        burn_in = policy.config["burn_in"]
+        if burn_in > 0 and burn_in < T:
+            seq_mask[:, :burn_in] = False
+
+        num_valid = torch.sum(seq_mask)
+
+        def reduce_mean_valid(t):
+            return torch.sum(t[seq_mask]) / num_valid
 
         # Make sure use the correct time indices:
         # Q(t) - [gamma * r + Q^(t+1)]
         # Compute the error (potentially clipped).
         q_selected = q_selected.reshape([B, T])[:, :-1]
-        td_error = q_selected - target.reshape([B, T])[:, 1:].detach()
+        td_error = q_selected - target.reshape([B, T])[:, :-1].detach()
         td_error = td_error * seq_mask
-        weights = train_batch[PRIO_WEIGHTS].reshape([B, T])[:, :-1].float()
-        policy._total_loss = torch.mean(weights * huber_loss(td_error))
+        #weights = weights.reshape([B, T])[:, :-1].float()
+        weights = 1.0
+        policy._total_loss = reduce_mean_valid(weights * huber_loss(td_error))
         policy._td_error = td_error.reshape([-1])
-        q_selected = q_selected * seq_mask
+        #q_selected = q_selected * seq_mask
         policy._loss_stats = {
-            "mean_q": torch.mean(q_selected),
+            "mean_q": reduce_mean_valid(q_selected),
             "min_q": torch.min(q_selected),
             "max_q": torch.max(q_selected),
-            "mean_td_error": torch.mean(policy._td_error),
+            "mean_td_error": reduce_mean_valid(td_error),
         }
+        print(policy._loss_stats)
 
     return policy._total_loss
 
@@ -304,25 +332,6 @@ def extra_action_out_fn(policy: Policy, input_dict, state_batches, model,
     return {"q_values": policy.q_values}
 
 
-def postprocess_fn(policy: Policy,
-                               batch: SampleBatch,
-                               other_agent=None,
-                               episode=None) -> SampleBatch:
-    batch = postprocess_nstep_and_prio(policy, batch, other_agent, episode)
-
-    # Burn-in? If yes, assert complete_episodes and add zeros to beginning
-    # of the batch (length=burn-in).
-    if policy.config.get("burn_in", 0) > 0:
-        batch.seq_lens = []
-        # max_seq_len=40
-        # burn_in=20
-        # -20 0 20 40 60 80 100 120
-        # |---|-----|-----|-------|
-        batch.max_seq_len =
-
-    return batch
-
-
 R2D2TorchPolicy = build_policy_class(
     name="R2D2TorchPolicy",
     framework="torch",
@@ -331,7 +340,7 @@ R2D2TorchPolicy = build_policy_class(
     make_model_and_action_dist=build_r2d2_model_and_distribution,
     action_distribution_fn=get_distribution_inputs_and_class,
     stats_fn=build_q_stats,
-    postprocess_fn=postprocess_fn,
+    postprocess_fn=postprocess_nstep_and_prio,
     optimizer_fn=adam_optimizer,
     extra_grad_process_fn=grad_process_and_td_error_fn,
     extra_learn_fetches_fn=lambda policy: {"td_error": policy._td_error},

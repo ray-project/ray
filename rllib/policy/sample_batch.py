@@ -259,7 +259,7 @@ class SampleBatch:
         """Returns a slice of the row data of this batch (w/o copying).
 
         Args:
-            start (int): Starting index.
+            start (int): Starting index. If < 0, will zero-pad.
             end (int): Ending index.
 
         Returns:
@@ -267,7 +267,10 @@ class SampleBatch:
                 data.
         """
         if self.seq_lens is not None and len(self.seq_lens) > 0:
-            data = {k: v[start:end] for k, v in self.data.items()}
+            if start < 0:
+                data = {k: np.concatenate([np.zeros(shape=(-start, ) + v.shape[1:], dtype=v.dtype), v[0:end]]) for k, v in self.data.items()}
+            else:
+                data = {k: v[start:end] for k, v in self.data.items()}
             # Fix state_in_x data.
             count = 0
             state_start = None
@@ -287,7 +290,12 @@ class SampleBatch:
                     seq_lens = list(self.seq_lens[state_start:i]) + [
                         seq_len - (count - end)
                     ]
-                    assert sum(seq_lens) == (end - start)
+                    if start < 0:
+                        seq_lens[0] += -start
+                    try:#TODO
+                        assert sum(seq_lens) == (end - start)
+                    except Exception as e:
+                        raise e
                     break
                 elif state_start is None and count > start:
                     state_start = i
@@ -321,36 +329,10 @@ class SampleBatch:
         timeslices = [self.slice(i, j) for i, j in slices]
         return timeslices
 
-    @PublicAPI
-    def timeslices_along_seq_lens(self, zero_pad=False) -> List["SampleBatch"]:
-        """Slice self along `seq_lens` (each seq-len produces one batch).
-
-        Asserts that self.seq_lens not None.
-
-        Args:
-            zero_pad (bool): If True, already zero-pad the resulting
-                slices.
-
-        Returns:
-            List[SampleBatch]: The list of (new) SampleBatches.
-        """
-        assert self.seq_lens is not None and self.seq_lens != [], \
-            "Cannot timeslice along `seq_lens` when `seq_lens` is empty or None!"
-        start = 0
-        slices = []
-        for seq_len in self.seq_lens:
-            slices.append((start, start + seq_len))
-            start += seq_len
-        timeslices = [self.slice(i, j) for i, j in slices]
-        if zero_pad:
-            assert isinstance(zero_pad, int)
-            for ts in timeslices:
-                ts.zero_pad(max_seq_len=zero_pad, exclude_states=True)
-
-        return timeslices
-
     def zero_pad(self, max_seq_len: int, exclude_states=True):
         """Zero pad the data in this SampleBatch in place.
+
+
 
         Args:
             max_len (int): The max length to zero pad to.
@@ -359,7 +341,7 @@ class SampleBatch:
         """
         for col in self.data.keys():
             # Skip state in columns.
-            if col.startswith("state_in_") and exclude_states is True:
+            if exclude_states is True and col.startswith("state_in_"):
                 continue
 
             f = self.data[col]
@@ -369,7 +351,7 @@ class SampleBatch:
             # Already good length, can skip.
             if f.shape[0] == max_seq_len:
                 continue
-            # Generate zero-filled primer.
+            # Generate zero-filled primer of len=max_seq_len.
             length = len(self.seq_lens) * max_seq_len
             if f.dtype == np.object or f.dtype.type is np.str_:
                 f_pad = [None] * length
@@ -378,15 +360,14 @@ class SampleBatch:
                 f_pad = np.zeros((length, ) + np.shape(f)[1:], dtype=f.dtype)
             # Fill primer with data.
             f_pad_base = f_base = 0
-            #i = 0
             for len_ in self.seq_lens:
-                #for seq_offset in range(len_):
-                #    f_pad[f_pad_base + seq_offset] = f[i]
-                #    i += 1
                 f_pad[f_pad_base:f_pad_base + len_] = f[f_base:f_base + len_]
                 f_pad_base += max_seq_len
                 f_base += len_
-            assert f_base == len(f), f
+            try:#TODO
+                assert f_base == len(f), f
+            except Exception as e:
+                raise e
             # Update our data.
             self.data[col] = f_pad
 

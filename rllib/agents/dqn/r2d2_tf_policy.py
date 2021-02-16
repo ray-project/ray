@@ -217,7 +217,8 @@ def get_distribution_inputs_and_class(
         is_training)
 
     policy.q_values = q_vals
-    policy.q_func_vars = model.variables()
+    if not hasattr(policy, "q_func_vars"):
+        policy.q_func_vars = model.variables()
 
     action_dist_class = TorchCategorical if policy.config["framework"] == "torch" else \
         Categorical

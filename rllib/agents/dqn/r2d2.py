@@ -68,7 +68,7 @@ DEFAULT_CONFIG = dqn.DQNTrainer.merge_trainer_configs(
         "target_network_update_freq": 2500,
         # Discount factor.
         "gamma": 0.997,
-        "rollout_fragment_length": 200,
+        #"rollout_fragment_length": 200,
         # Train batch size (in number of single timesteps).
         "train_batch_size": 64 * 20, #TODO: Make this sequences, not timesteps
         # Learning rate for adam optimizer
@@ -104,15 +104,18 @@ def validate_config(config: TrainerConfigDict) -> None:
             "`replay_sequence_length` is calculated automatically to be "
             "model->max_seq_len + burn_in!")
     # Add the `burn_in` to the Model's max_seq_len.
-    config["model"]["max_seq_len"] += config["burn_in"]
+    #config["model"]["max_seq_len"] += config["burn_in"]
     # Set the replay sequence length to the max_seq_len of the model.
-    config["replay_sequence_length"] = config["model"]["max_seq_len"]
+    config["replay_sequence_length"] = config["burn_in"] + config["model"]["max_seq_len"]
 
     if config.get("prioritized_replay"):
         raise ValueError("Prioritized replay is not supported for R2D2 yet!")
 
     if config.get("batch_mode") != "complete_episodes":
         raise ValueError("`batch_mode` must be 'complete_episodes'!")
+
+    if config["n_step"] > 1:
+        raise ValueError("`n_step` > 1 not yet supported by R2D2!")
 
 
 def execution_plan(workers: WorkerSet,
@@ -143,6 +146,8 @@ def execution_plan(workers: WorkerSet,
         replay_batch_size=config["train_batch_size"],
         replay_mode=config["multiagent"]["replay_mode"],
         replay_sequence_length=config["replay_sequence_length"],
+        replay_burn_in=config["burn_in"],
+        replay_zero_init_states=config["zero_init_states"],
         **prio_args)
 
     rollouts = ParallelRollouts(workers, mode="bulk_sync")
@@ -226,4 +231,5 @@ R2D2Trainer = dqn.DQNTrainer.with_updates(
     default_config=DEFAULT_CONFIG,
     validate_config=validate_config,
     get_policy_class=get_policy_class,
+    execution_plan=execution_plan,
 )
