@@ -6,7 +6,6 @@
       "RAY_CI_STREAMING_JAVA_AFFECTED",
     ]
   commands:
-    - export BUILDKITE_JOB_ID=\$BUILDKITE_JOB_ID
     - pip install -q docker aws_requests_auth boto3
     # - LINUX_WHEELS=1 LINUX_JARS=1 DOCKER_BUILD_PY37=1 RAY_INSTALL_JAVA=1 ./ci/travis/ci.sh build
     - touch testing.whl
@@ -25,7 +24,16 @@
 #     - pip install -q docker aws_requests_auth boto3
 #     - LINUX_WHEELS=1 LINUX_JARS=1 DOCKER_BUILD_PY37=1 RAY_INSTALL_JAVA=1 ./ci/travis/ci.sh build
 #     - python ./ci/travis/build-docker-images.py PY37
-
+- label: "Wheel Testing jars"
+  conditions:
+    [
+      "RAY_CI_LINUX_WHEELS_AFFECTED",
+      "RAY_CI_JAVA_AFFECTED",
+      "RAY_CI_STREAMING_JAVA_AFFECTED",
+    ]
+  commands:
+    - LINUX_WHEELS=1 LINUX_JARS=1 DOCKER_BUILD_PY37=1 RAY_INSTALL_JAVA=1 ./ci/travis/ci.sh build
+    - bash ./java/build-jar-multiplatform.sh linux
 
 # - label: ":book: Lint"
 #   commands:
@@ -37,18 +45,12 @@
 # - label: ":java: Java"
 #   conditions: ["RAY_CI_JAVA_AFFECTED"]
 #   commands:
-#     - apt-get install -y openjdk-8-jdk maven clang-format
-#     # Compile Java again so bazel will compile Java as a language.
-#     - RAY_INSTALL_JAVA=1 ./ci/travis/ci.sh build
 #     - ./java/test.sh
 
 # - label: ":java: Streaming"
 #   conditions:
 #     ["RAY_CI_STREAMING_PYTHON_AFFECTED", "RAY_CI_STREAMING_JAVA_AFFECTED"]
 #   commands:
-#     - apt-get install -y openjdk-8-jdk maven
-#     # Compile Java again so bazel will compile Java as a language.
-#     - RAY_INSTALL_JAVA=1 ./ci/travis/ci.sh build
 #     - bazel test --config=ci $(./scripts/bazel_export_options)
 #       //streaming:all
 #     - bash streaming/src/test/run_streaming_queue_test.sh

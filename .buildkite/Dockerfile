@@ -13,6 +13,7 @@ ENV CI=true
 ENV PYTHON=3.6
 ENV RAY_USE_RANDOM_PORTS=1
 ENV RAY_DEFAULT_BUILD=1
+ENV RAY_INSTALL_JAVA=1
 ENV BUILDKITE_PULL_REQUEST=${BUILDKITE_PULL_REQUEST}
 ENV BUILDKITE_COMMIT=${BUILDKITE_COMMIT}
 ENV BUILDKITE_PULL_REQUEST_BASE_BRANCH=${BUILDKITE_PULL_REQUEST_BASE_BRANCH}
@@ -30,7 +31,8 @@ RUN apt-get install -y -qq \
     curl python-is-python3 git build-essential \
     sudo unzip apt-utils dialog tzdata wget rsync \
     language-pack-en tmux cmake gdb vim htop \
-    libgtk2.0-dev zlib1g-dev libgl1-mesa-dev
+    libgtk2.0-dev zlib1g-dev libgl1-mesa-dev \
+    openjdk-8-jdk maven
 
 RUN curl -o- https://get.docker.com | sh
 
