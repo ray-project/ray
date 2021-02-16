@@ -27,7 +27,7 @@ export type NodeDetail = {
       percent: number;
     };
   };
-  net: number[]; // sent tps, received tps
+  network_speed: number[]; // sent tps, received tps
   raylet: Raylet;
   logCounts: number;
   errorCounts: number;

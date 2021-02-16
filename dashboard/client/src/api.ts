@@ -163,7 +163,7 @@ type BaseNodeInfo = {
     };
   };
   loadAvg: [[number, number, number], [number, number, number]];
-  net: [number, number]; // Sent and received network traffic in bytes / second
+  network_speed: [number, number]; // Sent and received network traffic in bytes / second
   logCount?: number;
   errorCount?: number;
 };
