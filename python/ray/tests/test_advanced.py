@@ -25,6 +25,7 @@ logger = logging.getLogger(__name__)
 
 
 # issue https://github.com/ray-project/ray/issues/7105
+@pytest.mark.skipif(client_test_enabled(), reason="internal api")
 def test_internal_free(shutdown_only):
     ray.init(num_cpus=1)
 
@@ -492,6 +493,7 @@ def test_multithreading(ray_start_2_cpus):
     ray.get(actor.join.remote()) == "ok"
 
 
+@pytest.mark.skipif(client_test_enabled(), reason="internal api")
 def test_wait_makes_object_local(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=0)
