@@ -101,7 +101,7 @@ def r2d2_loss(policy: Policy, model, _,
     actions = tf.cast(train_batch[SampleBatch.ACTIONS], tf.int64)
     dones = tf.cast(train_batch[SampleBatch.DONES], tf.float32)
     rewards = train_batch[SampleBatch.REWARDS]
-    weights = train_batch[PRIO_WEIGHTS]
+    weights = tf.cast(train_batch[PRIO_WEIGHTS], tf.float32)
 
     B = tf.shape(state_batches[0])[0]
     T = tf.shape(q)[0] // B
@@ -142,7 +142,8 @@ def r2d2_loss(policy: Policy, model, _,
         seq_mask = tf.sequence_mask(train_batch["seq_lens"], T)[:, :-1]
         # Mask away also the burn-in sequence at the beginning.
         burn_in = policy.config["burn_in"]
-        if burn_in > 0:
+        # Making sure, this works for both static graph and eager.
+        if burn_in > 0 and (config["framework"] == "tf" or burn_in < T):
             seq_mask = tf.concat(
                 [tf.fill([B, burn_in], False), seq_mask[:, burn_in:]], axis=1)
 
