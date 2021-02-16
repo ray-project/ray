@@ -182,7 +182,7 @@ class Worker:
             raise err
         return loads_from_server(data.data)
 
-    def put(self, vals):
+    def put(self, vals, *, client_ref_id: bytes = None):
         to_put = []
         single = False
         if isinstance(vals, list):
@@ -191,12 +191,12 @@ class Worker:
             single = True
             to_put.append(vals)
 
-        out = [self._put(x) for x in to_put]
+        out = [self._put(x, client_ref_id=client_ref_id) for x in to_put]
         if single:
             out = out[0]
         return out
 
-    def _put(self, val):
+    def _put(self, val, *, client_ref_id: bytes = None):
         if isinstance(val, ClientObjectRef):
             raise TypeError(
                 "Calling 'put' on an ObjectRef is not allowed "
@@ -206,6 +206,8 @@ class Worker:
                 "call 'put' on it (or return it).")
         data = dumps_from_client(val, self._client_id)
         req = ray_client_pb2.PutRequest(data=data)
+        if client_ref_id is not None:
+            req.client_ref_id = client_ref_id
         resp = self.data_client.PutObject(req)
         return ClientObjectRef(resp.id)
 

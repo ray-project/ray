@@ -328,8 +328,6 @@ def test_nested_functions(ray_start_shared_local_modes):
     assert ray.get(factorial.remote(5)) == 120
 
 
-@pytest.mark.skipif(
-    client_test_enabled(), reason="mutual recursion is a known issue")
 def test_mutually_recursive_functions(ray_start_shared_local_modes):
     # Test remote functions that recursively call each other.
     @ray.remote
