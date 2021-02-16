@@ -249,6 +249,7 @@ Papers
    serve/deployment.rst
    serve/ml-models.rst
    serve/advanced-traffic.rst
+   serve/advanced.rst
    serve/architecture.rst
    serve/tutorials/index.rst
    serve/faq.rst
