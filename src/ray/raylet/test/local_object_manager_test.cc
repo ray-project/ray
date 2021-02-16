@@ -280,7 +280,6 @@ class LocalObjectManagerTest : public ::testing::Test {
         manager_node_id_(NodeID::FromRandom()),
         manager(manager_node_id_, free_objects_batch_size,
                 /*free_objects_period_ms=*/1000, worker_pool, object_table, client_pool,
-                /*object_pinning_enabled=*/true,
                 /*automatic_object_delete_enabled=*/true,
                 /*max_io_workers=*/2,
                 /*min_spilling_size=*/0,
