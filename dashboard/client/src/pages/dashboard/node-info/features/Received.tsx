@@ -13,7 +13,7 @@ import {
 export const ClusterReceived: ClusterFeatureRenderFn = ({ nodes }) => {
   let totalReceived = 0;
   for (const node of nodes) {
-    totalReceived += node.network_speed[1];
+    totalReceived += node.networkSpeed[1];
   }
   return (
     <React.Fragment>
@@ -23,11 +23,11 @@ export const ClusterReceived: ClusterFeatureRenderFn = ({ nodes }) => {
 };
 
 export const NodeReceived: NodeFeatureRenderFn = ({ node }) => (
-  <React.Fragment>{formatByteAmount(node.network_speed[1], "mebibyte")}/s</React.Fragment>
+  <React.Fragment>{formatByteAmount(node.networkSpeed[1], "mebibyte")}/s</React.Fragment>
 );
 
 export const nodeReceivedAccessor: Accessor<NodeFeatureData> = ({ node }) =>
-  node.network_speed[1];
+  node.networkSpeed[1];
 
 export const WorkerReceived: WorkerFeatureRenderFn = () => (
   <Typography color="textSecondary" component="span" variant="inherit">
