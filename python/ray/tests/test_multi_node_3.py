@@ -408,7 +408,7 @@ def test_spillback_distribution(ray_start_cluster):
         time.sleep(1)
         return ray.worker._global_node.unique_id
 
-    # Make sure tasks are spilled back undernimistically.
+    # Make sure tasks are spilled back non-deterministically.
     task_refs = [task.remote() for _ in range(5)]
     assert len(set(ray.get(task_refs))) != 1
 
