@@ -332,6 +332,17 @@ cdef prepare_args(
                         CCoreWorkerProcess.GetCoreWorker().GetRpcAddress())))
 
 
+cdef raise_if_dependency_failed(arg):
+    """This method is used to improve the readability of backtrace.
+
+    With this method, the backtrace will always contain
+    raise_if_dependency_failed when the task is failed with dependency
+    failures.
+    """
+    if isinstance(arg, RayError):
+        raise arg
+
+
 cdef execute_task(
         CTaskType task_type,
         const c_string name,
@@ -460,8 +471,7 @@ cdef execute_task(
                             metadata_pairs, object_refs)
 
                     for arg in args:
-                        if isinstance(arg, RayError):
-                            raise arg
+                        raise_if_dependency_failed(arg)
                     args, kwargs = ray.signature.recover_args(args)
 
             if (<int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK):
