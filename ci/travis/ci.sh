@@ -324,13 +324,13 @@ build_wheels() {
         docker run --rm -w /ray -v "${PWD}":/ray "${MOUNT_BAZEL_CACHE[@]}" \
         quay.io/pypa/manylinux2014_x86_64 /ray/python/build-wheel-manylinux2014.sh
       else
-        cp -R /ray/ /ray-mount
+        cp -R /ray/* /ray-mount
         ls /ray-mount
         docker run --rm -v /ray:/ray-mounted ubuntu:focal ls /
         docker run --rm -v /ray:/ray-mounted ubuntu:focal ls /ray-mounted
         docker run --rm -w /ray -v /ray:/ray "${MOUNT_BAZEL_CACHE[@]}" \
           quay.io/pypa/manylinux2014_x86_64 /ray/python/build-wheel-manylinux2014.sh
-        cp -R /ray-mount /ray # copy new files back here
+        cp -R /ray-mount/* /ray # copy new files back here
         find . | grep whl # testing
       fi
       ;;
