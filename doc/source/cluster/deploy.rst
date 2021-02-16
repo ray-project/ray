@@ -3,6 +3,10 @@
 Ray with Cluster Managers
 =========================
 
+.. note::
+
+    If you're using AWS, Azure or GCP you can use the :ref:`Ray Cluster Launcher <cluster-cloud>` to simplify the cluster setup process.
+
 .. toctree::
    :maxdepth: 2
 

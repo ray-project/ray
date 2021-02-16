@@ -148,6 +148,7 @@ extensions = [
     'sphinx_gallery.gen_gallery',
     'sphinxemoji.sphinxemoji',
     'sphinx_copybutton',
+    'sphinxcontrib.yt',
     'versionwarning.extension',
 ]
 
