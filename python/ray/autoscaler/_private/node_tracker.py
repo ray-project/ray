@@ -3,7 +3,7 @@ import sys
 
 from ray.autoscaler._private.process_runner_interceptor \
     import ProcessRunnerInterceptor
-
+from ray.autoscaler._private import constants
 
 class NodeTracker:
     """Map nodes to their corresponding logs.
@@ -26,6 +26,22 @@ class NodeTracker:
         # effort, therefore it's already correct
         self.node_mapping = {}
 
+        # A quick, inefficient LRU cache implementation.
+        self.lru_order = []
+
+    def _add_node_mapping(self, node_id, value):
+        if node_id in node_mapping:
+            return
+
+        assert len(self.lru_order) == len(self.node_mapping)
+        if len(self.lru_order) >= constants.AUTOSCALER_MAX_NODES_TRACKED:
+            # The LRU eviction case
+            node_id = self.lru_order.pop(0)
+            del self.node_mapping[node_id]
+
+        self.node_mapping[node_id] = value
+        self.lru_order.append(node_id)
+
     def get_or_create_process_runner(self, node_id, ip=None, node_type=None):
         if node_id not in self.node_mapping:
             if self.log_dir is None:
@@ -38,8 +54,9 @@ class NodeTracker:
                 stdout_obj = open(stdout_path, "ab")
                 process_runner = ProcessRunnerInterceptor(
                     stdout_obj, process_runner=self.process_runner)
-            self.node_mapping[node_id] = (ip, node_type, stdout_path,
-                                          process_runner)
+
+            self._add_node_mapping(node_id, (ip, node_type, stdout_path,
+                                          process_runner))
 
         _, _, _, process_runner = self.node_mapping[node_id]
         return process_runner
