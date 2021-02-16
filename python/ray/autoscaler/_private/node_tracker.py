@@ -8,7 +8,7 @@ class NodeTracker:
     """Map nodes to their corresponding logs.
 
     We need to be a little careful here. At an given point in time, node_id <->
-    ip can be interchangeably use, but the node_id -> ip relation is not
+    ip can be interchangeably used, but the node_id -> ip relation is not
     bijective _across time_ since IP addresses can be reused. Therefore, we
     should treat node_id as the only unique identifier.
 

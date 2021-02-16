@@ -75,7 +75,13 @@ class RayCluster():
             redis_address=redis_address,
             autoscaling_config=self.config_path,
             redis_password=ray_constants.REDIS_DEFAULT_PASSWORD,
-            prefix_cluster_info=True)
+            prefix_cluster_info=True,
+            # TODO (Alex): the log_dir parameter is used to write node startup
+            # output to separate log files. We need to find some place to write
+            # debug artifacts in order to use this feature with the operator.
+            # For now, output from all nodes will be printed to stdout.
+            log_dir=None
+        )
         self.mtr.run()
 
     def clean_up(self) -> None:
