@@ -4,6 +4,7 @@ from pprint import pprint
 from collections import OrderedDict
 
 from aws_requests_auth.aws_auth import AWSRequestsAuth
+from aws_requests_auth.boto_utils import BotoAWSRequestsAuth
 import boto3
 import requests
 
@@ -18,21 +19,26 @@ assert args.destination in {"wheels", "containers"}
 assert "BUILDKITE_JOB_ID" in os.environ
 assert "BUILDKITE_COMMIT" in os.environ
 
-# Assume the caller role from the instance
-sts_client = boto3.client('sts')
-assumed_role_object = sts_client.assume_role(
-    RoleArn="arn:aws:iam::029272617770:role/presigner_caller_role",
-    RoleSessionName="ProdSessionFromBK")
-credentials = assumed_role_object["Credentials"]
+# # Assume the caller role from the instance
+# sts_client = boto3.client('sts')
+# assumed_role_object = sts_client.assume_role(
+#     RoleArn="arn:aws:iam::029272617770:role/presigner_caller_role",
+#     RoleSessionName="ProdSessionFromBK")
+# credentials = assumed_role_object["Credentials"]
 
-# Construct the HTTP auth to call the API gateway
-auth = AWSRequestsAuth(
+# # Construct the HTTP auth to call the API gateway
+# auth = AWSRequestsAuth(
+#     aws_host="vop4ss7n22.execute-api.us-west-2.amazonaws.com",
+#     aws_region="us-west-2",
+#     aws_service="execute-api",
+#     aws_access_key=credentials["AccessKeyId"],
+#     aws_secret_access_key=credentials["SecretAccessKey"],
+#     aws_token=credentials["SessionToken"],
+# )
+auth = BotoAWSRequestsAuth(
     aws_host="vop4ss7n22.execute-api.us-west-2.amazonaws.com",
     aws_region="us-west-2",
     aws_service="execute-api",
-    aws_access_key=credentials["AccessKeyId"],
-    aws_secret_access_key=credentials["SecretAccessKey"],
-    aws_token=credentials["SessionToken"],
 )
 
 resp = requests.get(
