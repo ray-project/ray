@@ -19,7 +19,12 @@ class ProcessRunnerInterceptor:
     def check_output(self, *args, **kwargs):
         with_defaults = {"stderr": self.err_stream}
         with_defaults.update(kwargs)
-        return self.process_runner.check_output(*args, **with_defaults)
+        output = self.process_runner.check_output(*args, **with_defaults)
+        # Poor man's `tee`
+        # TODO (Alex): We're currently abusing check_output by trying to print
+        # its output and parse it at the same time.
+        print(output, file=self.stream)
+        return output
 
     def check_call(self, *args, **kwargs):
         with_defaults = {"stdout": self.stream, "stderr": self.err_stream}

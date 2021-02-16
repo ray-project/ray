@@ -422,7 +422,7 @@ class SSHCommandRunner(CommandRunnerInterface):
             # In the future we could update the new logic to support
             # capturing output, but it is probably not needed.
             if with_output:
-                return self.process_runner.check_call(final_cmd)
+                return self.process_runner.check_output(final_cmd)
             else:
                 return run_cmd_redirected(
                     final_cmd,
