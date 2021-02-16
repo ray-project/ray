@@ -324,8 +324,7 @@ build_wheels() {
         docker run --rm -w /ray -v "${PWD}":/ray "${MOUNT_BAZEL_CACHE[@]}" \
         quay.io/pypa/manylinux2014_x86_64 /ray/python/build-wheel-manylinux2014.sh
       else
-        ls /ray-mount
-        cp -R /ray /ray-mount # copy repo files to the shared mount dir
+        cp -R /ray/ /ray-mount
         ls /ray-mount
         docker run --rm -v /ray:/ray-mounted ubuntu:focal ls /
         docker run --rm -v /ray:/ray-mounted ubuntu:focal ls /ray-mounted
