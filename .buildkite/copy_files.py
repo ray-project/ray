@@ -44,7 +44,7 @@ auth = BotoAWSRequestsAuth(
 resp = requests.get(
     "https://vop4ss7n22.execute-api.us-west-2.amazonaws.com/endpoint/",
     auth=auth,
-    args={"job_id": os.environ["BUILDKITE_JOB_ID"]})
+    params={"job_id": os.environ["BUILDKITE_JOB_ID"]})
 
 pprint(resp.status_code)
 pprint(resp.headers)
