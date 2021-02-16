@@ -99,7 +99,7 @@ class ClientPickler(cloudpickle.CloudPickler):
                 return PickleStub(
                     type="RemoteFuncSelfReference",
                     client_id=self.client_id,
-                    ref_id=self._client_side_ref.id,
+                    ref_id=obj._client_side_ref.id,
                     name=None,
                     baseline_options=None,
                 )
@@ -118,7 +118,7 @@ class ClientPickler(cloudpickle.CloudPickler):
                 return PickleStub(
                     type="RemoteActorSelfReference",
                     client_id=self.client_id,
-                    ref_id=self._client_side_ref.id,
+                    ref_id=obj._client_side_ref.id,
                     name=None,
                     baseline_options=None,
                 )

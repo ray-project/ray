@@ -316,7 +316,7 @@ class ClientSideRefID:
     @staticmethod
     def generate_id() -> "ClientSideRefID":
         tid = uuid.uuid4()
-        return ClientSideRefID(b"\0xcc" + tid.bytes())
+        return ClientSideRefID(b"\xcc" + tid.bytes)
 
 
 def remote_decorator(options: Optional[Dict[str, Any]]):

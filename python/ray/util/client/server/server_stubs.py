@@ -33,6 +33,8 @@ class ClientReferenceSentinel(ABC):
 
     def get_real_ref_from_server(self):
         global _current_server
+        if _current_server is None:
+            return None
         client_map = _current_server.client_side_ref_map.get(
             self.client_id, None)
         if client_map is None:
@@ -44,16 +46,20 @@ class ClientReferenceActor(ClientReferenceSentinel):
     def get_remote_obj(self):
         global _current_server
         real_ref_id = self.get_real_ref_from_server()
+        if real_ref_id is None:
+            return None
         return _current_server.lookup_or_register_actor(
-            real_ref_id, self.client_id)
+            real_ref_id, self.client_id, None)
 
 
 class ClientReferenceFunction(ClientReferenceSentinel):
     def get_remote_obj(self):
         global _current_server
         real_ref_id = self.get_real_ref_from_server()
-        return _current_server.lookup_or_register_func(real_ref_id,
-                                                       self.client_id)
+        if real_ref_id is None:
+            return None
+        return _current_server.lookup_or_register_func(
+            real_ref_id, self.client_id, None)
 
 
 def identity(x):
