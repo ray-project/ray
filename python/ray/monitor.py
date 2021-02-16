@@ -82,11 +82,12 @@ class Monitor:
     """
 
     def __init__(self,
-                 log_dir,
                  redis_address,
                  autoscaling_config,
                  redis_password=None,
-                 prefix_cluster_info=False):
+                 prefix_cluster_info=False,
+                 log_dir=None
+                 ):
         self.log_dir = log_dir
         # Initialize the Redis clients.
         ray.state.state._initialize_global_state(
@@ -325,10 +326,11 @@ if __name__ == "__main__":
         autoscaling_config = None
 
     monitor = Monitor(
-        args.logs_dir,
         args.redis_address,
         autoscaling_config,
-        redis_password=args.redis_password)
+        redis_password=args.redis_password,
+        log_dir=args.logs_dir
+    )
 
     try:
         monitor.run()

@@ -25,14 +25,13 @@ from ray.autoscaler._private.legacy_info_string import legacy_log_info_string
 from ray.autoscaler._private.providers import _get_node_provider
 from ray.autoscaler._private.updater import NodeUpdaterThread
 from ray.autoscaler._private.node_launcher import NodeLauncher
+from ray.autoscaler._private.node_tracker import NodeTracker
 from ray.autoscaler._private.resource_demand_scheduler import \
     get_bin_pack_residual, ResourceDemandScheduler, NodeType, NodeID, NodeIP, \
     ResourceDict
 from ray.autoscaler._private.util import ConcurrentCounter, validate_config, \
     with_head_node_ip, hash_launch_conf, hash_runtime_conf, \
     DEBUG_AUTOSCALING_ERROR, format_info_string
-from ray.autoscaler._private.process_runner_interceptor \
-    import ProcessRunnerInterceptor
 from ray.autoscaler._private.constants import \
     AUTOSCALER_MAX_NUM_FAILURES, AUTOSCALER_MAX_LAUNCH_BATCH, \
     AUTOSCALER_MAX_CONCURRENT_LAUNCHES, AUTOSCALER_UPDATE_INTERVAL_S, \
@@ -79,7 +78,7 @@ class StandardAutoscaler:
                  update_interval_s=AUTOSCALER_UPDATE_INTERVAL_S,
                  prefix_cluster_info=False,
                  event_summarizer=None,
-                 log_dir="/tmp"):
+                 log_dir=None):
         self.config_path = config_path
         self.log_dir = log_dir
         # Prefix each line of info string with cluster name if True
@@ -436,11 +435,8 @@ class StandardAutoscaler:
 
         return False
 
-    def get_node_type(self, node_id):
-        return self.provider.node_tags(node_id).get(TAG_RAY_USER_NODE_TYPE)
-
     def _node_resources(self, node_id):
-        node_type = self.get_node_type(node_id)
+        node_type = self._get_node_type(node_id)
         if self.available_node_types:
             return self.available_node_types.get(node_type, {}).get(
                 "resources", {})
@@ -777,6 +773,7 @@ class StandardAutoscaler:
             is_active = self.load_metrics.is_active(ip)
             if is_active:
                 active_nodes[node_type] += 1
+                non_failed.add(node_id)
             else:
                 status = node_tags[TAG_RAY_NODE_STATUS]
                 pending_states = [
@@ -787,11 +784,7 @@ class StandardAutoscaler:
                 if is_pending:
                     path = self.node_tracker.get_log_path(node_id)
                     pending_nodes.append((ip, node_type, status, path))
-                else:
-                    failed = True
-
-            if not failed:
-                non_failed.add(node_id)
+                    non_failed.add(node_id)
 
         failed_nodes = self.node_tracker.get_all_failed_node_info(non_failed)
 
@@ -814,49 +807,3 @@ class StandardAutoscaler:
         return "\n" + format_info_string(lm_summary, autoscaler_summary)
 
 
-class NodeTracker:
-    """Map nodes to their corresponding logs.
-
-    We need to be a little careful here. At an given point in time, node_id <->
-    ip can be interchangeably use, but the node_id -> ip relation is not
-    bijective _across time_ since IP addresses can be reused. Therefore, we
-    should treat node_id as the only unique identifier.
-
-    """
-
-    def __init__(self, log_dir, process_runner):
-        self.log_dir = log_dir
-        self.process_runner = process_runner
-
-        # Mapping from node_id -> (ip, node type, stdout_path, process runner)
-        # TODO(Alex): In the spirit of statelessness, we should try to load
-        # this mapping from the filesystem. _Technically_ this tracker is only
-        # used for "recent" failures though, so remembering old nodes is a best
-        # effort, therefore it's already correct
-        self.node_mapping = {}
-
-    def get_or_create_process_runner(self, node_id, ip=None, node_type=None):
-        if node_id not in self.node_mapping:
-            stdout_name = f"{node_id}.out"
-            stdout_path = os.path.join(self.log_dir, stdout_name)
-            stdout_obj = open(stdout_path, "ab")
-            process_runner = ProcessRunnerInterceptor(
-                stdout_obj, process_runner=self.process_runner)
-            self.node_mapping[node_id] = (ip, node_type, stdout_path,
-                                          process_runner)
-
-        _, _, _, process_runner = self.node_mapping[node_id]
-        return process_runner
-
-    def get_log_path(self, node_id):
-        if node_id in self.node_mapping:
-            return self.node_mapping[node_id][2]
-        return None
-
-    def get_all_failed_node_info(self, non_failed_ids):
-        failed_nodes = self.node_mapping.keys() - non_failed_ids
-        failed_info = []
-        for node_id in failed_nodes:
-            ip, node_type, stdout_path, _ = self.node_mapping[node_id]
-            failed_info.append((ip, node_type, stdout_path))
-        return failed_info
