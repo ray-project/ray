@@ -207,9 +207,8 @@ class TensorFlowVariables:
             if name in assignable:
                 assign(name, value)
             else:
-                s_name = name.split("/")
                 common = {
-                    var: nb_common_elem(s_name, var.split("/"))
+                    var: nb_common_elem(name.split("/"), var.split("/"))
                     for var in assignable
                 }
                 select = [
