@@ -24,8 +24,8 @@ def _import_bandit_lints():
 
 
 def _import_bandit_linucb():
-    from ray.rllib.contrib.agents.bandits.agents.lin_ucb import LinUCBTrainer, \
-        UCB_CONFIG
+    from ray.rllib.contrib.agents.bandits.agents.lin_ucb import \
+        LinUCBTrainer, UCB_CONFIG
     return LinUCBTrainer, UCB_CONFIG
 
 
