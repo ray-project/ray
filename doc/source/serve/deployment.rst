@@ -140,7 +140,7 @@ In order to deploy Ray Serve on Kubernetes, we need to do the following:
 3. Start Ray Serve on the cluster.
 
 There are multiple ways to start a Ray cluster on Kubernetes, see :ref:`ray-k8s-deploy` for more information.
-Here, we will be using the :ref:`Ray Cluster Launcher <ref-automatic-cluster>` tool, which has support for Kubernetes as a backend.
+Here, we will be using the :ref:`Ray Cluster Launcher <cluster-cloud>` tool, which has support for Kubernetes as a backend.
 
 The cluster launcher takes in a yaml config file that describes the cluster.
 Here, we'll be using the `Kubernetes default config`_ with a few small modifications.

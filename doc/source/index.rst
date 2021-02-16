@@ -231,11 +231,12 @@ Papers
 .. toctree::
    :hidden:
    :maxdepth: -1
-   :caption: Ray Cluster
+   :caption: Ray Clusters/Autoscaler
 
    cluster/index.rst
-   cluster/launcher.rst
-   cluster/autoscaling.rst
+   cluster/quickstart.rst
+   cluster/reference.rst
+   cluster/cloud.rst
    cluster/deploy.rst
 
 .. toctree::
@@ -299,16 +300,22 @@ Papers
 .. toctree::
    :hidden:
    :maxdepth: -1
+   :caption: Data Processing
+
+   modin/index.rst
+   dask-on-ray.rst
+   mars-on-ray.rst
+   raydp.rst
+
+.. toctree::
+   :hidden:
+   :maxdepth: -1
    :caption: More Libraries
 
    multiprocessing.rst
    joblib.rst
    iter.rst
    xgboost-ray.rst
-   modin/index.rst
-   dask-on-ray.rst
-   mars-on-ray.rst
-   raydp.rst
    ray-client.rst
 
 .. toctree::

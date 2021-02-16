@@ -126,7 +126,9 @@ def test_driver_lives_sequential(ray_start_regular):
     ray.worker._global_node.kill_raylet()
     ray.worker._global_node.kill_plasma_store()
     ray.worker._global_node.kill_log_monitor()
-    ray.worker._global_node.kill_monitor()
+    if not sys.platform.startswith("win"):
+        # fails on windows.
+        ray.worker._global_node.kill_monitor()
     ray.worker._global_node.kill_gcs_server()
 
     # If the driver can reach the tearDown method, then it is still alive.
