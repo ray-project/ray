@@ -1,5 +1,4 @@
 import subprocess
-import sys
 
 
 class ProcessRunnerInterceptor:
@@ -26,13 +25,10 @@ class ProcessRunnerInterceptor:
         # its output and parse it at the same time.
         self.stream.write(output)
         self.stream.flush()
-        print("check_output called with", args)
-        print("Output is", output)
         return output
 
     def check_call(self, *args, **kwargs):
         with_defaults = {"stdout": self.stream, "stderr": self.err_stream}
         with_defaults.update(kwargs)
         return_code = self.process_runner.check_call(*args, **with_defaults)
-        print("check_output called with", args)
         return return_code

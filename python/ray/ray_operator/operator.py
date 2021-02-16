@@ -80,8 +80,7 @@ class RayCluster():
             # output to separate log files. We need to find some place to write
             # debug artifacts in order to use this feature with the operator.
             # For now, output from all nodes will be printed to stdout.
-            log_dir=None
-        )
+            log_dir=None)
         self.mtr.run()
 
     def clean_up(self) -> None:

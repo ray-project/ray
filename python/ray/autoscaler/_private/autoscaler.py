@@ -662,7 +662,7 @@ class StandardAutoscaler:
         logger.info(f"Creating new (spawn_updater) updater thread for node"
                     f" {node_id}.")
         ip = self.provider.internal_ip(node_id)
-        node_type = self.get_node_type(node_id)
+        node_type = self._get_node_type(node_id)
         interceptor = self.node_tracker.get_or_create_process_runner(
             node_id, ip, node_type)
         updater = NodeUpdaterThread(
@@ -766,8 +766,6 @@ class StandardAutoscaler:
                 continue
             node_type = node_tags[TAG_RAY_USER_NODE_TYPE]
 
-            failed = False
-
             # TODO (Alex): If a node's raylet has died, it shouldn't be marked
             # as active.
             is_active = self.load_metrics.is_active(ip)
@@ -805,5 +803,3 @@ class StandardAutoscaler:
         lm_summary = self.load_metrics.summary()
         autoscaler_summary = self.summary()
         return "\n" + format_info_string(lm_summary, autoscaler_summary)
-
-

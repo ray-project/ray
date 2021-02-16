@@ -4,6 +4,7 @@ import sys
 from ray.autoscaler._private.process_runner_interceptor \
     import ProcessRunnerInterceptor
 
+
 class NodeTracker:
     """Map nodes to their corresponding logs.
 

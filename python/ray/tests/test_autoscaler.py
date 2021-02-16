@@ -2096,8 +2096,7 @@ MemAvailable:   33000000 kB
             max_failures=0,
             process_runner=runner,
             update_interval_s=0,
-            log_dir=self.tmpdir
-        )
+            log_dir=self.tmpdir)
         autoscaler.update()
         autoscaler.update()
         self.waitForNodes(2)
