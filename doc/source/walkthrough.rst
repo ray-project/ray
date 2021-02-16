@@ -294,7 +294,7 @@ Cancelling tasks
 
       try:
           ray.get(obj_ref)
-      except TaskCancelledError: 
+      except TaskCancelledError:
           print("Object reference was cancelled.")
 
   .. group-tab:: Java
