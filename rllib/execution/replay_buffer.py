@@ -10,7 +10,8 @@ import ray  # noqa F401
 import psutil  # noqa E402
 
 from ray.rllib.execution.segment_tree import SumSegmentTree, MinSegmentTree
-from ray.rllib.policy.rnn_sequencing import timeslice_along_seq_lens_with_overlap
+from ray.rllib.policy.rnn_sequencing import \
+    timeslice_along_seq_lens_with_overlap
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch, \
     DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import DeveloperAPI
@@ -306,12 +307,12 @@ class LocalReplayBuffer(ParallelIteratorWorker):
                 sample. If > 1, we will sample B x T from this buffer.
             replay_burn_in (int): The burn-in length in case
                 `replay_sequence_length` > 0. This is the number of timesteps
-                each sequence overlaps with the previous one to generate a better
-                internal state (=state after the burn-in), instead of starting
-                from 0.0 each RNN rollout.
-            replay_zero_init_states (bool): Whether the initial states in the buffer
-                (if replay_sequence_length > 0) are alwayas 0.0 or should be updated
-                with the previous train_batch state outputs.
+                each sequence overlaps with the previous one to generate a
+                better internal state (=state after the burn-in), instead of
+                starting from 0.0 each RNN rollout.
+            replay_zero_init_states (bool): Whether the initial states in the
+                buffer (if replay_sequence_length > 0) are alwayas 0.0 or
+                should be updated with the previous train_batch state outputs.
         """
         self.replay_starts = learning_starts // num_shards
         self.buffer_size = buffer_size // num_shards
@@ -399,7 +400,8 @@ class LocalReplayBuffer(ParallelIteratorWorker):
                             weight = np.mean(time_slice["weights"])
                         else:
                             weight = None
-                        self.replay_buffers[policy_id].add(time_slice, weight=weight)
+                        self.replay_buffers[policy_id].add(
+                            time_slice, weight=weight)
         self.num_added += batch.count
 
     def replay(self) -> SampleBatchType:
@@ -413,8 +415,8 @@ class LocalReplayBuffer(ParallelIteratorWorker):
             return None
 
         with self.replay_timer:
-            # Lockstep mode: Sample from all policies at the same time an equal amount
-            # of steps.
+            # Lockstep mode: Sample from all policies at the same time an
+            # equal amount of steps.
             if self.replay_mode == "lockstep":
                 return self.replay_buffers[_ALL_POLICIES].sample(
                     self.replay_batch_size, beta=self.prioritized_replay_beta)

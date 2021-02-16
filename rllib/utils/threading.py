@@ -22,9 +22,9 @@ def with_lock(func: Callable):
         except AttributeError as e:
             if "has no attribute '_lock'" in e.args[0]:
                 raise AttributeError(
-                    "Object {} must have a `self._lock` property (assigned to a "
-                    "threading.RLock() object in its constructor)!".format(
-                        self))
+                    "Object {} must have a `self._lock` property (assigned "
+                    "to a threading.RLock() object in its "
+                    "constructor)!".format(self))
             raise e
 
     return wrapper

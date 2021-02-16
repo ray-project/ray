@@ -20,8 +20,8 @@ from ray.rllib.utils.threading import with_lock
 from ray.rllib.utils.torch_ops import convert_to_non_torch_type, \
     convert_to_torch_tensor
 from ray.rllib.utils.tracking_dict import UsageTrackingDict
-from ray.rllib.utils.typing import ModelGradients, ModelInputDict, \
-    ModelWeights, TensorType, TrainerConfigDict
+from ray.rllib.utils.typing import ModelGradients, ModelWeights, TensorType, \
+    TrainerConfigDict
 
 torch, _ = try_import_torch()
 
@@ -232,8 +232,8 @@ class TorchPolicy(Policy):
             self.exploration.before_compute_actions(
                 explore=explore, timestep=timestep)
             if self.action_distribution_fn:
-                # Try new action_distribution_fn signature, supporting state_batches
-                # and seq_lens.
+                # Try new action_distribution_fn signature, supporting
+                # state_batches and seq_lens.
                 try:
                     dist_inputs, dist_class, state_out = \
                         self.action_distribution_fn(

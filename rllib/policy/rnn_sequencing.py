@@ -331,12 +331,9 @@ def timeslice_along_seq_lens_with_overlap(
         pre_overlap (int): If >0, will overlap each two consecutive slices by
             this many timesteps (toward the left side). This will cause
             zero-padding at the very beginning of the batch.
-        #post_overlap (int): If >0, will overlap each two consecutive slices by
-        #    this many timesteps (toward the right side). This will cause
-        #    zero-padding at the very end of the batch.
-        zero_init_states (bool): Whether initial states should always be zero'd.
-            If False, will use the state_outs of the batch to populate
-            state_in values.
+        zero_init_states (bool): Whether initial states should always be
+            zero'd. If False, will use the state_outs of the batch to
+            populate state_in values.
 
     Returns:
         List[SampleBatch]: The list of (new) SampleBatches.
@@ -365,7 +362,7 @@ def timeslice_along_seq_lens_with_overlap(
     slices = []
     for seq_len in seq_lens:
         begin = start - pre_overlap
-        end = start + seq_len # + post_overlap
+        end = start + seq_len  # + post_overlap
         slices.append((begin, end))
         start += seq_len
 
@@ -379,17 +376,23 @@ def timeslice_along_seq_lens_with_overlap(
             data_begin = 0
             zero_init_states_ = True
         else:
-            eps_ids = sample_batch[SampleBatch.EPS_ID][begin if begin >= 0 else 0:end]
+            eps_ids = sample_batch[SampleBatch.EPS_ID][begin if begin >= 0 else
+                                                       0:end]
             is_last_episode_ids = eps_ids == eps_ids[-1]
-            if is_last_episode_ids[0] != True:
+            if is_last_episode_ids[0] is not True:
                 zero_length = int(sum(1.0 - is_last_episode_ids))
-                data_begin = begin + zero_length 
+                data_begin = begin + zero_length
                 zero_init_states_ = True
 
         if zero_length is not None:
-            data = {k: np.concatenate(
-                [np.zeros(shape=(zero_length,) + v.shape[1:], dtype=v.dtype), v[data_begin:end]]) for
-                    k, v in sample_batch.data.items()}
+            data = {
+                k: np.concatenate([
+                    np.zeros(
+                        shape=(zero_length, ) + v.shape[1:], dtype=v.dtype),
+                    v[data_begin:end]
+                ])
+                for k, v in sample_batch.data.items()
+            }
         else:
             data = {k: v[begin:end] for k, v in sample_batch.data.items()}
 
@@ -398,7 +401,7 @@ def timeslice_along_seq_lens_with_overlap(
             key = "state_in_{}".format(i)
             while key in data:
                 data[key] = np.zeros_like(sample_batch.data[key][0:1])
-                del data["state_out_{}".format(i)]  #TEST this
+                del data["state_out_{}".format(i)]
                 i += 1
                 key = "state_in_{}".format(i)
         # TODO: This will not work with attention nets as their state_outs are
@@ -407,14 +410,14 @@ def timeslice_along_seq_lens_with_overlap(
             i = 0
             key = "state_in_{}".format(i)
             while key in data:
-                data[key] = sample_batch.data["state_out_{}".format(i)][begin-1:begin]
-                del data["state_out_{}".format(i)]  #TEST this
+                data[key] = sample_batch.data["state_out_{}".format(i)][
+                    begin - 1:begin]
+                del data["state_out_{}".format(i)]
                 i += 1
                 key = "state_in_{}".format(i)
 
-        timeslices.append(SampleBatch(data,
-            _seq_lens=[end - begin],
-            _dont_check_lens=True))
+        timeslices.append(
+            SampleBatch(data, _seq_lens=[end - begin], _dont_check_lens=True))
 
     # Zero-pad each slice if necessary.
     if zero_pad_max_seq_len > 0:

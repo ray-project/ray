@@ -268,7 +268,14 @@ class SampleBatch:
         """
         if self.seq_lens is not None and len(self.seq_lens) > 0:
             if start < 0:
-                data = {k: np.concatenate([np.zeros(shape=(-start, ) + v.shape[1:], dtype=v.dtype), v[0:end]]) for k, v in self.data.items()}
+                data = {
+                    k: np.concatenate([
+                        np.zeros(
+                            shape=(-start, ) + v.shape[1:], dtype=v.dtype),
+                        v[0:end]
+                    ])
+                    for k, v in self.data.items()
+                }
             else:
                 data = {k: v[start:end] for k, v in self.data.items()}
             # Fix state_in_x data.
@@ -292,10 +299,7 @@ class SampleBatch:
                     ]
                     if start < 0:
                         seq_lens[0] += -start
-                    try:#TODO
-                        assert sum(seq_lens) == (end - start)
-                    except Exception as e:
-                        raise e
+                    assert sum(seq_lens) == (end - start)
                     break
                 elif state_start is None and count > start:
                     state_start = i
@@ -336,8 +340,8 @@ class SampleBatch:
 
         Args:
             max_len (int): The max length to zero pad to.
-            exclude_states (bool): If False, also zero-pad all `state_in_x` data.
-                If False, leave `state_in_x` keys as-is.
+            exclude_states (bool): If False, also zero-pad all `state_in_x`
+                data. If False, leave `state_in_x` keys as-is.
         """
         for col in self.data.keys():
             # Skip state in columns.
@@ -364,10 +368,7 @@ class SampleBatch:
                 f_pad[f_pad_base:f_pad_base + len_] = f[f_base:f_base + len_]
                 f_pad_base += max_seq_len
                 f_base += len_
-            try:#TODO
-                assert f_base == len(f), f
-            except Exception as e:
-                raise e
+            assert f_base == len(f), f
             # Update our data.
             self.data[col] = f_pad
 
@@ -516,7 +517,6 @@ class SampleBatch:
             while i < self.count:
                 slices.append((i, i + slice_size))
                 i += slice_size
-        #random.shuffle(slices)
         return slices
 
 

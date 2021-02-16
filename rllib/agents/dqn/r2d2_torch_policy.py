@@ -74,6 +74,8 @@ def r2d2_loss(policy: Policy, model, _,
         TensorType: A single loss tensor.
     """
     config = policy.config
+
+    # Construct internal state inputs.
     i = 0
     state_batches = []
     while "state_in_{}".format(i) in train_batch:
@@ -81,7 +83,7 @@ def r2d2_loss(policy: Policy, model, _,
         i += 1
     assert state_batches
 
-    # Q-network evaluation.
+    # Q-network evaluation (at t).
     q, _, _, _ = compute_q_values(
         policy,
         policy.q_model,
@@ -91,7 +93,7 @@ def r2d2_loss(policy: Policy, model, _,
         explore=False,
         is_training=True)
 
-    # Target Q-network evaluation.
+    # Target Q-network evaluation (at t+1).
     q_target, _, _, _ = compute_q_values(
         policy,
         policy.target_q_model,
@@ -109,57 +111,40 @@ def r2d2_loss(policy: Policy, model, _,
     B = state_batches[0].shape[0]
     T = q.shape[0] // B
 
-    # Clip away burn-in values.
-    #burn_in = policy.config["burn_in"]
-    #if burn_in > 0 and burn_in < T:
-    #    q = q[burn_in:]
-    #    q_target = q_target[burn_in:]
-    #    actions = actions[burn_in:]
-    #    dones = dones[burn_in:]
-    #    rewards = rewards[burn_in:]
-    #    weights = weights[burn_in:]
-    #    T -= burn_in
-
     # Q scores for actions which we know were selected in the given state.
     one_hot_selection = F.one_hot(actions, policy.action_space.n)
     q_selected = torch.sum(
         torch.where(q > FLOAT_MIN, q, torch.tensor(0.0, device=policy.device))
         * one_hot_selection, 1)
-    #q_logits_selected = torch.sum(
-    #    q_logits * torch.unsqueeze(one_hot_selection, -1), 1)
 
     if config["double_q"]:
         best_actions = torch.argmax(q, dim=1)
-        best_actions_one_hot = F.one_hot(best_actions, policy.action_space.n)
-        q_target_best = torch.sum(
-            torch.where(q_target > FLOAT_MIN, q_target,
-                        torch.tensor(0.0, device=policy.device)) *
-            best_actions_one_hot, 1)
-
     else:
-        raise ValueError("non-double Q not supported for R2D2 yet!")
-        #q_tp1_best_one_hot_selection = F.one_hot(
-        #    torch.argmax(q_tp1, 1), policy.action_space.n)
-        #q_tp1_best = torch.sum(
-        #    torch.where(q_tp1 > FLOAT_MIN, q_tp1,
-        #                torch.tensor(0.0, device=policy.device)) *
-        #    q_tp1_best_one_hot_selection, 1)
-        #q_probs_tp1_best = torch.sum(
-        #    q_probs_tp1 * torch.unsqueeze(q_tp1_best_one_hot_selection, -1), 1)
+        best_actions = torch.argmax(q_target, dim=1)
+
+    best_actions_one_hot = F.one_hot(best_actions, policy.action_space.n)
+    q_target_best = torch.sum(
+        torch.where(q_target > FLOAT_MIN, q_target,
+                    torch.tensor(0.0, device=policy.device)) *
+        best_actions_one_hot,
+        dim=1)
 
     if config["num_atoms"] > 1:
         raise ValueError("Distributional R2D2 not supported yet!")
     else:
-        q_target_best_masked_tp1 = (1.0 - dones) * torch.cat([q_target_best[1:], torch.tensor([0.0], device=policy.device)])
+        q_target_best_masked_tp1 = (1.0 - dones) * torch.cat(
+            [q_target_best[1:],
+             torch.tensor([0.0], device=policy.device)])
 
-        #h_inv = h_inverse(q_target_best_masked, config["epsilon"])
-
-        #target = h(rewards + \
-        #           config["gamma"] ** config["n_step"] * h_inv,
-        #           config["epsilon"])
-
-        target = rewards + \
-            config["gamma"] ** config["n_step"] * q_target_best_masked_tp1
+        if config["use_h_function"]:
+            h_inv = h_inverse(q_target_best_masked_tp1,
+                              config["h_function_epsilon"])
+            target = h_function(
+                rewards + config["gamma"]**config["n_step"] * h_inv,
+                config["h_function_epsilon"])
+        else:
+            target = rewards + \
+                config["gamma"] ** config["n_step"] * q_target_best_masked_tp1
 
         # Seq-mask all loss-related terms.
         seq_mask = sequence_mask(train_batch["seq_lens"], T)[:, :-1]
@@ -175,36 +160,35 @@ def r2d2_loss(policy: Policy, model, _,
 
         # Make sure use the correct time indices:
         # Q(t) - [gamma * r + Q^(t+1)]
-        # Compute the error (potentially clipped).
         q_selected = q_selected.reshape([B, T])[:, :-1]
         td_error = q_selected - target.reshape([B, T])[:, :-1].detach()
         td_error = td_error * seq_mask
-        #weights = weights.reshape([B, T])[:, :-1].float()
-        weights = 1.0
+        weights = weights.reshape([B, T])[:, :-1]
         policy._total_loss = reduce_mean_valid(weights * huber_loss(td_error))
         policy._td_error = td_error.reshape([-1])
-        #q_selected = q_selected * seq_mask
         policy._loss_stats = {
             "mean_q": reduce_mean_valid(q_selected),
             "min_q": torch.min(q_selected),
             "max_q": torch.max(q_selected),
             "mean_td_error": reduce_mean_valid(td_error),
         }
-        print(policy._loss_stats)
 
     return policy._total_loss
 
 
-def h(x, epsilon=1.0):
-    """h-function described in the paper [1].
+def h_function(x, epsilon=1.0):
+    """h-function to normalize target Qs, described in the paper [1].
 
     h(x) = sign(x) * [sqrt(abs(x) + 1) - 1] + epsilon * x
+
+    Used in [1] in combination with h_inverse:
+      targets = h(r + gamma * h_inverse(Q^))
     """
     return torch.sign(x) * (torch.sqrt(torch.abs(x) + 1.0) - 1.0) + epsilon * x
 
 
 def h_inverse(x, epsilon=1.0):
-    """h-function described in the paper [1].
+    """Inverse if the above h-function, described in the paper [1].
 
     If x > 0.0:
     h-1(x) = [2eps * x + (2eps + 1) - sqrt(4eps x + (2eps + 1)^2)] /

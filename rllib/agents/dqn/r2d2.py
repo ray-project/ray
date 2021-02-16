@@ -9,9 +9,8 @@ This file defines the distributed Trainer class for the R2D2
 algorithm. See `r2d2_[tf|torch]_policy.py` for the definition of the policies.
 
 Detailed documentation:
-https://docs.ray.io/en/master/rllib-algorithms.html#deep-q-networks-dqn-rainbow-parametric-dqn
+https://docs.ray.io/en/master/rllib-algorithms.html#recurrent-replay-distributed-dqn-r2d2
 """  # noqa: E501
-#TODO: ^^ update documentation link
 
 import logging
 from typing import List, Optional, Type
@@ -37,6 +36,21 @@ logger = logging.getLogger(__name__)
 DEFAULT_CONFIG = dqn.DQNTrainer.merge_trainer_configs(
     dqn.DEFAULT_CONFIG,  # See keys in impala.py, which are also supported.
     {
+        # Learning rate for adam optimizer
+        "lr": 1e-4,
+        # Discount factor.
+        "gamma": 0.997,
+        # Train batch size (in number of single timesteps).
+        "train_batch_size": 64 * 20,
+        # Adam epsilon hyper parameter
+        "adam_epsilon": 1e-3,
+        # Run in parallel by default.
+        "num_workers": 2,
+        # Batch mode must be complete_episodes.
+        "batch_mode": "complete_episodes",
+        # R2D2 does not suport n-step > 1 yet!
+        "n_step": 1,
+
         # If True, assume a zero-initialized state input (no matter where in
         # the episode the sequence is located).
         # If False, store the initial states along with each SampleBatch, use
@@ -53,6 +67,14 @@ DEFAULT_CONFIG = dqn.DQNTrainer.merge_trainer_configs(
         # (n=LSTM’s/attention net’s max_seq_len).
         "burn_in": 0,
 
+        # Whether to use the h-function from the paper [1] to scale target
+        # values in the R2D2-loss function:
+        # h(x) = sign(x)(􏰅|x| + 1 − 1) + εx
+        "use_h_function": True,
+        # The epsilon parameter from the R2D2 loss function (only used
+        # if `use_h_function`=True.
+        "h_function_epsilon": 1e-3,
+
         # === Hyperparameters from the paper [1] ===
         # Size of the replay buffer (in sequences, not timesteps).
         "buffer_size": 100000,
@@ -64,24 +86,9 @@ DEFAULT_CONFIG = dqn.DQNTrainer.merge_trainer_configs(
         # model->max_seq_len + burn_in.
         # Do not set this to any valid value!
         "replay_sequence_length": -1,
+
         # Update the target network every `target_network_update_freq` steps.
         "target_network_update_freq": 2500,
-        # Discount factor.
-        "gamma": 0.997,
-        #"rollout_fragment_length": 200,
-        # Train batch size (in number of single timesteps).
-        "train_batch_size": 64 * 20, #TODO: Make this sequences, not timesteps
-        # Learning rate for adam optimizer
-        "lr": 1e-4,
-        # Adam epsilon hyper parameter
-        "adam_epsilon": 1e-3,
-        # The epsilon parameter from the R2D2 loss function.
-        "epsilon": 1e-3,
-        # Run in parallel by default.
-        "num_workers": 2,
-
-        # Batch mode must be complete_episodes.
-        "batch_mode": "complete_episodes",
     },
     _allow_unknown_configs=True,
 )
@@ -104,9 +111,9 @@ def validate_config(config: TrainerConfigDict) -> None:
             "`replay_sequence_length` is calculated automatically to be "
             "model->max_seq_len + burn_in!")
     # Add the `burn_in` to the Model's max_seq_len.
-    #config["model"]["max_seq_len"] += config["burn_in"]
     # Set the replay sequence length to the max_seq_len of the model.
-    config["replay_sequence_length"] = config["burn_in"] + config["model"]["max_seq_len"]
+    config["replay_sequence_length"] = \
+        config["burn_in"] + config["model"]["max_seq_len"]
 
     if config.get("prioritized_replay"):
         raise ValueError("Prioritized replay is not supported for R2D2 yet!")
