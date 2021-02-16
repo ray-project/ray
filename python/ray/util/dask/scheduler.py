@@ -1,9 +1,8 @@
 import atexit
-from collections import defaultdict
-from multiprocessing.pool import ThreadPool
-from dataclasses import dataclass
 import threading
-import logging
+from collections import defaultdict
+from dataclasses import dataclass
+from multiprocessing.pool import ThreadPool
 
 import ray
 
@@ -19,8 +18,6 @@ main_thread = threading.current_thread()
 default_pool = None
 pools = defaultdict(dict)
 pools_lock = threading.Lock()
-
-logger = logging.getLogger(__name__)
 
 
 def ray_dask_get(dsk, keys, **kwargs):

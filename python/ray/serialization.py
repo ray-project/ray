@@ -243,7 +243,6 @@ class SerializationContext:
             except Exception as e:
                 logger.exception(e)
                 obj = RaySystemError(e, traceback.format_exc())
-            assert obj is not None
             results.append(obj)
             # Must clear ObjectRef to not hold a reference.
             self.set_outer_object_ref(None)
