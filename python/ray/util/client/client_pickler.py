@@ -38,7 +38,7 @@ from ray.util.client.common import ClientActorClass
 from ray.util.client.common import ClientRemoteFunc
 from ray.util.client.common import ClientRemoteMethod
 from ray.util.client.common import OptionWrapper
-from ray.util.client.common import SelfReferenceSentinel
+from ray.util.client.common import InProgressSentinel
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 from ray._private.client_mode_hook import disable_client_hook
 
@@ -95,11 +95,11 @@ class ClientPickler(cloudpickle.CloudPickler):
             # with ensure_ref and return appropriately) But punting for now.
             if obj._ref is None:
                 obj._ensure_ref()
-            if type(obj._ref) == SelfReferenceSentinel:
+            if type(obj._ref) == InProgressSentinel:
                 return PickleStub(
                     type="RemoteFuncSelfReference",
                     client_id=self.client_id,
-                    ref_id=b"",
+                    ref_id=self._client_side_ref.id,
                     name=None,
                     baseline_options=None,
                 )
@@ -114,11 +114,11 @@ class ClientPickler(cloudpickle.CloudPickler):
             # TODO(barakmich): Mutual recursion, as above.
             if obj._ref is None:
                 obj._ensure_ref()
-            if type(obj._ref) == SelfReferenceSentinel:
+            if type(obj._ref) == InProgressSentinel:
                 return PickleStub(
                     type="RemoteActorSelfReference",
                     client_id=self.client_id,
-                    ref_id=b"",
+                    ref_id=self._client_side_ref.id,
                     name=None,
                     baseline_options=None,
                 )

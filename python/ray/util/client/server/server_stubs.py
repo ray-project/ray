@@ -1,28 +1,59 @@
 from contextlib import contextmanager
+from abc import ABC
+from abc import abstractmethod
 
-_current_remote_obj = None
+_current_server = None
 
 
 @contextmanager
-def current_remote(r):
-    global _current_remote_obj
-    remote = _current_remote_obj
-    _current_remote_obj = r
+def current_server(r):
+    global _current_server
+    remote = _current_server
+    _current_server = r
     try:
         yield
     finally:
-        _current_remote_obj = remote
+        _current_server = remote
 
 
-class ServerSelfReferenceSentinel:
-    def __init__(self):
-        pass
+class ClientReferenceSentinel(ABC):
+    def __init__(self, client_id, id):
+        self.client_id = client_id
+        self.id = id
 
     def __reduce__(self):
-        global _current_remote_obj
-        if _current_remote_obj is None:
-            return (ServerSelfReferenceSentinel, tuple())
-        return (identity, (_current_remote_obj, ))
+        remote_obj = self.get_remote_obj()
+        if remote_obj is None:
+            return (self.__class__, (self.client_id, self.id))
+        return (identity, (remote_obj, ))
+
+    @abstractmethod
+    def get_remote_obj(self):
+        pass
+
+    def get_real_ref_from_server(self):
+        global _current_server
+        client_map = _current_server.client_side_ref_map.get(
+            self.client_id, None)
+        if client_map is None:
+            return None
+        return client_map.get(self.id, None)
+
+
+class ClientReferenceActor(ClientReferenceSentinel):
+    def get_remote_obj(self):
+        global _current_server
+        real_ref_id = self.get_real_ref_from_server()
+        return _current_server.lookup_or_register_actor(
+            real_ref_id, self.client_id)
+
+
+class ClientReferenceFunction(ClientReferenceSentinel):
+    def get_remote_obj(self):
+        global _current_server
+        real_ref_id = self.get_real_ref_from_server()
+        return _current_server.lookup_or_register_func(real_ref_id,
+                                                       self.client_id)
 
 
 def identity(x):
