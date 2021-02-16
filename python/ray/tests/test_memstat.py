@@ -240,15 +240,12 @@ def test_group_by_sort_by(ray_start_regular):
     def f(y):
         from ray.new_dashboard.memory_utils import memory_summary
         x_id = ray.put("HI")
-        info_a = memory_summary(address,
-                                group_by="STACK_TRACE",
-                                sort_by="REFERENCE_TYPE")
-        info_b = memory_summary(address,
-                                group_by="NODE_ADDRESS",
-                                sort_by="OBJECT_SIZE")
-        info_c = memory_summary(address,
-                                group_by="NODE_ADDRESS",
-                                sort_by="PID")
+        info_a = memory_summary(
+            address, group_by="STACK_TRACE", sort_by="REFERENCE_TYPE")
+        info_b = memory_summary(
+            address, group_by="NODE_ADDRESS", sort_by="OBJECT_SIZE")
+        info_c = memory_summary(
+            address, group_by="NODE_ADDRESS", sort_by="PID")
         del x_id
         return info_a, info_b, info_c
 
