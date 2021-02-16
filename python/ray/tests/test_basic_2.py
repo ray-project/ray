@@ -338,6 +338,7 @@ def test_call_chain(ray_start_cluster):
     assert ray.get(x) == 100
 
 
+@pytest.mark.skipif(client_test_enabled(), reason="init issue")
 def test_system_config_when_connecting(ray_start_cluster):
     config = {"object_pinning_enabled": 0, "object_timeout_milliseconds": 200}
     cluster = ray.cluster_utils.Cluster()
