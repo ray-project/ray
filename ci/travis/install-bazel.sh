@@ -119,7 +119,7 @@ EOF
     echo "Using buildkite secret store to communicate with cache address"
 
     cat <<EOF >> ~/.bazelrc
-build --remote_cache=${BUILDKITE_BAZEL_CACHE_URL=$}
+build --remote_cache=${BUILDKITE_BAZEL_CACHE_URL}
 EOF
   else
     echo "Using remote build cache in read-only mode." 1>&2
