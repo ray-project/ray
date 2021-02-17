@@ -34,7 +34,7 @@ RUN apt-get install -y -qq \
     libgtk2.0-dev zlib1g-dev libgl1-mesa-dev \
     openjdk-8-jdk maven
 
-RUN java --verison
+RUN java --version
 
 RUN curl -o- https://get.docker.com | sh
 
