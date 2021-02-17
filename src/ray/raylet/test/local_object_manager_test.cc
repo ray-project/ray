@@ -382,13 +382,12 @@ TEST_F(LocalObjectManagerTest, TestRestoreSpilledObject) {
   manager.PinObjects(object_ids, std::move(objects), owner_address);
   // Make sure the restore request is no-op and return not found if the object wasn't
   // spilled yet.
-  manager.AsyncRestoreSpilledObject(object_id, "url1", manager_node_id_, [&](const Status &status) {
-    ASSERT_TRUE(status.ok());
-  }
+  manager.AsyncRestoreSpilledObject(
+      object_id, "url1", manager_node_id_,
+      [&](const Status &status) { ASSERT_TRUE(status.ok()); });
 
   manager.SpillObjects(object_ids,
-                       [&](const Status &status) mutable {
-    ASSERT_TRUE(status.ok()); });
+                       [&](const Status &status) mutable { ASSERT_TRUE(status.ok()); });
   std::vector<std::string> urls;
   for (size_t i = 0; i < object_ids.size(); i++) {
     urls.push_back(BuildURL("url" + std::to_string(i)));
@@ -433,8 +432,8 @@ TEST_F(LocalObjectManagerTest, TestRestoreSpilledObject) {
   NodeID remote_node_id = NodeID::FromRandom();
   manager.AsyncRestoreSpilledObject(remote_object_id, remote_object_url, remote_node_id,
                                     [&](const Status &status) {
-    ASSERT_TRUE(status.ok());
-    num_times_fired++;
+                                      ASSERT_TRUE(status.ok());
+                                      num_times_fired++;
                                     });
   // Make sure the remote call was invoked.
   ASSERT_FALSE(worker_pool.io_worker_client->ReplyRestoreObjects(10));
