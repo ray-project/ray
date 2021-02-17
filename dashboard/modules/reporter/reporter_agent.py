@@ -184,7 +184,7 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
     @staticmethod
     def _get_mem_usage():
         vm = psutil.virtual_memory()
-        return vm.total, vm.available, vm.percent
+        return vm.total, vm.available, vm.percent, vm.used
 
     @staticmethod
     def _get_disk_usage():
@@ -299,10 +299,10 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
             tags={"ip": ip})
 
         # -- Mem per node --
-        total, avail, _ = stats["mem"]
-        mem_usage = float(total - avail)
+        total, avail, _, used = stats["mem"]
+        # mem_usage = float(total - avail)
         mem_record = Record(
-            gauge=self._gauges["node_mem"], value=mem_usage, tags={"ip": ip})
+            gauge=self._gauges["node_mem"], value=used, tags={"ip": ip})
 
         # -- GPU per node --
         gpus = stats["gpus"]
