@@ -24,7 +24,7 @@ def test_ray_client(ray_client_instance):
     ray.util.connect(ray_client_instance)
     client = serve.start(detached=True)
 
-    # TODO(edoakes): disconneting and reconnecting causes the test to
+    # TODO(edoakes): disconnecting and reconnecting causes the test to
     # spuriously hang.
     # ray.util.disconnect()
 
