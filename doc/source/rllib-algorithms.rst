@@ -656,7 +656,7 @@ Linear Upper Confidence Bound (contrib/LinUCB)
 ----------------------------------------------
 |pytorch|
 `[paper] <http://rob.schapire.net/papers/www10.pdf>`__ `[implementation]
-<https://github.com/ray-project/ray/blob/master/rllib/contrib/bandits/agents/lin_ucb.py>`__
+<https://github.com/ray-project/ray/blob/master/rllib/contrib/agents/bandits/agents/lin_ucb.py>`__
 LinUCB assumes a linear dependency between the expected reward of an action and
 its context. It estimates the Q value of each action using ridge regression.
 It constructs a confidence region around the weights of the linear
@@ -668,7 +668,7 @@ Tuned examples: `SimpleContextualBandit <https://github.com/ray-project/ray/blob
 **LinUCB-specific configs** (see also `common configs <rllib-training
 .html#common-parameters>`__):
 
-.. literalinclude:: ../../rllib/contrib/bandits/agents/lin_ucb.py
+.. literalinclude:: ../../rllib/contrib/agents/bandits/agents/lin_ucb.py
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
@@ -679,7 +679,7 @@ Linear Thompson Sampling (contrib/LinTS)
 ----------------------------------------
 |pytorch|
 `[paper] <http://proceedings.mlr.press/v28/agrawal13.pdf>`__
-`[implementation] <https://github.com/ray-project/ray/blob/master/rllib/contrib/bandits/agents/lin_ts.py>`__
+`[implementation] <https://github.com/ray-project/ray/blob/master/rllib/contrib/agents/bandits/agents/lin_ts.py>`__
 Like LinUCB, LinTS also assumes a linear dependency between the expected
 reward of an action and its context and uses online ridge regression to
 estimate the Q values of actions given the context. It assumes a Gaussian
@@ -692,7 +692,7 @@ Tuned examples: `SimpleContextualBandit <https://github.com/ray-project/ray/blob
 **LinTS-specific configs** (see also `common configs <rllib-training
 .html#common-parameters>`__):
 
-.. literalinclude:: ../../rllib/contrib/bandits/agents/lin_ts.py
+.. literalinclude:: ../../rllib/contrib/agents/bandits/agents/lin_ts.py
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
@@ -712,13 +712,13 @@ Tuned examples: `SimpleContextualBandit <https://github.com/ray-project/ray/blob
 Single-Player Alpha Zero (contrib/AlphaZero)
 --------------------------------------------
 |pytorch|
-`[paper] <https://arxiv.org/abs/1712.01815>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/contrib/alpha_zero>`__ AlphaZero is an RL agent originally designed for two-player games. This version adapts it to handle single player games. The code can be sscaled to any number of workers. It also implements the ranked rewards `(R2) <https://arxiv.org/abs/1807.01672>`__ strategy to enable self-play even in the one-player setting. The code is mainly purposed to be used for combinatorial optimization.
+`[paper] <https://arxiv.org/abs/1712.01815>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/contrib/agents/alpha_zero>`__ AlphaZero is an RL agent originally designed for two-player games. This version adapts it to handle single player games. The code can be sscaled to any number of workers. It also implements the ranked rewards `(R2) <https://arxiv.org/abs/1807.01672>`__ strategy to enable self-play even in the one-player setting. The code is mainly purposed to be used for combinatorial optimization.
 
-Tuned examples: `CartPole-v0 <https://github.com/ray-project/ray/blob/master/rllib/contrib/alpha_zero/examples/train_cartpole.py>`__
+Tuned examples: `CartPole-v0 <https://github.com/ray-project/ray/blob/master/rllib/contrib/agents/alpha_zero/examples/train_cartpole.py>`__
 
 **AlphaZero-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
-.. literalinclude:: ../../rllib/contrib/alpha_zero/core/alpha_zero_trainer.py
+.. literalinclude:: ../../rllib/contrib/agents/alpha_zero/core/alpha_zero_trainer.py
    :language: python
    :start-after: __sphinx_doc_begin__
 
@@ -747,13 +747,13 @@ Tuned examples: `Two-step game <https://github.com/ray-project/ray/blob/master/r
 Multi-Agent Deep Deterministic Policy Gradient (contrib/MADDPG)
 ---------------------------------------------------------------
 |tensorflow|
-`[paper] <https://arxiv.org/abs/1706.02275>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/contrib/maddpg/maddpg.py>`__ MADDPG is a DDPG centralized/shared critic algorithm. Code here is adapted from https://github.com/openai/maddpg to integrate with RLlib multi-agent APIs. Please check `justinkterry/maddpg-rllib <https://github.com/justinkterry/maddpg-rllib>`__ for examples and more information. Note that the implementation here is based on OpenAI's, and is intended for use with the discrete MPE environments. Please also note that people typically find this method difficult to get to work, even with all applicable optimizations for their environment applied. This method should be viewed as for research purposes, and for reproducing the results of the paper introducing it.
+`[paper] <https://arxiv.org/abs/1706.02275>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/contrib/agents/maddpg/maddpg.py>`__ MADDPG is a DDPG centralized/shared critic algorithm. Code here is adapted from https://github.com/openai/maddpg to integrate with RLlib multi-agent APIs. Please check `justinkterry/maddpg-rllib <https://github.com/justinkterry/maddpg-rllib>`__ for examples and more information. Note that the implementation here is based on OpenAI's, and is intended for use with the discrete MPE environments. Please also note that people typically find this method difficult to get to work, even with all applicable optimizations for their environment applied. This method should be viewed as for research purposes, and for reproducing the results of the paper introducing it.
 
 **MADDPG-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
 Tuned examples: `Multi-Agent Particle Environment <https://github.com/wsjeon/maddpg-rllib/tree/master/plots>`__, `Two-step game <https://github.com/ray-project/ray/blob/master/rllib/examples/two_step_game.py>`__
 
-.. literalinclude:: ../../rllib/contrib/maddpg/maddpg.py
+.. literalinclude:: ../../rllib/contrib/agents/maddpg/maddpg.py
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
