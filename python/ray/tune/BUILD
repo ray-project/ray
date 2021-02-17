@@ -439,7 +439,7 @@ py_test(
 
 py_test(
     name = "hebo_example",
-    size = "small",
+    size = "medium",
     srcs = ["examples/hebo_example.py"],
     deps = [":tune_lib"],
     tags = ["exclusive", "example"],

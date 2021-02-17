@@ -168,12 +168,18 @@ class HEBOSearch(Searcher):
             # If only a mode was passed, use anonymous metric
             self._metric = DEFAULT_METRIC
 
-        assert isinstance(
-            self._space, hebo.design_space.design_space.DesignSpace
-        ), "space must be a HEBO DesignSpace object, got '{}'.".format(
-            type(self._space))
+        if not isinstance(
+            self._space, hebo.design_space.design_space.DesignSpace):
+            raise ValueError(
+                f"Invalid search space: {type(self._space)}. Either pass a "
+                f"valid search space to the `HEBOSearch` class or pass "
+                f"a `config` parameter to `tune.run()`)
 
-        assert self._space.num_paras > 0, "space must not be empty."
+        if self._space.num_paras <= 0:
+            raise ValueError(
+                "Got empty search space. Please make sure to pass "
+                "a valid search space with at least one parameter to "
+                "`HEBOSearch`")
 
         if self._random_state_seed is not None:
             np.random.seed(self._random_state_seed)
