@@ -214,8 +214,8 @@ class PlasmaStore {
   /// memory that is currently being used for created but unsealed objects.
   void GetAvailableMemory(std::function<void(size_t)> callback) const {
     RAY_CHECK(num_bytes_in_use_ >= num_bytes_unsealed_);
-    // We include unsealed objects because these may have been created by the
-    // object manager.
+    // We do not count unsealed objects as in use because these may have been
+    // created by the object manager.
     int64_t num_bytes_in_use =
         static_cast<int64_t>(num_bytes_in_use_ - num_bytes_unsealed_);
     RAY_CHECK(PlasmaAllocator::GetFootprintLimit() >= num_bytes_in_use);

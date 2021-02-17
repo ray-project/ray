@@ -180,10 +180,12 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) 
 
   TriggerOutOfMemoryHandlingIfNeeded();
 
-  for (const auto &obj_id : objects_to_pull) {
-    if (object_ids_to_cancel.count(obj_id) == 0) {
-      absl::MutexLock lock(&active_objects_mu_);
-      TryToMakeObjectLocal(obj_id);
+  {
+    absl::MutexLock lock(&active_objects_mu_);
+    for (const auto &obj_id : objects_to_pull) {
+      if (object_ids_to_cancel.count(obj_id) == 0) {
+        TryToMakeObjectLocal(obj_id);
+      }
     }
   }
 }

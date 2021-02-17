@@ -25,7 +25,6 @@
 #include "ray/common/id.h"
 #include "ray/common/status.h"
 #include "ray/object_manager/plasma/client.h"
-#include "ray/object_manager/pull_manager.h"
 
 namespace ray {
 
@@ -51,8 +50,7 @@ class ObjectBufferPool {
   /// \param store_socket_name The socket name of the store to which plasma clients
   /// connect.
   /// \param chunk_size The chunk size into which objects are to be split.
-  ObjectBufferPool(std::shared_ptr<PullManager> pull_manager,
-                   const std::string &store_socket_name, const uint64_t chunk_size);
+  ObjectBufferPool(const std::string &store_socket_name, const uint64_t chunk_size);
 
   ~ObjectBufferPool();
 
@@ -207,9 +205,6 @@ class ObjectBufferPool {
   plasma::PlasmaClient store_client_;
   /// Socket name of plasma store.
   std::string store_socket_name_;
-  /// Pull manager. Used to check whether we should create
-  /// objects.
-  std::shared_ptr<PullManager> pull_manager_;
 };
 
 }  // namespace ray
