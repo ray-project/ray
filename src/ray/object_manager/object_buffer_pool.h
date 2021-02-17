@@ -51,7 +51,8 @@ class ObjectBufferPool {
   /// \param store_socket_name The socket name of the store to which plasma clients
   /// connect.
   /// \param chunk_size The chunk size into which objects are to be split.
-  ObjectBufferPool(std::shared_ptr<PullManager> pull_manager, const std::string &store_socket_name, const uint64_t chunk_size);
+  ObjectBufferPool(std::shared_ptr<PullManager> pull_manager,
+                   const std::string &store_socket_name, const uint64_t chunk_size);
 
   ~ObjectBufferPool();
 

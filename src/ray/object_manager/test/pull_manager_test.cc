@@ -19,21 +19,19 @@ class PullManagerTestWithCapacity {
         num_restore_spilled_object_calls_(0),
         num_object_store_full_calls_(0),
         fake_time_(0),
-        pull_manager_(self_node_id_,
-                      [this](const ObjectID &object_id) { return object_is_local_; },
-                      [this](const ObjectID &object_id, const NodeID &node_id) {
-                        num_send_pull_request_calls_++;
-                      },
-                      [this](const ObjectID &object_id) {
-                        num_abort_calls_[object_id]++;
-                      },
-                      [this](const ObjectID &, const std::string &, const NodeID &,
-                             std::function<void(const ray::Status &)> callback) {
-                        num_restore_spilled_object_calls_++;
-                        restore_object_callback_ = callback;
-                      },
-                      [this]() { return fake_time_; }, 10000, num_available_bytes,
-                      [this]() { num_object_store_full_calls_++; }) {}
+        pull_manager_(
+            self_node_id_, [this](const ObjectID &object_id) { return object_is_local_; },
+            [this](const ObjectID &object_id, const NodeID &node_id) {
+              num_send_pull_request_calls_++;
+            },
+            [this](const ObjectID &object_id) { num_abort_calls_[object_id]++; },
+            [this](const ObjectID &, const std::string &, const NodeID &,
+                   std::function<void(const ray::Status &)> callback) {
+              num_restore_spilled_object_calls_++;
+              restore_object_callback_ = callback;
+            },
+            [this]() { return fake_time_; }, 10000, num_available_bytes,
+            [this]() { num_object_store_full_calls_++; }) {}
 
   void AssertNoLeaks() {
     ASSERT_TRUE(pull_manager_.pull_request_bundles_.empty());

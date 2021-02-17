@@ -116,7 +116,8 @@ ObjectManager::ObjectManager(asio::io_service &main_service, const NodeID &self_
 
         static_cast<void>(spill_objects_callback());
       }));
-  buffer_pool_.reset(new ObjectBufferPool(pull_manager_, config_.store_socket_name, config_.object_chunk_size));
+  buffer_pool_.reset(new ObjectBufferPool(pull_manager_, config_.store_socket_name,
+                                          config_.object_chunk_size));
 
   store_notification_->SubscribeObjAdded(
       [this](const object_manager::protocol::ObjectInfoT &object_info) {
@@ -685,7 +686,7 @@ ray::Status ObjectManager::ReceiveObjectChunk(const NodeID &node_id,
 
   std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> chunk_status =
       buffer_pool_->CreateChunk(object_id, owner_address, data_size, metadata_size,
-                               chunk_index);
+                                chunk_index);
   ray::Status status;
   ObjectBufferPool::ChunkInfo chunk_info = chunk_status.first;
   num_chunks_received_total_++;
