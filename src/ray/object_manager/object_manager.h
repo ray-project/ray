@@ -414,7 +414,7 @@ class ObjectManager : public ObjectManagerInterface,
   // Process notifications from Plasma. We make it a shared pointer because
   // we will decide its type at runtime, and we would pass it to Plasma Store.
   std::shared_ptr<ObjectStoreNotificationManager> store_notification_;
-  ObjectBufferPool buffer_pool_;
+  std::unique_ptr<ObjectBufferPool> buffer_pool_;
 
   /// Multi-thread asio service, deal with all outgoing and incoming RPC request.
   boost::asio::io_service rpc_service_;
@@ -474,7 +474,7 @@ class ObjectManager : public ObjectManagerInterface,
   std::unique_ptr<PushManager> push_manager_;
 
   /// Object pull manager.
-  std::unique_ptr<PullManager> pull_manager_;
+  std::shared_ptr<PullManager> pull_manager_;
 
   /// Running sum of the amount of memory used in the object store.
   int64_t used_memory_ = 0;

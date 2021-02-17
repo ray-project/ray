@@ -15,7 +15,6 @@
 #include "ray/object_manager/common.h"
 #include "ray/object_manager/format/object_manager_generated.h"
 #include "ray/object_manager/notification/object_store_notification_manager_ipc.h"
-#include "ray/object_manager/object_buffer_pool.h"
 #include "ray/object_manager/object_directory.h"
 #include "ray/object_manager/ownership_based_object_directory.h"
 #include "ray/object_manager/plasma/store_runner.h"
@@ -162,7 +161,7 @@ class PullManager {
   /// operations for the object.
   void DeactivatePullBundleRequest(
       const std::map<uint64_t, std::vector<rpc::ObjectReference>>::iterator &request_it,
-      std::unordered_set<ObjectID> *objects_to_cancel = nullptr);
+      std::unordered_set<ObjectID> *objects_to_cancel);
 
   /// Trigger out-of-memory handling if the first request in the queue needs
   /// more space than the bytes available. This is needed to make room for the

@@ -62,7 +62,6 @@ ObjectManager::ObjectManager(asio::io_service &main_service, const NodeID &self_
       config_(config),
       object_directory_(std::move(object_directory)),
       object_store_internal_(config, spill_objects_callback, object_store_full_callback),
-      buffer_pool_(config_.store_socket_name, config_.object_chunk_size),
       rpc_work_(rpc_service_),
       object_manager_server_("ObjectManager", config_.object_manager_port,
                              config_.rpc_service_threads_number),
@@ -96,8 +95,9 @@ ObjectManager::ObjectManager(asio::io_service &main_service, const NodeID &self_
   };
   const auto &cancel_pull_request = [this](const ObjectID &object_id) {
     // We must abort this object because it may have only been partially
-    // created.
-    buffer_pool_.AbortCreate(object_id);
+    // created and will cause a leak if we never receive the rest of the
+    // object. This is a no-op if the object is already sealed or evicted.
+    buffer_pool_->AbortCreate(object_id);
   };
   const auto &get_time = []() { return absl::GetCurrentTimeNanos() / 1e9; };
   int64_t available_memory = config.object_store_memory;
@@ -116,6 +116,7 @@ ObjectManager::ObjectManager(asio::io_service &main_service, const NodeID &self_
 
         static_cast<void>(spill_objects_callback());
       }));
+  buffer_pool_.reset(new ObjectBufferPool(pull_manager_, config_.store_socket_name, config_.object_chunk_size));
 
   store_notification_->SubscribeObjAdded(
       [this](const object_manager::protocol::ObjectInfoT &object_info) {
@@ -378,7 +379,7 @@ void ObjectManager::Push(const ObjectID &object_id, const NodeID &node_id) {
     uint64_t data_size =
         static_cast<uint64_t>(object_info.data_size + object_info.metadata_size);
     uint64_t metadata_size = static_cast<uint64_t>(object_info.metadata_size);
-    uint64_t num_chunks = buffer_pool_.GetNumChunks(data_size);
+    uint64_t num_chunks = buffer_pool_->GetNumChunks(data_size);
 
     rpc::Address owner_address;
     owner_address.set_raylet_id(object_info.owner_raylet_id);
@@ -423,7 +424,7 @@ void ObjectManager::SendObjectChunk(const UniqueID &push_id, const ObjectID &obj
 
   // Get data
   std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> chunk_status =
-      buffer_pool_.GetChunk(object_id, data_size, metadata_size, chunk_index);
+      buffer_pool_->GetChunk(object_id, data_size, metadata_size, chunk_index);
   ObjectBufferPool::ChunkInfo chunk_info = chunk_status.first;
 
   // Fail on status not okay. The object is local, and there is
@@ -455,7 +456,7 @@ void ObjectManager::SendObjectChunk(const UniqueID &push_id, const ObjectID &obj
   rpc_client->Push(push_request, callback);
 
   // Do this regardless of whether it failed or succeeded.
-  buffer_pool_.ReleaseGetChunk(object_id, chunk_info.chunk_index);
+  buffer_pool_->ReleaseGetChunk(object_id, chunk_info.chunk_index);
 }
 
 ray::Status ObjectManager::Wait(
@@ -677,17 +678,13 @@ ray::Status ObjectManager::ReceiveObjectChunk(const NodeID &node_id,
                                               uint64_t data_size, uint64_t metadata_size,
                                               uint64_t chunk_index,
                                               const std::string &data) {
-  if (!pull_manager_->IsObjectActive(object_id)) {
-    // This object is no longer being actively pulled. Do not create the object.
-    return ray::Status::OK();
-  }
   RAY_LOG(DEBUG) << "ReceiveObjectChunk on " << self_node_id_ << " from " << node_id
                  << " of object " << object_id << " chunk index: " << chunk_index
                  << ", chunk data size: " << data.size()
                  << ", object size: " << data_size;
 
   std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> chunk_status =
-      buffer_pool_.CreateChunk(object_id, owner_address, data_size, metadata_size,
+      buffer_pool_->CreateChunk(object_id, owner_address, data_size, metadata_size,
                                chunk_index);
   ray::Status status;
   ObjectBufferPool::ChunkInfo chunk_info = chunk_status.first;
@@ -695,7 +692,7 @@ ray::Status ObjectManager::ReceiveObjectChunk(const NodeID &node_id,
   if (chunk_status.second.ok()) {
     // Avoid handling this chunk if it's already being handled by another process.
     std::memcpy(chunk_info.data, data.data(), chunk_info.buffer_length);
-    buffer_pool_.SealChunk(object_id, chunk_index);
+    buffer_pool_->SealChunk(object_id, chunk_index);
   } else {
     num_chunks_received_failed_++;
     RAY_LOG(INFO) << "ReceiveObjectChunk index " << chunk_index << " of object "
@@ -740,7 +737,7 @@ void ObjectManager::HandleFreeObjects(const rpc::FreeObjectsRequest &request,
 
 void ObjectManager::FreeObjects(const std::vector<ObjectID> &object_ids,
                                 bool local_only) {
-  buffer_pool_.FreeObjects(object_ids);
+  buffer_pool_->FreeObjects(object_ids);
   if (!local_only) {
     const auto remote_connections = object_directory_->LookupAllRemoteConnections();
     std::vector<std::shared_ptr<rpc::ObjectManagerClient>> rpc_clients;
@@ -826,7 +823,7 @@ std::string ObjectManager::DebugString() const {
   result << "\n" << push_manager_->DebugString();
   result << "\n" << object_directory_->DebugString();
   result << "\n" << store_notification_->DebugString();
-  result << "\n" << buffer_pool_.DebugString();
+  result << "\n" << buffer_pool_->DebugString();
   result << "\n" << pull_manager_->DebugString();
   return result.str();
 }

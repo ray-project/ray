@@ -24,6 +24,9 @@ class PullManagerTestWithCapacity {
                       [this](const ObjectID &object_id, const NodeID &node_id) {
                         num_send_pull_request_calls_++;
                       },
+                      [this](const ObjectID &object_id) {
+                        num_abort_calls_[object_id]++;
+                      },
                       [this](const ObjectID &, const std::string &, const NodeID &,
                              std::function<void(const ray::Status &)> callback) {
                         num_restore_spilled_object_calls_++;
@@ -48,6 +51,7 @@ class PullManagerTestWithCapacity {
   std::function<void(const ray::Status &)> restore_object_callback_;
   double fake_time_;
   PullManager pull_manager_;
+  std::unordered_map<ObjectID, int> num_abort_calls_;
 };
 
 class PullManagerTest : public PullManagerTestWithCapacity, public ::testing::Test {
@@ -100,6 +104,7 @@ TEST_F(PullManagerTest, TestStaleSubscription) {
   // There are no client ids to pull from.
   ASSERT_EQ(num_send_pull_request_calls_, 0);
   ASSERT_EQ(num_restore_spilled_object_calls_, 0);
+  ASSERT_TRUE(num_abort_calls_.empty());
 
   auto objects_to_cancel = pull_manager_.CancelPull(req_id);
   ASSERT_EQ(objects_to_cancel, ObjectRefsToIds(refs));
@@ -114,6 +119,7 @@ TEST_F(PullManagerTest, TestStaleSubscription) {
   // Now we're getting a notification about an object that was already cancelled.
   ASSERT_EQ(num_send_pull_request_calls_, 0);
   ASSERT_EQ(num_restore_spilled_object_calls_, 0);
+  ASSERT_EQ(num_abort_calls_[oid], 1);
 
   AssertNoLeaks();
 }
@@ -162,8 +168,10 @@ TEST_F(PullManagerTest, TestRestoreSpilledObject) {
                                  NodeID::FromRandom(), 0);
   ASSERT_EQ(num_restore_spilled_object_calls_, 0);
 
+  ASSERT_TRUE(num_abort_calls_.empty());
   auto objects_to_cancel = pull_manager_.CancelPull(req_id);
   ASSERT_EQ(objects_to_cancel, ObjectRefsToIds(refs));
+  ASSERT_EQ(num_abort_calls_[obj1], 1);
 
   AssertNoLeaks();
 }
@@ -216,7 +224,9 @@ TEST_F(PullManagerTest, TestRestoreObjectFailed) {
   ASSERT_EQ(num_send_pull_request_calls_, 1);
   ASSERT_EQ(num_restore_spilled_object_calls_, 2);
 
+  ASSERT_TRUE(num_abort_calls_.empty());
   auto objects_to_cancel = pull_manager_.CancelPull(req_id);
+  ASSERT_EQ(num_abort_calls_[obj1], 1);
   AssertNoLeaks();
 }
 
@@ -246,6 +256,7 @@ TEST_F(PullManagerTest, TestLoadBalancingRestorationRequest) {
   // Make sure the restore request wasn't sent since there are nodes that have a copied
   // object.
   ASSERT_EQ(num_restore_spilled_object_calls_, 0);
+  ASSERT_TRUE(num_abort_calls_.empty());
 }
 
 TEST_F(PullManagerTest, TestManyUpdates) {
@@ -269,8 +280,10 @@ TEST_F(PullManagerTest, TestManyUpdates) {
   ASSERT_EQ(num_send_pull_request_calls_, 1);
   ASSERT_EQ(num_restore_spilled_object_calls_, 0);
 
+  ASSERT_TRUE(num_abort_calls_.empty());
   auto objects_to_cancel = pull_manager_.CancelPull(req_id);
   ASSERT_EQ(objects_to_cancel, ObjectRefsToIds(refs));
+  ASSERT_EQ(num_abort_calls_[obj1], 1);
 
   AssertNoLeaks();
 }
@@ -316,8 +329,10 @@ TEST_F(PullManagerTest, TestRetryTimer) {
   }
   ASSERT_EQ(num_send_pull_request_calls_, 0);
 
+  ASSERT_TRUE(num_abort_calls_.empty());
   auto objects_to_cancel = pull_manager_.CancelPull(req_id);
   ASSERT_EQ(objects_to_cancel, ObjectRefsToIds(refs));
+  ASSERT_EQ(num_abort_calls_[obj1], 1);
 
   AssertNoLeaks();
 }
@@ -348,9 +363,13 @@ TEST_F(PullManagerTest, TestBasic) {
   }
   ASSERT_EQ(num_send_pull_request_calls_, 0);
 
+  ASSERT_TRUE(num_abort_calls_.empty());
   auto objects_to_cancel = pull_manager_.CancelPull(req_id);
   ASSERT_EQ(objects_to_cancel, oids);
   AssertNumActiveRequestsEquals(0);
+  for (auto &oid : oids) {
+    ASSERT_EQ(num_abort_calls_[oid], 1);
+  }
 
   // Don't pull a remote object if we've canceled.
   object_is_local_ = false;
@@ -387,6 +406,7 @@ TEST_F(PullManagerTest, TestDeduplicateBundles) {
 
   // Cancel one request.
   auto objects_to_cancel = pull_manager_.CancelPull(req_id1);
+  ASSERT_TRUE(num_abort_calls_.empty());
   ASSERT_TRUE(objects_to_cancel.empty());
   // Objects should still be pulled because the other request is still open.
   AssertNumActiveRequestsEquals(oids.size());
@@ -400,9 +420,13 @@ TEST_F(PullManagerTest, TestDeduplicateBundles) {
   }
 
   // Cancel the other request.
+  ASSERT_TRUE(num_abort_calls_.empty());
   objects_to_cancel = pull_manager_.CancelPull(req_id2);
   ASSERT_EQ(objects_to_cancel, oids);
   AssertNumActiveRequestsEquals(0);
+  for (auto &oid : oids) {
+    ASSERT_EQ(num_abort_calls_[oid], 1);
+  }
 
   // Don't pull a remote object if we've canceled.
   object_is_local_ = false;
@@ -438,10 +462,14 @@ TEST_F(PullManagerWithAdmissionControlTest, TestBasic) {
   ASSERT_TRUE(IsUnderCapacity(oids.size() * object_size));
 
   // Reduce the available memory.
+  ASSERT_TRUE(num_abort_calls_.empty());
   ASSERT_EQ(num_object_store_full_calls_, 0);
   pull_manager_.UpdatePullsBasedOnAvailableMemory(oids.size() * object_size - 1);
   AssertNumActiveRequestsEquals(0);
   ASSERT_EQ(num_object_store_full_calls_, 1);
+  for (auto &oid : oids) {
+    ASSERT_EQ(num_abort_calls_[oid], 1);
+  }
   // No new pull requests after the next tick.
   fake_time_ += 10;
   auto prev_pull_requests = num_send_pull_request_calls_;
@@ -460,8 +488,14 @@ TEST_F(PullManagerWithAdmissionControlTest, TestBasic) {
   // OOM was not triggered a second time.
   ASSERT_EQ(num_object_store_full_calls_, 1);
   num_object_store_full_calls_ = 0;
+  for (auto &oid : oids) {
+    ASSERT_EQ(num_abort_calls_[oid], 1);
+  }
 
   pull_manager_.CancelPull(req_id);
+  for (auto &oid : oids) {
+    ASSERT_EQ(num_abort_calls_[oid], 2);
+  }
   AssertNoLeaks();
 }
 

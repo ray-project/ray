@@ -19,9 +19,9 @@
 
 namespace ray {
 
-ObjectBufferPool::ObjectBufferPool(const std::string &store_socket_name,
+ObjectBufferPool::ObjectBufferPool(std::shared_ptr<PullManager> pull_manager, const std::string &store_socket_name,
                                    uint64_t chunk_size)
-    : default_chunk_size_(chunk_size) {
+    : default_chunk_size_(chunk_size), pull_manager_(pull_manager) {
   store_socket_name_ = store_socket_name;
   RAY_CHECK_OK(store_client_.Connect(store_socket_name_.c_str(), "", 0, 300));
 }
@@ -104,6 +104,10 @@ std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> ObjectBufferPool::Cr
     const ObjectID &object_id, const rpc::Address &owner_address, uint64_t data_size,
     uint64_t metadata_size, uint64_t chunk_index) {
   std::lock_guard<std::mutex> lock(pool_mutex_);
+  if (!pull_manager_->IsObjectActive(object_id)) {
+    // This object is no longer being actively pulled. Do not create the object.
+    return {errored_chunk_, ray::Status::IOError("Object is no longer being actively pulled due to cancellation or OOM")};
+  }
   if (create_buffer_state_.count(object_id) == 0) {
     int64_t object_size = data_size - metadata_size;
     // Try to create shared buffer.

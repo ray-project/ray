@@ -110,11 +110,7 @@ void PullManager::DeactivatePullBundleRequest(
       RAY_CHECK(it != object_pull_requests_.end());
       num_bytes_being_pulled_ -= it->second.object_size;
       active_object_pull_requests_.erase(obj_id);
-      cancel_pull_request_(obj_id);
-
-      if (objects_to_cancel) {
-        objects_to_cancel->insert(obj_id);
-      }
+      objects_to_cancel->insert(obj_id);
     }
   }
 
@@ -176,6 +172,10 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) 
     const auto last_request_it = pull_request_bundles_.find(highest_req_id_being_pulled_);
     RAY_CHECK(last_request_it != pull_request_bundles_.end());
     DeactivatePullBundleRequest(last_request_it, &object_ids_to_cancel);
+  }
+  for (const auto &obj_id : object_ids_to_cancel) {
+    // Call the cancellation callback outside of the lock.
+    cancel_pull_request_(obj_id);
   }
 
   TriggerOutOfMemoryHandlingIfNeeded();
@@ -243,11 +243,16 @@ std::vector<ObjectID> PullManager::CancelPull(uint64_t request_id) {
 
   // If the pull request was being actively pulled, deactivate it now.
   if (bundle_it->first <= highest_req_id_being_pulled_) {
-    DeactivatePullBundleRequest(bundle_it);
+    std::unordered_set<ObjectID> object_ids_to_cancel;
+    DeactivatePullBundleRequest(bundle_it, &object_ids_to_cancel);
+    for (const auto &obj_id : object_ids_to_cancel) {
+      // Call the cancellation callback outside of the lock.
+      cancel_pull_request_(obj_id);
+    }
   }
 
   // Erase this pull request.
-  std::vector<ObjectID> object_ids_to_cancel;
+  std::vector<ObjectID> object_ids_to_cancel_subscription;
   for (const auto &ref : bundle_it->second) {
     auto obj_id = ObjectRefToId(ref);
     auto it = object_pull_requests_.find(obj_id);
@@ -255,7 +260,7 @@ std::vector<ObjectID> PullManager::CancelPull(uint64_t request_id) {
     RAY_CHECK(it->second.bundle_request_ids.erase(bundle_it->first));
     if (it->second.bundle_request_ids.empty()) {
       object_pull_requests_.erase(it);
-      object_ids_to_cancel.push_back(obj_id);
+      object_ids_to_cancel_subscription.push_back(obj_id);
     }
   }
   pull_request_bundles_.erase(bundle_it);
@@ -265,7 +270,7 @@ std::vector<ObjectID> PullManager::CancelPull(uint64_t request_id) {
   // request to avoid reactivating it again.
   UpdatePullsBasedOnAvailableMemory(num_bytes_available_);
 
-  return object_ids_to_cancel;
+  return object_ids_to_cancel_subscription;
 }
 
 void PullManager::OnLocationChange(const ObjectID &object_id,

@@ -210,6 +210,8 @@ class PlasmaStore {
   /// Process queued requests to create an object.
   void ProcessCreateRequests();
 
+  /// Get the available memory for new objects to be created. This includes
+  /// memory that is currently being used for created but unsealed objects.
   void GetAvailableMemory(std::function<void(size_t)> callback) const {
     RAY_CHECK(num_bytes_in_use_ >= num_bytes_unsealed_);
     // We include unsealed objects because these may have been created by the

@@ -146,13 +146,17 @@ def test_load_balancing_under_constrained_memory(ray_start_cluster):
         return np.zeros(int(object_size), dtype=np.uint8)
 
     @ray.remote
-    def f(x):
+    def f(i, x):
         time.sleep(0.1)
+        print(i, ray.worker.global_worker.node.unique_id)
         return ray.worker.global_worker.node.unique_id
 
     # TODO(swang): Actually test load balancing.
     deps = [create_object.remote() for _ in range(num_tasks)]
-    ray.get([f.remote(dep) for dep in deps])
+    tasks = [f.remote(i, dep) for i, dep in enumerate(deps)]
+    for i, dep in enumerate(deps):
+        print(i, dep)
+    ray.get(tasks)
 
 
 def test_locality_aware_leasing(ray_start_cluster):
