@@ -59,6 +59,7 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
     Attributes:
         dashboard_agent: The DashboardAgent object contains global config
     """
+
     def __init__(self, dashboard_agent):
         """Initialize the reporter object."""
         super().__init__(dashboard_agent)
@@ -265,21 +266,22 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
         ip = stats["ip"]
         # -- CPU per node --
         cpu_usage = float(stats["cpu"])
-        cpu_record = Record(gauge=self._gauges["node_cpu_utilization"],
-                            value=cpu_usage,
-                            tags={"ip": ip})
+        cpu_record = Record(
+            gauge=self._gauges["node_cpu_utilization"],
+            value=cpu_usage,
+            tags={"ip": ip})
 
         cpu_count, _ = stats["cpus"]
-        cpu_count_record = Record(gauge=self._gauges["node_cpu_count"],
-                                  value=cpu_count,
-                                  tags={"ip": ip})
+        cpu_count_record = Record(
+            gauge=self._gauges["node_cpu_count"],
+            value=cpu_count,
+            tags={"ip": ip})
 
         # -- Mem per node --
         total, avail, _ = stats["mem"]
         mem_usage = float(total - avail) / 1e6
-        mem_record = Record(gauge=self._gauges["node_mem"],
-                            value=mem_usage,
-                            tags={"ip": ip})
+        mem_record = Record(
+            gauge=self._gauges["node_mem"], value=mem_usage, tags={"ip": ip})
 
         # -- GPU per node --
         gpus = stats["gpus"]
@@ -301,9 +303,10 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
             gauge=self._gauges["node_gpus_utilization"],
             value=gpus_utilization,
             tags={"ip": ip})
-        gram_used_record = Record(gauge=self._gauges["node_gram_used"],
-                                  value=gram_used,
-                                  tags={"ip": ip})
+        gram_used_record = Record(
+            gauge=self._gauges["node_gram_used"],
+            value=gram_used,
+            tags={"ip": ip})
         gram_available_record = Record(
             gauge=self._gauges["node_gram_available"],
             value=gram_available,
@@ -313,21 +316,23 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
         raylet_pid = str(raylet_stats["pid"])
         # -- raylet CPU --
         raylet_cpu_usage = float(raylet_stats["cpu_percent"]) * 100
-        raylet_cpu_record = Record(gauge=self._gauges["raylet_cpu"],
-                                   value=raylet_cpu_usage,
-                                   tags={
-                                       "ip": ip,
-                                       "pid": raylet_pid
-                                   })
+        raylet_cpu_record = Record(
+            gauge=self._gauges["raylet_cpu"],
+            value=raylet_cpu_usage,
+            tags={
+                "ip": ip,
+                "pid": raylet_pid
+            })
 
         # -- raylet mem --
         raylet_mem_usage = float(raylet_stats["memory_info"].rss) / 1e6
-        raylet_mem_record = Record(gauge=self._gauges["raylet_mem"],
-                                   value=raylet_mem_usage,
-                                   tags={
-                                       "ip": ip,
-                                       "pid": raylet_pid
-                                   })
+        raylet_mem_record = Record(
+            gauge=self._gauges["raylet_mem"],
+            value=raylet_mem_usage,
+            tags={
+                "ip": ip,
+                "pid": raylet_pid
+            })
 
         self._metrics_agent.record_reporter_stats([
             cpu_record, cpu_count_record, mem_record, gpus_available_record,
@@ -344,8 +349,8 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
                 await aioredis_client.publish(self._key, jsonify_asdict(stats))
             except Exception:
                 logger.exception("Error publishing node physical stats.")
-            await asyncio.sleep(reporter_consts.REPORTER_UPDATE_INTERVAL_MS /
-                                1000)
+            await asyncio.sleep(
+                reporter_consts.REPORTER_UPDATE_INTERVAL_MS / 1000)
 
     async def run(self, server):
         aioredis_client = await aioredis.create_redis_pool(
