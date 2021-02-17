@@ -287,30 +287,31 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
         gpus = stats["gpus"]
         gpus_available = len(gpus)
 
-        gpus_utilization, gram_used, gram_total = 0, 0, 0
-        for gpu in gpus:
-            gpus_utilization += gpu["utilization_gpu"]
-            gram_used += gpu["memory_used"]
-            gram_total += gpu["memory_total"]
+        if gpus_available:
+            gpus_utilization, gram_used, gram_total = 0, 0, 0
+            for gpu in gpus:
+                gpus_utilization += gpu["utilization_gpu"]
+                gram_used += gpu["memory_used"]
+                gram_total += gpu["memory_total"]
 
-        gram_available = gram_total - gram_used
+            gram_available = gram_total - gram_used
 
-        gpus_available_record = Record(
-            gauge=self._gauges["node_gpus_available"],
-            value=gpus_available,
-            tags={"ip": ip})
-        gpus_utilization_record = Record(
-            gauge=self._gauges["node_gpus_utilization"],
-            value=gpus_utilization,
-            tags={"ip": ip})
-        gram_used_record = Record(
-            gauge=self._gauges["node_gram_used"],
-            value=gram_used,
-            tags={"ip": ip})
-        gram_available_record = Record(
-            gauge=self._gauges["node_gram_available"],
-            value=gram_available,
-            tags={"ip": ip})
+            gpus_available_record = Record(
+                gauge=self._gauges["node_gpus_available"],
+                value=gpus_available,
+                tags={"ip": ip})
+            gpus_utilization_record = Record(
+                gauge=self._gauges["node_gpus_utilization"],
+                value=gpus_utilization,
+                tags={"ip": ip})
+            gram_used_record = Record(
+                gauge=self._gauges["node_gram_used"],
+                value=gram_used,
+                tags={"ip": ip})
+            gram_available_record = Record(
+                gauge=self._gauges["node_gram_available"],
+                value=gram_available,
+                tags={"ip": ip})
 
         raylet_stats = self._get_raylet_stats()
         raylet_pid = str(raylet_stats["pid"])
@@ -334,11 +335,18 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
                 "pid": raylet_pid
             })
 
-        self._metrics_agent.record_reporter_stats([
-            cpu_record, cpu_count_record, mem_record, gpus_available_record,
-            gpus_utilization_record, gram_used_record, gram_available_record,
-            raylet_cpu_record, raylet_mem_record
-        ])
+        records_reported = [
+            cpu_record, cpu_count_record, mem_record
+        ]
+
+        if gpus_available:
+            records_reported.extend([gpus_available_record,
+            gpus_utilization_record, gram_used_record, gram_available_record])
+
+        raylet_records = [raylet_cpu_record, raylet_mem_record]
+        records_reported.extend(raylet_records)
+
+        self._metrics_agent.record_reporter_stats(records_reported)
 
     async def _perform_iteration(self, aioredis_client):
         """Get any changes to the log files and push updates to Redis."""
