@@ -83,17 +83,17 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
             "node_mem": Gauge("node_mem", "Total memory usage on a ray node",
                               "bytes", ["ip"]),
             "node_gpus_available": Gauge("node_gpus_available",
-                                          "Total GPUs available on a ray node",
-                                          "percentage", ["ip"]),
+                                         "Total GPUs available on a ray node",
+                                         "percentage", ["ip"]),
             "node_gpus_utilization": Gauge("node_gpus_utilization",
-                                          "Total GPUs usage on a ray node",
-                                          "percentage", ["ip"]),
+                                           "Total GPUs usage on a ray node",
+                                           "percentage", ["ip"]),
             "node_gram_used": Gauge("node_gram_used",
-                                          "Total GPU RAM usage on a ray node",
-                                          "bytes", ["ip"]),
-            "node_gram_available": Gauge("node_gram_available",
-                                          "Total GPU RAM available on a ray node",
-                                          "bytes", ["ip"]),                                                            
+                                    "Total GPU RAM usage on a ray node",
+                                    "bytes", ["ip"]),
+            "node_gram_available": Gauge(
+                "node_gram_available", "Total GPU RAM available on a ray node",
+                "bytes", ["ip"]),
             "node_disk_usage": Gauge("node_disk_usage",
                                      "Total disk usage (bytes) on a ray node",
                                      "bytes", ["ip"]),
@@ -309,9 +309,9 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
 
         # -- Mem per node --
         total, avail, _, used = stats["mem"]
-        # mem_usage = float(total - avail)
+        mem_usage = float(total - avail)
         mem_record = Record(
-            gauge=self._gauges["node_mem"], value=used, tags={"ip": ip})
+            gauge=self._gauges["node_mem"], value=mem_usage, tags={"ip": ip})
 
         # -- GPU per node --
         gpus = stats["gpus"]
