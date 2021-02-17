@@ -1672,9 +1672,7 @@ Status CoreWorker::KillActor(const ActorID &actor_id, bool force_kill, bool no_r
     stream << "Failed to find a corresponding actor handle for " << actor_id;
     return Status::Invalid(stream.str());
   }
-
-  RAY_CHECK_OK(
-      gcs_client_->Actors().AsyncKillActor(actor_id, force_kill, no_restart, nullptr));
+  direct_actor_submitter_->KillActor(actor_id, force_kill, no_restart);
   return Status::OK();
 }
 
