@@ -67,7 +67,7 @@ def object_spilling_config(request, tmp_path):
 @pytest.fixture(
     scope="function",
     params=[
-        # file_system_object_spilling_config,
+        file_system_object_spilling_config,
         mock_distributed_fs_object_spilling_config
     ])
 def multi_node_object_spilling_config(request, tmp_path):
