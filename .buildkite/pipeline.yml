@@ -35,7 +35,7 @@
     # - LINUX_WHEELS=1 LINUX_JARS=1 DOCKER_BUILD_PY37=1 RAY_INSTALL_JAVA=1 ./ci/travis/ci.sh build
     - bash ./java/build-jar-multiplatform.sh linux
     - pip install -q docker aws_requests_auth boto3
-    - python .buildkite/copy_files.py --destination wheels --path ./.jar
+    - python .buildkite/copy_files.py --destination wheels --path ./.jar/linux
 
 # - label: ":book: Lint"
 #   commands:
