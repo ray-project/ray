@@ -19,6 +19,8 @@ assert args.destination in {"wheels", "containers"}
 assert "BUILDKITE_JOB_ID" in os.environ
 assert "BUILDKITE_COMMIT" in os.environ
 
+is_dir = os.path.isdir(args.path)
+
 # # Assume the caller role from the instance
 # sts_client = boto3.client('sts')
 # assumed_role_object = sts_client.assume_role(
@@ -45,25 +47,28 @@ resp = requests.get(
     "https://vop4ss7n22.execute-api.us-west-2.amazonaws.com/endpoint/",
     auth=auth,
     params={"job_id": os.environ["BUILDKITE_JOB_ID"]})
-
-pprint(resp.status_code)
-pprint(resp.headers)
-pprint(resp.json())
+print("Getting Presigned URL", resp.status_code)
 
 sha = os.environ["BUILDKITE_COMMIT"]
-path = args.path
-fn = os.path.split(path)[-1]
-if args.destination == "wheels":
-    c = resp.json()["presigned_wheels"]
-    of = OrderedDict(c["fields"])
-    of["key"] = f"scratch/bk/{sha}/{fn}"
-elif args.destination == "containers":
-    c = resp.json()["presigned_wheels"]
-    of = OrderedDict(c["fields"])
-    of["key"] = f"testing/{sha}/{fn}"
+if is_dir:
+    paths = [os.path.join(args.path, f) for f in os.listdir(args.path)]
 else:
-    raise ValueError("Unknown destination")
+    paths = [args.path]
+print("Planning to upload", paths)
 
-of["file"] = open(path)
-r = requests.post(c["url"], files=of)
-print(r.status_code)
+for path in paths:
+    fn = os.path.split(path)[-1]
+    if args.destination == "wheels":
+        c = resp.json()["presigned_wheels"]
+        of = OrderedDict(c["fields"])
+        of["key"] = f"scratch/bk/{sha}/{fn}"
+    elif args.destination == "containers":
+        c = resp.json()["presigned_containers"]
+        of = OrderedDict(c["fields"])
+        of["key"] = f"{sha}/{fn}"
+    else:
+        raise ValueError("Unknown destination")
+
+    of["file"] = open(path)
+    r = requests.post(c["url"], files=of)
+    print(f"Uploaded {path} to {of['key']}", r.status_code)
