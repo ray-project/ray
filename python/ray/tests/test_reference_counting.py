@@ -468,10 +468,8 @@ def test_actor_holding_serialized_reference(one_worker_100MiB, use_ray_put,
         # Test that the actor exiting stops the reference from being pinned.
         ray.kill(actor)
         # Wait for the actor to exit.
-        try:
+        with pytest.raises(ray.exceptions.RayActorError):
             ray.get(actor.delete_ref1.remote())
-        except ray.exceptions.RayActorError:
-            pass
     else:
         # Test that deleting the second reference stops it from being pinned.
         ray.get(actor.delete_ref2.remote())

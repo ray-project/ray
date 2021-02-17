@@ -59,8 +59,6 @@ public class KillActorTest extends BaseTest {
 
   private void testKillActor(BiConsumer<ActorHandle<?>, Boolean> kill, boolean noRestart) {
     ActorHandle<HangActor> actor = Ray.actor(HangActor::new).setMaxRestarts(1).remote();
-    // Wait for the actor to be created.
-    actor.task(HangActor::ping).remote().get();
     ObjectRef<Boolean> result = actor.task(HangActor::hang).remote();
     // The actor will hang in this task.
     Assert.assertEquals(0, Ray.wait(ImmutableList.of(result), 1, 500).getReady().size());
