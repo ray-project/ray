@@ -245,11 +245,13 @@ Papers
    :caption: Ray Serve
 
    serve/index.rst
-   serve/key-concepts.rst
-   serve/tutorials/index.rst
+   serve/core-apis.rst
    serve/deployment.rst
+   serve/ml-models.rst
+   serve/advanced-traffic.rst
    serve/advanced.rst
    serve/architecture.rst
+   serve/tutorials/index.rst
    serve/faq.rst
    serve/package-ref.rst
 
@@ -325,6 +327,7 @@ Papers
 
    ray-metrics.rst
    ray-debugging.rst
+   ray-logging.rst
 
 .. toctree::
    :hidden:
