@@ -85,6 +85,25 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
             "node_gpu_utilization": Gauge("node_gpu_utilization",
                                           "Total GPU usage on a ray node",
                                           "percentage", ["ip"]),
+                              "bytes", ["ip"]),
+            "node_disk_usage": Gauge("node_disk_usage",
+                                     "Total disk usage (bytes) on a ray node",
+                                     "bytes", ["ip"]),
+            "node_disk_utilization_percentage": Gauge(
+                "node_disk_utilization_percentage",
+                "Total disk utilization (percentage) on a ray node",
+                "percentage", ["ip"]),
+            "node_network_sent": Gauge("node_network_sent",
+                                       "Total network sent", "bytes", ["ip"]),
+            "node_network_received": Gauge("node_network_received",
+                                           "Total network received", "bytes",
+                                           ["ip"]),
+            "node_network_send_speed": Gauge("node_network_send_speed",
+                                             "Network send speed", "bytes/sec",
+                                             ["ip"]),
+            "node_network_receive_speed": Gauge("node_network_receive_speed",
+                                                "Network receive speed",
+                                                "bytes/sec", ["ip"]),
             "raylet_cpu": Gauge("raylet_cpu",
                                 "CPU usage of the raylet on a node.",
                                 "percentage", ["ip", "pid"]),
@@ -244,8 +263,10 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
         self._network_stats_hist.append((now, network_stats))
         self._network_stats_hist = self._network_stats_hist[-7:]
         then, prev_network_stats = self._network_stats_hist[0]
-        netstats = ((network_stats[0] - prev_network_stats[0]) / (now - then),
-                    (network_stats[1] - prev_network_stats[1]) / (now - then))
+        prev_send, prev_recv = prev_network_stats
+        now_send, now_recv = network_stats
+        network_speed_stats = ((now_send - prev_send) / (now - then),
+                               (now_recv - prev_recv) / (now - then))
         return {
             "now": now,
             "hostname": self._hostname,
@@ -258,7 +279,8 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
             "loadAvg": self._get_load_avg(),
             "disk": self._get_disk_usage(),
             "gpus": self._get_gpu_usage(),
-            "net": netstats,
+            "network": network_stats,
+            "network_speed": network_speed_stats,
             "cmdline": self._get_raylet_cmdline(),
         }
 
@@ -279,7 +301,7 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
 
         # -- Mem per node --
         total, avail, _ = stats["mem"]
-        mem_usage = float(total - avail) / 1e6
+        mem_usage = float(total - avail)
         mem_record = Record(
             gauge=self._gauges["node_mem"], value=mem_usage, tags={"ip": ip})
 
@@ -312,6 +334,40 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
                 gauge=self._gauges["node_gram_available"],
                 value=gram_available,
                 tags={"ip": ip})
+        # -- Disk per node --
+        used, free = 0, 0
+        for entry in stats["disk"].values():
+            used += entry.used
+            free += entry.free
+        disk_utilization = float(used / (used + free)) * 100
+        disk_usage_record = Record(
+            gauge=self._gauges["node_disk_usage"], value=used, tags={"ip": ip})
+        disk_utilization_percentage_record = Record(
+            gauge=self._gauges["node_disk_utilization_percentage"],
+            value=disk_utilization,
+            tags={"ip": ip})
+
+        # -- Network speed (send/receive) stats per node --
+        network_stats = stats["network"]
+        network_sent_record = Record(
+            gauge=self._gauges["node_network_sent"],
+            value=network_stats[0],
+            tags={"ip": ip})
+        network_received_record = Record(
+            gauge=self._gauges["node_network_received"],
+            value=network_stats[1],
+            tags={"ip": ip})
+
+        # -- Network speed (send/receive) per node --
+        network_speed_stats = stats["network_speed"]
+        network_send_speed_record = Record(
+            gauge=self._gauges["node_network_send_speed"],
+            value=network_speed_stats[0],
+            tags={"ip": ip})
+        network_receive_speed_record = Record(
+            gauge=self._gauges["node_network_receive_speed"],
+            value=network_speed_stats[1],
+            tags={"ip": ip})
 
         raylet_stats = self._get_raylet_stats()
         raylet_pid = str(raylet_stats["pid"])
@@ -336,7 +392,8 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
             })
 
         records_reported = [
-            cpu_record, cpu_count_record, mem_record
+            cpu_record, cpu_count_record, mem_record, disk_usage_record, disk_utilization_percentage_record, network_sent_record, network_received_record,
+            network_send_speed_record, network_receive_speed_record
         ]
 
         if gpus_available:
