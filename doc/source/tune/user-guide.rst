@@ -45,7 +45,7 @@ object. In any case, Ray Tune will try to start a placement group for each trial
 Tune will allocate the specified GPU and CPU from ``resources_per_trial`` to each individual trial.
 Even if the trial cannot be scheduled right now, Ray Tune will still try to start
 the respective placement group. If not enough resources are available, this will trigger
-:doc:`autoscaling behavior<../cluster/autoscaling>` if you're using the Ray cluster launcher.
+:ref:`autoscaling behavior<cluster-index>` if you're using the Ray cluster launcher.
 
 If your trainable function starts more remote workers, you will need to pass placement groups
 factory objects to request these resources. See the
