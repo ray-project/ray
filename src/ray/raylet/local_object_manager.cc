@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "ray/raylet/local_object_manager.h"
+#include "ray/stats/stats.h"
 #include "ray/util/asio_util.h"
 #include "ray/util/util.h"
 
@@ -498,6 +499,17 @@ void LocalObjectManager::FillObjectSpillingStats(rpc::GetNodeStatsReply *reply) 
   stats->set_restore_time_total_s(restore_time_total_s_);
   stats->set_restored_bytes_total(restored_bytes_total_);
   stats->set_restored_objects_total(restored_objects_total_);
+}
+
+void LocalObjectManager::RecordObjectSpillingStats() const {
+  if (spilled_bytes_total_ != 0 && spill_time_total_s_ != 0) {
+    stats::SpillingBandwidthMB.Record(spilled_bytes_total_ / 1024 / 1024 /
+                                      spill_time_total_s_);
+  }
+  if (restored_bytes_total_ != 0 && restore_time_total_s_ != 0) {
+    stats::RestoringBandwidthMB.Record(restored_bytes_total_ / 1024 / 1024 /
+                                       restore_time_total_s_);
+  }
 }
 
 std::string LocalObjectManager::DebugString() const {
