@@ -574,17 +574,22 @@ class Trainer(Trainable):
             elif "." in env:
                 self.env_creator = \
                     lambda env_context: from_config(env, env_context)
-            # Try gym/PyBullet.
+            # Try gym/PyBullet/Vizdoom.
             else:
 
                 def _creator(env_context):
                     import gym
-                    # Allow for PyBullet envs to be used as well (via string).
-                    # This allows for doing things like
-                    # `env=CartPoleContinuousBulletEnv-v0`.
+                    # Allow for PyBullet or VizdoomGym envs to be used as well
+                    # (via string). This allows for doing things like
+                    # `env=CartPoleContinuousBulletEnv-v0` or
+                    # `env=VizdoomBasic-v0`.
                     try:
                         import pybullet_envs
                         pybullet_envs.getList()
+                    except (ModuleNotFoundError, ImportError):
+                        pass
+                    try:
+                        import vizdoomgym
                     except (ModuleNotFoundError, ImportError):
                         pass
                     # Try creating a gym env. If this fails we can output a
@@ -594,8 +599,8 @@ class Trainer(Trainable):
                     except gym.error.Error:
                         raise ValueError(
                             "The env string you provided ({}) is a) not a "
-                            "known gym/PyBullet environment specifier or b) "
-                            "not registered! To register your custom envs, "
+                            "known gym/PyBullet/VizdoomEnv environment specifier "
+                            "or b) not registered! To register your custom envs, "
                             "do `from ray import tune; tune.register('[name]',"
                             " lambda cfg: [return actual "
                             "env from here using cfg])`. Then you can use "

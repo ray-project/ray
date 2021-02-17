@@ -263,11 +263,20 @@ class AttentionWrapper(TorchModelV2, nn.Module):
 
         self.attention_dim = cfg["attention_dim"]
 
+        if self.num_outputs is not None:
+            in_space = gym.spaces.Box(
+                float("-inf"),
+                float("inf"),
+                shape=(self.num_outputs, ),
+                dtype=np.float32)
+        else:
+            in_space = obs_space
+
         # Construct GTrXL sub-module w/ num_outputs=None (so it does not
         # create a logits/value output; we'll do this ourselves in this wrapper
         # here).
         self.gtrxl = GTrXLNet(
-            obs_space,
+            in_space,
             action_space,
             None,
             model_config,
@@ -299,6 +308,7 @@ class AttentionWrapper(TorchModelV2, nn.Module):
             initializer=torch.nn.init.xavier_uniform_)
 
         self.view_requirements = self.gtrxl.view_requirements
+        self.view_requirements["obs"].space = self.obs_space
 
     @override(RecurrentNetwork)
     def forward(self, input_dict: Dict[str, TensorType],
@@ -309,7 +319,7 @@ class AttentionWrapper(TorchModelV2, nn.Module):
         wrapped_out, _ = self._wrapped_forward(input_dict, [], None)
 
         # Then through our GTrXL.
-        input_dict["obs_flat"] = wrapped_out
+        input_dict["obs_flat"] = input_dict["obs"] = wrapped_out
 
         self._features, memory_outs = self.gtrxl(input_dict, state, seq_lens)
         model_out = self._logits_branch(self._features)

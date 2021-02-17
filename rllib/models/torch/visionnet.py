@@ -60,7 +60,7 @@ class VisionNetwork(TorchModelV2, nn.Module):
 
         in_size = [w, h]
         for out_channels, kernel, stride in filters[:-1]:
-            padding, out_size = same_padding(in_size, kernel, [stride, stride])
+            padding, out_size = same_padding(in_size, kernel, stride)
             layers.append(
                 SlimConv2d(
                     in_channels,
@@ -172,8 +172,7 @@ class VisionNetwork(TorchModelV2, nn.Module):
                 (w, h, in_channels) = obs_space.shape
             in_size = [w, h]
             for out_channels, kernel, stride in filters[:-1]:
-                padding, out_size = same_padding(in_size, kernel,
-                                                 [stride, stride])
+                padding, out_size = same_padding(in_size, kernel, stride)
                 vf_layers.append(
                     SlimConv2d(
                         in_channels,
@@ -230,6 +229,7 @@ class VisionNetwork(TorchModelV2, nn.Module):
         if not self.traj_view_framestacking:
             self._features = self._features.permute(0, 3, 1, 2)
         conv_out = self._convs(self._features)
+        print("SHAPE={}".format(conv_out.shape))
         # Store features to save forward pass when getting value_function out.
         if not self._value_branch_separate:
             self._features = conv_out
