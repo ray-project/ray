@@ -103,7 +103,7 @@ void GcsHeartbeatManager::DetectDeadNodes() {
 
 void GcsHeartbeatManager::ScheduleTick() {
   auto heartbeat_period = boost::posix_time::milliseconds(
-      RayConfig::instance().raylet_heartbeat_timeout_milliseconds());
+      RayConfig::instance().raylet_heartbeat_period_milliseconds());
   detect_timer_.expires_from_now(heartbeat_period);
   detect_timer_.async_wait([this](const boost::system::error_code &error) {
     if (error == boost::asio::error::operation_aborted) {

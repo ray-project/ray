@@ -159,9 +159,6 @@ class TorchPolicy(Policy):
             **kwargs) -> \
             Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
 
-        explore = explore if explore is not None else self.config["explore"]
-        timestep = timestep if timestep is not None else self.global_timestep
-
         with torch.no_grad():
             seq_lens = torch.ones(len(obs_batch), dtype=torch.int32)
             input_dict = self._lazy_tensor_dict({
@@ -190,9 +187,6 @@ class TorchPolicy(Policy):
             **kwargs) -> \
             Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
 
-        explore = explore if explore is not None else self.config["explore"]
-        timestep = timestep if timestep is not None else self.global_timestep
-
         with torch.no_grad():
             # Pass lazy (torch) tensor dict to Model as `input_dict`.
             input_dict = self._lazy_tensor_dict(input_dict)
@@ -216,6 +210,8 @@ class TorchPolicy(Policy):
             Tuple:
                 - actions, state_out, extra_fetches, logp.
         """
+        explore = explore if explore is not None else self.config["explore"]
+        timestep = timestep if timestep is not None else self.global_timestep
         self._is_recurrent = state_batches is not None and state_batches != []
 
         # Switch to eval mode.
@@ -351,8 +347,9 @@ class TorchPolicy(Policy):
         if self.model:
             self.model.train()
         # Callback handling.
+        learn_stats = {}
         self.callbacks.on_learn_on_batch(
-            policy=self, train_batch=postprocessed_batch)
+            policy=self, train_batch=postprocessed_batch, result=learn_stats)
 
         # Compute gradients (will calculate all losses and `backward()`
         # them to get the grads).
@@ -364,6 +361,7 @@ class TorchPolicy(Policy):
 
         if self.model:
             fetches["model"] = self.model.metrics()
+        fetches.update({"custom_metrics": learn_stats})
 
         return fetches
 

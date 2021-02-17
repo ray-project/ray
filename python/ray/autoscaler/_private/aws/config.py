@@ -155,11 +155,11 @@ def log_to_cli(config):
                     _tags=workers_tags)
 
         tags = {"default": _log_info["head_instance_profile_src"] == "default"}
-        cli_logger.labeled_value(
-            "IAM Profile",
-            "{}",
-            _arn_to_name(config["head_node"]["IamInstanceProfile"]["Arn"]),
-            _tags=tags)
+        profile_arn = config["head_node"]["IamInstanceProfile"].get("Arn")
+        profile_name = _arn_to_name(profile_arn) \
+            if profile_arn \
+            else config["head_node"]["IamInstanceProfile"]["Name"]
+        cli_logger.labeled_value("IAM Profile", "{}", profile_name, _tags=tags)
 
         if ("KeyName" in config["head_node"]
                 and "KeyName" in config["worker_nodes"]):
@@ -496,11 +496,13 @@ def _check_ami(config):
         # If we do not provide a default AMI for the given region, noop.
         return
 
-    if config["head_node"].get("ImageId", "").lower() == "latest_dlami":
+    head_ami = config["head_node"].get("ImageId", "").lower()
+    if head_ami in ["", "latest_dlami"]:
         config["head_node"]["ImageId"] = default_ami
         _set_config_info(head_ami_src="dlami")
 
-    if config["worker_nodes"].get("ImageId", "").lower() == "latest_dlami":
+    worker_ami = config["worker_nodes"].get("ImageId", "").lower()
+    if worker_ami in ["", "latest_dlami"]:
         config["worker_nodes"]["ImageId"] = default_ami
         _set_config_info(workers_ami_src="dlami")
 

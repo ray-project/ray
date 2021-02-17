@@ -326,7 +326,7 @@ class ServiceBasedObjectInfoAccessor : public ObjectInfoAccessor {
                           size_t object_size, const StatusCallback &callback) override;
 
   Status AsyncAddSpilledUrl(const ObjectID &object_id, const std::string &spilled_url,
-                            const NodeID &node_id,
+                            const NodeID &node_id, size_t object_size,
                             const StatusCallback &callback) override;
 
   Status AsyncRemoveLocation(const ObjectID &object_id, const NodeID &node_id,
@@ -451,6 +451,10 @@ class ServiceBasedPlacementGroupInfoAccessor : public PlacementGroupInfoAccessor
 
   Status AsyncGet(
       const PlacementGroupID &placement_group_id,
+      const OptionalItemCallback<rpc::PlacementGroupTableData> &callback) override;
+
+  Status AsyncGetByName(
+      const std::string &name,
       const OptionalItemCallback<rpc::PlacementGroupTableData> &callback) override;
 
   Status AsyncGetAll(

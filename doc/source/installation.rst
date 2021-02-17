@@ -3,8 +3,6 @@
 Installing Ray
 ==============
 
-.. tip:: Join our `community slack <https://forms.gle/9TSdDYUgxYs8SA9e8>`_ to discuss Ray!
-
 Ray currently supports MacOS and Linux.
 Windows wheels are now available, but :ref:`Windows support <windows-support>` is experimental and under development.
 
