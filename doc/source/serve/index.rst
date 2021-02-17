@@ -59,7 +59,7 @@ Now you can serve a function...
 .. literalinclude:: ../../../python/ray/serve/examples/doc/quickstart_class.py
 
 
-See :doc:`key-concepts` for more exhaustive coverage about Ray Serve and its core concepts: backends and endpoints.
+See :doc:`core-apis` for more exhaustive coverage about Ray Serve and its core concepts: backends and endpoints.
 For a high-level view of the architecture underlying Ray Serve, see :doc:`architecture`.
 
 Why Ray Serve?
@@ -96,7 +96,7 @@ If you plan on running on multiple machines, Ray Serve will serve you well.
 What's next?
 ============
 
-Check out the :doc:`key-concepts`, learn more about :doc:`advanced`, look at the :ref:`serve-faq`,
+Check out the :doc:`core-apis`, look at the :ref:`serve-faq`,
 or head over to the :doc:`tutorials/index` to get started building your Ray Serve applications.
 
 For more, see the following blog posts about Ray Serve:

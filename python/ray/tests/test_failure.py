@@ -20,52 +20,6 @@ from ray.test_utils import (wait_for_condition, SignalActor, init_error_pubsub,
                             get_error_message, Semaphore)
 
 
-def test_unhandled_errors(ray_start_regular):
-    @ray.remote
-    def f():
-        raise ValueError()
-
-    @ray.remote
-    class Actor:
-        def f(self):
-            raise ValueError()
-
-    a = Actor.remote()
-    num_exceptions = 0
-
-    def interceptor(e):
-        nonlocal num_exceptions
-        num_exceptions += 1
-
-    # Test we report unhandled exceptions.
-    ray.worker._unhandled_error_handler = interceptor
-    x1 = f.remote()
-    x2 = a.f.remote()
-    del x1
-    del x2
-    wait_for_condition(lambda: num_exceptions == 2)
-
-    # Test we don't report handled exceptions.
-    x1 = f.remote()
-    x2 = a.f.remote()
-    with pytest.raises(ray.exceptions.RayError) as err:  # noqa
-        ray.get([x1, x2])
-    del x1
-    del x2
-    time.sleep(1)
-    assert num_exceptions == 2, num_exceptions
-
-    # Test suppression with env var works.
-    try:
-        os.environ["RAY_IGNORE_UNHANDLED_ERRORS"] = "1"
-        x1 = f.remote()
-        del x1
-        time.sleep(1)
-        assert num_exceptions == 2, num_exceptions
-    finally:
-        del os.environ["RAY_IGNORE_UNHANDLED_ERRORS"]
-
-
 def test_failed_task(ray_start_regular, error_pubsub):
     @ray.remote
     def throw_exception_fct1():
@@ -800,15 +754,12 @@ def test_warning_for_too_many_actors(shutdown_only):
         def __init__(self):
             time.sleep(1000)
 
-    # NOTE: We should save actor, otherwise it will be out of scope.
-    actors = [Foo.remote() for _ in range(num_cpus * 3)]
-    assert len(actors) == num_cpus * 3
+    [Foo.remote() for _ in range(num_cpus * 3)]
     errors = get_error_message(p, 1, ray_constants.WORKER_POOL_LARGE_ERROR)
     assert len(errors) == 1
     assert errors[0].type == ray_constants.WORKER_POOL_LARGE_ERROR
 
-    actors = [Foo.remote() for _ in range(num_cpus)]
-    assert len(actors) == num_cpus
+    [Foo.remote() for _ in range(num_cpus)]
     errors = get_error_message(p, 1, ray_constants.WORKER_POOL_LARGE_ERROR)
     assert len(errors) == 1
     assert errors[0].type == ray_constants.WORKER_POOL_LARGE_ERROR
