@@ -93,8 +93,6 @@ struct NodeManagerConfig {
   uint64_t debug_dump_period_ms;
   /// Whether to enable fair queueing between task classes in raylet.
   bool fair_queueing_enabled;
-  /// Whether to enable pinning for plasma objects.
-  bool object_pinning_enabled;
   /// Whether to enable automatic object deletion for object spilling.
   bool automatic_object_deletion_enabled;
   /// The store socket name.
@@ -801,8 +799,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   int64_t debug_dump_period_;
   /// Whether to enable fair queueing between task classes in raylet.
   bool fair_queueing_enabled_;
-  /// Whether to enable pinning for plasma objects.
-  bool object_pinning_enabled_;
   /// Incremented each time we encounter a potential resource deadlock condition.
   /// This is reset to zero when the condition is cleared.
   int resource_deadlock_warned_ = 0;

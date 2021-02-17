@@ -191,7 +191,7 @@ class SkOptSearch(Searcher):
                 self._parameter_names = space
             else:
                 self._parameter_names = list(space.keys())
-                self._parameter_ranges = space.values()
+                self._parameter_ranges = list(space.values())
 
         self._points_to_evaluate = copy.deepcopy(points_to_evaluate)
 
@@ -250,8 +250,8 @@ class SkOptSearch(Searcher):
         space = self.convert_search_space(config)
 
         self._space = space
-        self._parameter_names = space.keys()
-        self._parameter_ranges = space.values()
+        self._parameter_names = list(space.keys())
+        self._parameter_ranges = list(space.values())
 
         if metric:
             self._metric = metric

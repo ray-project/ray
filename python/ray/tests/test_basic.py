@@ -31,7 +31,6 @@ def test_ignore_http_proxy(shutdown_only):
 
 
 # https://github.com/ray-project/ray/issues/7263
-@pytest.mark.skipif(client_test_enabled(), reason="message size")
 def test_grpc_message_size(shutdown_only):
     ray.init(num_cpus=1)
 
@@ -256,7 +255,7 @@ def test_ray_options(shutdown_only):
     assert without_options != with_options
 
 
-@pytest.mark.skipif(client_test_enabled(), reason="message size")
+@pytest.mark.skipif(client_test_enabled(), reason="internal api")
 @pytest.mark.parametrize(
     "ray_start_cluster_head", [{
         "num_cpus": 0,
@@ -328,8 +327,6 @@ def test_nested_functions(ray_start_shared_local_modes):
     assert ray.get(factorial.remote(5)) == 120
 
 
-@pytest.mark.skipif(
-    client_test_enabled(), reason="mutual recursion is a known issue")
 def test_mutually_recursive_functions(ray_start_shared_local_modes):
     # Test remote functions that recursively call each other.
     @ray.remote

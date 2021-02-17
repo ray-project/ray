@@ -20,7 +20,7 @@ class EndpointState:
                  long_poll_host: LongPollHost):
         self._kv_store = kv_store
         self._long_poll_host = long_poll_host
-        self._routes: Dict[BackendTag, Tuple[EndpointTag, Any]] = dict()
+        self._routes: Dict[str, Tuple[EndpointTag, Any]] = dict()
         self._traffic_policies: Dict[EndpointTag, TrafficPolicy] = dict()
 
         checkpoint = self._kv_store.get(CHECKPOINT_KEY)
