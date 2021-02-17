@@ -22,7 +22,8 @@ PullManager::PullManager(
 
 uint64_t PullManager::Pull(const std::vector<rpc::ObjectReference> &object_ref_bundle,
                            std::vector<rpc::ObjectReference> *objects_to_locate) {
-  auto bundle_it = pull_request_bundles_.emplace(next_req_id_++, object_ref_bundle).first;
+  auto bundle_it =
+      pull_request_bundles_.emplace(next_req_id_++, std::move(object_ref_bundle)).first;
   RAY_LOG(DEBUG) << "Start pull request " << bundle_it->first;
 
   for (const auto &ref : object_ref_bundle) {
@@ -38,6 +39,10 @@ uint64_t PullManager::Pull(const std::vector<rpc::ObjectReference> &object_ref_b
       it = object_pull_requests_
                .emplace(obj_id, ObjectPullRequest(/*next_pull_time=*/get_time_()))
                .first;
+    } else {
+      if (it->second.object_size_set) {
+        bundle_it->second.RegisterObjectSize(it->second.object_size);
+      }
     }
     it->second.bundle_request_ids.insert(bundle_it->first);
   }
@@ -50,28 +55,10 @@ uint64_t PullManager::Pull(const std::vector<rpc::ObjectReference> &object_ref_b
 }
 
 bool PullManager::ActivateNextPullBundleRequest(
-    const std::map<uint64_t, std::vector<rpc::ObjectReference>>::iterator
-        &next_request_it,
+    const std::map<uint64_t, PullBundleRequest>::iterator &next_request_it,
     std::vector<ObjectID> *objects_to_pull) {
-  // Check that we have sizes for all of the objects in the bundle. If not, we
-  // should not activate the bundle, since it may put us over the available
-  // capacity.
-  for (const auto &ref : next_request_it->second) {
-    auto obj_id = ObjectRefToId(ref);
-    const auto it = object_pull_requests_.find(obj_id);
-    RAY_CHECK(it != object_pull_requests_.end());
-    if (!it->second.object_size_set) {
-      // NOTE(swang): The size could be 0 if we haven't received size
-      // information yet. If we receive the size later on, we will update the
-      // total bytes being pulled then.
-      RAY_LOG(DEBUG) << "No size for " << obj_id << ", canceling activation for pull "
-                     << next_request_it->first;
-      return false;
-    }
-  }
-
   // Activate the bundle.
-  for (const auto &ref : next_request_it->second) {
+  for (const auto &ref : next_request_it->second.objects) {
     auto obj_id = ObjectRefToId(ref);
     bool start_pull = active_object_pull_requests_.count(obj_id) == 0;
     active_object_pull_requests_[obj_id].insert(next_request_it->first);
@@ -93,9 +80,9 @@ bool PullManager::ActivateNextPullBundleRequest(
 }
 
 void PullManager::DeactivatePullBundleRequest(
-    const std::map<uint64_t, std::vector<rpc::ObjectReference>>::iterator &request_it,
+    const std::map<uint64_t, PullBundleRequest>::iterator &request_it,
     std::unordered_set<ObjectID> *objects_to_cancel) {
-  for (const auto &ref : request_it->second) {
+  for (const auto &ref : request_it->second.objects) {
     auto obj_id = ObjectRefToId(ref);
     RAY_CHECK(active_object_pull_requests_[obj_id].erase(request_it->first));
     if (active_object_pull_requests_[obj_id].empty()) {
@@ -143,6 +130,12 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) 
 
     if (next_request_it == pull_request_bundles_.end()) {
       // No requests in the queue.
+      break;
+    }
+
+    if (next_request_it->second.num_object_sizes_missing > 0) {
+      // There is at least one object size missing. We should not activate the
+      // bundle, since it may put us over the available capacity.
       break;
     }
 
@@ -195,17 +188,9 @@ void PullManager::TriggerOutOfMemoryHandlingIfNeeded() {
 
   // No requests are being pulled. Check whether this is because we don't have
   // object size information yet.
-  size_t num_bytes_needed = 0;
-  for (const auto &ref : head->second) {
-    auto obj_id = ObjectRefToId(ref);
-    const auto it = object_pull_requests_.find(obj_id);
-    RAY_CHECK(it != object_pull_requests_.end());
-    if (!it->second.object_size_set) {
-      // We're not pulling the first request because we don't have size
-      // information. Wait for the size information before triggering OOM
-      return;
-    }
-    num_bytes_needed += it->second.object_size;
+  if (head->second.num_object_sizes_missing > 0) {
+    // Wait for the size information before triggering OOM
+    return;
   }
 
   // The first request in the queue is not being pulled due to lack of space.
@@ -217,8 +202,8 @@ void PullManager::TriggerOutOfMemoryHandlingIfNeeded() {
     RAY_LOG(WARNING)
         << "There is not enough memory to pull objects needed by a queued task or "
            "a worker blocked in ray.get or ray.wait. "
-        << "Need " << num_bytes_needed << " bytes, but only " << num_bytes_available_
-        << " bytes are available on this node. "
+        << "Need " << head->second.num_bytes_needed << " bytes, but only "
+        << num_bytes_available_ << " bytes are available on this node. "
         << "This job may hang if no memory can be freed through garbage collection or "
            "object spilling. See "
            "https://docs.ray.io/en/master/memory-management.html for more information. "
@@ -240,7 +225,7 @@ std::vector<ObjectID> PullManager::CancelPull(uint64_t request_id) {
 
   // Erase this pull request.
   std::vector<ObjectID> object_ids_to_cancel;
-  for (const auto &ref : bundle_it->second) {
+  for (const auto &ref : bundle_it->second.objects) {
     auto obj_id = ObjectRefToId(ref);
     auto it = object_pull_requests_.find(obj_id);
     RAY_CHECK(it != object_pull_requests_.end());
@@ -279,6 +264,11 @@ void PullManager::OnLocationChange(const ObjectID &object_id,
   if (!it->second.object_size_set) {
     it->second.object_size = object_size;
     it->second.object_size_set = true;
+    for (auto &bundle_request_id : it->second.bundle_request_ids) {
+      auto bundle_it = pull_request_bundles_.find(bundle_request_id);
+      bundle_it->second.RegisterObjectSize(object_size);
+    }
+
     UpdatePullsBasedOnAvailableMemory(num_bytes_available_);
     RAY_LOG(DEBUG) << "Updated size of object " << object_id << " to " << object_size
                    << ", num bytes being pulled is now " << num_bytes_being_pulled_;
