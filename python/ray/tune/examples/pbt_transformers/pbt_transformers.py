@@ -27,7 +27,7 @@ def tune_transformer(num_samples=8,
 
     # Change these as needed.
     model_name = "bert-base-uncased" if not smoke_test \
-       else "sshleifer/tiny-distilroberta-base"
+        else "sshleifer/tiny-distilroberta-base"
     task_name = "rte"
 
     task_data_dir = os.path.join(data_dir, task_name.upper())
@@ -94,7 +94,7 @@ def tune_transformer(num_samples=8,
     tune_config = {
         "per_device_train_batch_size": 32,
         "per_device_eval_batch_size": 32,
-        "num_train_epochs": 10,
+        "num_train_epochs": tune.choice([2, 3, 4, 5]),
         "max_steps": 1 if smoke_test else -1,  # Used for smoke test.
     }
 
