@@ -26,9 +26,8 @@ def tune_transformer(num_samples=8,
         os.mkdir(data_dir, 0o755)
 
     # Change these as needed.
-    # model_name = "bert-base-uncased" if not smoke_test \
-    #    else "sshleifer/tiny-distilroberta-base"
-    model_name = "sshleifer/tiny-distilroberta-base"
+    model_name = "bert-base-uncased" if not smoke_test \
+       else "sshleifer/tiny-distilroberta-base"
     task_name = "rte"
 
     task_data_dir = os.path.join(data_dir, task_name.upper())
@@ -151,8 +150,8 @@ if __name__ == "__main__":
         type=str,
         default=None,
         help="Address to use for Ray. "
-             "Use \"auto\" for cluster. "
-             "Defaults to None for local.")
+        "Use \"auto\" for cluster. "
+        "Defaults to None for local.")
     args, _ = parser.parse_known_args()
 
     if args.smoke_test:
