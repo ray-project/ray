@@ -69,6 +69,6 @@ for path in paths:
     else:
         raise ValueError("Unknown destination")
 
-    of["file"] = open(path)
+    of["file"] = open(path, "rb")
     r = requests.post(c["url"], files=of)
     print(f"Uploaded {path} to {of['key']}", r.status_code)
