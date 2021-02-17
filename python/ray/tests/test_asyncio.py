@@ -155,8 +155,11 @@ async def test_asyncio_get(ray_start_regular_shared, event_loop):
         await actor.throw_error.remote().as_future()
 
     ray.kill(actor)
-    with pytest.raises(ray.exceptions.RayActorError):
+
+    try:
         await actor.echo.remote(1)
+    except ray.exceptions.RayActorError:
+        pass
 
 
 def test_asyncio_actor_async_get(ray_start_regular_shared):

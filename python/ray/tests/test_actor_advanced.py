@@ -1026,8 +1026,10 @@ def test_kill(ray_start_regular_shared):
     assert len(ready) == 0
     ray.kill(actor, no_restart=False)
 
-    with pytest.raises(ray.exceptions.RayActorError):
+    try:
         ray.get(result)
+    except ray.exceptions.RayActorError:
+        pass
 
     with pytest.raises(ValueError):
         ray.kill("not_an_actor_handle")
