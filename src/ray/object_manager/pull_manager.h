@@ -104,6 +104,8 @@ class PullManager {
   /// The number of ongoing object pulls.
   int NumActiveRequests() const;
 
+  bool IsObjectActive(const ObjectID &object_id) const;
+
   std::string DebugString() const;
 
  private:
@@ -133,7 +135,7 @@ class PullManager {
   /// locations. This does nothing if the object is not needed by any pull
   /// request or if it is already local. This also sets a timeout for when to
   /// make the next attempt to make the object local.
-  void TryToMakeObjectLocal(const ObjectID &object_id);
+  void TryToMakeObjectLocal(const ObjectID &object_id) EXCLUSIVE_LOCKS_REQUIRED(active_objects_mu_);
 
   /// Try to Pull an object from one of its expected client locations. If there
   /// are more client locations to try after this attempt, then this method
@@ -212,12 +214,16 @@ class PullManager {
   /// object managers.
   std::unordered_map<ObjectID, ObjectPullRequest> object_pull_requests_;
 
+  // Protects state that is shared by the threads used to receive object
+  // chunks.
+  mutable absl::Mutex active_objects_mu_;
+
   /// The objects that we are currently fetching. This is a subset of the
   /// objects that we have been asked to fetch. The total size of these objects
   /// is the number of bytes that we are currently pulling, and it must be less
   /// than the bytes available.
   absl::flat_hash_map<ObjectID, absl::flat_hash_set<uint64_t>>
-      active_object_pull_requests_;
+      active_object_pull_requests_ GUARDED_BY(active_objects_mu_);
 
   /// Internally maintained random number generator.
   std::mt19937_64 gen_;

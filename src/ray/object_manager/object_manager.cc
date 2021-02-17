@@ -677,7 +677,10 @@ ray::Status ObjectManager::ReceiveObjectChunk(const NodeID &node_id,
                                               uint64_t data_size, uint64_t metadata_size,
                                               uint64_t chunk_index,
                                               const std::string &data) {
-  // TODO: Skip objects that are not being actively pulled.
+  if (!pull_manager_->IsObjectActive(object_id)) {
+    // This object is no longer being actively pulled. Do not create the object.
+    return ray::Status::OK();
+  }
   RAY_LOG(DEBUG) << "ReceiveObjectChunk on " << self_node_id_ << " from " << node_id
                  << " of object " << object_id << " chunk index: " << chunk_index
                  << ", chunk data size: " << data.size()
