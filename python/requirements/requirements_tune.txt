@@ -8,6 +8,7 @@ gpy==1.9.9
 gym[atari]==0.18.0
 h5py==3.1.0
 hpbandster==0.7.4
+HEBO==0.1.0
 hyperopt==0.2.5
 jupyter==1.0.0
 keras==2.4.3

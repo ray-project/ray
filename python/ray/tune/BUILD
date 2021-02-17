@@ -438,6 +438,15 @@ py_test(
 )
 
 py_test(
+    name = "hebo_example",
+    size = "medium",
+    srcs = ["examples/hebo_example.py"],
+    deps = [":tune_lib"],
+    tags = ["exclusive", "example"],
+    args = ["--smoke-test"]
+)
+
+py_test(
     name = "horovod_simple",
     size = "medium",
     srcs = ["examples/horovod_simple.py"],
