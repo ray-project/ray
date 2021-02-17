@@ -703,15 +703,6 @@ cc_test(
 )
 
 cc_test(
-    name = "memory_store_test",
-    srcs = ["src/ray/core_worker/test/memory_store_test.cc"],
-    deps = [
-        ":core_worker_lib",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-cc_test(
     name = "direct_actor_transport_test",
     srcs = ["src/ray/core_worker/test/direct_actor_transport_test.cc"],
     copts = COPTS,
