@@ -23,7 +23,9 @@ export const ClusterReceived: ClusterFeatureRenderFn = ({ nodes }) => {
 };
 
 export const NodeReceived: NodeFeatureRenderFn = ({ node }) => (
-  <React.Fragment>{formatByteAmount(node.networkSpeed[1], "mebibyte")}/s</React.Fragment>
+  <React.Fragment>
+    {formatByteAmount(node.networkSpeed[1], "mebibyte")}/s
+  </React.Fragment>
 );
 
 export const nodeReceivedAccessor: Accessor<NodeFeatureData> = ({ node }) =>
