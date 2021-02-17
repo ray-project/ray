@@ -168,12 +168,12 @@ class HEBOSearch(Searcher):
             # If only a mode was passed, use anonymous metric
             self._metric = DEFAULT_METRIC
 
-        if not isinstance(
-            self._space, hebo.design_space.design_space.DesignSpace):
+        if not isinstance(self._space,
+                          hebo.design_space.design_space.DesignSpace):
             raise ValueError(
                 f"Invalid search space: {type(self._space)}. Either pass a "
                 f"valid search space to the `HEBOSearch` class or pass "
-                f"a `config` parameter to `tune.run()`)
+                f"a `config` parameter to `tune.run()`")
 
         if self._space.num_paras <= 0:
             raise ValueError(
