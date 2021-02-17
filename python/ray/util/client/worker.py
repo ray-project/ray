@@ -29,6 +29,7 @@ from ray.util.client.common import ClientActorClass
 from ray.util.client.common import ClientRemoteFunc
 from ray.util.client.common import ClientActorRef
 from ray.util.client.common import ClientObjectRef
+from ray.util.client.common import GRPC_MAX_MESSAGE_SIZE
 from ray.util.client.dataclient import DataClient
 from ray.util.client.logsclient import LogstreamClient
 
@@ -72,11 +73,18 @@ class Worker:
         self._conn_state = grpc.ChannelConnectivity.IDLE
         self._client_id = make_client_id()
         self._converted: Dict[str, ClientStub] = {}
+
+        grpc_options = [
+            ("grpc.max_send_message_length", GRPC_MAX_MESSAGE_SIZE),
+            ("grpc.max_receive_message_length", GRPC_MAX_MESSAGE_SIZE),
+        ]
         if secure:
             credentials = grpc.ssl_channel_credentials()
-            self.channel = grpc.secure_channel(conn_str, credentials)
+            self.channel = grpc.secure_channel(
+                conn_str, credentials, options=grpc_options)
         else:
-            self.channel = grpc.insecure_channel(conn_str)
+            self.channel = grpc.insecure_channel(
+                conn_str, options=grpc_options)
 
         self.channel.subscribe(self._on_channel_state_change)
 
