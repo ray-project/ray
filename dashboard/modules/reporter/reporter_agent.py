@@ -81,11 +81,10 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
                                     "Total CPUs available on a ray node",
                                     "cores", ["ip"]),
             "node_mem": Gauge("node_mem", "Total memory usage on a ray node",
-                              "mb", ["ip"]),
+                              "bytes", ["ip"]),
             "node_gpu_utilization": Gauge("node_gpu_utilization",
                                           "Total GPU usage on a ray node",
                                           "percentage", ["ip"]),
-                              "bytes", ["ip"]),
             "node_disk_usage": Gauge("node_disk_usage",
                                      "Total disk usage (bytes) on a ray node",
                                      "bytes", ["ip"]),
@@ -392,13 +391,17 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
             })
 
         records_reported = [
-            cpu_record, cpu_count_record, mem_record, disk_usage_record, disk_utilization_percentage_record, network_sent_record, network_received_record,
-            network_send_speed_record, network_receive_speed_record
+            cpu_record, cpu_count_record, mem_record, disk_usage_record,
+            disk_utilization_percentage_record, network_sent_record,
+            network_received_record, network_send_speed_record,
+            network_receive_speed_record
         ]
 
         if gpus_available:
-            records_reported.extend([gpus_available_record,
-            gpus_utilization_record, gram_used_record, gram_available_record])
+            records_reported.extend([
+                gpus_available_record, gpus_utilization_record,
+                gram_used_record, gram_available_record
+            ])
 
         raylet_records = [raylet_cpu_record, raylet_mem_record]
         records_reported.extend(raylet_records)
