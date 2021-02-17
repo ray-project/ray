@@ -41,6 +41,7 @@ def test_kill_actor_immediately_after_creation(ray_start_regular):
         ray.kill(b)
         wait_for_condition(_all_actors_dead(ray), timeout=10)
 
+
 @pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
 @pytest.mark.parametrize("use_force", [True, False])
 def test_cancel_chain(ray_start_regular, use_force):
