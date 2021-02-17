@@ -108,7 +108,7 @@ class TrainableUtil:
         """
         suffix = "checkpoint"
         if index is not None:
-            suffix += "_{}".format(index)
+            suffix += f"_{index:06d}"
         checkpoint_dir = os.path.join(checkpoint_dir, suffix)
 
         if override and os.path.exists(checkpoint_dir):
