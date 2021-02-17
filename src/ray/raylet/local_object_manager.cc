@@ -317,6 +317,9 @@ void LocalObjectManager::AddSpilledUrls(
     auto it = objects_pending_spill_.find(object_id);
     RAY_CHECK(it != objects_pending_spill_.end());
 
+    // There are times that restore request comes before the url is added to the object
+    // directory. By adding the spilled url "before" adding it to the object directory, we
+    // can process the restore request before object directory replies.
     spilled_objects_url_.emplace(object_id, object_url);
     auto unpin_callback =
         std::bind(&LocalObjectManager::UnpinSpilledObjectCallback, this, object_id,
@@ -379,6 +382,9 @@ void LocalObjectManager::AsyncRestoreSpilledObject(
                  << object_url;
   if (is_external_storage_type_fs_ && spilled_objects_url_.count(object_id) == 0) {
     RAY_CHECK(!node_id.IsNil());
+    RAY_LOG(DEBUG)
+        << "Restoration request was ignored because the node didn't spill the object "
+        << object_id << " yet. It will be retried...";
     // If the object wasn't spilled yet on this node, just return. The caller should retry
     // in this case.
     if (callback) {

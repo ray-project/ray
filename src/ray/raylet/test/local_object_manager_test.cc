@@ -383,7 +383,7 @@ TEST_F(LocalObjectManagerTest, TestRestoreSpilledObject) {
   // Make sure the restore request is no-op and return not found if the object wasn't
   // spilled yet.
   manager.AsyncRestoreSpilledObject(
-      object_id, "url1", manager_node_id_,
+      object_ids[0], "url0", manager_node_id_,
       [&](const Status &status) { ASSERT_TRUE(status.ok()); });
 
   manager.SpillObjects(object_ids,
