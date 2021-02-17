@@ -7,7 +7,7 @@ upscaling_speed: 32
 idle_timeout_minutes: 15
 
 docker:
-    image: rayproject/ray-ml:1.2.0-gpu
+    image: rayproject/ray-ml:latest-gpu
     container_name: ray_container
     pull_before_run: true
 
@@ -42,6 +42,8 @@ worker_default_node_type: gpu_1_spot
 file_mounts: {
     "~/release-automation-xgboost_tests": "."
 }
+
+file_mounts_sync_continuously: false
 
 setup_commands:
     - pip install pytest xgboost_ray

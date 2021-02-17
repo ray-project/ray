@@ -113,3 +113,5 @@ if __name__ == "__main__":
     assert len(actor_1_world_size) == 1 and 4 in actor_1_world_size, \
         "Training with fewer than 4 actors observed, but this was " \
         "non-elastic training. Please report to test owner."
+
+    print("PASSED.")

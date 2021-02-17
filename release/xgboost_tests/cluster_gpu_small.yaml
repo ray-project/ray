@@ -43,6 +43,8 @@ file_mounts: {
     "~/release-automation-xgboost_tests": "."
 }
 
+file_mounts_sync_continuously: false
+
 setup_commands:
     - pip install pytest xgboost_ray
     - sudo mkdir -p /data || true

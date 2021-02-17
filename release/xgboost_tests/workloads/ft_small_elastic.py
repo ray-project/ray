@@ -17,9 +17,12 @@ race conditions in handling dead actors. This is likely a problem of
 the xgboost_ray implementation and not of this test.
 """
 import warnings
+from unittest.mock import patch
+
 import ray
 
 from xgboost_ray import RayParams
+from xgboost_ray.main import _train as unmocked_train
 
 from _train import train_ray
 from ft_small_non_elastic import FailureState, FailureInjection, \
@@ -40,26 +43,44 @@ if __name__ == "__main__":
         cpus_per_actor=4,
         gpus_per_actor=0)
 
-    _, additional_results, _ = train_ray(
-        path="/data/classification.parquet",
-        num_workers=4,
-        num_boost_rounds=100,
-        num_files=200,
-        regression=False,
-        use_gpu=False,
-        ray_params=ray_params,
-        xgboost_params=None,
-        callbacks=[
-            TrackingCallback(),
-            FailureInjection(
-                id="first_fail", state=failure_state, ranks=[2], iteration=14),
-            FailureInjection(
-                id="second_fail", state=failure_state, ranks=[0], iteration=34)
-        ])
+    world_sizes = []
+    start_actors = []
+
+    def _mock_train(*args, _training_state, **kwargs):
+        world_sizes.append(len([a for a in _training_state.actors if a]))
+        start_actors.append(len(_training_state.failed_actor_ranks))
+
+        return unmocked_train(*args, _training_state=_training_state, **kwargs)
+
+    with patch("xgboost_ray.main._train") as mocked:
+        mocked.side_effect = _mock_train
+        _, additional_results, _ = train_ray(
+            path="/data/classification.parquet",
+            num_workers=4,
+            num_boost_rounds=100,
+            num_files=200,
+            regression=False,
+            use_gpu=False,
+            ray_params=ray_params,
+            xgboost_params=None,
+            callbacks=[
+                TrackingCallback(),
+                FailureInjection(
+                    id="first_fail",
+                    state=failure_state,
+                    ranks=[2],
+                    iteration=14),
+                FailureInjection(
+                    id="second_fail",
+                    state=failure_state,
+                    ranks=[0],
+                    iteration=34)
+            ])
 
     actor_1_world_size = set(additional_results["callback_returns"][1])
 
-    if 3 not in actor_1_world_size:
+    if 3 not in actor_1_world_size and 3 not in world_sizes and \
+       1 not in world_sizes:
         warnings.warn(
             "No training with only 3 actors observed, but this was elastic "
             "training. Please check the output to see if data loading was "
