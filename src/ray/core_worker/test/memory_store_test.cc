@@ -44,8 +44,8 @@ TEST(TestMemoryStore, TestReportUnhandledErrors) {
   // Check delete after get.
   RAY_CHECK(provider->Put(obj1, id1));
   RAY_CHECK(provider->Put(obj1, id2));
-  RAY_CHECK_OK(provider->Get({id1}, 1, 100, context, false, &results));
-  RAY_IGNORE_EXPR(provider->GetOrPromoteToPlasma(id2));
+  RAY_UNUSED(provider->Get({id1}, 1, 100, context, false, &results));
+  provider->GetOrPromoteToPlasma(id2);
   provider->Delete({id1, id2});
   ASSERT_EQ(unhandled_count, 0);
 
