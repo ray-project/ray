@@ -267,6 +267,9 @@ void LocalObjectManager::UnpinSpilledObjectCallback(
     RAY_LOG(INFO) << "Failed to send spilled url for object " << object_id
                   << " to object directory, considering the object to have been freed: "
                   << status.ToString();
+    auto it = spilled_objects_url_.find(object_id);
+    RAY_CHECK(it != spilled_objects_url_.end());
+    spilled_objects_url_.erase(it);
   } else {
     RAY_LOG(DEBUG) << "Object " << object_id << " spilled to " << object_url
                    << " and object directory has been informed";
@@ -291,7 +294,6 @@ void LocalObjectManager::UnpinSpilledObjectCallback(
   } else {
     url_ref_count_[base_url_it->second] += 1;
   }
-  spilled_objects_url_.emplace(object_id, object_url);
 
   (*num_remaining)--;
   if (*num_remaining == 0 && callback) {
@@ -315,10 +317,10 @@ void LocalObjectManager::AddSpilledUrls(
     auto it = objects_pending_spill_.find(object_id);
     RAY_CHECK(it != objects_pending_spill_.end());
 
+    spilled_objects_url_.emplace(object_id, object_url);
     auto unpin_callback =
         std::bind(&LocalObjectManager::UnpinSpilledObjectCallback, this, object_id,
                   object_url, num_remaining, callback, std::placeholders::_1);
-
     if (RayConfig::instance().ownership_based_object_directory_enabled()) {
       // TODO(Clark): Don't send RPC to owner if we're fulfilling an owner-initiated
       // spill RPC.
@@ -356,7 +358,8 @@ void LocalObjectManager::AsyncRestoreSpilledObject(
     return;
   }
 
-  if (!node_id.IsNil() && node_id != self_node_id_) {
+  if (is_external_storage_type_fs_ && node_id != self_node_id_) {
+    RAY_CHECK(!node_id.IsNil());
     // If we know where this object was spilled, and the current node is not that one,
     // send a RPC to a remote node that spilled the object to restore it.
     RAY_LOG(DEBUG) << "Send an object restoration request of id: " << object_id
@@ -374,8 +377,14 @@ void LocalObjectManager::AsyncRestoreSpilledObject(
   // Restore the object.
   RAY_LOG(DEBUG) << "Restoring spilled object " << object_id << " from URL "
                  << object_url;
-  if (!node_id.IsNil()) {
-    RAY_CHECK(spilled_objects_url_.count(object_id) > 0);
+  if (is_external_storage_type_fs_ && spilled_objects_url_.count(object_id) == 0) {
+    RAY_CHECK(!node_id.IsNil());
+    // If the object wasn't spilled yet on this node, just return. The caller should retry
+    // in this case.
+    if (callback) {
+      callback(Status::OK());
+    }
+    return;
   }
 
   RAY_CHECK(objects_pending_restore_.emplace(object_id).second)
