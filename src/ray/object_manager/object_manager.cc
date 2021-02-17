@@ -324,8 +324,7 @@ void ObjectManager::HandleReceiveFinished(const ObjectID &object_id,
   // Encode the object ID, node ID, chunk index as a json list,
   // which will be parsed by the reader of the profile table.
   profile_event.set_extra_data("[\"" + object_id.Hex() + "\",\"" + node_id.Hex() + "\"," +
-                               std::to_string(chunk_index) +
-                               "\"]");
+                               std::to_string(chunk_index) + "\"]");
 
   std::lock_guard<std::mutex> lock(profile_mutex_);
   profile_events_.push_back(profile_event);
@@ -659,12 +658,13 @@ void ObjectManager::HandlePush(const rpc::PushRequest &request, rpc::PushReply *
 
   double start_time = absl::GetCurrentTimeNanos() / 1e9;
   bool success = ReceiveObjectChunk(node_id, object_id, owner_address, data_size,
-                                   metadata_size, chunk_index, data);
+                                    metadata_size, chunk_index, data);
   if (!success) {
     num_chunks_received_failed_++;
-    RAY_LOG(INFO) << "Received duplicate or cancelled chunk at index " << chunk_index << " of object "
-                  << object_id << ": overall " << num_chunks_received_failed_ << "/"
-                  << num_chunks_received_total_ << " failed";
+    RAY_LOG(INFO) << "Received duplicate or cancelled chunk at index " << chunk_index
+                  << " of object " << object_id << ": overall "
+                  << num_chunks_received_failed_ << "/" << num_chunks_received_total_
+                  << " failed";
   }
   double end_time = absl::GetCurrentTimeNanos() / 1e9;
 
@@ -672,12 +672,10 @@ void ObjectManager::HandlePush(const rpc::PushRequest &request, rpc::PushReply *
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
-bool ObjectManager::ReceiveObjectChunk(const NodeID &node_id,
-                                              const ObjectID &object_id,
-                                              const rpc::Address &owner_address,
-                                              uint64_t data_size, uint64_t metadata_size,
-                                              uint64_t chunk_index,
-                                              const std::string &data) {
+bool ObjectManager::ReceiveObjectChunk(const NodeID &node_id, const ObjectID &object_id,
+                                       const rpc::Address &owner_address,
+                                       uint64_t data_size, uint64_t metadata_size,
+                                       uint64_t chunk_index, const std::string &data) {
   num_chunks_received_total_++;
   RAY_LOG(DEBUG) << "ReceiveObjectChunk on " << self_node_id_ << " from " << node_id
                  << " of object " << object_id << " chunk index: " << chunk_index
@@ -690,7 +688,7 @@ bool ObjectManager::ReceiveObjectChunk(const NodeID &node_id,
   }
   std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> chunk_status =
       buffer_pool_.CreateChunk(object_id, owner_address, data_size, metadata_size,
-                                chunk_index);
+                               chunk_index);
   if (!pull_manager_->IsObjectActive(object_id)) {
     // This object is no longer being actively pulled. Abort the object. We
     // have to check again here because the pull manager runs in a different

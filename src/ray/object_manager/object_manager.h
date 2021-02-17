@@ -180,9 +180,9 @@ class ObjectManager : public ObjectManagerInterface,
   /// store. This can fail if the chunk was already received in the past, or if
   /// the object is no longer being actively pulled.
   bool ReceiveObjectChunk(const NodeID &node_id, const ObjectID &object_id,
-                                 const rpc::Address &owner_address, uint64_t data_size,
-                                 uint64_t metadata_size, uint64_t chunk_index,
-                                 const std::string &data);
+                          const rpc::Address &owner_address, uint64_t data_size,
+                          uint64_t metadata_size, uint64_t chunk_index,
+                          const std::string &data);
 
   /// Send pull request
   ///
@@ -406,7 +406,8 @@ class ObjectManager : public ObjectManagerInterface,
   /// chunk.
   /// \return Void.
   void HandleReceiveFinished(const ObjectID &object_id, const NodeID &node_id,
-                             uint64_t chunk_index, double start_time_us, double end_time_us);
+                             uint64_t chunk_index, double start_time_us,
+                             double end_time_us);
 
   /// Handle Push task timeout.
   void HandlePushTaskTimeout(const ObjectID &object_id, const NodeID &node_id);
