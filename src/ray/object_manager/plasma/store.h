@@ -214,7 +214,8 @@ class PlasmaStore {
     RAY_CHECK(num_bytes_in_use_ >= num_bytes_unsealed_);
     // We include unsealed objects because these may have been created by the
     // object manager.
-    int64_t num_bytes_in_use = static_cast<int64_t>(num_bytes_in_use_ - num_bytes_unsealed_);
+    int64_t num_bytes_in_use =
+        static_cast<int64_t>(num_bytes_in_use_ - num_bytes_unsealed_);
     RAY_CHECK(PlasmaAllocator::GetFootprintLimit() >= num_bytes_in_use);
     size_t available = PlasmaAllocator::GetFootprintLimit() - num_bytes_in_use;
     callback(available);

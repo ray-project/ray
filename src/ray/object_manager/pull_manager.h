@@ -135,7 +135,8 @@ class PullManager {
   /// locations. This does nothing if the object is not needed by any pull
   /// request or if it is already local. This also sets a timeout for when to
   /// make the next attempt to make the object local.
-  void TryToMakeObjectLocal(const ObjectID &object_id) EXCLUSIVE_LOCKS_REQUIRED(active_objects_mu_);
+  void TryToMakeObjectLocal(const ObjectID &object_id)
+      EXCLUSIVE_LOCKS_REQUIRED(active_objects_mu_);
 
   /// Try to Pull an object from one of its expected client locations. If there
   /// are more client locations to try after this attempt, then this method

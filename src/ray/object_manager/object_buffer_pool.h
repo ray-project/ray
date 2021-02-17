@@ -147,7 +147,6 @@ class ObjectBufferPool {
   std::string DebugString() const;
 
  private:
-
   /// Abort the get operation associated with an object.
   void AbortGet(const ObjectID &object_id);
 

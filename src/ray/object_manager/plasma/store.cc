@@ -166,7 +166,8 @@ void PlasmaStore::AddToClientObjectIds(const ObjectID &object_id, ObjectTableEnt
   }
   // Increase reference count.
   entry->ref_count++;
-  RAY_LOG(DEBUG) << "Object " << object_id << " in use by client" << ", num bytes in use is now " << num_bytes_in_use_;
+  RAY_LOG(DEBUG) << "Object " << object_id << " in use by client"
+                 << ", num bytes in use is now " << num_bytes_in_use_;
 
   // Add object id to the list of object ids that this client is using.
   client->object_ids.insert(object_id);
@@ -546,7 +547,8 @@ int PlasmaStore::RemoveFromClientObjectIds(const ObjectID &object_id,
     // that the object is no longer being used.
     if (entry->ref_count == 0) {
       num_bytes_in_use_ -= entry->data_size + entry->metadata_size;
-      RAY_LOG(DEBUG) << "Releasing object no longer in use " << object_id << ", num bytes in use is now " << num_bytes_in_use_;
+      RAY_LOG(DEBUG) << "Releasing object no longer in use " << object_id
+                     << ", num bytes in use is now " << num_bytes_in_use_;
       if (deletion_cache_.count(object_id) == 0) {
         // Tell the eviction policy that this object is no longer being used.
         eviction_policy_.EndObjectAccess(object_id);
@@ -577,7 +579,8 @@ void PlasmaStore::EraseFromObjectTable(const ObjectID &object_id) {
   if (object->ref_count > 0) {
     // A client was using this object.
     num_bytes_in_use_ -= object->data_size + object->metadata_size;
-    RAY_LOG(DEBUG) << "Erasing object " << object_id << " with nonzero ref count" << object_id << ", num bytes in use is now " << num_bytes_in_use_;
+    RAY_LOG(DEBUG) << "Erasing object " << object_id << " with nonzero ref count"
+                   << object_id << ", num bytes in use is now " << num_bytes_in_use_;
   }
   store_info_.objects.erase(object_id);
 }
