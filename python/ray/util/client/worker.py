@@ -29,6 +29,7 @@ from ray.util.client.common import ClientActorClass
 from ray.util.client.common import ClientRemoteFunc
 from ray.util.client.common import ClientActorRef
 from ray.util.client.common import ClientObjectRef
+from ray.util.client.common import GRPC_MAX_MESSAGE_SIZE
 from ray.util.client.dataclient import DataClient
 from ray.util.client.logsclient import LogstreamClient
 
@@ -68,14 +69,22 @@ class Worker:
         """
         self.metadata = metadata if metadata else []
         self.channel = None
+        self.server = None
         self._conn_state = grpc.ChannelConnectivity.IDLE
         self._client_id = make_client_id()
         self._converted: Dict[str, ClientStub] = {}
+
+        grpc_options = [
+            ("grpc.max_send_message_length", GRPC_MAX_MESSAGE_SIZE),
+            ("grpc.max_receive_message_length", GRPC_MAX_MESSAGE_SIZE),
+        ]
         if secure:
             credentials = grpc.ssl_channel_credentials()
-            self.channel = grpc.secure_channel(conn_str, credentials)
+            self.channel = grpc.secure_channel(
+                conn_str, credentials, options=grpc_options)
         else:
-            self.channel = grpc.insecure_channel(conn_str)
+            self.channel = grpc.insecure_channel(
+                conn_str, options=grpc_options)
 
         self.channel.subscribe(self._on_channel_state_change)
 
@@ -83,7 +92,7 @@ class Worker:
         # looking like a gRPC connection, though it may be a proxy.
         conn_attempts = 0
         timeout = INITIAL_TIMEOUT_SEC
-        ray_ready = False
+        service_ready = False
         while conn_attempts < max(connection_retries, 1):
             conn_attempts += 1
             try:
@@ -94,13 +103,8 @@ class Worker:
                 # RayletDriverStub, allowing for unary requests.
                 self.server = ray_client_pb2_grpc.RayletDriverStub(
                     self.channel)
-                # Now the HTTP2 channel is ready, or proxied, but the
-                # servicer may not be ready. Call is_initialized() and if
-                # it throws, the servicer is not ready. On success, the
-                # `ray_ready` result is checked.
-                ray_ready = self.is_initialized()
-                if ray_ready:
-                    # Ray is ready! Break out of the retry loop
+                service_ready = bool(self.ping_server())
+                if service_ready:
                     break
                 # Ray is not ready yet, wait a timeout
                 time.sleep(timeout)
@@ -120,9 +124,10 @@ class Worker:
                         f"retry in {timeout}s...")
             timeout = backoff(timeout)
 
-        # If we made it through the loop without ray_ready it means we've used
-        # up our retries and should error back to the user.
-        if not ray_ready:
+        # If we made it through the loop without service_ready
+        # it means we've used up our retries and
+        # should error back to the user.
+        if not service_ready:
             raise ConnectionError("ray client connection timeout")
 
         # Initialize the streams to finish protocol negotiation.
@@ -185,7 +190,7 @@ class Worker:
             raise err
         return loads_from_server(data.data)
 
-    def put(self, vals):
+    def put(self, vals, *, client_ref_id: bytes = None):
         to_put = []
         single = False
         if isinstance(vals, list):
@@ -194,12 +199,12 @@ class Worker:
             single = True
             to_put.append(vals)
 
-        out = [self._put(x) for x in to_put]
+        out = [self._put(x, client_ref_id=client_ref_id) for x in to_put]
         if single:
             out = out[0]
         return out
 
-    def _put(self, val):
+    def _put(self, val, *, client_ref_id: bytes = None):
         if isinstance(val, ClientObjectRef):
             raise TypeError(
                 "Calling 'put' on an ObjectRef is not allowed "
@@ -209,6 +214,8 @@ class Worker:
                 "call 'put' on it (or return it).")
         data = dumps_from_client(val, self._client_id)
         req = ray_client_pb2.PutRequest(data=data)
+        if client_ref_id is not None:
+            req.client_ref_id = client_ref_id
         resp = self.data_client.PutObject(req)
         return ClientObjectRef(resp.id)
 
@@ -375,6 +382,18 @@ class Worker:
         if self.server is not None:
             return self.get_cluster_info(
                 ray_client_pb2.ClusterInfoType.IS_INITIALIZED)
+        return False
+
+    def ping_server(self) -> bool:
+        """Simple health check.
+
+        Piggybacks the IS_INITIALIZED call to check if the server provides
+        an actual response.
+        """
+        if self.server is not None:
+            result = self.get_cluster_info(
+                ray_client_pb2.ClusterInfoType.IS_INITIALIZED)
+            return result is not None
         return False
 
     def is_connected(self) -> bool:

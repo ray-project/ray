@@ -149,7 +149,7 @@ def create_or_update_cluster(
         redirect_command_output: Optional[bool] = False,
         use_login_shells: bool = True,
         no_monitor_on_head: bool = False) -> Dict[str, Any]:
-    """Create or updates an autoscaling Ray cluster from a config json."""
+    """Creates or updates an autoscaling Ray cluster from a config json."""
     # no_monitor_on_head is an internal flag used by the Ray K8s operator.
     # If True, prevents autoscaling config sync to the Ray head during cluster
     # creation. See https://github.com/ray-project/ray/pull/13720.
@@ -646,7 +646,12 @@ def get_or_create_head_node(config: Dict[str, Any],
             cli_logger.print("Prepared bootstrap config")
 
         if restart_only:
-            setup_commands = []
+            # Docker may re-launch nodes, requiring setup
+            # commands to be rerun.
+            if config.get("docker", {}).get("container_name"):
+                setup_commands = config["head_setup_commands"]
+            else:
+                setup_commands = []
             ray_start_commands = config["head_start_ray_commands"]
         elif no_restart:
             setup_commands = config["head_setup_commands"]
@@ -678,7 +683,8 @@ def get_or_create_head_node(config: Dict[str, Any],
                 "rsync_exclude": config.get("rsync_exclude"),
                 "rsync_filter": config.get("rsync_filter")
             },
-            docker_config=config.get("docker"))
+            docker_config=config.get("docker"),
+            restart_only=restart_only)
         updater.start()
         updater.join()
 

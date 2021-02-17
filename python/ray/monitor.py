@@ -8,6 +8,8 @@ import time
 import traceback
 import json
 
+import grpc
+
 import ray
 from ray.autoscaler._private.autoscaler import StandardAutoscaler
 from ray.autoscaler._private.commands import teardown_cluster
@@ -17,11 +19,10 @@ from ray.autoscaler._private.load_metrics import LoadMetrics
 from ray.autoscaler._private.constants import \
     AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE
 from ray.autoscaler._private.util import DEBUG_AUTOSCALING_STATUS
-import ray.gcs_utils
-import ray.utils
+
+from ray.core.generated import gcs_service_pb2, gcs_service_pb2_grpc
 import ray.ray_constants as ray_constants
 from ray.ray_logging import setup_component_logger
-from ray._raylet import GlobalStateAccessor
 from ray.experimental.internal_kv import _internal_kv_put, \
     _internal_kv_initialized, _internal_kv_get
 
@@ -90,16 +91,17 @@ class Monitor:
             redis_address, redis_password=redis_password)
         self.redis = ray._private.services.create_redis_client(
             redis_address, password=redis_password)
-        self.global_state_accessor = GlobalStateAccessor(
-            redis_address, redis_password, False)
-        self.global_state_accessor.connect()
+
+        # Initialize the gcs stub for getting all node resource usage.
+        gcs_address = self.redis.get("GcsServerAddress").decode("utf-8")
+        gcs_channel = grpc.insecure_channel(gcs_address)
+        self.gcs_node_resources_stub = \
+            gcs_service_pb2_grpc.NodeResourceInfoGcsServiceStub(gcs_channel)
+
         # Set the redis client and mode so _internal_kv works for autoscaler.
         worker = ray.worker.global_worker
         worker.redis_client = self.redis
         worker.mode = 0
-        # Keep a mapping from raylet client ID to IP address to use
-        # for updating the load metrics.
-        self.raylet_id_to_ip_map = {}
         head_node_ip = redis_address.split(":")[0]
         self.load_metrics = LoadMetrics(local_ip=head_node_ip)
         self.last_avail_resources = None
@@ -117,19 +119,14 @@ class Monitor:
 
         logger.info("Monitor: Started")
 
-    def __del__(self):
-        """Destruct the monitor object."""
-        # We close the pubsub client to avoid leaking file descriptors.
-        if self.global_state_accessor is not None:
-            self.global_state_accessor.disconnect()
-            self.global_state_accessor = None
-
     def update_load_metrics(self):
         """Fetches resource usage data from GCS and updates load metrics."""
 
-        all_resources = self.global_state_accessor.get_all_resource_usage()
-        resources_batch_data = \
-            ray.gcs_utils.ResourceUsageBatchData.FromString(all_resources)
+        request = gcs_service_pb2.GetAllResourceUsageRequest()
+        response = self.gcs_node_resources_stub.GetAllResourceUsage(
+            request, timeout=4)
+        resources_batch_data = response.resource_usage_data
+
         for resource_message in resources_batch_data.batch:
             resource_load = dict(resource_message.resource_load)
             total_resources = dict(resource_message.resources_total)
@@ -141,17 +138,10 @@ class Monitor:
             pending_placement_groups = list(
                 resources_batch_data.placement_group_load.placement_group_data)
 
-            # Update the load metrics for this raylet.
-            node_id = ray.utils.binary_to_hex(resource_message.node_id)
-            ip = self.raylet_id_to_ip_map.get(node_id)
-            if ip:
-                self.load_metrics.update(ip, total_resources,
-                                         available_resources, resource_load,
-                                         waiting_bundles, infeasible_bundles,
-                                         pending_placement_groups)
-            else:
-                logger.warning(
-                    f"Monitor: could not find ip for node {node_id}")
+            ip = resource_message.node_manager_address
+            self.load_metrics.update(
+                ip, total_resources, available_resources, resource_load,
+                waiting_bundles, infeasible_bundles, pending_placement_groups)
 
     def update_resource_requests(self):
         """Fetches resource requests from the internal KV and updates load."""
@@ -166,29 +156,10 @@ class Monitor:
             except Exception:
                 logger.exception("Error parsing resource requests")
 
-    def update_raylet_map(self, _append_port=False):
-        """Updates internal raylet map.
-
-        Args:
-            _append_port (bool): Defaults to False. Appending the port is
-                useful in testing, as mock clusters have many nodes with
-                the same IP and cannot be uniquely identified.
-        """
-        all_raylet_nodes = ray.nodes()
-        self.raylet_id_to_ip_map = {}
-        for raylet_info in all_raylet_nodes:
-            node_id = (raylet_info.get("DBClientID") or raylet_info["NodeID"])
-            ip_address = (raylet_info.get("AuxAddress")
-                          or raylet_info["NodeManagerAddress"]).split(":")[0]
-            if _append_port:
-                ip_address += ":" + str(raylet_info["NodeManagerPort"])
-            self.raylet_id_to_ip_map[node_id] = ip_address
-
     def _run(self):
         """Run the monitor loop."""
 
         while True:
-            self.update_raylet_map()
             self.update_load_metrics()
             self.update_resource_requests()
             self.update_event_summary()
@@ -364,9 +335,9 @@ if __name__ == "__main__":
         # Something went wrong, so push an error to all drivers.
         redis_client = ray._private.services.create_redis_client(
             args.redis_address, password=args.redis_password)
-        traceback_str = ray.utils.format_error_message(traceback.format_exc())
         message = ("The monitor failed with the "
-                   f"following error:\n{traceback_str}")
-        ray.utils.push_error_to_driver_through_redis(
+                   f"following error:\n{traceback.format_exc()}")
+        from ray.utils import push_error_to_driver_through_redis
+        push_error_to_driver_through_redis(
             redis_client, ray_constants.MONITOR_DIED_ERROR, message)
         raise e

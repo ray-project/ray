@@ -644,11 +644,16 @@ def with_parameters(fn, **kwargs):
             fn_kwargs[k] = parameter_registry.get(prefix + k)
         fn(config, **fn_kwargs)
 
+    fn_name = getattr(fn, "__name__", "tune_with_parameters")
+    inner.__name__ = fn_name
+
     # Use correct function signature if no `checkpoint_dir` parameter is set
     if not use_checkpoint:
 
         def _inner(config):
             inner(config, checkpoint_dir=None)
+
+        _inner.__name__ = fn_name
 
         if hasattr(fn, "__mixins__"):
             _inner.__mixins__ = fn.__mixins__
@@ -656,4 +661,5 @@ def with_parameters(fn, **kwargs):
 
     if hasattr(fn, "__mixins__"):
         inner.__mixins__ = fn.__mixins__
+
     return inner
