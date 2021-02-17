@@ -211,7 +211,10 @@ class PlasmaStore {
   void ProcessCreateRequests();
 
   void GetAvailableMemory(std::function<void(size_t)> callback) const {
-    int64_t num_bytes_in_use = static_cast<int64_t>(num_bytes_in_use_);
+    RAY_CHECK(num_bytes_in_use_ >= num_bytes_unsealed_);
+    // We include unsealed objects because these may have been created by the
+    // object manager.
+    int64_t num_bytes_in_use = static_cast<int64_t>(num_bytes_in_use_ - num_bytes_unsealed_);
     RAY_CHECK(PlasmaAllocator::GetFootprintLimit() >= num_bytes_in_use);
     size_t available = PlasmaAllocator::GetFootprintLimit() - num_bytes_in_use;
     callback(available);
@@ -314,7 +317,14 @@ class PlasmaStore {
   /// mutex if it is not absolutely necessary.
   std::recursive_mutex mutex_;
 
+  /// Total number of bytes allocated to objects that are in use by any client.
+  /// This includes objects that are being created and objects that a client
+  /// called get on.
   size_t num_bytes_in_use_ = 0;
+
+  /// Total number of bytes allocated to objects that are created but not yet
+  /// sealed.
+  size_t num_bytes_unsealed_ = 0;
 
   /// Total plasma object bytes that are consumed by core workers.
   int64_t total_consumed_bytes_ = 0;

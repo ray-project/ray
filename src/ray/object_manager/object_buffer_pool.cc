@@ -164,23 +164,32 @@ void ObjectBufferPool::AbortCreateChunk(const ObjectID &object_id,
 
 void ObjectBufferPool::SealChunk(const ObjectID &object_id, const uint64_t chunk_index) {
   std::lock_guard<std::mutex> lock(pool_mutex_);
-  RAY_CHECK(create_buffer_state_[object_id].chunk_state[chunk_index] ==
-            CreateChunkState::REFERENCED);
-  create_buffer_state_[object_id].chunk_state[chunk_index] = CreateChunkState::SEALED;
-  create_buffer_state_[object_id].num_seals_remaining--;
-  if (create_buffer_state_[object_id].num_seals_remaining == 0) {
+  auto it = create_buffer_state_.find(object_id);
+  if (it == create_buffer_state_.end() || it->second.chunk_state[chunk_index] !=
+            CreateChunkState::REFERENCED) {
+    RAY_LOG(DEBUG) << "Object " << object_id << " aborted due to OOM before chunk " << chunk_index << " could be sealed";
+    return;
+  }
+  it->second.chunk_state[chunk_index] = CreateChunkState::SEALED;
+  it->second.num_seals_remaining--;
+  if (it->second.num_seals_remaining == 0) {
     RAY_CHECK_OK(store_client_.Seal(object_id));
     RAY_CHECK_OK(store_client_.Release(object_id));
-    create_buffer_state_.erase(object_id);
+    create_buffer_state_.erase(it);
     RAY_LOG(DEBUG) << "Have received all chunks for object " << object_id
                    << ", last chunk index: " << chunk_index;
   }
 }
 
 void ObjectBufferPool::AbortCreate(const ObjectID &object_id) {
-  RAY_CHECK_OK(store_client_.Release(object_id));
-  RAY_CHECK_OK(store_client_.Abort(object_id));
-  create_buffer_state_.erase(object_id);
+  std::lock_guard<std::mutex> lock(pool_mutex_);
+  auto it = create_buffer_state_.find(object_id);
+  if (it != create_buffer_state_.end()) {
+    RAY_LOG(INFO) << "Not enough memory to create requested object " << object_id << ", aborting";
+    RAY_CHECK_OK(store_client_.Release(object_id));
+    RAY_CHECK_OK(store_client_.Abort(object_id));
+    create_buffer_state_.erase(object_id);
+  }
 }
 
 std::vector<ObjectBufferPool::ChunkInfo> ObjectBufferPool::BuildChunks(

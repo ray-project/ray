@@ -145,10 +145,11 @@ def test_load_balancing_with_memory_constraints(ray_start_cluster):
     @ray.remote
     class Signal:
         def __init__(self):
-            pass
+            self.count = 0
 
         def ping(self, node):
-            print(node)
+            self.count += 1
+            print(node, count)
 
     signal = Signal.remote()
 

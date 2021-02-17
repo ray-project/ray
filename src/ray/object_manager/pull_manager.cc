@@ -7,12 +7,14 @@ namespace ray {
 PullManager::PullManager(
     NodeID &self_node_id, const std::function<bool(const ObjectID &)> object_is_local,
     const std::function<void(const ObjectID &, const NodeID &)> send_pull_request,
+    const std::function<void(const ObjectID &)> cancel_pull_request,
     const RestoreSpilledObjectCallback restore_spilled_object,
     const std::function<double()> get_time, int pull_timeout_ms,
     size_t num_bytes_available, std::function<void()> object_store_full_callback)
     : self_node_id_(self_node_id),
       object_is_local_(object_is_local),
       send_pull_request_(send_pull_request),
+      cancel_pull_request_(cancel_pull_request),
       restore_spilled_object_(restore_spilled_object),
       get_time_(get_time),
       pull_timeout_ms_(pull_timeout_ms),
@@ -70,6 +72,8 @@ bool PullManager::ActivateNextPullBundleRequest(
       RAY_CHECK(it != object_pull_requests_.end());
       num_bytes_being_pulled_ += it->second.object_size;
       objects_to_pull->push_back(obj_id);
+
+      ResetRetryTimer(obj_id);
     }
   }
 
@@ -91,6 +95,7 @@ void PullManager::DeactivatePullBundleRequest(
       RAY_CHECK(it != object_pull_requests_.end());
       num_bytes_being_pulled_ -= it->second.object_size;
       active_object_pull_requests_.erase(obj_id);
+      cancel_pull_request_(obj_id);
 
       if (objects_to_cancel) {
         objects_to_cancel->insert(obj_id);

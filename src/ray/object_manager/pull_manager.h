@@ -32,13 +32,17 @@ class PullManager {
   ///
   /// \param self_node_id the current node
   /// \param object_is_local A callback which should return true if a given object is
-  /// already on the local node. \param send_pull_request A callback which should send a
+  /// already on the local node.
+  /// \param send_pull_request A callback which should send a
   /// pull request to the specified node.
+  /// \param cancel_pull_request A callback which should
+  /// cancel pulling an object.
   /// \param restore_spilled_object A callback which should
   /// retrieve an spilled object from the external store.
   PullManager(
       NodeID &self_node_id, const std::function<bool(const ObjectID &)> object_is_local,
       const std::function<void(const ObjectID &, const NodeID &)> send_pull_request,
+      const std::function<void(const ObjectID &)> cancel_pull_request,
       const RestoreSpilledObjectCallback restore_spilled_object,
       const std::function<double()> get_time, int pull_timeout_ms,
       size_t num_bytes_available, std::function<void()> object_store_full_callback);
@@ -183,6 +187,7 @@ class PullManager {
   NodeID self_node_id_;
   const std::function<bool(const ObjectID &)> object_is_local_;
   const std::function<void(const ObjectID &, const NodeID &)> send_pull_request_;
+  const std::function<void(const ObjectID &)> cancel_pull_request_;
   const RestoreSpilledObjectCallback restore_spilled_object_;
   const std::function<double()> get_time_;
   uint64_t pull_timeout_ms_;

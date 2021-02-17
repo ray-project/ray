@@ -94,13 +94,18 @@ ObjectManager::ObjectManager(asio::io_service &main_service, const NodeID &self_
                                          const NodeID &client_id) {
     SendPullRequest(object_id, client_id);
   };
+  const auto &cancel_pull_request = [this](const ObjectID &object_id) {
+    // We must abort this object because it may have only been partially
+    // created.
+    buffer_pool_.AbortCreate(object_id);
+  };
   const auto &get_time = []() { return absl::GetCurrentTimeNanos() / 1e9; };
   int64_t available_memory = config.object_store_memory;
   if (available_memory < 0) {
     available_memory = 0;
   }
   pull_manager_.reset(new PullManager(
-      self_node_id_, object_is_local, send_pull_request, restore_spilled_object_,
+      self_node_id_, object_is_local, send_pull_request, cancel_pull_request, restore_spilled_object_,
       get_time, config.pull_timeout_ms, available_memory,
       [spill_objects_callback, object_store_full_callback]() {
         // TODO(swang): This copies the out-of-memory handling in the
@@ -672,6 +677,7 @@ ray::Status ObjectManager::ReceiveObjectChunk(const NodeID &node_id,
                                               uint64_t data_size, uint64_t metadata_size,
                                               uint64_t chunk_index,
                                               const std::string &data) {
+  // TODO: Skip objects that are not being actively pulled.
   RAY_LOG(DEBUG) << "ReceiveObjectChunk on " << self_node_id_ << " from " << node_id
                  << " of object " << object_id << " chunk index: " << chunk_index
                  << ", chunk data size: " << data.size()
