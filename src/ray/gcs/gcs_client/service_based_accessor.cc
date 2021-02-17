@@ -200,26 +200,6 @@ Status ServiceBasedActorInfoAccessor::AsyncRegisterActor(
   return Status::OK();
 }
 
-Status ServiceBasedActorInfoAccessor::AsyncKillActor(
-    const ActorID &actor_id, bool force_kill, bool no_restart,
-    const ray::gcs::StatusCallback &callback) {
-  rpc::KillActorViaGcsRequest request;
-  request.set_actor_id(actor_id.Binary());
-  request.set_force_kill(force_kill);
-  request.set_no_restart(no_restart);
-  client_impl_->GetGcsRpcClient().KillActorViaGcs(
-      request, [callback](const Status &, const rpc::KillActorViaGcsReply &reply) {
-        if (callback) {
-          auto status =
-              reply.status().code() == (int)StatusCode::OK
-                  ? Status()
-                  : Status(StatusCode(reply.status().code()), reply.status().message());
-          callback(status);
-        }
-      });
-  return Status::OK();
-}
-
 Status ServiceBasedActorInfoAccessor::AsyncCreateActor(
     const ray::TaskSpecification &task_spec, const ray::gcs::StatusCallback &callback) {
   RAY_CHECK(task_spec.IsActorCreationTask() && callback);
