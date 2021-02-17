@@ -28,6 +28,7 @@ GcsHeartbeatManager::GcsHeartbeatManager(
       num_heartbeats_timeout_(RayConfig::instance().num_heartbeats_timeout()),
       detect_timer_(io_service) {
   io_service_thread_.reset(new std::thread([this] {
+    SetThreadName("heartbeat");
     /// The asio work to keep io_service_ alive.
     boost::asio::io_service::work io_service_work_(io_service_);
     io_service_.run();
@@ -102,7 +103,7 @@ void GcsHeartbeatManager::DetectDeadNodes() {
 
 void GcsHeartbeatManager::ScheduleTick() {
   auto heartbeat_period = boost::posix_time::milliseconds(
-      RayConfig::instance().raylet_heartbeat_timeout_milliseconds());
+      RayConfig::instance().raylet_heartbeat_period_milliseconds());
   detect_timer_.expires_from_now(heartbeat_period);
   detect_timer_.async_wait([this](const boost::system::error_code &error) {
     if (error == boost::asio::error::operation_aborted) {

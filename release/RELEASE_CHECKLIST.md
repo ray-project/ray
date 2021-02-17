@@ -56,6 +56,31 @@ This checklist is meant to be used in conjunction with the RELEASE_PROCESS.rst d
 			- [ ] Results added to `release/release_logs`
 	- [ ] stress_tests
 	- [ ] unit_gpu_tests
+- [ ] Scalability Envelope Tests
+- [ ] ASAN Test
+- [ ] K8s Test
+	- [ ] K8s cluster launcher test
+	- [ ] K8s operator test
+- [ ] Data processing tests
+    - [ ] streaming_shuffle
+- [ ] Tune tests
+    - [ ] test_bookkeeping_overhead
+    - [x] test_result_throughput_cluster (ignore final time)
+    - [x] test_result_throughput_single_node (ignore final time)
+    - [x] test_network_overhead (ignore final time)
+    - [ ] test_long_running_large_checkpoints
+    - [ ] test_xgboost_sweep
+    - [ ] test_durable_trainable
+- [ ] XGBoost Tests
+    - [ ] distributed_api_test
+    - [ ] train_small
+    - [ ] train_moderate
+    - [ ] train_gpu
+    - [ ] tune_small
+    - [ ] tune_4x32
+    - [ ] tune_32x4
+    - [ ] ft_small_non_elastic (flaky!)
+    - [ ] ft_small_elastic (flaky!)
 
 ## Final Steps
 - [ ] Wheels uploaded to Test PyPI

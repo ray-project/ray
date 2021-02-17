@@ -340,6 +340,7 @@ def test_starmap(pool):
 
     args = [tuple(range(i)) for i in range(100)]
     assert pool.starmap(f, args) == args
+    assert pool.starmap(lambda x, y: x + y, zip([1, 2], [3, 4])) == [4, 6]
 
 
 def test_callbacks(pool_4_processes):

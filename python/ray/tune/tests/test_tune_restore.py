@@ -1,7 +1,10 @@
 # coding: utf-8
+import signal
+from collections import Counter
 import os
 import shutil
 import tempfile
+import time
 import unittest
 import skopt
 import numpy as np
@@ -13,6 +16,8 @@ import ray
 from ray import tune
 from ray.test_utils import recursive_fnmatch
 from ray.rllib import _register_all
+from ray.tune.callback import Callback
+from ray.tune.suggest.basic_variant import BasicVariantGenerator
 from ray.tune.suggest import ConcurrencyLimiter, Searcher
 from ray.tune.suggest.hyperopt import HyperOptSearch
 from ray.tune.suggest.dragonfly import DragonflySearch
@@ -23,6 +28,7 @@ from ray.tune.suggest.optuna import OptunaSearch, param as ot_param
 from ray.tune.suggest.sigopt import SigOptSearch
 from ray.tune.suggest.zoopt import ZOOptSearch
 from ray.tune.utils import validate_save_restore
+from ray.tune.utils._mock_trainable import MyTrainableClass
 
 
 class TuneRestoreTest(unittest.TestCase):
@@ -81,6 +87,271 @@ class TuneRestoreTest(unittest.TestCase):
             },
         )
         self.assertTrue(os.path.isfile(self.checkpoint_path))
+
+
+class TuneInterruptionTest(unittest.TestCase):
+    def testExperimentInterrupted(self):
+        import multiprocessing
+
+        trainer_semaphore = multiprocessing.Semaphore()
+        driver_semaphore = multiprocessing.Semaphore()
+
+        class SteppingCallback(Callback):
+            def on_step_end(self, iteration, trials, **info):
+                driver_semaphore.release()  # Driver should continue
+                trainer_semaphore.acquire()  # Wait until released
+
+        def _run(local_dir):
+            def _train(config):
+                for i in range(7):
+                    tune.report(val=i)
+
+            tune.run(
+                _train,
+                local_dir=local_dir,
+                name="interrupt",
+                callbacks=[SteppingCallback()])
+
+        local_dir = tempfile.mkdtemp()
+        process = multiprocessing.Process(target=_run, args=(local_dir, ))
+        process.daemon = False
+        process.start()
+
+        exp_dir = os.path.join(local_dir, "interrupt")
+
+        # Skip first five steps
+        for i in range(5):
+            driver_semaphore.acquire()  # Wait for callback
+            trainer_semaphore.release()  # Continue training
+
+        driver_semaphore.acquire()
+
+        experiment_state_file = None
+        for file in os.listdir(exp_dir):
+            if file.startswith("experiment_state"):
+                experiment_state_file = os.path.join(exp_dir, file)
+                break
+
+        self.assertTrue(experiment_state_file)
+        last_mtime = os.path.getmtime(experiment_state_file)
+
+        # Now send kill signal
+        os.kill(process.pid, signal.SIGINT)
+        # Release trainer. It should handle the signal and try to
+        # checkpoint the experiment
+        trainer_semaphore.release()
+
+        time.sleep(2)  # Wait for checkpoint
+        new_mtime = os.path.getmtime(experiment_state_file)
+
+        self.assertNotEqual(last_mtime, new_mtime)
+
+        shutil.rmtree(local_dir)
+
+
+class TuneFailResumeGridTest(unittest.TestCase):
+    class FailureInjectorCallback(Callback):
+        """Adds random failure injection to the TrialExecutor."""
+
+        def __init__(self, steps=20):
+            self._step = 0
+            self.steps = steps
+
+        def on_trial_start(self, trials, **info):
+            self._step += 1
+            if self._step >= self.steps:
+                raise RuntimeError
+
+    class CheckStateCallback(Callback):
+        """Checks state for the experiment initialization."""
+
+        def __init__(self, expected_trials=20):
+            self.expected_trials = expected_trials
+            self._checked = False
+
+        def on_step_begin(self, iteration, trials, **kwargs):
+            if not self._checked:
+                assert len(trials) == self.expected_trials
+                self._checked = True
+
+    @classmethod
+    def setUpClass(cls):
+        ray.init(local_mode=True, num_cpus=2)
+
+    @classmethod
+    def tearDownClass(cls):
+        ray.shutdown()
+
+    def setUp(self):
+        self.logdir = tempfile.mkdtemp()
+        os.environ["TUNE_GLOBAL_CHECKPOINT_S"] = "0"
+        from ray.tune import register_trainable
+        register_trainable("trainable", MyTrainableClass)
+
+    def tearDown(self):
+        os.environ.pop("TUNE_GLOBAL_CHECKPOINT_S")
+        shutil.rmtree(self.logdir)
+
+    def testFailResumeGridSearch(self):
+        config = dict(
+            num_samples=3,
+            fail_fast=True,
+            config={
+                "test": tune.grid_search([1, 2, 3]),
+                "test2": tune.grid_search([1, 2, 3]),
+            },
+            stop={"training_iteration": 2},
+            local_dir=self.logdir,
+            verbose=1)
+
+        with self.assertRaises(RuntimeError):
+            tune.run(
+                "trainable",
+                callbacks=[self.FailureInjectorCallback()],
+                **config)
+
+        analysis = tune.run(
+            "trainable",
+            resume=True,
+            callbacks=[self.CheckStateCallback()],
+            **config)
+        assert len(analysis.trials) == 27
+        test_counter = Counter([t.config["test"] for t in analysis.trials])
+        assert all(v == 9 for v in test_counter.values())
+        test2_counter = Counter([t.config["test2"] for t in analysis.trials])
+        assert all(v == 9 for v in test2_counter.values())
+
+    def testFailResumeWithPreset(self):
+        search_alg = BasicVariantGenerator(points_to_evaluate=[{
+            "test": -1,
+            "test2": -1
+        }, {
+            "test": -1
+        }, {
+            "test2": -1
+        }])
+
+        config = dict(
+            num_samples=3 + 3,  # 3 preset, 3 samples
+            fail_fast=True,
+            config={
+                "test": tune.grid_search([1, 2, 3]),
+                "test2": tune.grid_search([1, 2, 3]),
+            },
+            stop={"training_iteration": 2},
+            local_dir=self.logdir,
+            verbose=1)
+        with self.assertRaises(RuntimeError):
+            tune.run(
+                "trainable",
+                callbacks=[self.FailureInjectorCallback(5)],
+                search_alg=search_alg,
+                **config)
+
+        analysis = tune.run(
+            "trainable",
+            resume=True,
+            callbacks=[self.CheckStateCallback(expected_trials=5)],
+            search_alg=search_alg,
+            **config)
+        assert len(analysis.trials) == 34
+        test_counter = Counter([t.config["test"] for t in analysis.trials])
+        assert test_counter.pop(-1) == 4
+        assert all(v == 10 for v in test_counter.values())
+        test2_counter = Counter([t.config["test2"] for t in analysis.trials])
+        assert test2_counter.pop(-1) == 4
+        assert all(v == 10 for v in test2_counter.values())
+
+    def testFailResumeAfterPreset(self):
+        search_alg = BasicVariantGenerator(points_to_evaluate=[{
+            "test": -1,
+            "test2": -1
+        }, {
+            "test": -1
+        }, {
+            "test2": -1
+        }])
+
+        config = dict(
+            num_samples=3 + 3,  # 3 preset, 3 samples
+            fail_fast=True,
+            config={
+                "test": tune.grid_search([1, 2, 3]),
+                "test2": tune.grid_search([1, 2, 3]),
+            },
+            stop={"training_iteration": 2},
+            local_dir=self.logdir,
+            verbose=1)
+
+        with self.assertRaises(RuntimeError):
+            tune.run(
+                "trainable",
+                callbacks=[self.FailureInjectorCallback(15)],
+                search_alg=search_alg,
+                **config)
+
+        analysis = tune.run(
+            "trainable",
+            resume=True,
+            callbacks=[self.CheckStateCallback(expected_trials=15)],
+            search_alg=search_alg,
+            **config)
+        assert len(analysis.trials) == 34
+        test_counter = Counter([t.config["test"] for t in analysis.trials])
+        assert test_counter.pop(-1) == 4
+        assert all(v == 10 for v in test_counter.values())
+        test2_counter = Counter([t.config["test2"] for t in analysis.trials])
+        assert test2_counter.pop(-1) == 4
+        assert all(v == 10 for v in test2_counter.values())
+
+    def testMultiExperimentFail(self):
+        experiments = []
+        for i in range(3):
+            experiments.append(
+                tune.Experiment(
+                    run=MyTrainableClass,
+                    name="trainable",
+                    num_samples=2,
+                    config={
+                        "test": tune.grid_search([1, 2, 3]),
+                    },
+                    stop={"training_iteration": 1},
+                    local_dir=self.logdir))
+
+        with self.assertRaises(RuntimeError):
+            tune.run(
+                experiments,
+                callbacks=[self.FailureInjectorCallback(10)],
+                fail_fast=True)
+
+        analysis = tune.run(
+            experiments,
+            resume=True,
+            callbacks=[self.CheckStateCallback(expected_trials=10)],
+            fail_fast=True)
+        assert len(analysis.trials) == 18
+
+    def testWarningLargeGrid(self):
+        config = dict(
+            num_samples=3,
+            fail_fast=True,
+            config={
+                "test": tune.grid_search(list(range(20))),
+                "test2": tune.grid_search(list(range(20))),
+                "test3": tune.grid_search(list(range(20))),
+                "test4": tune.grid_search(list(range(20))),
+                "test5": tune.grid_search(list(range(20))),
+            },
+            stop={"training_iteration": 2},
+            local_dir=self.logdir,
+            verbose=1)
+        with self.assertWarnsRegex(UserWarning,
+                                   "exceeds the serialization threshold"):
+            with self.assertRaises(RuntimeError):
+                tune.run(
+                    "trainable",
+                    callbacks=[self.FailureInjectorCallback(10)],
+                    **config)
 
 
 class TuneExampleTest(unittest.TestCase):
@@ -484,4 +755,4 @@ class SearcherTest(unittest.TestCase):
 if __name__ == "__main__":
     import pytest
     import sys
-    sys.exit(pytest.main(["-v", __file__]))
+    sys.exit(pytest.main(["-v", __file__] + sys.argv[1:]))

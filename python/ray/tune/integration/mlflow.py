@@ -18,13 +18,13 @@ def _import_mlflow():
     return mlflow
 
 
-class MLFlowLoggerCallback(LoggerCallback):
-    """MLFlow Logger to automatically log Tune results and config to MLFlow.
+class MLflowLoggerCallback(LoggerCallback):
+    """MLflow Logger to automatically log Tune results and config to MLflow.
 
-    MLFlow (https://mlflow.org) Tracking is an open source library for
+    MLflow (https://mlflow.org) Tracking is an open source library for
     recording and querying experiments. This Ray Tune ``LoggerCallback``
     sends information (config parameters, training results & metrics,
-    and artifacts) to MLFlow for automatic experiment tracking.
+    and artifacts) to MLflow for automatic experiment tracking.
 
     Args:
         tracking_uri (str): The tracking URI for where to manage experiments
@@ -49,7 +49,7 @@ class MLFlowLoggerCallback(LoggerCallback):
 
     .. code-block:: python
 
-        from ray.tune.integration.mlflow import MLFlowLoggerCallback
+        from ray.tune.integration.mlflow import MLflowLoggerCallback
         tune.run(
             train_fn,
             config={
@@ -57,7 +57,7 @@ class MLFlowLoggerCallback(LoggerCallback):
                 "parameter_1": tune.choice([1, 2, 3]),
                 "parameter_2": tune.choice([4, 5, 6]),
             },
-            callbacks=[MLFlowLoggerCallback(
+            callbacks=[MLflowLoggerCallback(
                 experiment_name="experiment1",
                 save_artifact=True)])
 
@@ -71,8 +71,8 @@ class MLFlowLoggerCallback(LoggerCallback):
 
         mlflow = _import_mlflow()
         if mlflow is None:
-            raise RuntimeError("MLFlow has not been installed. Please `pip "
-                               "install mlflow` to use the MLFlowLogger.")
+            raise RuntimeError("MLflow has not been installed. Please `pip "
+                               "install mlflow` to use the MLflowLogger.")
 
         from mlflow.tracking import MlflowClient
         self.client = MlflowClient(
@@ -105,7 +105,7 @@ class MLFlowLoggerCallback(LoggerCallback):
                                  "set, and MLFLOW_EXPERIMENT_ID either "
                                  "is not set or does not exist. Please "
                                  "set one of these to use the "
-                                 "MLFlowLoggerCallback.")
+                                 "MLflowLoggerCallback.")
 
         # At this point, experiment_id should be set.
         self.experiment_id = experiment_id
@@ -154,14 +154,14 @@ class MLFlowLoggerCallback(LoggerCallback):
         self.client.set_terminated(run_id=run_id, status=status)
 
 
-class MLFlowLogger(Logger):
-    """MLFlow logger using the deprecated Logger API.
+class MLflowLogger(Logger):
+    """MLflow logger using the deprecated Logger API.
 
-    Requires the experiment configuration to have a MLFlow Experiment ID
+    Requires the experiment configuration to have a MLflow Experiment ID
     or manually set the proper environment variables.
     """
 
-    _experiment_logger_cls = MLFlowLoggerCallback
+    _experiment_logger_cls = MLflowLoggerCallback
 
     def _init(self):
         mlflow = _import_mlflow()
@@ -200,10 +200,10 @@ class MLFlowLogger(Logger):
 def mlflow_mixin(func: Callable):
     """mlflow_mixin
 
-    MLFlow (https://mlflow.org) Tracking is an open source library for
+    MLflow (https://mlflow.org) Tracking is an open source library for
     recording and querying experiments. This Ray Tune Trainable mixin helps
     initialize the MLflow API for use with the ``Trainable`` class or the
-    ``@mlflow_mixin`` function API. This mixin automatically configures MLFlow
+    ``@mlflow_mixin`` function API. This mixin automatically configures MLflow
     and creates a run in the same process as each Tune trial. You can then
     use the mlflow API inside the your training function and it will
     automatically get reported to the correct run.
@@ -253,6 +253,11 @@ def mlflow_mixin(func: Callable):
             experiment. All logs from all trials in ``tune.run`` will be
             reported to this experiment. If this is not provided, you must
             provide a valid ``experiment_id``.
+        token (optional, str): A token to use for HTTP authentication when
+            logging to a remote tracking server. This is useful when you
+            want to log to a Databricks server, for example. This value will
+            be used to set the MLFLOW_TRACKING_TOKEN environment variable on
+            all the remote training processes.
 
     Example:
 
@@ -269,8 +274,8 @@ def mlflow_mixin(func: Callable):
         @mlflow_mixin
         def train_fn(config):
             for i in range(10):
-                loss = self.config["a"] + self.config["b"]
-                mlflow.log_metric(key="loss", value=loss})
+                loss = config["a"] + config["b"]
+                mlflow.log_metric(key="loss", value=loss)
             tune.report(loss=loss, done=True)
 
         tune.run(
@@ -287,25 +292,25 @@ def mlflow_mixin(func: Callable):
             })
     """
     if _import_mlflow() is None:
-        raise RuntimeError("MLFlow has not been installed. Please `pip "
+        raise RuntimeError("MLflow has not been installed. Please `pip "
                            "install mlflow` to use the mlflow_mixin.")
     if hasattr(func, "__mixins__"):
-        func.__mixins__ = func.__mixins__ + (MLFlowTrainableMixin, )
+        func.__mixins__ = func.__mixins__ + (MLflowTrainableMixin, )
     else:
-        func.__mixins__ = (MLFlowTrainableMixin, )
+        func.__mixins__ = (MLflowTrainableMixin, )
     return func
 
 
-class MLFlowTrainableMixin:
+class MLflowTrainableMixin:
     def __init__(self, config: Dict, *args, **kwargs):
         self._mlflow = _import_mlflow()
 
         if not isinstance(self, Trainable):
             raise ValueError(
-                "The `MLFlowTrainableMixin` can only be used as a mixin "
+                "The `MLflowTrainableMixin` can only be used as a mixin "
                 "for `tune.Trainable` classes. Please make sure your "
                 "class inherits from both. For example: "
-                "`class YourTrainable(MLFlowTrainableMixin)`.")
+                "`class YourTrainable(MLflowTrainableMixin)`.")
 
         super().__init__(config, *args, **kwargs)
         _config = config.copy()
@@ -313,19 +318,24 @@ class MLFlowTrainableMixin:
             mlflow_config = _config.pop("mlflow").copy()
         except KeyError as e:
             raise ValueError(
-                "MLFlow mixin specified but no configuration has been passed. "
+                "MLflow mixin specified but no configuration has been passed. "
                 "Make sure to include a `mlflow` key in your `config` dict "
                 "containing at least a `tracking_uri` and either "
                 "`experiment_name` or `experiment_id` specification.") from e
 
         tracking_uri = mlflow_config.pop("tracking_uri", None)
         if tracking_uri is None:
-            raise ValueError("MLFlow mixin specified but no "
+            raise ValueError("MLflow mixin specified but no "
                              "tracking_uri has been "
                              "passed in. Make sure to include a `mlflow` "
                              "key in your `config` dict containing at "
                              "least a `tracking_uri`")
         self._mlflow.set_tracking_uri(tracking_uri)
+
+        # Set the tracking token if one is passed in.
+        tracking_token = mlflow_config.pop("token", None)
+        if tracking_token is not None:
+            os.environ["MLFLOW_TRACKING_TOKEN"] = tracking_token
 
         # First see if experiment_id is passed in.
         experiment_id = mlflow_config.pop("experiment_id", None)
@@ -338,7 +348,7 @@ class MLFlowTrainableMixin:
             experiment_name = mlflow_config.pop("experiment_name", None)
             if experiment_name is None:
                 raise ValueError(
-                    "MLFlow mixin specified but no "
+                    "MLflow mixin specified but no "
                     "experiment_name or experiment_id has been "
                     "passed in. Make sure to include a `mlflow` "
                     "key in your `config` dict containing at "
@@ -351,7 +361,7 @@ class MLFlowTrainableMixin:
             else:
                 raise ValueError("No experiment with the given "
                                  "name: {} or id: {} currently exists. Make "
-                                 "sure to first start the MLFlow experiment "
+                                 "sure to first start the MLflow experiment "
                                  "before calling tune.run.".format(
                                      experiment_name, experiment_id))
 

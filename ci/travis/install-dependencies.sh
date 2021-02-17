@@ -23,6 +23,13 @@ pkg_install_helper() {
 }
 
 install_bazel() {
+  if command -v bazel; then
+    if [ -n "${BUILDKITE-}" ]; then
+      echo "Bazel exists, skipping the install"
+      return
+    fi
+  fi
+
   "${ROOT_DIR}"/install-bazel.sh
   if [ -f /etc/profile.d/bazel.sh ]; then
     . /etc/profile.d/bazel.sh
@@ -30,6 +37,11 @@ install_bazel() {
 }
 
 install_base() {
+  if [ -n "${BUILDKITE-}" ]; then
+    echo "Skipping install_base in Buildkite"
+    return
+  fi
+
   case "${OSTYPE}" in
     linux*)
       # Expired apt key error: https://github.com/bazelbuild/bazel/issues/11470#issuecomment-633205152
@@ -187,6 +199,8 @@ install_nvm() {
         "nvm() { \"\${NVM_HOME}/nvm.exe\" \"\$@\"; }" \
         > "${NVM_HOME}/nvm.sh"
     fi
+  elif [ -n "${BUILDKITE-}" ]; then
+    echo "Skipping nvm on Buildkite because we will use apt-get."
   else
     test -f "${NVM_HOME}/nvm.sh"  # double-check NVM is already available on other platforms
   fi
@@ -212,8 +226,19 @@ install_upgrade_pip() {
 }
 
 install_node() {
-  if [ "${OSTYPE}" = msys ]; then
+  if command -v node; then
+    if [ -n "${BUILDKITE-}" ]; then
+      echo "Node existed, skipping install";
+      return
+    fi
+  fi
+
+  if [ "${OSTYPE}" = msys ] ; then
     { echo "WARNING: Skipping running Node.js due to incompatibilities with Windows"; } 2> /dev/null
+  elif [ -n "${BUILDKITE-}" ] ; then
+    # https://github.com/nodesource/distributions/blob/master/README.md#installation-instructions
+    curl -sL https://deb.nodesource.com/setup_14.x | sudo -E bash -
+    sudo apt-get install -y nodejs
   else
     # Install the latest version of Node.js in order to build the dashboard.
     (
@@ -227,7 +252,9 @@ install_node() {
 }
 
 install_toolchains() {
-  "${ROOT_DIR}"/install-toolchains.sh
+  if [ -z "${BUILDKITE-}" ]; then
+    "${ROOT_DIR}"/install-toolchains.sh
+  fi
 }
 
 install_dependencies() {
@@ -295,20 +322,14 @@ install_dependencies() {
     pip install 'recsim>=0.2.4'
   fi
 
-  # Additional Tune test dependencies.
-  if [ "${TUNE_TESTING-}" = 1 ]; then
+  # Additional Tune/SGD/Doc test dependencies.
+  if [ "${TUNE_TESTING-}" = 1 ] || [ "${SGD_TESTING-}" = 1 ] || [ "${DOC_TESTING-}" = 1 ]; then
     pip install -r "${WORKSPACE_DIR}"/python/requirements/requirements_tune.txt
   fi
 
-  # Additional RaySGD test dependencies.
-  if [ "${SGD_TESTING-}" = 1 ]; then
-    pip install -r "${WORKSPACE_DIR}"/python/requirements/requirements_tune.txt
-    # TODO: eventually have a separate requirements file for Ray SGD.
-  fi
-
-  # Additional Doc test dependencies.
-  if [ "${DOC_TESTING-}" = 1 ]; then
-    pip install -r "${WORKSPACE_DIR}"/python/requirements/requirements_tune.txt
+  # For Tune, install upstream dependencies.
+  if [ "${TUNE_TESTING-}" = 1 ] ||  [ "${DOC_TESTING-}" = 1 ]; then
+    pip install -r "${WORKSPACE_DIR}"/python/requirements/requirements_upstream.txt
   fi
 
   # Remove this entire section once RLlib and Serve dependencies are fixed.

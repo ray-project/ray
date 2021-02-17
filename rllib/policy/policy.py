@@ -91,7 +91,9 @@ class Policy(metaclass=ABCMeta):
         if not hasattr(self, "view_requirements"):
             self.view_requirements = view_reqs
         else:
-            self.view_requirements.update(view_reqs)
+            for k, v in view_reqs.items():
+                if k not in self.view_requirements:
+                    self.view_requirements[k] = v
         self._model_init_state_automatically_added = False
 
     @abstractmethod
@@ -546,7 +548,8 @@ class Policy(metaclass=ABCMeta):
             model=getattr(self, "model", None),
             num_workers=self.config.get("num_workers", 0),
             worker_index=self.config.get("worker_index", 0),
-            framework=getattr(self, "framework", "tf"))
+            framework=getattr(self, "framework",
+                              self.config.get("framework", "tf")))
         return exploration
 
     def _get_default_view_requirements(self):
@@ -665,20 +668,25 @@ class Policy(metaclass=ABCMeta):
                 if key not in self.view_requirements:
                     self.view_requirements[key] = ViewRequirement()
             if self._loss:
-                # Tag those only needed for post-processing.
+                # Tag those only needed for post-processing (with some
+                # exceptions).
                 for key in batch_for_postproc.accessed_keys:
                     if key not in train_batch.accessed_keys and \
                             key in self.view_requirements and \
-                            key not in self.model.view_requirements:
+                            key not in self.model.view_requirements and \
+                            key not in [
+                                SampleBatch.EPS_ID, SampleBatch.AGENT_INDEX,
+                                SampleBatch.UNROLL_ID, SampleBatch.DONES,
+                                SampleBatch.REWARDS, SampleBatch.INFOS]:
                         self.view_requirements[key].used_for_training = False
                 # Remove those not needed at all (leave those that are needed
                 # by Sampler to properly execute sample collection).
-                # Also always leave DONES and REWARDS, no matter what.
+                # Also always leave DONES, REWARDS, INFOS, no matter what.
                 for key in list(self.view_requirements.keys()):
                     if key not in all_accessed_keys and key not in [
                         SampleBatch.EPS_ID, SampleBatch.AGENT_INDEX,
                         SampleBatch.UNROLL_ID, SampleBatch.DONES,
-                        SampleBatch.REWARDS] and \
+                        SampleBatch.REWARDS, SampleBatch.INFOS] and \
                             key not in self.model.view_requirements:
                         # If user deleted this key manually in postprocessing
                         # fn, warn about it and do not remove from
@@ -706,7 +714,8 @@ class Policy(metaclass=ABCMeta):
         ret = {}
         for view_col, view_req in self.view_requirements.items():
             if isinstance(view_req.space, (gym.spaces.Dict, gym.spaces.Tuple)):
-                _, shape = ModelCatalog.get_action_shape(view_req.space)
+                _, shape = ModelCatalog.get_action_shape(
+                    view_req.space, framework=self.config["framework"])
                 ret[view_col] = \
                     np.zeros((batch_size, ) + shape[1:], np.float32)
             else:

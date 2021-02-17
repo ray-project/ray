@@ -61,10 +61,11 @@ class GcsPlacementGroup {
         placement_group_spec.creator_job_dead());
     placement_group_table_data_.set_creator_actor_dead(
         placement_group_spec.creator_actor_dead());
+    placement_group_table_data_.set_is_detached(placement_group_spec.is_detached());
   }
 
   /// Get the immutable PlacementGroupTableData of this placement group.
-  const rpc::PlacementGroupTableData &GetPlacementGroupTableData();
+  const rpc::PlacementGroupTableData &GetPlacementGroupTableData() const;
 
   /// Get the mutable bundle of this placement group.
   rpc::Bundle *GetMutableBundle(int bundle_index);
@@ -107,8 +108,11 @@ class GcsPlacementGroup {
   /// Mark that the creator actor of this placement group is dead.
   void MarkCreatorActorDead();
 
-  /// Return True if the placement group is removable. False otherwise.
-  bool IsPlacementGroupRemovable() const;
+  /// Return True if the placement group lifetime is done. False otherwise.
+  bool IsPlacementGroupLifetimeDone() const;
+
+  /// Returns whether or not this is a detached placement group.
+  bool IsDetached() const;
 
  private:
   /// The placement_group meta data which contains the task specification as well as the
@@ -151,10 +155,13 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
                                rpc::GetPlacementGroupReply *reply,
                                rpc::SendReplyCallback send_reply_callback) override;
 
+  void HandleGetNamedPlacementGroup(const rpc::GetNamedPlacementGroupRequest &request,
+                                    rpc::GetNamedPlacementGroupReply *reply,
+                                    rpc::SendReplyCallback send_reply_callback) override;
+
   void HandleGetAllPlacementGroup(const rpc::GetAllPlacementGroupRequest &request,
                                   rpc::GetAllPlacementGroupReply *reply,
                                   rpc::SendReplyCallback send_reply_callback) override;
-
   void HandleWaitPlacementGroupUntilReady(
       const rpc::WaitPlacementGroupUntilReadyRequest &request,
       rpc::WaitPlacementGroupUntilReadyReply *reply,
@@ -193,7 +200,7 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   void OnPlacementGroupCreationSuccess(
       const std::shared_ptr<GcsPlacementGroup> &placement_group);
 
-  /// TODO-SANG Fill it up.
+  /// Remove the placement group of a given id.
   void RemovePlacementGroup(const PlacementGroupID &placement_group_id,
                             StatusCallback on_placement_group_removed);
 
@@ -311,6 +318,9 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   /// Reference of GcsResourceManager.
   GcsResourceManager &gcs_resource_manager_;
 
+  /// Maps placement group names to their placement group ID for lookups by name.
+  absl::flat_hash_map<std::string, PlacementGroupID> named_placement_groups_;
+
   // Debug info.
   enum CountType {
     CREATE_PLACEMENT_GROUP_REQUEST = 0,
@@ -318,7 +328,8 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
     GET_PLACEMENT_GROUP_REQUEST = 2,
     GET_ALL_PLACEMENT_GROUP_REQUEST = 3,
     WAIT_PLACEMENT_GROUP_UNTIL_READY_REQUEST = 4,
-    CountType_MAX = 5,
+    GET_NAMED_PLACEMENT_GROUP_REQUEST = 5,
+    CountType_MAX = 6,
   };
   uint64_t counts_[CountType::CountType_MAX] = {0};
 };

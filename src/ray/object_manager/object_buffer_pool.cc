@@ -57,9 +57,13 @@ std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> ObjectBufferPool::Ge
   std::lock_guard<std::mutex> lock(pool_mutex_);
   if (get_buffer_state_.count(object_id) == 0) {
     plasma::ObjectBuffer object_buffer;
-    RAY_CHECK_OK(store_client_.Get(&object_id, 1, 0, &object_buffer));
+    RAY_CHECK_OK(
+        store_client_.Get(&object_id, 1, 0, &object_buffer, /*is_from_worker=*/false));
     if (object_buffer.data == nullptr) {
-      RAY_LOG(ERROR) << "Failed to get object";
+      RAY_LOG(INFO)
+          << "Failed to get a chunk of the object: " << object_id
+          << ". It is mostly because the object is already evicted or spilled when the "
+             "pull request is received. The caller will retry the pull request again.";
       return std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status>(
           errored_chunk_,
           ray::Status::IOError("Unable to obtain object chunk, object not local."));

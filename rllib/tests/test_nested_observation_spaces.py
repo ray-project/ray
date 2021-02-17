@@ -240,7 +240,6 @@ class DictSpyModel(TFModelV2):
         self.num_outputs = num_outputs or 64
         out = tf.keras.layers.Dense(self.num_outputs)(input_)
         self._main_layer = tf.keras.models.Model([input_], [out])
-        self.register_variables(self._main_layer.variables)
 
     def forward(self, input_dict, state, seq_lens):
         def spy(pos, front_cam, task):
@@ -282,7 +281,6 @@ class TupleSpyModel(TFModelV2):
         self.num_outputs = num_outputs or 64
         out = tf.keras.layers.Dense(self.num_outputs)(input_)
         self._main_layer = tf.keras.models.Model([input_], [out])
-        self.register_variables(self._main_layer.variables)
 
     def forward(self, input_dict, state, seq_lens):
         def spy(pos, cam, task):
@@ -335,7 +333,7 @@ class NestedSpacesTest(unittest.TestCase):
     def test_invalid_model2(self):
         ModelCatalog.register_custom_model("invalid2", InvalidModel2)
         self.assertRaisesRegexp(
-            ValueError, "Expected output shape of",
+            ValueError, "State output is not a list",
             lambda: PGTrainer(
                 env="CartPole-v0", config={
                     "model": {

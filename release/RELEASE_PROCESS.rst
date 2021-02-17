@@ -40,32 +40,7 @@ After Branch Cut
    ``python/ray/__init__.py``, ``src/ray/raylet/main.cc``, and any other files that use ``ray::stats::VersionKey``. See this
    `sample commit for bumping the release branch version`_.
 
-3. **Create PR to update the master branch version:**
-   For a new minor release (e.g., ``0.6.3 -> 0.7.0``): Create a pull request to
-   increment the dev version in of the master branch. See this
-   `sample PR for bumping a minor release version`_. **NOTE:** Not all of
-   the version numbers should be replaced. For example, ``0.7.0`` appears in
-   this file but should not be updated.
-   You will want to replace all instances of nightly wheel links (wheels with
-   dev in their name), instances of ``ray::stats::VersionKey``,
-   and instances of ``__version__``.
-
-   TIP: search the code base for instances of ``https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-1.1.0.dev0`` (but replace ray-1.1.0 with the current version) to find links to the nightly wheel to update.
-
-   You should also cherry pick parts of this pull request referencing the
-   latest wheels onto the release branch prior
-   to making the release. This will ensure that the ``install-nightly`` of
-   the new release correctly points at the latest version on master.
-
-   Note: Doing this will cause the ``install-nightly`` CLI command of the
-   current Ray release to fail, so you should only merge this PR when
-   the release is about to occur. (For instance, the 1.0.0 ``install-nightly``
-   command points to 1.1.0.dev0, so when you bump master to 1.2.0.dev0, it no
-   longer finds the latest commit.)
-
-   For a new micro release (e.g., ``0.7.0 -> 0.7.1``): No action is required.
-
-4. **Create a document to collect release-notes:** You can clone `this document <https://docs.google.com/document/d/1vzcNHulHCrq1PrXWkGBwwtOK53vY2-Ol8SXbnvKPw1s/edit?usp=sharing>`_.
+3. **Create a document to collect release-notes:** You can clone `this document <https://docs.google.com/document/d/1vzcNHulHCrq1PrXWkGBwwtOK53vY2-Ol8SXbnvKPw1s/edit?usp=sharing>`_.
 
    You will also need to create a spreadsheet with information about the PRs 
    included in the release to jog people's memories. You can collect this
@@ -159,10 +134,60 @@ is generally the easiest way to run release tests.
    The summaries printed by each test should be checked in under
    ``release_logs/<version>`` on the **master** branch (make a pull request).
 
-5. **ASAN tests**
+5. **Scalability envelope tests**
 
-   Run the ``ci/asan_tests`` with the commit. This will enable ASAN build and run the
-   whole Python tests to detect memory leaks.
+   - Run the tests in `benchmarks/` (with `ray submit --start cluster.yaml <test file>`)
+   - Record the outputted times.
+     - Whether the results are acceptable is a judgement call.
+
+6. **ASAN tests**
+
+   Run the ``ci/asan_tests`` with the commit. This will enable ASAN build and run the whole Python tests to detect memory leaks.
+
+7. **K8s operator tests**
+
+   Run the ``python/ray/tests/test_k8s_*`` to make sure K8s cluster launcher and operator works. Make sure the docker image is the released version.
+
+8. **Data processing tests**
+
+   .. code-block:: bash
+
+      data_processing_tests/README.rst
+
+   Follow the instructions to kick off the tests and check the status of the workloads.
+   Data processing tests make sure all the data processing features are reliable and performant.
+   The following tests should be run.
+
+   - ``data_processing_tests/workloads/streaming_shuffle.py`` run the 100GB streaming shuffle in a single node & fake 4 nodes cluster.
+
+   **IMPORTANT** Check if the workload scripts has terminated. If so, please record the result (both read/write bandwidth and the shuffle result) to the ``release_logs/data_processing_tests/[test_name]``.
+   Both shuffling runtime and read/write bandwidth shouldn't be decreasing more than 15% compared to the previous release.
+
+9. **Ray Tune release tests**
+
+   General Ray Tune functionality is implicitly tested via RLLib and XGBoost release tests.
+   We are in the process of introducing scalability envelopes for Ray Tune.
+
+   Of the seven existing tests, three are currently not reaching their target time.
+   These three tests (test_result_throughput_cluster, test_result_throughput_single_node, and
+   test_network_overhead) are marked in the release checklist and don't have to be run at this time.
+
+   The other release tests are expected to run through without errors and to pass within a pre-specified time.
+   The time is checked in the test function and the output will let you know if a run was fast enough and
+   thus passed the test.
+
+10. **XGBoost release tests**
+
+    .. code-block:: bash
+
+       xgboost_tests/README.rst
+
+    Follow the instructions to kick off the tests and check the status of the workloads.
+    The XGBoost release tests use assertions or fail with exceptions and thus
+    should automatically tell you if they failed or not.
+    Only in the case of the fault tolerance tests you might want
+    to check the logs. See the readme for more information.
+
 
 Identify and Resolve Release Blockers
 -------------------------------------
@@ -291,10 +316,11 @@ to proceed with the final stages of the release!
    of the docs, trigger a new build of the "latest" branch in
    readthedocs to see if that fixes it.
 
-7. **Update latest Docker Image:** Message Ian Rodney to bump the "latest" tag
+7. **Update latest Docker Image:** SET THE VERSION NUMBER IN `docker/fix-docker-latest.sh`, then run the script ot update the "latest" tag
    in Dockerhub for the 
-   ``rayproject/ray`` and ``rayproject/ray-ml`` Docker images to point to the Docker images built from the release. (If you have privileges in these
-   docker projects, you can do this step yourself.)
+   ``rayproject/ray`` and ``rayproject/ray-ml`` Docker images to point to the Docker images built from the release. (Make sure there is no permission denied error, you will likely have to ask Thomas for permissions).
+   
+   Check the dockerhub to verify the update worked. https://hub.docker.com/repository/docker/rayproject/ray/tags?page=1&name=latest&ordering=last_updated
 
 8. **Send out an email announcing the release** to the engineering@anyscale.com
    Google group, and post a slack message in the Announcements channel of the

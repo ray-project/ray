@@ -1,3 +1,5 @@
+.. _ray-dashboard:
+
 Ray Dashboard
 =============
 Ray's built-in dashboard provides metrics, charts, and other features that help
@@ -266,7 +268,7 @@ objects are staying in local memory.
 **kill actor**: A button to kill an actor in a cluster. It has the same effect as calling ``ray.kill`` on an actor handle.
 
 **profile**: A button to run profiling. We currently support profiling for 10s,
-30s and 60s. It requires passwordless ``sudo``. The result of profiling is a py-spy html output displaying how much CPU time the actor spent in various methods. 
+30s and 60s. It requires passwordless ``sudo``. The result of profiling is a py-spy html output displaying how much CPU time the actor spent in various methods.
 
 
 Memory
