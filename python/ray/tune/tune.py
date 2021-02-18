@@ -31,8 +31,7 @@ from ray.tune.utils.callback import create_default_callbacks
 from ray.tune.utils.log import Verbosity, has_verbosity, set_verbosity
 
 # Must come last to avoid circular imports
-from ray.tune.schedulers import FIFOScheduler, TrialScheduler, \
-    PopulationBasedTraining
+from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 
 logger = logging.getLogger(__name__)
 
