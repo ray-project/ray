@@ -214,7 +214,11 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(const ActorID &actor_id
       head = requests.erase(head);
     }
 
-    for (auto &net_err_task : queue->second.wait_for_dead_info_tasks) {
+    auto &wait_for_dead_info_tasks = queue->second.wait_for_dead_info_tasks;
+
+    RAY_LOG(INFO) << "Failing tasks waiting for dead info, size="
+                  << wait_for_dead_info_tasks.size() << ", actor_id=" << actor_id;
+    for (auto &net_err_task : wait_for_dead_info_tasks) {
       RAY_UNUSED(task_finisher_->MarkPendingTaskFailed(
           net_err_task.second.TaskId(), net_err_task.second, rpc::ErrorType::ACTOR_DIED,
           error_message));
@@ -235,13 +239,14 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(const ActorID &actor_id
 void CoreWorkerDirectActorTaskSubmitter::CheckTimeoutTasks() {
   for (auto &queue_pair : client_queues_) {
     auto &queue = queue_pair.second;
-    auto map_itr = queue.wait_for_dead_info_tasks.begin();
-    while (/*timeout timestamp*/ map_itr->first < current_time_ms()) {
-      auto task_spec = map_itr->second;
+    auto deque_itr = queue.wait_for_dead_info_tasks.begin();
+    while (deque_itr != queue.wait_for_dead_info_tasks.end() &&
+           /*timeout timestamp*/ deque_itr->first < current_time_ms()) {
+      auto task_spec = deque_itr->second;
       task_finisher_->MarkPendingTaskFailed(
           task_spec.TaskId(), task_spec, rpc::ErrorType::ACTOR_DIED,
           "Network error, peer actor doesn't response.");
-      map_itr = queue.wait_for_dead_info_tasks.erase(map_itr);
+      deque_itr = queue.wait_for_dead_info_tasks.erase(deque_itr);
     }
   }
 }
@@ -351,7 +356,15 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(const ClientQueue &queue,
             increment_completed_tasks = false;
           } else if (!immediately_mark_object_fail) {
             // put it to wait_for_dead_info_tasks and wait for dead info
-            queue.wait_for_dead_info_tasks.insert({current_time_ms(), task_spec});
+            int64_t dead_info_timeout_ts =
+                current_time_ms() +
+                RayConfig::instance().timeout_ms_task_wait_for_dead_info();
+            queue.wait_for_dead_info_tasks.emplace_back(dead_info_timeout_ts, task_spec);
+            RAY_LOG(INFO)
+                << "PushActorTask failed because of network error, this task "
+                   "will be stashed away and waiting for dead info from GCS, task_id="
+                << task_spec.TaskId()
+                << ", wait queue size=" << queue.wait_for_dead_info_tasks.size();
           }
         }
 

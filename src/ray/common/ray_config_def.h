@@ -369,3 +369,8 @@ RAY_CONFIG(bool, is_external_storage_type_fs, true)
 /// Whether to enable locality-aware leasing. If enabled, then Ray will consider task
 /// dependency locality when choosing a worker for leasing.
 RAY_CONFIG(bool, locality_aware_leasing_enabled, true)
+
+/// When tasks that can't be sent because of network error. we'll never receive a DEAD
+/// notification, in this case we'll wait for a fixed timeout value and then mark it
+/// as failed.
+RAY_CONFIG(int64_t, timeout_ms_task_wait_for_dead_info, 1000)

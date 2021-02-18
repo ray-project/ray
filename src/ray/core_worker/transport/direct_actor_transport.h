@@ -208,9 +208,9 @@ class CoreWorkerDirectActorTaskSubmitter
     /// failed using the dead_info in notification. For 2) we'll never receive a DEAD
     /// notification, in this case we'll wait for a fixed timeout value and then mark it
     /// as failed.
-    /// key: timestamp in ms when this task should be considered as timeout.
-    /// value: task specification
-    std::map<int64_t, TaskSpecification> wait_for_dead_info_tasks;
+    /// pair key: timestamp in ms when this task should be considered as timeout.
+    /// pair value: task specification
+    std::deque<std::pair<int64_t, TaskSpecification>> wait_for_dead_info_tasks;
 
     /// A force-kill request that should be sent to the actor once an RPC
     /// client to the actor is available.
