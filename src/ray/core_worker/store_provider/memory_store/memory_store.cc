@@ -467,8 +467,10 @@ bool CoreWorkerMemoryStore::Contains(const ObjectID &object_id, bool *in_plasma)
 }
 
 void CoreWorkerMemoryStore::OnErase(std::shared_ptr<RayObject> obj) {
+  rpc::ErrorType error_type;
   // TODO(ekl) note that this doesn't warn on errors that are stored in plasma.
-  if (obj->IsException() && !obj->IsInPlasmaError() && !obj->WasAccessed() &&
+  if (obj->IsException(&error_type) &&
+      error_type == rpc::ErrorType::TASK_EXECUTION_EXCEPTION && !obj->WasAccessed() &&
       unhandled_exception_handler_ != nullptr) {
     unhandled_exception_handler_(*obj);
   }
