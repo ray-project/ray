@@ -31,7 +31,8 @@ from ray.tune.utils.callback import create_default_callbacks
 from ray.tune.utils.log import Verbosity, has_verbosity, set_verbosity
 
 # Must come last to avoid circular imports
-from ray.tune.schedulers import FIFOScheduler, TrialScheduler
+from ray.tune.schedulers import FIFOScheduler, TrialScheduler, \
+    PopulationBasedTraining
 
 logger = logging.getLogger(__name__)
 
@@ -363,6 +364,12 @@ def run(
         raise ValueError(
             "The `mode` parameter passed to `tune.run()` has to be one of "
             "['min', 'max']")
+
+    if scheduler is not None and isinstance(scheduler,
+                                            PopulationBasedTraining) and \
+            search_alg is not None:
+        raise ValueError("Search algorithms cannot be used with PBT or PB2 "
+                         "schedulers. Please remove {}.".format(search_alg))
 
     set_verbosity(verbose)
 

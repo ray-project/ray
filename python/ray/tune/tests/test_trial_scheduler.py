@@ -19,6 +19,7 @@ from ray.tune.schedulers import (FIFOScheduler, HyperBandScheduler,
                                  TrialScheduler, HyperBandForBOHB)
 
 from ray.tune.schedulers.pbt import explore, PopulationBasedTrainingReplay
+from ray.tune.suggest import Searcher
 from ray.tune.trial import Trial, Checkpoint
 from ray.tune.trial_executor import TrialExecutor
 from ray.tune.resources import Resources
@@ -841,6 +842,19 @@ class PopulationBasedTestingSuite(unittest.TestCase):
                         TrialScheduler.CONTINUE)
         pbt.reset_stats()
         return pbt, runner
+
+    def testSearchError(self):
+        pbt, runner = self.basicSetup()
+
+        def mock_train(config):
+            return 1
+
+        with self.assertRaises(ValueError):
+            tune.run(
+                mock_train,
+                config={"x": 1},
+                scheduler=pbt,
+                search_alg=Searcher())
 
     def testMetricError(self):
         pbt, runner = self.basicSetup()
