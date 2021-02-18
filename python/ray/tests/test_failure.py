@@ -1388,7 +1388,6 @@ def test_raylet_node_manager_server_failure(ray_start_cluster_head,
     # An out-of-range port to make node manager grpc server fail to start.
     cluster.add_node(wait=False, node_manager_port=9999999)
     p = log_pubsub
-    msg = None
     cnt = 0
     # wait for max 10 seconds.
     found = False
