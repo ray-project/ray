@@ -664,7 +664,8 @@ def best_trial_str(
     """Returns a readable message stating the current best trial."""
     val = trial.last_result[metric]
     config = trial.last_result.get("config", {})
-    parameter_columns = parameter_columns or list(config.keys())
+    parameter_columns = parameter_columns or list(
+        trial.evaluated_params) or list(config.keys())
     if isinstance(parameter_columns, Mapping):
         parameter_columns = parameter_columns.keys()
     params = {p: config.get(p) for p in parameter_columns}
