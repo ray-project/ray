@@ -1382,7 +1382,8 @@ def test_async_actor_task_retries(ray_start_regular):
     assert ray.get(ref_3) == 3
 
 
-def test_raylet_node_manager_server_failure(ray_start_cluster_head, log_pubsub):
+def test_raylet_node_manager_server_failure(ray_start_cluster_head,
+                                            log_pubsub):
     cluster = ray_start_cluster_head
     # An out-of-range port to make node manager grpc server fail to start.
     cluster.add_node(wait=False, node_manager_port=9999999)
@@ -1399,7 +1400,8 @@ def test_raylet_node_manager_server_failure(ray_start_cluster_head, log_pubsub):
             continue
         data = json.loads(ray.utils.decode(msg["data"]))
         if data["pid"] == "raylet":
-            found = any("Failed to start the grpc server." in line for line in data["lines"])
+            found = any("Failed to start the grpc server." in line
+                        for line in data["lines"])
     assert found
 
 

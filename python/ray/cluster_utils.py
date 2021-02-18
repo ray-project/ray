@@ -110,11 +110,11 @@ class Cluster:
             self.worker_nodes.add(node)
 
         if wait:
-            # Wait for the node to appear in the client table. We do this so that
-            # the nodes appears in the client table in the order that the
-            # corresponding calls to add_node were made. We do this because in the
-            # tests we assume that the driver is connected to the first node that
-            # is added.
+            # Wait for the node to appear in the client table. We do this so
+            # that the nodes appears in the client table in the order that the
+            # corresponding calls to add_node were made. We do this because in
+            # the tests we assume that the driver is connected to the first
+            # node that is added.
             self._wait_for_node(node)
 
         return node
