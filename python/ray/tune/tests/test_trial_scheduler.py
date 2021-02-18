@@ -19,7 +19,6 @@ from ray.tune.schedulers import (FIFOScheduler, HyperBandScheduler,
                                  TrialScheduler, HyperBandForBOHB)
 
 from ray.tune.schedulers.pbt import explore, PopulationBasedTrainingReplay
-from ray.tune.suggest import Searcher
 from ray.tune.suggest._mock import _MockSearcher
 from ray.tune.trial import Trial, Checkpoint
 from ray.tune.trial_executor import TrialExecutor
