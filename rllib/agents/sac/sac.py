@@ -16,6 +16,7 @@ from ray.rllib.agents.trainer import with_common_config
 from ray.rllib.agents.dqn.dqn import GenericOffPolicyTrainer
 from ray.rllib.agents.sac.sac_tf_policy import SACTFPolicy
 from ray.rllib.policy.policy import Policy
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.utils.typing import TrainerConfigDict
 
 logger = logging.getLogger(__name__)
@@ -39,16 +40,37 @@ DEFAULT_CONFIG = with_common_config({
     # Use a e.g. conv2D state preprocessing network before concatenating the
     # resulting (feature) vector with the action input for the input to
     # the Q-networks.
-    "use_state_preprocessor": False,
-    # Model options for the Q network(s).
+    "use_state_preprocessor": DEPRECATED_VALUE,
+    # Model options for the Q network(s). These will override MODEL_DEFAULTS.
+    # The `Q_model` dict is treated just as the top-level `model` dict in
+    # setting up the Q-network(s) (2 if twin_q=True).
+    # That means, you can do for different observation spaces:
+    # obs=Box(1D) -> Tuple(Box(1D) + Action) -> concat -> post_fcnet
+    # obs=Box(3D) -> Tuple(Box(3D) + Action) -> vision-net -> concat w/ action
+    #   -> post_fcnet
+    # obs=Tuple(Box(1D), Box(3D)) -> Tuple(Box(1D), Box(3D), Action)
+    #   -> vision-net -> concat w/ Box(1D) and action -> post_fcnet
+    # You can also have SAC use your custom_model as Q-model(s), by simply
+    # specifying the `custom_model` sub-key in below dict (just like you would
+    # do in the top-level `model` dict.
     "Q_model": {
-        "fcnet_activation": "relu",
         "fcnet_hiddens": [256, 256],
+        "fcnet_activation": "relu",
+        "post_fcnet_hiddens": [],
+        "post_fcnet_activation": None,
+        "custom_model": None,  # Use this to define custom Q-model(s).
+        "custom_model_config": {},
     },
-    # Model options for the policy function.
+    # Model options for the policy function (see `Q_model` above for details).
+    # The difference to `Q_model` above is that no action concat'ing is
+    # performed before the post_fcnet stack.
     "policy_model": {
-        "fcnet_activation": "relu",
         "fcnet_hiddens": [256, 256],
+        "fcnet_activation": "relu",
+        "post_fcnet_hiddens": [],
+        "post_fcnet_activation": None,
+        "custom_model": None,  # Use this to define a custom policy model.
+        "custom_model_config": {},
     },
     # Unsquash actions to the upper and lower bounds of env's action space.
     # Ignored for discrete action spaces.
@@ -145,11 +167,10 @@ def validate_config(config: TrainerConfigDict) -> None:
     Raises:
         ValueError: In case something is wrong with the config.
     """
-    if config["model"].get("custom_model"):
-        logger.warning(
-            "Setting use_state_preprocessor=True since a custom model "
-            "was specified.")
-        config["use_state_preprocessor"] = True
+    if config["use_state_preprocessor"] != DEPRECATED_VALUE:
+        deprecation_warning(
+            old="config['use_state_preprocessor']", error=False)
+        config["use_state_preprocessor"] = DEPRECATED_VALUE
 
     if config["grad_clip"] is not None and config["grad_clip"] <= 0.0:
         raise ValueError("`grad_clip` value must be > 0.0!")

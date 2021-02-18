@@ -715,8 +715,16 @@ TEST_F(ServiceBasedGcsClientTest, TestNodeResourceUsage) {
   auto resource = std::make_shared<rpc::ResourcesData>();
   resource->set_node_id(node_id.Binary());
   resource->set_should_global_gc(true);
+  std::string resource_name = "CPU";
+  double resource_value = 1.0;
+  (*resource->mutable_resources_total())[resource_name] = resource_value;
   ASSERT_TRUE(ReportResourceUsage(resource));
   WaitForExpectedCount(resource_batch_count, 1);
+
+  // Get and check last report resource usage.
+  auto last_resource_usage = gcs_client_->NodeResources().GetLastResourceUsage();
+  ASSERT_EQ(last_resource_usage->GetTotalResources().GetResource(resource_name),
+            resource_value);
 }
 
 TEST_F(ServiceBasedGcsClientTest, TestNodeResourceUsageWithLightResourceUsageReport) {

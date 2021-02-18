@@ -247,6 +247,11 @@
                     "type": "boolean",
                     "description": "disable Ray from automatically detecting /dev/shm size for the container",
                     "default": false
+                },
+              "use_podman"  :  {
+                "type": "boolean",
+                "description": "Use 'podman' command in place of 'docker'",
+                "default": false
                 }
             }
         },
@@ -332,8 +337,12 @@
                        "min_workers": {"type": "integer"},
                        "max_workers": {"type": "integer"},
                        "resources": {
-                           "type": "object",
-                           ".*": {"type": "number"}
+						   "patternProperties": {
+							   ".*":{
+								   "type": "integer",
+								   "minimum": 0
+							   }
+						   }
                        },
                        "initialization_commands": {
                            "$ref": "#/definitions/commands",

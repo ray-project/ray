@@ -18,8 +18,10 @@ logger = logging.getLogger(__name__)
 
 @pytest.fixture
 def one_worker_100MiB(request):
+    # It has lots of tests that don't require object spilling.
     config = {
         "task_retry_delay_ms": 0,
+        "automatic_object_spilling_enabled": False
     }
     yield ray.init(
         num_cpus=1,
@@ -243,9 +245,7 @@ def test_pending_task_dependency_pinning(one_worker_100MiB):
 
 
 def test_feature_flag(shutdown_only):
-    ray.init(
-        object_store_memory=100 * 1024 * 1024,
-        _system_config={"object_pinning_enabled": 0})
+    ray.init(object_store_memory=100 * 1024 * 1024)
 
     @ray.remote
     def f(array):

@@ -319,7 +319,7 @@ class ObjectInfoAccessor {
   /// \return Status
   virtual Status AsyncAddSpilledUrl(const ObjectID &object_id,
                                     const std::string &spilled_url,
-                                    const NodeID &spilled_node_id,
+                                    const NodeID &spilled_node_id, size_t object_size,
                                     const StatusCallback &callback) = 0;
 
   /// Remove location of object from GCS asynchronously.
@@ -576,7 +576,7 @@ class NodeResourceInfoAccessor {
   virtual void AsyncReReportResourceUsage() = 0;
 
   /// Return resources in last report. Used by light heartbeat.
-  std::shared_ptr<SchedulingResources> &GetLastResourceUsage() {
+  const std::shared_ptr<SchedulingResources> &GetLastResourceUsage() {
     return last_resource_usage_;
   }
 
@@ -600,7 +600,6 @@ class NodeResourceInfoAccessor {
  protected:
   NodeResourceInfoAccessor() = default;
 
- private:
   /// Cache which stores resource usage in last report used to check if they are changed.
   /// Used by light resource usage report.
   std::shared_ptr<SchedulingResources> last_resource_usage_ =
@@ -738,12 +737,20 @@ class PlacementGroupInfoAccessor {
   virtual Status AsyncCreatePlacementGroup(
       const PlacementGroupSpecification &placement_group_spec) = 0;
 
-  /// Get a placement group data from GCS asynchronously.
+  /// Get a placement group data from GCS asynchronously by id.
   ///
   /// \param placement_group_id The id of a placement group to obtain from GCS.
   /// \return Status.
   virtual Status AsyncGet(
       const PlacementGroupID &placement_group_id,
+      const OptionalItemCallback<rpc::PlacementGroupTableData> &callback) = 0;
+
+  /// Get a placement group data from GCS asynchronously by name.
+  ///
+  /// \param placement_group_name The name of a placement group to obtain from GCS.
+  /// \return Status.
+  virtual Status AsyncGetByName(
+      const std::string &placement_group_name,
       const OptionalItemCallback<rpc::PlacementGroupTableData> &callback) = 0;
 
   /// Get all placement group info from GCS asynchronously.

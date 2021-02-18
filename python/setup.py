@@ -129,6 +129,7 @@ install_requires = [
     "aiohttp_cors",
     "aioredis",
     "click >= 7.0",
+    "cloudpickle",
     "colorama",
     "colorful",
     "filelock",

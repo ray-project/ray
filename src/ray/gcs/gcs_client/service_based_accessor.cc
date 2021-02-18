@@ -296,7 +296,7 @@ Status ServiceBasedActorInfoAccessor::AsyncSubscribe(
     auto on_subscribe = [subscribe](const std::string &id, const std::string &data) {
       ActorTableData actor_data;
       actor_data.ParseFromString(data);
-      subscribe(ActorID::FromBinary(actor_data.actor_id()), actor_data);
+      subscribe(ActorID::FromHex(id), actor_data);
     };
     return client_impl_->GetGcsPubSub().Subscribe(ACTOR_CHANNEL, actor_id.Hex(),
                                                   on_subscribe, subscribe_done);
@@ -728,6 +728,12 @@ Status ServiceBasedNodeResourceInfoAccessor::AsyncUpdateResources(
 Status ServiceBasedNodeResourceInfoAccessor::AsyncReportResourceUsage(
     const std::shared_ptr<rpc::ResourcesData> &data_ptr, const StatusCallback &callback) {
   absl::MutexLock lock(&mutex_);
+  last_resource_usage_->SetAvailableResources(
+      ResourceSet(MapFromProtobuf(data_ptr->resources_available())));
+  last_resource_usage_->SetTotalResources(
+      ResourceSet(MapFromProtobuf(data_ptr->resources_total())));
+  last_resource_usage_->SetLoadResources(
+      ResourceSet(MapFromProtobuf(data_ptr->resource_load())));
   cached_resource_usage_.mutable_resources()->CopyFrom(*data_ptr);
   client_impl_->GetGcsRpcClient().ReportResourceUsage(
       cached_resource_usage_,
@@ -1123,7 +1129,7 @@ Status ServiceBasedObjectInfoAccessor::AsyncAddLocation(const ObjectID &object_i
 
 Status ServiceBasedObjectInfoAccessor::AsyncAddSpilledUrl(
     const ObjectID &object_id, const std::string &spilled_url,
-    const NodeID &spilled_node_id, const StatusCallback &callback) {
+    const NodeID &spilled_node_id, size_t object_size, const StatusCallback &callback) {
   RAY_LOG(DEBUG) << "Adding object spilled location, object id = " << object_id
                  << ", spilled_url = " << spilled_url
                  << ", job id = " << object_id.TaskId().JobId();
@@ -1131,6 +1137,7 @@ Status ServiceBasedObjectInfoAccessor::AsyncAddSpilledUrl(
   request.set_object_id(object_id.Binary());
   request.set_spilled_url(spilled_url);
   request.set_spilled_node_id(spilled_node_id.Binary());
+  request.set_size(object_size);
 
   auto operation = [this, request, callback](const SequencerDoneCallback &done_callback) {
     client_impl_->GetGcsRpcClient().AddObjectLocation(
@@ -1482,6 +1489,26 @@ Status ServiceBasedPlacementGroupInfoAccessor::AsyncGet(
         }
         RAY_LOG(DEBUG) << "Finished getting placement group info, placement group id = "
                        << placement_group_id;
+      });
+  return Status::OK();
+}
+
+Status ServiceBasedPlacementGroupInfoAccessor::AsyncGetByName(
+    const std::string &name,
+    const OptionalItemCallback<rpc::PlacementGroupTableData> &callback) {
+  RAY_LOG(DEBUG) << "Getting named placement group info, name = " << name;
+  rpc::GetNamedPlacementGroupRequest request;
+  request.set_name(name);
+  client_impl_->GetGcsRpcClient().GetNamedPlacementGroup(
+      request, [name, callback](const Status &status,
+                                const rpc::GetNamedPlacementGroupReply &reply) {
+        if (reply.has_placement_group_table_data()) {
+          callback(status, reply.placement_group_table_data());
+        } else {
+          callback(status, boost::none);
+        }
+        RAY_LOG(DEBUG) << "Finished getting named placement group info, status = "
+                       << status << ", name = " << name;
       });
   return Status::OK();
 }
