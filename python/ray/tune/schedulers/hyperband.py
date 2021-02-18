@@ -76,6 +76,8 @@ class HyperBandScheduler(FIFOScheduler):
             mentioned in the original HyperBand paper.
         reduction_factor (float): Same as `eta`. Determines how sharp
             the difference is between bracket space-time allocation ratios.
+        stop_last_trials (bool): Whether to terminate the trials after
+            reaching max_t. Defaults to True.
     """
 
     def __init__(self,
