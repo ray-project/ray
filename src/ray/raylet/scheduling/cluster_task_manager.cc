@@ -23,7 +23,8 @@ ClusterTaskManager::ClusterTaskManager(
     std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers,
     std::function<bool(const std::vector<ObjectID> &object_ids,
                        std::vector<std::unique_ptr<RayObject>> *results)>
-        pin_task_arguments)
+        pin_task_arguments,
+    std::function<bool()> at_memory_capacity)
     : self_node_id_(self_node_id),
       cluster_resource_scheduler_(cluster_resource_scheduler),
       task_dependency_manager_(task_dependency_manager),
@@ -35,7 +36,8 @@ ClusterTaskManager::ClusterTaskManager(
       report_worker_backlog_(RayConfig::instance().report_worker_backlog()),
       worker_pool_(worker_pool),
       leased_workers_(leased_workers),
-      pin_task_arguments_(pin_task_arguments) {}
+      pin_task_arguments_(pin_task_arguments),
+      at_memory_capacity_(at_memory_capacity) {}
 
 bool ClusterTaskManager::SchedulePendingTasks() {
   // Always try to schedule infeasible tasks in case they are now feasible.
@@ -61,7 +63,7 @@ bool ClusterTaskManager::SchedulePendingTasks() {
       int64_t _unused;
       std::string node_id_string = cluster_resource_scheduler_->GetBestSchedulableNode(
           placement_resources, task.GetTaskSpecification().IsActorCreationTask(),
-          &_unused, &is_infeasible);
+          /*force_spillback=*/false, &_unused, &is_infeasible);
 
       // There is no node that has available resources to run the request.
       // Move on to the next shape.
@@ -107,21 +109,24 @@ bool ClusterTaskManager::SchedulePendingTasks() {
 
 bool ClusterTaskManager::WaitForTaskArgsRequests(Work work) {
   const auto &task = std::get<0>(work);
+  const auto &task_id = task.GetTaskSpecification().TaskId();
   const auto &scheduling_key = task.GetTaskSpecification().GetSchedulingClass();
   auto object_ids = task.GetTaskSpecification().GetDependencies();
   bool can_dispatch = true;
   if (object_ids.size() > 0) {
-    bool args_ready = task_dependency_manager_.RequestTaskDependencies(
-        task.GetTaskSpecification().TaskId(), task.GetDependencies());
+    bool args_ready =
+        task_dependency_manager_.RequestTaskDependencies(task_id, task.GetDependencies());
+    auto queue_it = tasks_with_dependencies_queue_.insert(
+        tasks_with_dependencies_queue_.end(), task_id);
+    RAY_CHECK(tasks_with_dependencies_queue_index_.emplace(task_id, queue_it).second);
+
     if (args_ready) {
-      RAY_LOG(DEBUG) << "Args already ready, task can be dispatched "
-                     << task.GetTaskSpecification().TaskId();
+      RAY_LOG(DEBUG) << "Args already ready, task can be dispatched " << task_id;
       tasks_to_dispatch_[scheduling_key].push_back(work);
     } else {
       RAY_LOG(DEBUG) << "Waiting for args for task: "
                      << task.GetTaskSpecification().TaskId();
       can_dispatch = false;
-      TaskID task_id = task.GetTaskSpecification().TaskId();
       waiting_tasks_[task_id] = work;
     }
   } else {
@@ -197,10 +202,7 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
         RAY_LOG(WARNING) << "Task: " << task.GetTaskSpecification().TaskId()
                          << "'s caller is no longer running. Cancelling task.";
         worker_pool_.PushWorker(worker);
-        if (!spec.GetDependencies().empty()) {
-          task_dependency_manager_.RemoveTaskDependencies(
-              task.GetTaskSpecification().TaskId());
-        }
+        RemoveTaskDependencies(spec);
         work_it = dispatch_queue.erase(work_it);
       } else {
         bool worker_leased;
@@ -219,10 +221,7 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
           worker_pool_.PushWorker(worker);
         }
         if (remove) {
-          if (!spec.GetDependencies().empty()) {
-            task_dependency_manager_.RemoveTaskDependencies(
-                task.GetTaskSpecification().TaskId());
-          }
+          RemoveTaskDependencies(spec);
           work_it = dispatch_queue.erase(work_it);
         } else {
           break;
@@ -235,6 +234,18 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
       shapes_it++;
     }
   }
+}
+
+void ClusterTaskManager::RemoveTaskDependencies(const TaskSpecification &task_spec) {
+  if (task_spec.GetDependencies().empty()) {
+    return;
+  }
+
+  task_dependency_manager_.RemoveTaskDependencies(task_spec.TaskId());
+  auto it = tasks_with_dependencies_queue_index_.find(task_spec.TaskId());
+  RAY_CHECK(it != tasks_with_dependencies_queue_index_.end());
+  tasks_with_dependencies_queue_.erase(it->second);
+  tasks_with_dependencies_queue_index_.erase(it);
 }
 
 bool ClusterTaskManager::AttemptDispatchWork(const Work &work,
@@ -256,7 +267,8 @@ bool ClusterTaskManager::AttemptDispatchWork(const Work &work,
     bool is_infeasible;
     auto placement_resources = spec.GetRequiredPlacementResources().GetResourceMap();
     std::string node_id_string = cluster_resource_scheduler_->GetBestSchedulableNode(
-        placement_resources, spec.IsActorCreationTask(), &_unused, &is_infeasible);
+        placement_resources, spec.IsActorCreationTask(),
+        /*force_spillback=*/false, &_unused, &is_infeasible);
     RAY_CHECK(!is_infeasible)
         << "Task cannot be infeasible when it is about to be dispatched";
     if (node_id_string != self_node_id_.Binary() && !node_id_string.empty()) {
@@ -380,10 +392,7 @@ bool ClusterTaskManager::CancelTask(const TaskID &task_id) {
       if (task.GetTaskSpecification().TaskId() == task_id) {
         RemoveFromBacklogTracker(task);
         ReplyCancelled(*work_it);
-        if (!task.GetTaskSpecification().GetDependencies().empty()) {
-          task_dependency_manager_.RemoveTaskDependencies(
-              task.GetTaskSpecification().TaskId());
-        }
+        RemoveTaskDependencies(task.GetTaskSpecification());
         work_queue.erase(work_it);
         if (work_queue.empty()) {
           tasks_to_dispatch_.erase(shapes_it);
@@ -698,8 +707,8 @@ void ClusterTaskManager::TryLocalInfeasibleTaskScheduling() {
     int64_t _unused;
     bool is_infeasible;
     std::string node_id_string = cluster_resource_scheduler_->GetBestSchedulableNode(
-        placement_resources, task.GetTaskSpecification().IsActorCreationTask(), &_unused,
-        &is_infeasible);
+        placement_resources, task.GetTaskSpecification().IsActorCreationTask(),
+        /*force_spillback=*/false, &_unused, &is_infeasible);
 
     // There is no node that has available resources to run the request.
     // Move on to the next shape.
@@ -878,6 +887,56 @@ bool ClusterTaskManager::ReturnCpuResourcesToBlockedWorker(
 void ClusterTaskManager::ScheduleAndDispatchTasks() {
   SchedulePendingTasks();
   DispatchScheduledTasksToWorkers(worker_pool_, leased_workers_);
+  SpillWaitingTaskIfNeeded();
+}
+
+void ClusterTaskManager::SpillWaitingTaskIfNeeded() {
+  if (at_memory_capacity_()) {
+    return;
+  }
+
+  RAY_LOG(DEBUG) << "Node is at memory capacity for task arguments. Trying to find a "
+                    "task to spill to a different node";
+  // Spill back at most one task from the waiting task set, starting from the
+  // back of the task queue.
+  auto it = tasks_with_dependencies_queue_.end();
+  while (it != tasks_with_dependencies_queue_.begin()) {
+    it--;
+    const auto &task_id = *it;
+    auto work_it = waiting_tasks_.find(task_id);
+    if (work_it == waiting_tasks_.end()) {
+      continue;
+    }
+    if (!task_dependency_manager_.TaskDependenciesBlockedDueToOom(task_id)) {
+      // The last task that is waiting for dependencies in the queue is not
+      // blocked due to out-of-memory. Therefore, all tasks before it are also
+      // not blocked.
+      break;
+    }
+
+    // This task's dependencies are not being pulled due to lack of memory.
+    // Force the task onto a remote node, if a feasible one exists.
+    // TODO(swang): The policy currently does not account for object store
+    // memory availability. Ideally, we should pick the node with the most
+    // memory availability.
+    const auto &task = std::get<0>(work_it->second);
+    auto placement_resources =
+        task.GetTaskSpecification().GetRequiredPlacementResources().GetResourceMap();
+    int64_t _unused;
+    bool is_infeasible;
+    std::string node_id_string = cluster_resource_scheduler_->GetBestSchedulableNode(
+        placement_resources, task.GetTaskSpecification().IsActorCreationTask(),
+        /*force_spillback=*/true, &_unused, &is_infeasible);
+    if (!node_id_string.empty()) {
+      NodeID node_id = NodeID::FromBinary(node_id_string);
+      RAY_LOG(DEBUG) << "Spilling task " << task_id
+                     << " that was waiting for arguments to node " << node_id;
+      Spillback(node_id, work_it->second);
+      waiting_tasks_.erase(work_it);
+      // Spill at most one task.
+      break;
+    }
+  }
 }
 
 void ClusterTaskManager::OnNodeResourceUsageUpdated(

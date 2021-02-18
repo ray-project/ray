@@ -97,7 +97,8 @@ Raylet::Raylet(boost::asio::io_service &main_service, const std::string &socket_
                     [this](const ObjectID &object_id) {
                       // It is used by local_object_store.
                       return object_manager_.IsPlasmaObjectSpillable(object_id);
-                    }),
+                    },
+                    [this]() { return object_manager_.AtMemoryCapacity(); }),
       socket_name_(socket_name),
       acceptor_(main_service, ParseUrlEndpoint(socket_name)),
       socket_(main_service) {

@@ -457,6 +457,8 @@ bool PullManager::IsObjectActive(const ObjectID &object_id) const {
   return active_object_pull_requests_.count(object_id) == 1;
 }
 
+bool PullManager::AtMemoryCapacity() const { return at_memory_capacity_; }
+
 bool PullManager::IsPullRequestInactiveDueToOom(uint64_t request_id) const {
   // We are at capacity and this request is in the suffix of the queue that is
   // not being pulled.
@@ -464,6 +466,8 @@ bool PullManager::IsPullRequestInactiveDueToOom(uint64_t request_id) const {
   // the order that they are received, it is actually possible that this
   // request could be served and that its requested objects are even local
   // already.
+  // TODO(swang): Handle the above case by checking if each of
+  // the request's objects are actively pulled or local.
   return at_memory_capacity_ && request_id > highest_req_id_being_pulled_;
 }
 

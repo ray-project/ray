@@ -576,6 +576,7 @@ void PlasmaStore::EraseFromObjectTable(const ObjectID &object_id) {
   }
   if (object->state == ObjectState::PLASMA_CREATED) {
     num_bytes_unsealed_ -= object->data_size + object->metadata_size;
+    num_objects_unsealed_--;
   }
   if (object->ref_count > 0) {
     // A client was using this object.
@@ -650,7 +651,6 @@ int PlasmaStore::AbortObject(const ObjectID &object_id,
     return 0;
   } else {
     // The client requesting the abort is the creator. Free the object.
-    num_objects_unsealed_--;
     EraseFromObjectTable(object_id);
     client->object_ids.erase(it);
     return 1;

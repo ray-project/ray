@@ -117,7 +117,8 @@ NodeManager::NodeManager(boost::asio::io_service &io_service, const NodeID &self
                          const NodeManagerConfig &config, ObjectManager &object_manager,
                          std::shared_ptr<gcs::GcsClient> gcs_client,
                          std::shared_ptr<ObjectDirectoryInterface> object_directory,
-                         std::function<bool(const ObjectID &)> is_plasma_object_spillable)
+                         std::function<bool(const ObjectID &)> is_plasma_object_spillable,
+                         std::function<bool()> pull_manager_at_memory_capacity)
     : self_node_id_(self_node_id),
       io_service_(io_service),
       object_manager_(object_manager),
@@ -224,7 +225,8 @@ NodeManager::NodeManager(boost::asio::io_service &io_service, const NodeID &self
         [this](const std::vector<ObjectID> &object_ids,
                std::vector<std::unique_ptr<RayObject>> *results) {
           return GetObjectsFromPlasma(object_ids, results);
-        }));
+        },
+        pull_manager_at_memory_capacity));
     placement_group_resource_manager_ =
         std::make_shared<NewPlacementGroupResourceManager>(
             std::dynamic_pointer_cast<ClusterResourceScheduler>(

@@ -213,6 +213,7 @@ int64_t ClusterResourceScheduler::IsSchedulable(const TaskRequest &task_req,
 
 int64_t ClusterResourceScheduler::GetBestSchedulableNode(const TaskRequest &task_req,
                                                          bool actor_creation,
+                                                         bool force_spillback,
                                                          int64_t *total_violations,
                                                          bool *is_infeasible) {
   // NOTE: We need to set `is_infeasible` to false in advance to avoid `is_infeasible` not
@@ -248,10 +249,12 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(const TaskRequest &task
   // Check whether local node is schedulable. We return immediately
   // the local node only if there are zero violations.
   const auto local_node_it = nodes_.find(local_node_id_);
-  if (local_node_it != nodes_.end()) {
-    if (IsSchedulable(task_req, local_node_it->first,
-                      local_node_it->second.GetLocalView()) == 0) {
-      return local_node_id_;
+  if (!force_spillback) {
+    if (local_node_it != nodes_.end()) {
+      if (IsSchedulable(task_req, local_node_it->first,
+                        local_node_it->second.GetLocalView()) == 0) {
+        return local_node_id_;
+      }
     }
   }
 
@@ -288,6 +291,11 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(const TaskRequest &task
       continue;
     }
 
+    if (force_spillback && node.first == local_node_id_) {
+      // Forcing spill back to remote node, so skip the local node.
+      continue;
+    }
+
     // Update the node with the smallest number of soft constraints violated.
     if (min_violations > violations) {
       min_violations = violations;
@@ -307,10 +315,10 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(const TaskRequest &task
 
 std::string ClusterResourceScheduler::GetBestSchedulableNode(
     const std::unordered_map<std::string, double> &task_resources, bool actor_creation,
-    int64_t *total_violations, bool *is_infeasible) {
+    bool force_spillback, int64_t *total_violations, bool *is_infeasible) {
   TaskRequest task_request = ResourceMapToTaskRequest(string_to_int_map_, task_resources);
-  int64_t node_id = GetBestSchedulableNode(task_request, actor_creation, total_violations,
-                                           is_infeasible);
+  int64_t node_id = GetBestSchedulableNode(task_request, actor_creation, force_spillback,
+                                           total_violations, is_infeasible);
 
   std::string id_string;
   if (node_id == -1) {

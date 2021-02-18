@@ -64,7 +64,8 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
       std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers,
       std::function<bool(const std::vector<ObjectID> &object_ids,
                          std::vector<std::unique_ptr<RayObject>> *results)>
-          pin_task_arguments);
+          pin_task_arguments,
+      std::function<bool()> at_memory_capacity);
 
   /// (Step 1) Queue tasks and schedule.
   /// Queue task and schedule. This hanppens when processing the worker lease request.
@@ -194,6 +195,10 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
       WorkerPoolInterface &worker_pool,
       std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers);
 
+  /// Spillback a task that is waiting for its dependencies, if we currently do
+  /// not have enough memory on the local node to fetch them.
+  void SpillWaitingTaskIfNeeded();
+
   /// Helper method to try dispatching a single task from the queue to an
   /// available worker. Returns whether the task should be removed from the
   /// queue and whether the worker was successfully leased to execute the work.
@@ -203,6 +208,10 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// Reiterate all local infeasible tasks and register them to task_to_schedule_ if it
   /// becomes feasible to schedule.
   void TryLocalInfeasibleTaskScheduling();
+
+  /// Helper to remove any dependencies for a task that is no longer scheduled
+  /// locally.
+  void RemoveTaskDependencies(const TaskSpecification &task_spec);
 
   const NodeID &self_node_id_;
   std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
@@ -218,6 +227,8 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   const int max_resource_shapes_per_load_report_;
   const bool report_worker_backlog_;
 
+  /// TODO(swang): Add index from TaskID -> Work to avoid having to iterate
+  /// through queues to cancel tasks, etc.
   /// Queue of lease requests that are waiting for resources to become available.
   /// Tasks move from scheduled -> dispatch | waiting.
   std::unordered_map<SchedulingClass, std::deque<Work>> tasks_to_schedule_;
@@ -239,6 +250,33 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// the dependency manager, so that they can be moved to dispatch once their
   /// dependencies are local.
   absl::flat_hash_map<TaskID, Work> waiting_tasks_;
+
+  /// Tasks that have arguments that need to be transferred locally. We keep
+  /// these in a queue, ordered by receipt time, so that tasks can be spilled
+  /// back from the end of the queue. This is to make sure that we prioritize
+  /// spilling tasks whose dependencies may not be fetched locally yet.
+  ///
+  /// NOTE(swang): This prioritization will only work if the PullManager serves
+  /// task dependency requests in the order that we request them. Also, the
+  /// prioritization is not exact; it is possible that the PullManager is
+  /// fetching dependencies for a request at the end of this queue (because
+  /// another request required the same objects), even if the PullManager says
+  /// that the request is not being served.
+  ///
+  /// Tasks are removed from this queue once they are no longer scheduled to
+  /// this node (spilled back to a different node or canceled) or their
+  /// arguments are successfully pinned for immediate dispatch to a worker.
+  ///
+  /// All tasks in this queue have dependencies that should be registered with
+  /// the dependency manager, so that they can be moved to dispatch once their
+  /// dependencies are local. Once the task is removed from this queue, the
+  /// dependency manager should be notified that we no longer need the task's
+  /// dependencies.
+  std::list<TaskID> tasks_with_dependencies_queue_;
+
+  /// An index for fast lookup into the above queue.
+  absl::flat_hash_map<TaskID, std::list<TaskID>::iterator>
+      tasks_with_dependencies_queue_index_;
 
   /// Queue of lease requests that are infeasible.
   /// Tasks go between scheduling <-> infeasible.
@@ -267,6 +305,11 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// The total number of arguments pinned for running tasks.
   /// Used for debug purposes.
   size_t num_pinned_task_arguments_ = 0;
+
+  /// Used to check whether we are at memory capacity. If this returns true,
+  /// then there may be tasks in the local queue whose dependencies cannot be
+  /// fetched due to lack of memory.
+  std::function<bool()> at_memory_capacity_;
 
   /// Determine whether a task should be immediately dispatched,
   /// or placed on a wait queue.

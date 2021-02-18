@@ -107,6 +107,8 @@ class PullManager {
 
   bool IsPullRequestInactiveDueToOom(uint64_t request_id) const;
 
+  bool AtMemoryCapacity() const;
+
   std::string DebugString() const;
 
  private:
