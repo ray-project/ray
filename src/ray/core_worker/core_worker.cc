@@ -422,7 +422,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
         return Status::OK();
       },
       options_.ref_counting_enabled ? reference_counter_ : nullptr, local_raylet_client_,
-      options_.check_signals));
+      options_.check_signals, options_.unhandled_exception_handler));
 
   auto check_node_alive_fn = [this](const NodeID &node_id) {
     auto node = gcs_client_->Nodes().Get(node_id);
