@@ -25,10 +25,7 @@ class Arguments {
                            ArgType &arg) {
     static_assert(!is_object_ref<ArgType>::value, "ObjectRef can not be wrapped");
 
-    /// TODO
-    /// The serialize code will move to Serializer after refactoring Serializer.
-    msgpack::sbuffer buffer;
-    msgpack::pack(buffer, arg);
+    msgpack::sbuffer buffer = Serializer::Serialize(arg);
     auto memory_buffer = std::make_shared<::ray::LocalMemoryBuffer>(
         reinterpret_cast<uint8_t *>(buffer.data()), buffer.size(), true);
     /// Pass by value.
@@ -56,12 +53,9 @@ class Arguments {
   template <typename ArgType>
   static void UnwrapArgsImpl(const std::vector<std::shared_ptr<RayObject>> &args_buffer,
                              int &arg_index, std::shared_ptr<ArgType> *arg) {
-    /// TODO
-    /// The Deserialize code will move to Serializer after refactoring Serializer.
-    msgpack::unpacked msg;
     auto arg_buffer = args_buffer[arg_index]->GetData();
-    msgpack::unpack(msg, (const char *)arg_buffer->Data(), arg_buffer->Size());
-    *arg = std::make_shared<ArgType>(msg.get().as<ArgType>());
+    *arg = Serializer::Deserialize<std::shared_ptr<ArgType>>(
+        (const char *)arg_buffer->Data(), arg_buffer->Size());
 
     arg_index++;
   }
