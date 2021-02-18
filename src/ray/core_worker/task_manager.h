@@ -31,7 +31,7 @@ class TaskFinisherInterface {
                                    const rpc::Address &actor_addr) = 0;
 
   virtual bool PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_type,
-                                 Status *status, const std::string &error_message,
+                                 Status *status, const std::string &error_message = "",
                                  bool immediately_mark_object_fail = true) = 0;
 
   virtual void OnTaskDependenciesInlined(
@@ -42,7 +42,7 @@ class TaskFinisherInterface {
 
   virtual void MarkPendingTaskFailed(const TaskID &task_id, const TaskSpecification &spec,
                                      rpc::ErrorType error_type,
-                                     const std::string &error_message) = 0;
+                                     const std::string &error_message = "") = 0;
 
   virtual ~TaskFinisherInterface() {}
 };
@@ -124,8 +124,8 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// \param[in] immediately_mark_object_fail whether immediately mark the task
   /// result object as failed.
   /// \return Whether the task will be retried or not.
-  bool PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_type, Status *status,
-                         const std::string &error_message,
+  bool PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_type,
+                         Status *status = nullptr, const std::string &error_message = "",
                          bool immediately_mark_object_fail = true) override;
 
   /// Treat a pending task as failed. The lock should not be held when calling

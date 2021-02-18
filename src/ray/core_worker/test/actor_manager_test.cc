@@ -76,10 +76,12 @@ class MockDirectActorSubmitter : public CoreWorkerDirectActorTaskSubmitterInterf
   MOCK_METHOD1(AddActorQueueIfNotExists, void(const ActorID &actor_id));
   MOCK_METHOD3(ConnectActor, void(const ActorID &actor_id, const rpc::Address &address,
                                   int64_t num_restarts));
-  MOCK_METHOD3(DisconnectActor, void(const ActorID &actor_id, int64_t num_restarts,
+  MOCK_METHOD4(DisconnectActor, void(const ActorID &actor_id, int64_t num_restarts,
                                      bool dead, const std::string &dead_info));
   MOCK_METHOD3(KillActor,
                void(const ActorID &actor_id, bool force_kill, bool no_restart));
+
+  MOCK_METHOD0(CheckTimeoutTasks, void());
 
   virtual ~MockDirectActorSubmitter() {}
 };

@@ -111,7 +111,8 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(
          const std::vector<std::shared_ptr<ray::RayObject>> &args,
          const std::vector<ObjectID> &arg_reference_ids,
          const std::vector<ObjectID> &return_ids, const std::string &debugger_breakpoint,
-         std::vector<std::shared_ptr<ray::RayObject>> *results) {
+         std::vector<std::shared_ptr<ray::RayObject>> *results,
+         std::string &error_message) {
         JNIEnv *env = GetJNIEnv();
         RAY_CHECK(java_task_executor);
 

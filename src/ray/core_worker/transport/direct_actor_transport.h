@@ -116,7 +116,7 @@ class CoreWorkerDirectActorTaskSubmitter
   /// \param[in] dead_info Reason why the actor is dead, only applies when
   /// dead = true
   void DisconnectActor(const ActorID &actor_id, int64_t num_restarts, bool dead,
-                       const std::string &dead_info);
+                       const std::string &dead_info = "");
 
   /// Set the timerstamp for the caller.
   void SetCallerCreationTimestamp(int64_t timestamp);
