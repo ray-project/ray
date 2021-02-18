@@ -155,11 +155,11 @@ def log_to_cli(config):
                     _tags=workers_tags)
 
         tags = {"default": _log_info["head_instance_profile_src"] == "default"}
-        cli_logger.labeled_value(
-            "IAM Profile",
-            "{}",
-            _arn_to_name(config["head_node"]["IamInstanceProfile"]["Arn"]),
-            _tags=tags)
+        profile_arn = config["head_node"]["IamInstanceProfile"].get("Arn")
+        profile_name = _arn_to_name(profile_arn) \
+            if profile_arn \
+            else config["head_node"]["IamInstanceProfile"]["Name"]
+        cli_logger.labeled_value("IAM Profile", "{}", profile_name, _tags=tags)
 
         if ("KeyName" in config["head_node"]
                 and "KeyName" in config["worker_nodes"]):
