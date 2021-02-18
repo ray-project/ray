@@ -23,6 +23,7 @@ This will print out some statistics on the shuffle execution such as:
     Shuffled 9536 MiB in 16.579771757125854 seconds
 """
 
+import time
 from typing import List, Iterable, Tuple, Callable, Any
 
 import ray
@@ -114,6 +115,7 @@ def render_progress_bar(tracker, input_num_partitions, output_num_partitions):
         reduce_bar.update(new_num_reduce - num_reduce)
         num_map = new_num_map
         num_reduce = new_num_reduce
+        time.sleep(0.1)
     map_bar.close()
     reduce_bar.close()
 
