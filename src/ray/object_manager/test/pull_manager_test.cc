@@ -36,6 +36,7 @@ class PullManagerTestWithCapacity {
   void AssertNoLeaks() {
     ASSERT_TRUE(pull_manager_.pull_request_bundles_.empty());
     ASSERT_TRUE(pull_manager_.object_pull_requests_.empty());
+    absl::MutexLock lock(&pull_manager_.active_objects_mu_);
     ASSERT_TRUE(pull_manager_.active_object_pull_requests_.empty());
     // Most tests should not throw OOM.
     ASSERT_EQ(num_object_store_full_calls_, 0);
@@ -57,6 +58,7 @@ class PullManagerTest : public PullManagerTestWithCapacity, public ::testing::Te
   PullManagerTest() : PullManagerTestWithCapacity(1) {}
 
   void AssertNumActiveRequestsEquals(size_t num_requests) {
+    absl::MutexLock lock(&pull_manager_.active_objects_mu_);
     ASSERT_EQ(pull_manager_.object_pull_requests_.size(), num_requests);
     ASSERT_EQ(pull_manager_.active_object_pull_requests_.size(), num_requests);
   }
@@ -68,6 +70,7 @@ class PullManagerWithAdmissionControlTest : public PullManagerTestWithCapacity,
   PullManagerWithAdmissionControlTest() : PullManagerTestWithCapacity(10) {}
 
   void AssertNumActiveRequestsEquals(size_t num_requests) {
+    absl::MutexLock lock(&pull_manager_.active_objects_mu_);
     ASSERT_EQ(pull_manager_.active_object_pull_requests_.size(), num_requests);
   }
 
