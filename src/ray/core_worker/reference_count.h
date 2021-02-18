@@ -51,7 +51,8 @@ class ReferenceCounterInterface {
 
 // Callback for location subscriptions.
 using LocationSubscriptionCallback =
-    std::function<void(const absl::flat_hash_set<NodeID> &, int64_t, int64_t)>;
+    std::function<void(const absl::flat_hash_set<NodeID> &, int64_t, const std::string &,
+                       const NodeID &, int64_t)>;
 
 /// Class used by the core worker to keep track of ObjectID reference counts for garbage
 /// collection. This class is thread safe.
@@ -423,8 +424,15 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// Handle an object has been spilled to external storage.
   ///
   /// This notifies the primary raylet that the object is safe to release and
-  /// records that the object has been spilled to suppress reconstruction.
-  void HandleObjectSpilled(const ObjectID &object_id);
+  /// records the spill URL, spill node ID, and updated object size.
+  /// \param[in] object_id The object that has been spilled.
+  /// \param[in] spilled_url The URL to which the object has been spilled.
+  /// \param[in] spilled_node_id The ID of the node on which the object was spilled.
+  /// \param[in] size The size of the object.
+  /// \param[in] release Whether to release the reference.
+  /// \return True if the reference exists, false otherwise.
+  bool HandleObjectSpilled(const ObjectID &object_id, const std::string spilled_url,
+                           const NodeID &spilled_node_id, int64_t size, bool release);
 
   /// Get locality data for object.
   absl::optional<LocalityData> GetLocalityData(const ObjectID &object_id);
@@ -586,6 +594,13 @@ class ReferenceCounter : public ReferenceCounterInterface,
     size_t lineage_ref_count = 0;
     /// Whether this object has been spilled to external storage.
     bool spilled = false;
+    /// For objects that have been spilled to external storage, the URL from which
+    /// they can be retrieved.
+    std::string spilled_url = "";
+    /// The ID of the node that spilled the object.
+    /// This will be Nil if the object has not been spilled or if it is spilled
+    /// distributed external storage.
+    NodeID spilled_node_id = NodeID::Nil();
     /// Location subscription callbacks registered by async location get requests.
     /// These will be invoked whenever locations or object_size are changed.
     std::vector<LocationSubscriptionCallback> location_subscription_callbacks;

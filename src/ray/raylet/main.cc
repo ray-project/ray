@@ -205,8 +205,6 @@ int main(int argc, char *argv[]) {
             RayConfig::instance().metrics_report_interval_ms() / 2;
         node_manager_config.fair_queueing_enabled =
             RayConfig::instance().fair_queueing_enabled();
-        node_manager_config.object_pinning_enabled =
-            RayConfig::instance().object_pinning_enabled();
         node_manager_config.automatic_object_deletion_enabled =
             RayConfig::instance().automatic_object_deletion_enabled();
         node_manager_config.store_socket_name = store_socket_name;
