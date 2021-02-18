@@ -162,7 +162,7 @@ public class PlacementGroupTest extends BaseTest {
     String pgGlobalName = "global_placement_group";
     PlacementGroup secondPlacementGroup =
         PlacementGroupTestUtils.createNameSpecifiedSimpleGroup(
-            "CPU", 2, PlacementStrategy.PACK, 1.0, pgGlobalName, true);
+            "CPU", 1, PlacementStrategy.PACK, 1.0, pgGlobalName, true);
     Assert.assertTrue(secondPlacementGroup.wait(60));
     // Make sure we can get it by name successfully.
     placementGroup = Ray.getGlobalPlacementGroup(pgGlobalName);
