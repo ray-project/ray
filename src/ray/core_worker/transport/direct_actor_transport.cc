@@ -498,7 +498,7 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
         RAY_CHECK_OK(task_done_());
       }
     }
-    if (status.IsSystemExit()) {
+    if (status.ShouldExitWorker()) {
       // Don't allow the worker to be reused, even though the reply status is OK.
       // The worker will be shutting down shortly.
       reply->set_worker_exiting(true);

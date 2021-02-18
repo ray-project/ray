@@ -1001,6 +1001,7 @@ def test_connect_with_disconnected_node(shutdown_only):
     ray.init(address=cluster.address)
     p = init_error_pubsub()
     errors = get_error_message(p, 1, timeout=5)
+    print(errors)
     assert len(errors) == 0
     # This node is killed by SIGKILL, ray_monitor will mark it to dead.
     dead_node = cluster.add_node(num_cpus=0)

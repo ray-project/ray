@@ -108,7 +108,7 @@ cdef extern from "ray/common/status.h" namespace "ray" nogil:
         c_bool IsRedisError()
         c_bool IsTimedOut()
         c_bool IsInterrupted()
-        c_bool IsSystemExit()
+        c_bool ShouldExitWorker()
         c_bool IsNotFound()
 
         c_string ToString()

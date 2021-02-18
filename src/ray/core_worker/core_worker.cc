@@ -1908,12 +1908,14 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
   }
   RAY_LOG(DEBUG) << "Finished executing task " << task_spec.TaskId();
 
-  if (status.IsSystemExit()) {
-    if (status.IsCreationTaskError()) {
-      Exit(rpc::WorkerExitType::CREATION_TASK_ERROR, error_message);
-    } else if (status.IsIntentionalSystemExit()) {
-      Exit(rpc::WorkerExitType::INTENDED_EXIT, error_message);
-    }
+  if (status.IsCreationTaskError()) {
+    Exit(rpc::WorkerExitType::CREATION_TASK_ERROR, error_message);
+  } else if (status.IsIntentionalSystemExit()) {
+    Exit(rpc::WorkerExitType::INTENDED_EXIT, error_message);
+  } else if (status.IsUnexpectedSystemExit()) {
+    Exit(rpc::WorkerExitType::SYSTEM_ERROR_EXIT, error_message);
+  } else if (!status.ok()) {
+    RAY_LOG(FATAL) << "Unexpected task status type : " << status;
   }
 
   return status;

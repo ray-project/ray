@@ -218,7 +218,7 @@ class RAY_EXPORT Status {
   bool IsRedisError() const { return code() == StatusCode::RedisError; }
   bool IsTimedOut() const { return code() == StatusCode::TimedOut; }
   bool IsInterrupted() const { return code() == StatusCode::Interrupted; }
-  bool IsSystemExit() const {
+  bool ShouldExitWorker() const {
     return code() == StatusCode::IntentionalSystemExit ||
            code() == StatusCode::UnexpectedSystemExit ||
            code() == StatusCode::CreationTaskError;
@@ -227,6 +227,9 @@ class RAY_EXPORT Status {
     return code() == StatusCode::IntentionalSystemExit;
   }
   bool IsCreationTaskError() const { return code() == StatusCode::CreationTaskError; }
+  bool IsUnexpectedSystemExit() const {
+    return code() == StatusCode::UnexpectedSystemExit;
+  }
   bool IsNotFound() const { return code() == StatusCode::NotFound; }
   bool IsDisconnected() const { return code() == StatusCode::Disconnected; }
   bool IsObjectExists() const { return code() == StatusCode::ObjectExists; }
