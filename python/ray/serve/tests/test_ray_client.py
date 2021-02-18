@@ -45,3 +45,8 @@ def test_ray_client(ray_client_instance):
     # client = serve.connect()
     # client.delete_endpoint("test1")
     # client.delete_backend("test1")
+
+
+if __name__ == "__main__":
+    import sys
+    sys.exit(pytest.main(["-v", "-s", __file__]))
