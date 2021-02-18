@@ -68,10 +68,19 @@ void GrpcServer::Run() {
   }
 
   // If the grpc server failed to bind the port, the `port_` will be set to 0.
-  RAY_CHECK(server_ && port_ > 0)
-      << "Failed to start the grpc server. Port " << specified_port
-      << " specified by caller already in use. Try passing node_manager_port=... into "
-         "ray.init() to pick a specific port";
+  std::ostringstream ss;
+  if (!server_) {
+    ss << "Failed to start the grpc server.";
+    if (specified_port != 0) {
+      ss << " Specified port is " << specified_port
+         << "and maybe it's already in use. Try passing node_manager_port=... into "
+            "ray.init() to pick a specific port";
+    } else {
+      ss << " No specified port.";
+    }
+    RAY_LOG(FATAL) << ss.str();
+  }
+  RAY_CHECK(port_ > 0);
   RAY_LOG(INFO) << name_ << " server started, listening on port " << port_ << ".";
 
   // Create calls for all the server call factories.
