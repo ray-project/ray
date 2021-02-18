@@ -18,6 +18,11 @@
 
   <dependencies>
 <dependency>
+  <groupId>com.google.guava</groupId>
+  <artifactId>guava</artifactId>
+  <version>27.0.1-jre</version>
+</dependency>
+<dependency>
   <groupId>com.sun.xml.bind</groupId>
   <artifactId>jaxb-core</artifactId>
   <version>2.3.0</version>
@@ -42,10 +47,5 @@
   <artifactId>slf4j-log4j12</artifactId>
   <version>1.7.25</version>
 </dependency>
-    <dependency>
-      <groupId>com.google.guava</groupId>
-      <artifactId>guava</artifactId>
-      <version>27.0.1-jre</version>
-    </dependency>
   </dependencies>
 </project>
