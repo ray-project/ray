@@ -7,7 +7,7 @@ upscaling_speed: 32
 idle_timeout_minutes: 15
 
 docker:
-    image: anyscale/ray:latest
+    image: rayproject/ray:latest
     container_name: ray_container
     pull_before_run: true
 

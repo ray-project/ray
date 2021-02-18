@@ -62,7 +62,7 @@ DEFAULT_CONFIG = with_common_config({
     # each worker will have a replay buffer of this size.
     "buffer_size": 50000,
     # Whether to LZ4 compress observations
-    "compress_observations": True,
+    "compress_observations": False,
 
     # === Optimization ===
     # Learning rate for adam optimizer

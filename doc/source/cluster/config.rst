@@ -163,7 +163,7 @@ Node config
 .. tabs::
     .. group-tab:: AWS
 
-        A YAML object as defined in `the AWS docs <https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-ec2-instance.html>`_.
+        A YAML object which conforms to the EC2 ``create_instances`` API in `the AWS docs <https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ec2.html#EC2.ServiceResource.create_instances>`_.
 
     .. group-tab:: Azure
 
