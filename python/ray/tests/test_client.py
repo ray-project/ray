@@ -75,7 +75,7 @@ def test_wait(ray_start_regular_shared):
 
         with pytest.raises(Exception):
             # Reference not in the object store.
-            ray.wait([ClientObjectRef("blabla")])
+            ray.wait([ClientObjectRef(b"blabla")])
         with pytest.raises(TypeError):
             ray.wait("blabla")
         with pytest.raises(TypeError):
@@ -273,6 +273,13 @@ def test_stdout_log_stream(ray_start_regular_shared):
         time.sleep(1)
         assert len(log_msgs) == 2
         assert all((msg.find("Hello world") for msg in log_msgs))
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+def test_serializing_exceptions(ray_start_regular_shared):
+    with ray_start_client_server() as ray:
+        with pytest.raises(ValueError):
+            ray.get_actor("abc")
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")

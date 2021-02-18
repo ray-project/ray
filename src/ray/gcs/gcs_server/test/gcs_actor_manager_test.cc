@@ -35,8 +35,7 @@ class MockActorScheduler : public gcs::GcsActorSchedulerInterface {
 
   MOCK_METHOD1(CancelOnNode, std::vector<ActorID>(const NodeID &node_id));
   MOCK_METHOD2(CancelOnWorker, ActorID(const NodeID &node_id, const WorkerID &worker_id));
-  MOCK_METHOD3(CancelOnLeasing, void(const NodeID &node_id, const ActorID &actor_id,
-                                     const TaskID &task_id));
+  MOCK_METHOD2(CancelOnLeasing, void(const NodeID &node_id, const ActorID &actor_id));
 
   std::vector<std::shared_ptr<gcs::GcsActor>> actors;
 };
@@ -736,10 +735,8 @@ TEST_F(GcsActorManagerTest, TestRaceConditionCancelLease) {
   address.set_raylet_id(node_id.Binary());
   address.set_worker_id(worker_id.Binary());
   actor->UpdateAddress(address);
-  const auto &actor_id = actor->GetActorID();
-  const auto &task_id =
-      TaskID::FromBinary(registered_actor->GetActorTableData().task_spec().task_id());
-  EXPECT_CALL(*mock_actor_scheduler_, CancelOnLeasing(node_id, actor_id, task_id));
+  const auto actor_id = actor->GetActorID();
+  EXPECT_CALL(*mock_actor_scheduler_, CancelOnLeasing(node_id, actor_id));
   gcs_actor_manager_->OnWorkerDead(owner_node_id, owner_worker_id);
 }
 
