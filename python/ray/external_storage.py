@@ -326,16 +326,25 @@ class ExternalStorageSmartOpenImpl(ExternalStorage):
         except ModuleNotFoundError as e:
             raise ModuleNotFoundError(
                 "Smart open is chosen to be a object spilling "
-                "external storage, but smart_open "
+                "external storage, but smart_open and boto3 "
                 f"is not downloaded. Original error: {e}")
 
         self.uri = uri.strip("/")
         self.prefix = prefix
         self.override_transport_params = override_transport_params or {}
-        # smart_open always seek to 0 if we don't set this argument.
-        # This will lead us to call a Object.get when it is not necessary,
-        # so defer seek and call seek before reading objects instead.
-        self.transport_params = {"defer_seek": True}
+        self.is_for_s3 = uri.startswith("s3")
+
+        if self.is_for_s3:
+            import boto3  # noqa
+            # Setup boto3. It is essential because if we don't create boto
+            # session, smart_open will create a new session for every
+            # open call.
+            self.s3 = boto3.resource(service_name="s3")
+
+            # smart_open always seek to 0 if we don't set this argument.
+            # This will lead us to call a Object.get when it is not necessary,
+            # so defer seek and call seek before reading objects instead.
+            self.transport_params = {"defer_seek": True, "resource": self.s3}
         self.transport_params.update(self.override_transport_params)
 
     def spill_objects(self, object_refs, owner_addresses) -> List[str]:

@@ -131,4 +131,9 @@ class DataClient:
                       request: ray_client_pb2.ReleaseRequest,
                       context=None) -> None:
         datareq = ray_client_pb2.DataRequest(release=request, )
-        self.request_queue.put(datareq)
+        # TODO: Make this nonblocking. There's a race here for named
+        # actors
+        # a = Actor.options(name="a", lifetime="detached").remote()
+        # del a
+        # b = ray.get_actor("a")
+        self._blocking_send(datareq)

@@ -45,7 +45,7 @@ object. In any case, Ray Tune will try to start a placement group for each trial
 Tune will allocate the specified GPU and CPU from ``resources_per_trial`` to each individual trial.
 Even if the trial cannot be scheduled right now, Ray Tune will still try to start
 the respective placement group. If not enough resources are available, this will trigger
-:ref:`autoscaling behavior<ref-autoscaling>` if you're using the Ray cluster launcher.
+:ref:`autoscaling behavior<cluster-index>` if you're using the Ray cluster launcher.
 
 If your trainable function starts more remote workers, you will need to pass placement groups
 factory objects to request these resources. See the
@@ -276,7 +276,7 @@ You can restore a single trial checkpoint by using ``tune.run(restore=<checkpoin
 Distributed Checkpointing
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
-On a multinode cluster, Tune automatically creates a copy of all trial checkpoints on the head node. This requires the Ray cluster to be started with the :ref:`cluster launcher <ref-automatic-cluster>` and also requires rsync to be installed.
+On a multinode cluster, Tune automatically creates a copy of all trial checkpoints on the head node. This requires the Ray cluster to be started with the :ref:`cluster launcher <cluster-cloud>` and also requires rsync to be installed.
 
 Note that you must use the ``tune.checkpoint_dir`` API to trigger syncing. Also, if running Tune on Kubernetes, be sure to use the :ref:`KubernetesSyncer <tune-kubernetes>` to transfer files between different pods.
 

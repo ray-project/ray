@@ -344,10 +344,7 @@ def test_initialized_local_mode(shutdown_only_with_initialization_check):
 
 
 def test_wait_reconstruction(shutdown_only):
-    ray.init(
-        num_cpus=1,
-        object_store_memory=int(10**8),
-        _system_config={"object_pinning_enabled": 0})
+    ray.init(num_cpus=1, object_store_memory=int(10**8))
 
     @ray.remote
     def f():
