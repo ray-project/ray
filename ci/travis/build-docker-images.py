@@ -359,7 +359,9 @@ if __name__ == "__main__":
             freshly_built = build_or_pull_base_images(is_docker_affected)
             build_ray()
             build_ray_ml()
-            push_and_tag_images(freshly_built)
+
+            if not os.environ.get("BUILDKITE"):  # Skipping push on buildkite
+                push_and_tag_images(freshly_built)
             # TODO(ilr) Re-Enable Push READMEs by using a normal password
             # (not auth token :/)
             # push_readmes()
