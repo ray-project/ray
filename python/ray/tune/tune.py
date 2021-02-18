@@ -365,12 +365,6 @@ def run(
             "The `mode` parameter passed to `tune.run()` has to be one of "
             "['min', 'max']")
 
-    if scheduler is not None and isinstance(scheduler,
-                                            PopulationBasedTraining) and \
-            search_alg is not None:
-        raise ValueError("Search algorithms cannot be used with PBT or PB2 "
-                         "schedulers. Please remove {}.".format(search_alg))
-
     set_verbosity(verbose)
 
     config = config or {}

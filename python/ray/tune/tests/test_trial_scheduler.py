@@ -20,6 +20,7 @@ from ray.tune.schedulers import (FIFOScheduler, HyperBandScheduler,
 
 from ray.tune.schedulers.pbt import explore, PopulationBasedTrainingReplay
 from ray.tune.suggest import Searcher
+from ray.tune.suggest._mock import _MockSearcher
 from ray.tune.trial import Trial, Checkpoint
 from ray.tune.trial_executor import TrialExecutor
 from ray.tune.resources import Resources
@@ -236,6 +237,7 @@ class _MockTrialExecutor(TrialExecutor):
 class _MockTrialRunner():
     def __init__(self, scheduler):
         self._scheduler_alg = scheduler
+        self.search_alg = None
         self.trials = []
         self.trial_executor = _MockTrialExecutor()
 
@@ -854,7 +856,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
                 mock_train,
                 config={"x": 1},
                 scheduler=pbt,
-                search_alg=Searcher())
+                search_alg=_MockSearcher())
 
     def testMetricError(self):
         pbt, runner = self.basicSetup()

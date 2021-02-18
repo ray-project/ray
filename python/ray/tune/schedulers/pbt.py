@@ -319,6 +319,12 @@ class PopulationBasedTraining(FIFOScheduler):
 
     def on_trial_add(self, trial_runner: "trial_runner.TrialRunner",
                      trial: Trial):
+        if trial_runner.search_alg is not None:
+            raise ValueError("Search algorithms cannot be used with {} "
+                             "schedulers. Please remove {}.".format(
+                                 self.__class__.__name__,
+                                 trial_runner.search_alg))
+
         if not self._metric or not self._metric_op:
             raise ValueError(
                 "{} has been instantiated without a valid `metric` ({}) or "
