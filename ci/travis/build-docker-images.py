@@ -38,8 +38,8 @@ def _merge_build():
 
 
 def _release_build():
-    branch = os.environ.get("TRAVIS_BRANCH",
-                            os.environ.get("BUILDKITE_BRANCH"))
+    branch = (os.environ.get("TRAVIS_BRANCH")
+              or os.environ.get("BUILDKITE_BRANCH"))
     if not branch:
         print("Branch not found!")
         print(os.environ)

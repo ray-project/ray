@@ -1,11 +1,8 @@
 import argparse
 import os
-from pprint import pprint
 from collections import OrderedDict
 
-from aws_requests_auth.aws_auth import AWSRequestsAuth
 from aws_requests_auth.boto_utils import BotoAWSRequestsAuth
-import boto3
 import requests
 
 parser = argparse.ArgumentParser(
