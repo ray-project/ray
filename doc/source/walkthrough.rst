@@ -92,8 +92,8 @@ Ray enables arbitrary functions to be executed asynchronously. These asynchronou
 
       @ray.remote
       def slow_function():
-        time.sleep(10)
-        return 1
+          time.sleep(10)
+          return 1
 
       # Invocations of Ray remote functions happen in parallel.
       # All computation is performed in the background, driven by Ray's internal event loop.

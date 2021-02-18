@@ -179,6 +179,7 @@ In the output of ``ray memory``, we see that the second object displays as a nor
 
 Object Spilling
 ---------------
+.. _object-spilling:
 
 Ray 1.3+ spills objects to external storage once the object store is full. By default, objects are spilled to the local filesystem.
 To configure the directory where objects are placed, use:
