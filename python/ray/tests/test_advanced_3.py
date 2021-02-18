@@ -134,10 +134,12 @@ def test_load_balancing_under_constrained_memory(ray_start_cluster):
     for _ in range(num_nodes):
         cluster.add_node(
             num_cpus=num_cpus,
+            memory=(num_cpus - 2) * object_size,
             object_store_memory=(num_cpus - 2) * object_size)
     cluster.add_node(
         num_cpus=0,
         resources={"custom": 1},
+        memory=(num_tasks + 1) * object_size,
         object_store_memory=(num_tasks + 1) * object_size)
     ray.init(address=cluster.address)
 
