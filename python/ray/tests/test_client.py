@@ -276,6 +276,13 @@ def test_stdout_log_stream(ray_start_regular_shared):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+def test_serializing_exceptions(ray_start_regular_shared):
+    with ray_start_client_server() as ray:
+        with pytest.raises(ValueError):
+            ray.get_actor("abc")
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_create_remote_before_start(ray_start_regular_shared):
     """Creates remote objects (as though in a library) before
     starting the client.
