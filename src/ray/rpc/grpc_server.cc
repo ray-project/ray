@@ -59,7 +59,7 @@ void GrpcServer::Run() {
     }
     // Build and start server.
     server_ = builder.BuildAndStart();
-    if (port_ > 0) {
+    if (server_) {
       break;
     }
     std::this_thread::sleep_for(std::chrono::milliseconds(
@@ -68,8 +68,8 @@ void GrpcServer::Run() {
   }
 
   // If the grpc server failed to bind the port, the `port_` will be set to 0.
-  RAY_CHECK(port_ > 0)
-      << "Port " << specified_port
+  RAY_CHECK(server_ && port_ > 0)
+      << "Failed to start the grpc server. Port " << specified_port
       << " specified by caller already in use. Try passing node_manager_port=... into "
          "ray.init() to pick a specific port";
   RAY_LOG(INFO) << name_ << " server started, listening on port " << port_ << ".";
