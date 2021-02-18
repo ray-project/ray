@@ -16,21 +16,56 @@ GLOO_REDUCE_OP_MAP = {
 
 # cupy types are the same with numpy types
 NUMPY_GLOO_DTYPE_MAP = {
-    numpy.uint8: pygloo.glooDataType_t.glooUint8,
+    # INT types
+    numpy.int: pygloo.glooDataType_t.glooInt8,
+    numpy.uint8: pygloo.glooDataType_t.glooUInt8,
+    numpy.uint32: pygloo.glooDataType_t.glooUInt32,
+    numpy.uint64: pygloo.glooDataType_t.glooUInt64,
+    numpy.int8: pygloo.glooDataType_t.glooInt8,
+    numpy.int32: pygloo.glooDataType_t.glooInt32,
+    numpy.int64: pygloo.glooDataType_t.glooInt64,
+    # FLOAT types
+    numpy.half: pygloo.glooDataType_t.glooFloat16,
+    numpy.float: pygloo.glooDataType_t.glooFloat64,
     numpy.float16: pygloo.glooDataType_t.glooFloat16,
     numpy.float32: pygloo.glooDataType_t.glooFloat32,
     numpy.float64: pygloo.glooDataType_t.glooFloat64,
+    numpy.double: pygloo.glooDataType_t.glooFloat64,
 }
 
 if torch_available():
     import torch
     TORCH_GLOO_DTYPE_MAP = {
-        torch.uint8: pygloo.glooDataType_t.glooUint8,
+        torch.int: pygloo.glooDataType_t.glooInt8,
+        torch.uint8: pygloo.glooDataType_t.glooUInt8,
+        torch.int8: pygloo.glooDataType_t.glooInt8,
+        torch.uint32: pygloo.glooDataType_t.glooUInt32,
+        torch.uint64: pygloo.glooDataType_t.glooUInt64,
+        torch.long: pygloo.glooDataType_t.glooInt64,
+        # FLOAT types
+        torch.half: pygloo.glooDataType_t.glooFloat16,
+        torch.float: pygloo.glooDataType_t.glooFloat64,
         torch.float16: pygloo.glooDataType_t.glooFloat16,
         torch.float32: pygloo.glooDataType_t.glooFloat32,
         torch.float64: pygloo.glooDataType_t.glooFloat64,
+        torch.double: pygloo.glooDataType_t.glooFloat64,
     }
 
+    TORCH_NUMPY_DTYPE_MAP = {
+        # INT types
+        torch.int: numpy.int,
+        torch.uint8: numpy.uint8,
+        torch.int8: numpy.int8,
+        torch.int32: numpy.int32,
+        torch.int64: numpy.int64,
+        torch.long: numpy.int64,
+        # FLOAT types
+        torch.half: numpy.half,
+        torch.float: numpy.float,
+        torch.float16: numpy.float16,
+        torch.float32: numpy.float32,
+        torch.float64: numpy.float64,
+    }
 
 # def get_gloo_build_version():
 #     return get_build_version()
@@ -76,7 +111,10 @@ def get_gloo_tensor_dtype(tensor):
         return NUMPY_GLOO_DTYPE_MAP[tensor.dtype.type]
     if torch_available():
         if isinstance(tensor, torch.Tensor):
-            return TORCH_GLOO_DTYPE_MAP[tensor.dtype]
+            if tensor.device == "cpu":
+                return TORCH_GLOO_DTYPE_MAP[tensor.dtype]
+            else:
+                raise ValueError("Got gpu tensor. But gloo only accept cpu tensor.")
     raise ValueError("Unsupported tensor type. "
                      "Got: {}.".format(type(tensor)))
 
