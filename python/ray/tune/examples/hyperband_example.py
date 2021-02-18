@@ -58,7 +58,7 @@ if __name__ == "__main__":
     analysis = tune.run(
         MyTrainableClass,
         name="hyperband_test",
-        num_samples=100,
+        num_samples=20 if args.smoke_test else 200,
         metric="episode_reward_mean",
         mode="max",
         stop={"training_iteration": 1 if args.smoke_test else 200},
