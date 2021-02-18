@@ -153,8 +153,18 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) 
       // activating this pull bundle.
       break;
     }
+  }
 
-    next_request_it->second.inactive_due_to_oom = false;
+  // Check whether we are at memory capacity.
+  if (num_bytes_being_pulled_ >= num_bytes_available_) {
+    // We have at least as many pull requests queued than we do memory
+    // capacity.
+    at_memory_capacity_ = true;
+  } else {
+    // We can potentially serve another pull request. There may actually be
+    // more requests in the queue, since we do not serve requests until we have
+    // the object size information.
+    at_memory_capacity_ = false;
   }
 
   std::unordered_set<ObjectID> object_ids_to_cancel;
@@ -167,12 +177,10 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) 
     const auto last_request_it = pull_request_bundles_.find(highest_req_id_being_pulled_);
     RAY_CHECK(last_request_it != pull_request_bundles_.end());
     DeactivatePullBundleRequest(last_request_it, &object_ids_to_cancel);
-    // This request put us over the threshold. Mark is as inactive due to lack
-    // of memory.
-    last_request_it->second.inactive_due_to_oom = true;
   }
+
   for (const auto &obj_id : object_ids_to_cancel) {
-    // Call the cancellation callback outside of the lock.
+    // Call the cancellation callbacks outside of the lock.
     cancel_pull_request_(obj_id);
   }
 
@@ -450,9 +458,13 @@ bool PullManager::IsObjectActive(const ObjectID &object_id) const {
 }
 
 bool PullManager::IsPullRequestInactiveDueToOom(uint64_t request_id) const {
-  auto it = pull_request_bundles_.find(request_id);
-  RAY_CHECK(it != pull_request_bundles_.end());
-  return it->second.inactive_due_to_oom;
+  // We are at capacity and this request is in the suffix of the queue that is
+  // not being pulled.
+  // NOTE(swang): Because pull bundle requests can overlap and are served in
+  // the order that they are received, it is actually possible that this
+  // request could be served and that its requested objects are even local
+  // already.
+  return at_memory_capacity_ && request_id > highest_req_id_being_pulled_;
 }
 
 std::string PullManager::DebugString() const {

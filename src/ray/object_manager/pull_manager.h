@@ -140,8 +140,6 @@ class PullManager {
     // the objects may overlap with another request, so the actual amount of
     // memory needed to activate this request may be less than this amount.
     size_t num_bytes_needed = 0;
-    // Whether this request was inactivated due to lack of memory.
-    bool inactive_due_to_oom = false;
 
     void RegisterObjectSize(size_t object_size) {
       RAY_CHECK(num_object_sizes_missing > 0);
@@ -244,6 +242,10 @@ class PullManager {
   /// than the bytes available.
   absl::flat_hash_map<ObjectID, absl::flat_hash_set<uint64_t>>
       active_object_pull_requests_ GUARDED_BY(active_objects_mu_);
+
+  /// Whether there are requests in the queue that cannot be pulled because we
+  /// are at memory capacity.
+  bool at_memory_capacity_ = false;
 
   /// Internally maintained random number generator.
   std::mt19937_64 gen_;
