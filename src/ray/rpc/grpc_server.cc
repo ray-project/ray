@@ -67,7 +67,6 @@ void GrpcServer::Run() {
     num_retries--;
   }
 
-  // If the grpc server failed to bind the port, the `port_` will be set to 0.
   std::ostringstream ss;
   if (!server_) {
     ss << "Failed to start the grpc server.";
