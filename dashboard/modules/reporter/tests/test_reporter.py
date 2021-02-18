@@ -104,7 +104,7 @@ def test_prometheus_physical_stats_record(enable_test_module, shutdown_only):
         components_dict, metric_names, metric_samples = fetch_prometheus(
             prom_addresses)
         return all([
-            "ray_node_cpu" in metric_names,
+            "ray_node_cpu_utilization" in metric_names,
             "ray_node_cpu_count" in metric_names,
             "ray_node_mem" in metric_names, "ray_raylet_cpu" in metric_names,
             "ray_raylet_mem" in metric_names,

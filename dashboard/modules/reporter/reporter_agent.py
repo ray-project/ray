@@ -74,7 +74,7 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
                     f"{self._dashboard_agent.node_id}"
         # A list of gauges to record and export metrics.
         self._gauges = {
-            "node_cpu_utilization": Gauge("node_cpu",
+            "node_cpu_utilization": Gauge("node_cpu_utilization",
                                           "Total CPU usage on a ray node",
                                           "percentage", ["ip"]),
             "node_cpu_count": Gauge("node_cpu_count",
@@ -343,6 +343,7 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
                 gauge=self._gauges["node_gram_available"],
                 value=gram_available,
                 tags={"ip": ip})
+
         # -- Disk per node --
         used, free = 0, 0
         for entry in stats["disk"].values():
