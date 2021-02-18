@@ -50,6 +50,7 @@ public class PlacementGroupCreationOptions {
      * @return self
      */
     public Builder setName(String name) {
+      Preconditions.checkState(this.name == null, "Repeated assigned for the name is not allowed!");
       this.name = name;
       this.global = false;
       return this;
@@ -65,6 +66,7 @@ public class PlacementGroupCreationOptions {
      * @return self
      */
     public Builder setGlobalName(String name) {
+      Preconditions.checkState(this.name == null, "Repeated assigned for the name is not allowed!");
       this.name = name;
       this.global = true;
       return this;

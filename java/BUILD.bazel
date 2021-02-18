@@ -44,6 +44,7 @@ define_java_module(
         "@maven//:javax_xml_bind_jaxb_api",
         "@maven//:log4j_log4j",
         "@maven//:org_slf4j_slf4j_log4j12",
+        "@maven//:com_google_guava_guava",
     ],
 )
 
