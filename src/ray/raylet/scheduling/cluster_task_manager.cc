@@ -236,16 +236,18 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
   }
 }
 
-void ClusterTaskManager::RemoveTaskDependencies(const TaskSpecification &task_spec) {
+std::list<TaskID>::iterator ClusterTaskManager::RemoveTaskDependencies(
+    const TaskSpecification &task_spec) {
   if (task_spec.GetDependencies().empty()) {
-    return;
+    return tasks_with_dependencies_queue_.end();
   }
 
   task_dependency_manager_.RemoveTaskDependencies(task_spec.TaskId());
   auto it = tasks_with_dependencies_queue_index_.find(task_spec.TaskId());
   RAY_CHECK(it != tasks_with_dependencies_queue_index_.end());
-  tasks_with_dependencies_queue_.erase(it->second);
+  auto queue_it = tasks_with_dependencies_queue_.erase(it->second);
   tasks_with_dependencies_queue_index_.erase(it);
+  return queue_it;
 }
 
 bool ClusterTaskManager::AttemptDispatchWork(const Work &work,
@@ -424,9 +426,7 @@ bool ClusterTaskManager::CancelTask(const TaskID &task_id) {
     const auto &task = std::get<0>(iter->second);
     RemoveFromBacklogTracker(task);
     ReplyCancelled(iter->second);
-    if (!task.GetTaskSpecification().GetDependencies().empty()) {
-      task_dependency_manager_.RemoveTaskDependencies(task_id);
-    }
+    RemoveTaskDependencies(task.GetTaskSpecification());
     waiting_tasks_.erase(iter);
 
     return true;
@@ -887,26 +887,27 @@ bool ClusterTaskManager::ReturnCpuResourcesToBlockedWorker(
 void ClusterTaskManager::ScheduleAndDispatchTasks() {
   SchedulePendingTasks();
   DispatchScheduledTasksToWorkers(worker_pool_, leased_workers_);
-  SpillWaitingTaskIfNeeded();
+  SpillWaitingTasksIfAtMemoryCapacity();
 }
 
-void ClusterTaskManager::SpillWaitingTaskIfNeeded() {
-  if (at_memory_capacity_()) {
-    return;
-  }
-
+void ClusterTaskManager::SpillWaitingTasksIfAtMemoryCapacity() {
   RAY_LOG(DEBUG) << "Node is at memory capacity for task arguments. Trying to find a "
                     "task to spill to a different node";
-  // Spill back at most one task from the waiting task set, starting from the
-  // back of the task queue.
+  // Iterate over the task queue in reverse order and try to spill waiting
+  // tasks to a remote node until we run out of tasks to spill, we run out of
+  // remote resources, or we are no longer at memory capacity.
+  // NOTE(swang): We do not iterate by scheduling class here, so if we break
+  // due to lack of remote resources, it is possible that a waiting task that
+  // is earlier in the queue could have been scheduled to a remote node.
   auto it = tasks_with_dependencies_queue_.end();
-  while (it != tasks_with_dependencies_queue_.begin()) {
+  while (at_memory_capacity_() && it != tasks_with_dependencies_queue_.begin()) {
     it--;
     const auto &task_id = *it;
     auto work_it = waiting_tasks_.find(task_id);
     if (work_it == waiting_tasks_.end()) {
       continue;
     }
+    RAY_LOG(DEBUG) << "Last waiting task in queue is " << task_id;
     if (!task_dependency_manager_.TaskDependenciesBlockedDueToOom(task_id)) {
       // The last task that is waiting for dependencies in the queue is not
       // blocked due to out-of-memory. Therefore, all tasks before it are also
@@ -914,6 +915,8 @@ void ClusterTaskManager::SpillWaitingTaskIfNeeded() {
       break;
     }
 
+    RAY_LOG(DEBUG) << "Attempting to spill back waiting task " << task_id
+                   << " to remote node";
     // This task's dependencies are not being pulled due to lack of memory.
     // Force the task onto a remote node, if a feasible one exists.
     // TODO(swang): The policy currently does not account for object store
@@ -929,11 +932,10 @@ void ClusterTaskManager::SpillWaitingTaskIfNeeded() {
         /*force_spillback=*/true, &_unused, &is_infeasible);
     if (!node_id_string.empty()) {
       NodeID node_id = NodeID::FromBinary(node_id_string);
-      RAY_LOG(DEBUG) << "Spilling task " << task_id
-                     << " that was waiting for arguments to node " << node_id;
       Spillback(node_id, work_it->second);
+      it = RemoveTaskDependencies(task.GetTaskSpecification());
       waiting_tasks_.erase(work_it);
-      // Spill at most one task.
+    } else {
       break;
     }
   }

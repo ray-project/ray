@@ -161,7 +161,8 @@ bool DependencyManager::RequestTaskDependencies(
     const TaskID &task_id, const std::vector<rpc::ObjectReference> &required_objects) {
   RAY_LOG(DEBUG) << "Adding dependencies for task " << task_id;
   auto inserted = queued_task_requests_.emplace(task_id, required_objects);
-  RAY_CHECK(inserted.second) << "Task depedencies can be requested only once per task.";
+  RAY_CHECK(inserted.second) << "Task depedencies can be requested only once per task. "
+                             << task_id;
   auto &task_entry = inserted.first->second;
 
   for (const auto &ref : required_objects) {

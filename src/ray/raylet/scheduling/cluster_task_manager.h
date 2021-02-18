@@ -195,9 +195,12 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
       WorkerPoolInterface &worker_pool,
       std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers);
 
-  /// Spillback a task that is waiting for its dependencies, if we currently do
-  /// not have enough memory on the local node to fetch them.
-  void SpillWaitingTaskIfNeeded();
+  // As long as we are at memory capacity on this node, spill back as many
+  // waiting tasks as we can whose dependencies are blocked due to lack of
+  // memory.
+  /// TODO(swang): Call from outside the ClusterTaskManager, when we first hit
+  /// memory capacity?
+  void SpillWaitingTasksIfAtMemoryCapacity();
 
   /// Helper method to try dispatching a single task from the queue to an
   /// available worker. Returns whether the task should be removed from the
@@ -211,7 +214,7 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
 
   /// Helper to remove any dependencies for a task that is no longer scheduled
   /// locally.
-  void RemoveTaskDependencies(const TaskSpecification &task_spec);
+  std::list<TaskID>::iterator RemoveTaskDependencies(const TaskSpecification &task_spec);
 
   const NodeID &self_node_id_;
   std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
