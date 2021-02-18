@@ -327,6 +327,7 @@ PlasmaError PlasmaStore::CreateObject(const ObjectID &object_id,
   eviction_policy_.ObjectCreated(object_id, client.get(), true);
   // Record that this client is using this object.
   AddToClientObjectIds(object_id, store_info_.objects[object_id].get(), client);
+  num_objects_unsealed_++;
   num_bytes_unsealed_ += data_size + metadata_size;
   return PlasmaError::OK;
 }
@@ -625,6 +626,7 @@ void PlasmaStore::SealObjects(const std::vector<ObjectID> &object_ids) {
     object_info.metadata_size = entry->metadata_size;
     infos.push_back(object_info);
 
+    num_objects_unsealed_--;
     num_bytes_unsealed_ -= entry->data_size + entry->metadata_size;
   }
 
@@ -648,6 +650,7 @@ int PlasmaStore::AbortObject(const ObjectID &object_id,
     return 0;
   } else {
     // The client requesting the abort is the creator. Free the object.
+    num_objects_unsealed_--;
     EraseFromObjectTable(object_id);
     client->object_ids.erase(it);
     return 1;

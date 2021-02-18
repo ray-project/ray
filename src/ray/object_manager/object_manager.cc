@@ -324,7 +324,7 @@ void ObjectManager::HandleReceiveFinished(const ObjectID &object_id,
   // Encode the object ID, node ID, chunk index as a json list,
   // which will be parsed by the reader of the profile table.
   profile_event.set_extra_data("[\"" + object_id.Hex() + "\",\"" + node_id.Hex() + "\"," +
-                               std::to_string(chunk_index) + "\"]");
+                               std::to_string(chunk_index) + "]");
 
   std::lock_guard<std::mutex> lock(profile_mutex_);
   profile_events_.push_back(profile_event);
