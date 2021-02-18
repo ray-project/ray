@@ -60,12 +60,9 @@ fi
 # NOTE(kfstrom): Java test troubleshooting only.
 # Set MAX_ROUNDS to a big number (e.g. 1000) to run Java tests repeatedly.
 # You may also want to modify java/testng.xml to run only a subset of test cases.
-MAX_ROUNDS=1000
+MAX_ROUNDS=1
 if [ $MAX_ROUNDS -gt 1 ]; then
   export RAY_BACKEND_LOG_LEVEL=debug
-  # https://stackoverflow.com/questions/54440181/using-address-sanitizer-with-surefire
-  export ASAN_OPTIONS="handle_segv=0:detect_leaks=0"
-  export LD_PRELOAD=/usr/lib/gcc/x86_64-linux-gnu/7/libasan.so
 fi
 
 round=1
