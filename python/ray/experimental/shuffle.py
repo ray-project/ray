@@ -82,6 +82,42 @@ def round_robin_partitioner(input_stream: Iterable[InType], num_partitions: int
         i %= num_partitions
 
 
+@ray.remote
+class _StatusTracker:
+    def __init__(self):
+        self.num_map = 0
+        self.num_reduce = 0
+
+    def inc(self):
+        self.num_map += 1
+
+    def inc2(self):
+        self.num_reduce += 1
+
+    def get_progress(self):
+        return self.num_map, self.num_reduce
+
+
+def render_progress_bar(tracker, input_num_partitions, output_num_partitions):
+    from tqdm import tqdm
+    num_map = 0
+    num_reduce = 0
+    map_bar = tqdm(total=input_num_partitions, position=0)
+    map_bar.set_description("Map Progress.")
+    reduce_bar = tqdm(total=output_num_partitions, position=1)
+    reduce_bar.set_description("Reduce Progress.")
+
+    while (num_map < input_num_partitions
+           or num_reduce < output_num_partitions):
+        new_num_map, new_num_reduce = ray.get(tracker.get_progress.remote())
+        map_bar.update(new_num_map - num_map)
+        reduce_bar.update(new_num_reduce - num_reduce)
+        num_map = new_num_map
+        num_reduce = new_num_reduce
+    map_bar.close()
+    reduce_bar.close()
+
+
 def simple_shuffle(
         *,
         input_reader: Callable[[PartitionID], Iterable[InType]],
@@ -91,7 +127,7 @@ def simple_shuffle(
         partitioner: Callable[[Iterable[InType], int], Iterable[
             PartitionID]] = round_robin_partitioner,
         object_store_writer: ObjectStoreWriter = ObjectStoreWriter,
-) -> List[OutType]:
+        tracker: _StatusTracker = None) -> List[OutType]:
     """Simple distributed shuffle in Ray.
 
     Args:
@@ -139,22 +175,11 @@ def simple_shuffle(
         for j in range(output_num_partitions)
     ]
 
+    if tracker:
+        render_progress_bar(tracker, input_num_partitions,
+                            output_num_partitions)
+
     return ray.get(shuffle_reduce_out)
-
-
-@ray.remote
-class _StatusTracker:
-    def __init__(self):
-        self.num_map = 0
-        self.num_reduce = 0
-
-    def inc(self):
-        self.num_map += 1
-        print("Num map tasks finished", self.num_map)
-
-    def inc2(self):
-        self.num_reduce += 1
-        print("Num reduce tasks finished", self.num_reduce)
 
 
 def main():
@@ -200,7 +225,8 @@ def main():
         input_reader=input_reader,
         input_num_partitions=num_partitions,
         output_num_partitions=num_partitions,
-        output_writer=output_writer)
+        output_writer=output_writer,
+        tracker=tracker)
     delta = time.time() - start
 
     time.sleep(.5)
