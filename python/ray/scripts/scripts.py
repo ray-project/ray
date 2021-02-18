@@ -1319,12 +1319,12 @@ export IFS="
 # Call sudo to prompt for password before anything has been printed.
 sudo true
 workers=$(
-    ps aux | grep -E ' ray::|default_worker.py' | grep -v raylet | grep -v grep
+    ps aux | grep -E ' ray_|default_worker.py' | grep -v grep
 )
 for worker in $workers; do
     echo "Stack dump for $worker";
     pid=`echo $worker | awk '{print $2}'`;
-    sudo $pyspy dump --pid $pid --native;
+    sudo $pyspy dump --pid $pid;
     echo;
 done
     """
