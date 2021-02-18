@@ -153,6 +153,8 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) 
       // activating this pull bundle.
       break;
     }
+
+    next_request_it->second.inactive_due_to_oom = false;
   }
 
   std::unordered_set<ObjectID> object_ids_to_cancel;
@@ -165,6 +167,9 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) 
     const auto last_request_it = pull_request_bundles_.find(highest_req_id_being_pulled_);
     RAY_CHECK(last_request_it != pull_request_bundles_.end());
     DeactivatePullBundleRequest(last_request_it, &object_ids_to_cancel);
+    // This request put us over the threshold. Mark is as inactive due to lack
+    // of memory.
+    last_request_it->second.inactive_due_to_oom = true;
   }
   for (const auto &obj_id : object_ids_to_cancel) {
     // Call the cancellation callback outside of the lock.
@@ -442,6 +447,12 @@ int PullManager::NumActiveRequests() const { return object_pull_requests_.size()
 bool PullManager::IsObjectActive(const ObjectID &object_id) const {
   absl::MutexLock lock(&active_objects_mu_);
   return active_object_pull_requests_.count(object_id) == 1;
+}
+
+bool PullManager::IsPullRequestInactiveDueToOom(uint64_t request_id) const {
+  auto it = pull_request_bundles_.find(request_id);
+  RAY_CHECK(it != pull_request_bundles_.end());
+  return it->second.inactive_due_to_oom;
 }
 
 std::string PullManager::DebugString() const {

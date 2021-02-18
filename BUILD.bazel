@@ -835,7 +835,7 @@ cc_test(
     ],
     copts = COPTS,
     deps = [
-        ":raylet_lib",
+        ":object_manager",
         "@com_google_googletest//:gtest_main",
     ],
 )

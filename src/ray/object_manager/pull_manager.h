@@ -105,6 +105,8 @@ class PullManager {
 
   bool IsObjectActive(const ObjectID &object_id) const;
 
+  bool IsPullRequestInactiveDueToOom(uint64_t request_id) const;
+
   std::string DebugString() const;
 
  private:
@@ -138,7 +140,8 @@ class PullManager {
     // the objects may overlap with another request, so the actual amount of
     // memory needed to activate this request may be less than this amount.
     size_t num_bytes_needed = 0;
-    bool active = false;
+    // Whether this request was inactivated due to lack of memory.
+    bool inactive_due_to_oom = false;
 
     void RegisterObjectSize(size_t object_size) {
       RAY_CHECK(num_object_sizes_missing > 0);
