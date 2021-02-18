@@ -198,50 +198,36 @@ NodeManager::NodeManager(boost::asio::io_service &io_service, const NodeID &self
   RAY_CHECK_OK(object_manager_.SubscribeObjDeleted(
       [this](const ObjectID &object_id) { HandleObjectMissing(object_id); }));
 
-  if (RayConfig::instance().new_scheduler_enabled()) {
-    SchedulingResources &local_resources = cluster_resource_map_[self_node_id_];
-    cluster_resource_scheduler_ =
-        std::shared_ptr<ClusterResourceScheduler>(new ClusterResourceScheduler(
-            self_node_id_.Binary(),
-            local_resources.GetTotalResources().GetResourceMap()));
+  SchedulingResources &local_resources = cluster_resource_map_[self_node_id_];
+  cluster_resource_scheduler_ =
+      std::shared_ptr<ClusterResourceScheduler>(new ClusterResourceScheduler(
+          self_node_id_.Binary(),
+          local_resources.GetTotalResources().GetResourceMap()));
 
-    auto get_node_info_func = [this](const NodeID &node_id) {
-      return gcs_client_->Nodes().Get(node_id);
-    };
-    auto is_owner_alive = [this](const WorkerID &owner_worker_id,
-                                 const NodeID &owner_node_id) {
-      return !(failed_workers_cache_.count(owner_worker_id) > 0 ||
-               failed_nodes_cache_.count(owner_node_id) > 0);
-    };
-    auto announce_infeasible_task = [this](const Task &task) {
-      PublishInfeasibleTaskError(task);
-    };
-    cluster_task_manager_ = std::shared_ptr<ClusterTaskManager>(new ClusterTaskManager(
-        self_node_id_,
-        std::dynamic_pointer_cast<ClusterResourceScheduler>(cluster_resource_scheduler_),
-        dependency_manager_, is_owner_alive, get_node_info_func, announce_infeasible_task,
-        worker_pool_, leased_workers_,
-        [this](const std::vector<ObjectID> &object_ids,
-               std::vector<std::unique_ptr<RayObject>> *results) {
-          return GetObjectsFromPlasma(object_ids, results);
-        }));
-    placement_group_resource_manager_ =
-        std::make_shared<NewPlacementGroupResourceManager>(
-            std::dynamic_pointer_cast<ClusterResourceScheduler>(
-                cluster_resource_scheduler_));
-  } else {
-    cluster_resource_scheduler_ = std::make_shared<OldClusterResourceScheduler>(
-        self_node_id_, local_available_resources_, cluster_resource_map_,
-        gcs_client_->NodeResources().GetLastResourceUsage());
-    cluster_task_manager_ = std::shared_ptr<NodeManager>(this, [](NodeManager *) {
-      // If new scheduler is not enabled, the `cluster_task_manager_` is this NodeManager
-      // itself. So we create a `shared_ptr` that points to `this` and the deleter does
-      // nothing.
-    });
-    placement_group_resource_manager_ =
-        std::make_shared<OldPlacementGroupResourceManager>(
-            local_available_resources_, cluster_resource_map_, self_node_id_);
-  }
+  auto get_node_info_func = [this](const NodeID &node_id) {
+    return gcs_client_->Nodes().Get(node_id);
+  };
+  auto is_owner_alive = [this](const WorkerID &owner_worker_id,
+                               const NodeID &owner_node_id) {
+    return !(failed_workers_cache_.count(owner_worker_id) > 0 ||
+             failed_nodes_cache_.count(owner_node_id) > 0);
+  };
+  auto announce_infeasible_task = [this](const Task &task) {
+    PublishInfeasibleTaskError(task);
+  };
+  cluster_task_manager_ = std::shared_ptr<ClusterTaskManager>(new ClusterTaskManager(
+      self_node_id_,
+      std::dynamic_pointer_cast<ClusterResourceScheduler>(cluster_resource_scheduler_),
+      dependency_manager_, is_owner_alive, get_node_info_func, announce_infeasible_task,
+      worker_pool_, leased_workers_,
+      [this](const std::vector<ObjectID> &object_ids,
+             std::vector<std::unique_ptr<RayObject>> *results) {
+        return GetObjectsFromPlasma(object_ids, results);
+      }));
+  placement_group_resource_manager_ =
+      std::make_shared<NewPlacementGroupResourceManager>(
+          std::dynamic_pointer_cast<ClusterResourceScheduler>(
+              cluster_resource_scheduler_));
 
   RAY_CHECK_OK(store_client_.Connect(config.store_socket_name.c_str()));
   // Run the node manger rpc server.
