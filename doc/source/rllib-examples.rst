@@ -62,8 +62,8 @@ Custom Envs and Models
 Serving and Offline
 -------------------
 
-.. _Unity3D client/server:
-
+- :ref:`Serving RLlib models with Ray Serve <serve-rllib-tutorial>`: Example of using Ray Serve to serve RLlib models
+   with HTTP and JSON interface. **This is the recommended way to expose RLlib for online serving use case**.
 - `Unity3D client/server <https://github.com/ray-project/ray/tree/master/rllib/examples/serving/unity3d_server.py>`__:
    Example of how to setup n distributed Unity3D (compiled) games in the cloud that function as data collecting
    clients against a central RLlib Policy server learning how to play the game.

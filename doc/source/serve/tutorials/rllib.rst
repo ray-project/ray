@@ -7,7 +7,7 @@ In this guide, we will train and deploy a simple Ray RLlib PPO model.
 In particular, we show:
 
 - How to load the model from checkpoint
-- How to parse the JSON request and evaluated in RLlib
+- How to parse the JSON request and evaluate payload in RLlib
 
 Please see the :doc:`../core-apis` to learn more general information about Ray Serve.
 

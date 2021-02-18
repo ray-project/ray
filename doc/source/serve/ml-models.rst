@@ -4,8 +4,6 @@ Serving Machine Learning Models
 
 .. contents::
 
-.. _serve-batching:
-
 Request Batching
 ================
 
