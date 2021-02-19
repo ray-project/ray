@@ -76,7 +76,8 @@ public class ObjectSerializer {
       } else if (Bytes.indexOf(meta, WORKER_EXCEPTION_META) == 0) {
         return new RayWorkerException();
       } else if (Bytes.indexOf(meta, ACTOR_EXCEPTION_META) == 0) {
-        return new RayActorException(IdUtil.getActorIdFromObjectId(objectId));
+        return new RayActorException(
+            IdUtil.getActorIdFromObjectId(objectId), new String(data));
       } else if (Bytes.indexOf(meta, UNRECONSTRUCTABLE_EXCEPTION_META) == 0) {
         return new UnreconstructableException(objectId);
       } else if (Bytes.indexOf(meta, TASK_EXECUTION_EXCEPTION_META) == 0) {

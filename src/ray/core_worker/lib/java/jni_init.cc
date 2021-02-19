@@ -56,6 +56,9 @@ jmethodID java_system_gc;
 jclass java_ray_exception_class;
 jclass java_ray_intentional_system_exit_exception_class;
 
+jclass java_ray_actor_creation_task_exception_class;
+jmethodID java_ray_actor_creation_task_exception_serialize_to_string;
+
 jclass java_jni_exception_util_class;
 jmethodID java_jni_exception_util_get_stack_trace;
 
@@ -182,6 +185,13 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
   java_ray_intentional_system_exit_exception_class =
       LoadClass(env, "io/ray/runtime/exception/RayIntentionalSystemExitException");
 
+  java_ray_actor_creation_task_exception_class =
+      LoadClass(env, "io/ray/runtime/exception/RayActorCreationTaskException");
+
+  java_ray_actor_creation_task_exception_serialize_to_string =
+      env->GetMethodID(java_ray_actor_creation_task_exception_class, "serializeToString",
+                       "()Ljava/lang/String;");
+
   java_jni_exception_util_class = LoadClass(env, "io/ray/runtime/util/JniExceptionUtil");
   java_jni_exception_util_get_stack_trace = env->GetStaticMethodID(
       java_jni_exception_util_class, "getStackTrace",
@@ -294,6 +304,7 @@ void JNI_OnUnload(JavaVM *vm, void *reserved) {
   env->DeleteGlobalRef(java_system_class);
   env->DeleteGlobalRef(java_ray_exception_class);
   env->DeleteGlobalRef(java_ray_intentional_system_exit_exception_class);
+  env->DeleteGlobalRef(java_ray_actor_creation_task_exception_class);
   env->DeleteGlobalRef(java_jni_exception_util_class);
   env->DeleteGlobalRef(java_base_id_class);
   env->DeleteGlobalRef(java_abstract_message_lite_class);

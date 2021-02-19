@@ -97,6 +97,12 @@ extern jclass java_ray_exception_class;
 /// RayIntentionalSystemExitException class
 extern jclass java_ray_intentional_system_exit_exception_class;
 
+/// RayActorCreationTaskException class
+extern jclass java_ray_actor_creation_task_exception_class;
+
+/// serializeToString method of RayActorCreationTaskException
+extern jmethodID java_ray_actor_creation_task_exception_serialize_to_string;
+
 /// JniExceptionUtil class
 extern jclass java_jni_exception_util_class;
 /// getStackTrace method of JniExceptionUtil class
@@ -569,4 +575,11 @@ inline std::string GetActorFullName(bool global, std::string name) {
   return global ? name
                 : ::ray::CoreWorkerProcess::GetCoreWorker().GetCurrentJobId().Hex() +
                       "-" + name;
+}
+
+inline void SerializeActorCreationException(JNIEnv *env, jthrowable creation_exception,
+                                            std::string &exception_str) {
+  jobject exception_jstr = env->CallObjectMethod(
+      creation_exception, java_ray_actor_creation_task_exception_serialize_to_string);
+  exception_str = JavaStringToNativeString(env, static_cast<jstring>(exception_jstr));
 }
