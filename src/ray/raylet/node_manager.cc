@@ -275,6 +275,7 @@ ray::Status NodeManager::RegisterGcs() {
   // ForwardTask will throw exception, because it can't get node info.
   auto on_done = [this](Status status) {
     RAY_CHECK_OK(status);
+    RAY_LOG(INFO) << "Finished subscribing the change of nodes state.";
     // Subscribe to resource changes.
     const auto &resources_changed =
         [this](const rpc::NodeResourceChange &resource_notification) {
@@ -292,7 +293,9 @@ ray::Status NodeManager::RegisterGcs() {
         };
     RAY_CHECK_OK(gcs_client_->NodeResources().AsyncSubscribeToResources(
         /*subscribe_callback=*/resources_changed,
-        /*done_callback=*/nullptr));
+        /*done_callback=*/[](const ray::Status &status) {
+          RAY_LOG(INFO) << "Finished subscribing the change of node resources.";
+        }));
   };
   // Register a callback to monitor new nodes and a callback to monitor removed nodes.
   RAY_RETURN_NOT_OK(
@@ -304,7 +307,10 @@ ray::Status NodeManager::RegisterGcs() {
         ResourceUsageBatchReceived(resource_usage_batch);
       };
   RAY_RETURN_NOT_OK(gcs_client_->NodeResources().AsyncSubscribeBatchedResourceUsage(
-      resource_usage_batch_added, /*done*/ nullptr));
+      resource_usage_batch_added, /*done*/ [](const ray::Status &status) {
+        RAY_CHECK_OK(status);
+        RAY_LOG(INFO) << "Finished subscribing batched resource usage.";
+      }));
 
   // Subscribe to all unexpected failure notifications from the local and
   // remote raylets. Note that this does not include workers that failed due to
@@ -315,7 +321,10 @@ ray::Status NodeManager::RegisterGcs() {
         HandleUnexpectedWorkerFailure(worker_failure_data);
       };
   RAY_CHECK_OK(gcs_client_->Workers().AsyncSubscribeToWorkerFailures(
-      worker_failure_handler, /*done_callback=*/nullptr));
+      worker_failure_handler, /*done_callback=*/[](const ray::Status &status) {
+        RAY_CHECK_OK(status);
+        RAY_LOG(INFO) << "Finished subscribing all workers infos.";
+      }));
 
   // Subscribe to job updates.
   const auto job_subscribe_handler = [this](const JobID &job_id,
@@ -326,8 +335,11 @@ ray::Status NodeManager::RegisterGcs() {
       HandleJobFinished(job_id, job_data);
     }
   };
-  RAY_RETURN_NOT_OK(
-      gcs_client_->Jobs().AsyncSubscribeAll(job_subscribe_handler, nullptr));
+  RAY_RETURN_NOT_OK(gcs_client_->Jobs().AsyncSubscribeAll(
+      job_subscribe_handler, [](const Status &status) {
+        RAY_CHECK_OK(status);
+        RAY_LOG(INFO) << "Finished subscribing all jobs infos.";
+      }));
 
   // Start sending heartbeats to the GCS.
   last_heartbeat_at_ms_ = current_time_ms();
