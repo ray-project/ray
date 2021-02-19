@@ -87,7 +87,7 @@ py_test(
 
 py_test(
     name = "test_function_api",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_function_api.py"],
     deps = [":tune_lib"],
     tags = ["exclusive"],
@@ -432,6 +432,15 @@ py_test(
     name = "genetic_example",
     size = "small",
     srcs = ["examples/genetic_example.py"],
+    deps = [":tune_lib"],
+    tags = ["exclusive", "example"],
+    args = ["--smoke-test"]
+)
+
+py_test(
+    name = "hebo_example",
+    size = "medium",
+    srcs = ["examples/hebo_example.py"],
     deps = [":tune_lib"],
     tags = ["exclusive", "example"],
     args = ["--smoke-test"]
