@@ -181,8 +181,12 @@ class TrainTFMultiGPU:
             # (1) Load data into GPUs.
             num_loaded_tuples = {}
             for policy_id, batch in samples.policy_batches.items():
+                # Not a policy-to-train.
                 if policy_id not in self.policies:
                     continue
+
+                # Decompress SampleBatch, in case some columns are compressed.
+                batch.decompress_if_needed()
 
                 policy = self.workers.local_worker().get_policy(policy_id)
                 policy._debug_vars()

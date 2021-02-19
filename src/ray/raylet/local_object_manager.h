@@ -97,6 +97,9 @@ class LocalObjectManager {
                     std::function<void(const ray::Status &)> callback);
 
   /// Restore a spilled object from external storage back into local memory.
+  /// Note: This is no-op if the same restoration request is in flight or the requested
+  /// object wasn't spilled yet. The caller should ensure to retry object restoration in
+  /// this case.
   ///
   /// \param object_id The ID of the object to restore.
   /// \param object_url The URL where the object is spilled.
@@ -136,6 +139,9 @@ class LocalObjectManager {
   ///
   /// \param Output parameter.
   void FillObjectSpillingStats(rpc::GetNodeStatsReply *reply) const;
+
+  /// Record object spilling stats to metrics.
+  void RecordObjectSpillingStats() const;
 
   std::string DebugString() const;
 

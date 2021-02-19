@@ -386,10 +386,18 @@ void ObjectManager::Push(const ObjectID &object_id, const NodeID &node_id) {
 
     UniqueID push_id = UniqueID::FromRandom();
     push_manager_->StartPush(node_id, object_id, num_chunks, [=](int64_t chunk_id) {
-      SendObjectChunk(push_id, object_id, owner_address, node_id, data_size,
-                      metadata_size, chunk_id, rpc_client, [=](const Status &status) {
-                        push_manager_->OnChunkComplete(node_id, object_id);
-                      });
+      rpc_service_.post([=]() {
+        // Post to the multithreaded RPC event loop so that data is copied
+        // off of the main thread.
+        SendObjectChunk(push_id, object_id, owner_address, node_id, data_size,
+                        metadata_size, chunk_id, rpc_client, [=](const Status &status) {
+                          // Post back to the main event loop because the
+                          // PushManager is thread-safe.
+                          main_service_->post([this, node_id, object_id]() {
+                            push_manager_->OnChunkComplete(node_id, object_id);
+                          });
+                        });
+      });
     });
   } else {
     // Push is best effort, so do nothing here.

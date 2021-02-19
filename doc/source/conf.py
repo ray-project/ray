@@ -169,10 +169,10 @@ sphinx_gallery_conf = {
     "gallery_dirs": ["auto_examples", "tune/tutorials"],
     "ignore_pattern": "../examples/doc_code/",
     "plot_gallery": "False",
+    "min_reported_time": sys.maxsize,
     # "filename_pattern": "tutorial.py",
     # "backreferences_dir": "False",
     # "show_memory': False,
-    # 'min_reported_time': False
 }
 
 for i in range(len(sphinx_gallery_conf["examples_dirs"])):

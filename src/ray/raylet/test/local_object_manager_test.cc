@@ -380,6 +380,11 @@ TEST_F(LocalObjectManagerTest, TestRestoreSpilledObject) {
     objects.push_back(std::move(object));
   }
   manager.PinObjects(object_ids, std::move(objects), owner_address);
+  // Make sure the restore request is no-op and return not found if the object wasn't
+  // spilled yet.
+  manager.AsyncRestoreSpilledObject(
+      object_ids[0], "url0", manager_node_id_,
+      [&](const Status &status) { ASSERT_TRUE(status.ok()); });
 
   manager.SpillObjects(object_ids,
                        [&](const Status &status) mutable { ASSERT_TRUE(status.ok()); });

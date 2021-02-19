@@ -800,15 +800,12 @@ def test_warning_for_too_many_actors(shutdown_only):
         def __init__(self):
             time.sleep(1000)
 
-    # NOTE: We should save actor, otherwise it will be out of scope.
-    actors = [Foo.remote() for _ in range(num_cpus * 3)]
-    assert len(actors) == num_cpus * 3
+    [Foo.remote() for _ in range(num_cpus * 3)]
     errors = get_error_message(p, 1, ray_constants.WORKER_POOL_LARGE_ERROR)
     assert len(errors) == 1
     assert errors[0].type == ray_constants.WORKER_POOL_LARGE_ERROR
 
-    actors = [Foo.remote() for _ in range(num_cpus)]
-    assert len(actors) == num_cpus
+    [Foo.remote() for _ in range(num_cpus)]
     errors = get_error_message(p, 1, ray_constants.WORKER_POOL_LARGE_ERROR)
     assert len(errors) == 1
     assert errors[0].type == ray_constants.WORKER_POOL_LARGE_ERROR
@@ -1383,6 +1380,29 @@ def test_async_actor_task_retries(ray_start_regular):
     ray.get(signal.send.remote())
     assert ray.get(ref_1) == 1
     assert ray.get(ref_3) == 3
+
+
+def test_raylet_node_manager_server_failure(ray_start_cluster_head,
+                                            log_pubsub):
+    cluster = ray_start_cluster_head
+    redis_port = int(cluster.address.split(":")[1])
+    # Reuse redis port to make node manager grpc server fail to start.
+    cluster.add_node(wait=False, node_manager_port=redis_port)
+    p = log_pubsub
+    cnt = 0
+    # wait for max 10 seconds.
+    found = False
+    while cnt < 1000 and not found:
+        msg = p.get_message()
+        if msg is None:
+            time.sleep(0.01)
+            cnt += 1
+            continue
+        data = json.loads(ray.utils.decode(msg["data"]))
+        if data["pid"] == "raylet":
+            found = any("Failed to start the grpc server." in line
+                        for line in data["lines"])
+    assert found
 
 
 if __name__ == "__main__":
