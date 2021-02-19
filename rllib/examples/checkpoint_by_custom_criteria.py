@@ -13,7 +13,6 @@ parser.add_argument("--stop-iters", type=int, default=200)
 parser.add_argument("--stop-timesteps", type=int, default=100000)
 parser.add_argument("--stop-reward", type=float, default=150.0)
 
-
 if __name__ == "__main__":
     args = parser.parse_args()
 
@@ -46,13 +45,12 @@ if __name__ == "__main__":
     # The fewer episodes, the longer each episode lasted, the more reward we
     # got each episode.
     # Setting scope to "last", "last-5-avg", or "last-10-avg" will only compare
-    # (using `mode=min|max`) the average values of the last 1, 5, or 10 iterations
-    # with each other, respectively.
-    # Setting scope to "avg" will compare (using `mode`=min|max) the average values
-    # over the entire run.
+    # (using `mode=min|max`) the average values of the last 1, 5, or 10
+    # iterations with each other, respectively.
+    # Setting scope to "avg" will compare (using `mode`=min|max) the average
+    # values over the entire run.
     metric = "episodes_this_iter"
-    best_trial = results.get_best_trial(
-        metric=metric, mode="min", scope="all")
+    best_trial = results.get_best_trial(metric=metric, mode="min", scope="all")
     value_best_metric = best_trial.metric_analysis[metric]["min"]
     print("Best trial's lowest episode length (over all "
           "iterations): {}".format(value_best_metric))
@@ -64,13 +62,14 @@ if __name__ == "__main__":
     # Get the best checkpoints from the trial, based on different metrics.
     # Checkpoint with the lowest policy loss value:
     ckpt = results.get_best_checkpoint(
-        best_trial, metric="info/learner/default_policy/policy_loss", mode="min")
+        best_trial,
+        metric="info/learner/default_policy/policy_loss",
+        mode="min")
     print("Lowest pol-loss: {}".format(ckpt))
 
     # Checkpoint with the highest value-function loss:
     ckpt = results.get_best_checkpoint(
-        best_trial, metric="info/learner/default_policy/vf_loss",
-        mode="max")
+        best_trial, metric="info/learner/default_policy/vf_loss", mode="max")
     print("Highest vf-loss: {}".format(ckpt))
 
     ray.shutdown()
