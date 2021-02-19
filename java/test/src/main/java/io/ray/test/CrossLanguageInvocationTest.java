@@ -9,7 +9,6 @@ import io.ray.api.function.PyActorClass;
 import io.ray.api.function.PyActorMethod;
 import io.ray.api.function.PyFunction;
 import io.ray.runtime.actor.NativeActorHandle;
-import io.ray.runtime.config.RayConfig;
 import io.ray.runtime.exception.CrossLanguageException;
 import io.ray.runtime.exception.RayException;
 import io.ray.runtime.generated.Common.Language;
@@ -48,12 +47,9 @@ public class CrossLanguageInvocationTest extends BaseTest {
       throw new RuntimeException(e);
     }
 
-    RayConfig.forTestClass(
-        "ray.job.code-search-path: \""
-            + System.getProperty("java.class.path")
-            + File.pathSeparator
-            + tempDir.getAbsolutePath()
-            + "\"");
+    TestUtils.setConfigForClass(
+        "ray.job.code-search-path",
+        System.getProperty("java.class.path") + File.pathSeparator + tempDir.getAbsolutePath());
   }
 
   @Test

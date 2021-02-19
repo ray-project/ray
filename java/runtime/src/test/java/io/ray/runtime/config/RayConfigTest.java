@@ -12,28 +12,16 @@ public class RayConfigTest {
     // Test parsing of string form here because all values from system properties are of
     // string type. We need to make sure numbers and booleans passed from system
     // properties can be parsed with correct types.
-    RayConfig.forTestMethod(
-        "ray.job.code-search-path: path/to/ray/job/resource/path",
-        String.join(
-            "\n",
-            "ray.raylet.config {",
-            "one: 1",
-            "one-string: \"1\"",
-            "zero: 0",
-            "zero-string: \"0\"",
-            "positive-integer: 123",
-            "positive-integer-string: \"123\"",
-            "negative-integer: -123",
-            "negative-integer-string: \"-123\"",
-            "float: -123.456",
-            "float-string: \"-123.456\"",
-            "true: true",
-            "true-string: \"true\"",
-            "false: false",
-            "false-string: \"false\"",
-            "string: abc",
-            "string-string: \"abc\"",
-            "}"));
+    TestUtils.setConfigForMethod(
+        "ray.job.code-search-path", "path/to/ray/job/resource/path",
+        "ray.raylet.config.one", "1",
+        "ray.raylet.config.zero", "1",
+        "ray.raylet.config.positive-integer", "123",
+        "ray.raylet.config.negative-integer", "-123",
+        "ray.raylet.config.float", "-123.456",
+        "ray.raylet.config.true", "true",
+        "ray.raylet.config.false", "false",
+        "ray.raylet.config.string", "abc");
 
     RayConfig rayConfig = RayConfig.create();
     Assert.assertEquals(WorkerType.DRIVER, rayConfig.workerMode);

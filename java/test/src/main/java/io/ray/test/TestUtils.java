@@ -99,4 +99,24 @@ public class TestUtils {
   public static int getNumWorkersPerProcess() {
     return Ray.task(TestUtils::getNumWorkersPerProcessRemoteFunction).remote().get();
   }
+
+  private static Map<String, String> classLevelConfig = new HashMap<String, String>();
+
+  private static Map<String, String> methodLevelConfig = new HashMap<String, String>();
+
+  public static void setConfigForClass(String... keyValues) {
+    setConfig(keyValues, classLevelConfig);
+  }
+
+  public static void setConfigForMethod(String... keyValues) {
+    setConfig(keyValues, methodLevelConfig);
+  }
+
+  private static void setConfig(String[] keyValues, Map<String, String> propertyMap) {
+    Preconditions.checkState(keyValues.length % 2 == 0);
+    propertyMap.clear();
+    for (int i = 0; i < keyValues.length; i += 2) {
+      propertyMap.put(keyValues[i], keyValues[i + 1]);
+    }
+  }
 }

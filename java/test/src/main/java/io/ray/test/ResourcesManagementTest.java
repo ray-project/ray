@@ -7,7 +7,6 @@ import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
 import io.ray.api.WaitResult;
 import io.ray.api.options.CallOptions;
-import io.ray.runtime.config.RayConfig;
 import org.testng.Assert;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
@@ -18,8 +17,8 @@ public class ResourcesManagementTest extends BaseTest {
 
   @BeforeClass
   public void setUp() {
-    RayConfig.forTestClass(
-        "ray.head-args: [\"--num-cpus=4\"," + "\"--resources={\\\"RES-A\\\":4}\"]");
+    TestUtils.setConfigForClass(
+        "ray.head-args.0", "--num-cpus=4", "ray.head-args.1", "--resources={\"RES-A\":4}");
   }
 
   public static Integer echo(Integer number) {

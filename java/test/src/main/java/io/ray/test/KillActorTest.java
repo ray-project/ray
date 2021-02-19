@@ -4,7 +4,6 @@ import com.google.common.collect.ImmutableList;
 import io.ray.api.ActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
-import io.ray.runtime.config.RayConfig;
 import io.ray.runtime.exception.RayActorException;
 import java.util.function.BiConsumer;
 import org.testng.Assert;
@@ -16,7 +15,7 @@ public class KillActorTest extends BaseTest {
 
   @BeforeClass
   public void setUp() {
-    RayConfig.forTestClass("ray.job.num-java-workers-per-process: 1");
+    TestUtils.setConfigForClass("ray.job.num-java-workers-per-process", "1");
   }
 
   public static class HangActor {

@@ -16,7 +16,6 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 import org.apache.commons.lang3.BooleanUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.math.NumberUtils;
@@ -26,11 +25,6 @@ public class RayConfig {
 
   public static final String DEFAULT_CONFIG_FILE = "ray.default.conf";
   public static final String CUSTOM_CONFIG_FILE = "ray.conf";
-
-  /** Used by unit tests only. */
-  private static List<Config> unitTestClassOverrides;
-  /** Used by unit tests only. */
-  private static List<Config> unitTestMethodOverrides;
 
   private Config config;
 
@@ -165,10 +159,6 @@ public class RayConfig {
             value = booleanValue;
           } else if (NumberUtils.isParsable(valueString)) {
             value = NumberUtils.createNumber(valueString);
-            if (value instanceof Float) {
-              // Re-parse to double
-              value = Double.valueOf(valueString);
-            }
           }
         }
         rayletConfigParameters.put(entry.getKey(), value);
@@ -267,19 +257,7 @@ public class RayConfig {
    */
   public static RayConfig create() {
     ConfigFactory.invalidateCaches();
-    Config config = ConfigFactory.empty();
-    // Unit test overrides have the highest priority.
-    if (unitTestMethodOverrides != null) {
-      for (Config unitTestOverride : unitTestMethodOverrides) {
-        config = config.withFallback(unitTestOverride);
-      }
-    }
-    if (unitTestClassOverrides != null) {
-      for (Config unitTestOverride : unitTestClassOverrides) {
-        config = config.withFallback(unitTestOverride);
-      }
-    }
-    config = config.withFallback(ConfigFactory.systemProperties());
+    Config config = ConfigFactory.systemProperties();
     String configPath = System.getProperty("ray.config-file");
     if (Strings.isNullOrEmpty(configPath)) {
       config = config.withFallback(ConfigFactory.load(CUSTOM_CONFIG_FILE));
@@ -288,24 +266,5 @@ public class RayConfig {
     }
     config = config.withFallback(ConfigFactory.load(DEFAULT_CONFIG_FILE));
     return new RayConfig(config.withOnlyPath("ray"));
-  }
-
-  /** Used by unit tests only. */
-  public static void forTestClass(String... configStringList) {
-    unitTestClassOverrides = toConfigList(configStringList);
-  }
-
-  /** Used by unit tests only. */
-  public static void forTestMethod(String... configStringList) {
-    unitTestMethodOverrides = toConfigList(configStringList);
-  }
-
-  private static List<Config> toConfigList(String... configStringList) {
-    if (configStringList == null || configStringList.length == 0) {
-      return null;
-    }
-    return Arrays.stream(configStringList)
-        .map(ConfigFactory::parseString)
-        .collect(Collectors.toList());
   }
 }

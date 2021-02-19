@@ -5,7 +5,6 @@ import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
 import io.ray.api.function.RayFunc0;
 import io.ray.api.id.ObjectId;
-import io.ray.runtime.config.RayConfig;
 import io.ray.runtime.exception.RayActorException;
 import io.ray.runtime.exception.RayTaskException;
 import io.ray.runtime.exception.RayWorkerException;
@@ -28,7 +27,7 @@ public class FailureTest extends BaseTest {
     // This is needed by `testGetThrowsQuicklyWhenFoundException`.
     // Set one worker per process. Otherwise, if `badFunc2` and `slowFunc` run in the same
     // process, `sleep` will delay `System.exit`.
-    RayConfig.forTestClass("ray.job.num-java-workers-per-process: 1");
+    TestUtils.setConfigForClass("ray.job.num-java-workers-per-process", "1");
   }
 
   public static int badFunc() {

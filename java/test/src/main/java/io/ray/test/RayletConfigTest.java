@@ -2,7 +2,6 @@ package io.ray.test;
 
 import io.ray.api.ActorHandle;
 import io.ray.api.Ray;
-import io.ray.runtime.config.RayConfig;
 import org.testng.Assert;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
@@ -14,7 +13,7 @@ public class RayletConfigTest extends BaseTest {
 
   @BeforeClass
   public void beforeClass() {
-    RayConfig.forTestClass("ray.raylet.config." + RAY_CONFIG_KEY + ": " + RAY_CONFIG_VALUE);
+    TestUtils.setConfigForClass("ray.raylet.config." + RAY_CONFIG_KEY, RAY_CONFIG_VALUE);
   }
 
   public static class TestActor {

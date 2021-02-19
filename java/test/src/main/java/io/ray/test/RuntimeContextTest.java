@@ -4,7 +4,6 @@ import io.ray.api.ActorHandle;
 import io.ray.api.Ray;
 import io.ray.api.id.ActorId;
 import io.ray.api.id.JobId;
-import io.ray.runtime.config.RayConfig;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 import org.testng.Assert;
@@ -24,7 +23,7 @@ public class RuntimeContextTest extends BaseTest {
 
   @BeforeClass
   public void setUp() {
-    RayConfig.forTestClass("ray.job.id: " + JOB_ID.toString());
+    TestUtils.setConfigForClass("ray.job.id", JOB_ID.toString());
   }
 
   @Test
