@@ -80,9 +80,18 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
             "node_cpu_count": Gauge("node_cpu_count",
                                     "Total CPUs available on a ray node",
                                     "cores", ["ip"]),
-            "node_mem": Gauge("node_mem",
-                              "Total memory allocated on a ray node", "bytes",
-                              ["ip"]),
+            "node_mem_used": Gauge("node_mem_used",
+                                   "Memory usage on a ray node", "bytes",
+                                   ["ip"]),
+            "node_mem_available": Gauge("node_mem_available",
+                                        "Memory available on a ray node",
+                                        "bytes", ["ip"]),
+            "node_mem_total": Gauge("node_mem_total",
+                                    "Total memory on a ray node", "bytes",
+                                    ["ip"]),
+            # "node_mem_allocated": Gauge("node_mem_allocated",
+            #                   "Total memory allocated on a ray node", "bytes",
+            #                   ["ip"]),
             "node_gpus_available": Gauge("node_gpus_available",
                                          "Total GPUs available on a ray node",
                                          "percentage", ["ip"]),
@@ -309,10 +318,22 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
             tags={"ip": ip})
 
         # -- Mem per node --
-        total, avail, _, used = stats["mem"]
-        mem_usage = float(total - avail)
-        mem_record = Record(
-            gauge=self._gauges["node_mem"], value=mem_usage, tags={"ip": ip})
+        mem_total, mem_available, _, mem_used = stats["mem"]
+        # mem_allocated = float(total - avail)
+        # mem_allocated_record = Record(
+        #     gauge=self._gauges["node_mem_allocated"], value=mem_allocated, tags={"ip": ip})
+        mem_used_record = Record(
+            gauge=self._gauges["node_mem_used"],
+            value=mem_used,
+            tags={"ip": ip})
+        mem_available_record = Record(
+            gauge=self._gauges["node_mem_available"],
+            value=mem_available,
+            tags={"ip": ip})
+        mem_total_record = Record(
+            gauge=self._gauges["node_mem_total"],
+            value=mem_total,
+            tags={"ip": ip})
 
         # -- GPU per node --
         gpus = stats["gpus"]
@@ -402,7 +423,8 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
             })
 
         records_reported = [
-            cpu_record, cpu_count_record, mem_record, disk_usage_record,
+            cpu_record, cpu_count_record, mem_used_record,
+            mem_available_record, mem_total_record, disk_usage_record,
             disk_utilization_percentage_record, network_sent_record,
             network_received_record, network_send_speed_record,
             network_receive_speed_record
