@@ -7,12 +7,10 @@ public class SystemPropertyListener implements IClassListener {
 
   @Override
   public void onAfterClass(ITestClass testClass) {
-    System.getProperties()
-        .forEach(
-            (k, v) -> {
-              if (key.startsWith("ray.")) {
-                System.clearProperty(k);
-              }
-            });
+    for (String key : System.getProperties().stringPropertyNames()) {
+      if (key.startsWith("ray.")) {
+        System.clearProperty(key);
+      }
+    }
   }
 }
