@@ -9,6 +9,8 @@ import io.ray.runtime.RayRuntimeProxy;
 import io.ray.runtime.config.RunMode;
 import io.ray.runtime.task.ArgumentsBuilder;
 import java.io.Serializable;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.function.Supplier;
 import org.testng.Assert;
 
@@ -100,23 +102,27 @@ public class TestUtils {
     return Ray.task(TestUtils::getNumWorkersPerProcessRemoteFunction).remote().get();
   }
 
-  private static Map<String, String> classLevelConfig = new HashMap<String, String>();
+  private static Set<String> classLevelConfigKeys = new HashSet<>();
 
-  private static Map<String, String> methodLevelConfig = new HashMap<String, String>();
+  private static Set<String> methodLevelConfigKeys = new HashSet<>();
 
   public static void setConfigForClass(String... keyValues) {
-    setConfig(keyValues, classLevelConfig);
+    setConfig(keyValues, classLevelConfigKeys);
   }
 
   public static void setConfigForMethod(String... keyValues) {
-    setConfig(keyValues, methodLevelConfig);
+    setConfig(keyValues, methodLevelConfigKeys);
   }
 
-  private static void setConfig(String[] keyValues, Map<String, String> propertyMap) {
+  private static void setConfig(String[] keyValues, Set<String> configKeys) {
     Preconditions.checkState(keyValues.length % 2 == 0);
-    propertyMap.clear();
+    for (String key : configKeys) {
+      System.clearProperty(key);
+    }
+    configKeys.clear();
     for (int i = 0; i < keyValues.length; i += 2) {
-      propertyMap.put(keyValues[i], keyValues[i + 1]);
+      System.setProperty(keyValues[i], keyValues[i + 1]);
+      configKeys.add(keyValues[i]);
     }
   }
 }
