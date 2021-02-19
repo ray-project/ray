@@ -146,7 +146,7 @@ def merge_setup_commands(config):
 
 
 def fill_node_type_max_workers(config):
-    """If per-node max_workers is unset or marked -1, set it to infinity."""
+    """If per-node max_workers is absent or marked -1, set it to infinity."""
     for node_type in config["available_node_types"].values():
         if node_type.get("max_workers", -1) == -1:
             node_type["max_workers"] = float("inf")
