@@ -54,5 +54,3 @@ BOTO_CREATE_MAX_RETRIES = env_integer("BOTO_CREATE_MAX_RETRIES", 5)
 
 # ray home path in the container image
 RAY_HOME = "/home/ray"
-
-MAX_WORKER_INF = 99999

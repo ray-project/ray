@@ -13,7 +13,6 @@ import ray.ray_constants
 import ray._private.services as services
 from ray.autoscaler._private.providers import _get_default_config
 from ray.autoscaler._private.docker import validate_docker_config
-from ray.autoscaler._private.constants import MAX_WORKER_INF
 from ray.autoscaler.tags import NODE_TYPE_LEGACY_WORKER, NODE_TYPE_LEGACY_HEAD
 
 REQUIRED, OPTIONAL = True, False
@@ -122,7 +121,7 @@ def rewrite_legacy_yaml_to_available_node_types(
                 "node_config": config["worker_nodes"],
                 "resources": config["worker_nodes"].get("resources") or {},
                 "min_workers": config.get("min_workers", 0),
-                "max_workers": config.get("max_workers", MAX_WORKER_INF),
+                "max_workers": config.get("max_workers", float("inf")),
             },
         }
         config["head_node_type"] = NODE_TYPE_LEGACY_HEAD
@@ -147,8 +146,10 @@ def merge_setup_commands(config):
 
 
 def fill_node_type_max_workers(config):
+    """If per-node max_workers is unset or marked -1, set it to infinity."""
     for node_type in config["available_node_types"].values():
-        node_type.setdefault("max_workers", MAX_WORKER_INF)
+        if node_type.get("max_workers", -1) == -1:
+            node_type["max_workers"] = float("inf")
 
 
 def with_head_node_ip(cmds, head_ip=None):
