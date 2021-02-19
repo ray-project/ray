@@ -61,7 +61,6 @@ def task_runner_mock_actor():
 async def test_simple_endpoint_backend_pair(ray_instance, mock_controller,
                                             task_runner_mock_actor):
     q = ray.remote(Router).remote(mock_controller)
-    await q.setup_in_async_loop.remote()
 
     # Propogate configs
     await mock_controller.set_traffic.remote(
@@ -86,7 +85,6 @@ async def test_simple_endpoint_backend_pair(ray_instance, mock_controller,
 async def test_changing_backend(ray_instance, mock_controller,
                                 task_runner_mock_actor):
     q = ray.remote(Router).remote(mock_controller)
-    await q.setup_in_async_loop.remote()
 
     await mock_controller.set_traffic.remote(
         "svc", TrafficPolicy({
@@ -115,7 +113,6 @@ async def test_changing_backend(ray_instance, mock_controller,
 async def test_split_traffic_random(ray_instance, mock_controller,
                                     task_runner_mock_actor):
     q = ray.remote(Router).remote(mock_controller)
-    await q.setup_in_async_loop.remote()
 
     await mock_controller.set_traffic.remote(
         "svc", TrafficPolicy({
@@ -145,7 +142,6 @@ async def test_split_traffic_random(ray_instance, mock_controller,
 async def test_shard_key(ray_instance, mock_controller,
                          task_runner_mock_actor):
     q = ray.remote(Router).remote(mock_controller)
-    await q.setup_in_async_loop.remote()
 
     num_backends = 5
     traffic_dict = {}

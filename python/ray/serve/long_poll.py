@@ -20,10 +20,10 @@ class UpdatedObject:
 # Type signature for the update state callbacks. E.g.
 # async def update_state(updated_object: Any):
 #     do_something(updated_object)
-UpdateStateAsyncCallable = Callable[[Any], Awaitable[None]]
+UpdateStateCallable = Callable[[Any], None]
 
 
-class LongPollAsyncClient:
+class LongPollClient:
     """The asynchronous long polling client.
 
     Internally, it runs `await object_ref` in a `while True` loop. When a
@@ -38,51 +38,46 @@ class LongPollAsyncClient:
     """
 
     def __init__(self, host_actor,
-                 key_listeners: Dict[str, UpdateStateAsyncCallable]) -> None:
+                 key_listeners: Dict[str, UpdateStateCallable]) -> None:
         self.host_actor = host_actor
         self.key_listeners = key_listeners
-        for callback in key_listeners.values():
-            if not iscoroutinefunction(callback):
-                raise ValueError(
-                    "Callbacks to async long poller must be 'async def'.")
-
         self.snapshot_ids: Dict[str, int] = {
             key: -1
             for key in key_listeners.keys()
         }
         self.object_snapshots: Dict[str, Any] = dict()
 
-        in_async_loop = asyncio.get_event_loop().is_running
-        assert in_async_loop, "The client is only available in async context."
-        asyncio.get_event_loop().create_task(self._do_long_poll())
+        self._current_ref = None
+        self._poll_once()
 
     def _poll_once(self) -> ray.ObjectRef:
-        object_ref = self.host_actor.listen_for_change.remote(
+        self._current_ref = self.host_actor.listen_for_change.remote(
             self.snapshot_ids)
-        return object_ref
+        self._current_ref._on_completed(
+            lambda update: self._process_update(update))
 
-    async def _do_long_poll(self):
-        while True:
-            try:
-                updates: Dict[str, UpdatedObject] = await self._poll_once()
-                logger.debug("LongPollClient received updates for keys: "
-                             f"{list(updates.keys())}.")
-                for key, update in updates.items():
-                    self.object_snapshots[key] = update.object_snapshot
-                    self.snapshot_ids[key] = update.snapshot_id
-                    # NOTE(simon):
-                    # This blocks the loop from doing another poll. Consider
-                    # use loop.create_task here or poll first then call the
-                    # callbacks.
-                    callback = self.key_listeners[key]
-                    await callback(update.object_snapshot)
-            except ray.exceptions.RayActorError:
-                # This can happen during shutdown where the controller is
-                # intentionally killed, the client should just gracefully
-                # exit.
-                logger.debug("LongPollClient failed to connect to host. "
-                             "Shutting down.")
-                break
+    def _process_update(self, updates: Dict[str, UpdatedObject]):
+        if isinstance(updates, (
+                ray.exceptions.RayActorError,
+                ray.exceptions.RayTaskError,
+        )):
+            # This can happen during shutdown where the controller is
+            # intentionally killed, the client should just gracefully
+            # exit.
+            logger.debug("LongPollClient failed to connect to host. "
+                         "Shutting down.")
+            return
+
+        # Before we process the updates and calling callbacks, kick off
+        # another poll so we can pipeline the polling and processing.
+        self._poll_once()
+        logger.debug("LongPollClient received updates for keys: "
+                     f"{list(updates.keys())}.")
+        for key, update in updates.items():
+            self.object_snapshots[key] = update.object_snapshot
+            self.snapshot_ids[key] = update.snapshot_id
+            callback = self.key_listeners[key]
+            callback(update.object_snapshot)
 
 
 class LongPollHost:

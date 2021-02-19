@@ -1,14 +1,12 @@
 import sys
 import time
-import asyncio
 import os
 from typing import Dict
 
 import pytest
 
 import ray
-from ray.serve.long_poll import (LongPollAsyncClient, LongPollHost,
-                                 UpdatedObject)
+from ray.serve.long_poll import (LongPollClient, LongPollHost, UpdatedObject)
 
 
 def test_host_standalone(serve_instance):
@@ -78,37 +76,28 @@ def test_long_poll_restarts(serve_instance):
     assert new_timer.object_snapshot != timer.object_snapshot
 
 
-@pytest.mark.asyncio
-async def test_async_client(serve_instance):
+def test_client(serve_instance):
     host = ray.remote(LongPollHost).remote()
 
     # Write two values
     ray.get(host.notify_changed.remote("key_1", 100))
     ray.get(host.notify_changed.remote("key_2", 999))
 
-    # Check that construction fails with a sync callback.
-    def callback(result, key):
-        pass
-
-    with pytest.raises(ValueError):
-        client = LongPollAsyncClient(host, {"key": callback})
-
     callback_results = dict()
 
-    async def key_1_callback(result):
+    def key_1_callback(result):
         callback_results["key_1"] = result
 
-    async def key_2_callback(result):
+    def key_2_callback(result):
         callback_results["key_2"] = result
 
-    client = LongPollAsyncClient(host, {
+    client = LongPollClient(host, {
         "key_1": key_1_callback,
         "key_2": key_2_callback,
     })
 
     while len(client.object_snapshots) == 0:
-        # Yield the loop for client to get the result
-        await asyncio.sleep(0.2)
+        time.sleep(0.1)
 
     assert client.object_snapshots["key_1"] == 100
     assert client.object_snapshots["key_2"] == 999
@@ -120,7 +109,7 @@ async def test_async_client(serve_instance):
         values.add(client.object_snapshots["key_2"])
         if 1999 in values:
             break
-        await asyncio.sleep(1)
+        time.sleep(1)
     assert 1999 in values
 
     assert callback_results == {"key_1": 100, "key_2": 1999}

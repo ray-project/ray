@@ -17,7 +17,7 @@ from ray.serve.utils import (parse_request_item, _get_logger, chain_future,
 from ray.serve.exceptions import RayServeException
 from ray.util import metrics
 from ray.serve.config import BackendConfig
-from ray.serve.long_poll import LongPollAsyncClient
+from ray.serve.long_poll import LongPollClient
 from ray.serve.router import Query, RequestMetadata
 from ray.serve.constants import (
     BACKEND_RECONFIGURE_METHOD,
@@ -195,7 +195,7 @@ class RayServeReplica:
             tag_keys=("backend", ))
         self.request_counter.set_default_tags({"backend": self.backend_tag})
 
-        self.long_poll_client = LongPollAsyncClient(controller_handle, {
+        self.long_poll_client = LongPollClient(controller_handle, {
             LongPollKey.BACKEND_CONFIGS: self._update_backend_configs,
         })
 
@@ -435,7 +435,7 @@ class RayServeReplica:
                                          BACKEND_RECONFIGURE_METHOD)
             reconfigure_method(user_config)
 
-    async def _update_backend_configs(self, backend_configs):
+    def _update_backend_configs(self, backend_configs):
         # TODO(ilr) remove this loop when we poll per key
         for backend_tag, config in backend_configs.items():
             if backend_tag == self.backend_tag:

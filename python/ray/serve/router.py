@@ -2,6 +2,7 @@ import asyncio
 from enum import Enum
 import itertools
 from dataclasses import dataclass, field
+import threading
 from typing import Any, ChainMap, Dict, Iterable, List, Optional
 
 from ray.serve.exceptions import RayServeException
@@ -10,7 +11,8 @@ import ray
 from ray.actor import ActorHandle
 from ray.serve.constants import LongPollKey
 from ray.serve.endpoint_policy import EndpointPolicy, RandomEndpointPolicy
-from ray.serve.long_poll import LongPollAsyncClient
+from ray.serve.handle import ServeFuture
+from ray.serve.long_poll import LongPollClient
 from ray.serve.utils import logger, compute_dict_delta, compute_iterable_delta
 from ray.util import metrics
 
@@ -132,7 +134,7 @@ class ReplicaSet:
             replica_in_flight_queries.difference_update(done)
         return len(done)
 
-    async def assign_replica(self, query: Query) -> ray.ObjectRef:
+    def assign_replica(self, query: Query) -> ServeFuture:
         """Given a query, submit it to a replica and return the object ref.
 
         This method will keep track of the in flight queries for each replicas
@@ -144,7 +146,11 @@ class ReplicaSet:
         self.num_queued_queries_gauge.record(
             self.num_queued_queries, tags={"endpoint": endpoint})
         assigned_ref = self._try_assign_replica(query)
-        while assigned_ref is None:  # Can't assign a replica right now.
+
+        fut = ServeFuture()
+        fut._ray_object_ref = assigned_ref
+
+        if assigned_ref is None:  # Can't assign a replica right now.
             logger.debug("Failed to assign a replica for "
                          f"query {query.metadata.request_id}")
             # Maybe there exists a free replica, we just need to refresh our
@@ -166,7 +172,7 @@ class ReplicaSet:
         self.num_queued_queries -= 1
         self.num_queued_queries_gauge.record(
             self.num_queued_queries, tags={"endpoint": endpoint})
-        return assigned_ref
+        return fut
 
 
 class _PendingEndpointFound(Enum):
@@ -188,7 +194,7 @@ class Router:
 
         self.backend_replicas: Dict[str, ReplicaSet] = dict()
 
-        self._pending_endpoints: Dict[str, asyncio.Future] = dict()
+        self._pending_endpoints: Dict[str, threading.Event] = dict()
 
         # -- Metrics Registration -- #
         self.num_router_requests = metrics.Count(
@@ -196,19 +202,14 @@ class Router:
             description="The number of requests processed by the router.",
             tag_keys=("endpoint", ))
 
-    async def setup_in_async_loop(self):
-        # NOTE(simon): Instead of performing initialization in __init__,
-        # We separated the init of LongPollAsyncClient to this method because
-        # __init__ might be called in sync context. LongPollAsyncClient
-        # requires async context.
-        self.long_poll_client = LongPollAsyncClient(
+        self.long_poll_client = LongPollClient(
             self.controller, {
                 LongPollKey.TRAFFIC_POLICIES: self._update_traffic_policies,
                 LongPollKey.REPLICA_HANDLES: self._update_replica_handles,
                 LongPollKey.BACKEND_CONFIGS: self._update_backend_configs,
             })
 
-    async def _update_traffic_policies(self, traffic_policies):
+    def _update_traffic_policies(self, traffic_policies):
         added, removed, updated = compute_dict_delta(self.endpoint_policies,
                                                      traffic_policies)
 
@@ -225,7 +226,7 @@ class Router:
                 future = self._pending_endpoints.pop(endpoint)
                 future.set_result(_PendingEndpointFound.REMOVED)
 
-    async def _update_replica_handles(self, replica_handles):
+    def _update_replica_handles(self, replica_handles):
         added, removed, updated = compute_dict_delta(self.backend_replicas,
                                                      replica_handles)
 
@@ -237,7 +238,7 @@ class Router:
             if backend_tag in self.backend_replicas:
                 del self.backend_replicas[backend_tag]
 
-    async def _update_backend_configs(self, backend_configs):
+    def _update_backend_configs(self, backend_configs):
         added, removed, updated = compute_dict_delta(self.backend_replicas,
                                                      backend_configs)
         for backend_tag, config in ChainMap(added, updated).items():
@@ -249,7 +250,7 @@ class Router:
             if backend_tag in self.backend_replicas:
                 del self.backend_replicas[backend_tag]
 
-    async def assign_request(
+    def assign_request(
             self,
             request_meta: RequestMetadata,
             *request_args,
