@@ -147,8 +147,7 @@ def merge_setup_commands(config):
 
 
 def fill_node_type_max_workers(config):
-    available_node_types = config["available_node_types"]
-    for node_type in available_node_types:
+    for node_type in config["available_node_types"].values():
         node_type.setdefault("max_workers", MAX_WORKER_INF)
 
 
