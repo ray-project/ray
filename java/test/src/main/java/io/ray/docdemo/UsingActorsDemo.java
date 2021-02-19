@@ -2,6 +2,8 @@ package io.ray.docdemo;
 
 import io.ray.api.ActorHandle;
 import io.ray.api.Ray;
+import io.ray.api.function.RayFunc1;
+import io.ray.api.function.RayFunc2;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import org.testng.Assert;
@@ -30,6 +32,13 @@ public class UsingActorsDemo {
 
     public void reset(int newValue) {
       this.value = newValue;
+    }
+  }
+
+  public static class CounterOverloaded extends Counter {
+    public int increment(int diff) {
+      super.value += diff;
+      return super.value;
     }
   }
 
@@ -69,6 +78,17 @@ public class UsingActorsDemo {
       // Call an actor method without return value
       a.task(Counter::reset, 10).remote();
       Assert.assertEquals((int) a.task(Counter::increment).remote().get(), 11);
+    }
+
+    {
+      ActorHandle<CounterOverloaded> a = Ray.actor(CounterOverloaded::new).remote();
+      // Call an actor method with a return value
+      Assert.assertEquals((int) a.task(Counter::increment).remote().get(), 1);
+      // Call an overloaded actor method, cast method reference first.
+      a.task((RayFunc1<CounterOverloaded, Integer>) CounterOverloaded::increment).remote();
+      // Call an overloaded actor method, cast method reference first.
+      a.task((RayFunc2<CounterOverloaded, Integer, Integer>) CounterOverloaded::increment, 10).remote();
+      Assert.assertEquals((int) a.task(Counter::increment).remote().get(), 13);
     }
 
     {
