@@ -423,7 +423,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       },
       options_.ref_counting_enabled ? reference_counter_ : nullptr, local_raylet_client_,
       options_.check_signals,
-      [this](const RayObject &obj) {
+      options_.unhandled_exception_handler == nullptr ? nullptr : [this](const RayObject &obj) {
         // Run this on the event loop to avoid calling back into the language runtime
         // from the middle of user operations.
         io_service_.post([this, obj]() { options_.unhandled_exception_handler(obj); });
