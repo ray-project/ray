@@ -167,7 +167,7 @@ public class PlacementGroupTest extends BaseTest {
     // Make sure we can get it by name successfully.
     placementGroup = Ray.getGlobalPlacementGroup(pgGlobalName);
     Assert.assertNotNull(placementGroup);
-    Assert.assertEquals(placementGroup.getBundles().size(), 2);
+    Assert.assertEquals(placementGroup.getBundles().size(), 1);
   }
 
   @Test(expectedExceptions = {IllegalArgumentException.class})
