@@ -1,13 +1,9 @@
 package io.ray.runtime.exception;
 
 import io.ray.api.id.ActorId;
-
 import org.apache.commons.lang3.exception.ExceptionUtils;
 
-/**
- * Indicates that the actor died unexpectedly because an exception thrown in creation
- * task.
- */
+/** Indicates that the actor died unexpectedly because an exception thrown in creation task. */
 public class RayActorCreationTaskException extends RayActorException {
   private static final String DEFAULT_MESSAGE =
       "The actor died unexpectedly because an exception thrown in creation task.";
@@ -21,9 +17,10 @@ public class RayActorCreationTaskException extends RayActorException {
   }
 
   public RayActorCreationTaskException(ActorId actorId) {
-    super(String.format(
-        "The actor %s died unexpectedly because an exception thrown in creation task.",
-        actorId));
+    super(
+        String.format(
+            "The actor %s died unexpectedly because an exception thrown in creation task.",
+            actorId));
     this.actorId = actorId;
   }
 
