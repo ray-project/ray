@@ -2,6 +2,7 @@ import argparse
 
 import ray
 from ray import tune
+from ray.rllib.examples.env.stateless_cartpole import StatelessCartPole
 from ray.rllib.examples.models.trajectory_view_utilizing_models import \
     FrameStackingCartPoleModel, TorchFrameStackingCartPoleModel
 from ray.rllib.models.catalog import ModelCatalog
@@ -16,7 +17,7 @@ parser.add_argument(
     "--framework", choices=["tf2", "tf", "tfe", "torch"], default="tf")
 parser.add_argument("--as-test", action="store_true")
 parser.add_argument("--stop-iters", type=int, default=50)
-parser.add_argument("--stop-timesteps", type=int, default=100000)
+parser.add_argument("--stop-timesteps", type=int, default=200000)
 parser.add_argument("--stop-reward", type=float, default=150.0)
 
 if __name__ == "__main__":
@@ -26,13 +27,14 @@ if __name__ == "__main__":
     ModelCatalog.register_custom_model(
         "frame_stack_model", FrameStackingCartPoleModel
         if args.framework != "torch" else TorchFrameStackingCartPoleModel)
+    tune.register_env("stateless_cartpole", lambda c: StatelessCartPole())
 
     config = {
-        "env": "CartPole-v0",
+        "env": "stateless_cartpole",
         "model": {
             "custom_model": "frame_stack_model",
             "custom_model_config": {
-                "num_frames": 4,
+                "num_frames": 16,
             }
         },
         "framework": args.framework,

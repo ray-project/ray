@@ -21,7 +21,6 @@ cc_library(
         "src/ray/util/*.h",
         "src/ray/*.cc",
         "src/ray/*.h",
-        "src/ray/worker/default_worker.cc",
     ]),
     hdrs = glob([
         "include/ray/*.h",
@@ -45,18 +44,36 @@ cc_library(
 )
 
 cc_binary(
-    name = "example",
-    testonly = 1,
+    name = "default_worker",
     srcs = glob([
-        "src/example/example.cc",
+        "src/ray/worker/default_worker.cc",
     ]),
     copts = COPTS,
-    linkstatic = False,
+    linkstatic = True,
     deps = [
         "ray_api",
     ],
 )
 
+genrule(
+    name = "ray_cpp_pkg",
+    srcs = [
+        "default_worker",
+        "ray_api",
+    ],
+    outs = ["ray_cpp_pkg.out"],
+    cmd = """
+        WORK_DIR="$$(pwd)" &&
+        mkdir -p "$$WORK_DIR/python/ray/core/src/ray/cpp/" &&
+        cp -f $(location default_worker) "$$WORK_DIR/python/ray/core/src/ray/cpp/default_worker" &&
+        cp -f $(locations ray_api) "$$WORK_DIR/python/ray/core/src/ray/cpp/" &&
+        echo "$$WORK_DIR" > $@
+    """,
+    local = 1,
+    visibility = ["//visibility:public"],
+)
+
+# test
 cc_test(
     name = "api_test",
     srcs = glob([
@@ -76,27 +93,32 @@ cc_test(
     srcs = glob([
         "src/ray/test/cluster/*.cc",
     ]),
+    args = [
+        "$(location cluster_mode_test.so)",
+    ],
     copts = COPTS,
+    data = [
+        "cluster_mode_test.so",
+        "ray_cpp_pkg",
+    ],
     linkstatic = True,
     deps = [
         "ray_api",
+        "@com_github_gflags_gflags//:gflags",
         "@com_google_googletest//:gtest_main",
     ],
 )
 
-genrule(
-    name = "ray_cpp_pkg",
-    srcs = [
-        "cluster_mode_test",
+cc_binary(
+    name = "cluster_mode_test.so",
+    srcs = glob([
+        "src/ray/test/cluster/*.cc",
+    ]),
+    copts = COPTS,
+    linkstatic = True,
+    deps = [
         "ray_api",
+        "@com_github_gflags_gflags//:gflags",
+        "@com_google_googletest//:gtest_main",
     ],
-    outs = ["ray_cpp_pkg.out"],
-    cmd = """
-        WORK_DIR="$$(pwd)" &&
-        mkdir -p "$$WORK_DIR/python/ray/core/src/ray/cpp/" &&
-        cp -f $(location cluster_mode_test) "$$WORK_DIR/python/ray/core/src/ray/cpp/default_worker" &&
-        cp -f $(locations ray_api) "$$WORK_DIR/python/ray/core/src/ray/cpp/" &&
-        echo "$$WORK_DIR" > $@
-    """,
-    local = 1,
 )

@@ -136,9 +136,10 @@ raylet::RayletClient::RayletClient(
 
 Status raylet::RayletClient::Disconnect() {
   flatbuffers::FlatBufferBuilder fbb;
-  auto message = protocol::CreateDisconnectClient(fbb);
+  auto message = protocol::CreateDisconnectClient(
+      fbb, static_cast<int>(rpc::WorkerExitType::INTENDED_EXIT));
   fbb.Finish(message);
-  auto status = conn_->WriteMessage(MessageType::IntentionalDisconnectClient, &fbb);
+  auto status = conn_->WriteMessage(MessageType::DisconnectClient, &fbb);
   // Don't be too strict for disconnection errors.
   // Just create logs and prevent it from crash.
   if (!status.ok()) {
@@ -307,6 +308,18 @@ void raylet::RayletClient::RequestObjectSpillage(
   rpc::RequestObjectSpillageRequest request;
   request.set_object_id(object_id.Binary());
   grpc_client_->RequestObjectSpillage(request, callback);
+}
+
+void raylet::RayletClient::RestoreSpilledObject(
+    const ObjectID &object_id, const std::string &object_url,
+    const NodeID &spilled_node_id,
+    const rpc::ClientCallback<rpc::RestoreSpilledObjectReply> &callback) {
+  RAY_CHECK(!spilled_node_id.IsNil());
+  rpc::RestoreSpilledObjectRequest request;
+  request.set_object_id(object_id.Binary());
+  request.set_object_url(object_url);
+  request.set_spilled_node_id(spilled_node_id.Binary());
+  grpc_client_->RestoreSpilledObject(request, callback);
 }
 
 Status raylet::RayletClient::ReturnWorker(int worker_port, const WorkerID &worker_id,

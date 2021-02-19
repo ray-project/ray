@@ -59,6 +59,12 @@ class MyCallbacks(DefaultCallbacks):
         # you can mutate the result dict to add new fields to return
         result["callback_ok"] = True
 
+    def on_learn_on_batch(self, *, policy: Policy, train_batch: SampleBatch,
+                          result: dict, **kwargs) -> None:
+        result["sum_actions_in_train_batch"] = np.sum(train_batch["actions"])
+        print("policy.learn_on_batch() result: {} -> sum actions: {}".format(
+            policy, result["sum_actions_in_train_batch"]))
+
     def on_postprocess_trajectory(
             self, *, worker: RolloutWorker, episode: MultiAgentEpisode,
             agent_id: str, policy_id: str, policies: Dict[str, Policy],
@@ -88,7 +94,7 @@ if __name__ == "__main__":
             "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
         }).trials
 
-    # verify custom metrics for integration tests
+    # Verify episode-related custom metrics are there.
     custom_metrics = trials[0].last_result["custom_metrics"]
     print(custom_metrics)
     assert "pole_angle_mean" in custom_metrics
@@ -96,3 +102,8 @@ if __name__ == "__main__":
     assert "pole_angle_max" in custom_metrics
     assert "num_batches_mean" in custom_metrics
     assert "callback_ok" in trials[0].last_result
+
+    # Verify `on_learn_on_batch` custom metrics are there (per policy).
+    info_custom_metrics = custom_metrics["default_policy"]
+    print(info_custom_metrics)
+    assert "sum_actions_in_train_batch" in info_custom_metrics

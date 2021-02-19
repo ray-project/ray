@@ -22,7 +22,7 @@ build_and_push_tags() {
     # $2 tag for image (e.g. hash of commit)
     for GPU in "" "-gpu" 
     do 
-        BASE_IMAGE=$(if [ "$GPU" ]; then echo "nvidia/cuda:10.1-cudnn7-runtime-ubuntu18.04"; else echo "ubuntu:focal"; fi;)
+        BASE_IMAGE=$(if [ "$GPU" ]; then echo "nvidia/cuda:11.0-cudnn8-runtime-ubuntu18.04"; else echo "ubuntu:focal"; fi;)
         FULL_NAME_WITH_TAG="rayproject/$1:$2$GPU"
         NIGHTLY_FULL_NAME_WITH_TAG="rayproject/$1:nightly$GPU"
         docker build --no-cache --build-arg GPU="$GPU" --build-arg BASE_IMAGE="$BASE_IMAGE" --build-arg WHEEL_PATH=".whl/$WHEEL" --label "SHA=$2" -t "$FULL_NAME_WITH_TAG" /"$ROOT_DIR"/docker/"$1"

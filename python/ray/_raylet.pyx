@@ -333,6 +333,17 @@ cdef prepare_args(
                         CCoreWorkerProcess.GetCoreWorker().GetRpcAddress())))
 
 
+cdef raise_if_dependency_failed(arg):
+    """This method is used to improve the readability of backtrace.
+
+    With this method, the backtrace will always contain
+    raise_if_dependency_failed when the task is failed with dependency
+    failures.
+    """
+    if isinstance(arg, RayError):
+        raise arg
+
+
 cdef execute_task(
         CTaskType task_type,
         const c_string name,
@@ -461,8 +472,7 @@ cdef execute_task(
                             metadata_pairs, object_refs)
 
                     for arg in args:
-                        if isinstance(arg, RayError):
-                            raise arg
+                        raise_if_dependency_failed(arg)
                     args, kwargs = ray.signature.recover_args(args)
 
             if (<int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK):
@@ -478,6 +488,12 @@ cdef execute_task(
                         if debugger_breakpoint != b"":
                             ray.util.pdb.set_trace(
                                 breakpoint_uuid=debugger_breakpoint)
+                        if inspect.iscoroutinefunction(function_executor):
+                            raise ValueError(
+                                "'async def' should not be used for remote "
+                                "tasks. You can wrap the async function with "
+                                "`asyncio.get_event_loop.run_until(f())`. "
+                                "See more at docs.ray.io/async_api.html")
                         outputs = function_executor(*args, **kwargs)
                         next_breakpoint = (
                             ray.worker.global_worker.debugger_breakpoint)
@@ -623,7 +639,8 @@ cdef void gc_collect() nogil:
 
 
 cdef c_vector[c_string] spill_objects_handler(
-        const c_vector[CObjectID]& object_ids_to_spill) nogil:
+        const c_vector[CObjectID]& object_ids_to_spill,
+        const c_vector[c_string]& owner_addresses) nogil:
     cdef c_vector[c_string] return_urls
     with gil:
         object_refs = VectorToObjectRefs(object_ids_to_spill)
@@ -631,7 +648,8 @@ cdef c_vector[c_string] spill_objects_handler(
             with ray.worker._changeproctitle(
                     ray_constants.WORKER_PROCESS_TYPE_SPILL_WORKER,
                     ray_constants.WORKER_PROCESS_TYPE_SPILL_WORKER_IDLE):
-                urls = external_storage.spill_objects(object_refs)
+                urls = external_storage.spill_objects(
+                    object_refs, owner_addresses)
             for url in urls:
                 return_urls.push_back(url)
         except Exception:
@@ -899,6 +917,18 @@ cdef class CoreWorker:
 
         return RayObjectsToDataMetadataPairs(results)
 
+    def get_if_local(self, object_refs):
+        """Get objects from local plasma store directly
+        without a fetch request to raylet."""
+        cdef:
+            c_vector[shared_ptr[CRayObject]] results
+            c_vector[CObjectID] c_object_ids = ObjectRefsToVector(object_refs)
+        with nogil:
+            check_status(
+                CCoreWorkerProcess.GetCoreWorker().GetIfLocal(
+                    c_object_ids, &results))
+        return RayObjectsToDataMetadataPairs(results)
+
     def object_exists(self, ObjectRef object_ref):
         cdef:
             c_bool has_object
@@ -913,7 +943,11 @@ cdef class CoreWorker:
     cdef _create_put_buffer(self, shared_ptr[CBuffer] &metadata,
                             size_t data_size, ObjectRef object_ref,
                             c_vector[CObjectID] contained_ids,
-                            CObjectID *c_object_id, shared_ptr[CBuffer] *data):
+                            CObjectID *c_object_id, shared_ptr[CBuffer] *data,
+                            owner_address=None):
+        cdef:
+            CAddress c_owner_address
+
         if object_ref is None:
             with nogil:
                 check_status(CCoreWorkerProcess.GetCoreWorker().CreateOwned(
@@ -921,11 +955,16 @@ cdef class CoreWorker:
                              c_object_id, data))
         else:
             c_object_id[0] = object_ref.native()
+            if owner_address is None:
+                c_owner_address = CCoreWorkerProcess.GetCoreWorker(
+                    ).GetRpcAddress()
+            else:
+                c_owner_address = CAddress()
+                c_owner_address.ParseFromString(owner_address)
             with nogil:
                 check_status(CCoreWorkerProcess.GetCoreWorker().CreateExisting(
                             metadata, data_size, c_object_id[0],
-                            CCoreWorkerProcess.GetCoreWorker().GetRpcAddress(),
-                            data))
+                            c_owner_address, data))
 
         # If data is nullptr, that means the ObjectRef already existed,
         # which we ignore.
@@ -934,7 +973,8 @@ cdef class CoreWorker:
         return data.get() == NULL
 
     def put_file_like_object(
-            self, metadata, data_size, file_like, ObjectRef object_ref):
+            self, metadata, data_size, file_like, ObjectRef object_ref,
+            owner_address):
         """Directly create a new Plasma Store object from a file like
         object. This avoids extra memory copy.
 
@@ -944,6 +984,7 @@ cdef class CoreWorker:
             file_like: A python file object that provides the `readinto`
                 interface.
             object_ref: The new ObjectRef.
+            owner_address: Owner address for this object ref.
         """
         cdef:
             CObjectID c_object_id
@@ -958,7 +999,7 @@ cdef class CoreWorker:
         object_already_exists = self._create_put_buffer(
             metadata_buf, data_size, object_ref,
             ObjectRefsToVector([]),
-            &c_object_id, &data_buf)
+            &c_object_id, &data_buf, owner_address)
         if object_already_exists:
             logger.debug("Object already exists in 'put_file_like_object'.")
             return
@@ -1185,7 +1226,8 @@ cdef class CoreWorker:
                             self,
                             c_string name,
                             c_vector[unordered_map[c_string, double]] bundles,
-                            c_string strategy):
+                            c_string strategy,
+                            c_bool is_detached):
         cdef:
             CPlacementGroupID c_placement_group_id
             CPlacementStrategy c_strategy
@@ -1209,7 +1251,8 @@ cdef class CoreWorker:
                             CPlacementGroupCreationOptions(
                                 name,
                                 c_strategy,
-                                bundles
+                                bundles,
+                                is_detached
                             ),
                             &c_placement_group_id))
 
@@ -1568,12 +1611,13 @@ cdef class CoreWorker:
 
         return ref_counts
 
-    def get_async(self, ObjectRef object_ref, future):
-        cpython.Py_INCREF(future)
+    def set_get_async_callback(self, ObjectRef object_ref, callback):
+        cpython.Py_INCREF(callback)
         CCoreWorkerProcess.GetCoreWorker().GetAsync(
-                object_ref.native(),
-                async_set_result,
-                <void*>future)
+            object_ref.native(),
+            async_callback,
+            <void*>callback
+        )
 
     def push_error(self, JobID job_id, error_type, error_message,
                    double timestamp):
@@ -1594,13 +1638,11 @@ cdef class CoreWorker:
         job_config.ParseFromString(c_job_config.SerializeAsString())
         return job_config
 
-cdef void async_set_result(shared_ptr[CRayObject] obj,
-                           CObjectID object_ref,
-                           void *future) with gil:
+cdef void async_callback(shared_ptr[CRayObject] obj,
+                         CObjectID object_ref,
+                         void *user_callback) with gil:
     cdef:
         c_vector[shared_ptr[CRayObject]] objects_to_deserialize
-    py_future = <object>(future)
-    loop = py_future._loop
 
     # Object is retrieved from in memory store.
     # Here we go through the code path used to deserialize objects.
@@ -1611,23 +1653,6 @@ cdef void async_set_result(shared_ptr[CRayObject] obj,
     result = ray.worker.global_worker.deserialize_objects(
         data_metadata_pairs, ids_to_deserialize)[0]
 
-    def set_future():
-        # Issue #11030, #8841
-        # If this future has result set already, we just need to
-        # skip the set result/exception procedure.
-        if py_future.done():
-            cpython.Py_DECREF(py_future)
-            return
-
-        if isinstance(result, RayTaskError):
-            ray.worker.last_task_error_raise_time = time.time()
-            py_future.set_exception(result.as_instanceof_cause())
-        elif isinstance(result, RayError):
-            # Directly raise exception for RayActorError
-            py_future.set_exception(result)
-        else:
-            py_future.set_result(result)
-
-        cpython.Py_DECREF(py_future)
-
-    loop.call_soon_threadsafe(set_future)
+    py_callback = <object>user_callback
+    py_callback(result)
+    cpython.Py_DECREF(py_callback)

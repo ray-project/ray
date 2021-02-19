@@ -19,7 +19,7 @@ from ray.rllib.models.torch.torch_action_dist import TorchCategorical, \
     TorchDeterministic, TorchDiagGaussian, \
     TorchMultiActionDistribution, TorchMultiCategorical
 from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.spaces.simplex import Simplex
@@ -55,6 +55,18 @@ MODEL_DEFAULTS: ModelConfigDict = {
     # Supported values are: "tanh", "relu", "swish" (or "silu"),
     # "linear" (or None).
     "conv_activation": "relu",
+
+    # Some default models support a final FC stack of n Dense layers with given
+    # activation:
+    # - Complex observation spaces: Image components are fed through
+    #   VisionNets, flat Boxes are left as-is, Discrete are one-hot'd, then
+    #   everything is concated and pushed through this final FC stack.
+    # - VisionNets (CNNs), e.g. after the CNN stack, there may be
+    #   additional Dense layers.
+    # - FullyConnectedNetworks will have this additional FCStack as well
+    # (that's why it's empty by default).
+    "post_fcnet_hiddens": [],
+    "post_fcnet_activation": "relu",
 
     # For DiagGaussian action distributions, make the second half of the model
     # outputs floating bias variables instead of state-dependent. This only
@@ -199,13 +211,14 @@ class ModelCatalog:
         config = config or MODEL_DEFAULTS
         # Custom distribution given.
         if config.get("custom_action_dist"):
-            action_dist_name = config["custom_action_dist"]
+            custom_action_config = config.copy()
+            action_dist_name = custom_action_config.pop("custom_action_dist")
             logger.debug(
                 "Using custom action distribution {}".format(action_dist_name))
             dist_cls = _global_registry.get(RLLIB_ACTION_DIST,
                                             action_dist_name)
-            dist_cls = ModelCatalog._get_multi_action_distribution(
-                dist_cls, action_space, {}, framework)
+            return ModelCatalog._get_multi_action_distribution(
+                dist_cls, action_space, custom_action_config, framework)
 
         # Dist_type is given directly as a class.
         elif type(dist_type) is type and \
@@ -687,17 +700,22 @@ class ModelCatalog:
                             framework: str = "tf") -> Type[ModelV2]:
 
         VisionNet = None
+        ComplexNet = None
 
         if framework in ["tf2", "tf", "tfe"]:
             from ray.rllib.models.tf.fcnet import \
                 FullyConnectedNetwork as FCNet
             from ray.rllib.models.tf.visionnet import \
                 VisionNetwork as VisionNet
+            from ray.rllib.models.tf.complex_input_net import \
+                ComplexInputNetwork as ComplexNet
         elif framework == "torch":
             from ray.rllib.models.torch.fcnet import (FullyConnectedNetwork as
                                                       FCNet)
             from ray.rllib.models.torch.visionnet import (VisionNetwork as
                                                           VisionNet)
+            from ray.rllib.models.torch.complex_input_net import \
+                ComplexInputNetwork as ComplexNet
         elif framework == "jax":
             from ray.rllib.models.jax.fcnet import (FullyConnectedNetwork as
                                                     FCNet)
@@ -709,16 +727,29 @@ class ModelCatalog:
         # Discrete/1D obs-spaces or 2D obs space but traj. view framestacking
         # disabled.
         num_framestacks = model_config.get("num_framestacks", "auto")
+
+        # Tuple space, where at least one sub-space is image.
+        # -> Complex input model.
+        space_to_check = input_space if not hasattr(
+            input_space, "original_space") else input_space.original_space
+        if isinstance(input_space,
+                      Tuple) or (isinstance(space_to_check, Tuple) and any(
+                          isinstance(s, Box) and len(s.shape) >= 2
+                          for s in space_to_check.spaces)):
+            return ComplexNet
+
+        # Single, flattenable/one-hot-abe space -> Simple FCNet.
         if isinstance(input_space, (Discrete, MultiDiscrete)) or \
                 len(input_space.shape) == 1 or (
                 len(input_space.shape) == 2 and (
                 num_framestacks == "auto" or num_framestacks <= 1)):
             return FCNet
-        # Default Conv2D net.
-        else:
-            if framework == "jax":
-                raise NotImplementedError("No Conv2D default net for JAX yet!")
-            return VisionNet
+
+        elif framework == "jax":
+            raise NotImplementedError("No non-FC default net for JAX yet!")
+
+        # Last resort: Conv2D stack for single image spaces.
+        return VisionNet
 
     @staticmethod
     def _get_multi_action_distribution(dist_class, action_space, config,
@@ -740,7 +771,8 @@ class ModelCatalog:
                 action_space=action_space,
                 child_distributions=child_dists,
                 input_lens=input_lens), int(sum(input_lens))
-        return dist_class
+        return dist_class, dist_class.required_model_output_shape(
+            action_space, config)
 
     @staticmethod
     def _validate_config(config: ModelConfigDict, framework: str) -> None:
@@ -766,8 +798,8 @@ class ModelCatalog:
                                  "framework=jax so far!")
 
         if config.get("framestack") != DEPRECATED_VALUE:
-            deprecation_warning(
-                old="framestack", new="num_framestacks (int)", error=False)
+            # deprecation_warning(
+            #     old="framestack", new="num_framestacks (int)", error=False)
             # If old behavior is desired, disable traj. view-style
             # framestacking.
             config["num_framestacks"] = 0

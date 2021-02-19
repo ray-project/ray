@@ -1,3 +1,7 @@
+.. warning::
+  Ray Serve is changing fast!  You're probably running the latest pip release and not the nightly build, so please ensure you're viewing the correct version of this documentation.
+  `Here's the documentation for the latest pip release of Ray Serve <https://docs.ray.io/en/latest/serve/index.html>`_.
+
 .. _rayserve:
 
 ============================================
@@ -30,7 +34,7 @@ Ray Serve can be used in two primary ways to deploy your models at scale:
 
 
 .. tip::
-  Chat with Ray Serve users and developers on our `community Slack <https://forms.gle/9TSdDYUgxYs8SA9e8>`_ in the #serve channel and on our `forum <https://discuss.ray.io/>`_!
+  Chat with Ray Serve users and developers on our `forum <https://discuss.ray.io/>`_!
 
 .. note::
   Starting with Ray version 1.2.0, Ray Serve backends take in a Starlette Request object instead of a Flask Request object.
@@ -55,7 +59,7 @@ Now you can serve a function...
 .. literalinclude:: ../../../python/ray/serve/examples/doc/quickstart_class.py
 
 
-See :doc:`key-concepts` for more exhaustive coverage about Ray Serve and its core concepts: backends and endpoints.
+See :doc:`core-apis` for more exhaustive coverage about Ray Serve and its core concepts: backends and endpoints.
 For a high-level view of the architecture underlying Ray Serve, see :doc:`architecture`.
 
 Why Ray Serve?
@@ -92,7 +96,7 @@ If you plan on running on multiple machines, Ray Serve will serve you well.
 What's next?
 ============
 
-Check out the :doc:`key-concepts`, learn more about :doc:`advanced`, look at the :ref:`serve-faq`,
+Check out the :doc:`core-apis`, look at the :ref:`serve-faq`,
 or head over to the :doc:`tutorials/index` to get started building your Ray Serve applications.
 
 For more, see the following blog posts about Ray Serve:

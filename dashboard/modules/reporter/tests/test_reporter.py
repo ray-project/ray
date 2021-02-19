@@ -105,7 +105,13 @@ def test_prometheus_physical_stats_record(enable_test_module, shutdown_only):
             prom_addresses)
         return all([
             "ray_node_cpu" in metric_names, "ray_node_mem" in metric_names,
-            "ray_raylet_cpu" in metric_names, "ray_raylet_mem" in metric_names
+            "ray_raylet_cpu" in metric_names, "ray_raylet_mem" in metric_names,
+            "ray_node_disk_usage" in metric_names,
+            "ray_node_disk_utilization_percentage" in metric_names,
+            "ray_node_network_sent" in metric_names,
+            "ray_node_network_received" in metric_names,
+            "ray_node_network_send_speed" in metric_names,
+            "ray_node_network_receive_speed" in metric_names
         ])
 
     def test_case_ip_correct():
