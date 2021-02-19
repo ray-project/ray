@@ -1,3 +1,5 @@
+from typing import Optional
+
 import click
 import copy
 from datetime import datetime
@@ -19,6 +21,10 @@ from ray.autoscaler._private.commands import (
     attach_cluster, exec_cluster, create_or_update_cluster, monitor_cluster,
     rsync, teardown_cluster, get_head_node_ip, kill_node, get_worker_node_ips,
     debug_status, RUN_ENV_TYPES)
+from ray.autoscaler._private.get_logs import Archive, \
+    GetParameters, Node, _info_from_params, \
+    create_archive_for_local_and_remote_nodes, \
+    create_archive_for_remote_nodes, get_all_local_data
 from ray.autoscaler._private.util import DEBUG_AUTOSCALING_ERROR, \
     DEBUG_AUTOSCALING_STATUS
 from ray.state import GlobalState
@@ -28,6 +34,32 @@ import ray.utils
 from ray.autoscaler._private.cli_logger import cli_logger, cf
 
 logger = logging.getLogger(__name__)
+
+RAY_PROCESSES = [
+    # The first element is the substring to filter.
+    # The second element, if True, is to filter ps results by command name
+    # (only the first 15 charactors of the executable name on Linux);
+    # if False, is to filter ps results by command with all its arguments.
+    # See STANDARD FORMAT SPECIFIERS section of
+    # http://man7.org/linux/man-pages/man1/ps.1.html
+    # about comm and args. This can help avoid killing non-ray processes.
+    # Format:
+    # Keyword to filter, filter by command (True)/filter by args (False)
+    ["raylet", True],
+    ["plasma_store", True],
+    ["gcs_server", True],
+    ["monitor.py", False],
+    ["ray.util.client.server", False],
+    ["redis-server", False],
+    ["default_worker.py", False],  # Python worker.
+    ["ray::", True],  # Python worker. TODO(mehrdadn): Fix for Windows
+    ["io.ray.runtime.runner.worker.DefaultWorker", False],  # Java worker.
+    ["log_monitor.py", False],
+    ["reporter.py", False],
+    ["dashboard.py", False],
+    ["new_dashboard/agent.py", False],
+    ["ray_process_reaper.py", False],
+]
 
 
 def check_no_existing_redis_clients(node_ip_address, redis_client):
@@ -704,31 +736,7 @@ def stop(force, verbose, log_style, log_color):
     # Note that raylet needs to exit before object store, otherwise
     # it cannot exit gracefully.
     is_linux = sys.platform.startswith("linux")
-    processes_to_kill = [
-        # The first element is the substring to filter.
-        # The second element, if True, is to filter ps results by command name
-        # (only the first 15 charactors of the executable name on Linux);
-        # if False, is to filter ps results by command with all its arguments.
-        # See STANDARD FORMAT SPECIFIERS section of
-        # http://man7.org/linux/man-pages/man1/ps.1.html
-        # about comm and args. This can help avoid killing non-ray processes.
-        # Format:
-        # Keyword to filter, filter by command (True)/filter by args (False)
-        ["raylet", True],
-        ["plasma_store", True],
-        ["gcs_server", True],
-        ["monitor.py", False],
-        ["ray.util.client.server", False],
-        ["redis-server", False],
-        ["default_worker.py", False],  # Python worker.
-        ["ray::", True],  # Python worker. TODO(mehrdadn): Fix for Windows
-        ["io.ray.runtime.runner.worker.DefaultWorker", False],  # Java worker.
-        ["log_monitor.py", False],
-        ["reporter.py", False],
-        ["dashboard.py", False],
-        ["new_dashboard/agent.py", False],
-        ["ray_process_reaper.py", False],
-    ]
+    processes_to_kill = RAY_PROCESSES
 
     process_infos = []
     for proc in psutil.process_iter(["name", "cmdline"]):
@@ -1416,6 +1424,227 @@ def status(address, redis_password):
 
 @cli.command(hidden=True)
 @click.option(
+    "--stream",
+    "-S",
+    required=False,
+    type=bool,
+    is_flag=True,
+    default=False,
+    help="If True, will stream the binary archive contents to stdout")
+@click.option(
+    "--output",
+    "-o",
+    required=False,
+    type=str,
+    default=None,
+    help="Output file.")
+@click.option(
+    "--logs/--no-logs",
+    is_flag=True,
+    default=True,
+    help="Collect logs from ray session dir")
+@click.option(
+    "--pip/--no-pip",
+    is_flag=True,
+    default=True,
+    help="Collect installed pip packages")
+@click.option(
+    "--processes/--no-processes",
+    is_flag=True,
+    default=True,
+    help="Collect info on running processes")
+@click.option(
+    "--processes-verbose/--no-processes-verbose",
+    is_flag=True,
+    default=True,
+    help="Increase process information verbosity")
+def get_local_logs(stream: bool = False,
+                   output: Optional[str] = None,
+                   logs: bool = True,
+                   pip: bool = True,
+                   processes: bool = True,
+                   processes_verbose: bool = False):
+    """Collect local data and package into an archive.
+
+    Usage:
+
+        ray get-local-logs [--stream/--output file]
+
+    This script is called on remote nodes to fetch their data.
+    """
+    if stream and output:
+        raise ValueError(
+            "You can only use either `--output` or `--stream`, but not both.")
+
+    parameters = GetParameters(
+        logs=logs,
+        pip=pip,
+        processes=processes,
+        processes_verbose=processes_verbose,
+        processes_list=RAY_PROCESSES)
+
+    with Archive() as archive:
+        get_all_local_data(archive, parameters)
+
+    tmp = archive.file
+
+    if stream:
+        with open(tmp, "rb") as fp:
+            os.write(1, fp.read())
+        os.remove(tmp)
+        return
+
+    target = output or os.path.join(os.getcwd(), os.path.basename(tmp))
+    os.rename(tmp, target)
+    logger.info(f"Created local data archive at {target}")
+
+
+@cli.command()
+@click.argument("cluster_config_file", required=False, type=str)
+@click.option(
+    "--host",
+    "-h",
+    required=False,
+    type=str,
+    help="Single or list of hosts, separated by comma.")
+@click.option(
+    "--ssh-user",
+    "-U",
+    required=False,
+    type=str,
+    default=None,
+    help="Username of the SSH user.")
+@click.option(
+    "--ssh-key",
+    "-K",
+    required=False,
+    type=str,
+    default=None,
+    help="Path to the SSH key file.")
+@click.option(
+    "--docker",
+    "-d",
+    required=False,
+    type=str,
+    default=None,
+    help="Name of the docker container, if applicable.")
+@click.option(
+    "--local",
+    "-L",
+    required=False,
+    type=bool,
+    is_flag=True,
+    default=None,
+    help="Also include information about the local node.")
+@click.option(
+    "--output",
+    "-o",
+    required=False,
+    type=str,
+    default=None,
+    help="Output file.")
+@click.option(
+    "--logs/--no-logs",
+    is_flag=True,
+    default=True,
+    help="Collect logs from ray session dir")
+@click.option(
+    "--pip/--no-pip",
+    is_flag=True,
+    default=True,
+    help="Collect installed pip packages")
+@click.option(
+    "--processes/--no-processes",
+    is_flag=True,
+    default=True,
+    help="Collect info on running processes")
+@click.option(
+    "--processes-verbose/--no-processes-verbose",
+    is_flag=True,
+    default=True,
+    help="Increase process information verbosity")
+def get_logs(cluster_config_file: Optional[str] = None,
+             host: Optional[str] = None,
+             ssh_user: Optional[str] = None,
+             ssh_key: Optional[str] = None,
+             docker: Optional[str] = None,
+             local: Optional[bool] = None,
+             output: Optional[str] = None,
+             logs: bool = True,
+             pip: bool = True,
+             processes: bool = True,
+             processes_verbose: bool = False):
+    """Get log data from one or more nodes.
+
+    Best used with Ray cluster configs:
+
+        ray get-logs [cluster.yaml]
+
+    Include the --local flag to also collect and include data from the
+    local node.
+
+    Missing fields will be tried to be auto-filled.
+
+    You can also manually specify a list of hosts using the
+    ``--host <host1,host2,...>`` parameter.
+    """
+    cluster_config_file, hosts, ssh_user, ssh_key, docker, cluster_name = \
+        _info_from_params(cluster_config_file, host, ssh_user, ssh_key, docker)
+
+    nodes = [
+        Node(
+            host=h,
+            ssh_user=ssh_user,
+            ssh_key=ssh_key,
+            docker_container=docker) for h in hosts
+    ]
+
+    if not nodes:
+        logger.error(
+            f"No nodes found. Specify with `--host` or by passing a ray "
+            f"cluster config to `--cluster`.")
+        return None
+
+    if cluster_config_file:
+        nodes[0].is_head = True
+
+    if local is None:
+        # If called with a cluster config, this was probably started
+        # from a laptop
+        local = not bool(cluster_config_file)
+
+    parameters = GetParameters(
+        logs=logs,
+        pip=pip,
+        processes=processes,
+        processes_verbose=processes_verbose,
+        processes_list=RAY_PROCESSES)
+
+    with Archive() as archive:
+        if local:
+            create_archive_for_local_and_remote_nodes(
+                archive, remote_nodes=nodes, parameters=parameters)
+        else:
+            create_archive_for_remote_nodes(
+                archive, remote_nodes=nodes, parameters=parameters)
+
+    if not output:
+        if cluster_name:
+            filename = f"{cluster_name}_" \
+                       f"{datetime.now():%Y-%m-%d_%H-%M-%S}.tar.gz"
+        else:
+            filename = f"collected_logs_" \
+                       f"{datetime.now():%Y-%m-%d_%H-%M-%S}.tar.gz"
+        output = os.path.join(os.getcwd(), filename)
+    else:
+        output = os.path.expanduser(output)
+
+    os.rename(archive.file, output)
+    logger.info(f"Archive can be found here: {output}")
+
+
+@cli.command(hidden=True)
+@click.option(
     "--address",
     required=False,
     type=str,
@@ -1511,6 +1740,8 @@ cli.add_command(microbenchmark)
 cli.add_command(stack)
 cli.add_command(status)
 cli.add_command(memory)
+cli.add_command(get_local_logs)
+cli.add_command(get_logs)
 cli.add_command(global_gc)
 cli.add_command(timeline)
 cli.add_command(install_nightly)
