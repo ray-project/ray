@@ -1202,6 +1202,8 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
 void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &client,
                                    rpc::WorkerExitType disconnect_type,
                                    const std::string &client_error_message) {
+  RAY_LOG(DEBUG) << "NodeManager::DisconnectClient, disconnect_type=" << disconnect_type
+                 << "client_error_message=" << client_error_message;
   std::shared_ptr<WorkerInterface> worker = worker_pool_.GetRegisteredWorker(client);
   bool is_worker = false, is_driver = false;
   if (worker) {

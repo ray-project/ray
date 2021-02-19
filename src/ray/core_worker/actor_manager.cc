@@ -130,7 +130,8 @@ void ActorManager::HandleActorStateNotification(const ActorID &actor_id,
                 << ", port: " << actor_data.address().port() << ", worker_id: "
                 << WorkerID::FromBinary(actor_data.address().worker_id())
                 << ", raylet_id: " << NodeID::FromBinary(actor_data.address().raylet_id())
-                << ", num_restarts: " << actor_data.num_restarts();
+                << ", num_restarts: " << actor_data.num_restarts()
+                << ", dead_info=" << actor_data.dead_info();
   if (actor_data.state() == rpc::ActorTableData::RESTARTING) {
     direct_actor_submitter_->DisconnectActor(actor_id, actor_data.num_restarts(), false,
                                              "No dead info avaliable.");

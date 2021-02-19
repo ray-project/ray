@@ -137,6 +137,7 @@ raylet::RayletClient::RayletClient(
 
 Status raylet::RayletClient::Disconnect(rpc::WorkerExitType exit_type,
                                         const std::string error_message) {
+  RAY_LOG(DEBUG) << "RayletClient::Disconnect, error_message=" << error_message;
   flatbuffers::FlatBufferBuilder fbb;
   auto message = protocol::CreateDisconnectClientDirect(fbb, static_cast<int>(exit_type),
                                                         error_message.c_str());

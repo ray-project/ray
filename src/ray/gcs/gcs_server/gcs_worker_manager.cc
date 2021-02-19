@@ -26,8 +26,10 @@ void GcsWorkerManager::HandleReportWorkerFailure(
   const auto node_id = NodeID::FromBinary(worker_address.raylet_id());
   std::stringstream log_stream;
   log_stream << "Reporting worker failure, worker id = " << worker_id
-             << ", node id = " << node_id
-             << ", address = " << worker_address.ip_address();
+             << ", node id = " << node_id << ", address = " << worker_address.ip_address()
+             << ", exit_type = "
+             << rpc::WorkerExitType_Name(request.worker_failure().exit_type())
+             << ", exit_info = " << request.worker_failure().exit_info();
   if (request.worker_failure().exit_type() == rpc::WorkerExitType::INTENDED_EXIT) {
     RAY_LOG(INFO) << log_stream.str();
   } else {
