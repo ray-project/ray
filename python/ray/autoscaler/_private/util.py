@@ -121,7 +121,7 @@ def rewrite_legacy_yaml_to_available_node_types(
                 "node_config": config["worker_nodes"],
                 "resources": config["worker_nodes"].get("resources") or {},
                 "min_workers": config.get("min_workers", 0),
-                "max_workers": config.get("max_workers", float("inf")),
+                "max_workers": config.get("max_workers", 0),
             },
         }
         config["head_node_type"] = NODE_TYPE_LEGACY_HEAD
@@ -146,10 +146,10 @@ def merge_setup_commands(config):
 
 
 def fill_node_type_max_workers(config):
-    """If per-node max_workers is absent or marked -1, set it to infinity."""
+    """Default per-node max workers to global max_workers."""
+    assert "max_workers" in config, "Global max workers should be set."
     for node_type in config["available_node_types"].values():
-        if node_type.get("max_workers", -1) == -1:
-            node_type["max_workers"] = float("inf")
+        node_type["max_workers"] = config["max_workers"]
 
 
 def with_head_node_ip(cmds, head_ip=None):
