@@ -11,7 +11,7 @@ public class JobConfigTest extends BaseTest {
 
   @BeforeClass
   public void setupJobConfig() {
-    TestUtils.setConfigForClass(
+    TestUtils.setConfig(
         "ray.job.num-java-workers-per-process", "3",
         "ray.job.jvm-options.0", "-DX=999",
         "ray.job.jvm-options.1", "-DY=998",

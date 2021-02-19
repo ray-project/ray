@@ -26,7 +26,7 @@ import org.testng.annotations.Test;
 public class ReferenceCountingTest extends BaseTest {
   @BeforeClass
   public void setUp() {
-    TestUtils.setConfigForClass("ray.head-args.0", "--object-store-memory=" + 100L * 1024 * 1024);
+    TestUtils.setConfig("ray.head-args.0", "--object-store-memory=" + 100L * 1024 * 1024);
   }
 
   /**

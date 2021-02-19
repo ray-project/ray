@@ -23,7 +23,7 @@ public class RuntimeContextTest extends BaseTest {
 
   @BeforeClass
   public void setUp() {
-    TestUtils.setConfigForClass("ray.job.id", JOB_ID.toString());
+    TestUtils.setConfig("ray.job.id", JOB_ID.toString());
   }
 
   @Test

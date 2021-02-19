@@ -102,27 +102,20 @@ public class TestUtils {
     return Ray.task(TestUtils::getNumWorkersPerProcessRemoteFunction).remote().get();
   }
 
-  private static Set<String> classLevelConfigKeys = new HashSet<>();
+  private static Set<String> configKeys = new HashSet<>();
 
-  private static Set<String> methodLevelConfigKeys = new HashSet<>();
-
-  public static void setConfigForClass(String... keyValues) {
-    setConfig(keyValues, classLevelConfigKeys);
-  }
-
-  public static void setConfigForMethod(String... keyValues) {
-    setConfig(keyValues, methodLevelConfigKeys);
-  }
-
-  private static void setConfig(String[] keyValues, Set<String> configKeys) {
+  public static void setConfig(String... keyValues) {
     Preconditions.checkState(keyValues.length % 2 == 0);
-    for (String key : configKeys) {
-      System.clearProperty(key);
-    }
-    configKeys.clear();
     for (int i = 0; i < keyValues.length; i += 2) {
       System.setProperty(keyValues[i], keyValues[i + 1]);
       configKeys.add(keyValues[i]);
     }
+  }
+
+  public static void clearConfig() {
+    for (String key : configKeys) {
+      System.clearProperty(key);
+    }
+    configKeys.clear();
   }
 }

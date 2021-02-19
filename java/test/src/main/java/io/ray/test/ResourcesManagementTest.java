@@ -17,7 +17,7 @@ public class ResourcesManagementTest extends BaseTest {
 
   @BeforeClass
   public void setUp() {
-    TestUtils.setConfigForClass(
+    TestUtils.setConfig(
         "ray.head-args.0", "--num-cpus=4",
         "ray.head-args.1", "--resources={\"RES-A\":4}");
   }

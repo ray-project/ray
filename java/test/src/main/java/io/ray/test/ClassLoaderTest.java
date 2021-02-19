@@ -28,7 +28,7 @@ public class ClassLoaderTest extends BaseTest {
   public void setUp() {
     // The potential issue of multiple `ClassLoader` instances for the same job on multi-threading
     // scenario only occurs if the classes are loaded from the job code search path.
-    TestUtils.setConfigForClass("ray.job.code-search-path", codeSearchPath);
+    TestUtils.setConfig("ray.job.code-search-path", codeSearchPath);
   }
 
   @Test(groups = {"cluster"})
