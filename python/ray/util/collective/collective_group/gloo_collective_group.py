@@ -125,7 +125,7 @@ class GLOOGroup(BaseGroup):
         """
         super(GLOOGroup, self).__init__(world_size, rank, group_name)
 
-        self._gloo_context = self._get_gloo_context();
+        self._gloo_context = self._get_gloo_context()
 
         self._rendezvous = Rendezvous(self.group_name, self._gloo_context, store_type, device_type)
         self._rendezvous.meet()
@@ -210,6 +210,154 @@ class GLOOGroup(BaseGroup):
 
         self._collective(tensors, tensors, collective_fn)
 
+    def broadcast(self, tensors, broadcast_options=BroadcastOptions()):
+        """Broadcast tensors to all other gpus following options.
+
+        Args:
+            tensors (List): tensors to be broadcast or received.
+            broadcast_options: broadcast options.
+
+        Returns:
+            None
+        """
+        root_rank = len(tensors) * broadcast_options.root_rank \
+            + broadcast_options.root_tensor
+
+        def collective_fn(input_tensor, output_tensor, comm, stream):
+            comm.broadcast(
+                gloo_util.get_tensor_ptr(input_tensor),
+                gloo_util.get_tensor_ptr(output_tensor),
+                gloo_util.get_tensor_n_elements(input_tensor),
+                gloo_util.get_nccl_tensor_dtype(input_tensor), root_rank,
+                stream.ptr)
+
+        self._collective(tensors, tensors, collective_fn)
+
+    def allgather(self,
+                  tensor_lists,
+                  tensors,
+                  allgather_options=AllGatherOptions()):
+        """Allgather tensors across gpus into a list of tensors.
+
+        Args:
+            tensor_lists (List[List[Tensor]]): allgathered tensors.
+            tensors: the list of tensors to allgather across the group.
+                     Each tensor must lolcate on a GPU of the process.
+            allgather_options: allgather options.
+
+        Returns:
+            None
+        """
+
+        def collective_fn(input_tensor, output_tensor, comm, stream):
+            comm.allGather(
+                gloo_util.get_tensor_ptr(input_tensor),
+                gloo_util.get_tensor_ptr(output_tensor),
+                gloo_util.get_tensor_n_elements(input_tensor),
+                gloo_util.get_nccl_tensor_dtype(input_tensor), stream.ptr)
+
+        _check_inputs_compatibility_for_scatter_gather(tensors, tensor_lists)
+        output_flattened = [
+            _flatten_for_scatter_gather(tensor_list, copy=False)
+            for tensor_list in tensor_lists
+        ]
+
+        def postprocess_fn(stream):
+            # TODO(Hao): designate a copy stream.
+            for i, tensor_list in enumerate(tensor_lists):
+                for j, tensor in enumerate(tensor_list):
+                    gloo_util.copy_tensor(tensor, output_flattened[i][j])
+
+        self._collective(
+            tensors,
+            output_flattened,
+            collective_fn,
+            postprocess_fn=postprocess_fn)
+
+    def reducescatter(self,
+                      tensors,
+                      tensor_lists,
+                      reducescatter_options=ReduceScatterOptions()):
+        """Reduce the scatter a list of tensors across the group.
+
+        Args:
+            tensors (List): the output tensors (could be unspecified), each
+                            located on a GPU of the current process.
+            tensor_lists (List[List]): the list of tensors to be reduced then
+                                       scattered.
+            reducescatter_options: reduce-scatter options.
+
+        Returns:
+            None
+        """
+
+        def collective_fn(input_tensor, output_tensor, comm, stream):
+            comm.reduceScatter(
+                gloo_util.get_tensor_ptr(input_tensor),
+                gloo_util.get_tensor_ptr(output_tensor),
+                gloo_util.get_tensor_n_elements(output_tensor),
+                gloo_util.get_nccl_tensor_dtype(output_tensor),
+                gloo_util.get_nccl_reduce_op(reducescatter_options.reduceOp),
+                stream.ptr)
+
+        _check_inputs_compatibility_for_scatter_gather(tensors, tensor_lists)
+        input_flattened = [
+            _flatten_for_scatter_gather(tensor_list, copy=False)
+            for tensor_list in tensor_lists
+        ]
+
+        def preprocess_fn(stream):
+            # TODO(Hao): designate a copy stream.
+            for i, tensor_list in enumerate(tensor_lists):
+                for j, tensor in enumerate(tensor_list):
+                    gloo_util.copy_tensor(input_flattened[i][j], tensor)
+
+        self._collective(
+            input_flattened,
+            tensors,
+            collective_fn,
+            preprocess_fn=preprocess_fn)
+
+    def send(self, tensors, send_options=SendOptions()):
+        """Send a tensor to a destination gpu in the group.
+
+        Args:
+            tensors (List): the tensor to send.
+            send_options: send options.
+
+        Returns:
+            None
+        """
+
+        def p2p_fn(tensor, context, peer):
+            context.send(
+                gloo_util.get_tensor_ptr(tensor),
+                gloo_util.get_tensor_n_elements(tensor),
+                gloo_util.get_nccl_tensor_dtype(tensor), peer)
+
+        self._point2point(tensors, p2p_fn, send_options.dst_rank,
+                          send_options.dst_gpu_index)
+
+    def recv(self, tensors, recv_options=RecvOptions()):
+        """Receive a tensor from a source gpu in the group.
+
+        Args:
+            tensors (List): the received tensor.
+            recv_options: Receive options.
+
+        Returns:
+            None
+        """
+
+        def p2p_fn(tensor, comm, stream, peer):
+            comm.recv(
+                gloo_util.get_tensor_ptr(tensor),
+                gloo_util.get_tensor_n_elements(tensor),
+                gloo_util.get_nccl_tensor_dtype(tensor), peer, stream.ptr)
+
+        self._point2point(tensors, p2p_fn, recv_options.src_rank,
+                          recv_options.src_gpu_index)
+
     def _get_gloo_context(self):
         """
         Create or use a cached GLOO communicator for the collective task.
@@ -222,17 +370,13 @@ class GLOOGroup(BaseGroup):
     def _collective(self,
                     input_tensors,
                     output_tensors,
-                    collective_fn,
-                    preprocess_fn=None,
-                    postprocess_fn=None):
+                    collective_fn):
         """A method to encapsulate all collective calls.
 
         Args:
             input_tensors: the list of the input tensors.
             output_tensors: the list of the output tensors.
             collective_fn: the collective function call.
-            preprocess_fn: preprocess procedures before collective calls.
-            postprocess_fn: postprocess procedures after collective calls.
 
         Returns:
             None
@@ -240,35 +384,53 @@ class GLOOGroup(BaseGroup):
         _check_cpu_tensors(input_tensors)
         _check_cpu_tensors(output_tensors)
 
-        # devices = gloo_util.get_tensor_device_list(input_tensors)
-        # key = _get_comm_key_from_devices(devices)
-        # comms = self._get_nccl_collective_communicator(key, devices)
-        # streams = self._dev_streams_map[key]
+        collective_fn(input_tensors[0], output_tensors[0], self._gloo_context)
 
-        # TODO(Hao): sync streams and events
+    def _point2point(self, tensors, p2p_fn, peer_rank: int, peer_gpu_idx: int):
+        """A method to encapsulate all peer-to-peer calls (i.e., send/recv).
+
+        Args:
+            tensors: the tensor to send or receive.
+            p2p_fn: the p2p function call.
+            peer_rank (int): the rank of the peer process.
+            peer_gpu_idx (int): the index of the gpu on the peer process.
+
+        Returns:
+            None
+        """
+        # # check send/recv availability.
+        # if gloo_util.get_nccl_runtime_version() < 2704:
+        #     raise RuntimeError("P2p send/recv requires NCCL >= 2.7.4. "
+        #                        "Got '{}'.".format(
+        #                            gloo_util.get_nccl_runtime_version()))
+        _check_cpu_tensors(tensors)
+
+        # we currently only support single device to single device send/recv.
+        assert len(tensors) == 1
+        my_gpu_idx = gloo_util.get_tensor_device(tensors[0])
+        comm_key = _get_comm_key_send_recv(self.rank, my_gpu_idx, peer_rank,
+        #                                    peer_gpu_idx)
+        # comms = self._get_nccl_p2p_communicator(comm_key, my_gpu_idx,
+        #                                         peer_rank, peer_gpu_idx)
+        # streams = self._d ev_streams_map[comm_key]
+
+        # # TODO(Hao): sync streams and events
         # self._sync_streams()
 
-        # Make the collective call
-        # if preprocess_fn:
-            # preprocess_fn(streams)
-        # nccl_util.groupStart()
-        for i, tensor in enumerate(input_tensors):
-            collective_fn(tensor, output_tensors[i], comms[i], streams[i])
-        # nccl_util.groupEnd()
-        # if postprocess_fn:
-        #     postprocess_fn(streams)
-
+        # We have made sure that self.rank != peer_rank during API check.
+        peer_p2p_rank = 0 if self.rank > peer_rank else 1
+        for i, tensor in enumerate(tensors):
+            p2p_fn(tensors[i], comms[i], streams[i], peer_p2p_rank)
 
 def _check_cpu_tensors(tensors):
     """Check only have one tensor and located on CPU."""
     if not tensors or not isinstance(tensors, list):
-        raise RuntimeError("'tensors' must be a nonempty list.")
+        raise  RuntimeError("'tensors' must be a nonempty list.")
     if len(tensors) != 1:
-        raise RuntimeError("Tensor list only accept one tensor in the tensor list."
+        raise RuntimeError("Gloo only accept one tensor in the tensor list."
                            " Got {} != 1.".format(
                                len(tensors)))
-    for tensor in tensors:
-        if torch_available() and isinstance(tensor, torch.Tensor):
-            device = tensor.device.index
-            if not isinstance(device, int):
-                raise RuntimeError("The tensor is not on a valid GPU.")
+    d = gloo_util.get_tensor_device(tensors[0])
+    if d != 'cpu':
+        raise RuntimeError("Gloo only accept cpu tensor."
+                           " Got {}.".format(d))

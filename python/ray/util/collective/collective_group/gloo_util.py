@@ -1,5 +1,6 @@
 """Code to wrap some GLOO API calls."""
 import numpy
+from numpy.core.records import array
 try:
     import pygloo
 except ImportError:
@@ -146,3 +147,10 @@ def get_gloo_store_path(store_name):
     from ray.utils import get_ray_temp_dir
     store_path = f"{get_ray_temp_dir()}_collective/gloo/{store_name}"
     return store_path
+
+def get_tensor_device(tensor):
+    if isinstance(tensor, numpy.ndarray):
+        return 'cpu'
+    elif torch_available() and isinstance(tensor, torch.Tensor):
+        device = tensor.device
+        return device
