@@ -21,6 +21,7 @@ from ray.tune.schedulers import (FIFOScheduler, HyperBandScheduler,
                                  TrialScheduler, HyperBandForBOHB)
 
 from ray.tune.schedulers.pbt import explore, PopulationBasedTrainingReplay
+from ray.tune.suggest._mock import _MockSearcher
 from ray.tune.trial import Trial, Checkpoint
 from ray.tune.trial_executor import TrialExecutor
 from ray.tune.resources import Resources
@@ -237,6 +238,7 @@ class _MockTrialExecutor(TrialExecutor):
 class _MockTrialRunner():
     def __init__(self, scheduler):
         self._scheduler_alg = scheduler
+        self.search_alg = None
         self.trials = []
         self.trial_executor = _MockTrialExecutor()
 
@@ -881,6 +883,19 @@ class PopulationBasedTestingSuite(unittest.TestCase):
                         TrialScheduler.CONTINUE)
         pbt.reset_stats()
         return pbt, runner
+
+    def testSearchError(self):
+        pbt, runner = self.basicSetup(num_trials=0)
+
+        def mock_train(config):
+            return 1
+
+        with self.assertRaises(ValueError):
+            tune.run(
+                mock_train,
+                config={"x": 1},
+                scheduler=pbt,
+                search_alg=_MockSearcher())
 
     def testMetricError(self):
         pbt, runner = self.basicSetup()
@@ -2061,7 +2076,7 @@ class AsyncHyperBandSuite(unittest.TestCase):
     def testPBTNanInf(self):
         scheduler = PopulationBasedTraining(
             metric="episode_reward_mean", mode="max")
-        t1, t2, t3 = self.nanInfSetup(scheduler)
+        t1, t2, t3 = self.nanInfSetup(scheduler, runner=MagicMock())
         scheduler.on_trial_complete(None, t1, result(10, np.nan))
         scheduler.on_trial_complete(None, t2, result(10, float("inf")))
         scheduler.on_trial_complete(None, t3, result(10, float("-inf")))

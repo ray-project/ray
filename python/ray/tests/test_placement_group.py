@@ -312,6 +312,7 @@ def test_remove_placement_group(ray_start_cluster):
     # Creating a placement group as soon as it is
     # created should work.
     placement_group = ray.util.placement_group([{"CPU": 2}, {"CPU": 2}])
+    assert placement_group.wait(10)
     ray.util.remove_placement_group(placement_group)
 
     def is_placement_group_removed():
@@ -324,6 +325,7 @@ def test_remove_placement_group(ray_start_cluster):
 
     # # Now let's create a placement group.
     placement_group = ray.util.placement_group([{"CPU": 2}, {"CPU": 2}])
+    assert placement_group.wait(10)
 
     # Create an actor that occupies resources.
     @ray.remote(num_cpus=2)

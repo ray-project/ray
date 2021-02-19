@@ -16,7 +16,6 @@ import javax.tools.JavaCompiler;
 import javax.tools.ToolProvider;
 import org.apache.commons.io.FileUtils;
 import org.testng.Assert;
-import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
@@ -30,11 +29,6 @@ public class ClassLoaderTest extends BaseTest {
     // The potential issue of multiple `ClassLoader` instances for the same job on multi-threading
     // scenario only occurs if the classes are loaded from the job code search path.
     System.setProperty("ray.job.code-search-path", codeSearchPath);
-  }
-
-  @AfterClass
-  public void tearDown() {
-    System.clearProperty("ray.job.code-search-path");
   }
 
   @Test(groups = {"cluster"})
