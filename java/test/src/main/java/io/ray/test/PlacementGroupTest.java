@@ -117,6 +117,7 @@ public class PlacementGroupTest extends BaseTest {
     Assert.assertEquals(exceptionCount, 1);
   }
 
+  @Test(groups = {"cluster"})
   public void testCheckBundleIndex() {
     PlacementGroup placementGroup = PlacementGroupTestUtils.createSimpleGroup();
     Assert.assertTrue(placementGroup.wait(60));
@@ -147,7 +148,7 @@ public class PlacementGroupTest extends BaseTest {
     PlacementGroupTestUtils.createBundleResourceInvalidGroup();
   }
 
-  @Test
+  @Test(groups = {"cluster"})
   public void testNamedPlacementGroup() {
     // Test Non-Global placement group.
     String pgName = "named_placement_group";
@@ -172,7 +173,7 @@ public class PlacementGroupTest extends BaseTest {
     Assert.assertEquals(placementGroup.getBundles().size(), 1);
   }
 
-  @Test(expectedExceptions = {IllegalArgumentException.class})
+  @Test(expectedExceptions = {IllegalArgumentException.class}, groups = {"cluster"})
   public void testCreatePlacementGroupWithSameName() {
     String pgName = "named_placement_group";
     PlacementGroup firstPlacementGroup =
@@ -183,7 +184,7 @@ public class PlacementGroupTest extends BaseTest {
         "CPU", 1, PlacementStrategy.PACK, 1.0, pgName, false);
   }
 
-  @Test(expectedExceptions = {IllegalArgumentException.class})
+  @Test(expectedExceptions = {IllegalArgumentException.class}, groups = {"cluster"})
   public void testCreateGlobalPlacementGroupWithSameName() {
     String pgGlobalName = "global_placement_group";
     PlacementGroup firstPlacementGroup =
@@ -194,6 +195,7 @@ public class PlacementGroupTest extends BaseTest {
         "CPU", 1, PlacementStrategy.PACK, 1.0, pgGlobalName, true);
   }
 
+  @Test(groups = {"cluster"})
   public void testCompatibleForPreviousApi() {
     String pgName = "named_placement_group";
     List<Map<String, Double>> bundles = new ArrayList<>();
