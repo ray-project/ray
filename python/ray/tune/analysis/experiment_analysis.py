@@ -238,7 +238,16 @@ class Analysis:
             return path_metric_df[["chkpt_path", metric]].values.tolist()
         elif isinstance(trial, Trial):
             checkpoints = trial.checkpoint_manager.best_checkpoints()
-            return [(c.value, c.result[metric]) for c in checkpoints]
+            ret = []
+            for c in checkpoints:
+                # Support metrics given as paths, e.g.
+                # "info/learner/default_policy/policy_loss".
+                path = metric.split("/")
+                result = c.result
+                for p in path:
+                    result = result[p]
+                ret.append((c.value, result))
+            return ret
         else:
             raise ValueError("trial should be a string or a Trial instance.")
 

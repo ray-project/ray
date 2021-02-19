@@ -1708,6 +1708,15 @@ py_test(
 )
 
 py_test(
+    name = "examples/checkpoint_by_custom_criteria",
+    main = "examples/checkpoint_by_custom_criteria.py",
+    tags = ["examples", "examples_C"],
+    size = "small",
+    srcs = ["examples/checkpoint_by_custom_criteria.py"],
+    args = ["--stop-iters=3"]
+)
+
+py_test(
     name = "examples/complex_struct_space_tf", main = "examples/complex_struct_space.py",
     tags = ["examples", "examples_C"],
     size = "medium",
