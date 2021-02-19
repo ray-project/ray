@@ -2,7 +2,6 @@ import random
 import subprocess
 
 import pytest
-
 import requests
 
 import ray
