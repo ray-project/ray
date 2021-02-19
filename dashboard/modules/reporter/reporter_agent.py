@@ -319,9 +319,6 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
 
         # -- Mem per node --
         mem_total, mem_available, _, mem_used = stats["mem"]
-        # mem_allocated = float(total - avail)
-        # mem_allocated_record = Record(
-        #     gauge=self._gauges["node_mem_allocated"], value=mem_allocated, tags={"ip": ip})
         mem_used_record = Record(
             gauge=self._gauges["node_mem_used"],
             value=mem_used,

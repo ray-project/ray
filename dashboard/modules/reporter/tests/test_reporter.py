@@ -106,8 +106,10 @@ def test_prometheus_physical_stats_record(enable_test_module, shutdown_only):
         return all([
             "ray_node_cpu_utilization" in metric_names,
             "ray_node_cpu_count" in metric_names,
-            "ray_node_mem" in metric_names, "ray_raylet_cpu" in metric_names,
-            "ray_raylet_mem" in metric_names,
+            "ray_node_mem_used" in metric_names,
+            "ray_node_mem_available" in metric_names,
+            "ray_node_mem_total" in metric_names,
+            "ray_raylet_cpu" in metric_names, "ray_raylet_mem" in metric_names,
             "ray_node_disk_usage" in metric_names,
             "ray_node_disk_utilization_percentage" in metric_names,
             "ray_node_network_sent" in metric_names,
