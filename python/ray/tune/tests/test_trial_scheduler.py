@@ -845,7 +845,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         return pbt, runner
 
     def testSearchError(self):
-        pbt, runner = self.basicSetup()
+        pbt, runner = self.basicSetup(num_trials=0)
 
         def mock_train(config):
             return 1
@@ -2036,7 +2036,7 @@ class AsyncHyperBandSuite(unittest.TestCase):
     def testPBTNanInf(self):
         scheduler = PopulationBasedTraining(
             metric="episode_reward_mean", mode="max")
-        t1, t2, t3 = self.nanInfSetup(scheduler)
+        t1, t2, t3 = self.nanInfSetup(scheduler, runner=MagicMock())
         scheduler.on_trial_complete(None, t1, result(10, np.nan))
         scheduler.on_trial_complete(None, t2, result(10, float("inf")))
         scheduler.on_trial_complete(None, t3, result(10, float("-inf")))
