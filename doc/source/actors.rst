@@ -101,62 +101,34 @@ Actor Methods
 Methods of the actor can be called remotely.
 
 .. tabs::
-  .. group-tab:: python
+  .. code-tab:: python
 
-    .. code-tab:: python
+    counter_actor = Counter.remote()
 
-      counter_actor = Counter.remote()
+    assert ray.get(counter_actor.increment.remote()) == 1
 
-      assert ray.get(counter_actor.increment.remote()) == 1
+    @ray.remote
+    class Foo(object):
 
-      @ray.remote
-      class Foo(object):
+        # Any method of the actor can return multiple object refs.
+        @ray.method(num_returns=2)
+        def bar(self):
+            return 1, 2
 
-          # Any method of the actor can return multiple object refs.
-          @ray.method(num_returns=2)
-          def bar(self):
-              return 1, 2
+    f = Foo.remote()
 
-      f = Foo.remote()
+    obj_ref1, obj_ref2 = f.bar.remote()
+    assert ray.get(obj_ref1) == 1
+    assert ray.get(obj_ref2) == 2
 
-      obj_ref1, obj_ref2 = f.bar.remote()
-      assert ray.get(obj_ref1) == 1
-      assert ray.get(obj_ref2) == 2
+  .. code-tab:: java
 
-  .. group-tab:: Java
-
-    Non-overloaded actor methods call.
-
-    .. code-tab:: java
-
-      ActorHandle<Counter> counterActor = Ray.actor(Counter::new).remote();
-      // Call an actor method with a return value
-      Assert.assertEquals((int) counterActor.task(Counter::increment).remote().get(), 1);
-      // Call an actor method without return value. In this case, the return type of `remote()` is void.
-      counterActor.task(Counter::reset, 10).remote();
-      Assert.assertEquals((int) counterActor.task(Counter::increment).remote().get(), 11);
-
-    Overloaded actor methods call.
-
-    .. code-tab:: java
-
-      public static class CounterOverloaded extends Counter {
-        public int increment(int diff) {
-          super.value += diff;
-          return super.value;
-        }
-      }
-
-    .. code-tab:: java
-
-      ActorHandle<CounterOverloaded> a = Ray.actor(CounterOverloaded::new).remote();
-      // Call an overloaded actor method by super class method reference.
-      Assert.assertEquals((int) a.task(Counter::increment).remote().get(), 1);
-      // Call an overloaded actor method, cast method reference first.
-      a.task((RayFunc1<CounterOverloaded, Integer>) CounterOverloaded::increment).remote();
-      // Call an overloaded actor method, cast method reference first.
-      a.task((RayFunc2<CounterOverloaded, Integer, Integer>) CounterOverloaded::increment, 10).remote();
-      Assert.assertEquals((int) a.task(Counter::increment).remote().get(), 13);
+    ActorHandle<Counter> counterActor = Ray.actor(Counter::new).remote();
+    // Call an actor method with a return value
+    Assert.assertEquals((int) counterActor.task(Counter::increment).remote().get(), 1);
+    // Call an actor method without return value. In this case, the return type of `remote()` is void.
+    counterActor.task(Counter::reset, 10).remote();
+    Assert.assertEquals((int) counterActor.task(Counter::increment).remote().get(), 11);
 
 .. _actor-resource-guide:
 
