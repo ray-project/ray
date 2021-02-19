@@ -47,7 +47,7 @@ public class CrossLanguageInvocationTest extends BaseTest {
       throw new RuntimeException(e);
     }
 
-    TestUtils.setConfig(
+    System.setProperty(
         "ray.job.code-search-path",
         System.getProperty("java.class.path") + File.pathSeparator + tempDir.getAbsolutePath());
   }

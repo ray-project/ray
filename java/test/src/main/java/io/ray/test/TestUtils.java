@@ -9,8 +9,6 @@ import io.ray.runtime.RayRuntimeProxy;
 import io.ray.runtime.config.RunMode;
 import io.ray.runtime.task.ArgumentsBuilder;
 import java.io.Serializable;
-import java.util.HashSet;
-import java.util.Set;
 import java.util.function.Supplier;
 import org.testng.Assert;
 
@@ -100,22 +98,5 @@ public class TestUtils {
 
   public static int getNumWorkersPerProcess() {
     return Ray.task(TestUtils::getNumWorkersPerProcessRemoteFunction).remote().get();
-  }
-
-  private static Set<String> configKeys = new HashSet<>();
-
-  public static void setConfig(String... keyValues) {
-    Preconditions.checkState(keyValues.length % 2 == 0);
-    for (int i = 0; i < keyValues.length; i += 2) {
-      System.setProperty(keyValues[i], keyValues[i + 1]);
-      configKeys.add(keyValues[i]);
-    }
-  }
-
-  public static void clearConfig() {
-    for (String key : configKeys) {
-      System.clearProperty(key);
-    }
-    configKeys.clear();
   }
 }

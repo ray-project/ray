@@ -16,7 +16,7 @@ public class GlobalGcTest extends BaseTest {
 
   @BeforeClass
   public void setUp() {
-    TestUtils.setConfig("ray.head-args.0", "--object-store-memory=" + 140L * 1024 * 1024);
+    System.setProperty("ray.head-args.0", "--object-store-memory=" + 140L * 1024 * 1024);
   }
 
   public static class LargeObjectWithCyclicRef {

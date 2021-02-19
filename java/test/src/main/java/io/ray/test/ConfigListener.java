@@ -7,6 +7,10 @@ public class ConfigListener implements IClassListener {
 
   @Override
   public void onAfterClass(ITestClass testClass) {
-    TestUtils.clearConfig();
+    System.getProperties().forEach((k, v) -> {
+      if (key.startsWith("ray.")) {
+        System.clearProperty(k);
+      }
+    });
   }
 }

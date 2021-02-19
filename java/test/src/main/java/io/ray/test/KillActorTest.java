@@ -15,7 +15,7 @@ public class KillActorTest extends BaseTest {
 
   @BeforeClass
   public void setUp() {
-    TestUtils.setConfig("ray.job.num-java-workers-per-process", "1");
+    System.setProperty("ray.job.num-java-workers-per-process", "1");
   }
 
   public static class HangActor {

@@ -11,12 +11,11 @@ public class JobConfigTest extends BaseTest {
 
   @BeforeClass
   public void setupJobConfig() {
-    TestUtils.setConfig(
-        "ray.job.num-java-workers-per-process", "3",
-        "ray.job.jvm-options.0", "-DX=999",
-        "ray.job.jvm-options.1", "-DY=998",
-        "ray.job.worker-env.foo1", "bar1",
-        "ray.job.worker-env.foo2", "bar2");
+    System.setProperty("ray.job.num-java-workers-per-process", "3");
+    System.setProperty("ray.job.jvm-options.0", "-DX=999");
+    System.setProperty("ray.job.jvm-options.1", "-DY=998");
+    System.setProperty("ray.job.worker-env.foo1", "bar1");
+    System.setProperty("ray.job.worker-env.foo2", "bar2");
   }
 
   public static String getJvmOptions(String propertyName) {

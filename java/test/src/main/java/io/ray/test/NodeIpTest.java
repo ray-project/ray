@@ -17,9 +17,8 @@ public class NodeIpTest extends BaseTest {
     if (SystemUtils.IS_OS_MAC) {
       throw new SkipException("Skip NodeIpTest on Mac OS");
     }
-    TestUtils.setConfig(
-        "ray.head-args.0", "--node-ip-address=127.0.0.2",
-        "ray.node-ip", "127.0.0.2");
+    System.setProperty("ray.head-args.0", "--node-ip-address=127.0.0.2");
+    System.setProperty("ray.node-ip", "127.0.0.2");
   }
 
   static String getNodeIp() {

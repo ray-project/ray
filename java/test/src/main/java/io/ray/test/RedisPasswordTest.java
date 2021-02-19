@@ -10,7 +10,7 @@ public class RedisPasswordTest extends BaseTest {
 
   @BeforeClass
   public void setUp() {
-    TestUtils.setConfig("ray.redis.password", "12345678");
+    System.setProperty("ray.redis.password", "12345678");
   }
 
   public static String echo(String str) {

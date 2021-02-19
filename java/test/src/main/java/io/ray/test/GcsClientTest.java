@@ -15,7 +15,7 @@ public class GcsClientTest extends BaseTest {
 
   @BeforeClass
   public void setUp() {
-    TestUtils.setConfig("ray.head-args.0", "--resources={\"A\":8}");
+    System.setProperty("ray.head-args.0", "--resources={\"A\":8}");
   }
 
   public void testGetAllNodeInfo() {

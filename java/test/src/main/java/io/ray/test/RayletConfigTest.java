@@ -13,7 +13,7 @@ public class RayletConfigTest extends BaseTest {
 
   @BeforeClass
   public void beforeClass() {
-    TestUtils.setConfig("ray.raylet.config." + RAY_CONFIG_KEY, RAY_CONFIG_VALUE);
+    System.setProperty("ray.raylet.config." + RAY_CONFIG_KEY, RAY_CONFIG_VALUE);
   }
 
   public static class TestActor {
