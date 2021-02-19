@@ -90,7 +90,7 @@ struct WorkerThreadContext {
   uint64_t task_index_;
 
   static_assert(sizeof(task_index_) == TaskID::Size() - ActorID::Size(),
-                "Size of task_index_ doesn't match the unique bytes of an TaskID.");
+                "Size of task_index_ doesn't match the unique bytes of a TaskID.");
 
   /// A running counter for the number of object puts carried out in the current task.
   /// Used to calculate the object index for put object ObjectIDs.
