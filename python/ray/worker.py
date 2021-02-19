@@ -759,6 +759,17 @@ def init(
         job_config=job_config)
     if job_config and job_config.code_search_path:
         global_worker.set_load_code_from_local(True)
+    else:
+        # Because `ray.shutdown()` doesn't reset this flag, for multiple
+        # sessions in one process, the 2nd `ray.init()` will reuse the
+        # flag of last session. For example:
+        #     ray.init(load_code_from_local=True)
+        #     ray.shutdown()
+        #     ray.init()
+        #     # Here the flag `load_code_from_local` is still True if we
+        #     # doesn't have this `else` branch.
+        #     ray.shutdown()
+        global_worker.set_load_code_from_local(False)
 
     for hook in _post_init_hooks:
         hook()
