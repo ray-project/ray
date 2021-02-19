@@ -35,11 +35,11 @@ RAY_CONFIG(int64_t, ray_cookie, 0x5241590000000000)
 RAY_CONFIG(int64_t, handler_warning_timeout_ms, 1000)
 
 /// The duration between heartbeats sent by the raylets.
-RAY_CONFIG(int64_t, raylet_heartbeat_period_milliseconds, 100)
+RAY_CONFIG(int64_t, raylet_heartbeat_period_milliseconds, 1000)
 /// If a component has not sent a heartbeat in the last num_heartbeats_timeout
 /// heartbeat intervals, the raylet monitor process will report
 /// it as dead to the db_client table.
-RAY_CONFIG(int64_t, num_heartbeats_timeout, 300)
+RAY_CONFIG(int64_t, num_heartbeats_timeout, 30)
 /// For a raylet, if the last heartbeat was sent more than this many
 /// heartbeat periods ago, then a warning will be logged that the heartbeat
 /// handler is drifting.
