@@ -20,11 +20,9 @@ std::shared_ptr<msgpack::sbuffer> ExecuteNormalFunction(
   Func func = (Func)(base_addr + func_offset);
   return_value = (*func)(*args...);
 
-  std::shared_ptr<msgpack::sbuffer> returnBuffer(new msgpack::sbuffer());
-  msgpack::packer<msgpack::sbuffer> packer(returnBuffer.get());
-  Serializer::Serialize(packer, (CastReturnType)(return_value));
-
-  return returnBuffer;
+  // TODO: No need use shared_ptr here, refactor later.
+  return std::make_shared<msgpack::sbuffer>(
+      Serializer::Serialize((CastReturnType)(return_value)));
 }
 
 template <typename ReturnType, typename ActorType, typename... OtherArgTypes>
@@ -33,12 +31,8 @@ std::shared_ptr<msgpack::sbuffer> ExecuteActorFunction(
     const std::vector<std::shared_ptr<RayObject>> &args_buffer,
     std::shared_ptr<msgpack::sbuffer> &actor_buffer,
     std::shared_ptr<OtherArgTypes> &... args) {
-  msgpack::unpacker actor_unpacker;
-  actor_unpacker.reserve_buffer(actor_buffer->size());
-  memcpy(actor_unpacker.buffer(), actor_buffer->data(), actor_buffer->size());
-  actor_unpacker.buffer_consumed(actor_buffer->size());
-  uintptr_t actor_ptr;
-  Serializer::Deserialize(actor_unpacker, &actor_ptr);
+  uintptr_t actor_ptr = Serializer::Deserialize<uintptr_t>(
+      (const char *)actor_buffer->data(), actor_buffer->size());
   ActorType *actor_object = (ActorType *)actor_ptr;
 
   int arg_index = 0;
@@ -52,10 +46,8 @@ std::shared_ptr<msgpack::sbuffer> ExecuteActorFunction(
   Func func = *((Func *)&holder);
   return_value = (actor_object->*func)(*args...);
 
-  std::shared_ptr<msgpack::sbuffer> returnBuffer(new msgpack::sbuffer());
-  msgpack::packer<msgpack::sbuffer> packer(returnBuffer.get());
-  Serializer::Serialize(packer, return_value);
-  return returnBuffer;
+  // TODO: No need use shared_ptr here, refactor later.
+  return std::make_shared<msgpack::sbuffer>(Serializer::Serialize(return_value));
 }
 
 // 0 args

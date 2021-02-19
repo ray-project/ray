@@ -7,7 +7,7 @@ data processing using the PySpark API and seemlessly use that data to train
 your models using TensorFlow and PyTorch.
 
 For more information and examples, see the RayDP Github page:
-https://github.com/oap_project/raydp
+https://github.com/oap-project/raydp
 
 ================
 Installing RayDP
@@ -75,9 +75,9 @@ Training a Spark DataFrame with TensorFlow
   tensorflow_model = estimator.get_model()
 
 
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-Training a Spark DataFrame with TensorFlow
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Training a Spark DataFrame with PyTorch
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 Similarly, ``raydp.torch.TorchEstimator`` provides an API for training with
 PyTorch.
