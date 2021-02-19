@@ -18,8 +18,8 @@ public class ResourcesManagementTest extends BaseTest {
 
   @BeforeClass
   public void setUp() {
-    RayConfig.forTestClass("ray.head-args: [\"--num-cpus=4\","
-        + "\"--resources={\\\"RES-A\\\":4}\"]");
+    RayConfig.forTestClass(
+        "ray.head-args: [\"--num-cpus=4\"," + "\"--resources={\\\"RES-A\\\":4}\"]");
   }
 
   public static Integer echo(Integer number) {

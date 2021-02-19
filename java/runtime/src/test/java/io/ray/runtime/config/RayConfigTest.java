@@ -14,7 +14,8 @@ public class RayConfigTest {
     // properties can be parsed with correct types.
     RayConfig.forTestMethod(
         "ray.job.code-search-path: path/to/ray/job/resource/path",
-        String.join("\n",
+        String.join(
+            "\n",
             "ray.raylet.config {",
             "one: 1",
             "one-string: \"1\"",
@@ -36,8 +37,8 @@ public class RayConfigTest {
 
     RayConfig rayConfig = RayConfig.create();
     Assert.assertEquals(WorkerType.DRIVER, rayConfig.workerMode);
-      Assert.assertEquals(
-          Collections.singletonList("path/to/ray/job/resource/path"), rayConfig.codeSearchPath);
+    Assert.assertEquals(
+        Collections.singletonList("path/to/ray/job/resource/path"), rayConfig.codeSearchPath);
     Assert.assertEquals(rayConfig.rayletConfigParameters.get("one"), 1);
     Assert.assertEquals(rayConfig.rayletConfigParameters.get("one-string"), 1);
     Assert.assertEquals(rayConfig.rayletConfigParameters.get("zero"), 0);

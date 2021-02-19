@@ -27,13 +27,9 @@ public class RayConfig {
   public static final String DEFAULT_CONFIG_FILE = "ray.default.conf";
   public static final String CUSTOM_CONFIG_FILE = "ray.conf";
 
-  /**
-   * Used by unit tests only.
-   */
+  /** Used by unit tests only. */
   private static List<Config> unitTestClassOverrides;
-  /**
-   * Used by unit tests only.
-   */
+  /** Used by unit tests only. */
   private static List<Config> unitTestMethodOverrides;
 
   private Config config;
@@ -294,16 +290,12 @@ public class RayConfig {
     return new RayConfig(config.withOnlyPath("ray"));
   }
 
-  /**
-   * Used by unit tests only.
-   */
+  /** Used by unit tests only. */
   public static void forTestClass(String... configStringList) {
     unitTestClassOverrides = toConfigList(configStringList);
   }
 
-  /**
-   * Used by unit tests only.
-   */
+  /** Used by unit tests only. */
   public static void forTestMethod(String... configStringList) {
     unitTestMethodOverrides = toConfigList(configStringList);
   }
