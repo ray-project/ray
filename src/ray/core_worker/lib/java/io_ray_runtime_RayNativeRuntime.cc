@@ -153,9 +153,8 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(
           if (env->IsInstanceOf(throwable,
                                 java_ray_intentional_system_exit_exception_class)) {
             status_to_return = ray::Status::IntentionalSystemExit();
-          } else if (env->IsInstanceOf(throwable,                                      
+          } else if (env->IsInstanceOf(throwable,
                                        java_ray_actor_creation_task_exception_class)) {
-
             SerializeActorCreationException(env, throwable, error_message);
             status_to_return = ray::Status::CreationTaskError();
           } else {

@@ -84,7 +84,6 @@ class Worker:
         cached_functions_to_run (List): A list of functions to run on all of
             the workers that should be exported as soon as connect is called.
     """
-
     def __init__(self):
         """Initialize a Worker object."""
         self.node = None
@@ -262,8 +261,8 @@ class Worker:
         # removed before this one, it will corrupt the state in the
         # reference counter.
         return ray.ObjectRef(
-            self.core_worker.put_serialized_object(
-                serialized_value, object_ref=object_ref))
+            self.core_worker.put_serialized_object(serialized_value,
+                                                   object_ref=object_ref))
 
     def deserialize_objects(self, data_metadata_pairs, object_refs):
         context = self.get_serialization_context()
@@ -302,12 +301,13 @@ class Worker:
                 metadata_fields = metadata.split(b",")
                 if len(metadata_fields) >= 2 and metadata_fields[1].startswith(
                         ray_constants.OBJECT_METADATA_DEBUG_PREFIX):
-                    debugger_breakpoint = metadata_fields[1][len(
-                        ray_constants.OBJECT_METADATA_DEBUG_PREFIX):]
+                    debugger_breakpoint = metadata_fields[1][
+                        len(ray_constants.OBJECT_METADATA_DEBUG_PREFIX):]
         return self.deserialize_objects(data_metadata_pairs,
                                         object_refs), debugger_breakpoint
 
-    def run_function_on_all_workers(self, function,
+    def run_function_on_all_workers(self,
+                                    function,
                                     run_on_other_drivers=False):
         """Run arbitrary code on all of the workers.
 
@@ -369,7 +369,6 @@ class Worker:
 
     def main_loop(self):
         """The main loop a worker runs to receive and execute tasks."""
-
         def sigterm_handler(signum, frame):
             shutdown(True)
             sys.exit(1)
@@ -693,11 +692,10 @@ def init(
         # shutdown the node in the ray.shutdown call that happens in the atexit
         # handler. We still spawn a reaper process in case the atexit handler
         # isn't called.
-        _global_node = ray.node.Node(
-            head=True,
-            shutdown_at_exit=False,
-            spawn_reaper=True,
-            ray_params=ray_params)
+        _global_node = ray.node.Node(head=True,
+                                     shutdown_at_exit=False,
+                                     spawn_reaper=True,
+                                     ray_params=ray_params)
     else:
         # In this case, we are connecting to an existing cluster.
         if num_cpus is not None or num_gpus is not None:
@@ -730,21 +728,19 @@ def init(
             lru_evict=_lru_evict,
             enable_object_reconstruction=_enable_object_reconstruction,
             metrics_export_port=_metrics_export_port)
-        _global_node = ray.node.Node(
-            ray_params,
-            head=False,
-            shutdown_at_exit=False,
-            spawn_reaper=False,
-            connect_only=True)
+        _global_node = ray.node.Node(ray_params,
+                                     head=False,
+                                     shutdown_at_exit=False,
+                                     spawn_reaper=False,
+                                     connect_only=True)
 
-    connect(
-        _global_node,
-        mode=driver_mode,
-        log_to_driver=log_to_driver,
-        worker=global_worker,
-        driver_object_store_memory=_driver_object_store_memory,
-        job_id=None,
-        job_config=job_config)
+    connect(_global_node,
+            mode=driver_mode,
+            log_to_driver=log_to_driver,
+            worker=global_worker,
+            driver_object_store_memory=_driver_object_store_memory,
+            job_id=None,
+            job_config=job_config)
     if job_config and job_config.code_search_path:
         global_worker.set_load_code_from_local(True)
     else:
@@ -996,18 +992,19 @@ def print_worker_logs(data: Dict[str, str], print_file: Any):
 
     if data["ip"] == data["localhost"]:
         for line in lines:
-            print(
-                "{}{}({}{}){} {}".format(colorama.Style.DIM, color_for(data),
-                                         prefix_for(data), pid,
-                                         colorama.Style.RESET_ALL, line),
-                file=print_file)
+            print("{}{}({}{}){} {}".format(colorama.Style.DIM, color_for(data),
+                                           prefix_for(data), pid,
+                                           colorama.Style.RESET_ALL, line),
+                  file=print_file)
     else:
         for line in lines:
-            print(
-                "{}{}({}{}, ip={}){} {}".format(
-                    colorama.Style.DIM, color_for(data), prefix_for(data), pid,
-                    data["ip"], colorama.Style.RESET_ALL, line),
-                file=print_file)
+            print("{}{}({}{}, ip={}){} {}".format(colorama.Style.DIM,
+                                                  color_for(data),
+                                                  prefix_for(data), pid,
+                                                  data["ip"],
+                                                  colorama.Style.RESET_ALL,
+                                                  line),
+                  file=print_file)
 
 
 def print_error_messages_raylet(task_error_queue, threads_stopped):
@@ -1164,8 +1161,8 @@ def connect(node,
         # This is the code path of driver mode.
         if job_id is None:
             # TODO(qwang): use `GcsClient::GenerateJobId()` here.
-            job_id = JobID.from_int(
-                int(worker.redis_client.incr("JobCounter")))
+            job_id = JobID.from_int(int(
+                worker.redis_client.incr("JobCounter")))
         # When tasks are executed on remote workers in the context of multiple
         # drivers, the current job ID is used to keep track of which job is
         # responsible for the task so that error messages will be propagated to
@@ -1437,8 +1434,8 @@ def get(object_refs, *, timeout=None):
 
         global last_task_error_raise_time
         # TODO(ujvl): Consider how to allow user to retrieve the ready objects.
-        values, debugger_breakpoint = worker.get_objects(
-            object_refs, timeout=timeout)
+        values, debugger_breakpoint = worker.get_objects(object_refs,
+                                                         timeout=timeout)
         for i, value in enumerate(values):
             if isinstance(value, RayError):
                 last_task_error_raise_time = time.time()
@@ -1574,8 +1571,8 @@ def wait(object_refs, *, num_returns=1, timeout=None, fetch_local=True):
         if len(object_refs) != len(set(object_refs)):
             raise ValueError("Wait requires a list of unique object refs.")
         if num_returns <= 0:
-            raise ValueError(
-                "Invalid number of objects to return %d." % num_returns)
+            raise ValueError("Invalid number of objects to return %d." %
+                             num_returns)
         if num_returns > len(object_refs):
             raise ValueError("num_returns cannot be greater than the number "
                              "of objects provided to ray.wait.")
@@ -1912,16 +1909,15 @@ def remote(*args, **kwargs):
     object_store_memory = kwargs.get("object_store_memory")
     max_retries = kwargs.get("max_retries")
 
-    return make_decorator(
-        num_returns=num_returns,
-        num_cpus=num_cpus,
-        num_gpus=num_gpus,
-        memory=memory,
-        object_store_memory=object_store_memory,
-        resources=resources,
-        accelerator_type=accelerator_type,
-        max_calls=max_calls,
-        max_restarts=max_restarts,
-        max_task_retries=max_task_retries,
-        max_retries=max_retries,
-        worker=worker)
+    return make_decorator(num_returns=num_returns,
+                          num_cpus=num_cpus,
+                          num_gpus=num_gpus,
+                          memory=memory,
+                          object_store_memory=object_store_memory,
+                          resources=resources,
+                          accelerator_type=accelerator_type,
+                          max_calls=max_calls,
+                          max_restarts=max_restarts,
+                          max_task_retries=max_task_retries,
+                          max_retries=max_retries,
+                          worker=worker)

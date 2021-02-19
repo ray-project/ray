@@ -174,8 +174,8 @@ def temporary_helper_function():
     # Check that if we try to call the function it throws an exception and
     # does not hang.
     for _ in range(10):
-        with pytest.raises(
-                Exception, match="This function was not imported properly."):
+        with pytest.raises(Exception,
+                           match="This function was not imported properly."):
             ray.get(g.remote(1, y=2))
 
     f.close()
@@ -253,8 +253,8 @@ def temporary_helper_function():
     errors = get_error_message(p, 1, ray_constants.WORKER_CRASH_PUSH_ERROR)
     assert len(errors) == 1
     assert errors[0].type == ray_constants.WORKER_CRASH_PUSH_ERROR
-    assert ("failed to be imported, and so cannot execute this method" in
-            errors[0].error_message)
+    assert ("failed to be imported, and so cannot execute this method"
+            in errors[0].error_message)
 
     f.close()
 
@@ -495,8 +495,8 @@ def test_exception_chain(ray_start_regular):
 
 
 @pytest.mark.skip("This test does not work yet.")
-@pytest.mark.parametrize(
-    "ray_start_object_store_memory", [10**6], indirect=True)
+@pytest.mark.parametrize("ray_start_object_store_memory", [10**6],
+                         indirect=True)
 def test_put_error1(ray_start_object_store_memory, error_pubsub):
     p = error_pubsub
     num_objects = 3
@@ -516,8 +516,8 @@ def test_put_error1(ray_start_object_store_memory, error_pubsub):
         # on the one before it. The result of the first task should get
         # evicted.
         args = []
-        arg = single_dependency.remote(0, np.zeros(
-            object_size, dtype=np.uint8))
+        arg = single_dependency.remote(0, np.zeros(object_size,
+                                                   dtype=np.uint8))
         for i in range(num_objects):
             arg = single_dependency.remote(i, arg)
             args.append(arg)
@@ -543,8 +543,8 @@ def test_put_error1(ray_start_object_store_memory, error_pubsub):
 
 
 @pytest.mark.skip("This test does not work yet.")
-@pytest.mark.parametrize(
-    "ray_start_object_store_memory", [10**6], indirect=True)
+@pytest.mark.parametrize("ray_start_object_store_memory", [10**6],
+                         indirect=True)
 def test_put_error2(ray_start_object_store_memory):
     # This is the same as the previous test, but it calls ray.put directly.
     num_objects = 3
@@ -637,8 +637,8 @@ def test_export_large_objects(ray_start_regular, error_pubsub):
 
 
 def test_warning_all_tasks_blocked(shutdown_only):
-    ray.init(
-        num_cpus=1, _system_config={"debug_dump_period_milliseconds": 500})
+    ray.init(num_cpus=1,
+             _system_config={"debug_dump_period_milliseconds": 500})
     p = init_error_pubsub()
 
     @ray.remote(num_cpus=1)
@@ -661,8 +661,8 @@ def test_warning_all_tasks_blocked(shutdown_only):
 
 
 def test_warning_actor_waiting_on_actor(shutdown_only):
-    ray.init(
-        num_cpus=1, _system_config={"debug_dump_period_milliseconds": 500})
+    ray.init(num_cpus=1,
+             _system_config={"debug_dump_period_milliseconds": 500})
     p = init_error_pubsub()
 
     @ray.remote(num_cpus=1)
@@ -678,8 +678,8 @@ def test_warning_actor_waiting_on_actor(shutdown_only):
 
 
 def test_warning_task_waiting_on_actor(shutdown_only):
-    ray.init(
-        num_cpus=1, _system_config={"debug_dump_period_milliseconds": 500})
+    ray.init(num_cpus=1,
+             _system_config={"debug_dump_period_milliseconds": 500})
     p = init_error_pubsub()
 
     @ray.remote(num_cpus=1)
@@ -903,8 +903,8 @@ def test_redis_module_failure(ray_start_regular):
     assert len(address) == 2
 
     def run_failure_test(expecting_message, *command):
-        with pytest.raises(
-                Exception, match=".*{}.*".format(expecting_message)):
+        with pytest.raises(Exception,
+                           match=".*{}.*".format(expecting_message)):
             client = redis.StrictRedis(
                 host=address[0],
                 port=int(address[1]),
@@ -1024,12 +1024,11 @@ def test_connect_with_disconnected_node(shutdown_only):
     p.close()
 
 
-@pytest.mark.parametrize(
-    "ray_start_cluster_head", [{
-        "num_cpus": 5,
-        "object_store_memory": 10**8,
-    }],
-    indirect=True)
+@pytest.mark.parametrize("ray_start_cluster_head", [{
+    "num_cpus": 5,
+    "object_store_memory": 10**8,
+}],
+                         indirect=True)
 def test_parallel_actor_fill_plasma_retry(ray_start_cluster_head):
     @ray.remote
     class LargeMemoryActor:
@@ -1044,10 +1043,9 @@ def test_parallel_actor_fill_plasma_retry(ray_start_cluster_head):
 
 
 def test_fill_object_store_exception(shutdown_only):
-    ray.init(
-        num_cpus=2,
-        object_store_memory=10**8,
-        _system_config={"automatic_object_spilling_enabled": False})
+    ray.init(num_cpus=2,
+             object_store_memory=10**8,
+             _system_config={"automatic_object_spilling_enabled": False})
 
     @ray.remote
     def expensive_task():
@@ -1076,15 +1074,14 @@ def test_fill_object_store_exception(shutdown_only):
         ray.put(np.zeros(10**8 + 2, dtype=np.uint8))
 
 
-@pytest.mark.parametrize(
-    "ray_start_cluster", [{
-        "num_nodes": 1,
-        "num_cpus": 2,
-    }, {
-        "num_nodes": 2,
-        "num_cpus": 1,
-    }],
-    indirect=True)
+@pytest.mark.parametrize("ray_start_cluster", [{
+    "num_nodes": 1,
+    "num_cpus": 2,
+}, {
+    "num_nodes": 2,
+    "num_cpus": 1,
+}],
+                         indirect=True)
 def test_eviction(ray_start_cluster):
     @ray.remote
     def large_object():
@@ -1108,15 +1105,14 @@ def test_eviction(ray_start_cluster):
         ray.get(dependent_task.remote(obj))
 
 
-@pytest.mark.parametrize(
-    "ray_start_cluster", [{
-        "num_nodes": 2,
-        "num_cpus": 1,
-    }, {
-        "num_nodes": 1,
-        "num_cpus": 2,
-    }],
-    indirect=True)
+@pytest.mark.parametrize("ray_start_cluster", [{
+    "num_nodes": 2,
+    "num_cpus": 1,
+}, {
+    "num_nodes": 1,
+    "num_cpus": 2,
+}],
+                         indirect=True)
 def test_serialized_id(ray_start_cluster):
     @ray.remote
     def small_object():
@@ -1151,9 +1147,10 @@ def test_serialized_id(ray_start_cluster):
     ray.get(get.remote([obj], True))
 
 
-@pytest.mark.parametrize("use_actors,node_failure",
-                         [(False, False), (False, True), (True, False),
-                          (True, True)])
+@pytest.mark.parametrize("use_actors,node_failure", [(False, False),
+                                                     (False, True),
+                                                     (True, False),
+                                                     (True, True)])
 def test_fate_sharing(ray_start_cluster, use_actors, node_failure):
     config = {
         "num_heartbeats_timeout": 10,
@@ -1243,13 +1240,12 @@ def test_fate_sharing(ray_start_cluster, use_actors, node_failure):
         assert len(keys) <= 2, len(keys)
 
 
-@pytest.mark.parametrize(
-    "ray_start_regular", [{
-        "_system_config": {
-            "ping_gcs_rpc_server_max_retries": 100
-        }
-    }],
-    indirect=True)
+@pytest.mark.parametrize("ray_start_regular", [{
+    "_system_config": {
+        "ping_gcs_rpc_server_max_retries": 100
+    }
+}],
+                         indirect=True)
 def test_gcs_server_failiure_report(ray_start_regular, log_pubsub):
     p = log_pubsub
     # Get gcs server pid to send a signal.
@@ -1271,13 +1267,12 @@ def test_gcs_server_failiure_report(ray_start_regular, log_pubsub):
         assert data["pid"] == "gcs_server"
 
 
-@pytest.mark.parametrize(
-    "ray_start_regular", [{
-        "_system_config": {
-            "task_retry_delay_ms": 500
-        }
-    }],
-    indirect=True)
+@pytest.mark.parametrize("ray_start_regular", [{
+    "_system_config": {
+        "task_retry_delay_ms": 500
+    }
+}],
+                         indirect=True)
 def test_async_actor_task_retries(ray_start_regular):
     # https://github.com/ray-project/ray/issues/11683
 

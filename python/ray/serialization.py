@@ -6,9 +6,10 @@ import ray.cloudpickle as pickle
 from ray import ray_constants
 import ray.utils
 from ray.gcs_utils import ErrorType
-from ray.exceptions import (
-    RayError, PlasmaObjectNotAvailable, RayTaskError, RayActorError,
-    TaskCancelledError, WorkerCrashedError, ObjectLostError, RaySystemError)
+from ray.exceptions import (RayError, PlasmaObjectNotAvailable, RayTaskError,
+                            RayActorError, TaskCancelledError,
+                            WorkerCrashedError, ObjectLostError,
+                            RaySystemError)
 from ray._raylet import (
     split_buffer,
     unpack_pickle5_buffers,
@@ -69,7 +70,6 @@ class SerializationContext:
     This defines a custom serializer for object refs and also tells ray to
     serialize several exception classes that we define for error handling.
     """
-
     def __init__(self, worker):
         self.worker = worker
         self._thread_local = threading.local()
@@ -253,8 +253,9 @@ class SerializationContext:
         # TODO(swang): Check that contained_object_refs is empty.
         try:
             self.set_in_band_serialization()
-            inband = pickle.dumps(
-                value, protocol=5, buffer_callback=writer.buffer_callback)
+            inband = pickle.dumps(value,
+                                  protocol=5,
+                                  buffer_callback=writer.buffer_callback)
         except Exception as e:
             self.get_and_clear_contained_object_refs()
             raise e
