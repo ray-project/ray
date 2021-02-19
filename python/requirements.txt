@@ -8,6 +8,7 @@
 aiohttp==3.7
 aioredis
 click >= 7.0
+cloudpickle
 colorama
 colorful
 filelock
@@ -38,6 +39,7 @@ tensorboardX
 uvicorn
 pydantic<1.7
 dataclasses; python_version < '3.7'
+starlette
 
 # Requirements for running tests
 blist; platform_system != "Windows"
@@ -72,3 +74,4 @@ werkzeug
 xlrd
 starlette
 smart_open[s3]
+tqdm

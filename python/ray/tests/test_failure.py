@@ -16,14 +16,8 @@ import ray.utils
 import ray.ray_constants as ray_constants
 from ray.exceptions import RayTaskError
 from ray.cluster_utils import Cluster
-from ray.test_utils import (
-    wait_for_condition,
-    SignalActor,
-    init_error_pubsub,
-    get_error_message,
-    Semaphore,
-    new_scheduler_enabled,
-)
+from ray.test_utils import (wait_for_condition, SignalActor, init_error_pubsub,
+                            get_error_message, Semaphore)
 
 
 def test_failed_task(ray_start_regular, error_pubsub):
@@ -638,11 +632,10 @@ def test_export_large_objects(ray_start_regular, error_pubsub):
     assert errors[0].type == ray_constants.PICKLING_LARGE_OBJECT_PUSH_ERROR
 
 
-@pytest.mark.skip(reason="TODO detect resource deadlock")
-def test_warning_for_resource_deadlock(error_pubsub, shutdown_only):
-    p = error_pubsub
-    # Check that we get warning messages for infeasible tasks.
-    ray.init(num_cpus=1)
+def test_warning_all_tasks_blocked(shutdown_only):
+    ray.init(
+        num_cpus=1, _system_config={"debug_dump_period_milliseconds": 500})
+    p = init_error_pubsub()
 
     @ray.remote(num_cpus=1)
     class Foo:
@@ -652,7 +645,7 @@ def test_warning_for_resource_deadlock(error_pubsub, shutdown_only):
     @ray.remote
     def f():
         # Creating both actors is not possible.
-        actors = [Foo.remote() for _ in range(2)]
+        actors = [Foo.remote() for _ in range(3)]
         for a in actors:
             ray.get(a.f.remote())
 
@@ -663,7 +656,46 @@ def test_warning_for_resource_deadlock(error_pubsub, shutdown_only):
     assert errors[0].type == ray_constants.RESOURCE_DEADLOCK_ERROR
 
 
-@pytest.mark.skipif(new_scheduler_enabled(), reason="broken")
+def test_warning_actor_waiting_on_actor(shutdown_only):
+    ray.init(
+        num_cpus=1, _system_config={"debug_dump_period_milliseconds": 500})
+    p = init_error_pubsub()
+
+    @ray.remote(num_cpus=1)
+    class Actor:
+        pass
+
+    a = Actor.remote()  # noqa
+    b = Actor.remote()  # noqa
+
+    errors = get_error_message(p, 1, ray_constants.RESOURCE_DEADLOCK_ERROR)
+    assert len(errors) == 1
+    assert errors[0].type == ray_constants.RESOURCE_DEADLOCK_ERROR
+
+
+def test_warning_task_waiting_on_actor(shutdown_only):
+    ray.init(
+        num_cpus=1, _system_config={"debug_dump_period_milliseconds": 500})
+    p = init_error_pubsub()
+
+    @ray.remote(num_cpus=1)
+    class Actor:
+        pass
+
+    a = Actor.remote()  # noqa
+
+    @ray.remote(num_cpus=1)
+    def f():
+        print("f running")
+        time.sleep(999)
+
+    ids = [f.remote()]  # noqa
+
+    errors = get_error_message(p, 1, ray_constants.RESOURCE_DEADLOCK_ERROR)
+    assert len(errors) == 1
+    assert errors[0].type == ray_constants.RESOURCE_DEADLOCK_ERROR
+
+
 def test_warning_for_infeasible_tasks(ray_start_regular, error_pubsub):
     p = error_pubsub
     # Check that we get warning messages for infeasible tasks.
@@ -689,7 +721,6 @@ def test_warning_for_infeasible_tasks(ray_start_regular, error_pubsub):
     assert errors[0].type == ray_constants.INFEASIBLE_TASK_ERROR
 
 
-@pytest.mark.skipif(new_scheduler_enabled(), reason="broken")
 def test_warning_for_infeasible_zero_cpu_actor(shutdown_only):
     # Check that we cannot place an actor on a 0 CPU machine and that we get an
     # infeasibility warning (even though the actor creation task itself
@@ -956,11 +987,10 @@ def test_raylet_crash_when_get(ray_start_regular):
     thread.join()
 
 
-@pytest.mark.skipif(new_scheduler_enabled(), reason="broken")
 def test_connect_with_disconnected_node(shutdown_only):
     config = {
         "num_heartbeats_timeout": 50,
-        "raylet_heartbeat_timeout_milliseconds": 10,
+        "raylet_heartbeat_period_milliseconds": 10,
     }
     cluster = Cluster()
     cluster.add_node(num_cpus=0, _system_config=config)
@@ -993,9 +1023,6 @@ def test_connect_with_disconnected_node(shutdown_only):
     "ray_start_cluster_head", [{
         "num_cpus": 5,
         "object_store_memory": 10**8,
-        "_system_config": {
-            "object_store_full_max_retries": 0
-        }
     }],
     indirect=True)
 def test_parallel_actor_fill_plasma_retry(ray_start_cluster_head):
@@ -1015,7 +1042,7 @@ def test_fill_object_store_exception(shutdown_only):
     ray.init(
         num_cpus=2,
         object_store_memory=10**8,
-        _system_config={"object_store_full_max_retries": 0})
+        _system_config={"automatic_object_spilling_enabled": False})
 
     @ray.remote
     def expensive_task():
@@ -1042,56 +1069,6 @@ def test_fill_object_store_exception(shutdown_only):
 
     with pytest.raises(ray.exceptions.ObjectStoreFullError):
         ray.put(np.zeros(10**8 + 2, dtype=np.uint8))
-
-
-def test_fill_object_store_lru_fallback(shutdown_only):
-    config = {
-        "free_objects_batch_size": 1,
-    }
-    ray.init(
-        num_cpus=2,
-        object_store_memory=10**8,
-        _lru_evict=True,
-        _system_config=config)
-
-    @ray.remote
-    def expensive_task():
-        return np.zeros((10**8) // 2, dtype=np.uint8)
-
-    # Check that objects out of scope are cleaned up quickly.
-    ray.get(expensive_task.remote())
-    start = time.time()
-    for _ in range(3):
-        ray.get(expensive_task.remote())
-    end = time.time()
-    assert end - start < 3
-
-    obj_refs = []
-    for _ in range(3):
-        obj_ref = expensive_task.remote()
-        ray.get(obj_ref)
-        obj_refs.append(obj_ref)
-
-    @ray.remote
-    class LargeMemoryActor:
-        def some_expensive_task(self):
-            return np.zeros(10**8 // 2, dtype=np.uint8)
-
-        def test(self):
-            return 1
-
-    actor = LargeMemoryActor.remote()
-    for _ in range(3):
-        obj_ref = actor.some_expensive_task.remote()
-        ray.get(obj_ref)
-        obj_refs.append(obj_ref)
-    # Make sure actor does not die
-    ray.get(actor.test.remote())
-
-    for _ in range(3):
-        obj_ref = ray.put(np.zeros(10**8 // 2, dtype=np.uint8))
-        ray.get(obj_ref)
-        obj_refs.append(obj_ref)
 
 
 @pytest.mark.parametrize(
@@ -1175,7 +1152,7 @@ def test_serialized_id(ray_start_cluster):
 def test_fate_sharing(ray_start_cluster, use_actors, node_failure):
     config = {
         "num_heartbeats_timeout": 10,
-        "raylet_heartbeat_timeout_milliseconds": 100,
+        "raylet_heartbeat_period_milliseconds": 100,
     }
     cluster = Cluster()
     # Head node with no resources.

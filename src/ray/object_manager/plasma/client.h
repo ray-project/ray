@@ -22,31 +22,29 @@
 #include <string>
 #include <vector>
 
-#include "arrow/buffer.h"
-
+#include "ray/common/buffer.h"
 #include "ray/common/status.h"
 #include "ray/object_manager/plasma/common.h"
 #include "ray/util/visibility.h"
 #include "src/ray/protobuf/common.pb.h"
 
-using arrow::Buffer;
-
 namespace plasma {
 
+using ray::Buffer;
+using ray::SharedMemoryBuffer;
 using ray::Status;
 
 /// Object buffer data structure.
 struct ObjectBuffer {
   /// The data buffer.
-  std::shared_ptr<Buffer> data;
+  std::shared_ptr<SharedMemoryBuffer> data;
   /// The metadata buffer.
-  std::shared_ptr<Buffer> metadata;
+  std::shared_ptr<SharedMemoryBuffer> metadata;
   /// The device number.
   int device_num;
 };
 
-// TODO(suquark): Maybe we should not export plasma later?
-class RAY_EXPORT PlasmaClient {
+class PlasmaClient {
  public:
   PlasmaClient();
   ~PlasmaClient();
@@ -163,9 +161,10 @@ class RAY_EXPORT PlasmaClient {
   /// \param timeout_ms The amount of time in milliseconds to wait before this
   ///        request times out. If this value is -1, then no timeout is set.
   /// \param[out] object_buffers The object results.
+  /// \param is_from_worker Whether or not if the Get request comes from a Ray workers.
   /// \return The return status.
   Status Get(const std::vector<ObjectID> &object_ids, int64_t timeout_ms,
-             std::vector<ObjectBuffer> *object_buffers);
+             std::vector<ObjectBuffer> *object_buffers, bool is_from_worker);
 
   /// Deprecated variant of Get() that doesn't automatically release buffers
   /// when they get out of scope.
@@ -175,12 +174,13 @@ class RAY_EXPORT PlasmaClient {
   /// \param timeout_ms The amount of time in milliseconds to wait before this
   ///        request times out. If this value is -1, then no timeout is set.
   /// \param object_buffers An array where the results will be stored.
+  /// \param is_from_worker Whether or not if the Get request comes from a Ray workers.
   /// \return The return status.
   ///
   /// The caller is responsible for releasing any retrieved objects, but it
   /// should not release objects that were not retrieved.
   Status Get(const ObjectID *object_ids, int64_t num_objects, int64_t timeout_ms,
-             ObjectBuffer *object_buffers);
+             ObjectBuffer *object_buffers, bool is_from_worker);
 
   /// Tell Plasma that the client no longer needs the object. This should be
   /// called after Get() or Create() when the client is done with the object.
@@ -273,13 +273,9 @@ class RAY_EXPORT PlasmaClient {
  private:
   friend class PlasmaBuffer;
   friend class PlasmaMutableBuffer;
-  FRIEND_TEST(TestPlasmaStore, GetTest);
-  FRIEND_TEST(TestPlasmaStore, LegacyGetTest);
-  FRIEND_TEST(TestPlasmaStore, AbortTest);
-
   bool IsInUse(const ObjectID &object_id);
 
-  class RAY_NO_EXPORT Impl;
+  class Impl;
   std::shared_ptr<Impl> impl_;
 };
 

@@ -20,6 +20,7 @@
 
 #include "ray/common/id.h"
 #include "ray/util/logging.h"
+#include "src/ray/protobuf/common.pb.h"
 
 /// Convert an unique ID to a flatbuffer string.
 ///
@@ -200,4 +201,25 @@ to_flatbuf(flatbuffers::FlatBufferBuilder &fbb, const std::unordered_set<ID> &id
     results.push_back(to_flatbuf(fbb, id));
   }
   return fbb.CreateVector(results);
+}
+
+static inline ray::rpc::ObjectReference ObjectIdToRef(
+    const ray::ObjectID &object_id, const ray::rpc::Address owner_address) {
+  ray::rpc::ObjectReference ref;
+  ref.set_object_id(object_id.Binary());
+  ref.mutable_owner_address()->CopyFrom(owner_address);
+  return ref;
+}
+
+static inline ray::ObjectID ObjectRefToId(const ray::rpc::ObjectReference &object_ref) {
+  return ray::ObjectID::FromBinary(object_ref.object_id());
+}
+
+static inline std::vector<ray::ObjectID> ObjectRefsToIds(
+    const std::vector<ray::rpc::ObjectReference> &object_refs) {
+  std::vector<ray::ObjectID> object_ids;
+  for (const auto &ref : object_refs) {
+    object_ids.push_back(ObjectRefToId(ref));
+  }
+  return object_ids;
 }

@@ -57,14 +57,13 @@ public class ActorTest extends BaseTest {
     // Test calling an actor
     Assert.assertEquals(Integer.valueOf(1), actor.task(Counter::getValue).remote().get());
     actor.task(Counter::increase, 1).remote();
-    Assert.assertEquals(Integer.valueOf(3),
-        actor.task(Counter::increaseAndGet, 1).remote().get());
+    Assert.assertEquals(Integer.valueOf(3), actor.task(Counter::increaseAndGet, 1).remote().get());
   }
 
   /**
    * Test getting an object twice from the local memory store.
    *
-   * Objects are stored in core worker's local memory. And it will be removed after the first
+   * <p>Objects are stored in core worker's local memory. And it will be removed after the first
    * get. To enable getting it twice, we cache the object in `RayObjectImpl`.
    */
   public void testGetObjectTwice() {
@@ -78,7 +77,8 @@ public class ActorTest extends BaseTest {
   public void testCallActorWithLargeObject() {
     ActorHandle<Counter> actor = Ray.actor(Counter::new, 1).remote();
     TestUtils.LargeObject largeObject = new TestUtils.LargeObject();
-    Assert.assertEquals(Integer.valueOf(largeObject.data.length + 1),
+    Assert.assertEquals(
+        Integer.valueOf(largeObject.data.length + 1),
         actor.task(Counter::accessLargeObject, largeObject).remote().get());
   }
 
@@ -111,13 +111,17 @@ public class ActorTest extends BaseTest {
 
   public void testPassActorAsParameter() {
     ActorHandle<Counter> actor = Ray.actor(Counter::new, 0).remote();
-    Assert.assertEquals(Integer.valueOf(1),
+    Assert.assertEquals(
+        Integer.valueOf(1),
         Ray.task(ActorTest::testActorAsFirstParameter, actor, 1).remote().get());
-    Assert.assertEquals(Integer.valueOf(11),
+    Assert.assertEquals(
+        Integer.valueOf(11),
         Ray.task(ActorTest::testActorAsSecondParameter, 10, actor).remote().get());
-    Assert.assertEquals(Integer.valueOf(111),
-        Ray.task(ActorTest::testActorAsFieldOfParameter,
-            Collections.singletonList(actor), 100).remote().get());
+    Assert.assertEquals(
+        Integer.valueOf(111),
+        Ray.task(ActorTest::testActorAsFieldOfParameter, Collections.singletonList(actor), 100)
+            .remote()
+            .get());
   }
 
   // This test case follows `test_internal_free` in `python/ray/tests/test_advanced.py`.
@@ -128,7 +132,7 @@ public class ActorTest extends BaseTest {
     ObjectRef value = counter.task(Counter::getValue).remote();
     Assert.assertEquals(100, value.get());
     // Delete the object from the object store.
-    Ray.internal().free(ImmutableList.of(value), false, false);
+    Ray.internal().free(ImmutableList.of(value), false);
     // Wait for delete RPC to propagate
     TimeUnit.SECONDS.sleep(1);
     // Free deletes from in-memory store.
@@ -138,7 +142,7 @@ public class ActorTest extends BaseTest {
     ObjectRef<TestUtils.LargeObject> largeValue = counter.task(Counter::createLargeObject).remote();
     Assert.assertTrue(largeValue.get() instanceof TestUtils.LargeObject);
     // Delete the object from the object store.
-    Ray.internal().free(ImmutableList.of(largeValue), false, false);
+    Ray.internal().free(ImmutableList.of(largeValue), false);
     // Wait for delete RPC to propagate
     TimeUnit.SECONDS.sleep(1);
     // Free deletes big objects from plasma store.
@@ -150,7 +154,6 @@ public class ActorTest extends BaseTest {
     default String interfaceName() {
       return ChildClassInterface.class.getName();
     }
-
   }
 
   public static class ChildClass extends Counter implements ChildClassInterface {
@@ -163,7 +166,6 @@ public class ActorTest extends BaseTest {
     public void increase(int delta) {
       super.increase(-delta);
     }
-
   }
 
   @Test(groups = {"cluster"})
@@ -176,8 +178,8 @@ public class ActorTest extends BaseTest {
     counter.task(Counter::increase, 10).remote();
     Assert.assertEquals(counter.task(Counter::getValue).remote().get(), Integer.valueOf(80));
     // test interface default methods
-    Assert.assertEquals(counter.task(ChildClassInterface::interfaceName).remote().get(),
+    Assert.assertEquals(
+        counter.task(ChildClassInterface::interfaceName).remote().get(),
         ChildClassInterface.class.getName());
   }
-
 }

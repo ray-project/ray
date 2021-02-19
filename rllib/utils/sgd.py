@@ -72,18 +72,23 @@ def minibatches(samples, sgd_minibatch_size):
 
     i = 0
     slices = []
-    if samples.seq_lens:
-        seq_no = 0
-        while i < samples.count:
-            seq_no_end = seq_no
-            actual_count = 0
-            while actual_count < sgd_minibatch_size and len(
-                    samples.seq_lens) > seq_no_end:
-                actual_count += samples.seq_lens[seq_no_end]
-                seq_no_end += 1
-            slices.append((seq_no, seq_no_end))
-            i += actual_count
-            seq_no = seq_no_end
+    if samples.seq_lens is not None and len(samples.seq_lens) > 0:
+        start_pos = 0
+        minibatch_size = 0
+        idx = 0
+        while idx < len(samples.seq_lens):
+            seq_len = samples.seq_lens[idx]
+            minibatch_size += seq_len
+            # Complete minibatch -> Append to slices.
+            if minibatch_size >= sgd_minibatch_size:
+                slices.append((start_pos, start_pos + sgd_minibatch_size))
+                start_pos += sgd_minibatch_size
+                if minibatch_size > sgd_minibatch_size:
+                    overhead = minibatch_size - sgd_minibatch_size
+                    start_pos -= (seq_len - overhead)
+                    idx -= 1
+                minibatch_size = 0
+            idx += 1
     else:
         while i < samples.count:
             slices.append((i, i + sgd_minibatch_size))
@@ -99,12 +104,12 @@ def do_minibatch_sgd(samples, policies, local_worker, num_sgd_iter,
     """Execute minibatch SGD.
 
     Args:
-        samples (SampleBatch): batch of samples to optimize.
-        policies (dict): dictionary of policies to optimize.
-        local_worker (RolloutWorker): master rollout worker instance.
-        num_sgd_iter (int): number of epochs of optimization to take.
-        sgd_minibatch_size (int): size of minibatches to use for optimization.
-        standardize_fields (list): list of sample field names that should be
+        samples (SampleBatch): Batch of samples to optimize.
+        policies (dict): Dictionary of policies to optimize.
+        local_worker (RolloutWorker): Master rollout worker instance.
+        num_sgd_iter (int): Number of epochs of optimization to take.
+        sgd_minibatch_size (int): Size of minibatches to use for optimization.
+        standardize_fields (list): List of sample field names that should be
             normalized prior to optimization.
 
     Returns:

@@ -2,10 +2,11 @@ from collections import defaultdict
 import logging
 import numpy as np
 import math
-from typing import List
+from typing import List, Tuple, Any
 
 import ray
-from ray.rllib.evaluation.metrics import get_learner_stats, LEARNER_STATS_KEY
+from ray.rllib.evaluation.metrics import extract_stats, get_learner_stats, \
+    LEARNER_STATS_KEY
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.common import \
     STEPS_SAMPLED_COUNTER, STEPS_TRAINED_COUNTER, LEARNER_INFO, \
@@ -18,7 +19,7 @@ from ray.rllib.policy.sample_batch import SampleBatch, DEFAULT_POLICY_ID, \
     MultiAgentBatch
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.sgd import do_minibatch_sgd, averaged
-from ray.rllib.utils.typing import PolicyID, SampleBatchType
+from ray.rllib.utils.typing import PolicyID, SampleBatchType, ModelGradients
 
 tf1, tf, tfv = try_import_tf()
 
@@ -58,18 +59,25 @@ class TrainOneStep:
         learn_timer = metrics.timers[LEARN_ON_BATCH_TIMER]
         with learn_timer:
             if self.num_sgd_iter > 1 or self.sgd_minibatch_size > 0:
-                w = self.workers.local_worker()
+                lw = self.workers.local_worker()
                 info = do_minibatch_sgd(
-                    batch, {p: w.get_policy(p)
-                            for p in self.policies}, w, self.num_sgd_iter,
+                    batch, {pid: lw.get_policy(pid)
+                            for pid in self.policies}, lw, self.num_sgd_iter,
                     self.sgd_minibatch_size, [])
                 # TODO(ekl) shouldn't be returning learner stats directly here
+                # TODO(sven): Skips `custom_metrics` key from on_learn_on_batch
+                #  callback (shouldn't).
                 metrics.info[LEARNER_INFO] = info
             else:
                 info = self.workers.local_worker().learn_on_batch(batch)
-                metrics.info[LEARNER_INFO] = get_learner_stats(info)
+                metrics.info[LEARNER_INFO] = extract_stats(
+                    info, LEARNER_STATS_KEY)
+                metrics.info["custom_metrics"] = extract_stats(
+                    info, "custom_metrics")
             learn_timer.push_units_processed(batch.count)
         metrics.counters[STEPS_TRAINED_COUNTER] += batch.count
+        # Update weights - after learning on the local worker - on all remote
+        # workers.
         if self.workers.remote_workers():
             with metrics.timers[WORKER_UPDATE_TIMER]:
                 weights = ray.put(self.workers.local_worker().get_weights(
@@ -173,8 +181,12 @@ class TrainTFMultiGPU:
             # (1) Load data into GPUs.
             num_loaded_tuples = {}
             for policy_id, batch in samples.policy_batches.items():
+                # Not a policy-to-train.
                 if policy_id not in self.policies:
                     continue
+
+                # Decompress SampleBatch, in case some columns are compressed.
+                batch.decompress_if_needed()
 
                 policy = self.workers.local_worker().get_policy(policy_id)
                 policy._debug_vars()
@@ -242,10 +254,10 @@ class ComputeGradients:
     Updates the LEARNER_INFO info field in the local iterator context.
     """
 
-    def __init__(self, workers):
+    def __init__(self, workers: WorkerSet):
         self.workers = workers
 
-    def __call__(self, samples: SampleBatchType):
+    def __call__(self, samples: SampleBatchType) -> Tuple[ModelGradients, int]:
         _check_sample_batch_type(samples)
         metrics = _get_shared_metrics()
         with metrics.timers[COMPUTE_GRADS_TIMER]:
@@ -283,7 +295,7 @@ class ApplyGradients:
         self.policies = policies or workers.local_worker().policies_to_train
         self.update_all = update_all
 
-    def __call__(self, item):
+    def __call__(self, item: Tuple[ModelGradients, int]) -> None:
         if not isinstance(item, tuple) or len(item) != 2:
             raise ValueError(
                 "Input must be a tuple of (grad_dict, count), got {}".format(
@@ -333,7 +345,8 @@ class AverageGradients:
         {"var_0": ..., ...}, 1600  # averaged grads, summed batch count
     """
 
-    def __call__(self, gradients):
+    def __call__(self, gradients: List[Tuple[ModelGradients, int]]
+                 ) -> Tuple[ModelGradients, int]:
         acc = None
         sum_count = 0
         for grad, count in gradients:
@@ -366,10 +379,10 @@ class UpdateTargetNetwork:
     """
 
     def __init__(self,
-                 workers,
-                 target_update_freq,
-                 by_steps_trained=False,
-                 policies=frozenset([])):
+                 workers: WorkerSet,
+                 target_update_freq: int,
+                 by_steps_trained: bool = False,
+                 policies: List[PolicyID] = frozenset([])):
         self.workers = workers
         self.target_update_freq = target_update_freq
         self.policies = (policies or workers.local_worker().policies_to_train)
@@ -378,7 +391,7 @@ class UpdateTargetNetwork:
         else:
             self.metric = STEPS_SAMPLED_COUNTER
 
-    def __call__(self, _):
+    def __call__(self, _: Any) -> None:
         metrics = _get_shared_metrics()
         cur_ts = metrics.counters[self.metric]
         last_update = metrics.counters[LAST_TARGET_UPDATE_TS]

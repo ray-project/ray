@@ -142,7 +142,8 @@ class WorkerCrashedError(RayError):
     """Indicates that the worker died unexpectedly while executing a task."""
 
     def __str__(self):
-        return "The worker died unexpectedly while executing this task."
+        return ("The worker died unexpectedly while executing this task. "
+                "Check python-core-worker-*.log files for more information.")
 
 
 class RayActorError(RayError):
@@ -153,7 +154,8 @@ class RayActorError(RayError):
     """
 
     def __str__(self):
-        return "The actor died unexpectedly before finishing this task."
+        return ("The actor died unexpectedly before finishing this task. "
+                "Check python-core-worker-*.log files for more information.")
 
 
 class RaySystemError(RayError):
@@ -162,11 +164,15 @@ class RaySystemError(RayError):
     This exception can be thrown when the raylet is killed.
     """
 
-    def __init__(self, client_exc):
+    def __init__(self, client_exc, traceback_str=None):
         self.client_exc = client_exc
+        self.traceback_str = traceback_str
 
     def __str__(self):
-        return f"System error: {self.client_exc}"
+        error_msg = f"System error: {self.client_exc}"
+        if self.traceback_str:
+            error_msg += f"\ntraceback: {self.traceback_str}"
+        return error_msg
 
 
 class ObjectStoreFullError(RayError):

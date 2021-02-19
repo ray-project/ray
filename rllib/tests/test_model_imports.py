@@ -6,11 +6,12 @@ from pathlib import Path
 import unittest
 
 import ray
-from ray.rllib.agents.registry import get_agent_class
+from ray.rllib.agents.registry import get_trainer_class
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.tf.misc import normc_initializer
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.test_utils import check, framework_iterator
 
@@ -47,8 +48,6 @@ class MyKerasModel(TFModelV2):
                                              [layer_out, value_out])
         else:
             self.base_model = tf.keras.Model(self.inputs, layer_out)
-
-        self.register_variables(self.base_model.variables)
 
     def forward(self, input_dict, state, seq_lens):
         if self.model_config["vf_share_layers"]:
@@ -99,27 +98,27 @@ class MyTorchModel(TorchModelV2, nn.Module):
         f = h5py.File(import_file)
         self.layer_1.load_state_dict({
             "weight": torch.Tensor(
-                np.transpose(f["layer1"]["default_policy"]["layer1"][
+                np.transpose(f["layer1"][DEFAULT_POLICY_ID]["layer1"][
                     "kernel:0"].value)),
             "bias": torch.Tensor(
                 np.transpose(
-                    f["layer1"]["default_policy"]["layer1"]["bias:0"].value)),
+                    f["layer1"][DEFAULT_POLICY_ID]["layer1"]["bias:0"].value)),
         })
         self.layer_out.load_state_dict({
             "weight": torch.Tensor(
                 np.transpose(
-                    f["out"]["default_policy"]["out"]["kernel:0"].value)),
+                    f["out"][DEFAULT_POLICY_ID]["out"]["kernel:0"].value)),
             "bias": torch.Tensor(
                 np.transpose(
-                    f["out"]["default_policy"]["out"]["bias:0"].value)),
+                    f["out"][DEFAULT_POLICY_ID]["out"]["bias:0"].value)),
         })
         self.value_branch.load_state_dict({
             "weight": torch.Tensor(
                 np.transpose(
-                    f["value"]["default_policy"]["value"]["kernel:0"].value)),
+                    f["value"][DEFAULT_POLICY_ID]["value"]["kernel:0"].value)),
             "bias": torch.Tensor(
                 np.transpose(
-                    f["value"]["default_policy"]["value"]["bias:0"].value)),
+                    f["value"][DEFAULT_POLICY_ID]["value"]["bias:0"].value)),
         })
 
 
@@ -128,7 +127,7 @@ def model_import_test(algo, config, env):
     rllib_dir = Path(__file__).parent.parent
     import_file = str(rllib_dir) + "/tests/data/model_weights/weights.h5"
 
-    agent_cls = get_agent_class(algo)
+    agent_cls = get_trainer_class(algo)
 
     for fw in framework_iterator(config, ["tf", "torch"]):
         config["model"]["custom_model"] = "keras_model" if fw != "torch" else \
@@ -138,13 +137,13 @@ def model_import_test(algo, config, env):
 
         def current_weight(agent):
             if fw == "tf":
-                return agent.get_weights()["default_policy"][
+                return agent.get_weights()[DEFAULT_POLICY_ID][
                     "default_policy/value/kernel"][0]
             elif fw == "torch":
-                return float(agent.get_weights()["default_policy"][
+                return float(agent.get_weights()[DEFAULT_POLICY_ID][
                     "value_branch.weight"][0][0])
             else:
-                return agent.get_weights()["default_policy"][4][0]
+                return agent.get_weights()[DEFAULT_POLICY_ID][4][0]
 
         # Import weights for our custom model from an h5 file.
         weight_before_import = current_weight(agent)
@@ -186,8 +185,9 @@ class TestModelImport(unittest.TestCase):
             "PPO",
             config={
                 "num_workers": 0,
-                "vf_share_layers": True,
-                "model": {}
+                "model": {
+                    "vf_share_layers": True,
+                },
             },
             env="CartPole-v0")
 

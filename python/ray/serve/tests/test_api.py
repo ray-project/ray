@@ -2,12 +2,14 @@ import asyncio
 from collections import defaultdict
 import time
 import os
-import pytest
+
 import requests
+import pytest
+import starlette.responses
 
 import ray
 from ray import serve
-from ray.test_utils import wait_for_condition
+from ray.test_utils import SignalActor, wait_for_condition
 from ray.serve.constants import SERVE_PROXY_NAME
 from ray.serve.exceptions import RayServeException
 from ray.serve.config import BackendConfig
@@ -18,8 +20,8 @@ from ray.serve.utils import (block_until_http_ready, format_actor_name,
 def test_e2e(serve_instance):
     client = serve_instance
 
-    def function(flask_request):
-        return {"method": flask_request.method}
+    def function(starlette_request):
+        return {"method": starlette_request.method}
 
     client.create_backend("echo:v1", function)
     client.create_endpoint(
@@ -32,6 +34,80 @@ def test_e2e(serve_instance):
     assert resp == "POST"
 
 
+def test_starlette_response(serve_instance):
+    client = serve_instance
+
+    def basic_response(_):
+        return starlette.responses.Response(
+            "Hello, world!", media_type="text/plain")
+
+    client.create_backend("basic_response", basic_response)
+    client.create_endpoint(
+        "basic_response", backend="basic_response", route="/basic_response")
+    assert requests.get(
+        "http://127.0.0.1:8000/basic_response").text == "Hello, world!"
+
+    def html_response(_):
+        return starlette.responses.HTMLResponse(
+            "<html><body><h1>Hello, world!</h1></body></html>")
+
+    client.create_backend("html_response", html_response)
+    client.create_endpoint(
+        "html_response", backend="html_response", route="/html_response")
+    assert requests.get(
+        "http://127.0.0.1:8000/html_response"
+    ).text == "<html><body><h1>Hello, world!</h1></body></html>"
+
+    def plain_text_response(_):
+        return starlette.responses.PlainTextResponse("Hello, world!")
+
+    client.create_backend("plain_text_response", plain_text_response)
+    client.create_endpoint(
+        "plain_text_response",
+        backend="plain_text_response",
+        route="/plain_text_response")
+    assert requests.get(
+        "http://127.0.0.1:8000/plain_text_response").text == "Hello, world!"
+
+    def json_response(_):
+        return starlette.responses.JSONResponse({"hello": "world"})
+
+    client.create_backend("json_response", json_response)
+    client.create_endpoint(
+        "json_response", backend="json_response", route="/json_response")
+    assert requests.get("http://127.0.0.1:8000/json_response").json()[
+        "hello"] == "world"
+
+    def redirect_response(_):
+        return starlette.responses.RedirectResponse(
+            url="http://127.0.0.1:8000/basic_response")
+
+    client.create_backend("redirect_response", redirect_response)
+    client.create_endpoint(
+        "redirect_response",
+        backend="redirect_response",
+        route="/redirect_response")
+    assert requests.get(
+        "http://127.0.0.1:8000/redirect_response").text == "Hello, world!"
+
+    def streaming_response(_):
+        async def slow_numbers():
+            for number in range(1, 4):
+                yield str(number)
+                await asyncio.sleep(0.01)
+
+        return starlette.responses.StreamingResponse(
+            slow_numbers(), media_type="text/plain")
+
+    client.create_backend("streaming_response", streaming_response)
+    client.create_endpoint(
+        "streaming_response",
+        backend="streaming_response",
+        route="/streaming_response")
+    assert requests.get(
+        "http://127.0.0.1:8000/streaming_response").text == "123"
+
+
 def test_backend_user_config(serve_instance):
     client = serve_instance
 
@@ -39,7 +115,7 @@ def test_backend_user_config(serve_instance):
         def __init__(self):
             self.count = 10
 
-        def __call__(self, flask_request):
+        def __call__(self, starlette_request):
             return self.count, os.getpid()
 
         def reconfigure(self, config):
@@ -54,18 +130,19 @@ def test_backend_user_config(serve_instance):
         pids_seen = set()
         for i in range(100):
             result = ray.get(handle.remote())
-            assert (str(result[0]) == val), result[0]
+            if str(result[0]) != val:
+                return False
             pids_seen.add(result[1])
-        assert (len(pids_seen) == num_replicas)
+        return len(pids_seen) == num_replicas
 
-    check("123", 2)
+    wait_for_condition(lambda: check("123", 2))
 
     client.update_backend_config("counter", BackendConfig(num_replicas=3))
-    check("123", 3)
+    wait_for_condition(lambda: check("123", 3))
 
     config = BackendConfig(user_config={"count": 456})
     client.update_backend_config("counter", config)
-    check("456", 3)
+    wait_for_condition(lambda: check("456", 3))
 
 
 def test_call_method(serve_instance):
@@ -87,7 +164,7 @@ def test_call_method(serve_instance):
 
     # Test serve handle path.
     handle = client.get_handle("endpoint")
-    assert ray.get(handle.options("method").remote()) == "hello"
+    assert ray.get(handle.options(method_name="method").remote()) == "hello"
 
 
 def test_no_route(serve_instance):
@@ -606,6 +683,9 @@ def test_endpoint_input_validation(serve_instance):
     client.create_endpoint("endpoint", backend="backend")
 
 
+# This error is only printed because creation is run in the control loop, not
+# in the API path.
+@pytest.mark.skip()
 def test_create_infeasible_error(serve_instance):
     client = serve_instance
 
@@ -761,8 +841,8 @@ def test_serve_metrics(serve_instance):
     client = serve_instance
 
     @serve.accept_batch
-    def batcher(flask_requests):
-        return ["hello"] * len(flask_requests)
+    def batcher(starlette_requests):
+        return ["hello"] * len(starlette_requests)
 
     client.create_backend("metrics", batcher)
     client.create_endpoint("metrics", backend="metrics", route="/metrics")
@@ -795,6 +875,10 @@ def test_serve_metrics(serve_instance):
             # gauge
             "replica_processing_queries",
             "replica_queued_queries",
+            # handle
+            "serve_handle_request_counter",
+            # ReplicaSet
+            "backend_queued_queries"
         ]
         for metric in expected_metrics:
             # For the final error round
@@ -810,6 +894,122 @@ def test_serve_metrics(serve_instance):
         wait_for_condition(verify_metrics, retry_interval_ms=500)
     except RuntimeError:
         verify_metrics()
+
+
+def test_serve_graceful_shutdown(serve_instance):
+    client = serve_instance
+
+    signal = SignalActor.remote()
+
+    class WaitBackend:
+        @serve.accept_batch
+        async def __call__(self, requests):
+            signal_actor = await requests[0].body()
+            await signal_actor.wait.remote()
+            return ["" for _ in range(len(requests))]
+
+    client.create_backend(
+        "wait",
+        WaitBackend,
+        config=BackendConfig(
+            # Make sure we can queue up queries in the replica side.
+            max_concurrent_queries=10,
+            max_batch_size=1,
+            experimental_graceful_shutdown_wait_loop_s=0.5,
+            experimental_graceful_shutdown_timeout_s=1000,
+        ))
+    client.create_endpoint("wait", backend="wait")
+    handle = client.get_handle("wait")
+    refs = [handle.remote(signal) for _ in range(10)]
+
+    # Wait for all the queries to be enqueued
+    with pytest.raises(ray.exceptions.GetTimeoutError):
+        ray.get(refs, timeout=1)
+
+    @ray.remote(num_cpus=0)
+    def do_blocking_delete():
+        client = serve.connect()
+        client.delete_endpoint("wait")
+        client.delete_backend("wait")
+
+    # Now delete the backend. This should trigger the shutdown sequence.
+    delete_ref = do_blocking_delete.remote()
+
+    # The queries should be enqueued but not executed becuase they are blocked
+    # by signal actor.
+    with pytest.raises(ray.exceptions.GetTimeoutError):
+        ray.get(refs, timeout=1)
+
+    signal.send.remote()
+
+    # All the queries should be drained and executed without error.
+    ray.get(refs)
+    # Blocking delete should complete.
+    ray.get(delete_ref)
+
+
+def test_serve_forceful_shutdown(serve_instance):
+    client = serve_instance
+
+    def sleeper(_):
+        while True:
+            time.sleep(1000)
+
+    client.create_backend(
+        "sleeper",
+        sleeper,
+        config=BackendConfig(experimental_graceful_shutdown_timeout_s=1))
+    client.create_endpoint("sleeper", backend="sleeper")
+    handle = client.get_handle("sleeper")
+    ref = handle.remote()
+    client.delete_endpoint("sleeper")
+    client.delete_backend("sleeper")
+
+    with pytest.raises(ray.exceptions.RayActorError):
+        ray.get(ref)
+
+
+def test_starlette_request(serve_instance):
+    client = serve_instance
+
+    async def echo_body(starlette_request):
+        data = await starlette_request.body()
+        return data
+
+    UVICORN_HIGH_WATER_MARK = 65536  # max bytes in one message
+
+    # Long string to test serialization of multiple messages.
+    long_string = "x" * 10 * UVICORN_HIGH_WATER_MARK
+
+    client.create_backend("echo:v1", echo_body)
+    client.create_endpoint(
+        "endpoint", backend="echo:v1", route="/api", methods=["GET", "POST"])
+
+    resp = requests.post("http://127.0.0.1:8000/api", data=long_string).text
+    assert resp == long_string
+
+
+def test_variable_routes(serve_instance):
+    client = serve_instance
+
+    def f(starlette_request):
+        return starlette_request.path_params
+
+    client.create_backend("f", f)
+    client.create_endpoint("basic", backend="f", route="/api/{username}")
+
+    # Test multiple variables and test type conversion
+    client.create_endpoint(
+        "complex", backend="f", route="/api/{user_id:int}/{number:float}")
+
+    assert requests.get("http://127.0.0.1:8000/api/scaly").json() == {
+        "username": "scaly"
+    }
+
+    assert requests.get("http://127.0.0.1:8000/api/23/12.345").json() == {
+        "user_id": 23,
+        "number": 12.345
+    }
 
 
 if __name__ == "__main__":

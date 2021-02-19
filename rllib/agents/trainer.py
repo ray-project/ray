@@ -14,6 +14,8 @@ from ray.exceptions import RayError
 from ray.rllib.agents.callbacks import DefaultCallbacks
 from ray.rllib.env.normalize_actions import NormalizeActionWrapper
 from ray.rllib.env.env_context import EnvContext
+from ray.rllib.evaluation.collectors.simple_list_collector import \
+    SimpleListCollector
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.models import MODEL_DEFAULTS
 from ray.rllib.policy import Policy
@@ -50,7 +52,7 @@ COMMON_CONFIG: TrainerConfigDict = {
     # Number of rollout worker actors to create for parallel sampling. Setting
     # this to 0 will force rollouts to be done in the trainer actor.
     "num_workers": 2,
-    # Number of environments to evaluate vectorwise per worker. This enables
+    # Number of environments to evaluate vector-wise per worker. This enables
     # model inference batching, which can improve performance for inference
     # bottlenecked workloads.
     "num_envs_per_worker": 1,
@@ -118,10 +120,18 @@ COMMON_CONFIG: TrainerConfigDict = {
     # set this if soft_horizon=True, unless your env is actually running
     # forever without returning done=True.
     "no_done_at_end": False,
-    # Arguments to pass to the env creator.
-    "env_config": {},
     # Environment name can also be passed via config.
     "env": None,
+    # Arguments to pass to the env creator.
+    "env_config": {},
+    # If True, try to render the environment on the local worker or on worker
+    # 1 (if num_workers > 0). For vectorized envs, this usually means that only
+    # the first sub-environment will be rendered.
+    "render_env": False,
+    # If True, store evaluation videos in the output dir.
+    # Alternatively, provide a path (str) to a directory here, where the env
+    # recordings should be stored instead.
+    "record_env": False,
     # Unsquash actions to the upper and lower bounds of env's action space
     "normalize_actions": False,
     # Whether to clip rewards during Policy's postprocessing.
@@ -211,9 +221,10 @@ COMMON_CONFIG: TrainerConfigDict = {
     },
     # Number of parallel workers to use for evaluation. Note that this is set
     # to zero by default, which means evaluation will be run in the trainer
-    # process. If you increase this, it will increase the Ray resource usage
-    # of the trainer since evaluation workers are created separately from
-    # rollout workers.
+    # process (only if evaluation_interval is not None). If you increase this,
+    # it will increase the Ray resource usage of the trainer since evaluation
+    # workers are created separately from rollout workers (used to sample data
+    # for training).
     "evaluation_num_workers": 0,
     # Customize the evaluation method. This must be a function of signature
     # (trainer: Trainer, eval_workers: WorkerSet) -> metrics: dict. See the
@@ -231,6 +242,10 @@ COMMON_CONFIG: TrainerConfigDict = {
     # generic ModelV2 `input_dicts` that can be requested by the model to
     # contain different information on the ongoing episode.
     "_use_trajectory_view_api": True,
+    # The SampleCollector class to be used to collect and retrieve
+    # environment-, model-, and sampler data. Override the SampleCollector base
+    # class to implement your own collection/buffering/retrieval logic.
+    "sample_collector": SimpleListCollector,
 
     # Element-wise observation filter, either "NoFilter" or "MeanStdFilter".
     "observation_filter": "NoFilter",
@@ -529,14 +544,6 @@ class Trainer(Trainable):
         if hasattr(self, "workers") and isinstance(self.workers, WorkerSet):
             self._sync_filters_if_needed(self.workers)
 
-        if self.config["evaluation_interval"] == 1 or (
-                self._iteration > 0 and self.config["evaluation_interval"]
-                and self._iteration % self.config["evaluation_interval"] == 0):
-            evaluation_metrics = self._evaluate()
-            assert isinstance(evaluation_metrics, dict), \
-                "_evaluate() needs to return a dict."
-            result.update(evaluation_metrics)
-
         return result
 
     def _sync_filters_if_needed(self, workers: WorkerSet):
@@ -580,7 +587,19 @@ class Trainer(Trainable):
                         pybullet_envs.getList()
                     except (ModuleNotFoundError, ImportError):
                         pass
-                    return gym.make(env, **env_context)
+                    # Try creating a gym env. If this fails we can output a
+                    # decent error message.
+                    try:
+                        return gym.make(env, **env_context)
+                    except gym.error.Error:
+                        raise ValueError(
+                            "The env string you provided ({}) is a) not a "
+                            "known gym/PyBullet environment specifier or b) "
+                            "not registered! To register your custom envs, "
+                            "do `from ray import tune; tune.register('[name]',"
+                            " lambda cfg: [return actual "
+                            "env from here using cfg])`. Then you can use "
+                            "[name] as your config['env'].".format(env))
 
                 self.env_creator = _creator
         else:
@@ -652,7 +671,6 @@ class Trainer(Trainable):
                     extra_config["in_evaluation"] is True
                 extra_config.update({
                     "batch_mode": "complete_episodes",
-                    "rollout_fragment_length": 1,
                     "in_evaluation": True,
                 })
                 logger.debug(
@@ -830,13 +848,15 @@ class Trainer(Trainable):
         """
         if state is None:
             state = []
-        preprocessed = self.workers.local_worker().preprocessors[
-            policy_id].transform(observation)
-        filtered_obs = self.workers.local_worker().filters[policy_id](
-            preprocessed, update=False)
+        # Check the preprocessor and preprocess, if necessary.
+        pp = self.workers.local_worker().preprocessors[policy_id]
+        if type(pp).__name__ != "NoPreprocessor":
+            observation = pp.transform(observation)
+        filtered_observation = self.workers.local_worker().filters[policy_id](
+            observation, update=False)
 
         result = self.get_policy(policy_id).compute_single_action(
-            filtered_obs,
+            filtered_observation,
             state,
             prev_action,
             prev_reward,
@@ -1073,10 +1093,19 @@ class Trainer(Trainable):
 
     @staticmethod
     def _validate_config(config: PartialTrainerConfigDict):
-        if not config.get("_use_trajectory_view_api") and \
-                config.get("model", {}).get("_time_major"):
-            raise ValueError("`model._time_major` only supported "
-                             "iff `_use_trajectory_view_api` is True!")
+        model_config = config.get("model")
+        if model_config is None:
+            config["model"] = model_config = {}
+
+        if not config.get("_use_trajectory_view_api"):
+            traj_view_framestacks = model_config.get("num_framestacks", "auto")
+            if model_config.get("_time_major"):
+                raise ValueError("`model._time_major` only supported "
+                                 "iff `_use_trajectory_view_api` is True!")
+            elif traj_view_framestacks not in ["auto", 0]:
+                raise ValueError("`model.num_framestacks` only supported "
+                                 "iff `_use_trajectory_view_api` is True!")
+            model_config["num_framestacks"] = 0
 
         if isinstance(config["input_evaluation"], tuple):
             config["input_evaluation"] = list(config["input_evaluation"])
@@ -1086,15 +1115,15 @@ class Trainer(Trainable):
                     config["input_evaluation"]))
 
         # Check model config.
-        prev_a_r = config.get("model", {}).get("lstm_use_prev_action_reward",
-                                               DEPRECATED_VALUE)
+        prev_a_r = model_config.get("lstm_use_prev_action_reward",
+                                    DEPRECATED_VALUE)
         if prev_a_r != DEPRECATED_VALUE:
             deprecation_warning(
                 "model.lstm_use_prev_action_reward",
                 "model.lstm_use_prev_action and model.lstm_use_prev_reward",
                 error=False)
-            config["model"]["lstm_use_prev_action"] = prev_a_r
-            config["model"]["lstm_use_prev_reward"] = prev_a_r
+            model_config["lstm_use_prev_action"] = prev_a_r
+            model_config["lstm_use_prev_reward"] = prev_a_r
 
         # Check batching/sample collection settings.
         if config["batch_mode"] not in [
@@ -1109,6 +1138,17 @@ class Trainer(Trainable):
             raise ValueError(
                 "`count_steps_by` must be one of [env_steps|agent_steps]! "
                 "Got {}".format(config["multiagent"]["count_steps_by"]))
+
+        # If evaluation_num_workers > 0, warn if evaluation_interval is None
+        # (also set it to 1).
+        if config["evaluation_num_workers"] > 0 and \
+                not config["evaluation_interval"]:
+            logger.warning(
+                "You have specified {} evaluation workers, but no evaluation "
+                "interval! Will set the interval to 1 (each `train()` call). "
+                "If this is too frequent, set `evaluation_interval` to some "
+                "larger value.".format(config["evaluation_num_workers"]))
+            config["evaluation_interval"] = 1
 
     def _try_recover(self):
         """Try to identify and remove any unhealthy workers.

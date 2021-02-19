@@ -5,8 +5,8 @@ import io.ray.streaming.message.Record;
 import io.ray.streaming.operator.OneInputOperator;
 import io.ray.streaming.operator.StreamOperator;
 
-public class MapOperator<T, R> extends StreamOperator<MapFunction<T, R>> implements
-    OneInputOperator<T> {
+public class MapOperator<T, R> extends StreamOperator<MapFunction<T, R>>
+    implements OneInputOperator<T> {
 
   public MapOperator(MapFunction<T, R> mapFunction) {
     super(mapFunction);

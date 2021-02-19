@@ -1,5 +1,6 @@
 import ray.worker
 import logging
+from ray._private.client_mode_hook import client_mode_hook
 
 logger = logging.getLogger(__name__)
 
@@ -12,10 +13,10 @@ class RuntimeContext(object):
         self.worker = worker
 
     def get(self):
-        """Get a dictionary of the current_context.
+        """Get a dictionary of the current context.
 
-        For fields that are not available (for example actor id inside a task)
-        won't be included in the field.
+        Fields that are not available (e.g., actor ID inside a task) won't be
+        included in the field.
 
         Returns:
             dict: Dictionary of the current context.
@@ -23,14 +24,14 @@ class RuntimeContext(object):
         context = {
             "job_id": self.job_id,
             "node_id": self.node_id,
-            "task_id": self.task_id,
-            "actor_id": self.actor_id
         }
-        # Remove fields that are None.
-        return {
-            key: value
-            for key, value in context.items() if value is not None
-        }
+        if self.worker.mode == ray.worker.WORKER_MODE:
+            if self.task_id is not None:
+                context["task_id"] = self.task_id
+            if self.actor_id is not None:
+                context["actor_id"] = self.actor_id
+
+        return context
 
     @property
     def job_id(self):
@@ -149,7 +150,15 @@ class RuntimeContext(object):
 _runtime_context = None
 
 
+@client_mode_hook
 def get_runtime_context():
+    """Get the runtime context of the current driver/worker.
+
+    Example:
+
+    >>> ray.get_runtime_context().job_id # Get the job id.
+    >>> ray.get_runtime_context().get() # Get all the metadata.
+    """
     global _runtime_context
     if _runtime_context is None:
         _runtime_context = RuntimeContext(ray.worker.global_worker)

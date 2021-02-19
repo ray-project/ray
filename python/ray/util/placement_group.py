@@ -1,9 +1,10 @@
 import time
 
-from typing import (List, Dict, Optional)
+from typing import (List, Dict, Optional, Union)
 
 import ray
 from ray._raylet import PlacementGroupID, ObjectRef
+from ray.utils import hex_to_binary
 
 bundle_reservation_check = None
 
@@ -83,12 +84,10 @@ class PlacementGroup:
             placement_group_bundle_index=bundle_index,
             resources=resources).remote(self)
 
-    def wait(self, timeout_ms: int) -> bool:
+    def wait(self, timeout_seconds: Union[float, int]) -> bool:
         """Wait for the placement group to be ready within the specified time.
-
         Args:
-             timeout_ms(str): Timeout in milliseconds.
-
+             timeout_seconds(float|int): Timeout in seconds.
         Return:
              True if the placement group is created. False otherwise.
         """
@@ -96,7 +95,7 @@ class PlacementGroup:
         worker.check_connected()
 
         return worker.core_worker.wait_placement_group_ready(
-            self.id, timeout_ms)
+            self.id, timeout_seconds)
 
     @property
     def bundle_specs(self) -> List[Dict]:
@@ -147,7 +146,8 @@ class PlacementGroup:
 
 def placement_group(bundles: List[Dict[str, float]],
                     strategy: str = "PACK",
-                    name: str = "unnamed_group") -> PlacementGroup:
+                    name: str = "",
+                    lifetime=None) -> PlacementGroup:
     """Asynchronously creates a PlacementGroup.
 
     Args:
@@ -162,6 +162,10 @@ def placement_group(bundles: List[Dict[str, float]],
          - "STRICT_SPREAD": Packs Bundles across distinct nodes.
 
         name(str): The name of the placement group.
+        lifetime(str): Either `None`, which defaults to the placement group
+            will fate share with its creator and will be deleted once its
+            creator is dead, or "detached", which means the placement group
+            will live as a global object independent of the creator.
 
     Return:
         PlacementGroup: Placement group object.
@@ -181,8 +185,16 @@ def placement_group(bundles: List[Dict[str, float]],
                 "Bundles cannot be an empty dictionary or "
                 f"resources with only 0 values. Bundles: {bundles}")
 
+    if lifetime is None:
+        detached = False
+    elif lifetime == "detached":
+        detached = True
+    else:
+        raise ValueError("placement group `lifetime` argument must be either"
+                         " `None` or 'detached'")
+
     placement_group_id = worker.core_worker.create_placement_group(
-        name, bundles, strategy)
+        name, bundles, strategy, detached)
 
     return PlacementGroup(placement_group_id)
 
@@ -198,6 +210,29 @@ def remove_placement_group(placement_group: PlacementGroup):
     worker.check_connected()
 
     worker.core_worker.remove_placement_group(placement_group.id)
+
+
+def get_placement_group(placement_group_name: str):
+    """Get a placement group object with a global name.
+
+    Returns:
+        None if can't find a placement group with the given name.
+        The placement group object otherwise.
+    """
+    if not placement_group_name:
+        raise ValueError(
+            "Please supply a non-empty value to get_placement_group")
+    worker = ray.worker.global_worker
+    worker.check_connected()
+    placement_group_info = ray.state.state.get_placement_group_by_name(
+        placement_group_name)
+    if placement_group_info is None:
+        raise ValueError(
+            f"Failed to look up actor with name: {placement_group_name}")
+    else:
+        return PlacementGroup(
+            PlacementGroupID(
+                hex_to_binary(placement_group_info["placement_group_id"])))
 
 
 def placement_group_table(placement_group: PlacementGroup = None) -> list:

@@ -137,9 +137,10 @@ raylet::RayletClient::RayletClient(
 
 Status raylet::RayletClient::Disconnect() {
   flatbuffers::FlatBufferBuilder fbb;
-  auto message = protocol::CreateDisconnectClient(fbb);
+  auto message = protocol::CreateDisconnectClient(
+      fbb, static_cast<int>(rpc::WorkerExitType::INTENDED_EXIT));
   fbb.Finish(message);
-  auto status = conn_->WriteMessage(MessageType::IntentionalDisconnectClient, &fbb);
+  auto status = conn_->WriteMessage(MessageType::DisconnectClient, &fbb);
   // Don't be too strict for disconnection errors.
   // Just create logs and prevent it from crash.
   if (!status.ok()) {
@@ -189,9 +190,9 @@ Status raylet::RayletClient::NotifyUnblocked(const TaskID &current_task_id) {
   return conn_->WriteMessage(MessageType::NotifyUnblocked, &fbb);
 }
 
-Status raylet::RayletClient::NotifyDirectCallTaskBlocked() {
+Status raylet::RayletClient::NotifyDirectCallTaskBlocked(bool release_resources) {
   flatbuffers::FlatBufferBuilder fbb;
-  auto message = protocol::CreateNotifyDirectCallTaskBlocked(fbb);
+  auto message = protocol::CreateNotifyDirectCallTaskBlocked(fbb, release_resources);
   fbb.Finish(message);
   return conn_->WriteMessage(MessageType::NotifyDirectCallTaskBlocked, &fbb);
 }
@@ -206,13 +207,13 @@ Status raylet::RayletClient::NotifyDirectCallTaskUnblocked() {
 Status raylet::RayletClient::Wait(const std::vector<ObjectID> &object_ids,
                                   const std::vector<rpc::Address> &owner_addresses,
                                   int num_returns, int64_t timeout_milliseconds,
-                                  bool wait_local, bool mark_worker_blocked,
-                                  const TaskID &current_task_id, WaitResultPair *result) {
+                                  bool mark_worker_blocked, const TaskID &current_task_id,
+                                  WaitResultPair *result) {
   // Write request.
   flatbuffers::FlatBufferBuilder fbb;
   auto message = protocol::CreateWaitRequest(
       fbb, to_flatbuf(fbb, object_ids), AddressesToFlatbuffer(fbb, owner_addresses),
-      num_returns, timeout_milliseconds, wait_local, mark_worker_blocked,
+      num_returns, timeout_milliseconds, mark_worker_blocked,
       to_flatbuf(fbb, current_task_id));
   fbb.Finish(message);
   std::vector<uint8_t> reply;
@@ -274,10 +275,10 @@ Status raylet::RayletClient::PushProfileEvents(const ProfileTableData &profile_e
 }
 
 Status raylet::RayletClient::FreeObjects(const std::vector<ObjectID> &object_ids,
-                                         bool local_only, bool delete_creating_tasks) {
+                                         bool local_only) {
   flatbuffers::FlatBufferBuilder fbb;
-  auto message = protocol::CreateFreeObjectsRequest(
-      fbb, local_only, delete_creating_tasks, to_flatbuf(fbb, object_ids));
+  auto message =
+      protocol::CreateFreeObjectsRequest(fbb, local_only, to_flatbuf(fbb, object_ids));
   fbb.Finish(message);
   return conn_->WriteMessage(MessageType::FreeObjectsInObjectStoreRequest, &fbb);
 }
@@ -308,6 +309,18 @@ void raylet::RayletClient::RequestObjectSpillage(
   rpc::RequestObjectSpillageRequest request;
   request.set_object_id(object_id.Binary());
   grpc_client_->RequestObjectSpillage(request, callback);
+}
+
+void raylet::RayletClient::RestoreSpilledObject(
+    const ObjectID &object_id, const std::string &object_url,
+    const NodeID &spilled_node_id,
+    const rpc::ClientCallback<rpc::RestoreSpilledObjectReply> &callback) {
+  RAY_CHECK(!spilled_node_id.IsNil());
+  rpc::RestoreSpilledObjectRequest request;
+  request.set_object_id(object_id.Binary());
+  request.set_object_url(object_url);
+  request.set_spilled_node_id(spilled_node_id.Binary());
+  grpc_client_->RestoreSpilledObject(request, callback);
 }
 
 Status raylet::RayletClient::ReturnWorker(int worker_port, const WorkerID &worker_id,

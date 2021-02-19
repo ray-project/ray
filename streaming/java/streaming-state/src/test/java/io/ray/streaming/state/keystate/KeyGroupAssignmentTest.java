@@ -20,11 +20,9 @@ package io.ray.streaming.state.keystate;
 
 import static org.testng.Assert.assertEquals;
 
-
 import org.testng.annotations.Test;
 
 public class KeyGroupAssignmentTest {
-
 
   @Test
   public void testComputeKeyGroupRangeForOperatorIndex() throws Exception {
@@ -53,5 +51,4 @@ public class KeyGroupAssignmentTest {
     assertEquals(keyGroup3.getEndIndex(), 4095);
     assertEquals(keyGroup3.size(), 1365);
   }
-
 }

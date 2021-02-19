@@ -22,10 +22,10 @@
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/task/scheduling_resources.h"
 #include "ray/raylet/scheduling/cluster_resource_data.h"
+#include "ray/raylet/scheduling/cluster_resource_scheduler_interface.h"
 #include "ray/raylet/scheduling/fixed_point.h"
 #include "ray/raylet/scheduling/scheduling_ids.h"
 #include "ray/util/logging.h"
-
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
@@ -38,7 +38,7 @@ static std::unordered_set<int64_t> UnitInstanceResources{CPU, GPU, TPU};
 /// Class encapsulating the cluster resources and the logic to assign
 /// tasks to nodes based on the task's constraints and the available
 /// resources at those nodes.
-class ClusterResourceScheduler {
+class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
  public:
   ClusterResourceScheduler(void){};
 
@@ -66,12 +66,19 @@ class ClusterResourceScheduler {
       const std::unordered_map<std::string, double> &resource_map_total,
       const std::unordered_map<std::string, double> &resource_map_available);
 
+  /// Update node resources. This hanppens when a node resource usage udpated.
+  ///
+  /// \param node_id_string ID of the node which resoruces need to be udpated.
+  /// \param resource_data The node resource data.
+  bool UpdateNode(const std::string &node_id_string,
+                  const rpc::ResourcesData &resource_data) override;
+
   /// Remove node from the cluster data structure. This happens
   /// when a node fails or it is removed from the cluster.
   ///
   /// \param ID of the node to be removed.
   bool RemoveNode(int64_t node_id);
-  bool RemoveNode(const std::string &node_id_string);
+  bool RemoveNode(const std::string &node_id_string) override;
 
   /// Check whether a task request is feasible on a given node. A node is
   /// feasible if it has the total resources needed to eventually execute the
@@ -132,11 +139,13 @@ class ClusterResourceScheduler {
   ///  \param violations: The number of soft constraint violations associated
   ///                     with the node returned by this function (assuming
   ///                     a node that can schedule task_req is found).
+  ///  \param is_infeasible[in]: It is set true if the task is not schedulable because it
+  ///  is infeasible.
   ///
   ///  \return -1, if no node can schedule the current request; otherwise,
   ///          return the ID of a node that can schedule the task request.
   int64_t GetBestSchedulableNode(const TaskRequest &task_request, bool actor_creation,
-                                 int64_t *violations);
+                                 int64_t *violations, bool *is_infeasible);
 
   /// Similar to
   ///    int64_t GetBestSchedulableNode(const TaskRequest &task_request, int64_t
@@ -147,11 +156,14 @@ class ClusterResourceScheduler {
   //           task request.
   std::string GetBestSchedulableNode(
       const std::unordered_map<std::string, double> &task_request, bool actor_creation,
-      int64_t *violations);
+      int64_t *violations, bool *is_infeasible);
 
   /// Return resources associated to the given node_id in ret_resources.
   /// If node_id not found, return false; otherwise return true.
   bool GetNodeResources(int64_t node_id, NodeResources *ret_resources) const;
+
+  /// Get local node resources.
+  const NodeResources &GetLocalNodeResources() const;
 
   /// Get number of nodes in the cluster.
   int64_t NumNodes();
@@ -162,13 +174,19 @@ class ClusterResourceScheduler {
   /// \param resource_total: New capacity of the resource.
   void AddLocalResource(const std::string &resource_name, double resource_total);
 
+  /// Check whether the available resources are empty.
+  ///
+  /// \param resource_name: Resource which we want to check.
+  bool IsAvailableResourceEmpty(const std::string &resource_name);
+
   /// Update total capacity of a given resource of a given node.
   ///
   /// \param node_name: Node whose resource we want to update.
   /// \param resource_name: Resource which we want to update.
   /// \param resource_total: New capacity of the resource.
   void UpdateResourceCapacity(const std::string &node_name,
-                              const std::string &resource_name, double resource_total);
+                              const std::string &resource_name,
+                              double resource_total) override;
 
   /// Delete a given resource from the local node.
   ///
@@ -179,10 +197,14 @@ class ClusterResourceScheduler {
   ///
   /// \param node_name: Node whose resource we want to delete.
   /// \param resource_name: Resource we want to delete
-  void DeleteResource(const std::string &node_name, const std::string &resource_name);
+  void DeleteResource(const std::string &node_name,
+                      const std::string &resource_name) override;
 
   /// Return local resources.
   NodeResourceInstances GetLocalResources() { return local_resources_; };
+
+  /// Return local resources in human-readable string form.
+  std::string GetLocalResourceViewString() const override;
 
   /// Create instances for each resource associated with the local node, given
   /// the node's resources.
@@ -269,11 +291,13 @@ class ClusterResourceScheduler {
   ///
   /// \param free A list of capacities for resource's instances to be freed.
   /// \param resource_instances List of the resource instances being updated.
+  /// \param allow_going_negative Allow the values to go negative (disable underflow).
   /// \return Underflow of "resource_instances" after subtracting instance
   /// capacities in "available", i.e.,.
   /// max(available - reasource_instances.available, 0)
   std::vector<FixedPoint> SubtractAvailableResourceInstances(
-      std::vector<FixedPoint> available, ResourceInstanceCapacities *resource_instances);
+      std::vector<FixedPoint> available, ResourceInstanceCapacities *resource_instances,
+      bool allow_going_negative = false);
 
   /// Increase the available CPU instances of this node.
   ///
@@ -286,10 +310,12 @@ class ClusterResourceScheduler {
   /// Decrease the available CPU instances of this node.
   ///
   /// \param cpu_instances CPU instances to be removed from available cpus.
+  /// \param allow_going_negative Allow the values to go negative (disable underflow).
   ///
   /// \return Underflow capacities of CPU instances after subtracting CPU
   /// capacities in cpu_instances.
-  std::vector<double> SubtractCPUResourceInstances(std::vector<double> &cpu_instances);
+  std::vector<double> SubtractCPUResourceInstances(std::vector<double> &cpu_instances,
+                                                   bool allow_going_negative = false);
 
   /// Increase the available GPU instances of this node.
   ///
@@ -335,7 +361,7 @@ class ClusterResourceScheduler {
       const std::string &node_id,
       const std::unordered_map<std::string, double> &task_resources);
 
-  void FreeLocalTaskResources(std::shared_ptr<TaskResourceInstances> task_allocation);
+  void ReleaseWorkerResources(std::shared_ptr<TaskResourceInstances> task_allocation);
 
   /// Update the available resources of the local node given
   /// the available instances of each resource of the local node.
@@ -349,14 +375,19 @@ class ClusterResourceScheduler {
   void UpdateLocalAvailableResourcesFromResourceInstances();
 
   /// Populate the relevant parts of the heartbeat table. This is intended for
-  /// sending raylet <-> gcs heartbeats. In particular, this should fill in
+  /// sending resource usage of raylet to gcs. In particular, this should fill in
   /// resources_available and resources_total.
   ///
-  /// \param light_report_resource_usage_enabled Only send changed fields if true.
   /// \param Output parameter. `resources_available` and `resources_total` are the only
   /// fields used.
-  void FillResourceUsage(bool light_report_resource_usage_enabled,
-                         std::shared_ptr<rpc::ResourcesData> resources_data);
+  void FillResourceUsage(std::shared_ptr<rpc::ResourcesData> resources_data) override;
+
+  /// Update last report resources local cache from gcs cache,
+  /// this is needed when gcs fo.
+  ///
+  /// \param gcs_resources: The remote cache from gcs.
+  void UpdateLastResourceUsage(
+      const std::shared_ptr<SchedulingResources> gcs_resources) override;
 
   /// Return human-readable string for this scheduler state.
   std::string DebugString() const;

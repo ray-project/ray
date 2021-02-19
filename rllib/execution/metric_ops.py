@@ -1,4 +1,4 @@
-from typing import Any, List
+from typing import Any, List, Dict
 import time
 
 from ray.util.iter import LocalIterator
@@ -59,9 +59,9 @@ class CollectMetrics:
     """
 
     def __init__(self,
-                 workers,
-                 min_history=100,
-                 timeout_seconds=180,
+                 workers: WorkerSet,
+                 min_history: int = 100,
+                 timeout_seconds: int = 180,
                  selected_workers: List["ActorHandle"] = None):
         self.workers = workers
         self.episode_history = []
@@ -70,7 +70,7 @@ class CollectMetrics:
         self.timeout_seconds = timeout_seconds
         self.selected_workers = selected_workers
 
-    def __call__(self, _):
+    def __call__(self, _: Any) -> Dict:
         # Collect worker metrics.
         episodes, self.to_be_collected = collect_episodes(
             self.workers.local_worker(),
@@ -88,6 +88,7 @@ class CollectMetrics:
 
         # Add in iterator metrics.
         metrics = _get_shared_metrics()
+        custom_metrics_from_info = metrics.info.pop("custom_metrics", {})
         timers = {}
         counters = {}
         info = {}
@@ -106,6 +107,8 @@ class CollectMetrics:
         res["timers"] = timers
         res["info"] = info
         res["info"].update(counters)
+        res["custom_metrics"] = res.get("custom_metrics", {})
+        res["custom_metrics"].update(custom_metrics_from_info)
         return res
 
 
@@ -124,11 +127,11 @@ class OncePerTimeInterval:
         5.00001  # will be greater than 5 seconds
     """
 
-    def __init__(self, delay):
+    def __init__(self, delay: int):
         self.delay = delay
         self.last_called = 0
 
-    def __call__(self, item):
+    def __call__(self, item: Any) -> bool:
         if self.delay <= 0.0:
             return True
         now = time.time()
@@ -151,11 +154,11 @@ class OncePerTimestepsElapsed:
         # will only return after 1000 steps have elapsed
     """
 
-    def __init__(self, delay_steps):
+    def __init__(self, delay_steps: int):
         self.delay_steps = delay_steps
         self.last_called = 0
 
-    def __call__(self, item):
+    def __call__(self, item: Any) -> bool:
         if self.delay_steps <= 0:
             return True
         metrics = _get_shared_metrics()

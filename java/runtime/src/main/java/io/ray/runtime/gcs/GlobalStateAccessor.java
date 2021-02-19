@@ -6,18 +6,15 @@ import io.ray.api.id.PlacementGroupId;
 import io.ray.api.id.UniqueId;
 import java.util.List;
 
-/**
- * `GlobalStateAccessor` is used for accessing information from GCS.
- *
- **/
+/** `GlobalStateAccessor` is used for accessing information from GCS. */
 public class GlobalStateAccessor {
   // NOTE(lingxuan.zlx): this is a singleton, it can not be changed during a Ray session.
   // Native pointer to the C++ GcsStateAccessor.
   private Long globalStateAccessorNativePointer = 0L;
   private static GlobalStateAccessor globalStateAccessor;
 
-  public static synchronized GlobalStateAccessor getInstance(String redisAddress,
-                                                             String redisPassword) {
+  public static synchronized GlobalStateAccessor getInstance(
+      String redisAddress, String redisPassword) {
     if (null == globalStateAccessor) {
       globalStateAccessor = new GlobalStateAccessor(redisAddress, redisPassword);
     }
@@ -32,8 +29,7 @@ public class GlobalStateAccessor {
   }
 
   private GlobalStateAccessor(String redisAddress, String redisPassword) {
-    globalStateAccessorNativePointer =
-      nativeCreateGlobalStateAccessor(redisAddress, redisPassword);
+    globalStateAccessorNativePointer = nativeCreateGlobalStateAccessor(redisAddress, redisPassword);
     validateGlobalStateAccessorPointer();
     connect();
   }
@@ -43,13 +39,12 @@ public class GlobalStateAccessor {
   }
 
   private void validateGlobalStateAccessorPointer() {
-    Preconditions.checkState(globalStateAccessorNativePointer != 0,
+    Preconditions.checkState(
+        globalStateAccessorNativePointer != 0,
         "Global state accessor native pointer must not be 0.");
   }
 
-  /**
-   * @return A list of job info with JobInfo protobuf schema.
-   */
+  /** Returns A list of job info with JobInfo protobuf schema. */
   public List<byte[]> getAllJobInfo() {
     // Fetch a job list with protobuf bytes format from GCS.
     synchronized (GlobalStateAccessor.class) {
@@ -58,9 +53,7 @@ public class GlobalStateAccessor {
     }
   }
 
-  /**
-   * @return A list of node info with GcsNodeInfo protobuf schema.
-   */
+  /** Returns A list of node info with GcsNodeInfo protobuf schema. */
   public List<byte[]> getAllNodeInfo() {
     // Fetch a node list with protobuf bytes format from GCS.
     synchronized (GlobalStateAccessor.class) {
@@ -70,6 +63,8 @@ public class GlobalStateAccessor {
   }
 
   /**
+   * Get node resource info.
+   *
    * @param nodeId node unique id.
    * @return A map of node resource info in protobuf schema.
    */
@@ -83,8 +78,8 @@ public class GlobalStateAccessor {
   public byte[] getPlacementGroupInfo(PlacementGroupId placementGroupId) {
     synchronized (GlobalStateAccessor.class) {
       validateGlobalStateAccessorPointer();
-      return nativeGetPlacementGroupInfo(globalStateAccessorNativePointer,
-        placementGroupId.getBytes());
+      return nativeGetPlacementGroupInfo(
+          globalStateAccessorNativePointer, placementGroupId.getBytes());
     }
   }
 
@@ -102,9 +97,7 @@ public class GlobalStateAccessor {
     }
   }
 
-  /**
-   * @return A list of actor info with ActorInfo protobuf schema.
-   */
+  /** Returns A list of actor info with ActorInfo protobuf schema. */
   public List<byte[]> getAllActorInfo() {
     // Fetch a actor list with protobuf bytes format from GCS.
     synchronized (GlobalStateAccessor.class) {
@@ -113,9 +106,7 @@ public class GlobalStateAccessor {
     }
   }
 
-  /**
-   * @return An actor info with ActorInfo protobuf schema.
-   */
+  /** Returns An actor info with ActorInfo protobuf schema. */
   public byte[] getActorInfo(ActorId actorId) {
     // Fetch an actor with protobuf bytes format from GCS.
     synchronized (GlobalStateAccessor.class) {
@@ -152,8 +143,7 @@ public class GlobalStateAccessor {
 
   private native byte[] nativeGetActorInfo(long nativePtr, byte[] actorId);
 
-  private native byte[] nativeGetPlacementGroupInfo(long nativePtr,
-      byte[] placementGroupId);
+  private native byte[] nativeGetPlacementGroupInfo(long nativePtr, byte[] placementGroupId);
 
   private native List<byte[]> nativeGetAllPlacementGroupInfo(long nativePtr);
 }

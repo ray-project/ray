@@ -11,7 +11,7 @@ serve_tests_srcs = glob(["tests/*.py"],
 
 py_test(
     name = "test_api",
-    size = "medium",
+    size = "large",
     srcs = serve_tests_srcs,
     tags = ["exclusive"],
     deps = [":serve_lib"],
@@ -43,14 +43,13 @@ py_test(
 )
 
 
-# TODO(simon): Test skipped until #11683 fixed.
-# py_test(
-#     name = "test_failure",
-#     size = "medium",
-#     srcs = serve_tests_srcs,
-#     tags = ["exclusive"],
-#     deps = [":serve_lib"],
-# )
+py_test(
+    name = "test_failure",
+    size = "medium",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive"],
+    deps = [":serve_lib"],
+)
 
 
 py_test(
@@ -106,7 +105,7 @@ py_test(
 
 py_test(
     name = "test_standalone",
-    size = "small",
+    size = "medium",
     srcs = serve_tests_srcs,
     tags = ["exclusive"],
     deps = [":serve_lib"],
@@ -114,6 +113,14 @@ py_test(
 
 py_test(
     name = "test_util",
+    size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_imported_backend",
     size = "small",
     srcs = serve_tests_srcs,
     tags = ["exclusive"],

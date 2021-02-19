@@ -75,6 +75,20 @@ class TestRedisPassword:
         ray.get(object_ref)
 
 
+def test_shutdown_and_reset_global_worker(shutdown_only):
+    ray.init(job_config=ray.job_config.JobConfig(code_search_path=["a"]))
+    ray.shutdown()
+    ray.init()
+
+    @ray.remote
+    class A:
+        def f(self):
+            return 100
+
+    a = A.remote()
+    ray.get(a.f.remote())
+
+
 if __name__ == "__main__":
     import pytest
     import sys

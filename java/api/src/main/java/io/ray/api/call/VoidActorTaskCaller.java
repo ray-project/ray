@@ -4,9 +4,7 @@ import io.ray.api.ActorHandle;
 import io.ray.api.Ray;
 import io.ray.api.function.RayFuncVoid;
 
-/**
- * A helper to call java actor method which doesn't have a return value.
- */
+/** A helper to call java actor method which doesn't have a return value. */
 public class VoidActorTaskCaller {
   private final ActorHandle actor;
   private final RayFuncVoid func;
@@ -18,11 +16,8 @@ public class VoidActorTaskCaller {
     this.args = args;
   }
 
-  /**
-   * Execute a function remotely.
-   */
+  /** Execute a function remotely. */
   public void remote() {
     Ray.internal().callActor(actor, func, args);
   }
-
 }

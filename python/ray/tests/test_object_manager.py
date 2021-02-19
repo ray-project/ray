@@ -254,6 +254,127 @@ def test_many_small_transfers(ray_start_cluster_with_resource):
     do_transfers()
 
 
+# This is a basic test to ensure that the pull request retry timer is
+# integrated properly. To test it, we create a 2 node cluster then do the
+# following:
+# (1) Fill up the driver's object store.
+# (2) Fill up the remote node's object store.
+# (3) Try to get the remote object. This should fail due to an OOM error caused
+#     by step 1.
+# (4) Allow the local object to be evicted.
+# (5) Try to get the object again. Now the retry timer should kick in and
+#     successfuly pull the remote object.
+@pytest.mark.timeout(30)
+def test_pull_request_retry(shutdown_only):
+    cluster = Cluster()
+    cluster.add_node(num_cpus=0, num_gpus=1, object_store_memory=100 * 2**20)
+    cluster.add_node(num_cpus=1, num_gpus=0, object_store_memory=100 * 2**20)
+    cluster.wait_for_nodes()
+    ray.init(address=cluster.address)
+
+    @ray.remote
+    def put():
+        return np.zeros(64 * 2**20, dtype=np.int8)
+
+    @ray.remote(num_cpus=0, num_gpus=1)
+    def driver():
+        local_ref = ray.put(np.zeros(64 * 2**20, dtype=np.int8))
+
+        remote_ref = put.remote()
+
+        ready, _ = ray.wait([remote_ref], timeout=1)
+        assert len(ready) == 0
+
+        del local_ref
+
+        # This should always complete within 10 seconds.
+        ready, _ = ray.wait([remote_ref], timeout=20)
+        assert len(ready) > 0
+
+    # Pretend the GPU node is the driver. We do this to force the placement of
+    # the driver and `put` task on different nodes.
+    ray.get(driver.remote())
+
+
+@pytest.mark.timeout(30)
+def test_pull_bundles_admission_control(shutdown_only):
+    cluster = Cluster()
+    object_size = int(6e6)
+    num_objects = 10
+    num_tasks = 10
+    # Head node can fit all of the objects at once.
+    cluster.add_node(
+        num_cpus=0,
+        object_store_memory=2 * num_tasks * num_objects * object_size)
+    cluster.wait_for_nodes()
+    ray.init(address=cluster.address)
+
+    # Worker node can only fit 1 task at a time.
+    cluster.add_node(
+        num_cpus=1, object_store_memory=1.5 * num_objects * object_size)
+    cluster.wait_for_nodes()
+
+    @ray.remote
+    def foo(*args):
+        return
+
+    args = []
+    for _ in range(num_tasks):
+        task_args = [
+            ray.put(np.zeros(object_size, dtype=np.uint8))
+            for _ in range(num_objects)
+        ]
+        args.append(task_args)
+
+    tasks = [foo.remote(*task_args) for task_args in args]
+    ray.get(tasks)
+
+
+@pytest.mark.timeout(30)
+def test_pull_bundles_admission_control_dynamic(shutdown_only):
+    # This test is the same as test_pull_bundles_admission_control, except that
+    # the object store's capacity starts off higher and is later consumed
+    # dynamically by concurrent workers.
+    cluster = Cluster()
+    object_size = int(6e6)
+    num_objects = 10
+    num_tasks = 10
+    # Head node can fit all of the objects at once.
+    cluster.add_node(
+        num_cpus=0,
+        object_store_memory=2 * num_tasks * num_objects * object_size)
+    cluster.wait_for_nodes()
+    ray.init(address=cluster.address)
+
+    # Worker node can fit 2 tasks at a time.
+    cluster.add_node(
+        num_cpus=1, object_store_memory=2.5 * num_objects * object_size)
+    cluster.wait_for_nodes()
+
+    @ray.remote
+    def foo(i, *args):
+        print("foo", i)
+        return
+
+    @ray.remote
+    def allocate(i):
+        print("allocate", i)
+        return np.zeros(object_size, dtype=np.uint8)
+
+    args = []
+    for _ in range(num_tasks):
+        task_args = [
+            ray.put(np.zeros(object_size, dtype=np.uint8))
+            for _ in range(num_objects)
+        ]
+        args.append(task_args)
+
+    tasks = [foo.remote(i, *task_args) for i, task_args in enumerate(args)]
+    allocated = [allocate.remote(i) for i in range(num_objects)]
+    ray.get(tasks)
+    del allocated
+
+
 if __name__ == "__main__":
     import pytest
     import sys

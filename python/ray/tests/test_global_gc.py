@@ -9,7 +9,7 @@ import pytest
 
 import ray
 import ray.cluster_utils
-from ray.test_utils import wait_for_condition, new_scheduler_enabled
+from ray.test_utils import wait_for_condition
 from ray.internal.internal_api import global_gc
 
 logger = logging.getLogger(__name__)
@@ -166,9 +166,9 @@ def test_global_gc_when_full(shutdown_only):
         gc.enable()
 
 
-@pytest.mark.skipif(new_scheduler_enabled(), reason="hangs")
 def test_global_gc_actors(shutdown_only):
-    ray.init(num_cpus=1)
+    ray.init(
+        num_cpus=1, _system_config={"debug_dump_period_milliseconds": 500})
 
     try:
         gc.disable()
@@ -179,8 +179,7 @@ def test_global_gc_actors(shutdown_only):
                 return "Ok"
 
         # Try creating 3 actors. Unless python GC is triggered to break
-        # reference cycles, this won't be possible. Note this test takes 20s
-        # to run due to the 10s delay before checking of infeasible tasks.
+        # reference cycles, this won't be possible.
         for i in range(3):
             a = A.remote()
             cycle = [a]

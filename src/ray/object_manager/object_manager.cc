@@ -32,7 +32,7 @@ ObjectStoreRunner::ObjectStoreRunner(const ObjectManagerConfig &config,
   if (config.object_store_memory > 0) {
     plasma::plasma_store_runner.reset(new plasma::PlasmaStoreRunner(
         config.store_socket_name, config.object_store_memory, config.huge_pages,
-        config.plasma_directory, ""));
+        config.plasma_directory));
     // Initialize object store.
     store_thread_ =
         std::thread(&plasma::PlasmaStoreRunner::Start, plasma::plasma_store_runner.get(),
@@ -73,30 +73,11 @@ ObjectManager::ObjectManager(asio::io_service &main_service, const NodeID &self_
                         boost::posix_time::milliseconds(config.timer_freq_ms)) {
   RAY_CHECK(config_.rpc_service_threads_number > 0);
 
-  const auto &object_is_local = [this](const ObjectID &object_id) {
-    return local_objects_.count(object_id) != 0;
-  };
-  const auto &send_pull_request = [this](const ObjectID &object_id,
-                                         const NodeID &client_id) {
-    SendPullRequest(object_id, client_id);
-  };
-  const auto &get_time = []() { return absl::GetCurrentTimeNanos() / 1e9; };
-  pull_manager_.reset(new PullManager(self_node_id_, object_is_local, send_pull_request,
-                                      restore_spilled_object_, get_time,
-                                      config.pull_timeout_ms));
-
   push_manager_.reset(new PushManager(/* max_chunks_in_flight= */ std::max(
       static_cast<int64_t>(1L),
       static_cast<int64_t>(config_.max_bytes_in_flight / config_.object_chunk_size))));
 
-  pull_retry_timer_.async_wait([this](const boost::system::error_code &e) {
-    RAY_CHECK(!e) << "The raylet's object manager has failed unexpectedly with error: "
-                  << e
-                  << ". Please file a bug report on here: "
-                     "https://github.com/ray-project/ray/issues";
-
-    Tick();
-  });
+  pull_retry_timer_.async_wait([this](const boost::system::error_code &e) { Tick(e); });
 
   if (plasma::plasma_store_runner) {
     store_notification_ = std::make_shared<ObjectStoreNotificationManager>(main_service);
@@ -106,12 +87,47 @@ ObjectManager::ObjectManager(asio::io_service &main_service, const NodeID &self_
         main_service, config_.store_socket_name);
   }
 
+  const auto &object_is_local = [this](const ObjectID &object_id) {
+    return local_objects_.count(object_id) != 0;
+  };
+  const auto &send_pull_request = [this](const ObjectID &object_id,
+                                         const NodeID &client_id) {
+    SendPullRequest(object_id, client_id);
+  };
+  const auto &cancel_pull_request = [this](const ObjectID &object_id) {
+    // We must abort this object because it may have only been partially
+    // created and will cause a leak if we never receive the rest of the
+    // object. This is a no-op if the object is already sealed or evicted.
+    buffer_pool_.AbortCreate(object_id);
+  };
+  const auto &get_time = []() { return absl::GetCurrentTimeNanos() / 1e9; };
+  int64_t available_memory = config.object_store_memory;
+  if (available_memory < 0) {
+    available_memory = 0;
+  }
+  pull_manager_.reset(new PullManager(
+      self_node_id_, object_is_local, send_pull_request, cancel_pull_request,
+      restore_spilled_object_, get_time, config.pull_timeout_ms, available_memory,
+      [spill_objects_callback, object_store_full_callback]() {
+        // TODO(swang): This copies the out-of-memory handling in the
+        // CreateRequestQueue. It would be nice to unify these.
+        if (object_store_full_callback) {
+          object_store_full_callback();
+        }
+
+        static_cast<void>(spill_objects_callback());
+      }));
+
   store_notification_->SubscribeObjAdded(
       [this](const object_manager::protocol::ObjectInfoT &object_info) {
         HandleObjectAdded(object_info);
       });
-  store_notification_->SubscribeObjDeleted(
-      [this](const ObjectID &oid) { NotifyDirectoryObjectDeleted(oid); });
+  store_notification_->SubscribeObjDeleted([this](const ObjectID &oid) {
+    NotifyDirectoryObjectDeleted(oid);
+    // Ask the pull manager to fetch this object again as soon as possible, if
+    // it was needed by an active pull request.
+    pull_manager_->ResetRetryTimer(oid);
+  });
 
   // Start object manager rpc server and send & receive request threads
   StartRpcService();
@@ -125,12 +141,22 @@ void ObjectManager::Stop() {
   }
 }
 
-void ObjectManager::RunRpcService() { rpc_service_.run(); }
+bool ObjectManager::IsPlasmaObjectSpillable(const ObjectID &object_id) {
+  if (plasma::plasma_store_runner != nullptr) {
+    return plasma::plasma_store_runner->IsPlasmaObjectSpillable(object_id);
+  }
+  return false;
+}
+
+void ObjectManager::RunRpcService(int index) {
+  SetThreadName("rpc.obj.mgr." + std::to_string(index));
+  rpc_service_.run();
+}
 
 void ObjectManager::StartRpcService() {
   rpc_threads_.resize(config_.rpc_service_threads_number);
   for (int i = 0; i < config_.rpc_service_threads_number; i++) {
-    rpc_threads_[i] = std::thread(&ObjectManager::RunRpcService, this);
+    rpc_threads_[i] = std::thread(&ObjectManager::RunRpcService, this, i);
   }
   object_manager_server_.RegisterService(object_manager_service_);
   object_manager_server_.Run();
@@ -169,10 +195,6 @@ void ObjectManager::HandleObjectAdded(
     }
     unfulfilled_push_requests_.erase(iter);
   }
-
-  // The object is local, so we no longer need to Pull it from a remote
-  // manager. Cancel any outstanding Pull requests for this object.
-  CancelPull(object_id);
 }
 
 void ObjectManager::NotifyDirectoryObjectDeleted(const ObjectID &object_id) {
@@ -198,26 +220,37 @@ ray::Status ObjectManager::SubscribeObjDeleted(
   return ray::Status::OK();
 }
 
-ray::Status ObjectManager::Pull(const ObjectID &object_id,
-                                const rpc::Address &owner_address) {
-  if (!pull_manager_->Pull(object_id, owner_address)) {
-    // If we don't need to pull, the object is either already local or this is a duplicate
-    // request.
-    return Status::OK();
-  }
+uint64_t ObjectManager::Pull(const std::vector<rpc::ObjectReference> &object_refs) {
+  std::vector<rpc::ObjectReference> objects_to_locate;
+  auto request_id = pull_manager_->Pull(object_refs, &objects_to_locate);
 
   const auto &callback = [this](const ObjectID &object_id,
                                 const std::unordered_set<NodeID> &client_ids,
-                                const std::string &spilled_url) {
-    pull_manager_->OnLocationChange(object_id, client_ids, spilled_url);
+                                const std::string &spilled_url,
+                                const NodeID &spilled_node_id, size_t object_size) {
+    pull_manager_->OnLocationChange(object_id, client_ids, spilled_url, spilled_node_id,
+                                    object_size);
   };
 
-  // Subscribe to object notifications. A notification will be received every
-  // time the set of node IDs for the object changes. Notifications will also
-  // be received if the list of locations is empty. The set of node IDs has
-  // no ordering guarantee between notifications.
-  return object_directory_->SubscribeObjectLocations(object_directory_pull_callback_id_,
-                                                     object_id, owner_address, callback);
+  for (const auto &ref : objects_to_locate) {
+    // Subscribe to object notifications. A notification will be received every
+    // time the set of node IDs for the object changes. Notifications will also
+    // be received if the list of locations is empty. The set of node IDs has
+    // no ordering guarantee between notifications.
+    auto object_id = ObjectRefToId(ref);
+    RAY_CHECK_OK(object_directory_->SubscribeObjectLocations(
+        object_directory_pull_callback_id_, object_id, ref.owner_address(), callback));
+  }
+
+  return request_id;
+}
+
+void ObjectManager::CancelPull(uint64_t request_id) {
+  const auto objects_to_cancel = pull_manager_->CancelPull(request_id);
+  for (const auto &object_id : objects_to_cancel) {
+    RAY_CHECK_OK(object_directory_->UnsubscribeObjectLocations(
+        object_directory_pull_callback_id_, object_id));
+  }
 }
 
 void ObjectManager::SendPullRequest(const ObjectID &object_id, const NodeID &client_id) {
@@ -283,22 +316,15 @@ void ObjectManager::HandleSendFinished(const ObjectID &object_id, const NodeID &
 
 void ObjectManager::HandleReceiveFinished(const ObjectID &object_id,
                                           const NodeID &node_id, uint64_t chunk_index,
-                                          double start_time, double end_time,
-                                          ray::Status status) {
-  if (!status.ok()) {
-    // TODO(rkn): What do we want to do if the send failed?
-  }
-
+                                          double start_time, double end_time) {
   rpc::ProfileTableData::ProfileEvent profile_event;
   profile_event.set_event_type("transfer_receive");
   profile_event.set_start_time(start_time);
   profile_event.set_end_time(end_time);
-  // Encode the object ID, node ID, chunk index, and status as a json list,
+  // Encode the object ID, node ID, chunk index as a json list,
   // which will be parsed by the reader of the profile table.
-
   profile_event.set_extra_data("[\"" + object_id.Hex() + "\",\"" + node_id.Hex() + "\"," +
-                               std::to_string(chunk_index) + ",\"" + status.ToString() +
-                               "\"]");
+                               std::to_string(chunk_index) + "]");
 
   std::lock_guard<std::mutex> lock(profile_mutex_);
   profile_events_.push_back(profile_event);
@@ -360,10 +386,18 @@ void ObjectManager::Push(const ObjectID &object_id, const NodeID &node_id) {
 
     UniqueID push_id = UniqueID::FromRandom();
     push_manager_->StartPush(node_id, object_id, num_chunks, [=](int64_t chunk_id) {
-      SendObjectChunk(push_id, object_id, owner_address, node_id, data_size,
-                      metadata_size, chunk_id, rpc_client, [=](const Status &status) {
-                        push_manager_->OnChunkComplete(node_id, object_id);
-                      });
+      rpc_service_.post([=]() {
+        // Post to the multithreaded RPC event loop so that data is copied
+        // off of the main thread.
+        SendObjectChunk(push_id, object_id, owner_address, node_id, data_size,
+                        metadata_size, chunk_id, rpc_client, [=](const Status &status) {
+                          // Post back to the main event loop because the
+                          // PushManager is thread-safe.
+                          main_service_->post([this, node_id, object_id]() {
+                            push_manager_->OnChunkComplete(node_id, object_id);
+                          });
+                        });
+      });
     });
   } else {
     // Push is best effort, so do nothing here.
@@ -426,24 +460,14 @@ void ObjectManager::SendObjectChunk(const UniqueID &push_id, const ObjectID &obj
   buffer_pool_.ReleaseGetChunk(object_id, chunk_info.chunk_index);
 }
 
-void ObjectManager::CancelPull(const ObjectID &object_id) {
-  if (!pull_manager_->CancelPull(object_id)) {
-    // We weren't tracking a pull request for this object, so there is nothing to cancel.
-    return;
-  }
-
-  RAY_CHECK_OK(object_directory_->UnsubscribeObjectLocations(
-      object_directory_pull_callback_id_, object_id));
-}
-
 ray::Status ObjectManager::Wait(
     const std::vector<ObjectID> &object_ids,
     const std::unordered_map<ObjectID, rpc::Address> &owner_addresses, int64_t timeout_ms,
-    uint64_t num_required_objects, bool wait_local, const WaitCallback &callback) {
+    uint64_t num_required_objects, const WaitCallback &callback) {
   UniqueID wait_id = UniqueID::FromRandom();
   RAY_LOG(DEBUG) << "Wait request " << wait_id << " on " << self_node_id_;
   RAY_RETURN_NOT_OK(AddWaitRequest(wait_id, object_ids, owner_addresses, timeout_ms,
-                                   num_required_objects, wait_local, callback));
+                                   num_required_objects, callback));
   RAY_RETURN_NOT_OK(LookupRemainingWaitObjects(wait_id));
   // LookupRemainingWaitObjects invokes SubscribeRemainingWaitObjects once lookup has
   // been performed on all remaining objects.
@@ -453,7 +477,7 @@ ray::Status ObjectManager::Wait(
 ray::Status ObjectManager::AddWaitRequest(
     const UniqueID &wait_id, const std::vector<ObjectID> &object_ids,
     const std::unordered_map<ObjectID, rpc::Address> &owner_addresses, int64_t timeout_ms,
-    uint64_t num_required_objects, bool wait_local, const WaitCallback &callback) {
+    uint64_t num_required_objects, const WaitCallback &callback) {
   RAY_CHECK(timeout_ms >= 0 || timeout_ms == -1);
   RAY_CHECK(num_required_objects != 0);
   RAY_CHECK(num_required_objects <= object_ids.size())
@@ -469,7 +493,6 @@ ray::Status ObjectManager::AddWaitRequest(
   wait_state.owner_addresses = owner_addresses;
   wait_state.timeout_ms = timeout_ms;
   wait_state.num_required_objects = num_required_objects;
-  wait_state.wait_local = wait_local;
   for (const auto &object_id : object_ids) {
     if (local_objects_.count(object_id) > 0) {
       wait_state.found.insert(object_id);
@@ -499,13 +522,12 @@ ray::Status ObjectManager::LookupRemainingWaitObjects(const UniqueID &wait_id) {
           object_id, wait_state.owner_addresses[object_id],
           [this, wait_id](const ObjectID &lookup_object_id,
                           const std::unordered_set<NodeID> &node_ids,
-                          const std::string &spilled_url) {
+                          const std::string &spilled_url, const NodeID &spilled_node_id,
+                          size_t object_size) {
             auto &wait_state = active_wait_requests_.find(wait_id)->second;
             // Note that the object is guaranteed to be added to local_objects_ before
             // the notification is triggered.
-            bool remote_object_ready = !node_ids.empty() || !spilled_url.empty();
-            if (local_objects_.count(lookup_object_id) > 0 ||
-                (!wait_state.wait_local && remote_object_ready)) {
+            if (local_objects_.count(lookup_object_id) > 0) {
               wait_state.remaining.erase(lookup_object_id);
               wait_state.found.insert(lookup_object_id);
             }
@@ -542,7 +564,8 @@ void ObjectManager::SubscribeRemainingWaitObjects(const UniqueID &wait_id) {
           wait_id, object_id, wait_state.owner_addresses[object_id],
           [this, wait_id](const ObjectID &subscribe_object_id,
                           const std::unordered_set<NodeID> &node_ids,
-                          const std::string &spilled_url) {
+                          const std::string &spilled_url, const NodeID &spilled_node_id,
+                          size_t object_size) {
             auto object_id_wait_state = active_wait_requests_.find(wait_id);
             if (object_id_wait_state == active_wait_requests_.end()) {
               // Depending on the timing of calls to the object directory, we
@@ -554,9 +577,7 @@ void ObjectManager::SubscribeRemainingWaitObjects(const UniqueID &wait_id) {
             auto &wait_state = object_id_wait_state->second;
             // Note that the object is guaranteed to be added to local_objects_ before
             // the notification is triggered.
-            bool remote_object_ready = !node_ids.empty() || !spilled_url.empty();
-            if (local_objects_.count(subscribe_object_id) > 0 ||
-                (!wait_state.wait_local && remote_object_ready)) {
+            if (local_objects_.count(subscribe_object_id) > 0) {
               RAY_LOG(DEBUG) << "Wait request " << wait_id
                              << ": subscription notification received for object "
                              << subscribe_object_id;
@@ -644,43 +665,57 @@ void ObjectManager::HandlePush(const rpc::PushRequest &request, rpc::PushReply *
   const std::string &data = request.data();
 
   double start_time = absl::GetCurrentTimeNanos() / 1e9;
-  auto status = ReceiveObjectChunk(node_id, object_id, owner_address, data_size,
-                                   metadata_size, chunk_index, data);
+  bool success = ReceiveObjectChunk(node_id, object_id, owner_address, data_size,
+                                    metadata_size, chunk_index, data);
+  if (!success) {
+    num_chunks_received_failed_++;
+    RAY_LOG(INFO) << "Received duplicate or cancelled chunk at index " << chunk_index
+                  << " of object " << object_id << ": overall "
+                  << num_chunks_received_failed_ << "/" << num_chunks_received_total_
+                  << " failed";
+  }
   double end_time = absl::GetCurrentTimeNanos() / 1e9;
 
-  HandleReceiveFinished(object_id, node_id, chunk_index, start_time, end_time, status);
-  send_reply_callback(status, nullptr, nullptr);
+  HandleReceiveFinished(object_id, node_id, chunk_index, start_time, end_time);
+  send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
-ray::Status ObjectManager::ReceiveObjectChunk(const NodeID &node_id,
-                                              const ObjectID &object_id,
-                                              const rpc::Address &owner_address,
-                                              uint64_t data_size, uint64_t metadata_size,
-                                              uint64_t chunk_index,
-                                              const std::string &data) {
+bool ObjectManager::ReceiveObjectChunk(const NodeID &node_id, const ObjectID &object_id,
+                                       const rpc::Address &owner_address,
+                                       uint64_t data_size, uint64_t metadata_size,
+                                       uint64_t chunk_index, const std::string &data) {
+  num_chunks_received_total_++;
   RAY_LOG(DEBUG) << "ReceiveObjectChunk on " << self_node_id_ << " from " << node_id
                  << " of object " << object_id << " chunk index: " << chunk_index
                  << ", chunk data size: " << data.size()
                  << ", object size: " << data_size;
 
+  if (!pull_manager_->IsObjectActive(object_id)) {
+    // This object is no longer being actively pulled. Do not create the object.
+    return false;
+  }
   std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> chunk_status =
       buffer_pool_.CreateChunk(object_id, owner_address, data_size, metadata_size,
                                chunk_index);
-  ray::Status status;
+  if (!pull_manager_->IsObjectActive(object_id)) {
+    // This object is no longer being actively pulled. Abort the object. We
+    // have to check again here because the pull manager runs in a different
+    // thread and the object may have been deactivated right before creating
+    // the chunk.
+    buffer_pool_.AbortCreate(object_id);
+    return false;
+  }
+
   ObjectBufferPool::ChunkInfo chunk_info = chunk_status.first;
-  num_chunks_received_total_++;
   if (chunk_status.second.ok()) {
     // Avoid handling this chunk if it's already being handled by another process.
     std::memcpy(chunk_info.data, data.data(), chunk_info.buffer_length);
     buffer_pool_.SealChunk(object_id, chunk_index);
+    return true;
   } else {
-    num_chunks_received_failed_++;
-    RAY_LOG(INFO) << "ReceiveObjectChunk index " << chunk_index << " of object "
-                  << object_id << " failed: " << chunk_status.second.message()
-                  << ", overall " << num_chunks_received_failed_ << "/"
-                  << num_chunks_received_total_ << " failed";
+    RAY_LOG(INFO) << "Error receiving chunk:" << chunk_status.second.message();
+    return false;
   }
-  return status;
 }
 
 void ObjectManager::HandlePull(const rpc::PullRequest &request, rpc::PullReply *reply,
@@ -804,6 +839,7 @@ std::string ObjectManager::DebugString() const {
   result << "\n" << object_directory_->DebugString();
   result << "\n" << store_notification_->DebugString();
   result << "\n" << buffer_pool_.DebugString();
+  result << "\n" << pull_manager_->DebugString();
   return result.str();
 }
 
@@ -814,6 +850,36 @@ void ObjectManager::RecordMetrics() const {
   stats::ObjectManagerPullRequests().Record(pull_manager_->NumActiveRequests());
 }
 
-void ObjectManager::Tick() { pull_manager_->Tick(); }
+void ObjectManager::FillObjectStoreStats(rpc::GetNodeStatsReply *reply) const {
+  auto stats = reply->mutable_store_stats();
+  stats->set_object_store_bytes_used(used_memory_);
+  stats->set_object_store_bytes_avail(config_.object_store_memory);
+  stats->set_num_local_objects(local_objects_.size());
+  if (plasma::plasma_store_runner) {
+    stats->set_consumed_bytes(plasma::plasma_store_runner->GetConsumedBytes());
+  }
+}
+
+void ObjectManager::Tick(const boost::system::error_code &e) {
+  RAY_CHECK(!e) << "The raylet's object manager has failed unexpectedly with error: " << e
+                << ". Please file a bug report on here: "
+                   "https://github.com/ray-project/ray/issues";
+
+  // Request the current available memory from the object
+  // store.
+  if (plasma::plasma_store_runner) {
+    plasma::plasma_store_runner->GetAvailableMemoryAsync([this](size_t available_memory) {
+      main_service_->post([this, available_memory]() {
+        pull_manager_->UpdatePullsBasedOnAvailableMemory(available_memory);
+      });
+    });
+  }
+
+  pull_manager_->Tick();
+
+  auto interval = boost::posix_time::milliseconds(config_.timer_freq_ms);
+  pull_retry_timer_.expires_from_now(interval);
+  pull_retry_timer_.async_wait([this](const boost::system::error_code &e) { Tick(e); });
+}
 
 }  // namespace ray

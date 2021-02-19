@@ -49,9 +49,11 @@ Status GcsTable<Key, Data>::GetAll(const MapCallback<Key, Data> &callback) {
   auto on_done = [callback](const std::unordered_map<std::string, std::string> &result) {
     std::unordered_map<Key, Data> values;
     for (auto &item : result) {
-      Data data;
-      data.ParseFromString(item.second);
-      values[Key::FromBinary(item.first)] = data;
+      if (!item.second.empty()) {
+        Data data;
+        data.ParseFromString(item.second);
+        values[Key::FromBinary(item.first)] = data;
+      }
     }
     callback(values);
   };
@@ -89,9 +91,11 @@ Status GcsTableWithJobId<Key, Data>::GetByJobId(const JobID &job_id,
   auto on_done = [callback](const std::unordered_map<std::string, std::string> &result) {
     std::unordered_map<Key, Data> values;
     for (auto &item : result) {
-      Data data;
-      data.ParseFromString(item.second);
-      values[Key::FromBinary(item.first)] = std::move(data);
+      if (!item.second.empty()) {
+        Data data;
+        data.ParseFromString(item.second);
+        values[Key::FromBinary(item.first)] = std::move(data);
+      }
     }
     callback(values);
   };

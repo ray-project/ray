@@ -1,4 +1,6 @@
+import copy
 import logging
+import math
 
 from kubernetes import client
 from kubernetes.client.rest import ApiException
@@ -45,15 +47,111 @@ def not_provided_msg(resource_type):
 
 def bootstrap_kubernetes(config):
     if not config["provider"]["use_internal_ips"]:
-        return ValueError("Exposing external IP addresses for ray pods isn't "
-                          "currently supported. Please set "
-                          "'use_internal_ips' to false.")
+        return ValueError(
+            "Exposing external IP addresses for ray containers isn't "
+            "currently supported. Please set "
+            "'use_internal_ips' to false.")
     namespace = _configure_namespace(config["provider"])
     _configure_autoscaler_service_account(namespace, config["provider"])
     _configure_autoscaler_role(namespace, config["provider"])
     _configure_autoscaler_role_binding(namespace, config["provider"])
     _configure_services(namespace, config["provider"])
     return config
+
+
+def fillout_resources_kubernetes(config):
+    """Fills CPU and GPU resources by reading pod spec of each available node
+    type.
+
+    For each node type and each of CPU/GPU, looks at container's resources
+    and limits, takes min of the two. The result is rounded up, as Ray does
+    not currently support fractional CPU.
+    """
+    if "available_node_types" not in config:
+        return config["available_node_types"]
+    node_types = copy.deepcopy(config["available_node_types"])
+    for node_type in node_types:
+        container_data = node_types[node_type]["node_config"]["spec"][
+            "containers"][0]
+        autodetected_resources = get_autodetected_resources(container_data)
+        if "resources" not in config["available_node_types"][node_type]:
+            config["available_node_types"][node_type]["resources"] = {}
+        config["available_node_types"][node_type]["resources"].update(
+            autodetected_resources)
+        logger.debug(
+            "Updating the resources of node type {} to include {}.".format(
+                node_type, autodetected_resources))
+    return config
+
+
+def get_autodetected_resources(container_data):
+    container_resources = container_data.get("resources", None)
+    if container_resources is None:
+        return {"CPU": 0, "GPU": 0}
+
+    node_type_resources = {
+        resource_name.upper(): get_resource(container_resources, resource_name)
+        for resource_name in ["cpu", "gpu"]
+    }
+
+    # Throw out GPU from resource dict if the amount is 0.
+    for key in copy.deepcopy(node_type_resources):
+        if node_type_resources[key] == 0:
+            del node_type_resources[key]
+
+    return node_type_resources
+
+
+def get_resource(container_resources, resource_name):
+    request = _get_resource(
+        container_resources, resource_name, field_name="requests")
+    limit = _get_resource(
+        container_resources, resource_name, field_name="limits")
+    resource = min(request, limit)
+    # float("inf") value means the resource wasn't detected in either
+    # requests or limits
+    return 0 if resource == float("inf") else int(resource)
+
+
+def _get_resource(container_resources, resource_name, field_name):
+    """Returns the resource quantity.
+
+    The amount of resource is rounded up to nearest integer.
+    Returns float("inf") if the resource is not present.
+
+    Args:
+        container_resources (dict): Container's resource field.
+        resource_name (str): One of 'cpu' or 'gpu'.
+        field_name (str): One of 'requests' or 'limits'.
+
+    Returns:
+        Union[int, float]: Detected resource quantity.
+    """
+    if field_name not in container_resources:
+        # No limit/resource field.
+        return float("inf")
+    resources = container_resources[field_name]
+    # Look for keys containing the resource_name. For example,
+    # the key 'nvidia.com/gpu' contains the key 'gpu'.
+    matching_keys = [key for key in resources if resource_name in key.lower()]
+    if len(matching_keys) == 0:
+        return float("inf")
+    if len(matching_keys) > 1:
+        # Should have only one match -- mostly relevant for gpu.
+        raise ValueError(f"Multiple {resource_name} types not supported.")
+    # E.g. 'nvidia.com/gpu' or 'cpu'.
+    resource_key = matching_keys.pop()
+    resource_quantity = resources[resource_key]
+    return _parse_resource(resource_quantity)
+
+
+def _parse_resource(resource):
+    resource_str = str(resource)
+    if resource_str[-1] == "m":
+        # For example, '500m' rounds up to 1.
+        return math.ceil(int(resource_str[:-1]) / 1000)
+    else:
+        return int(resource_str)
 
 
 def _configure_namespace(provider_config):

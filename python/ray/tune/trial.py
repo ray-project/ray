@@ -1,6 +1,7 @@
+from typing import Callable, Dict, Sequence, Union
 import json
-from typing import Sequence
 
+import ray
 import ray.cloudpickle as cloudpickle
 from collections import deque
 import copy
@@ -18,7 +19,8 @@ from ray.tune.checkpoint_manager import Checkpoint, CheckpointManager
 # have been defined yet. See https://github.com/ray-project/ray/issues/1716.
 from ray.tune.registry import get_trainable_cls, validate_trainable
 from ray.tune.result import DEFAULT_RESULTS_DIR, DONE, TRAINING_ITERATION
-from ray.tune.resources import Resources, json_to_resources, resources_to_json
+from ray.tune.resources import PlacementGroupFactory, Resources, \
+    json_to_resources, resources_to_json
 from ray.tune.utils.serialization import TuneFunctionEncoder
 from ray.tune.utils.trainable import TrainableUtil
 from ray.tune.utils import date_str, flatten_dict
@@ -165,6 +167,13 @@ class Trial:
 
     """
 
+    _nonjson_fields = [
+        "results",
+        "best_result",
+        "param_config",
+        "extra_arg",
+    ]
+
     PENDING = "PENDING"
     RUNNING = "RUNNING"
     PAUSED = "PAUSED"
@@ -179,6 +188,7 @@ class Trial:
                  evaluated_params=None,
                  experiment_tag="",
                  resources=None,
+                 placement_group_factory=None,
                  stopping_criterion=None,
                  remote_checkpoint_dir=None,
                  checkpoint_freq=0,
@@ -221,6 +231,12 @@ class Trial:
                 resources = default_resources
         self.location = Location()
         self.resources = resources or Resources(cpu=1, gpu=0)
+        self.placement_group_factory = placement_group_factory
+        if self.placement_group_factory:
+            resource_kwargs = self.resources._asdict()
+            resource_kwargs["has_placement_group"] = True
+            self.resources = Resources(**resource_kwargs)
+
         self.stopping_criterion = stopping_criterion or {}
 
         self.log_to_file = log_to_file
@@ -281,12 +297,6 @@ class Trial:
         self.param_config = None
         self.extra_arg = None
 
-        self._nonjson_fields = [
-            "results",
-            "best_result",
-            "param_config",
-            "extra_arg",
-        ]
         if trial_name_creator:
             self.custom_trial_name = trial_name_creator(self)
 
@@ -330,6 +340,10 @@ class Trial:
         logdir_name = os.path.basename(self.logdir)
         return os.path.join(self.remote_checkpoint_dir_prefix, logdir_name)
 
+    @property
+    def uses_placement_groups(self):
+        return bool(self.placement_group_factory)
+
     def reset(self):
         return Trial(
             self.trainable_name,
@@ -339,6 +353,7 @@ class Trial:
             evaluated_params=self.evaluated_params,
             experiment_tag=self.experiment_tag,
             resources=self.resources,
+            placement_group_factory=self.placement_group_factory,
             stopping_criterion=self.stopping_criterion,
             remote_checkpoint_dir=self.remote_checkpoint_dir,
             checkpoint_freq=self.checkpoint_freq,
@@ -362,7 +377,8 @@ class Trial:
             os.makedirs(self.logdir, exist_ok=True)
         self.invalidate_json_state()
 
-    def update_resources(self, cpu, gpu, **kwargs):
+    def update_resources(
+            self, resources: Union[Dict, Callable, PlacementGroupFactory]):
         """EXPERIMENTAL: Updates the resource requirements.
 
         Should only be called when the trial is not running.
@@ -372,7 +388,20 @@ class Trial:
         """
         if self.status is Trial.RUNNING:
             raise ValueError("Cannot update resources while Trial is running.")
-        self.resources = Resources(cpu, gpu, **kwargs)
+        if isinstance(resources, PlacementGroupFactory):
+            self.placement_group_factory = resources
+        elif callable(resources):
+            self.placement_group_factory = PlacementGroupFactory(resources)
+        else:
+            self.resources = Resources(**resources)
+            self.placement_group_factory = None
+
+        if self.placement_group_factory and \
+           not self.resources.has_placement_group:
+            resource_kwargs = self.resources._asdict()
+            resource_kwargs["has_placement_group"] = True
+            self.resources = Resources(**resource_kwargs)
+
         self.invalidate_json_state()
 
     def set_runner(self, runner):
@@ -612,4 +641,9 @@ class Trial:
 
         self.__dict__.update(state)
         validate_trainable(self.trainable_name)
-        self.init_logdir()  # Create logdir if it does not exist
+
+        # Avoid creating logdir in client mode for returned trial results,
+        # since the dir might not be creatable locally. TODO(ekl) thsi is kind
+        # of a hack.
+        if not ray.util.client.ray.is_connected():
+            self.init_logdir()  # Create logdir if it does not exist

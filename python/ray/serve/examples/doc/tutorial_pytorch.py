@@ -27,8 +27,8 @@ class ImageModel:
                 mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
         ])
 
-    def __call__(self, flask_request):
-        image_payload_bytes = flask_request.data
+    async def __call__(self, starlette_request):
+        image_payload_bytes = await starlette_request.body()
         pil_image = Image.open(BytesIO(image_payload_bytes))
         print("[1/3] Parsed image data: {}".format(pil_image))
 

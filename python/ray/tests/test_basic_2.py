@@ -9,10 +9,16 @@ import pytest
 
 from unittest.mock import MagicMock, patch
 
-import ray
 import ray.cluster_utils
-import ray.test_utils
+from ray.test_utils import client_test_enabled
+from ray.tests.client_test_utils import create_remote_signal_actor
 from ray.exceptions import GetTimeoutError
+from ray.exceptions import RayTaskError
+
+if client_test_enabled():
+    from ray.util.client import ray
+else:
+    import ray
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +31,8 @@ logger = logging.getLogger(__name__)
     }],
     indirect=True)
 def test_variable_number_of_args(shutdown_only):
+    ray.init(num_cpus=1)
+
     @ray.remote
     def varargs_fct1(*a):
         return " ".join(map(str, a))
@@ -32,8 +40,6 @@ def test_variable_number_of_args(shutdown_only):
     @ray.remote
     def varargs_fct2(a, *b):
         return " ".join(map(str, b))
-
-    ray.init(num_cpus=1)
 
     x = varargs_fct1.remote(0, 1, 2)
     assert ray.get(x) == "0 1 2"
@@ -160,7 +166,7 @@ def test_redefining_remote_functions(shutdown_only):
     def g():
         return nonexistent()
 
-    with pytest.raises(ray.exceptions.RayTaskError, match="nonexistent"):
+    with pytest.raises(RayTaskError, match="nonexistent"):
         ray.get(g.remote())
 
     def nonexistent():
@@ -332,8 +338,9 @@ def test_call_chain(ray_start_cluster):
     assert ray.get(x) == 100
 
 
+@pytest.mark.skipif(client_test_enabled(), reason="init issue")
 def test_system_config_when_connecting(ray_start_cluster):
-    config = {"object_pinning_enabled": 0, "object_timeout_milliseconds": 200}
+    config = {"object_timeout_milliseconds": 200}
     cluster = ray.cluster_utils.Cluster()
     cluster.add_node(
         _system_config=config, object_store_memory=100 * 1024 * 1024)
@@ -351,9 +358,7 @@ def test_system_config_when_connecting(ray_start_cluster):
         put_ref = ray.put(np.zeros(40 * 1024 * 1024, dtype=np.uint8))
     del put_ref
 
-    # This would not raise an exception if object pinning was enabled.
-    with pytest.raises(ray.exceptions.ObjectLostError):
-        ray.get(obj_ref)
+    ray.get(obj_ref)
 
 
 def test_get_multiple(ray_start_regular_shared):
@@ -368,7 +373,8 @@ def test_get_multiple(ray_start_regular_shared):
 
 
 def test_get_with_timeout(ray_start_regular_shared):
-    signal = ray.test_utils.SignalActor.remote()
+    SignalActor = create_remote_signal_actor(ray)
+    signal = SignalActor.remote()
 
     # Check that get() returns early if object is ready.
     start = time.time()
@@ -438,6 +444,7 @@ def test_inline_arg_memory_corruption(ray_start_regular_shared):
         ray.get(a.add.remote(f.remote()))
 
 
+@pytest.mark.skipif(client_test_enabled(), reason="internal api")
 def test_skip_plasma(ray_start_regular_shared):
     @ray.remote
     class Actor:
@@ -454,6 +461,7 @@ def test_skip_plasma(ray_start_regular_shared):
     assert ray.get(obj_ref) == 2
 
 
+@pytest.mark.skipif(client_test_enabled(), reason="internal api")
 def test_actor_large_objects(ray_start_regular_shared):
     @ray.remote
     class Actor:
@@ -626,6 +634,7 @@ def test_duplicate_args(ray_start_regular_shared):
             arg1, arg2, arg1, kwarg1=arg1, kwarg2=arg2, kwarg1_duplicate=arg1))
 
 
+@pytest.mark.skipif(client_test_enabled(), reason="internal api")
 def test_get_correct_node_ip():
     with patch("ray.worker") as worker_mock:
         node_mock = MagicMock()
@@ -637,4 +646,5 @@ def test_get_correct_node_ip():
 
 if __name__ == "__main__":
     import pytest
+    # Skip test_basic_2_client_mode for now- the test suite is breaking.
     sys.exit(pytest.main(["-v", __file__]))

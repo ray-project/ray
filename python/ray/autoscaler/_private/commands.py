@@ -20,14 +20,13 @@ except ImportError:  # py2
     from pipes import quote
 
 import ray
-from ray.experimental.internal_kv import _internal_kv_get
+from ray.experimental.internal_kv import _internal_kv_put
 import ray._private.services as services
 from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler._private.constants import \
     AUTOSCALER_RESOURCE_REQUEST_CHANNEL
 from ray.autoscaler._private.util import validate_config, hash_runtime_conf, \
-    hash_launch_conf, prepare_config, DEBUG_AUTOSCALING_ERROR, \
-    DEBUG_AUTOSCALING_STATUS
+    hash_launch_conf, prepare_config
 from ray.autoscaler._private.providers import _get_node_provider, \
     _NODE_PROVIDERS, _PROVIDER_PRETTY_NAMES
 from ray.autoscaler.tags import TAG_RAY_NODE_KIND, TAG_RAY_LAUNCH_CONFIG, \
@@ -35,7 +34,7 @@ from ray.autoscaler.tags import TAG_RAY_NODE_KIND, TAG_RAY_LAUNCH_CONFIG, \
 from ray.autoscaler._private.cli_logger import cli_logger, cf
 from ray.autoscaler._private.updater import NodeUpdaterThread
 from ray.autoscaler._private.command_runner import set_using_login_shells, \
-                                          set_rsync_silent
+    set_rsync_silent
 from ray.autoscaler._private.event_system import (CreateClusterEvent,
                                                   global_event_system)
 from ray.autoscaler._private.log_timer import LogTimer
@@ -43,6 +42,10 @@ from ray.worker import global_worker  # type: ignore
 from ray.util.debug import log_once
 
 import ray.autoscaler._private.subprocess_output_util as cmd_output_util
+from ray.autoscaler._private.load_metrics import LoadMetricsSummary
+from ray.autoscaler._private.autoscaler import AutoscalerSummary
+from ray.autoscaler._private.util import format_info_string, \
+    format_info_string_no_node_types
 
 logger = logging.getLogger(__name__)
 
@@ -86,14 +89,20 @@ def try_reload_log_state(provider_config: Dict[str, Any],
         return reload_log_state(log_state)
 
 
-def debug_status() -> str:
+def debug_status(status, error) -> str:
     """Return a debug string for the autoscaler."""
-    status = _internal_kv_get(DEBUG_AUTOSCALING_STATUS)
-    error = _internal_kv_get(DEBUG_AUTOSCALING_ERROR)
     if not status:
         status = "No cluster status."
     else:
         status = status.decode("utf-8")
+        as_dict = json.loads(status)
+        lm_summary = LoadMetricsSummary(**as_dict["load_metrics_report"])
+        if "autoscaler_report" in as_dict:
+            autoscaler_summary = AutoscalerSummary(
+                **as_dict["autoscaler_report"])
+            status = format_info_string(lm_summary, autoscaler_summary)
+        else:
+            status = format_info_string_no_node_types(lm_summary)
     if error:
         status += "\n"
         status += error.decode("utf-8")
@@ -117,26 +126,33 @@ def request_resources(num_cpus: Optional[int] = None,
     """
     if not ray.is_initialized():
         raise RuntimeError("Ray is not initialized yet")
-    r = _redis()
     to_request = []
     if num_cpus:
         to_request += [{"CPU": 1}] * num_cpus
     if bundles:
         to_request += bundles
-    r.publish(AUTOSCALER_RESOURCE_REQUEST_CHANNEL, json.dumps(to_request))
+    _internal_kv_put(
+        AUTOSCALER_RESOURCE_REQUEST_CHANNEL,
+        json.dumps(to_request),
+        overwrite=True)
 
 
-def create_or_update_cluster(config_file: str,
-                             override_min_workers: Optional[int],
-                             override_max_workers: Optional[int],
-                             no_restart: bool,
-                             restart_only: bool,
-                             yes: bool,
-                             override_cluster_name: Optional[str] = None,
-                             no_config_cache: bool = False,
-                             redirect_command_output: Optional[bool] = False,
-                             use_login_shells: bool = True) -> Dict[str, Any]:
-    """Create or updates an autoscaling Ray cluster from a config json."""
+def create_or_update_cluster(
+        config_file: str,
+        override_min_workers: Optional[int],
+        override_max_workers: Optional[int],
+        no_restart: bool,
+        restart_only: bool,
+        yes: bool,
+        override_cluster_name: Optional[str] = None,
+        no_config_cache: bool = False,
+        redirect_command_output: Optional[bool] = False,
+        use_login_shells: bool = True,
+        no_monitor_on_head: bool = False) -> Dict[str, Any]:
+    """Creates or updates an autoscaling Ray cluster from a config json."""
+    # no_monitor_on_head is an internal flag used by the Ray K8s operator.
+    # If True, prevents autoscaling config sync to the Ray head during cluster
+    # creation. See https://github.com/ray-project/ray/pull/13720.
     set_using_login_shells(use_login_shells)
     if not use_login_shells:
         cmd_output_util.set_allow_interactive(False)
@@ -214,7 +230,7 @@ def create_or_update_cluster(config_file: str,
 
     try_logging_config(config)
     get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
-                            override_cluster_name)
+                            override_cluster_name, no_monitor_on_head)
     return config
 
 
@@ -280,9 +296,10 @@ def _bootstrap_config(config: Dict[str, Any],
                 f"Failed to autodetect node resources: {str(exc)}. "
                 "You can see full stack trace with higher verbosity.")
 
-    # NOTE: if `resources` field is missing, validate_config for non-AWS will
-    # fail (the schema error will ask the user to manually fill the resources)
-    # as we currently support autofilling resources for AWS instances only.
+    # NOTE: if `resources` field is missing, validate_config for providers
+    # other than AWS and Kubernetes will fail (the schema error will ask the
+    # user to manually fill the resources) as we currently support autofilling
+    # resources for AWS and Kubernetes only.
     validate_config(config)
     resolved_config = provider_cls.bootstrap_config(config)
 
@@ -473,13 +490,17 @@ def monitor_cluster(cluster_config_file: str, num_lines: int,
         port_forward=None)
 
 
-def warn_about_bad_start_command(start_commands: List[str]) -> None:
+def warn_about_bad_start_command(start_commands: List[str],
+                                 no_monitor_on_head: bool = False) -> None:
     ray_start_cmd = list(filter(lambda x: "ray start" in x, start_commands))
     if len(ray_start_cmd) == 0:
         cli_logger.warning(
             "Ray runtime will not be started because `{}` is not in `{}`.",
             cf.bold("ray start"), cf.bold("head_start_ray_commands"))
-    if not any("autoscaling-config" in x for x in ray_start_cmd):
+
+    autoscaling_config_in_ray_start_cmd = any(
+        "autoscaling-config" in x for x in ray_start_cmd)
+    if not (autoscaling_config_in_ray_start_cmd or no_monitor_on_head):
         cli_logger.warning(
             "The head node will not launch any workers because "
             "`{}` does not have `{}` set.\n"
@@ -495,6 +516,7 @@ def get_or_create_head_node(config: Dict[str, Any],
                             restart_only: bool,
                             yes: bool,
                             override_cluster_name: Optional[str],
+                            no_monitor_on_head: bool = False,
                             _provider: Optional[NodeProvider] = None,
                             _runner: ModuleType = subprocess) -> None:
     """Create the cluster head node, which in turn creates the workers."""
@@ -617,44 +639,19 @@ def get_or_create_head_node(config: Dict[str, Any],
         (runtime_hash, file_mounts_contents_hash) = hash_runtime_conf(
             config["file_mounts"], None, config)
 
-        # Rewrite the auth config so that the head
-        # node can update the workers
-        remote_config = copy.deepcopy(config)
-
-        # drop proxy options if they exist, otherwise
-        # head node won't be able to connect to workers
-        remote_config["auth"].pop("ssh_proxy_command", None)
-
-        if "ssh_private_key" in config["auth"]:
-            remote_key_path = "~/ray_bootstrap_key.pem"
-            remote_config["auth"]["ssh_private_key"] = remote_key_path
-
-        # Adjust for new file locations
-        new_mounts = {}
-        for remote_path in config["file_mounts"]:
-            new_mounts[remote_path] = remote_path
-        remote_config["file_mounts"] = new_mounts
-        remote_config["no_restart"] = no_restart
-
-        remote_config = provider.prepare_for_head_node(remote_config)
-
-        # Now inject the rewritten config and SSH key into the head node
-        remote_config_file = tempfile.NamedTemporaryFile(
-            "w", prefix="ray-bootstrap-")
-        remote_config_file.write(json.dumps(remote_config))
-        remote_config_file.flush()
-        config["file_mounts"].update({
-            "~/ray_bootstrap_config.yaml": remote_config_file.name
-        })
-
-        if "ssh_private_key" in config["auth"]:
-            config["file_mounts"].update({
-                remote_key_path: config["auth"]["ssh_private_key"],
-            })
-        cli_logger.print("Prepared bootstrap config")
+        if not no_monitor_on_head:
+            # Return remote_config_file to avoid prematurely closing it.
+            config, remote_config_file = _set_up_config_for_head_node(
+                config, provider, no_restart)
+            cli_logger.print("Prepared bootstrap config")
 
         if restart_only:
-            setup_commands = []
+            # Docker may re-launch nodes, requiring setup
+            # commands to be rerun.
+            if config.get("docker", {}).get("container_name"):
+                setup_commands = config["head_setup_commands"]
+            else:
+                setup_commands = []
             ray_start_commands = config["head_start_ray_commands"]
         elif no_restart:
             setup_commands = config["head_setup_commands"]
@@ -664,7 +661,8 @@ def get_or_create_head_node(config: Dict[str, Any],
             ray_start_commands = config["head_start_ray_commands"]
 
         if not no_restart:
-            warn_about_bad_start_command(ray_start_commands)
+            warn_about_bad_start_command(ray_start_commands,
+                                         no_monitor_on_head)
 
         updater = NodeUpdaterThread(
             node_id=head_node,
@@ -685,7 +683,8 @@ def get_or_create_head_node(config: Dict[str, Any],
                 "rsync_exclude": config.get("rsync_exclude"),
                 "rsync_filter": config.get("rsync_filter")
             },
-            docker_config=config.get("docker"))
+            docker_config=config.get("docker"),
+            restart_only=restart_only)
         updater.start()
         updater.join()
 
@@ -723,6 +722,54 @@ def get_or_create_head_node(config: Dict[str, Any],
         remote_shell_str = updater.cmd_runner.remote_shell_command_str()
         cli_logger.print("Get a remote shell to the cluster manually:")
         cli_logger.print("  {}", remote_shell_str.strip())
+
+
+def _set_up_config_for_head_node(config: Dict[str, Any],
+                                 provider: NodeProvider,
+                                 no_restart: bool) ->\
+        Tuple[Dict[str, Any], Any]:
+    """Prepares autoscaling config and, if needed, ssh key, to be mounted onto
+    the Ray head node for use by the autoscaler.
+
+    Returns the modified config and the temporary config file that will be
+    mounted onto the head node.
+    """
+    # Rewrite the auth config so that the head
+    # node can update the workers
+    remote_config = copy.deepcopy(config)
+
+    # drop proxy options if they exist, otherwise
+    # head node won't be able to connect to workers
+    remote_config["auth"].pop("ssh_proxy_command", None)
+
+    if "ssh_private_key" in config["auth"]:
+        remote_key_path = "~/ray_bootstrap_key.pem"
+        remote_config["auth"]["ssh_private_key"] = remote_key_path
+
+    # Adjust for new file locations
+    new_mounts = {}
+    for remote_path in config["file_mounts"]:
+        new_mounts[remote_path] = remote_path
+    remote_config["file_mounts"] = new_mounts
+    remote_config["no_restart"] = no_restart
+
+    remote_config = provider.prepare_for_head_node(remote_config)
+
+    # Now inject the rewritten config and SSH key into the head node
+    remote_config_file = tempfile.NamedTemporaryFile(
+        "w", prefix="ray-bootstrap-")
+    remote_config_file.write(json.dumps(remote_config))
+    remote_config_file.flush()
+    config["file_mounts"].update({
+        "~/ray_bootstrap_config.yaml": remote_config_file.name
+    })
+
+    if "ssh_private_key" in config["auth"]:
+        config["file_mounts"].update({
+            remote_key_path: config["auth"]["ssh_private_key"],
+        })
+
+    return config, remote_config_file
 
 
 def attach_cluster(config_file: str,

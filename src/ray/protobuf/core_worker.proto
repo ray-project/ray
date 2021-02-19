@@ -182,10 +182,25 @@ message RemoveObjectLocationOwnerReply {
 message GetObjectLocationsOwnerRequest {
   bytes intended_worker_id = 1;
   bytes object_id = 2;
+  // The version of the last location update. Only updates more recent than this version
+  // will be returned. -1 indicates that the current location data should
+  // always be returned.
+  int64 last_version = 3;
 }
 
 message GetObjectLocationsOwnerReply {
+  // The IDs of the nodes that this object appeared on or was evicted by.
   repeated bytes node_ids = 1;
+  // The size of the object in bytes.
+  uint64 object_size = 2;
+  // The object has been spilled to this URL. This should be set xor the above
+  // fields are set.
+  string spilled_url = 3;
+  // The ID of the node that spilled the object.
+  // This will be Nil if the object was spilled to distributed external storage.
+  bytes spilled_node_id = 4;
+  // The version of the returned location updates.
+  int64 current_version = 5;
 }
 
 message KillActorRequest {
@@ -299,6 +314,9 @@ message PlasmaObjectReadyReply {
 message SpillObjectsRequest {
   // The IDs of objects to be spilled.
   repeated bytes object_ids_to_spill = 1;
+  // The owner addresses of the objects to be spilled. Must be in the same order as
+  // object_ids_to_spill.
+  repeated Address owner_addresses = 2;
 }
 
 message SpillObjectsReply {
@@ -315,6 +333,7 @@ message RestoreSpilledObjectsRequest {
 }
 
 message RestoreSpilledObjectsReply {
+  int64 bytes_restored_total = 1;
 }
 
 message DeleteSpilledObjectsRequest {
@@ -323,6 +342,22 @@ message DeleteSpilledObjectsRequest {
 }
 
 message DeleteSpilledObjectsReply {
+}
+
+message AddSpilledUrlRequest {
+  // Object that was spilled.
+  bytes object_id = 1;
+  // For objects that have been spilled to external storage, the URL from which
+  // they can be retrieved.
+  string spilled_url = 2;
+  // The ID of the node that spilled the object.
+  // This will be Nil if the object was spilled to distributed external storage.
+  bytes spilled_node_id = 3;
+  // The size of the object in bytes.
+  int64 size = 4;
+}
+
+message AddSpilledUrlReply {
 }
 
 message ExitRequest {
@@ -377,6 +412,9 @@ service CoreWorkerService {
   // Delete spilled objects from external storage. Caller: raylet; callee: I/O worker.
   rpc DeleteSpilledObjects(DeleteSpilledObjectsRequest)
       returns (DeleteSpilledObjectsReply);
+  // Add spilled URL, spilled node ID, and update object size for owned object.
+  // Caller: raylet; callee: owner worker.
+  rpc AddSpilledUrl(AddSpilledUrlRequest) returns (AddSpilledUrlReply);
   // Notification from raylet that an object ID is available in local plasma.
   rpc PlasmaObjectReady(PlasmaObjectReadyRequest) returns (PlasmaObjectReadyReply);
   // Request for a worker to exit.

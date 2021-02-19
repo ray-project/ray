@@ -53,6 +53,19 @@ def force_list(elements=None, to_tuple=False):
         if type(elements) in [list, tuple] else ctor([elements])
 
 
+class NullContextManager:
+    """No-op context manager"""
+
+    def __init__(self):
+        pass
+
+    def __enter__(self):
+        pass
+
+    def __exit__(self, *args):
+        pass
+
+
 force_tuple = partial(force_list, to_tuple=True)
 
 __all__ = [

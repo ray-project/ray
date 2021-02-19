@@ -22,6 +22,10 @@ Summary
      - Summary
      - Website
      - Code Example
+   * - :ref:`Random search/grid search <tune-basicvariant>`
+     - Random search/grid search
+     -
+     - :doc:`/tune/examples/tune_basic_example`
    * - :ref:`AxSearch <tune-ax>`
      - Bayesian/Bandit Optimization
      - [`Ax <https://ax.dev/>`__]
@@ -62,6 +66,10 @@ Summary
      - Closed source
      - [`SigOpt <https://sigopt.com/>`__]
      - :doc:`/tune/examples/sigopt_example`
+   * - :ref:`HEBOSearch <tune-hebo>`
+     - Heteroscedastic Evolutionary Bayesian Optimization
+     - [`HEBO <https://github.com/huawei-noah/noah-research/tree/master/HEBO>`__]
+     - :doc:`/tune/examples/hebo_example`
 
 .. note:: Unlike :ref:`Tune's Trial Schedulers <tune-schedulers>`, Tune SearchAlgorithms cannot affect or stop training processes. However, you can use them together to **early stop the evaluation of bad trials**.
 
@@ -123,6 +131,21 @@ identifier.
 
 .. note:: This is currently not implemented for: AxSearch, TuneBOHB, SigOptSearch, and DragonflySearch.
 
+.. _tune-basicvariant:
+
+Random search and grid search (tune.suggest.basic_variant.BasicVariantGenerator)
+--------------------------------------------------------------------------------
+
+The default and most basic way to do hyperparameter search is via random and grid search.
+Ray Tune does this through the :class:`BasicVariantGenerator <ray.tune.suggest.basic_variant.BasicVariantGenerator>`
+class that generates trial variants given a search space definition.
+
+The :class:`BasicVariantGenerator <ray.tune.suggest.basic_variant.BasicVariantGenerator>` is used per
+default if no search algorithm is passed to
+:func:`tune.run() <ray.tune.run>`.
+
+.. autoclass:: ray.tune.suggest.basic_variant.BasicVariantGenerator
+
 .. _tune-ax:
 
 Ax (tune.suggest.ax.AxSearch)
@@ -166,6 +189,14 @@ Dragonfly (tune.suggest.dragonfly.DragonflySearch)
 --------------------------------------------------
 
 .. autoclass:: ray.tune.suggest.dragonfly.DragonflySearch
+  :members: save, restore
+
+.. _tune-hebo:
+
+HEBO (tune.suggest.hebo.HEBOSearch)
+-----------------------------------------------
+
+.. autoclass:: ray.tune.suggest.hebo.HEBOSearch
   :members: save, restore
 
 .. _tune-hyperopt:

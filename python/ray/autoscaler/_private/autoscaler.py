@@ -1,9 +1,10 @@
-from collections import defaultdict, namedtuple
+from collections import defaultdict, namedtuple, Counter
 from typing import Any, Optional, Dict, List
 from urllib3.exceptions import MaxRetryError
 import copy
 import logging
 import math
+import operator
 import os
 import subprocess
 import threading
@@ -16,8 +17,11 @@ from ray.experimental.internal_kv import _internal_kv_put, \
 from ray.autoscaler.tags import (
     TAG_RAY_LAUNCH_CONFIG, TAG_RAY_RUNTIME_CONFIG,
     TAG_RAY_FILE_MOUNTS_CONTENTS, TAG_RAY_NODE_STATUS, TAG_RAY_NODE_KIND,
-    TAG_RAY_USER_NODE_TYPE, STATUS_UP_TO_DATE, NODE_KIND_WORKER,
-    NODE_KIND_UNMANAGED, NODE_KIND_HEAD)
+    TAG_RAY_USER_NODE_TYPE, STATUS_UNINITIALIZED, STATUS_WAITING_FOR_SSH,
+    STATUS_SYNCING_FILES, STATUS_SETTING_UP, STATUS_UP_TO_DATE,
+    NODE_KIND_WORKER, NODE_KIND_UNMANAGED, NODE_KIND_HEAD)
+from ray.autoscaler._private.event_summarizer import EventSummarizer
+from ray.autoscaler._private.legacy_info_string import legacy_log_info_string
 from ray.autoscaler._private.providers import _get_node_provider
 from ray.autoscaler._private.updater import NodeUpdaterThread
 from ray.autoscaler._private.node_launcher import NodeLauncher
@@ -26,7 +30,7 @@ from ray.autoscaler._private.resource_demand_scheduler import \
     ResourceDict
 from ray.autoscaler._private.util import ConcurrentCounter, validate_config, \
     with_head_node_ip, hash_launch_conf, hash_runtime_conf, \
-    DEBUG_AUTOSCALING_STATUS, DEBUG_AUTOSCALING_ERROR
+    DEBUG_AUTOSCALING_ERROR, format_info_string
 from ray.autoscaler._private.constants import \
     AUTOSCALER_MAX_NUM_FAILURES, AUTOSCALER_MAX_LAUNCH_BATCH, \
     AUTOSCALER_MAX_CONCURRENT_LAUNCHES, AUTOSCALER_UPDATE_INTERVAL_S, \
@@ -39,22 +43,25 @@ logger = logging.getLogger(__name__)
 # that will be passed into a NodeUpdaterThread.
 UpdateInstructions = namedtuple(
     "UpdateInstructions",
-    ["node_id", "init_commands", "start_ray_commands", "docker_config"])
+    ["node_id", "setup_commands", "ray_start_commands", "docker_config"])
+
+AutoscalerSummary = namedtuple(
+    "AutoscalerSummary",
+    ["active_nodes", "pending_nodes", "pending_launches", "failed_nodes"])
 
 
 class StandardAutoscaler:
     """The autoscaling control loop for a Ray cluster.
 
     There are two ways to start an autoscaling cluster: manually by running
-    `ray start --head --autoscaling-config=/path/to/config.yaml` on a
-    instance that has permission to launch other instances, or you can also use
-    `ray up /path/to/config.yaml` from your laptop, which will
-    configure the right AWS/Cloud roles automatically.
-
-    StandardAutoscaler's `update` method is periodically called by `monitor.py`
-    to add and remove nodes as necessary. Currently, load-based autoscaling is
-    not implemented, so all this class does is try to maintain a constant
-    cluster size.
+    `ray start --head --autoscaling-config=/path/to/config.yaml` on a instance
+    that has permission to launch other instances, or you can also use `ray up
+    /path/to/config.yaml` from your laptop, which will configure the right
+    AWS/Cloud roles automatically. See the documentation for a full definition
+    of autoscaling behavior:
+    https://docs.ray.io/en/master/cluster/autoscaling.html
+    StandardAutoscaler's `update` method is periodically called in
+    `monitor.py`'s monitoring loop.
 
     StandardAutoscaler is also used to bootstrap clusters (by adding workers
     until the cluster size that can handle the resource demand is met).
@@ -67,8 +74,12 @@ class StandardAutoscaler:
                  max_concurrent_launches=AUTOSCALER_MAX_CONCURRENT_LAUNCHES,
                  max_failures=AUTOSCALER_MAX_NUM_FAILURES,
                  process_runner=subprocess,
-                 update_interval_s=AUTOSCALER_UPDATE_INTERVAL_S):
+                 update_interval_s=AUTOSCALER_UPDATE_INTERVAL_S,
+                 prefix_cluster_info=False,
+                 event_summarizer=None):
         self.config_path = config_path
+        # Prefix each line of info string with cluster name if True
+        self.prefix_cluster_info = prefix_cluster_info
         # Keep this before self.reset (self.provider needs to be created
         # exactly once).
         self.provider = None
@@ -81,6 +92,7 @@ class StandardAutoscaler:
         self.max_launch_batch = max_launch_batch
         self.max_concurrent_launches = max_concurrent_launches
         self.process_runner = process_runner
+        self.event_summarizer = event_summarizer or EventSummarizer()
 
         # Map from node_id to NodeUpdater processes
         self.updaters = {}
@@ -117,9 +129,6 @@ class StandardAutoscaler:
         for local_path in self.config["file_mounts"].values():
             assert os.path.exists(local_path)
 
-        # List of resource bundles the user is requesting of the cluster.
-        self.resource_demand_vector = []
-
         logger.info("StandardAutoscaler: {}".format(self.config))
 
     def update(self):
@@ -146,7 +155,6 @@ class StandardAutoscaler:
 
     def _update(self):
         now = time.time()
-
         # Throttle autoscaling updates to this interval to avoid exceeding
         # rate limits on API calls.
         if now - self.last_update_time < self.update_interval_s:
@@ -159,7 +167,6 @@ class StandardAutoscaler:
             self.provider.internal_ip(node_id)
             for node_id in self.all_workers()
         ])
-        self.log_info_string(nodes)
 
         # Terminate any idle or out of date nodes
         last_used = self.load_metrics.last_used_time_by_ip
@@ -173,7 +180,7 @@ class StandardAutoscaler:
         sorted_node_ids = self._sort_based_on_last_used(nodes, last_used)
         # Don't terminate nodes needed by request_resources()
         nodes_allowed_to_terminate: Dict[NodeID, bool] = {}
-        if self.resource_demand_vector:
+        if self.load_metrics.get_resource_requests():
             nodes_allowed_to_terminate = self._get_nodes_allowed_to_terminate(
                 sorted_node_ids)
 
@@ -190,16 +197,25 @@ class StandardAutoscaler:
             if node_ip in last_used and last_used[node_ip] < horizon:
                 logger.info("StandardAutoscaler: "
                             "{}: Terminating idle node.".format(node_id))
+                self.event_summarizer.add(
+                    "Removing {} nodes of type " + self._get_node_type(node_id)
+                    + " (idle).",
+                    quantity=1,
+                    aggregate=operator.add)
                 nodes_to_terminate.append(node_id)
             elif not self.launch_config_ok(node_id):
                 logger.info("StandardAutoscaler: "
                             "{}: Terminating outdated node.".format(node_id))
+                self.event_summarizer.add(
+                    "Removing {} nodes of type " + self._get_node_type(node_id)
+                    + " (outdated).",
+                    quantity=1,
+                    aggregate=operator.add)
                 nodes_to_terminate.append(node_id)
 
         if nodes_to_terminate:
             self.provider.terminate_nodes(nodes_to_terminate)
             nodes = self.workers()
-            self.log_info_string(nodes)
 
         # Terminate nodes if there are too many
         nodes_to_terminate = []
@@ -208,13 +224,16 @@ class StandardAutoscaler:
             to_terminate = nodes.pop()
             logger.info("StandardAutoscaler: "
                         "{}: Terminating unneeded node.".format(to_terminate))
+            self.event_summarizer.add(
+                "Removing {} nodes of type " +
+                self._get_node_type(to_terminate) + " (max workers).",
+                quantity=1,
+                aggregate=operator.add)
             nodes_to_terminate.append(to_terminate)
 
         if nodes_to_terminate:
             self.provider.terminate_nodes(nodes_to_terminate)
             nodes = self.workers()
-
-            self.log_info_string(nodes)
 
         to_launch = self.resource_demand_scheduler.get_nodes_to_launch(
             self.provider.non_terminated_nodes(tag_filters={}),
@@ -223,7 +242,7 @@ class StandardAutoscaler:
             self.load_metrics.get_resource_utilization(),
             self.load_metrics.get_pending_placement_groups(),
             self.load_metrics.get_static_node_resources_by_ip(),
-            ensure_min_cluster_size=self.resource_demand_vector)
+            ensure_min_cluster_size=self.load_metrics.get_resource_requests())
         for node_type, count in to_launch.items():
             self.launch_new_node(count, node_type=node_type)
 
@@ -246,6 +265,11 @@ class StandardAutoscaler:
                 else:
                     logger.error(f"StandardAutoscaler: {node_id}: Terminating "
                                  "failed to setup/initialize node.")
+                    self.event_summarizer.add(
+                        "Removing {} nodes of type " +
+                        self._get_node_type(node_id) + " (launch failed).",
+                        quantity=1,
+                        aggregate=operator.add)
                     nodes_to_terminate.append(node_id)
                     self.num_failed_updates[node_id] += 1
                 del self.updaters[node_id]
@@ -253,14 +277,13 @@ class StandardAutoscaler:
                 self.provider.terminate_nodes(nodes_to_terminate)
 
             nodes = self.workers()
-            self.log_info_string(nodes)
 
         # Update nodes with out-of-date files.
         # TODO(edoakes): Spawning these threads directly seems to cause
         # problems. They should at a minimum be spawned as daemon threads.
         # See https://github.com/ray-project/ray/pull/5903 for more info.
         T = []
-        for node_id, commands, ray_start, docker_config in (
+        for node_id, setup_commands, ray_start_commands, docker_config in (
                 self.should_update(node_id) for node_id in nodes):
             if node_id is not None:
                 resources = self._node_resources(node_id)
@@ -268,8 +291,8 @@ class StandardAutoscaler:
                 T.append(
                     threading.Thread(
                         target=self.spawn_updater,
-                        args=(node_id, commands, ray_start, resources,
-                              docker_config)))
+                        args=(node_id, setup_commands, ray_start_commands,
+                              resources, docker_config)))
         for t in T:
             t.start()
         for t in T:
@@ -278,6 +301,9 @@ class StandardAutoscaler:
         # Attempt to recover unhealthy nodes
         for node_id in nodes:
             self.recover_if_needed(node_id, now)
+
+        logger.info(self.info_string())
+        legacy_log_info_string(self, nodes)
 
     def _sort_based_on_last_used(self, nodes: List[NodeID],
                                  last_used: Dict[str, float]) -> List[NodeID]:
@@ -330,7 +356,7 @@ class StandardAutoscaler:
                     NodeIP,
                     ResourceDict] = \
                     self.load_metrics.get_static_node_resources_by_ip()
-                head_node_resources = static_nodes[head_ip]
+                head_node_resources = static_nodes.get(head_ip, {})
             else:
                 head_node_resources = {}
 
@@ -359,7 +385,7 @@ class StandardAutoscaler:
         used_resource_requests: List[ResourceDict]
         _, used_resource_requests = \
             get_bin_pack_residual(max_node_resources,
-                                  self.resource_demand_vector)
+                                  self.load_metrics.get_resource_requests())
         # Remove the first entry (the head node).
         max_node_resources.pop(0)
         # Remove the first entry (the head node).
@@ -479,11 +505,13 @@ class StandardAutoscaler:
                 # for legacy yamls.
                 self.resource_demand_scheduler.reset_config(
                     self.provider, self.available_node_types,
-                    self.config["max_workers"], upscaling_speed)
+                    self.config["max_workers"], self.config["head_node_type"],
+                    upscaling_speed)
             else:
                 self.resource_demand_scheduler = ResourceDemandScheduler(
                     self.provider, self.available_node_types,
-                    self.config["max_workers"], upscaling_speed)
+                    self.config["max_workers"], self.config["head_node_type"],
+                    upscaling_speed)
 
         except Exception as e:
             if errors_fatal:
@@ -529,15 +557,22 @@ class StandardAutoscaler:
         if not self.can_update(node_id):
             return
         key = self.provider.internal_ip(node_id)
-        if key not in self.load_metrics.last_heartbeat_time_by_ip:
-            self.load_metrics.last_heartbeat_time_by_ip[key] = now
-        last_heartbeat_time = self.load_metrics.last_heartbeat_time_by_ip[key]
-        delta = now - last_heartbeat_time
-        if delta < AUTOSCALER_HEARTBEAT_TIMEOUT_S:
-            return
+
+        if key in self.load_metrics.last_heartbeat_time_by_ip:
+            last_heartbeat_time = self.load_metrics.last_heartbeat_time_by_ip[
+                key]
+            delta = now - last_heartbeat_time
+            if delta < AUTOSCALER_HEARTBEAT_TIMEOUT_S:
+                return
+
         logger.warning("StandardAutoscaler: "
-                       "{}: No heartbeat in {}s, "
-                       "restarting Ray to recover...".format(node_id, delta))
+                       "{}: No recent heartbeat, "
+                       "restarting Ray to recover...".format(node_id))
+        self.event_summarizer.add(
+            "Restarting {} nodes of type " + self._get_node_type(node_id) +
+            " (lost contact with raylet).",
+            quantity=1,
+            aggregate=operator.add)
         updater = NodeUpdaterThread(
             node_id=node_id,
             provider_config=self.config["provider"],
@@ -558,6 +593,13 @@ class StandardAutoscaler:
             node_resources=self._node_resources(node_id))
         updater.start()
         self.updaters[node_id] = updater
+
+    def _get_node_type(self, node_id: str) -> str:
+        node_tags = self.provider.node_tags(node_id)
+        if TAG_RAY_USER_NODE_TYPE in node_tags:
+            return node_tags[TAG_RAY_USER_NODE_TYPE]
+        else:
+            return "unknown"
 
     def _get_node_type_specific_fields(self, node_id: str,
                                        fields_key: str) -> Any:
@@ -591,25 +633,25 @@ class StandardAutoscaler:
 
         successful_updated = self.num_successful_updates.get(node_id, 0) > 0
         if successful_updated and self.config.get("restart_only", False):
-            init_commands = []
-            ray_commands = self.config["worker_start_ray_commands"]
+            setup_commands = []
+            ray_start_commands = self.config["worker_start_ray_commands"]
         elif successful_updated and self.config.get("no_restart", False):
-            init_commands = self._get_node_type_specific_fields(
+            setup_commands = self._get_node_type_specific_fields(
                 node_id, "worker_setup_commands")
-            ray_commands = []
+            ray_start_commands = []
         else:
-            init_commands = self._get_node_type_specific_fields(
+            setup_commands = self._get_node_type_specific_fields(
                 node_id, "worker_setup_commands")
-            ray_commands = self.config["worker_start_ray_commands"]
+            ray_start_commands = self.config["worker_start_ray_commands"]
 
         docker_config = self._get_node_specific_docker_config(node_id)
         return UpdateInstructions(
             node_id=node_id,
-            init_commands=init_commands,
-            start_ray_commands=ray_commands,
+            setup_commands=setup_commands,
+            ray_start_commands=ray_start_commands,
             docker_config=docker_config)
 
-    def spawn_updater(self, node_id, init_commands, ray_start_commands,
+    def spawn_updater(self, node_id, setup_commands, ray_start_commands,
                       node_resources, docker_config):
         logger.info(f"Creating new (spawn_updater) updater thread for node"
                     f" {node_id}.")
@@ -623,7 +665,8 @@ class StandardAutoscaler:
             initialization_commands=with_head_node_ip(
                 self._get_node_type_specific_fields(
                     node_id, "initialization_commands"), self.head_node_ip),
-            setup_commands=with_head_node_ip(init_commands, self.head_node_ip),
+            setup_commands=with_head_node_ip(setup_commands,
+                                             self.head_node_ip),
             ray_start_commands=with_head_node_ip(ray_start_commands,
                                                  self.head_node_ip),
             runtime_hash=self.runtime_hash,
@@ -655,6 +698,10 @@ class StandardAutoscaler:
     def launch_new_node(self, count: int, node_type: Optional[str]) -> None:
         logger.info(
             "StandardAutoscaler: Queue {} new nodes for launch".format(count))
+        self.event_summarizer.add(
+            "Adding {} nodes of type " + str(node_type) + ".",
+            quantity=count,
+            aggregate=operator.add)
         self.pending_launches.inc(node_type, count)
         config = copy.deepcopy(self.config)
         # Split into individual launch requests of the max batch size.
@@ -674,41 +721,6 @@ class StandardAutoscaler:
         return self.provider.non_terminated_nodes(
             tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_UNMANAGED})
 
-    def log_info_string(self, nodes):
-        tmp = "Cluster status: "
-        tmp += self.info_string(nodes)
-        tmp += "\n"
-        tmp += self.load_metrics.info_string()
-        tmp += "\n"
-        tmp += self.resource_demand_scheduler.debug_string(
-            nodes, self.pending_launches.breakdown(),
-            self.load_metrics.get_resource_utilization())
-        if _internal_kv_initialized():
-            _internal_kv_put(DEBUG_AUTOSCALING_STATUS, tmp, overwrite=True)
-        logger.debug(tmp)
-
-    def info_string(self, nodes):
-        suffix = ""
-        if self.updaters:
-            suffix += " ({} updating)".format(len(self.updaters))
-        if self.num_failed_updates:
-            suffix += " ({} failed to update)".format(
-                len(self.num_failed_updates))
-
-        return "{} nodes{}".format(len(nodes), suffix)
-
-    def request_resources(self, resources: List[dict]):
-        """Called by monitor to request resources.
-
-        Args:
-            resources: A list of resource bundles.
-        """
-        if resources:
-            logger.info(
-                "StandardAutoscaler: resource_requests={}".format(resources))
-        assert isinstance(resources, list), resources
-        self.resource_demand_vector = resources
-
     def kill_workers(self):
         logger.error("StandardAutoscaler: kill_workers triggered")
         nodes = self.workers()
@@ -716,3 +728,66 @@ class StandardAutoscaler:
             self.provider.terminate_nodes(nodes)
         logger.error("StandardAutoscaler: terminated {} node(s)".format(
             len(nodes)))
+
+    def summary(self):
+        """Summarizes the active, pending, and failed node launches.
+
+        An active node is a node whose raylet is actively reporting heartbeats.
+        A pending node is non-active node whose node tag is uninitialized,
+        waiting for ssh, syncing files, or setting up.
+        If a node is not pending or active, it is failed.
+
+        Returns:
+            AutoscalerSummary: The summary.
+        """
+        all_node_ids = self.provider.non_terminated_nodes(tag_filters={})
+
+        active_nodes = Counter()
+        pending_nodes = []
+        failed_nodes = []
+
+        for node_id in all_node_ids:
+            ip = self.provider.internal_ip(node_id)
+            node_tags = self.provider.node_tags(node_id)
+            if node_tags[TAG_RAY_NODE_KIND] == NODE_KIND_UNMANAGED:
+                continue
+            node_type = node_tags[TAG_RAY_USER_NODE_TYPE]
+
+            # TODO (Alex): If a node's raylet has died, it shouldn't be marked
+            # as active.
+            is_active = self.load_metrics.is_active(ip)
+            if is_active:
+                active_nodes[node_type] += 1
+            else:
+                status = node_tags[TAG_RAY_NODE_STATUS]
+                pending_states = [
+                    STATUS_UNINITIALIZED, STATUS_WAITING_FOR_SSH,
+                    STATUS_SYNCING_FILES, STATUS_SETTING_UP
+                ]
+                is_pending = status in pending_states
+                if is_pending:
+                    pending_nodes.append((ip, node_type, status))
+                else:
+                    # TODO (Alex): Failed nodes are now immediately killed, so
+                    # this list will almost always be empty. We should ideally
+                    # keep a cache of recently failed nodes and their startup
+                    # logs.
+                    failed_nodes.append((ip, node_type))
+
+        # The concurrent counter leaves some 0 counts in, so we need to
+        # manually filter those out.
+        pending_launches = {}
+        for node_type, count in self.pending_launches.breakdown().items():
+            if count:
+                pending_launches[node_type] = count
+
+        return AutoscalerSummary(
+            active_nodes=active_nodes,
+            pending_nodes=pending_nodes,
+            pending_launches=pending_launches,
+            failed_nodes=failed_nodes)
+
+    def info_string(self):
+        lm_summary = self.load_metrics.summary()
+        autoscaler_summary = self.summary()
+        return "\n" + format_info_string(lm_summary, autoscaler_summary)

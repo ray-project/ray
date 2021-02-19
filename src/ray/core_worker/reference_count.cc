@@ -166,11 +166,26 @@ void ReferenceCounter::AddOwnedObject(const ObjectID &object_id,
   }
 }
 
+void ReferenceCounter::RemoveOwnedObject(const ObjectID &object_id) {
+  absl::MutexLock lock(&mutex_);
+  auto it = object_id_refs_.find(object_id);
+  RAY_CHECK(it != object_id_refs_.end())
+      << "Tried to remove reference for nonexistent owned object " << object_id
+      << ", object must be added with ReferenceCounter::AddOwnedObject() before it "
+      << "can be removed";
+  RAY_CHECK(it->second.RefCount() == 0)
+      << "Tried to remove reference for owned object " << object_id << " that has "
+      << it->second.RefCount() << " references, must have 0 references to be removed";
+  RAY_LOG(DEBUG) << "Removing owned object " << object_id;
+  DeleteReferenceInternal(it, nullptr);
+}
+
 void ReferenceCounter::UpdateObjectSize(const ObjectID &object_id, int64_t object_size) {
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
   if (it != object_id_refs_.end()) {
     it->second.object_size = object_size;
+    PushToLocationSubscribers(it);
   }
 }
 
@@ -896,47 +911,150 @@ void ReferenceCounter::SetReleaseLineageCallback(
   on_lineage_released_ = callback;
 }
 
-void ReferenceCounter::AddObjectLocation(const ObjectID &object_id,
+bool ReferenceCounter::AddObjectLocation(const ObjectID &object_id,
                                          const NodeID &node_id) {
   absl::MutexLock lock(&mutex_);
-  auto it = object_id_locations_.find(object_id);
-  if (it == object_id_locations_.end()) {
-    it = object_id_locations_.emplace(object_id, absl::flat_hash_set<NodeID>()).first;
+  auto it = object_id_refs_.find(object_id);
+  if (it == object_id_refs_.end()) {
+    RAY_LOG(INFO) << "Tried to add an object location for an object " << object_id
+                  << " that doesn't exist in the reference table";
+    return false;
   }
-  it->second.insert(node_id);
+  it->second.locations.insert(node_id);
+  PushToLocationSubscribers(it);
+  return true;
 }
 
-void ReferenceCounter::RemoveObjectLocation(const ObjectID &object_id,
+bool ReferenceCounter::RemoveObjectLocation(const ObjectID &object_id,
                                             const NodeID &node_id) {
   absl::MutexLock lock(&mutex_);
-  auto it = object_id_locations_.find(object_id);
-  RAY_CHECK(it != object_id_locations_.end());
-  it->second.erase(node_id);
+  auto it = object_id_refs_.find(object_id);
+  if (it == object_id_refs_.end()) {
+    RAY_LOG(INFO) << "Tried to remove an object location for an object " << object_id
+                  << " that doesn't exist in the reference table";
+    return false;
+  }
+  it->second.locations.erase(node_id);
+  PushToLocationSubscribers(it);
+  return true;
 }
 
-std::unordered_set<NodeID> ReferenceCounter::GetObjectLocations(
+absl::optional<absl::flat_hash_set<NodeID>> ReferenceCounter::GetObjectLocations(
     const ObjectID &object_id) {
   absl::MutexLock lock(&mutex_);
-  auto it = object_id_locations_.find(object_id);
-  RAY_CHECK(it != object_id_locations_.end());
-  std::unordered_set<NodeID> locations;
-  for (const auto &location : it->second) {
-    locations.insert(location);
+  auto it = object_id_refs_.find(object_id);
+  if (it == object_id_refs_.end()) {
+    RAY_LOG(WARNING) << "Tried to get the object locations for an object " << object_id
+                     << " that doesn't exist in the reference table";
+    return absl::nullopt;
   }
-  return locations;
+  return it->second.locations;
 }
 
-void ReferenceCounter::HandleObjectSpilled(const ObjectID &object_id) {
+size_t ReferenceCounter::GetObjectSize(const ObjectID &object_id) const {
+  absl::MutexLock lock(&mutex_);
+  auto it = object_id_refs_.find(object_id);
+  if (it == object_id_refs_.end()) {
+    return 0;
+  }
+  return it->second.object_size;
+}
+
+bool ReferenceCounter::HandleObjectSpilled(const ObjectID &object_id,
+                                           const std::string spilled_url,
+                                           const NodeID &spilled_node_id, int64_t size,
+                                           bool release) {
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
     RAY_LOG(WARNING) << "Spilled object " << object_id << " already out of scope";
-    return;
+    return false;
   }
 
   it->second.spilled = true;
-  // Release the primary plasma copy, if any.
-  ReleasePlasmaObject(it);
+  if (spilled_url != "") {
+    it->second.spilled_url = spilled_url;
+  }
+  if (!spilled_node_id.IsNil()) {
+    it->second.spilled_node_id = spilled_node_id;
+  }
+  if (size > 0) {
+    it->second.object_size = size;
+  }
+  PushToLocationSubscribers(it);
+  if (release) {
+    // Release the primary plasma copy, if any.
+    ReleasePlasmaObject(it);
+  }
+  return true;
+}
+
+absl::optional<LocalityData> ReferenceCounter::GetLocalityData(
+    const ObjectID &object_id) {
+  absl::MutexLock lock(&mutex_);
+  // Uses the reference table to return locality data for an object.
+  auto it = object_id_refs_.find(object_id);
+  if (it == object_id_refs_.end()) {
+    RAY_LOG(DEBUG) << "Object " << object_id
+                   << " not in reference table, locality data not available";
+    return absl::nullopt;
+  }
+
+  const auto &node_id = it->second.pinned_at_raylet_id;
+  if (!node_id.has_value()) {
+    RAY_LOG(DEBUG)
+        << "Reference " << it->second.call_site << " for object " << object_id
+        << " doesn't have a defined pinned raylet ID, locality data not available";
+    return absl::nullopt;
+  }
+  // The raylet ID to which this reference is pinned is defined.
+
+  const auto object_size = it->second.object_size;
+  if (object_size < 0) {
+    RAY_LOG(DEBUG) << "Reference " << it->second.call_site << " for object " << object_id
+                   << " has an unknown object size, locality data not available";
+    return absl::nullopt;
+  }
+  // The object size of this reference is known.
+
+  absl::optional<LocalityData> locality_data(
+      {static_cast<uint64_t>(object_size), {node_id.value()}});
+  return locality_data;
+}
+
+void ReferenceCounter::PushToLocationSubscribers(ReferenceTable::iterator it) {
+  const auto callbacks = it->second.location_subscription_callbacks;
+  it->second.location_subscription_callbacks.clear();
+  it->second.location_version++;
+  for (const auto &callback : callbacks) {
+    callback(it->second.locations, it->second.object_size, it->second.spilled_url,
+             it->second.spilled_node_id, it->second.location_version);
+  }
+}
+
+Status ReferenceCounter::SubscribeObjectLocations(
+    const ObjectID &object_id, int64_t last_location_version,
+    const LocationSubscriptionCallback &callback) {
+  absl::MutexLock lock(&mutex_);
+  auto it = object_id_refs_.find(object_id);
+  if (it == object_id_refs_.end()) {
+    RAY_LOG(INFO) << "Tried to register a location subscriber for an object " << object_id
+                  << " that doesn't exist in the reference table."
+                  << " The object has probably already been freed.";
+    return Status::ObjectNotFound("Object " + object_id.Hex() + " not found");
+  }
+
+  if (last_location_version < it->second.location_version) {
+    // If the last location version is less than the current location version, we
+    // already have location data that the subscriber hasn't seen yet, so we immediately
+    // invoke the callback.
+    callback(it->second.locations, it->second.object_size, it->second.spilled_url,
+             it->second.spilled_node_id, it->second.location_version);
+  } else {
+    // Otherwise, save the callback for later invocation.
+    it->second.location_subscription_callbacks.push_back(callback);
+  }
+  return Status::OK();
 }
 
 ReferenceCounter::Reference ReferenceCounter::Reference::FromProto(

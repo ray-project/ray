@@ -8,6 +8,7 @@ import json
 import logging
 import os
 import re
+import select
 import socket
 import sys
 import uuid
@@ -125,6 +126,13 @@ class RemotePdb(Pdb):
 
     do_q = do_exit = do_quit
 
+    def do_continue(self, arg):
+        self.__restore()
+        self.handle.connection.close()
+        return Pdb.do_continue(self, arg)
+
+    do_c = do_continue
+
     def set_trace(self, frame=None):
         if frame is None:
             frame = sys._getframe().f_back
@@ -227,3 +235,27 @@ def set_trace(breakpoint_uuid=None):
 def post_mortem():
     rdb = connect_ray_pdb(None, None, False, None)
     rdb.post_mortem()
+
+
+def connect_pdb_client(host, port):
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.connect((host, port))
+
+    while True:
+        # Get the list of sockets which are readable.
+        read_sockets, write_sockets, error_sockets = select.select(
+            [sys.stdin, s], [], [])
+
+        for sock in read_sockets:
+            if sock == s:
+                # Incoming message from remote debugger.
+                data = sock.recv(4096)
+                if not data:
+                    return
+                else:
+                    sys.stdout.write(data.decode())
+                    sys.stdout.flush()
+            else:
+                # User entered a message.
+                msg = sys.stdin.readline()
+                s.send(msg.encode())

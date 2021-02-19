@@ -68,12 +68,11 @@ class GcsPlacementGroupManagerTest : public ::testing::Test {
       : mock_placement_group_scheduler_(new MockPlacementGroupScheduler()) {
     gcs_pub_sub_ = std::make_shared<GcsServerMocker::MockGcsPubSub>(redis_client_);
     gcs_table_storage_ = std::make_shared<gcs::InMemoryGcsTableStorage>(io_service_);
-    gcs_resource_manager_ = std::make_shared<gcs::GcsResourceManager>();
-    gcs_node_manager_ = std::make_shared<gcs::GcsNodeManager>(
-        io_service_, gcs_pub_sub_, gcs_table_storage_, gcs_resource_manager_);
+    gcs_resource_manager_ =
+        std::make_shared<gcs::GcsResourceManager>(io_service_, nullptr, nullptr);
     gcs_placement_group_manager_.reset(
         new gcs::GcsPlacementGroupManager(io_service_, mock_placement_group_scheduler_,
-                                          gcs_table_storage_, *gcs_node_manager_));
+                                          gcs_table_storage_, *gcs_resource_manager_));
   }
 
   void SetUp() override {
@@ -105,7 +104,6 @@ class GcsPlacementGroupManagerTest : public ::testing::Test {
   boost::asio::io_service io_service_;
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   std::shared_ptr<gcs::GcsResourceManager> gcs_resource_manager_;
-  std::shared_ptr<gcs::GcsNodeManager> gcs_node_manager_;
   std::shared_ptr<GcsServerMocker::MockGcsPubSub> gcs_pub_sub_;
   std::shared_ptr<gcs::RedisClient> redis_client_;
 };
@@ -174,6 +172,31 @@ TEST_F(GcsPlacementGroupManagerTest, TestGetPlacementGroupIDByName) {
   ASSERT_EQ(
       gcs_placement_group_manager_->GetPlacementGroupIDByName("test_name"),
       PlacementGroupID::FromBinary(request.placement_group_spec().placement_group_id()));
+}
+
+TEST_F(GcsPlacementGroupManagerTest, TestRemoveNamedPlacementGroup) {
+  auto request = Mocker::GenCreatePlacementGroupRequest("test_name");
+  std::atomic<int> finished_placement_group_count(0);
+  gcs_placement_group_manager_->RegisterPlacementGroup(
+      std::make_shared<gcs::GcsPlacementGroup>(request),
+      [&finished_placement_group_count](const Status &status) {
+        ++finished_placement_group_count;
+      });
+
+  ASSERT_EQ(finished_placement_group_count, 0);
+  WaitForExpectedPgCount(1);
+  auto placement_group = mock_placement_group_scheduler_->placement_groups_.back();
+  mock_placement_group_scheduler_->placement_groups_.pop_back();
+
+  gcs_placement_group_manager_->OnPlacementGroupCreationSuccess(placement_group);
+  WaitForExpectedCount(finished_placement_group_count, 1);
+  ASSERT_EQ(placement_group->GetState(), rpc::PlacementGroupTableData::CREATED);
+  // Remove the named placement group.
+  gcs_placement_group_manager_->RemovePlacementGroup(
+      placement_group->GetPlacementGroupID(),
+      [](const Status &status) { ASSERT_TRUE(status.ok()); });
+  ASSERT_EQ(gcs_placement_group_manager_->GetPlacementGroupIDByName("test_name"),
+            PlacementGroupID::Nil());
 }
 
 TEST_F(GcsPlacementGroupManagerTest, TestRescheduleWhenNodeAdd) {

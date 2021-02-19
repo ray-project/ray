@@ -232,6 +232,61 @@ std::string NodeResources::DebugString(StringIdMap string_to_in_map) const {
   return buffer.str();
 }
 
+const std::string format_resource(std::string resource_name, double quantity) {
+  if (resource_name == "object_store_memory" || resource_name == "memory") {
+    // Convert to 50MiB chunks and then to GiB
+    return std::to_string(quantity * (50 * 1024 * 1024) / (1024 * 1024 * 1024)) + " GiB";
+  }
+  return std::to_string(quantity);
+}
+
+std::string NodeResources::DictString(StringIdMap string_to_in_map) const {
+  std::stringstream buffer;
+  bool first = true;
+  buffer << "{";
+  for (size_t i = 0; i < this->predefined_resources.size(); i++) {
+    if (this->predefined_resources[i].total <= 0) {
+      continue;
+    }
+    if (first) {
+      first = false;
+    } else {
+      buffer << ", ";
+    }
+    std::string name = "";
+    switch (i) {
+    case CPU:
+      name = "CPU";
+      break;
+    case MEM:
+      name = "memory";
+      break;
+    case GPU:
+      name = "GPU";
+      break;
+    case TPU:
+      name = "TPU";
+      break;
+    default:
+      RAY_CHECK(false) << "This should never happen.";
+      break;
+    }
+    buffer << format_resource(name, this->predefined_resources[i].available.Double())
+           << "/";
+    buffer << format_resource(name, this->predefined_resources[i].total.Double());
+    buffer << " " << name;
+  }
+  for (auto it = this->custom_resources.begin(); it != this->custom_resources.end();
+       ++it) {
+    auto name = string_to_in_map.Get(it->first);
+    buffer << ", " << format_resource(name, it->second.available.Double()) << "/"
+           << format_resource(name, it->second.total.Double());
+    buffer << " " << name;
+  }
+  buffer << "}" << std::endl;
+  return buffer.str();
+}
+
 bool NodeResourceInstances::operator==(const NodeResourceInstances &other) {
   for (size_t i = 0; i < PredefinedResources_MAX; i++) {
     if (!EqualVectors(this->predefined_resources[i].total,
@@ -291,8 +346,7 @@ std::string NodeResourceInstances::DebugString(StringIdMap string_to_int_map) co
   }
   for (auto it = this->custom_resources.begin(); it != this->custom_resources.end();
        ++it) {
-    buffer << "\t" << string_to_int_map.Get(it->first) << ":("
-           << VectorToString(it->second.total) << ":"
+    buffer << "\t" << it->first << ":(" << VectorToString(it->second.total) << ":"
            << VectorToString(it->second.available) << ")\n";
   }
   buffer << "}" << std::endl;

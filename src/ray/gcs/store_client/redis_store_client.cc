@@ -38,29 +38,24 @@ Status RedisStoreClient::AsyncPutWithIndex(const std::string &table_name,
                                            const std::string &index_key,
                                            const std::string &data,
                                            const StatusCallback &callback) {
-  auto write_callback = [this, table_name, key, data, callback](Status status) {
-    if (!status.ok()) {
-      // Run callback if failed.
-      if (callback != nullptr) {
-        callback(status);
-      }
-      return;
-    }
-
-    // Write data to Redis.
-    status = DoPut(GenRedisKey(table_name, key), data, callback);
-
-    if (!status.ok()) {
-      // Run callback if failed.
-      if (callback != nullptr) {
-        callback(status);
-      }
-    }
-  };
-
+  // NOTE: To ensure the atomicity of `AsyncPutWithIndex`, we can't write data to Redis in
+  // the callback function of index writing.
   // Write index to Redis.
-  std::string index_table_key = GenRedisKey(table_name, key, index_key);
-  return DoPut(index_table_key, key, write_callback);
+  const auto &index_table_key = GenRedisKey(table_name, key, index_key);
+  RAY_CHECK_OK(DoPut(index_table_key, key, nullptr));
+
+  // Write data to Redis.
+  // The operation of redis client is executed in order, and it can ensure that index is
+  // written first and then data is written. The index and data are decoupled, so we don't
+  // need to write data in the callback function of index writing.
+  const auto &status = DoPut(GenRedisKey(table_name, key), data, callback);
+  if (!status.ok()) {
+    // Run callback if failed.
+    if (callback != nullptr) {
+      callback(status);
+    }
+  }
+  return status;
 }
 
 Status RedisStoreClient::AsyncGet(const std::string &table_name, const std::string &key,
@@ -109,7 +104,8 @@ Status RedisStoreClient::AsyncDelete(const std::string &table_name,
   }
 
   std::string redis_key = GenRedisKey(table_name, key);
-  std::vector<std::string> args = {"DEL", redis_key};
+  // We always replace `DEL` with `UNLINK`.
+  std::vector<std::string> args = {"UNLINK", redis_key};
 
   auto shard_context = redis_client_->GetShardContext(redis_key);
   return shard_context->RunArgvAsync(args, delete_callback);
@@ -120,7 +116,7 @@ Status RedisStoreClient::AsyncDeleteWithIndex(const std::string &table_name,
                                               const std::string &index_key,
                                               const StatusCallback &callback) {
   std::vector<std::string> redis_keys;
-  redis_keys.reserve(20);
+  redis_keys.reserve(2);
   redis_keys.push_back(GenRedisKey(table_name, key));
   redis_keys.push_back(GenRedisKey(table_name, key, index_key));
 
@@ -223,10 +219,11 @@ Status RedisStoreClient::DoPut(const std::string &key, const std::string &data,
 
 Status RedisStoreClient::DeleteByKeys(const std::vector<std::string> &keys,
                                       const StatusCallback &callback) {
-  // The `DEL` command for each shard.
+  // Delete for each shard.
+  // We always replace `DEL` with `UNLINK`.
   int total_count = 0;
   auto del_commands_by_shards =
-      GenCommandsByShards(redis_client_, "DEL", keys, &total_count);
+      GenCommandsByShards(redis_client_, "UNLINK", keys, &total_count);
 
   auto finished_count = std::make_shared<int>(0);
 

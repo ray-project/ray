@@ -2,16 +2,14 @@
 
 import asyncio
 import logging
-import os
-import time
+from ray._private.ray_microbenchmark_helpers import timeit
+from ray._private.ray_client_microbenchmark import (main as
+                                                    client_microbenchmark_main)
 import numpy as np
 import multiprocessing
 import ray
 
 logger = logging.getLogger(__name__)
-
-# Only run tests matching this filter pattern.
-filter_pattern = os.environ.get("TESTS_TO_RUN", "")
 
 
 @ray.remote(num_cpus=0)
@@ -69,27 +67,6 @@ def small_value_batch(n):
     submitted = [small_value.remote() for _ in range(n)]
     ray.get(submitted)
     return 0
-
-
-def timeit(name, fn, multiplier=1):
-    if filter_pattern not in name:
-        return
-    # warmup
-    start = time.time()
-    while time.time() - start < 1:
-        fn()
-    # real run
-    stats = []
-    for _ in range(4):
-        start = time.time()
-        count = 0
-        while time.time() - start < 2:
-            fn()
-            count += 1
-        end = time.time()
-        stats.append(multiplier * count / (end - start))
-    print(name, "per second", round(np.mean(stats), 2), "+-",
-          round(np.std(stats), 2))
 
 
 def check_optimized_build():
@@ -277,6 +254,9 @@ def main():
         ray.get([async_actor_work.remote(a) for _ in range(m)])
 
     timeit("n:n async-actor calls async", async_actor_multi, m * n)
+    ray.shutdown()
+
+    client_microbenchmark_main()
 
 
 if __name__ == "__main__":

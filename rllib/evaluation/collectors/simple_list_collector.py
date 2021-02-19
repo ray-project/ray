@@ -1,11 +1,12 @@
 import collections
 from gym.spaces import Space
 import logging
+import math
 import numpy as np
 from typing import Any, List, Dict, Tuple, TYPE_CHECKING, Union
 
 from ray.rllib.env.base_env import _DUMMY_AGENT_ID
-from ray.rllib.evaluation.collectors.sample_collector import _SampleCollector
+from ray.rllib.evaluation.collectors.sample_collector import SampleCollector
 from ray.rllib.evaluation.episode import MultiAgentEpisode
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
@@ -45,9 +46,19 @@ class _AgentCollector:
 
     _next_unroll_id = 0  # disambiguates unrolls within a single episode
 
-    def __init__(self, shift_before: int = 0):
-        self.shift_before = max(shift_before, 1)
+    def __init__(self, view_reqs):
+        # Determine the size of the buffer we need for data before the actual
+        # episode starts. This is used for 0-buffering of e.g. prev-actions,
+        # or internal state inputs.
+        self.shift_before = -min(
+            (int(vr.shift.split(":")[0])
+             if isinstance(vr.shift, str) else vr.shift) -
+            (1
+             if vr.data_col == SampleBatch.OBS or k == SampleBatch.OBS else 0)
+            for k, vr in view_reqs.items())
+        # The actual data buffers (lists holding each timestep's data).
         self.buffers: Dict[str, List] = {}
+        # The episode ID for the agent for which we collect data.
         self.episode_id = None
         # The simple timestep count for this agent. Gets increased by one
         # each time a (non-initial!) observation is added.
@@ -137,31 +148,100 @@ class _AgentCollector:
             # -> skip.
             if data_col not in self.buffers:
                 continue
+
             # OBS are already shifted by -1 (the initial obs starts one ts
             # before all other data columns).
-            shift = view_req.shift - \
-                (1 if data_col == SampleBatch.OBS else 0)
+            obs_shift = -1 if data_col == SampleBatch.OBS else 0
+
+            # Keep an np-array cache so we don't have to regenerate the
+            # np-array for different view_cols using to the same data_col.
             if data_col not in np_data:
                 np_data[data_col] = to_float_np_array(self.buffers[data_col])
-            # Shift is exactly 0: Send trajectory as is.
-            if shift == 0:
-                data = np_data[data_col][self.shift_before:]
-            # Shift is positive: We still need to 0-pad at the end here.
-            elif shift > 0:
-                data = to_float_np_array(
-                    self.buffers[data_col][self.shift_before + shift:] + [
-                        np.zeros(
-                            shape=view_req.space.shape,
-                            dtype=view_req.space.dtype) for _ in range(shift)
+
+            # Range of indices on time-axis, e.g. "-50:-1". Together with
+            # the `batch_repeat_value`, this determines the data produced.
+            # Example:
+            #  batch_repeat_value=10, shift_from=-3, shift_to=-1
+            #  buffer=[-3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+            #  resulting data=[[-3, -2, -1], [7, 8, 9]]
+            #  Range of 3 consecutive items repeats every 10 timesteps.
+            if view_req.shift_from is not None:
+                # Batch repeat value > 1: Only repeat the shift_from/to range
+                # every n timesteps.
+                if view_req.batch_repeat_value > 1:
+                    count = int(
+                        math.ceil((len(np_data[data_col]) - self.shift_before)
+                                  / view_req.batch_repeat_value))
+                    data = np.asarray([
+                        np_data[data_col][self.shift_before +
+                                          (i * view_req.batch_repeat_value) +
+                                          view_req.shift_from +
+                                          obs_shift:self.shift_before +
+                                          (i * view_req.batch_repeat_value) +
+                                          view_req.shift_to + 1 + obs_shift]
+                        for i in range(count)
                     ])
-            # Shift is negative: Shift into the already existing and 0-padded
-            # "before" area of our buffers.
+                # Batch repeat value = 1: Repeat the shift_from/to range at
+                # each timestep.
+                else:
+                    d = np_data[data_col]
+                    shift_win = view_req.shift_to - view_req.shift_from + 1
+                    data_size = d.itemsize * int(np.product(d.shape[1:]))
+                    strides = [
+                        d.itemsize * int(np.product(d.shape[i + 1:]))
+                        for i in range(1, len(d.shape))
+                    ]
+                    data = np.lib.stride_tricks.as_strided(
+                        d[self.shift_before - shift_win:],
+                        [self.agent_steps, shift_win
+                         ] + [d.shape[i] for i in range(1, len(d.shape))],
+                        [data_size, data_size] + strides)
+            # Set of (probably non-consecutive) indices.
+            # Example:
+            #  shift=[-3, 0]
+            #  buffer=[-3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+            #  resulting data=[[-3, 0], [-2, 1], [-1, 2], [0, 3], [1, 4], ...]
+            elif isinstance(view_req.shift, np.ndarray):
+                data = np_data[data_col][self.shift_before + obs_shift +
+                                         view_req.shift]
+            # Single shift int value. Use the trajectory as-is, and if
+            # `shift` != 0: shifted by that value.
             else:
-                data = np_data[data_col][self.shift_before + shift:shift]
+                shift = view_req.shift + obs_shift
+
+                # Batch repeat (only provide a value every n timesteps).
+                if view_req.batch_repeat_value > 1:
+                    count = int(
+                        math.ceil((len(np_data[data_col]) - self.shift_before)
+                                  / view_req.batch_repeat_value))
+                    data = np.asarray([
+                        np_data[data_col][self.shift_before + (
+                            i * view_req.batch_repeat_value) + shift]
+                        for i in range(count)
+                    ])
+                # Shift is exactly 0: Use trajectory as is.
+                elif shift == 0:
+                    data = np_data[data_col][self.shift_before:]
+                # Shift is positive: We still need to 0-pad at the end.
+                elif shift > 0:
+                    data = to_float_np_array(
+                        self.buffers[data_col][self.shift_before + shift:] + [
+                            np.zeros(
+                                shape=view_req.space.shape,
+                                dtype=view_req.space.dtype)
+                            for _ in range(shift)
+                        ])
+                # Shift is negative: Shift into the already existing and
+                # 0-padded "before" area of our buffers.
+                else:
+                    data = np_data[data_col][self.shift_before + shift:shift]
+
             if len(data) > 0:
                 batch_data[view_col] = data
 
-        batch = SampleBatch(batch_data)
+        # Due to possible batch-repeats > 1, columns in the resulting batch
+        # may not all have the same batch size.
+        batch = SampleBatch(batch_data, _dont_check_lens=True)
 
         # Add EPS_ID and UNROLL_ID to batch.
         batch.data[SampleBatch.EPS_ID] = np.repeat(self.episode_id,
@@ -230,15 +310,22 @@ class _PolicyCollector:
     appended to this policy's buffers.
     """
 
-    def __init__(self):
-        """Initializes a _PolicyCollector instance."""
+    def __init__(self, policy):
+        """Initializes a _PolicyCollector instance.
+
+        Args:
+            policy (Policy): The policy object.
+        """
 
         self.buffers: Dict[str, List] = collections.defaultdict(list)
+        self.policy = policy
         # The total timestep count for all agents that use this policy.
         # NOTE: This is not an env-step count (across n agents). AgentA and
         # agentB, both using this policy, acting in the same episode and both
         # doing n steps would increase the count by 2*n.
         self.agent_steps = 0
+        # Seq-lens list of already added agent batches.
+        self.seq_lens = [] if policy.is_recurrent() else None
 
     def add_postprocessed_batch_for_training(
             self, batch: SampleBatch,
@@ -257,11 +344,18 @@ class _PolicyCollector:
             # 1) If col is not in view_requirements, we must have a direct
             # child of the base Policy that doesn't do auto-view req creation.
             # 2) Col is in view-reqs and needed for training.
-            if view_col not in view_requirements or \
-                    view_requirements[view_col].used_for_training:
+            view_req = view_requirements.get(view_col)
+            if view_req is None or view_req.used_for_training:
                 self.buffers[view_col].extend(data)
         # Add the agent's trajectory length to our count.
         self.agent_steps += batch.count
+        # Adjust the seq-lens array depending on the incoming agent sequences.
+        if self.seq_lens is not None:
+            max_seq_len = self.policy.config["model"]["max_seq_len"]
+            count = batch.count
+            while count > 0:
+                self.seq_lens.append(min(count, max_seq_len))
+                count -= max_seq_len
 
     def build(self):
         """Builds a SampleBatch for this policy from the collected data.
@@ -273,20 +367,22 @@ class _PolicyCollector:
                 this policy.
         """
         # Create batch from our buffers.
-        batch = SampleBatch(self.buffers)
-        assert SampleBatch.UNROLL_ID in batch.data
+        batch = SampleBatch(
+            self.buffers, _seq_lens=self.seq_lens, _dont_check_lens=True)
         # Clear buffers for future samples.
         self.buffers.clear()
-        # Reset agent steps to 0.
+        # Reset agent steps to 0 and seq-lens to empty list.
         self.agent_steps = 0
+        if self.seq_lens is not None:
+            self.seq_lens = []
         return batch
 
 
 class _PolicyCollectorGroup:
     def __init__(self, policy_map):
         self.policy_collectors = {
-            pid: _PolicyCollector()
-            for pid in policy_map.keys()
+            pid: _PolicyCollector(policy)
+            for pid, policy in policy_map.items()
         }
         # Total env-steps (1 env-step=up to N agents stepped).
         self.env_steps = 0
@@ -295,7 +391,7 @@ class _PolicyCollectorGroup:
         self.agent_steps = 0
 
 
-class _SimpleListCollector(_SampleCollector):
+class SimpleListCollector(SampleCollector):
     """Util to build SampleBatches for each policy in a multi-agent env.
 
     Input data is per-agent, while output data is per-policy. There is an M:N
@@ -311,29 +407,15 @@ class _SimpleListCollector(_SampleCollector):
                  multiple_episodes_in_batch: bool = True,
                  rollout_fragment_length: int = 200,
                  count_steps_by: str = "env_steps"):
-        """Initializes a _SimpleListCollector instance.
+        """Initializes a SimpleListCollector instance."""
 
-        Args:
-            policy_map (Dict[str, Policy]): Maps policy ids to policy
-                instances.
-            clip_rewards (Union[bool, float]): Whether to clip rewards before
-                postprocessing (at +/-1.0) or the actual value to +/- clip.
-            callbacks (DefaultCallbacks): RLlib callbacks.
-            multiple_episodes_in_batch (bool): Whether it's allowed to pack
-                multiple episodes into the same built batch.
-            rollout_fragment_length (int): The
+        super().__init__(policy_map, clip_rewards, callbacks,
+                         multiple_episodes_in_batch, rollout_fragment_length,
+                         count_steps_by)
 
-        """
-
-        self.policy_map = policy_map
-        self.clip_rewards = clip_rewards
-        self.callbacks = callbacks
-        self.multiple_episodes_in_batch = multiple_episodes_in_batch
-        self.rollout_fragment_length = rollout_fragment_length
-        self.count_steps_by = count_steps_by
         self.large_batch_threshold: int = max(
-            1000, rollout_fragment_length *
-            10) if rollout_fragment_length != float("inf") else 5000
+            1000, self.rollout_fragment_length *
+            10) if self.rollout_fragment_length != float("inf") else 5000
 
         # Whenever we observe a new episode+agent, add a new
         # _SingleTrajectoryCollector.
@@ -346,8 +428,9 @@ class _SimpleListCollector(_SampleCollector):
         self.policy_collector_groups = []
 
         # Agents to collect data from for the next forward pass (per policy).
-        self.forward_pass_agent_keys = {pid: [] for pid in policy_map.keys()}
-        self.forward_pass_size = {pid: 0 for pid in policy_map.keys()}
+        self.forward_pass_agent_keys = \
+            {pid: [] for pid in self.policy_map.keys()}
+        self.forward_pass_size = {pid: 0 for pid in self.policy_map.keys()}
 
         # Maps episode ID to the (non-built) env steps taken in this episode.
         self.episode_steps: Dict[EpisodeID, int] = collections.defaultdict(int)
@@ -357,7 +440,7 @@ class _SimpleListCollector(_SampleCollector):
         # Maps episode ID to MultiAgentEpisode.
         self.episodes: Dict[EpisodeID, MultiAgentEpisode] = {}
 
-    @override(_SampleCollector)
+    @override(SampleCollector)
     def episode_step(self, episode_id: EpisodeID) -> None:
         episode = self.episodes[episode_id]
         self.episode_steps[episode_id] += 1
@@ -386,7 +469,7 @@ class _SimpleListCollector(_SampleCollector):
                  "does at some point."
                  if not self.multiple_episodes_in_batch else ""))
 
-    @override(_SampleCollector)
+    @override(SampleCollector)
     def add_init_obs(self, episode: MultiAgentEpisode, agent_id: AgentID,
                      env_id: EnvID, policy_id: PolicyID, t: int,
                      init_obs: TensorType) -> None:
@@ -396,11 +479,14 @@ class _SimpleListCollector(_SampleCollector):
             self.agent_key_to_policy_id[agent_key] = policy_id
         else:
             assert self.agent_key_to_policy_id[agent_key] == policy_id
+        policy = self.policy_map[policy_id]
+        view_reqs = policy.model.view_requirements if \
+            getattr(policy, "model", None) else policy.view_requirements
 
         # Add initial obs to Trajectory.
         assert agent_key not in self.agent_collectors
         # TODO: determine exact shift-before based on the view-req shifts.
-        self.agent_collectors[agent_key] = _AgentCollector()
+        self.agent_collectors[agent_key] = _AgentCollector(view_reqs)
         self.agent_collectors[agent_key].add_init_obs(
             episode_id=episode.episode_id,
             agent_index=episode._agent_index(agent_id),
@@ -416,7 +502,7 @@ class _SimpleListCollector(_SampleCollector):
 
         self._add_to_next_inference_call(agent_key)
 
-    @override(_SampleCollector)
+    @override(SampleCollector)
     def add_action_reward_next_obs(self, episode_id: EpisodeID,
                                    agent_id: AgentID, env_id: EnvID,
                                    policy_id: PolicyID, agent_done: bool,
@@ -438,14 +524,14 @@ class _SimpleListCollector(_SampleCollector):
         if not agent_done:
             self._add_to_next_inference_call(agent_key)
 
-    @override(_SampleCollector)
+    @override(SampleCollector)
     def total_env_steps(self) -> int:
         # Add the non-built ongoing-episode env steps + the already built
         # env-steps.
         return sum(self.episode_steps.values()) + sum(
             pg.env_steps for pg in self.policy_collector_groups.values())
 
-    @override(_SampleCollector)
+    @override(SampleCollector)
     def total_agent_steps(self) -> int:
         # Add the non-built ongoing-episode agent steps (still in the agent
         # collectors) + the already built agent steps.
@@ -453,24 +539,36 @@ class _SimpleListCollector(_SampleCollector):
                sum(pg.agent_steps for pg in
                    self.policy_collector_groups.values())
 
-    @override(_SampleCollector)
+    @override(SampleCollector)
     def get_inference_input_dict(self, policy_id: PolicyID) -> \
             Dict[str, TensorType]:
         policy = self.policy_map[policy_id]
         keys = self.forward_pass_agent_keys[policy_id]
         buffers = {k: self.agent_collectors[k].buffers for k in keys}
-        view_reqs = policy.model.inference_view_requirements if \
+        view_reqs = policy.model.view_requirements if \
             getattr(policy, "model", None) else policy.view_requirements
 
         input_dict = {}
         for view_col, view_req in view_reqs.items():
+            # Not used for action computations.
+            if not view_req.used_for_compute_actions:
+                continue
+
             # Create the batch of data from the different buffers.
             data_col = view_req.data_col or view_col
-            time_indices = \
-                view_req.shift - (
-                    1 if data_col in [SampleBatch.OBS, "t", "env_id",
-                                      SampleBatch.AGENT_INDEX] else 0)
+            delta = -1 if data_col in [
+                SampleBatch.OBS, "t", "env_id", SampleBatch.EPS_ID,
+                SampleBatch.AGENT_INDEX
+            ] else 0
+            # Range of shifts, e.g. "-100:0". Note: This includes index 0!
+            if view_req.shift_from is not None:
+                time_indices = (view_req.shift_from + delta,
+                                view_req.shift_to + delta)
+            # Single shift (e.g. -1) or list of shifts, e.g. [-4, -1, 0].
+            else:
+                time_indices = view_req.shift + delta
             data_list = []
+            # Loop through agents and add-up their data (batch).
             for k in keys:
                 if data_col == SampleBatch.EPS_ID:
                     data_list.append(self.agent_collectors[k].episode_id)
@@ -482,14 +580,22 @@ class _SimpleListCollector(_SampleCollector):
                         self.agent_collectors[k]._build_buffers({
                             data_col: fill_value
                         })
-                    data_list.append(buffers[k][data_col][time_indices])
+                    if isinstance(time_indices, tuple):
+                        if time_indices[1] == -1:
+                            data_list.append(
+                                buffers[k][data_col][time_indices[0]:])
+                        else:
+                            data_list.append(buffers[k][data_col][time_indices[
+                                0]:time_indices[1] + 1])
+                    else:
+                        data_list.append(buffers[k][data_col][time_indices])
             input_dict[view_col] = np.array(data_list)
 
         self._reset_inference_calls(policy_id)
 
         return input_dict
 
-    @override(_SampleCollector)
+    @override(SampleCollector)
     def postprocess_episode(
             self,
             episode: MultiAgentEpisode,
@@ -622,7 +728,7 @@ class _SimpleListCollector(_SampleCollector):
 
         return ma_batch
 
-    @override(_SampleCollector)
+    @override(SampleCollector)
     def try_build_truncated_episode_multi_agent_batch(self) -> \
             List[Union[MultiAgentBatch, SampleBatch]]:
         batches = []

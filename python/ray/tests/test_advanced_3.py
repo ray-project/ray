@@ -1,4 +1,5 @@
 # coding: utf-8
+import collections
 import glob
 import logging
 import os
@@ -20,9 +21,8 @@ from ray import resource_spec
 import setproctitle
 import subprocess
 
-from ray.test_utils import (check_call_ray, RayTestTimeoutException,
-                            wait_for_condition, wait_for_num_actors,
-                            new_scheduler_enabled)
+from ray.test_utils import (check_call_ray, wait_for_condition,
+                            wait_for_num_actors, new_scheduler_enabled)
 
 logger = logging.getLogger(__name__)
 
@@ -37,11 +37,10 @@ def attempt_to_load_balance(remote_function,
     while attempts < num_attempts:
         locations = ray.get(
             [remote_function.remote(*args) for _ in range(total_tasks)])
-        names = set(locations)
-        counts = [locations.count(name) for name in names]
-        logger.info(f"Counts are {counts}.")
-        if (len(names) == num_nodes
-                and all(count >= minimum_count for count in counts)):
+        counts = collections.Counter(locations)
+        logger.info(f"Counts are {counts}")
+        if (len(counts) == num_nodes
+                and counts.most_common()[-1][1] >= minimum_count):
             break
         attempts += 1
     assert attempts < num_attempts
@@ -124,13 +123,74 @@ def test_load_balancing_with_dependencies(ray_start_cluster, fast):
     attempt_to_load_balance(f, [x], 100, num_nodes, 25)
 
 
-def wait_for_num_objects(num_objects, timeout=10):
-    start_time = time.time()
-    while time.time() - start_time < timeout:
-        if len(ray.objects()) >= num_objects:
-            return
+def test_load_balancing_under_constrained_memory(ray_start_cluster):
+    # This test ensures that tasks are being assigned to all raylets in a
+    # roughly equal manner even when the tasks have dependencies.
+    cluster = ray_start_cluster
+    num_nodes = 3
+    num_cpus = 4
+    object_size = 4e7
+    num_tasks = 100
+    for _ in range(num_nodes):
+        cluster.add_node(
+            num_cpus=num_cpus,
+            memory=(num_cpus - 2) * object_size,
+            object_store_memory=(num_cpus - 2) * object_size)
+    cluster.add_node(
+        num_cpus=0,
+        resources={"custom": 1},
+        memory=(num_tasks + 1) * object_size,
+        object_store_memory=(num_tasks + 1) * object_size)
+    ray.init(address=cluster.address)
+
+    @ray.remote(num_cpus=0, resources={"custom": 1})
+    def create_object():
+        return np.zeros(int(object_size), dtype=np.uint8)
+
+    @ray.remote
+    def f(i, x):
         time.sleep(0.1)
-    raise RayTestTimeoutException("Timed out while waiting for global state.")
+        print(i, ray.worker.global_worker.node.unique_id)
+        return ray.worker.global_worker.node.unique_id
+
+    # TODO(swang): Actually test load balancing.
+    deps = [create_object.remote() for _ in range(num_tasks)]
+    tasks = [f.remote(i, dep) for i, dep in enumerate(deps)]
+    for i, dep in enumerate(deps):
+        print(i, dep)
+    ray.get(tasks)
+
+
+def test_locality_aware_leasing(ray_start_cluster):
+    # This test ensures that a task will run where its task dependencies are
+    # located. We run an initial non_local() task that is pinned to a
+    # non-local node via a custom resource constraint, and then we run an
+    # unpinned task f() that depends on the output of non_local(), ensuring
+    # that f() runs on the same node as non_local().
+    cluster = ray_start_cluster
+
+    # Disable worker caching so worker leases are not reused, and disable
+    # inlining of return objects so return objects are always put into Plasma.
+    cluster.add_node(
+        num_cpus=1,
+        _system_config={
+            "worker_lease_timeout_milliseconds": 0,
+            "max_direct_call_object_size": 0,
+        })
+    # Use a custom resource for pinning tasks to a node.
+    non_local_node = cluster.add_node(num_cpus=1, resources={"pin": 1})
+    ray.init(address=cluster.address)
+
+    @ray.remote(resources={"pin": 1})
+    def non_local():
+        return ray.worker.global_worker.node.unique_id
+
+    @ray.remote
+    def f(x):
+        return ray.worker.global_worker.node.unique_id
+
+    # Test that task f() runs on the same node as non_local().
+    assert ray.get(f.remote(non_local.remote())) == non_local_node.unique_id
 
 
 def test_global_state_api(shutdown_only):
@@ -284,14 +344,14 @@ def test_workers(shutdown_only):
 
 
 def test_object_ref_properties():
-    id_bytes = b"00112233445566778899"
+    id_bytes = b"0011223344556677889900001111"
     object_ref = ray.ObjectRef(id_bytes)
     assert object_ref.binary() == id_bytes
     object_ref = ray.ObjectRef.nil()
     assert object_ref.is_nil()
-    with pytest.raises(ValueError, match=r".*needs to have length 20.*"):
+    with pytest.raises(ValueError, match=r".*needs to have length.*"):
         ray.ObjectRef(id_bytes + b"1234")
-    with pytest.raises(ValueError, match=r".*needs to have length 20.*"):
+    with pytest.raises(ValueError, match=r".*needs to have length.*"):
         ray.ObjectRef(b"0123456789")
     object_ref = ray.ObjectRef.from_random()
     assert not object_ref.is_nil()
@@ -322,10 +382,7 @@ def test_initialized_local_mode(shutdown_only_with_initialization_check):
 
 
 def test_wait_reconstruction(shutdown_only):
-    ray.init(
-        num_cpus=1,
-        object_store_memory=int(10**8),
-        _system_config={"object_pinning_enabled": 0})
+    ray.init(num_cpus=1, object_store_memory=int(10**8))
 
     @ray.remote
     def f():
@@ -592,7 +649,14 @@ def test_move_log_files_to_old(shutdown_only):
 
 
 def test_lease_request_leak(shutdown_only):
-    ray.init(num_cpus=1, _system_config={"object_timeout_milliseconds": 200})
+    ray.init(
+        num_cpus=1,
+        _system_config={
+            # This test uses ray.objects(), which only works with the GCS-based
+            # object directory
+            "ownership_based_object_directory_enabled": False,
+            "object_timeout_milliseconds": 200
+        })
     assert len(ray.objects()) == 0
 
     @ray.remote
@@ -610,10 +674,9 @@ def test_lease_request_leak(shutdown_only):
         del obj_ref
     ray.get(tasks)
 
-    def _no_objects():
-        return len(ray.objects()) == 0
-
-    wait_for_condition(_no_objects, timeout=10)
+    time.sleep(
+        1)  # Sleep for an amount longer than the reconstruction timeout.
+    assert len(ray.objects()) == 0, ray.objects()
 
 
 @pytest.mark.parametrize(
@@ -806,7 +869,7 @@ def test_override_environment_variables_task(ray_start_regular):
 
     assert (ray.get(
         get_env.options(override_environment_variables={
-            "a": "b"
+            "a": "b",
         }).remote("a")) == "b")
 
 
@@ -818,7 +881,7 @@ def test_override_environment_variables_actor(ray_start_regular):
 
     a = EnvGetter.options(override_environment_variables={
         "a": "b",
-        "c": "d"
+        "c": "d",
     }).remote()
     assert (ray.get(a.get.remote("a")) == "b")
     assert (ray.get(a.get.remote("c")) == "d")
@@ -835,7 +898,7 @@ def test_override_environment_variables_nested_task(ray_start_regular):
 
     assert (ray.get(
         get_env_wrapper.options(override_environment_variables={
-            "a": "b"
+            "a": "b",
         }).remote("a")) == "b")
 
 
@@ -843,7 +906,7 @@ def test_override_environment_variables_multitenancy(shutdown_only):
     ray.init(
         job_config=ray.job_config.JobConfig(worker_env={
             "foo1": "bar1",
-            "foo2": "bar2"
+            "foo2": "bar2",
         }))
 
     @ray.remote
@@ -854,11 +917,11 @@ def test_override_environment_variables_multitenancy(shutdown_only):
     assert ray.get(get_env.remote("foo2")) == "bar2"
     assert ray.get(
         get_env.options(override_environment_variables={
-            "foo1": "baz1"
+            "foo1": "baz1",
         }).remote("foo1")) == "baz1"
     assert ray.get(
         get_env.options(override_environment_variables={
-            "foo1": "baz1"
+            "foo1": "baz1",
         }).remote("foo2")) == "bar2"
 
 
@@ -867,7 +930,7 @@ def test_override_environment_variables_complex(shutdown_only):
         job_config=ray.job_config.JobConfig(worker_env={
             "a": "job_a",
             "b": "job_b",
-            "z": "job_z"
+            "z": "job_z",
         }))
 
     @ray.remote
@@ -893,13 +956,13 @@ def test_override_environment_variables_complex(shutdown_only):
         def nested_get(self, key):
             aa = NestedEnvGetter.options(override_environment_variables={
                 "c": "e",
-                "d": "dd"
+                "d": "dd",
             }).remote()
             return ray.get(aa.get.remote(key))
 
     a = EnvGetter.options(override_environment_variables={
         "a": "b",
-        "c": "d"
+        "c": "d",
     }).remote()
     assert (ray.get(a.get.remote("a")) == "b")
     assert (ray.get(a.get_task.remote("a")) == "b")
@@ -908,7 +971,7 @@ def test_override_environment_variables_complex(shutdown_only):
     assert (ray.get(a.nested_get.remote("d")) == "dd")
     assert (ray.get(
         get_env.options(override_environment_variables={
-            "a": "b"
+            "a": "b",
         }).remote("a")) == "b")
 
     assert (ray.get(a.get.remote("z")) == "job_z")
@@ -916,7 +979,7 @@ def test_override_environment_variables_complex(shutdown_only):
     assert (ray.get(a.nested_get.remote("z")) == "job_z")
     assert (ray.get(
         get_env.options(override_environment_variables={
-            "a": "b"
+            "a": "b",
         }).remote("z")) == "job_z")
 
 

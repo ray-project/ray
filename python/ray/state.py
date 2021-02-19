@@ -9,6 +9,7 @@ import ray
 from ray import gcs_utils
 from google.protobuf.json_format import MessageToDict
 from ray._private import services
+from ray._private.client_mode_hook import client_mode_hook
 from ray.utils import (decode, binary_to_hex, hex_to_binary)
 
 from ray._raylet import GlobalStateAccessor
@@ -387,6 +388,20 @@ class GlobalState:
 
         return dict(result)
 
+    def get_placement_group_by_name(self, placement_group_name):
+        self._check_connected()
+
+        placement_group_info = (
+            self.global_state_accessor.get_placement_group_by_name(
+                placement_group_name))
+        if placement_group_info is None:
+            return None
+        else:
+            placement_group_table_data = \
+                gcs_utils.PlacementGroupTableData.FromString(
+                    placement_group_info)
+            return self._gen_placement_group_info(placement_group_table_data)
+
     def placement_group_table(self, placement_group_id=None):
         self._check_connected()
 
@@ -626,7 +641,7 @@ class GlobalState:
                     object_ref, remote_node_id, _, _ = event["extra_data"]
 
                 elif event["event_type"] == "transfer_receive":
-                    object_ref, remote_node_id, _, _ = event["extra_data"]
+                    object_ref, remote_node_id, _ = event["extra_data"]
 
                 elif event["event_type"] == "receive_pull_request":
                     object_ref, remote_node_id = event["extra_data"]
@@ -851,6 +866,7 @@ def jobs():
     return state.job_table()
 
 
+@client_mode_hook
 def nodes():
     """Get a list of the nodes in the cluster (for debugging only).
 
@@ -964,6 +980,7 @@ def object_transfer_timeline(filename=None):
     return state.chrome_tracing_object_transfer_dump(filename=filename)
 
 
+@client_mode_hook
 def cluster_resources():
     """Get the current total cluster resources.
 
@@ -977,6 +994,7 @@ def cluster_resources():
     return state.cluster_resources()
 
 
+@client_mode_hook
 def available_resources():
     """Get the current available cluster resources.
 

@@ -25,6 +25,27 @@ void BundleSpecification::ComputeResources() {
   } else {
     unit_resource_.reset(new ResourceSet(unit_resource));
   }
+
+  // Generate placement group bundle labels.
+  ComputeBundleResourceLabels();
+}
+
+void BundleSpecification::ComputeBundleResourceLabels() {
+  RAY_CHECK(unit_resource_);
+
+  for (const auto &resource_pair : unit_resource_->GetResourceMap()) {
+    double resource_value = resource_pair.second;
+
+    /// With bundle index (e.g., CPU_group_i_zzz).
+    const std::string &resource_label =
+        FormatPlacementGroupResource(resource_pair.first, PlacementGroupId(), Index());
+    bundle_resource_labels_.insert(std::make_pair(resource_label, resource_value));
+
+    /// Without bundle index (e.g., CPU_group_zzz).
+    const std::string &wildcard_label =
+        FormatPlacementGroupResource(resource_pair.first, PlacementGroupId(), -1);
+    bundle_resource_labels_.insert(std::make_pair(wildcard_label, resource_value));
+  }
 }
 
 const ResourceSet &BundleSpecification::GetRequiredResources() const {

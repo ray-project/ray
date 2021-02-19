@@ -13,6 +13,7 @@ import ray.new_dashboard.utils as dashboard_utils
 import ray._private.services
 import ray.utils
 from ray.autoscaler._private.util import (DEBUG_AUTOSCALING_STATUS,
+                                          DEBUG_AUTOSCALING_STATUS_LEGACY,
                                           DEBUG_AUTOSCALING_ERROR)
 from ray.core.generated import reporter_pb2
 from ray.core.generated import reporter_pb2_grpc
@@ -37,7 +38,9 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         if change.new:
             node_id, ports = change.new
             ip = DataSource.node_id_to_ip[node_id]
-            channel = aiogrpc.insecure_channel(f"{ip}:{ports[1]}")
+            options = (("grpc.enable_http_proxy", 0), )
+            channel = aiogrpc.insecure_channel(
+                f"{ip}:{ports[1]}", options=options)
             stub = reporter_pb2_grpc.ReporterServiceStub(channel)
             self._stubs[ip] = stub
 
@@ -75,10 +78,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
 
             payload = {
                 "min_workers": cfg["min_workers"],
-                "max_workers": cfg["max_workers"],
-                "initial_workers": cfg["initial_workers"],
-                "autoscaling_mode": cfg["autoscaling_mode"],
-                "idle_timeout_minutes": cfg["idle_timeout_minutes"],
+                "max_workers": cfg["max_workers"]
             }
 
             try:
@@ -113,13 +113,20 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         """
 
         aioredis_client = self._dashboard_head.aioredis_client
-        status = await aioredis_client.hget(DEBUG_AUTOSCALING_STATUS, "value")
+        legacy_status = await aioredis_client.hget(
+            DEBUG_AUTOSCALING_STATUS_LEGACY, "value")
+        formatted_status_string = await aioredis_client.hget(
+            DEBUG_AUTOSCALING_STATUS, "value")
+        formatted_status = json.loads(formatted_status_string.decode()
+                                      ) if formatted_status_string else {}
         error = await aioredis_client.hget(DEBUG_AUTOSCALING_ERROR, "value")
         return dashboard_utils.rest_response(
             success=True,
             message="Got cluster status.",
-            autoscaling_status=status.decode() if status else None,
+            autoscaling_status=legacy_status.decode()
+            if legacy_status else None,
             autoscaling_error=error.decode() if error else None,
+            cluster_status=formatted_status if formatted_status else None,
         )
 
     async def run(self, server):

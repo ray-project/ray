@@ -35,13 +35,13 @@ Number of trials: 5 (1 PENDING, 3 RUNNING, 1 TERMINATED)
 
 EXPECTED_RESULT_3 = """Result logdir: /foo
 Number of trials: 5 (1 PENDING, 3 RUNNING, 1 TERMINATED)
-+--------------+------------+-------+-----+------------+------------+
-|   Trial name | status     | loc   |   A |   Metric 1 |   Metric 2 |
-|--------------+------------+-------+-----+------------+------------|
-|        00002 | RUNNING    | here  |   2 |        1   |       0.5  |
-|        00001 | PENDING    | here  |   1 |        0.5 |       0.25 |
-|        00000 | TERMINATED | here  |   0 |        0   |       0    |
-+--------------+------------+-------+-----+------------+------------+
++--------------+------------+-------+-----+-----------+------------+
+|   Trial name | status     | loc   |   A |   NestSub |   Metric 2 |
+|--------------+------------+-------+-----+-----------+------------|
+|        00002 | RUNNING    | here  |   2 |       1   |       0.5  |
+|        00001 | PENDING    | here  |   1 |       0.5 |       0.25 |
+|        00000 | TERMINATED | here  |   0 |       0   |       0    |
++--------------+------------+-------+-----+-----------+------------+
 ... 2 more trials not shown (2 RUNNING)"""
 
 END_TO_END_COMMAND = """
@@ -334,7 +334,10 @@ class ProgressReporterTest(unittest.TestCase):
                     }
                 },
                 "metric_1": i / 2,
-                "metric_2": i / 4
+                "metric_2": i / 4,
+                "nested": {
+                    "sub": i / 2
+                }
             }
             t.__str__ = lambda self: self.trial_id
             trials.append(t)
@@ -353,10 +356,10 @@ class ProgressReporterTest(unittest.TestCase):
         print(prog2)
         assert prog2 == EXPECTED_RESULT_2
 
-        # Both metrics, one parameter, all with custom representation
+        # Two metrics, one parameter, all with custom representation
         prog3 = trial_progress_str(
             trials, {
-                "metric_1": "Metric 1",
+                "nested/sub": "NestSub",
                 "metric_2": "Metric 2"
             }, {"a": "A"},
             fmt="psql",

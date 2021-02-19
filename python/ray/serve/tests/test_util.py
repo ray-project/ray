@@ -6,9 +6,10 @@ from copy import deepcopy
 import numpy as np
 import pytest
 
+import ray
 from ray.serve.utils import (ServeEncoder, chain_future, unpack_future,
                              try_schedule_resources_on_nodes,
-                             get_conda_env_dir)
+                             get_conda_env_dir, import_attr)
 
 
 def test_bytes_encoder():
@@ -123,6 +124,25 @@ def test_get_conda_env_dir(tmp_path):
     env_dir = get_conda_env_dir("tf2")
     assert (env_dir == str(tmp_path / "tf2"))
     os.environ["CONDA_PREFIX"] = ""
+
+
+def test_import_attr():
+    assert import_attr("ray.serve.Client") == ray.serve.api.Client
+    assert import_attr("ray.serve.api.Client") == ray.serve.api.Client
+
+    policy_cls = import_attr("ray.serve.controller.TrafficPolicy")
+    assert policy_cls == ray.serve.controller.TrafficPolicy
+
+    policy = policy_cls({"endpoint1": 0.5, "endpoint2": 0.5})
+    with pytest.raises(ValueError):
+        policy.set_traffic_dict({"endpoint1": 0.5, "endpoint2": 0.6})
+    policy.set_traffic_dict({"endpoint1": 0.4, "endpoint2": 0.6})
+
+    print(repr(policy))
+
+    # Very meta...
+    import_attr_2 = import_attr("ray.serve.utils.import_attr")
+    assert import_attr_2 == import_attr
 
 
 if __name__ == "__main__":

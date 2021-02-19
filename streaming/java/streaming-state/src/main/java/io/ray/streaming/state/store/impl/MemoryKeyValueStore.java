@@ -23,9 +23,7 @@ import io.ray.streaming.state.store.KeyValueStore;
 import java.io.IOException;
 import java.util.Map;
 
-/**
- * Memory Key Value Store.
- */
+/** Memory Key Value Store. */
 public class MemoryKeyValueStore<K, V> implements KeyValueStore<K, V> {
 
   private Map<K, V> memoryStore;
@@ -50,14 +48,10 @@ public class MemoryKeyValueStore<K, V> implements KeyValueStore<K, V> {
   }
 
   @Override
-  public void flush() throws IOException {
-
-  }
+  public void flush() throws IOException {}
 
   @Override
-  public void clearCache() {
-
-  }
+  public void clearCache() {}
 
   @Override
   public void close() throws IOException {

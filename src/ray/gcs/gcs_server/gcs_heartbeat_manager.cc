@@ -28,10 +28,19 @@ GcsHeartbeatManager::GcsHeartbeatManager(
       num_heartbeats_timeout_(RayConfig::instance().num_heartbeats_timeout()),
       detect_timer_(io_service) {
   io_service_thread_.reset(new std::thread([this] {
+    SetThreadName("heartbeat");
     /// The asio work to keep io_service_ alive.
     boost::asio::io_service::work io_service_work_(io_service_);
     io_service_.run();
   }));
+}
+
+void GcsHeartbeatManager::Initialize(const GcsInitData &gcs_init_data) {
+  for (const auto &item : gcs_init_data.Nodes()) {
+    if (item.second.state() == rpc::GcsNodeInfo::ALIVE) {
+      heartbeats_.emplace(item.first, num_heartbeats_timeout_);
+    }
+  }
 }
 
 void GcsHeartbeatManager::Start() {
@@ -61,9 +70,9 @@ void GcsHeartbeatManager::HandleReportHeartbeat(
   NodeID node_id = NodeID::FromBinary(request.heartbeat().node_id());
   auto iter = heartbeats_.find(node_id);
   if (iter == heartbeats_.end()) {
-    // Ignore this heartbeat as the node is not registered.
-    // TODO(Shanly): Maybe we should reply the raylet with an error. So the raylet can
-    // crash itself as soon as possible.
+    // Reply the raylet with an error so the raylet can crash itself.
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply,
+                       Status::Disconnected("Node has been dead"));
     return;
   }
 
@@ -94,7 +103,7 @@ void GcsHeartbeatManager::DetectDeadNodes() {
 
 void GcsHeartbeatManager::ScheduleTick() {
   auto heartbeat_period = boost::posix_time::milliseconds(
-      RayConfig::instance().raylet_heartbeat_timeout_milliseconds());
+      RayConfig::instance().raylet_heartbeat_period_milliseconds());
   detect_timer_.expires_from_now(heartbeat_period);
   detect_timer_.async_wait([this](const boost::system::error_code &error) {
     if (error == boost::asio::error::operation_aborted) {
