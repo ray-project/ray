@@ -971,9 +971,9 @@ The maximum number of workers to have in the cluster for this node type regardle
 * **Required:** No
 * **Importance:** High
 * **Type:** Integer
-* **Default:** :ref:`max_workers <cluster-configuration-max-workers>`.
+* **Default:** cluster-wide :ref:`max_workers <cluster-configuration-max-workers>`.
 * **Minimum:** ``0``
-* **Maximum:** Unbounded
+* **Maximum:** cluster-wide :ref:`max_workers <cluster-configuration-max-workers>`.
 
 .. _cluster-configuration-node-type-worker-setup-commands:
 
