@@ -149,7 +149,7 @@ def fill_node_type_max_workers(config):
     """Default per-node max workers to global max_workers."""
     assert "max_workers" in config, "Global max workers should be set."
     for node_type in config["available_node_types"].values():
-        node_type["max_workers"] = config["max_workers"]
+        node_type.set_default("max_workers", config["max_workers"])
 
 
 def with_head_node_ip(cmds, head_ip=None):
