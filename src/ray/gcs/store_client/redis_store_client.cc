@@ -386,6 +386,7 @@ Status RedisStoreClient::RedisScanner::ScanKeys(
 
 void RedisStoreClient::RedisScanner::Scan(std::string match_pattern,
                                           const StatusCallback &callback) {
+  absl::MutexLock lock(&mutex_);
   if (shard_to_cursor_.empty()) {
     callback(Status::OK());
     return;
