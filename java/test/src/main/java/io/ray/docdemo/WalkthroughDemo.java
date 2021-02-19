@@ -62,8 +62,11 @@ public class WalkthroughDemo {
     }
 
     // Invoke overloaded functions.
-    Assert.assertEquals((int) Ray.task((RayFunc0<Integer>) MyRayApp::overloadFunction).remote().get(), 1);
-    Assert.assertEquals((int) Ray.task((RayFunc1<Integer, Integer>) MyRayApp::overloadFunction, 2).remote().get(), 2);
+    Assert.assertEquals(
+        (int) Ray.task((RayFunc0<Integer>) MyRayApp::overloadFunction).remote().get(), 1);
+    Assert.assertEquals(
+        (int) Ray.task((RayFunc1<Integer, Integer>) MyRayApp::overloadFunction, 2).remote().get(),
+        2);
 
     ObjectRef<Integer> objRef1 = Ray.task(MyRayApp::myFunction).remote();
     Assert.assertTrue(objRef1.get() == 1);

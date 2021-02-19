@@ -92,8 +92,10 @@ public class UsingActorsDemo {
       Assert.assertEquals((int) a.task(Counter::increment).remote().get(), 1);
       // Call an overloaded actor method, cast method reference first.
       a.task((RayFunc1<CounterOverloaded, Integer>) CounterOverloaded::increment).remote();
-      a.task((RayFunc2<CounterOverloaded, Integer, Integer>) CounterOverloaded::increment, 10).remote();
-      a.task((RayFunc3<CounterOverloaded, Integer, Integer, Integer>) CounterOverloaded::increment, 10, 10).remote();
+      a.task((RayFunc2<CounterOverloaded, Integer, Integer>) CounterOverloaded::increment, 10)
+          .remote();
+      RayFunc3<CounterOverloaded, Integer, Integer, Integer> f = CounterOverloaded::increment;
+      a.task(f, 10, 10).remote();
       Assert.assertEquals((int) a.task(Counter::increment).remote().get(), 33);
     }
 
