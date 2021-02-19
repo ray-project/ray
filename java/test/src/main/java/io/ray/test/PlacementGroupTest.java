@@ -90,8 +90,8 @@ public class PlacementGroupTest extends BaseTest {
   @Test(groups = {"cluster"})
   public void testRemovePlacementGroup() {
     PlacementGroup firstPlacementGroup =
-    PlacementGroupTestUtils.createNameSpecifiedSimpleGroup(
-        "CPU", 1, PlacementStrategy.PACK, 1.0, "first_placement_group", false);
+        PlacementGroupTestUtils.createNameSpecifiedSimpleGroup(
+            "CPU", 1, PlacementStrategy.PACK, 1.0, "first_placement_group", false);
 
     PlacementGroup secondPlacementGroup =
         PlacementGroupTestUtils.createNameSpecifiedSimpleGroup(
@@ -173,7 +173,9 @@ public class PlacementGroupTest extends BaseTest {
     Assert.assertEquals(placementGroup.getBundles().size(), 1);
   }
 
-  @Test(expectedExceptions = {IllegalArgumentException.class}, groups = {"cluster"})
+  @Test(
+      expectedExceptions = {IllegalArgumentException.class},
+      groups = {"cluster"})
   public void testCreatePlacementGroupWithSameName() {
     String pgName = "named_placement_group";
     PlacementGroup firstPlacementGroup =
@@ -184,7 +186,9 @@ public class PlacementGroupTest extends BaseTest {
         "CPU", 1, PlacementStrategy.PACK, 1.0, pgName, false);
   }
 
-  @Test(expectedExceptions = {IllegalArgumentException.class}, groups = {"cluster"})
+  @Test(
+      expectedExceptions = {IllegalArgumentException.class},
+      groups = {"cluster"})
   public void testCreateGlobalPlacementGroupWithSameName() {
     String pgGlobalName = "global_placement_group";
     PlacementGroup firstPlacementGroup =
