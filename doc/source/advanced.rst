@@ -208,7 +208,7 @@ See `ray.util.accelerators` to see available accelerator types. Current automati
 
 Overloaded Functions
 --------------------
-Ray java api support call overloaded java functions remotely. For example, consider the following.
+Ray Java API supports calling overloaded java functions remotely. However, due to the limitation of Java compiler type inference, one must explicitly cast the method reference to the correct function type. For example, consider the following.
 
 Overloaded normal task call:
 
@@ -264,8 +264,6 @@ Overloaded actor task call:
     a.task((RayFunc2<CounterOverloaded, Integer, Integer>) CounterOverloaded::increment, 10).remote();
     a.task((RayFunc3<CounterOverloaded, Integer, Integer, Integer>) CounterOverloaded::increment, 10, 10).remote();
     Assert.assertEquals((int) a.task(Counter::increment).remote().get(), 33);
-
-When a method is overloaded, we need to cast the method reference to `RayFunc` so that the java compiler can get enough type information to figure out which method the method reference is referencing.
 
 
 Nested Remote Functions
