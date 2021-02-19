@@ -1586,6 +1586,12 @@ cdef class CoreWorker:
             resource_name.encode("ascii"), capacity,
             CNodeID.FromBinary(client_id.binary()))
 
+    def get_job_config(self):
+        job_config = ray.gcs_utils.JobConfig()
+        job_config.ParseFromString(
+            CCoreWorkerProcess.GetCoreWorker().GetSerializedJobConfig())
+        return job_config;
+
 cdef void async_set_result(shared_ptr[CRayObject] obj,
                            CObjectID object_ref,
                            void *future) with gil:

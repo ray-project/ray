@@ -929,6 +929,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   void GetAsync(const ObjectID &object_id, SetResultCallback success_callback,
                 void *python_future);
 
+  // Get serialized job configuration.
+  std::string GetSerializedJobConfig() const;
+
  private:
   void SetCurrentTaskId(const TaskID &task_id);
 

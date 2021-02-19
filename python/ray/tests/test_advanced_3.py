@@ -951,6 +951,35 @@ def test_override_environment_variables_complex(shutdown_only):
         }).remote("z")) == "job_z")
 
 
+def test_sync_job_config(shutdown_only):
+    num_java_workers_per_process = 8
+    worker_env={
+        "key": "value",
+    }
+
+    ray.init(job_config=ray.job_config.JobConfig(
+        num_java_workers_per_process=num_java_workers_per_process,
+        worker_env=worker_env))
+
+    # Check that the job config is synchronized at the driver side.
+    job_config = ray.worker.global_worker.core_worker.get_job_config()
+    assert (job_config.num_java_workers_per_process ==
+            num_java_workers_per_process)
+    assert (job_config.worker_env == worker_env)
+
+    @ray.remote
+    def get_job_config():
+        job_config = ray.worker.global_worker.core_worker.get_job_config()
+        return job_config.SerializeToString()
+
+    # Check that the job config is synchronized at the worker side.
+    job_config = ray.gcs_utils.JobConfig()
+    job_config.ParseFromString(ray.get(get_job_config.remote()))
+    assert (job_config.num_java_workers_per_process ==
+        num_java_workers_per_process)
+    assert (job_config.worker_env == worker_env)
+
+
 if __name__ == "__main__":
     import pytest
     sys.exit(pytest.main(["-v", __file__]))

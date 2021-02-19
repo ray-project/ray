@@ -208,6 +208,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                                const CNodeID &client_Id)
         CRayStatus SpillObjects(const c_vector[CObjectID] &object_ids)
 
+        c_string GetSerializedJobConfig()
+
     cdef cppclass CCoreWorkerOptions "ray::CoreWorkerOptions":
         CWorkerType worker_type
         CLanguage language

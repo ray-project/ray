@@ -2553,4 +2553,8 @@ void CoreWorker::SetActorTitle(const std::string &title) {
   actor_title_ = title;
 }
 
+std::string CoreWorker::GetSerializedJobConfig() const {
+  return job_config_->SerializeAsString();
+}
+
 }  // namespace ray
