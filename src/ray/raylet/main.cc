@@ -160,8 +160,8 @@ int main(int argc, char *argv[]) {
         node_manager_config.raylet_config = raylet_config;
         node_manager_config.resource_config =
             ray::ResourceSet(std::move(static_resource_conf));
-        RAY_LOG(DEBUG) << "Starting raylet with static resource configuration: "
-                       << node_manager_config.resource_config.ToString();
+        RAY_LOG(INFO) << "Starting raylet with static resource configuration: "
+                      << node_manager_config.resource_config.ToString();
         node_manager_config.node_manager_address = node_ip_address;
         node_manager_config.node_manager_port = node_manager_port;
         node_manager_config.num_workers_soft_limit = num_cpus;
@@ -235,11 +235,11 @@ int main(int argc, char *argv[]) {
         object_manager_config.object_chunk_size =
             RayConfig::instance().object_manager_default_chunk_size();
 
-        RAY_LOG(DEBUG) << "Starting object manager with configuration: \n"
-                       << "rpc_service_threads_number = "
-                       << object_manager_config.rpc_service_threads_number
-                       << ", object_chunk_size = "
-                       << object_manager_config.object_chunk_size;
+        RAY_LOG(INFO) << "Starting object manager with configuration: \n"
+                      << "rpc_service_threads_number = "
+                      << object_manager_config.rpc_service_threads_number
+                      << ", object_chunk_size = "
+                      << object_manager_config.object_chunk_size;
         // Initialize stats.
         const ray::stats::TagsType global_tags = {
             {ray::stats::ComponentKey, "raylet"},

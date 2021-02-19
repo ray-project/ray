@@ -356,7 +356,7 @@ void NodeManager::KillWorker(std::shared_ptr<WorkerInterface> worker) {
       RayConfig::instance().kill_worker_timeout_milliseconds());
   retry_timer->expires_from_now(retry_duration);
   retry_timer->async_wait([retry_timer, worker](const boost::system::error_code &error) {
-    RAY_LOG(DEBUG) << "Send SIGKILL to worker, pid=" << worker->GetProcess().GetId();
+    RAY_LOG(INFO) << "Send SIGKILL to worker, pid=" << worker->GetProcess().GetId();
     // Force kill worker
     worker->GetProcess().Kill();
   });
@@ -373,7 +373,7 @@ void NodeManager::DestroyWorker(std::shared_ptr<WorkerInterface> worker,
 }
 
 void NodeManager::HandleJobStarted(const JobID &job_id, const JobTableData &job_data) {
-  RAY_LOG(DEBUG) << "HandleJobStarted " << job_id;
+  RAY_LOG(INFO) << "HandleJobStarted " << job_id;
   RAY_CHECK(!job_data.is_dead());
 
   worker_pool_.HandleJobStarted(job_id, job_data.config());
@@ -384,7 +384,7 @@ void NodeManager::HandleJobStarted(const JobID &job_id, const JobTableData &job_
 }
 
 void NodeManager::HandleJobFinished(const JobID &job_id, const JobTableData &job_data) {
-  RAY_LOG(DEBUG) << "HandleJobFinished " << job_id;
+  RAY_LOG(INFO) << "HandleJobFinished " << job_id;
   RAY_CHECK(job_data.is_dead());
   worker_pool_.HandleJobFinished(job_id);
 
@@ -551,7 +551,7 @@ void NodeManager::HandleRestoreSpilledObject(
 void NodeManager::HandleReleaseUnusedBundles(
     const rpc::ReleaseUnusedBundlesRequest &request,
     rpc::ReleaseUnusedBundlesReply *reply, rpc::SendReplyCallback send_reply_callback) {
-  RAY_LOG(DEBUG) << "Releasing unused bundles.";
+  RAY_LOG(INFO) << "Releasing unused bundles.";
   std::unordered_set<BundleID, pair_hash> in_use_bundles;
   for (int index = 0; index < request.bundles_in_use_size(); ++index) {
     const auto &bundle_id = request.bundles_in_use(index).bundle_id();
@@ -575,13 +575,12 @@ void NodeManager::HandleReleaseUnusedBundles(
   }
 
   for (const auto &worker : workers_associated_with_unused_bundles) {
-    RAY_LOG(DEBUG)
-        << "Destroying worker since its bundle was unused. Placement group id: "
-        << worker->GetBundleId().first
-        << ", bundle index: " << worker->GetBundleId().second
-        << ", task id: " << worker->GetAssignedTaskId()
-        << ", actor id: " << worker->GetActorId()
-        << ", worker id: " << worker->WorkerId();
+    RAY_LOG(INFO) << "Destroying worker since its bundle was unused. Placement group id: "
+                  << worker->GetBundleId().first
+                  << ", bundle index: " << worker->GetBundleId().second
+                  << ", task id: " << worker->GetAssignedTaskId()
+                  << ", actor id: " << worker->GetActorId()
+                  << ", worker id: " << worker->WorkerId();
     DestroyWorker(worker, rpc::WorkerExitType::UNUSED_RESOURCE_RELEASED);
   }
 
@@ -683,10 +682,10 @@ void NodeManager::GetObjectManagerProfileInfo() {
 void NodeManager::NodeAdded(const GcsNodeInfo &node_info) {
   const NodeID node_id = NodeID::FromBinary(node_info.node_id());
 
-  RAY_LOG(DEBUG) << "[NodeAdded] Received callback from node id " << node_id;
+  RAY_LOG(INFO) << "[NodeAdded] Received callback from node id " << node_id;
   if (1 == cluster_resource_map_.count(node_id)) {
-    RAY_LOG(DEBUG) << "Received notification of a new node that already exists: "
-                   << node_id;
+    RAY_LOG(WARNING) << "Received notification of a new node that already exists: "
+                     << node_id;
     return;
   }
 
@@ -721,7 +720,7 @@ void NodeManager::NodeAdded(const GcsNodeInfo &node_info) {
 void NodeManager::NodeRemoved(const NodeID &node_id) {
   // TODO(swang): If we receive a notification for our own death, clean up and
   // exit immediately.
-  RAY_LOG(DEBUG) << "[NodeRemoved] Received callback from node id " << node_id;
+  RAY_LOG(INFO) << "[NodeRemoved] Received callback from node id " << node_id;
 
   RAY_CHECK(node_id != self_node_id_)
       << "Exiting because this node manager has mistakenly been marked dead by the "
@@ -736,8 +735,8 @@ void NodeManager::NodeRemoved(const NodeID &node_id) {
 
   // Remove the node from the resource map.
   if (!cluster_resource_scheduler_->RemoveNode(node_id.Binary())) {
-    RAY_LOG(DEBUG) << "Received NodeRemoved callback for an unknown node: " << node_id
-                   << ".";
+    RAY_LOG(WARNING) << "Received NodeRemoved callback for an unknown node: " << node_id
+                     << ".";
     return;
   }
 
@@ -804,9 +803,9 @@ void NodeManager::HandleUnexpectedWorkerFailure(const rpc::WorkerDeltaData &data
 
 void NodeManager::ResourceCreateUpdated(const NodeID &node_id,
                                         const ResourceSet &createUpdatedResources) {
-  RAY_LOG(DEBUG) << "[ResourceCreateUpdated] received callback from node id " << node_id
-                 << " with created or updated resources: "
-                 << createUpdatedResources.ToString() << ". Updating resource map.";
+  RAY_LOG(INFO) << "[ResourceCreateUpdated] received callback from node id " << node_id
+                << " with created or updated resources: "
+                << createUpdatedResources.ToString() << ". Updating resource map.";
 
   // Update local_available_resources_ and SchedulingResources
   for (const auto &resource_pair : createUpdatedResources.GetResourceMap()) {
@@ -830,9 +829,9 @@ void NodeManager::ResourceDeleted(const NodeID &node_id,
     for (auto &resource_name : resource_names) {
       oss << resource_name << ", ";
     }
-    RAY_LOG(DEBUG) << "[ResourceDeleted] received callback from node id " << node_id
-                   << " with deleted resources: " << oss.str()
-                   << ". Updating resource map.";
+    RAY_LOG(INFO) << "[ResourceDeleted] received callback from node id " << node_id
+                  << " with deleted resources: " << oss.str()
+                  << ". Updating resource map.";
   }
 
   // Update local_available_resources_ and SchedulingResources

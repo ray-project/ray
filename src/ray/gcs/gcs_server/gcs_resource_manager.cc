@@ -49,7 +49,7 @@ void GcsResourceManager::HandleUpdateResources(
     const rpc::UpdateResourcesRequest &request, rpc::UpdateResourcesReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   NodeID node_id = NodeID::FromBinary(request.node_id());
-  RAY_LOG(DEBUG) << "Updating resources, node id = " << node_id;
+  RAY_LOG(INFO) << "Updating resources, node id = " << node_id;
   auto changed_resources = std::make_shared<std::unordered_map<std::string, double>>();
   for (const auto &entry : request.resources()) {
     changed_resources->emplace(entry.first, entry.second.resource_capacity());
@@ -84,7 +84,7 @@ void GcsResourceManager::HandleUpdateResources(
                                          nullptr));
 
       GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
-      RAY_LOG(DEBUG) << "Finished updating resources, node id = " << node_id;
+      RAY_LOG(INFO) << "Finished updating resources, node id = " << node_id;
     };
 
     RAY_CHECK_OK(
@@ -101,7 +101,7 @@ void GcsResourceManager::HandleDeleteResources(
     const rpc::DeleteResourcesRequest &request, rpc::DeleteResourcesReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   NodeID node_id = NodeID::FromBinary(request.node_id());
-  RAY_LOG(DEBUG) << "Deleting node resources, node id = " << node_id;
+  RAY_LOG(INFO) << "Deleting node resources, node id = " << node_id;
   auto resource_names = VectorFromProtobuf(request.resource_name_list());
   auto iter = cluster_scheduling_resources_.find(node_id);
   if (iter != cluster_scheduling_resources_.end()) {
@@ -138,7 +138,7 @@ void GcsResourceManager::HandleDeleteResources(
         gcs_table_storage_->NodeResourceTable().Put(node_id, resource_map, on_done));
   } else {
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
-    RAY_LOG(DEBUG) << "Finished deleting node resources, node id = " << node_id;
+    RAY_LOG(INFO) << "Finished deleting node resources, node id = " << node_id;
   }
   ++counts_[CountType::DELETE_RESOURCES_REQUEST];
 }

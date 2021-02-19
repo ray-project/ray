@@ -313,8 +313,8 @@ Status GcsActorManager::CreateActor(const ray::rpc::CreateActorRequest &request,
 
   auto iter = registered_actors_.find(actor_id);
   if (iter == registered_actors_.end()) {
-    RAY_LOG(DEBUG) << "Actor " << actor_id
-                   << " may be already destroyed, job id = " << actor_id.JobId();
+    RAY_LOG(WARNING) << "Actor " << actor_id
+                     << " may be already destroyed, job id = " << actor_id.JobId();
     return Status::Invalid("Actor may be already destroyed.");
   }
 
@@ -834,8 +834,8 @@ void GcsActorManager::Initialize(const GcsInitData &gcs_init_data) {
   // Notify raylets to release unused workers.
   gcs_actor_scheduler_->ReleaseUnusedWorkers(node_to_workers);
 
-  RAY_LOG(DEBUG) << "The number of registered actors is " << registered_actors_.size()
-                 << ", and the number of created actors is " << created_actors_.size();
+  RAY_LOG(INFO) << "The number of registered actors is " << registered_actors_.size()
+                << ", and the number of created actors is " << created_actors_.size();
   for (auto &item : registered_actors_) {
     auto &actor = item.second;
     if (actor->GetState() == ray::rpc::ActorTableData::PENDING_CREATION ||

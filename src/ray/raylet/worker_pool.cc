@@ -135,7 +135,7 @@ Process WorkerPool::StartWorkerProcess(
     RAY_CHECK(!job_id.IsNil());
     auto it = all_jobs_.find(job_id);
     if (it == all_jobs_.end()) {
-      RAY_LOG(DEBUG) << "Job config of job " << job_id << " are not local yet.";
+      RAY_LOG(WARNING) << "Job config of job " << job_id << " are not local yet.";
       // Will reschedule ready tasks in `NodeManager::HandleJobStarted`.
       return Process();
     }
@@ -153,14 +153,14 @@ Process WorkerPool::StartWorkerProcess(
   // Here we consider both task workers and I/O workers.
   if (starting_workers >= maximum_startup_concurrency_) {
     // Workers have been started, but not registered. Force start disabled -- returning.
-    RAY_LOG(DEBUG) << "Worker not started, " << starting_workers
-                   << " workers of language type " << static_cast<int>(language)
-                   << " pending registration";
+    RAY_LOG(WARNING) << "Worker not started, " << starting_workers
+                     << " workers of language type " << static_cast<int>(language)
+                     << " pending registration";
     return Process();
   }
   // Either there are no workers pending registration or the worker start is being forced.
-  RAY_LOG(DEBUG) << "Starting new worker process, current pool has " << state.idle.size()
-                 << " workers";
+  RAY_LOG(INFO) << "Starting new worker process, current pool has " << state.idle.size()
+                << " workers";
 
   int workers_to_start = 1;
   if (dynamic_options.empty()) {
@@ -283,8 +283,8 @@ Process WorkerPool::StartWorkerProcess(
   auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
   stats::ProcessStartupTimeMs.Record(duration.count());
 
-  RAY_LOG(DEBUG) << "Started worker process of " << workers_to_start
-                 << " worker(s) with pid " << proc.GetId();
+  RAY_LOG(INFO) << "Started worker process of " << workers_to_start
+                << " worker(s) with pid " << proc.GetId();
   MonitorStartingWorkerProcess(proc, language, worker_type);
   state.starting_worker_processes.emplace(proc, workers_to_start);
   if (IsIOWorkerType(worker_type)) {
@@ -421,8 +421,8 @@ Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker
     send_reply_callback(status, /*port=*/0);
     return status;
   }
-  RAY_LOG(DEBUG) << "Registering worker with pid " << pid << ", port: " << port
-                 << ", worker_type: " << rpc::WorkerType_Name(worker->GetWorkerType());
+  RAY_LOG(INFO) << "Registering worker with pid " << pid << ", port: " << port
+                << ", worker_type: " << rpc::WorkerType_Name(worker->GetWorkerType());
   worker->SetAssignedPort(port);
 
   state.registered_workers.insert(worker);
@@ -849,8 +849,8 @@ void WorkerPool::PrestartWorkers(const TaskSpecification &task_spec,
       std::min<int64_t>(num_workers_soft_limit_ - num_workers_total, backlog_size);
   if (num_usable_workers < desired_usable_workers) {
     int64_t num_needed = desired_usable_workers - num_usable_workers;
-    RAY_LOG(DEBUG) << "Prestarting " << num_needed << " workers given task backlog size "
-                   << backlog_size << " and soft limit " << num_workers_soft_limit_;
+    RAY_LOG(INFO) << "Prestarting " << num_needed << " workers given task backlog size "
+                  << backlog_size << " and soft limit " << num_workers_soft_limit_;
     for (int i = 0; i < num_needed; i++) {
       StartWorkerProcess(task_spec.GetLanguage(), rpc::WorkerType::WORKER,
                          task_spec.JobId());
