@@ -185,16 +185,6 @@ def ray_deps_setup():
     )
 
     auto_http_archive(
-        name = "arrow",
-        build_file = True,
-        url = "https://github.com/apache/arrow/archive/af45b9212156980f55c399e2e88b4e19b4bb8ec1.tar.gz",
-        sha256 = "2f0aaa50053792aa274b402f2530e63c1542085021cfef83beee9281412c12f6",
-        patches = [
-            "//thirdparty/patches:arrow-windows-export.patch",
-        ],
-    )
-
-    auto_http_archive(
         name = "cython",
         build_file = True,
         url = "https://github.com/cython/cython/archive/26cb654dcf4ed1b1858daf16b39fd13406b1ac64.tar.gz",

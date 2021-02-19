@@ -166,6 +166,8 @@ class _AgentCollector:
             #  resulting data=[[-3, -2, -1], [7, 8, 9]]
             #  Range of 3 consecutive items repeats every 10 timesteps.
             if view_req.shift_from is not None:
+                # Batch repeat value > 1: Only repeat the shift_from/to range
+                # every n timesteps.
                 if view_req.batch_repeat_value > 1:
                     count = int(
                         math.ceil((len(np_data[data_col]) - self.shift_before)
@@ -179,11 +181,21 @@ class _AgentCollector:
                                           view_req.shift_to + 1 + obs_shift]
                         for i in range(count)
                     ])
+                # Batch repeat value = 1: Repeat the shift_from/to range at
+                # each timestep.
                 else:
-                    data = np_data[data_col][self.shift_before +
-                                             view_req.shift_from +
-                                             obs_shift:self.shift_before +
-                                             view_req.shift_to + 1 + obs_shift]
+                    d = np_data[data_col]
+                    shift_win = view_req.shift_to - view_req.shift_from + 1
+                    data_size = d.itemsize * int(np.product(d.shape[1:]))
+                    strides = [
+                        d.itemsize * int(np.product(d.shape[i + 1:]))
+                        for i in range(1, len(d.shape))
+                    ]
+                    data = np.lib.stride_tricks.as_strided(
+                        d[self.shift_before - shift_win:],
+                        [self.agent_steps, shift_win
+                         ] + [d.shape[i] for i in range(1, len(d.shape))],
+                        [data_size, data_size] + strides)
             # Set of (probably non-consecutive) indices.
             # Example:
             #  shift=[-3, 0]
@@ -538,6 +550,10 @@ class SimpleListCollector(SampleCollector):
 
         input_dict = {}
         for view_col, view_req in view_reqs.items():
+            # Not used for action computations.
+            if not view_req.used_for_compute_actions:
+                continue
+
             # Create the batch of data from the different buffers.
             data_col = view_req.data_col or view_col
             delta = -1 if data_col in [

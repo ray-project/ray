@@ -36,7 +36,6 @@ class ParametricActionsModel(DistributionalQTFModel):
         self.action_embed_model = FullyConnectedNetwork(
             Box(-1, 1, shape=true_obs_shape), action_space, action_embed_size,
             model_config, name + "_action_embed")
-        self.register_variables(self.action_embed_model.variables())
 
     def forward(self, input_dict, state, seq_lens):
         # Extract the available actions tensor from the observation.

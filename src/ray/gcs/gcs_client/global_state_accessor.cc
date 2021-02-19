@@ -38,6 +38,7 @@ GlobalStateAccessor::GlobalStateAccessor(const std::string &redis_address,
 
   std::promise<bool> promise;
   thread_io_service_.reset(new std::thread([this, &promise] {
+    SetThreadName("global.accessor");
     std::unique_ptr<boost::asio::io_service::work> work(
         new boost::asio::io_service::work(*io_service_));
     promise.set_value(true);
@@ -254,6 +255,18 @@ std::unique_ptr<std::string> GlobalStateAccessor::GetPlacementGroupInfo(
   RAY_CHECK_OK(gcs_client_->PlacementGroups().AsyncGet(
       placement_group_id, TransformForOptionalItemCallback<rpc::PlacementGroupTableData>(
                               placement_group_table_data, promise)));
+  promise.get_future().get();
+  return placement_group_table_data;
+}
+
+std::unique_ptr<std::string> GlobalStateAccessor::GetPlacementGroupByName(
+    const std::string &placement_group_name) {
+  std::unique_ptr<std::string> placement_group_table_data;
+  std::promise<bool> promise;
+  RAY_CHECK_OK(gcs_client_->PlacementGroups().AsyncGetByName(
+      placement_group_name,
+      TransformForOptionalItemCallback<rpc::PlacementGroupTableData>(
+          placement_group_table_data, promise)));
   promise.get_future().get();
   return placement_group_table_data;
 }

@@ -10,11 +10,8 @@ import org.testng.annotations.Test;
 @Test(groups = {"cluster"})
 public class JobConfigTest extends BaseTest {
 
-  private String oldNumWorkersPerProcess;
-
   @BeforeClass
   public void setupJobConfig() {
-    oldNumWorkersPerProcess = System.getProperty("ray.job.num-java-workers-per-process");
     System.setProperty("ray.job.num-java-workers-per-process", "3");
     System.setProperty("ray.job.jvm-options.0", "-DX=999");
     System.setProperty("ray.job.jvm-options.1", "-DY=998");
@@ -24,7 +21,7 @@ public class JobConfigTest extends BaseTest {
 
   @AfterClass
   public void tearDownJobConfig() {
-    System.setProperty("ray.job.num-java-workers-per-process", oldNumWorkersPerProcess);
+    System.clearProperty("ray.job.num-java-workers-per-process");
     System.clearProperty("ray.job.jvm-options.0");
     System.clearProperty("ray.job.jvm-options.1");
     System.clearProperty("ray.job.worker-env.foo1");

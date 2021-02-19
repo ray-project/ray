@@ -7,6 +7,7 @@ import time
 
 import ray
 import ray.ray_constants
+import ray.services
 import ray.test_utils
 
 from ray._raylet import GlobalStateAccessor
@@ -329,6 +330,31 @@ def test_backlog_report(shutdown_only):
     # request is sent to the raylet with backlog=7
 
     ray.test_utils.wait_for_condition(backlog_size_set, timeout=2)
+    global_state_accessor.disconnect()
+
+
+def test_heartbeat_ip(shutdown_only):
+    cluster = ray.init(
+        num_cpus=1, _system_config={
+            "report_worker_backlog": True,
+        })
+    global_state_accessor = GlobalStateAccessor(
+        cluster["redis_address"], ray.ray_constants.REDIS_DEFAULT_PASSWORD)
+    global_state_accessor.connect()
+
+    self_ip = ray.services.get_node_ip_address()
+
+    def self_ip_is_set():
+        message = global_state_accessor.get_all_resource_usage()
+        if message is None:
+            return False
+
+        resource_usage = ray.gcs_utils.ResourceUsageBatchData.FromString(
+            message)
+        resources_data = resource_usage.batch[0]
+        return resources_data.node_manager_address == self_ip
+
+    ray.test_utils.wait_for_condition(self_ip_is_set, timeout=2)
     global_state_accessor.disconnect()
 
 

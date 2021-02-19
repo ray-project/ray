@@ -1,5 +1,5 @@
 """An example showing how to use Pytorch Lightning training, Ray Tune
-HPO, and MLFlow autologging all together."""
+HPO, and MLflow autologging all together."""
 import os
 import tempfile
 
@@ -37,7 +37,7 @@ def tune_mnist(num_samples=10,
     # Download data
     MNISTDataModule(data_dir=data_dir).prepare_data()
 
-    # Set the MLFlow experiment, or create it if it does not exist.
+    # Set the MLflow experiment, or create it if it does not exist.
     mlflow.set_tracking_uri(tracking_uri)
     mlflow.set_experiment("ptl_autologging_test")
 

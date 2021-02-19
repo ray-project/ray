@@ -1,7 +1,7 @@
 cluster_name: ray-release-long-running-tests
 
 docker:
-    image: anyscale/ray:latest
+    image: anyscale/ray-ml:latest
     container_name: ray_container
     pull_before_run: False
 
@@ -15,3 +15,10 @@ auth:
 
 head_node:
     InstanceType: m5.xlarge
+    TagSpecifications:
+        - ResourceType: "instance"
+          Tags:
+            - Key: anyscale-user
+              Value: "release-automation@anyscale.com"
+            - Key: anyscale-custodian
+              Value: "ignore"

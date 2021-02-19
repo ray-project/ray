@@ -159,7 +159,7 @@ class DataOrganizer:
         # Merge GcsNodeInfo to node physical stats
         node_info["raylet"].update(node)
         # Merge actors to node physical stats
-        node_info["actors"] = await cls.get_node_actors(node_id)
+        node_info["actors"] = DataSource.node_actors.get(node_id, {})
         # Update workers to node physical stats
         node_info["workers"] = DataSource.node_workers.get(node_id, [])
         node_info["logCount"] = node_log_count
@@ -202,22 +202,6 @@ class DataOrganizer:
             await DataOrganizer.get_node_info(node_id)
             for node_id in DataSource.nodes.keys()
         ]
-
-    @classmethod
-    async def get_node_actors(cls, node_id):
-        node_actors = DataSource.node_actors.get(node_id, {})
-        return {
-            actor_id: await cls._get_actor(actor)
-            for actor_id, actor in node_actors.items()
-        }
-
-    @classmethod
-    async def get_job_actors(cls, job_id):
-        job_actors = DataSource.job_actors.get(job_id, {})
-        return {
-            actor_id: await cls._get_actor(actor)
-            for actor_id, actor in job_actors.items()
-        }
 
     @classmethod
     async def get_all_actors(cls):

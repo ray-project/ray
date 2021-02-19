@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 # Cause the script to exit if a single command fails.
-set -e
+set -ex
 
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
 RAY_DIR=$(cd "${ROOT_DIR}/../../"; pwd)
@@ -12,6 +12,9 @@ mkdir -p /tmp/bazel_event_logs
 ./ci/travis/get_build_info.py > /tmp/bazel_event_logs/metadata.json
 
 pip install -q awscli
+
+# Strip the leading "refs/heads/" in the posssible branch tag
+TRAVIS_BRANCH=${TRAVIS_BRANCH/refs\/heads\//}
 
 export AWS_ACCESS_KEY_ID=AKIAQQPDA73RF7PSLH5N
 export AWS_SECRET_ACCESS_KEY=${BAZEL_LOG_BUCKET_ACCESS_KEY}

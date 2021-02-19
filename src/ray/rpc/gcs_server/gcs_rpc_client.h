@@ -144,14 +144,6 @@ class GcsRpcClient {
   VOID_GCS_RPC_CLIENT_METHOD(ActorInfoGcsService, GetAllActorInfo,
                              actor_info_grpc_client_, )
 
-  /// Register an actor to GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(ActorInfoGcsService, RegisterActorInfo,
-                             actor_info_grpc_client_, )
-
-  ///  Update actor info in GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(ActorInfoGcsService, UpdateActorInfo,
-                             actor_info_grpc_client_, )
-
   /// Register a node to GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService, RegisterNode, node_info_grpc_client_, )
 
@@ -260,6 +252,10 @@ class GcsRpcClient {
                              placement_group_info_grpc_client_, )
   /// Get placement group via GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(PlacementGroupInfoGcsService, GetPlacementGroup,
+                             placement_group_info_grpc_client_, )
+
+  /// Get placement group data from GCS Service by name.
+  VOID_GCS_RPC_CLIENT_METHOD(PlacementGroupInfoGcsService, GetNamedPlacementGroup,
                              placement_group_info_grpc_client_, )
 
   /// Get information of all placement group from GCS Service.

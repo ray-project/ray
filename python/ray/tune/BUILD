@@ -87,7 +87,7 @@ py_test(
 
 py_test(
     name = "test_function_api",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_function_api.py"],
     deps = [":tune_lib"],
     tags = ["exclusive"],
@@ -159,6 +159,14 @@ py_test(
     name = "test_run_experiment",
     size = "medium",
     srcs = ["tests/test_run_experiment.py"],
+    deps = [":tune_lib"],
+    tags = ["exclusive"],
+)
+
+py_test(
+    name = "test_remote",
+    size = "medium",
+    srcs = ["tests/test_remote.py"],
     deps = [":tune_lib"],
     tags = ["exclusive"],
 )
@@ -430,6 +438,15 @@ py_test(
 )
 
 py_test(
+    name = "hebo_example",
+    size = "medium",
+    srcs = ["examples/hebo_example.py"],
+    deps = [":tune_lib"],
+    tags = ["exclusive", "example"],
+    args = ["--smoke-test"]
+)
+
+py_test(
     name = "horovod_simple",
     size = "medium",
     srcs = ["examples/horovod_simple.py"],
@@ -489,15 +506,15 @@ py_test(
  tags = ["exclusive", "example"]
 )
 
-# Comment out for now until we sort out our dependencies.
-#py_test(
-#    name = "mlflow_ptl",
-#    size = "medium",
-#    srcs = ["examples/mlflow_ptl.py"],
-#    deps = [":tune_lib"],
-#    tags = ["exclusive", "example", "py37", "pytorch"],
-#    args = ["--smoke-test"]
-#)
+py_test(
+    name = "mlflow_ptl",
+    size = "medium",
+    srcs = ["examples/mlflow_ptl.py"],
+    deps = [":tune_lib"],
+    tags = ["exclusive", "example", "py37", "pytorch"],
+    args = ["--smoke-test"]
+)
+
 py_test(
     name = "mnist_pytorch",
     size = "small",

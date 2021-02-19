@@ -4,6 +4,7 @@ from urllib3.exceptions import MaxRetryError
 import copy
 import logging
 import math
+import operator
 import os
 import subprocess
 import threading
@@ -19,6 +20,7 @@ from ray.autoscaler.tags import (
     TAG_RAY_USER_NODE_TYPE, STATUS_UNINITIALIZED, STATUS_WAITING_FOR_SSH,
     STATUS_SYNCING_FILES, STATUS_SETTING_UP, STATUS_UP_TO_DATE,
     NODE_KIND_WORKER, NODE_KIND_UNMANAGED, NODE_KIND_HEAD)
+from ray.autoscaler._private.event_summarizer import EventSummarizer
 from ray.autoscaler._private.legacy_info_string import legacy_log_info_string
 from ray.autoscaler._private.providers import _get_node_provider
 from ray.autoscaler._private.updater import NodeUpdaterThread
@@ -41,7 +43,7 @@ logger = logging.getLogger(__name__)
 # that will be passed into a NodeUpdaterThread.
 UpdateInstructions = namedtuple(
     "UpdateInstructions",
-    ["node_id", "init_commands", "start_ray_commands", "docker_config"])
+    ["node_id", "setup_commands", "ray_start_commands", "docker_config"])
 
 AutoscalerSummary = namedtuple(
     "AutoscalerSummary",
@@ -73,7 +75,8 @@ class StandardAutoscaler:
                  max_failures=AUTOSCALER_MAX_NUM_FAILURES,
                  process_runner=subprocess,
                  update_interval_s=AUTOSCALER_UPDATE_INTERVAL_S,
-                 prefix_cluster_info=False):
+                 prefix_cluster_info=False,
+                 event_summarizer=None):
         self.config_path = config_path
         # Prefix each line of info string with cluster name if True
         self.prefix_cluster_info = prefix_cluster_info
@@ -89,6 +92,7 @@ class StandardAutoscaler:
         self.max_launch_batch = max_launch_batch
         self.max_concurrent_launches = max_concurrent_launches
         self.process_runner = process_runner
+        self.event_summarizer = event_summarizer or EventSummarizer()
 
         # Map from node_id to NodeUpdater processes
         self.updaters = {}
@@ -193,10 +197,20 @@ class StandardAutoscaler:
             if node_ip in last_used and last_used[node_ip] < horizon:
                 logger.info("StandardAutoscaler: "
                             "{}: Terminating idle node.".format(node_id))
+                self.event_summarizer.add(
+                    "Removing {} nodes of type " + self._get_node_type(node_id)
+                    + " (idle).",
+                    quantity=1,
+                    aggregate=operator.add)
                 nodes_to_terminate.append(node_id)
             elif not self.launch_config_ok(node_id):
                 logger.info("StandardAutoscaler: "
                             "{}: Terminating outdated node.".format(node_id))
+                self.event_summarizer.add(
+                    "Removing {} nodes of type " + self._get_node_type(node_id)
+                    + " (outdated).",
+                    quantity=1,
+                    aggregate=operator.add)
                 nodes_to_terminate.append(node_id)
 
         if nodes_to_terminate:
@@ -210,6 +224,11 @@ class StandardAutoscaler:
             to_terminate = nodes.pop()
             logger.info("StandardAutoscaler: "
                         "{}: Terminating unneeded node.".format(to_terminate))
+            self.event_summarizer.add(
+                "Removing {} nodes of type " +
+                self._get_node_type(to_terminate) + " (max workers).",
+                quantity=1,
+                aggregate=operator.add)
             nodes_to_terminate.append(to_terminate)
 
         if nodes_to_terminate:
@@ -246,6 +265,11 @@ class StandardAutoscaler:
                 else:
                     logger.error(f"StandardAutoscaler: {node_id}: Terminating "
                                  "failed to setup/initialize node.")
+                    self.event_summarizer.add(
+                        "Removing {} nodes of type " +
+                        self._get_node_type(node_id) + " (launch failed).",
+                        quantity=1,
+                        aggregate=operator.add)
                     nodes_to_terminate.append(node_id)
                     self.num_failed_updates[node_id] += 1
                 del self.updaters[node_id]
@@ -259,7 +283,7 @@ class StandardAutoscaler:
         # problems. They should at a minimum be spawned as daemon threads.
         # See https://github.com/ray-project/ray/pull/5903 for more info.
         T = []
-        for node_id, commands, ray_start, docker_config in (
+        for node_id, setup_commands, ray_start_commands, docker_config in (
                 self.should_update(node_id) for node_id in nodes):
             if node_id is not None:
                 resources = self._node_resources(node_id)
@@ -267,8 +291,8 @@ class StandardAutoscaler:
                 T.append(
                     threading.Thread(
                         target=self.spawn_updater,
-                        args=(node_id, commands, ray_start, resources,
-                              docker_config)))
+                        args=(node_id, setup_commands, ray_start_commands,
+                              resources, docker_config)))
         for t in T:
             t.start()
         for t in T:
@@ -544,6 +568,11 @@ class StandardAutoscaler:
         logger.warning("StandardAutoscaler: "
                        "{}: No recent heartbeat, "
                        "restarting Ray to recover...".format(node_id))
+        self.event_summarizer.add(
+            "Restarting {} nodes of type " + self._get_node_type(node_id) +
+            " (lost contact with raylet).",
+            quantity=1,
+            aggregate=operator.add)
         updater = NodeUpdaterThread(
             node_id=node_id,
             provider_config=self.config["provider"],
@@ -564,6 +593,13 @@ class StandardAutoscaler:
             node_resources=self._node_resources(node_id))
         updater.start()
         self.updaters[node_id] = updater
+
+    def _get_node_type(self, node_id: str) -> str:
+        node_tags = self.provider.node_tags(node_id)
+        if TAG_RAY_USER_NODE_TYPE in node_tags:
+            return node_tags[TAG_RAY_USER_NODE_TYPE]
+        else:
+            return "unknown"
 
     def _get_node_type_specific_fields(self, node_id: str,
                                        fields_key: str) -> Any:
@@ -597,25 +633,25 @@ class StandardAutoscaler:
 
         successful_updated = self.num_successful_updates.get(node_id, 0) > 0
         if successful_updated and self.config.get("restart_only", False):
-            init_commands = []
-            ray_commands = self.config["worker_start_ray_commands"]
+            setup_commands = []
+            ray_start_commands = self.config["worker_start_ray_commands"]
         elif successful_updated and self.config.get("no_restart", False):
-            init_commands = self._get_node_type_specific_fields(
+            setup_commands = self._get_node_type_specific_fields(
                 node_id, "worker_setup_commands")
-            ray_commands = []
+            ray_start_commands = []
         else:
-            init_commands = self._get_node_type_specific_fields(
+            setup_commands = self._get_node_type_specific_fields(
                 node_id, "worker_setup_commands")
-            ray_commands = self.config["worker_start_ray_commands"]
+            ray_start_commands = self.config["worker_start_ray_commands"]
 
         docker_config = self._get_node_specific_docker_config(node_id)
         return UpdateInstructions(
             node_id=node_id,
-            init_commands=init_commands,
-            start_ray_commands=ray_commands,
+            setup_commands=setup_commands,
+            ray_start_commands=ray_start_commands,
             docker_config=docker_config)
 
-    def spawn_updater(self, node_id, init_commands, ray_start_commands,
+    def spawn_updater(self, node_id, setup_commands, ray_start_commands,
                       node_resources, docker_config):
         logger.info(f"Creating new (spawn_updater) updater thread for node"
                     f" {node_id}.")
@@ -629,7 +665,8 @@ class StandardAutoscaler:
             initialization_commands=with_head_node_ip(
                 self._get_node_type_specific_fields(
                     node_id, "initialization_commands"), self.head_node_ip),
-            setup_commands=with_head_node_ip(init_commands, self.head_node_ip),
+            setup_commands=with_head_node_ip(setup_commands,
+                                             self.head_node_ip),
             ray_start_commands=with_head_node_ip(ray_start_commands,
                                                  self.head_node_ip),
             runtime_hash=self.runtime_hash,
@@ -661,6 +698,10 @@ class StandardAutoscaler:
     def launch_new_node(self, count: int, node_type: Optional[str]) -> None:
         logger.info(
             "StandardAutoscaler: Queue {} new nodes for launch".format(count))
+        self.event_summarizer.add(
+            "Adding {} nodes of type " + str(node_type) + ".",
+            quantity=count,
+            aggregate=operator.add)
         self.pending_launches.inc(node_type, count)
         config = copy.deepcopy(self.config)
         # Split into individual launch requests of the max batch size.
@@ -725,7 +766,7 @@ class StandardAutoscaler:
                 ]
                 is_pending = status in pending_states
                 if is_pending:
-                    pending_nodes.append((ip, node_type))
+                    pending_nodes.append((ip, node_type, status))
                 else:
                     # TODO (Alex): Failed nodes are now immediately killed, so
                     # this list will almost always be empty. We should ideally

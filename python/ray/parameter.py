@@ -1,4 +1,3 @@
-import json
 import logging
 import os
 
@@ -22,9 +21,12 @@ class RayParams:
             raylet, a plasma store, a plasma manager, and some workers.
             It will also kill these processes when Python exits.
         redis_port (int): The port that the primary Redis shard should listen
-            to. If None, then a random port will be chosen.
+            to. If None, then it will fall back to
+            ray.ray_constants.DEFAULT_PORT, or a random port if the default is
+            not available.
         redis_shard_ports: A list of the ports to use for the non-primary Redis
-            shards.
+            shards. If None, then it will fall back to the ports right after
+            redis_port, or random ports if those are not available.
         num_cpus (int): Number of CPUs to configure the raylet with.
         num_gpus (int): Number of GPUs to configure the raylet with.
         resources: A dictionary mapping the name of a resource to the quantity
@@ -49,6 +51,9 @@ class RayParams:
         worker_port_list (str): An explicit list of ports to be used for
             workers (comma-separated). Overrides min_worker_port and
             max_worker_port.
+        ray_client_server_port (int): The port number the ray client server
+            will bind on. If not set, the ray client server will not
+            be started.
         object_ref_seed (int): Used to seed the deterministic generation of
             object refs. The same value can be used across multiple runs of the
             same job in order to generate the object refs in a consistent
@@ -96,10 +101,11 @@ class RayParams:
         metrics_agent_port(int): The port to bind metrics agent.
         metrics_export_port(int): The port at which metrics are exposed
             through a Prometheus endpoint.
+        no_monitor(bool): If True, the ray autoscaler monitor for this cluster
+            will not be started.
         _system_config (dict): Configuration for overriding RayConfig
             defaults. Used to set system configuration and for experimental Ray
             core feature flags.
-        lru_evict (bool): Enable LRU eviction if space is needed.
         enable_object_reconstruction (bool): Enable plasma reconstruction on
             failure.
         start_initial_python_workers_for_first_job (bool): If true, start
@@ -125,6 +131,7 @@ class RayParams:
                  min_worker_port=None,
                  max_worker_port=None,
                  worker_port_list=None,
+                 ray_client_server_port=None,
                  object_ref_seed=None,
                  driver_mode=None,
                  redirect_worker_output=None,
@@ -151,6 +158,7 @@ class RayParams:
                  enable_object_reconstruction=False,
                  metrics_agent_port=None,
                  metrics_export_port=None,
+                 no_monitor=False,
                  lru_evict=False):
         self.object_ref_seed = object_ref_seed
         self.external_redis_addresses = external_redis_addresses
@@ -171,6 +179,7 @@ class RayParams:
         self.min_worker_port = min_worker_port
         self.max_worker_port = max_worker_port
         self.worker_port_list = worker_port_list
+        self.ray_client_server_port = ray_client_server_port
         self.driver_mode = driver_mode
         self.redirect_worker_output = redirect_worker_output
         self.redirect_output = redirect_output
@@ -191,34 +200,26 @@ class RayParams:
         self.java_worker_options = java_worker_options
         self.metrics_agent_port = metrics_agent_port
         self.metrics_export_port = metrics_export_port
+        self.no_monitor = no_monitor
         self.start_initial_python_workers_for_first_job = (
             start_initial_python_workers_for_first_job)
         self._system_config = _system_config or {}
-        self._lru_evict = lru_evict
         self._enable_object_reconstruction = enable_object_reconstruction
         self._check_usage()
 
         # Set the internal config options for LRU eviction.
         if lru_evict:
-            # Turn off object pinning.
-            if self._system_config is None:
-                self._system_config = dict()
-            if self._system_config.get("object_pinning_enabled", False):
-                raise Exception(
-                    "Object pinning cannot be enabled if using LRU eviction.")
-            self._system_config["object_pinning_enabled"] = False
-            self._system_config["object_store_full_max_retries"] = -1
-            self._system_config["free_objects_period_milliseconds"] = 1000
+            raise DeprecationWarning(
+                "The lru_evict flag is deprecated as Ray natively "
+                "supports object spilling. Please read "
+                "https://docs.ray.io/en/master/memory-management.html#object-spilling "  # noqa
+                "for more details.")
 
         # Set the internal config options for object reconstruction.
         if enable_object_reconstruction:
             # Turn off object pinning.
             if self._system_config is None:
                 self._system_config = dict()
-            if lru_evict:
-                raise Exception(
-                    "Object reconstruction cannot be enabled if using LRU "
-                    "eviction.")
             print(self._system_config)
             self._system_config["lineage_pinning_enabled"] = True
             self._system_config["free_objects_period_milliseconds"] = -1
@@ -318,13 +319,3 @@ class RayParams:
         if numpy_major <= 1 and numpy_minor < 16:
             logger.warning("Using ray with numpy < 1.16.0 will result in slow "
                            "serialization. Upgrade numpy if using with ray.")
-
-        # Make sure object spilling configuration is applicable.
-        object_spilling_config = self._system_config.get(
-            "object_spilling_config", {})
-        if object_spilling_config:
-            object_spilling_config = json.loads(object_spilling_config)
-            from ray import external_storage
-            # Validate external storage usage.
-            external_storage.setup_external_storage(object_spilling_config)
-            external_storage.reset_external_storage()

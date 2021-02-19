@@ -92,7 +92,7 @@ Tune Quick Start
 
 - Launch a multi-node distributed hyperparameter sweep in less than 10 lines of code.
 - Supports any deep learning framework, including PyTorch, `PyTorch Lightning <https://github.com/williamFalcon/pytorch-lightning>`_, TensorFlow, and Keras.
-- Visualize results with `TensorBoard <https://www.tensorflow.org/get_started/summaries_and_tensorboard>`__.
+- Visualize results with `TensorBoard <https://www.tensorflow.org/tensorboard>`__.
 - Choose among scalable SOTA algorithms such as `Population Based Training (PBT)`_, `Vizier's Median Stopping Rule`_, `HyperBand/ASHA`_.
 - Tune integrates with many optimization libraries such as `Facebook Ax <http://ax.dev>`_, `HyperOpt <https://github.com/hyperopt/hyperopt>`_, and `Bayesian Optimization <https://github.com/fmfn/BayesianOptimization>`_ and enables you to scale them transparently.
 
@@ -132,7 +132,7 @@ This example runs a parallel grid search to optimize an example objective functi
             "beta": tune.choice([1, 2, 3])
         })
 
-    print("Best config: ", analysis.get_best_config(metric="mean_loss"))
+    print("Best config: ", analysis.get_best_config(metric="mean_loss", mode="min"))
 
     # Get a dataframe for analyzing trial results.
     df = analysis.results_df
@@ -300,7 +300,6 @@ More Information
 Getting Involved
 ----------------
 
-- `Community Slack`_: Join our Slack workspace.
 - `Forum`_: For discussions about development, questions about usage, and feature requests.
 - `GitHub Issues`_: For reporting bugs.
 - `Twitter`_: Follow updates on Twitter.
@@ -311,5 +310,4 @@ Getting Involved
 .. _`GitHub Issues`: https://github.com/ray-project/ray/issues
 .. _`StackOverflow`: https://stackoverflow.com/questions/tagged/ray
 .. _`Meetup Group`: https://www.meetup.com/Bay-Area-Ray-Meetup/
-.. _`Community Slack`: https://forms.gle/9TSdDYUgxYs8SA9e8
 .. _`Twitter`: https://twitter.com/raydistributed

@@ -19,6 +19,7 @@
 #include "ray/gcs/gcs_server/gcs_object_manager.h"
 #include "ray/gcs/gcs_server/gcs_redis_failure_detector.h"
 #include "ray/gcs/gcs_server/gcs_resource_manager.h"
+#include "ray/gcs/gcs_server/gcs_resource_scheduler.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/gcs/redis_client.h"
@@ -86,6 +87,9 @@ class GcsServer {
   /// Initialize gcs resource manager.
   void InitGcsResourceManager(const GcsInitData &gcs_init_data);
 
+  /// Initialize gcs resource scheduler.
+  void InitGcsResourceScheduler();
+
   /// Initialize gcs job manager.
   void InitGcsJobManager();
 
@@ -124,7 +128,7 @@ class GcsServer {
   /// Print debug info periodically.
   void PrintDebugInfo();
 
-  /// Gcs server configuration
+  /// Gcs server configuration.
   GcsServerConfig config_;
   /// The main io service to drive event posted from grpc threads.
   boost::asio::io_context &main_service_;
@@ -135,47 +139,49 @@ class GcsServer {
   rpc::GrpcServer rpc_server_;
   /// The `ClientCallManager` object that is shared by all `NodeManagerWorkerClient`s.
   rpc::ClientCallManager client_call_manager_;
-  /// Node manager client pool
+  /// Node manager client pool.
   std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool_;
   /// The gcs resource manager.
   std::shared_ptr<GcsResourceManager> gcs_resource_manager_;
+  /// The gcs resource scheduler.
+  std::shared_ptr<GcsResourceScheduler> gcs_resource_scheduler_;
   /// The gcs node manager.
   std::shared_ptr<GcsNodeManager> gcs_node_manager_;
   /// The heartbeat manager.
   std::shared_ptr<GcsHeartbeatManager> gcs_heartbeat_manager_;
   /// The gcs redis failure detector.
   std::shared_ptr<GcsRedisFailureDetector> gcs_redis_failure_detector_;
-  /// The gcs actor manager
+  /// The gcs actor manager.
   std::shared_ptr<GcsActorManager> gcs_actor_manager_;
-  /// The gcs placement group manager
+  /// The gcs placement group manager.
   std::shared_ptr<GcsPlacementGroupManager> gcs_placement_group_manager_;
-  /// Job info handler and service
+  /// Job info handler and service.
   std::unique_ptr<GcsJobManager> gcs_job_manager_;
   std::unique_ptr<rpc::JobInfoGrpcService> job_info_service_;
-  /// Actor info service
+  /// Actor info service.
   std::unique_ptr<rpc::ActorInfoGrpcService> actor_info_service_;
-  /// Node info handler and service
+  /// Node info handler and service.
   std::unique_ptr<rpc::NodeInfoGrpcService> node_info_service_;
-  /// Node resource info handler and service
+  /// Node resource info handler and service.
   std::unique_ptr<rpc::NodeResourceInfoGrpcService> node_resource_info_service_;
-  /// Heartbeat info handler and service
+  /// Heartbeat info handler and service.
   std::unique_ptr<rpc::HeartbeatInfoGrpcService> heartbeat_info_service_;
-  /// Object info handler and service
+  /// Object info handler and service.
   std::unique_ptr<gcs::GcsObjectManager> gcs_object_manager_;
   std::unique_ptr<rpc::ObjectInfoGrpcService> object_info_service_;
-  /// Task info handler and service
+  /// Task info handler and service.
   std::unique_ptr<rpc::TaskInfoHandler> task_info_handler_;
   std::unique_ptr<rpc::TaskInfoGrpcService> task_info_service_;
-  /// Stats handler and service
+  /// Stats handler and service.
   std::unique_ptr<rpc::StatsHandler> stats_handler_;
   std::unique_ptr<rpc::StatsGrpcService> stats_service_;
-  /// The gcs worker manager
+  /// The gcs worker manager.
   std::unique_ptr<GcsWorkerManager> gcs_worker_manager_;
-  /// Worker info service
+  /// Worker info service.
   std::unique_ptr<rpc::WorkerInfoGrpcService> worker_info_service_;
-  /// Placement Group info handler and service
+  /// Placement Group info handler and service.
   std::unique_ptr<rpc::PlacementGroupInfoGrpcService> placement_group_info_service_;
-  /// Backend client
+  /// Backend client.
   std::shared_ptr<RedisClient> redis_client_;
   /// A publisher for publishing gcs messages.
   std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub_;

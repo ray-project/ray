@@ -1,7 +1,49 @@
 import requests
-
+import pytest
 import ray
 from ray import serve
+
+
+@pytest.mark.asyncio
+async def test_async_handle_serializable(serve_instance):
+    client = serve_instance
+
+    def f(_):
+        return "hello"
+
+    client.create_backend("f", f)
+    client.create_endpoint("f", backend="f")
+
+    @ray.remote
+    class TaskActor:
+        async def task(self, handle):
+            ref = await handle.remote()
+            output = await ref
+            return output
+
+    handle = client.get_handle("f", sync=False)
+
+    task_actor = TaskActor.remote()
+    result = await task_actor.task.remote(handle)
+    assert result == "hello"
+
+
+def test_sync_handle_serializable(serve_instance):
+    client = serve_instance
+
+    def f(_):
+        return "hello"
+
+    client.create_backend("f", f)
+    client.create_endpoint("f", backend="f")
+
+    @ray.remote
+    def task(handle):
+        return ray.get(handle.remote())
+
+    handle = client.get_handle("f", sync=True)
+    result_ref = task.remote(handle)
+    assert ray.get(result_ref) == "hello"
 
 
 def test_handle_in_endpoint(serve_instance):

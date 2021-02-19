@@ -142,6 +142,32 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertTrue(any(-4 < s < 4 for s in samples))
         self.assertTrue(-2 < np.mean(samples) < 2)
 
+    def testFunctionSignature(self):
+        from functools import partial
+
+        def sample_a():
+            return 0
+
+        def sample_b(spec):
+            return 1
+
+        def sample_c(spec, b="ok"):
+            return 2
+
+        def sample_d_invalid(spec, b):
+            return 3
+
+        sample_d_valid = partial(sample_d_invalid, b="ok")
+
+        for sample_fn in [sample_a, sample_b, sample_c, sample_d_valid]:
+            fn = tune.sample_from(sample_fn)
+            sample = fn.sample(None)
+            self.assertIsNotNone(sample)
+
+        with self.assertRaises(ValueError):
+            fn = tune.sample_from(sample_d_invalid)
+            print(fn.sample(None))
+
     def testQuantized(self):
         bounded_positive = tune.sample.Float(1e-4, 1e-1)
 
@@ -167,9 +193,39 @@ class SearchSpaceTest(unittest.TestCase):
         samples = tune.sample.Float(0, 33).quantized(3).sample(size=1000)
         self.assertTrue(all(0 <= s <= 33 for s in samples))
 
+    def testCategoricalSeedInTrainingLoop(self):
+        def train(config):
+            return 0
+
+        config = {
+            "integer": tune.randint(0, 100_000),
+            "choice": tune.choice(list(range(100_000)))
+        }
+
+        np.random.seed(1000)
+
+        out_1 = tune.run(train, config=config, num_samples=8, verbose=0)
+
+        integers_1 = [t.config["integer"] for t in out_1.trials]
+        choices_1 = [t.config["choice"] for t in out_1.trials]
+
+        np.random.seed(1000)
+
+        out_2 = tune.run(train, config=config, num_samples=8, verbose=0)
+
+        integers_2 = [t.config["integer"] for t in out_2.trials]
+        choices_2 = [t.config["choice"] for t in out_2.trials]
+
+        self.assertSequenceEqual(integers_1, integers_2)
+        self.assertSequenceEqual(choices_1, choices_2)
+
     def testConvertAx(self):
         from ray.tune.suggest.ax import AxSearch
         from ax.service.ax_client import AxClient
+
+        # Grid search not supported, should raise ValueError
+        with self.assertRaises(ValueError):
+            AxSearch.convert_search_space({"grid": tune.grid_search([0, 1])})
 
         config = {
             "a": tune.sample.Categorical([2, 3, 4]).uniform(),
@@ -207,12 +263,14 @@ class SearchSpaceTest(unittest.TestCase):
         ]
 
         client1 = AxClient(random_seed=1234)
-        client1.create_experiment(parameters=converted_config)
-        searcher1 = AxSearch(ax_client=client1, metric="a", mode="max")
+        client1.create_experiment(
+            parameters=converted_config, objective_name="a", minimize=False)
+        searcher1 = AxSearch(ax_client=client1)
 
         client2 = AxClient(random_seed=1234)
-        client2.create_experiment(parameters=ax_config)
-        searcher2 = AxSearch(ax_client=client2, metric="a", mode="max")
+        client2.create_experiment(
+            parameters=ax_config, objective_name="a", minimize=False)
+        searcher2 = AxSearch(ax_client=client2)
 
         config1 = searcher1.suggest("0")
         config2 = searcher2.suggest("0")
@@ -238,6 +296,12 @@ class SearchSpaceTest(unittest.TestCase):
 
     def testConvertBayesOpt(self):
         from ray.tune.suggest.bayesopt import BayesOptSearch
+
+        # Grid search not supported, should raise ValueError
+        with self.assertRaises(ValueError):
+            BayesOptSearch.convert_search_space({
+                "grid": tune.grid_search([0, 1])
+            })
 
         config = {
             "a": tune.sample.Categorical([2, 3, 4]).uniform(),
@@ -294,6 +358,10 @@ class SearchSpaceTest(unittest.TestCase):
         from ray.tune.suggest.bohb import TuneBOHB
         import ConfigSpace
 
+        # Grid search not supported, should raise ValueError
+        with self.assertRaises(ValueError):
+            TuneBOHB.convert_search_space({"grid": tune.grid_search([0, 1])})
+
         config = {
             "a": tune.sample.Categorical([2, 3, 4]).uniform(),
             "b": {
@@ -345,6 +413,12 @@ class SearchSpaceTest(unittest.TestCase):
 
     def testConvertDragonfly(self):
         from ray.tune.suggest.dragonfly import DragonflySearch
+
+        # Grid search not supported, should raise ValueError
+        with self.assertRaises(ValueError):
+            DragonflySearch.convert_search_space({
+                "grid": tune.grid_search([0, 1])
+            })
 
         config = {
             "a": tune.sample.Categorical([2, 3, 4]).uniform(),
@@ -423,9 +497,84 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertTrue(5 <= config["a"] <= 6)
         self.assertTrue(8 <= config["b"] <= 9)
 
+    def testConvertHEBO(self):
+        from ray.tune.suggest.hebo import HEBOSearch
+        from hebo.design_space.design_space import DesignSpace
+        import torch
+
+        # Grid search not supported, should raise ValueError
+        with self.assertRaises(ValueError):
+            HEBOSearch.convert_search_space({"grid": tune.grid_search([0, 1])})
+
+        config = {
+            "a": tune.sample.Categorical([2, 3, 4]).uniform(),
+            "b": {
+                "x": tune.sample.Integer(0, 5),
+                "y": 4,
+                "z": tune.sample.Float(1e-4, 1e-2).loguniform()
+            }
+        }
+        converted_config = HEBOSearch.convert_search_space(config)
+        hebo_space_config = [
+            {
+                "name": "a",
+                "type": "cat",
+                "categories": [2, 3, 4]
+            },
+            {
+                "name": "b/x",
+                "type": "int",
+                "lb": 0,
+                "ub": 5
+            },
+            {
+                "name": "b/z",
+                "type": "pow",
+                "lb": 1e-4,
+                "ub": 1e-2
+            },
+        ]
+        hebo_space = DesignSpace().parse(hebo_space_config)
+
+        searcher1 = HEBOSearch(
+            space=converted_config,
+            metric="a",
+            mode="max",
+            random_state_seed=123)
+        searcher2 = HEBOSearch(
+            space=hebo_space, metric="a", mode="max", random_state_seed=123)
+
+        np.random.seed(1234)
+        torch.manual_seed(1234)
+        config1 = searcher1.suggest("0")
+        np.random.seed(1234)
+        torch.manual_seed(1234)
+        config2 = searcher2.suggest("0")
+
+        self.assertEqual(config1, config2)
+        self.assertIn(config1["a"], [2, 3, 4])
+        self.assertIn(config1["b"]["x"], list(range(5)))
+        self.assertLess(1e-4, config1["b"]["z"])
+        self.assertLess(config1["b"]["z"], 1e-2)
+
+        searcher = HEBOSearch(metric="a", mode="max", random_state_seed=123)
+        analysis = tune.run(
+            _mock_objective, config=config, search_alg=searcher, num_samples=1)
+        trial = analysis.trials[0]
+        self.assertIn(trial.config["a"], [2, 3, 4])
+        self.assertEqual(trial.config["b"]["y"], 4)
+
+        # Mixed configs are not supported
+
     def testConvertHyperOpt(self):
         from ray.tune.suggest.hyperopt import HyperOptSearch
         from hyperopt import hp
+
+        # Grid search not supported, should raise ValueError
+        with self.assertRaises(ValueError):
+            HyperOptSearch.convert_search_space({
+                "grid": tune.grid_search([0, 1])
+            })
 
         config = {
             "a": tune.sample.Categorical([2, 3, 4]).uniform(),
@@ -528,6 +677,12 @@ class SearchSpaceTest(unittest.TestCase):
         from ray.tune.suggest.nevergrad import NevergradSearch
         import nevergrad as ng
 
+        # Grid search not supported, should raise ValueError
+        with self.assertRaises(ValueError):
+            NevergradSearch.convert_search_space({
+                "grid": tune.grid_search([0, 1])
+            })
+
         config = {
             "a": tune.sample.Categorical([2, 3, 4]).uniform(),
             "b": {
@@ -589,6 +744,12 @@ class SearchSpaceTest(unittest.TestCase):
         from ray.tune.suggest.optuna import OptunaSearch, param
         from optuna.samplers import RandomSampler
 
+        # Grid search not supported, should raise ValueError
+        with self.assertRaises(ValueError):
+            OptunaSearch.convert_search_space({
+                "grid": tune.grid_search([0, 1])
+            })
+
         config = {
             "a": tune.sample.Categorical([2, 3, 4]).uniform(),
             "b": {
@@ -640,6 +801,12 @@ class SearchSpaceTest(unittest.TestCase):
         from ray.tune.suggest.skopt import SkOptSearch
         from skopt.space import Real, Integer
 
+        # Grid search not supported, should raise ValueError
+        with self.assertRaises(ValueError):
+            SkOptSearch.convert_search_space({
+                "grid": tune.grid_search([0, 1])
+            })
+
         config = {
             "a": tune.sample.Categorical([2, 3, 4]).uniform(),
             "b": {
@@ -685,6 +852,12 @@ class SearchSpaceTest(unittest.TestCase):
     def testConvertZOOpt(self):
         from ray.tune.suggest.zoopt import ZOOptSearch
         from zoopt import ValueType
+
+        # Grid search not supported, should raise ValueError
+        with self.assertRaises(ValueError):
+            ZOOptSearch.convert_search_space({
+                "grid": tune.grid_search([0, 1])
+            })
 
         config = {
             "a": tune.sample.Categorical([2, 3, 4]).uniform(),
@@ -876,9 +1049,11 @@ class SearchSpaceTest(unittest.TestCase):
         return self._testPointsToEvaluate(SkOptSearch, config)
 
     def testPointsToEvaluateZoOpt(self):
-        # https://github.com/polixir/ZOOpt/issues/5
-        self.skipTest("ZoOpt currently ignores initial points. This test "
-                      "will be enabled after this has been fixed.")
+        self.skipTest(
+            "ZOOpt's latest release (0.4.1) does not support sampling "
+            "initial points. Please re-enable this test after the next "
+            "release.")
+
         config = {
             "metric": tune.sample.Categorical([1, 2, 3, 4]).uniform(),
             "a": tune.sample.Categorical(["t1", "t2", "t3", "t4"]).uniform(),
