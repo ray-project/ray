@@ -116,10 +116,6 @@ bool ClusterTaskManager::WaitForTaskArgsRequests(Work work) {
   if (object_ids.size() > 0) {
     bool args_ready =
         task_dependency_manager_.RequestTaskDependencies(task_id, task.GetDependencies());
-    auto queue_it = tasks_with_dependencies_queue_.insert(
-        tasks_with_dependencies_queue_.end(), task_id);
-    RAY_CHECK(tasks_with_dependencies_queue_index_.emplace(task_id, queue_it).second);
-
     if (args_ready) {
       RAY_LOG(DEBUG) << "Args already ready, task can be dispatched " << task_id;
       tasks_to_dispatch_[scheduling_key].push_back(work);
@@ -127,7 +123,8 @@ bool ClusterTaskManager::WaitForTaskArgsRequests(Work work) {
       RAY_LOG(DEBUG) << "Waiting for args for task: "
                      << task.GetTaskSpecification().TaskId();
       can_dispatch = false;
-      waiting_tasks_[task_id] = work;
+      auto it = waiting_task_queue_.insert(waiting_task_queue_.end(), work);
+      RAY_CHECK(waiting_tasks_index_.emplace(task_id, it).second);
     }
   } else {
     RAY_LOG(DEBUG) << "No args, task can be dispatched "
@@ -183,7 +180,10 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
       // queue. Move it back to the waiting queue. The caller is responsible
       // for notifying us when the task is unblocked again.
       if (!success) {
-        waiting_tasks_[spec.TaskId()] = std::move(*work_it);
+        const auto task_id = spec.TaskId();
+        auto it =
+            waiting_task_queue_.insert(waiting_task_queue_.end(), std::move(*work_it));
+        RAY_CHECK(waiting_tasks_index_.emplace(task_id, it).second);
         work_it = dispatch_queue.erase(work_it);
         continue;
       }
@@ -202,7 +202,9 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
         RAY_LOG(WARNING) << "Task: " << task.GetTaskSpecification().TaskId()
                          << "'s caller is no longer running. Cancelling task.";
         worker_pool_.PushWorker(worker);
-        RemoveTaskDependencies(spec);
+        if (!spec.GetDependencies().empty()) {
+          task_dependency_manager_.RemoveTaskDependencies(spec.TaskId());
+        }
         work_it = dispatch_queue.erase(work_it);
       } else {
         bool worker_leased;
@@ -221,7 +223,9 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
           worker_pool_.PushWorker(worker);
         }
         if (remove) {
-          RemoveTaskDependencies(spec);
+          if (!spec.GetDependencies().empty()) {
+            task_dependency_manager_.RemoveTaskDependencies(spec.TaskId());
+          }
           work_it = dispatch_queue.erase(work_it);
         } else {
           break;
@@ -234,20 +238,6 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
       shapes_it++;
     }
   }
-}
-
-std::list<TaskID>::iterator ClusterTaskManager::RemoveTaskDependencies(
-    const TaskSpecification &task_spec) {
-  if (task_spec.GetDependencies().empty()) {
-    return tasks_with_dependencies_queue_.end();
-  }
-
-  task_dependency_manager_.RemoveTaskDependencies(task_spec.TaskId());
-  auto it = tasks_with_dependencies_queue_index_.find(task_spec.TaskId());
-  RAY_CHECK(it != tasks_with_dependencies_queue_index_.end());
-  auto queue_it = tasks_with_dependencies_queue_.erase(it->second);
-  tasks_with_dependencies_queue_index_.erase(it);
-  return queue_it;
 }
 
 bool ClusterTaskManager::AttemptDispatchWork(const Work &work,
@@ -326,15 +316,16 @@ void ClusterTaskManager::TasksUnblocked(const std::vector<TaskID> &ready_ids) {
   }
 
   for (const auto &task_id : ready_ids) {
-    auto it = waiting_tasks_.find(task_id);
-    if (it != waiting_tasks_.end()) {
-      auto work = it->second;
+    auto it = waiting_tasks_index_.find(task_id);
+    if (it != waiting_tasks_index_.end()) {
+      auto work = *it->second;
       const auto &task = std::get<0>(work);
       const auto &scheduling_key = task.GetTaskSpecification().GetSchedulingClass();
       RAY_LOG(DEBUG) << "Args ready, task can be dispatched "
                      << task.GetTaskSpecification().TaskId();
       tasks_to_dispatch_[scheduling_key].push_back(work);
-      waiting_tasks_.erase(it);
+      waiting_task_queue_.erase(it->second);
+      waiting_tasks_index_.erase(it);
     }
   }
   ScheduleAndDispatchTasks();
@@ -394,7 +385,10 @@ bool ClusterTaskManager::CancelTask(const TaskID &task_id) {
       if (task.GetTaskSpecification().TaskId() == task_id) {
         RemoveFromBacklogTracker(task);
         ReplyCancelled(*work_it);
-        RemoveTaskDependencies(task.GetTaskSpecification());
+        if (!task.GetTaskSpecification().GetDependencies().empty()) {
+          task_dependency_manager_.RemoveTaskDependencies(
+              task.GetTaskSpecification().TaskId());
+        }
         work_queue.erase(work_it);
         if (work_queue.empty()) {
           tasks_to_dispatch_.erase(shapes_it);
@@ -421,13 +415,17 @@ bool ClusterTaskManager::CancelTask(const TaskID &task_id) {
     }
   }
 
-  auto iter = waiting_tasks_.find(task_id);
-  if (iter != waiting_tasks_.end()) {
-    const auto &task = std::get<0>(iter->second);
+  auto iter = waiting_tasks_index_.find(task_id);
+  if (iter != waiting_tasks_index_.end()) {
+    const auto &task = std::get<0>(*iter->second);
     RemoveFromBacklogTracker(task);
-    ReplyCancelled(iter->second);
-    RemoveTaskDependencies(task.GetTaskSpecification());
-    waiting_tasks_.erase(iter);
+    ReplyCancelled(*iter->second);
+    if (!task.GetTaskSpecification().GetDependencies().empty()) {
+      task_dependency_manager_.RemoveTaskDependencies(
+          task.GetTaskSpecification().TaskId());
+    }
+    waiting_task_queue_.erase(iter->second);
+    waiting_tasks_index_.erase(iter);
 
     return true;
   }
@@ -680,7 +678,7 @@ std::string ClusterTaskManager::DebugStr() const {
   buffer << "Infeasible queue length: " << num_infeasible_tasks << "\n";
   buffer << "Schedule queue length: " << num_tasks_to_schedule << "\n";
   buffer << "Dispatch queue length: " << num_tasks_to_dispatch << "\n";
-  buffer << "Waiting tasks size: " << waiting_tasks_.size() << "\n";
+  buffer << "Waiting tasks size: " << waiting_tasks_index_.size() << "\n";
   buffer << "Number of executing tasks: " << pinned_task_arguments_.size() << "\n";
   buffer << "Number of pinned task arguments: " << num_pinned_task_arguments_ << "\n";
   buffer << "cluster_resource_scheduler state: "
@@ -891,27 +889,32 @@ void ClusterTaskManager::ScheduleAndDispatchTasks() {
 }
 
 void ClusterTaskManager::SpillWaitingTasksIfAtMemoryCapacity() {
-  RAY_LOG(DEBUG) << "Node is at memory capacity for task arguments. Trying to find a "
-                    "task to spill to a different node";
+  if (at_memory_capacity_()) {
+    RAY_LOG(DEBUG) << "Node is at memory capacity for task arguments. Trying to find a "
+                      "task to spill to a different node. "
+                   << waiting_task_queue_.size() << " waiting tasks";
+  }
   // Iterate over the task queue in reverse order and try to spill waiting
   // tasks to a remote node until we run out of tasks to spill, we run out of
   // remote resources, or we are no longer at memory capacity.
   // NOTE(swang): We do not iterate by scheduling class here, so if we break
   // due to lack of remote resources, it is possible that a waiting task that
   // is earlier in the queue could have been scheduled to a remote node.
-  auto it = tasks_with_dependencies_queue_.end();
-  while (at_memory_capacity_() && it != tasks_with_dependencies_queue_.begin()) {
+  auto it = waiting_task_queue_.end();
+  while (at_memory_capacity_() && it != waiting_task_queue_.begin()) {
     it--;
-    const auto &task_id = *it;
-    auto work_it = waiting_tasks_.find(task_id);
-    if (work_it == waiting_tasks_.end()) {
-      continue;
-    }
+    const auto &task = std::get<0>(*it);
+    const auto &task_id = task.GetTaskSpecification().TaskId();
     RAY_LOG(DEBUG) << "Last waiting task in queue is " << task_id;
     if (!task_dependency_manager_.TaskDependenciesBlockedDueToOom(task_id)) {
       // The last task that is waiting for dependencies in the queue is not
-      // blocked due to out-of-memory. Therefore, all tasks before it are also
-      // not blocked.
+      // blocked due to out-of-memory.
+      // NOTE(swang): Because tasks can be moved from the dispatch back to the
+      // waiting queue, this does not necessarily mean that all previous tasks
+      // in the waiting queue are also not blocked. This is safe but possibly
+      // slow, since we assume that eventually this task will get moved to the
+      // dispatch queue, and then there will only be blocked tasks left in the
+      // waiting queue.
       break;
     }
 
@@ -922,7 +925,6 @@ void ClusterTaskManager::SpillWaitingTasksIfAtMemoryCapacity() {
     // TODO(swang): The policy currently does not account for object store
     // memory availability. Ideally, we should pick the node with the most
     // memory availability.
-    const auto &task = std::get<0>(work_it->second);
     auto placement_resources =
         task.GetTaskSpecification().GetRequiredPlacementResources().GetResourceMap();
     int64_t _unused;
@@ -932,10 +934,18 @@ void ClusterTaskManager::SpillWaitingTasksIfAtMemoryCapacity() {
         /*force_spillback=*/true, &_unused, &is_infeasible);
     if (!node_id_string.empty()) {
       NodeID node_id = NodeID::FromBinary(node_id_string);
-      Spillback(node_id, work_it->second);
-      it = RemoveTaskDependencies(task.GetTaskSpecification());
-      waiting_tasks_.erase(work_it);
+      Spillback(node_id, *it);
+      if (!task.GetTaskSpecification().GetDependencies().empty()) {
+        task_dependency_manager_.RemoveTaskDependencies(
+            task.GetTaskSpecification().TaskId());
+      }
+      waiting_tasks_index_.erase(task_id);
+      it = waiting_task_queue_.erase(it);
     } else {
+      // No remote node has enough resources to execute this task, so we keep
+      // it local. Note that an earlier task in the queue may have different
+      // resource requirements and could actually be scheduled on a remote
+      // node.
       break;
     }
   }

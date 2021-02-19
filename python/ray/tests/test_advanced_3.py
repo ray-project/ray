@@ -157,14 +157,14 @@ def test_load_balancing_under_constrained_memory(ray_start_cluster):
         print(i, dep)
 
     attempts = 0
-    while attempts < 10:
+    while attempts < 100:
         locations = ray.get([f.remote(i, dep) for i, dep in enumerate(deps)])
         counts = collections.Counter(locations)
         print(f"Counts are {counts}")
         if (len(counts) == num_nodes and counts.most_common()[-1][1] >= 25):
             break
         attempts += 1
-    assert attempts < 10
+    assert attempts < 100
 
 
 def test_locality_aware_leasing(ray_start_cluster):

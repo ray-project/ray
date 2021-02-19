@@ -212,10 +212,6 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// becomes feasible to schedule.
   void TryLocalInfeasibleTaskScheduling();
 
-  /// Helper to remove any dependencies for a task that is no longer scheduled
-  /// locally.
-  std::list<TaskID>::iterator RemoveTaskDependencies(const TaskSpecification &task_spec);
-
   const NodeID &self_node_id_;
   std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
   /// Class to make task dependencies to be local.
@@ -252,34 +248,19 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// All tasks in this map that have dependencies should be registered with
   /// the dependency manager, so that they can be moved to dispatch once their
   /// dependencies are local.
-  absl::flat_hash_map<TaskID, Work> waiting_tasks_;
+  ///
+  /// We keep these in a queue so that tasks can be spilled back from the end
+  /// of the queue. This is to try to prioritize spilling tasks whose
+  /// dependencies may not be fetched locally yet.
+  ///
+  /// Note that because tasks can also move from dispatch -> waiting, the order
+  /// in this queue may not match the order in which we initially received the
+  /// tasks. This also means that the PullManager may request dependencies for
+  /// these tasks in a different order than the waiting task queue.
+  std::list<Work> waiting_task_queue_;
 
-  /// Tasks that have arguments that need to be transferred locally. We keep
-  /// these in a queue, ordered by receipt time, so that tasks can be spilled
-  /// back from the end of the queue. This is to make sure that we prioritize
-  /// spilling tasks whose dependencies may not be fetched locally yet.
-  ///
-  /// NOTE(swang): This prioritization will only work if the PullManager serves
-  /// task dependency requests in the order that we request them. Also, the
-  /// prioritization is not exact; it is possible that the PullManager is
-  /// fetching dependencies for a request at the end of this queue (because
-  /// another request required the same objects), even if the PullManager says
-  /// that the request is not being served.
-  ///
-  /// Tasks are removed from this queue once they are no longer scheduled to
-  /// this node (spilled back to a different node or canceled) or their
-  /// arguments are successfully pinned for immediate dispatch to a worker.
-  ///
-  /// All tasks in this queue have dependencies that should be registered with
-  /// the dependency manager, so that they can be moved to dispatch once their
-  /// dependencies are local. Once the task is removed from this queue, the
-  /// dependency manager should be notified that we no longer need the task's
-  /// dependencies.
-  std::list<TaskID> tasks_with_dependencies_queue_;
-
-  /// An index for fast lookup into the above queue.
-  absl::flat_hash_map<TaskID, std::list<TaskID>::iterator>
-      tasks_with_dependencies_queue_index_;
+  /// An index for the above queue.
+  absl::flat_hash_map<TaskID, std::list<Work>::iterator> waiting_tasks_index_;
 
   /// Queue of lease requests that are infeasible.
   /// Tasks go between scheduling <-> infeasible.
