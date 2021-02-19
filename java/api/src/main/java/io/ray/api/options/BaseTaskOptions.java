@@ -9,8 +9,7 @@ public abstract class BaseTaskOptions implements Serializable {
 
   public final Map<String, Double> resources = new HashMap<>();
 
-  public BaseTaskOptions() {
-  }
+  public BaseTaskOptions() {}
 
   public BaseTaskOptions(Map<String, Double> resources) {
     for (Map.Entry<String, Double> entry : resources.entrySet()) {
