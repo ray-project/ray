@@ -1,5 +1,6 @@
 import logging
 import datetime
+from sys import prefix
 import time
 from typing import ContextManager
 import os
@@ -41,20 +42,28 @@ class Rendezvous:
     def __init__(self, group_name, context, store_type, device_type):
         self._group_name = group_name
         self._context = context
-        self._ip_address = ray._private.services.get_node_ip_address()
+        self._ip_address, self._redis_port = ray.worker._global_node.redis_address.split(":")
+
+        ray._private.services.get_node_ip_address()
         self._store_type = store_type
-        self._device_type =device_type
+        self._device_type = device_type
+        self._store = None
+        self._device =None
+
         self.create_store(store_type)
         self.create_device(device_type)
 
     def create_store(self, store_type):
         if store_type == "redis":
-            redisStore = pygloo.rendezvous.RedisStore(self._ip_address, 6379) # redis_port use the default port. If the redis port of ray isn't 6379, might raise error. Need connect to ray's redis_port variable to fix it.
+            redisStore = pygloo.rendezvous.RedisStore(self._ip_address, int(self._redis_port))
+
             redis_password = ray_constants.REDIS_DEFAULT_PASSWORD
             redisStore.authorize(redis_password)
-
-            self._store = pygloo.rendezvous.PrefixStore(self._group_name, redisStore)
-
+            # self._store = redisStore
+            print(self._group_name.split("_")[0])
+            # self._store = pygloo.rendezvous.PrefixStore(self._group_name, redisStore)  # worker died with no reason. This affect multi-task appears in one application.
+            self._store = pygloo.rendezvous.PrefixStore(self._group_name, redisStore)  # worker died with no reason. This affect multi-task appears in one application.
+            print("prefix")
         elif store_type == "file":
             store_name = get_gloo_store_name(self._group_name)
             store_path = gloo_util.get_gloo_store_path(store_name)
@@ -93,7 +102,8 @@ class Rendezvous:
         Return:
             None
         """
-        self._context.connectFullMesh(self._store, self._device)
+        if self._store and self._device:
+            self._context.connectFullMesh(self._store, self._device)
 
     @property
     def store_type(self):
@@ -120,7 +130,7 @@ class GLOOGroup(BaseGroup):
             world_size (int): The number of processes.
             rank (int): The id of process
             group_name (str): the unique user-specified group name.
-            store_type (str): the store type. Optional: "file", "redis", "hash".
+            store_type (str): the store type. Optional: "redis", "file", "hash".
             device_type (str): the device type to transport. Optional: "tcp", "uv".
         """
         super(GLOOGroup, self).__init__(world_size, rank, group_name)
@@ -129,8 +139,6 @@ class GLOOGroup(BaseGroup):
 
         self._rendezvous = Rendezvous(self.group_name, self._gloo_context, store_type, device_type)
         self._rendezvous.meet()
-
-        self._store_path = None
 
     def destroy_group(self):
         """
@@ -165,7 +173,8 @@ class GLOOGroup(BaseGroup):
         """
 
         def collective_fn(input_tensor, output_tensor, context):
-            context.allreduce(
+            pygloo.allreduce(
+                context,
                 gloo_util.get_tensor_ptr(input_tensor),
                 gloo_util.get_tensor_ptr(output_tensor),
                 gloo_util.get_tensor_n_elements(input_tensor),
@@ -200,7 +209,8 @@ class GLOOGroup(BaseGroup):
         root_rank = reduce_options.root_rank
 
         def collective_fn(input_tensor, output_tensor, context):
-            context.reduce(
+            pygloo.reduce(
+                context,
                 gloo_util.get_tensor_ptr(input_tensor),
                 gloo_util.get_tensor_ptr(output_tensor),
                 gloo_util.get_tensor_n_elements(input_tensor),
@@ -223,8 +233,9 @@ class GLOOGroup(BaseGroup):
         root_rank = len(tensors) * broadcast_options.root_rank \
             + broadcast_options.root_tensor
 
-        def collective_fn(input_tensor, output_tensor, comm, stream):
-            comm.broadcast(
+        def collective_fn(input_tensor, output_tensor, context):
+            pygloo.broadcast(
+                context,
                 gloo_util.get_tensor_ptr(input_tensor),
                 gloo_util.get_tensor_ptr(output_tensor),
                 gloo_util.get_tensor_n_elements(input_tensor),
@@ -249,8 +260,9 @@ class GLOOGroup(BaseGroup):
             None
         """
 
-        def collective_fn(input_tensor, output_tensor, comm, stream):
-            comm.allGather(
+        def collective_fn(input_tensor, output_tensor, context):
+            pygloo.allGather(
+                context,
                 gloo_util.get_tensor_ptr(input_tensor),
                 gloo_util.get_tensor_ptr(output_tensor),
                 gloo_util.get_tensor_n_elements(input_tensor),
@@ -291,8 +303,8 @@ class GLOOGroup(BaseGroup):
             None
         """
 
-        def collective_fn(input_tensor, output_tensor, comm, stream):
-            comm.reduceScatter(
+        def collective_fn(input_tensor, output_tensor, context, stream):
+            context.reduceScatter(
                 gloo_util.get_tensor_ptr(input_tensor),
                 gloo_util.get_tensor_ptr(output_tensor),
                 gloo_util.get_tensor_n_elements(output_tensor),
@@ -307,7 +319,6 @@ class GLOOGroup(BaseGroup):
         ]
 
         def preprocess_fn(stream):
-            # TODO(Hao): designate a copy stream.
             for i, tensor_list in enumerate(tensor_lists):
                 for j, tensor in enumerate(tensor_list):
                     gloo_util.copy_tensor(input_flattened[i][j], tensor)
@@ -330,10 +341,12 @@ class GLOOGroup(BaseGroup):
         """
 
         def p2p_fn(tensor, context, peer):
-            context.send(
+            pygloo.send(
+                context,
                 gloo_util.get_tensor_ptr(tensor),
                 gloo_util.get_tensor_n_elements(tensor),
-                gloo_util.get_nccl_tensor_dtype(tensor), peer)
+                gloo_util.get_nccl_tensor_dtype(tensor),
+                peer)
 
         self._point2point(tensors, p2p_fn, send_options.dst_rank,
                           send_options.dst_gpu_index)
@@ -349,22 +362,23 @@ class GLOOGroup(BaseGroup):
             None
         """
 
-        def p2p_fn(tensor, comm, stream, peer):
-            comm.recv(
+        def p2p_fn(tensor, context, stream, peer):
+            pygloo.recv(
+                context,
                 gloo_util.get_tensor_ptr(tensor),
                 gloo_util.get_tensor_n_elements(tensor),
-                gloo_util.get_nccl_tensor_dtype(tensor), peer, stream.ptr)
+                gloo_util.get_nccl_tensor_dtype(tensor),
+                peer)
 
         self._point2point(tensors, p2p_fn, recv_options.src_rank,
                           recv_options.src_gpu_index)
 
     def _get_gloo_context(self):
         """
-        Create or use a cached GLOO communicator for the collective task.
+        Create or use a cached GLOO contextunicator for the collective task.
 
         """
-        context = gloo_util.create_gloo_context(
-            self.world_size, self.rank)
+        context = gloo_util.create_gloo_context(self.rank, self.world_size)
         return context
 
     def _collective(self,
@@ -405,22 +419,10 @@ class GLOOGroup(BaseGroup):
         #                            gloo_util.get_nccl_runtime_version()))
         _check_cpu_tensors(tensors)
 
-        # we currently only support single device to single device send/recv.
-        assert len(tensors) == 1
-        my_gpu_idx = gloo_util.get_tensor_device(tensors[0])
-        comm_key = _get_comm_key_send_recv(self.rank, my_gpu_idx, peer_rank,
-        #                                    peer_gpu_idx)
-        # comms = self._get_nccl_p2p_communicator(comm_key, my_gpu_idx,
-        #                                         peer_rank, peer_gpu_idx)
-        # streams = self._d ev_streams_map[comm_key]
-
-        # # TODO(Hao): sync streams and events
-        # self._sync_streams()
-
         # We have made sure that self.rank != peer_rank during API check.
         peer_p2p_rank = 0 if self.rank > peer_rank else 1
-        for i, tensor in enumerate(tensors):
-            p2p_fn(tensors[i], comms[i], streams[i], peer_p2p_rank)
+        # for i, tensor in enumerate(tensors):
+        p2p_fn(tensors[0], self._gloo_context, peer_p2p_rank)
 
 def _check_cpu_tensors(tensors):
     """Check only have one tensor and located on CPU."""

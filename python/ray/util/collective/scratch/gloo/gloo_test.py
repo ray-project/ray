@@ -35,8 +35,9 @@ def allreduce(rank, world_size, group_name="default", tensor_type="numpy"):
     '''
     assert col.gloo_available()
 
+    group_name = f"{group_name}_{tensor_type}"
     col.init_collective_group(
-        world_size, rank, Backend.GLOO, f"{group_name}_{tensor_type}")
+        world_size, rank, Backend.GLOO, group_name)
 
     data = get_test_data(tensor_type)
 
@@ -44,17 +45,18 @@ def allreduce(rank, world_size, group_name="default", tensor_type="numpy"):
 
     col.destroy_collective_group(group_name)
 
-    assert (data == result[group_name]).all()
+    assert (data == result[group_name.split("_")[0]]).all()
 
-    print(f"{group_name} test completed")
+    print(f"{group_name} test completed") if rank == 0 else None
 
 
 @ray.remote(num_gpus=1)
 def allgather(rank, world_size, group_name="default", tensor_type="numpy"):
     assert col.gloo_available()
 
+    group_name = f"{group_name}_{tensor_type}"
     col.init_collective_group(
-        world_size, rank, Backend.GLOO, f"{group_name}_{tensor_type}")
+        world_size, rank, Backend.GLOO, group_name)
 
     data = get_test_data(tensor_type)
 
@@ -62,7 +64,7 @@ def allgather(rank, world_size, group_name="default", tensor_type="numpy"):
 
     col.destroy_collective_group(group_name)
 
-    assert (data == result[group_name]).all()
+    assert (data == result[group_name.split("_")[0]]).all()
 
     print(f"{group_name} test completed")
 
@@ -71,16 +73,18 @@ def allgather(rank, world_size, group_name="default", tensor_type="numpy"):
 def reduce(rank, world_size, group_name="default", tensor_type="numpy"):
     assert col.gloo_available()
 
+    group_name = f"{group_name}_{tensor_type}"
     col.init_collective_group(
-        world_size, rank, Backend.GLOO, f"{group_name}_{tensor_type}")
+        world_size, rank, Backend.GLOO, group_name)
 
     data = get_test_data(tensor_type)
 
-    col.allreduce(data, group_name)
+    col.reduce(data, dst_rank=0, group_name=group_name)
 
     col.destroy_collective_group(group_name)
 
-    assert (data == result[group_name]).all()
+    if rank == 0:
+        assert (data == result[group_name.split("_")[0]]).all()
 
     print(f"{group_name} test completed")
 
@@ -90,7 +94,7 @@ def gather(rank, world_size, group_name="default", tensor_type="numpy"):
     assert col.gloo_available()
 
     col.init_collective_group(
-        world_size, rank, Backend.GLOO, f"{group_name}_{tensor_type}")
+        world_size, rank, Backend.GLOO, group_name)
 
     data = get_test_data(tensor_type)
 
@@ -98,7 +102,8 @@ def gather(rank, world_size, group_name="default", tensor_type="numpy"):
 
     col.destroy_collective_group(group_name)
 
-    assert (data == result[group_name]).all()
+    if rank == 0:
+        assert (data == result[group_name.split("_")[0]]).all()
 
     print(f"{group_name} test completed")
 
@@ -106,7 +111,7 @@ def gather(rank, world_size, group_name="default", tensor_type="numpy"):
 if __name__ == "__main__":
     ray.init(num_cpus=6)
     world_size = 2
-
-    for fn_name in result:
+    test_list =["allreduce", "reduce"]
+    for fn_name in test_list:
         fn = getattr(sys.modules[__name__], fn_name)
-        ray.get([fn.remote(i, world_size, fn_name) for i in range(world_size)])
+        ray.get([fn.remote(rank, world_size, fn_name) for rank in range(world_size)])

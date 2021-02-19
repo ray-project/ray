@@ -19,9 +19,9 @@ GLOO_REDUCE_OP_MAP = {
 NUMPY_GLOO_DTYPE_MAP = {
     # INT types
     numpy.int: pygloo.glooDataType_t.glooInt8,
-    numpy.uint8: pygloo.glooDataType_t.glooUInt8,
-    numpy.uint32: pygloo.glooDataType_t.glooUInt32,
-    numpy.uint64: pygloo.glooDataType_t.glooUInt64,
+    numpy.uint8: pygloo.glooDataType_t.glooUint8,
+    numpy.uint32: pygloo.glooDataType_t.glooUint32,
+    numpy.uint64: pygloo.glooDataType_t.glooUint64,
     numpy.int8: pygloo.glooDataType_t.glooInt8,
     numpy.int32: pygloo.glooDataType_t.glooInt32,
     numpy.int64: pygloo.glooDataType_t.glooInt64,
@@ -38,10 +38,10 @@ if torch_available():
     import torch
     TORCH_GLOO_DTYPE_MAP = {
         torch.int: pygloo.glooDataType_t.glooInt8,
-        torch.uint8: pygloo.glooDataType_t.glooUInt8,
+        torch.uint8: pygloo.glooDataType_t.glooUint8,
         torch.int8: pygloo.glooDataType_t.glooInt8,
-        torch.uint32: pygloo.glooDataType_t.glooUInt32,
-        torch.uint64: pygloo.glooDataType_t.glooUInt64,
+        torch.int32: pygloo.glooDataType_t.glooInt32,
+        torch.int64: pygloo.glooDataType_t.glooInt64,
         torch.long: pygloo.glooDataType_t.glooInt64,
         # FLOAT types
         torch.half: pygloo.glooDataType_t.glooFloat16,
@@ -76,18 +76,17 @@ if torch_available():
 #     return get_version()
 
 
-def create_gloo_context(world_size, rank):
+def create_gloo_context(rank, world_size):
     """
     Create an gloo context using gloo APIs.
 
     Args:
-        world_size (int): the number of processes of this communcator group.
         rank (int): the rank of this process.
+        world_size (int): the number of processes of this communcator group.
     Returns:
         context (pygloo.Context): a gloo context.
     """
     context = pygloo.rendezvous.Context(rank, world_size);
-
     return context
 
 
