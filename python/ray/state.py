@@ -641,7 +641,6 @@ class GlobalState:
                     object_ref, remote_node_id, _, _ = event["extra_data"]
 
                 elif event["event_type"] == "transfer_receive":
-                    print(event["extra_data"])
                     object_ref, remote_node_id, _ = event["extra_data"]
 
                 elif event["event_type"] == "receive_pull_request":

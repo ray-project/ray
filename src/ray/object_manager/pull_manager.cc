@@ -178,7 +178,6 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) 
     RAY_CHECK(last_request_it != pull_request_bundles_.end());
     DeactivatePullBundleRequest(last_request_it, &object_ids_to_cancel);
   }
-
   for (const auto &obj_id : object_ids_to_cancel) {
     // Call the cancellation callbacks outside of the lock.
     cancel_pull_request_(obj_id);
