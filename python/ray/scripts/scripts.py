@@ -1399,7 +1399,7 @@ def memory(address, redis_password, group_by, sort_by, line_wrap):
     header = "=" * 8 + f" Object references status: {time} " + "=" * 8
     mem_stats = memory_summary(address, redis_password, group_by, sort_by,
                                line_wrap)
-    print(f"{header}\n\{mem_stats}")
+    print(f"{header}\n{mem_stats}")
 
 
 @cli.command()
