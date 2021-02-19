@@ -10,6 +10,7 @@ import setproctitle
 
 class RayError(Exception):
     """Super class of all ray exception types."""
+
     def to_bytes(self):
         # Extract exc_info from exception object.
         exc_info = (type(self), self, self.__traceback__)
@@ -32,6 +33,7 @@ class RayError(Exception):
 
 class CrossLanguageError(RayError):
     """Raised from another language."""
+
     def __init__(self, ray_exception):
         super().__init__("An exception raised from {}:\n{}".format(
             Language.Name(ray_exception.language),
@@ -45,6 +47,7 @@ class TaskCancelledError(RayError):
         task_id (TaskID): The TaskID of the function that was directly
             cancelled.
     """
+
     def __init__(self, task_id=None):
         self.task_id = task_id
 
@@ -68,6 +71,7 @@ class RayTaskError(RayError):
             the RayTaskError.
         traceback_str (str): The traceback from the exception.
     """
+
     def __init__(self,
                  function_name,
                  traceback_str,
@@ -136,6 +140,7 @@ class RayTaskError(RayError):
 
 class WorkerCrashedError(RayError):
     """Indicates that the worker died unexpectedly while executing a task."""
+
     def __str__(self):
         return ("The worker died unexpectedly while executing this task. "
                 "Check python-core-worker-*.log files for more information.")
@@ -147,6 +152,7 @@ class RayActorError(RayError):
     This exception could happen either because the actor process dies while
     executing a task, or because a task is submitted to a dead actor.
     """
+
     def __str__(self):
         return ("The actor died unexpectedly before finishing this task."
                 f" Dead info: {super().__str__()}")
@@ -157,6 +163,7 @@ class RaySystemError(RayError):
 
     This exception can be thrown when the raylet is killed.
     """
+
     def __init__(self, client_exc, traceback_str=None):
         self.client_exc = client_exc
         self.traceback_str = traceback_str
@@ -174,6 +181,7 @@ class ObjectStoreFullError(RayError):
     This is raised if the attempt to store the object fails
     because the object store is full even after multiple retries.
     """
+
     def __str__(self):
         return super(ObjectStoreFullError, self).__str__() + (
             "\n"
@@ -188,6 +196,7 @@ class ObjectLostError(RayError):
     Attributes:
         object_ref: ID of the object.
     """
+
     def __init__(self, object_ref):
         self.object_ref = object_ref
 
