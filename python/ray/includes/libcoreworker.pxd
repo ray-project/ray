@@ -34,6 +34,7 @@ from ray.includes.common cimport (
     CWorkerType,
     CLanguage,
     CGcsClientOptions,
+    CJobConfig,
 )
 from ray.includes.function_descriptor cimport (
     CFunctionDescriptor,
@@ -208,7 +209,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                                const CNodeID &client_Id)
         CRayStatus SpillObjects(const c_vector[CObjectID] &object_ids)
 
-        c_string GetSerializedJobConfig()
+        CJobConfig GetJobConfig()
 
     cdef cppclass CCoreWorkerOptions "ray::CoreWorkerOptions":
         CWorkerType worker_type

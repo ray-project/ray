@@ -930,7 +930,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                 void *python_future);
 
   // Get serialized job configuration.
-  std::string GetSerializedJobConfig() const;
+  const rpc::JobConfig &GetJobConfig() const;
 
  private:
   void SetCurrentTaskId(const TaskID &task_id);
