@@ -137,7 +137,9 @@ struct CoreWorkerOptions {
   /// be held up in garbage objects.
   std::function<void()> gc_collect;
   /// Application-language callback to spill objects to external storage.
-  std::function<std::vector<std::string>(const std::vector<ObjectID> &)> spill_objects;
+  std::function<std::vector<std::string>(const std::vector<ObjectID> &,
+                                         const std::vector<std::string> &)>
+      spill_objects;
   /// Application-language callback to restore objects from external storage.
   std::function<int64_t(const std::vector<ObjectID> &, const std::vector<std::string> &)>
       restore_spilled_objects;
@@ -730,7 +732,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Tell an actor to exit immediately, without completing outstanding work.
   ///
   /// \param[in] actor_id ID of the actor to kill.
-  /// \param[in] force_kill Whether to force kill an actor by killing the worker.
   /// \param[in] no_restart If set to true, the killed actor will not be
   /// restarted anymore.
   /// \param[out] Status
@@ -910,6 +911,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   void HandleSpillObjects(const rpc::SpillObjectsRequest &request,
                           rpc::SpillObjectsReply *reply,
                           rpc::SendReplyCallback send_reply_callback) override;
+
+  // Add spilled URL to owned reference.
+  void HandleAddSpilledUrl(const rpc::AddSpilledUrlRequest &request,
+                           rpc::AddSpilledUrlReply *reply,
+                           rpc::SendReplyCallback send_reply_callback) override;
 
   // Restore objects from external storage.
   void HandleRestoreSpilledObjects(const rpc::RestoreSpilledObjectsRequest &request,

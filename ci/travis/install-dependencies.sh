@@ -293,7 +293,7 @@ install_dependencies() {
     local status="0";
     local errmsg="";
     for _ in {1..3}; do
-      errmsg=$(CC=gcc pip install -r "${WORKSPACE_DIR}"/python/requirements/requirements.txt 2>&1) && break;
+      errmsg=$(CC=gcc pip install -r "${WORKSPACE_DIR}"/python/requirements.txt 2>&1) && break;
       status=$errmsg && echo "'pip install ...' failed, will retry after n seconds!" && sleep 30;
     done
     if [ "$status" != "0" ]; then
@@ -324,13 +324,7 @@ install_dependencies() {
 
   # Additional Tune/SGD/Doc test dependencies.
   if [ "${TUNE_TESTING-}" = 1 ] || [ "${SGD_TESTING-}" = 1 ] || [ "${DOC_TESTING-}" = 1 ]; then
-    if [ -n "${PYTHON-}" ] && [ "${PYTHON-}" = "3.7" ]; then
-      # Install Python 3.7 dependencies if 3.7 is set.
-      pip install -r "${WORKSPACE_DIR}"/python/requirements/linux-py3.7-requirements_tune.txt
-    else
-      # Else default to Python 3.6.
-      pip install -r "${WORKSPACE_DIR}"/python/requirements/linux-py3.6-requirements_tune.txt
-    fi
+    pip install -r "${WORKSPACE_DIR}"/python/requirements/requirements_tune.txt
   fi
 
   # For Tune, install upstream dependencies.

@@ -754,15 +754,12 @@ def test_warning_for_too_many_actors(shutdown_only):
         def __init__(self):
             time.sleep(1000)
 
-    # NOTE: We should save actor, otherwise it will be out of scope.
-    actors = [Foo.remote() for _ in range(num_cpus * 3)]
-    assert len(actors) == num_cpus * 3
+    [Foo.remote() for _ in range(num_cpus * 3)]
     errors = get_error_message(p, 1, ray_constants.WORKER_POOL_LARGE_ERROR)
     assert len(errors) == 1
     assert errors[0].type == ray_constants.WORKER_POOL_LARGE_ERROR
 
-    actors = [Foo.remote() for _ in range(num_cpus)]
-    assert len(actors) == num_cpus
+    [Foo.remote() for _ in range(num_cpus)]
     errors = get_error_message(p, 1, ray_constants.WORKER_POOL_LARGE_ERROR)
     assert len(errors) == 1
     assert errors[0].type == ray_constants.WORKER_POOL_LARGE_ERROR
@@ -1072,56 +1069,6 @@ def test_fill_object_store_exception(shutdown_only):
 
     with pytest.raises(ray.exceptions.ObjectStoreFullError):
         ray.put(np.zeros(10**8 + 2, dtype=np.uint8))
-
-
-def test_fill_object_store_lru_fallback(shutdown_only):
-    config = {
-        "free_objects_batch_size": 1,
-    }
-    ray.init(
-        num_cpus=2,
-        object_store_memory=10**8,
-        _lru_evict=True,
-        _system_config=config)
-
-    @ray.remote
-    def expensive_task():
-        return np.zeros((10**8) // 2, dtype=np.uint8)
-
-    # Check that objects out of scope are cleaned up quickly.
-    ray.get(expensive_task.remote())
-    start = time.time()
-    for _ in range(3):
-        ray.get(expensive_task.remote())
-    end = time.time()
-    assert end - start < 3
-
-    obj_refs = []
-    for _ in range(3):
-        obj_ref = expensive_task.remote()
-        ray.get(obj_ref)
-        obj_refs.append(obj_ref)
-
-    @ray.remote
-    class LargeMemoryActor:
-        def some_expensive_task(self):
-            return np.zeros(10**8 // 2, dtype=np.uint8)
-
-        def test(self):
-            return 1
-
-    actor = LargeMemoryActor.remote()
-    for _ in range(3):
-        obj_ref = actor.some_expensive_task.remote()
-        ray.get(obj_ref)
-        obj_refs.append(obj_ref)
-    # Make sure actor does not die
-    ray.get(actor.test.remote())
-
-    for _ in range(3):
-        obj_ref = ray.put(np.zeros(10**8 // 2, dtype=np.uint8))
-        ray.get(obj_ref)
-        obj_refs.append(obj_ref)
 
 
 @pytest.mark.parametrize(

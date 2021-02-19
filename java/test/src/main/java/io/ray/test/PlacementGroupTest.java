@@ -35,7 +35,7 @@ public class PlacementGroupTest extends BaseTest {
   // It's not comprehensive to test all placement group test cases.
   public void testCreateAndCallActor() {
     PlacementGroup placementGroup = PlacementGroupTestUtils.createSimpleGroup();
-    Assert.assertTrue(placementGroup.wait(10));
+    Assert.assertTrue(placementGroup.wait(60));
     Assert.assertEquals(placementGroup.getName(), "unnamed_group");
 
     // Test creating an actor from a constructor.
@@ -59,8 +59,8 @@ public class PlacementGroupTest extends BaseTest {
     PlacementGroup secondPlacementGroup =
         PlacementGroupTestUtils.createNameSpecifiedSimpleGroup(
             "CPU", 1, PlacementStrategy.PACK, 1.0, "second_placement_group", false);
-    Assert.assertTrue(firstPlacementGroup.wait(10));
-    Assert.assertTrue(secondPlacementGroup.wait(10));
+    Assert.assertTrue(firstPlacementGroup.wait(60));
+    Assert.assertTrue(secondPlacementGroup.wait(60));
 
     PlacementGroup firstPlacementGroupRes = Ray.getPlacementGroup((firstPlacementGroup).getId());
     PlacementGroup secondPlacementGroupRes = Ray.getPlacementGroup((secondPlacementGroup).getId());
@@ -87,16 +87,17 @@ public class PlacementGroupTest extends BaseTest {
     Assert.assertEquals(placementGroupRes.getStrategy(), expectPlacementGroup.getStrategy());
   }
 
-  @Test(
-      groups = {"cluster"},
-      enabled = false)
+  @Test(groups = {"cluster"})
   public void testRemovePlacementGroup() {
+    PlacementGroup firstPlacementGroup =
     PlacementGroupTestUtils.createNameSpecifiedSimpleGroup(
         "CPU", 1, PlacementStrategy.PACK, 1.0, "first_placement_group", false);
 
     PlacementGroup secondPlacementGroup =
         PlacementGroupTestUtils.createNameSpecifiedSimpleGroup(
             "CPU", 1, PlacementStrategy.PACK, 1.0, "second_placement_group", false);
+    Assert.assertTrue(firstPlacementGroup.wait(60));
+    Assert.assertTrue(secondPlacementGroup.wait(60));
 
     List<PlacementGroup> allPlacementGroup = Ray.getAllPlacementGroups();
     Assert.assertEquals(allPlacementGroup.size(), 2);
@@ -118,6 +119,7 @@ public class PlacementGroupTest extends BaseTest {
 
   public void testCheckBundleIndex() {
     PlacementGroup placementGroup = PlacementGroupTestUtils.createSimpleGroup();
+    Assert.assertTrue(placementGroup.wait(60));
 
     int exceptionCount = 0;
     try {
