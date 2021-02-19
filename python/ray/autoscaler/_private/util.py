@@ -13,6 +13,7 @@ import ray.ray_constants
 import ray._private.services as services
 from ray.autoscaler._private.providers import _get_default_config
 from ray.autoscaler._private.docker import validate_docker_config
+from ray.autoscaler._private.constants import MAX_WORKER_INF
 from ray.autoscaler.tags import NODE_TYPE_LEGACY_WORKER, NODE_TYPE_LEGACY_HEAD
 
 REQUIRED, OPTIONAL = True, False
@@ -99,6 +100,7 @@ def prepare_config(config):
     with_defaults = fillout_defaults(config)
     merge_setup_commands(with_defaults)
     validate_docker_config(with_defaults)
+    fill_node_type_max_workers(with_defaults)
     return with_defaults
 
 
@@ -120,7 +122,7 @@ def rewrite_legacy_yaml_to_available_node_types(
                 "node_config": config["worker_nodes"],
                 "resources": config["worker_nodes"].get("resources") or {},
                 "min_workers": config.get("min_workers", 0),
-                "max_workers": config.get("max_workers", 0),
+                "max_workers": config.get("max_workers", MAX_WORKER_INF),
             },
         }
         config["head_node_type"] = NODE_TYPE_LEGACY_HEAD
@@ -142,6 +144,12 @@ def merge_setup_commands(config):
     config["worker_setup_commands"] = (
         config["setup_commands"] + config["worker_setup_commands"])
     return config
+
+
+def fill_node_type_max_workers(config):
+    available_node_types = config["available_node_types"]
+    for node_type in available_node_types:
+        node_type.setdefault("max_workers", MAX_WORKER_INF)
 
 
 def with_head_node_ip(cmds, head_ip=None):
