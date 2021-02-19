@@ -207,8 +207,9 @@ See `ray.util.accelerators` to see available accelerator types. Current automati
 
 
 Overloaded Functions
------------------------
-Ray java api support call overloaded java functions remotely.
+--------------------
+Ray java api support call overloaded java functions remotely. For example, consider the following.
+
 Overloaded normal task call:
 
 .. code:: java
@@ -230,7 +231,7 @@ Overloaded normal task call:
 
 Overloaded actor task call:
 
-.. code-tab:: java
+.. code:: java
 
     public static class Counter {
       protected int value = 0;
@@ -253,7 +254,7 @@ Overloaded actor task call:
       }
     }
 
-.. code-tab:: java
+.. code:: java
 
     ActorHandle<CounterOverloaded> a = Ray.actor(CounterOverloaded::new).remote();
     // Call an overloaded actor method by super class method reference.
@@ -263,6 +264,8 @@ Overloaded actor task call:
     a.task((RayFunc2<CounterOverloaded, Integer, Integer>) CounterOverloaded::increment, 10).remote();
     a.task((RayFunc3<CounterOverloaded, Integer, Integer, Integer>) CounterOverloaded::increment, 10, 10).remote();
     Assert.assertEquals((int) a.task(Counter::increment).remote().get(), 33);
+
+When a method is overloaded, we need to cast the method reference to `RayFunc` so that the java compiler can get enough type information to figure out which method the method reference is referencing.
 
 
 Nested Remote Functions
