@@ -132,7 +132,6 @@ install_requires = [
     "cloudpickle",
     "colorama",
     "colorful",
-    "dataclasses; python_version < '3.7'",
     "filelock",
     "gpustat",
     "grpcio >= 1.28.1",

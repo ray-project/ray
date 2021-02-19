@@ -21,10 +21,15 @@ from ray.autoscaler._private.commands import (
     attach_cluster, exec_cluster, create_or_update_cluster, monitor_cluster,
     rsync, teardown_cluster, get_head_node_ip, kill_node, get_worker_node_ips,
     debug_status, RUN_ENV_TYPES)
-from ray.autoscaler._private.get_logs import Archive, \
-    GetParameters, Node, _info_from_params, \
-    create_archive_for_local_and_remote_nodes, \
-    create_archive_for_remote_nodes, get_all_local_data
+try:
+    from ray.autoscaler._private.get_logs import Archive, \
+        GetParameters, Node, _info_from_params, \
+        create_archive_for_local_and_remote_nodes, \
+        create_archive_for_remote_nodes, get_all_local_data
+    get_logs_available = True
+except ImportError:
+    get_logs_available = False
+
 from ray.autoscaler._private.util import DEBUG_AUTOSCALING_ERROR, \
     DEBUG_AUTOSCALING_STATUS
 from ray.state import GlobalState
@@ -1472,6 +1477,10 @@ def get_local_logs(stream: bool = False,
 
     This script is called on remote nodes to fetch their data.
     """
+    if not get_logs_available:
+        logger.error("This function is only available in python >= 3.7")
+        return
+
     if stream and output:
         raise ValueError(
             "You can only use either `--output` or `--stream`, but not both.")
@@ -1588,6 +1597,10 @@ def get_logs(cluster_config_file: Optional[str] = None,
     You can also manually specify a list of hosts using the
     ``--host <host1,host2,...>`` parameter.
     """
+    if not get_logs_available:
+        logger.error("This function is only available in python >= 3.7")
+        return
+
     cluster_config_file, hosts, ssh_user, ssh_key, docker, cluster_name = \
         _info_from_params(cluster_config_file, host, ssh_user, ssh_key, docker)
 
