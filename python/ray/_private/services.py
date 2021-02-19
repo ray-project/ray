@@ -785,7 +785,7 @@ def start_redis(node_ip_address,
                 redirect_worker_output=False,
                 password=None,
                 fate_share=None,
-                external_redis_addresses=None):
+                external_addresses=None):
     """Start the Redis global state store.
 
     Args:
@@ -826,8 +826,8 @@ def start_redis(node_ip_address,
 
     processes = []
 
-    if external_redis_addresses is not None:
-        primary_redis_address = external_redis_addresses[0]
+    if external_addresses is not None:
+        primary_redis_address = external_addresses[0]
         [primary_redis_ip, port] = primary_redis_address.split(":")
         port = int(port)
         redis_address = address(primary_redis_ip, port)
@@ -892,8 +892,8 @@ def start_redis(node_ip_address,
     # primary Redis shard port.
     last_shard_port = port
     for i in range(num_redis_shards):
-        if external_redis_addresses is not None:
-            shard_address = external_redis_addresses[i + 1]
+        if external_addresses is not None:
+            shard_address = external_addresses[i + 1]
         else:
             redis_stdout_file, redis_stderr_file = redirect_files[i + 1]
             redis_executable = REDIS_EXECUTABLE
@@ -920,6 +920,7 @@ def start_redis(node_ip_address,
                 fate_share=fate_share)
             processes.append(p)
 
+            shard_address = address(node_ip_address, redis_shard_port)
             redis_shards.append(shard_address)
             # Store redis shard information in the primary redis shard.
             primary_redis_client.rpush("RedisShards", shard_address)
