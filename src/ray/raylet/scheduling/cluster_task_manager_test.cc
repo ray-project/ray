@@ -114,8 +114,13 @@ class MockTaskDependencyManager : public TaskDependencyManagerInterface {
     RAY_CHECK(subscribed_tasks.erase(task_id));
   }
 
+  bool TaskDependenciesBlockedDueToOom(const TaskID &task_id) const {
+    return blocked_tasks.count(task_id);
+  }
+
   std::unordered_set<ObjectID> &missing_objects_;
   std::unordered_set<TaskID> subscribed_tasks;
+  std::unordered_set<TaskID> blocked_tasks;
 };
 
 class ClusterTaskManagerTest : public ::testing::Test {
@@ -153,7 +158,8 @@ class ClusterTaskManagerTest : public ::testing::Test {
                 }
               }
               return true;
-            }) {}
+            },
+            [this]() { return at_memory_capacity_; }) {}
 
   void SetUp() {}
 
@@ -174,7 +180,8 @@ class ClusterTaskManagerTest : public ::testing::Test {
   void AssertNoLeaks() {
     ASSERT_TRUE(task_manager_.tasks_to_schedule_.empty());
     ASSERT_TRUE(task_manager_.tasks_to_dispatch_.empty());
-    ASSERT_TRUE(task_manager_.waiting_tasks_.empty());
+    ASSERT_TRUE(task_manager_.waiting_tasks_index_.empty());
+    ASSERT_TRUE(task_manager_.waiting_task_queue_.empty());
     ASSERT_TRUE(task_manager_.infeasible_tasks_.empty());
     ASSERT_TRUE(task_manager_.pinned_task_arguments_.empty());
     ASSERT_EQ(task_manager_.num_pinned_task_arguments_, 0);
@@ -197,6 +204,7 @@ class ClusterTaskManagerTest : public ::testing::Test {
   std::unordered_set<ObjectID> missing_objects_;
 
   bool is_owner_alive_;
+  bool at_memory_capacity_ = false;
 
   int node_info_calls_;
   int announce_infeasible_task_calls_;
@@ -942,6 +950,82 @@ TEST_F(ClusterTaskManagerTest, RleaseAndReturnWorkerCpuResources) {
   // Check nothing will be changed.
   ASSERT_EQ(node_resources.predefined_resources[PredefinedResources::CPU].available, 7);
   ASSERT_EQ(node_resources.predefined_resources[PredefinedResources::GPU].available, 3);
+}
+
+TEST_F(ClusterTaskManagerTest, TestSpillWaitingTasks) {
+  std::vector<Task> tasks;
+  std::vector<std::unique_ptr<rpc::RequestWorkerLeaseReply>> replies;
+  int num_callbacks = 0;
+  auto callback = [&](Status, std::function<void()>, std::function<void()>) {
+    num_callbacks++;
+  };
+  for (int i = 0; i < 5; i++) {
+    Task task = CreateTask({{ray::kCPU_ResourceLabel, 1}}, /*num_args=*/1);
+    tasks.push_back(task);
+    replies.push_back(std::unique_ptr<rpc::RequestWorkerLeaseReply>(
+        new rpc::RequestWorkerLeaseReply()));
+    // All tasks except the last one added are waiting for dependencies.
+    if (i < 4) {
+      auto missing_arg = task.GetTaskSpecification().GetDependencyIds()[0];
+      missing_objects_.insert(missing_arg);
+    }
+    task_manager_.QueueAndScheduleTask(task, replies[i].get(), callback);
+  }
+  ASSERT_EQ(num_callbacks, 0);
+
+  auto remote_node_id = NodeID::FromRandom();
+  AddNode(remote_node_id, 2);
+  // Nothing happens if we're not at memory capacity.
+  task_manager_.ScheduleAndDispatchTasks();
+  ASSERT_EQ(num_callbacks, 0);
+
+  // Nothing happens if we're at memory capacity, but no tasks are blocked.
+  at_memory_capacity_ = true;
+  task_manager_.ScheduleAndDispatchTasks();
+  ASSERT_EQ(num_callbacks, 0);
+
+  // Spill back as many blocked waiting tasks as possible to the remote node if
+  // we are at memory capacity.
+  for (auto &task : tasks) {
+    dependency_manager_.blocked_tasks.insert(task.GetTaskSpecification().TaskId());
+  }
+  task_manager_.ScheduleAndDispatchTasks();
+  ASSERT_EQ(num_callbacks, 2);
+  // Spill from the back of the queue.
+  ASSERT_EQ(replies[0]->retry_at_raylet_address().raylet_id(), "");
+  ASSERT_EQ(replies[1]->retry_at_raylet_address().raylet_id(), "");
+  ASSERT_EQ(replies[2]->retry_at_raylet_address().raylet_id(), remote_node_id.Binary());
+  ASSERT_EQ(replies[3]->retry_at_raylet_address().raylet_id(), remote_node_id.Binary());
+  ASSERT_FALSE(task_manager_.CancelTask(tasks[2].GetTaskSpecification().TaskId()));
+  ASSERT_FALSE(task_manager_.CancelTask(tasks[3].GetTaskSpecification().TaskId()));
+  // Do not spill back tasks ready to dispatch.
+  ASSERT_EQ(replies[4]->retry_at_raylet_address().raylet_id(), "");
+
+  // Spillback on memory pressure is idempotent.
+  task_manager_.ScheduleAndDispatchTasks();
+  ASSERT_EQ(num_callbacks, 2);
+  ASSERT_EQ(replies[0]->retry_at_raylet_address().raylet_id(), "");
+  ASSERT_EQ(replies[1]->retry_at_raylet_address().raylet_id(), "");
+  ASSERT_EQ(replies[2]->retry_at_raylet_address().raylet_id(), remote_node_id.Binary());
+  ASSERT_EQ(replies[3]->retry_at_raylet_address().raylet_id(), remote_node_id.Binary());
+  ASSERT_EQ(replies[4]->retry_at_raylet_address().raylet_id(), "");
+
+  // Another node added, but tasks no longer blocked.
+  AddNode(remote_node_id, 4);
+  dependency_manager_.blocked_tasks.clear();
+  dependency_manager_.missing_objects_.clear();
+  task_manager_.ScheduleAndDispatchTasks();
+  ASSERT_EQ(num_callbacks, 2);
+  ASSERT_EQ(replies[0]->retry_at_raylet_address().raylet_id(), "");
+  ASSERT_EQ(replies[1]->retry_at_raylet_address().raylet_id(), "");
+  ASSERT_EQ(replies[2]->retry_at_raylet_address().raylet_id(), remote_node_id.Binary());
+  ASSERT_EQ(replies[3]->retry_at_raylet_address().raylet_id(), remote_node_id.Binary());
+  ASSERT_EQ(replies[4]->retry_at_raylet_address().raylet_id(), "");
+
+  ASSERT_TRUE(task_manager_.CancelTask(tasks[0].GetTaskSpecification().TaskId()));
+  ASSERT_TRUE(task_manager_.CancelTask(tasks[1].GetTaskSpecification().TaskId()));
+  ASSERT_TRUE(task_manager_.CancelTask(tasks[4].GetTaskSpecification().TaskId()));
+  AssertNoLeaks();
 }
 
 int main(int argc, char **argv) {
