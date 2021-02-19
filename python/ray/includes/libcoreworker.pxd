@@ -86,8 +86,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         c_string ExtensionData() const
 
     cdef cppclass CCoreWorker "ray::CoreWorker":
-        CWorkerType &GetWorkerType()
-        CLanguage &GetLanguage()
+        CWorkerType GetWorkerType()
+        CLanguage GetLanguage()
 
         void SubmitTask(
             const CRayFunction &function,

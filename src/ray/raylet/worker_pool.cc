@@ -421,7 +421,8 @@ Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker
     send_reply_callback(status, /*port=*/0);
     return status;
   }
-  RAY_LOG(DEBUG) << "Registering worker with pid " << pid << ", port: " << port
+  RAY_LOG(DEBUG) << "Registering worker " << worker->WorkerId() << " with pid " << pid
+                 << ", port: " << port
                  << ", worker_type: " << rpc::WorkerType_Name(worker->GetWorkerType());
   worker->SetAssignedPort(port);
 
@@ -903,7 +904,8 @@ void WorkerPool::DisconnectDriver(const std::shared_ptr<WorkerInterface> &driver
 
 inline WorkerPool::State &WorkerPool::GetStateForLanguage(const Language &language) {
   auto state = states_by_lang_.find(language);
-  RAY_CHECK(state != states_by_lang_.end()) << "Required Language isn't supported.";
+  RAY_CHECK(state != states_by_lang_.end())
+      << "Required Language isn't supported: " << Language_Name(language);
   return state->second;
 }
 

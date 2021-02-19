@@ -32,7 +32,7 @@ const int kInternalHeartbeatMillis = 1000;
 
 void BuildCommonTaskSpec(
     ray::TaskSpecBuilder &builder, const JobID &job_id, const TaskID &task_id,
-    const std::string name, const TaskID &current_task_id, const int task_index,
+    const std::string name, const TaskID &current_task_id, const uint64_t task_index,
     const TaskID &caller_id, const ray::rpc::Address &address,
     const ray::RayFunction &function,
     const std::vector<std::unique_ptr<ray::TaskArg>> &args, uint64_t num_returns,
@@ -308,6 +308,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       task_execution_service_work_(task_execution_service_),
       resource_ids_(new ResourceMappingType()),
       grpc_service_(io_service_, *this) {
+  RAY_LOG(INFO) << "Constructing CoreWorker, worker_id: " << worker_id;
+
   // Initialize task receivers.
   if (options_.worker_type == WorkerType::WORKER || options_.is_local_mode) {
     RAY_CHECK(options_.task_execution_callback != nullptr);
@@ -1390,7 +1392,7 @@ void CoreWorker::SubmitTask(const RayFunction &function,
                             bool placement_group_capture_child_tasks,
                             const std::string &debugger_breakpoint) {
   TaskSpecBuilder builder;
-  const int next_task_index = worker_context_.GetNextTaskIndex();
+  const auto next_task_index = worker_context_.GetNextTaskIndex();
   const auto task_id =
       TaskID::ForNormalTask(worker_context_.GetCurrentJobID(),
                             worker_context_.GetCurrentTaskID(), next_task_index);
@@ -1436,7 +1438,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
     return Status::NotImplemented(
         "Async actor is currently not supported for the local mode");
   }
-  const int next_task_index = worker_context_.GetNextTaskIndex();
+  const auto next_task_index = worker_context_.GetNextTaskIndex();
   const ActorID actor_id =
       ActorID::Of(worker_context_.GetCurrentJobID(), worker_context_.GetCurrentTaskID(),
                   next_task_index);
@@ -1584,7 +1586,7 @@ void CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &fun
 
   // Build common task spec.
   TaskSpecBuilder builder;
-  const int next_task_index = worker_context_.GetNextTaskIndex();
+  const auto next_task_index = worker_context_.GetNextTaskIndex();
   const TaskID actor_task_id = TaskID::ForActorTask(
       worker_context_.GetCurrentJobID(), worker_context_.GetCurrentTaskID(),
       next_task_index, actor_handle->GetActorID());
