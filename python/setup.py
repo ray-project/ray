@@ -129,6 +129,7 @@ install_requires = [
     "aiohttp_cors",
     "aioredis",
     "click >= 7.0",
+    "cloudpickle",
     "colorama",
     "colorful",
     "filelock",
@@ -449,7 +450,7 @@ setuptools.setup(
             "ray=ray.scripts.scripts:main",
             "rllib=ray.rllib.scripts:cli [rllib]",
             "tune=ray.tune.scripts:cli",
-            "ray-operator=ray.operator.operator:main",
+            "ray-operator=ray.ray_operator.operator:main",
             "serve=ray.serve.scripts:cli",
         ]
     },

@@ -1,7 +1,4 @@
-const base =
-  process.env.NODE_ENV === "development"
-    ? "http://localhost:8265"
-    : window.location.origin;
+const base = window.location.origin;
 
 type APIResponse<T> = {
   result: boolean;
@@ -166,7 +163,7 @@ type BaseNodeInfo = {
     };
   };
   loadAvg: [[number, number, number], [number, number, number]];
-  net: [number, number]; // Sent and received network traffic in bytes / second
+  networkSpeed: [number, number]; // Sent and received network traffic in bytes / second
   logCount?: number;
   errorCount?: number;
 };

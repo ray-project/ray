@@ -21,9 +21,8 @@ from ray import resource_spec
 import setproctitle
 import subprocess
 
-from ray.test_utils import (check_call_ray, RayTestTimeoutException,
-                            wait_for_condition, wait_for_num_actors,
-                            new_scheduler_enabled)
+from ray.test_utils import (check_call_ray, wait_for_condition,
+                            wait_for_num_actors, new_scheduler_enabled)
 
 logger = logging.getLogger(__name__)
 
@@ -124,6 +123,44 @@ def test_load_balancing_with_dependencies(ray_start_cluster, fast):
     attempt_to_load_balance(f, [x], 100, num_nodes, 25)
 
 
+def test_load_balancing_under_constrained_memory(ray_start_cluster):
+    # This test ensures that tasks are being assigned to all raylets in a
+    # roughly equal manner even when the tasks have dependencies.
+    cluster = ray_start_cluster
+    num_nodes = 3
+    num_cpus = 4
+    object_size = 4e7
+    num_tasks = 100
+    for _ in range(num_nodes):
+        cluster.add_node(
+            num_cpus=num_cpus,
+            memory=(num_cpus - 2) * object_size,
+            object_store_memory=(num_cpus - 2) * object_size)
+    cluster.add_node(
+        num_cpus=0,
+        resources={"custom": 1},
+        memory=(num_tasks + 1) * object_size,
+        object_store_memory=(num_tasks + 1) * object_size)
+    ray.init(address=cluster.address)
+
+    @ray.remote(num_cpus=0, resources={"custom": 1})
+    def create_object():
+        return np.zeros(int(object_size), dtype=np.uint8)
+
+    @ray.remote
+    def f(i, x):
+        time.sleep(0.1)
+        print(i, ray.worker.global_worker.node.unique_id)
+        return ray.worker.global_worker.node.unique_id
+
+    # TODO(swang): Actually test load balancing.
+    deps = [create_object.remote() for _ in range(num_tasks)]
+    tasks = [f.remote(i, dep) for i, dep in enumerate(deps)]
+    for i, dep in enumerate(deps):
+        print(i, dep)
+    ray.get(tasks)
+
+
 def test_locality_aware_leasing(ray_start_cluster):
     # This test ensures that a task will run where its task dependencies are
     # located. We run an initial non_local() task that is pinned to a
@@ -154,15 +191,6 @@ def test_locality_aware_leasing(ray_start_cluster):
 
     # Test that task f() runs on the same node as non_local().
     assert ray.get(f.remote(non_local.remote())) == non_local_node.unique_id
-
-
-def wait_for_num_objects(num_objects, timeout=10):
-    start_time = time.time()
-    while time.time() - start_time < timeout:
-        if len(ray.objects()) >= num_objects:
-            return
-        time.sleep(0.1)
-    raise RayTestTimeoutException("Timed out while waiting for global state.")
 
 
 def test_global_state_api(shutdown_only):
@@ -354,10 +382,7 @@ def test_initialized_local_mode(shutdown_only_with_initialization_check):
 
 
 def test_wait_reconstruction(shutdown_only):
-    ray.init(
-        num_cpus=1,
-        object_store_memory=int(10**8),
-        _system_config={"object_pinning_enabled": 0})
+    ray.init(num_cpus=1, object_store_memory=int(10**8))
 
     @ray.remote
     def f():
@@ -624,7 +649,14 @@ def test_move_log_files_to_old(shutdown_only):
 
 
 def test_lease_request_leak(shutdown_only):
-    ray.init(num_cpus=1, _system_config={"object_timeout_milliseconds": 200})
+    ray.init(
+        num_cpus=1,
+        _system_config={
+            # This test uses ray.objects(), which only works with the GCS-based
+            # object directory
+            "ownership_based_object_directory_enabled": False,
+            "object_timeout_milliseconds": 200
+        })
     assert len(ray.objects()) == 0
 
     @ray.remote

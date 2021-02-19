@@ -49,8 +49,10 @@ class InvalidValuesTest(unittest.TestCase):
         # At least one nan, inf, -inf and float
         client = AxClient(random_seed=4321)
         client.create_experiment(
-            parameters=converted_config, objective_name="_metric")
-        searcher = AxSearch(ax_client=client, metric="_metric", mode="max")
+            parameters=converted_config,
+            objective_name="_metric",
+            minimize=False)
+        searcher = AxSearch(ax_client=client)
 
         out = tune.run(
             _invalid_objective,
@@ -107,6 +109,21 @@ class InvalidValuesTest(unittest.TestCase):
 
         best_trial = out.best_trial
         self.assertLessEqual(best_trial.config["point"], 2.0)
+
+    def testHEBO(self):
+        from ray.tune.suggest.hebo import HEBOSearch
+
+        out = tune.run(
+            _invalid_objective,
+            # At least one nan, inf, -inf and float
+            search_alg=HEBOSearch(random_state_seed=123),
+            config=self.config,
+            mode="max",
+            num_samples=8,
+            reuse_actors=False)
+
+        best_trial = out.best_trial
+        self.assertLessEqual(best_trial.config["report"], 2.0)
 
     def testHyperopt(self):
         from ray.tune.suggest.hyperopt import HyperOptSearch

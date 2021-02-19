@@ -93,8 +93,6 @@ struct NodeManagerConfig {
   uint64_t debug_dump_period_ms;
   /// Whether to enable fair queueing between task classes in raylet.
   bool fair_queueing_enabled;
-  /// Whether to enable pinning for plasma objects.
-  bool object_pinning_enabled;
   /// Whether to enable automatic object deletion for object spilling.
   bool automatic_object_deletion_enabled;
   /// The store socket name.
@@ -647,6 +645,16 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   std::unordered_map<SchedulingClass, ordered_set<TaskID>> MakeTasksByClass(
       const std::vector<Task> &tasks) const;
 
+  /// Get pointers to objects stored in plasma. They will be
+  /// released once the returned references go out of scope.
+  ///
+  /// \param[in] object_ids The objects to get.
+  /// \param[out] results The pointers to objects stored in
+  /// plasma.
+  /// \return Whether the request was successful.
+  bool GetObjectsFromPlasma(const std::vector<ObjectID> &object_ids,
+                            std::vector<std::unique_ptr<RayObject>> *results);
+
   ///////////////////////////////////////////////////////////////////////////////////////
   //////////////////// Begin of the override methods of ClusterTaskManager //////////////
   // The following methods are defined in node_manager.task.cc instead of node_manager.cc
@@ -794,8 +802,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   int64_t debug_dump_period_;
   /// Whether to enable fair queueing between task classes in raylet.
   bool fair_queueing_enabled_;
-  /// Whether to enable pinning for plasma objects.
-  bool object_pinning_enabled_;
   /// Incremented each time we encounter a potential resource deadlock condition.
   /// This is reset to zero when the condition is cleared.
   int resource_deadlock_warned_ = 0;

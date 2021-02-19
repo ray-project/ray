@@ -7,6 +7,7 @@ import platform
 import sys
 import socket
 import json
+import time
 import traceback
 
 import aiohttp
@@ -62,9 +63,13 @@ class DashboardAgent(object):
         self.object_store_name = object_store_name
         self.raylet_name = raylet_name
         self.node_id = os.environ["RAY_NODE_ID"]
-        self.ppid = int(os.environ["RAY_RAYLET_PID"])
-        assert self.ppid > 0
-        logger.info("Parent pid is %s", self.ppid)
+        # TODO(edoakes): RAY_RAYLET_PID isn't properly set on Windows. This is
+        # only used for fate-sharing with the raylet and we need a different
+        # fate-sharing mechanism for Windows anyways.
+        if sys.platform not in ["win32", "cygwin"]:
+            self.ppid = int(os.environ["RAY_RAYLET_PID"])
+            assert self.ppid > 0
+            logger.info("Parent pid is %s", self.ppid)
         self.server = aiogrpc.server(options=(("grpc.so_reuseport", 0), ))
         self.grpc_port = self.server.add_insecure_port(
             f"[::]:{self.dashboard_agent_port}")
@@ -108,7 +113,8 @@ class DashboardAgent(object):
                 logger.error("Failed to check parent PID, exiting.")
                 sys.exit(1)
 
-        check_parent_task = create_task(_check_parent())
+        if sys.platform not in ["win32", "cygwin"]:
+            check_parent_task = create_task(_check_parent())
 
         # Create an aioredis client for all modules.
         try:
@@ -180,8 +186,11 @@ class DashboardAgent(object):
                 agent_port=self.grpc_port,
                 agent_ip_address=self.ip))
 
-        await asyncio.gather(check_parent_task,
-                             *(m.run(self.server) for m in modules))
+        tasks = [m.run(self.server) for m in modules]
+        if sys.platform not in ["win32", "cygwin"]:
+            tasks.append(check_parent_task)
+        await asyncio.gather(*tasks)
+
         await self.server.wait_for_termination()
         # Wait for finish signal.
         await runner.cleanup()
@@ -290,6 +299,16 @@ if __name__ == "__main__":
             filename=args.logging_filename,
             max_bytes=args.logging_rotate_bytes,
             backup_count=args.logging_rotate_backup_count)
+
+        # The dashboard is currently broken on Windows.
+        # https://github.com/ray-project/ray/issues/14026.
+        if sys.platform == "win32":
+            logger.warning(
+                "The dashboard is currently disabled on windows."
+                "See https://github.com/ray-project/ray/issues/14026"
+                "for more details")
+            while True:
+                time.sleep(999)
 
         agent = DashboardAgent(
             args.node_ip_address,
