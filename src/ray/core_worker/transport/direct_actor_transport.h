@@ -122,7 +122,7 @@ class CoreWorkerDirectActorTaskSubmitter
   void SetCallerCreationTimestamp(int64_t timestamp);
 
   /// Check timeout tasks that are waiting for dead info.
-  void CheckTimeoutTasks() EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  void CheckTimeoutTasks();
 
  private:
   struct ClientQueue {

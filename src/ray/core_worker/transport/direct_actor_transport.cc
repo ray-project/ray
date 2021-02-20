@@ -100,9 +100,13 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spe
   } else {
     // Do not hold the lock while calling into task_finisher_.
     task_finisher_->MarkTaskCanceled(task_spec.TaskId());
-    auto queue = client_queues_.find(task_spec.ActorId());
-    std::string error_message =
-        "cancelling task of dead actor, dead_info=" + queue->second.dead_info;
+    std::string dead_info;
+    {
+      absl::MutexLock lock(&mu_);
+      auto queue = client_queues_.find(task_spec.ActorId());
+      dead_info = queue->second.dead_info;
+    }
+    std::string error_message = "cancelling task of dead actor, dead_info=" + dead_info;
     auto status = Status::IOError(error_message);
     // No need to increment the number of completed tasks since the actor is
     // dead.
