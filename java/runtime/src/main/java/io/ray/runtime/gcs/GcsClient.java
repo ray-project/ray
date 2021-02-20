@@ -52,7 +52,7 @@ public class GcsClient {
    */
   public PlacementGroup getPlacementGroupInfo(String name, boolean global) {
     byte[] result = globalStateAccessor.getPlacementGroupInfo(name, global);
-    return PlacementGroupUtils.generatePlacementGroupFromByteArray(result);
+    return result == null ? null : PlacementGroupUtils.generatePlacementGroupFromByteArray(result);
   }
 
   /**

@@ -1,5 +1,6 @@
 package io.ray.runtime.placementgroup;
 
+import com.google.common.base.Preconditions;
 import com.google.protobuf.InvalidProtocolBufferException;
 import io.ray.api.id.PlacementGroupId;
 import io.ray.api.placementgroup.PlacementGroupState;
@@ -94,9 +95,8 @@ public class PlacementGroupUtils {
    */
   public static PlacementGroupImpl generatePlacementGroupFromByteArray(
       byte[] placementGroupByteArray) {
-    if (placementGroupByteArray == null) {
-      return null;
-    }
+    Preconditions.checkNotNull(
+        placementGroupByteArray, "Can't generate a placement group from empty byte array.");
 
     PlacementGroupTableData placementGroupTableData;
     try {
