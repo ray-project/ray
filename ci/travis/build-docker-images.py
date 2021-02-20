@@ -66,8 +66,6 @@ def _get_wheel_name(minor_version_number):
 
 
 def _check_if_docker_files_modified():
-    if os.environ.get("BUILDKITE"):
-        return True
     proc = subprocess.run(
         [
             sys.executable, f"{_get_curr_dir()}/determine_tests_to_run.py",
