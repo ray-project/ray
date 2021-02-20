@@ -251,20 +251,20 @@ NodeManager::NodeManager(boost::asio::io_service &io_service, const NodeID &self
 
   auto options =
       AgentManager::Options({self_node_id, ParseCommandLine(config.agent_command)});
-  agent_manager_.reset(new AgentManager(
-      std::move(options), gcs_client_,
-      /*job_client_factory=*/
-      [this](const std::string &ip_address, int port) {
-        if (ip_address.empty() || port == 0) {
-          return std::unique_ptr<rpc::JobClient>(nullptr);
-        }
-        return std::unique_ptr<rpc::JobClient>(
-            new rpc::JobClient(ip_address, port, client_call_manager_));
-      },
-      /*delay_executor=*/
-      [this](std::function<void()> task, uint32_t delay_ms) {
-        return execute_after(io_service_, task, delay_ms);
-      }));
+  agent_manager_.reset(
+      new AgentManager(std::move(options), gcs_client_,
+                       /*job_client_factory=*/
+                       [this](const std::string &ip_address, int port) {
+                         if (ip_address.empty() || port == 0) {
+                           return std::unique_ptr<rpc::JobClient>(nullptr);
+                         }
+                         return std::unique_ptr<rpc::JobClient>(
+                             new rpc::JobClient(ip_address, port, client_call_manager_));
+                       },
+                       /*delay_executor=*/
+                       [this](std::function<void()> task, uint32_t delay_ms) {
+                         return execute_after(io_service_, task, delay_ms);
+                       }));
 
   RAY_CHECK_OK(SetupPlasmaSubscription());
 }
