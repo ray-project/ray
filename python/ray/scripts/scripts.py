@@ -226,6 +226,11 @@ def debug(address):
     type=str,
     help="the IP address of this node")
 @click.option(
+    "--external-addresses",
+    required=False,
+    type=str,
+    help="the external redis address(es) to be used")
+@click.option(
     "--address", required=False, type=str, help="the address to use for Ray")
 @click.option(
     "--port",
