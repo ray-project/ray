@@ -166,7 +166,7 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
   public PlacementGroup createPlacementGroup(PlacementGroupCreationOptions creationOptions) {
     Preconditions.checkNotNull(
         creationOptions,
-        "`PlacementGroupCreationOptions` must be specified when create a new placement group.");
+        "`PlacementGroupCreationOptions` must be specified when creating a new placement group.");
     return taskSubmitter.createPlacementGroup(creationOptions);
   }
 

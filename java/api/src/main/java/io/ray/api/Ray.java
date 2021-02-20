@@ -328,7 +328,7 @@ public final class Ray extends RayCall {
   /**
    * Get a placement group by placement group name from current job.
    *
-   * @param name placement group name.
+   * @param name The placement group name.
    * @return The placement group.
    */
   public static PlacementGroup getPlacementGroup(String name) {
@@ -338,7 +338,7 @@ public final class Ray extends RayCall {
   /**
    * Get a placement group by placement group name from all jobs.
    *
-   * @param name placement group name.
+   * @param name The placement group name.
    * @return The placement group.
    */
   public static PlacementGroup getGlobalPlacementGroup(String name) {

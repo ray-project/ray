@@ -15,18 +15,19 @@ public class PlacementGroupCreationOptions {
 
   public PlacementGroupCreationOptions(
       boolean global, String name, List<Map<String, Double>> bundles, PlacementStrategy strategy) {
-    Preconditions.checkNotNull(
-        bundles, "`Bundles` must be specified when create a new placement group.");
+    Preconditions.checkArgument(
+        bundles != null && !bundles.isEmpty(),
+        "`Bundles` must be specified when creating a new placement group.");
     boolean bundleResourceValid =
         bundles.stream()
             .allMatch(bundle -> bundle.values().stream().allMatch(resource -> resource > 0));
 
-    if (bundles.isEmpty() || !bundleResourceValid) {
+    if (!bundleResourceValid) {
       throw new IllegalArgumentException(
           "Bundles cannot be empty or bundle's resource must be positive.");
     }
     Preconditions.checkNotNull(
-        strategy, "`PlacementStrategy` must be specified when create a new placement group.");
+        strategy, "`PlacementStrategy` must be specified when creating a new placement group.");
     this.global = global;
     this.name = name;
     this.bundles = bundles;
@@ -42,8 +43,8 @@ public class PlacementGroupCreationOptions {
 
     /**
      * Set the name of a named placement group. This named placement group is only accessible from
-     * this job by this name via {@link Ray#getPlacementGroup(java.lang.String)}. If you want create
-     * a named placement group that is accessible from all jobs, use {@link
+     * this job by this name via {@link Ray#getPlacementGroup(java.lang.String)}. If you want to
+     * create a named placement group that is accessible from all jobs, use {@link
      * Builder#setGlobalName(java.lang.String)} instead.
      *
      * @param name The name of the named placement group.
@@ -57,8 +58,8 @@ public class PlacementGroupCreationOptions {
     }
 
     /**
-     * Set the name of a named placement group. This placement group will be accessible from all
-     * jobs by this name via {@link Ray#getGlobalPlacementGroup(java.lang.String)}. If you want to
+     * Set the name of a named placement group. This placement group can be accessed by all jobs
+     * with this name via {@link Ray#getGlobalPlacementGroup(java.lang.String)}. If you want to
      * create a named placement group that is only accessible from this job, use {@link
      * Builder#setName(java.lang.String)} instead.
      *
@@ -74,7 +75,7 @@ public class PlacementGroupCreationOptions {
 
     /**
      * Set the Pre-allocated resource list. Bundle is a collection of resources used to reserve
-     * resource on the raylet side.
+     * resources on the raylet side.
      *
      * @param bundles The Pre-allocated resource list.
      * @return self
@@ -88,7 +89,7 @@ public class PlacementGroupCreationOptions {
      * Set the placement strategy used to control the placement relationship between bundles. More
      * details refer to {@link PlacementStrategy}
      *
-     * @param strategy the placement strategy between bundles.
+     * @param strategy The placement strategy between bundles.
      * @return self
      */
     public Builder setStrategy(PlacementStrategy strategy) {
