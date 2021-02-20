@@ -153,3 +153,51 @@ def get_tensor_device(tensor):
     elif torch_available() and isinstance(tensor, torch.Tensor):
         device = tensor.device
         return device
+
+def get_tensor_shape(tensor):
+    """Return the shape of the tensor as a list."""
+    if isinstance(tensor, numpy.ndarray):
+        return list(tensor.shape)
+    if torch_available():
+        if isinstance(tensor, torch.Tensor):
+            return list(tensor.size())
+    raise ValueError("Unsupported tensor type. Got: {}. Supported "
+                     "CPU tensor types are: torch.Tensor, "
+                     "numpy.ndarray.".format(type(tensor)))
+
+def copy_tensor(dst_tensor, src_tensor):
+    """Copy the content from src_tensor to dst_tensor.
+
+    Args:
+        dst_tensor: the tensor to copy from.
+        src_tensor: the tensor to copy to.
+
+    Returns:
+        None
+    """
+    copied = True
+    if isinstance(dst_tensor, numpy.ndarray) \
+            and isinstance(src_tensor, numpy.ndarray):
+        numpy.copyto(dst_tensor, src_tensor)
+    elif torch_available():
+        if isinstance(dst_tensor, torch.Tensor) and isinstance(
+                src_tensor, torch.Tensor):
+            dst_tensor.copy_(src_tensor)
+        elif isinstance(dst_tensor, torch.Tensor) and isinstance(
+                src_tensor, numpy.ndarray):
+            # t = torch.utils.dlpack.from_dlpack(src_tensor.toDlpack())
+            t = torch.Tensor(src_tensor)
+            dst_tensor.copy_(t)
+        elif isinstance(dst_tensor, numpy.ndarray) and isinstance(
+                src_tensor, torch.Tensor):
+            # t = numpy.fromDlpack(torch.utils.dlpack.to_dlpack(src_tensor))
+            t = src_tensor.numpy()
+            numpy.copyto(dst_tensor, t)
+        else:
+            copied = False
+    else:
+        copied = False
+    if not copied:
+        raise ValueError("Unsupported tensor type. Got: {} and {}. Supported "
+                         "GPU tensor types are: torch.Tensor, cupy.ndarray."
+                         .format(type(dst_tensor), type(src_tensor)))
