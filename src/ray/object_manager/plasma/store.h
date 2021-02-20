@@ -210,8 +210,18 @@ class PlasmaStore {
   /// Process queued requests to create an object.
   void ProcessCreateRequests();
 
+  /// Get the available memory for new objects to be created. This includes
+  /// memory that is currently being used for created but unsealed objects.
   void GetAvailableMemory(std::function<void(size_t)> callback) const {
-    int64_t num_bytes_in_use = static_cast<int64_t>(num_bytes_in_use_);
+    RAY_CHECK((num_bytes_unsealed_ > 0 && num_objects_unsealed_ > 0) ||
+              (num_bytes_unsealed_ == 0 && num_objects_unsealed_ == 0))
+        << "Tracking for available memory in the plasma store has gone out of sync. "
+           "Please file a GitHub issue.";
+    RAY_CHECK(num_bytes_in_use_ >= num_bytes_unsealed_);
+    // We do not count unsealed objects as in use because these may have been
+    // created by the object manager.
+    int64_t num_bytes_in_use =
+        static_cast<int64_t>(num_bytes_in_use_ - num_bytes_unsealed_);
     RAY_CHECK(PlasmaAllocator::GetFootprintLimit() >= num_bytes_in_use);
     size_t available = PlasmaAllocator::GetFootprintLimit() - num_bytes_in_use;
     callback(available);
@@ -314,7 +324,17 @@ class PlasmaStore {
   /// mutex if it is not absolutely necessary.
   std::recursive_mutex mutex_;
 
+  /// Total number of bytes allocated to objects that are in use by any client.
+  /// This includes objects that are being created and objects that a client
+  /// called get on.
   size_t num_bytes_in_use_ = 0;
+
+  /// Total number of bytes allocated to objects that are created but not yet
+  /// sealed.
+  size_t num_bytes_unsealed_ = 0;
+
+  /// Number of objects that are created but not sealed.
+  size_t num_objects_unsealed_ = 0;
 
   /// Total plasma object bytes that are consumed by core workers.
   int64_t total_consumed_bytes_ = 0;

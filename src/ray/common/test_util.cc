@@ -151,8 +151,7 @@ std::string TestSetupUtil::StartRaylet(const std::string &store_socket_name,
        "--maximum_startup_concurrency=10", "--static_resource_list=" + resource,
        "--python_worker_command=" +
            CreateCommandLine({TEST_MOCK_WORKER_EXEC_PATH, store_socket_name,
-                              raylet_socket_name, std::to_string(port)}),
-       "--config_list=object_timeout_milliseconds,2000"});
+                              raylet_socket_name, std::to_string(port)})});
   RAY_LOG(DEBUG) << "Raylet Start command: " << CreateCommandLine(cmdargs);
   RAY_CHECK(!Process::Spawn(cmdargs, true, raylet_socket_name + ".pid").second);
   std::this_thread::sleep_for(std::chrono::milliseconds(200));

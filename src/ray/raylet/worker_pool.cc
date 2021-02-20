@@ -60,13 +60,11 @@ WorkerPool::WorkerPool(boost::asio::io_service &io_service, int num_workers_soft
                        int max_worker_port, const std::vector<int> &worker_ports,
                        std::shared_ptr<gcs::GcsClient> gcs_client,
                        const WorkerCommandMap &worker_commands,
-                       const std::unordered_map<std::string, std::string> &raylet_config,
                        std::function<void()> starting_worker_timeout_callback)
     : io_service_(&io_service),
       num_workers_soft_limit_(num_workers_soft_limit),
       maximum_startup_concurrency_(maximum_startup_concurrency),
       gcs_client_(std::move(gcs_client)),
-      raylet_config_(raylet_config),
       starting_worker_timeout_callback_(starting_worker_timeout_callback),
       first_job_registered_python_worker_count_(0),
       first_job_driver_wait_num_python_workers_(std::min(
@@ -203,9 +201,13 @@ Process WorkerPool::StartWorkerProcess(
     }
   }
 
+  if (language == Language::JAVA) {
+    dynamic_options.push_back("-Dray.job.num-java-workers-per-process=" +
+                              std::to_string(workers_to_start));
+  }
+
   // Extract pointers from the worker command to pass into execvp.
   std::vector<std::string> worker_command_args;
-  bool worker_raylet_config_placeholder_found = false;
   for (auto const &token : state.worker_command) {
     if (token == kWorkerDynamicOptionPlaceholder) {
       for (const auto &dynamic_option : dynamic_options) {
@@ -216,38 +218,10 @@ Process WorkerPool::StartWorkerProcess(
       continue;
     }
 
-    if (token == kWorkerRayletConfigPlaceholder) {
-      worker_raylet_config_placeholder_found = true;
-      switch (language) {
-      case Language::JAVA:
-        for (auto &entry : raylet_config_) {
-          std::string arg;
-          arg.append("-Dray.raylet.config.");
-          arg.append(entry.first);
-          arg.append("=");
-          arg.append(entry.second);
-          worker_command_args.push_back(arg);
-        }
-        worker_command_args.push_back("-Dray.job.num-java-workers-per-process=" +
-                                      std::to_string(workers_to_start));
-        break;
-      default:
-        RAY_LOG(FATAL)
-            << "Raylet config placeholder is not supported for worker language "
-            << language;
-      }
-      continue;
-    }
-
     worker_command_args.push_back(token);
   }
 
-  // Currently only Java worker process supports multi-worker.
-  if (language == Language::JAVA) {
-    RAY_CHECK(worker_raylet_config_placeholder_found)
-        << "The " << kWorkerRayletConfigPlaceholder
-        << " placeholder is not found in worker command.";
-  } else if (language == Language::PYTHON) {
+  if (language == Language::PYTHON) {
     RAY_CHECK(worker_type == rpc::WorkerType::WORKER || IsIOWorkerType(worker_type));
     if (IsIOWorkerType(worker_type)) {
       // Without "--worker-type", by default the worker type is rpc::WorkerType::WORKER.
@@ -259,8 +233,9 @@ Process WorkerPool::StartWorkerProcess(
     RAY_CHECK(!RayConfig::instance().object_spilling_config().empty());
     RAY_LOG(DEBUG) << "Adding object spill config "
                    << RayConfig::instance().object_spilling_config();
-    worker_command_args.push_back("--object-spilling-config=" +
-                                  RayConfig::instance().object_spilling_config());
+    worker_command_args.push_back(
+        "--object-spilling-config=" +
+        absl::Base64Escape(RayConfig::instance().object_spilling_config()));
   }
 
   ProcessEnvironment env;

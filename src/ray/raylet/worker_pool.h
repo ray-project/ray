@@ -109,7 +109,6 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// on. This takes precedence over min_worker_port and max_worker_port.
   /// \param worker_commands The commands used to start the worker process, grouped by
   /// language.
-  /// \param raylet_config The raylet config list of this node.
   /// \param starting_worker_timeout_callback The callback that will be triggered once
   /// it times out to start a worker.
   WorkerPool(boost::asio::io_service &io_service, int num_workers_soft_limit,
@@ -118,7 +117,6 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
              const std::vector<int> &worker_ports,
              std::shared_ptr<gcs::GcsClient> gcs_client,
              const WorkerCommandMap &worker_commands,
-             const std::unordered_map<std::string, std::string> &raylet_config,
              std::function<void()> starting_worker_timeout_callback);
 
   /// Destructor responsible for freeing a set of workers owned by this class.
@@ -481,8 +479,6 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   std::unique_ptr<std::queue<int>> free_ports_;
   /// A client connection to the GCS.
   std::shared_ptr<gcs::GcsClient> gcs_client_;
-  /// The raylet config list of this node.
-  std::unordered_map<std::string, std::string> raylet_config_;
   /// The callback that will be triggered once it times out to start a worker.
   std::function<void()> starting_worker_timeout_callback_;
   FRIEND_TEST(WorkerPoolTest, InitialWorkerProcessCount);
