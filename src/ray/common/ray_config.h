@@ -48,27 +48,23 @@ class RayConfig {
     return config;
   }
 
-// clang-format off
 /// -----------Include ray_config_def.h to set config items.-------------------
 /// A helper macro that helps to set a value to a config item.
-#define RAY_CONFIG(type, name, default_value) \
-  if (pair.first == #name) {                  \
-    std::string value = pair.second;          \
-    if (typeid(type) == typeid(std::string)) {\
-      RAY_CHECK(absl::Base64Unescape(pair.second, &value)) << "key: " << #name << ", value: " << pair.second; \
-    }                                         \
-    if (typeid(type) == typeid(bool)) {       \
-       std::transform(value.begin(),          \
-                      value.end(),            \
-                      value.begin(),          \
-                      ::tolower);             \
-       name##_ = value == "true" ||           \
-                 value == "1";                \
-    } else {                                  \
-      std::istringstream stream(value);       \
-      stream >> name##_;                      \
-    }                                         \
-    continue;                                 \
+#define RAY_CONFIG(type, name, default_value)                                           \
+  if (pair.first == #name) {                                                            \
+    std::string value = pair.second;                                                    \
+    if (typeid(type) == typeid(std::string)) {                                          \
+      RAY_CHECK(                                                                        \
+          absl::Base64Unescape(pair.second, reinterpret_cast<std::string *>(&name##_))) \
+          << "key: " << #name << ", value: " << pair.second;                            \
+    } else if (typeid(type) == typeid(bool)) {                                          \
+      std::transform(value.begin(), value.end(), value.begin(), ::tolower);             \
+      name##_ = value == "true" || value == "1";                                        \
+    } else {                                                                            \
+      std::istringstream stream(value);                                                 \
+      stream >> name##_;                                                                \
+    }                                                                                   \
+    continue;                                                                           \
   }
 
   void initialize(const std::string &config_list) {
@@ -94,4 +90,3 @@ class RayConfig {
 /// ---------------------------------------------------------------------
 #undef RAY_CONFIG
 };
-// clang-format on

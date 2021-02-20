@@ -145,7 +145,7 @@ def find_redis_address(address=None):
     #     --redis-address=123.456.78.910:6379
     #     --node-ip-address=123.456.78.910 --node-manager-port=58578
     #     --object-store-name=... --raylet-name=...
-    #     --config-list=plasma_store_as_thread,True --temp-dir=/tmp/ray
+    #     --temp-dir=/tmp/ray
     #     --metrics-agent-port=41856 --redis-password=[MASKED]
     #     --java_worker_command= --cpp_worker_command=
     #     --redis_password=[MASKED] --temp_dir=/tmp/ray --session_dir=...
@@ -1328,7 +1328,6 @@ def start_raylet(redis_address,
     # The caller must provide a node manager port so that we can correctly
     # populate the command to start a worker.
     assert node_manager_port is not None and node_manager_port != 0
-    config_str = serialize_config(config)
 
     if use_valgrind and use_profiler:
         raise ValueError("Cannot use valgrind and profiler at the same time.")
@@ -1397,7 +1396,6 @@ def start_raylet(redis_address,
         f"--object-store-name={plasma_store_name}",
         f"--raylet-name={raylet_name}",
         f"--redis-address={redis_address}",
-        f"--config-list={config_str}",
         f"--temp-dir={temp_dir}",
         f"--metrics-agent-port={metrics_agent_port}",
         f"--logging-rotate-bytes={max_bytes}",
