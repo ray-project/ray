@@ -311,7 +311,7 @@ message ResourceMap {
 }
 
 message StoredConfig {
-  map<string, string> config = 1;
+  string config = 1;
 }
 
 message ObjectLocationInfo {
