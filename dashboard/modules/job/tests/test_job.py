@@ -19,7 +19,7 @@ from ray.test_utils import (
     wait_until_server_available,
     wait_for_condition,
 )
-import ray.new_dashboard.modules.job.md5sum as md5sum
+from ray.new_dashboard.modules.job import md5sum
 import pytest
 
 logger = logging.getLogger(__name__)
@@ -63,7 +63,7 @@ class Actor:
         self._index = index
 
     def foo(self, x):
-        print(f"worker job dir {os.environ["RAY_JOB_DIR"]}")
+        print("worker job dir {}".format(os.environ["RAY_JOB_DIR"]))
         print(f"worker cwd {os.getcwd()}")
         assert os.path.samefile(os.environ["RAY_JOB_DIR"], os.getcwd())
         assert os.environ["RAY_JOB_DIR"] in sys.path
@@ -72,7 +72,7 @@ class Actor:
 
 def main():
     actors = []
-    print(f"driver job dir {os.environ["RAY_JOB_DIR"]}")
+    print("driver job dir {}".format(os.environ["RAY_JOB_DIR"]))
     print(f"driver cwd {os.getcwd()}")
     assert os.path.samefile(os.environ["RAY_JOB_DIR"], os.getcwd())
     assert os.environ["RAY_JOB_DIR"] in sys.path

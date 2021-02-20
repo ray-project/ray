@@ -12,19 +12,14 @@ from abc import abstractmethod
 from urllib.parse import urlparse
 
 import async_timeout
-import ray.new_dashboard.modules.job.job_consts as job_consts
-import ray.new_dashboard.modules.job.md5sum as md5sum
 import ray.new_dashboard.utils as dashboard_utils
+from ray.new_dashboard.utils import create_task
+from ray.new_dashboard.modules.job import job_consts, md5sum
 from ray.core.generated import job_agent_pb2
 from ray.core.generated import job_agent_pb2_grpc
 from ray.core.generated import agent_manager_pb2
 from ray._private.services import RAY_HOME, get_ray_jars_dir
 from ray.utils import hex_to_binary, binary_to_hex
-
-try:
-    create_task = asyncio.create_task
-except AttributeError:
-    create_task = asyncio.ensure_future
 
 logger = logging.getLogger(__name__)
 
@@ -193,10 +188,9 @@ class JobProcessor:
                         cmd_index, url, filename)
 
     async def _unzip_package(self, filename, path):
-        python = self._get_current_python()
         code = f"import shutil; " \
                f"shutil.unpack_archive({repr(filename)}, {repr(path)})"
-        unzip_cmd = f"{python} -c {repr(code)}"
+        unzip_cmd = [self._get_current_python(), "-c", code]
         await self._check_call_cmd(unzip_cmd)
 
     @staticmethod
@@ -206,8 +200,8 @@ class JobProcessor:
         return cmd_index
 
     async def _check_call_cmd(self, cmd):
-        proc = await asyncio.create_subprocess_shell(
-            cmd,
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE)
         self._running_proc.append(proc)
@@ -231,8 +225,8 @@ class JobProcessor:
                 f"Run command {repr(cmd)} exit with {proc.returncode}.")
 
     async def _check_output_cmd(self, cmd):
-        proc = await asyncio.create_subprocess_shell(
-            cmd,
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE)
         self._running_proc.append(proc)
@@ -258,21 +252,22 @@ class JobProcessor:
         job_id = self._job_info.job_id()
         job_package_dir = job_consts.DOWNLOAD_PACKAGE_UNZIP_DIR.format(
             temp_dir=self._job_info.temp_dir(), job_id=job_id)
-        proc = await asyncio.create_subprocess_shell(
-            cmd,
+        cmd_str = subprocess.list2cmdline(cmd)
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
             stdout=stdout,
             stderr=stderr,
             env={
                 **os.environ,
                 **env,
-                "CMDLINE": cmd,
+                "CMDLINE": cmd_str,
                 "RAY_JOB_DIR": job_package_dir,
             },
             cwd=job_package_dir,
         )
-        proc.cmdline = cmd
-        logger.info("[%s] Start driver cmd %s with pid %s", job_id, repr(cmd),
-                    proc.pid)
+        proc.cmdline = cmd_str
+        logger.info("[%s] Start driver cmd %s with pid %s", job_id,
+                    repr(cmd_str), proc.pid)
         return proc
 
     @staticmethod
@@ -330,7 +325,7 @@ class DownloadPackage(JobProcessor):
 
 
 class PreparePythonEnviron(JobProcessor):
-    async def _create_virtualenv(self, path, cache):
+    async def _create_virtualenv(self, path, app_data):
         shutil.rmtree(path, ignore_errors=True)
         python = self._get_current_python()
         if self._is_in_virtualenv():
@@ -343,43 +338,47 @@ class PreparePythonEnviron(JobProcessor):
             python_dir = os.path.abspath(
                 os.path.join(os.path.dirname(python), ".."))
             clonevirtualenv = clonevirtualenv.__file__
-            create_venv_cmd = f"{python} {clonevirtualenv} {python_dir} {path}"
+            create_venv_cmd = [python, clonevirtualenv, python_dir, path]
         else:
-            create_venv_cmd = f"{python} -m virtualenv --app-data {cache} " \
-                              f"--reset-app-data --system-site-packages " \
-                              f"--no-download {path}"
+            create_venv_cmd = [
+                python, "-m", "virtualenv", "--app-data", app_data,
+                "--reset-app-data", "--system-site-packages", "--no-download",
+                path
+            ]
         await self._check_call_cmd(create_venv_cmd)
 
     async def _install_python_requirements(self, path, requirements_file):
         python = self._get_virtualenv_python(path)
-        pypi = ""
+        pypi = []
         if job_consts.PYTHON_PACKAGE_INDEX:
-            pypi = f" -i {job_consts.PYTHON_PACKAGE_INDEX}"
+            pypi = ["-i", job_consts.PYTHON_PACKAGE_INDEX]
         pip_cache_dir = job_consts.PYTHON_PIP_CACHE.format(
             temp_dir=self._job_info.temp_dir())
-        pip_download_cmd = f"{python} -m pip download " \
-                           f"--destination-directory {pip_cache_dir}{pypi} " \
-                           f"-r {requirements_file}"
-        pip_install_cmd = f"{python} -m pip install " \
-                          f"--no-index --find-links={pip_cache_dir} " \
-                          f"-r {requirements_file}"
+        pip_download_cmd = [
+            python, "-m", "pip", "download", "--destination-directory",
+            pip_cache_dir, "-r", requirements_file
+        ] + pypi
+        pip_install_cmd = [
+            python, "-m", "pip", "install", "--no-index", "--find-links",
+            pip_cache_dir, "-r", requirements_file
+        ]
         await self._check_call_cmd(pip_download_cmd)
         await self._check_call_cmd(pip_install_cmd)
 
     async def _ray_mark_internal(self, path):
         python = self._get_virtualenv_python(path)
-        output = await self._check_output_cmd(
-            f"{python} -c \"import ray; "
-            f"print(ray.__version__, ray.__path__[0])\"")
+        output = await self._check_output_cmd([
+            python, "-c", "import ray; print(ray.__version__, ray.__path__[0])"
+        ])
         ray_version, ray_path = [s.strip() for s in output.split()]
         pathlib.Path(os.path.join(ray_path, ".internal_ray")).touch()
         return ray_version, ray_path
 
     async def _check_ray_is_internal(self, path, ray_version, ray_path):
         python = self._get_virtualenv_python(path)
-        output = await self._check_output_cmd(
-            f"{python} -c \"import ray; "
-            f"print(ray.__version__, ray.__path__[0])\"")
+        output = await self._check_output_cmd([
+            python, "-c", "import ray; print(ray.__version__, ray.__path__[0])"
+        ])
         actual_ray_version, actual_ray_path = [
             s.strip() for s in output.split()
         ]
@@ -398,7 +397,7 @@ class PreparePythonEnviron(JobProcessor):
             logger.info("[%s] Skip pip check on %s", job_id, path)
             return
         python = self._get_virtualenv_python(path)
-        output = await self._check_output_cmd(f"{python} -m pip check")
+        output = await self._check_output_cmd([python, "-m", "pip", "check"])
         output = output.strip()
         if "no broken" not in output.lower():
             raise JobFatalError(f"pip check on {path} failed:\n{output}")
@@ -506,7 +505,7 @@ ray.shutdown()
             temp_dir=temp_dir, job_id=job_id)
         python = self._get_virtualenv_python(virtualenv_path)
         driver_file = self._gen_driver_code(python)
-        driver_cmd = f"{python} -u {driver_file}"
+        driver_cmd = [python, "-u", driver_file]
         stdout_file, stderr_file = self._new_log_files(log_dir,
                                                        f"driver-{job_id}")
         job_package_dir = job_consts.DOWNLOAD_PACKAGE_UNZIP_DIR.format(
@@ -548,7 +547,7 @@ class PrepareJavaEnviron(JobProcessor):
                 await self._download_package(self._http_session, d.url,
                                              download_filename)
                 if d.md5:
-                    cmd = f"{python} {md5sum.__file__} {download_filename}"
+                    cmd = [python, md5sum.__file__, download_filename]
                     output = await self._check_output_cmd(cmd)
                     calc_md5 = output.split()[0]
                     if calc_md5.lower() != d.md5.lower():
@@ -649,7 +648,6 @@ class StartJavaDriver(JobProcessor):
 
     async def run(self):
         driver_cmd = self._build_java_worker_command()
-        driver_cmd = subprocess.list2cmdline(driver_cmd)
         log_dir = self._job_info.log_dir()
         job_id = self._job_info.job_id()
         stdout_file, stderr_file = self._new_log_files(log_dir,

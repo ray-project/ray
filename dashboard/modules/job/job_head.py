@@ -7,8 +7,8 @@ from aioredis.pubsub import Receiver
 
 import ray
 import ray.gcs_utils
-import ray.new_dashboard.modules.job.job_consts as job_consts
 import ray.new_dashboard.utils as dashboard_utils
+from ray.new_dashboard.modules.job import job_consts
 from ray.core.generated import common_pb2
 from ray.core.generated import gcs_service_pb2
 from ray.core.generated import gcs_service_pb2_grpc
