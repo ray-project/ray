@@ -11,6 +11,7 @@ from ray.tune import trial_runner
 from ray.tune import trial_executor
 from ray.tune.error import TuneError
 from ray.tune.result import DEFAULT_METRIC, TRAINING_ITERATION
+from ray.tune.suggest import SearchGenerator
 from ray.tune.utils.util import SafeFallbackEncoder
 from ray.tune.sample import Domain, Function
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
@@ -319,6 +320,13 @@ class PopulationBasedTraining(FIFOScheduler):
 
     def on_trial_add(self, trial_runner: "trial_runner.TrialRunner",
                      trial: Trial):
+        if trial_runner.search_alg is not None and isinstance(
+                trial_runner.search_alg, SearchGenerator):
+            raise ValueError("Search algorithms cannot be used with {} "
+                             "schedulers. Please remove {}.".format(
+                                 self.__class__.__name__,
+                                 trial_runner.search_alg))
+
         if not self._metric or not self._metric_op:
             raise ValueError(
                 "{} has been instantiated without a valid `metric` ({}) or "

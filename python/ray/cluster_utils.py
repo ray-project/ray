@@ -57,7 +57,7 @@ class Cluster:
         logger.info(output_info)
         self.connected = True
 
-    def add_node(self, **node_args):
+    def add_node(self, wait=True, **node_args):
         """Adds a node to the local Ray Cluster.
 
         All nodes are by default started with the following settings:
@@ -66,6 +66,7 @@ class Cluster:
             object_store_memory=150 * 1024 * 1024  # 150 MiB
 
         Args:
+            wait (bool): Whether to wait until the node is alive.
             node_args: Keyword arguments used in `start_ray_head` and
                 `start_ray_node`. Overrides defaults.
 
@@ -100,7 +101,7 @@ class Cluster:
             # We only need one log monitor per physical node.
             ray_params.update_if_absent(include_log_monitor=False)
             # Let grpc pick a port.
-            ray_params.update(node_manager_port=0)
+            ray_params.update_if_absent(node_manager_port=0)
             node = ray.node.Node(
                 ray_params,
                 head=False,
@@ -108,12 +109,13 @@ class Cluster:
                 spawn_reaper=self._shutdown_at_exit)
             self.worker_nodes.add(node)
 
-        # Wait for the node to appear in the client table. We do this so that
-        # the nodes appears in the client table in the order that the
-        # corresponding calls to add_node were made. We do this because in the
-        # tests we assume that the driver is connected to the first node that
-        # is added.
-        self._wait_for_node(node)
+        if wait:
+            # Wait for the node to appear in the client table. We do this so
+            # that the nodes appears in the client table in the order that the
+            # corresponding calls to add_node were made. We do this because in
+            # the tests we assume that the driver is connected to the first
+            # node that is added.
+            self._wait_for_node(node)
 
         return node
 

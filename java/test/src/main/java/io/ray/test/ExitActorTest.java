@@ -15,9 +15,7 @@ import java.util.concurrent.TimeUnit;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-@Test(
-    groups = {"cluster"},
-    enabled = false)
+@Test(groups = {"cluster"})
 public class ExitActorTest extends BaseTest {
 
   private static class ExitingActor {
