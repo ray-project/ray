@@ -172,7 +172,7 @@ extern jfieldID java_placement_group_creation_options_name;
 extern jfieldID java_placement_group_creation_options_bundles;
 /// strategy field of PlacementGroupCreationOptions class
 extern jfieldID java_placement_group_creation_options_strategy;
-/// strategy value method of PlacementGroupCreationOptions class
+/// value method of PlacementStrategy class
 extern jmethodID java_placement_group_creation_options_strategy_value;
 
 /// GcsClientOptions class
