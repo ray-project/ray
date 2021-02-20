@@ -2,8 +2,6 @@ package io.ray.runtime.config;
 
 import io.ray.runtime.generated.Common.WorkerType;
 import java.util.Collections;
-import java.util.HashMap;
-import java.util.Map;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 

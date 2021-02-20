@@ -71,7 +71,8 @@ int main(int argc, char *argv[]) {
     };
     ray::rpc::StoredConfig config;
     config.set_config(config_list);
-    RAY_CHECK_OK(storage->InternalConfigTable().Put(ray::UniqueID::Nil(), config, on_done));
+    RAY_CHECK_OK(
+        storage->InternalConfigTable().Put(ray::UniqueID::Nil(), config, on_done));
     boost::asio::io_service::work work(service);
     service.run();
   })
