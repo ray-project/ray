@@ -77,10 +77,6 @@ class PlasmaStore {
   /// \param owner_ip_address IP address of the object's owner.
   /// \param owner_port Port of the object's owner.
   /// \param owner_worker_id Worker ID of the object's owner.
-  /// \param evict_if_full If this is true, then when the object store is full,
-  ///        try to evict objects that are not currently referenced before
-  ///        creating the object. Else, do not evict any objects and
-  ///        immediately return an PlasmaError::OutOfMemory.
   /// \param data_size Size in bytes of the object to be created.
   /// \param metadata_size Size in bytes of the object metadata.
   /// \param device_num The number of the device where the object is being
@@ -100,8 +96,8 @@ class PlasmaStore {
   ///    plasma_release.
   PlasmaError CreateObject(const ObjectID &object_id, const NodeID &owner_raylet_id,
                            const std::string &owner_ip_address, int owner_port,
-                           const WorkerID &owner_worker_id, bool evict_if_full,
-                           int64_t data_size, int64_t metadata_size, int device_num,
+                           const WorkerID &owner_worker_id, int64_t data_size,
+                           int64_t metadata_size, int device_num,
                            const std::shared_ptr<Client> &client, PlasmaObject *result);
 
   /// Abort a created but unsealed object. If the client is not the
@@ -139,7 +135,8 @@ class PlasmaStore {
   /// \param object_ids Object IDs of the objects to be gotten.
   /// \param timeout_ms The timeout for the get request in milliseconds.
   void ProcessGetRequest(const std::shared_ptr<Client> &client,
-                         const std::vector<ObjectID> &object_ids, int64_t timeout_ms);
+                         const std::vector<ObjectID> &object_ids, int64_t timeout_ms,
+                         bool is_from_worker);
 
   /// Seal a vector of objects. The objects are now immutable and can be accessed with
   /// get.
@@ -190,6 +187,9 @@ class PlasmaStore {
   /// before the object is pinned by raylet for the first time.
   bool IsObjectSpillable(const ObjectID &object_id);
 
+  /// Return the plasma object bytes that are consumed by core workers.
+  int64_t GetConsumedBytes();
+
   void SetNotificationListener(
       const std::shared_ptr<ray::ObjectStoreNotificationManager> &notification_listener) {
     notification_listener_ = notification_listener;
@@ -210,8 +210,18 @@ class PlasmaStore {
   /// Process queued requests to create an object.
   void ProcessCreateRequests();
 
+  /// Get the available memory for new objects to be created. This includes
+  /// memory that is currently being used for created but unsealed objects.
   void GetAvailableMemory(std::function<void(size_t)> callback) const {
-    int64_t num_bytes_in_use = static_cast<int64_t>(num_bytes_in_use_);
+    RAY_CHECK((num_bytes_unsealed_ > 0 && num_objects_unsealed_ > 0) ||
+              (num_bytes_unsealed_ == 0 && num_objects_unsealed_ == 0))
+        << "Tracking for available memory in the plasma store has gone out of sync. "
+           "Please file a GitHub issue.";
+    RAY_CHECK(num_bytes_in_use_ >= num_bytes_unsealed_);
+    // We do not count unsealed objects as in use because these may have been
+    // created by the object manager.
+    int64_t num_bytes_in_use =
+        static_cast<int64_t>(num_bytes_in_use_ - num_bytes_unsealed_);
     RAY_CHECK(PlasmaAllocator::GetFootprintLimit() >= num_bytes_in_use);
     size_t available = PlasmaAllocator::GetFootprintLimit() - num_bytes_in_use;
     callback(available);
@@ -220,7 +230,7 @@ class PlasmaStore {
  private:
   PlasmaError HandleCreateObjectRequest(const std::shared_ptr<Client> &client,
                                         const std::vector<uint8_t> &message,
-                                        bool evict_if_full, PlasmaObject *object);
+                                        PlasmaObject *object);
 
   void ReplyToCreateClient(const std::shared_ptr<Client> &client,
                            const ObjectID &object_id, uint64_t req_id);
@@ -251,10 +261,9 @@ class PlasmaStore {
 
   void EraseFromObjectTable(const ObjectID &object_id);
 
-  uint8_t *AllocateMemory(size_t size, bool evict_if_full, MEMFD_TYPE *fd,
-                          int64_t *map_size, ptrdiff_t *offset,
-                          const std::shared_ptr<Client> &client, bool is_create,
-                          PlasmaError *error);
+  uint8_t *AllocateMemory(size_t size, MEMFD_TYPE *fd, int64_t *map_size,
+                          ptrdiff_t *offset, const std::shared_ptr<Client> &client,
+                          bool is_create, PlasmaError *error);
 
   // Start listening for clients.
   void DoAccept();
@@ -315,7 +324,20 @@ class PlasmaStore {
   /// mutex if it is not absolutely necessary.
   std::recursive_mutex mutex_;
 
+  /// Total number of bytes allocated to objects that are in use by any client.
+  /// This includes objects that are being created and objects that a client
+  /// called get on.
   size_t num_bytes_in_use_ = 0;
+
+  /// Total number of bytes allocated to objects that are created but not yet
+  /// sealed.
+  size_t num_bytes_unsealed_ = 0;
+
+  /// Number of objects that are created but not sealed.
+  size_t num_objects_unsealed_ = 0;
+
+  /// Total plasma object bytes that are consumed by core workers.
+  int64_t total_consumed_bytes_ = 0;
 };
 
 }  // namespace plasma

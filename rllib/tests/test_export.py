@@ -5,8 +5,11 @@ import shutil
 import unittest
 
 import ray
-from ray.rllib.agents.registry import get_agent_class
+from ray.rllib.agents.registry import get_trainer_class
+from ray.rllib.utils.framework import try_import_tf
 from ray.tune.trial import ExportFormat
+
+tf1, tf, tfv = try_import_tf()
 
 CONFIGS = {
     "A3C": {
@@ -74,7 +77,7 @@ def export_test(alg_name, failures):
             and os.path.exists(os.path.join(checkpoint_dir, "model.index")) \
             and os.path.exists(os.path.join(checkpoint_dir, "checkpoint"))
 
-    cls = get_agent_class(alg_name)
+    cls = get_trainer_class(alg_name)
     if "DDPG" in alg_name or "SAC" in alg_name:
         algo = cls(config=CONFIGS[alg_name], env="Pendulum-v0")
     else:
@@ -105,6 +108,11 @@ def export_test(alg_name, failures):
             or not valid_tf_checkpoint(os.path.join(export_dir,
                                                     ExportFormat.CHECKPOINT)):
         failures.append(alg_name)
+
+    # Test loading the exported model.
+    model = tf.saved_model.load(os.path.join(export_dir, ExportFormat.MODEL))
+    assert model
+
     shutil.rmtree(export_dir)
 
 

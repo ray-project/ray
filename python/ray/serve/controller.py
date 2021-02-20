@@ -111,7 +111,7 @@ class ServeController:
         while True:
             async with self.write_lock:
                 self.http_state.update()
-                await self.backend_state.update()
+                self.backend_state.update()
 
             await asyncio.sleep(CONTROL_LOOP_PERIOD_S)
 
@@ -163,10 +163,13 @@ class ServeController:
             self.endpoint_state.shadow_traffic(endpoint_name, backend_tag,
                                                proportion)
 
-    # TODO(architkulkarni): add Optional for route after cloudpickle upgrade
-    async def create_endpoint(self, endpoint: str,
-                              traffic_dict: Dict[str, float], route,
-                              methods: List[str]) -> None:
+    async def create_endpoint(
+            self,
+            endpoint: str,
+            traffic_dict: Dict[str, float],
+            route: Optional[str],
+            methods: List[str],
+    ) -> None:
         """Create a new endpoint with the specified route and methods.
 
         If the route is None, this is a "headless" endpoint that will not

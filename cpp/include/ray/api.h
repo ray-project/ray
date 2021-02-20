@@ -146,9 +146,7 @@ inline static std::vector<ObjectID> ObjectRefsToObjectIDs(
 
 template <typename T>
 inline ObjectRef<T> Ray::Put(const T &obj) {
-  std::shared_ptr<msgpack::sbuffer> buffer(new msgpack::sbuffer());
-  msgpack::packer<msgpack::sbuffer> packer(buffer.get());
-  Serializer::Serialize(packer, obj);
+  auto buffer = std::make_shared<msgpack::sbuffer>(Serializer::Serialize(obj));
   auto id = runtime_->Put(buffer);
   return ObjectRef<T>(id);
 }
@@ -156,13 +154,8 @@ inline ObjectRef<T> Ray::Put(const T &obj) {
 template <typename T>
 inline std::shared_ptr<T> Ray::Get(const ObjectRef<T> &object) {
   auto packed_object = runtime_->Get(object.ID());
-  msgpack::unpacker unpacker;
-  unpacker.reserve_buffer(packed_object->size());
-  memcpy(unpacker.buffer(), packed_object->data(), packed_object->size());
-  unpacker.buffer_consumed(packed_object->size());
-  std::shared_ptr<T> return_object(new T);
-  Serializer::Deserialize(unpacker, return_object.get());
-  return return_object;
+  return Serializer::Deserialize<std::shared_ptr<T>>(packed_object->data(),
+                                                     packed_object->size());
 }
 
 template <typename T>
@@ -171,13 +164,8 @@ inline std::vector<std::shared_ptr<T>> Ray::Get(const std::vector<ObjectID> &ids
   std::vector<std::shared_ptr<T>> return_objects;
   return_objects.reserve(result.size());
   for (auto it = result.begin(); it != result.end(); it++) {
-    msgpack::unpacker unpacker;
-    unpacker.reserve_buffer((*it)->size());
-    memcpy(unpacker.buffer(), (*it)->data(), (*it)->size());
-    unpacker.buffer_consumed((*it)->size());
-    std::shared_ptr<T> obj(new T);
-    Serializer::Deserialize(unpacker, obj.get());
-    return_objects.push_back(obj);
+    auto obj = Serializer::Deserialize<std::shared_ptr<T>>((*it)->data(), (*it)->size());
+    return_objects.push_back(std::move(obj));
   }
   return return_objects;
 }
