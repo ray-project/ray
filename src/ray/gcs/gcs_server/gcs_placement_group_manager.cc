@@ -175,20 +175,17 @@ void GcsPlacementGroupManager::RegisterPlacementGroup(
       [this, placement_group_id, placement_group](Status status) {
         // The backend storage is supposed to be reliable, so the status must be ok.
         RAY_CHECK_OK(status);
-        auto iter = placement_group_to_register_callbacks_.find(placement_group_id);
-        RAY_CHECK(iter != placement_group_to_register_callbacks_.end() &&
-                  !iter->second.empty());
-        auto callbacks = std::move(iter->second);
-        placement_group_to_register_callbacks_.erase(iter);
         if (!registered_placement_groups_.contains(placement_group_id)) {
-          // Return failed in sync if the placement group has removed already.
-          std::stringstream stream;
-          stream << "Placement group of id " << placement_group_id
-                 << " has been removed before registration.";
-          for (auto &callback : callbacks) {
-            callback(Status::NotFound(stream.str()));
-          }
+          // The placement group registration is synchronous, so if we found the placement
+          // group was deleted here, it must be triggered by a job crash,
+          // we will return directly in this case.
+          RAY_CHECK(placement_group_to_register_callbacks_.count(placement_group_id) ==
+                    0);
+          return;
         } else {
+          auto iter = placement_group_to_register_callbacks_.find(placement_group_id);
+          auto callbacks = std::move(iter->second);
+          placement_group_to_register_callbacks_.erase(iter);
           for (auto &callback : callbacks) {
             callback(status);
           }
@@ -330,6 +327,7 @@ void GcsPlacementGroupManager::RemovePlacementGroup(
   }
   auto placement_group = std::move(placement_group_it->second);
   registered_placement_groups_.erase(placement_group_it);
+  placement_group_to_register_callbacks_.erase(placement_group_id);
 
   // Remove placement group from `named_placement_groups_` if its name is not empty.
   if (!placement_group->GetName().empty()) {
