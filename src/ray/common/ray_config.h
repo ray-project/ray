@@ -52,16 +52,16 @@ class RayConfig {
 /// A helper macro that helps to set a value to a config item.
 #define RAY_CONFIG(type, name, default_value)                                           \
   if (pair.first == #name) {                                                            \
-    std::string value = pair.second;                                                    \
     if (typeid(type) == typeid(std::string)) {                                          \
       RAY_CHECK(                                                                        \
           absl::Base64Unescape(pair.second, reinterpret_cast<std::string *>(&name##_))) \
           << "key: " << #name << ", value: " << pair.second;                            \
     } else if (typeid(type) == typeid(bool)) {                                          \
+      std::string value = pair.second;                                                  \
       std::transform(value.begin(), value.end(), value.begin(), ::tolower);             \
       name##_ = value == "true" || value == "1";                                        \
     } else {                                                                            \
-      std::istringstream stream(value);                                                 \
+      std::istringstream stream(pair.second);                                           \
       stream >> name##_;                                                                \
     }                                                                                   \
     continue;                                                                           \
