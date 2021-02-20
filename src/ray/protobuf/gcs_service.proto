@@ -19,11 +19,6 @@ package ray.rpc;
 import "src/ray/protobuf/common.proto";
 import "src/ray/protobuf/gcs.proto";
 
-message GcsStatus {
-  int32 code = 1;
-  string message = 2;
-}
-
 message AddJobRequest {
   JobTableData data = 1;
 }
@@ -211,31 +206,6 @@ message ReportResourceUsageRequest {
 
 message ReportResourceUsageReply {
   GcsStatus status = 1;
-}
-
-message GetAllResourceUsageRequest {
-}
-
-message GetAllResourceUsageReply {
-  GcsStatus status = 1;
-  ResourceUsageBatchData resource_usage_data = 2;
-}
-
-// Service for node resource info access.
-service NodeResourceInfoGcsService {
-  // Get node's resources from GCS Service.
-  rpc GetResources(GetResourcesRequest) returns (GetResourcesReply);
-  // Update resources of a node in GCS Service.
-  rpc UpdateResources(UpdateResourcesRequest) returns (UpdateResourcesReply);
-  // Delete resources of a node in GCS Service.
-  rpc DeleteResources(DeleteResourcesRequest) returns (DeleteResourcesReply);
-  // Get available resources of all nodes.
-  rpc GetAllAvailableResources(GetAllAvailableResourcesRequest)
-      returns (GetAllAvailableResourcesReply);
-  // Report resource usage of a node to GCS Service.
-  rpc ReportResourceUsage(ReportResourceUsageRequest) returns (ReportResourceUsageReply);
-  // Get resource usage of all nodes from GCS Service.
-  rpc GetAllResourceUsage(GetAllResourceUsageRequest) returns (GetAllResourceUsageReply);
 }
 
 // Service for heartbeat info access.
@@ -535,3 +505,41 @@ service PlacementGroupInfoGcsService {
   rpc WaitPlacementGroupUntilReady(WaitPlacementGroupUntilReadyRequest)
       returns (WaitPlacementGroupUntilReadyReply);
 }
+///////////////////////////////////////////////////////////////////////////////
+/* Please do not modify/remove/change the following messages to maintain
+backwards compatibility in autoscaler. This is necessary to make sure we can
+run autoscaler with any version of ray. For example, the K8s operator runs
+autoscaler in a separate pod, if the user upgrades the ray version on the head
+pod autoscaler can crash (if the newer version of ray modified the messages
+below). */
+
+message GetAllResourceUsageRequest {
+}
+
+message GetAllResourceUsageReply {
+  GcsStatus status = 1;
+  ResourceUsageBatchData resource_usage_data = 2;
+}
+
+// Service for node resource info access.
+service NodeResourceInfoGcsService {
+  // Get node's resources from GCS Service.
+  rpc GetResources(GetResourcesRequest) returns (GetResourcesReply);
+  // Update resources of a node in GCS Service.
+  rpc UpdateResources(UpdateResourcesRequest) returns (UpdateResourcesReply);
+  // Delete resources of a node in GCS Service.
+  rpc DeleteResources(DeleteResourcesRequest) returns (DeleteResourcesReply);
+  // Get available resources of all nodes.
+  rpc GetAllAvailableResources(GetAllAvailableResourcesRequest)
+      returns (GetAllAvailableResourcesReply);
+  // Report resource usage of a node to GCS Service.
+  rpc ReportResourceUsage(ReportResourceUsageRequest) returns (ReportResourceUsageReply);
+  // Get resource usage of all nodes from GCS Service.
+  rpc GetAllResourceUsage(GetAllResourceUsageRequest) returns (GetAllResourceUsageReply);
+}
+
+message GcsStatus {
+  int32 code = 1;
+  string message = 2;
+}
+///////////////////////////////////////////////////////////////////////////////
