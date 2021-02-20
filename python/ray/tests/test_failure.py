@@ -12,6 +12,8 @@ import pytest
 import redis
 
 import ray
+from ray.experimental.internal_kv import _internal_kv_get
+from ray.autoscaler._private.util import DEBUG_AUTOSCALING_ERROR
 import ray.utils
 import ray.ray_constants as ray_constants
 from ray.exceptions import RayTaskError
@@ -969,6 +971,23 @@ def test_warning_for_dead_node(ray_start_cluster_2_nodes, error_pubsub):
     warning_node_ids = {error.error_message.split(" ")[5] for error in errors}
 
     assert node_ids == warning_node_ids
+
+
+def test_warning_for_dead_autoscaler(ray_start_regular, error_pubsub):
+    # Terminate the autoscaler process.
+    from ray.worker import _global_node
+    autoscaler_process = _global_node.all_processes[
+        ray_constants.PROCESS_TYPE_MONITOR][0].process
+    autoscaler_process.terminate()
+
+    # Confirm that we receive an autoscaler failure error.
+    errors = get_error_message(
+        error_pubsub, 1, ray_constants.MONITOR_DIED_ERROR, timeout=5)
+    assert len(errors) == 1
+
+    # Confirm that the autoscaler failure error is stored.
+    error = _internal_kv_get(DEBUG_AUTOSCALING_ERROR)
+    assert error is not None
 
 
 def test_raylet_crash_when_get(ray_start_regular):
