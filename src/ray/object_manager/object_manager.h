@@ -159,7 +159,15 @@ class ObjectManager : public ObjectManagerInterface,
                        std::shared_ptr<rpc::ObjectManagerClient> rpc_client,
                        std::function<void(const Status &)> on_complete);
 
-  /// Receive object chunk from remote object manager, small object may contain one chunk
+  /// Receive an object chunk from a remote object manager. Small object may
+  /// fit in one chunk.
+  ///
+  /// If this is the last remaining chunk for an object, then the object will
+  /// be sealed. Else, we will keep the plasma buffer open until the remaining
+  /// chunks are received.
+  ///
+  /// If the object is no longer being actively pulled, the object will not be
+  /// created.
   ///
   /// \param node_id Node id of remote object manager which sends this chunk
   /// \param object_id Object id
@@ -168,10 +176,13 @@ class ObjectManager : public ObjectManagerInterface,
   /// \param metadata_size Metadata size
   /// \param chunk_index Chunk index
   /// \param data Chunk data
-  ray::Status ReceiveObjectChunk(const NodeID &node_id, const ObjectID &object_id,
-                                 const rpc::Address &owner_address, uint64_t data_size,
-                                 uint64_t metadata_size, uint64_t chunk_index,
-                                 const std::string &data);
+  /// \return Whether the chunk was successfully written into the local object
+  /// store. This can fail if the chunk was already received in the past, or if
+  /// the object is no longer being actively pulled.
+  bool ReceiveObjectChunk(const NodeID &node_id, const ObjectID &object_id,
+                          const rpc::Address &owner_address, uint64_t data_size,
+                          uint64_t metadata_size, uint64_t chunk_index,
+                          const std::string &data);
 
   /// Send pull request
   ///
@@ -393,11 +404,10 @@ class ObjectManager : public ObjectManagerInterface,
   /// chunk.
   /// \param end_time_us The time when the object manager finished receiving the
   /// chunk.
-  /// \param status The status of the receive (e.g., did it succeed or fail).
   /// \return Void.
   void HandleReceiveFinished(const ObjectID &object_id, const NodeID &node_id,
                              uint64_t chunk_index, double start_time_us,
-                             double end_time_us, ray::Status status);
+                             double end_time_us);
 
   /// Handle Push task timeout.
   void HandlePushTaskTimeout(const ObjectID &object_id, const NodeID &node_id);
