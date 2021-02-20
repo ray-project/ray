@@ -11,8 +11,13 @@ import tempfile
 import threading
 import time
 import uuid
-from inspect import signature
+import filelock
 
+from types import ModuleType
+from typing import Type, List
+from pathlib import Path
+from inspect import signature
+from zipfile import ZipFile
 import numpy as np
 import psutil
 import ray
@@ -812,3 +817,21 @@ def get_user():
 def get_function_args(callable):
     all_parameters = frozenset(signature(callable).parameters)
     return list(all_parameters)
+
+def _zip_module(path, zip_handler):
+    for from_file_name in path.glob('**/*.py'):
+        to_file_name = from_file_name.relative_to(path.parent)
+        zip_handler.write(from_file_name, to_file_name)
+
+def create_project_package(
+        job_id: str,
+        dirs: List[str],
+        modules: List[ModuleType]):
+    RAY_PKG_PREFIX = '_ray_pkg_'
+    pkg_file = '/tmp/' + RAY_PKG_PREFIX + job_id + '.zip'
+    with ZipFile(pkg_file, 'w') as zip_handler:
+        for directory in dirs:
+            _zip_module(Path(directory), zip_handler)
+        for module in modules:
+            _zip_module(Path(module.__file__).parent, zip_handler)
+    return pkg_file

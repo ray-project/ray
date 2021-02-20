@@ -132,6 +132,10 @@ ObjectID TaskSpecification::ArgId(size_t arg_index) const {
   return ObjectID::FromBinary(message_->args(arg_index).object_ref().object_id());
 }
 
+const std::string& TaskSpecification::CodePath() const {
+  return message_->code_path();
+}
+
 rpc::ObjectReference TaskSpecification::ArgRef(size_t arg_index) const {
   RAY_CHECK(ArgByRef(arg_index));
   return message_->args(arg_index).object_ref();

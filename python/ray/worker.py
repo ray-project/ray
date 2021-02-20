@@ -17,6 +17,7 @@ import traceback
 from typing import Any, Dict, List, Iterator
 
 # Ray modules
+from  ray.experimental import internal_kv
 from ray.autoscaler._private.constants import AUTOSCALER_EVENTS
 import ray.cloudpickle as pickle
 import ray.gcs_utils
@@ -51,9 +52,10 @@ from ray.exceptions import (
 from ray.function_manager import FunctionActorManager
 from ray.ray_logging import setup_logger
 from ray.ray_logging import global_worker_stdstream_dispatcher
-from ray.utils import _random_string, check_oversized_pickle
+from ray.utils import _random_string, check_oversized_pickle, create_project_package
 from ray.util.inspect import is_cython
 from ray._private.client_mode_hook import client_mode_hook
+from pathlib import Path
 
 SCRIPT_MODE = 0
 WORKER_MODE = 1
@@ -481,6 +483,8 @@ def init(
         local_mode=False,
         ignore_reinit_error=False,
         include_dashboard=None,
+        required_directories=None,
+        required_modules=None,
         dashboard_host=ray_constants.DEFAULT_DASHBOARD_IP,
         dashboard_port=ray_constants.DEFAULT_DASHBOARD_PORT,
         job_config=None,
@@ -630,7 +634,7 @@ def init(
     if "RAY_ADDRESS" in os.environ:
         if address is None or address == "auto":
             address = os.environ["RAY_ADDRESS"]
-
+    print("!!!", sys.argv)
     # Convert hostnames to numerical IP address.
     if _node_ip_address is not None:
         node_ip_address = services.address_to_ip(_node_ip_address)
@@ -756,7 +760,9 @@ def init(
         worker=global_worker,
         driver_object_store_memory=_driver_object_store_memory,
         job_id=None,
-        job_config=job_config)
+        job_config=job_config,
+        required_directories=required_directories,
+        required_modules=required_modules)
     if job_config and job_config.code_search_path:
         global_worker.set_load_code_from_local(True)
 
@@ -1121,7 +1127,9 @@ def connect(node,
             worker=global_worker,
             driver_object_store_memory=None,
             job_id=None,
-            job_config=None):
+            job_config=None,
+            required_directories=None,
+            required_modules=None):
     """Connect this worker to the raylet, to Plasma, and to Redis.
 
     Args:
@@ -1229,12 +1237,18 @@ def connect(node,
     if job_config is None:
         job_config = ray.job_config.JobConfig()
     serialized_job_config = job_config.serialize()
+    package_file = None
+
+    if mode == SCRIPT_MODE and (required_directories or required_modules):
+        # Create package if defined and ship it to remote storage
+        package_file = Path(create_project_package(job_id.hex(), required_directories, required_modules))
+
     worker.core_worker = ray._raylet.CoreWorker(
         mode, node.plasma_store_socket_name, node.raylet_socket_name, job_id,
         gcs_options, node.get_logs_dir_path(), node.node_ip_address,
         node.node_manager_port, node.raylet_ip_address, (mode == LOCAL_MODE),
         driver_name, log_stdout_file_path, log_stderr_file_path,
-        serialized_job_config, node.metrics_agent_port)
+        serialized_job_config, node.metrics_agent_port, str(package_file) if package_file else '')
 
     # Create an object for interfacing with the global state.
     # Note, global state should be intialized after `CoreWorker`, because it
@@ -1250,6 +1264,12 @@ def connect(node,
     worker.import_thread = import_thread.ImportThread(worker, mode,
                                                       worker.threads_stopped)
     worker.import_thread.start()
+
+    if package_file:
+        # Push the data to remote storage
+        data = package_file.read_bytes()
+        internal_kv._internal_kv_put(str(package_file), data)
+        logger.debug(f"Ray has packaged {required_directories} and {required_modules} into {str(package_file)} in {len(data)} bytes")
 
     # If this is a driver running in SCRIPT_MODE, start a thread to print error
     # messages asynchronously in the background. Ideally the scheduler would
@@ -1305,7 +1325,6 @@ def connect(node,
         for function in worker.cached_functions_to_run:
             worker.run_function_on_all_workers(function)
     worker.cached_functions_to_run = None
-
 
 def disconnect(exiting_interpreter=False):
     """Disconnect this worker from the raylet and object store."""

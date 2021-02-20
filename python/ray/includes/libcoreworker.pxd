@@ -76,6 +76,7 @@ cdef extern from "ray/core_worker/fiber.h" nogil:
 cdef extern from "ray/core_worker/context.h" nogil:
     cdef cppclass CWorkerContext "ray::WorkerContext":
         c_bool CurrentActorIsAsync()
+        c_string GetCodePath()
 
 cdef extern from "ray/core_worker/core_worker.h" nogil:
     cdef cppclass CActorHandle "ray::ActorHandle":
@@ -257,8 +258,9 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         (c_bool() nogil) kill_main
         CCoreWorkerOptions()
         (void() nogil) terminate_asyncio_thread
-        int metrics_agent_port
         c_string serialized_job_config
+        int metrics_agent_port
+        c_string code_path
 
     cdef cppclass CCoreWorkerProcess "ray::CoreWorkerProcess":
         @staticmethod

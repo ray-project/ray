@@ -25,7 +25,7 @@ struct WorkerThreadContext;
 
 class WorkerContext {
  public:
-  WorkerContext(WorkerType worker_type, const WorkerID &worker_id, const JobID &job_id);
+  WorkerContext(WorkerType worker_type, const WorkerID &worker_id, const JobID &job_id, const std::string &code_path);
 
   const WorkerType GetWorkerType() const;
 
@@ -34,6 +34,8 @@ class WorkerContext {
   const JobID &GetCurrentJobID() const;
 
   const TaskID &GetCurrentTaskID() const;
+
+  const std::string &GetCodePath() const;
 
   const PlacementGroupID &GetCurrentPlacementGroupId() const;
 
@@ -86,6 +88,7 @@ class WorkerContext {
  private:
   const WorkerType worker_type_;
   const WorkerID worker_id_;
+  std::string code_path_;
   JobID current_job_id_;
   ActorID current_actor_id_;
   int current_actor_max_concurrency_ = 1;
