@@ -248,7 +248,7 @@ class TorchPolicy(Policy):
                 # Trying the old way (to stay backward compatible).
                 # TODO: Remove in future.
                 except TypeError as e:
-                    if "takes 2 positional arguments" in e.args[0]:
+                    if "positional argument" in e.args[0]:
                         dist_inputs, dist_class, state_out = \
                             self.action_distribution_fn(
                                 self,

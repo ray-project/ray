@@ -162,7 +162,7 @@ py_test(
     args = ["--yaml-dir=tuned_examples/ppo", "--framework=torch"]
 )
 
-# DQN/Simple-Q
+# DQN/Simple-Q/R2D2
 py_test(
     name = "run_regression_tests_cartpole_dqn_tf",
     main = "tests/run_regression_tests.py",
@@ -174,6 +174,7 @@ py_test(
         "tuned_examples/dqn/cartpole-dqn.yaml",
         "tuned_examples/dqn/cartpole-dqn-softq.yaml",
         "tuned_examples/dqn/cartpole-dqn-param-noise.yaml",
+        "tuned_examples/dqn/cartpole-r2d2.yaml",
     ],
     args = ["--yaml-dir=tuned_examples/dqn"]
 )
@@ -189,6 +190,7 @@ py_test(
         "tuned_examples/dqn/cartpole-dqn.yaml",
         "tuned_examples/dqn/cartpole-dqn-softq.yaml",
         "tuned_examples/dqn/cartpole-dqn-param-noise.yaml",
+        "tuned_examples/dqn/cartpole-r2d2.yaml",
     ],
     args = ["--yaml-dir=tuned_examples/dqn", "--framework=torch"]
 )

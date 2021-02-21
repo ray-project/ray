@@ -101,11 +101,6 @@ def validate_config(config: TrainerConfigDict) -> None:
 
     Rewrites rollout_fragment_length to take into account n_step truncation.
     """
-    # Update effective batch size to include n-step
-    adjusted_batch_size = max(config["rollout_fragment_length"],
-                              config.get("n_step", 1))
-    config["rollout_fragment_length"] = adjusted_batch_size
-
     if config["replay_sequence_length"] != -1:
         raise ValueError(
             "`replay_sequence_length` is calculated automatically to be "
