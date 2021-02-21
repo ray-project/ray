@@ -311,18 +311,17 @@ class StandardAutoscaler:
 
         The first item in the return list is the most recently used.
         """
-        updated_last_used = copy.deepcopy(last_used)
+        last_used_copy = copy.deepcopy(last_used)
         # Add the unconnected nodes as the least recently used (the end of
         # list). This prioritizes connected nodes.
         least_recently_used = -1
-        for node_id in nodes:
-            node_ip = self.provider.internal_ip(node_id)
-            if node_ip not in updated_last_used:
-                updated_last_used[node_ip] = least_recently_used
 
         def last_time_used(node_id: NodeID):
             node_ip = self.provider.internal_ip(node_id)
-            return updated_last_used[node_ip]
+            if node_ip not in last_used_copy:
+                return least_recently_used
+            else:
+                return last_used_copy[node_ip]
 
         return sorted(nodes, key=last_time_used, reverse=True)
 
