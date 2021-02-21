@@ -41,6 +41,8 @@ def memory_summary(node_manager_address=None,
     stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
     reply = stub.FormatGlobalMemoryInfo(
         node_manager_pb2.FormatGlobalMemoryInfoRequest(), timeout=30.0)
+    if stats_only:
+        return store_stats_summary(reply)
     return reply.memory_summary + "\n" + store_stats_summary(reply, stats_only)
 
 
@@ -73,7 +75,7 @@ def node_stats(node_manager_address=None, node_manager_port=None):
     return node_stats
 
 
-def store_stats_summary(reply, stats_only=False):
+def store_stats_summary(reply):
     """Returns formatted string describing object store stats in all nodes."""
     store_summary = "--- Aggregate object store stats across all nodes ---\n"
     store_summary += (
@@ -102,8 +104,6 @@ def store_stats_summary(reply, stats_only=False):
     if reply.store_stats.consumed_bytes > 0:
         store_summary += ("Objects consumed by Ray tasks: {} MiB.".format(
             int(reply.store_stats.consumed_bytes / (1024 * 1024))))
-    if stats_only:
-        return store_summary
     return store_summary
 
 

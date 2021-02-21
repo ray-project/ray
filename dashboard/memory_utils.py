@@ -438,7 +438,10 @@ def memory_summary(redis_address,
                    redis_password=REDIS_DEFAULT_PASSWORD,
                    group_by="NODE_ADDRESS",
                    sort_by="OBJECT_SIZE",
-                   line_wrap=True):
+                   line_wrap=True,
+                   stats_only=False):
+    if stats_only:
+        return get_store_stats_summary(redis_address, redis_password)
     return get_memory_summary(redis_address, redis_password, group_by, sort_by,
                               line_wrap) + get_store_stats_summary(
                                   redis_address, redis_password)
