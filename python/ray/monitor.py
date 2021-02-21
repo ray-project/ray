@@ -321,12 +321,11 @@ if __name__ == "__main__":
     else:
         autoscaling_config = None
 
-    monitor = Monitor(
-        args.redis_address,
-        autoscaling_config,
-        redis_password=args.redis_password)
-
     try:
+        monitor = Monitor(
+            args.redis_address,
+            autoscaling_config,
+            redis_password=args.redis_password)
         monitor.run()
     except Exception as e:
         # Take down autoscaler workers if necessary.
