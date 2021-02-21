@@ -93,17 +93,7 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(
     JNIEnv *env, jclass, jint workerMode, jstring nodeIpAddress, jint nodeManagerPort,
     jstring driverName, jstring storeSocket, jstring rayletSocket, jbyteArray jobId,
     jobject gcsClientOptions, jint numWorkersPerProcess, jstring logDir,
-    jobject rayletConfigParameters, jbyteArray jobConfig) {
-  auto raylet_config = JavaMapToNativeMap<std::string, std::string>(
-      env, rayletConfigParameters,
-      [](JNIEnv *env, jobject java_key) {
-        return JavaStringToNativeString(env, (jstring)java_key);
-      },
-      [](JNIEnv *env, jobject java_value) {
-        return JavaStringToNativeString(env, (jstring)java_value);
-      });
-  RayConfig::instance().initialize(raylet_config);
-
+    jbyteArray jobConfig) {
   auto task_execution_callback =
       [](ray::TaskType task_type, const std::string task_name,
          const ray::RayFunction &ray_function,

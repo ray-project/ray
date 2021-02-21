@@ -580,22 +580,26 @@ class DynamicTFPolicy(TFPolicy):
             # Add those needed for postprocessing and training.
             all_accessed_keys = train_batch.accessed_keys | \
                                 batch_for_postproc.accessed_keys
-            # Tag those only needed for post-processing.
+            # Tag those only needed for post-processing (with some exceptions).
             for key in batch_for_postproc.accessed_keys:
                 if key not in train_batch.accessed_keys and \
-                        key not in self.model.view_requirements:
+                        key not in self.model.view_requirements and \
+                        key not in [
+                            SampleBatch.EPS_ID, SampleBatch.AGENT_INDEX,
+                            SampleBatch.UNROLL_ID, SampleBatch.DONES,
+                            SampleBatch.REWARDS, SampleBatch.INFOS]:
                     if key in self.view_requirements:
                         self.view_requirements[key].used_for_training = False
                     if key in self._loss_input_dict:
                         del self._loss_input_dict[key]
             # Remove those not needed at all (leave those that are needed
             # by Sampler to properly execute sample collection).
-            # Also always leave DONES and REWARDS, no matter what.
+            # Also always leave DONES, REWARDS, and INFOS, no matter what.
             for key in list(self.view_requirements.keys()):
                 if key not in all_accessed_keys and key not in [
                     SampleBatch.EPS_ID, SampleBatch.AGENT_INDEX,
                     SampleBatch.UNROLL_ID, SampleBatch.DONES,
-                    SampleBatch.REWARDS] and \
+                    SampleBatch.REWARDS, SampleBatch.INFOS] and \
                         key not in self.model.view_requirements:
                     # If user deleted this key manually in postprocessing
                     # fn, warn about it and do not remove from

@@ -32,11 +32,14 @@ PY_MATRIX = {"-py36": "3.6.12", "-py37": "3.7.7", "-py38": "3.8.5"}
 
 
 def _merge_build():
+    if os.environ.get("BUILDKITE"):
+        return os.environ.get("BUILDKITE_PULL_REQUEST").lower() == "false"
     return os.environ.get("TRAVIS_PULL_REQUEST").lower() == "false"
 
 
 def _release_build():
-    branch = os.environ.get("TRAVIS_BRANCH")
+    branch = (os.environ.get("TRAVIS_BRANCH")
+              or os.environ.get("BUILDKITE_BRANCH"))
     if not branch:
         print("Branch not found!")
         print(os.environ)
@@ -68,6 +71,8 @@ def _get_wheel_name(minor_version_number):
 
 
 def _docker_affected():
+    if os.environ.get("BUILDKITE"):
+        return True
     proc = subprocess.run(
         [
             sys.executable, f"{_get_curr_dir()}/determine_tests_to_run.py",
@@ -346,7 +351,7 @@ if __name__ == "__main__":
         else:
             PY_MATRIX.pop("-py37")
     print("Building the following python versions: ", PY_MATRIX)
-    if os.environ.get("TRAVIS") == "true":
+    if os.environ.get("TRAVIS") == "true" or os.environ.get("BUILDKITE"):
         is_docker_affected = _docker_affected()
         if _merge_build() or is_docker_affected:
             DOCKER_CLIENT = docker.from_env()
@@ -354,7 +359,9 @@ if __name__ == "__main__":
             freshly_built = build_or_pull_base_images(is_docker_affected)
             build_ray()
             build_ray_ml()
-            push_and_tag_images(freshly_built)
+
+            if not os.environ.get("BUILDKITE"):  # Skipping push on buildkite
+                push_and_tag_images(freshly_built)
             # TODO(ilr) Re-Enable Push READMEs by using a normal password
             # (not auth token :/)
             # push_readmes()

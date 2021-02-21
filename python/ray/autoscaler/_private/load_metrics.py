@@ -5,6 +5,7 @@ import time
 from typing import Dict, List
 
 import numpy as np
+import ray.ray_constants
 import ray._private.services as services
 from ray.autoscaler._private.constants import MEMORY_RESOURCE_UNIT_BYTES,\
     AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE
@@ -212,8 +213,15 @@ class LoadMetrics:
                                  ) if self.static_resources_by_ip else {}
         usage_dict = {}
         for key in total_resources:
-            total = total_resources[key]
-            usage_dict[key] = (total - available_resources[key], total)
+            if key in ["memory", "object_store_memory"]:
+                total = total_resources[key] * \
+                    ray.ray_constants.MEMORY_RESOURCE_UNIT_BYTES
+                available = available_resources[key] * \
+                    ray.ray_constants.MEMORY_RESOURCE_UNIT_BYTES
+                usage_dict[key] = (total - available, total)
+            else:
+                total = total_resources[key]
+                usage_dict[key] = (total - available_resources[key], total)
 
         summarized_demand_vector = freq_of_dicts(
             self.get_resource_demand_vector(clip=False))
