@@ -199,6 +199,8 @@ def execution_plan(workers: WorkerSet,
         replay_batch_size=config["train_batch_size"],
         replay_mode=config["multiagent"]["replay_mode"],
         replay_sequence_length=config.get("replay_sequence_length", 1),
+        replay_burn_in=config.get("burn_in", 0),
+        replay_zero_init_states=config.get("zero_init_states", True),
         **prio_args)
 
     rollouts = ParallelRollouts(workers, mode="bulk_sync")
