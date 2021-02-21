@@ -332,7 +332,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   Status raylet_client_status;
   NodeID local_raylet_id;
   int assigned_port;
-  std::unordered_map<std::string, std::string> system_config;
+  std::string system_config;
   local_raylet_client_ = std::shared_ptr<raylet::RayletClient>(new raylet::RayletClient(
       io_service_, std::move(grpc_client), options_.raylet_socket, GetWorkerID(),
       options_.worker_type, worker_context_.GetCurrentJobID(), options_.language,
@@ -422,7 +422,16 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
         return Status::OK();
       },
       options_.ref_counting_enabled ? reference_counter_ : nullptr, local_raylet_client_,
-      options_.check_signals));
+      options_.check_signals,
+      [this](const RayObject &obj) {
+        // Run this on the event loop to avoid calling back into the language runtime
+        // from the middle of user operations.
+        io_service_.post([this, obj]() {
+          if (options_.unhandled_exception_handler != nullptr) {
+            options_.unhandled_exception_handler(obj);
+          }
+        });
+      }));
 
   auto check_node_alive_fn = [this](const NodeID &node_id) {
     auto node = gcs_client_->Nodes().Get(node_id);

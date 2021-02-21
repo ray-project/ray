@@ -81,15 +81,6 @@ Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetNodeResourceInfo(
   return static_cast<jbyteArray>(NativeStringToJavaByteArray(env, node_resource_info));
 }
 
-JNIEXPORT jbyteArray JNICALL
-Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetInternalConfig(
-    JNIEnv *env, jobject o, jlong gcs_accessor_ptr) {
-  auto *gcs_accessor =
-      reinterpret_cast<ray::gcs::GlobalStateAccessor *>(gcs_accessor_ptr);
-  auto system_config_string = gcs_accessor->GetInternalConfig();
-  return static_cast<jbyteArray>(NativeStringToJavaByteArray(env, system_config_string));
-}
-
 JNIEXPORT jobject JNICALL
 Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetAllActorInfo(
     JNIEnv *env, jobject o, jlong gcs_accessor_ptr) {
