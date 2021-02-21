@@ -1713,7 +1713,7 @@ py_test(
     tags = ["examples", "examples_C"],
     size = "small",
     srcs = ["examples/checkpoint_by_custom_criteria.py"],
-    args = ["--stop-iters=3"]
+    args = ["--stop-iters=3 --num-cpus=3"]
 )
 
 py_test(
