@@ -7,7 +7,6 @@ import io.ray.api.Ray;
 import io.ray.runtime.exception.RayActorException;
 import java.util.function.BiConsumer;
 import org.testng.Assert;
-import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
@@ -17,11 +16,6 @@ public class KillActorTest extends BaseTest {
   @BeforeClass
   public void setUp() {
     System.setProperty("ray.job.num-java-workers-per-process", "1");
-  }
-
-  @AfterClass
-  public void tearDown() {
-    System.clearProperty("ray.job.num-java-workers-per-process");
   }
 
   public static class HangActor {
