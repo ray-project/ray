@@ -166,6 +166,8 @@ void PlasmaStore::AddToClientObjectIds(const ObjectID &object_id, ObjectTableEnt
   }
   // Increase reference count.
   entry->ref_count++;
+  RAY_LOG(DEBUG) << "Object " << object_id << " in use by client"
+                 << ", num bytes in use is now " << num_bytes_in_use_;
 
   // Add object id to the list of object ids that this client is using.
   client->object_ids.insert(object_id);
@@ -325,6 +327,8 @@ PlasmaError PlasmaStore::CreateObject(const ObjectID &object_id,
   eviction_policy_.ObjectCreated(object_id, client.get(), true);
   // Record that this client is using this object.
   AddToClientObjectIds(object_id, store_info_.objects[object_id].get(), client);
+  num_objects_unsealed_++;
+  num_bytes_unsealed_ += data_size + metadata_size;
   return PlasmaError::OK;
 }
 
@@ -538,12 +542,14 @@ int PlasmaStore::RemoveFromClientObjectIds(const ObjectID &object_id,
     client->object_ids.erase(it);
     // Decrease reference count.
     entry->ref_count--;
+    RAY_LOG(DEBUG) << "Object " << object_id << " no longer in use by client";
 
     // If no more clients are using this object, notify the eviction policy
     // that the object is no longer being used.
     if (entry->ref_count == 0) {
       num_bytes_in_use_ -= entry->data_size + entry->metadata_size;
-      RAY_LOG(DEBUG) << "Releasing object no longer in use " << object_id;
+      RAY_LOG(DEBUG) << "Releasing object no longer in use " << object_id
+                     << ", num bytes in use is now " << num_bytes_in_use_;
       if (deletion_cache_.count(object_id) == 0) {
         // Tell the eviction policy that this object is no longer being used.
         eviction_policy_.EndObjectAccess(object_id);
@@ -568,9 +574,15 @@ void PlasmaStore::EraseFromObjectTable(const ObjectID &object_id) {
   if (object->device_num == 0) {
     PlasmaAllocator::Free(object->pointer, buff_size);
   }
+  if (object->state == ObjectState::PLASMA_CREATED) {
+    num_bytes_unsealed_ -= object->data_size + object->metadata_size;
+    num_objects_unsealed_--;
+  }
   if (object->ref_count > 0) {
     // A client was using this object.
     num_bytes_in_use_ -= object->data_size + object->metadata_size;
+    RAY_LOG(DEBUG) << "Erasing object " << object_id << " with nonzero ref count"
+                   << object_id << ", num bytes in use is now " << num_bytes_in_use_;
   }
   store_info_.objects.erase(object_id);
 }
@@ -614,6 +626,9 @@ void PlasmaStore::SealObjects(const std::vector<ObjectID> &object_ids) {
     object_info.owner_worker_id = entry->owner_worker_id.Binary();
     object_info.metadata_size = entry->metadata_size;
     infos.push_back(object_info);
+
+    num_objects_unsealed_--;
+    num_bytes_unsealed_ -= entry->data_size + entry->metadata_size;
   }
 
   PushNotifications(infos);

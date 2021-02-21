@@ -66,7 +66,7 @@ DEFAULT_CONFIG = with_common_config({
     # be set to greater than 1 to support recurrent models.
     "replay_sequence_length": 1,
     # Whether to LZ4 compress observations
-    "compress_observations": True,
+    "compress_observations": False,
 
     # === Optimization ===
     # Learning rate for adam optimizer

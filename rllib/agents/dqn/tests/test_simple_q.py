@@ -27,7 +27,10 @@ class TestSimpleQ(unittest.TestCase):
     def test_simple_q_compilation(self):
         """Test whether a SimpleQTrainer can be built on all frameworks."""
         config = dqn.SIMPLE_Q_DEFAULT_CONFIG.copy()
-        config["num_workers"] = 0  # Run locally.
+        # Run locally.
+        config["num_workers"] = 0
+        # Test with compression.
+        config["compress_observations"] = True
         num_iterations = 2
 
         for _ in framework_iterator(config):
