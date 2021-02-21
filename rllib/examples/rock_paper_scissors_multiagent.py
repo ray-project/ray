@@ -105,7 +105,7 @@ def run_heuristic_vs_learned(args, use_lstm=False, trainer="PG"):
     trainer_obj = cls(config=config)
     for _ in range(args.stop_iters):
         results = trainer_obj.train()
-        print(results)
+        # print(results)
         # Timesteps reached.
         if "policy_learned_reward" in results["hist_stats"]:
             # player_0_rewards = player_0_num_wins - player_1_num_wins
