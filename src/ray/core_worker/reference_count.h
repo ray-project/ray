@@ -49,6 +49,11 @@ class ReferenceCounterInterface {
   virtual ~ReferenceCounterInterface() {}
 };
 
+// Callback for location subscriptions.
+using LocationSubscriptionCallback =
+    std::function<void(const absl::flat_hash_set<NodeID> &, int64_t, const std::string &,
+                       const NodeID &, int64_t)>;
+
 /// Class used by the core worker to keep track of ObjectID reference counts for garbage
 /// collection. This class is thread safe.
 class ReferenceCounter : public ReferenceCounterInterface,
@@ -397,11 +402,37 @@ class ReferenceCounter : public ReferenceCounterInterface,
   absl::optional<absl::flat_hash_set<NodeID>> GetObjectLocations(
       const ObjectID &object_id) LOCKS_EXCLUDED(mutex_);
 
+  /// Subscribe to object location changes that are more recent than the given version.
+  /// The provided callback will be invoked when new locations become available.
+  ///
+  /// \param[in] object_id The object whose locations we want.
+  /// \param[in] last_location_version The version of the last location update the
+  /// caller received. Only more recent location updates will be returned.
+  /// \param[in] callback The callback to invoke with the location update.
+  /// \return The status of the location get.
+  Status SubscribeObjectLocations(const ObjectID &object_id,
+                                  int64_t last_location_version,
+                                  const LocationSubscriptionCallback &callback)
+      LOCKS_EXCLUDED(mutex_);
+
+  /// Get an object's size. This will return 0 if the object is out of scope.
+  ///
+  /// \param[in] object_id The object whose size to get.
+  /// \return Object size, or 0 if the object is out of scope.
+  size_t GetObjectSize(const ObjectID &object_id) const;
+
   /// Handle an object has been spilled to external storage.
   ///
   /// This notifies the primary raylet that the object is safe to release and
-  /// records that the object has been spilled to suppress reconstruction.
-  void HandleObjectSpilled(const ObjectID &object_id);
+  /// records the spill URL, spill node ID, and updated object size.
+  /// \param[in] object_id The object that has been spilled.
+  /// \param[in] spilled_url The URL to which the object has been spilled.
+  /// \param[in] spilled_node_id The ID of the node on which the object was spilled.
+  /// \param[in] size The size of the object.
+  /// \param[in] release Whether to release the reference.
+  /// \return True if the reference exists, false otherwise.
+  bool HandleObjectSpilled(const ObjectID &object_id, const std::string spilled_url,
+                           const NodeID &spilled_node_id, int64_t size, bool release);
 
   /// Get locality data for object.
   absl::optional<LocalityData> GetLocalityData(const ObjectID &object_id);
@@ -486,13 +517,17 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// process is a borrower, the borrower must add the owner's address before
     /// using the ObjectID.
     absl::optional<rpc::Address> owner_address;
-    // If this object is owned by us and stored in plasma, and reference
-    // counting is enabled, then some raylet must be pinning the object value.
-    // This is the address of that raylet.
+    /// If this object is owned by us and stored in plasma, and reference
+    /// counting is enabled, then some raylet must be pinning the object value.
+    /// This is the address of that raylet.
     absl::optional<NodeID> pinned_at_raylet_id;
-    // If this object is owned by us and stored in plasma, this contains all
-    // object locations.
+    /// If this object is owned by us and stored in plasma, this contains all
+    /// object locations.
     absl::flat_hash_set<NodeID> locations;
+    /// A logical counter for object location updates, used for object location
+    /// subscriptions. Subscribers use -1 to indicate that they want us to
+    /// immediately send them the current location data.
+    int64_t location_version = 0;
     // Whether this object can be reconstructed via lineage. If false, then the
     // object's value will be pinned as long as it is referenced by any other
     // object's lineage.
@@ -559,7 +594,16 @@ class ReferenceCounter : public ReferenceCounterInterface,
     size_t lineage_ref_count = 0;
     /// Whether this object has been spilled to external storage.
     bool spilled = false;
-
+    /// For objects that have been spilled to external storage, the URL from which
+    /// they can be retrieved.
+    std::string spilled_url = "";
+    /// The ID of the node that spilled the object.
+    /// This will be Nil if the object has not been spilled or if it is spilled
+    /// distributed external storage.
+    NodeID spilled_node_id = NodeID::Nil();
+    /// Location subscription callbacks registered by async location get requests.
+    /// These will be invoked whenever locations or object_size are changed.
+    std::vector<LocationSubscriptionCallback> location_subscription_callbacks;
     /// Callback that will be called when this ObjectID no longer has
     /// references.
     std::function<void(const ObjectID &)> on_delete;
@@ -681,6 +725,12 @@ class ReferenceCounter : public ReferenceCounterInterface,
 
   /// Helper method to decrement the lineage ref count for a list of objects.
   void ReleaseLineageReferencesInternal(const std::vector<ObjectID> &argument_ids)
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
+  /// Pushes location updates to subscribers of a particular reference, invoking all
+  /// callbacks registered for the reference by GetLocationsAsync calls. This method
+  /// also increments the reference's location version counter.
+  void PushToLocationSubscribers(ReferenceTable::iterator it)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Address of our RPC server. This is used to determine whether we own a

@@ -1,6 +1,7 @@
 from typing import Callable, Dict, Sequence, Union
 import json
 
+import ray
 import ray.cloudpickle as cloudpickle
 from collections import deque
 import copy
@@ -166,6 +167,13 @@ class Trial:
 
     """
 
+    _nonjson_fields = [
+        "results",
+        "best_result",
+        "param_config",
+        "extra_arg",
+    ]
+
     PENDING = "PENDING"
     RUNNING = "RUNNING"
     PAUSED = "PAUSED"
@@ -289,12 +297,6 @@ class Trial:
         self.param_config = None
         self.extra_arg = None
 
-        self._nonjson_fields = [
-            "results",
-            "best_result",
-            "param_config",
-            "extra_arg",
-        ]
         if trial_name_creator:
             self.custom_trial_name = trial_name_creator(self)
 
@@ -610,8 +612,6 @@ class Trial:
         Sets RUNNING trials to PENDING.
         Note this can only occur if the trial holds a PERSISTENT checkpoint.
         """
-        assert self.checkpoint.storage == Checkpoint.PERSISTENT, (
-            "Checkpoint must not be in-memory.")
         state = self.__dict__.copy()
         state["resources"] = resources_to_json(self.resources)
 
@@ -639,4 +639,9 @@ class Trial:
 
         self.__dict__.update(state)
         validate_trainable(self.trainable_name)
-        self.init_logdir()  # Create logdir if it does not exist
+
+        # Avoid creating logdir in client mode for returned trial results,
+        # since the dir might not be creatable locally. TODO(ekl) thsi is kind
+        # of a hack.
+        if not ray.util.client.ray.is_connected():
+            self.init_logdir()  # Create logdir if it does not exist

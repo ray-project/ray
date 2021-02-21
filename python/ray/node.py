@@ -11,7 +11,11 @@ import socket
 import subprocess
 import sys
 import tempfile
+import threading
 import time
+
+from typing import Optional, Dict
+from collections import defaultdict
 
 import ray
 import ray.ray_constants as ray_constants
@@ -88,6 +92,7 @@ class Node:
         self.kernel_fate_share = bool(
             spawn_reaper and ray.utils.detect_fate_sharing_support())
         self.all_processes = {}
+        self.removal_lock = threading.Lock()
 
         # Try to get node IP address with the parameters.
         if ray_params.node_ip_address:
@@ -115,24 +120,12 @@ class Node:
             raise ValueError(
                 "Internal config parameters can only be set on the head node.")
 
-        if ray_params._lru_evict:
-            assert (connect_only or
-                    head), "LRU Evict can only be passed into the head node."
-
         self._raylet_ip_address = raylet_ip_address
-
-        self.metrics_agent_port = (ray_params.metrics_agent_port
-                                   or self._get_unused_port()[0])
-        self._metrics_export_port = ray_params.metrics_export_port
-        if self._metrics_export_port is None:
-            self._metrics_export_port = self._get_unused_port()[0]
 
         ray_params.update_if_absent(
             include_log_monitor=True,
             resources={},
             temp_dir=ray.utils.get_ray_temp_dir(),
-            metrics_agent_port=self.metrics_agent_port,
-            metrics_export_port=self._metrics_export_port,
             worker_path=os.path.join(
                 os.path.dirname(os.path.abspath(__file__)),
                 "workers/default_worker.py"))
@@ -147,6 +140,18 @@ class Node:
         if "plasma_store_as_thread" not in self._config:
             self._config["plasma_store_as_thread"] = True
 
+        # Configure log rotation parameters.
+        self.max_bytes = int(
+            os.getenv("RAY_ROTATION_MAX_BYTES",
+                      ray_constants.LOGGING_ROTATE_BYTES))
+        self.backup_count = int(
+            os.getenv("RAY_ROTATION_BACKUP_COUNT",
+                      ray_constants.LOGGING_ROTATE_BACKUP_COUNT))
+
+        assert self.max_bytes >= 0
+        assert self.backup_count >= 0
+
+        # Register the temp dir.
         if head:
             redis_client = None
             # date including microsecond
@@ -159,6 +164,11 @@ class Node:
             self.session_name = ray.utils.decode(session_name)
 
         self._init_temp(redis_client)
+
+        # If it is a head node, try validating if
+        # external storage is configurable.
+        if head:
+            self.validate_external_storage()
 
         if connect_only:
             # Get socket names from the configuration.
@@ -189,6 +199,15 @@ class Node:
                 default_prefix="plasma_store")
             self._raylet_socket_name = self._prepare_socket_file(
                 self._ray_params.raylet_socket_name, default_prefix="raylet")
+
+        self.metrics_agent_port = self._get_cached_port(
+            "metrics_agent_port", default_port=ray_params.metrics_agent_port)
+        self._metrics_export_port = self._get_cached_port(
+            "metrics_export_port", default_port=ray_params.metrics_export_port)
+
+        ray_params.update_if_absent(
+            metrics_agent_port=self.metrics_agent_port,
+            metrics_export_port=self._metrics_export_port)
 
         if head:
             ray_params.update_if_absent(num_redis_shards=1)
@@ -288,9 +307,10 @@ class Node:
 
             for key in set(env_dict.keys()).intersection(
                     set(params_dict.keys())):
-                logger.warning("Autoscaler is overriding your resource:"
-                               "{}: {} with {}.".format(
-                                   key, params_dict[key], env_dict[key]))
+                if params_dict[key] != env_dict[key]:
+                    logger.warning("Autoscaler is overriding your resource:"
+                                   "{}: {} with {}.".format(
+                                       key, params_dict[key], env_dict[key]))
             return num_cpus, num_gpus, memory, object_store_memory, result
 
         if not self._resource_spec:
@@ -383,6 +403,14 @@ class Node:
             return None
 
     @property
+    def logging_config(self):
+        """Get the logging config of the current node."""
+        return {
+            "log_rotation_max_bytes": self.max_bytes,
+            "log_rotation_backup_count": self.backup_count
+        }
+
+    @property
     def address_info(self):
         """Get a dictionary of addresses."""
         return {
@@ -395,6 +423,9 @@ class Node:
             "session_dir": self._session_dir,
             "metrics_export_port": self._metrics_export_port
         }
+
+    def is_head(self):
+        return self.head
 
     def create_redis_client(self):
         """Create a redis client."""
@@ -555,6 +586,50 @@ class Node:
                               "{} bytes: {!r}".format(maxlen, result))
         return result
 
+    def _get_cached_port(self,
+                         port_name: str,
+                         default_port: Optional[int] = None) -> int:
+        """Get a port number from a cache on this node.
+
+        Different driver processes on a node should use the same ports for
+        some purposes, e.g. exporting metrics.  This method returns a port
+        number for the given port name and caches it in a file.  If the
+        port isn't already cached, an unused port is generated and cached.
+
+        Args:
+            port_name (str): the name of the port, e.g. metrics_export_port
+            default_port (Optional[int]): The port to return and cache if no
+            port has already been cached for the given port_name.  If None, an
+            unused port is generated and cached.
+        Returns:
+            port (int): the port number.
+        """
+        file_path = os.path.join(self.get_session_dir_path(),
+                                 "ports_by_node.json")
+
+        # Maps a Node.unique_id to a dict that maps port names to port numbers.
+        ports_by_node: Dict[str, Dict[str, int]] = defaultdict(dict)
+
+        if not os.path.exists(file_path):
+            with open(file_path, "w") as f:
+                json.dump({}, f)
+
+        with open(file_path, "r") as f:
+            ports_by_node.update(json.load(f))
+
+        if (self.unique_id in ports_by_node
+                and port_name in ports_by_node[self.unique_id]):
+            # The port has already been cached at this node, so use it.
+            port = int(ports_by_node[self.unique_id][port_name])
+        else:
+            # Pick a new port to use and cache it at this node.
+            port = (default_port or self._get_unused_port()[0])
+            ports_by_node[self.unique_id][port_name] = port
+            with open(file_path, "w") as f:
+                json.dump(ports_by_node, f)
+
+        return port
+
     def start_reaper_process(self):
         """
         Start the reaper process.
@@ -604,7 +679,9 @@ class Node:
             stdout_file=subprocess.DEVNULL,
             stderr_file=subprocess.DEVNULL,
             redis_password=self._ray_params.redis_password,
-            fate_share=self.kernel_fate_share)
+            fate_share=self.kernel_fate_share,
+            max_bytes=self.max_bytes,
+            backup_count=self.backup_count)
         assert ray_constants.PROCESS_TYPE_LOG_MONITOR not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_LOG_MONITOR] = [
             process_info,
@@ -628,6 +705,8 @@ class Node:
             stderr_file=subprocess.DEVNULL,  # Avoid hang(fd inherit)
             redis_password=self._ray_params.redis_password,
             fate_share=self.kernel_fate_share,
+            max_bytes=self.max_bytes,
+            backup_count=self.backup_count,
             port=self._ray_params.dashboard_port)
         assert ray_constants.PROCESS_TYPE_DASHBOARD not in self.all_processes
         if process_info is not None:
@@ -723,6 +802,8 @@ class Node:
             fate_share=self.kernel_fate_share,
             socket_to_use=self.socket,
             head_node=self.head,
+            max_bytes=self.max_bytes,
+            backup_count=self.backup_count,
             start_initial_python_workers_for_first_job=self._ray_params.
             start_initial_python_workers_for_first_job)
         assert ray_constants.PROCESS_TYPE_RAYLET not in self.all_processes
@@ -748,7 +829,9 @@ class Node:
             stderr_file=stderr_file,
             autoscaling_config=self._ray_params.autoscaling_config,
             redis_password=self._ray_params.redis_password,
-            fate_share=self.kernel_fate_share)
+            fate_share=self.kernel_fate_share,
+            max_bytes=self.max_bytes,
+            backup_count=self.backup_count)
         assert ray_constants.PROCESS_TYPE_MONITOR not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_MONITOR] = [process_info]
 
@@ -838,6 +921,23 @@ class Node:
                 2. The process had been started in valgrind and had a non-zero
                    exit code.
         """
+
+        # Ensure thread safety
+        with self.removal_lock:
+            self._kill_process_impl(
+                process_type,
+                allow_graceful=allow_graceful,
+                check_alive=check_alive,
+                wait=wait)
+
+    def _kill_process_impl(self,
+                           process_type,
+                           allow_graceful=False,
+                           check_alive=True,
+                           wait=False):
+        """See `_kill_process_type`."""
+        if process_type not in self.all_processes:
+            return
         process_infos = self.all_processes[process_type]
         if process_type != ray_constants.PROCESS_TYPE_REDIS_SERVER:
             assert len(process_infos) == 1
@@ -1075,3 +1175,53 @@ class Node:
             True if any process that wasn't explicitly killed is still alive.
         """
         return not any(self.dead_processes())
+
+    def destroy_external_storage(self):
+        object_spilling_config = self._config.get("object_spilling_config", {})
+        if object_spilling_config:
+            object_spilling_config = json.loads(object_spilling_config)
+            from ray import external_storage
+            storage = external_storage.setup_external_storage(
+                object_spilling_config)
+            storage.destroy_external_storage()
+
+    def validate_external_storage(self):
+        """Make sure we can setup the object spilling external storage.
+        This will also fill up the default setting for object spilling
+        if not specified.
+        """
+        object_spilling_config = self._config.get("object_spilling_config", {})
+        automatic_spilling_enabled = self._config.get(
+            "automatic_object_spilling_enabled", True)
+        if not automatic_spilling_enabled:
+            return
+
+        # If the config is not specified, we fill up the default.
+        if not object_spilling_config:
+            object_spilling_config = json.dumps({
+                "type": "filesystem",
+                "params": {
+                    "directory_path": self._session_dir
+                }
+            })
+
+        # Try setting up the storage.
+        # Configure the proper system config.
+        # We need to set both ray param's system config and self._config
+        # because they could've been diverged at this point.
+        deserialized_config = json.loads(object_spilling_config)
+        self._ray_params._system_config["object_spilling_config"] = (
+            object_spilling_config)
+        self._config["object_spilling_config"] = object_spilling_config
+
+        is_external_storage_type_fs = (
+            deserialized_config["type"] == "filesystem")
+        self._ray_params._system_config["is_external_storage_type_fs"] = (
+            is_external_storage_type_fs)
+        self._config["is_external_storage_type_fs"] = (
+            is_external_storage_type_fs)
+
+        # Validate external storage usage.
+        from ray import external_storage
+        external_storage.setup_external_storage(deserialized_config)
+        external_storage.reset_external_storage()

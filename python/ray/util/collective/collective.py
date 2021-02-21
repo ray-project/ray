@@ -7,14 +7,9 @@ import numpy as np
 import ray
 from ray.util.collective import types
 
-_MPI_AVAILABLE = False
+_GLOO_AVAILABLE = False
 _NCCL_AVAILABLE = True
 
-# try:
-#     from ray.util.collective.collective_group.mpi_collective_group \
-#     import MPIGroup
-# except ImportError:
-#     _MPI_AVAILABLE = False
 try:
     from ray.util.collective.collective_group import NCCLGroup
 except ImportError:
@@ -27,8 +22,8 @@ def nccl_available():
     return _NCCL_AVAILABLE
 
 
-def mpi_available():
-    return _MPI_AVAILABLE
+def gloo_available():
+    return _GLOO_AVAILABLE
 
 
 class GroupManager(object):
@@ -51,9 +46,11 @@ class GroupManager(object):
         """
         backend = types.Backend(backend)
         if backend == types.Backend.MPI:
+            raise RuntimeError("Ray does not support MPI.")
+        elif backend == types.Backend.GLOO:
             raise NotImplementedError()
         elif backend == types.Backend.NCCL:
-            logger.debug("creating NCCL group: '{}'".format(group_name))
+            logger.debug("Creating NCCL group: '{}'...".format(group_name))
             g = NCCLGroup(world_size, rank, group_name)
             self._name_group_map[group_name] = g
             self._group_name_map[g] = group_name
@@ -100,9 +97,9 @@ def init_collective_group(world_size: int,
     """Initialize a collective group inside an actor process.
 
     Args:
-        world_size (int): the total number of processed in the group.
+        world_size (int): the total number of processes in the group.
         rank (int): the rank of the current process.
-        backend: the CCL backend to use, NCCL or MPI.
+        backend: the CCL backend to use, NCCL or GLOO.
         group_name (str): the name of the collective group.
 
     Returns:
@@ -137,10 +134,13 @@ def declare_collective_group(actors,
 
     Args:
         actors (list): a list of actors to be set in a collective group.
-        group_options (dict): a dictionary that contains group_name(str),
-                              world_size(int), rank(list of int, e.g. [0,1]
-                              means the first actor is rank 0, and the second
-                              actor is rank 1), backend(str).
+        world_size (int): the total number of processes in the group.
+        ranks (List[int]): the rank of each actor.
+        backend: the CCL backend to use, NCCL or GLOO.
+        group_name (str): the name of the collective group.
+
+    Returns:
+        None
     """
     backend = types.Backend(backend)
     _check_backend_availability(backend)
@@ -162,18 +162,25 @@ def declare_collective_group(actors,
             "Ranks must be a permutation from 0 to '{}'. Got '{}'.".format(
                 len(ranks), "".join([str(r) for r in ranks])))
 
-    assert world_size > 0
-    assert all(ranks) >= 0 and all(ranks) < world_size
+    if world_size <= 0:
+        raise RuntimeError("World size must be greater than zero. "
+                           "Got '{}'.".format(world_size))
+    if not all(ranks) >= 0:
+        raise RuntimeError("Ranks must be non-negative.")
+    if not all(ranks) < world_size:
+        raise RuntimeError("Ranks cannot be greater than world_size.")
 
     # avoid a circular dependency
     from ray.util.collective.util import Info
-    # store the information into a NamedActor that can be accessed later/
+    # store the information into a NamedActor that can be accessed later.
     name = "info_" + group_name
     actors_id = [a._ray_actor_id for a in actors]
+    # TODO (Dacheng): how do we recycle this name actor?
     info = Info.options(name=name, lifetime="detached").remote()
     ray.get([info.set_info.remote(actors_id, world_size, ranks, backend)])
 
 
+# TODO (we need a declarative destroy() API here.)
 def destroy_collective_group(group_name: str = "default") -> None:
     """Destroy a collective group given its group name."""
     _check_inside_actor()
@@ -206,9 +213,8 @@ def get_world_size(group_name: str = "default") -> int:
         group_name: the name of the group to query
 
     Returns:
-        The world size of the collective group，
-        -1 if the group does not exist or the process does
-        not belong to the group.
+        The world size of the collective group, -1 if the group does
+            not exist or the process does not belong to the group.
     """
     _check_inside_actor()
     if not is_group_initialized(group_name):
@@ -232,7 +238,29 @@ def allreduce(tensor, group_name: str = "default", op=types.ReduceOp.SUM):
     g = _check_and_get_group(group_name)
     opts = types.AllReduceOptions
     opts.reduceOp = op
-    g.allreduce(tensor, opts)
+    g.allreduce([tensor], opts)
+
+
+def allreduce_multigpu(tensor_list: list,
+                       group_name: str = "default",
+                       op=types.ReduceOp.SUM):
+    """Collective allreduce a list of tensors across the group.
+
+    Args:
+        tensor_list (List[tensor]): list of tensors to be allreduced,
+            each on a GPU.
+        group_name (str): the collective group name to perform allreduce.
+
+    Returns:
+        None
+    """
+    if not types.cupy_available():
+        raise RuntimeError("Multigpu calls requires NCCL and Cupy.")
+    _check_tensor_list_input(tensor_list)
+    g = _check_and_get_group(group_name)
+    opts = types.AllReduceOptions
+    opts.reduceOp = op
+    g.allreduce(tensor_list, opts)
 
 
 def barrier(group_name: str = "default"):
@@ -256,8 +284,8 @@ def reduce(tensor,
 
     Args:
         tensor: the tensor to be reduced on this process.
-        dst_rank: the rank of the destination process.
-        group_name: the collective group name to perform reduce.
+        dst_rank (int): the rank of the destination process.
+        group_name (str): the collective group name to perform reduce.
         op: The reduce operation.
 
     Returns:
@@ -271,7 +299,42 @@ def reduce(tensor,
     opts = types.ReduceOptions()
     opts.reduceOp = op
     opts.root_rank = dst_rank
-    g.reduce(tensor, opts)
+    opts.root_tensor = 0
+    g.reduce([tensor], opts)
+
+
+def reduce_multigpu(tensor_list: list,
+                    dst_rank: int = 0,
+                    dst_tensor: int = 0,
+                    group_name: str = "default",
+                    op=types.ReduceOp.SUM):
+    """Reduce the tensor across the group to the destination rank
+    and destination tensor.
+
+    Args:
+        tensor_list: the list of tensors to be reduced on this process;
+            each tensor located on a GPU.
+        dst_rank (int): the rank of the destination process.
+        dst_tensor: the index of GPU at the destination.
+        group_name (str): the collective group name to perform reduce.
+        op: The reduce operation.
+
+    Returns:
+        None
+    """
+    if not types.cupy_available():
+        raise RuntimeError("Multigpu calls requires NCCL and Cupy.")
+    _check_tensor_list_input(tensor_list)
+    g = _check_and_get_group(group_name)
+
+    # check dst rank
+    _check_rank_valid(g, dst_rank)
+    _check_root_tensor_valid(len(tensor_list), dst_tensor)
+    opts = types.ReduceOptions()
+    opts.reduceOp = op
+    opts.root_rank = dst_rank
+    opts.root_tensor = dst_tensor
+    g.reduce(tensor_list, opts)
 
 
 def broadcast(tensor, src_rank: int = 0, group_name: str = "default"):
@@ -279,8 +342,8 @@ def broadcast(tensor, src_rank: int = 0, group_name: str = "default"):
 
     Args:
         tensor: the tensor to be broadcasted (src) or received (destination).
-        src_rank: the rank of the source process.
-        group_name: he collective group name to perform broadcast.
+        src_rank (int): the rank of the source process.
+        group_name (str): the collective group name to perform broadcast.
 
     Returns:
         None
@@ -292,7 +355,37 @@ def broadcast(tensor, src_rank: int = 0, group_name: str = "default"):
     _check_rank_valid(g, src_rank)
     opts = types.BroadcastOptions()
     opts.root_rank = src_rank
-    g.broadcast(tensor, opts)
+    opts.root_tensor = 0
+    g.broadcast([tensor], opts)
+
+
+def broadcast_multigpu(tensor_list,
+                       src_rank: int = 0,
+                       src_tensor: int = 0,
+                       group_name: str = "default"):
+    """Broadcast the tensor from a source GPU to all other GPUs.
+
+    Args:
+        tensor_list: the tensors to broadcast (src) or receive (dst).
+        src_rank (int): the rank of the source process.
+        src_tensor (int): the index of the source GPU on the source process.
+        group_name (str): the collective group name to perform broadcast.
+
+    Returns:
+        None
+    """
+    if not types.cupy_available():
+        raise RuntimeError("Multigpu calls requires NCCL and Cupy.")
+    _check_tensor_list_input(tensor_list)
+    g = _check_and_get_group(group_name)
+
+    # check src rank
+    _check_rank_valid(g, src_rank)
+    _check_root_tensor_valid(len(tensor_list), src_tensor)
+    opts = types.BroadcastOptions()
+    opts.root_rank = src_rank
+    opts.root_tensor = src_tensor
+    g.broadcast(tensor_list, opts)
 
 
 def allgather(tensor_list: list, tensor, group_name: str = "default"):
@@ -301,7 +394,7 @@ def allgather(tensor_list: list, tensor, group_name: str = "default"):
     Args:
         tensor_list (list): the results, stored as a list of tensors.
         tensor: the tensor (to be gathered) in the current process
-        group_name: the name of the collective group.
+        group_name (str): the name of the collective group.
 
     Returns:
         None
@@ -314,9 +407,33 @@ def allgather(tensor_list: list, tensor, group_name: str = "default"):
         # Here we make it more strict: len(tensor_list) == world_size.
         raise RuntimeError(
             "The length of the tensor list operands to allgather "
-            "must not be equal to world_size.")
+            "must be equal to world_size.")
     opts = types.AllGatherOptions()
-    g.allgather(tensor_list, tensor, opts)
+    g.allgather([tensor_list], [tensor], opts)
+
+
+def allgather_multigpu(output_tensor_lists: list,
+                       input_tensor_list: list,
+                       group_name: str = "default"):
+    """Allgather tensors from each gpus of the group into lists.
+
+    Args:
+        output_tensor_lists (List[List[tensor]]): gathered results, with shape
+            must be num_gpus * world_size * shape(tensor).
+        input_tensor_list: (List[tensor]): a list of tensors, with shape
+            num_gpus * shape(tensor).
+        group_name (str): the name of the collective group.
+
+    Returns:
+        None
+    """
+    if not types.cupy_available():
+        raise RuntimeError("Multigpu calls requires NCCL and Cupy.")
+    _check_tensor_lists_input(output_tensor_lists)
+    _check_tensor_list_input(input_tensor_list)
+    g = _check_and_get_group(group_name)
+    opts = types.AllGatherOptions()
+    g.allgather(output_tensor_lists, input_tensor_list, opts)
 
 
 def reducescatter(tensor,
@@ -346,11 +463,38 @@ def reducescatter(tensor,
             "must not be equal to world_size.")
     opts = types.ReduceScatterOptions()
     opts.reduceOp = op
-    g.reducescatter(tensor, tensor_list, opts)
+    g.reducescatter([tensor], [tensor_list], opts)
+
+
+def reducescatter_multigpu(output_tensor_list,
+                           input_tensor_lists,
+                           group_name: str = "default",
+                           op=types.ReduceOp.SUM):
+    """Reducescatter a list of tensors across all GPUs.
+
+    Args:
+        output_tensor_list: the resulted list of tensors, with
+            shape: num_gpus * shape(tensor).
+        input_tensor_lists: the original tensors, with shape:
+            num_gpus * world_size * shape(tensor).
+        group_name (str): the name of the collective group.
+        op: The reduce operation.
+
+    Returns:
+        None.
+    """
+    if not types.cupy_available():
+        raise RuntimeError("Multigpu calls requires NCCL and Cupy.")
+    _check_tensor_lists_input(input_tensor_lists)
+    _check_tensor_list_input(output_tensor_list)
+    g = _check_and_get_group(group_name)
+    opts = types.ReduceScatterOptions()
+    opts.reduceOp = op
+    g.reducescatter(output_tensor_list, input_tensor_lists, opts)
 
 
 def send(tensor, dst_rank: int, group_name: str = "default"):
-    """Send a tensor to a remote processes synchronously.
+    """Send a tensor to a remote process synchronously.
 
     Args:
         tensor: the tensor to send.
@@ -366,7 +510,41 @@ def send(tensor, dst_rank: int, group_name: str = "default"):
     if dst_rank == g.rank:
         raise RuntimeError(
             "The destination rank '{}' is self.".format(dst_rank))
-    g.send(tensor, dst_rank)
+    opts = types.SendOptions()
+    opts.dst_rank = dst_rank
+    g.send([tensor], opts)
+
+
+def send_multigpu(tensor,
+                  dst_rank: int,
+                  dst_gpu_index: int,
+                  group_name: str = "default"):
+    """Send a tensor to a remote GPU synchronously.
+
+    The function asssume each process owns >1 GPUs, and the sender
+    process and receiver process has equal nubmer of GPUs.
+
+    Args:
+        tensor: the tensor to send, located on a GPU.
+        dst_rank (int): the rank of the destination process.
+        dst_gpu_index (int): the destination gpu index.
+        group_name (str): the name of the collective group.
+
+    Returns:
+        None
+    """
+    if not types.cupy_available():
+        raise RuntimeError("send_multigpu call requires NCCL.")
+    _check_single_tensor_input(tensor)
+    g = _check_and_get_group(group_name)
+    _check_rank_valid(g, dst_rank)
+    if dst_rank == g.rank:
+        raise RuntimeError("The dst_rank '{}' is self. Considering "
+                           "doing GPU to GPU memcpy instead?".format(dst_rank))
+    opts = types.SendOptions()
+    opts.dst_rank = dst_rank
+    opts.dst_gpu_index = dst_gpu_index
+    g.send([tensor], opts)
 
 
 def recv(tensor, src_rank: int, group_name: str = "default"):
@@ -386,7 +564,41 @@ def recv(tensor, src_rank: int, group_name: str = "default"):
     if src_rank == g.rank:
         raise RuntimeError(
             "The destination rank '{}' is self.".format(src_rank))
-    g.recv(tensor, src_rank)
+    opts = types.RecvOptions()
+    opts.src_rank = src_rank
+    g.recv([tensor], opts)
+
+
+def recv_multigpu(tensor,
+                  src_rank: int,
+                  src_gpu_index: int,
+                  group_name: str = "default"):
+    """Receive a tensor from a remote GPU synchronously.
+
+    The function asssume each process owns >1 GPUs, and the sender
+    process and receiver process has equal nubmer of GPUs.
+
+    Args:
+        tensor: the received tensor, located on a GPU.
+        src_rank (int): the rank of the source process.
+        src_gpu_index (int)： the index of the source gpu on the src process.
+        group_name (str): the name of the collective group.
+
+    Returns:
+        None
+    """
+    if not types.cupy_available():
+        raise RuntimeError("recv_multigpu call requires NCCL.")
+    _check_single_tensor_input(tensor)
+    g = _check_and_get_group(group_name)
+    _check_rank_valid(g, src_rank)
+    if src_rank == g.rank:
+        raise RuntimeError("The dst_rank '{}' is self. Considering "
+                           "doing GPU to GPU memcpy instead?".format(src_rank))
+    opts = types.RecvOptions()
+    opts.src_rank = src_rank
+    opts.src_gpu_index = src_gpu_index
+    g.recv([tensor], opts)
 
 
 def _check_and_get_group(group_name):
@@ -423,16 +635,6 @@ def _check_and_get_group(group_name):
     return g
 
 
-def _check_backend_availability(backend: types.Backend):
-    """Check whether the backend is available."""
-    if backend == types.Backend.MPI:
-        if not mpi_available():
-            raise RuntimeError("MPI is not available.")
-    elif backend == types.Backend.NCCL:
-        if not nccl_available():
-            raise RuntimeError("NCCL is not available.")
-
-
 def _check_single_tensor_input(tensor):
     """Check if the tensor is with a supported type."""
     if isinstance(tensor, np.ndarray):
@@ -446,6 +648,16 @@ def _check_single_tensor_input(tensor):
     raise RuntimeError("Unrecognized tensor type '{}'. Supported types are: "
                        "np.ndarray, torch.Tensor, cupy.ndarray.".format(
                            type(tensor)))
+
+
+def _check_backend_availability(backend: types.Backend):
+    """Check whether the backend is available."""
+    if backend == types.Backend.GLOO:
+        if not gloo_available():
+            raise RuntimeError("GLOO is not available.")
+    elif backend == types.Backend.NCCL:
+        if not nccl_available():
+            raise RuntimeError("NCCL is not available.")
 
 
 def _check_inside_actor():
@@ -462,8 +674,8 @@ def _check_rank_valid(g, rank: int):
     """Check the rank: 0 <= rank < world_size."""
     if rank < 0:
         raise ValueError("rank '{}' is negative.".format(rank))
-    if rank > g.world_size:
-        raise ValueError("rank '{}' is greater than world size "
+    if rank >= g.world_size:
+        raise ValueError("rank '{}' must be less than world size "
                          "'{}'".format(rank, g.world_size))
 
 
@@ -476,3 +688,24 @@ def _check_tensor_list_input(tensor_list):
         raise RuntimeError("Got an empty list of tensors.")
     for t in tensor_list:
         _check_single_tensor_input(t)
+
+
+def _check_tensor_lists_input(tensor_lists):
+    """Check if the input is a list of lists of supported tensor types."""
+    if not isinstance(tensor_lists, list):
+        raise RuntimeError("The input must be a list of lists of tensors. "
+                           "Got '{}'.".format(type(tensor_lists)))
+    if not tensor_lists:
+        raise RuntimeError(f"Did not receive tensors. Got: {tensor_lists}")
+    for t in tensor_lists:
+        _check_tensor_list_input(t)
+
+
+def _check_root_tensor_valid(length, root_tensor):
+    """Check the root_tensor device is 0 <= root_tensor < length"""
+    if root_tensor < 0:
+        raise ValueError("root_tensor '{}' is negative.".format(root_tensor))
+    if root_tensor >= length:
+        raise ValueError(
+            "root_tensor '{}' is greater than the number of GPUs: "
+            "'{}'".format(root_tensor, length))

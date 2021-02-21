@@ -2,40 +2,11 @@ import pytest
 import time
 import sys
 import logging
+import threading
 
 import ray.util.client.server.server as ray_client_server
-from ray.util.client import RayAPIStub
 from ray.util.client.common import ClientObjectRef
 from ray.util.client.ray_client_helpers import ray_start_client_server
-
-
-def test_num_clients(shutdown_only):
-    # Tests num clients reporting; useful if you want to build an app that
-    # load balances clients between Ray client servers.
-    server = ray_client_server.serve("localhost:50051")
-    try:
-        api1 = RayAPIStub()
-        info1 = api1.connect("localhost:50051")
-        assert info1["num_clients"] == 1, info1
-        api2 = RayAPIStub()
-        info2 = api2.connect("localhost:50051")
-        assert info2["num_clients"] == 2, info2
-
-        # Disconnect the first two clients.
-        api1.disconnect()
-        api2.disconnect()
-        time.sleep(1)
-
-        api3 = RayAPIStub()
-        info3 = api3.connect("localhost:50051")
-        assert info3["num_clients"] == 1, info3
-
-        # Check info contains ray and python version.
-        assert isinstance(info3["ray_version"], str), info3
-        assert isinstance(info3["ray_commit"], str), info3
-        assert isinstance(info3["python_version"], str), info3
-    finally:
-        server.stop(0)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
@@ -104,7 +75,7 @@ def test_wait(ray_start_regular_shared):
 
         with pytest.raises(Exception):
             # Reference not in the object store.
-            ray.wait([ClientObjectRef("blabla")])
+            ray.wait([ClientObjectRef(b"blabla")])
         with pytest.raises(TypeError):
             ray.wait("blabla")
         with pytest.raises(TypeError):
@@ -305,6 +276,13 @@ def test_stdout_log_stream(ray_start_regular_shared):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+def test_serializing_exceptions(ray_start_regular_shared):
+    with ray_start_client_server() as ray:
+        with pytest.raises(ValueError):
+            ray.get_actor("abc")
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_create_remote_before_start(ray_start_regular_shared):
     """Creates remote objects (as though in a library) before
     starting the client.
@@ -351,11 +329,24 @@ def test_basic_named_actor(ray_start_regular_shared):
 
         actor.inc.remote()
         actor.inc.remote()
-        del actor
 
+        # Make sure the get_actor call works
         new_actor = ray.get_actor("test_acc")
         new_actor.inc.remote()
         assert ray.get(new_actor.get.remote()) == 3
+
+        del actor
+
+        actor = Accumulator.options(
+            name="test_acc2", lifetime="detached").remote()
+        actor.inc.remote()
+        del actor
+
+        detatched_actor = ray.get_actor("test_acc2")
+        for i in range(5):
+            detatched_actor.inc.remote()
+
+        assert ray.get(detatched_actor.get.remote()) == 6
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
@@ -371,6 +362,53 @@ def test_internal_kv(ray_start_regular_shared):
         assert ray._internal_kv_list("a") == [b"apple"]
         ray._internal_kv_del("apple")
         assert ray._internal_kv_get("apple") == b""
+
+
+def test_startup_retry(ray_start_regular_shared):
+    from ray.util.client import ray as ray_client
+    ray_client._inside_client_test = True
+
+    with pytest.raises(ConnectionError):
+        ray_client.connect("localhost:50051", connection_retries=1)
+
+    def run_client():
+        ray_client.connect("localhost:50051")
+        ray_client.disconnect()
+
+    thread = threading.Thread(target=run_client, daemon=True)
+    thread.start()
+    time.sleep(3)
+    server = ray_client_server.serve("localhost:50051")
+    thread.join()
+    server.stop(0)
+    ray_client._inside_client_test = False
+
+
+def test_dataclient_server_drop(ray_start_regular_shared):
+    from ray.util.client import ray as ray_client
+    ray_client._inside_client_test = True
+
+    @ray_client.remote
+    def f(x):
+        time.sleep(4)
+        return x
+
+    def stop_server(server):
+        time.sleep(2)
+        server.stop(0)
+
+    server = ray_client_server.serve("localhost:50051")
+    ray_client.connect("localhost:50051")
+    thread = threading.Thread(target=stop_server, args=(server, ))
+    thread.start()
+    x = f.remote(2)
+    with pytest.raises(ConnectionError):
+        _ = ray_client.get(x)
+    thread.join()
+    ray_client.disconnect()
+    ray_client._inside_client_test = False
+    # Wait for f(x) to finish before ray.shutdown() in the fixture
+    time.sleep(3)
 
 
 if __name__ == "__main__":

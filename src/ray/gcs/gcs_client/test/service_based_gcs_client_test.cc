@@ -28,9 +28,8 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
  public:
   ServiceBasedGcsClientTest() {
     RayConfig::instance().initialize(
-        {{"ping_gcs_rpc_server_max_retries", std::to_string(60)},
-         {"maximum_gcs_destroyed_actor_cached_count", std::to_string(10)},
-         {"maximum_gcs_dead_node_cached_count", std::to_string(10)}});
+        "ping_gcs_rpc_server_max_retries,60;maximum_gcs_destroyed_actor_cached_count,10;"
+        "maximum_gcs_dead_node_cached_count,10");
     TestSetupUtil::StartUpRedisServers(std::vector<int>());
   }
 
@@ -450,7 +449,7 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
   bool AddLocation(const ObjectID &object_id, const NodeID &node_id) {
     std::promise<bool> promise;
     RAY_CHECK_OK(gcs_client_->Objects().AsyncAddLocation(
-        object_id, node_id,
+        object_id, node_id, 0,
         [&promise](Status status) { promise.set_value(status.ok()); }));
     return WaitReady(promise.get_future(), timeout_ms_);
   }
@@ -495,7 +494,7 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
   }
 
   bool SubscribeToWorkerFailures(
-      const gcs::ItemCallback<rpc::WorkerTableData> &subscribe) {
+      const gcs::ItemCallback<rpc::WorkerDeltaData> &subscribe) {
     std::promise<bool> promise;
     RAY_CHECK_OK(gcs_client_->Workers().AsyncSubscribeToWorkerFailures(
         subscribe, [&promise](Status status) { promise.set_value(status.ok()); }));
@@ -715,8 +714,16 @@ TEST_F(ServiceBasedGcsClientTest, TestNodeResourceUsage) {
   auto resource = std::make_shared<rpc::ResourcesData>();
   resource->set_node_id(node_id.Binary());
   resource->set_should_global_gc(true);
+  std::string resource_name = "CPU";
+  double resource_value = 1.0;
+  (*resource->mutable_resources_total())[resource_name] = resource_value;
   ASSERT_TRUE(ReportResourceUsage(resource));
   WaitForExpectedCount(resource_batch_count, 1);
+
+  // Get and check last report resource usage.
+  auto last_resource_usage = gcs_client_->NodeResources().GetLastResourceUsage();
+  ASSERT_EQ(last_resource_usage->GetTotalResources().GetResource(resource_name),
+            resource_value);
 }
 
 TEST_F(ServiceBasedGcsClientTest, TestNodeResourceUsageWithLightResourceUsageReport) {
@@ -922,7 +929,7 @@ TEST_F(ServiceBasedGcsClientTest, TestStats) {
 TEST_F(ServiceBasedGcsClientTest, TestWorkerInfo) {
   // Subscribe to all unexpected failure of workers from GCS.
   std::atomic<int> worker_failure_count(0);
-  auto on_subscribe = [&worker_failure_count](const rpc::WorkerTableData &result) {
+  auto on_subscribe = [&worker_failure_count](const rpc::WorkerDeltaData &result) {
     ++worker_failure_count;
   };
   ASSERT_TRUE(SubscribeToWorkerFailures(on_subscribe));
@@ -1168,7 +1175,7 @@ TEST_F(ServiceBasedGcsClientTest, TestTaskTableResubscribe) {
 TEST_F(ServiceBasedGcsClientTest, TestWorkerTableResubscribe) {
   // Subscribe to all unexpected failure of workers from GCS.
   std::atomic<int> worker_failure_count(0);
-  auto on_subscribe = [&worker_failure_count](const rpc::WorkerTableData &result) {
+  auto on_subscribe = [&worker_failure_count](const rpc::WorkerDeltaData &result) {
     ++worker_failure_count;
   };
   ASSERT_TRUE(SubscribeToWorkerFailures(on_subscribe));

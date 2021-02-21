@@ -202,8 +202,7 @@ class RayletClient : public RayletClientInterface {
                const std::string &raylet_socket, const WorkerID &worker_id,
                rpc::WorkerType worker_type, const JobID &job_id, const Language &language,
                const std::string &ip_address, Status *status, NodeID *raylet_id,
-               int *port, std::unordered_map<std::string, std::string> *system_config,
-               const std::string &job_config);
+               int *port, std::string *system_config, const std::string &job_config);
 
   /// Connect to the raylet via grpc only.
   ///
@@ -331,6 +330,15 @@ class RayletClient : public RayletClientInterface {
   void RequestObjectSpillage(
       const ObjectID &object_id,
       const rpc::ClientCallback<rpc::RequestObjectSpillageReply> &callback);
+
+  /// Ask the raylet to restore the object of a given id.
+  /// \param object_id Object id that the remote raylet needs to restore.
+  /// \param object_url Object URL where the object is spilled.
+  /// \param spilled_node_id Node id of a node where the object is spilled.
+  void RestoreSpilledObject(
+      const ObjectID &object_id, const std::string &object_url,
+      const NodeID &spilled_node_id,
+      const rpc::ClientCallback<rpc::RestoreSpilledObjectReply> &callback);
 
   /// Implements WorkerLeaseInterface.
   void RequestWorkerLease(

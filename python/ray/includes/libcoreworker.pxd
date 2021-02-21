@@ -183,6 +183,9 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CRayStatus Get(const c_vector[CObjectID] &ids, int64_t timeout_ms,
                        c_vector[shared_ptr[CRayObject]] *results,
                        c_bool plasma_objects_only)
+        CRayStatus GetIfLocal(
+            const c_vector[CObjectID] &ids,
+            c_vector[shared_ptr[CRayObject]] *results)
         CRayStatus Contains(const CObjectID &object_id, c_bool *has_object)
         CRayStatus Wait(const c_vector[CObjectID] &object_ids, int num_objects,
                         int64_t timeout_ms, c_vector[c_bool] *results,
@@ -238,13 +241,16 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         (void(const CWorkerID &) nogil) on_worker_shutdown
         (CRayStatus() nogil) check_signals
         (void() nogil) gc_collect
-        (c_vector[c_string](const c_vector[CObjectID] &) nogil) spill_objects
+        (c_vector[c_string](
+            const c_vector[CObjectID] &,
+            const c_vector[c_string] &) nogil) spill_objects
         (int64_t(
             const c_vector[CObjectID] &,
             const c_vector[c_string] &) nogil) restore_spilled_objects
         (void(
             const c_vector[c_string]&,
             CWorkerType) nogil) delete_spilled_objects
+        (void(const CRayObject&) nogil) unhandled_exception_handler
         (void(c_string *stack_out) nogil) get_lang_stack
         c_bool ref_counting_enabled
         c_bool is_local_mode

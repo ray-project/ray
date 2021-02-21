@@ -19,7 +19,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.testng.Assert;
-import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
@@ -28,11 +27,6 @@ public class ReferenceCountingTest extends BaseTest {
   @BeforeClass
   public void setUp() {
     System.setProperty("ray.head-args.0", "--object-store-memory=" + 100L * 1024 * 1024);
-  }
-
-  @AfterClass
-  public void tearDown() {
-    System.clearProperty("ray.head-args.0");
   }
 
   /**
@@ -119,7 +113,7 @@ public class ReferenceCountingTest extends BaseTest {
       TestUtils.getRuntime().getObjectStore().getRaw(ImmutableList.of(objectId), Long.MAX_VALUE);
     } else {
       List<Boolean> result =
-          TestUtils.getRuntime().getObjectStore().wait(ImmutableList.of(objectId), 1, 100);
+          TestUtils.getRuntime().getObjectStore().wait(ImmutableList.of(objectId), 1, 100, true);
       Assert.assertFalse(result.get(0));
     }
   }

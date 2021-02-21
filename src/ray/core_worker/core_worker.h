@@ -82,6 +82,7 @@ struct CoreWorkerOptions {
         spill_objects(nullptr),
         restore_spilled_objects(nullptr),
         delete_spilled_objects(nullptr),
+        unhandled_exception_handler(nullptr),
         get_lang_stack(nullptr),
         kill_main(nullptr),
         ref_counting_enabled(false),
@@ -137,13 +138,17 @@ struct CoreWorkerOptions {
   /// be held up in garbage objects.
   std::function<void()> gc_collect;
   /// Application-language callback to spill objects to external storage.
-  std::function<std::vector<std::string>(const std::vector<ObjectID> &)> spill_objects;
+  std::function<std::vector<std::string>(const std::vector<ObjectID> &,
+                                         const std::vector<std::string> &)>
+      spill_objects;
   /// Application-language callback to restore objects from external storage.
   std::function<int64_t(const std::vector<ObjectID> &, const std::vector<std::string> &)>
       restore_spilled_objects;
   /// Application-language callback to delete objects from external storage.
   std::function<void(const std::vector<std::string> &, rpc::WorkerType)>
       delete_spilled_objects;
+  /// Function to call on error objects never retrieved.
+  std::function<void(const RayObject &error)> unhandled_exception_handler;
   /// Language worker callback to get the current call stack.
   std::function<void(std::string *)> get_lang_stack;
   // Function that tries to interrupt the currently running Python thread.
@@ -264,6 +269,8 @@ class CoreWorkerProcess {
   ///
   /// \return Void.
   static void EnsureInitialized();
+
+  static void HandleAtExit();
 
   /// Get the `CoreWorker` instance by worker ID.
   ///
@@ -554,6 +561,20 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   Status Get(const std::vector<ObjectID> &ids, const int64_t timeout_ms,
              std::vector<std::shared_ptr<RayObject>> *results,
              bool plasma_objects_only = false);
+
+  /// Get objects directly from the local plasma store, without waiting for the
+  /// objects to be fetched from another node. This should only be used
+  /// internally, never by user code.
+  /// NOTE: Caller of this method should guarantee that the object already exists in the
+  /// plasma store, thus it doesn't need to fetch from other nodes.
+  ///
+  /// \param[in] ids The IDs of the objects to get.
+  /// \param[out] results The results will be stored here. A nullptr will be
+  /// added for objects that were not in the local store.
+  /// \return Status OK if all objects were found. Returns ObjectNotFound error
+  /// if at least one object was not in the local store.
+  Status GetIfLocal(const std::vector<ObjectID> &ids,
+                    std::vector<std::shared_ptr<RayObject>> *results);
 
   /// Return whether or not the object store contains the given object.
   ///
@@ -893,6 +914,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   void HandleSpillObjects(const rpc::SpillObjectsRequest &request,
                           rpc::SpillObjectsReply *reply,
                           rpc::SendReplyCallback send_reply_callback) override;
+
+  // Add spilled URL to owned reference.
+  void HandleAddSpilledUrl(const rpc::AddSpilledUrlRequest &request,
+                           rpc::AddSpilledUrlReply *reply,
+                           rpc::SendReplyCallback send_reply_callback) override;
 
   // Restore objects from external storage.
   void HandleRestoreSpilledObjects(const rpc::RestoreSpilledObjectsRequest &request,
@@ -1240,6 +1266,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   /// Whether we are shutting down and not running further tasks.
   bool exiting_ = false;
+
+  int64_t max_direct_call_object_size_;
 
   friend class CoreWorkerTest;
 };

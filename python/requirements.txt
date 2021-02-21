@@ -8,6 +8,7 @@
 aiohttp==3.7
 aioredis
 click >= 7.0
+cloudpickle
 colorama
 colorful
 filelock
@@ -73,3 +74,4 @@ werkzeug
 xlrd
 starlette
 smart_open[s3]
+tqdm

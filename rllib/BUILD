@@ -436,13 +436,13 @@ py_test(
     srcs = ["agents/a3c/tests/test_a3c.py"]
 )
 
-## APEXTrainer (DQN)
-#py_test(
-#    name = "test_apex_dqn",
-#    tags = ["agents_dir"],
-#    size = "large",
-#    srcs = ["agents/dqn/tests/test_apex_dqn.py"]
-#)
+# APEXTrainer (DQN)
+py_test(
+    name = "test_apex_dqn",
+    tags = ["agents_dir"],
+    size = "medium",
+    srcs = ["agents/dqn/tests/test_apex_dqn.py"]
+)
 
 # APEXDDPGTrainer
 py_test(
@@ -482,6 +482,15 @@ py_test(
     srcs = ["agents/dqn/tests/test_simple_q.py"]
 )
 
+# TODO: enable once we have a MuJoCo-independent test case.
+## Dreamer
+#py_test(
+#    name = "test_dreamer",
+#    tags = ["agents_dir"],
+#    size = "small",
+#    srcs = ["agents/dreamer/tests/test_dreamer.py"]
+#)
+
 # ES
 py_test(
     name = "test_es",
@@ -508,7 +517,7 @@ py_test(
 py_test(
     name = "test_marwil",
     tags = ["agents_dir"],
-    size = "medium",
+    size = "large",
     # Include the json data file.
     data = ["tests/data/cartpole/large.json"],
     srcs = ["agents/marwil/tests/test_marwil.py"]
@@ -518,7 +527,7 @@ py_test(
 py_test(
     name = "test_bc",
     tags = ["agents_dir"],
-    size = "medium",
+    size = "large",
     # Include the json data file.
     data = ["tests/data/cartpole/large.json"],
     srcs = ["agents/marwil/tests/test_bc.py"]
@@ -533,12 +542,12 @@ py_test(
 )
 
 # MBMPOTrainer
-#py_test(
-#    name = "test_mbmpo",
-#    tags = ["agents_dir"],
-#    size = "medium",
-#    srcs = ["agents/mbmpo/tests/test_mbmpo.py"]
-#)
+py_test(
+    name = "test_mbmpo",
+    tags = ["agents_dir"],
+    size = "medium",
+    srcs = ["agents/mbmpo/tests/test_mbmpo.py"]
+)
 
 # PGTrainer
 py_test(
@@ -1061,6 +1070,13 @@ sh_test(
 )
 
 py_test(
+    name = "env/wrappers/tests/test_unity3d_env",
+    tags = ["env"],
+    size = "small",
+    srcs = ["env/wrappers/tests/test_unity3d_env.py"]
+)
+
+py_test(
     name = "env/wrappers/tests/test_recsim_wrapper",
     tags = ["env"],
     size = "small",
@@ -1450,29 +1466,29 @@ py_test(
     args = ["TestSupportedMultiAgentPG"]
 )
 
-#py_test(
-#    name = "tests/test_supported_multi_agent_off_policy",
-#    main = "tests/test_supported_multi_agent.py",
-#    tags = ["tests_dir", "tests_dir_S"],
-#    size = "medium",
-#    srcs = ["tests/test_supported_multi_agent.py"],
-#    args = ["TestSupportedMultiAgentOffPolicy"]
-#)
-
 py_test(
-    name = "tests/test_supported_spaces_pg",
-    main = "tests/test_supported_spaces.py",
+    name = "tests/test_supported_multi_agent_off_policy",
+    main = "tests/test_supported_multi_agent.py",
     tags = ["tests_dir", "tests_dir_S"],
-    size = "enormous",
-    srcs = ["tests/test_supported_spaces.py"],
-    args = ["TestSupportedSpacesPG"]
+    size = "medium",
+    srcs = ["tests/test_supported_multi_agent.py"],
+    args = ["TestSupportedMultiAgentOffPolicy"]
 )
+
+# py_test(
+#     name = "tests/test_supported_spaces_pg",
+#     main = "tests/test_supported_spaces.py",
+#     tags = ["tests_dir", "tests_dir_S"],
+#     size = "enormous",
+#     srcs = ["tests/test_supported_spaces.py"],
+#     args = ["TestSupportedSpacesPG"]
+# )
 
 py_test(
     name = "tests/test_supported_spaces_off_policy",
     main = "tests/test_supported_spaces.py",
     tags = ["tests_dir", "tests_dir_S"],
-    size = "enormous",
+    size = "medium",
     srcs = ["tests/test_supported_spaces.py"],
     args = ["TestSupportedSpacesOffPolicy"]
 )
@@ -1481,7 +1497,7 @@ py_test(
     name = "tests/test_supported_spaces_evolution_algos",
     main = "tests/test_supported_spaces.py",
     tags = ["tests_dir", "tests_dir_S"],
-    size = "large",
+    size = "medium",
     srcs = ["tests/test_supported_spaces.py"],
     args = ["TestSupportedSpacesEvolutionAlgos"]
 )
@@ -1491,6 +1507,13 @@ py_test(
     tags = ["tests_dir", "tests_dir_T"],
     size = "small",
     srcs = ["tests/test_timesteps.py"]
+)
+
+py_test(
+    name = "tests/test_trainer",
+    tags = ["tests_dir", "tests_dir_T"],
+    size = "small",
+    srcs = ["tests/test_trainer.py"]
 )
 
 # --------------------------------------------------------------------
@@ -1730,7 +1753,7 @@ py_test(
     name = "examples/custom_eval_tf",
     main = "examples/custom_eval.py",
     tags = ["examples", "examples_C"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/custom_eval.py"],
     args = ["--num-cpus=4", "--as-test"]
 )
@@ -1739,7 +1762,7 @@ py_test(
     name = "examples/custom_eval_torch",
     main = "examples/custom_eval.py",
     tags = ["examples", "examples_C"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/custom_eval.py"],
     args = ["--num-cpus=4", "--as-test", "--torch"]
 )
@@ -2091,7 +2114,7 @@ py_test(
     tags = ["examples", "examples_T"],
     size = "medium",
     srcs = ["examples/trajectory_view_api.py"],
-    args = ["--as-test", "--framework=tf", "--stop-reward=80.0"]
+    args = ["--as-test", "--framework=tf", "--stop-reward=100.0"]
 )
 
 py_test(
@@ -2100,7 +2123,7 @@ py_test(
     tags = ["examples", "examples_T"],
     size = "medium",
     srcs = ["examples/trajectory_view_api.py"],
-    args = ["--as-test", "--framework=torch", "--stop-reward=80.0"]
+    args = ["--as-test", "--framework=torch", "--stop-reward=100.0"]
 )
 
 py_test(

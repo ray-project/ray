@@ -57,6 +57,13 @@ class ProgressReporter:
         """
         raise NotImplementedError
 
+    def set_search_properties(self, metric: Optional[str],
+                              mode: Optional[str]):
+        return True
+
+    def set_total_samples(self, total_samples: int):
+        pass
+
 
 class TuneReporterBase(ProgressReporter):
     """Abstract base class for the default Tune reporters.
@@ -580,9 +587,11 @@ def trial_progress_table(
         metric_keys = list(metric_columns.keys())
     else:
         metric_keys = metric_columns
+
     metric_keys = [
         k for k in metric_keys if any(
-            t.last_result.get(k) is not None for t in trials)
+            unflattened_lookup(k, t.last_result, default=None) is not None
+            for t in trials)
     ]
 
     if not parameter_columns:

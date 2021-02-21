@@ -163,12 +163,8 @@ class ServiceBasedNodeInfoAccessor : public NodeInfoAccessor {
 
   void AsyncResubscribe(bool is_pubsub_server_restarted) override;
 
-  Status AsyncSetInternalConfig(
-      std::unordered_map<std::string, std::string> &config) override;
-
   Status AsyncGetInternalConfig(
-      const OptionalItemCallback<std::unordered_map<std::string, std::string>> &callback)
-      override;
+      const OptionalItemCallback<std::string> &callback) override;
 
  private:
   /// Save the subscribe operation in this function, so we can call it again when PubSub
@@ -323,9 +319,10 @@ class ServiceBasedObjectInfoAccessor : public ObjectInfoAccessor {
   Status AsyncGetAll(const MultiItemCallback<rpc::ObjectLocationInfo> &callback) override;
 
   Status AsyncAddLocation(const ObjectID &object_id, const NodeID &node_id,
-                          const StatusCallback &callback) override;
+                          size_t object_size, const StatusCallback &callback) override;
 
   Status AsyncAddSpilledUrl(const ObjectID &object_id, const std::string &spilled_url,
+                            const NodeID &node_id, size_t object_size,
                             const StatusCallback &callback) override;
 
   Status AsyncRemoveLocation(const ObjectID &object_id, const NodeID &node_id,
@@ -407,7 +404,7 @@ class ServiceBasedWorkerInfoAccessor : public WorkerInfoAccessor {
   virtual ~ServiceBasedWorkerInfoAccessor() = default;
 
   Status AsyncSubscribeToWorkerFailures(
-      const ItemCallback<rpc::WorkerTableData> &subscribe,
+      const ItemCallback<rpc::WorkerDeltaData> &subscribe,
       const StatusCallback &done) override;
 
   Status AsyncReportWorkerFailure(const std::shared_ptr<rpc::WorkerTableData> &data_ptr,
@@ -450,6 +447,10 @@ class ServiceBasedPlacementGroupInfoAccessor : public PlacementGroupInfoAccessor
 
   Status AsyncGet(
       const PlacementGroupID &placement_group_id,
+      const OptionalItemCallback<rpc::PlacementGroupTableData> &callback) override;
+
+  Status AsyncGetByName(
+      const std::string &name,
       const OptionalItemCallback<rpc::PlacementGroupTableData> &callback) override;
 
   Status AsyncGetAll(

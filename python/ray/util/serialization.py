@@ -16,3 +16,14 @@ def register_serializer(cls, *, serializer, deserializer):
     """
     context = ray.worker.global_worker.get_serialization_context()
     context._register_cloudpickle_serializer(cls, serializer, deserializer)
+
+
+def deregister_serializer(cls):
+    """Deregister the serializer associated with the type ``cls``.
+    There is no effect if the serializer is unavailable.
+
+    Args:
+        cls: A Python class/type.
+    """
+    context = ray.worker.global_worker.get_serialization_context()
+    context._unregister_cloudpickle_reducer(cls)

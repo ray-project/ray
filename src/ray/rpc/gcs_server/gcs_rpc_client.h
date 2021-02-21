@@ -153,10 +153,6 @@ class GcsRpcClient {
   /// Get information of all nodes from GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService, GetAllNodeInfo, node_info_grpc_client_, )
 
-  /// Set internal config of the cluster in the GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService, SetInternalConfig,
-                             node_info_grpc_client_, )
-
   /// Get internal config of the node from the GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService, GetInternalConfig,
                              node_info_grpc_client_, )
@@ -252,6 +248,10 @@ class GcsRpcClient {
                              placement_group_info_grpc_client_, )
   /// Get placement group via GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(PlacementGroupInfoGcsService, GetPlacementGroup,
+                             placement_group_info_grpc_client_, )
+
+  /// Get placement group data from GCS Service by name.
+  VOID_GCS_RPC_CLIENT_METHOD(PlacementGroupInfoGcsService, GetNamedPlacementGroup,
                              placement_group_info_grpc_client_, )
 
   /// Get information of all placement group from GCS Service.
