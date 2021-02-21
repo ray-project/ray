@@ -40,7 +40,7 @@ TEST(RayApiTest, PutTest) {
 
   auto obj1 = Ray::Put(1);
   auto i1 = obj1.Get();
-  EXPECT_EQ(1, *i1);
+  EXPECT_EQ(1, i1);
 }
 
 TEST(RayApiTest, StaticGetTest) {
@@ -48,12 +48,12 @@ TEST(RayApiTest, StaticGetTest) {
   /// `Get` member function
   auto obj_ref1 = Ray::Put(100);
   auto res1 = obj_ref1.Get();
-  EXPECT_EQ(100, *res1);
+  EXPECT_EQ(100, res1);
 
   /// `Get` static function
   auto obj_ref2 = Ray::Put(200);
   auto res2 = Ray::Get(obj_ref2);
-  EXPECT_EQ(200, *res2);
+  EXPECT_EQ(200, res2);
 }
 
 TEST(RayApiTest, WaitTest) {
@@ -77,9 +77,9 @@ TEST(RayApiTest, CallWithValueTest) {
   auto r1 = Ray::Task(Plus1, 3).Remote();
   auto r2 = Ray::Task(Plus, 2, 3).Remote();
 
-  int result0 = *(r0.Get());
-  int result1 = *(r1.Get());
-  int result2 = *(r2.Get());
+  int result0 = r0.Get();
+  int result1 = r1.Get();
+  int result2 = r2.Get();
 
   EXPECT_EQ(result0, 1);
   EXPECT_EQ(result1, 4);
@@ -93,11 +93,11 @@ TEST(RayApiTest, CallWithObjectTest) {
   auto rt3 = Ray::Task(Plus1, 3).Remote();
   auto rt4 = Ray::Task(Plus, rt2, rt3).Remote();
 
-  int return0 = *(rt0.Get());
-  int return1 = *(rt1.Get());
-  int return2 = *(rt2.Get());
-  int return3 = *(rt3.Get());
-  int return4 = *(rt4.Get());
+  int return0 = rt0.Get();
+  int return1 = rt1.Get();
+  int return2 = rt2.Get();
+  int return3 = rt3.Get();
+  int return4 = rt4.Get();
 
   EXPECT_EQ(return0, 1);
   EXPECT_EQ(return1, 2);
@@ -114,10 +114,10 @@ TEST(RayApiTest, ActorTest) {
   auto rt3 = actor.Task(&Counter::Add, 3).Remote();
   auto rt4 = actor.Task(&Counter::Add, rt3).Remote();
 
-  int return1 = *(rt1.Get());
-  int return2 = *(rt2.Get());
-  int return3 = *(rt3.Get());
-  int return4 = *(rt4.Get());
+  int return1 = rt1.Get();
+  int return2 = rt2.Get();
+  int return3 = rt3.Get();
+  int return4 = rt4.Get();
 
   EXPECT_EQ(return1, 1);
   EXPECT_EQ(return2, 3);
@@ -139,7 +139,7 @@ TEST(RayApiTest, CompareWithFuture) {
   // Ray API
   Ray::Init();
   auto f3 = Ray::Task(Plus1, 1).Remote();
-  int rt3 = *f3.Get();
+  int rt3 = f3.Get();
 
   EXPECT_EQ(rt1, 2);
   EXPECT_EQ(rt2, 2);
