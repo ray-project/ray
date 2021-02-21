@@ -59,11 +59,10 @@ class Rendezvous:
 
             redis_password = ray_constants.REDIS_DEFAULT_PASSWORD
             redisStore.authorize(redis_password)
-            # self._store = redisStore
-            print(self._group_name.split("_")[0])
+            self._store = redisStore
+            # print(self._group_name.split("_")[0])
             # self._store = pygloo.rendezvous.PrefixStore(self._group_name, redisStore)  # worker died with no reason. This affect multi-task appears in one application.
-            self._store = pygloo.rendezvous.PrefixStore(self._group_name, redisStore)  # worker died with no reason. This affect multi-task appears in one application.
-            print("prefix")
+            # print("prefix")
         elif store_type == "file":
             store_name = get_gloo_store_name(self._group_name)
             store_path = gloo_util.get_gloo_store_path(store_name)
@@ -302,14 +301,14 @@ class GLOOGroup(BaseGroup):
         """
 
         def collective_fn(input_tensor, output_tensor, context):
-            context.reduceScatter(
+            pygloo.reduce_scatter(
                 context,
                 gloo_util.get_tensor_ptr(input_tensor),
                 gloo_util.get_tensor_ptr(output_tensor),
-                gloo_util.get_tensor_n_elements(output_tensor),
+                gloo_util.get_tensor_ptr(input_tensor),
+                reducescatter_options.recvElems,
                 gloo_util.get_gloo_tensor_dtype(output_tensor),
                 gloo_util.get_gloo_reduce_op(reducescatter_options.reduceOp))
-
 
         _check_inputs_compatibility_for_scatter_gather(tensors, tensor_lists)
         input_flattened = [
@@ -450,7 +449,7 @@ def _flatten_for_scatter_gather(tensor_list, copy=False):
 
     t = tensor_list[0]
     # note we need a numpy dtype here.
-    dtype = gloo_util.get_cupy_tensor_dtype(t)
+    dtype = gloo_util.get_numpy_tensor_dtype(t)
     buffer_shape = [len(tensor_list)] + gloo_util.get_tensor_shape(t)
 
     buffer = numpy.empty(buffer_shape, dtype=dtype)

@@ -15,7 +15,7 @@ GLOO_REDUCE_OP_MAP = {
     ReduceOp.MAX: pygloo.ReduceOp.MAX,
 }
 
-# cupy types are the same with numpy types
+# gloo types are the same with numpy types
 NUMPY_GLOO_DTYPE_MAP = {
     # INT types
     numpy.int: pygloo.glooDataType_t.glooInt8,
@@ -119,14 +119,26 @@ def get_gloo_tensor_dtype(tensor):
                      "Got: {}.".format(type(tensor)))
 
 
+def get_numpy_tensor_dtype(tensor):
+    """Return the corresponded Cupy dtype given a tensor."""
+    if isinstance(tensor, numpy.ndarray):
+        return tensor.dtype.type
+    if torch_available():
+        if isinstance(tensor, torch.Tensor):
+            return TORCH_NUMPY_DTYPE_MAP[tensor.dtype]
+    raise ValueError("Unsupported tensor type. Got: {}. Supported "
+                     "cpu tensor types are: torch.Tensor, "
+                     "numpy.ndarray.".format(type(tensor)))
+
+
 def get_tensor_ptr(tensor):
     """Return the pointer to the underlying memory storage of a tensor."""
     if isinstance(tensor, numpy.ndarray):
         return tensor.ctypes.data
     if torch_available():
         if isinstance(tensor, torch.Tensor):
-            if not tensor.is_cuda:
-                raise RuntimeError("torch tensor must be on gpu.")
+            if tensor.is_cuda:
+                raise RuntimeError("torch tensor must be on cpu.")
             return tensor.data_ptr()
     raise ValueError("Unsupported tensor type. "
                      "Got: {}.".format(type(tensor)))
@@ -142,10 +154,12 @@ def get_tensor_n_elements(tensor):
     raise ValueError("Unsupported tensor type. "
                      "Got: {}.".format(type(tensor)))
 
+
 def get_gloo_store_path(store_name):
     from ray.utils import get_ray_temp_dir
     store_path = f"{get_ray_temp_dir()}_collective/gloo/{store_name}"
     return store_path
+
 
 def get_tensor_device(tensor):
     if isinstance(tensor, numpy.ndarray):
@@ -153,6 +167,7 @@ def get_tensor_device(tensor):
     elif torch_available() and isinstance(tensor, torch.Tensor):
         device = tensor.device
         return device
+
 
 def get_tensor_shape(tensor):
     """Return the shape of the tensor as a list."""
@@ -164,6 +179,7 @@ def get_tensor_shape(tensor):
     raise ValueError("Unsupported tensor type. Got: {}. Supported "
                      "CPU tensor types are: torch.Tensor, "
                      "numpy.ndarray.".format(type(tensor)))
+
 
 def copy_tensor(dst_tensor, src_tensor):
     """Copy the content from src_tensor to dst_tensor.
@@ -185,12 +201,10 @@ def copy_tensor(dst_tensor, src_tensor):
             dst_tensor.copy_(src_tensor)
         elif isinstance(dst_tensor, torch.Tensor) and isinstance(
                 src_tensor, numpy.ndarray):
-            # t = torch.utils.dlpack.from_dlpack(src_tensor.toDlpack())
             t = torch.Tensor(src_tensor)
             dst_tensor.copy_(t)
         elif isinstance(dst_tensor, numpy.ndarray) and isinstance(
                 src_tensor, torch.Tensor):
-            # t = numpy.fromDlpack(torch.utils.dlpack.to_dlpack(src_tensor))
             t = src_tensor.numpy()
             numpy.copyto(dst_tensor, t)
         else:
