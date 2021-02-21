@@ -238,7 +238,7 @@ class GLOOGroup(BaseGroup):
                 gloo_util.get_tensor_ptr(input_tensor),
                 gloo_util.get_tensor_ptr(output_tensor),
                 gloo_util.get_tensor_n_elements(input_tensor),
-                gloo_util.get_nccl_tensor_dtype(input_tensor),
+                gloo_util.get_gloo_tensor_dtype(input_tensor),
                 root_rank)
 
         self._collective(tensors, tensors, collective_fn)
@@ -265,7 +265,7 @@ class GLOOGroup(BaseGroup):
                 gloo_util.get_tensor_ptr(input_tensor),
                 gloo_util.get_tensor_ptr(output_tensor),
                 gloo_util.get_tensor_n_elements(input_tensor),
-                gloo_util.get_nccl_tensor_dtype(input_tensor))
+                gloo_util.get_gloo_tensor_dtype(input_tensor))
 
         _check_inputs_compatibility_for_scatter_gather(tensors, tensor_lists)
         output_flattened = [
@@ -307,8 +307,8 @@ class GLOOGroup(BaseGroup):
                 gloo_util.get_tensor_ptr(input_tensor),
                 gloo_util.get_tensor_ptr(output_tensor),
                 gloo_util.get_tensor_n_elements(output_tensor),
-                gloo_util.get_nccl_tensor_dtype(output_tensor),
-                gloo_util.get_nccl_reduce_op(reducescatter_options.reduceOp))
+                gloo_util.get_gloo_tensor_dtype(output_tensor),
+                gloo_util.get_gloo_reduce_op(reducescatter_options.reduceOp))
 
 
         _check_inputs_compatibility_for_scatter_gather(tensors, tensor_lists)
@@ -344,7 +344,7 @@ class GLOOGroup(BaseGroup):
                 context,
                 gloo_util.get_tensor_ptr(tensor),
                 gloo_util.get_tensor_n_elements(tensor),
-                gloo_util.get_nccl_tensor_dtype(tensor),
+                gloo_util.get_gloo_tensor_dtype(tensor),
                 peer)
 
         self._point2point(tensors, p2p_fn, send_options.dst_rank)
@@ -365,7 +365,7 @@ class GLOOGroup(BaseGroup):
                 context,
                 gloo_util.get_tensor_ptr(tensor),
                 gloo_util.get_tensor_n_elements(tensor),
-                gloo_util.get_nccl_tensor_dtype(tensor),
+                gloo_util.get_gloo_tensor_dtype(tensor),
                 peer)
 
         self._point2point(tensors, p2p_fn, recv_options.src_rank)
@@ -417,17 +417,9 @@ class GLOOGroup(BaseGroup):
         Returns:
             None
         """
-        # # check send/recv availability.
-        # if gloo_util.get_nccl_runtime_version() < 2704:
-        #     raise RuntimeError("P2p send/recv requires NCCL >= 2.7.4. "
-        #                        "Got '{}'.".format(
-        #                            gloo_util.get_nccl_runtime_version()))
         _check_cpu_tensors(tensors)
 
-        # We have made sure that self.rank != peer_rank during API check.
-        peer_p2p_rank = 0 if self.rank > peer_rank else 1
-        # for i, tensor in enumerate(tensors):
-        p2p_fn(tensors[0], self._gloo_context, peer_p2p_rank)
+        p2p_fn(tensors[0], self._gloo_context, peer_rank)
 
 def _check_cpu_tensors(tensors):
     """Check only have one tensor and located on CPU."""
@@ -442,58 +434,6 @@ def _check_cpu_tensors(tensors):
         raise RuntimeError("Gloo only accept cpu tensor."
                            " Got {}.".format(d))
 
-def _check_inputs_compatibility_for_scatter_gather(tensors, tensor_lists):
-    """Check the compatibility between tensor input and tensor list input."""
-    if not tensors or not isinstance(tensors, list):
-        raise RuntimeError(
-            "The first argument 'tensors' expects a list of tensors.")
-
-    if len(tensors) != 1:
-        raise RuntimeError(
-            "Gloo only accept one tensor in the first argument 'tensors'."
-                           " Got {} != 1.".format(len(tensors)))
-
-    if not tensor_lists or not isinstance(tensor_lists, list):
-        raise RuntimeError("The second argument 'tensor_lists' "
-                           "expects a list of tensor list.")
-
-    if len(tensor_lists) != 1:
-        raise RuntimeError(
-            "Gloo only accept one tensor list "
-               "in the second argument 'tensor_lists'."
-                   " Got {} != 1.".format(len(tensor_lists)))
-
-    dtype = gloo_util.get_nccl_tensor_dtype(tensors[0])
-    shape = gloo_util.get_tensor_shape(tensors[0])
-    for i, tensor_list in enumerate(tensor_lists):
-        # check all tensor in `tensors` match.
-        dt = gloo_util.get_nccl_tensor_dtype(tensors[i])
-        if dt != dtype:
-            raise RuntimeError("All tensor operands to scatter/gather must "
-                               "have the same dtype. Got '{}' and '{}'."
-                               .format(dt, dtype))
-        # Note: typically CCL libraries only requires they have the same
-        # number of elements; Here we make it more strict -- we require
-        # exact shape match.
-        s = gloo_util.get_tensor_shape(tensors[i])
-        if s != shape:
-            raise RuntimeError("All tensor operands to scatter/gather must "
-                               "have the same shape. Got '{}' and '{}'."
-                               .format(s, shape))
-    # check all tensors in `tensor_lists` match.
-    for t in tensor_lists[i]:
-        # check dtype
-        dt = gloo_util.get_nccl_tensor_dtype(t)
-        if dt != dtype:
-            raise RuntimeError(
-                "All tensor operands to scatter/gather must "
-                "have the same dtype. Got '{}' and '{}'.".format(
-                    dt, dtype))
-        s = gloo_util.get_tensor_shape(t)
-        if s != shape:
-            raise RuntimeError(
-                "All tensor operands to scatter/gather must "
-                "have the same shape. Got '{}' and '{}'.".format(s, shape))
 
 def _flatten_for_scatter_gather(tensor_list, copy=False):
     """Flatten the tensor for gather/scatter operations.
@@ -518,3 +458,43 @@ def _flatten_for_scatter_gather(tensor_list, copy=False):
         for i, tensor in enumerate(tensor_list):
             gloo_util.copy_tensor(buffer[i], tensor)
     return buffer
+
+
+def _check_inputs_compatibility_for_scatter_gather(tensors, tensor_lists):
+    """Check the compatibility between tensor input and tensor list input."""
+    if not tensors or not isinstance(tensors, list):
+        raise RuntimeError(
+            "The first argument 'tensors' expects a list of tensors.")
+
+    if len(tensors) != 1:
+        raise RuntimeError(
+            "Gloo only accept one tensor in the first argument 'tensors'."
+                           " Got {} != 1.".format(len(tensors)))
+
+    if not tensor_lists or not isinstance(tensor_lists, list):
+        raise RuntimeError("The second argument 'tensor_lists' "
+                           "expects a list of tensor list.")
+
+    if len(tensor_lists) != 1:
+        raise RuntimeError(
+            "Gloo only accept one tensor list "
+               "in the second argument 'tensor_lists'."
+                   " Got {} != 1.".format(len(tensor_lists)))
+
+    dtype = gloo_util.get_gloo_tensor_dtype(tensors[0])
+    shape = gloo_util.get_tensor_shape(tensors[0])
+
+    # check all tensors in `tensor_lists` match.
+    for t in tensor_lists[0]:
+        # check dtype
+        dt = gloo_util.get_gloo_tensor_dtype(t)
+        if dt != dtype:
+            raise RuntimeError(
+                "All tensor operands to scatter/gather must "
+                "have the same dtype. Got '{}' and '{}'.".format(
+                    dt, dtype))
+        s = gloo_util.get_tensor_shape(t)
+        if s != shape:
+            raise RuntimeError(
+                "All tensor operands to scatter/gather must "
+                "have the same shape. Got '{}' and '{}'.".format(s, shape))
