@@ -11,7 +11,7 @@ template <typename ReturnType, typename CastReturnType, typename... OtherArgType
 std::shared_ptr<msgpack::sbuffer> ExecuteNormalFunction(
     uintptr_t base_addr, size_t func_offset,
     const std::vector<std::shared_ptr<RayObject>> &args_buffer, TaskType task_type,
-    std::shared_ptr<OtherArgTypes> &... args) {
+    std::shared_ptr<OtherArgTypes> &&... args) {
   int arg_index = 0;
   Arguments::UnwrapArgs(args_buffer, arg_index, &args...);
 
@@ -30,7 +30,7 @@ std::shared_ptr<msgpack::sbuffer> ExecuteActorFunction(
     uintptr_t base_addr, size_t func_offset,
     const std::vector<std::shared_ptr<RayObject>> &args_buffer,
     std::shared_ptr<msgpack::sbuffer> &actor_buffer,
-    std::shared_ptr<OtherArgTypes> &... args) {
+    std::shared_ptr<OtherArgTypes> &&... args) {
   uintptr_t actor_ptr = Serializer::Deserialize<uintptr_t>(
       (const char *)actor_buffer->data(), actor_buffer->size());
   ActorType *actor_object = (ActorType *)actor_ptr;
@@ -50,96 +50,29 @@ std::shared_ptr<msgpack::sbuffer> ExecuteActorFunction(
   return std::make_shared<msgpack::sbuffer>(Serializer::Serialize(return_value));
 }
 
-// 0 args
-template <typename ReturnType>
+template <typename ReturnType, typename... Args>
 std::shared_ptr<msgpack::sbuffer> NormalExecFunction(
     uintptr_t base_addr, size_t func_offset,
     const std::vector<std::shared_ptr<RayObject>> &args_buffer) {
-  return ExecuteNormalFunction<ReturnType, ReturnType>(
-      base_addr, func_offset, args_buffer, TaskType::NORMAL_TASK);
+  return ExecuteNormalFunction<ReturnType, ReturnType, Args...>(
+      base_addr, func_offset, args_buffer, TaskType::NORMAL_TASK,
+      std::shared_ptr<Args>{}...);
 }
 
-// 1 arg
-template <typename ReturnType, typename Arg1Type>
-std::shared_ptr<msgpack::sbuffer> NormalExecFunction(
-    uintptr_t base_addr, size_t func_offset,
-    const std::vector<std::shared_ptr<RayObject>> &args_buffer) {
-  std::shared_ptr<Arg1Type> arg1_ptr;
-  return ExecuteNormalFunction<ReturnType, ReturnType>(
-      base_addr, func_offset, args_buffer, TaskType::NORMAL_TASK, arg1_ptr);
-}
-
-// 2 args
-template <typename ReturnType, typename Arg1Type, typename Arg2Type>
-std::shared_ptr<msgpack::sbuffer> NormalExecFunction(
-    uintptr_t base_addr, size_t func_offset,
-    const std::vector<std::shared_ptr<RayObject>> &args_buffer) {
-  std::shared_ptr<Arg1Type> arg1_ptr;
-  std::shared_ptr<Arg2Type> arg2_ptr;
-  return ExecuteNormalFunction<ReturnType, ReturnType>(
-      base_addr, func_offset, args_buffer, TaskType::NORMAL_TASK, arg1_ptr, arg2_ptr);
-}
-
-// 0 args
-template <typename ReturnType>
+template <typename ReturnType, typename... Args>
 std::shared_ptr<msgpack::sbuffer> CreateActorExecFunction(
     uintptr_t base_addr, size_t func_offset,
     const std::vector<std::shared_ptr<RayObject>> &args_buffer) {
-  return ExecuteNormalFunction<ReturnType, uintptr_t>(base_addr, func_offset, args_buffer,
-                                                      TaskType::ACTOR_CREATION_TASK);
-}
-
-// 1 arg
-template <typename ReturnType, typename Arg1Type>
-std::shared_ptr<msgpack::sbuffer> CreateActorExecFunction(
-    uintptr_t base_addr, size_t func_offset,
-    const std::vector<std::shared_ptr<RayObject>> &args_buffer) {
-  std::shared_ptr<Arg1Type> arg1_ptr;
-  return ExecuteNormalFunction<ReturnType, uintptr_t>(
-      base_addr, func_offset, args_buffer, TaskType::ACTOR_CREATION_TASK, arg1_ptr);
-}
-
-// 2 args
-template <typename ReturnType, typename Arg1Type, typename Arg2Type>
-std::shared_ptr<msgpack::sbuffer> CreateActorExecFunction(
-    uintptr_t base_addr, size_t func_offset,
-    const std::vector<std::shared_ptr<RayObject>> &args_buffer) {
-  std::shared_ptr<Arg1Type> arg1_ptr;
-  std::shared_ptr<Arg2Type> arg2_ptr;
   return ExecuteNormalFunction<ReturnType, uintptr_t>(base_addr, func_offset, args_buffer,
                                                       TaskType::ACTOR_CREATION_TASK,
-                                                      arg1_ptr, arg2_ptr);
+                                                      std::shared_ptr<Args>{}...);
 }
 
-// 0 args
-template <typename ReturnType, typename ActorType>
+template <typename ReturnType, typename ActorType, typename... Args>
 std::shared_ptr<msgpack::sbuffer> ActorExecFunction(
     uintptr_t base_addr, size_t func_offset,
     const std::vector<std::shared_ptr<RayObject>> &args_buffer,
     std::shared_ptr<msgpack::sbuffer> &actor_buffer) {
-  return ExecuteActorFunction<ReturnType, ActorType>(base_addr, func_offset, args_buffer,
-                                                     actor_buffer);
-}
-
-// 1 arg
-template <typename ReturnType, typename ActorType, typename Arg1Type>
-std::shared_ptr<msgpack::sbuffer> ActorExecFunction(
-    uintptr_t base_addr, size_t func_offset,
-    const std::vector<std::shared_ptr<RayObject>> &args_buffer,
-    std::shared_ptr<msgpack::sbuffer> &actor_buffer) {
-  std::shared_ptr<Arg1Type> arg1_ptr;
-  return ExecuteActorFunction<ReturnType, ActorType>(base_addr, func_offset, args_buffer,
-                                                     actor_buffer, arg1_ptr);
-}
-
-// 2 args
-template <typename ReturnType, typename ActorType, typename Arg1Type, typename Arg2Type>
-std::shared_ptr<msgpack::sbuffer> ActorExecFunction(
-    uintptr_t base_addr, size_t func_offset,
-    const std::vector<std::shared_ptr<RayObject>> &args_buffer,
-    std::shared_ptr<msgpack::sbuffer> &actor_buffer) {
-  std::shared_ptr<Arg1Type> arg1_ptr;
-  std::shared_ptr<Arg2Type> arg2_ptr;
-  return ExecuteActorFunction<ReturnType, ActorType>(base_addr, func_offset, args_buffer,
-                                                     actor_buffer, arg1_ptr, arg2_ptr);
+  return ExecuteActorFunction<ReturnType, ActorType>(
+      base_addr, func_offset, args_buffer, actor_buffer, std::shared_ptr<Args>{}...);
 }
