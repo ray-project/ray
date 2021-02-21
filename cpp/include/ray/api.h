@@ -49,7 +49,7 @@ class Ray {
   /// \param[in] object The object reference which should be returned.
   /// \return shared pointer of the result.
   template <typename T>
-  static std::shared_ptr<T> Get(const ObjectRef<T> &object);
+  static T Get(const ObjectRef<T> &object);
 
   /// Get a list of objects from the object store.
   /// This method will be blocked until all the objects are ready.
@@ -152,10 +152,9 @@ inline ObjectRef<T> Ray::Put(const T &obj) {
 }
 
 template <typename T>
-inline std::shared_ptr<T> Ray::Get(const ObjectRef<T> &object) {
+inline T Ray::Get(const ObjectRef<T> &object) {
   auto packed_object = runtime_->Get(object.ID());
-  return Serializer::Deserialize<std::shared_ptr<T>>(packed_object->data(),
-                                                     packed_object->size());
+  return Serializer::Deserialize<T>(packed_object->data(), packed_object->size());
 }
 
 template <typename T>
