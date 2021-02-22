@@ -43,7 +43,10 @@ using ::testing::_;
 
 class MockWorkerPool : public WorkerPoolInterface {
  public:
+  MockWorkerPool() : num_pops(0) {}
+
   std::shared_ptr<WorkerInterface> PopWorker(const TaskSpecification &task_spec) {
+    num_pops++;
     if (workers.empty()) {
       return nullptr;
     }
@@ -57,6 +60,7 @@ class MockWorkerPool : public WorkerPoolInterface {
   }
 
   std::list<std::shared_ptr<WorkerInterface>> workers;
+  int num_pops;
 };
 
 std::shared_ptr<ClusterResourceScheduler> CreateSingleNodeScheduler(
@@ -153,7 +157,9 @@ class ClusterTaskManagerTest : public ::testing::Test {
                 }
               }
               return true;
-            }) {}
+            }),
+        tasks_to_schedule_(task_manager_.tasks_to_schedule_),
+        tasks_to_dispatch_(task_manager_.tasks_to_dispatch_) {}
 
   void SetUp() {}
 
@@ -204,6 +210,9 @@ class ClusterTaskManagerTest : public ::testing::Test {
 
   MockTaskDependencyManager dependency_manager_;
   ClusterTaskManager task_manager_;
+
+  std::unordered_map<SchedulingClass, std::deque<Work>> &tasks_to_schedule_;
+  std::unordered_map<SchedulingClass, std::deque<Work>> &tasks_to_dispatch_;
 };
 
 TEST_F(ClusterTaskManagerTest, BasicTest) {
@@ -396,6 +405,62 @@ TEST_F(ClusterTaskManagerTest, TestSpillAfterAssigned) {
             task.GetTaskSpecification().TaskId());
 
   AssertNoLeaks();
+}
+
+TEST_F(ClusterTaskManagerTest, TestMinimizeWorkerPops) {
+  /*
+    This test ensures that we don't pop workers until the last second.
+    See https://github.com/ray-project/ray/issues/13725.
+  */
+  std::shared_ptr<MockWorker> worker =
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
+  pool_.PushWorker(worker);
+
+  int num_callbacks = 0;
+  auto callback = [&](Status, std::function<void()>, std::function<void()>) {
+    num_callbacks++;
+  };
+
+  /* Blocked on starting a worker. */
+  auto task = CreateTask({{ray::kCPU_ResourceLabel, 5}});
+  auto task2 = CreateTask({{ray::kCPU_ResourceLabel, 5}});
+
+  rpc::RequestWorkerLeaseReply local_reply;
+  task_manager_.QueueAndScheduleTask(task2, &local_reply, callback);
+  task_manager_.QueueAndScheduleTask(task, &local_reply, callback);
+
+  ASSERT_EQ(num_callbacks, 1);
+  ASSERT_EQ(leased_workers_.size(), 1);
+  ASSERT_EQ(pool_.num_pops, 1);
+
+  {
+    // Hack to move the task from the scheduling to dispatch queues without actually
+    // dispatching.
+    auto it = tasks_to_schedule_.begin();
+    auto queue = it->second;
+    tasks_to_schedule_.erase(it);
+    const auto &scheduling_class = task.GetTaskSpecification().GetSchedulingClass();
+    tasks_to_dispatch_[scheduling_class] = queue;
+    leased_workers_.clear();
+  }
+
+  task_manager_.ScheduleAndDispatchTasks();
+
+  ASSERT_EQ(num_callbacks, 1);
+  ASSERT_EQ(leased_workers_.size(), 0);
+  ASSERT_EQ(pool_.num_pops, 1);
+
+  task_manager_.TaskFinished(worker, &task2);
+  pool_.PushWorker(worker);
+
+  RAY_LOG(ERROR) << task_manager_.DebugStr();
+  task_manager_.ScheduleAndDispatchTasks();
+
+  ASSERT_EQ(num_callbacks, 2);
+  ASSERT_EQ(leased_workers_.size(), 1);
+  ASSERT_EQ(pool_.num_pops, 2);
+
+  // Not asserting no leaks because of the hack to force the task onto the dispatch queue.
 }
 
 TEST_F(ClusterTaskManagerTest, TaskCancellationTest) {
