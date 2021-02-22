@@ -13,6 +13,7 @@ import numpy as np
 from hyperopt import hp
 from nevergrad.optimization import optimizerlib
 from zoopt import ValueType
+from hebo.design_space.design_space import DesignSpace as HEBODesignSpace
 
 import ray
 from ray import tune
@@ -29,6 +30,7 @@ from ray.tune.suggest.nevergrad import NevergradSearch
 from ray.tune.suggest.optuna import OptunaSearch, param as ot_param
 from ray.tune.suggest.sigopt import SigOptSearch
 from ray.tune.suggest.zoopt import ZOOptSearch
+from ray.tune.suggest.hebo import HEBOSearch
 from ray.tune.utils import validate_save_restore
 from ray.tune.utils._mock_trainable import MyTrainableClass
 
@@ -745,6 +747,33 @@ class ZOOptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
             dim_dict=dim_dict,
             metric="loss",
             mode="min")
+
+        return search_alg, cost
+
+
+class HEBOWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
+    def set_basic_conf(self):
+        space_config = [
+            {
+                "name": "width",
+                "type": "num",
+                "lb": 0,
+                "ub": 20
+            },
+            {
+                "name": "height",
+                "type": "num",
+                "lb": -100,
+                "ub": 100
+            },
+        ]
+        space = HEBODesignSpace().parse(space_config)
+
+        def cost(param, reporter):
+            reporter(loss=(param["height"] - 14)**2 - abs(param["width"] - 3))
+
+        search_alg = HEBOSearch(
+            space=space, metric="loss", mode="min", random_state_seed=5)
 
         return search_alg, cost
 

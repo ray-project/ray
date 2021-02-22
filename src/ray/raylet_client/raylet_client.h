@@ -202,8 +202,7 @@ class RayletClient : public RayletClientInterface {
                const std::string &raylet_socket, const WorkerID &worker_id,
                rpc::WorkerType worker_type, const JobID &job_id, const Language &language,
                const std::string &ip_address, Status *status, NodeID *raylet_id,
-               int *port, std::unordered_map<std::string, std::string> *system_config,
-               const std::string &job_config);
+               int *port, std::string *system_config, const std::string &job_config);
 
   /// Connect to the raylet via grpc only.
   ///

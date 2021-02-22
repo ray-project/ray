@@ -378,7 +378,10 @@ def import_attr(full_path: str):
 
 
 async def mock_imported_function(batch):
-    return [await request.body() for request in batch]
+    result = []
+    for request in batch:
+        result.append(await request.body())
+    return result
 
 
 class MockImportedBackend:

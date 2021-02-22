@@ -637,8 +637,6 @@ class Trial:
         Sets RUNNING trials to PENDING.
         Note this can only occur if the trial holds a PERSISTENT checkpoint.
         """
-        assert self.checkpoint.storage == Checkpoint.PERSISTENT, (
-            "Checkpoint must not be in-memory.")
         state = self.__dict__.copy()
         state["resources"] = resources_to_json(self.resources)
 

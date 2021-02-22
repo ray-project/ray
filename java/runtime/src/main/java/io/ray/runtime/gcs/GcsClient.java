@@ -98,17 +98,6 @@ public class GcsClient {
     return new ArrayList<>(nodes.values());
   }
 
-  public Map<String, String> getInternalConfig() {
-    Gcs.StoredConfig storedConfig;
-    byte[] conf = globalStateAccessor.getInternalConfig();
-    try {
-      storedConfig = Gcs.StoredConfig.parseFrom(conf);
-    } catch (InvalidProtocolBufferException e) {
-      throw new RuntimeException("Received invalid internal config protobuf from GCS.");
-    }
-    return storedConfig.getConfigMap();
-  }
-
   private Map<String, Double> getResourcesForClient(UniqueId clientId) {
     byte[] resourceMapBytes = globalStateAccessor.getNodeResourceInfo(clientId);
     Gcs.ResourceMap resourceMap;
