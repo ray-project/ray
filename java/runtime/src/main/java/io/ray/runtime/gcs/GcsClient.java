@@ -44,6 +44,18 @@ public class GcsClient {
   }
 
   /**
+   * Get a placement group by name.
+   *
+   * @param name Name of the placement group.
+   * @param global Whether the named placement group is global.
+   * @return The placement group.
+   */
+  public PlacementGroup getPlacementGroupInfo(String name, boolean global) {
+    byte[] result = globalStateAccessor.getPlacementGroupInfo(name, global);
+    return result == null ? null : PlacementGroupUtils.generatePlacementGroupFromByteArray(result);
+  }
+
+  /**
    * Get all placement groups in this cluster.
    *
    * @return All placement groups.

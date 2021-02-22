@@ -121,6 +121,20 @@ Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetPlacementGroupInfo(
   return nullptr;
 }
 
+JNIEXPORT jbyteArray JNICALL
+Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetPlacementGroupInfoByName(
+    JNIEnv *env, jobject o, jlong gcs_accessor_ptr, jstring name, jboolean global) {
+  std::string placement_group_name = JavaStringToNativeString(env, name);
+  auto full_name = GetFullName(global, placement_group_name);
+  auto *gcs_accessor =
+      reinterpret_cast<ray::gcs::GlobalStateAccessor *>(gcs_accessor_ptr);
+  auto placement_group = gcs_accessor->GetPlacementGroupByName(full_name);
+  if (placement_group) {
+    return NativeStringToJavaByteArray(env, *placement_group);
+  }
+  return nullptr;
+}
+
 JNIEXPORT jobject JNICALL
 Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetAllPlacementGroupInfo(
     JNIEnv *env, jobject o, jlong gcs_accessor_ptr) {
