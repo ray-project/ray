@@ -74,3 +74,4 @@ werkzeug
 xlrd
 starlette
 smart_open[s3]
+tqdm

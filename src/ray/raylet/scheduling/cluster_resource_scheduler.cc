@@ -223,21 +223,25 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(const TaskRequest &task
   // We will pick the node with the smallest number of soft violations.
   int64_t min_violations = INT_MAX;
   // Node associated to min_violations.
-  int64_t best_node = -1;
+  std::vector<int64_t> best_nodes;
   *total_violations = 0;
 
   if (actor_creation && task_req.IsEmpty()) {
+    int64_t best_node = -1;
     // This an actor which requires no resources.
     // Pick a random node to to avoid all scheduling all actors on the local node.
     if (nodes_.size() > 0) {
       int idx = std::rand() % nodes_.size();
       for (auto &node : nodes_) {
         if (idx == 0) {
-          best_node = node.first;
+          best_nodes.emplace_back(node.first);
           break;
         }
         idx--;
       }
+    }
+    if (!best_nodes.empty()) {
+      best_node = best_nodes.back();
     }
     RAY_LOG(DEBUG) << "GetBestSchedulableNode, best_node = " << best_node
                    << ", # nodes = " << nodes_.size()
@@ -257,6 +261,8 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(const TaskRequest &task
 
   // Check whether any node in the request placement_hints, satisfes
   // all resource constraints of the request.
+  // TODO(sang): Uniform random distribution of tasks based on placement hint is not
+  // implemented yet because it is currently not used.
   for (const auto &task_req_placement_hint : task_req.placement_hints) {
     auto it = nodes_.find(task_req_placement_hint);
     if (it != nodes_.end()) {
@@ -273,17 +279,15 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(const TaskRequest &task
     // of soft constraint violations.
     int64_t violations = IsSchedulable(task_req, node.first, node.second.GetLocalView());
     if (violations == -1) {
-      if (!local_node_feasible && best_node == -1 &&
+      if (!local_node_feasible && best_nodes.empty() &&
           IsFeasible(task_req, node.second.GetLocalView())) {
         // If the local node is not feasible, and a better node has not yet
         // been found, and this node does not currently have the resources
         // available but is feasible, then schedule to this node.
         // NOTE(swang): This is needed to make sure that tasks that are not
         // feasible on this node are spilled back to a node that does have the
-        // appropriate total resources in a timely manner. If there are
-        // multiple feasible nodes, this algorithm can still introduce delays
-        // because of inefficient load-balancing.
-        best_node = node.first;
+        // appropriate total resources in a timely manner.
+        best_nodes.emplace_back(node.first);
       }
       continue;
     }
@@ -291,14 +295,24 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(const TaskRequest &task
     // Update the node with the smallest number of soft constraints violated.
     if (min_violations > violations) {
       min_violations = violations;
-      best_node = node.first;
+      // Clear should be performed by O(1) by the compiler because the
+      // vector entry type is int64_t.
+      best_nodes.clear();
     }
-    if (violations == 0) {
-      // If violation is 0, we can schedule the task. So just break the loop
-      break;
+    if (min_violations == violations) {
+      best_nodes.emplace_back(node.first);
     }
   }
   *total_violations = min_violations;
+
+  // Randomly select one of the best nodes to spillback.
+  int64_t best_node;
+  if (best_nodes.empty()) {
+    best_node = -1;
+  } else {
+    int idx = std::rand() % best_nodes.size();
+    best_node = best_nodes[idx];
+  }
   // If there's no best node, and the task is not feasible locally,
   // it means the task is infeasible.
   *is_infeasible = best_node == -1 && !local_node_feasible;

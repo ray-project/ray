@@ -1,4 +1,4 @@
-from typing import Dict
+from typing import Dict, List, Union
 import copy
 import json
 import glob
@@ -441,7 +441,7 @@ def atomic_save(state: Dict, checkpoint_dir: str, file_name: str,
     with open(tmp_search_ckpt_path, "wb") as f:
         cloudpickle.dump(state, f)
 
-    os.rename(tmp_search_ckpt_path, os.path.join(checkpoint_dir, file_name))
+    os.replace(tmp_search_ckpt_path, os.path.join(checkpoint_dir, file_name))
 
 
 def load_newest_checkpoint(dirpath: str, ckpt_pattern: str) -> dict:
@@ -669,6 +669,41 @@ def create_logdir(dirname: str, local_dir: str):
         logdir = os.path.join(local_dir, dirname)
     os.makedirs(logdir, exist_ok=True)
     return logdir
+
+
+def validate_warmstart(parameter_names: List[str],
+                       points_to_evaluate: List[Union[List, Dict]],
+                       evaluated_rewards: List):
+    """Generic validation of a Searcher's warm start functionality.
+    Raises exceptions in case of type and length mismatches betwee
+    parameters.
+    """
+    if points_to_evaluate:
+        if not isinstance(points_to_evaluate, list):
+            raise TypeError(
+                "points_to_evaluate expected to be a list, got {}.".format(
+                    type(points_to_evaluate)))
+        for point in points_to_evaluate:
+            if not isinstance(point, (dict, list)):
+                raise TypeError(
+                    f"points_to_evaluate expected to include list or dict, "
+                    f"got {point}.")
+
+            if not len(point) == len(parameter_names):
+                raise ValueError("Dim of point {}".format(point) +
+                                 " and parameter_names {}".format(
+                                     parameter_names) + " do not match.")
+
+    if points_to_evaluate and evaluated_rewards:
+        if not isinstance(evaluated_rewards, list):
+            raise TypeError(
+                "evaluated_rewards expected to be a list, got {}.".format(
+                    type(evaluated_rewards)))
+        if not len(evaluated_rewards) == len(points_to_evaluate):
+            raise ValueError(
+                "Dim of evaluated_rewards {}".format(evaluated_rewards) +
+                " and points_to_evaluate {}".format(points_to_evaluate) +
+                " do not match.")
 
 
 class SafeFallbackEncoder(json.JSONEncoder):

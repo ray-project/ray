@@ -82,6 +82,7 @@ struct CoreWorkerOptions {
         spill_objects(nullptr),
         restore_spilled_objects(nullptr),
         delete_spilled_objects(nullptr),
+        unhandled_exception_handler(nullptr),
         get_lang_stack(nullptr),
         kill_main(nullptr),
         ref_counting_enabled(false),
@@ -146,6 +147,8 @@ struct CoreWorkerOptions {
   /// Application-language callback to delete objects from external storage.
   std::function<void(const std::vector<std::string> &, rpc::WorkerType)>
       delete_spilled_objects;
+  /// Function to call on error objects never retrieved.
+  std::function<void(const RayObject &error)> unhandled_exception_handler;
   /// Language worker callback to get the current call stack.
   std::function<void(std::string *)> get_lang_stack;
   // Function that tries to interrupt the currently running Python thread.
@@ -732,7 +735,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Tell an actor to exit immediately, without completing outstanding work.
   ///
   /// \param[in] actor_id ID of the actor to kill.
-  /// \param[in] force_kill Whether to force kill an actor by killing the worker.
   /// \param[in] no_restart If set to true, the killed actor will not be
   /// restarted anymore.
   /// \param[out] Status
