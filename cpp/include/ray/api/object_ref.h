@@ -29,7 +29,7 @@ class ObjectRef {
   /// This method will be blocked until the object is ready.
   ///
   /// \return shared pointer of the result.
-  T Get() const;
+  std::shared_ptr<T> Get() const;
 
   /// Make ObjectRef serializable
   MSGPACK_DEFINE(id_);
@@ -71,7 +71,7 @@ const ObjectID &ObjectRef<T>::ID() const {
 }
 
 template <typename T>
-inline T ObjectRef<T>::Get() const {
+inline std::shared_ptr<T> ObjectRef<T>::Get() const {
   return Ray::Get(*this);
 }
 }  // namespace api

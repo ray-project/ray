@@ -21,10 +21,10 @@ TEST(RaySlowFunctionTest, BaseTest) {
   auto r2 = Ray::Task(slow_function, 3).Remote();
   auto r3 = Ray::Task(slow_function, 4).Remote();
 
-  int result0 = r0.Get();
-  int result1 = r1.Get();
-  int result2 = r2.Get();
-  int result3 = r3.Get();
+  int result0 = *(r0.Get());
+  int result1 = *(r1.Get());
+  int result2 = *(r2.Get());
+  int result3 = *(r3.Get());
   auto time2 = std::chrono::duration_cast<std::chrono::milliseconds>(
       std::chrono::system_clock::now().time_since_epoch());
 

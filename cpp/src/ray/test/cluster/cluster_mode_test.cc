@@ -46,35 +46,35 @@ TEST(RayClusterModeTest, FullTest) {
 
   /// put and get object
   auto obj = Ray::Put(12345);
-  auto get_result = Ray::Get(obj);
+  auto get_result = *(Ray::Get(obj));
   EXPECT_EQ(12345, get_result);
 
   /// common task without args
   auto task_obj = Ray::Task(Return1).Remote();
-  int task_result = Ray::Get(task_obj);
+  int task_result = *(Ray::Get(task_obj));
   EXPECT_EQ(1, task_result);
 
   /// common task with args
   task_obj = Ray::Task(Plus1, 5).Remote();
-  task_result = Ray::Get(task_obj);
+  task_result = *(Ray::Get(task_obj));
   EXPECT_EQ(6, task_result);
 
   /// actor task without args
   ActorHandle<Counter> actor1 = Ray::Actor(Counter::FactoryCreate).Remote();
   auto actor_object1 = actor1.Task(&Counter::Plus1).Remote();
-  int actor_task_result1 = Ray::Get(actor_object1);
+  int actor_task_result1 = *(Ray::Get(actor_object1));
   EXPECT_EQ(1, actor_task_result1);
 
   /// actor task with args
   ActorHandle<Counter> actor2 = Ray::Actor(Counter::FactoryCreate, 1).Remote();
   auto actor_object2 = actor2.Task(&Counter::Add, 5).Remote();
-  int actor_task_result2 = Ray::Get(actor_object2);
+  int actor_task_result2 = *(Ray::Get(actor_object2));
   EXPECT_EQ(6, actor_task_result2);
 
   /// actor task with args which pass by reference
   ActorHandle<Counter> actor3 = Ray::Actor(Counter::FactoryCreate, 6, 0).Remote();
   auto actor_object3 = actor3.Task(&Counter::Add, actor_object2).Remote();
-  int actor_task_result3 = Ray::Get(actor_object3);
+  int actor_task_result3 = *(Ray::Get(actor_object3));
   EXPECT_EQ(12, actor_task_result3);
 
   /// general function remote call（args passed by value）
@@ -82,9 +82,9 @@ TEST(RayClusterModeTest, FullTest) {
   auto r1 = Ray::Task(Plus1, 30).Remote();
   auto r2 = Ray::Task(Plus, 3, 22).Remote();
 
-  int result1 = Ray::Get(r1);
-  int result0 = Ray::Get(r0);
-  int result2 = Ray::Get(r2);
+  int result1 = *(Ray::Get(r1));
+  int result0 = *(Ray::Get(r0));
+  int result2 = *(Ray::Get(r2));
   EXPECT_EQ(result0, 1);
   EXPECT_EQ(result1, 31);
   EXPECT_EQ(result2, 25);
@@ -95,10 +95,10 @@ TEST(RayClusterModeTest, FullTest) {
   auto r5 = Ray::Task(Plus, r4, r3).Remote();
   auto r6 = Ray::Task(Plus, r4, 10).Remote();
 
-  int result5 = Ray::Get(r5);
-  int result4 = Ray::Get(r4);
-  int result6 = Ray::Get(r6);
-  int result3 = Ray::Get(r3);
+  int result5 = *(Ray::Get(r5));
+  int result4 = *(Ray::Get(r4));
+  int result6 = *(Ray::Get(r6));
+  int result3 = *(Ray::Get(r3));
   EXPECT_EQ(result0, 1);
   EXPECT_EQ(result3, 1);
   EXPECT_EQ(result4, 2);
@@ -112,10 +112,10 @@ TEST(RayClusterModeTest, FullTest) {
   auto r9 = actor4.Task(&Counter::Add, 3).Remote();
   auto r10 = actor4.Task(&Counter::Add, 8).Remote();
 
-  int result7 = Ray::Get(r7);
-  int result8 = Ray::Get(r8);
-  int result9 = Ray::Get(r9);
-  int result10 = Ray::Get(r10);
+  int result7 = *(Ray::Get(r7));
+  int result8 = *(Ray::Get(r8));
+  int result9 = *(Ray::Get(r9));
+  int result10 = *(Ray::Get(r10));
   EXPECT_EQ(result7, 15);
   EXPECT_EQ(result8, 16);
   EXPECT_EQ(result9, 19);
@@ -131,12 +131,12 @@ TEST(RayClusterModeTest, FullTest) {
   auto r15 = Ray::Task(Plus, r0, r11).Remote();
   auto r16 = Ray::Task(Plus1, r15).Remote();
 
-  int result12 = Ray::Get(r12);
-  int result14 = Ray::Get(r14);
-  int result11 = Ray::Get(r11);
-  int result13 = Ray::Get(r13);
-  int result16 = Ray::Get(r16);
-  int result15 = Ray::Get(r15);
+  int result12 = *(Ray::Get(r12));
+  int result14 = *(Ray::Get(r14));
+  int result11 = *(Ray::Get(r11));
+  int result13 = *(Ray::Get(r13));
+  int result16 = *(Ray::Get(r16));
+  int result15 = *(Ray::Get(r15));
 
   EXPECT_EQ(result11, 28);
   EXPECT_EQ(result12, 56);
