@@ -214,8 +214,11 @@ def get_distribution_inputs_and_class(
         explore: bool = True,
         is_training: bool = False,
         **kwargs) -> Tuple[TensorType, type, List[TensorType]]:
-    q_vals = compute_q_values(policy, model, {"obs": obs_batch}, explore,
-                              is_training)
+    q_vals = compute_q_values(
+        policy,
+        model, {"obs": obs_batch},
+        explore=explore,
+        is_training=is_training)
     q_vals = q_vals[0] if isinstance(q_vals, tuple) else q_vals
 
     policy.q_values = q_vals
