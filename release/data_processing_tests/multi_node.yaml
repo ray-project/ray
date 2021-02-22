@@ -130,7 +130,7 @@ worker_setup_commands: []
 # Command to start ray on the head node. You don't need to change this.
 head_start_ray_commands:
     - ray stop
-    - ray start --num-cpus=0 --head --port=6379 --object-manager-port=8076 --object-store-memory=85899345920 --autoscaling-config=~/ray_bootstrap_config.yaml --system-config='{"automatic_object_spilling_enabled":true,"max_io_workers":8,"object_spilling_config":"{\"type\":\"filesystem\",\"params\":{\"directory_path\":\"/obj-data\"}}"}'
+    - ray start --num-cpus=0 --head --port=6379 --object-manager-port=8076 --object-store-memory=85899345920 --autoscaling-config=~/ray_bootstrap_config.yaml --system-config='{"automatic_object_spilling_enabled":true,"max_io_workers":1,"object_spilling_config":"{\"type\":\"filesystem\",\"params\":{\"directory_path\":\"/obj-data\"}}"}'
 
 # Command to start ray on worker nodes. You don't need to change this.
 worker_start_ray_commands:
