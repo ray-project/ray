@@ -1,6 +1,7 @@
 import asyncio
 import atexit
 import time
+import logging
 from functools import wraps
 import os
 from uuid import UUID
@@ -727,3 +728,27 @@ def accept_batch(f: Callable) -> Callable:
     """
     f._serve_accept_batch = True
     return f
+
+
+def get_backend_logger():
+    """When called from a backend, return a preconfigured `logging.Logger`.
+
+    The logger will prepend the current backend tag and current replica tag
+    to each log line.
+
+    Raises:
+        RayServeException if not called from within a Ray Serve backend.
+
+    Example:
+
+    >>> # Inside implementation of a Ray Serve backend
+        logger = serve.get_backend_logger()
+        logger.info("Some info!")
+
+    >>> INFO: backend=my_backend replica=my_backend#rQtNAb:Some info!
+    """
+    logging.basicConfig(level=logging.INFO)
+    name = (f" backend={ray.serve.get_current_backend_tag()}"
+            f" replica={ray.serve.get_current_replica_tag()}")
+    logger = logging.getLogger(name)
+    return logger
