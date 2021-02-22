@@ -1,13 +1,8 @@
-# An unique identifier for the head node and workers of this cluster.
 cluster_name: default
-
-# The minimum number of workers nodes to launch in addition to the head
-# node. This number should be >= 0.
-min_workers: 0
 
 # The maximum number of workers nodes to launch in addition to the head
 # node. This takes precedence over min_workers.
-max_workers: 2
+max_workers: 1
 
 # The autoscaler will scale up the cluster faster with higher upscaling speed.
 # E.g., if the task requires adding more nodes then autoscaler will gradually
@@ -43,38 +38,51 @@ auth:
 # configurations below.
 #    ssh_private_key: /path/to/your/key.pem
 
-# Provider-specific config for the head node, e.g. instance type. By default
-# Ray will auto-configure unspecified fields such as SubnetId and KeyName.
-# For more documentation on available fields, see:
-# http://boto3.readthedocs.io/en/latest/reference/services/ec2.html#EC2.ServiceResource.create_instances
-head_node:
-    InstanceType: m5.large
-    ImageId: ami-0a2363a9cff180a64 # Deep Learning AMI (Ubuntu) Version 30
+available_node_types:
+    ray.head.default:
+        # Autoscaler auto fills the node type's CPU and GPU resources based on the AWS instance type.
+        # The CPU resources below are included for the purposes of documentation.
+        resources: {"CPU": 2}
+        # Provider-specific config for this node type, e.g. instance type. By default
+        # Ray will auto-configure unspecified fields such as SubnetId and KeyName.
+        # For more documentation on available fields, see:
+        # http://boto3.readthedocs.io/en/latest/reference/services/ec2.html#EC2.ServiceResource.create_instances
+        node_config:
+            InstanceType: m5.large
+            ImageId: ami-0a2363a9cff180a64 # Deep Learning AMI (Ubuntu) Version 30
+            # You can provision additional disk space with a conf as follows
+            BlockDeviceMappings:
+                - DeviceName: /dev/sda1
+                  Ebs:
+                      VolumeSize: 100
+            # Additional options in the boto docs.
+    ray.worker.small:
+        # The minimum number of nodes of this type to launch.
+        # This number should be >= 0.
+        min_workers: 0
+        # The maximum number of workers nodes of this type to launch.
+        # This takes precedence over min_workers.
+        max_workers: 1
+        # Autoscaler auto fills CPU and GPU resources based on the AWS instance type.
+        # The CPU resources below are included for the purposes of documentation.
+        resources: {"CPU": 2}
+        # Provider-specific config for this node type, e.g. instance type. By default
+        # Ray will auto-configure unspecified fields such as SubnetId and KeyName.
+        # For more documentation on available fields, see:
+        # http://boto3.readthedocs.io/en/latest/reference/services/ec2.html#EC2.ServiceResource.create_instances
+        node_config:
+            InstanceType: m5.large
+            ImageId: ami-0a2363a9cff180a64 # Deep Learning AMI (Ubuntu) Version 30
+            # Run workers on spot by default. Comment this out to use on-demand.
+            InstanceMarketOptions:
+                MarketType: spot
+                # Additional options can be found in the boto docs, e.g.
+                #   SpotOptions:
+                #       MaxPrice: MAX_HOURLY_PRICE
+            # Additional options in the boto docs.
 
-    # You can provision additional disk space with a conf as follows
-    BlockDeviceMappings:
-        - DeviceName: /dev/sda1
-          Ebs:
-              VolumeSize: 100
-
-    # Additional options in the boto docs.
-
-# Provider-specific config for worker nodes, e.g. instance type. By default
-# Ray will auto-configure unspecified fields such as SubnetId and KeyName.
-# For more documentation on available fields, see:
-# http://boto3.readthedocs.io/en/latest/reference/services/ec2.html#EC2.ServiceResource.create_instances
-worker_nodes:
-    InstanceType: m5.large
-    ImageId: ami-0a2363a9cff180a64 # Deep Learning AMI (Ubuntu) Version 30
-
-    # Run workers on spot by default. Comment this out to use on-demand.
-    InstanceMarketOptions:
-        MarketType: spot
-        # Additional options can be found in the boto docs, e.g.
-        #   SpotOptions:
-        #       MaxPrice: MAX_HOURLY_PRICE
-
-    # Additional options in the boto docs.
+# Specify the node type of the head node (as configured above).
+head_node_type: ray.head.default
 
 # Files or directories to copy to the head and worker nodes. The format is a
 # dictionary from REMOTE_PATH: LOCAL_PATH, e.g.
@@ -94,12 +102,15 @@ cluster_synced_files: []
 file_mounts_sync_continuously: False
 
 # Patterns for files to exclude when running rsync up or rsync down
-rsync_exclude: []
+rsync_exclude:
+    - "**/.git"
+    - "**/.git/**"
 
 # Pattern files to use for filtering out files when running rsync up or rsync down. The file is searched for
 # in the source directory and recursively through all subdirectories. For example, if .gitignore is provided
 # as a value, the behavior will match git's behavior for finding and using .gitignore files.
-rsync_filter: []
+rsync_filter:
+    - ".gitignore"
 
 # List of commands that will be run before `setup_commands`. If docker is
 # enabled, these commands will run outside the container and before docker
@@ -107,20 +118,17 @@ rsync_filter: []
 initialization_commands: []
 
 # List of shell commands to run to set up nodes.
-setup_commands:
-    # Note: if you're developing Ray, you probably want to create an AMI that
+setup_commands: []
+    # Note: if you're developing Ray, you probably want to create a Docker image that
     # has your Ray repo pre-cloned. Then, you can replace the pip installs
     # below with a git checkout <your_sha> (and possibly a recompile).
-    - echo 'export PATH="$HOME/anaconda3/envs/tensorflow_p36/bin:$PATH"' >> ~/.bashrc
-    - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp36-cp36m-manylinux2014_x86_64.whl
-    # Consider uncommenting these if you also want to run apt-get commands during setup
-    # - sudo pkill -9 apt-get || true
-    # - sudo pkill -9 dpkg || true
-    # - sudo dpkg --configure -a
+    - echo 'export PATH="$HOME/anaconda3/envs/tensorflow2_latest_p37/bin:$PATH"' >> ~/.bashrc
+    - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl
+    # Uncomment the following line if you want to run the nightly version of ray (as opposed to the latest)
+    # - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl
 
 # Custom commands that will be run on the head node after common setup.
-head_setup_commands:
-    - pip install 'boto3>=1.4.8'  # 1.4.8 adds InstanceMarketOptions
+head_setup_commands: []
 
 # Custom commands that will be run on worker nodes after common setup.
 worker_setup_commands: []
@@ -134,3 +142,6 @@ head_start_ray_commands:
 worker_start_ray_commands:
     - ray stop
     - ulimit -n 65536; ray start --address=$RAY_HEAD_IP:6379 --object-manager-port=8076
+
+head_node: {}
+worker_nodes: {}
