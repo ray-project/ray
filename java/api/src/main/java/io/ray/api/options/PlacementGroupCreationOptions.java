@@ -1,6 +1,5 @@
 package io.ray.api.options;
 
-import com.google.common.base.Preconditions;
 import io.ray.api.Ray;
 import io.ray.api.placementgroup.PlacementStrategy;
 import java.util.List;
@@ -15,9 +14,10 @@ public class PlacementGroupCreationOptions {
 
   public PlacementGroupCreationOptions(
       boolean global, String name, List<Map<String, Double>> bundles, PlacementStrategy strategy) {
-    Preconditions.checkArgument(
-        bundles != null && !bundles.isEmpty(),
-        "`Bundles` must be specified when creating a new placement group.");
+    if (bundles == null || bundles.isEmpty()) {
+      throw new IllegalArgumentException(
+          "`Bundles` must be specified when creating a new placement group.");
+    }
     boolean bundleResourceValid =
         bundles.stream()
             .allMatch(bundle -> bundle.values().stream().allMatch(resource -> resource > 0));
@@ -26,8 +26,10 @@ public class PlacementGroupCreationOptions {
       throw new IllegalArgumentException(
           "Bundles cannot be empty or bundle's resource must be positive.");
     }
-    Preconditions.checkNotNull(
-        strategy, "`PlacementStrategy` must be specified when creating a new placement group.");
+    if (strategy == null) {
+      throw new IllegalArgumentException(
+          "`PlacementStrategy` must be specified when creating a new placement group.");
+    }
     this.global = global;
     this.name = name;
     this.bundles = bundles;
@@ -51,7 +53,9 @@ public class PlacementGroupCreationOptions {
      * @return self
      */
     public Builder setName(String name) {
-      Preconditions.checkState(this.name == null, "Repeated assigned for the name is not allowed!");
+      if (this.name != null) {
+        throw new IllegalArgumentException("Repeated assigned for the name is not allowed!");
+      }
       this.name = name;
       this.global = false;
       return this;
@@ -67,7 +71,9 @@ public class PlacementGroupCreationOptions {
      * @return self
      */
     public Builder setGlobalName(String name) {
-      Preconditions.checkState(this.name == null, "Repeated assigned for the name is not allowed!");
+      if (this.name != null) {
+        throw new IllegalArgumentException("Repeated assigned for the name is not allowed!");
+      }
       this.name = name;
       this.global = true;
       return this;

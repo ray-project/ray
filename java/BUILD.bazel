@@ -39,7 +39,6 @@ define_java_module(
     name = "api",
     visibility = ["//visibility:public"],
     deps = [
-        "@maven//:com_google_guava_guava",
         "@maven//:com_sun_xml_bind_jaxb_core",
         "@maven//:com_sun_xml_bind_jaxb_impl",
         "@maven//:javax_xml_bind_jaxb_api",
