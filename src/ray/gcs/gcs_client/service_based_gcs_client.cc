@@ -84,12 +84,11 @@ Status ServiceBasedGcsClient::Connect(boost::asio::io_service &io_service) {
   placement_group_accessor_.reset(new ServiceBasedPlacementGroupInfoAccessor(this));
 
   // Init gcs service address check timer.
-  detect_timer_.reset(new boost::asio::deadline_timer(io_service));
-  RunFnPeriodically(
+  periodical_runner_.reset(new PeriodicalRunner(io_service));
+  periodical_runner_.RunFnPeriodically(
       [this] { PeriodicallyCheckGcsServerAddress(); },
       boost::posix_time::milliseconds(
-          RayConfig::instance().gcs_service_address_check_interval_milliseconds()),
-      *detect_timer_);
+          RayConfig::instance().gcs_service_address_check_interval_milliseconds()));
 
   is_connected_ = true;
 
@@ -100,7 +99,6 @@ Status ServiceBasedGcsClient::Connect(boost::asio::io_service &io_service) {
 void ServiceBasedGcsClient::Disconnect() {
   RAY_CHECK(is_connected_);
   is_connected_ = false;
-  detect_timer_->cancel();
   gcs_pub_sub_.reset();
   redis_client_->Disconnect();
   redis_client_.reset();

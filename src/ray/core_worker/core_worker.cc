@@ -301,8 +301,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       worker_context_(options_.worker_type, worker_id, GetProcessJobID(options_)),
       io_work_(io_service_),
       client_call_manager_(new rpc::ClientCallManager(io_service_)),
-      death_check_timer_(io_service_),
-      internal_timer_(io_service_),
+      periodical_runner_(io_service_),
       task_queue_length_(0),
       num_executed_tasks_(0),
       task_execution_service_work_(task_execution_service_),
@@ -399,16 +398,15 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       });
 
   if (options_.worker_type == ray::WorkerType::WORKER) {
-    RunFnPeriodically(
+    periodical_runner_.RunFnPeriodically(
         [this] { CheckForRayletFailure(); },
         boost::posix_time::milliseconds(
-            RayConfig::instance().raylet_death_check_interval_milliseconds()),
-        death_check_timer_);
+            RayConfig::instance().raylet_death_check_interval_milliseconds()));
   }
 
-  RunFnPeriodically([this] { InternalHeartbeat(); },
-                    boost::posix_time::milliseconds(kInternalHeartbeatMillis),
-                    internal_timer_);
+  periodical_runner_.RunFnPeriodically(
+      [this] { InternalHeartbeat(); },
+      boost::posix_time::milliseconds(kInternalHeartbeatMillis));
 
   plasma_store_provider_.reset(new CoreWorkerPlasmaStoreProvider(
       options_.store_socket, local_raylet_client_, reference_counter_,

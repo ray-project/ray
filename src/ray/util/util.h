@@ -14,8 +14,6 @@
 
 #pragma once
 
-#include <boost/asio/deadline_timer.hpp>
-
 #include <chrono>
 #include <iterator>
 #include <mutex>
@@ -127,9 +125,6 @@ ParseUrlEndpoint(const std::string &endpoint, int default_port = 0);
 ///   offset: 8388878
 /// }
 std::shared_ptr<std::unordered_map<std::string, std::string>> ParseURL(std::string url);
-
-void RunFnPeriodically(std::function<void()> fn, boost::posix_time::milliseconds period,
-                       boost::asio::deadline_timer &timer);
 
 class InitShutdownRAII {
  public:

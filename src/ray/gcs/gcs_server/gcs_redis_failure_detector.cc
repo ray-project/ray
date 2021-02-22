@@ -23,16 +23,15 @@ GcsRedisFailureDetector::GcsRedisFailureDetector(
     boost::asio::io_service &io_service, std::shared_ptr<RedisContext> redis_context,
     std::function<void()> callback)
     : redis_context_(redis_context),
-      detect_timer_(io_service),
+      periodical_runner_(io_service),
       callback_(std::move(callback)) {}
 
 void GcsRedisFailureDetector::Start() {
   RAY_LOG(INFO) << "Starting redis failure detector.";
-  RunFnPeriodically(
+  periodical_runner_.RunFnPeriodically(
       [this] { DetectRedis(); },
       boost::posix_time::milliseconds(
-          RayConfig::instance().gcs_redis_heartbeat_interval_milliseconds()),
-      detect_timer_);
+          RayConfig::instance().gcs_redis_heartbeat_interval_milliseconds()));
 }
 
 void GcsRedisFailureDetector::DetectRedis() {

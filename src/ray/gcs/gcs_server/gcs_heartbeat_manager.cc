@@ -26,7 +26,7 @@ GcsHeartbeatManager::GcsHeartbeatManager(
     : io_service_(io_service),
       on_node_death_callback_(std::move(on_node_death_callback)),
       num_heartbeats_timeout_(RayConfig::instance().num_heartbeats_timeout()),
-      detect_timer_(io_service) {
+      periodical_runner_(io_service) {
   io_service_thread_.reset(new std::thread([this] {
     SetThreadName("heartbeat");
     /// The asio work to keep io_service_ alive.
@@ -46,10 +46,10 @@ void GcsHeartbeatManager::Initialize(const GcsInitData &gcs_init_data) {
 void GcsHeartbeatManager::Start() {
   io_service_.post([this] {
     if (!is_started_) {
-      RunFnPeriodically([this] { DetectDeadNodes(); },
-                        boost::posix_time::milliseconds(
-                            RayConfig::instance().raylet_heartbeat_period_milliseconds()),
-                        detect_timer_);
+      periodical_runner_.RunFnPeriodically(
+          [this] { DetectDeadNodes(); },
+          boost::posix_time::milliseconds(
+              RayConfig::instance().raylet_heartbeat_period_milliseconds()));
       is_started_ = true;
     }
   });

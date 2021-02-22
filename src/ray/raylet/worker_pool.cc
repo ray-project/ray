@@ -72,7 +72,7 @@ WorkerPool::WorkerPool(boost::asio::io_service &io_service, int num_workers_soft
       first_job_driver_wait_num_python_workers_(std::min(
           num_initial_python_workers_for_first_job, maximum_startup_concurrency)),
       num_initial_python_workers_for_first_job_(num_initial_python_workers_for_first_job),
-      kill_idle_workers_timer_(io_service) {
+      periodical_runner_(io_service) {
   RAY_CHECK(maximum_startup_concurrency > 0);
 #ifndef _WIN32
   // Ignore SIGCHLD signals. If we don't do this, then worker processes will
@@ -105,10 +105,10 @@ WorkerPool::WorkerPool(boost::asio::io_service &io_service, int num_workers_soft
     }
   }
   if (RayConfig::instance().kill_idle_workers_interval_ms() > 0) {
-    RunFnPeriodically([this] { TryKillingIdleWorkers(); },
-                      boost::posix_time::milliseconds(
-                          RayConfig::instance().kill_idle_workers_interval_ms()),
-                      kill_idle_workers_timer_);
+    periodical_runner_.RunFnPeriodically(
+        [this] { TryKillingIdleWorkers(); },
+        boost::posix_time::milliseconds(
+            RayConfig::instance().kill_idle_workers_interval_ms()));
   }
 }
 

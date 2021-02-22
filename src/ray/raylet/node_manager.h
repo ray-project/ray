@@ -14,8 +14,6 @@
 
 #pragma once
 
-#include <boost/asio/deadline_timer.hpp>
-
 // clang-format off
 #include "ray/rpc/grpc_client.h"
 #include "ray/rpc/node_manager/node_manager_server.h"
@@ -783,16 +781,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   std::shared_ptr<gcs::GcsClient> gcs_client_;
   /// The object table. This is shared with the object manager.
   std::shared_ptr<ObjectDirectoryInterface> object_directory_;
-  /// The timer used to send heartbeats.
-  boost::asio::deadline_timer heartbeat_timer_;
-  /// The timer used to dump debug state.
-  boost::asio::deadline_timer debug_dump_timer_;
-  /// The timer used to record metrics.
-  boost::asio::deadline_timer record_metrics_timer_;
-  /// The timer used to flush free objects.
-  boost::asio::deadline_timer flush_free_objects_timer_;
-  /// The timer used to report resources.
-  boost::asio::deadline_timer report_resources_timer_;
+  /// The runner to run function periodically.
+  PeriodicalRunner periodical_runner_;
   /// The period used for the resources report timer.
   boost::posix_time::milliseconds report_resources_period_;
   /// Whether to enable fair queueing between task classes in raylet.
@@ -804,9 +794,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   bool recorded_metrics_ = false;
   /// The path to the ray temp dir.
   std::string temp_dir_;
-  /// The timer used to get profiling information from the object manager and
-  /// push it to the GCS.
-  boost::asio::deadline_timer object_manager_profile_timer_;
   /// The time that the last heartbeat was sent at. Used to make sure we are
   /// keeping up with heartbeats.
   uint64_t last_heartbeat_at_ms_;

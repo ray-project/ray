@@ -155,8 +155,8 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
   /// Send any buffered resource usage as a single publish.
   void SendBatchedResourceUsage();
 
-  /// A timer that ticks every raylet_report_resources_period_milliseconds.
-  boost::asio::deadline_timer resource_timer_;
+  /// The runner to run function periodically.
+  PeriodicalRunner periodical_runner_;
   /// Newest resource usage of all nodes.
   absl::flat_hash_map<NodeID, rpc::ResourcesData> node_resource_usages_;
   /// A buffer containing resource usage received from node managers in the last tick.

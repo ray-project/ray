@@ -31,14 +31,14 @@ Profiler::Profiler(WorkerContext &worker_context, const std::string &node_ip_add
                    boost::asio::io_service &io_service,
                    const std::shared_ptr<gcs::GcsClient> &gcs_client)
     : io_service_(io_service),
-      timer_(io_service_),
+      periodical_runner_(io_service_),
       rpc_profile_data_(new rpc::ProfileTableData()),
       gcs_client_(gcs_client) {
   rpc_profile_data_->set_component_type(WorkerTypeString(worker_context.GetWorkerType()));
   rpc_profile_data_->set_component_id(worker_context.GetWorkerID().Binary());
   rpc_profile_data_->set_node_ip_address(node_ip_address);
-  RunFnPeriodically([this] { FlushEvents(); }, boost::posix_time::milliseconds(1000),
-                    timer_);
+  periodical_runner_.RunFnPeriodically([this] { FlushEvents(); },
+                                       boost::posix_time::milliseconds(1000));
 }
 
 void Profiler::AddEvent(const rpc::ProfileTableData::ProfileEvent &event) {

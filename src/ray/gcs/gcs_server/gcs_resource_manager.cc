@@ -22,14 +22,13 @@ namespace gcs {
 GcsResourceManager::GcsResourceManager(
     boost::asio::io_service &main_io_service, std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
     std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage)
-    : resource_timer_(main_io_service),
+    : periodical_runner_(main_io_service),
       gcs_pub_sub_(gcs_pub_sub),
       gcs_table_storage_(gcs_table_storage) {
-  RunFnPeriodically(
+  periodical_runner_.RunFnPeriodically(
       [this] { SendBatchedResourceUsage(); },
       boost::posix_time::milliseconds(
-          RayConfig::instance().raylet_report_resources_period_milliseconds()),
-      resource_timer_);
+          RayConfig::instance().raylet_report_resources_period_milliseconds()));
 }
 
 void GcsResourceManager::HandleGetResources(const rpc::GetResourcesRequest &request,

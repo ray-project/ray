@@ -43,8 +43,8 @@ class Profiler {
   // ASIO IO service event loop. Must be started by the caller.
   boost::asio::io_service &io_service_;
 
-  // Timer used to periodically flush events to the GCS.
-  boost::asio::deadline_timer timer_;
+  /// The runner to run function periodically.
+  PeriodicalRunner periodical_runner_;
 
   // RPC message containing profiling data. Holds the queue of profile events
   // until they are flushed.

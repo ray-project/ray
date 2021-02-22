@@ -1127,11 +1127,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Shared core worker client pool.
   std::shared_ptr<rpc::CoreWorkerClientPool> core_worker_client_pool_;
 
-  /// Timer used to periodically check if the raylet has died.
-  boost::asio::deadline_timer death_check_timer_;
-
-  /// Timer for internal book-keeping.
-  boost::asio::deadline_timer internal_timer_;
+  /// The runner to run function periodically.
+  PeriodicalRunner periodical_runner_;
 
   /// RPC server used to receive tasks to execute.
   std::unique_ptr<rpc::GrpcServer> core_worker_server_;

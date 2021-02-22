@@ -74,8 +74,8 @@ class GcsHeartbeatManager : public rpc::HeartbeatInfoHandler {
   std::function<void(const NodeID &)> on_node_death_callback_;
   /// The number of heartbeats that can be missed before a node is removed.
   int64_t num_heartbeats_timeout_;
-  /// A timer that ticks every heartbeat_timeout_ms_ milliseconds.
-  boost::asio::deadline_timer detect_timer_;
+  /// The runner to run function periodically.
+  PeriodicalRunner periodical_runner_;
   /// For each Raylet that we receive a heartbeat from, the number of ticks
   /// that may pass before the Raylet will be declared dead.
   absl::flat_hash_map<NodeID, int64_t> heartbeats_;
