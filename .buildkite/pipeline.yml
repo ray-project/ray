@@ -79,8 +79,7 @@
       python/ray/new_dashboard/...
     - bazel test --config=ci $(./scripts/bazel_export_options)
       python/ray/serve/...
-    - npm install cypress -g
-    - cypress run --project dashboard/tests --headless
+    - ./scripts/run_cypress.sh
 
 - label: ":python: (Small & Large)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
