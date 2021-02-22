@@ -460,7 +460,8 @@ py_test(
     size = "medium",
     srcs = ["examples/hyperband_example.py"],
     deps = [":tune_lib"],
-    tags = ["exclusive", "example"]
+    tags = ["exclusive", "example"],
+    args = ["--smoke-test"]
 )
 
 py_test(

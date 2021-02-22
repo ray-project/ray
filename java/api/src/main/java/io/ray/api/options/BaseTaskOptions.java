@@ -7,11 +7,9 @@ import java.util.Map;
 /** The options class for RayCall or ActorCreation. */
 public abstract class BaseTaskOptions implements Serializable {
 
-  public final Map<String, Double> resources;
+  public final Map<String, Double> resources = new HashMap<>();
 
-  public BaseTaskOptions() {
-    resources = new HashMap<>();
-  }
+  public BaseTaskOptions() {}
 
   public BaseTaskOptions(Map<String, Double> resources) {
     for (Map.Entry<String, Double> entry : resources.entrySet()) {
@@ -32,6 +30,6 @@ public abstract class BaseTaskOptions implements Serializable {
                 entry.getKey(), entry.getValue()));
       }
     }
-    this.resources = resources;
+    this.resources.putAll(resources);
   }
 }
