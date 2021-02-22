@@ -69,10 +69,14 @@ class HEBOSearch(Searcher):
             as a list so the optimiser can be told the results without
             needing to re-compute the trial. Must be the same length as
             points_to_evaluate. (See tune/examples/hebo_example.py)
-        random_state_seed (int, None): seed for reproducible
+        random_state_seed (int, None): Seed for reproducible
             results. Defaults to None. Please note that setting this to a value
             will change global random states for `numpy` and `torch`
             on initalization and loading from checkpoint.
+        n_suggestions (int, 1): If higher than one, suggestions will
+            be made in batches and cached. Higher values may increase
+            convergence speed in certain cases.
+        **kwargs: The keyword arguments will be passed to `HEBO()``.
 
     Tune automatically converts search spaces to HEBO's format:
 
@@ -118,12 +122,15 @@ class HEBOSearch(Searcher):
             points_to_evaluate: Optional[List[Dict]] = None,
             evaluated_rewards: Optional[List] = None,
             random_state_seed: Optional[int] = None,
+            n_suggestions: int = 1,
             **kwargs):
         assert hebo is not None, (
             "HEBO must be installed!. You can install HEBO with"
             " the command: `pip install HEBO`.")
         if mode:
             assert mode in ["min", "max"], "`mode` must be 'min' or 'max'."
+        assert isinstance(n_suggestions, int) and n_suggestions >= 1, (
+            "`n_suggestions` must be an integer and at least 1.")
         if random_state_seed is not None:
             assert isinstance(
                 random_state_seed, int
@@ -152,6 +159,9 @@ class HEBOSearch(Searcher):
         self._evaluated_rewards = evaluated_rewards
         self._initial_points = []
         self._live_trial_mapping = {}
+
+        self._n_suggestions = n_suggestions
+        self._suggestions_cache = []
 
         self._opt = None
         if space:
@@ -230,8 +240,12 @@ class HEBOSearch(Searcher):
             params = self._initial_points.pop(0)
             suggestion = pd.DataFrame(params, index=[0])
         else:
-            suggestion = self._opt.suggest()
-            params = suggestion.iloc[0].to_dict()
+            if not self._suggestions_cache:
+                suggestion = self._opt.suggest(
+                    n_suggestions=self._n_suggestions)
+                self._suggestions_cache = suggestion.to_dict("records")
+            params = self._suggestions_cache.pop(0)
+            suggestion = pd.DataFrame(params, index=[0])
         self._live_trial_mapping[trial_id] = suggestion
         return unflatten_dict(params)
 
