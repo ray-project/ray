@@ -99,6 +99,7 @@ def prepare_config(config):
     with_defaults = fillout_defaults(config)
     merge_setup_commands(with_defaults)
     validate_docker_config(with_defaults)
+    fill_node_type_max_workers(with_defaults)
     return with_defaults
 
 
@@ -142,6 +143,17 @@ def merge_setup_commands(config):
     config["worker_setup_commands"] = (
         config["setup_commands"] + config["worker_setup_commands"])
     return config
+
+
+def fill_node_type_max_workers(config):
+    """Sets default per-node max workers to global max_workers.
+
+    This equivalent to setting the default per-node max workers to infinity,
+    with the only upper constraint coming from the global max_workers.
+    """
+    assert "max_workers" in config, "Global max workers should be set."
+    for node_type in config["available_node_types"].values():
+        node_type.setdefault("max_workers", config["max_workers"])
 
 
 def with_head_node_ip(cmds, head_ip=None):
@@ -313,12 +325,12 @@ def format_pg(pg):
 
 def get_usage_report(lm_summary) -> str:
     usage_lines = []
-    for resource, (used, total) in lm_summary.usage.items():
+    for resource, (used, total) in sorted(lm_summary.usage.items()):
         if "node:" in resource:
             continue  # Skip the auto-added per-node "node:<ip>" resource.
         line = f" {used}/{total} {resource}"
         if resource in ["memory", "object_store_memory"]:
-            to_GiB = ray.ray_constants.MEMORY_RESOURCE_UNIT_BYTES / 2**30
+            to_GiB = 1 / 2**30
             used *= to_GiB
             total *= to_GiB
             line = f" {used:.2f}/{total:.3f} GiB {resource}"

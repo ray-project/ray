@@ -1,7 +1,6 @@
 package io.ray.runtime.runner;
 
 import com.google.common.base.Joiner;
-import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import io.ray.runtime.config.RayConfig;
@@ -32,7 +31,6 @@ public class RunManager {
     command.add("--head");
     command.add("--redis-password");
     command.add(rayConfig.redisPassword);
-    command.add("--system-config=" + new Gson().toJson(rayConfig.rayletConfigParameters));
     command.addAll(rayConfig.headArgs);
     String output;
     try {

@@ -6,24 +6,18 @@ metadata:
   name: ray-head
 spec:
   ports:
-    # Redis ports.
-    - name: redis-primary
-      port: 6379
-      targetPort: 6379
-    - name: redis-shard-0
-      port: 6380
-      targetPort: 6380
-    - name: redis-shard-1
-      port: 6381
-      targetPort: 6381
-
-    # Ray internal communication ports.
-    - name: object-manager
-      port: 12345
-      targetPort: 12345
-    - name: node-manager
-      port: 12346
-      targetPort: 12346
+  - name: client
+    protocol: TCP
+    port: 10001
+    targetPort: 10001
+  - name: dashboard
+    protocol: TCP
+    port: 8265
+    targetPort: 8265
+  - name: redis
+    protocol: TCP
+    port: 6379
+    targetPort: 6379
   selector:
     component: ray-head
 ---
@@ -62,14 +56,12 @@ spec:
           image: rayproject/ray:nightly
           imagePullPolicy: IfNotPresent
           command: [ "/bin/bash", "-c", "--" ]
-          args: 
-            - "ray start --head --node-ip-address=$MY_POD_IP --port=6379 --redis-shard-ports=6380,6381 --num-cpus=$MY_CPU_REQUEST --object-manager-port=12345 --node-manager-port=12346 --block"
+          args:
+            - "ray start --head --port=6379 --redis-shard-ports=6380,6381 --num-cpus=$MY_CPU_REQUEST --object-manager-port=12345 --node-manager-port=12346 --block"
           ports:
-            - containerPort: 6379 # Redis port.
-            - containerPort: 6380 # Redis port.
-            - containerPort: 6381 # Redis port.
-            - containerPort: 12345 # Ray internal communication.
-            - containerPort: 12346 # Ray internal communication.
+            - containerPort: 6379 # Redis port
+            - containerPort: 10001 # Used by Ray Client
+            - containerPort: 8265 # Used by Ray Dashboard
 
           # This volume allocates shared memory for Ray to use for its plasma
           # object store. If you do not provide this, Ray will fall back to
@@ -78,11 +70,6 @@ spec:
             - mountPath: /dev/shm
               name: dshm
           env:
-            - name: MY_POD_IP
-              valueFrom:
-                fieldRef:
-                  fieldPath: status.podIP
-
             # This is used in the ray start command so that Ray can spawn the
             # correct number of processes. Omitting this may lead to degraded
             # performance.
@@ -124,19 +111,14 @@ spec:
         imagePullPolicy: IfNotPresent
         command: ["/bin/bash", "-c", "--"]
         args:
-          - "ray start --node-ip-address=$MY_POD_IP --num-cpus=$MY_CPU_REQUEST --address=$RAY_HEAD_SERVICE_HOST:$RAY_HEAD_SERVICE_PORT_REDIS_PRIMARY --object-manager-port=12345 --node-manager-port=12346 --block"
-        ports:
-          - containerPort: 12345 # Ray internal communication.
-          - containerPort: 12346 # Ray internal communication.
+          - "ray start --num-cpus=$MY_CPU_REQUEST --address=$RAY_HEAD_SERVICE_HOST:$RAY_HEAD_SERVICE_PORT_REDIS --object-manager-port=12345 --node-manager-port=12346 --block"
+        # This volume allocates shared memory for Ray to use for its plasma
+        # object store. If you do not provide this, Ray will fall back to
+        # /tmp which cause slowdowns if is not a shared memory volume.
         volumeMounts:
           - mountPath: /dev/shm
             name: dshm
         env:
-          - name: MY_POD_IP
-            valueFrom:
-              fieldRef:
-                fieldPath: status.podIP
-
           # This is used in the ray start command so that Ray can spawn the
           # correct number of processes. Omitting this may lead to degraded
           # performance.

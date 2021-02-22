@@ -652,7 +652,7 @@ def validate_spaces(policy: Policy, observation_space: gym.spaces.Space,
     Raises:
         UnsupportedSpaceException: If one of the spaces is not supported.
     """
-    # Only support single Box or single Discreete spaces.
+    # Only support single Box or single Discrete spaces.
     if not isinstance(action_space, (Box, Discrete, Simplex)):
         raise UnsupportedSpaceException(
             "Action space ({}) of {} is not supported for "
