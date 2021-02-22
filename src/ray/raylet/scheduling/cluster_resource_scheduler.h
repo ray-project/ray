@@ -51,7 +51,8 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
                            const NodeResources &local_node_resources);
   ClusterResourceScheduler(
       const std::string &local_node_id,
-      const std::unordered_map<std::string, double> &local_node_resources);
+      const std::unordered_map<std::string, double> &local_node_resources,
+      std::function<int64_t(void)> get_used_object_store_memory = nullptr);
 
   // Mapping from predefined resource indexes to resource strings
   std::string GetResourceNameFromIndex(int64_t res_idx);
@@ -442,6 +443,8 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   StringIdMap string_to_int_map_;
   /// Cached resources, used to compare with newest one in light heartbeat mode.
   std::unique_ptr<NodeResources> last_report_resources_;
+  /// Function to get used object store memory.
+  std::function<int64_t(void)> get_used_object_store_memory_;
 };
 
 }  // end namespace ray

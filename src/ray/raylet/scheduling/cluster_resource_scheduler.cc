@@ -28,13 +28,15 @@ ClusterResourceScheduler::ClusterResourceScheduler(
 
 ClusterResourceScheduler::ClusterResourceScheduler(
     const std::string &local_node_id,
-    const std::unordered_map<std::string, double> &local_node_resources) {
+    const std::unordered_map<std::string, double> &local_node_resources,
+    std::function<int64_t(void)> get_used_object_store_memory) {
   local_node_id_ = string_to_int_map_.Insert(local_node_id);
   NodeResources node_resources = ResourceMapToNodeResources(
       string_to_int_map_, local_node_resources, local_node_resources);
 
   AddOrUpdateNode(local_node_id_, node_resources);
   InitLocalResources(node_resources);
+  get_used_object_store_memory_ = get_used_object_store_memory;
 }
 
 void ClusterResourceScheduler::AddOrUpdateNode(
@@ -1000,17 +1002,24 @@ void ClusterResourceScheduler::FillResourceUsage(
       (*resources_data->mutable_resources_total())[label] = capacity.total.Double();
     }
   }
-  for (const auto &it : resources.custom_resources) {
+  for (auto &it : resources.custom_resources) {
     uint64_t custom_id = it.first;
-    const auto &capacity = it.second;
+    auto &capacity = it.second;
     const auto &last_capacity = last_report_resources_->custom_resources[custom_id];
     const auto &label = string_to_int_map_.Get(custom_id);
+
+    if (label == "object_store_memory" && get_used_object_store_memory_ != nullptr) {
+      capacity.available = FixedPoint(
+          capacity.total.Double() - get_used_object_store_memory_());
+    }
+
     // Note: available may be negative, but only report positive to GCS.
     if (capacity.available != last_capacity.available && capacity.available > 0) {
       resources_data->set_resources_available_changed(true);
       (*resources_data->mutable_resources_available())[label] =
           capacity.available.Double();
     }
+
     if (capacity.total != last_capacity.total) {
       (*resources_data->mutable_resources_total())[label] = capacity.total.Double();
     }

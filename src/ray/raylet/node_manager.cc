@@ -202,8 +202,8 @@ NodeManager::NodeManager(boost::asio::io_service &io_service, const NodeID &self
     SchedulingResources &local_resources = cluster_resource_map_[self_node_id_];
     cluster_resource_scheduler_ =
         std::shared_ptr<ClusterResourceScheduler>(new ClusterResourceScheduler(
-            self_node_id_.Binary(),
-            local_resources.GetTotalResources().GetResourceMap()));
+            self_node_id_.Binary(), local_resources.GetTotalResources().GetResourceMap(),
+            [this]() { return object_manager_.GetUsedMemory(); }));
 
     auto get_node_info_func = [this](const NodeID &node_id) {
       return gcs_client_->Nodes().Get(node_id);
