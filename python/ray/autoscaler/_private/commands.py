@@ -1157,7 +1157,7 @@ def get_local_dump_archive(stream: bool = False,
         with open(tmp, "rb") as fp:
             os.write(1, fp.read())
         os.remove(tmp)
-        return
+        return None
 
     target = output or os.path.join(os.getcwd(), os.path.basename(tmp))
     os.rename(tmp, target)
