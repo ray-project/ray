@@ -13,7 +13,7 @@ import yaml
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 
-from ray import logger
+from ray.autoscaler._private.cli_logger import cli_logger
 
 from ray.autoscaler._private.providers import _get_node_provider
 from ray.autoscaler.tags import TAG_RAY_NODE_KIND, NODE_KIND_HEAD, \
@@ -64,7 +64,7 @@ class Node:
         self.host = host
         self.ssh_user = ssh_user
         self.ssh_key = ssh_key
-        self.docker_container = docker_container,
+        self.docker_container = docker_container
         self.is_head = is_head
 
 
@@ -227,7 +227,7 @@ def get_local_ray_processes(archive: Archive,
     """
     if not processes:
         # local import to avoid circular dependencies
-        from ray.scripts.scripts import RAY_PROCESSES
+        from ray.autoscaler._private.constants import RAY_PROCESSES
         processes = RAY_PROCESSES
 
     process_infos = []
@@ -288,12 +288,12 @@ def get_all_local_data(archive: Archive, parameters: GetParameters):
         try:
             get_local_ray_logs(archive=archive)
         except LocalCommandFailed as exc:
-            logger.error(exc)
+            cli_logger.error(exc)
     if parameters.pip:
         try:
             get_local_pip_packages(archive=archive)
         except LocalCommandFailed as exc:
-            logger.error(exc)
+            cli_logger.error(exc)
     if parameters.processes:
         try:
             get_local_ray_processes(
@@ -301,7 +301,7 @@ def get_all_local_data(archive: Archive, parameters: GetParameters):
                 processes=parameters.processes_list,
                 verbose=parameters.processes_verbose)
         except LocalCommandFailed as exc:
-            logger.error(exc)
+            cli_logger.error(exc)
 
     return archive
 
@@ -365,7 +365,7 @@ def create_and_get_archive_from_remote_node(remote_node: Node,
 
     cat = "node" if not remote_node.is_head else "head"
 
-    logger.info(f"Collecting data from remote node: {remote_node.host}")
+    cli_logger.print(f"Collecting data from remote node: {remote_node.host}")
     tmp = tempfile.mktemp(
         prefix=f"ray_{cat}_{remote_node.host}_", suffix=".tar.gz")
     with open(tmp, "wb") as fp:
@@ -482,12 +482,12 @@ def create_archive_for_local_and_remote_nodes(archive: Archive,
     try:
         create_and_add_local_data_to_local_archive(archive, parameters)
     except CommandFailed as exc:
-        logger.error(exc)
+        cli_logger.error(exc)
 
     create_archive_for_remote_nodes(archive, remote_nodes, parameters)
 
-    logger.info(f"Collected data from local node and {len(remote_nodes)} "
-                f"remote nodes.")
+    cli_logger.print(f"Collected data from local node and {len(remote_nodes)} "
+                     f"remote nodes.")
     return archive
 
 
@@ -511,8 +511,8 @@ def get_info_from_ray_cluster_config(
     """
     from ray.autoscaler._private.commands import _bootstrap_config
 
-    logger.info(f"Retrieving cluster information from ray cluster file: "
-                f"{cluster_config}")
+    cli_logger.print(f"Retrieving cluster information from ray cluster file: "
+                     f"{cluster_config}")
 
     cluster_config = os.path.expanduser(cluster_config)
 
@@ -556,14 +556,14 @@ def _info_from_params(
         bootstrap_config = os.path.expanduser("~/ray_bootstrap_config.yaml")
         if os.path.exists(bootstrap_config):
             cluster = bootstrap_config
-            logger.warning(
-                f"Detected cluster config file at {cluster}. "
-                f"If this is incorrect, specify with `--cluster <config>`")
+            cli_logger.warning(f"Detected cluster config file at {cluster}. "
+                               f"If this is incorrect, specify with "
+                               f"`ray cluster-dump <config>`")
     elif cluster:
         cluster = os.path.expanduser(cluster)
 
     cluster_name = None
-    hosts = None
+
     if cluster:
         h, u, k, d, cluster_name = get_info_from_ray_cluster_config(cluster)
 
@@ -572,9 +572,19 @@ def _info_from_params(
         docker = docker or d
         hosts = host.split(",") if host else h
 
+        if not hosts:
+            raise LocalCommandFailed(
+                f"Invalid cluster file or cluster has no running nodes: "
+                f"{cluster}")
+    elif host:
+        hosts = host.split(",")
+    else:
+        raise LocalCommandFailed(
+            "You need to either specify a `<cluster_config>` or `--host`.")
+
     if not ssh_user:
         ssh_user = DEFAULT_SSH_USER
-        logger.warning(
+        cli_logger.warning(
             f"Using default SSH user `{ssh_user}`. "
             f"If this is incorrect, specify with `--ssh-user <user>`")
 
@@ -583,17 +593,9 @@ def _info_from_params(
             cand_key_file = os.path.expanduser(cand_key)
             if os.path.exists(cand_key_file):
                 ssh_key = cand_key_file
-                logger.warning(
+                cli_logger.warning(
                     f"Auto detected SSH key file: {ssh_key}. "
                     f"If this is incorrect, specify with `--ssh-key <key>`")
                 break
-
-    if not hosts:
-        if cluster:
-            raise LocalCommandFailed(
-                f"Invalid cluster file or cluster has no running nodes: "
-                f"{cluster}")
-        raise LocalCommandFailed(
-            "You need to either specify `--cluster` or `--host`.")
 
     return cluster, hosts, ssh_user, ssh_key, docker, cluster_name

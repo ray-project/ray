@@ -22,6 +22,7 @@ from ray.autoscaler._private.commands import (
     rsync, teardown_cluster, get_head_node_ip, kill_node, get_worker_node_ips,
     get_local_dump_archive, get_cluster_dump_archive, debug_status,
     RUN_ENV_TYPES)
+from ray.autoscaler._private.constants import RAY_PROCESSES
 
 from ray.autoscaler._private.util import DEBUG_AUTOSCALING_ERROR, \
     DEBUG_AUTOSCALING_STATUS
@@ -32,32 +33,6 @@ import ray.utils
 from ray.autoscaler._private.cli_logger import cli_logger, cf
 
 logger = logging.getLogger(__name__)
-
-RAY_PROCESSES = [
-    # The first element is the substring to filter.
-    # The second element, if True, is to filter ps results by command name
-    # (only the first 15 charactors of the executable name on Linux);
-    # if False, is to filter ps results by command with all its arguments.
-    # See STANDARD FORMAT SPECIFIERS section of
-    # http://man7.org/linux/man-pages/man1/ps.1.html
-    # about comm and args. This can help avoid killing non-ray processes.
-    # Format:
-    # Keyword to filter, filter by command (True)/filter by args (False)
-    ["raylet", True],
-    ["plasma_store", True],
-    ["gcs_server", True],
-    ["monitor.py", False],
-    ["ray.util.client.server", False],
-    ["redis-server", False],
-    ["default_worker.py", False],  # Python worker.
-    ["ray::", True],  # Python worker. TODO(mehrdadn): Fix for Windows
-    ["io.ray.runtime.runner.worker.DefaultWorker", False],  # Java worker.
-    ["log_monitor.py", False],
-    ["reporter.py", False],
-    ["dashboard.py", False],
-    ["new_dashboard/agent.py", False],
-    ["ray_process_reaper.py", False],
-]
 
 
 def check_no_existing_redis_clients(node_ip_address, redis_client):

@@ -1161,7 +1161,7 @@ def get_local_dump_archive(stream: bool = False,
 
     target = output or os.path.join(os.getcwd(), os.path.basename(tmp))
     os.rename(tmp, target)
-    logger.info(f"Created local data archive at {target}")
+    cli_logger.print(f"Created local data archive at {target}")
 
     return target
 
@@ -1194,7 +1194,7 @@ def get_cluster_dump_archive(cluster_config_file: Optional[str] = None,
             "  - Information on your running Ray processes\n" \
             "    This includes command line arguments\n"
 
-    logger.warning(
+    cli_logger.warning(
         "You are about to create a cluster dump. This will collect data from "
         "cluster nodes.\n\n"
         "The dump will contain this information:\n\n"
@@ -1216,7 +1216,7 @@ def get_cluster_dump_archive(cluster_config_file: Optional[str] = None,
     ]
 
     if not nodes:
-        logger.error(
+        cli_logger.error(
             f"No nodes found. Specify with `--host` or by passing a ray "
             f"cluster config to `--cluster`.")
         return None
@@ -1255,7 +1255,6 @@ def get_cluster_dump_archive(cluster_config_file: Optional[str] = None,
         output = os.path.expanduser(output)
 
     os.rename(archive.file, output)
-    logger.debug(f"Archive can be found here: {output}")
     return output
 
 
