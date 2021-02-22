@@ -92,18 +92,6 @@ void GcsNodeManager::HandleGetAllNodeInfo(const rpc::GetAllNodeInfoRequest &requ
   ++counts_[CountType::GET_ALL_NODE_INFO_REQUEST];
 }
 
-void GcsNodeManager::HandleSetInternalConfig(const rpc::SetInternalConfigRequest &request,
-                                             rpc::SetInternalConfigReply *reply,
-                                             rpc::SendReplyCallback send_reply_callback) {
-  auto on_done = [reply, send_reply_callback, request](const Status &status) {
-    RAY_LOG(DEBUG) << "Set internal config: " << request.config().DebugString();
-    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
-  };
-  RAY_CHECK_OK(gcs_table_storage_->InternalConfigTable().Put(UniqueID::Nil(),
-                                                             request.config(), on_done));
-  ++counts_[CountType::SET_INTERNAL_CONFIG_REQUEST];
-}
-
 void GcsNodeManager::HandleGetInternalConfig(const rpc::GetInternalConfigRequest &request,
                                              rpc::GetInternalConfigReply *reply,
                                              rpc::SendReplyCallback send_reply_callback) {
@@ -111,7 +99,7 @@ void GcsNodeManager::HandleGetInternalConfig(const rpc::GetInternalConfigRequest
                                const ray::Status &status,
                                const boost::optional<rpc::StoredConfig> &config) {
     if (config.has_value()) {
-      reply->mutable_config()->CopyFrom(config.get());
+      reply->set_config(config.get().config());
     }
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
@@ -233,8 +221,6 @@ std::string GcsNodeManager::DebugString() const {
          << counts_[CountType::UNREGISTER_NODE_REQUEST]
          << ", GetAllNodeInfo request count: "
          << counts_[CountType::GET_ALL_NODE_INFO_REQUEST]
-         << ", SetInternalConfig request count: "
-         << counts_[CountType::SET_INTERNAL_CONFIG_REQUEST]
          << ", GetInternalConfig request count: "
          << counts_[CountType::GET_INTERNAL_CONFIG_REQUEST] << "}";
   return stream.str();

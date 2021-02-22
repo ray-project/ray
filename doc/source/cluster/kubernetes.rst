@@ -531,7 +531,7 @@ The program in this example uses ``ray.init(address="auto")`` to connect to the 
 Accessing the Dashboard
 -----------------------
 
-The Ray Dashboard can accessed locally using ``kubectl port-forward``.
+The Ray Dashboard can be accessed locally using ``kubectl port-forward``.
 
 .. code-block:: shell
 

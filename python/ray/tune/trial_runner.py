@@ -315,6 +315,10 @@ class TrialRunner:
         return self._resumed
 
     @property
+    def search_alg(self):
+        return self._search_alg
+
+    @property
     def scheduler_alg(self):
         return self._scheduler_alg
 

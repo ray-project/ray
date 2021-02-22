@@ -215,15 +215,19 @@ void OwnershipBasedObjectDirectory::SubscriptionCallback(
     }
   }
 
-  auto worker_it = worker_rpc_clients_.find(worker_id);
-  rpc::GetObjectLocationsOwnerRequest request;
-  request.set_intended_worker_id(worker_id.Binary());
-  request.set_object_id(object_id.Binary());
-  request.set_last_version(reply.current_version());
-  worker_it->second->GetObjectLocationsOwner(
-      request,
-      std::bind(&OwnershipBasedObjectDirectory::SubscriptionCallback, this, object_id,
-                worker_id, std::placeholders::_1, std::placeholders::_2));
+  // Only send the next long-polling RPC if the last one was successful.
+  // If the last RPC failed, we consider the object to have been freed.
+  if (status.ok()) {
+    auto worker_it = worker_rpc_clients_.find(worker_id);
+    rpc::GetObjectLocationsOwnerRequest request;
+    request.set_intended_worker_id(worker_id.Binary());
+    request.set_object_id(object_id.Binary());
+    request.set_last_version(reply.current_version());
+    worker_it->second->GetObjectLocationsOwner(
+        request,
+        std::bind(&OwnershipBasedObjectDirectory::SubscriptionCallback, this, object_id,
+                  worker_id, std::placeholders::_1, std::placeholders::_2));
+  }
 }
 
 ray::Status OwnershipBasedObjectDirectory::SubscribeObjectLocations(

@@ -7,7 +7,6 @@ import io.ray.api.id.JobId;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 import org.testng.Assert;
-import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
@@ -25,11 +24,6 @@ public class RuntimeContextTest extends BaseTest {
   @BeforeClass
   public void setUp() {
     System.setProperty("ray.job.id", JOB_ID.toString());
-  }
-
-  @AfterClass
-  public void tearDown() {
-    System.clearProperty("ray.job.id");
   }
 
   @Test
