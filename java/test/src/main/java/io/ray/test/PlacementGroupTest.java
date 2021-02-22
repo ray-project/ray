@@ -173,30 +173,38 @@ public class PlacementGroupTest extends BaseTest {
     Assert.assertEquals(placementGroup.getBundles().size(), 1);
   }
 
-  @Test(
-      expectedExceptions = {IllegalArgumentException.class},
-      groups = {"cluster"})
+  @Test(groups = {"cluster"})
   public void testCreatePlacementGroupWithSameName() {
     String pgName = "named_placement_group";
     PlacementGroup firstPlacementGroup =
         PlacementGroupTestUtils.createNameSpecifiedSimpleGroup(
             "CPU", 1, PlacementStrategy.PACK, 1.0, pgName, false);
     Assert.assertTrue(firstPlacementGroup.wait(60));
-    PlacementGroupTestUtils.createNameSpecifiedSimpleGroup(
-        "CPU", 1, PlacementStrategy.PACK, 1.0, pgName, false);
+    int exceptionCount = 0;
+    try {
+      PlacementGroupTestUtils.createNameSpecifiedSimpleGroup(
+          "CPU", 1, PlacementStrategy.PACK, 1.0, pgName, false);
+    } catch (IllegalArgumentException e) {
+      ++exceptionCount;
+    }
+    Assert.assertEquals(exceptionCount, 1);
   }
 
-  @Test(
-      expectedExceptions = {IllegalArgumentException.class},
-      groups = {"cluster"})
+  @Test(groups = {"cluster"})
   public void testCreateGlobalPlacementGroupWithSameName() {
     String pgGlobalName = "global_placement_group";
     PlacementGroup firstPlacementGroup =
         PlacementGroupTestUtils.createNameSpecifiedSimpleGroup(
             "CPU", 1, PlacementStrategy.PACK, 1.0, pgGlobalName, true);
     Assert.assertTrue(firstPlacementGroup.wait(60));
-    PlacementGroupTestUtils.createNameSpecifiedSimpleGroup(
-        "CPU", 1, PlacementStrategy.PACK, 1.0, pgGlobalName, true);
+    int exceptionCount = 0;
+    try {
+      PlacementGroupTestUtils.createNameSpecifiedSimpleGroup(
+          "CPU", 1, PlacementStrategy.PACK, 1.0, pgGlobalName, true);
+    } catch (IllegalArgumentException e) {
+      ++exceptionCount;
+    }
+    Assert.assertEquals(exceptionCount, 1);
   }
 
   @Test(groups = {"cluster"})
