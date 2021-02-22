@@ -19,6 +19,7 @@
 #include "absl/time/clock.h"
 #include "ray/core_worker/context.h"
 #include "ray/gcs/gcs_client.h"
+#include "ray/util/periodical_runner.h"
 
 namespace ray {
 

@@ -17,6 +17,7 @@
 #include <boost/asio.hpp>
 
 #include "ray/gcs/redis_context.h"
+#include "ray/util/periodical_runner.h"
 
 namespace ray {
 

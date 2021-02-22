@@ -24,6 +24,7 @@
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/rpc/client_call.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
+#include "ray/util/periodical_runner.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
