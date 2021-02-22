@@ -966,14 +966,14 @@ The minimum number of workers to maintain for this node type regardless of utili
 ``available_node_types.<node_type_name>.node_type.max_workers``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The maximum number of workers to have in the cluster for this node type regardless of utilization. This takes precedence over :ref:`minimum workers <cluster-configuration-node-min-workers>`.
+The maximum number of workers to have in the cluster for this node type regardless of utilization. This takes precedence over :ref:`minimum workers <cluster-configuration-node-min-workers>`. By default, the number of workers of a node type is unbounded, constrained only by the cluster-wide :ref:`max_workers <cluster-configuration-max-workers>`.
 
 * **Required:** No
 * **Importance:** High
 * **Type:** Integer
-* **Default:** ``0``
+* **Default:** cluster-wide :ref:`max_workers <cluster-configuration-max-workers>`
 * **Minimum:** ``0``
-* **Maximum:** Unbounded
+* **Maximum:** cluster-wide :ref:`max_workers <cluster-configuration-max-workers>`
 
 .. _cluster-configuration-node-type-worker-setup-commands:
 
