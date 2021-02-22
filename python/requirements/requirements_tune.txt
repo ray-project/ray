@@ -37,7 +37,7 @@ torchvision==0.8.1;sys_platform=="darwin"
 -f https://download.pytorch.org/whl/torch_stable.html
 torch==1.7.0+cpu;sys_platform!="darwin"
 -f https://download.pytorch.org/whl/torch_stable.html
-torchvision==0.8.1+cpu;sys_platform!="darwin"
+torchvision==0.8.2;sys_platform!="darwin"
 
 
 transformers==4.3.2
