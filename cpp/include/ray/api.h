@@ -154,7 +154,8 @@ inline ObjectRef<T> Ray::Put(const T &obj) {
 template <typename T>
 inline std::shared_ptr<T> Ray::Get(const ObjectRef<T> &object) {
   auto packed_object = runtime_->Get(object.ID());
-  return Serializer::Deserialize<std::shared_ptr<T>>(packed_object->data(), packed_object->size());
+  return Serializer::Deserialize<std::shared_ptr<T>>(packed_object->data(),
+                                                     packed_object->size());
 }
 
 template <typename T>
