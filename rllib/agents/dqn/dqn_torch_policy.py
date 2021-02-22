@@ -334,7 +334,7 @@ def compute_q_values(policy: Policy,
     config = policy.config
 
     input_dict["is_training"] = is_training
-    model_out, state = model(input_dict, state_batches, seq_lens)
+    model_out, state = model(input_dict, state_batches or [], seq_lens)
 
     if config["num_atoms"] > 1:
         (action_scores, z, support_logits_per_action, logits,

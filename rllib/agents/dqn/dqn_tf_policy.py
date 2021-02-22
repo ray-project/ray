@@ -215,7 +215,8 @@ def get_distribution_inputs_and_class(policy: Policy,
                                       *,
                                       explore=True,
                                       **kwargs):
-    q_vals = compute_q_values(policy, model, {"obs": obs_batch}, explore)
+    q_vals = compute_q_values(
+        policy, model, {"obs": obs_batch}, state_batches=None, explore=explore)
     q_vals = q_vals[0] if isinstance(q_vals, tuple) else q_vals
 
     policy.q_values = q_vals
@@ -240,12 +241,14 @@ def build_q_losses(policy: Policy, model, _,
     q_t, q_logits_t, q_dist_t, _ = compute_q_values(
         policy,
         policy.q_model, {"obs": train_batch[SampleBatch.CUR_OBS]},
+        state_batches=None,
         explore=False)
 
     # target q network evalution
     q_tp1, q_logits_tp1, q_dist_tp1, _ = compute_q_values(
         policy,
         policy.target_q_model, {"obs": train_batch[SampleBatch.NEXT_OBS]},
+        state_batches=None,
         explore=False)
     if not hasattr(policy, "target_q_func_vars"):
         policy.target_q_func_vars = policy.target_q_model.variables()
@@ -264,6 +267,7 @@ def build_q_losses(policy: Policy, model, _,
             q_dist_tp1_using_online_net, _ = compute_q_values(
                 policy, policy.q_model,
                 {"obs": train_batch[SampleBatch.NEXT_OBS]},
+                state_batches=None,
                 explore=False)
         q_tp1_best_using_online_net = tf.argmax(q_tp1_using_online_net, 1)
         q_tp1_best_one_hot_selection = tf.one_hot(q_tp1_best_using_online_net,
@@ -339,7 +343,7 @@ def compute_q_values(policy: Policy,
     config = policy.config
 
     input_dict["is_training"] = policy._get_is_training_placeholder()
-    model_out, state = model(input_dict, state_batches, seq_lens)
+    model_out, state = model(input_dict, state_batches or [], seq_lens)
 
     if config["num_atoms"] > 1:
         (action_scores, z, support_logits_per_action, logits,
