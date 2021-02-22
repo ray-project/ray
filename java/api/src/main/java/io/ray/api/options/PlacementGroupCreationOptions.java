@@ -54,7 +54,7 @@ public class PlacementGroupCreationOptions {
      */
     public Builder setName(String name) {
       if (this.name != null) {
-        throw new IllegalArgumentException("Repeated assigned for the name is not allowed!");
+        throw new IllegalArgumentException("Repeated assignment of the name is not allowed!");
       }
       this.name = name;
       this.global = false;
@@ -72,7 +72,7 @@ public class PlacementGroupCreationOptions {
      */
     public Builder setGlobalName(String name) {
       if (this.name != null) {
-        throw new IllegalArgumentException("Repeated assigned for the name is not allowed!");
+        throw new IllegalArgumentException("Repeated assignment of the name is not allowed!");
       }
       this.name = name;
       this.global = true;
