@@ -2279,9 +2279,9 @@ void CoreWorker::HandleGetObjectLocationsOwner(
                              const NodeID &spilled_node_id, int64_t current_version) {
     RAY_LOG(DEBUG) << "Replying to HandleGetObjectLocationsOwner for " << object_id
                    << " with location update version " << current_version << ", "
-                   << locations.size() << " locations, " << spilled_url
-                   << " spilled url, " << spilled_node_id << " spilled node ID, and "
-                   << object_size << " object size.";
+                   << locations.size() << " locations, spilled url: " << spilled_url
+                   << ", spilled node ID: " << spilled_node_id
+                   << ", and object size: " << object_size;
     for (const auto &node_id : locations) {
       reply->add_node_ids(node_id.Binary());
     }
