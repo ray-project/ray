@@ -333,13 +333,14 @@ class SampleBatch:
         timeslices = [self.slice(i, j) for i, j in slices]
         return timeslices
 
-    def zero_pad(self, max_seq_len: int, exclude_states=True):
-        """Zero pad the data in this SampleBatch in place.
+    def zero_pad(self, max_seq_len: int, exclude_states: bool = True):
+        """Left zero-pad the data in this SampleBatch in place.
 
-
+        This will set the `self.zero_padded` flag to True and
+        `self.max_seq_len` to the given `max_seq_len` value.
 
         Args:
-            max_len (int): The max length to zero pad to.
+            max_len (int): The max (total) length to zero pad to.
             exclude_states (bool): If False, also zero-pad all `state_in_x`
                 data. If False, leave `state_in_x` keys as-is.
         """
