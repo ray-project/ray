@@ -146,7 +146,11 @@ def merge_setup_commands(config):
 
 
 def fill_node_type_max_workers(config):
-    """Default per-node max workers to global max_workers."""
+    """Sets default per-node max workers to global max_workers.
+
+    This equivalent to setting the default per-node max workers to infinity,
+    with the only upper constraint coming from the global max_workers.
+    """
     assert "max_workers" in config, "Global max workers should be set."
     for node_type in config["available_node_types"].values():
         node_type.setdefault("max_workers", config["max_workers"])
