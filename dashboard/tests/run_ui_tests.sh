@@ -10,7 +10,7 @@ clean_up() {
 }
 trap clean_up EXIT
 
-which cypress || sudo npm install cypress -g
+which cypress || sudo npm install cypress
 
 ray stop --force
 ray start --head --dashboard-port=8653
