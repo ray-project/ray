@@ -117,13 +117,13 @@ def cli(logging_level, logging_format):
     "-p",
     required=False,
     type=int,
-    default=8265,
+    default=ray_constants.DEFAULT_DASHBOARD_PORT,
     help="The local port to forward to the dashboard")
 @click.option(
     "--remote-port",
     required=False,
     type=int,
-    default=8265,
+    default=ray_constants.DEFAULT_DASHBOARD_PORT,
     help="The remote port your dashboard runs on")
 def dashboard(cluster_config_file, cluster_name, port, remote_port):
     """Port-forward a Ray cluster's dashboard to the local machine."""
@@ -1319,12 +1319,12 @@ export IFS="
 # Call sudo to prompt for password before anything has been printed.
 sudo true
 workers=$(
-    ps aux | grep -E ' ray_|default_worker.py' | grep -v grep
+    ps aux | grep -E ' ray::|default_worker.py' | grep -v raylet | grep -v grep
 )
 for worker in $workers; do
     echo "Stack dump for $worker";
     pid=`echo $worker | awk '{print $2}'`;
-    sudo $pyspy dump --pid $pid;
+    sudo $pyspy dump --pid $pid --native;
     echo;
 done
     """

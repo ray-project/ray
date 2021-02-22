@@ -62,6 +62,7 @@ py_test_module_list(
     "test_reference_counting.py",
     "test_reference_counting_2.py",
     "test_resource_demand_scheduler.py",
+    "test_scheduling.py",
     "test_serialization.py",
     "test_stress.py",
     "test_stress_sharded.py",

@@ -7,6 +7,7 @@ import platform
 import sys
 import socket
 import json
+import time
 import traceback
 
 import aiohttp
@@ -298,6 +299,16 @@ if __name__ == "__main__":
             filename=args.logging_filename,
             max_bytes=args.logging_rotate_bytes,
             backup_count=args.logging_rotate_backup_count)
+
+        # The dashboard is currently broken on Windows.
+        # https://github.com/ray-project/ray/issues/14026.
+        if sys.platform == "win32":
+            logger.warning(
+                "The dashboard is currently disabled on windows."
+                "See https://github.com/ray-project/ray/issues/14026"
+                "for more details")
+            while True:
+                time.sleep(999)
 
         agent = DashboardAgent(
             args.node_ip_address,
