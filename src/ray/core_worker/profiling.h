@@ -36,7 +36,7 @@ class Profiler {
 
  private:
   // Flush all of the events that have been added since last flush to the GCS.
-  void FlushEvents(const boost::system::error_code &error) LOCKS_EXCLUDED(mutex_);
+  void FlushEvents() LOCKS_EXCLUDED(mutex_);
 
   // Mutex guarding rpc_profile_data_.
   absl::Mutex mutex_;
