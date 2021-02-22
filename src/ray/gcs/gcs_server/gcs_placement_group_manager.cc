@@ -186,7 +186,7 @@ void GcsPlacementGroupManager::RegisterPlacementGroup(
           auto iter = placement_group_to_register_callbacks_.find(placement_group_id);
           auto callbacks = std::move(iter->second);
           placement_group_to_register_callbacks_.erase(iter);
-          for (auto &callback : callbacks) {
+          for (const auto &callback : callbacks) {
             callback(status);
           }
           SchedulePendingPlacementGroups();
