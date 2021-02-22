@@ -1711,7 +1711,7 @@ py_test(
     name = "examples/checkpoint_by_custom_criteria",
     main = "examples/checkpoint_by_custom_criteria.py",
     tags = ["examples", "examples_C"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/checkpoint_by_custom_criteria.py"],
     args = ["--stop-iters=3 --num-cpus=3"]
 )
