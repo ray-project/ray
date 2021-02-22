@@ -20,15 +20,8 @@ import ray._private.services as services
 from ray.autoscaler._private.commands import (
     attach_cluster, exec_cluster, create_or_update_cluster, monitor_cluster,
     rsync, teardown_cluster, get_head_node_ip, kill_node, get_worker_node_ips,
-    debug_status, RUN_ENV_TYPES)
-try:
-    from ray.autoscaler._private.get_logs import Archive, \
-        GetParameters, Node, _info_from_params, \
-        create_archive_for_local_and_remote_nodes, \
-        create_archive_for_remote_nodes, get_all_local_data
-    get_logs_available = True
-except ImportError:
-    get_logs_available = False
+    get_local_dump_archive, get_cluster_dump_archive, debug_status,
+    RUN_ENV_TYPES)
 
 from ray.autoscaler._private.util import DEBUG_AUTOSCALING_ERROR, \
     DEBUG_AUTOSCALING_STATUS
@@ -1463,49 +1456,28 @@ def status(address, redis_password):
     is_flag=True,
     default=True,
     help="Increase process information verbosity")
-def get_local_logs(stream: bool = False,
-                   output: Optional[str] = None,
-                   logs: bool = True,
-                   pip: bool = True,
-                   processes: bool = True,
-                   processes_verbose: bool = False):
+def local_dump(stream: bool = False,
+               output: Optional[str] = None,
+               logs: bool = True,
+               pip: bool = True,
+               processes: bool = True,
+               processes_verbose: bool = False):
     """Collect local data and package into an archive.
 
     Usage:
 
-        ray get-local-logs [--stream/--output file]
+        ray local-dump [--stream/--output file]
 
     This script is called on remote nodes to fetch their data.
     """
-    if not get_logs_available:
-        logger.error("This function is only available in python >= 3.7")
-        return
-
-    if stream and output:
-        raise ValueError(
-            "You can only use either `--output` or `--stream`, but not both.")
-
-    parameters = GetParameters(
+    # This may stream data to stdout, so no printing here
+    get_local_dump_archive(
+        stream=stream,
+        output=output,
         logs=logs,
         pip=pip,
         processes=processes,
-        processes_verbose=processes_verbose,
-        processes_list=RAY_PROCESSES)
-
-    with Archive() as archive:
-        get_all_local_data(archive, parameters)
-
-    tmp = archive.file
-
-    if stream:
-        with open(tmp, "rb") as fp:
-            os.write(1, fp.read())
-        os.remove(tmp)
-        return
-
-    target = output or os.path.join(os.getcwd(), os.path.basename(tmp))
-    os.rename(tmp, target)
-    logger.info(f"Created local data archive at {target}")
+        processes_verbose=processes_verbose)
 
 
 @cli.command()
@@ -1572,22 +1544,22 @@ def get_local_logs(stream: bool = False,
     is_flag=True,
     default=True,
     help="Increase process information verbosity")
-def get_logs(cluster_config_file: Optional[str] = None,
-             host: Optional[str] = None,
-             ssh_user: Optional[str] = None,
-             ssh_key: Optional[str] = None,
-             docker: Optional[str] = None,
-             local: Optional[bool] = None,
-             output: Optional[str] = None,
-             logs: bool = True,
-             pip: bool = True,
-             processes: bool = True,
-             processes_verbose: bool = False):
+def cluster_dump(cluster_config_file: Optional[str] = None,
+                 host: Optional[str] = None,
+                 ssh_user: Optional[str] = None,
+                 ssh_key: Optional[str] = None,
+                 docker: Optional[str] = None,
+                 local: Optional[bool] = None,
+                 output: Optional[str] = None,
+                 logs: bool = True,
+                 pip: bool = True,
+                 processes: bool = True,
+                 processes_verbose: bool = False):
     """Get log data from one or more nodes.
 
     Best used with Ray cluster configs:
 
-        ray get-logs [cluster.yaml]
+        ray cluster-dump [cluster.yaml]
 
     Include the --local flag to also collect and include data from the
     local node.
@@ -1597,63 +1569,22 @@ def get_logs(cluster_config_file: Optional[str] = None,
     You can also manually specify a list of hosts using the
     ``--host <host1,host2,...>`` parameter.
     """
-    if not get_logs_available:
-        logger.error("This function is only available in python >= 3.7")
-        return
-
-    cluster_config_file, hosts, ssh_user, ssh_key, docker, cluster_name = \
-        _info_from_params(cluster_config_file, host, ssh_user, ssh_key, docker)
-
-    nodes = [
-        Node(
-            host=h,
-            ssh_user=ssh_user,
-            ssh_key=ssh_key,
-            docker_container=docker) for h in hosts
-    ]
-
-    if not nodes:
-        logger.error(
-            f"No nodes found. Specify with `--host` or by passing a ray "
-            f"cluster config to `--cluster`.")
-        return None
-
-    if cluster_config_file:
-        nodes[0].is_head = True
-
-    if local is None:
-        # If called with a cluster config, this was probably started
-        # from a laptop
-        local = not bool(cluster_config_file)
-
-    parameters = GetParameters(
+    archive_path = get_cluster_dump_archive(
+        cluster_config_file=cluster_config_file,
+        host=host,
+        ssh_user=ssh_user,
+        ssh_key=ssh_key,
+        docker=docker,
+        local=local,
+        output=output,
         logs=logs,
         pip=pip,
         processes=processes,
-        processes_verbose=processes_verbose,
-        processes_list=RAY_PROCESSES)
-
-    with Archive() as archive:
-        if local:
-            create_archive_for_local_and_remote_nodes(
-                archive, remote_nodes=nodes, parameters=parameters)
-        else:
-            create_archive_for_remote_nodes(
-                archive, remote_nodes=nodes, parameters=parameters)
-
-    if not output:
-        if cluster_name:
-            filename = f"{cluster_name}_" \
-                       f"{datetime.now():%Y-%m-%d_%H-%M-%S}.tar.gz"
-        else:
-            filename = f"collected_logs_" \
-                       f"{datetime.now():%Y-%m-%d_%H-%M-%S}.tar.gz"
-        output = os.path.join(os.getcwd(), filename)
+        processes_verbose=processes_verbose)
+    if archive_path:
+        click.echo(f"Created archive: {archive_path}")
     else:
-        output = os.path.expanduser(output)
-
-    os.rename(archive.file, output)
-    logger.info(f"Archive can be found here: {output}")
+        click.echo("Could not create archive.")
 
 
 @cli.command(hidden=True)
@@ -1753,8 +1684,8 @@ cli.add_command(microbenchmark)
 cli.add_command(stack)
 cli.add_command(status)
 cli.add_command(memory)
-cli.add_command(get_local_logs)
-cli.add_command(get_logs)
+cli.add_command(local_dump)
+cli.add_command(cluster_dump)
 cli.add_command(global_gc)
 cli.add_command(timeline)
 cli.add_command(install_nightly)

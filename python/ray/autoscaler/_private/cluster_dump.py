@@ -17,7 +17,6 @@ from dataclasses import dataclass
 from ray import logger
 
 from ray.autoscaler._private.providers import _get_node_provider
-from ray.autoscaler._private.commands import _bootstrap_config
 from ray.autoscaler.tags import TAG_RAY_NODE_KIND, NODE_KIND_HEAD, \
     NODE_KIND_WORKER
 
@@ -312,7 +311,7 @@ def create_and_get_archive_from_remote_node(remote_node: Node,
                                             ) -> Optional[str]:
     """Create an archive containing logs on a remote node and transfer.
 
-    This will call ``ray-get-logs.py collect --stream`` on the remote
+    This will call ``ray local-dump --stream`` on the remote
     node. The resulting file will be saved locally in a temporary file and
     returned.
 
@@ -342,7 +341,7 @@ def create_and_get_archive_from_remote_node(remote_node: Node,
             remote_node.docker_container,
         ]
 
-    collect_cmd = [script_path, "get-local-logs", "--stream"]
+    collect_cmd = [script_path, "local-dump", "--stream"]
     collect_cmd += ["--logs"] if parameters.logs else ["--no-logs"]
     collect_cmd += ["--pip"] if parameters.pip else ["--no-pip"]
     collect_cmd += ["--processes"] if parameters.processes else [
@@ -500,6 +499,8 @@ def get_info_from_ray_cluster_config(
         Tuple of list of host IPs, ssh user name, ssh key file path,
             optional docker container name, optional cluster name.
     """
+    from ray.autoscaler._private.commands import _bootstrap_config
+
     logger.info(f"Retrieving cluster information from ray cluster file: "
                 f"{cluster_config}")
 
