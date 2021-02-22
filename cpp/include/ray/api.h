@@ -229,7 +229,7 @@ inline ActorTaskCaller<ReturnType> Ray::CallActorInternal(FuncType &actor_func,
 // force the order by way of comments
 //
 // #1
-#include <ray/api/generated/exec_funcs.generated.h>
+#include <ray/api/exec_funcs.generated.h>
 // #2
 #include <ray/api/generated/call_funcs_impl.generated.h>
 // #3

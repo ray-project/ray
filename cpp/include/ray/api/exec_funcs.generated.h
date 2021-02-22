@@ -1,11 +1,18 @@
-/// This file is auto-generated. DO NOT EDIT.
-/// The following execution functions are wrappers of remote functions.
-/// Execution functions make remote functions executable in distributed system.
-/// NormalExecFunction the wrapper of normal remote function.
-/// CreateActorExecFunction the wrapper of actor creation function.
-/// ActorExecFunction the wrapper of actor member function.
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
-// TODO(Guyang Song): code generation
+#pragma once
 
 template <typename ReturnType, typename CastReturnType, typename... OtherArgTypes>
 std::shared_ptr<msgpack::sbuffer> ExecuteNormalFunction(
