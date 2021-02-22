@@ -115,9 +115,6 @@ RAY_CONFIG(int64_t, max_direct_call_object_size, 100 * 1024)
 // limit in Ray to avoid crashing with many small inlined task arguments.
 RAY_CONFIG(int64_t, max_grpc_message_size, 100 * 1024 * 1024)
 
-// Number of times to retry creating a gRPC server.
-RAY_CONFIG(int64_t, grpc_server_num_retries, 1)
-
 // Retry timeout for trying to create a gRPC server. Only applies if the number
 // of retries is non zero.
 RAY_CONFIG(int64_t, grpc_server_retry_timeout_milliseconds, 1000)

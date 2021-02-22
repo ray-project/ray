@@ -96,7 +96,7 @@ struct NodeManagerConfig {
   /// The path of this ray session dir.
   std::string session_dir;
   /// The raylet config list of this node.
-  std::unordered_map<std::string, std::string> raylet_config;
+  std::string raylet_config;
   // The time between record metrics in milliseconds, or -1 to disable.
   uint64_t record_metrics_period_ms;
   // The number if max io workers.

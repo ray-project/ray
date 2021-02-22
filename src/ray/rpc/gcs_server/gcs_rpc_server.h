@@ -173,10 +173,6 @@ class NodeInfoGcsServiceHandler {
                                     GetAllNodeInfoReply *reply,
                                     SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleSetInternalConfig(const SetInternalConfigRequest &request,
-                                       SetInternalConfigReply *reply,
-                                       SendReplyCallback send_reply_callback) = 0;
-
   virtual void HandleGetInternalConfig(const GetInternalConfigRequest &request,
                                        GetInternalConfigReply *reply,
                                        SendReplyCallback send_reply_callback) = 0;
@@ -201,7 +197,6 @@ class NodeInfoGrpcService : public GrpcService {
     NODE_INFO_SERVICE_RPC_HANDLER(RegisterNode);
     NODE_INFO_SERVICE_RPC_HANDLER(UnregisterNode);
     NODE_INFO_SERVICE_RPC_HANDLER(GetAllNodeInfo);
-    NODE_INFO_SERVICE_RPC_HANDLER(SetInternalConfig);
     NODE_INFO_SERVICE_RPC_HANDLER(GetInternalConfig);
   }
 

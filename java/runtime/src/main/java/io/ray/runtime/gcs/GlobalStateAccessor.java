@@ -90,13 +90,6 @@ public class GlobalStateAccessor {
     }
   }
 
-  public byte[] getInternalConfig() {
-    synchronized (GlobalStateAccessor.class) {
-      validateGlobalStateAccessorPointer();
-      return nativeGetInternalConfig(globalStateAccessorNativePointer);
-    }
-  }
-
   /** Returns A list of actor info with ActorInfo protobuf schema. */
   public List<byte[]> getAllActorInfo() {
     // Fetch a actor list with protobuf bytes format from GCS.
@@ -136,8 +129,6 @@ public class GlobalStateAccessor {
   private native List<byte[]> nativeGetAllNodeInfo(long nativePtr);
 
   private native byte[] nativeGetNodeResourceInfo(long nativePtr, byte[] nodeId);
-
-  private native byte[] nativeGetInternalConfig(long nativePtr);
 
   private native List<byte[]> nativeGetAllActorInfo(long nativePtr);
 

@@ -46,7 +46,11 @@ void Profiler::AddEvent(const rpc::ProfileTableData::ProfileEvent &event) {
   rpc_profile_data_->add_profile_events()->CopyFrom(event);
 }
 
-void Profiler::FlushEvents() {
+void Profiler::FlushEvents(const boost::system::error_code &error) {
+  if (error == boost::asio::error::operation_aborted) {
+    return;
+  }
+
   auto cur_profile_data = std::make_shared<rpc::ProfileTableData>();
   {
     absl::MutexLock lock(&mutex_);
