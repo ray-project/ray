@@ -4,8 +4,8 @@ from typing import Dict, List, Optional, Tuple
 
 import gym
 import ray
-from ray.rllib.agents.dqn.dqn_tf_policy import clip_gradients, PRIO_WEIGHTS, \
-    postprocess_nstep_and_prio
+from ray.rllib.agents.dqn.dqn_tf_policy import clip_gradients, \
+    compute_q_values, PRIO_WEIGHTS, postprocess_nstep_and_prio
 from ray.rllib.agents.dqn.dqn_tf_policy import build_q_model
 from ray.rllib.agents.dqn.simple_q_tf_policy import TargetNetworkMixin
 from ray.rllib.models.action_dist import ActionDistribution
@@ -17,7 +17,7 @@ from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import LearningRateSchedule
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.tf_ops import huber_loss, reduce_mean_ignore_inf
+from ray.rllib.utils.tf_ops import huber_loss
 from ray.rllib.utils.typing import ModelInputDict, TensorType, \
     TrainerConfigDict
 
@@ -279,50 +279,6 @@ def before_loss_init(policy: Policy, obs_space: gym.spaces.Space,
                      config: TrainerConfigDict) -> None:
     ComputeTDErrorMixin.__init__(policy)
     TargetNetworkMixin.__init__(policy, obs_space, action_space, config)
-
-
-def compute_q_values(policy: Policy,
-                     model: ModelV2,
-                     input_dict,
-                     state_batches,
-                     seq_lens,
-                     explore,
-                     is_training: bool = False):
-    config = policy.config
-
-    input_dict["is_training"] = is_training
-    model_out, state = model(input_dict, state_batches, seq_lens)
-
-    if config["num_atoms"] > 1:
-        (action_scores, z, support_logits_per_action, logits,
-         probs_or_logits) = model.get_q_value_distributions(model_out)
-    else:
-        (action_scores, logits,
-         probs_or_logits) = model.get_q_value_distributions(model_out)
-
-    if config["dueling"]:
-        state_score = model.get_state_value(model_out)
-        if policy.config["num_atoms"] > 1:
-            support_logits_per_action_mean = tf.reduce_mean(
-                support_logits_per_action, axis=1)
-            support_logits_per_action_centered = (
-                support_logits_per_action - tf.expand_dims(
-                    support_logits_per_action_mean, axis=1))
-            support_logits_per_action = tf.expand_dims(
-                state_score, axis=1) + support_logits_per_action_centered
-            support_prob_per_action = tf.nn.softmax(support_logits_per_action)
-            value = tf.reduce_sum(z * support_prob_per_action, axis=-1)
-            logits = support_logits_per_action
-            probs_or_logits = support_prob_per_action
-        else:
-            advantages_mean = reduce_mean_ignore_inf(action_scores, 1)
-            advantages_centered = action_scores - tf.expand_dims(
-                advantages_mean, axis=1)
-            value = state_score + advantages_centered
-    else:
-        value = action_scores
-
-    return value, logits, probs_or_logits, state
 
 
 R2D2TFPolicy = build_tf_policy(

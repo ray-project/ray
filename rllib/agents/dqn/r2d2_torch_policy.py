@@ -7,7 +7,7 @@ import ray
 from ray.rllib.agents.dqn.dqn_tf_policy import (PRIO_WEIGHTS,
                                                 postprocess_nstep_and_prio)
 from ray.rllib.agents.dqn.dqn_torch_policy import \
-    build_q_model_and_distribution
+    build_q_model_and_distribution, compute_q_values
 from ray.rllib.agents.dqn.r2d2_tf_policy import \
     get_distribution_inputs_and_class
 from ray.rllib.agents.dqn.simple_q_torch_policy import TargetNetworkMixin
@@ -20,7 +20,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy import LearningRateSchedule
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.torch_ops import apply_grad_clipping, FLOAT_MIN, \
-    huber_loss, reduce_mean_ignore_inf, sequence_mask
+    huber_loss, sequence_mask
 from ray.rllib.utils.typing import TensorType, TrainerConfigDict
 
 torch, nn = try_import_torch()
@@ -257,51 +257,6 @@ def before_loss_init(policy: Policy, obs_space: gym.spaces.Space,
     # Move target net to device (this is done automatically for the
     # policy.model, but not for any other models the policy has).
     policy.target_q_model = policy.target_q_model.to(policy.device)
-
-
-def compute_q_values(policy: Policy,
-                     model: ModelV2,
-                     input_dict,
-                     state_batches,
-                     seq_lens,
-                     explore,
-                     is_training: bool = False):
-    config = policy.config
-
-    input_dict["is_training"] = is_training
-    model_out, state = model(input_dict, state_batches, seq_lens)
-
-    if config["num_atoms"] > 1:
-        (action_scores, z, support_logits_per_action, logits,
-         probs_or_logits) = model.get_q_value_distributions(model_out)
-    else:
-        (action_scores, logits,
-         probs_or_logits) = model.get_q_value_distributions(model_out)
-
-    if config["dueling"]:
-        state_score = model.get_state_value(model_out)
-        if policy.config["num_atoms"] > 1:
-            support_logits_per_action_mean = torch.mean(
-                support_logits_per_action, dim=1)
-            support_logits_per_action_centered = (
-                support_logits_per_action - torch.unsqueeze(
-                    support_logits_per_action_mean, dim=1))
-            support_logits_per_action = torch.unsqueeze(
-                state_score, dim=1) + support_logits_per_action_centered
-            support_prob_per_action = nn.functional.softmax(
-                support_logits_per_action)
-            value = torch.sum(z * support_prob_per_action, dim=-1)
-            logits = support_logits_per_action
-            probs_or_logits = support_prob_per_action
-        else:
-            advantages_mean = reduce_mean_ignore_inf(action_scores, 1)
-            advantages_centered = action_scores - torch.unsqueeze(
-                advantages_mean, 1)
-            value = state_score + advantages_centered
-    else:
-        value = action_scores
-
-    return value, logits, probs_or_logits, state
 
 
 def grad_process_and_td_error_fn(policy: Policy,
