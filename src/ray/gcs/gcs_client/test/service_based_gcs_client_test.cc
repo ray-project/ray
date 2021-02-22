@@ -1009,7 +1009,12 @@ TEST_F(ServiceBasedGcsClientTest, TestActorTableResubscribe) {
   // Subscribe to updates for this actor.
   ASSERT_TRUE(SubscribeActor(actor_id, actor_subscribe));
 
-  ASSERT_FALSE(RegisterActor(actor_table_data, false));
+  // NOTE: In the process of actor registration, if the callback function of
+  // `WaitForActorOutOfScope` is executed first, and then the callback function of
+  // `ActorTable().Put` is executed, the actor registration fails; otherwise, the actor
+  // registration succeeds. So we can't assert whether the actor is registered
+  // successfully.
+  RegisterActor(actor_table_data, false);
 
   // We should receive a new DEAD notification from the subscribe channel.
   WaitForExpectedCount(num_subscribe_all_notifications, 1);
