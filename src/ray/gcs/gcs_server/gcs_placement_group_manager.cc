@@ -175,14 +175,7 @@ void GcsPlacementGroupManager::RegisterPlacementGroup(
       [this, placement_group_id, placement_group](Status status) {
         // The backend storage is supposed to be reliable, so the status must be ok.
         RAY_CHECK_OK(status);
-        if (!registered_placement_groups_.contains(placement_group_id)) {
-          // The placement group registration is synchronous, so if we found the placement
-          // group was deleted here, it must be triggered by a job crash,
-          // we will return directly in this case.
-          RAY_CHECK(placement_group_to_register_callbacks_.count(placement_group_id) ==
-                    0);
-          return;
-        } else {
+        if (registered_placement_groups_.contains(placement_group_id)) {
           auto iter = placement_group_to_register_callbacks_.find(placement_group_id);
           auto callbacks = std::move(iter->second);
           placement_group_to_register_callbacks_.erase(iter);
@@ -190,6 +183,13 @@ void GcsPlacementGroupManager::RegisterPlacementGroup(
             callback(status);
           }
           SchedulePendingPlacementGroups();
+        } else {
+          // The placement group registration is synchronous, so if we found the placement
+          // group was deleted here, it must be triggered by the abnormal exit of job,
+          // we will return directly in this case.
+          RAY_LOG(WARNING) << "Failed to create placement group '"
+                           << placement_group->GetPlacementGroupID()
+                           << "', because the placement group has been cleaned by GCS.";
         }
       }));
 }
@@ -462,7 +462,7 @@ void GcsPlacementGroupManager::HandleWaitPlacementGroupUntilReady(
   WaitPlacementGroup(placement_group_id, [reply, send_reply_callback,
                                           placement_group_id](Status status) {
     if (status.ok()) {
-      RAY_LOG(INFO)
+      RAY_LOG(DEBUG)
           << "Finished waiting for placement group until ready, placement group id = "
           << placement_group_id;
     } else {
