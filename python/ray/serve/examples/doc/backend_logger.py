@@ -2,8 +2,8 @@ import ray
 from ray import serve
 import requests
 
-ray.init()
-client = serve.start()
+ray.init(address="auto")
+client = serve.connect()
 
 
 class Counter:
