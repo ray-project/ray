@@ -199,7 +199,7 @@ py_test(
 
 py_test(
     name = "tutorial_rllib",
-    size = "small",
+    size = "medium",
     srcs = glob(["examples/doc/*.py"]),
     tags = ["exclusive"],
     deps = [":serve_lib"]
