@@ -1183,7 +1183,7 @@ def get_cluster_dump_archive(cluster_config_file: Optional[str] = None,
     content_str = ""
     if logs:
         content_str += \
-            "  - The logfiles of you Ray session\n" \
+            "  - The logfiles of your Ray session\n" \
             "    This usually includes Python outputs (stdout/stderr)\n"
 
     if pip:
