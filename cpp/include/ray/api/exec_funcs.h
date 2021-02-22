@@ -14,6 +14,12 @@
 
 #pragma once
 
+/// The following execution functions are wrappers of remote functions.
+/// Execution functions make remote functions executable in distributed system.
+/// NormalExecFunction the wrapper of normal remote function.
+/// CreateActorExecFunction the wrapper of actor creation function.
+/// ActorExecFunction the wrapper of actor member function.
+
 template <typename ReturnType, typename CastReturnType, typename... OtherArgTypes>
 std::shared_ptr<msgpack::sbuffer> ExecuteNormalFunction(
     uintptr_t base_addr, size_t func_offset,
