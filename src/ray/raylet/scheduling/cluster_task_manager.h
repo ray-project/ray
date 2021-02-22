@@ -285,8 +285,8 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   void Dispatch(
       std::shared_ptr<WorkerInterface> worker,
       std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers_,
-      const Task &task, rpc::RequestWorkerLeaseReply *reply,
-      std::function<void(void)> send_reply_callback);
+      std::shared_ptr<TaskResourceInstances> &allocated_instances, const Task &task,
+      rpc::RequestWorkerLeaseReply *reply, std::function<void(void)> send_reply_callback);
 
   void Spillback(const NodeID &spillback_to, const Work &work);
 
