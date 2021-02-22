@@ -75,11 +75,9 @@
     ]
   commands:
     - TORCH_VERSION=1.6 ./ci/travis/install-dependencies.sh
-    - bazel test --config=ci $(./scripts/bazel_export_options)
-      python/ray/new_dashboard/...
-    - bazel test --config=ci $(./scripts/bazel_export_options)
-      python/ray/serve/...
-    - ./scripts/run_cypress.sh
+    - ./dashboard/tests/run_ui_tests.sh
+    - bazel test --config=ci $(./scripts/bazel_export_options) python/ray/new_dashboard/...
+    - bazel test --config=ci $(./scripts/bazel_export_options) python/ray/serve/...
 
 - label: ":python: (Small & Large)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
