@@ -30,14 +30,14 @@ tensorflow-probability==0.11.1
 timm==0.3.2
 
 
-torch==1.7.0;sys_platform=="darwin"
-torchvision==0.8.1;sys_platform=="darwin"
+torch==1.7.1;sys_platform=="darwin"
+torchvision==0.8.2;sys_platform=="darwin"
 
 # On non-OSX machines only install CPU version of torch and torchvision
 -f https://download.pytorch.org/whl/torch_stable.html
-torch==1.7.0+cpu;sys_platform!="darwin"
+torch==1.7.1+cpu;sys_platform!="darwin"
 -f https://download.pytorch.org/whl/torch_stable.html
-torchvision==0.8.2;sys_platform!="darwin"
+torchvision==0.8.2+cpu;sys_platform!="darwin"
 
 
 transformers==4.3.2
