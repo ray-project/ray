@@ -25,9 +25,8 @@ PeriodicalRunner::~PeriodicalRunner() {}
 
 void PeriodicalRunner::RunFnPeriodically(std::function<void()> fn,
                                          boost::posix_time::milliseconds period) {
-  auto timer = std::unique_ptr<boost::asio::deadline_timer>(
-      new boost::asio::deadline_timer(io_service_));
-  timers_.push_back(std::move(timer));
+  auto timer = std::make_shared<boost::asio::deadline_timer>(io_service_);
+  timers_.push_back(timer);
   DoRunFnPeriodically(fn, period, *timer);
 }
 

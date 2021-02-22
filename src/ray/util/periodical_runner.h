@@ -38,7 +38,7 @@ class PeriodicalRunner {
                            boost::asio::deadline_timer &timer);
 
   boost::asio::io_service &io_service_;
-  std::vector<std::unique_ptr<boost::asio::deadline_timer>> timers_;
+  std::vector<std::shared_ptr<boost::asio::deadline_timer>> timers_;
 };
 
 }  // namespace ray
