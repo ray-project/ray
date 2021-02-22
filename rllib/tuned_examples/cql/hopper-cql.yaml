@@ -1,9 +1,9 @@
-halfcheetah_cql:
-    env: HalfCheetah-v2
+hopper_cql:
+    env: Hopper-v2
     run: CQL
     config:
         # SAC Configs
-        input: d4rl.halfcheetah-random-v1
+        input: d4rl.hopper-random-v1
         framework: torch
         horizon: 1000
         soft_horizon: false

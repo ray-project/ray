@@ -1,9 +1,9 @@
-halfcheetah_cql:
-    env: HalfCheetah-v2
+hopper_bc:
+    env: Hopper-v2
     run: CQL
     config:
         # SAC Configs
-        input: d4rl.halfcheetah-random-v1
+        input: d4rl.hopper-random-v1
         framework: torch
         horizon: 1000
         soft_horizon: false
@@ -35,7 +35,7 @@ halfcheetah_cql:
         metrics_smoothing_episodes: 5
         # CQL Configs
         min_q_weight: 5.0
-        bc_iters: 20000
+        bc_iters: 10000000
         temperature: 1.0
         num_actions: 10
         lagrangian: False
