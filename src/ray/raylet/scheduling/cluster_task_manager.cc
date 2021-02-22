@@ -274,7 +274,8 @@ bool ClusterTaskManager::TrySpillback(const Work &work) {
   std::string node_id_string = cluster_resource_scheduler_->GetBestSchedulableNode(
       placement_resources, spec.IsActorCreationTask(), &_unused, &is_infeasible);
 
-  // All tasks on the dispatch queue must at least be feasible on the local node.
+  // TODO(Alex): This check may actually fail in the case where placement group is
+  // removed. All tasks on the dispatch queue must at least be feasible on the local node.
   RAY_CHECK(!is_infeasible)
       << "Task cannot be infeasible when it is about to be dispatched";
 
