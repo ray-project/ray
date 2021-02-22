@@ -75,7 +75,11 @@ class HEBOSearch(Searcher):
             on initalization and loading from checkpoint.
         n_suggestions (int, 1): If higher than one, suggestions will
             be made in batches and cached. Higher values may increase
-            convergence speed in certain cases.
+            convergence speed in certain cases (authors recommend 8).
+            For best results, wrap this searcher in a
+            ``ConcurrencyLimiter(max_concurrent=n, batch=True)``
+            where `n == n_suggestions`.
+            Refer to `tune/examples/hebo_example.py`.
         **kwargs: The keyword arguments will be passed to `HEBO()``.
 
     Tune automatically converts search spaces to HEBO's format:
