@@ -12,7 +12,6 @@ import yaml
 
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
-from dataclasses import dataclass
 
 from ray import logger
 
@@ -39,23 +38,34 @@ class RemoteCommandFailed(CommandFailed):
     pass
 
 
-@dataclass
 class GetParameters:
-    logs: bool = True
-    pip: bool = True
-    processes: bool = True
-    processes_verbose: bool = True
-    processes_list: Optional[List[Tuple[str, bool]]] = None
+    def __init__(self,
+                 logs: bool = True,
+                 pip: bool = True,
+                 processes: bool = True,
+                 processes_verbose: bool = True,
+                 processes_list: Optional[List[Tuple[str, bool]]] = None):
+        self.logs = logs
+        self.pip = pip
+        self.processes = processes
+        self.processes_verbose = processes_verbose
+        self.processes_list = processes_list
 
 
-@dataclass
 class Node:
     """Node (as in "machine")"""
-    host: str
-    ssh_user: str = "ubuntu"
-    ssh_key: str = "~/ray_bootstrap_key.pem"
-    docker_container: Optional[str] = None
-    is_head: bool = False
+
+    def __init__(self,
+                 host: str,
+                 ssh_user: str = "ubuntu",
+                 ssh_key: str = "~/ray_bootstrap_key.pem",
+                 docker_container: Optional[str] = None,
+                 is_head: bool = False):
+        self.host = host
+        self.ssh_user = ssh_user
+        self.ssh_key = ssh_key
+        self.docker_container = docker_container,
+        self.is_head = is_head
 
 
 class Archive:
