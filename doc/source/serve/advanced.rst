@@ -4,7 +4,7 @@ Advanced Topics and Configurations
 
 Ray Serve has a number of knobs and tools for you to tune for your particular workload.
 All Ray Serve advanced options and topics are covered on this page aside from the
-fundamentals of :doc:`deployment`. For a more hands on take, please check out the :ref:`serve-tutorials`.
+fundamentals of :doc:`deployment`. For a more hands-on take, please check out the :ref:`serve-tutorials`.
 
 There are a number of things you'll likely want to do with your serving application including
 scaling out, splitting traffic, or batching input for better performance. To do all of this,
