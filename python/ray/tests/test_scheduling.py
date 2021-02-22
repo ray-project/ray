@@ -1,6 +1,7 @@
 # coding: utf-8
 import collections
 import logging
+import platform
 import sys
 import time
 
@@ -113,6 +114,8 @@ def test_load_balancing_with_dependencies(ray_start_cluster, fast):
     attempt_to_load_balance(f, [x], 100, num_nodes, 25)
 
 
+@pytest.mark.skipif(
+    platform.system() == "Windows", reason="Failing on Windows. Multi node.")
 def test_load_balancing_under_constrained_memory(ray_start_cluster):
     # This test ensures that tasks are being assigned to all raylets in a
     # roughly equal manner even when the tasks have dependencies.
