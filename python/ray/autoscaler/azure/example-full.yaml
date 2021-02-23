@@ -120,12 +120,15 @@ cluster_synced_files: []
 file_mounts_sync_continuously: False
 
 # Patterns for files to exclude when running rsync up or rsync down
-rsync_exclude: []
+rsync_exclude:
+    - "**/.git"
+    - "**/.git/**"
 
 # Pattern files to use for filtering out files when running rsync up or rsync down. The file is searched for
 # in the source directory and recursively through all subdirectories. For example, if .gitignore is provided
 # as a value, the behavior will match git's behavior for finding and using .gitignore files.
-rsync_filter: []
+rsync_filter:
+    - ".gitignore"
 
 # List of commands that will be run before `setup_commands`. If docker is
 # enabled, these commands will run outside the container and before docker
@@ -136,17 +139,13 @@ initialization_commands:
 
 # List of shell commands to run to set up nodes.
 setup_commands:
-    # Note: if you're developing Ray, you probably want to create an AMI that
+    # Note: if you're developing Ray, you probably want to create a Docker image that
     # has your Ray repo pre-cloned. Then, you can replace the pip installs
     # below with a git checkout <your_sha> (and possibly a recompile).
+    # Uncomment the following line if you want to run the nightly version of ray (as opposed to the latest)
     - echo 'eval "$(conda shell.bash hook)"' >> ~/.bashrc
-    # - echo 'conda activate py37_pytorch' >> ~/.bashrc
     - echo 'conda activate py37_tensorflow' >> ~/.bashrc
     - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl
-    # Consider uncommenting these if you also want to run apt-get commands during setup
-    # - sudo pkill -9 apt-get || true
-    # - sudo pkill -9 dpkg || true
-    # - sudo dpkg --configure -a
 
 # Custom commands that will be run on the head node after common setup.
 head_setup_commands:
