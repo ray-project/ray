@@ -11,7 +11,7 @@ from ray.rllib.utils.test_utils import check, check_compute_single_action, \
 class TestDQN(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init(local_mode=True)  #TODO
+        ray.init(local_mode=True)#TODO
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -52,13 +52,17 @@ class TestDQN(unittest.TestCase):
             trainer.stop()
 
     def test_dqn_fake_multi_gpu_learning(self):
-        """Test whether PPOTrainer can learn CartPole w/ faked multi-GPU."""
+        """Test whether DQNTrainer can learn CartPole w/ faked multi-GPU."""
         config = copy.deepcopy(dqn.DEFAULT_CONFIG)
+
         # Fake GPU setup.
         config["num_gpus"] = 2
         config["_fake_gpus"] = True
+
         config["framework"] = "tf"
-        # Mimick tuned_example for DQN CartPole.
+        # Double batch size (2 GPUs).
+        config["train_batch_size"] = 64
+        # Mimic tuned_example for DQN CartPole.
         config["n_step"] = 3
         config["model"]["fcnet_hiddens"] = [64]
         config["model"]["fcnet_activation"] = "linear"
@@ -68,8 +72,8 @@ class TestDQN(unittest.TestCase):
         learnt = False
         for i in range(num_iterations):
             results = trainer.train()
-            print(results)
-            if results["episode_reward_mean"] > 150:
+            print("reward={}".format(results["episode_reward_mean"]))
+            if results["episode_reward_mean"] > 100.0:
                 learnt = True
                 break
         assert learnt, "DQN multi-GPU (with fake-GPUs) did not learn CartPole!"

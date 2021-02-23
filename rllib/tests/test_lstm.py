@@ -120,7 +120,7 @@ class TestRNNSequencing(unittest.TestCase):
                 "rollout_fragment_length": 10,
                 "train_batch_size": 10,
                 "sgd_minibatch_size": 10,
-                "simple_optimizer": True,
+                #"simple_optimizer": True,
                 "num_sgd_iter": 1,
                 "model": {
                     "custom_model": "rnn",
@@ -178,7 +178,7 @@ class TestRNNSequencing(unittest.TestCase):
                 "rollout_fragment_length": 20,
                 "train_batch_size": 20,
                 "sgd_minibatch_size": 10,
-                "simple_optimizer": False,
+                #"simple_optimizer": False,
                 "num_sgd_iter": 1,
                 "model": {
                     "custom_model": "rnn",

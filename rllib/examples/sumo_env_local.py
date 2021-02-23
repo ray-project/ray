@@ -73,7 +73,7 @@ if __name__ == "__main__":
     config["num_workers"] = args.num_workers
     config["rollout_fragment_length"] = 200
     config["sgd_minibatch_size"] = 256
-    config["simple_optimizer"] = True
+    #config["simple_optimizer"] = True
     config["train_batch_size"] = 4000
 
     config["batch_mode"] = "complete_episodes"

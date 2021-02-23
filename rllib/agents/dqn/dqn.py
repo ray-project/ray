@@ -133,13 +133,6 @@ DEFAULT_CONFIG = with_common_config({
     "worker_side_prioritization": False,
     # Prevent iterations from going lower than this time span
     "min_iter_time_s": 1,
-
-    # TODO: Experimental.
-    "simple_optimizer": False,
-    # Whether to fake GPUs (using CPUs).
-    # Set this to True for debugging on non-GPU machines (set `num_gpus` > 0).
-    "_fake_gpus": False,
-
 })
 # __sphinx_doc_end__
 # yapf: enable
@@ -175,15 +168,15 @@ def validate_config(config: TrainerConfigDict) -> None:
                              "replay_sequence_length > 1.")
 
     # Multi-gpu not supported for PyTorch and tf-eager.
-    if config["framework"] in ["tf2", "tfe", "torch"]:
-        config["simple_optimizer"] = True
+    #if config["framework"] in ["tf2", "tfe", "torch"]:
+    #    config["simple_optimizer"] = True
     # Performance warning, if "simple" optimizer used with (static-graph) tf.
-    elif config["simple_optimizer"]:
-        logger.warning(
-            "Using the simple minibatch optimizer. This will significantly "
-            "reduce performance, consider simple_optimizer=False.")
+    #if config["simple_optimizer"]:
+    #    logger.warning(
+    #        "Using the simple minibatch optimizer. This will significantly "
+    #        "reduce performance, consider simple_optimizer=False.")
     # Multi-agent mode and multi-GPU optimizer.
-    elif config["multiagent"]["policies"] and not config["simple_optimizer"]:
+    if config["multiagent"]["policies"] and not config["simple_optimizer"]:
         logger.info(
             "In multi-agent mode, policies will be optimized sequentially "
             "by the multi-GPU optimizer. Consider setting "
@@ -253,9 +246,8 @@ def execution_plan(workers: WorkerSet,
             num_sgd_iter=1,
             num_gpus=config["num_gpus"],
             shuffle_sequences=True,  #DQN: always shuffle, no sequences.
-            _fake_gpus=config.get("_fake_gpus", False),
+            _fake_gpus=config["_fake_gpus"],
             framework=config.get("framework"))
-
 
     replay_op = Replay(local_buffer=local_replay_buffer) \
         .for_each(lambda x: post_fn(x, workers, config)) \

@@ -86,13 +86,6 @@ DEFAULT_CONFIG = with_common_config({
     "batch_mode": "truncate_episodes",
     # Which observation filter to apply to the observation.
     "observation_filter": "NoFilter",
-    # Uses the sync samples optimizer instead of the multi-gpu one. This is
-    # usually slower, but you might want to try it if you run into issues with
-    # the default optimizer.
-    "simple_optimizer": False,
-    # Whether to fake GPUs (using CPUs).
-    # Set this to True for debugging on non-GPU machines (set `num_gpus` > 0).
-    "_fake_gpus": False,
 
     # Deprecated keys:
     # Share layers for value function. If you set this to True, it's important
@@ -140,15 +133,19 @@ def validate_config(config: TrainerConfigDict) -> None:
             "trajectory). Consider setting batch_mode=complete_episodes.")
 
     # Multi-gpu not supported for PyTorch and tf-eager.
-    if config["framework"] in ["tf2", "tfe", "torch"]:
-        config["simple_optimizer"] = True
+    #if config["framework"] in ["tf2", "tfe", "torch"]:
+    #    if config["num_gpus"] > 1:
+    #        raise ValueError(
+    #            "`num_gpus` > 1 not supported by PPO-{} yet!".format(
+    #                config["framework"]))
+    #    config["simple_optimizer"] = True
     # Performance warning, if "simple" optimizer used with (static-graph) tf.
-    elif config["simple_optimizer"]:
-        logger.warning(
-            "Using the simple minibatch optimizer. This will significantly "
-            "reduce performance, consider simple_optimizer=False.")
+    #if config["simple_optimizer"]:
+    #    logger.warning(
+    #        "Using the simple minibatch optimizer. This will significantly "
+    #        "reduce performance! Consider `simple_optimizer=False`.")
     # Multi-agent mode and multi-GPU optimizer.
-    elif config["multiagent"]["policies"] and not config["simple_optimizer"]:
+    if config["multiagent"]["policies"] and not config["simple_optimizer"]:
         logger.info(
             "In multi-agent mode, policies will be optimized sequentially "
             "by the multi-GPU optimizer. Consider setting "

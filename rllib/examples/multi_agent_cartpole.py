@@ -33,7 +33,7 @@ parser.add_argument("--num-policies", type=int, default=2)
 parser.add_argument("--stop-iters", type=int, default=200)
 parser.add_argument("--stop-reward", type=float, default=150)
 parser.add_argument("--stop-timesteps", type=int, default=100000)
-parser.add_argument("--simple", action="store_true")
+#parser.add_argument("--simple", action="store_true")
 parser.add_argument("--num-cpus", type=int, default=0)
 parser.add_argument("--as-test", action="store_true")
 parser.add_argument(
@@ -82,7 +82,7 @@ if __name__ == "__main__":
         "env_config": {
             "num_agents": args.num_agents,
         },
-        "simple_optimizer": args.simple,
+        #"simple_optimizer": args.simple,
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
         "num_sgd_iter": 10,
