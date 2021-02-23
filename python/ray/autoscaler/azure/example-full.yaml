@@ -30,7 +30,6 @@ docker:
     # worker_image: "rayproject/ray-ml:latest-cpu"
     # worker_run_options: []
 
-
 # If a node is idle for this many minutes, it will be removed.
 idle_timeout_minutes: 5
 
