@@ -187,9 +187,14 @@ void GcsPlacementGroupManager::RegisterPlacementGroup(
           // The placement group registration is synchronous, so if we found the placement
           // group was deleted here, it must be triggered by the abnormal exit of job,
           // we will return directly in this case.
+          RAY_CHECK(placement_group_to_register_callbacks_.count(placement_group_id) == 0)
+              << "The placement group has been removed unexpectedly with an unknown "
+                 "error. Please file a bug report on here: "
+                 "https://github.com/ray-project/ray/issues";
           RAY_LOG(WARNING) << "Failed to create placement group '"
                            << placement_group->GetPlacementGroupID()
-                           << "', because the placement group has been cleaned by GCS.";
+                           << "', because the placement group has been removed by GCS.";
+          return;
         }
       }));
 }
