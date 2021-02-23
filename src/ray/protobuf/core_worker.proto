@@ -132,6 +132,15 @@ message GetObjectStatusRequest {
   bytes object_id = 2;
 }
 
+message RayObject {
+  // Data of the object.
+  bytes data = 1;
+  // Metadata of the object.
+  bytes metadata = 2;
+  // ObjectIDs that were nested in data. This is only set for inlined objects.
+  repeated bytes nested_inlined_ids = 3;
+}
+
 message GetObjectStatusReply {
   enum ObjectStatus {
     CREATED = 0;
@@ -139,6 +148,9 @@ message GetObjectStatusReply {
     FREED = 2;
   }
   ObjectStatus status = 1;
+  // The Ray object: either a concrete value, an in-Plasma indicator, or an
+  // exception.
+  RayObject object = 2;
 }
 
 message WaitForActorOutOfScopeRequest {

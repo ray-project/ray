@@ -32,7 +32,7 @@ const int kInternalHeartbeatMillis = 1000;
 
 void BuildCommonTaskSpec(
     ray::TaskSpecBuilder &builder, const JobID &job_id, const TaskID &task_id,
-    const std::string name, const TaskID &current_task_id, const int task_index,
+    const std::string name, const TaskID &current_task_id, const uint64_t task_index,
     const TaskID &caller_id, const ray::rpc::Address &address,
     const ray::RayFunction &function,
     const std::vector<std::unique_ptr<ray::TaskArg>> &args, uint64_t num_returns,
@@ -308,6 +308,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       task_execution_service_work_(task_execution_service_),
       resource_ids_(new ResourceMappingType()),
       grpc_service_(io_service_, *this) {
+  RAY_LOG(INFO) << "Constructing CoreWorker, worker_id: " << worker_id;
+
   // Initialize task receivers.
   if (options_.worker_type == WorkerType::WORKER || options_.is_local_mode) {
     RAY_CHECK(options_.task_execution_callback != nullptr);
@@ -332,12 +334,13 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   Status raylet_client_status;
   NodeID local_raylet_id;
   int assigned_port;
+  std::string serialized_job_config = options_.serialized_job_config;
   std::string system_config;
   local_raylet_client_ = std::shared_ptr<raylet::RayletClient>(new raylet::RayletClient(
       io_service_, std::move(grpc_client), options_.raylet_socket, GetWorkerID(),
       options_.worker_type, worker_context_.GetCurrentJobID(), options_.language,
       options_.node_ip_address, &raylet_client_status, &local_raylet_id, &assigned_port,
-      &system_config, options_.serialized_job_config));
+      &system_config, &serialized_job_config));
 
   if (!raylet_client_status.ok()) {
     // Avoid using FATAL log or RAY_CHECK here because they may create a core dump file.
@@ -356,6 +359,11 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
 
   // NOTE(edoakes): any initialization depending on RayConfig must happen after this line.
   RayConfig::instance().initialize(system_config);
+
+  // Parse job config from serialized string.
+  job_config_.reset(new rpc::JobConfig());
+  job_config_->ParseFromString(serialized_job_config);
+
   // Start RPC server after all the task receivers are properly initialized and we have
   // our assigned port from the raylet.
   core_worker_server_ = std::unique_ptr<rpc::GrpcServer>(
@@ -1122,7 +1130,8 @@ Status CoreWorker::GetIfLocal(const std::vector<ObjectID> &ids,
   return Status::OK();
 }
 
-Status CoreWorker::Contains(const ObjectID &object_id, bool *has_object) {
+Status CoreWorker::Contains(const ObjectID &object_id, bool *has_object,
+                            bool *is_in_plasma) {
   bool found = false;
   bool in_plasma = false;
   found = memory_store_->Contains(object_id, &in_plasma);
@@ -1130,6 +1139,9 @@ Status CoreWorker::Contains(const ObjectID &object_id, bool *has_object) {
     RAY_RETURN_NOT_OK(plasma_store_provider_->Contains(object_id, &found));
   }
   *has_object = found;
+  if (is_in_plasma != nullptr) {
+    *is_in_plasma = found && in_plasma;
+  }
   return Status::OK();
 }
 
@@ -1399,7 +1411,7 @@ void CoreWorker::SubmitTask(const RayFunction &function,
                             bool placement_group_capture_child_tasks,
                             const std::string &debugger_breakpoint) {
   TaskSpecBuilder builder;
-  const int next_task_index = worker_context_.GetNextTaskIndex();
+  const auto next_task_index = worker_context_.GetNextTaskIndex();
   const auto task_id =
       TaskID::ForNormalTask(worker_context_.GetCurrentJobID(),
                             worker_context_.GetCurrentTaskID(), next_task_index);
@@ -1445,7 +1457,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
     return Status::NotImplemented(
         "Async actor is currently not supported for the local mode");
   }
-  const int next_task_index = worker_context_.GetNextTaskIndex();
+  const auto next_task_index = worker_context_.GetNextTaskIndex();
   const ActorID actor_id =
       ActorID::Of(worker_context_.GetCurrentJobID(), worker_context_.GetCurrentTaskID(),
                   next_task_index);
@@ -1593,7 +1605,7 @@ void CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &fun
 
   // Build common task spec.
   TaskSpecBuilder builder;
-  const int next_task_index = worker_context_.GetNextTaskIndex();
+  const auto next_task_index = worker_context_.GetNextTaskIndex();
   const TaskID actor_task_id = TaskID::ForActorTask(
       worker_context_.GetCurrentJobID(), worker_context_.GetCurrentTaskID(),
       next_task_index, actor_handle->GetActorID());
@@ -2160,25 +2172,43 @@ void CoreWorker::HandleGetObjectStatus(const rpc::GetObjectStatusRequest &reques
     send_reply_callback(Status::OK(), nullptr, nullptr);
   } else {
     RAY_CHECK(owner_address.worker_id() == request.owner_worker_id());
+    bool is_freed = reference_counter_->IsPlasmaObjectFreed(object_id);
 
-    if (reference_counter_->IsPlasmaObjectFreed(object_id)) {
-      reply->set_status(rpc::GetObjectStatusReply::FREED);
-    } else {
-      reply->set_status(rpc::GetObjectStatusReply::CREATED);
-    }
     // Send the reply once the value has become available. The value is
     // guaranteed to become available eventually because we own the object and
     // its ref count is > 0.
-    // TODO(swang): We could probably just send the object value if it is small
-    // enough and we have it local.
-    memory_store_->GetAsync(object_id,
-                            [send_reply_callback](std::shared_ptr<RayObject> obj) {
-                              send_reply_callback(Status::OK(), nullptr, nullptr);
-                            });
+    memory_store_->GetAsync(object_id, [reply, send_reply_callback,
+                                        is_freed](std::shared_ptr<RayObject> obj) {
+      if (is_freed) {
+        reply->set_status(rpc::GetObjectStatusReply::FREED);
+      } else {
+        // If obj is the concrete object value, it is small, so we
+        // send the object back to the caller in the GetObjectStatus
+        // reply, bypassing a Plasma put and object transfer. If obj
+        // is an indicator that the object is in Plasma, we set an
+        // in_plasma indicator on the message, and the caller will
+        // have to facilitate a Plasma object transfer to get the
+        // object value.
+        auto *object = reply->mutable_object();
+        if (obj->HasData()) {
+          const auto &data = obj->GetData();
+          object->set_data(data->Data(), data->Size());
+        }
+        if (obj->HasMetadata()) {
+          const auto &metadata = obj->GetMetadata();
+          object->set_metadata(metadata->Data(), metadata->Size());
+        }
+        for (const auto &nested_id : obj->GetNestedIds()) {
+          object->add_nested_inlined_ids(nested_id.Binary());
+        }
+        reply->set_status(rpc::GetObjectStatusReply::CREATED);
+      }
+      send_reply_callback(Status::OK(), nullptr, nullptr);
+    });
   }
 
   RemoveLocalReference(object_id);
-}
+}  // namespace ray
 
 void CoreWorker::HandleWaitForActorOutOfScope(
     const rpc::WaitForActorOutOfScopeRequest &request,
@@ -2277,9 +2307,9 @@ void CoreWorker::HandleGetObjectLocationsOwner(
                              const NodeID &spilled_node_id, int64_t current_version) {
     RAY_LOG(DEBUG) << "Replying to HandleGetObjectLocationsOwner for " << object_id
                    << " with location update version " << current_version << ", "
-                   << locations.size() << " locations, " << spilled_url
-                   << " spilled url, " << spilled_node_id << " spilled node ID, and "
-                   << object_size << " object size.";
+                   << locations.size() << " locations, spilled url: " << spilled_url
+                   << ", spilled node ID: " << spilled_node_id
+                   << ", and object size: " << object_size;
     for (const auto &node_id : locations) {
       reply->add_node_ids(node_id.Binary());
     }
@@ -2658,5 +2688,7 @@ void CoreWorker::SetActorTitle(const std::string &title) {
   absl::MutexLock lock(&mutex_);
   actor_title_ = title;
 }
+
+const rpc::JobConfig &CoreWorker::GetJobConfig() const { return *job_config_; }
 
 }  // namespace ray
