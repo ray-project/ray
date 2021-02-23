@@ -27,18 +27,6 @@ class Counter {
     return counter;
   }
 
-  static Counter *FactoryCreate(int init) {
-    (void)init;
-    Counter *counter = new Counter();
-    return counter;
-  }
-
-  static Counter *FactoryCreate(int init, int) {
-    (void)init;
-    Counter *counter = new Counter();
-    return counter;
-  }
-
   int Plus1(int x) { return x + 1; }
 
   int Plus(int x, int y) { return x + y; }
@@ -127,7 +115,7 @@ TEST(RayApiTest, CallWithObjectTest) {
 
 TEST(RayApiTest, ActorTest) {
   Ray::Init();
-  ActorHandle<Counter> actor = Ray::Actor(Counter::FactoryCreate, 1).Remote();
+  ActorHandle<Counter> actor = Ray::Actor(Counter::FactoryCreate).Remote();
   auto rt1 = actor.Task(&Counter::Add, 1).Remote();
   auto rt2 = actor.Task(&Counter::Add, 2).Remote();
   auto rt3 = actor.Task(&Counter::Add, 3).Remote();
