@@ -1,12 +1,12 @@
 
 #pragma once
 
+#include <ray/api/util.h>
+
 #include "ray/core.h"
 
 namespace ray {
 namespace api {
-
-#include <ray/api/generated/actor_funcs.generated.h>
 
 /// A handle to an actor which can be used to invoke a remote actor method, with the
 /// `Call` method.
@@ -23,7 +23,11 @@ class ActorHandle {
   const ActorID &ID() const;
 
   /// Include the `Call` methods for calling remote functions.
-#include <ray/api/generated/actor_call.generated.h>
+
+  template <typename ReturnType, typename... Args>
+  ActorTaskCaller<ReturnType> Task(
+      ActorFunc<ActorType, ReturnType, typename FilterArgType<Args>::type...> actor_func,
+      Args... args);
 
   /// Make ActorHandle serializable
   MSGPACK_DEFINE(id_);
@@ -47,6 +51,13 @@ const ActorID &ActorHandle<ActorType>::ID() const {
   return id_;
 }
 
-#include <ray/api/generated/actor_call_impl.generated.h>
+template <typename ActorType>
+template <typename ReturnType, typename... Args>
+ActorTaskCaller<ReturnType> ActorHandle<ActorType>::Task(
+    ActorFunc<ActorType, ReturnType, typename FilterArgType<Args>::type...> actor_func,
+    Args... args) {
+  return Ray::Task(actor_func, *this, args...);
+}
+
 }  // namespace api
 }  // namespace ray

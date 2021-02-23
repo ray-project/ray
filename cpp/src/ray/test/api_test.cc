@@ -12,6 +12,8 @@ int Plus1(int x) { return x + 1; }
 
 int Plus(int x, int y) { return x + y; }
 
+int Triple(int x, int y, int z) { return x + y + z; }
+
 class Counter {
  public:
   int count;
@@ -25,9 +27,23 @@ class Counter {
     return counter;
   }
 
+  static Counter *FactoryCreate(int init) {
+    (void)init;
+    Counter *counter = new Counter();
+    return counter;
+  }
+
+  static Counter *FactoryCreate(int init, int) {
+    (void)init;
+    Counter *counter = new Counter();
+    return counter;
+  }
+
   int Plus1(int x) { return x + 1; }
 
   int Plus(int x, int y) { return x + y; }
+
+  int Triple(int x, int y, int z) { return x + y + z; }
 
   int Add(int x) {
     count += x;
@@ -76,14 +92,17 @@ TEST(RayApiTest, CallWithValueTest) {
   auto r0 = Ray::Task(Return1).Remote();
   auto r1 = Ray::Task(Plus1, 3).Remote();
   auto r2 = Ray::Task(Plus, 2, 3).Remote();
+  auto r3 = Ray::Task(Triple, 1, 2, 3).Remote();
 
   int result0 = *(r0.Get());
   int result1 = *(r1.Get());
   int result2 = *(r2.Get());
+  int result3 = *(r3.Get());
 
   EXPECT_EQ(result0, 1);
   EXPECT_EQ(result1, 4);
   EXPECT_EQ(result2, 5);
+  EXPECT_EQ(result3, 6);
 }
 
 TEST(RayApiTest, CallWithObjectTest) {
@@ -108,21 +127,24 @@ TEST(RayApiTest, CallWithObjectTest) {
 
 TEST(RayApiTest, ActorTest) {
   Ray::Init();
-  ActorHandle<Counter> actor = Ray::Actor(Counter::FactoryCreate).Remote();
+  ActorHandle<Counter> actor = Ray::Actor(Counter::FactoryCreate, 1).Remote();
   auto rt1 = actor.Task(&Counter::Add, 1).Remote();
   auto rt2 = actor.Task(&Counter::Add, 2).Remote();
   auto rt3 = actor.Task(&Counter::Add, 3).Remote();
   auto rt4 = actor.Task(&Counter::Add, rt3).Remote();
+  auto rt5 = actor.Task(&Counter::Triple, 1, 2, 3).Remote();
 
   int return1 = *(rt1.Get());
   int return2 = *(rt2.Get());
   int return3 = *(rt3.Get());
   int return4 = *(rt4.Get());
+  int return5 = *(rt5.Get());
 
   EXPECT_EQ(return1, 1);
   EXPECT_EQ(return2, 3);
   EXPECT_EQ(return3, 6);
   EXPECT_EQ(return4, 12);
+  EXPECT_EQ(return5, 6);
 }
 
 TEST(RayApiTest, CompareWithFuture) {
