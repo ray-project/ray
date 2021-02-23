@@ -112,7 +112,7 @@ available_node_types:
               - onHostMaintenance: TERMINATE
 
 # Specify the node type of the head node (as configured above).
-head_node_type: ray.worker.gpu
+head_node_type: ray.head.gpu
 
 # Files or directories to copy to the head and worker nodes. The format is a
 # dictionary from REMOTE_PATH: LOCAL_PATH, e.g.
