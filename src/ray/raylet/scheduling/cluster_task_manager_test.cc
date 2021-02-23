@@ -312,6 +312,9 @@ TEST_F(ClusterTaskManagerTest, ResourceTakenWhileResolving) {
   ASSERT_EQ(num_callbacks, 0);
   ASSERT_EQ(leased_workers_.size(), 0);
   ASSERT_EQ(pool_.workers.size(), 2);
+  // It's important that we don't pop the worker until we need to. See
+  // https://github.com/ray-project/ray/issues/13725.
+  ASSERT_EQ(pool_.num_pops, 0);
 
   /* This task can run */
   auto task2 = CreateTask({{ray::kCPU_ResourceLabel, 5}}, 1);
@@ -322,6 +325,7 @@ TEST_F(ClusterTaskManagerTest, ResourceTakenWhileResolving) {
   ASSERT_EQ(num_callbacks, 1);
   ASSERT_EQ(leased_workers_.size(), 1);
   ASSERT_EQ(pool_.workers.size(), 1);
+  ASSERT_EQ(pool_.num_pops, 1);
 
   /* First task is unblocked now, but resources are no longer available */
   missing_objects_.erase(missing_arg);
@@ -334,6 +338,7 @@ TEST_F(ClusterTaskManagerTest, ResourceTakenWhileResolving) {
   ASSERT_EQ(num_callbacks, 1);
   ASSERT_EQ(leased_workers_.size(), 1);
   ASSERT_EQ(pool_.workers.size(), 1);
+  ASSERT_EQ(pool_.num_pops, 1);
 
   /* Second task finishes, making space for the original task */
   Task finished_task;
@@ -348,6 +353,7 @@ TEST_F(ClusterTaskManagerTest, ResourceTakenWhileResolving) {
   ASSERT_EQ(num_callbacks, 2);
   ASSERT_EQ(leased_workers_.size(), 1);
   ASSERT_EQ(pool_.workers.size(), 0);
+  ASSERT_EQ(pool_.num_pops, 2);
 
   task_manager_.TaskFinished(leased_workers_.begin()->second, &finished_task);
   AssertNoLeaks();
@@ -405,62 +411,6 @@ TEST_F(ClusterTaskManagerTest, TestSpillAfterAssigned) {
             task.GetTaskSpecification().TaskId());
 
   AssertNoLeaks();
-}
-
-TEST_F(ClusterTaskManagerTest, TestMinimizeWorkerPops) {
-  /*
-    This test ensures that we don't pop workers until the last second.
-    See https://github.com/ray-project/ray/issues/13725.
-  */
-  std::shared_ptr<MockWorker> worker =
-      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
-  pool_.PushWorker(worker);
-
-  int num_callbacks = 0;
-  auto callback = [&](Status, std::function<void()>, std::function<void()>) {
-    num_callbacks++;
-  };
-
-  /* Blocked on starting a worker. */
-  auto task = CreateTask({{ray::kCPU_ResourceLabel, 5}});
-  auto task2 = CreateTask({{ray::kCPU_ResourceLabel, 5}});
-
-  rpc::RequestWorkerLeaseReply local_reply;
-  task_manager_.QueueAndScheduleTask(task2, &local_reply, callback);
-  task_manager_.QueueAndScheduleTask(task, &local_reply, callback);
-
-  ASSERT_EQ(num_callbacks, 1);
-  ASSERT_EQ(leased_workers_.size(), 1);
-  ASSERT_EQ(pool_.num_pops, 1);
-
-  {
-    // Hack to move the task from the scheduling to dispatch queues without actually
-    // dispatching.
-    auto it = tasks_to_schedule_.begin();
-    auto queue = it->second;
-    tasks_to_schedule_.erase(it);
-    const auto &scheduling_class = task.GetTaskSpecification().GetSchedulingClass();
-    tasks_to_dispatch_[scheduling_class] = queue;
-    leased_workers_.clear();
-  }
-
-  task_manager_.ScheduleAndDispatchTasks();
-
-  ASSERT_EQ(num_callbacks, 1);
-  ASSERT_EQ(leased_workers_.size(), 0);
-  ASSERT_EQ(pool_.num_pops, 1);
-
-  task_manager_.TaskFinished(worker, &task2);
-  pool_.PushWorker(worker);
-
-  RAY_LOG(ERROR) << task_manager_.DebugStr();
-  task_manager_.ScheduleAndDispatchTasks();
-
-  ASSERT_EQ(num_callbacks, 2);
-  ASSERT_EQ(leased_workers_.size(), 1);
-  ASSERT_EQ(pool_.num_pops, 2);
-
-  // Not asserting no leaks because of the hack to force the task onto the dispatch queue.
 }
 
 TEST_F(ClusterTaskManagerTest, TaskCancellationTest) {
