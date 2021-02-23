@@ -138,7 +138,7 @@ NodeManager::NodeManager(boost::asio::io_service &io_service, const NodeID &self
                    config.num_initial_python_workers_for_first_job,
                    config.maximum_startup_concurrency, config.min_worker_port,
                    config.max_worker_port, config.worker_ports, gcs_client_,
-                   config.worker_commands, config.raylet_config,
+                   config.worker_commands,
                    /*starting_worker_timeout_callback=*/
                    [this] { cluster_task_manager_->ScheduleAndDispatchTasks(); }),
       scheduling_policy_(local_queues_),
@@ -1083,17 +1083,10 @@ void NodeManager::ProcessRegisterClientRequestMessage(
 
   auto send_reply_callback = [this, client](Status status, int assigned_port) {
     flatbuffers::FlatBufferBuilder fbb;
-    std::vector<std::string> system_config_keys;
-    std::vector<std::string> system_config_values;
-    for (auto kv : initial_config_.raylet_config) {
-      system_config_keys.push_back(kv.first);
-      system_config_values.push_back(kv.second);
-    }
     auto reply = ray::protocol::CreateRegisterClientReply(
         fbb, status.ok(), fbb.CreateString(status.ToString()),
         to_flatbuf(fbb, self_node_id_), assigned_port,
-        string_vec_to_flatbuf(fbb, system_config_keys),
-        string_vec_to_flatbuf(fbb, system_config_values));
+        fbb.CreateString(initial_config_.raylet_config));
     fbb.Finish(reply);
     client->WriteMessageAsync(
         static_cast<int64_t>(protocol::MessageType::RegisterClientReply), fbb.GetSize(),
@@ -2720,6 +2713,7 @@ void NodeManager::RecordMetrics() {
 
   object_manager_.RecordMetrics();
   local_queues_.RecordMetrics();
+  local_object_manager_.RecordObjectSpillingStats();
 }
 
 void NodeManager::PublishInfeasibleTaskError(const Task &task) const {

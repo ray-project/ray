@@ -61,8 +61,8 @@ class FailureInjection(TrainingCallback):
         if epoch == self._iteration:
             rank = get_actor_rank()
             if rank in self._ranks:
-                if not ray.get(self._state.has_failed.remote(id)):
-                    success = ray.get(self._state.set_failed.remote(id))
+                if not ray.get(self._state.has_failed.remote(self._id)):
+                    success = ray.get(self._state.set_failed.remote(self._id))
                     if not success:
                         # Another rank is already about to fail
                         return
@@ -74,7 +74,9 @@ class FailureInjection(TrainingCallback):
 
 
 class TrackingCallback(TrainingCallback):
-    def after_iteration(self, model, epoch, evals_log):
+    def before_iteration(self, model, epoch, evals_log):
+        if get_actor_rank() == 3:
+            print(f"[Rank {get_actor_rank()}] I am at iteration {epoch}")
         put_queue(get_world_size())
 
 
@@ -111,3 +113,5 @@ if __name__ == "__main__":
     assert len(actor_1_world_size) == 1 and 4 in actor_1_world_size, \
         "Training with fewer than 4 actors observed, but this was " \
         "non-elastic training. Please report to test owner."
+
+    print("PASSED.")
