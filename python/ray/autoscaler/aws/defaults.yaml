@@ -105,15 +105,12 @@ cluster_synced_files: []
 file_mounts_sync_continuously: False
 
 # Patterns for files to exclude when running rsync up or rsync down
-rsync_exclude:
-    - "**/.git"
-    - "**/.git/**"
+rsync_exclude: []
 
 # Pattern files to use for filtering out files when running rsync up or rsync down. The file is searched for
 # in the source directory and recursively through all subdirectories. For example, if .gitignore is provided
 # as a value, the behavior will match git's behavior for finding and using .gitignore files.
-rsync_filter:
-    - ".gitignore"
+rsync_filter: []
 
 # List of commands that will be run before `setup_commands`. If docker is
 # enabled, these commands will run outside the container and before docker
@@ -126,7 +123,8 @@ setup_commands:
     - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl
 
 # Custom commands that will be run on the head node after common setup.
-head_setup_commands: []
+head_setup_commands:
+    - pip install 'boto3>=1.4.8'  # 1.4.8 adds InstanceMarketOptions
 
 # Custom commands that will be run on worker nodes after common setup.
 worker_setup_commands: []
