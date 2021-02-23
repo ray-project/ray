@@ -11,32 +11,25 @@ namespace api {
 class Serializer {
  public:
   template <typename T>
-  static void Serialize(msgpack::packer<msgpack::sbuffer> &packer, const T &val);
+  static msgpack::sbuffer Serialize(const T &t) {
+    msgpack::sbuffer buffer;
+    msgpack::pack(buffer, t);
+    return buffer;
+  }
 
   template <typename T>
-  static void Deserialize(msgpack::unpacker &unpacker, T *val);
-};
-
-// ---------- implementation ----------
-
-template <typename T>
-inline void Serializer::Serialize(msgpack::packer<msgpack::sbuffer> &packer,
-                                  const T &val) {
-  packer.pack(val);
-  return;
-}
-
-template <typename T>
-inline void Serializer::Deserialize(msgpack::unpacker &unpacker, T *val) {
-  msgpack::object_handle oh;
-  bool result = unpacker.next(oh);
-  if (result == false) {
-    throw RayException("unpack error");
+  static T Deserialize(const char *data, size_t size) {
+    try {
+      msgpack::unpacked unpacked;
+      msgpack::unpack(unpacked, data, size);
+      return unpacked.get().as<T>();
+    } catch (std::exception &e) {
+      throw RayException(std::string("unpack failed, reason: ") + e.what());
+    } catch (...) {
+      throw RayException("unpack failed, reason: unknown error");
+    }
   }
-  msgpack::object obj = oh.get();
-  obj.convert(*val);
-  return;
-}
+};
 
 }  // namespace api
 }  // namespace ray
