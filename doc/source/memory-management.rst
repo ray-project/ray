@@ -194,13 +194,8 @@ To configure the directory where objects are placed, use:
         },
     )
 
-Note that it is also possible to specify multiple directories. There are 2 scenarios that it is useful.
-
-- When you'd like to improve the read and write performance. Ray uses IO workers to parallelize object spilling(read) and restoration(write).
-If you use multiple directories mounted at different devices, IO workers try using multiple devices at the same time,
-so that it can improve the general read and write bandwidth.
-- When you'd need more than one devices' storage space. Imagine you only have a single devices with 1TB space, but that's not enough.
-Intead, you can use multiple directories mounted at multiple 1TB devices, so that you can spill more than 1TB objects to the local storage.
+You can also specify multiple directories for spilling to spread the IO load and disk space
+usage across multiple physical devices if needed (e.g., SSD devices):
 
 .. code-block:: python
 
