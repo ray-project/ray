@@ -145,8 +145,8 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
     auto &dispatch_queue = shapes_it->second;
     for (auto work_it = dispatch_queue.begin(); work_it != dispatch_queue.end();) {
       auto &work = *work_it;
-      auto &task = std::get<0>(work);
-      auto &spec = task.GetTaskSpecification();
+      const auto &task = std::get<0>(work);
+      const auto &spec = task.GetTaskSpecification();
 
       std::vector<std::unique_ptr<RayObject>> args;
       bool success = true;
@@ -183,51 +183,70 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
         continue;
       }
 
-      std::shared_ptr<WorkerInterface> worker = worker_pool_.PopWorker(spec);
-      if (!worker) {
-        // No worker available, we won't be able to schedule any kind of task.
-        return;
-      }
-
       const auto owner_worker_id = WorkerID::FromBinary(spec.CallerAddress().worker_id());
       const auto owner_node_id = NodeID::FromBinary(spec.CallerAddress().raylet_id());
+
       // If the owner has died since this task was queued, cancel the task by
       // killing the worker (unless this task is for a detached actor).
       if (!spec.IsDetachedActor() && !is_owner_alive_(owner_worker_id, owner_node_id)) {
         RAY_LOG(WARNING) << "Task: " << task.GetTaskSpecification().TaskId()
                          << "'s caller is no longer running. Cancelling task.";
-        worker_pool_.PushWorker(worker);
         if (!spec.GetDependencies().empty()) {
           task_dependency_manager_.RemoveTaskDependencies(
               task.GetTaskSpecification().TaskId());
         }
         work_it = dispatch_queue.erase(work_it);
-      } else {
-        bool worker_leased;
-        bool remove = AttemptDispatchWork(*work_it, worker, &worker_leased);
-        if (worker_leased) {
-          // Pin the arguments while the lease is active. These will be erased
-          // once the lease is returned.
-          num_pinned_task_arguments_ += args.size();
-          RAY_CHECK(pinned_task_arguments_.emplace(spec.TaskId(), std::move(args)).second)
-              << spec.TaskId();
+        continue;
+      }
 
-          auto reply = std::get<1>(*work_it);
-          auto callback = std::get<2>(*work_it);
-          Dispatch(worker, leased_workers_, task, reply, callback);
-        } else {
-          worker_pool_.PushWorker(worker);
-        }
-        if (remove) {
-          if (!spec.GetDependencies().empty()) {
-            task_dependency_manager_.RemoveTaskDependencies(
-                task.GetTaskSpecification().TaskId());
-          }
-          work_it = dispatch_queue.erase(work_it);
-        } else {
+      // Check if the node is still schedulable. It may not be if dependency resolution
+      // took a long time.
+      std::shared_ptr<TaskResourceInstances> allocated_instances(
+          new TaskResourceInstances());
+      bool schedulable = cluster_resource_scheduler_->AllocateLocalTaskResources(
+          spec.GetRequiredResources().GetResourceMap(), allocated_instances);
+
+      if (!schedulable) {
+        // The local node currently does not have the resources to run the task, so we
+        // should try spilling to another node.
+        bool did_spill = TrySpillback(work);
+        if (!did_spill) {
+          // There must not be any other available nodes in the cluster, so the task
+          // should stay on this node. We can skip the reest of the shape because the
+          // scheduler will make the same decision.
           break;
         }
+      } else {
+        // The local node has the available resources to run the task, so we should run
+        // it.
+        std::shared_ptr<WorkerInterface> worker = worker_pool_.PopWorker(spec);
+        if (!worker) {
+          RAY_LOG(DEBUG) << "This node has available resources, but no worker processes "
+                            "to grant the lease.";
+          // We've already acquired resources so we need to release them to avoid
+          // double-acquiring when the next invocation of this function tries to schedule
+          // this task.
+          cluster_resource_scheduler_->ReleaseWorkerResources(allocated_instances);
+          // No worker available, we won't be able to schedule any kind of task.
+          // Worker processes spin up pretty quickly, so it's not worth trying to spill
+          // this task.
+          return;
+        }
+
+        num_pinned_task_arguments_ += args.size();
+        RAY_CHECK(pinned_task_arguments_.emplace(spec.TaskId(), std::move(args)).second)
+            << spec.TaskId();
+
+        auto reply = std::get<1>(*work_it);
+        auto callback = std::get<2>(*work_it);
+        Dispatch(worker, leased_workers_, allocated_instances, task, reply, callback);
       }
+
+      if (!spec.GetDependencies().empty()) {
+        task_dependency_manager_.RemoveTaskDependencies(
+            task.GetTaskSpecification().TaskId());
+      }
+      work_it = dispatch_queue.erase(work_it);
     }
     if (dispatch_queue.empty()) {
       shapes_it = tasks_to_dispatch_.erase(shapes_it);
@@ -237,48 +256,26 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
   }
 }
 
-bool ClusterTaskManager::AttemptDispatchWork(const Work &work,
-                                             std::shared_ptr<WorkerInterface> &worker,
-                                             bool *worker_leased) {
-  const auto &task = std::get<0>(work);
-  const auto &spec = task.GetTaskSpecification();
-  RAY_LOG(DEBUG) << "Attempting to dispatch task " << spec.TaskId();
+bool ClusterTaskManager::TrySpillback(const Work &work) {
+  const auto &spec = std::get<0>(work).GetTaskSpecification();
+  int64_t _unused;
+  bool is_infeasible;
+  auto placement_resources = spec.GetRequiredPlacementResources().GetResourceMap();
+  std::string node_id_string = cluster_resource_scheduler_->GetBestSchedulableNode(
+      placement_resources, spec.IsActorCreationTask(), &_unused, &is_infeasible);
 
-  std::shared_ptr<TaskResourceInstances> allocated_instances(new TaskResourceInstances());
-  bool schedulable = cluster_resource_scheduler_->AllocateLocalTaskResources(
-      spec.GetRequiredResources().GetResourceMap(), allocated_instances);
-  bool dispatched = false;
-  if (!schedulable) {
-    *worker_leased = false;
-    // Spill at most one task from this queue, then move on to the next
-    // queue.
-    int64_t _unused;
-    bool is_infeasible;
-    auto placement_resources = spec.GetRequiredPlacementResources().GetResourceMap();
-    std::string node_id_string = cluster_resource_scheduler_->GetBestSchedulableNode(
-        placement_resources, spec.IsActorCreationTask(), &_unused, &is_infeasible);
-    RAY_CHECK(!is_infeasible)
-        << "Task cannot be infeasible when it is about to be dispatched";
-    if (node_id_string != self_node_id_.Binary() && !node_id_string.empty()) {
-      NodeID node_id = NodeID::FromBinary(node_id_string);
-      Spillback(node_id, work);
-      dispatched = true;
-    }
-  } else {
-    worker->SetBundleId(spec.PlacementGroupBundleId());
-    worker->SetOwnerAddress(spec.CallerAddress());
-    if (spec.IsActorCreationTask()) {
-      // The actor belongs to this worker now.
-      worker->SetLifetimeAllocatedInstances(allocated_instances);
-    } else {
-      worker->SetAllocatedInstances(allocated_instances);
-    }
-    worker->AssignTaskId(spec.TaskId());
-    worker->SetAssignedTask(task);
-    *worker_leased = true;
-    dispatched = true;
+  // TODO(Alex): This check may actually fail in the case where placement group is
+  // removed. All tasks on the dispatch queue must at least be feasible on the local node.
+  RAY_CHECK(!is_infeasible)
+      << "Task cannot be infeasible when it is about to be dispatched";
+
+  if (node_id_string == self_node_id_.Binary() || node_id_string.empty()) {
+    return false;
   }
-  return dispatched;
+
+  NodeID node_id = NodeID::FromBinary(node_id_string);
+  Spillback(node_id, work);
+  return true;
 }
 
 void ClusterTaskManager::QueueAndScheduleTask(
@@ -720,9 +717,21 @@ void ClusterTaskManager::TryLocalInfeasibleTaskScheduling() {
 void ClusterTaskManager::Dispatch(
     std::shared_ptr<WorkerInterface> worker,
     std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers,
-    const Task &task, rpc::RequestWorkerLeaseReply *reply,
-    std::function<void(void)> send_reply_callback) {
+    std::shared_ptr<TaskResourceInstances> &allocated_instances, const Task &task,
+    rpc::RequestWorkerLeaseReply *reply, std::function<void(void)> send_reply_callback) {
   const auto &task_spec = task.GetTaskSpecification();
+
+  worker->SetBundleId(task_spec.PlacementGroupBundleId());
+  worker->SetOwnerAddress(task_spec.CallerAddress());
+  if (task_spec.IsActorCreationTask()) {
+    // The actor belongs to this worker now.
+    worker->SetLifetimeAllocatedInstances(allocated_instances);
+  } else {
+    worker->SetAllocatedInstances(allocated_instances);
+  }
+  worker->AssignTaskId(task_spec.TaskId());
+  worker->SetAssignedTask(task);
+
   // Pass the contact info of the worker to use.
   reply->set_worker_pid(worker->GetProcess().GetId());
   reply->mutable_worker_address()->set_ip_address(worker->IpAddress());

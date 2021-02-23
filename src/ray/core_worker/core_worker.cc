@@ -334,12 +334,13 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   Status raylet_client_status;
   NodeID local_raylet_id;
   int assigned_port;
+  std::string serialized_job_config = options_.serialized_job_config;
   std::string system_config;
   local_raylet_client_ = std::shared_ptr<raylet::RayletClient>(new raylet::RayletClient(
       io_service_, std::move(grpc_client), options_.raylet_socket, GetWorkerID(),
       options_.worker_type, worker_context_.GetCurrentJobID(), options_.language,
       options_.node_ip_address, &raylet_client_status, &local_raylet_id, &assigned_port,
-      &system_config, options_.serialized_job_config));
+      &system_config, &serialized_job_config));
 
   if (!raylet_client_status.ok()) {
     // Avoid using FATAL log or RAY_CHECK here because they may create a core dump file.
@@ -358,6 +359,11 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
 
   // NOTE(edoakes): any initialization depending on RayConfig must happen after this line.
   RayConfig::instance().initialize(system_config);
+
+  // Parse job config from serialized string.
+  job_config_.reset(new rpc::JobConfig());
+  job_config_->ParseFromString(serialized_job_config);
+
   // Start RPC server after all the task receivers are properly initialized and we have
   // our assigned port from the raylet.
   core_worker_server_ = std::unique_ptr<rpc::GrpcServer>(
@@ -2279,9 +2285,9 @@ void CoreWorker::HandleGetObjectLocationsOwner(
                              const NodeID &spilled_node_id, int64_t current_version) {
     RAY_LOG(DEBUG) << "Replying to HandleGetObjectLocationsOwner for " << object_id
                    << " with location update version " << current_version << ", "
-                   << locations.size() << " locations, " << spilled_url
-                   << " spilled url, " << spilled_node_id << " spilled node ID, and "
-                   << object_size << " object size.";
+                   << locations.size() << " locations, spilled url: " << spilled_url
+                   << ", spilled node ID: " << spilled_node_id
+                   << ", and object size: " << object_size;
     for (const auto &node_id : locations) {
       reply->add_node_ids(node_id.Binary());
     }
@@ -2660,5 +2666,7 @@ void CoreWorker::SetActorTitle(const std::string &title) {
   absl::MutexLock lock(&mutex_);
   actor_title_ = title;
 }
+
+const rpc::JobConfig &CoreWorker::GetJobConfig() const { return *job_config_; }
 
 }  // namespace ray
