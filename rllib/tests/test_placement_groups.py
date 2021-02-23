@@ -2,7 +2,8 @@ import unittest
 
 import ray
 from ray import tune
-from ray.rllib.agents.pg import DEFAULT_CONFIG
+from ray.rllib.agents.pg import PGTrainer, DEFAULT_CONFIG
+from ray.tune.utils.placement_groups import PlacementGroupFactory
 from ray.util import placement_group
 
 
@@ -23,13 +24,22 @@ class TestPlacementGroups(unittest.TestCase):
         config["framework"] = "torch"
 
         def pg_factory():
-            head_bundle = {"CPU": 1, "GPU": 0, "custom": 0}
-            child_bundle = {"CPU": 1, "custom": 0}
+            head_bundle = {"CPU": 1, "GPU": 0}
+            child_bundle = {"CPU": 1}
             return placement_group([head_bundle, child_bundle, child_bundle])
 
+        class DefaultResourceRequest:
+            @classmethod
+            def default_resource_request(cls, config):
+                from ray.tune.resources import Resources
+                return Resources(cpu=10, gpu=0)
+
+        MyTrainer = PGTrainer.with_updates(mixins=[DefaultResourceRequest])
+        tune.register_trainable("my_trainable", MyTrainer)
+
         tune.run(
-            "PG", config=config, stop={"training_iteration": 1},
-            resources_per_trial=pg_factory,
+            "my_trainable", config=config, stop={"training_iteration": 1},
+            #resources_per_trial=pg_factory,
         )
 
 
