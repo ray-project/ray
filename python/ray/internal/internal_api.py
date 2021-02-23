@@ -15,13 +15,14 @@ def global_gc():
 
 
 def memory_summary_wrapper(redis_address,
-                   redis_password=REDIS_DEFAULT_PASSWORD,
-                   group_by="NODE_ADDRESS",
-                   sort_by="OBJECT_SIZE",
-                   line_wrap=True,
-                   stats_only=False):
+                           redis_password=REDIS_DEFAULT_PASSWORD,
+                           group_by="NODE_ADDRESS",
+                           sort_by="OBJECT_SIZE",
+                           line_wrap=True,
+                           stats_only=False):
     from ray.new_dashboard.memory_utils import memory_summary
-    return memory_summary(redis_address, redis_password, group_by, sort_by, line_wrap, stats_only)
+    return memory_summary(redis_address, redis_password, group_by, sort_by,
+                          line_wrap, stats_only)
 
 
 def memory_summary(node_manager_address=None,
