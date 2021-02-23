@@ -26,6 +26,9 @@ export const formatUrl = (url: string): string => {
   return url;
 };
 
-export const get = <T = any, R = AxiosResponse<T>>(url: string, config?: AxiosRequestConfig): Promise<R> => {
+export const get = <T = any, R = AxiosResponse<T>>(
+  url: string,
+  config?: AxiosRequestConfig,
+): Promise<R> => {
   return axios.get<T, R>(formatUrl(url), config);
-}
+};

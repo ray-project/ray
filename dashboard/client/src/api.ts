@@ -7,8 +7,10 @@ type APIResponse<T> = {
 };
 // TODO(mitchellstern): Add JSON schema validation for the responses.
 const get = async <T>(path: string, params: { [key: string]: any }) => {
-  const formattedParams = Object.entries(params).map(pair => pair.join("=")).join("&");
-  const url = [formatUrl(path), formattedParams].filter(x => x!!).join("?");
+  const formattedParams = Object.entries(params)
+    .map((pair) => pair.join("="))
+    .join("&");
+  const url = [formatUrl(path), formattedParams].filter((x) => x!!).join("?");
 
   const response = await fetch(url);
   const json: APIResponse<T> = await response.json();
@@ -322,8 +324,10 @@ export const checkProfilingStatus = (profilingId: string) =>
   });
 
 export const getProfilingResultURL = (profilingId: string) => {
-  const uriComponent = encodeURIComponent(formatUrl(`/api/get_profiling_info?profiling_id=${profilingId}`));
-  return formatUrl(`/speedscope/index.html#profileURL=${uriComponent}`)
+  const uriComponent = encodeURIComponent(
+    formatUrl(`/api/get_profiling_info?profiling_id=${profilingId}`),
+  );
+  return formatUrl(`/speedscope/index.html#profileURL=${uriComponent}`);
 };
 
 export const launchKillActor = (
