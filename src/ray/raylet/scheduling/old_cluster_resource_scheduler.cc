@@ -57,7 +57,7 @@ void OldClusterResourceScheduler::DeleteResource(const std::string &node_id_stri
 }
 
 void OldClusterResourceScheduler::FillResourceUsage(
-    std::shared_ptr<rpc::ResourcesData> resources_data) {
+    rpc::ResourcesData *resources_data) {
   // TODO(atumanov): modify the heartbeat table protocol to use the ResourceSet
   // directly.
   // TODO(atumanov): implement a ResourceSet const_iterator.

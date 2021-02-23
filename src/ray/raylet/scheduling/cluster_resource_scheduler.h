@@ -380,7 +380,7 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   ///
   /// \param Output parameter. `resources_available` and `resources_total` are the only
   /// fields used.
-  void FillResourceUsage(std::shared_ptr<rpc::ResourcesData> resources_data) override;
+  void FillResourceUsage(rpc::ResourcesData *resources_data) override;
 
   /// Update last report resources local cache from gcs cache,
   /// this is needed when gcs fo.

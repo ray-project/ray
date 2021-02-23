@@ -543,6 +543,12 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// \return Status indicating whether setup was successful.
   ray::Status SetupPlasmaSubscription();
 
+  /// Handle a `RequestResourceReport`A
+  void HandleRequestResourceReport(const rpc::RequestResourceReportRequest &request,
+                                   rpc::RequestResourceReportReply *reply,
+                                   rpc::SendReplyCallback send_reply_callback) override;
+
+
   /// Handle a `PrepareBundleResources` request.
   void HandlePrepareBundleResources(const rpc::PrepareBundleResourcesRequest &request,
                                     rpc::PrepareBundleResourcesReply *reply,
@@ -696,7 +702,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   ///
   /// \param Output parameter. `resource_load` and `resource_load_by_shape` are the only
   /// fields used.
-  void FillResourceUsage(std::shared_ptr<rpc::ResourcesData> data) override;
+  void FillResourceUsage(rpc::ResourcesData *data) override;
 
   /// Populate the list of pending or infeasible actor tasks for node stats.
   ///

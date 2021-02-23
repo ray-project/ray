@@ -58,7 +58,7 @@ class OldClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   ///
   /// \param Output parameter. `resources_available` and `resources_total` are the only
   /// fields used.
-  void FillResourceUsage(std::shared_ptr<rpc::ResourcesData> data) override;
+  void FillResourceUsage(rpc::ResourcesData *data) override;
 
   /// Return local resources in human-readable string form.
   std::string GetLocalResourceViewString() const override;

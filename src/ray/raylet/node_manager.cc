@@ -459,8 +459,8 @@ void NodeManager::ReportResourceUsage() {
   // We should always keep the cache view consistent.
   cluster_resource_scheduler_->UpdateLastResourceUsage(
       gcs_client_->NodeResources().GetLastResourceUsage());
-  cluster_resource_scheduler_->FillResourceUsage(resources_data);
-  cluster_task_manager_->FillResourceUsage(resources_data);
+  cluster_resource_scheduler_->FillResourceUsage(resources_data.get());
+  cluster_task_manager_->FillResourceUsage(resources_data.get());
 
   // Set the global gc bit on the outgoing heartbeat message.
   if (should_global_gc_) {
@@ -1456,6 +1456,22 @@ void NodeManager::ProcessSubmitTaskMessage(const uint8_t *message_data) {
   // Submit the task to the raylet. Since the task was submitted
   // locally, there is no uncommitted lineage.
   SubmitTask(Task(task_message));
+}
+
+void NodeManager::HandleRequestResourceReport(const rpc::RequestResourceReportRequest &request,
+                                rpc::RequestResourceReportReply *reply,
+                                 rpc::SendReplyCallback send_reply_callback) {
+  auto resources_data = reply->mutable_resources();
+  resources_data->set_node_id(self_node_id_.Binary());
+  resources_data->set_node_manager_address(initial_config_.node_manager_address);
+  // Update local chache from gcs remote cache, this is needed when gcs restart.
+  // We should always keep the cache view consistent.
+  cluster_resource_scheduler_->UpdateLastResourceUsage(
+                                                       gcs_client_->NodeResources().GetLastResourceUsage());
+  cluster_resource_scheduler_->FillResourceUsage(resources_data);
+  cluster_task_manager_->FillResourceUsage(resources_data);
+
+  send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
 void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest &request,

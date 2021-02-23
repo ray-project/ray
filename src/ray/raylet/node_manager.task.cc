@@ -104,7 +104,7 @@ void NodeManager::TasksUnblocked(const std::vector<TaskID> &ready_ids) {
   DispatchTasks(MakeTasksByClass(ready_tasks));
 }
 
-void NodeManager::FillResourceUsage(std::shared_ptr<rpc::ResourcesData> resources_data) {
+void NodeManager::FillResourceUsage(rpc::ResourcesData *resources_data) {
   SchedulingResources &local_resources = cluster_resource_map_[self_node_id_];
   local_resources.SetLoadResources(local_queues_.GetTotalResourceLoad());
   auto last_heartbeat_resources = gcs_client_->NodeResources().GetLastResourceUsage();
