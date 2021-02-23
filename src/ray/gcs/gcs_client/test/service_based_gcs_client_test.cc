@@ -1016,11 +1016,9 @@ TEST_F(ServiceBasedGcsClientTest, TestActorTableResubscribe) {
   // successfully.
   RegisterActor(actor_table_data, false);
 
-  // We should receive a new DEAD notification from the subscribe channel.
+  // We should receive a new notification from the subscribe channel.
   WaitForExpectedCount(num_subscribe_all_notifications, 1);
   WaitForExpectedCount(num_subscribe_one_notifications, 1);
-  CheckActorData(subscribe_all_notifications[0], rpc::ActorTableData::DEAD);
-  CheckActorData(subscribe_one_notifications[0], rpc::ActorTableData::DEAD);
 
   // Restart GCS server.
   RestartGcsServer();
