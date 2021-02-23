@@ -1,5 +1,5 @@
-import { get } from "./requestHandlers";
 import { Actor } from "../type/actor";
+import { get } from "./requestHandlers";
 
 export const getActors = () => {
   return get<{

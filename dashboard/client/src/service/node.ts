@@ -1,5 +1,5 @@
-import { get } from "./requestHandlers";
 import { NodeDetailRsp, NodeListRsp } from "../type/node";
+import { get } from "./requestHandlers";
 
 export const getNodeList = async () => {
   return await get<NodeListRsp>("nodes?view=summary");

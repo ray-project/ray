@@ -8,7 +8,7 @@
  * arises.
  */
 
-import axios, { AxiosResponse, AxiosRequestConfig } from "axios";
+import axios, { AxiosRequestConfig, AxiosResponse } from "axios";
 
 /**
  * This function formats URLs such that the user's browser
@@ -26,6 +26,6 @@ export const formatUrl = (url: string): string => {
   return url;
 };
 
-export function get<T = any, R = AxiosResponse<T>>(url: string, config?: AxiosRequestConfig): Promise<R> {
+export const get = <T = any, R = AxiosResponse<T>>(url: string, config?: AxiosRequestConfig): Promise<R> => {
   return axios.get<T, R>(formatUrl(url), config);
 }
