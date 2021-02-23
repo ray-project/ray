@@ -1,3 +1,4 @@
+# An unique identifier for the head node and workers of this cluster.
 cluster_name: default
 
 # The maximum number of workers nodes to launch in addition to the head
