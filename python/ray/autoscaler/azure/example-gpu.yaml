@@ -60,7 +60,7 @@ auth:
 available_node_types:
     ray.head.gpu:
         # The resources provided by this node type.
-        resources: {"CPU": 6, "GPU": 2}
+        resources: {"CPU": 6, "GPU": 1}
         # Provider-specific config, e.g. instance type.
         node_config:
             azure_arm_parameters:
@@ -79,7 +79,7 @@ available_node_types:
         # This takes precedence over min_workers.
         max_workers: 2
         # The resources provided by this node type.
-        resources: {"CPU": 6, "GPU": 2}
+        resources: {"CPU": 6, "GPU": 1}
         # Provider-specific config, e.g. instance type.
         node_config:
             azure_arm_parameters:
