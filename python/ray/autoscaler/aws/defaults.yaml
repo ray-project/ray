@@ -38,9 +38,12 @@ auth:
 # configurations below.
 #    ssh_private_key: /path/to/your/key.pem
 
+# Tell the autoscaler the allowed node types and the resources they provide.
+# The key is the name of the node type, which is just for debugging purposes.
+# The node config specifies the launch config and physical instance type.
 available_node_types:
     ray.head.default:
-        # Autoscaler auto fills the node type's CPU and GPU resources based on the AWS instance type.
+        # Autoscaler auto-fills the node type's CPU and GPU resources based on the AWS instance type.
         # The CPU resources below are included for the purposes of documentation.
         resources: {"CPU": 2}
         # Provider-specific config for this node type, e.g. instance type. By default
@@ -119,13 +122,8 @@ initialization_commands: []
 
 # List of shell commands to run to set up nodes.
 setup_commands:
-    # Note: if you're developing Ray, you probably want to create a Docker image that
-    # has your Ray repo pre-cloned. Then, you can replace the pip installs
-    # below with a git checkout <your_sha> (and possibly a recompile).
     - echo 'export PATH="$HOME/anaconda3/envs/tensorflow2_latest_p37/bin:$PATH"' >> ~/.bashrc
     - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl
-    # Uncomment the following line if you want to run the nightly version of ray (as opposed to the latest)
-    # - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl
 
 # Custom commands that will be run on the head node after common setup.
 head_setup_commands: []
