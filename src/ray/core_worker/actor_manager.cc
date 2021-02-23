@@ -134,7 +134,7 @@ void ActorManager::HandleActorStateNotification(const ActorID &actor_id,
                 << ", death_info=" << actor_data.death_info();
   if (actor_data.state() == rpc::ActorTableData::RESTARTING) {
     direct_actor_submitter_->DisconnectActor(actor_id, actor_data.num_restarts(), false,
-                                             "No dead info avaliable.");
+                                             "No Death info avaliable.");
   } else if (actor_data.state() == rpc::ActorTableData::DEAD) {
     direct_actor_submitter_->DisconnectActor(actor_id, actor_data.num_restarts(), true,
                                              actor_data.death_info());

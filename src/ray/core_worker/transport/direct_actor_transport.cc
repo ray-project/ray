@@ -220,7 +220,7 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(const ActorID &actor_id
 
     auto &wait_for_death_info_tasks = queue->second.wait_for_death_info_tasks;
 
-    RAY_LOG(INFO) << "Failing tasks waiting for dead info, size="
+    RAY_LOG(INFO) << "Failing tasks waiting for Death info, size="
                   << wait_for_death_info_tasks.size() << ", actor_id=" << actor_id;
     for (auto &net_err_task : wait_for_death_info_tasks) {
       RAY_UNUSED(task_finisher_->MarkPendingTaskFailed(
@@ -360,7 +360,7 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(const ClientQueue &queue,
           if (will_retry) {
             increment_completed_tasks = false;
           } else if (!immediately_mark_object_fail) {
-            // put it to wait_for_death_info_tasks and wait for dead info
+            // put it to wait_for_death_info_tasks and wait for Death info
             int64_t death_info_timeout_ts =
                 current_time_ms() +
                 RayConfig::instance().timeout_ms_task_wait_for_death_info();
@@ -368,7 +368,7 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(const ClientQueue &queue,
                                                          task_spec);
             RAY_LOG(INFO)
                 << "PushActorTask failed because of network error, this task "
-                   "will be stashed away and waiting for dead info from GCS, task_id="
+                   "will be stashed away and waiting for Death info from GCS, task_id="
                 << task_spec.TaskId()
                 << ", wait queue size=" << queue.wait_for_death_info_tasks.size();
           }

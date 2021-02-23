@@ -121,7 +121,7 @@ class CoreWorkerDirectActorTaskSubmitter
   /// Set the timerstamp for the caller.
   void SetCallerCreationTimestamp(int64_t timestamp);
 
-  /// Check timeout tasks that are waiting for dead info.
+  /// Check timeout tasks that are waiting for Death info.
   void CheckTimeoutTasks();
 
  private:

@@ -815,7 +815,7 @@ void CoreWorker::InternalHeartbeat(const boost::system::error_code &error) {
     to_resubmit_.pop_front();
   }
 
-  // check timeout tasks that are waiting for dead info
+  // check timeout tasks that are waiting for Death info
   direct_actor_submitter_->CheckTimeoutTasks();
 
   internal_timer_.expires_at(internal_timer_.expiry() +
