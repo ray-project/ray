@@ -99,6 +99,7 @@ Status ServiceBasedGcsClient::Connect(boost::asio::io_service &io_service) {
 void ServiceBasedGcsClient::Disconnect() {
   RAY_CHECK(is_connected_);
   is_connected_ = false;
+  periodical_runner_.reset();
   gcs_pub_sub_.reset();
   redis_client_->Disconnect();
   redis_client_.reset();
