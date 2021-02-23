@@ -35,7 +35,8 @@ class DashboardHead:
         self._gcs_node_info_stub = None
         self._gcs_rpc_error_counter = 0
         # Public attributes are accessible for all head modules.
-        self.http_host = http_host
+        # Walkaround for issue: https://github.com/ray-project/ray/issues/7084
+        self.http_host = "127.0.0.1" if http_host == "localhost" else http_host
         self.http_port = http_port
         self.http_port_retries = http_port_retries
         self.redis_address = dashboard_utils.address_tuple(redis_address)
