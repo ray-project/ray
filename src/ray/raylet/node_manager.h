@@ -207,6 +207,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// Send heartbeats to the GCS.
   void Heartbeat();
 
+  /// Fill out the resource report. This can be called by either method to transport the
+  /// report to GCS.
+  void FillResourceReport(rpc::ResourcesData *resources_data);
+
   /// Report resource usage to the GCS.
   void ReportResourceUsage();
 
@@ -547,7 +551,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   void HandleRequestResourceReport(const rpc::RequestResourceReportRequest &request,
                                    rpc::RequestResourceReportReply *reply,
                                    rpc::SendReplyCallback send_reply_callback) override;
-
 
   /// Handle a `PrepareBundleResources` request.
   void HandlePrepareBundleResources(const rpc::PrepareBundleResourcesRequest &request,

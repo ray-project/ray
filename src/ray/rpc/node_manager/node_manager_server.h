@@ -54,9 +54,10 @@ class NodeManagerServiceHandler {
   /// \param[out] reply The reply message.
   /// \param[in] send_reply_callback The callback to be called when the request is done.
 
-  virtual void HandleRequestResourceReport(const rpc::RequestResourceReportRequest &request,
-                                   rpc::RequestResourceReportReply *reply,
-                                   rpc::SendReplyCallback send_reply_callback) = 0;
+  virtual void HandleRequestResourceReport(
+      const rpc::RequestResourceReportRequest &request,
+      rpc::RequestResourceReportReply *reply,
+      rpc::SendReplyCallback send_reply_callback) = 0;
 
   virtual void HandleRequestWorkerLease(const RequestWorkerLeaseRequest &request,
                                         RequestWorkerLeaseReply *reply,
