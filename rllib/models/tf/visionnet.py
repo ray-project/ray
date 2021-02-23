@@ -70,7 +70,8 @@ class VisionNetwork(TFModelV2):
             last_layer = tf.keras.layers.Conv2D(
                 out_size,
                 kernel,
-                strides=(stride, stride),
+                strides=stride if isinstance(stride, (list, tuple))
+                else (stride, stride),
                 activation=activation,
                 padding="same",
                 data_format="channels_last",
@@ -85,7 +86,8 @@ class VisionNetwork(TFModelV2):
             last_layer = tf.keras.layers.Conv2D(
                 out_size if post_fcnet_hiddens else num_outputs,
                 kernel,
-                strides=(stride, stride),
+                strides=stride if isinstance(stride, (list, tuple))
+                else (stride, stride),
                 activation=activation,
                 padding="valid",
                 data_format="channels_last",
@@ -107,7 +109,8 @@ class VisionNetwork(TFModelV2):
             last_layer = tf.keras.layers.Conv2D(
                 out_size,
                 kernel,
-                strides=(stride, stride),
+                strides=stride if isinstance(stride, (list, tuple))
+                else (stride, stride),
                 activation=activation,
                 padding="valid",
                 data_format="channels_last",
@@ -183,7 +186,8 @@ class VisionNetwork(TFModelV2):
                 last_layer = tf.keras.layers.Conv2D(
                     out_size,
                     kernel,
-                    strides=(stride, stride),
+                    strides=stride if isinstance(stride, (list, tuple))
+                    else (stride, stride),
                     activation=activation,
                     padding="same",
                     data_format="channels_last",
@@ -192,7 +196,8 @@ class VisionNetwork(TFModelV2):
             last_layer = tf.keras.layers.Conv2D(
                 out_size,
                 kernel,
-                strides=(stride, stride),
+                strides=stride if isinstance(stride, (list, tuple))
+                else (stride, stride),
                 activation=activation,
                 padding="valid",
                 data_format="channels_last",
