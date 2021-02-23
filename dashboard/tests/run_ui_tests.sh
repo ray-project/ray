@@ -22,4 +22,8 @@ ray stop --force
 ray start --head --dashboard-port=8653
 
 sleep 10 # Wait for Ray dashboard to become ready
+cat /tmp/ray/session_latest/logs/dashboard.log
+sleep 10 # Wait for Ray dashboard to become ready
+curl localhost:8653
+
 node_modules/.bin/cypress run --project . --headless
