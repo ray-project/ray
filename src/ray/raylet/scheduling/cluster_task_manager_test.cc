@@ -43,7 +43,10 @@ using ::testing::_;
 
 class MockWorkerPool : public WorkerPoolInterface {
  public:
+  MockWorkerPool() : num_pops(0) {}
+
   std::shared_ptr<WorkerInterface> PopWorker(const TaskSpecification &task_spec) {
+    num_pops++;
     if (workers.empty()) {
       return nullptr;
     }
@@ -57,6 +60,7 @@ class MockWorkerPool : public WorkerPoolInterface {
   }
 
   std::list<std::shared_ptr<WorkerInterface>> workers;
+  int num_pops;
 };
 
 std::shared_ptr<ClusterResourceScheduler> CreateSingleNodeScheduler(
@@ -303,6 +307,9 @@ TEST_F(ClusterTaskManagerTest, ResourceTakenWhileResolving) {
   ASSERT_EQ(num_callbacks, 0);
   ASSERT_EQ(leased_workers_.size(), 0);
   ASSERT_EQ(pool_.workers.size(), 2);
+  // It's important that we don't pop the worker until we need to. See
+  // https://github.com/ray-project/ray/issues/13725.
+  ASSERT_EQ(pool_.num_pops, 0);
 
   /* This task can run */
   auto task2 = CreateTask({{ray::kCPU_ResourceLabel, 5}}, 1);
@@ -313,6 +320,7 @@ TEST_F(ClusterTaskManagerTest, ResourceTakenWhileResolving) {
   ASSERT_EQ(num_callbacks, 1);
   ASSERT_EQ(leased_workers_.size(), 1);
   ASSERT_EQ(pool_.workers.size(), 1);
+  ASSERT_EQ(pool_.num_pops, 1);
 
   /* First task is unblocked now, but resources are no longer available */
   missing_objects_.erase(missing_arg);
@@ -325,6 +333,7 @@ TEST_F(ClusterTaskManagerTest, ResourceTakenWhileResolving) {
   ASSERT_EQ(num_callbacks, 1);
   ASSERT_EQ(leased_workers_.size(), 1);
   ASSERT_EQ(pool_.workers.size(), 1);
+  ASSERT_EQ(pool_.num_pops, 1);
 
   /* Second task finishes, making space for the original task */
   Task finished_task;
@@ -339,6 +348,7 @@ TEST_F(ClusterTaskManagerTest, ResourceTakenWhileResolving) {
   ASSERT_EQ(num_callbacks, 2);
   ASSERT_EQ(leased_workers_.size(), 1);
   ASSERT_EQ(pool_.workers.size(), 0);
+  ASSERT_EQ(pool_.num_pops, 2);
 
   task_manager_.TaskFinished(leased_workers_.begin()->second, &finished_task);
   AssertNoLeaks();

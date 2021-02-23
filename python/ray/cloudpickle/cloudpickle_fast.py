@@ -485,6 +485,13 @@ def _class_setstate(obj, state):
     return obj
 
 
+def _ufunc_reduce(func):
+    # This function comes from https://github.com/numpy/numpy/pull/17289.
+    # It fixes the original improper numpy ufunc serializer.
+    # numpy >= 1.20.0 uses this function by default.
+    return func.__name__
+
+
 class CloudPickler(Pickler):
     # set of reducers defined and used by cloudpickle (private)
     _dispatch_table = {}
@@ -509,6 +516,13 @@ class CloudPickler(Pickler):
 
 
     dispatch_table = ChainMap(_dispatch_table, copyreg.dispatch_table)
+    # TODO(suquark): Remove this patch when we use numpy >= 1.20.0 by default.
+    # We import 'numpy.core' here, so numpy would register the
+    # ufunc serializer to 'copyreg.dispatch_table' before we override it.
+    import numpy.core
+    import numpy
+    # Override the original numpy ufunc serializer.
+    dispatch_table[numpy.ufunc] = _ufunc_reduce
 
     # function reducers are defined as instance methods of CloudPickler
     # objects, as they rely on a CloudPickler attribute (globals_ref)

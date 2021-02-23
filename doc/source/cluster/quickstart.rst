@@ -1,7 +1,7 @@
 .. _ref-cluster-quick-start:
 
-Quick Start Cluster Autoscaling Demo
-====================================
+Ray Cluster Quick Start
+=======================
 
 This quick start demonstrates the capabilities of the Ray cluster. Using the Ray cluster, we'll take a sample application designed to run on a laptop and scale it up in the cloud. Ray will launch clusters and scale Python with just a few commands.
 

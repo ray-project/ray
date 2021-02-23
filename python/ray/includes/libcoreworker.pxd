@@ -34,6 +34,7 @@ from ray.includes.common cimport (
     CWorkerType,
     CLanguage,
     CGcsClientOptions,
+    CJobConfig,
 )
 from ray.includes.function_descriptor cimport (
     CFunctionDescriptor,
@@ -86,8 +87,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         c_string ExtensionData() const
 
     cdef cppclass CCoreWorker "ray::CoreWorker":
-        CWorkerType &GetWorkerType()
-        CLanguage &GetLanguage()
+        CWorkerType GetWorkerType()
+        CLanguage GetLanguage()
 
         void SubmitTask(
             const CRayFunction &function,
@@ -210,6 +211,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                                const double capacity,
                                const CNodeID &client_Id)
         CRayStatus SpillObjects(const c_vector[CObjectID] &object_ids)
+
+        CJobConfig GetJobConfig()
 
     cdef cppclass CCoreWorkerOptions "ray::CoreWorkerOptions":
         CWorkerType worker_type

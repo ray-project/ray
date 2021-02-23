@@ -213,7 +213,6 @@ class CoreWorkerPlasmaStoreProvider {
   plasma::PlasmaClient store_client_;
   /// Used to look up a plasma object's owner.
   const std::shared_ptr<ReferenceCounter> reference_counter_;
-  std::mutex store_client_mutex_;
   std::function<Status()> check_signals_;
   std::function<std::string()> get_current_call_site_;
   uint32_t object_store_full_delay_ms_;

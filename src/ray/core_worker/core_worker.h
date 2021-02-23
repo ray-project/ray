@@ -735,7 +735,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Tell an actor to exit immediately, without completing outstanding work.
   ///
   /// \param[in] actor_id ID of the actor to kill.
-  /// \param[in] force_kill Whether to force kill an actor by killing the worker.
   /// \param[in] no_restart If set to true, the killed actor will not be
   /// restarted anymore.
   /// \param[out] Status
@@ -955,6 +954,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \return void
   void GetAsync(const ObjectID &object_id, SetResultCallback success_callback,
                 void *python_future);
+
+  // Get serialized job configuration.
+  const rpc::JobConfig &GetJobConfig() const;
 
  private:
   void SetCurrentTaskId(const TaskID &task_id);
@@ -1271,6 +1273,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   int64_t max_direct_call_object_size_;
 
   friend class CoreWorkerTest;
+
+  std::unique_ptr<rpc::JobConfig> job_config_;
 };
 
 }  // namespace ray
