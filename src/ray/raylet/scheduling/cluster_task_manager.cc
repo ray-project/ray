@@ -463,7 +463,7 @@ void ClusterTaskManager::FillPendingActorInfo(rpc::GetNodeStatsReply *reply) con
   }
 }
 
-void ClusterTaskManager::FillResourceUsage(std::shared_ptr<rpc::ResourcesData> data) {
+void ClusterTaskManager::FillResourceUsage(rpc::ResourcesData *data) {
   if (max_resource_shapes_per_load_report_ == 0) {
     return;
   }

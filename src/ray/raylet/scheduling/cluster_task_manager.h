@@ -118,7 +118,7 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   ///
   /// \param Output parameter. `resource_load` and `resource_load_by_shape` are the only
   /// fields used.
-  void FillResourceUsage(std::shared_ptr<rpc::ResourcesData> data) override;
+  void FillResourceUsage(rpc::ResourcesData *data) override;
 
   /// Return if any tasks are pending resource acquisition.
   ///

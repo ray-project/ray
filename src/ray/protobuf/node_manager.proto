@@ -17,6 +17,7 @@ syntax = "proto3";
 package ray.rpc;
 
 import "src/ray/protobuf/common.proto";
+import "src/ray/protobuf/gcs.proto";
 
 // Request a worker from the raylet with the specified resources.
 message RequestWorkerLeaseRequest {
@@ -216,8 +217,17 @@ message GetSystemConfigReply {
   string system_config = 1;
 }
 
+message RequestResourceReportRequest {
+}
+
+message RequestResourceReportReply {
+  ResourcesData resources = 1;
+}
+
 // Service for inter-node-manager communication.
 service NodeManagerService {
+  // Request the current resource usage from this raylet
+  rpc RequestResourceReport(RequestResourceReportRequest) returns (RequestResourceReportReply);
   // Request a worker from the raylet.
   rpc RequestWorkerLease(RequestWorkerLeaseRequest) returns (RequestWorkerLeaseReply);
   // Release a worker back to its raylet.

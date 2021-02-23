@@ -62,7 +62,7 @@ class ClusterResourceSchedulerInterface {
   ///
   /// \param Output parameter. `resources_available` and `resources_total` are the only
   /// fields used.
-  virtual void FillResourceUsage(std::shared_ptr<rpc::ResourcesData> data) = 0;
+  virtual void FillResourceUsage(rpc::ResourcesData *data) = 0;
 
   /// Return local resources in human-readable string form.
   virtual std::string GetLocalResourceViewString() const = 0;

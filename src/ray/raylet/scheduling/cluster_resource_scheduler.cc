@@ -975,7 +975,7 @@ void ClusterResourceScheduler::UpdateLastResourceUsage(
 }
 
 void ClusterResourceScheduler::FillResourceUsage(
-    std::shared_ptr<rpc::ResourcesData> resources_data) {
+    rpc::ResourcesData *resources_data) {
   NodeResources resources;
 
   RAY_CHECK(GetNodeResources(local_node_id_, &resources))
