@@ -60,14 +60,13 @@ void GrpcServer::Run() {
 
   RAY_CHECK(server_)
       << "Failed to start the grpc server. The specified port is " << specified_port
-      << ". Grpc servers are used for ray's core components such as raylet, gcs "
-         "sever, or worker processes. If the server startup error message is Address "
-         "already in use, this "
-         "indicates the server fails to start because the port is already used by "
-         "other processes. It means --node-manager-port, --object-manager-port, "
-         "--gcs-server-port, and ports between --min-worker-port, --max-worker-port are "
-         "already used. If you see this error message, please try lsof -i :[port_number] "
-         "to check if there are other processes listening to the port.";
+      << ". This means that Ray's core components will not be able to function "
+      << "correctly. If the server startup error message is `Address already in use`, "
+      << "it indicates the server fails to start because the port is already used by "
+      << "other processes (such as --node-manager-port, --object-manager-port, "
+      << "--gcs-server-port, and ports between --min-worker-port, --max-worker-port). "
+      << "Try running lsof -i :" << specified_port
+      << " to check if there are other processes listening to the port.";
   RAY_CHECK(port_ > 0);
   RAY_LOG(INFO) << name_ << " server started, listening on port " << port_ << ".";
 
