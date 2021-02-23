@@ -819,19 +819,24 @@ def get_function_args(callable):
     return list(all_parameters)
 
 def _zip_module(path, zip_handler):
-    for from_file_name in path.glob('**/*.py'):
-        to_file_name = from_file_name.relative_to(path.parent)
-        zip_handler.write(from_file_name, to_file_name)
+    for from_file_name in path.glob('**/*'):
+        # We include pyc for performance
+        if from_file_name.match('*.py') or from_file_name.match('*.pyc'):
+            to_file_name = from_file_name.relative_to(path.parent)
+            zip_handler.write(from_file_name, to_file_name)
 
-def create_project_package(
-        job_id: str,
-        dirs: List[str],
-        modules: List[ModuleType]):
+def get_project_package_name(
+    job_id: str) -> Path:
     RAY_PKG_PREFIX = '_ray_pkg_'
     pkg_file = '/tmp/' + RAY_PKG_PREFIX + job_id + '.zip'
+    return Path(pkg_file)
+
+def create_project_package(
+        pkg_file: Path,
+        dirs: List[str],
+        modules: List[ModuleType]):
     with ZipFile(pkg_file, 'w') as zip_handler:
         for directory in dirs:
             _zip_module(Path(directory), zip_handler)
         for module in modules:
             _zip_module(Path(module.__file__).parent, zip_handler)
-    return pkg_file

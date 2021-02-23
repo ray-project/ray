@@ -19,6 +19,7 @@ from typing import Any, Dict, List, Iterator
 # Ray modules
 from  ray.experimental import internal_kv
 from ray.autoscaler._private.constants import AUTOSCALER_EVENTS
+from filelock import FileLock
 import ray.cloudpickle as pickle
 import ray.gcs_utils
 import ray.memory_monitor as memory_monitor
@@ -52,7 +53,7 @@ from ray.exceptions import (
 from ray.function_manager import FunctionActorManager
 from ray.ray_logging import setup_logger
 from ray.ray_logging import global_worker_stdstream_dispatcher
-from ray.utils import _random_string, check_oversized_pickle, create_project_package
+from ray.utils import _random_string, check_oversized_pickle, create_project_package, get_project_package_name
 from ray.util.inspect import is_cython
 from ray._private.client_mode_hook import client_mode_hook
 from pathlib import Path
@@ -1237,18 +1238,38 @@ def connect(node,
     if job_config is None:
         job_config = ray.job_config.JobConfig()
     serialized_job_config = job_config.serialize()
-    package_file = None
-
-    if mode == SCRIPT_MODE and (required_directories or required_modules):
-        # Create package if defined and ship it to remote storage
-        package_file = Path(create_project_package(job_id.hex(), required_directories, required_modules))
 
     worker.core_worker = ray._raylet.CoreWorker(
         mode, node.plasma_store_socket_name, node.raylet_socket_name, job_id,
         gcs_options, node.get_logs_dir_path(), node.node_ip_address,
         node.node_manager_port, node.raylet_ip_address, (mode == LOCAL_MODE),
         driver_name, log_stdout_file_path, log_stderr_file_path,
-        serialized_job_config, node.metrics_agent_port, str(package_file) if package_file else '')
+        serialized_job_config, node.metrics_agent_port)
+
+    pkg_file = get_project_package_name(job_id.hex() if mode == SCRIPT_MODE else os.getenv("RAY_JOB_ID"))
+    if (required_directories or required_modules) and mode == SCRIPT_MODE:
+        # Create package if defined and ship it to remote storage
+        package_file = Path(create_project_package(pkg_file, required_directories, required_modules))
+        # Push the data to remote storage
+        data = package_file.read_bytes()
+        internal_kv._internal_kv_put(str(package_file), data)
+        logger.debug(f"Ray has packaged {required_directories} and {required_modules} into {str(package_file)} in {len(data)} bytes")
+    elif mode in (WORKER_MODE, RESTORE_WORKER_MODE, SPILL_WORKER_MODE):
+        internal_kv._internal_kv_get(str(pkg_file))
+        lock = FileLock(code_path + '.lock')
+        with lock:
+            path = Path(code_path)
+            # TODO(yic): checksum calculation is required
+            if path.exists():
+                logger.debug(f'{code_path} has existed, skip downloading')
+            else:
+                # TODO(yic): dependency issue
+                # code = internal_kv._internal_kv_get(code_path)
+                code = worker.redis_client.hget(code_path, 'value')
+                code = code or b''
+                path.write_bytes(code)
+                logger.debug(f'Downloaded {len(code)} bytes into {code_path}')
+        sys.path.insert(0, code_path)
 
     # Create an object for interfacing with the global state.
     # Note, global state should be intialized after `CoreWorker`, because it
@@ -1264,12 +1285,6 @@ def connect(node,
     worker.import_thread = import_thread.ImportThread(worker, mode,
                                                       worker.threads_stopped)
     worker.import_thread.start()
-
-    if package_file:
-        # Push the data to remote storage
-        data = package_file.read_bytes()
-        internal_kv._internal_kv_put(str(package_file), data)
-        logger.debug(f"Ray has packaged {required_directories} and {required_modules} into {str(package_file)} in {len(data)} bytes")
 
     # If this is a driver running in SCRIPT_MODE, start a thread to print error
     # messages asynchronously in the background. Ideally the scheduler would

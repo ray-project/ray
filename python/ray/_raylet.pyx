@@ -20,7 +20,6 @@ import _thread
 import setproctitle
 from pathlib import Path
 
-from filelock import FileLock
 from libc.stdint cimport (
     int32_t,
     int64_t,
@@ -365,26 +364,6 @@ cdef execute_task(
         JobID job_id = core_worker.get_current_job_id()
         TaskID task_id = core_worker.get_current_task_id()
         CFiberEvent task_done_event
-
-    # Get the code to run
-    code_path = core_worker.get_code_path()
-    if code_path:
-        lock = FileLock(code_path + '.lock')
-        with lock:
-            path = Path(code_path)
-            # TODO(yic): checksum calculation is required
-            if path.exists():
-                logger.debug(f'{code_path} has existed, skip downloading')
-            else:
-                # TODO(yic): dependency issue
-                # code = internal_kv._internal_kv_get(code_path)
-                code = worker.redis_client.hget(code_path, 'value')
-                assert len(code) > 0
-                path.write_bytes(code)
-                logger.debug(f'Downloaded {len(code)} bytes into {code_path}')
-
-        # TODO(yic): Do we need to reset it after execution the job?
-        sys.path.insert(0, code_path)
 
     # Automatically restrict the GPUs available to this task.
     ray.utils.set_cuda_visible_devices(ray.get_gpu_ids())
@@ -827,7 +806,7 @@ cdef class CoreWorker:
                   JobID job_id, GcsClientOptions gcs_options, log_dir,
                   node_ip_address, node_manager_port, raylet_ip_address,
                   local_mode, driver_name, stdout_file, stderr_file,
-                  serialized_job_config, metrics_agent_port, code_path):
+                  serialized_job_config, metrics_agent_port):
         self.is_local_mode = local_mode
 
         cdef CCoreWorkerOptions options = CCoreWorkerOptions()
@@ -873,7 +852,6 @@ cdef class CoreWorker:
         options.terminate_asyncio_thread = terminate_asyncio_thread
         options.serialized_job_config = serialized_job_config
         options.metrics_agent_port = metrics_agent_port
-        options.code_path = code_path
         CCoreWorkerProcess.Initialize(options)
 
     def __dealloc__(self):
@@ -1612,10 +1590,6 @@ cdef class CoreWorker:
     cdef yield_current_fiber(self, CFiberEvent &fiber_event):
         with nogil:
             CCoreWorkerProcess.GetCoreWorker().YieldCurrentFiber(fiber_event)
-
-    def get_code_path(self):
-        return (CCoreWorkerProcess.GetCoreWorker().GetWorkerContext()
-                .GetCodePath())
 
     def get_all_reference_counts(self):
         cdef:

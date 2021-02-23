@@ -108,10 +108,9 @@ thread_local std::unique_ptr<WorkerThreadContext> WorkerContext::thread_context_
     nullptr;
 
 WorkerContext::WorkerContext(WorkerType worker_type, const WorkerID &worker_id,
-                             const JobID &job_id, const std::string &code_path)
+                             const JobID &job_id)
     : worker_type_(worker_type),
       worker_id_(worker_id),
-      code_path_(code_path),
       current_job_id_(job_id),
       current_actor_id_(ActorID::Nil()),
       current_actor_placement_group_id_(PlacementGroupID::Nil()),
@@ -134,8 +133,6 @@ int WorkerContext::GetNextTaskIndex() { return GetThreadContext().GetNextTaskInd
 int WorkerContext::GetNextPutIndex() { return GetThreadContext().GetNextPutIndex(); }
 
 const JobID &WorkerContext::GetCurrentJobID() const { return current_job_id_; }
-
-const std::string &WorkerContext::GetCodePath() const { return code_path_; }
 
 const TaskID &WorkerContext::GetCurrentTaskID() const {
   return GetThreadContext().GetCurrentTaskID();
