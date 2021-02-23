@@ -81,16 +81,7 @@ std::pair<PlasmaObject, PlasmaError> CreateRequestQueue::TryRequestImmediately(
 }
 
 bool CreateRequestQueue::ProcessRequest(std::unique_ptr<CreateRequest> &request) {
-  // TODO(sang): Delete this logic when lru evict is removed.
-  bool evict_if_full = evict_if_full_;
-  if (oom_start_time_ns_ != -1) {
-    // If the first attempt fails, we set the evict_if_full true.
-    // We need this logic because if lru_evict flag is on, this is false because we
-    // shouldn't evict objects in the first attempt.
-    evict_if_full = true;
-  }
-  request->error =
-      request->create_callback(/*evict_if_full=*/evict_if_full, &request->result);
+  request->error = request->create_callback(&request->result);
   return request->error != PlasmaError::OutOfMemory;
 }
 

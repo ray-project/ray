@@ -542,12 +542,12 @@ py_test(
 )
 
 # MBMPOTrainer
-#py_test(
-#    name = "test_mbmpo",
-#    tags = ["agents_dir"],
-#    size = "medium",
-#    srcs = ["agents/mbmpo/tests/test_mbmpo.py"]
-#)
+py_test(
+    name = "test_mbmpo",
+    tags = ["agents_dir"],
+    size = "medium",
+    srcs = ["agents/mbmpo/tests/test_mbmpo.py"]
+)
 
 # PGTrainer
 py_test(
@@ -1705,6 +1705,15 @@ py_test(
     size = "medium",
     srcs = ["examples/centralized_critic_2.py"],
     args = ["--as-test", "--torch", "--stop-reward=6.0"]
+)
+
+py_test(
+    name = "examples/checkpoint_by_custom_criteria",
+    main = "examples/checkpoint_by_custom_criteria.py",
+    tags = ["examples", "examples_C"],
+    size = "medium",
+    srcs = ["examples/checkpoint_by_custom_criteria.py"],
+    args = ["--stop-iters=3 --num-cpus=3"]
 )
 
 py_test(

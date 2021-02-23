@@ -6,7 +6,6 @@ import tempfile
 import unittest
 
 import ray
-import ray.cloudpickle as cloudpickle
 from ray.rllib import _register_all
 
 from ray import tune
@@ -230,7 +229,7 @@ class FunctionCheckpointingTest(unittest.TestCase):
         new_trainable2 = wrapped(logger_creator=self.logger_creator)
         new_trainable2.restore(checkpoint)
         result = new_trainable2.train()
-        self.assertEquals(result[TRAINING_ITERATION], 1)
+        self.assertEqual(result[TRAINING_ITERATION], 1)
         checkpoint = new_trainable2.save()
         new_trainable2.stop()
 
@@ -405,14 +404,15 @@ class FunctionApiTest(unittest.TestCase):
     def testEnabled(self):
         def train(config, checkpoint_dir=None):
             is_active = tune.is_session_enabled()
+            result = {"active": is_active}
             if is_active:
-                tune.report(active=is_active)
-            return is_active
+                tune.report(**result)
+            return result
 
-        assert train({}) is False
+        assert train({})["active"] is False
         analysis = tune.run(train)
         t = analysis.trials[0]
-        assert t.last_result["active"]
+        assert t.last_result["active"], t.last_result
 
     def testBlankCheckpoint(self):
         def train(config, checkpoint_dir=None):
@@ -450,11 +450,11 @@ class FunctionApiTest(unittest.TestCase):
         trial_1, trial_2 = tune.run(
             with_parameters(train, data=data), num_samples=2).trials
 
-        self.assertEquals(data.data[101], 0)
-        self.assertEquals(trial_1.last_result["metric"], 500_000)
-        self.assertEquals(trial_1.last_result["hundred"], 1)
-        self.assertEquals(trial_2.last_result["metric"], 500_000)
-        self.assertEquals(trial_2.last_result["hundred"], 1)
+        self.assertEqual(data.data[101], 0)
+        self.assertEqual(trial_1.last_result["metric"], 500_000)
+        self.assertEqual(trial_1.last_result["hundred"], 1)
+        self.assertEqual(trial_2.last_result["metric"], 500_000)
+        self.assertEqual(trial_2.last_result["hundred"], 1)
         self.assertTrue(str(trial_1).startswith("train_"))
 
         # With checkpoint dir parameter
@@ -465,11 +465,11 @@ class FunctionApiTest(unittest.TestCase):
         trial_1, trial_2 = tune.run(
             with_parameters(train, data=data), num_samples=2).trials
 
-        self.assertEquals(data.data[101], 0)
-        self.assertEquals(trial_1.last_result["metric"], 500_000)
-        self.assertEquals(trial_1.last_result["cp"], "DIR")
-        self.assertEquals(trial_2.last_result["metric"], 500_000)
-        self.assertEquals(trial_2.last_result["cp"], "DIR")
+        self.assertEqual(data.data[101], 0)
+        self.assertEqual(trial_1.last_result["metric"], 500_000)
+        self.assertEqual(trial_1.last_result["cp"], "DIR")
+        self.assertEqual(trial_2.last_result["metric"], 500_000)
+        self.assertEqual(trial_2.last_result["cp"], "DIR")
         self.assertTrue(str(trial_1).startswith("train_"))
 
     def testWithParameters2(self):
@@ -482,7 +482,9 @@ class FunctionApiTest(unittest.TestCase):
             tune.report(metric=len(data.data))
 
         trainable = tune.with_parameters(train, data=Data())
-        dumped = cloudpickle.dumps(trainable)
+        # ray.cloudpickle will crash for some reason
+        import cloudpickle as cp
+        dumped = cp.dumps(trainable)
         assert sys.getsizeof(dumped) < 100 * 1024
 
     def testReturnAnonymous(self):
@@ -494,8 +496,8 @@ class FunctionApiTest(unittest.TestCase):
                 "a": tune.grid_search([4, 8])
             }).trials
 
-        self.assertEquals(trial_1.last_result[DEFAULT_METRIC], 4)
-        self.assertEquals(trial_2.last_result[DEFAULT_METRIC], 8)
+        self.assertEqual(trial_1.last_result[DEFAULT_METRIC], 4)
+        self.assertEqual(trial_2.last_result[DEFAULT_METRIC], 8)
 
     def testReturnSpecific(self):
         def train(config):
@@ -506,8 +508,8 @@ class FunctionApiTest(unittest.TestCase):
                 "a": tune.grid_search([4, 8])
             }).trials
 
-        self.assertEquals(trial_1.last_result["m"], 4)
-        self.assertEquals(trial_2.last_result["m"], 8)
+        self.assertEqual(trial_1.last_result["m"], 4)
+        self.assertEqual(trial_2.last_result["m"], 8)
 
     def testYieldAnonymous(self):
         def train(config):
@@ -519,8 +521,8 @@ class FunctionApiTest(unittest.TestCase):
                 "a": tune.grid_search([4, 8])
             }).trials
 
-        self.assertEquals(trial_1.last_result[DEFAULT_METRIC], 4 + 9)
-        self.assertEquals(trial_2.last_result[DEFAULT_METRIC], 8 + 9)
+        self.assertEqual(trial_1.last_result[DEFAULT_METRIC], 4 + 9)
+        self.assertEqual(trial_2.last_result[DEFAULT_METRIC], 8 + 9)
 
     def testYieldSpecific(self):
         def train(config):
@@ -532,5 +534,10 @@ class FunctionApiTest(unittest.TestCase):
                 "a": tune.grid_search([4, 8])
             }).trials
 
-        self.assertEquals(trial_1.last_result["m"], 4 + 9)
-        self.assertEquals(trial_2.last_result["m"], 8 + 9)
+        self.assertEqual(trial_1.last_result["m"], 4 + 9)
+        self.assertEqual(trial_2.last_result["m"], 8 + 9)
+
+
+if __name__ == "__main__":
+    import pytest
+    sys.exit(pytest.main(["-v", __file__]))

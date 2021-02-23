@@ -245,9 +245,7 @@ def test_pending_task_dependency_pinning(one_worker_100MiB):
 
 
 def test_feature_flag(shutdown_only):
-    ray.init(
-        object_store_memory=100 * 1024 * 1024,
-        _system_config={"object_pinning_enabled": 0})
+    ray.init(object_store_memory=100 * 1024 * 1024)
 
     @ray.remote
     def f(array):
@@ -470,10 +468,8 @@ def test_actor_holding_serialized_reference(one_worker_100MiB, use_ray_put,
         # Test that the actor exiting stops the reference from being pinned.
         ray.kill(actor)
         # Wait for the actor to exit.
-        try:
+        with pytest.raises(ray.exceptions.RayActorError):
             ray.get(actor.delete_ref1.remote())
-        except ray.exceptions.RayActorError:
-            pass
     else:
         # Test that deleting the second reference stops it from being pinned.
         ray.get(actor.delete_ref2.remote())
