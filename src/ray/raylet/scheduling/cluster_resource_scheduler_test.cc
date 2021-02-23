@@ -1120,9 +1120,8 @@ TEST_F(ClusterResourceSchedulerTest, ObjectStoreMemoryUsageTest) {
       {{"CPU", 1}, {"GPU", 2}, {"memory", 3}, {"object_store_memory", 10}});
   int64_t used_object_store_memory = 125 * 1024 * 1024;
   int64_t *ptr = &used_object_store_memory;
-  ClusterResourceScheduler resource_scheduler("0", initial_resources, [&] {
-      return *ptr;
-  });
+  ClusterResourceScheduler resource_scheduler("0", initial_resources,
+                                              [&] { return *ptr; });
   NodeResources other_node_resources;
   vector<FixedPoint> other_pred_capacities{1. /* CPU */, 1. /* MEM */, 1. /* GPU */};
   vector<FixedPoint> other_cust_capacities{10.};
