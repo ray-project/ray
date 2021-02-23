@@ -160,7 +160,6 @@ def test_load_balancing_under_constrained_memory(ray_start_cluster):
     assert attempts < 100
 
 
-
 def test_locality_aware_leasing(ray_start_cluster):
     # This test ensures that a task will run where its task dependencies are
     # located. We run an initial non_local() task that is pinned to a

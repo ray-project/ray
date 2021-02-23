@@ -266,7 +266,8 @@ bool ClusterTaskManager::TrySpillback(const Work &work) {
   bool is_infeasible;
   auto placement_resources = spec.GetRequiredPlacementResources().GetResourceMap();
   std::string node_id_string = cluster_resource_scheduler_->GetBestSchedulableNode(
-      placement_resources, spec.IsActorCreationTask(), /*force_spillback=*/false, &_unused, &is_infeasible);
+      placement_resources, spec.IsActorCreationTask(), /*force_spillback=*/false,
+      &_unused, &is_infeasible);
 
   // TODO(Alex): This check may actually fail in the case where placement group is
   // removed. All tasks on the dispatch queue must at least be feasible on the local node.
@@ -919,7 +920,8 @@ void ClusterTaskManager::SpillWaitingTasks() {
     // of memory. If this is true, then we should force the task onto a remote
     // feasible node, even if we have enough resources available locally for
     // placement.
-    bool out_of_memory = task_dependency_manager_.TaskDependenciesBlockedDueToOom(task_id);
+    bool out_of_memory =
+        task_dependency_manager_.TaskDependenciesBlockedDueToOom(task_id);
     auto placement_resources =
         task.GetTaskSpecification().GetRequiredPlacementResources().GetResourceMap();
     int64_t _unused;

@@ -162,8 +162,7 @@ class ClusterTaskManagerTest : public ::testing::Test {
                 }
               }
               return true;
-            },
-            [this]() { return at_memory_capacity_; }) {}
+            }) {}
 
   void SetUp() {}
 
@@ -208,7 +207,6 @@ class ClusterTaskManagerTest : public ::testing::Test {
   std::unordered_set<ObjectID> missing_objects_;
 
   bool is_owner_alive_;
-  bool at_memory_capacity_ = false;
 
   int node_info_calls_;
   int announce_infeasible_task_calls_;
@@ -963,6 +961,10 @@ TEST_F(ClusterTaskManagerTest, RleaseAndReturnWorkerCpuResources) {
 }
 
 TEST_F(ClusterTaskManagerTest, TestSpillWaitingTasks) {
+  // Cases to check:
+  // - resources available locally, task dependencies being fetched -> do not spill.
+  // - resources available locally, task dependencies blocked -> spill.
+  // - resources not available locally -> spill.
   std::vector<Task> tasks;
   std::vector<std::unique_ptr<rpc::RequestWorkerLeaseReply>> replies;
   int num_callbacks = 0;
@@ -970,7 +972,7 @@ TEST_F(ClusterTaskManagerTest, TestSpillWaitingTasks) {
     num_callbacks++;
   };
   for (int i = 0; i < 5; i++) {
-    Task task = CreateTask({{ray::kCPU_ResourceLabel, 1}}, /*num_args=*/1);
+    Task task = CreateTask({{ray::kCPU_ResourceLabel, 8}}, /*num_args=*/1);
     tasks.push_back(task);
     replies.push_back(std::unique_ptr<rpc::RequestWorkerLeaseReply>(
         new rpc::RequestWorkerLeaseReply()));
@@ -984,24 +986,21 @@ TEST_F(ClusterTaskManagerTest, TestSpillWaitingTasks) {
   ASSERT_EQ(num_callbacks, 0);
 
   auto remote_node_id = NodeID::FromRandom();
-  AddNode(remote_node_id, 2);
-  // Nothing happens if we're not at memory capacity.
+  AddNode(remote_node_id, 16);
+  // We are fetching dependencies for all waiting tasks and we have enough
+  // resources available locally to schedule them. We should not spill from the
+  // waiting queue.
   task_manager_.ScheduleAndDispatchTasks();
   ASSERT_EQ(num_callbacks, 0);
 
-  // Nothing happens if we're at memory capacity, but no tasks are blocked.
-  at_memory_capacity_ = true;
-  task_manager_.ScheduleAndDispatchTasks();
-  ASSERT_EQ(num_callbacks, 0);
-
-  // Spill back as many blocked waiting tasks as possible to the remote node if
-  // we are at memory capacity.
+  // All waiting tasks are blocked due to lack of memory. We should only spill
+  // up to the remote node's resource availability.
   for (auto &task : tasks) {
     dependency_manager_.blocked_tasks.insert(task.GetTaskSpecification().TaskId());
   }
   task_manager_.ScheduleAndDispatchTasks();
   ASSERT_EQ(num_callbacks, 2);
-  // Spill from the back of the queue.
+  // Spill from the back of the waiting queue.
   ASSERT_EQ(replies[0]->retry_at_raylet_address().raylet_id(), "");
   ASSERT_EQ(replies[1]->retry_at_raylet_address().raylet_id(), "");
   ASSERT_EQ(replies[2]->retry_at_raylet_address().raylet_id(), remote_node_id.Binary());
@@ -1011,30 +1010,41 @@ TEST_F(ClusterTaskManagerTest, TestSpillWaitingTasks) {
   // Do not spill back tasks ready to dispatch.
   ASSERT_EQ(replies[4]->retry_at_raylet_address().raylet_id(), "");
 
-  // Spillback on memory pressure is idempotent.
-  task_manager_.ScheduleAndDispatchTasks();
-  ASSERT_EQ(num_callbacks, 2);
-  ASSERT_EQ(replies[0]->retry_at_raylet_address().raylet_id(), "");
-  ASSERT_EQ(replies[1]->retry_at_raylet_address().raylet_id(), "");
-  ASSERT_EQ(replies[2]->retry_at_raylet_address().raylet_id(), remote_node_id.Binary());
-  ASSERT_EQ(replies[3]->retry_at_raylet_address().raylet_id(), remote_node_id.Binary());
-  ASSERT_EQ(replies[4]->retry_at_raylet_address().raylet_id(), "");
-
-  // Another node added, but tasks no longer blocked.
-  AddNode(remote_node_id, 4);
+  // Add a new node. All task dependencies are being fetched again, so no
+  // spill.
+  AddNode(remote_node_id, 8);
   dependency_manager_.blocked_tasks.clear();
-  dependency_manager_.missing_objects_.clear();
   task_manager_.ScheduleAndDispatchTasks();
   ASSERT_EQ(num_callbacks, 2);
-  ASSERT_EQ(replies[0]->retry_at_raylet_address().raylet_id(), "");
-  ASSERT_EQ(replies[1]->retry_at_raylet_address().raylet_id(), "");
-  ASSERT_EQ(replies[2]->retry_at_raylet_address().raylet_id(), remote_node_id.Binary());
-  ASSERT_EQ(replies[3]->retry_at_raylet_address().raylet_id(), remote_node_id.Binary());
-  ASSERT_EQ(replies[4]->retry_at_raylet_address().raylet_id(), "");
 
+  // Dispatch the ready task. Now we have no more resources available locally,
+  // so we should spill one waiting task.
+  std::shared_ptr<MockWorker> worker =
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
+  pool_.PushWorker(std::dynamic_pointer_cast<WorkerInterface>(worker));
+  task_manager_.ScheduleAndDispatchTasks();
+  ASSERT_EQ(num_callbacks, 4);
+  // One waiting task spilled.
+  ASSERT_EQ(replies[0]->retry_at_raylet_address().raylet_id(), "");
+  ASSERT_EQ(replies[1]->retry_at_raylet_address().raylet_id(), remote_node_id.Binary());
+  ASSERT_FALSE(task_manager_.CancelTask(tasks[1].GetTaskSpecification().TaskId()));
+  // One task dispatched.
+  ASSERT_EQ(replies[4]->worker_address().port(), 1234);
+
+  // Spillback is idempotent.
+  task_manager_.ScheduleAndDispatchTasks();
+  ASSERT_EQ(num_callbacks, 4);
+  // One waiting task spilled.
+  ASSERT_EQ(replies[0]->retry_at_raylet_address().raylet_id(), "");
+  ASSERT_EQ(replies[1]->retry_at_raylet_address().raylet_id(), remote_node_id.Binary());
+  ASSERT_FALSE(task_manager_.CancelTask(tasks[1].GetTaskSpecification().TaskId()));
+  // One task dispatched.
+  ASSERT_EQ(replies[4]->worker_address().port(), 1234);
+
+  Task finished_task;
+  task_manager_.TaskFinished(leased_workers_.begin()->second, &finished_task);
+  leased_workers_.clear();
   ASSERT_TRUE(task_manager_.CancelTask(tasks[0].GetTaskSpecification().TaskId()));
-  ASSERT_TRUE(task_manager_.CancelTask(tasks[1].GetTaskSpecification().TaskId()));
-  ASSERT_TRUE(task_manager_.CancelTask(tasks[4].GetTaskSpecification().TaskId()));
   AssertNoLeaks();
 }
 
