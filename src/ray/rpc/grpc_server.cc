@@ -58,8 +58,12 @@ void GrpcServer::Run() {
   // Build and start server.
   server_ = builder.BuildAndStart();
 
-  RAY_CHECK(server_) << "Failed to start the grpc server. The specified port is "
-                     << specified_port;
+  RAY_CHECK(server_)
+      << "Failed to start the grpc server. The specified port is " << specified_port
+      << ". If the error server startup message is Address already in use, this "
+         "indicates the grpc server fails start because the port is already used by "
+         "other processes. In this case, please try lsof -i :[port_number] to check if "
+         "there are other processes listening to the port.";
   RAY_CHECK(port_ > 0);
   RAY_LOG(INFO) << name_ << " server started, listening on port " << port_ << ".";
 
