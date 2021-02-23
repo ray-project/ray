@@ -77,10 +77,12 @@ class WandbTestTrainable(_MockWandbTrainableMixin, Trainable):
 
 class WandbIntegrationTest(unittest.TestCase):
     def setUp(self):
-        pass
+        if WANDB_ENV_VAR in os.environ:
+            del os.environ[WANDB_ENV_VAR]
 
     def tearDown(self):
-        pass
+        if WANDB_ENV_VAR in os.environ:
+            del os.environ[WANDB_ENV_VAR]
 
     def testWandbLegacyLoggerConfig(self):
         trial_config = {"par1": 4, "par2": 9.12345678}
