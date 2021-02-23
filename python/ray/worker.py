@@ -484,8 +484,8 @@ def init(
         local_mode=False,
         ignore_reinit_error=False,
         include_dashboard=None,
-        required_directories=None,
-        required_modules=None,
+        required_directories=[],
+        required_modules=[],
         dashboard_host=ray_constants.DEFAULT_DASHBOARD_IP,
         dashboard_port=ray_constants.DEFAULT_DASHBOARD_PORT,
         job_config=None,
@@ -635,7 +635,6 @@ def init(
     if "RAY_ADDRESS" in os.environ:
         if address is None or address == "auto":
             address = os.environ["RAY_ADDRESS"]
-    print("!!!", sys.argv)
     # Convert hostnames to numerical IP address.
     if _node_ip_address is not None:
         node_ip_address = services.address_to_ip(_node_ip_address)
@@ -1246,36 +1245,37 @@ def connect(node,
         driver_name, log_stdout_file_path, log_stderr_file_path,
         serialized_job_config, node.metrics_agent_port)
 
-    pkg_file = get_project_package_name(job_id.hex() if mode == SCRIPT_MODE else os.getenv("RAY_JOB_ID"))
-    if (required_directories or required_modules) and mode == SCRIPT_MODE:
-        # Create package if defined and ship it to remote storage
-        package_file = Path(create_project_package(pkg_file, required_directories, required_modules))
-        # Push the data to remote storage
-        data = package_file.read_bytes()
-        internal_kv._internal_kv_put(str(package_file), data)
-        logger.debug(f"Ray has packaged {required_directories} and {required_modules} into {str(package_file)} in {len(data)} bytes")
-    elif mode in (WORKER_MODE, RESTORE_WORKER_MODE, SPILL_WORKER_MODE):
-        internal_kv._internal_kv_get(str(pkg_file))
-        lock = FileLock(code_path + '.lock')
-        with lock:
-            path = Path(code_path)
-            # TODO(yic): checksum calculation is required
-            if path.exists():
-                logger.debug(f'{code_path} has existed, skip downloading')
-            else:
-                # TODO(yic): dependency issue
-                # code = internal_kv._internal_kv_get(code_path)
-                code = worker.redis_client.hget(code_path, 'value')
-                code = code or b''
-                path.write_bytes(code)
-                logger.debug(f'Downloaded {len(code)} bytes into {code_path}')
-        sys.path.insert(0, code_path)
-
     # Create an object for interfacing with the global state.
     # Note, global state should be intialized after `CoreWorker`, because it
     # will use glog, which is intialized in `CoreWorker`.
     ray.state.state._initialize_global_state(
         node.redis_address, redis_password=node.redis_password)
+
+
+    pkg_file = get_project_package_name(job_id.hex() if mode == SCRIPT_MODE else os.getenv("RAY_JOB_ID"))
+    pkg_file_path = str(pkg_file)
+    if (required_directories or required_modules) and mode == SCRIPT_MODE:
+        # Create package if defined and ship it to remote storage
+        create_project_package(pkg_file, required_directories, required_modules)
+        # Push the data to remote storage
+        data = pkg_file.read_bytes()
+        internal_kv._internal_kv_put(pkg_file_path, data)
+        logger.debug(f"Ray has packaged {required_directories} and {required_modules} into {pkg_file_path} in {len(data)} bytes")
+    elif mode in (WORKER_MODE, RESTORE_WORKER_MODE, SPILL_WORKER_MODE):
+        internal_kv._internal_kv_get(pkg_file_path)
+        # For each node, the package will only be downloaded one time
+        # Locking to avoid multiple process download concurrently
+        lock = FileLock(pkg_file_path + '.lock')
+        with lock:
+            # TODO(yic): checksum calculation is required
+            if pkg_file.exists():
+                logger.debug(f'{pkg_file_path} has existed, skip downloading')
+            else:
+                code = internal_kv._internal_kv_get(pkg_file_path)
+                code = code or b''
+                pkg_file.write_bytes(code)
+                logger.debug(f'Downloaded {len(code)} bytes into {pkg_file_path}')
+        sys.path.insert(0, pkg_file_path)
 
     if driver_object_store_memory is not None:
         worker.core_worker.set_object_store_client_options(

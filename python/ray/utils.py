@@ -836,7 +836,7 @@ def create_project_package(
         dirs: List[str],
         modules: List[ModuleType]):
     with ZipFile(pkg_file, 'w') as zip_handler:
-        for directory in dirs:
+        for directory in dirs or []:
             _zip_module(Path(directory), zip_handler)
-        for module in modules:
+        for module in modules or []:
             _zip_module(Path(module.__file__).parent, zip_handler)
