@@ -40,6 +40,7 @@ class Callback:
             callbacks=[MyCallback()])
 
     """
+
     def setup(self):
         """Called once at the very beginning of training.
 

@@ -486,7 +486,7 @@ class WandbLogger(Logger):
 
         self._trial_experiment_logger = self._experiment_logger_cls(
             **wandb_config)
-
+        self._trial_experiment_logger.setup()
         self._trial_experiment_logger.log_trial_start(self.trial)
 
     def on_result(self, result: Dict):
