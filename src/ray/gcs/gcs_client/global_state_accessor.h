@@ -93,12 +93,6 @@ class GlobalStateAccessor {
   /// deserialized with protobuf function.
   std::vector<std::string> GetAllAvailableResources();
 
-  /// Get internal config from GCS Service.
-  ///
-  /// \return map of internal config keys and values. It is stored as a StoredConfig proto
-  /// and serialized as a string to allow multi-language support.
-  std::string GetInternalConfig();
-
   /// Get newest resource usage of all nodes from GCS Service. Only used when light
   /// rerouce usage report enabled.
   ///

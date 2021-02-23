@@ -10,6 +10,7 @@ import socket
 import math
 
 from contextlib import redirect_stdout, redirect_stderr
+import yaml
 
 import ray
 import ray._private.services
@@ -479,3 +480,13 @@ def fetch_prometheus(prom_addresses):
                         components_dict[address].add(
                             sample.labels["Component"])
     return components_dict, metric_names, metric_samples
+
+
+def load_test_config(config_file_name):
+    """Loads a config yaml from tests/test_cli_patterns."""
+    here = os.path.realpath(__file__)
+    parent = os.path.dirname(here)
+    config_path = os.path.join(parent, "tests/test_cli_patterns",
+                               config_file_name)
+    config = yaml.safe_load(open(config_path).read())
+    return config

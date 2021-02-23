@@ -316,10 +316,11 @@ to proceed with the final stages of the release!
    of the docs, trigger a new build of the "latest" branch in
    readthedocs to see if that fixes it.
 
-7. **Update latest Docker Image:** Message Ian Rodney to bump the "latest" tag
+7. **Update latest Docker Image:** SET THE VERSION NUMBER IN `docker/fix-docker-latest.sh`, then run the script ot update the "latest" tag
    in Dockerhub for the 
-   ``rayproject/ray`` and ``rayproject/ray-ml`` Docker images to point to the Docker images built from the release. (If you have privileges in these
-   docker projects, you can do this step yourself.)
+   ``rayproject/ray`` and ``rayproject/ray-ml`` Docker images to point to the Docker images built from the release. (Make sure there is no permission denied error, you will likely have to ask Thomas for permissions).
+   
+   Check the dockerhub to verify the update worked. https://hub.docker.com/repository/docker/rayproject/ray/tags?page=1&name=latest&ordering=last_updated
 
 8. **Send out an email announcing the release** to the engineering@anyscale.com
    Google group, and post a slack message in the Announcements channel of the
