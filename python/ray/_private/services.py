@@ -6,6 +6,7 @@ import json
 import logging
 import multiprocessing
 import os
+import mmap
 import random
 import shutil
 import signal
@@ -1184,37 +1185,41 @@ def start_dashboard(require_dashboard,
         redis_client = ray._private.services.create_redis_client(
             redis_address, redis_password)
 
-        if port_retries == 0:
-            host = host if host != "0.0.0.0" else get_node_ip_address()
-            dashboard_url = f"{host}:{port}"
-        else:
-            dashboard_url = None
-            dashboard_returncode = None
-            for _ in range(20):
-                dashboard_url = redis_client.get(
-                    ray_constants.REDIS_KEY_DASHBOARD)
-                if dashboard_url is not None:
-                    dashboard_url = dashboard_url.decode("utf-8")
-                    break
-                dashboard_returncode = process_info.process.poll()
-                if dashboard_returncode is not None:
-                    break
-                time.sleep(1)
-            if dashboard_url is None:
-                dashboard_log = os.path.join(logdir, "dashboard.log")
-                returncode_str = (f", return code {dashboard_returncode}"
-                                  if dashboard_returncode is not None else "")
-                try:
-                    with open(dashboard_log, "r") as f:
-                        lines = f.readlines()
-                except Exception:
-                    lines = []
-                n = 10
-                first_line = f" The last {n} lines of {dashboard_log}:\n"
-                last_log_str = ("".join([first_line] + lines[-n:])
-                                if len(lines) > 0 else "")
-                raise Exception("Failed to start the dashboard"
-                                f"{returncode_str}.{last_log_str}")
+        dashboard_url = None
+        dashboard_returncode = None
+        for _ in range(20):
+            dashboard_url = redis_client.get(ray_constants.REDIS_KEY_DASHBOARD)
+            if dashboard_url is not None:
+                dashboard_url = dashboard_url.decode("utf-8")
+                break
+            dashboard_returncode = process_info.process.poll()
+            if dashboard_returncode is not None:
+                break
+            time.sleep(1)
+        if dashboard_url is None:
+            dashboard_log = os.path.join(logdir, "dashboard.log")
+            returncode_str = (f", return code {dashboard_returncode}"
+                              if dashboard_returncode is not None else "")
+            # Read last n lines of dashboard log. The log file may be large.
+            n = 10
+            lines = []
+            try:
+                with open(dashboard_log, "rb") as f:
+                    with mmap.mmap(
+                            f.fileno(), 0, access=mmap.ACCESS_READ) as mm:
+                        end = mm.size()
+                        for _ in range(n):
+                            sep = mm.rfind(b"\n", 0, end - 1)
+                            if sep == -1:
+                                break
+                            lines.append(mm[sep + 1:end].decode("utf-8"))
+                            end = sep
+                lines.append(f" The last {n} lines of {dashboard_log}:")
+            except Exception:
+                pass
+            last_log_str = "\n".join(reversed(lines[-n:]))
+            raise Exception("Failed to start the dashboard"
+                            f"{returncode_str}.{last_log_str}")
 
         logger.info("View the Ray dashboard at %s%shttp://%s%s%s",
                     colorama.Style.BRIGHT, colorama.Fore.GREEN, dashboard_url,

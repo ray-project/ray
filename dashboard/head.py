@@ -194,6 +194,7 @@ class DashboardHead:
 
         runner = aiohttp.web.AppRunner(app)
         await runner.setup()
+        last_ex = None
         for i in range(1 + self.http_port_retries):
             try:
                 site = aiohttp.web.TCPSite(runner, self.http_host,
@@ -201,10 +202,12 @@ class DashboardHead:
                 await site.start()
                 break
             except OSError as e:
+                last_ex = e
                 self.http_port += 1
                 logger.warning("Try to use port %s: %s", self.http_port, e)
         else:
-            raise Exception("Failed to find a valid port for dashboard.")
+            raise Exception(f"Failed to find a valid port for dashboard after "
+                            f"{self.http_port_retries} retries: {last_ex}")
         http_host, http_port, *_ = site._server.sockets[0].getsockname()
         logger.info("Dashboard head http address: %s:%s", http_host, http_port)
 
