@@ -61,7 +61,7 @@ void GrpcServer::Run() {
   RAY_CHECK(server_)
       << "Failed to start the grpc server. The specified port is " << specified_port
       << ". If the server startup error message is Address already in use, this "
-         "indicates the grpc server fails start because the port is already used by "
+         "indicates the grpc server fails to start because the port is already used by "
          "other processes. In this case, please try lsof -i :[port_number] to check if "
          "there are other processes listening to the port.";
   RAY_CHECK(port_ > 0);
