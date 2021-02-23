@@ -20,4 +20,6 @@ fi
 
 ray stop --force
 ray start --head --dashboard-port=8653
+
+curl 127.0.0.1:8653
 node_modules/.bin/cypress run --project . --headless
