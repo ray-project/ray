@@ -895,6 +895,8 @@ bool ClusterTaskManager::ReturnCpuResourcesToBlockedWorker(
 void ClusterTaskManager::ScheduleAndDispatchTasks() {
   SchedulePendingTasks();
   DispatchScheduledTasksToWorkers(worker_pool_, leased_workers_);
+  // TODO(swang): Spill from waiting queue first? Otherwise, we may end up
+  // spilling a task whose args are already local.
   SpillWaitingTasks();
 }
 
