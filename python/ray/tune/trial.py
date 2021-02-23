@@ -1,3 +1,4 @@
+from collections import defaultdict
 from typing import Callable, Dict, Sequence, Union
 import json
 
@@ -235,7 +236,26 @@ class Trial:
         self.location = Location()
 
         self.resources = resources or Resources(cpu=1, gpu=0)
-        self.placement_group_factory = placement_group_factory
+        self.placement_group_factory = None
+        if placement_group_factory:
+            self.placement_group_factory = placement_group_factory
+        elif isinstance(self.resources, PlacementGroupFactory):
+            self.placement_group_factory = self.resources
+            counts = defaultdict(int)
+            for bundle in self.placement_group_factory._bundles:
+                for device, c in bundle.items():
+                    counts[device.lower()] += c
+            custom_resources = {
+                k: c
+                for k, c in counts.items() if k not in ["cpu", "gpu"]
+            }
+            self.resources = Resources(
+                cpu=counts["cpu"],
+                gpu=counts["gpu"],
+                custom_resources=custom_resources,
+                has_placement_group=True,
+            )
+
         self._setup_resources()
 
         self.stopping_criterion = stopping_criterion or {}

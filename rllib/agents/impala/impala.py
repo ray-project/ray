@@ -15,7 +15,7 @@ from ray.rllib.execution.concurrency_ops import Concurrently, Enqueue, Dequeue
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.utils.annotations import override
 from ray.tune.trainable import Trainable
-from ray.tune.resources import Resources
+from ray.tune.utils.placement_groups import PlacementGroupFactory
 
 logger = logging.getLogger(__name__)
 
@@ -68,8 +68,11 @@ DEFAULT_CONFIG = with_common_config({
     "max_sample_requests_in_flight_per_worker": 2,
     # max number of workers to broadcast one set of weights to
     "broadcast_interval": 1,
-    # use intermediate actors for multi-level aggregation. This can make sense
-    # if ingesting >2GB/s of samples, or if the data requires decompression.
+    # Use n (`num_aggregation_workers`) extra Actors for multi-level
+    # aggregation of the data produced by the m RolloutWorkers
+    # (`num_workers`). Note that n should be much smaller than m.
+    # This can make sense if ingesting >2GB/s of samples, or if
+    # the data requires decompression.
     "num_aggregation_workers": 0,
 
     # Learning params.
@@ -101,17 +104,39 @@ class OverrideDefaultResourceRequest:
     def default_resource_request(cls, config):
         cf = dict(cls._default_config, **config)
         Trainer._validate_config(cf)
-        return Resources(
-            cpu=cf["num_cpus_for_driver"],
-            gpu=cf["num_gpus"],
-            memory=cf["memory"],
-            object_store_memory=cf["object_store_memory"],
-            extra_cpu=cf["num_cpus_per_worker"] * cf["num_workers"] +
-            cf["num_aggregation_workers"],
-            extra_gpu=cf["num_gpus_per_worker"] * cf["num_workers"],
-            extra_memory=cf["memory_per_worker"] * cf["num_workers"],
-            extra_object_store_memory=cf["object_store_memory_per_worker"] *
-            cf["num_workers"])
+
+        eval_config = cf["evaluation_config"]
+
+        # Return PlacementGroupFactory containing all needed resources
+        # (already properly defined as device bundles).
+        return PlacementGroupFactory(
+            bundles=[{
+                # Driver + Aggregation Workers:
+                # Force to be on same node to maximize data bandwidth
+                # between aggregation workers and the learner (driver).
+                # Aggregation workers tree-aggregate experiences collected
+                # from RolloutWorkers (n rollout workers map to m
+                # aggregation workers, where m < n).
+                "cpu": cf["num_cpus_for_driver"] +
+                cf["num_cpus_per_worker"] * cf["num_aggregation_workers"],
+                "gpu": cf["num_gpus"]
+            }] + [
+                {
+                    # RolloutWorkers.
+                    "cpu": cf["num_cpus_per_worker"],
+                    "gpu": cf["num_gpus_per_worker"],
+                } for _ in range(cf["num_workers"])
+            ] + ([
+                {
+                    # Evaluation workers (+1 b/c of the additional local
+                    # worker)
+                    "cpu": eval_config.get("num_cpus_per_worker",
+                                           cf["num_cpus_per_worker"]),
+                    "gpu": eval_config.get("num_gpus_per_worker",
+                                           cf["num_gpus_per_worker"]),
+                } for _ in range(cf["evaluation_num_workers"] + 1)
+            ] if cf["evaluation_interval"] else []),
+            strategy=config.get("placement_strategy", "PACK"))
 
 
 def make_learner_thread(local_worker, config):
@@ -171,6 +196,17 @@ def validate_config(config):
         if config["batch_mode"] != "truncate_episodes":
             raise ValueError(
                 "Must use `batch_mode`=truncate_episodes if `vtrace` is True.")
+
+    # Check whether worker to aggregation-worker ratio makes sense.
+    if config["num_aggregation_workers"] >= config["num_workers"]:
+        raise ValueError(
+            "`num_aggregation_workers` must be smaller than `num_workers`!"
+            "Aggregation makes no sense otherwise.")
+    elif config["num_aggregation_workers"] > \
+            config["num_workers"] / 2:
+        logger.warning(
+            "`num_aggregation_workers` should be much smaller than"
+            "`num_workers`! Try setting it to 0.5*`num_workers` or less.")
 
 
 # Update worker weights as they finish generating experiences.

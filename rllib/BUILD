@@ -1428,6 +1428,13 @@ py_test(
 )
 
 py_test(
+    name = "tests/test_placement_groups",
+    tags = ["tests_dir", "tests_dir_P"],
+    size = "small",
+    srcs = ["tests/test_placement_groups.py"]
+)
+
+py_test(
     name = "tests/test_reproducibility",
     tags = ["tests_dir", "tests_dir_R"],
     size = "medium",
