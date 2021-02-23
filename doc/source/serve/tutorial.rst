@@ -1,5 +1,5 @@
 ===================
-End-to-end Tutorial
+End-to-End Tutorial
 ===================
 
 By the end of this tutorial, you will have learned the basics of Ray Serve and will be ready to pick and choose from the advanced topics in the sidebar.
