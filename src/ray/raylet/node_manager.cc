@@ -690,13 +690,6 @@ void NodeManager::NodeAdded(const GcsNodeInfo &node_info) {
     return;
   }
 
-  if (node_id == self_node_id_) {
-    // We got a notification for ourselves, so we are connected to the GCS now.
-    // Save this NodeManager's resource information in the cluster resource map.
-    cluster_resource_map_[node_id] = initial_config_.resource_config;
-    return;
-  }
-
   // Store address of the new node manager for rpc requests.
   remote_node_manager_addresses_[node_id] =
       std::make_pair(node_info.node_manager_address(), node_info.node_manager_port());
