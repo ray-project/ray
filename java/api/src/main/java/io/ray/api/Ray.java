@@ -2,6 +2,7 @@ package io.ray.api;
 
 import io.ray.api.id.PlacementGroupId;
 import io.ray.api.id.UniqueId;
+import io.ray.api.options.PlacementGroupCreationOptions;
 import io.ray.api.placementgroup.PlacementGroup;
 import io.ray.api.placementgroup.PlacementStrategy;
 import io.ray.api.runtime.RayRuntime;
@@ -256,22 +257,50 @@ public final class Ray extends RayCall {
    * Create a placement group. A placement group is used to place actors according to a specific
    * strategy and resource constraints. It will sends a request to GCS to preallocate the specified
    * resources, which is asynchronous. If the specified resource cannot be allocated, it will wait
-   * for the resource to be updated and rescheduled. This function only works when gcs actor manager
-   * is turned on.
+   * for the resource to be updated and rescheduled.
    *
+   * @deprecated This method is no longer recommended to create a new placement group, use {@link
+   *     Ray#createPlacementGroup(PlacementGroupCreationOptions)} instead.
    * @param name Name of the placement group.
    * @param bundles Pre-allocated resource list.
    * @param strategy Actor placement strategy.
    * @return A handle to the created placement group.
    */
+  @Deprecated
   public static PlacementGroup createPlacementGroup(
       String name, List<Map<String, Double>> bundles, PlacementStrategy strategy) {
-    return internal().createPlacementGroup(name, bundles, strategy);
+    PlacementGroupCreationOptions creationOptions =
+        new PlacementGroupCreationOptions.Builder()
+            .setName(name)
+            .setBundles(bundles)
+            .setStrategy(strategy)
+            .build();
+    return createPlacementGroup(creationOptions);
   }
 
+  /**
+   * Create a placement group with an empty name.
+   *
+   * @deprecated This method is no longer recommended to create a new placement group, use {@link
+   *     Ray#createPlacementGroup(PlacementGroupCreationOptions)} instead.
+   */
+  @Deprecated
   public static PlacementGroup createPlacementGroup(
       List<Map<String, Double>> bundles, PlacementStrategy strategy) {
-    return internal().createPlacementGroup(bundles, strategy);
+    return createPlacementGroup(null, bundles, strategy);
+  }
+
+  /**
+   * Create a placement group. A placement group is used to place actors according to a specific
+   * strategy and resource constraints. It will sends a request to GCS to preallocate the specified
+   * resources, which is asynchronous. If the specified resource cannot be allocated, it will wait
+   * for the resource to be updated and rescheduled.
+   *
+   * @param creationOptions Creation options of the placement group.
+   * @return A handle to the created placement group.
+   */
+  public static PlacementGroup createPlacementGroup(PlacementGroupCreationOptions creationOptions) {
+    return internal().createPlacementGroup(creationOptions);
   }
 
   /**
@@ -294,6 +323,26 @@ public final class Ray extends RayCall {
    */
   public static PlacementGroup getPlacementGroup(PlacementGroupId id) {
     return internal().getPlacementGroup(id);
+  }
+
+  /**
+   * Get a placement group by placement group name from current job.
+   *
+   * @param name The placement group name.
+   * @return The placement group.
+   */
+  public static PlacementGroup getPlacementGroup(String name) {
+    return internal().getPlacementGroup(name, false);
+  }
+
+  /**
+   * Get a placement group by placement group name from all jobs.
+   *
+   * @param name The placement group name.
+   * @return The placement group.
+   */
+  public static PlacementGroup getGlobalPlacementGroup(String name) {
+    return internal().getPlacementGroup(name, true);
   }
 
   /**

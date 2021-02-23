@@ -86,12 +86,8 @@ raylet::RayletClient::RayletClient(
     const std::string &raylet_socket, const WorkerID &worker_id,
     rpc::WorkerType worker_type, const JobID &job_id, const Language &language,
     const std::string &ip_address, Status *status, NodeID *raylet_id, int *port,
-    std::unordered_map<std::string, std::string> *system_config,
-    const std::string &job_config)
-    : grpc_client_(std::move(grpc_client)),
-      worker_id_(worker_id),
-      job_id_(job_id),
-      job_config_(job_config) {
+    std::string *system_config, std::string *serialized_job_config)
+    : grpc_client_(std::move(grpc_client)), worker_id_(worker_id), job_id_(job_id) {
   // For C++14, we could use std::make_unique
   conn_ = std::unique_ptr<raylet::RayletConnection>(
       new raylet::RayletConnection(io_service, raylet_socket, -1, -1));
@@ -101,7 +97,7 @@ raylet::RayletClient::RayletClient(
   auto message = protocol::CreateRegisterClientRequest(
       fbb, static_cast<int>(worker_type), to_flatbuf(fbb, worker_id), getpid(),
       to_flatbuf(fbb, job_id), language, fbb.CreateString(ip_address), /*port=*/0,
-      fbb.CreateString(job_config_));
+      fbb.CreateString(*serialized_job_config));
   fbb.Finish(message);
   // Register the process ID with the raylet.
   // NOTE(swang): If raylet exits and we are registered as a worker, we will get killed.
@@ -127,12 +123,8 @@ raylet::RayletClient::RayletClient(
   *port = reply_message->port();
 
   RAY_CHECK(system_config);
-  auto keys = reply_message->system_config_keys();
-  auto values = reply_message->system_config_values();
-  RAY_CHECK(keys->size() == values->size());
-  for (size_t i = 0; i < keys->size(); i++) {
-    system_config->emplace(keys->Get(i)->str(), values->Get(i)->str());
-  }
+  *system_config = reply_message->system_config()->str();
+  *serialized_job_config = reply_message->serialized_job_config()->str();
 }
 
 Status raylet::RayletClient::Disconnect() {
