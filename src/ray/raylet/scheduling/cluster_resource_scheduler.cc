@@ -1012,8 +1012,12 @@ void ClusterResourceScheduler::FillResourceUsage(
     // Note: this MUTATES the resources field, which is needed since we are storing
     // it in last_report_resources_.
     if (label == "object_store_memory" && get_used_object_store_memory_ != nullptr) {
-      capacity.available =
-          FixedPoint(capacity.total.Double() - get_used_object_store_memory_());
+      int64_t used = get_used_object_store_memory_();
+      // Convert to 50MiB memory units, rounding up.
+      if (used > 0) {
+        used = std::max<int64_t>(1L, used / (50L * 1024 * 1024));
+      }
+      capacity.available = FixedPoint(capacity.total.Double() - used);
     }
 
     // Note: available may be negative, but only report positive to GCS.
