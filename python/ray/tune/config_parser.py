@@ -8,7 +8,8 @@ from six import string_types
 
 from ray.tune import TuneError
 from ray.tune.trial import Trial
-from ray.tune.resources import PlacementGroupFactory, json_to_resources
+from ray.tune.resources import json_to_resources
+from ray.tune.utils.placement_groups import PlacementGroupFactory
 from ray.tune.utils.util import SafeFallbackEncoder
 
 
@@ -182,15 +183,9 @@ def create_trial_from_spec(spec, output_path, parser, **trial_kwargs):
     if resources:
         if isinstance(resources, PlacementGroupFactory):
             trial_kwargs["placement_group_factory"] = resources
-        elif callable(resources):
-            if resources in _cached_pgf:
-                trial_kwargs["placement_group_factory"] = _cached_pgf[
-                    resources]
-            else:
-                pgf = PlacementGroupFactory(resources)
-                _cached_pgf[resources] = pgf
-                trial_kwargs["placement_group_factory"] = pgf
         else:
+            # This will be converted to a placement group factory in the
+            # Trial object constructor
             try:
                 trial_kwargs["resources"] = json_to_resources(resources)
             except (TuneError, ValueError) as exc:

@@ -120,7 +120,7 @@ class HyperBandForBOHB(HyperBandScheduler):
             for bracket in scrubbed:
                 for trial in bracket.current_trials():
                     if (trial.status == Trial.PENDING
-                            and trial_runner.has_resources(trial.resources)):
+                            and trial_runner.has_resources_for_trial(trial)):
                         return trial
         # MAIN CHANGE HERE!
         if not any(t.status == Trial.RUNNING
