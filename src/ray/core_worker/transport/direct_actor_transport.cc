@@ -241,6 +241,7 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(const ActorID &actor_id
 }
 
 void CoreWorkerDirectActorTaskSubmitter::CheckTimeoutTasks() {
+  absl::MutexLock lock(&mu_);
   for (auto &queue_pair : client_queues_) {
     auto &queue = queue_pair.second;
     auto deque_itr = queue.wait_for_death_info_tasks.begin();
