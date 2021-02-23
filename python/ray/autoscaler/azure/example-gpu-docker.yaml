@@ -1,7 +1,6 @@
 # An unique identifier for the head node and workers of this cluster.
 cluster_name: gpu-docker
 
-
 # The maximum number of workers nodes to launch in addition to the head
 # node. This takes precedence over min_workers.
 max_workers: 2
@@ -18,7 +17,7 @@ upscaling_speed: 1.0
 docker:
     image: "rayproject/ray-ml:latest-gpu"
     # image: rayproject/ray:latest-gpu   # use this one if you don't need ML dependencies, it's faster to pull
-    container_name: "ray_nvidia_docker" # e.g. ray_docker
+    container_name: "ray_nvidia_docker"
 
     # # Example of running a GPU head with CPU workers
     # head_image: "rayproject/ray-ml:latest-gpu"
