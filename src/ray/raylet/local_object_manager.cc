@@ -267,9 +267,6 @@ void LocalObjectManager::UnpinSpilledObjectCallback(
     RAY_LOG(INFO) << "Failed to send spilled url for object " << object_id
                   << " to object directory, considering the object to have been freed: "
                   << status.ToString();
-    auto it = spilled_objects_url_.find(object_id);
-    RAY_CHECK(it != spilled_objects_url_.end());
-    spilled_objects_url_.erase(it);
   } else {
     RAY_LOG(DEBUG) << "Object " << object_id << " spilled to " << object_url
                    << " and object directory has been informed";

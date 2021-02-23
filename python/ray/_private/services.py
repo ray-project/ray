@@ -877,9 +877,9 @@ def start_redis(node_ip_address,
     # Start other Redis shards. Each Redis shard logs to a separate file,
     # prefixed by "redis-<shard number>".
     redis_shards = []
-    # Attempt to start the other Redis shards port range right after the
-    # primary Redis shard port.
-    last_shard_port = port
+    # If Redis shard ports are not provided, start the port range of the
+    # other Redis shards at a high, random port.
+    last_shard_port = new_port() - 1
     for i in range(num_redis_shards):
         redis_stdout_file, redis_stderr_file = redirect_files[i + 1]
         redis_executable = REDIS_EXECUTABLE

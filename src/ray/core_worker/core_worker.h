@@ -955,6 +955,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   void GetAsync(const ObjectID &object_id, SetResultCallback success_callback,
                 void *python_future);
 
+  // Get serialized job configuration.
+  const rpc::JobConfig &GetJobConfig() const;
+
  private:
   void SetCurrentTaskId(const TaskID &task_id);
 
@@ -1270,6 +1273,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   int64_t max_direct_call_object_size_;
 
   friend class CoreWorkerTest;
+
+  std::unique_ptr<rpc::JobConfig> job_config_;
 };
 
 }  // namespace ray
