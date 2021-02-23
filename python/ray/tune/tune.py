@@ -32,6 +32,7 @@ from ray.tune.utils.log import Verbosity, has_verbosity, set_verbosity
 
 # Must come last to avoid circular imports
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
+from ray.tune.utils.placement_groups import PlacementGroupFactory
 
 logger = logging.getLogger(__name__)
 
@@ -76,7 +77,8 @@ def run(
                                                      bool]] = None,
         time_budget_s: Union[None, int, float, datetime.timedelta] = None,
         config: Optional[Dict[str, Any]] = None,
-        resources_per_trial: Optional[Mapping[str, Union[float, int]]] = None,
+        resources_per_trial: Union[None, Mapping[str, Union[
+            float, int, Mapping]], PlacementGroupFactory] = None,
         num_samples: int = 1,
         local_dir: Optional[str] = None,
         search_alg: Optional[Union[Searcher, SearchAlgorithm]] = None,
@@ -179,11 +181,13 @@ def run(
         config (dict): Algorithm-specific configuration for Tune variant
             generation (e.g. env, hyperparams). Defaults to empty dict.
             Custom search algorithms may ignore this.
-        resources_per_trial (dict|Callable): Machine resources to allocate per
-            trial, e.g. ``{"cpu": 64, "gpu": 8}``. Note that GPUs will not be
-            assigned unless you specify them here. Defaults to 1 CPU and 0
-            GPUs in ``Trainable.default_resource_request()``. This can also
-            be a function returning a placement group.
+        resources_per_trial (dict|PlacementGroupFactory): Machine resources
+            to allocate per trial, e.g. ``{"cpu": 64, "gpu": 8}``.
+            Note that GPUs will not be assigned unless you specify them here.
+            Defaults to 1 CPU and 0 GPUs in
+            ``Trainable.default_resource_request()``. This can also
+            be a PlacementGroupFactory object wrapping arguments to create a
+            per-trial placement group.
         num_samples (int): Number of times to sample from the
             hyperparameter space. Defaults to 1. If `grid_search` is
             provided as an argument, the grid will be repeated

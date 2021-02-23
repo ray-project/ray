@@ -30,6 +30,11 @@ from ray.tune.utils.mock import (MockDurableTrainer, MockRemoteTrainer,
                                  MockNodeSyncer, mock_storage_client,
                                  MOCK_REMOTE_DIR)
 
+# Wait up to five seconds for placement groups when starting a trial
+os.environ["TUNE_PLACEMENT_GROUP_WAIT_S"] = "5"
+# Block for results even when placement groups are pending
+os.environ["TUNE_TRIAL_STARTUP_GRACE_PERIOD"] = "0"
+
 
 def _check_trial_running(trial):
     if trial.runner:
@@ -108,6 +113,8 @@ def start_connected_emptyhead_cluster():
 
 def test_counting_resources(start_connected_cluster):
     """Tests that Tune accounting is consistent with actual cluster."""
+    os.environ["TUNE_PLACEMENT_GROUP_AUTO_DISABLED"] = "1"
+
     cluster = start_connected_cluster
     nodes = []
     assert ray.cluster_resources()["CPU"] == 1
@@ -218,6 +225,8 @@ def test_queue_trials(start_connected_emptyhead_cluster):
     Tune oversubscribes a trial when `queue_trials=True`, but
     does not block other trials from running.
     """
+    os.environ["TUNE_PLACEMENT_GROUP_AUTO_DISABLED"] = "1"
+
     cluster = start_connected_emptyhead_cluster
     runner = TrialRunner()
 
@@ -354,8 +363,15 @@ def test_trial_migration(start_connected_emptyhead_cluster, trainable_id):
 
 
 @pytest.mark.parametrize("trainable_id", ["__fake", "__fake_durable"])
-def test_trial_requeue(start_connected_emptyhead_cluster, trainable_id):
+@pytest.mark.parametrize("with_pg", [True, False])
+@patch("ray.tune.trial_runner.TUNE_MAX_PENDING_TRIALS_PG", 1)
+@patch("ray.tune.utils.placement_groups.TUNE_MAX_PENDING_TRIALS_PG", 1)
+def test_trial_requeue(start_connected_emptyhead_cluster, trainable_id,
+                       with_pg):
     """Removing a node in full cluster causes Trial to be requeued."""
+    if not with_pg:
+        os.environ["TUNE_PLACEMENT_GROUP_AUTO_DISABLED"] = "1"
+
     cluster = start_connected_emptyhead_cluster
     node = cluster.add_node(num_cpus=1)
     cluster.wait_for_nodes()
@@ -385,13 +401,16 @@ def test_trial_requeue(start_connected_emptyhead_cluster, trainable_id):
     assert _check_trial_running(running_trials[0])
     cluster.remove_node(node)
     cluster.wait_for_nodes()
+    time.sleep(0.1)  # Sleep so that next step() refreshes cluster resources
     runner.step()  # Process result, dispatch save
     runner.step()  # Process save (detect error), requeue trial
     assert all(
         t.status == Trial.PENDING for t in trials), runner.debug_string()
 
-    with pytest.raises(TuneError):
-        runner.step()
+    if not with_pg:
+        # Only raises if placement groups are not used
+        with pytest.raises(TuneError):
+            runner.step()
 
 
 @pytest.mark.parametrize("trainable_id", ["__fake_remote", "__fake_durable"])

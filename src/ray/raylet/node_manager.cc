@@ -1081,12 +1081,18 @@ void NodeManager::ProcessRegisterClientRequestMessage(
       std::make_shared<Worker>(job_id, worker_id, language, worker_type,
                                worker_ip_address, client, client_call_manager_));
 
-  auto send_reply_callback = [this, client](Status status, int assigned_port) {
+  auto send_reply_callback = [this, client, job_id](Status status, int assigned_port) {
     flatbuffers::FlatBufferBuilder fbb;
+    std::string serialized_job_config;
+    auto job_config = worker_pool_.GetJobConfig(job_id);
+    if (job_config != boost::none) {
+      serialized_job_config = (*job_config).SerializeAsString();
+    }
     auto reply = ray::protocol::CreateRegisterClientReply(
         fbb, status.ok(), fbb.CreateString(status.ToString()),
         to_flatbuf(fbb, self_node_id_), assigned_port,
-        fbb.CreateString(initial_config_.raylet_config));
+        fbb.CreateString(initial_config_.raylet_config),
+        fbb.CreateString(serialized_job_config));
     fbb.Finish(reply);
     client->WriteMessageAsync(
         static_cast<int64_t>(protocol::MessageType::RegisterClientReply), fbb.GetSize(),
