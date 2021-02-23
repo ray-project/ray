@@ -134,6 +134,9 @@ void GcsActorScheduler::CancelOnLeasing(const NodeID &node_id, const ActorID &ac
   auto node_it = node_to_actors_when_leasing_.find(node_id);
   RAY_CHECK(node_it != node_to_actors_when_leasing_.end());
   node_it->second.erase(actor_id);
+  if (node_it->second.empty()) {
+    node_to_actors_when_leasing_.erase(node_it);
+  }
 }
 
 ActorID GcsActorScheduler::CancelOnWorker(const NodeID &node_id,
@@ -269,12 +272,14 @@ void GcsActorScheduler::DoRetryLeasingWorkerFromNode(
   if (iter != node_to_actors_when_leasing_.end()) {
     // If the node is still available, the actor must be still in the
     // leasing map as it is erased from leasing map only when
-    // `CancelOnNode` or the `RequestWorkerLeaseReply` is received from
-    // the node, so try leasing again.
-    RAY_CHECK(iter->second.count(actor->GetActorID()) != 0);
-    RAY_LOG(INFO) << "Retry leasing worker from " << actor->GetNodeID() << " for actor "
-                  << actor->GetActorID() << ", job id = " << actor->GetActorID().JobId();
-    LeaseWorkerFromNode(actor, node);
+    // `CancelOnNode`, `RequestWorkerLeaseReply` or `CancelOnLeasing` is received, so try
+    // leasing again.
+    if (iter->second.count(actor->GetActorID())) {
+      RAY_LOG(INFO) << "Retry leasing worker from " << actor->GetNodeID() << " for actor "
+                    << actor->GetActorID()
+                    << ", job id = " << actor->GetActorID().JobId();
+      LeaseWorkerFromNode(actor, node);
+    }
   }
 }
 

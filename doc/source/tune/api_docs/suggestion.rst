@@ -66,6 +66,10 @@ Summary
      - Closed source
      - [`SigOpt <https://sigopt.com/>`__]
      - :doc:`/tune/examples/sigopt_example`
+   * - :ref:`HEBOSearch <tune-hebo>`
+     - Heteroscedastic Evolutionary Bayesian Optimization
+     - [`HEBO <https://github.com/huawei-noah/noah-research/tree/master/HEBO>`__]
+     - :doc:`/tune/examples/hebo_example`
 
 .. note:: Unlike :ref:`Tune's Trial Schedulers <tune-schedulers>`, Tune SearchAlgorithms cannot affect or stop training processes. However, you can use them together to **early stop the evaluation of bad trials**.
 
@@ -185,6 +189,14 @@ Dragonfly (tune.suggest.dragonfly.DragonflySearch)
 --------------------------------------------------
 
 .. autoclass:: ray.tune.suggest.dragonfly.DragonflySearch
+  :members: save, restore
+
+.. _tune-hebo:
+
+HEBO (tune.suggest.hebo.HEBOSearch)
+-----------------------------------------------
+
+.. autoclass:: ray.tune.suggest.hebo.HEBOSearch
   :members: save, restore
 
 .. _tune-hyperopt:

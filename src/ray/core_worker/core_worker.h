@@ -82,6 +82,7 @@ struct CoreWorkerOptions {
         spill_objects(nullptr),
         restore_spilled_objects(nullptr),
         delete_spilled_objects(nullptr),
+        unhandled_exception_handler(nullptr),
         get_lang_stack(nullptr),
         kill_main(nullptr),
         ref_counting_enabled(false),
@@ -137,13 +138,17 @@ struct CoreWorkerOptions {
   /// be held up in garbage objects.
   std::function<void()> gc_collect;
   /// Application-language callback to spill objects to external storage.
-  std::function<std::vector<std::string>(const std::vector<ObjectID> &)> spill_objects;
+  std::function<std::vector<std::string>(const std::vector<ObjectID> &,
+                                         const std::vector<std::string> &)>
+      spill_objects;
   /// Application-language callback to restore objects from external storage.
   std::function<int64_t(const std::vector<ObjectID> &, const std::vector<std::string> &)>
       restore_spilled_objects;
   /// Application-language callback to delete objects from external storage.
   std::function<void(const std::vector<std::string> &, rpc::WorkerType)>
       delete_spilled_objects;
+  /// Function to call on error objects never retrieved.
+  std::function<void(const RayObject &error)> unhandled_exception_handler;
   /// Language worker callback to get the current call stack.
   std::function<void(std::string *)> get_lang_stack;
   // Function that tries to interrupt the currently running Python thread.
@@ -264,6 +269,8 @@ class CoreWorkerProcess {
   ///
   /// \return Void.
   static void EnsureInitialized();
+
+  static void HandleAtExit();
 
   /// Get the `CoreWorker` instance by worker ID.
   ///
@@ -908,6 +915,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                           rpc::SpillObjectsReply *reply,
                           rpc::SendReplyCallback send_reply_callback) override;
 
+  // Add spilled URL to owned reference.
+  void HandleAddSpilledUrl(const rpc::AddSpilledUrlRequest &request,
+                           rpc::AddSpilledUrlReply *reply,
+                           rpc::SendReplyCallback send_reply_callback) override;
+
   // Restore objects from external storage.
   void HandleRestoreSpilledObjects(const rpc::RestoreSpilledObjectsRequest &request,
                                    rpc::RestoreSpilledObjectsReply *reply,
@@ -942,6 +954,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \return void
   void GetAsync(const ObjectID &object_id, SetResultCallback success_callback,
                 void *python_future);
+
+  // Get serialized job configuration.
+  const rpc::JobConfig &GetJobConfig() const;
 
  private:
   void SetCurrentTaskId(const TaskID &task_id);
@@ -1258,6 +1273,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   int64_t max_direct_call_object_size_;
 
   friend class CoreWorkerTest;
+
+  std::unique_ptr<rpc::JobConfig> job_config_;
 };
 
 }  // namespace ray

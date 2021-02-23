@@ -18,6 +18,8 @@ from typing import TYPE_CHECKING
 import grpc
 
 import ray.cloudpickle as cloudpickle
+# Use cloudpickle's version of pickle for UnpicklingError
+from ray.cloudpickle.compat import pickle
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 from ray.util.client.client_pickler import convert_to_arg
@@ -29,6 +31,7 @@ from ray.util.client.common import ClientActorClass
 from ray.util.client.common import ClientRemoteFunc
 from ray.util.client.common import ClientActorRef
 from ray.util.client.common import ClientObjectRef
+from ray.util.client.common import GRPC_MAX_MESSAGE_SIZE
 from ray.util.client.dataclient import DataClient
 from ray.util.client.logsclient import LogstreamClient
 
@@ -72,11 +75,18 @@ class Worker:
         self._conn_state = grpc.ChannelConnectivity.IDLE
         self._client_id = make_client_id()
         self._converted: Dict[str, ClientStub] = {}
+
+        grpc_options = [
+            ("grpc.max_send_message_length", GRPC_MAX_MESSAGE_SIZE),
+            ("grpc.max_receive_message_length", GRPC_MAX_MESSAGE_SIZE),
+        ]
         if secure:
             credentials = grpc.ssl_channel_credentials()
-            self.channel = grpc.secure_channel(conn_str, credentials)
+            self.channel = grpc.secure_channel(
+                conn_str, credentials, options=grpc_options)
         else:
-            self.channel = grpc.insecure_channel(conn_str)
+            self.channel = grpc.insecure_channel(
+                conn_str, options=grpc_options)
 
         self.channel.subscribe(self._on_channel_state_change)
 
@@ -175,14 +185,14 @@ class Worker:
         if not data.valid:
             try:
                 err = cloudpickle.loads(data.error)
-            except Exception:
+            except pickle.UnpicklingError:
                 logger.exception("Failed to deserialize {}".format(data.error))
                 raise
             logger.error(err)
             raise err
         return loads_from_server(data.data)
 
-    def put(self, vals):
+    def put(self, vals, *, client_ref_id: bytes = None):
         to_put = []
         single = False
         if isinstance(vals, list):
@@ -191,12 +201,12 @@ class Worker:
             single = True
             to_put.append(vals)
 
-        out = [self._put(x) for x in to_put]
+        out = [self._put(x, client_ref_id=client_ref_id) for x in to_put]
         if single:
             out = out[0]
         return out
 
-    def _put(self, val):
+    def _put(self, val, *, client_ref_id: bytes = None):
         if isinstance(val, ClientObjectRef):
             raise TypeError(
                 "Calling 'put' on an ObjectRef is not allowed "
@@ -206,6 +216,8 @@ class Worker:
                 "call 'put' on it (or return it).")
         data = dumps_from_client(val, self._client_id)
         req = ray_client_pb2.PutRequest(data=data)
+        if client_ref_id is not None:
+            req.client_ref_id = client_ref_id
         resp = self.data_client.PutObject(req)
         return ClientObjectRef(resp.id)
 
@@ -263,7 +275,7 @@ class Worker:
         if not ticket.valid:
             try:
                 raise cloudpickle.loads(ticket.error)
-            except Exception:
+            except pickle.UnpicklingError:
                 logger.exception("Failed to deserialize {}".format(
                     ticket.error))
                 raise

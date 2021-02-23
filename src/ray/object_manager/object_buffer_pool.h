@@ -137,16 +137,16 @@ class ObjectBufferPool {
   /// \return Void.
   void FreeObjects(const std::vector<ObjectID> &object_ids);
 
+  /// Abort the create operation associated with an object. This destroys the buffer
+  /// state, including create operations in progress for all chunks of the object.
+  void AbortCreate(const ObjectID &object_id);
+
   /// Returns debug string for class.
   ///
   /// \return string.
   std::string DebugString() const;
 
  private:
-  /// Abort the create operation associated with an object. This destroys the buffer
-  /// state, including create operations in progress for all chunks of the object.
-  void AbortCreate(const ObjectID &object_id);
-
   /// Abort the get operation associated with an object.
   void AbortGet(const ObjectID &object_id);
 

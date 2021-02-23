@@ -1,4 +1,5 @@
 import copy
+import datetime
 import hashlib
 import json
 import logging
@@ -38,6 +39,11 @@ from ray.autoscaler._private.command_runner import set_using_login_shells, \
 from ray.autoscaler._private.event_system import (CreateClusterEvent,
                                                   global_event_system)
 from ray.autoscaler._private.log_timer import LogTimer
+from ray.autoscaler._private.cluster_dump import Archive, \
+    GetParameters, Node, _info_from_params, \
+    create_archive_for_local_and_remote_nodes, \
+    create_archive_for_remote_nodes, get_all_local_data
+
 from ray.worker import global_worker  # type: ignore
 from ray.util.debug import log_once
 
@@ -149,7 +155,7 @@ def create_or_update_cluster(
         redirect_command_output: Optional[bool] = False,
         use_login_shells: bool = True,
         no_monitor_on_head: bool = False) -> Dict[str, Any]:
-    """Create or updates an autoscaling Ray cluster from a config json."""
+    """Creates or updates an autoscaling Ray cluster from a config json."""
     # no_monitor_on_head is an internal flag used by the Ray K8s operator.
     # If True, prevents autoscaling config sync to the Ray head during cluster
     # creation. See https://github.com/ray-project/ray/pull/13720.
@@ -646,7 +652,12 @@ def get_or_create_head_node(config: Dict[str, Any],
             cli_logger.print("Prepared bootstrap config")
 
         if restart_only:
-            setup_commands = []
+            # Docker may re-launch nodes, requiring setup
+            # commands to be rerun.
+            if config.get("docker", {}).get("container_name"):
+                setup_commands = config["head_setup_commands"]
+            else:
+                setup_commands = []
             ray_start_commands = config["head_start_ray_commands"]
         elif no_restart:
             setup_commands = config["head_setup_commands"]
@@ -678,7 +689,8 @@ def get_or_create_head_node(config: Dict[str, Any],
                 "rsync_exclude": config.get("rsync_exclude"),
                 "rsync_filter": config.get("rsync_filter")
             },
-            docker_config=config.get("docker"))
+            docker_config=config.get("docker"),
+            restart_only=restart_only)
         updater.start()
         updater.join()
 
@@ -1118,6 +1130,132 @@ def _get_head_node(config: Dict[str, Any],
     else:
         raise RuntimeError("Head node of cluster ({}) not found!".format(
             config["cluster_name"]))
+
+
+def get_local_dump_archive(stream: bool = False,
+                           output: Optional[str] = None,
+                           logs: bool = True,
+                           pip: bool = True,
+                           processes: bool = True,
+                           processes_verbose: bool = False) -> Optional[str]:
+    if stream and output:
+        raise ValueError(
+            "You can only use either `--output` or `--stream`, but not both.")
+
+    parameters = GetParameters(
+        logs=logs,
+        pip=pip,
+        processes=processes,
+        processes_verbose=processes_verbose)
+
+    with Archive() as archive:
+        get_all_local_data(archive, parameters)
+
+    tmp = archive.file
+
+    if stream:
+        with open(tmp, "rb") as fp:
+            os.write(1, fp.read())
+        os.remove(tmp)
+        return None
+
+    target = output or os.path.join(os.getcwd(), os.path.basename(tmp))
+    os.rename(tmp, target)
+    cli_logger.print(f"Created local data archive at {target}")
+
+    return target
+
+
+def get_cluster_dump_archive(cluster_config_file: Optional[str] = None,
+                             host: Optional[str] = None,
+                             ssh_user: Optional[str] = None,
+                             ssh_key: Optional[str] = None,
+                             docker: Optional[str] = None,
+                             local: Optional[bool] = None,
+                             output: Optional[str] = None,
+                             logs: bool = True,
+                             pip: bool = True,
+                             processes: bool = True,
+                             processes_verbose: bool = False) -> Optional[str]:
+
+    # Inform the user what kind of logs are collected (before actually
+    # collecting, so they can abort)
+    content_str = ""
+    if logs:
+        content_str += \
+            "  - The logfiles of your Ray session\n" \
+            "    This usually includes Python outputs (stdout/stderr)\n"
+
+    if pip:
+        content_str += "  - Your installed Python packages (`pip freeze`)\n"
+
+    if processes:
+        content_str += \
+            "  - Information on your running Ray processes\n" \
+            "    This includes command line arguments\n"
+
+    cli_logger.warning(
+        "You are about to create a cluster dump. This will collect data from "
+        "cluster nodes.\n\n"
+        "The dump will contain this information:\n\n"
+        f"{content_str}\n"
+        f"If you are concerned about leaking private information, extract "
+        f"the archive and inspect its contents before sharing it with "
+        f"anyone.")
+
+    # Parse arguments (e.g. fetch info from cluster config)
+    cluster_config_file, hosts, ssh_user, ssh_key, docker, cluster_name = \
+        _info_from_params(cluster_config_file, host, ssh_user, ssh_key, docker)
+
+    nodes = [
+        Node(
+            host=h,
+            ssh_user=ssh_user,
+            ssh_key=ssh_key,
+            docker_container=docker) for h in hosts
+    ]
+
+    if not nodes:
+        cli_logger.error(
+            f"No nodes found. Specify with `--host` or by passing a ray "
+            f"cluster config to `--cluster`.")
+        return None
+
+    if cluster_config_file:
+        nodes[0].is_head = True
+
+    if local is None:
+        # If called with a cluster config, this was probably started
+        # from a laptop
+        local = not bool(cluster_config_file)
+
+    parameters = GetParameters(
+        logs=logs,
+        pip=pip,
+        processes=processes,
+        processes_verbose=processes_verbose)
+
+    with Archive() as archive:
+        if local:
+            create_archive_for_local_and_remote_nodes(
+                archive, remote_nodes=nodes, parameters=parameters)
+        else:
+            create_archive_for_remote_nodes(
+                archive, remote_nodes=nodes, parameters=parameters)
+
+    if not output:
+        if cluster_name:
+            filename = f"{cluster_name}_" \
+                       f"{datetime.datetime.now():%Y-%m-%d_%H-%M-%S}.tar.gz"
+        else:
+            filename = f"collected_logs_" \
+                       f"{datetime.datetime.now():%Y-%m-%d_%H-%M-%S}.tar.gz"
+        output = os.path.join(os.getcwd(), filename)
+    else:
+        output = os.path.expanduser(output)
+
+    os.rename(archive.file, output)
+    return output
 
 
 def confirm(msg: str, yes: bool) -> Optional[bool]:

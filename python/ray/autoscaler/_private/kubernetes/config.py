@@ -68,7 +68,7 @@ def fillout_resources_kubernetes(config):
     not currently support fractional CPU.
     """
     if "available_node_types" not in config:
-        return config["available_node_types"]
+        return config
     node_types = copy.deepcopy(config["available_node_types"])
     for node_type in node_types:
         container_data = node_types[node_type]["node_config"]["spec"][
@@ -93,6 +93,11 @@ def get_autodetected_resources(container_data):
         resource_name.upper(): get_resource(container_resources, resource_name)
         for resource_name in ["cpu", "gpu"]
     }
+
+    # Throw out GPU from resource dict if the amount is 0.
+    for key in copy.deepcopy(node_type_resources):
+        if node_type_resources[key] == 0:
+            del node_type_resources[key]
 
     return node_type_resources
 

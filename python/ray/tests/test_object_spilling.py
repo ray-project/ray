@@ -14,8 +14,13 @@ from ray.external_storage import (create_url_with_offset,
 from ray.test_utils import wait_for_condition, run_string_as_driver
 from ray.internal.internal_api import memory_summary
 
+# -- Smart open param --
 bucket_name = "object-spilling-test"
+
+# -- File system param --
 spill_local_path = "/tmp/spill"
+
+# -- Spilling configs --
 file_system_object_spilling_config = {
     "type": "filesystem",
     "params": {
@@ -40,10 +45,10 @@ smart_open_object_spilling_config = {
 
 
 def create_object_spilling_config(request, tmp_path):
+    temp_folder = tmp_path / "spill"
+    temp_folder.mkdir()
     if (request.param["type"] == "filesystem"
             or request.param["type"] == "mock_distributed_fs"):
-        temp_folder = tmp_path / "spill"
-        temp_folder.mkdir()
         request.param["params"]["directory_path"] = str(temp_folder)
     return json.dumps(request.param), temp_folder
 
@@ -564,7 +569,8 @@ def test_delete_objects_on_worker_failure(object_spilling_config,
 
 
 @pytest.mark.skipif(
-    platform.system() == "Windows", reason="Failing on Windows.")
+    platform.system() in ["Windows", "Darwin"],
+    reason="Failing on Windows and MacOS.")
 def test_delete_objects_multi_node(multi_node_object_spilling_config,
                                    ray_start_cluster):
     # Limit our object store to 75 MiB of memory.

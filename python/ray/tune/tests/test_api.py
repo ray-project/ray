@@ -236,6 +236,8 @@ class TrainableFunctionApiTest(unittest.TestCase):
         self.assertEqual(trial.last_result[TIMESTEPS_TOTAL], steps)
 
     def testBuiltInTrainableResources(self):
+        os.environ["TUNE_PLACEMENT_GROUP_AUTO_DISABLED"] = "1"
+
         class B(Trainable):
             @classmethod
             def default_resource_request(cls, config):

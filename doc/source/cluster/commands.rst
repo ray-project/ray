@@ -36,9 +36,17 @@ This command checks if the local configuration differs from the applied configur
 
 You can also run ``ray up`` to restart a cluster if it seems to be in a bad state (this will restart all Ray services even if there are no config changes).
 
+Running ``ray up`` on an existing cluster will do all the following:
+
+* If the head node matches the cluster specification, the filemounts will be reapplied and the ``setup_commands`` and ``ray start`` commands will be run. There may be some caching behavior here to skip setup/file mounts.
+* If the head node is out of date from the specified YAML (e.g., ``head_node_type`` has changed on the YAML), then the out of date node will be terminated and a new node will be provisioned to replace it. Setup/file mounts/``ray start`` will be applied.
+* After the head node reaches a consistent state (after ``ray start`` commands are finished), the same above procedure will be applied to all the worker nodes. The ``ray start`` commands tend to run a ``ray stop`` + ``ray start``, so this will kill currently working jobs.
+
 If you don't want the update to restart services (e.g., because the changes don't require a restart), pass ``--no-restart`` to the update call.
 
 If you want to force re-generation of the config to pick up possible changes in the cloud environment, pass ``--no-config-cache`` to the update call.
+
+If you want to skip the setup commands and only run ``ray stop``/``ray start`` on all nodes, pass ``--restart-only`` to the update call.
 
 See :ref:`the documentation <ray-up-doc>` for ``ray up``.
 
