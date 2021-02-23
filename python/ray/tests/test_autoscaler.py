@@ -2083,6 +2083,8 @@ MemAvailable:   33000000 kB
                    for x in first_pull) < min(x[0]
                                               for x in first_targeted_inspect)
 
+    # Permission issues creating file on windows.
+    @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
     def testUpdaterLogging(self):
         config = copy.deepcopy(SMALL_CLUSTER)
         config["min_workers"] = 2
