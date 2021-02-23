@@ -70,7 +70,9 @@ class NodeTracker:
     def get_all_failed_node_info(self, non_failed_ids):
         failed_nodes = self.node_mapping.keys() - non_failed_ids
         failed_info = []
-        for node_id in failed_nodes:
+        # Returning the list in order is important for display purposes.
+        for node_id in filter(lambda node_id: node_id in failed_nodes,
+                              self.lru_order):
             ip, node_type, stdout_path, _ = self.node_mapping[node_id]
             failed_info.append((ip, node_type, stdout_path))
         return failed_info

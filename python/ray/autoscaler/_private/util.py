@@ -11,6 +11,7 @@ from typing import Any, Dict, List
 import ray
 import ray.ray_constants
 import ray._private.services as services
+from ray.autoscaler._private.constants import AUTOSCALER_MAX_FAILURES_DISPLAYED
 from ray.autoscaler._private.providers import _get_default_config
 from ray.autoscaler._private.docker import validate_docker_config
 from ray.autoscaler.tags import NODE_TYPE_LEGACY_WORKER, NODE_TYPE_LEGACY_HEAD
@@ -383,7 +384,8 @@ def format_info_string(lm_summary, autoscaler_summary, time=None):
         pending_report = " (no pending nodes)"
 
     failure_lines = []
-    for ip, node_type, log_path in autoscaler_summary.failed_nodes:
+    for ip, node_type, log_path in (autoscaler_summary.failed_nodes[
+            -AUTOSCALER_MAX_FAILURES_DISPLAYED:]):
         line = f" {ip}: {node_type}, {log_path}"
         failure_lines.append(line)
     failure_report = "Recent failures:\n"

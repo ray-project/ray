@@ -46,6 +46,8 @@ AUTOSCALER_HEARTBEAT_TIMEOUT_S = env_integer("AUTOSCALER_HEARTBEAT_TIMEOUT_S",
 # track for logging purposes.
 AUTOSCALER_MAX_NODES_TRACKED = 1500
 
+AUTOSCALER_MAX_FAILURES_DISPLAYED = 20
+
 # The maximum allowed resource demand vector size to guarantee the resource
 # demand scheduler bin packing algorithm takes a reasonable amount of time
 # to run.

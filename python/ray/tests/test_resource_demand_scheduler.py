@@ -1454,9 +1454,10 @@ class AutoscalingTest(unittest.TestCase):
 
         # TODO (Alex): We should find a more robust way of simulating a node
         # failure here.
-        autoscaler.node_tracker.node_mapping[4] = \
+        obj = \
             ("172.0.0.4", "m4.4xlarge",
              "/tmp/ray/session_latests/logs/4.out", None)
+        autoscaler.node_tracker._add_node_mapping(4, obj)
 
         print(f"Head ip: {head_ip}")
         summary = autoscaler.summary()

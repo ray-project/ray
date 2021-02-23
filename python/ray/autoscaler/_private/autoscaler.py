@@ -32,8 +32,8 @@ from ray.autoscaler._private.util import ConcurrentCounter, validate_config, \
     format_info_string
 from ray.autoscaler._private.constants import \
     AUTOSCALER_MAX_NUM_FAILURES, AUTOSCALER_MAX_LAUNCH_BATCH, \
-    AUTOSCALER_MAX_CONCURRENT_LAUNCHES, AUTOSCALER_UPDATE_INTERVAL_S, \
-    AUTOSCALER_HEARTBEAT_TIMEOUT_S
+    AUTOSCALER_MAX_CONCURRENT_LAUNCHES, \
+    AUTOSCALER_UPDATE_INTERVAL_S, AUTOSCALER_HEARTBEAT_TIMEOUT_S
 from six.moves import queue
 
 logger = logging.getLogger(__name__)
