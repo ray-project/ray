@@ -89,10 +89,6 @@ available_node_types:
                 #   SpotOptions:
                 #       MaxPrice: MAX_HOURLY_PRICE
             # Additional options in the boto docs.
-# Provider-specific config for the head node, e.g. instance type. By default
-# Ray will auto-configure unspecified fields such as SubnetId and KeyName.
-# For more documentation on available fields, see:
-# http://boto3.readthedocs.io/en/latest/reference/services/ec2.html#EC2.ServiceResource.create_instances
 
 # Specify the node type of the head node (as configured above).
 head_node_type: ray.head.gpu
