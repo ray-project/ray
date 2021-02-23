@@ -151,6 +151,8 @@ DEFAULT_CONFIG = with_common_config({
 
 
 def validate_config(config):
+    if config["num_gpus"] > 1:
+        raise ValueError("`num_gpus` > 1 not yet supported for DDPG!")
     if config["model"]["custom_model"]:
         logger.warning(
             "Setting use_state_preprocessor=True since a custom model "
