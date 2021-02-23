@@ -162,6 +162,18 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) 
     }
   }
 
+  // Check whether we are at memory capacity.
+  if (num_bytes_being_pulled_ >= num_bytes_available_) {
+    // We have at least as many pull requests queued than we do memory
+    // capacity.
+    at_memory_capacity_ = true;
+  } else {
+    // We can potentially serve another pull request. There may actually be
+    // more requests in the queue, since we do not serve requests until we have
+    // the object size information.
+    at_memory_capacity_ = false;
+  }
+
   std::unordered_set<ObjectID> object_ids_to_cancel;
   // While the total bytes requested is over the available capacity, deactivate
   // the last pull request, ordered by request ID.
@@ -452,6 +464,18 @@ int PullManager::NumActiveRequests() const { return object_pull_requests_.size()
 bool PullManager::IsObjectActive(const ObjectID &object_id) const {
   absl::MutexLock lock(&active_objects_mu_);
   return active_object_pull_requests_.count(object_id) == 1;
+}
+
+bool PullManager::IsPullRequestInactiveDueToOom(uint64_t request_id) const {
+  // We are at capacity and this request is in the suffix of the queue that is
+  // not being pulled.
+  // NOTE(swang): Because pull bundle requests can overlap and are served in
+  // the order that they are received, it is actually possible that this
+  // request could be served and that its requested objects are even local
+  // already.
+  // TODO(swang): Handle the above case by checking if each of
+  // the request's objects are actively pulled or local.
+  return at_memory_capacity_ && request_id > highest_req_id_being_pulled_;
 }
 
 std::string PullManager::DebugString() const {

@@ -150,15 +150,21 @@ def test_load_balancing_under_constrained_memory(ray_start_cluster):
     @ray.remote
     def f(i, x):
         time.sleep(0.1)
-        print(i, ray.worker.global_worker.node.unique_id)
         return ray.worker.global_worker.node.unique_id
 
-    # TODO(swang): Actually test load balancing.
     deps = [create_object.remote() for _ in range(num_tasks)]
-    tasks = [f.remote(i, dep) for i, dep in enumerate(deps)]
     for i, dep in enumerate(deps):
         print(i, dep)
-    ray.get(tasks)
+
+    attempts = 0
+    while attempts < 100:
+        locations = ray.get([f.remote(i, dep) for i, dep in enumerate(deps)])
+        counts = collections.Counter(locations)
+        print(f"Counts are {counts}")
+        if (len(counts) == num_nodes and counts.most_common()[-1][1] >= 25):
+            break
+        attempts += 1
+    assert attempts < 100
 
 
 def test_locality_aware_leasing(ray_start_cluster):

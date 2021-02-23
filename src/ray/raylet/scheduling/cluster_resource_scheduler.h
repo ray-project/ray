@@ -136,6 +136,9 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   ///
   ///  \param task_request: Task to be scheduled.
   ///  \param actor_creation: True if this is an actor creation task.
+  ///  \param force_spillback For non-actor creation requests, pick a remote
+  ///  feasible node. If this is false, then the task may be scheduled to the
+  ///  local node.
   ///  \param violations: The number of soft constraint violations associated
   ///                     with the node returned by this function (assuming
   ///                     a node that can schedule task_req is found).
@@ -145,7 +148,8 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   ///  \return -1, if no node can schedule the current request; otherwise,
   ///          return the ID of a node that can schedule the task request.
   int64_t GetBestSchedulableNode(const TaskRequest &task_request, bool actor_creation,
-                                 int64_t *violations, bool *is_infeasible);
+                                 bool force_spillback, int64_t *violations,
+                                 bool *is_infeasible);
 
   /// Similar to
   ///    int64_t GetBestSchedulableNode(const TaskRequest &task_request, int64_t
@@ -156,7 +160,7 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   //           task request.
   std::string GetBestSchedulableNode(
       const std::unordered_map<std::string, double> &task_request, bool actor_creation,
-      int64_t *violations, bool *is_infeasible);
+      bool force_spillback, int64_t *violations, bool *is_infeasible);
 
   /// Return resources associated to the given node_id in ret_resources.
   /// If node_id not found, return false; otherwise return true.
