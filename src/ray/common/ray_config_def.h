@@ -376,4 +376,4 @@ RAY_CONFIG(int64_t, log_rotation_backup_count, 5)
 /// When tasks that can't be sent because of network error. we'll never receive a DEAD
 /// notification, in this case we'll wait for a fixed timeout value and then mark it
 /// as failed.
-RAY_CONFIG(int64_t, timeout_ms_task_wait_for_dead_info, 1000)
+RAY_CONFIG(int64_t, timeout_ms_task_wait_for_death_info, 1000)

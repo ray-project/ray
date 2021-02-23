@@ -358,7 +358,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
       const rpc::ActorTableData &actor) {
     auto actor_delta = std::make_shared<rpc::ActorTableData>();
     actor_delta->set_state(actor.state());
-    actor_delta->set_dead_info(actor.dead_info());
+    actor_delta->set_death_info(actor.death_info());
     actor_delta->mutable_address()->CopyFrom(actor.address());
     actor_delta->set_num_restarts(actor.num_restarts());
     actor_delta->set_timestamp(actor.timestamp());

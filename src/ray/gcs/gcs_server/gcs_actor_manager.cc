@@ -671,7 +671,7 @@ void GcsActorManager::ReconstructActor(const ActorID &actor_id, bool need_resche
   int64_t remaining_restarts;
   // Destroy placement group owned by this actor.
   destroy_owned_placement_group_if_needed_(actor_id);
-  std::string actor_dead_info = exit_info;
+  std::string actor_death_info = exit_info;
   if (!need_reschedule) {
     remaining_restarts = 0;
   } else if (max_restarts == -1) {
@@ -680,7 +680,7 @@ void GcsActorManager::ReconstructActor(const ActorID &actor_id, bool need_resche
     int64_t remaining = max_restarts - num_restarts;
     remaining_restarts = std::max(remaining, static_cast<int64_t>(0));
     if (remaining_restarts == 0) {
-      actor_dead_info = "Actor is dead because max restarts exceed.";
+      actor_death_info = "Actor is dead because max restarts exceed.";
     }
   }
   RAY_LOG(INFO) << "Actor is failed " << actor_id << " on worker " << worker_id
@@ -716,7 +716,7 @@ void GcsActorManager::ReconstructActor(const ActorID &actor_id, bool need_resche
     }
 
     mutable_actor_table_data->set_state(rpc::ActorTableData::DEAD);
-    mutable_actor_table_data->set_dead_info(actor_dead_info);
+    mutable_actor_table_data->set_death_info(actor_death_info);
     mutable_actor_table_data->set_timestamp(current_sys_time_ms());
     // The backend storage is reliable in the future, so the status must be ok.
     RAY_CHECK_OK(gcs_table_storage_->ActorTable().Put(

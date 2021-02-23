@@ -52,7 +52,7 @@ class CoreWorkerDirectActorTaskSubmitterInterface {
   virtual void ConnectActor(const ActorID &actor_id, const rpc::Address &address,
                             int64_t num_restarts) = 0;
   virtual void DisconnectActor(const ActorID &actor_id, int64_t num_restarts, bool dead,
-                               const std::string &dead_info) = 0;
+                               const std::string &death_info) = 0;
   virtual void KillActor(const ActorID &actor_id, bool force_kill, bool no_restart) = 0;
 
   virtual void CheckTimeoutTasks() = 0;
@@ -113,10 +113,10 @@ class CoreWorkerDirectActorTaskSubmitter
   /// ignore the command to connect.
   /// \param[in] dead Whether the actor is permanently dead. In this case, all
   /// pending tasks for the actor should be failed.
-  /// \param[in] dead_info Reason why the actor is dead, only applies when
+  /// \param[in] death_info Reason why the actor is dead, only applies when
   /// dead = true
   void DisconnectActor(const ActorID &actor_id, int64_t num_restarts, bool dead,
-                       const std::string &dead_info = "");
+                       const std::string &death_info = "");
 
   /// Set the timerstamp for the caller.
   void SetCallerCreationTimestamp(int64_t timestamp);
@@ -131,7 +131,7 @@ class CoreWorkerDirectActorTaskSubmitter
     /// queue will be marked failed and all other ClientQueue state is ignored.
     rpc::ActorTableData::ActorState state = rpc::ActorTableData::DEPENDENCIES_UNREADY;
     /// Only applies when state=DEAD.
-    std::string dead_info;
+    std::string death_info;
     /// How many times this actor has been restarted before. Starts at -1 to
     /// indicate that the actor is not yet created. This is used to drop stale
     /// messages from the GCS.
@@ -205,12 +205,12 @@ class CoreWorkerDirectActorTaskSubmitter
 
     /// Tasks that can't be sent because 1) the callee actor is dead. 2) network error.
     /// For 1) the task will wait for the DEAD state notification, then mark task as
-    /// failed using the dead_info in notification. For 2) we'll never receive a DEAD
+    /// failed using the death_info in notification. For 2) we'll never receive a DEAD
     /// notification, in this case we'll wait for a fixed timeout value and then mark it
     /// as failed.
     /// pair key: timestamp in ms when this task should be considered as timeout.
     /// pair value: task specification
-    std::deque<std::pair<int64_t, TaskSpecification>> wait_for_dead_info_tasks;
+    std::deque<std::pair<int64_t, TaskSpecification>> wait_for_death_info_tasks;
 
     /// A force-kill request that should be sent to the actor once an RPC
     /// client to the actor is available.
