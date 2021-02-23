@@ -858,7 +858,7 @@ os.kill(os.getpid(), sig)
 
 @pytest.mark.skipif(
     platform.system() in ["Windows"], reason="Failing on "
-    "Windows and Mac.")
+    "Windows.")
 def test_multiple_directories(tmp_path, shutdown_only):
     num_dirs = 3
     temp_dirs = []
