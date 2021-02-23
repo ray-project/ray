@@ -47,7 +47,7 @@ class ConvergenceTest(unittest.TestCase):
             fail_fast=True,
             verbose=1)
         assert len(analysis.trials) in {13, 40, 43}  # it is 43 on the cluster?
-        assert math.isclose(analysis.best_config["x"], 0, abs_tol=1e-8)
+        assert math.isclose(analysis.best_config["x"], 0, abs_tol=1e-5)
 
 
 if __name__ == "__main__":
