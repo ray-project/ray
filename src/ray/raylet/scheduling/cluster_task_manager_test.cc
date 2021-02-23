@@ -157,9 +157,7 @@ class ClusterTaskManagerTest : public ::testing::Test {
                 }
               }
               return true;
-            }),
-        tasks_to_schedule_(task_manager_.tasks_to_schedule_),
-        tasks_to_dispatch_(task_manager_.tasks_to_dispatch_) {}
+            }) {}
 
   void SetUp() {}
 
@@ -210,9 +208,6 @@ class ClusterTaskManagerTest : public ::testing::Test {
 
   MockTaskDependencyManager dependency_manager_;
   ClusterTaskManager task_manager_;
-
-  std::unordered_map<SchedulingClass, std::deque<Work>> &tasks_to_schedule_;
-  std::unordered_map<SchedulingClass, std::deque<Work>> &tasks_to_dispatch_;
 };
 
 TEST_F(ClusterTaskManagerTest, BasicTest) {
