@@ -1,6 +1,7 @@
 import ray
 import ray.worker
 from ray import profiling
+from ray.ray_constants import REDIS_DEFAULT_PASSWORD
 
 __all__ = ["free", "global_gc"]
 MAX_MESSAGE_LENGTH = ray._config.max_grpc_message_size()
@@ -11,6 +12,16 @@ def global_gc():
 
     worker = ray.worker.global_worker
     worker.core_worker.global_gc()
+
+
+def memory_summary_wrapper(redis_address,
+                   redis_password=REDIS_DEFAULT_PASSWORD,
+                   group_by="NODE_ADDRESS",
+                   sort_by="OBJECT_SIZE",
+                   line_wrap=True,
+                   stats_only=False):
+    from ray.new_dashboard.memory_utils import memory_summary
+    return memory_summary(redis_address, redis_password, group_by, sort_by, line_wrap, stats_only)
 
 
 def memory_summary(node_manager_address=None,
