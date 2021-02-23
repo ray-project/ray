@@ -17,7 +17,7 @@ import traceback
 from typing import Any, Dict, List, Iterator
 
 # Ray modules
-from  ray.experimental import internal_kv
+from ray.experimental import internal_kv
 from ray.autoscaler._private.constants import AUTOSCALER_EVENTS
 from filelock import FileLock
 import ray.cloudpickle as pickle
@@ -53,10 +53,10 @@ from ray.exceptions import (
 from ray.function_manager import FunctionActorManager
 from ray.ray_logging import setup_logger
 from ray.ray_logging import global_worker_stdstream_dispatcher
-from ray.utils import _random_string, check_oversized_pickle, create_project_package, get_project_package_name
+from ray.utils import (_random_string, check_oversized_pickle,
+                       create_project_package, get_project_package_name)
 from ray.util.inspect import is_cython
 from ray._private.client_mode_hook import client_mode_hook
-from pathlib import Path
 
 SCRIPT_MODE = 0
 WORKER_MODE = 1
@@ -1251,30 +1251,34 @@ def connect(node,
     ray.state.state._initialize_global_state(
         node.redis_address, redis_password=node.redis_password)
 
-
-    pkg_file = get_project_package_name(job_id.hex() if mode == SCRIPT_MODE else os.getenv("RAY_JOB_ID"))
+    pkg_file = get_project_package_name(job_id.hex() if mode == SCRIPT_MODE
+                                        else os.getenv("RAY_JOB_ID"))
     pkg_file_path = str(pkg_file)
     if (required_directories or required_modules) and mode == SCRIPT_MODE:
         # Create package if defined and ship it to remote storage
-        create_project_package(pkg_file, required_directories, required_modules)
+        create_project_package(pkg_file, required_directories,
+                               required_modules)
         # Push the data to remote storage
         data = pkg_file.read_bytes()
         internal_kv._internal_kv_put(pkg_file_path, data)
-        logger.debug(f"Ray has packaged {required_directories} and {required_modules} into {pkg_file_path} in {len(data)} bytes")
+        logger.debug(
+            f"Ray has packaged {required_directories} and {required_modules} "
+            "into {pkg_file_path} in {len(data)} bytes")
     elif mode in (WORKER_MODE, RESTORE_WORKER_MODE, SPILL_WORKER_MODE):
         internal_kv._internal_kv_get(pkg_file_path)
         # For each node, the package will only be downloaded one time
         # Locking to avoid multiple process download concurrently
-        lock = FileLock(pkg_file_path + '.lock')
+        lock = FileLock(pkg_file_path + ".lock")
         with lock:
             # TODO(yic): checksum calculation is required
             if pkg_file.exists():
-                logger.debug(f'{pkg_file_path} has existed, skip downloading')
+                logger.debug(f"{pkg_file_path} has existed, skip downloading")
             else:
                 code = internal_kv._internal_kv_get(pkg_file_path)
-                code = code or b''
+                code = code or b""
                 pkg_file.write_bytes(code)
-                logger.debug(f'Downloaded {len(code)} bytes into {pkg_file_path}')
+                logger.debug(
+                    f"Downloaded {len(code)} bytes into {pkg_file_path}")
         sys.path.insert(0, pkg_file_path)
 
     if driver_object_store_memory is not None:
@@ -1340,6 +1344,7 @@ def connect(node,
         for function in worker.cached_functions_to_run:
             worker.run_function_on_all_workers(function)
     worker.cached_functions_to_run = None
+
 
 def disconnect(exiting_interpreter=False):
     """Disconnect this worker from the raylet and object store."""
