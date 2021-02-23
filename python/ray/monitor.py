@@ -316,6 +316,10 @@ if __name__ == "__main__":
         max_bytes=args.logging_rotate_bytes,
         backup_count=args.logging_rotate_backup_count)
 
+    logger.info(f"Starting monitor using ray installation: {ray.__file__}")
+    logger.info(f"Ray version: {ray.__version__}")
+    logger.info(f"Ray commit: {ray.__hash__}")
+
     if args.autoscaling_config:
         autoscaling_config = os.path.expanduser(args.autoscaling_config)
     else:
