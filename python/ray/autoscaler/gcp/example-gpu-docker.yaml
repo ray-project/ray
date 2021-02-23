@@ -152,11 +152,9 @@ initialization_commands:
           done"
 
 # List of shell commands to run to set up nodes.
+# NOTE: rayproject/ray-ml:latest has ray latest bundled
 setup_commands: []
-    # Note: if you're developing Ray, you probably want to create a Docker image that
-    # has your Ray repo pre-cloned. Then, you can replace the pip installs
-    # below with a git checkout <your_sha> (and possibly a recompile).
-    # Uncomment the following line if you want to run the nightly version of ray (as opposed to the latest)
+    # - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp36-cp36m-manylinux2014_x86_64.whl
     # - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl
 
 
