@@ -974,8 +974,7 @@ void ClusterResourceScheduler::UpdateLastResourceUsage(
   last_report_resources_.reset(new NodeResources(node_resources));
 }
 
-void ClusterResourceScheduler::FillResourceUsage(
-    rpc::ResourcesData *resources_data) {
+void ClusterResourceScheduler::FillResourceUsage(rpc::ResourcesData *resources_data) {
   NodeResources resources;
 
   RAY_CHECK(GetNodeResources(local_node_id_, &resources))

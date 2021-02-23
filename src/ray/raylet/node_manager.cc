@@ -448,22 +448,27 @@ void NodeManager::HandleJobFinished(const JobID &job_id, const JobTableData &job
   }
 }
 
-void NodeManager::ReportResourceUsage() {
-  auto resources_data = std::make_shared<rpc::ResourcesData>();
+void NodeManager::FillResourceReport(rpc::ResourcesData *resources_data) {
   resources_data->set_node_id(self_node_id_.Binary());
   resources_data->set_node_manager_address(initial_config_.node_manager_address);
-  // Update local chche from gcs remote cache, this is needed when gcs restart.
+  // Update local chache from gcs remote cache, this is needed when gcs restart.
   // We should always keep the cache view consistent.
   cluster_resource_scheduler_->UpdateLastResourceUsage(
-      gcs_client_->NodeResources().GetLastResourceUsage());
-  cluster_resource_scheduler_->FillResourceUsage(resources_data.get());
-  cluster_task_manager_->FillResourceUsage(resources_data.get());
+                                                        gcs_client_->NodeResources().GetLastResourceUsage());
+  cluster_resource_scheduler_->FillResourceUsage(resources_data);
+    cluster_task_manager_->FillResourceUsage(resources_data);
 
   // Set the global gc bit on the outgoing heartbeat message.
   if (should_global_gc_) {
     resources_data->set_should_global_gc(true);
+    resources_data->set_should_global_gc(true);
     should_global_gc_ = false;
   }
+}
+
+void NodeManager::ReportResourceUsage() {
+  auto resources_data = std::make_shared<rpc::ResourcesData>();
+  FillResourceReport(resources_data.get());
 
   // Trigger local GC if needed. This throttles the frequency of local GC calls
   // to at most once per heartbeat interval.
@@ -1318,14 +1323,7 @@ void NodeManager::HandleRequestResourceReport(const rpc::RequestResourceReportRe
                                 rpc::RequestResourceReportReply *reply,
                                  rpc::SendReplyCallback send_reply_callback) {
   auto resources_data = reply->mutable_resources();
-  resources_data->set_node_id(self_node_id_.Binary());
-  resources_data->set_node_manager_address(initial_config_.node_manager_address);
-  // Update local chache from gcs remote cache, this is needed when gcs restart.
-  // We should always keep the cache view consistent.
-  cluster_resource_scheduler_->UpdateLastResourceUsage(
-                                                       gcs_client_->NodeResources().GetLastResourceUsage());
-  cluster_resource_scheduler_->FillResourceUsage(resources_data);
-  cluster_task_manager_->FillResourceUsage(resources_data);
+  FillResourceReport(resources_data);
 
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }

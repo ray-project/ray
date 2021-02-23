@@ -229,13 +229,14 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   void ResourceDeleted(const NodeID &node_id,
                        const std::vector<std::string> &resource_names);
 
-  /// Send heartbeats to the GCS.
-  void Heartbeat();
-
   /// Evaluates the local infeasible queue to check if any tasks can be scheduled.
   /// This is called whenever there's an update to the resources on the local node.
   /// \return Void.
   void TryLocalInfeasibleTaskScheduling();
+
+  /// Fill out the resource report. This can be called by either method to transport the
+  /// report to GCS.
+  void FillResourceReport(rpc::ResourcesData *resources_data);
 
   /// Report resource usage to the GCS.
   void ReportResourceUsage();
@@ -480,7 +481,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   void HandleRequestResourceReport(const rpc::RequestResourceReportRequest &request,
                                    rpc::RequestResourceReportReply *reply,
                                    rpc::SendReplyCallback send_reply_callback) override;
-
 
   /// Handle a `PrepareBundleResources` request.
   void HandlePrepareBundleResources(const rpc::PrepareBundleResourcesRequest &request,
