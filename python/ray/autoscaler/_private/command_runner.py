@@ -547,7 +547,7 @@ class SSHCommandRunner(CommandRunnerInterface):
             source, "{}@{}:{}".format(self.ssh_user, self.ssh_ip, target)
         ]
         cli_logger.verbose("Running `{}`", cf.bold(" ".join(command)))
-        self._run_helper(command, silent=is_rsync_silent())
+        self._run_helper(command, silent=is_rsync_silent(), with_output=False)
 
     def run_rsync_down(self, source, target, options=None):
         self._set_ssh_ip_if_required()
@@ -564,7 +564,7 @@ class SSHCommandRunner(CommandRunnerInterface):
             "{}@{}:{}".format(self.ssh_user, self.ssh_ip, source), target
         ]
         cli_logger.verbose("Running `{}`", cf.bold(" ".join(command)))
-        self._run_helper(command, silent=is_rsync_silent())
+        self._run_helper(command, silent=is_rsync_silent(), with_output=False)
 
     def remote_shell_command_str(self):
         if self.ssh_private_key:
