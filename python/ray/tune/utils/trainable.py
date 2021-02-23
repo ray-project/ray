@@ -101,14 +101,15 @@ class TrainableUtil:
 
         Args:
             checkpoint_dir (str): Path to checkpoint directory.
-            index (str): A subdirectory will be created
+            index (int|str): A subdirectory will be created
                 at the checkpoint directory named 'checkpoint_{index}'.
             override (bool): Deletes checkpoint_dir before creating
                 a new one.
         """
         suffix = "checkpoint"
         if index is not None:
-            suffix += f"_{index:06d}"
+            suffix += f"_{index:06d}" if isinstance(index,
+                                                    int) else f"_{index}"
         checkpoint_dir = os.path.join(checkpoint_dir, suffix)
 
         if override and os.path.exists(checkpoint_dir):
