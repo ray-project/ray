@@ -27,8 +27,7 @@ GcsResourceManager::GcsResourceManager(
       gcs_table_storage_(gcs_table_storage) {
   periodical_runner_.RunFnPeriodically(
       [this] { SendBatchedResourceUsage(); },
-      boost::posix_time::milliseconds(
-          RayConfig::instance().raylet_report_resources_period_milliseconds()));
+      RayConfig::instance().raylet_report_resources_period_milliseconds());
 }
 
 void GcsResourceManager::HandleGetResources(const rpc::GetResourcesRequest &request,

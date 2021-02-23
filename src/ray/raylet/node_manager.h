@@ -97,7 +97,7 @@ struct NodeManagerConfig {
   std::string session_dir;
   /// The raylet config list of this node.
   std::string raylet_config;
-  // The time between record metrics in milliseconds, or -1 to disable.
+  // The time between record metrics in milliseconds, or 0 to disable.
   uint64_t record_metrics_period_ms;
   // The number if max io workers.
   int max_io_workers;
@@ -784,7 +784,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// The runner to run function periodically.
   PeriodicalRunner periodical_runner_;
   /// The period used for the resources report timer.
-  boost::posix_time::milliseconds report_resources_period_;
+  uint64_t report_resources_period_ms_;
   /// Whether to enable fair queueing between task classes in raylet.
   bool fair_queueing_enabled_;
   /// Incremented each time we encounter a potential resource deadlock condition.
@@ -898,7 +898,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// Fields that are used to report metrics.
   /// The period between debug state dumps.
-  boost::posix_time::milliseconds record_metrics_period_;
+  uint64_t record_metrics_period_ms_;
 
   /// Last time metrics are recorded.
   uint64_t metrics_last_recorded_time_ms_;

@@ -23,14 +23,14 @@ namespace ray {
 /// A periodical runner attached with an io_context.
 /// It can run functions with specified period. Each function is triggered by its timer.
 /// To run a function, call `RunFnPeriodically(fn, period_ms)`.
+/// All registered functions will stop running once this object is destructed.
 class PeriodicalRunner {
  public:
   PeriodicalRunner(boost::asio::io_service &io_service);
 
   ~PeriodicalRunner();
 
-  void RunFnPeriodically(std::function<void()> fn,
-                         boost::posix_time::milliseconds period);
+  void RunFnPeriodically(std::function<void()> fn, uint64_t period_ms);
 
  private:
   void DoRunFnPeriodically(std::function<void()> fn,

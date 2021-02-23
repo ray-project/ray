@@ -28,7 +28,7 @@
 namespace {
 
 // Duration between internal book-keeping heartbeats.
-const int kInternalHeartbeatMillis = 1000;
+const uint64_t kInternalHeartbeatMillis = 1000;
 
 void BuildCommonTaskSpec(
     ray::TaskSpecBuilder &builder, const JobID &job_id, const TaskID &task_id,
@@ -402,13 +402,11 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   if (options_.worker_type == ray::WorkerType::WORKER) {
     periodical_runner_.RunFnPeriodically(
         [this] { CheckForRayletFailure(); },
-        boost::posix_time::milliseconds(
-            RayConfig::instance().raylet_death_check_interval_milliseconds()));
+        RayConfig::instance().raylet_death_check_interval_milliseconds());
   }
 
-  periodical_runner_.RunFnPeriodically(
-      [this] { InternalHeartbeat(); },
-      boost::posix_time::milliseconds(kInternalHeartbeatMillis));
+  periodical_runner_.RunFnPeriodically([this] { InternalHeartbeat(); },
+                                       kInternalHeartbeatMillis);
 
   plasma_store_provider_.reset(new CoreWorkerPlasmaStoreProvider(
       options_.store_socket, local_raylet_client_, reference_counter_,

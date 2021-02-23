@@ -125,8 +125,7 @@ NodeManager::NodeManager(boost::asio::io_service &io_service, const NodeID &self
       gcs_client_(gcs_client),
       object_directory_(object_directory),
       periodical_runner_(io_service),
-      report_resources_period_(
-          boost::posix_time::milliseconds(config.report_resources_period_ms)),
+      report_resources_period_ms_(config.report_resources_period_ms),
       fair_queueing_enabled_(config.fair_queueing_enabled),
       temp_dir_(config.temp_dir),
       initial_config_(config),
@@ -180,8 +179,7 @@ NodeManager::NodeManager(boost::asio::io_service &io_service, const NodeID &self
       last_local_gc_ns_(absl::GetCurrentTimeNanos()),
       local_gc_interval_ns_(RayConfig::instance().local_gc_interval_s() * 1e9),
       local_gc_min_interval_ns_(RayConfig::instance().local_gc_min_interval_s() * 1e9),
-      record_metrics_period_(
-          boost::posix_time::milliseconds(config.record_metrics_period_ms)) {
+      record_metrics_period_ms_(config.record_metrics_period_ms) {
   RAY_LOG(INFO) << "Initializing NodeManager with ID " << self_node_id_;
   RAY_CHECK(RayConfig::instance().raylet_heartbeat_period_milliseconds() > 0);
   // Initialize the resource map with own cluster resource configuration.
@@ -331,29 +329,27 @@ ray::Status NodeManager::RegisterGcs() {
   last_heartbeat_at_ms_ = current_time_ms();
   periodical_runner_.RunFnPeriodically(
       [this] { Heartbeat(); },
-      boost::posix_time::milliseconds(
-          RayConfig::instance().raylet_heartbeat_period_milliseconds()));
+      RayConfig::instance().raylet_heartbeat_period_milliseconds());
   periodical_runner_.RunFnPeriodically(
       [this] {
         DumpDebugState();
         WarnResourceDeadlock();
       },
-      boost::posix_time::milliseconds(
-          RayConfig::instance().debug_dump_period_milliseconds()));
+      RayConfig::instance().debug_dump_period_milliseconds());
   periodical_runner_.RunFnPeriodically([this] { RecordMetrics(); },
-                                       record_metrics_period_);
-  periodical_runner_.RunFnPeriodically(
-      [this] { local_object_manager_.FlushFreeObjects(); },
-      boost::posix_time::milliseconds(
-          RayConfig::instance().free_objects_period_milliseconds()));
+                                       record_metrics_period_ms_);
+  if (RayConfig::instance().free_objects_period_milliseconds() > 0) {
+    periodical_runner_.RunFnPeriodically(
+        [this] { local_object_manager_.FlushFreeObjects(); },
+        RayConfig::instance().free_objects_period_milliseconds());
+  }
   periodical_runner_.RunFnPeriodically([this] { ReportResourceUsage(); },
-                                       report_resources_period_);
+                                       report_resources_period_ms_);
   // Start the timer that gets object manager profiling information and sends it
   // to the GCS.
   periodical_runner_.RunFnPeriodically(
       [this] { GetObjectManagerProfileInfo(); },
-      boost::posix_time::milliseconds(
-          RayConfig::instance().raylet_heartbeat_period_milliseconds()));
+      RayConfig::instance().raylet_heartbeat_period_milliseconds());
 
   return ray::Status::OK();
 }

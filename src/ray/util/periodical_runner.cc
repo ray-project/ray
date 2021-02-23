@@ -21,13 +21,19 @@ namespace ray {
 PeriodicalRunner::PeriodicalRunner(boost::asio::io_service &io_service)
     : io_service_(io_service) {}
 
-PeriodicalRunner::~PeriodicalRunner() {}
+PeriodicalRunner::~PeriodicalRunner() {
+  for (const auto &timer : timers_) {
+    timer->cancel();
+  }
+  timers_.clear();
+}
 
-void PeriodicalRunner::RunFnPeriodically(std::function<void()> fn,
-                                         boost::posix_time::milliseconds period) {
-  auto timer = std::make_shared<boost::asio::deadline_timer>(io_service_);
-  timers_.push_back(timer);
-  DoRunFnPeriodically(fn, period, *timer);
+void PeriodicalRunner::RunFnPeriodically(std::function<void()> fn, uint64_t period_ms) {
+  if (period_ms > 0) {
+    auto timer = std::make_shared<boost::asio::deadline_timer>(io_service_);
+    timers_.push_back(timer);
+    DoRunFnPeriodically(fn, boost::posix_time::milliseconds(period_ms), *timer);
+  }
 }
 
 void PeriodicalRunner::DoRunFnPeriodically(std::function<void()> fn,

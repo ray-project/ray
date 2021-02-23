@@ -37,8 +37,7 @@ Profiler::Profiler(WorkerContext &worker_context, const std::string &node_ip_add
   rpc_profile_data_->set_component_type(WorkerTypeString(worker_context.GetWorkerType()));
   rpc_profile_data_->set_component_id(worker_context.GetWorkerID().Binary());
   rpc_profile_data_->set_node_ip_address(node_ip_address);
-  periodical_runner_.RunFnPeriodically([this] { FlushEvents(); },
-                                       boost::posix_time::milliseconds(1000));
+  periodical_runner_.RunFnPeriodically([this] { FlushEvents(); }, 1000);
 }
 
 void Profiler::AddEvent(const rpc::ProfileTableData::ProfileEvent &event) {

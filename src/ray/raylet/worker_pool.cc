@@ -105,8 +105,7 @@ WorkerPool::WorkerPool(boost::asio::io_service &io_service, int num_workers_soft
   if (RayConfig::instance().kill_idle_workers_interval_ms() > 0) {
     periodical_runner_.RunFnPeriodically(
         [this] { TryKillingIdleWorkers(); },
-        boost::posix_time::milliseconds(
-            RayConfig::instance().kill_idle_workers_interval_ms()));
+        RayConfig::instance().kill_idle_workers_interval_ms());
   }
 }
 
