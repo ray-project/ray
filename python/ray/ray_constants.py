@@ -71,10 +71,6 @@ MEMORY_RESOURCE_UNIT_BYTES = 50 * 1024 * 1024
 # Number of units 1 resource can be subdivided into.
 MIN_RESOURCE_GRANULARITY = 0.0001
 
-# Fraction of plasma memory that can be reserved. It is actually 70% but this
-# is set to 69% to leave some headroom.
-PLASMA_RESERVABLE_MEMORY_FRACTION = 0.69
-
 
 def round_to_memory_units(memory_bytes, round_up):
     """Round bytes to the nearest memory unit."""
