@@ -14,4 +14,4 @@ which cypress || sudo npm install cypress
 
 ray stop --force
 ray start --head --dashboard-port=8653
-cypress run --project . --headless
+node_modules/.bin/cypress run --project . --headless
