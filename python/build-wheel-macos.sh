@@ -27,9 +27,9 @@ PY_MMS=("3.6"
         "3.8"
         "3.9")
 
-NUMPY_VERSIONS=("1.19.3"
-                "1.19.3"
-                "1.19.3"
+NUMPY_VERSIONS=("1.14.5"
+                "1.14.5"
+                "1.14.5"
                 "1.19.3")
 
 ./ci/travis/install-bazel.sh

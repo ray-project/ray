@@ -17,9 +17,9 @@ PYTHONS=("cp36-cp36m"
          "cp38-cp38"
          "cp39-cp39")
 
-NUMPY_VERSIONS=("1.19.3"
-                "1.19.3"
-                "1.19.3"
+NUMPY_VERSIONS=("1.14.5"
+                "1.14.5"
+                "1.14.5"
                 "1.19.3")
 
 yum -y install unzip zip sudo
