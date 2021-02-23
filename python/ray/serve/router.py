@@ -1,19 +1,18 @@
 import asyncio
-from enum import Enum
 import itertools
-from dataclasses import dataclass, field
 import threading
+from dataclasses import dataclass, field
+from enum import Enum
 from typing import Any, ChainMap, Dict, Iterable, List, Optional
 
+from ray.actor import ActorHandle
+from ray.serve.endpoint_policy import EndpointPolicy, RandomEndpointPolicy
 from ray.serve.exceptions import RayServeException
+from ray.serve.handle import ServeFuture
+from ray.serve.long_poll import LongPollClient, LongPollNamespace
+from ray.serve.utils import compute_dict_delta, compute_iterable_delta, logger
 
 import ray
-from ray.actor import ActorHandle
-from ray.serve.constants import LongPollKey
-from ray.serve.endpoint_policy import EndpointPolicy, RandomEndpointPolicy
-from ray.serve.handle import ServeFuture
-from ray.serve.long_poll import LongPollClient
-from ray.serve.utils import logger, compute_dict_delta, compute_iterable_delta
 from ray.util import metrics
 
 REPORT_QUEUE_LENGTH_PERIOD_S = 1.0
@@ -50,7 +49,12 @@ class Query:
 class ReplicaSet:
     """Data structure representing a set of replica actor handles"""
 
-    def __init__(self, backend_tag):
+    def __init__(self, controller_handle, backend_tag):
+        self.long_poll_client =     LongPollClient(
+            self.controller, {
+                (LongPollNamespace.BACKEND_CONFIGS, backend_tag): self._update_traffic_policies,
+                (LongPollNamespace.BACKEND_CONFIGS, backend_tag): self.update_worker_replicas,
+            })
         self.backend_tag = backend_tag
         # NOTE(simon): We have to do this because max_concurrent_queries
         # and the replica handles come from different long poll keys.
@@ -134,7 +138,7 @@ class ReplicaSet:
             replica_in_flight_queries.difference_update(done)
         return len(done)
 
-    def assign_replica(self, query: Query) -> ServeFuture:
+    async def assign_replica(self, query: Query) -> ServeFuture:
         """Given a query, submit it to a replica and return the object ref.
 
         This method will keep track of the in flight queries for each replicas
@@ -182,7 +186,7 @@ class _PendingEndpointFound(Enum):
 
 
 class Router:
-    def __init__(self, controller_handle: ActorHandle):
+    def __init__(self, controller_handle: ActorHandle, endpoint_tag: EndpointTag):
         """Router process incoming queries: choose backend, and assign replica.
 
         Args:
@@ -204,9 +208,7 @@ class Router:
 
         self.long_poll_client = LongPollClient(
             self.controller, {
-                LongPollKey.TRAFFIC_POLICIES: self._update_traffic_policies,
-                LongPollKey.REPLICA_HANDLES: self._update_replica_handles,
-                LongPollKey.BACKEND_CONFIGS: self._update_backend_configs,
+                (LongPollNamespace.TRAFFIC_POLICIES, endpoint_tag): self._update_traffic_policies,
             })
 
     def _update_traffic_policies(self, traffic_policies):

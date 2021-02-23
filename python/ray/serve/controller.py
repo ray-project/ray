@@ -70,11 +70,6 @@ class ServeController:
         # at any given time.
         self.write_lock = asyncio.Lock()
 
-        # NOTE(simon): Currently we do all-to-all broadcast. This means
-        # any listeners will receive notification for all changes. This
-        # can be problem at scale, e.g. updating a single backend config
-        # will send over the entire configs. In the future, we should
-        # optimize the logic to support subscription by key.
         self.long_poll_host = LongPollHost()
 
         self.goal_manager = AsyncGoalManager()

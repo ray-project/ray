@@ -1,28 +1,29 @@
 import asyncio
 import atexit
-import time
-from functools import wraps
 import os
-from uuid import UUID
 import threading
-from typing import Any, Callable, Coroutine, Dict, List, Optional, Type, Union
+import time
 from dataclasses import dataclass
+from functools import wraps
+from typing import Any, Callable, Coroutine, Dict, List, Optional, Type, Union
+from uuid import UUID
 from warnings import warn
 
-import ray
-from ray.serve.constants import (DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT,
-                                 SERVE_CONTROLLER_NAME, HTTP_PROXY_TIMEOUT)
-from ray.serve.controller import ServeController, BackendTag, ReplicaTag
-from ray.serve.handle import RayServeHandle, RayServeSyncHandle
-from ray.serve.utils import (block_until_http_ready, format_actor_name,
-                             get_random_letters, logger, get_conda_env_dir,
-                             get_current_node_resource_key)
-from ray.serve.exceptions import RayServeException
-from ray.serve.config import (BackendConfig, ReplicaConfig, BackendMetadata,
-                              HTTPOptions)
-from ray.serve.env import CondaEnv
-from ray.serve.router import RequestMetadata, Router
 from ray.actor import ActorHandle
+from ray.serve.config import (BackendConfig, BackendMetadata, HTTPOptions,
+                              ReplicaConfig)
+from ray.serve.constants import (DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT,
+                                 HTTP_PROXY_TIMEOUT, SERVE_CONTROLLER_NAME)
+from ray.serve.controller import BackendTag, ReplicaTag, ServeController
+from ray.serve.env import CondaEnv
+from ray.serve.exceptions import RayServeException
+from ray.serve.handle import RayServeHandle, RayServeSyncHandle
+from ray.serve.router import RequestMetadata, Router
+from ray.serve.utils import (block_until_http_ready, format_actor_name,
+                             get_conda_env_dir, get_current_node_resource_key,
+                             get_random_letters, logger)
+
+import ray
 
 _INTERNAL_REPLICA_CONTEXT = None
 global_async_loop = None

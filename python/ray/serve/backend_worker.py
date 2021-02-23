@@ -22,7 +22,7 @@ from ray.serve.router import Query, RequestMetadata
 from ray.serve.constants import (
     BACKEND_RECONFIGURE_METHOD,
     DEFAULT_LATENCY_BUCKET_MS,
-    LongPollKey,
+    LongPollNamespace,
 )
 from ray.exceptions import RayTaskError
 
@@ -196,7 +196,7 @@ class RayServeReplica:
         self.request_counter.set_default_tags({"backend": self.backend_tag})
 
         self.long_poll_client = LongPollClient(controller_handle, {
-            LongPollKey.BACKEND_CONFIGS: self._update_backend_configs,
+            LongPollNamespace.BACKEND_CONFIGS: self._update_backend_configs,
         })
 
         self.error_counter = metrics.Count(

@@ -1,12 +1,23 @@
 import asyncio
-from inspect import iscoroutinefunction
 import random
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Any, Awaitable, Callable, DefaultDict, Dict, Set
+from enum import Enum, auto
+from typing import Any, Tuple, Callable, DefaultDict, Dict, Set
 
 import ray
+from ray.serve.long_poll import LongPollNamespace
 from ray.serve.utils import logger
+
+
+class LongPollNamespace(Enum):
+    def __repr__(self):
+        return f"{self.__class__.__name__}.{self.name}"
+
+    REPLICA_HANDLES = auto()
+    TRAFFIC_POLICIES = auto()
+    BACKEND_CONFIGS = auto()
+    ROUTE_TABLE = auto()
 
 
 @dataclass
@@ -21,6 +32,7 @@ class UpdatedObject:
 # async def update_state(updated_object: Any):
 #     do_something(updated_object)
 UpdateStateCallable = Callable[[Any], None]
+KeyType = Tuple[LongPollNamespace, str]
 
 
 class LongPollClient:
@@ -37,15 +49,18 @@ class LongPollClient:
           callbacks to be called on state update for the corresponding keys.
     """
 
-    def __init__(self, host_actor,
-                 key_listeners: Dict[str, UpdateStateCallable]) -> None:
+    def __init__(
+            self,
+            host_actor,
+            key_listeners: Dict[KeyType, UpdateStateCallable],
+    ) -> None:
         self.host_actor = host_actor
         self.key_listeners = key_listeners
-        self.snapshot_ids: Dict[str, int] = {
+        self.snapshot_ids: Dict[KeyType, int] = {
             key: -1
             for key in key_listeners.keys()
         }
-        self.object_snapshots: Dict[str, Any] = dict()
+        self.object_snapshots: Dict[KeyType, Any] = dict()
 
         self._current_ref = None
         self._poll_once()
@@ -57,10 +72,7 @@ class LongPollClient:
             lambda update: self._process_update(update))
 
     def _process_update(self, updates: Dict[str, UpdatedObject]):
-        if isinstance(updates, (
-                ray.exceptions.RayActorError,
-                ray.exceptions.RayTaskError,
-        )):
+        if isinstance(updates, ray.exceptions.RayActorError):
             # This can happen during shutdown where the controller is
             # intentionally killed, the client should just gracefully
             # exit.
@@ -96,16 +108,18 @@ class LongPollHost:
 
     def __init__(self):
         # Map object_key -> int
-        self.snapshot_ids: DefaultDict[str, int] = defaultdict(
+        self.snapshot_ids: DefaultDict[KeyType, int] = defaultdict(
             lambda: random.randint(0, 1_000_000))
         # Map object_key -> object
-        self.object_snapshots: Dict[str, Any] = dict()
+        self.object_snapshots: Dict[KeyType, Any] = dict()
         # Map object_key -> set(asyncio.Event waiting for updates)
-        self.notifier_events: DefaultDict[str, Set[
+        self.notifier_events: DefaultDict[KeyType, Set[
             asyncio.Event]] = defaultdict(set)
 
-    async def listen_for_change(self, keys_to_snapshot_ids: Dict[str, int]
-                                ) -> Dict[str, UpdatedObject]:
+    async def listen_for_change(
+            self,
+            keys_to_snapshot_ids: Dict[KeyType, int],
+    ) -> Dict[KeyType, UpdatedObject]:
         """Listen for changed objects.
 
         This method will returns a dictionary of updated objects. It returns
@@ -152,7 +166,13 @@ class LongPollHost:
                 self.snapshot_ids[updated_object_key])
         }
 
-    def notify_changed(self, object_key: str, updated_object: Any):
+    def notify_key_changed(
+            self,
+            namespace: LongPollNamespace,
+            object_tag: str,
+            updated_object: Any,
+    ):
+        object_key = (namespace, object_tag)
         self.snapshot_ids[object_key] += 1
         self.object_snapshots[object_key] = updated_object
         logger.debug(f"LongPollHost: Notify change for key {object_key}.")

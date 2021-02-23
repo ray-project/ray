@@ -1,27 +1,22 @@
 import asyncio
+import time
 from collections import defaultdict
 from enum import Enum
-import time
 from typing import Dict, List, Optional, Tuple
 
-import ray
 import ray.cloudpickle as pickle
 from ray.actor import ActorHandle
 from ray.serve.async_goal_manager import AsyncGoalManager
 from ray.serve.backend_worker import create_backend_replica
-from ray.serve.common import (
-    BackendInfo,
-    BackendTag,
-    Duration,
-    GoalId,
-    ReplicaTag,
-)
+from ray.serve.common import (BackendInfo, BackendTag, Duration, GoalId,
+                              ReplicaTag)
 from ray.serve.config import BackendConfig, ReplicaConfig
-from ray.serve.constants import LongPollKey
 from ray.serve.kv_store import RayInternalKVStore
-from ray.serve.long_poll import LongPollHost
+from ray.serve.long_poll import LongPollHost, LongPollNamespace
 from ray.serve.utils import (format_actor_name, get_random_letters, logger,
                              try_schedule_resources_on_nodes)
+
+import ray
 
 CHECKPOINT_KEY = "serve-backend-state-checkpoint"
 
@@ -217,12 +212,19 @@ class BackendState:
                           self._target_replicas, self.backend_goals,
                           self._goal_manager.get_pending_goal_ids())))
 
-    def _notify_backend_configs_changed(self) -> None:
-        self._long_poll_host.notify_changed(LongPollKey.BACKEND_CONFIGS,
-                                            self.get_backend_configs())
+    def _notify_backend_configs_changed(
+            self, key: Optional[BackendTag] = None) -> None:
+        for key, config in self.get_backend_configs(key).items():
+            self._long_poll_host.notify_changed(
+                LongPollNamespace.BACKEND_CONFIGS,
+                key,
+                config,
+            )
 
     def get_running_replica_handles(
-            self) -> Dict[BackendTag, Dict[ReplicaTag, ActorHandle]]:
+            self,
+            filter_tag: Optional[BackendTag] = None,
+    ) -> Dict[BackendTag, Dict[ReplicaTag, ActorHandle]]:
         return {
             backend_tag: {
                 backend_replica._replica_tag:
@@ -231,20 +233,26 @@ class BackendState:
                     ReplicaState.RUNNING]
             }
             for backend_tag, state_to_replica_dict in self._replicas.items()
+            if filter_tag is None or backend_tag == filter_tag
         }
 
-    def _notify_replica_handles_changed(self) -> None:
-        self._long_poll_host.notify_changed(
-            LongPollKey.REPLICA_HANDLES, {
-                backend_tag: list(replica_dict.values())
-                for backend_tag, replica_dict in
-                self.get_running_replica_handles().items()
-            })
+    def _notify_replica_handles_changed(
+            self, key: Optional[BackendTag] = None) -> None:
+        for key, replica_dict in self.get_running_replica_handles(key).items():
+            self._long_poll_host.notify_changed(
+                LongPollNamespace.REPLICA_HANDLES,
+                key,
+                list(replica_dict.values()),
+            )
 
-    def get_backend_configs(self) -> Dict[BackendTag, BackendConfig]:
+    def get_backend_configs(
+            self,
+            filter_tag: Optional[BackendTag] = None,
+    ) -> Dict[BackendTag, BackendConfig]:
         return {
             tag: info.backend_config
             for tag, info in self._backend_metadata.items()
+            if filter_tag is None or tag == filter_tag
         }
 
     def get_backend(self, backend_tag: BackendTag) -> Optional[BackendInfo]:
@@ -293,7 +301,7 @@ class BackendState:
         # or pushing the updated config to avoid inconsistent state if we
         # crash while making the change.
         self._checkpoint()
-        self._notify_backend_configs_changed()
+        self._notify_backend_configs_changed(backend_tag)
 
         if existing_goal_id is not None:
             self._goal_manager.complete_goal(existing_goal_id)
@@ -343,7 +351,7 @@ class BackendState:
         # Inform the routers and backend replicas about config changes.
         # TODO(edoakes): this should only happen if we change something other
         # than num_replicas.
-        self._notify_backend_configs_changed()
+        self._notify_backend_configs_changed(backend_tag)
 
         return new_goal_id
 
@@ -503,14 +511,14 @@ class BackendState:
             self._replicas[backend_tag][ReplicaState.STOPPING].append(
                 replica_state)
 
-        transition_triggered = False
+        transitioned_backend_tags = set()
 
         for replica_state, backend_tag in self._pop_replicas_of_state(
                 ReplicaState.STARTING):
             if replica_state.check_started():
                 self._replicas[backend_tag][ReplicaState.RUNNING].append(
                     replica_state)
-                transition_triggered = True
+                transitioned_backend_tags.add(backend_tag)
             else:
                 self._replicas[backend_tag][ReplicaState.STARTING].append(
                     replica_state)
@@ -518,7 +526,7 @@ class BackendState:
         for replica_state, backend_tag in self._pop_replicas_of_state(
                 ReplicaState.STOPPING):
             if replica_state.check_stopped():
-                transition_triggered = True
+                transitioned_backend_tags.add(backend_tag)
             else:
                 self._replicas[backend_tag][ReplicaState.STOPPING].append(
                     replica_state)
@@ -529,6 +537,9 @@ class BackendState:
                 del self._backend_metadata[backend_tag]
                 del self._target_replicas[backend_tag]
 
-        if transition_triggered:
+        if len(transitioned_backend_tags) > 0:
             self._checkpoint()
-            self._notify_replica_handles_changed()
+            [
+                self._notify_replica_handles_changed(tag)
+                for tag in transitioned_backend_tags
+            ]

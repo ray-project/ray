@@ -9,7 +9,7 @@ import starlette.routing
 import ray
 from ray.exceptions import RayTaskError
 from ray.serve.common import EndpointTag
-from ray.serve.constants import LongPollKey
+from ray.serve.long_poll import LongPollNamespace
 from ray.util import metrics
 from ray.serve.utils import _get_logger
 from ray.serve.http_util import Response, build_starlette_request
@@ -103,7 +103,7 @@ class HTTPProxy:
         self.route_table: Dict[str, Tuple[EndpointTag, List[str]]] = {}
 
         self.long_poll_client = LongPollClient(controller, {
-            LongPollKey.ROUTE_TABLE: self._update_route_table,
+            (LongPollNamespace.ROUTE_TABLE, "ALL"): self._update_route_table,
         })
 
         self.request_counter = metrics.Count(
