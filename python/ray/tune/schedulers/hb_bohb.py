@@ -3,7 +3,7 @@ from typing import Dict, Optional
 
 from ray.tune import trial_runner
 from ray.tune.schedulers.trial_scheduler import TrialScheduler
-from ray.tune.schedulers.hyperband import HyperBandScheduler, Bracket
+from ray.tune.schedulers.hyperband import HyperBandScheduler
 from ray.tune.trial import Trial
 
 logger = logging.getLogger(__name__)
@@ -61,9 +61,7 @@ class HyperBandForBOHB(HyperBandScheduler):
                     cur_bracket = None
                 else:
                     retry = False
-                    cur_bracket = Bracket(self._time_attr, self._get_n0(s),
-                                          self._get_r0(s), self._max_t_attr,
-                                          self._eta, s)
+                    cur_bracket = self._create_bracket(s)
                 cur_band.append(cur_bracket)
                 self._state["bracket"] = cur_bracket
 

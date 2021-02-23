@@ -1,4 +1,4 @@
-halfcheetah_cql:
+halfcheetah_bc:
     env: HalfCheetah-v2
     run: CQL
     config:
@@ -35,7 +35,8 @@ halfcheetah_cql:
         metrics_smoothing_episodes: 5
         # CQL Configs
         min_q_weight: 5.0
-        bc_iters: 20000
+        # This will use the BC Loss always!
+        bc_iters: 10000000
         temperature: 1.0
         num_actions: 10
         lagrangian: False
