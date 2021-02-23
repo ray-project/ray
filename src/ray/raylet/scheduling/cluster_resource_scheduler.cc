@@ -1008,9 +1008,12 @@ void ClusterResourceScheduler::FillResourceUsage(
     const auto &last_capacity = last_report_resources_->custom_resources[custom_id];
     const auto &label = string_to_int_map_.Get(custom_id);
 
+    // Automatically report object store usage.
+    // Note: this MUTATES the resources field, which is needed since we are storing
+    // it in last_report_resources_.
     if (label == "object_store_memory" && get_used_object_store_memory_ != nullptr) {
-      capacity.available = FixedPoint(
-          capacity.total.Double() - get_used_object_store_memory_());
+      capacity.available =
+          FixedPoint(capacity.total.Double() - get_used_object_store_memory_());
     }
 
     // Note: available may be negative, but only report positive to GCS.
