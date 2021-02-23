@@ -6,6 +6,7 @@
 #include <ray/api/generated/funcs.generated.h>
 #include <ray/api/ray_runtime.h>
 
+#include <boost/callable_traits.hpp>
 #include <memory>
 #include <msgpack.hpp>
 

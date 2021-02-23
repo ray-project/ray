@@ -38,6 +38,7 @@ cc_library(
         "//:ray_util",
         "@boost//:asio",
         "@boost//:thread",
+        "@boost//:callable_traits",
         "@com_google_absl//absl/synchronization",
         "@msgpack",
     ],
