@@ -32,7 +32,7 @@ idle_timeout_minutes: 5
 provider:
     type: gcp
     region: us-west1
-    availability_zone: us-west1-a
+    availability_zone: us-west1-b
     project_id: null # Globally unique project id
 
 # How Ray will authenticate with newly launched nodes.
@@ -120,27 +120,6 @@ file_mounts: {
 #    "/path1/on/remote/machine": "/path1/on/local/machine",
 #    "/path2/on/remote/machine": "/path2/on/local/machine",
 }
-
-# Files or directories to copy from the head node to the worker nodes. The format is a
-# list of paths. The same path on the head node will be copied to the worker node.
-# This behavior is a subset of the file_mounts behavior. In the vast majority of cases
-# you should just use file_mounts. Only use this if you know what you're doing!
-cluster_synced_files: []
-
-# Whether changes to directories in file_mounts or cluster_synced_files in the head node
-# should sync to the worker node continuously
-file_mounts_sync_continuously: False
-
-# Patterns for files to exclude when running rsync up or rsync down
-rsync_exclude:
-    - "**/.git"
-    - "**/.git/**"
-
-# Pattern files to use for filtering out files when running rsync up or rsync down. The file is searched for
-# in the source directory and recursively through all subdirectories. For example, if .gitignore is provided
-# as a value, the behavior will match git's behavior for finding and using .gitignore files.
-rsync_filter:
-    - ".gitignore"
 
 initialization_commands:
     # Wait until nvidia drivers are installed

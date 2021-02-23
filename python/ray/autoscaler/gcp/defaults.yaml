@@ -120,15 +120,12 @@ cluster_synced_files: []
 file_mounts_sync_continuously: False
 
 # Patterns for files to exclude when running rsync up or rsync down
-rsync_exclude:
-    - "**/.git"
-    - "**/.git/**"
+rsync_exclude: []
 
 # Pattern files to use for filtering out files when running rsync up or rsync down. The file is searched for
 # in the source directory and recursively through all subdirectories. For example, if .gitignore is provided
 # as a value, the behavior will match git's behavior for finding and using .gitignore files.
-rsync_filter:
-    - ".gitignore"
+rsync_filter: []
 
 # List of commands that will be run before `setup_commands`. If docker is
 # enabled, these commands will run outside the container and before docker
