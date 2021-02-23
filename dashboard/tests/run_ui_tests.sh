@@ -10,7 +10,13 @@ clean_up() {
 }
 trap clean_up EXIT
 
-which cypress || sudo npm install cypress
+echo "Installing cypress"
+if [ -n "$BUILDKITE" ]; then
+  apt install -y libgtk2.0-0 libgtk-3-0 libgbm-dev libnotify-dev libgconf-2-4 libnss3 libxss1 libasound2 libxtst6 xauth xvfb
+  sudo npm install cypress
+else
+  which cypress || npm install cypress -g
+fi
 
 ray stop --force
 ray start --head --dashboard-port=8653
