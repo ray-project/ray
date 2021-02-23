@@ -162,7 +162,7 @@ class DynamicTFPolicy(TFPolicy):
         if existing_model:
             if isinstance(existing_model, list):
                 self.model = existing_model[0]
-                #TODO: (sven) total hack, but works for `target_q_model/target_model`
+                # TODO: (sven) hack, but works for `target_[q_]?model`.
                 for i in range(1, len(existing_model)):
                     setattr(self, existing_model[i][0], existing_model[i][1])
         elif make_model:

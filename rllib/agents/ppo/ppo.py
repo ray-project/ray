@@ -132,18 +132,6 @@ def validate_config(config: TrainerConfigDict) -> None:
             "function (to estimate the return at the end of the truncated "
             "trajectory). Consider setting batch_mode=complete_episodes.")
 
-    # Multi-gpu not supported for PyTorch and tf-eager.
-    #if config["framework"] in ["tf2", "tfe", "torch"]:
-    #    if config["num_gpus"] > 1:
-    #        raise ValueError(
-    #            "`num_gpus` > 1 not supported by PPO-{} yet!".format(
-    #                config["framework"]))
-    #    config["simple_optimizer"] = True
-    # Performance warning, if "simple" optimizer used with (static-graph) tf.
-    #if config["simple_optimizer"]:
-    #    logger.warning(
-    #        "Using the simple minibatch optimizer. This will significantly "
-    #        "reduce performance! Consider `simple_optimizer=False`.")
     # Multi-agent mode and multi-GPU optimizer.
     if config["multiagent"]["policies"] and not config["simple_optimizer"]:
         logger.info(
@@ -206,7 +194,8 @@ def warn_about_bad_reward_scales(config, result):
     if DEFAULT_POLICY_ID in learner_stats:
         scaled_vf_loss = config["vf_loss_coeff"] * \
             learner_stats[DEFAULT_POLICY_ID][LEARNER_STATS_KEY]["vf_loss"]
-        policy_loss = learner_stats[DEFAULT_POLICY_ID][LEARNER_STATS_KEY]["policy_loss"]
+        policy_loss = learner_stats[DEFAULT_POLICY_ID][LEARNER_STATS_KEY][
+            "policy_loss"]
         if config.get("model", {}).get("vf_share_layers") and \
                 scaled_vf_loss > 100:
             logger.warning(

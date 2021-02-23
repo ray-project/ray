@@ -1,4 +1,3 @@
-from collections import defaultdict
 import logging
 import numpy as np
 import math
@@ -19,7 +18,7 @@ from ray.rllib.execution.multi_gpu_impl import LocalSyncParallelOptimizer
 from ray.rllib.policy.sample_batch import SampleBatch, DEFAULT_POLICY_ID, \
     MultiAgentBatch
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.sgd import do_minibatch_sgd, averaged
+from ray.rllib.utils.sgd import do_minibatch_sgd
 from ray.rllib.utils.typing import PolicyID, SampleBatchType, ModelGradients
 
 tf1, tf, tfv = try_import_tf()
@@ -132,7 +131,8 @@ class TrainTFMultiGPU:
             "/{}:{}".format(type_, i) for i in range(int(math.ceil(num_gpus)))
         ]
 
-        # Total batch size (all towers). Make sure it is dividable by num towers.
+        # Total batch size (all towers). Make sure it is dividable by
+        # num towers.
         self.batch_size = int(sgd_minibatch_size / len(self.devices)) * len(
             self.devices)
         assert self.batch_size % len(self.devices) == 0
@@ -220,14 +220,17 @@ class TrainTFMultiGPU:
                             self.sess, permutation[batch_index] *
                             self.per_device_batch_size)
 
-                        batch_fetches_all_towers.append(tree.map_structure_with_path(
-                            lambda path, *s: self._all_tower_reduce(path, *s),
-                            *(batch_fetches["tower_{}".format(tower_num)]
-                              for tower_num in range(len(self.devices)))))
+                        batch_fetches_all_towers.append(
+                            tree.map_structure_with_path(
+                                lambda p, *s: self._all_tower_reduce(p, *s),
+                                *(batch_fetches["tower_{}".format(tower_num)]
+                                  for tower_num in range(len(self.devices)))))
 
                 # Reduce mean across all minibatch SGD steps (axis=0 to keep
                 # all shapes as-is).
-                fetches[policy_id] = tree.map_structure(lambda *s: np.nanmean(s, axis=0), *batch_fetches_all_towers)
+                fetches[policy_id] = tree.map_structure(
+                    lambda *s: np.nanmean(s, axis=0),
+                    *batch_fetches_all_towers)
 
         load_timer.push_units_processed(samples.count)
         learn_timer.push_units_processed(samples.count)

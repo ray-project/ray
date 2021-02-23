@@ -167,14 +167,6 @@ def validate_config(config: TrainerConfigDict) -> None:
             raise ValueError("Prioritized replay is not supported when "
                              "replay_sequence_length > 1.")
 
-    # Multi-gpu not supported for PyTorch and tf-eager.
-    #if config["framework"] in ["tf2", "tfe", "torch"]:
-    #    config["simple_optimizer"] = True
-    # Performance warning, if "simple" optimizer used with (static-graph) tf.
-    #if config["simple_optimizer"]:
-    #    logger.warning(
-    #        "Using the simple minibatch optimizer. This will significantly "
-    #        "reduce performance, consider simple_optimizer=False.")
     # Multi-agent mode and multi-GPU optimizer.
     if config["multiagent"]["policies"] and not config["simple_optimizer"]:
         logger.info(
@@ -238,20 +230,20 @@ def execution_plan(workers: WorkerSet,
     post_fn = config.get("before_learn_on_batch") or (lambda b, *a: b)
 
     if config["simple_optimizer"]:
-        train_op = TrainOneStep(workers)
+        train_step_op = TrainOneStep(workers)
     else:
-        train_op = TrainTFMultiGPU(
+        train_step_op = TrainTFMultiGPU(
             workers=workers,
             sgd_minibatch_size=config["train_batch_size"],
             num_sgd_iter=1,
             num_gpus=config["num_gpus"],
-            shuffle_sequences=True,  #DQN: always shuffle, no sequences.
+            shuffle_sequences=True,
             _fake_gpus=config["_fake_gpus"],
             framework=config.get("framework"))
 
     replay_op = Replay(local_buffer=local_replay_buffer) \
         .for_each(lambda x: post_fn(x, workers, config)) \
-        .for_each(train_op) \
+        .for_each(train_step_op) \
         .for_each(update_prio) \
         .for_each(UpdateTargetNetwork(
             workers, config["target_network_update_freq"]))

@@ -34,8 +34,8 @@ def default_execution_plan(workers: WorkerSet, config: TrainerConfigDict):
         train_op = train_op.for_each(
             TrainTFMultiGPU(
                 workers=workers,
-                sgd_minibatch_size=config.get(
-                    "sgd_minibatch_size", config["train_batch_size"]),
+                sgd_minibatch_size=config.get("sgd_minibatch_size",
+                                              config["train_batch_size"]),
                 num_sgd_iter=config.get("num_sgd_iter", 1),
                 num_gpus=config["num_gpus"],
                 shuffle_sequences=config.get("shuffle_sequences", False),

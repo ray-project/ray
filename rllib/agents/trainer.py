@@ -1118,10 +1118,12 @@ class Trainer(Trainable):
         if config.get("num_gpus", 0) > 1:
             if config.get("framework") in ["tfe", "tf2", "torch"]:
                 raise ValueError("`num_gpus` > 1 not supported yet for "
-                                 "framework={}!".format(config.get("framework")))
+                                 "framework={}!".format(
+                                     config.get("framework")))
             elif simple_optim_setting is True:
-                raise ValueError("Cannot use `simple_optimizer` if `num_gpus` > 1! "
-                                 "Consider `simple_optimizer=False`.")
+                raise ValueError(
+                    "Cannot use `simple_optimizer` if `num_gpus` > 1! "
+                    "Consider `simple_optimizer=False`.")
             config["simple_optimizer"] = False
         elif simple_optim_setting == DEPRECATED_VALUE:
             config["simple_optimizer"] = True
