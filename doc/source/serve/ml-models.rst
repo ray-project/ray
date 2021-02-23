@@ -4,8 +4,6 @@ Serving Machine Learning Models
 
 .. contents::
 
-.. _serve-batching:
-
 Request Batching
 ================
 
@@ -71,3 +69,4 @@ Below are tutorials with some of these frameworks to help get you started.
 - :ref:`PyTorch Tutorial<serve-pytorch-tutorial>`
 - :ref:`Scikit-Learn Tutorial<serve-sklearn-tutorial>`
 - :ref:`Keras and Tensorflow Tutorial<serve-tensorflow-tutorial>`
+- :ref:`RLlib Tutorial<serve-rllib-tutorial>`

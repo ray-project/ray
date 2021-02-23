@@ -12,12 +12,60 @@ import pytest
 import redis
 
 import ray
+from ray.experimental.internal_kv import _internal_kv_get
+from ray.autoscaler._private.util import DEBUG_AUTOSCALING_ERROR
 import ray.utils
 import ray.ray_constants as ray_constants
 from ray.exceptions import RayTaskError
 from ray.cluster_utils import Cluster
 from ray.test_utils import (wait_for_condition, SignalActor, init_error_pubsub,
                             get_error_message, Semaphore)
+
+
+def test_unhandled_errors(ray_start_regular):
+    @ray.remote
+    def f():
+        raise ValueError()
+
+    @ray.remote
+    class Actor:
+        def f(self):
+            raise ValueError()
+
+    a = Actor.remote()
+    num_exceptions = 0
+
+    def interceptor(e):
+        nonlocal num_exceptions
+        num_exceptions += 1
+
+    # Test we report unhandled exceptions.
+    ray.worker._unhandled_error_handler = interceptor
+    x1 = f.remote()
+    x2 = a.f.remote()
+    del x1
+    del x2
+    wait_for_condition(lambda: num_exceptions == 2)
+
+    # Test we don't report handled exceptions.
+    x1 = f.remote()
+    x2 = a.f.remote()
+    with pytest.raises(ray.exceptions.RayError) as err:  # noqa
+        ray.get([x1, x2])
+    del x1
+    del x2
+    time.sleep(1)
+    assert num_exceptions == 2, num_exceptions
+
+    # Test suppression with env var works.
+    try:
+        os.environ["RAY_IGNORE_UNHANDLED_ERRORS"] = "1"
+        x1 = f.remote()
+        del x1
+        time.sleep(1)
+        assert num_exceptions == 2, num_exceptions
+    finally:
+        del os.environ["RAY_IGNORE_UNHANDLED_ERRORS"]
 
 
 def test_failed_task(ray_start_regular, error_pubsub):
@@ -969,6 +1017,23 @@ def test_warning_for_dead_node(ray_start_cluster_2_nodes, error_pubsub):
     warning_node_ids = {error.error_message.split(" ")[5] for error in errors}
 
     assert node_ids == warning_node_ids
+
+
+def test_warning_for_dead_autoscaler(ray_start_regular, error_pubsub):
+    # Terminate the autoscaler process.
+    from ray.worker import _global_node
+    autoscaler_process = _global_node.all_processes[
+        ray_constants.PROCESS_TYPE_MONITOR][0].process
+    autoscaler_process.terminate()
+
+    # Confirm that we receive an autoscaler failure error.
+    errors = get_error_message(
+        error_pubsub, 1, ray_constants.MONITOR_DIED_ERROR, timeout=5)
+    assert len(errors) == 1
+
+    # Confirm that the autoscaler failure error is stored.
+    error = _internal_kv_get(DEBUG_AUTOSCALING_ERROR)
+    assert error is not None
 
 
 def test_raylet_crash_when_get(ray_start_regular):

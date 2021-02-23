@@ -74,13 +74,24 @@ if __name__ == "__main__":
     ]
     known_rewards = [-189, -1144]
 
+    # setting the n_suggestions parameter to >1 enables
+    # the evolutionary part of HEBO. For best results,
+    # use HEBOSearch with a ConcurrencyLimiter() set up
+    # as below
+    n_suggestions = 8
+
     algo = HEBOSearch(
         # space = space, # If you want to set the space
         points_to_evaluate=previously_run_params,
         evaluated_rewards=known_rewards,
         random_state_seed=123,  # for reproducibility
+        n_suggestions=n_suggestions,
     )
-    algo = ConcurrencyLimiter(algo, max_concurrent=4)
+    algo = ConcurrencyLimiter(
+        algo,
+        max_concurrent=n_suggestions,
+        batch=True,
+    )
 
     scheduler = AsyncHyperBandScheduler()
 
