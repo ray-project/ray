@@ -309,6 +309,7 @@ class WandbLoggerCallback(LoggerCallback):
         self._trial_processes: Dict["Trial", _WandbLoggingProcess] = {}
         self._trial_queues: Dict["Trial", Queue] = {}
 
+    def setup(self):
         _set_api_key(self.api_key_file, self.api_key)
 
     def log_trial_start(self, trial: "Trial"):

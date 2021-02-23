@@ -296,6 +296,8 @@ class TrialRunner:
 
         self._callbacks = CallbackList(callbacks or [])
 
+        self._callbacks.setup()
+
         if checkpoint_period is None:
             checkpoint_period = os.getenv("TUNE_GLOBAL_CHECKPOINT_S", "auto")
 
