@@ -586,13 +586,7 @@ TEST_F(ServiceBasedGcsClientTest, TestActorSubscribeAll) {
   // Register an actor to GCS.
   RegisterActor(actor_table_data1, false);
   RegisterActor(actor_table_data2, false);
-
-  // NOTE: In the process of actor registration, if the callback function of
-  // `WaitForActorOutOfScope` is executed first, and then the callback function of
-  // `ActorTable().Put` is executed, GCS will publish once; otherwise, GCS will publish
-  // twice. So we assert `actor_update_count >= 2`.
-  auto condition = [&actor_update_count]() { return actor_update_count >= 2; };
-  EXPECT_TRUE(WaitForCondition(condition, timeout_ms_.count()));
+  WaitForExpectedCount(actor_update_count, 2);
 }
 
 TEST_F(ServiceBasedGcsClientTest, TestActorInfo) {
@@ -1015,16 +1009,13 @@ TEST_F(ServiceBasedGcsClientTest, TestActorTableResubscribe) {
   // Subscribe to updates for this actor.
   ASSERT_TRUE(SubscribeActor(actor_id, actor_subscribe));
 
-  // NOTE: In the process of actor registration, if the callback function of
-  // `WaitForActorOutOfScope` is executed first, and then the callback function of
-  // `ActorTable().Put` is executed, the actor registration fails; otherwise, the actor
-  // registration succeeds. So we can't assert whether the actor is registered
-  // successfully.
-  RegisterActor(actor_table_data, false);
+  ASSERT_FALSE(RegisterActor(actor_table_data, false));
 
-  // We should receive a new notification from the subscribe channel.
+  // We should receive a new DEAD notification from the subscribe channel.
   WaitForExpectedCount(num_subscribe_all_notifications, 1);
   WaitForExpectedCount(num_subscribe_one_notifications, 1);
+  CheckActorData(subscribe_all_notifications[0], rpc::ActorTableData::DEAD);
+  CheckActorData(subscribe_one_notifications[0], rpc::ActorTableData::DEAD);
 
   // Restart GCS server.
   RestartGcsServer();
