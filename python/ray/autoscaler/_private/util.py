@@ -125,16 +125,82 @@ def rewrite_legacy_yaml_to_available_node_types(
             },
         }
         config["head_node_type"] = NODE_TYPE_LEGACY_HEAD
-        del config["min_workers"]
+        if "min_workers" in config:
+            del config["min_workers"]
     return config
 
 
 def fillout_defaults(config: Dict[str, Any]) -> Dict[str, Any]:
+    # It takes some extra logic here to avoid filling in extraneous
+    # available_node_type data from defaults.yaml to legacy configs.
+
     defaults = _get_default_config(config["provider"])
+
+    # Do some preparation in case we have a legacy config with either
+    # head or worker info missing.
+    if "available_node_types" in config:
+        pass
+    elif "head_node" in config and "worker_nodes" in config:
+        pass
+    # Interpret this as legacy yaml with no worker -- fill in worker config.
+    elif "head_node" in config:
+        config["worker_nodes"] = get_default_workers(defaults)
+    # Interpret this as legacy yaml with no head -- fill in head config.
+    elif "worker_nodes" in config:
+        config["head_node"] = get_default_head(defaults)
+
+    # head_node and worker_nodes should now both be there or both be absent
+    assert ("head_node" in config and "worker_nodes" in config)\
+        or ("head_node" not in config and "worker_nodes" not in config)
+
+    if "head_node" in config and "worker_nodes" in config:
+        # Adds available_node_types if it isn't there already.
+        config = rewrite_legacy_yaml_to_available_node_types(config)
+
+    # Add available_node_types to defaults if it is legacy-style.
+    defaults = rewrite_legacy_yaml_to_available_node_types(defaults)
+
+    # Merge and make sure auth field is present.
     defaults.update(config)
     defaults["auth"] = defaults.get("auth", {})
-    defaults = rewrite_legacy_yaml_to_available_node_types(defaults)
+
     return defaults
+
+
+def get_default_head(default_config: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Returns a default config's head config, from available_node_types
+    or from "head_node" field if available_node_types is absent.
+    """
+    if "available_node_types" in default_config:
+        head_type = default_config["head_node_type"]
+        for node_type in default_config["available_node_types"]:
+            if node_type == head_type:
+                return default_config["available_node_types"][node_type][
+                    "node_config"]
+    elif "head_node" in default_config:
+        return default_config["head_node"]
+
+    raise ValueError("Malformed default config. Couldn't find a head config.")
+
+
+def get_default_workers(default_config: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Returns a default config's head config, from available_node_types
+    or from "head_node" field if available_node_types is absent.
+    """
+    if "available_node_types" in default_config:
+        # This logic assumes default_config has two node_types -
+        # one for the head and one for the worker.
+        head_type = default_config["head_node_type"]
+        for node_type in default_config["available_node_types"]:
+            if node_type != head_type:
+                return default_config["available_node_types"][node_type][
+                    "node_config"]
+    elif "worker_nodes" in default_config:
+        return default_config["worker_nodes"]
+
+    raise ValueError("Malformed default config. Couldn't find worker config.")
 
 
 def merge_setup_commands(config):
@@ -145,15 +211,22 @@ def merge_setup_commands(config):
     return config
 
 
-def fill_node_type_max_workers(config):
+def fill_node_type_max_workers(config: Dict[str, Any]) -> None:
     """Sets default per-node max workers to global max_workers.
+
+    For the head node type, the default is 0.
 
     This equivalent to setting the default per-node max workers to infinity,
     with the only upper constraint coming from the global max_workers.
     """
     assert "max_workers" in config, "Global max workers should be set."
-    for node_type in config["available_node_types"].values():
-        node_type.setdefault("max_workers", config["max_workers"])
+    node_types = config["available_node_types"]
+    for node_type in node_types:
+        if node_type == config["head_node_type"]:
+            node_types[node_type].setdefault("max_workers", 0)
+        else:
+            node_types[node_type].setdefault("max_workers",
+                                             config["max_workers"])
 
 
 def with_head_node_ip(cmds, head_ip=None):

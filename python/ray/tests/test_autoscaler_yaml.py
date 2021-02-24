@@ -9,7 +9,10 @@ import copy
 from unittest.mock import MagicMock, Mock, patch
 import pytest
 
-from ray.autoscaler._private.util import prepare_config, validate_config
+from ray.autoscaler._private.util import prepare_config, validate_config,\
+    fillout_defaults, get_default_head, get_default_workers,\
+    _get_default_config, rewrite_legacy_yaml_to_available_node_types,\
+    merge_setup_commands
 from ray.autoscaler._private.providers import _NODE_PROVIDERS
 from ray.autoscaler._private.kubernetes.node_provider import\
     KubernetesNodeProvider
@@ -37,18 +40,19 @@ CONFIG_PATHS = ignore_k8s_operator_configs(CONFIG_PATHS)
 class AutoscalingConfigTest(unittest.TestCase):
     def testValidateDefaultConfig(self):
         for config_path in CONFIG_PATHS:
-            if "aws/example-multi-node-type.yaml" in config_path:
-                # aws is tested in testValidateDefaultConfigAWSMultiNodeTypes.
-                continue
-            with open(config_path) as f:
-                config = yaml.safe_load(f)
-            config = prepare_config(config)
-            if config["provider"]["type"] == "kubernetes":
-                KubernetesNodeProvider.fillout_available_node_types_resources(
-                    config)
             try:
+                if "aws/example-multi-node-type.yaml" in config_path:
+                    # aws tested in testValidateDefaultConfigAWSMultiNodeTypes.
+                    continue
+                with open(config_path) as f:
+                    config = yaml.safe_load(f)
+                config = prepare_config(config)
+                if config["provider"]["type"] == "kubernetes":
+                    KubernetesNodeProvider.\
+                        fillout_available_node_types_resources(config)
                 validate_config(config)
-            except Exception:
+            except Exception as e:
+                print(e)
                 self.fail(
                     f"Config {config_path} did not pass validation test!")
 
@@ -232,7 +236,6 @@ class AutoscalingConfigTest(unittest.TestCase):
             self.fail("Failed to validate config with security group name!")
 
     def testMaxWorkerDefault(self):
-
         # Load config, call prepare config, check that default max_workers
         # is filled correctly for node types that don't specify it.
         # Check that max_workers is untouched for node types
@@ -254,7 +257,10 @@ class AutoscalingConfigTest(unittest.TestCase):
         # Max workers auto-filled with specified cluster-wide value of 5.
         assert config["max_workers"] ==\
             prepared_node_types["worker_node_max_unspecified"]["max_workers"]\
-            == config["max_workers"] == 5
+            == 5
+        # Head type max workers filled to 0
+        assert prepared_config["available_node_types"]["head_node"][
+            "max_workers"] == 0
 
         # Repeat with a config that doesn't specify global max workers.
         # Default value of 2 should be pulled in for global max workers.
@@ -275,8 +281,80 @@ class AutoscalingConfigTest(unittest.TestCase):
             prepared_node_types["worker_node_max_specified"][
                 "max_workers"] == 3
         # Max workers auto-filled with default cluster-wide value of 2.
-        assert prepared_node_types["worker_node_max_unspecified"][
-            "max_workers"] == 2
+        assert prepared_config["max_workers"] ==\
+            prepared_node_types["worker_node_max_unspecified"]["max_workers"]\
+            == 2
+        # Head type max workers filled to 0
+        assert prepared_config["available_node_types"]["head_node"][
+            "max_workers"] == 0
+
+    def testGetDefaultHeadWorker(self):
+        """
+        Test the functions get_default_head and get_default_workers.
+        """
+        providers = ["aws", "gcp", "azure"]
+        for provider in providers:
+            path = os.path.join(RAY_PATH, "autoscaler", provider,
+                                "defaults.yaml")
+            default_config = yaml.safe_load(open(path).read())
+            assert get_default_head(default_config) == default_config[
+                "available_node_types"]["ray.head.default"]["node_config"]
+            assert get_default_workers(default_config) == default_config[
+                "available_node_types"]["ray.worker.small"]["node_config"]
+
+    def testFillEdgeLegacyConfigs(self):
+        # Test edge cases: legacy configs which specify workers but not head
+        # or vice-versa.
+        no_head = load_test_config("test_no_head.yaml")
+        aws_defaults = _get_default_config(no_head["provider"])
+        head_prepared = prepare_config(no_head)
+        assert head_prepared["available_node_types"][
+            "ray-legacy-head-node-type"]["node_config"] ==\
+            head_prepared["head_node"] ==\
+            aws_defaults["available_node_types"]["ray.head.default"][
+                "node_config"]
+
+        no_workers = load_test_config("test_no_workers.yaml")
+        workers_prepared = prepare_config(no_workers)
+        assert workers_prepared["available_node_types"][
+            "ray-legacy-worker-node-type"]["node_config"] ==\
+            workers_prepared["worker_nodes"] ==\
+            aws_defaults["available_node_types"]["ray.worker.small"][
+                "node_config"]
+
+    def testExampleFull(self):
+        """
+        Check that example-full yamls are unchanged after passing through
+        prepare_config, besides potentially having setup_commands merged.
+        """
+        providers = ["aws", "gcp", "azure"]
+        for provider in providers:
+            path = os.path.join(RAY_PATH, "autoscaler", provider,
+                                "example-full.yaml")
+            config = yaml.safe_load(open(path).read())
+            config_copy = copy.deepcopy(config)
+            merge_setup_commands(config_copy)
+            assert config_copy == prepare_config(config), "provider"
+
+    def testLegacyYaml(self):
+        # Check that legacy yamls are unchanged by merging with defaults.
+        providers = ["aws", "gcp", "azure"]
+        for provider in providers:
+            path = os.path.join(RAY_PATH, "autoscaler", provider,
+                                "example-full-legacy.yaml")
+            legacy_config = yaml.safe_load(open(path).read())
+            # custom head and workers
+            legacy_config["head_node"] = {"blahblah": 0}
+            legacy_config["worker_nodes"] = {"halbhalhb": 0}
+            defaults = _get_default_config(legacy_config["provider"])
+
+            legacy_config = rewrite_legacy_yaml_to_available_node_types(
+                legacy_config)
+            defaults = rewrite_legacy_yaml_to_available_node_types(defaults)
+
+            legacy_config_copy = copy.deepcopy(legacy_config)
+            filled_legacy_config = fillout_defaults(legacy_config_copy)
+            assert legacy_config == filled_legacy_config
 
 
 if __name__ == "__main__":
