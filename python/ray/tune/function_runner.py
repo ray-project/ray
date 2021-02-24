@@ -621,7 +621,7 @@ def with_parameters(fn, **kwargs):
         )
 
     """
-    if not callable(fn):
+    if not callable(fn) or inspect.isclass(fn):
         raise ValueError(
             "`tune.with_parameters()` only works with the function API. "
             "If you want to pass parameters to Trainable _classes_, consider "
@@ -631,7 +631,7 @@ def with_parameters(fn, **kwargs):
     for k, v in kwargs.items():
         parameter_registry.put(prefix + k, v)
 
-    use_checkpoint = detect_checkpoint_function(fn)
+    use_checkpoint = detect_checkpoint_function(fn, partial=True)
     keys = list(kwargs.keys())
 
     def inner(config, checkpoint_dir=None):

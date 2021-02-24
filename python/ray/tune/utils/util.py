@@ -602,13 +602,16 @@ def validate_save_restore(trainable_cls,
     return True
 
 
-def detect_checkpoint_function(train_func, abort=False):
+def detect_checkpoint_function(train_func, abort=False, partial=False):
     """Use checkpointing if any arg has "checkpoint_dir" and args = 2"""
     func_sig = inspect.signature(train_func)
     validated = True
     try:
         # check if signature is func(config, checkpoint_dir=None)
-        func_sig.bind({}, checkpoint_dir="tmp/path")
+        if partial:
+            func_sig.bind_partial({}, checkpoint_dir="tmp/path")
+        else:
+            func_sig.bind({}, checkpoint_dir="tmp/path")
     except Exception as e:
         logger.debug(str(e))
         validated = False
