@@ -101,7 +101,6 @@ class Ray {
   template <typename F, typename... Args>
   static TaskCaller<boost::callable_traits::return_type_t<F>> Task(F func, Args... args);
 
-  /// Include the `Actor` methods for creating actors.
   /// Generic version of creating an actor
   /// It is used for creating an actor, such as: ActorCreator<Counter> creator = Ray::Actor(Counter::FactoryCreate, 1).
   template <typename ActorType, typename... Args>
