@@ -392,7 +392,8 @@ class TorchPolicy(Policy):
     def compute_gradients(self,
                           postprocessed_batch: SampleBatch) -> ModelGradients:
 
-        if not postprocessed_batch.zero_padded:
+        if not isinstance(postprocessed_batch, SampleBatch) or \
+                not postprocessed_batch.zero_padded:
             pad_batch_to_sequences_of_same_size(
                 postprocessed_batch,
                 max_seq_len=self.max_seq_len,
