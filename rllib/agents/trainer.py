@@ -526,21 +526,21 @@ class Trainer(Trainable):
         return PlacementGroupFactory(
             bundles=[{
                 # Driver.
-                "cpu": cf["num_cpus_for_driver"],
-                "gpu": cf["num_gpus"]
+                "CPU": cf["num_cpus_for_driver"],
+                "GPU": cf["num_gpus"]
             }] + [
                 {
                     # RolloutWorkers.
-                    "cpu": cf["num_cpus_per_worker"],
-                    "gpu": cf["num_gpus_per_worker"]
+                    "CPU": cf["num_cpus_per_worker"],
+                    "GPU": cf["num_gpus_per_worker"]
                 } for _ in range(cf["num_workers"])
             ] + ([
                 {
                     # Evaluation workers (+1 b/c of the additional local
                     # worker)
-                    "cpu": eval_config.get("num_cpus_per_worker",
+                    "CPU": eval_config.get("num_cpus_per_worker",
                                            cf["num_cpus_per_worker"]),
-                    "gpu": eval_config.get("num_gpus_per_worker",
+                    "GPU": eval_config.get("num_gpus_per_worker",
                                            cf["num_gpus_per_worker"]),
                 } for _ in range(cf["evaluation_num_workers"] + 1)
             ] if cf["evaluation_interval"] else []),
