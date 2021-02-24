@@ -470,7 +470,7 @@ void NodeManager::FillResourceReport(rpc::ResourcesData *resources_data) {
 
 void NodeManager::ReportResourceUsage() {
   auto resources_data = std::make_shared<rpc::ResourcesData>();
-  FillResourceReport(resource_data.get());
+  FillResourceReport(resources_data.get());
 
   // Trigger local GC if needed. This throttles the frequency of local GC calls
   // to at most once per heartbeat interval.
