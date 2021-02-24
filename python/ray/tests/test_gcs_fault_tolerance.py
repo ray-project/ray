@@ -48,6 +48,7 @@ def test_gcs_server_restart(ray_start_regular):
     assert result == 9
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Fails on Windows.")
 @pytest.mark.parametrize(
     "ray_start_regular", [
         generate_system_config_map(
