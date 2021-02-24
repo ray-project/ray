@@ -120,18 +120,18 @@ def durable(trainable: Union[str, Type[Trainable], Callable]):
 
     Example:
 
-        .. code-block:: python
+    .. code-block:: python
 
-            from ray import tune
+        from ray import tune
 
-            analysis = tune.run(
-                tune.durable("PPO"),
-                config={"env": "CartPole-v0"},
-                checkpoint_freq=1,
-                sync_config=tune.SyncConfig(
-                    sync_to_driver=False,
-                    upload_dir="s3://your-s3-bucket/durable-ppo/",
-                ))
+        analysis = tune.run(
+            tune.durable("PPO"),
+            config={"env": "CartPole-v0"},
+            checkpoint_freq=1,
+            sync_config=tune.SyncConfig(
+                sync_to_driver=False,
+                upload_dir="s3://your-s3-bucket/durable-ppo/",
+            ))
 
     You can also convert your trainable functions:
 
