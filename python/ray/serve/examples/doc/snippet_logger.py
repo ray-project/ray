@@ -8,8 +8,10 @@ client = serve.connect()
 
 logger = logging.getLogger("ray")
 
+
 def f(request):
     logger.info("Some info!")
+
 
 client.create_backend("my_backend", f)
 client.create_endpoint("my_endpoint", backend="my_backend", route="/f")

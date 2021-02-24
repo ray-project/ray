@@ -223,7 +223,7 @@ To automatically include the current backend tag and replica tag in your logs, s
 `logger = logging.getLogger("ray")`, and use `logger` within your backend code.
 
 .. literalinclude:: ../../../python/ray/serve/examples/doc/snippet_logger.py
-  :lines: 1, 9-14
+  :lines: 1, 9, 12-13, 15-16
 
 Querying a Serve endpoint with the above backend will produce a log line like the following:
 
