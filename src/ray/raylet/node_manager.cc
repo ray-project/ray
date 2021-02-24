@@ -336,7 +336,7 @@ ray::Status NodeManager::RegisterGcs() {
 
   // Start sending heartbeats to the GCS.
   last_heartbeat_at_ms_ = current_time_ms();
-  heartbeat_runner_.RunFnPeriodically(
+  heartbeat_runner_->RunFnPeriodically(
       [this] { Heartbeat(); },
       RayConfig::instance().raylet_heartbeat_period_milliseconds());
   periodical_runner_.RunFnPeriodically(
