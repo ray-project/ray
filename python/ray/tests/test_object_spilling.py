@@ -925,4 +925,6 @@ def test_multiple_directories(tmp_path, shutdown_only):
 
 
 if __name__ == "__main__":
+    if sys.platform == "darwin":
+        sys.exit()
     sys.exit(pytest.main(["-sv", __file__]))
