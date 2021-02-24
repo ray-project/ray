@@ -454,7 +454,7 @@ void NodeManager::Heartbeat() {
 void NodeManager::FillResourceReport(rpc::ResourcesData *resources_data) {
   resources_data->set_node_id(self_node_id_.Binary());
   resources_data->set_node_manager_address(initial_config_.node_manager_address);
-  // Update local chache from gcs remote cache, this is needed when gcs restart.
+  // Update local cache from gcs remote cache, this is needed when gcs restart.
   // We should always keep the cache view consistent.
   cluster_resource_scheduler_->UpdateLastResourceUsage(
       gcs_client_->NodeResources().GetLastResourceUsage());
