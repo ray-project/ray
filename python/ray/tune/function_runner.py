@@ -516,11 +516,15 @@ class FunctionRunner(Trainable):
             pass
 
 
-def wrap_function(train_func, warn=True):
+def wrap_function(train_func, durable=False, warn=True):
+    inherit_from = (FunctionRunner, )
+
     if hasattr(train_func, "__mixins__"):
-        inherit_from = train_func.__mixins__ + (FunctionRunner, )
-    else:
-        inherit_from = (FunctionRunner, )
+        inherit_from = train_func.__mixins__ + inherit_from
+
+    if durable:
+        from ray.tune import DurableTrainable
+        inherit_from = (DurableTrainable, ) + inherit_from
 
     func_args = inspect.getfullargspec(train_func).args
     use_checkpoint = detect_checkpoint_function(train_func)

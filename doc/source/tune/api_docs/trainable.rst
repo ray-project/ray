@@ -382,6 +382,8 @@ tune.DurableTrainable
 
 .. autoclass:: ray.tune.DurableTrainable
 
+.. autofunction:: ray.tune.durable
+
 
 StatusReporter
 --------------
