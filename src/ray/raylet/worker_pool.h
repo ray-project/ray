@@ -28,6 +28,7 @@
 #include "ray/common/task/task_common.h"
 #include "ray/gcs/gcs_client.h"
 #include "ray/raylet/worker.h"
+#include "ray/util/periodical_runner.h"
 
 namespace ray {
 
@@ -109,7 +110,6 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// on. This takes precedence over min_worker_port and max_worker_port.
   /// \param worker_commands The commands used to start the worker process, grouped by
   /// language.
-  /// \param raylet_config The raylet config list of this node.
   /// \param starting_worker_timeout_callback The callback that will be triggered once
   /// it times out to start a worker.
   WorkerPool(boost::asio::io_service &io_service, int num_workers_soft_limit,
@@ -118,7 +118,6 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
              const std::vector<int> &worker_ports,
              std::shared_ptr<gcs::GcsClient> gcs_client,
              const WorkerCommandMap &worker_commands,
-             const std::unordered_map<std::string, std::string> &raylet_config,
              std::function<void()> starting_worker_timeout_callback);
 
   /// Destructor responsible for freeing a set of workers owned by this class.
@@ -136,6 +135,12 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// \param job_id ID of the finished job.
   /// \return Void.
   void HandleJobFinished(const JobID &job_id);
+
+  /// \brief Get the job config by job id.
+  ///
+  /// \param job_id ID of the job.
+  /// \return Job config if given job is running, else nullptr.
+  boost::optional<const rpc::JobConfig &> GetJobConfig(const JobID &job_id) const;
 
   /// Register a new worker. The Worker should be added by the caller to the
   /// pool after it becomes idle (e.g., requests a work assignment).
@@ -434,9 +439,6 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// reasonable size.
   void TryKillingIdleWorkers();
 
-  /// Schedule the periodic killing of idle workers.
-  void ScheduleIdleWorkerKilling();
-
   /// Get all workers of the given process.
   ///
   /// \param process The process of workers.
@@ -476,8 +478,6 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   std::unique_ptr<std::queue<int>> free_ports_;
   /// A client connection to the GCS.
   std::shared_ptr<gcs::GcsClient> gcs_client_;
-  /// The raylet config list of this node.
-  std::unordered_map<std::string, std::string> raylet_config_;
   /// The callback that will be triggered once it times out to start a worker.
   std::function<void()> starting_worker_timeout_callback_;
   FRIEND_TEST(WorkerPoolTest, InitialWorkerProcessCount);
@@ -511,8 +511,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   std::unordered_map<std::shared_ptr<WorkerInterface>, int64_t>
       idle_of_all_languages_map_;
 
-  /// The timer to trigger idle worker killing.
-  boost::asio::deadline_timer kill_idle_workers_timer_;
+  /// The runner to run function periodically.
+  PeriodicalRunner periodical_runner_;
 };
 
 }  // namespace raylet

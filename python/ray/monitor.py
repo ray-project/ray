@@ -4,6 +4,8 @@ import argparse
 import logging
 import logging.handlers
 import os
+import sys
+import signal
 import time
 import traceback
 import json
@@ -18,13 +20,14 @@ from ray.autoscaler._private.event_summarizer import EventSummarizer
 from ray.autoscaler._private.load_metrics import LoadMetrics
 from ray.autoscaler._private.constants import \
     AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE
-from ray.autoscaler._private.util import DEBUG_AUTOSCALING_STATUS
+from ray.autoscaler._private.util import DEBUG_AUTOSCALING_STATUS, \
+    DEBUG_AUTOSCALING_ERROR
 
 from ray.core.generated import gcs_service_pb2, gcs_service_pb2_grpc
 import ray.ray_constants as ray_constants
 from ray.ray_logging import setup_component_logger
 from ray.experimental.internal_kv import _internal_kv_put, \
-    _internal_kv_initialized, _internal_kv_get
+    _internal_kv_initialized, _internal_kv_get, _internal_kv_del
 
 logger = logging.getLogger(__name__)
 
@@ -106,18 +109,19 @@ class Monitor:
         self.load_metrics = LoadMetrics(local_ip=head_node_ip)
         self.last_avail_resources = None
         self.event_summarizer = EventSummarizer()
-        if autoscaling_config:
-            self.autoscaler = StandardAutoscaler(
-                autoscaling_config,
-                self.load_metrics,
-                prefix_cluster_info=prefix_cluster_info,
-                event_summarizer=self.event_summarizer)
-            self.autoscaling_config = autoscaling_config
-        else:
-            self.autoscaler = None
-            self.autoscaling_config = None
+        self.prefix_cluster_info = prefix_cluster_info
+        self.autoscaling_config = autoscaling_config
+        self.autoscaler = None
 
         logger.info("Monitor: Started")
+
+    def _initialize_autoscaler(self):
+        if self.autoscaling_config:
+            self.autoscaler = StandardAutoscaler(
+                self.autoscaling_config,
+                self.load_metrics,
+                prefix_cluster_info=self.prefix_cluster_info,
+                event_summarizer=self.event_summarizer)
 
     def update_load_metrics(self):
         """Fetches resource usage data from GCS and updates load metrics."""
@@ -158,7 +162,6 @@ class Monitor:
 
     def _run(self):
         """Run the monitor loop."""
-
         while True:
             self.update_load_metrics()
             self.update_resource_requests()
@@ -235,13 +238,40 @@ class Monitor:
                 logger.error("Monitor: Cleanup exception. Trying again...")
                 time.sleep(2)
 
+    def _handle_failure(self, error):
+        logger.exception("Error in monitor loop")
+        if self.autoscaler is not None:
+            self.autoscaler.kill_workers()
+            # Take down autoscaler workers if necessary.
+            self.destroy_autoscaler_workers()
+
+        # Something went wrong, so push an error to all current and future
+        # drivers.
+        message = f"The autoscaler failed with the following error:\n{error}"
+        if _internal_kv_initialized():
+            _internal_kv_put(DEBUG_AUTOSCALING_ERROR, message, overwrite=True)
+        redis_client = ray._private.services.create_redis_client(
+            args.redis_address, password=args.redis_password)
+        from ray.utils import push_error_to_driver_through_redis
+        push_error_to_driver_through_redis(
+            redis_client, ray_constants.MONITOR_DIED_ERROR, message)
+
+    def _signal_handler(self, sig, frame):
+        return self._handle_failure(f"Terminated with signal {sig}\n" +
+                                    "".join(traceback.format_stack(frame)))
+
     def run(self):
+        # Register signal handlers for autoscaler termination.
+        signal.signal(signal.SIGINT, self._signal_handler)
+        signal.signal(signal.SIGTERM, self._signal_handler)
         try:
+            if _internal_kv_initialized():
+                # Delete any previous autoscaling errors.
+                _internal_kv_del(DEBUG_AUTOSCALING_ERROR)
+            self._initialize_autoscaler()
             self._run()
         except Exception:
-            logger.exception("Error in monitor loop")
-            if self.autoscaler:
-                self.autoscaler.kill_workers()
+            self._handle_failure(traceback.format_exc())
             raise
 
 
@@ -316,6 +346,11 @@ if __name__ == "__main__":
         max_bytes=args.logging_rotate_bytes,
         backup_count=args.logging_rotate_backup_count)
 
+    logger.info(f"Starting monitor using ray installation: {ray.__file__}")
+    logger.info(f"Ray version: {ray.__version__}")
+    logger.info(f"Ray commit: {ray.__commit__}")
+    logger.info(f"Monitor started with command: {sys.argv}")
+
     if args.autoscaling_config:
         autoscaling_config = os.path.expanduser(args.autoscaling_config)
     else:
@@ -326,18 +361,4 @@ if __name__ == "__main__":
         autoscaling_config,
         redis_password=args.redis_password)
 
-    try:
-        monitor.run()
-    except Exception as e:
-        # Take down autoscaler workers if necessary.
-        monitor.destroy_autoscaler_workers()
-
-        # Something went wrong, so push an error to all drivers.
-        redis_client = ray._private.services.create_redis_client(
-            args.redis_address, password=args.redis_password)
-        message = ("The monitor failed with the "
-                   f"following error:\n{traceback.format_exc()}")
-        from ray.utils import push_error_to_driver_through_redis
-        push_error_to_driver_through_redis(
-            redis_client, ray_constants.MONITOR_DIED_ERROR, message)
-        raise e
+    monitor.run()

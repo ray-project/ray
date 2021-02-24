@@ -500,7 +500,11 @@ class Policy(metaclass=ABCMeta):
 
     @DeveloperAPI
     def export_model(self, export_dir: str) -> None:
-        """Export Policy to local directory for serving.
+        """Exports the Policy's Model to local directory for serving.
+
+        Note: The file format will depend on the deep learning framework used.
+        See the child classed of Policy and their `export_model`
+        implementations for more details.
 
         Args:
             export_dir (str): Local writable directory.
