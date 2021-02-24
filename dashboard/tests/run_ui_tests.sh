@@ -19,7 +19,7 @@ else
 fi
 
 ray stop --force
-ray start --head --dashboard-port=8653
+ray start --head --dashboard-port=8653 --dashboard-host=0.0.0.0
 
 sleep 10 # Wait for Ray dashboard to become ready
 cat /tmp/ray/session_latest/logs/dashboard.log
