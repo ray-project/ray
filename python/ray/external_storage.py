@@ -2,7 +2,6 @@ import abc
 import logging
 import os
 import shutil
-import random
 import urllib
 from collections import namedtuple
 from typing import List, IO, Tuple
@@ -227,50 +226,20 @@ class FileSystemStorage(ExternalStorage):
     """
 
     def __init__(self, directory_path):
-        # -- sub directory name --
         self.spill_dir_name = DEFAULT_OBJECT_PREFIX
-        # -- A list of directory paths to spill objects --
-        self.directory_paths = []
-        # -- Current directory to spill objects --
-        self.current_directory_index = 0
-
-        # Validation.
-        assert directory_path is not None, (
-            "directory_path should be provided to use object spilling.")
-        if isinstance(directory_path, str):
-            directory_path = [directory_path]
-        assert isinstance(directory_path,
-                          list), ("Directory_path must be either a single "
-                                  "string or a list of strings")
-
-        # Create directories.
-        for path in directory_path:
-            full_dir_path = os.path.join(path, self.spill_dir_name)
-            os.makedirs(full_dir_path, exist_ok=True)
-            if not os.path.exists(full_dir_path):
-                raise ValueError("The given directory path to store objects, "
-                                 f"{full_dir_path}, could not be created.")
-            self.directory_paths.append(full_dir_path)
-        assert len(self.directory_paths) == len(directory_path)
-
-        # Choose the current directory.
-        # It chooses a random index to maximize multiple directories that are
-        # mounted at different point.
-        self.current_directory_index = random.randrange(
-            0, len(self.directory_paths))
+        self.directory_path = os.path.join(directory_path, self.spill_dir_name)
+        os.makedirs(self.directory_path, exist_ok=True)
+        if not os.path.exists(self.directory_path):
+            raise ValueError("The given directory path to store objects, "
+                             f"{self.directory_path}, could not be created.")
 
     def spill_objects(self, object_refs, owner_addresses) -> List[str]:
         if len(object_refs) == 0:
             return []
-        # Choose the current directory path by round robin order.
-        self.current_directory_index = (
-            (self.current_directory_index + 1) % len(self.directory_paths))
-        directory_path = self.directory_paths[self.current_directory_index]
-
         # Always use the first object ref as a key when fusioning objects.
         first_ref = object_refs[0]
         filename = f"{first_ref.hex()}-multi-{len(object_refs)}"
-        url = f"{os.path.join(directory_path, filename)}"
+        url = f"{os.path.join(self.directory_path, filename)}"
         with open(url, "wb") as f:
             return self._write_multiple_objects(f, object_refs,
                                                 owner_addresses, url)
@@ -303,21 +272,20 @@ class FileSystemStorage(ExternalStorage):
 
     def delete_spilled_objects(self, urls: List[str]):
         for url in urls:
-            path = parse_url_with_offset(url.decode()).base_url
-            os.remove(path)
+            filename = parse_url_with_offset(url.decode()).base_url
+            os.remove(os.path.join(self.directory_path, filename))
 
     def destroy_external_storage(self):
-        for directory_path in self.directory_paths:
-            self._destroy_external_storage(directory_path)
+        # Q: Should we add stdout here to
+        # indicate we are deleting a directory?
 
-    def _destroy_external_storage(self, directory_path):
         # There's a race condition where IO workers are still
         # deleting each objects while we try deleting the
         # whole directory. So we should keep trying it until
         # The directory is actually deleted.
-        while os.path.isdir(directory_path):
+        while os.path.isdir(self.directory_path):
             try:
-                shutil.rmtree(directory_path)
+                shutil.rmtree(self.directory_path)
             except FileNotFoundError:
                 # If excpetion occurs when other IO workers are
                 # deleting the file at the same time.
