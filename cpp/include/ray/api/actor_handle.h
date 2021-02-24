@@ -1,8 +1,6 @@
 
 #pragma once
 
-#include <ray/api/util.h>
-
 #include "ray/core.h"
 
 namespace ray {
