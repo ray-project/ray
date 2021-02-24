@@ -586,7 +586,13 @@ TEST_F(ServiceBasedGcsClientTest, TestActorSubscribeAll) {
   // Register an actor to GCS.
   RegisterActor(actor_table_data1, false);
   RegisterActor(actor_table_data2, false);
-  WaitForExpectedCount(actor_update_count, 2);
+
+  // NOTE: In the process of actor registration, if the callback function of
+  // `WaitForActorOutOfScope` is executed first, and then the callback function of
+  // `ActorTable().Put` is executed, GCS will publish once; otherwise, GCS will publish
+  // twice. So we assert `actor_update_count >= 2`.
+  auto condition = [&actor_update_count]() { return actor_update_count >= 2; };
+  EXPECT_TRUE(WaitForCondition(condition, timeout_ms_.count()));
 }
 
 TEST_F(ServiceBasedGcsClientTest, TestActorInfo) {
