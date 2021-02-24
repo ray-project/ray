@@ -16,6 +16,7 @@ from ray.util.collective.types import AllReduceOptions, \
 from threading import Lock
 
 logger = logging.getLogger(__name__)
+_MULTI_STREAM = True
 
 
 class Rendezvous:
@@ -455,10 +456,13 @@ class NCCLGroup(BaseGroup):
             with nccl_util.Device(device):
                 comms[i] = nccl_util.create_nccl_communicator(
                     actual_world_size, nccl_uid, actual_rank)
-                pool: StreamPool = self._dev_pool_map.get(comm_key, StreamPool(self.POOL_SIZE))
-                streams[i] = pool.getStreamFromPool()
-                # Stream(non_blocking=True)
-                events[i] = cupy.cuda.Event() # TODO(Fu): double check the parameters
+                if _MULTI_STREAM:
+                    pool: StreamPool = self._dev_pool_map.get(comm_key, StreamPool(self.POOL_SIZE))
+                    streams[i] = pool.getStreamFromPool()
+                    # Stream(non_blocking=True)
+                    events[i] = cupy.cuda.Event() # TODO(Fu): double check the parameters
+                else:
+                    streams[i] = cupy.cuda.Stream.null
         nccl_util.groupEnd()
         # TODO(Fu): lock
         self._dev_comm_map[comm_key] = comms
@@ -472,13 +476,16 @@ class NCCLGroup(BaseGroup):
         # FIXME: This behavior is different from nccl document. It seems like
         # cupy allocate tensors on null streams.
         # TODO(Fu): nccl document says we need recordStream besides calling this function
-        #cupy.cuda.Stream.null.synchronize()
-        for i, device in enumerate(device_list):
-            with nccl_util.Device(device):
-                stream: cupy.cuda.Stream = streams[i]
-                event: cupy.cuda.Event = events[i]
-                event.record(cupy.cuda.get_current_stream())
-                stream.wait_event(event)
+        
+        if _MULTI_STREAM: 
+            for i, device in enumerate(device_list):
+                with nccl_util.Device(device):
+                    stream: cupy.cuda.Stream = streams[i]
+                    event: cupy.cuda.Event = events[i]
+                    event.record(cupy.cuda.get_current_stream())
+                    stream.wait_event(event)
+        else:
+            cupy.cuda.Stream.null.synchronize()
 
 
     def _get_nccl_p2p_communicator(self, comm_key, my_gpu_idx, peer_rank,
@@ -537,10 +544,13 @@ class NCCLGroup(BaseGroup):
         with nccl_util.Device(my_gpu_idx):
             comm = nccl_util.create_nccl_communicator(2, nccl_uid, my_p2p_rank)
             #TODO(Fu): get the stream from pool
-            pool: StreamPool = self._dev_pool_map.get(comm_key, StreamPool(self.POOL_SIZE))
-            stream = pool.getStreamFromPool()
-            event = cupy.cuda.Event()
-            # Stream(non_blocking=True)
+            if _MULTI_STREAM:
+                pool: StreamPool = self._dev_pool_map.get(comm_key, StreamPool(self.POOL_SIZE))
+                stream = pool.getStreamFromPool()
+                event = cupy.cuda.Event()
+                # Stream(non_blocking=True)
+            else:
+                stream = cupy.cuda.Stream.null
         
         #TODO(Fu): lock and might need to add event
         self._dev_comm_map[comm_key] = [comm]
