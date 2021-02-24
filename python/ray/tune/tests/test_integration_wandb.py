@@ -77,10 +77,12 @@ class WandbTestTrainable(_MockWandbTrainableMixin, Trainable):
 
 class WandbIntegrationTest(unittest.TestCase):
     def setUp(self):
-        pass
+        if WANDB_ENV_VAR in os.environ:
+            del os.environ[WANDB_ENV_VAR]
 
     def tearDown(self):
-        pass
+        if WANDB_ENV_VAR in os.environ:
+            del os.environ[WANDB_ENV_VAR]
 
     def testWandbLegacyLoggerConfig(self):
         trial_config = {"par1": 4, "par2": 9.12345678}
@@ -207,10 +209,12 @@ class WandbIntegrationTest(unittest.TestCase):
         # No API key
         with self.assertRaises(ValueError):
             logger = WandbTestExperimentLogger(project="test_project")
+            logger.setup()
 
         # API Key in config
         logger = WandbTestExperimentLogger(
             project="test_project", api_key="1234")
+        logger.setup()
         self.assertEqual(os.environ[WANDB_ENV_VAR], "1234")
 
         del logger
@@ -223,6 +227,7 @@ class WandbIntegrationTest(unittest.TestCase):
 
             logger = WandbTestExperimentLogger(
                 project="test_project", api_key_file=fp.name)
+            logger.setup()
             self.assertEqual(os.environ[WANDB_ENV_VAR], "5678")
 
         del logger
@@ -231,6 +236,7 @@ class WandbIntegrationTest(unittest.TestCase):
         # API Key in env
         os.environ[WANDB_ENV_VAR] = "9012"
         logger = WandbTestExperimentLogger(project="test_project")
+        logger.setup()
         del logger
 
         # From now on, the API key is in the env variable.

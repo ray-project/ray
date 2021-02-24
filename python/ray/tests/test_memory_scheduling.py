@@ -1,5 +1,6 @@
 import numpy as np
 import unittest
+import os
 
 import ray
 from ray import tune
@@ -69,6 +70,8 @@ class TestMemoryScheduling(unittest.TestCase):
             ray.shutdown()
 
     def testTuneDriverStoreLimit(self):
+        os.environ["TUNE_PLACEMENT_GROUP_AUTO_DISABLED"] = "1"
+
         try:
             ray.init(
                 num_cpus=4,
@@ -92,6 +95,8 @@ class TestMemoryScheduling(unittest.TestCase):
             ray.shutdown()
 
     def testTuneWorkerStoreLimit(self):
+        os.environ["TUNE_PLACEMENT_GROUP_AUTO_DISABLED"] = "1"
+
         try:
             ray.init(
                 num_cpus=4,

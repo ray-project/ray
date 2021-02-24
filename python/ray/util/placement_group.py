@@ -235,7 +235,7 @@ def get_placement_group(placement_group_name: str):
                 hex_to_binary(placement_group_info["placement_group_id"])))
 
 
-def placement_group_table(placement_group: PlacementGroup = None) -> list:
+def placement_group_table(placement_group: PlacementGroup = None) -> dict:
     """Get the state of the placement group from GCS.
 
     Args:
