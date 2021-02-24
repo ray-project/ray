@@ -1135,6 +1135,7 @@ def _get_head_node(config: Dict[str, Any],
 def get_local_dump_archive(stream: bool = False,
                            output: Optional[str] = None,
                            logs: bool = True,
+                           debug_state: bool = True,
                            pip: bool = True,
                            processes: bool = True,
                            processes_verbose: bool = False) -> Optional[str]:
@@ -1144,6 +1145,7 @@ def get_local_dump_archive(stream: bool = False,
 
     parameters = GetParameters(
         logs=logs,
+        debug_state=debug_state,
         pip=pip,
         processes=processes,
         processes_verbose=processes_verbose)
@@ -1174,6 +1176,7 @@ def get_cluster_dump_archive(cluster_config_file: Optional[str] = None,
                              local: Optional[bool] = None,
                              output: Optional[str] = None,
                              logs: bool = True,
+                             debug_state: bool = True,
                              pip: bool = True,
                              processes: bool = True,
                              processes_verbose: bool = False) -> Optional[str]:
@@ -1185,6 +1188,11 @@ def get_cluster_dump_archive(cluster_config_file: Optional[str] = None,
         content_str += \
             "  - The logfiles of your Ray session\n" \
             "    This usually includes Python outputs (stdout/stderr)\n"
+
+    if debug_state:
+        content_str += \
+            "  - Debug state information on your Ray cluster \n" \
+            "    e.g. number of workers, drivers, objects, etc.\n"
 
     if pip:
         content_str += "  - Your installed Python packages (`pip freeze`)\n"
@@ -1231,6 +1239,7 @@ def get_cluster_dump_archive(cluster_config_file: Optional[str] = None,
 
     parameters = GetParameters(
         logs=logs,
+        debug_state=debug_state,
         pip=pip,
         processes=processes,
         processes_verbose=processes_verbose)
