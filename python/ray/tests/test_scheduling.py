@@ -187,6 +187,7 @@ def test_spillback_waiting_task_on_oom(ray_start_cluster):
         return np.zeros(int(object_size), dtype=np.uint8)
 
     local_obj = ray.put(np.zeros(int(object_size * 1.5), dtype=np.uint8))
+    print(local_obj)
 
     @ray.remote
     def f(x):
