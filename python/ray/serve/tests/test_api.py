@@ -4,7 +4,7 @@ import time
 import os
 import io
 import logging
-from contextlib import redirect_stdout, redirect_stderr
+from contextlib import redirect_stderr
 
 import requests
 import pytest
