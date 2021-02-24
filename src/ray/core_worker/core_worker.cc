@@ -28,7 +28,7 @@
 namespace {
 
 // Duration between internal book-keeping heartbeats.
-const uint64_t kInternalHeartbeatMillis = 1000;
+const int kInternalHeartbeatMillis = 1000;
 
 void BuildCommonTaskSpec(
     ray::TaskSpecBuilder &builder, const JobID &job_id, const TaskID &task_id,
@@ -301,7 +301,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       worker_context_(options_.worker_type, worker_id, GetProcessJobID(options_)),
       io_work_(io_service_),
       client_call_manager_(new rpc::ClientCallManager(io_service_)),
-      periodical_runner_(io_service_),
+      death_check_timer_(io_service_),
+      internal_timer_(io_service_),
       task_queue_length_(0),
       num_executed_tasks_(0),
       task_execution_service_work_(task_execution_service_),
@@ -406,13 +407,15 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       });
 
   if (options_.worker_type == ray::WorkerType::WORKER) {
-    periodical_runner_.RunFnPeriodically(
-        [this] { CheckForRayletFailure(); },
-        RayConfig::instance().raylet_death_check_interval_milliseconds());
+    death_check_timer_.expires_from_now(boost::asio::chrono::milliseconds(
+        RayConfig::instance().raylet_death_check_interval_milliseconds()));
+    death_check_timer_.async_wait(
+        boost::bind(&CoreWorker::CheckForRayletFailure, this, _1));
   }
 
-  periodical_runner_.RunFnPeriodically([this] { InternalHeartbeat(); },
-                                       kInternalHeartbeatMillis);
+  internal_timer_.expires_from_now(
+      boost::asio::chrono::milliseconds(kInternalHeartbeatMillis));
+  internal_timer_.async_wait(boost::bind(&CoreWorker::InternalHeartbeat, this, _1));
 
   plasma_store_provider_.reset(new CoreWorkerPlasmaStoreProvider(
       options_.store_socket, local_raylet_client_, reference_counter_,
@@ -788,14 +791,30 @@ void CoreWorker::RegisterToGcs() {
   RAY_CHECK_OK(gcs_client_->Workers().AsyncAdd(worker_data, nullptr));
 }
 
-void CoreWorker::CheckForRayletFailure() {
+void CoreWorker::CheckForRayletFailure(const boost::system::error_code &error) {
+  if (error == boost::asio::error::operation_aborted) {
+    return;
+  }
+
   if (!IsParentProcessAlive()) {
     RAY_LOG(ERROR) << "Raylet failed. Shutting down.";
     Shutdown();
   }
+
+  // Reset the timer from the previous expiration time to avoid drift.
+  death_check_timer_.expires_at(
+      death_check_timer_.expiry() +
+      boost::asio::chrono::milliseconds(
+          RayConfig::instance().raylet_death_check_interval_milliseconds()));
+  death_check_timer_.async_wait(
+      boost::bind(&CoreWorker::CheckForRayletFailure, this, _1));
 }
 
-void CoreWorker::InternalHeartbeat() {
+void CoreWorker::InternalHeartbeat(const boost::system::error_code &error) {
+  if (error == boost::asio::error::operation_aborted) {
+    return;
+  }
+
   absl::MutexLock lock(&mutex_);
 
   while (!to_resubmit_.empty() && current_time_ms() > to_resubmit_.front().first) {
@@ -807,6 +826,9 @@ void CoreWorker::InternalHeartbeat() {
     }
     to_resubmit_.pop_front();
   }
+  internal_timer_.expires_at(internal_timer_.expiry() +
+                             boost::asio::chrono::milliseconds(kInternalHeartbeatMillis));
+  internal_timer_.async_wait(boost::bind(&CoreWorker::InternalHeartbeat, this, _1));
 }
 
 std::unordered_map<ObjectID, std::pair<size_t, size_t>>
