@@ -136,7 +136,7 @@ class Experiment:
                 "`tune.run()`.")
 
         config = config or {}
-        if callable(run) and not inspect.isclass(run) and not \
+        if callable(run) and not inspect.isclass(run) and \
                 detect_checkpoint_function(run):
             if checkpoint_at_end:
                 raise ValueError("'checkpoint_at_end' cannot be used with a "
