@@ -198,14 +198,14 @@ def validate_config(config):
                 "Must use `batch_mode`=truncate_episodes if `vtrace` is True.")
 
     # Check whether worker to aggregation-worker ratio makes sense.
-    if config["num_aggregation_workers"] >= config["num_workers"]:
+    if config["num_aggregation_workers"] > config["num_workers"]:
         raise ValueError(
-            "`num_aggregation_workers` must be smaller than `num_workers`!"
-            "Aggregation makes no sense otherwise.")
+            "`num_aggregation_workers` must be smaller than or equal "
+            "`num_workers`! Aggregation makes no sense otherwise.")
     elif config["num_aggregation_workers"] > \
             config["num_workers"] / 2:
         logger.warning(
-            "`num_aggregation_workers` should be much smaller than"
+            "`num_aggregation_workers` should be significantly smaller than"
             "`num_workers`! Try setting it to 0.5*`num_workers` or less.")
 
 
