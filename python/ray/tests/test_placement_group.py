@@ -369,6 +369,32 @@ def test_remove_placement_group(ray_start_cluster):
     with pytest.raises(ray.exceptions.WorkerCrashedError):
         ray.get(task_ref)
 
+@pytest.mark.parametrize(
+    "ray_start_cluster_head", [{
+        "num_cpus": 2
+    }],
+    indirect=True)
+def test_remove_placement_group2(ray_start_cluster_head):
+    @ray.remote
+    class Actor:
+        def run(self, s=1):
+            time.sleep(s)
+            return 1
+    pg = placement_group([{"CPU": 2}], name="test")
+    not_ready = [pg.ready()]
+    while not_ready:
+        _, not_ready = ray.wait(not_ready, timeout=0.1)
+
+    for i in range(2):
+        actor = Actor.options(placement_group=pg, placement_group_bundle_index=0, num_cpus=2).remote()
+        fut = actor.run.remote(1)
+        ray.get(fut)
+        actor.__ray_terminate__.remote()
+
+    actor = Actor.options(placement_group=pg, placement_group_bundle_index=0, num_cpus=2).remote()
+    fut = actor.run.remote(10)
+    remove_placement_group(pg)
+    time.sleep(5)
 
 def test_remove_pending_placement_group(ray_start_cluster):
     cluster = ray_start_cluster
@@ -1508,7 +1534,6 @@ ray.shutdown()
     except ValueError:
         error_count = error_count + 1
     assert error_count == 1
-
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
