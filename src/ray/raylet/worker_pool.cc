@@ -70,7 +70,7 @@ WorkerPool::WorkerPool(boost::asio::io_service &io_service, int num_workers_soft
       first_job_driver_wait_num_python_workers_(std::min(
           num_initial_python_workers_for_first_job, maximum_startup_concurrency)),
       num_initial_python_workers_for_first_job_(num_initial_python_workers_for_first_job),
-      kill_idle_workers_timer_(io_service) {
+      periodical_runner_(io_service) {
   RAY_CHECK(maximum_startup_concurrency > 0);
 #ifndef _WIN32
   // Ignore SIGCHLD signals. If we don't do this, then worker processes will
@@ -102,7 +102,11 @@ WorkerPool::WorkerPool(boost::asio::io_service &io_service, int num_workers_soft
       free_ports_->push(port);
     }
   }
-  ScheduleIdleWorkerKilling();
+  if (RayConfig::instance().kill_idle_workers_interval_ms() > 0) {
+    periodical_runner_.RunFnPeriodically(
+        [this] { TryKillingIdleWorkers(); },
+        RayConfig::instance().kill_idle_workers_interval_ms());
+  }
 }
 
 WorkerPool::~WorkerPool() {
@@ -371,6 +375,13 @@ void WorkerPool::HandleJobFinished(const JobID &job_id) {
   // unfinished_jobs_.erase(job_id);
 }
 
+boost::optional<const rpc::JobConfig &> WorkerPool::GetJobConfig(
+    const JobID &job_id) const {
+  auto iter = all_jobs_.find(job_id);
+  return iter == all_jobs_.end() ? boost::none
+                                 : boost::optional<const rpc::JobConfig &>(iter->second);
+}
+
 Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker,
                                   pid_t pid,
                                   std::function<void(Status, int)> send_reply_callback) {
@@ -605,20 +616,6 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
     int64_t now = current_time_ms();
     idle_of_all_languages_.emplace_back(worker, now);
     idle_of_all_languages_map_[worker] = now;
-  }
-}
-
-void WorkerPool::ScheduleIdleWorkerKilling() {
-  if (RayConfig::instance().kill_idle_workers_interval_ms() > 0) {
-    kill_idle_workers_timer_.expires_from_now(boost::posix_time::milliseconds(
-        RayConfig::instance().kill_idle_workers_interval_ms()));
-    kill_idle_workers_timer_.async_wait([this](const boost::system::error_code &error) {
-      if (error == boost::asio::error::operation_aborted) {
-        return;
-      }
-      TryKillingIdleWorkers();
-      ScheduleIdleWorkerKilling();
-    });
   }
 }
 

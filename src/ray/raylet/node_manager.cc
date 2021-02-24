@@ -28,6 +28,7 @@
 #include "ray/stats/stats.h"
 #include "ray/util/asio_util.h"
 #include "ray/util/sample.h"
+#include "ray/util/util.h"
 
 namespace {
 
@@ -123,15 +124,10 @@ NodeManager::NodeManager(boost::asio::io_service &io_service, const NodeID &self
       object_manager_(object_manager),
       gcs_client_(gcs_client),
       object_directory_(object_directory),
-      heartbeat_timer_(io_service),
-      heartbeat_period_(std::chrono::milliseconds(config.heartbeat_period_ms)),
-      report_resources_timer_(io_service),
-      report_resources_period_(
-          std::chrono::milliseconds(config.report_resources_period_ms)),
-      debug_dump_period_(config.debug_dump_period_ms),
+      periodical_runner_(io_service),
+      report_resources_period_ms_(config.report_resources_period_ms),
       fair_queueing_enabled_(config.fair_queueing_enabled),
       temp_dir_(config.temp_dir),
-      object_manager_profile_timer_(io_service),
       initial_config_(config),
       local_available_resources_(config.resource_config),
       worker_pool_(io_service, config.num_workers_soft_limit,
@@ -183,9 +179,9 @@ NodeManager::NodeManager(boost::asio::io_service &io_service, const NodeID &self
       last_local_gc_ns_(absl::GetCurrentTimeNanos()),
       local_gc_interval_ns_(RayConfig::instance().local_gc_interval_s() * 1e9),
       local_gc_min_interval_ns_(RayConfig::instance().local_gc_min_interval_s() * 1e9),
-      record_metrics_period_(config.record_metrics_period_ms) {
+      record_metrics_period_ms_(config.record_metrics_period_ms) {
   RAY_LOG(INFO) << "Initializing NodeManager with ID " << self_node_id_;
-  RAY_CHECK(heartbeat_period_.count() > 0);
+  RAY_CHECK(RayConfig::instance().raylet_heartbeat_period_milliseconds() > 0);
   // Initialize the resource map with own cluster resource configuration.
   cluster_resource_map_.emplace(self_node_id_,
                                 SchedulingResources(config.resource_config));
@@ -331,12 +327,29 @@ ray::Status NodeManager::RegisterGcs() {
 
   // Start sending heartbeats to the GCS.
   last_heartbeat_at_ms_ = current_time_ms();
-  last_debug_dump_at_ms_ = current_time_ms();
-  Heartbeat();
-  ReportResourceUsage();
+  periodical_runner_.RunFnPeriodically(
+      [this] { Heartbeat(); },
+      RayConfig::instance().raylet_heartbeat_period_milliseconds());
+  periodical_runner_.RunFnPeriodically(
+      [this] {
+        DumpDebugState();
+        WarnResourceDeadlock();
+      },
+      RayConfig::instance().debug_dump_period_milliseconds());
+  periodical_runner_.RunFnPeriodically([this] { RecordMetrics(); },
+                                       record_metrics_period_ms_);
+  if (RayConfig::instance().free_objects_period_milliseconds() > 0) {
+    periodical_runner_.RunFnPeriodically(
+        [this] { local_object_manager_.FlushFreeObjects(); },
+        RayConfig::instance().free_objects_period_milliseconds());
+  }
+  periodical_runner_.RunFnPeriodically([this] { ReportResourceUsage(); },
+                                       report_resources_period_ms_);
   // Start the timer that gets object manager profiling information and sends it
   // to the GCS.
-  GetObjectManagerProfileInfo();
+  periodical_runner_.RunFnPeriodically(
+      [this] { GetObjectManagerProfileInfo(); },
+      RayConfig::instance().raylet_heartbeat_period_milliseconds());
 
   return ray::Status::OK();
 }
@@ -425,30 +438,6 @@ void NodeManager::Heartbeat() {
           RAY_LOG(FATAL) << "This node has beem marked as dead.";
         }
       }));
-
-  if (debug_dump_period_ > 0 &&
-      static_cast<int64_t>(now_ms - last_debug_dump_at_ms_) > debug_dump_period_) {
-    DumpDebugState();
-    WarnResourceDeadlock();
-    last_debug_dump_at_ms_ = now_ms;
-  }
-
-  if (record_metrics_period_ > 0 &&
-      static_cast<int64_t>(now_ms - metrics_last_recorded_time_ms_) >
-          record_metrics_period_) {
-    RecordMetrics();
-    metrics_last_recorded_time_ms_ = now_ms;
-  }
-
-  // Evict all copies of freed objects from the cluster.
-  local_object_manager_.FlushFreeObjectsIfNeeded(now_ms);
-
-  // Reset the timer.
-  heartbeat_timer_.expires_from_now(heartbeat_period_);
-  heartbeat_timer_.async_wait([this](const boost::system::error_code &error) {
-    RAY_CHECK(!error);
-    Heartbeat();
-  });
 }
 
 void NodeManager::ReportResourceUsage() {
@@ -484,13 +473,6 @@ void NodeManager::ReportResourceUsage() {
     RAY_CHECK_OK(gcs_client_->NodeResources().AsyncReportResourceUsage(resources_data,
                                                                        /*done*/ nullptr));
   }
-
-  // Reset the timer.
-  report_resources_timer_.expires_from_now(report_resources_period_);
-  report_resources_timer_.async_wait([this](const boost::system::error_code &error) {
-    RAY_CHECK(!error);
-    ReportResourceUsage();
-  });
 }
 
 void NodeManager::DoLocalGC() {
@@ -665,14 +647,6 @@ void NodeManager::GetObjectManagerProfileInfo() {
   if (profile_info->profile_events_size() > 0) {
     RAY_CHECK_OK(gcs_client_->Stats().AsyncAddProfileData(profile_info, nullptr));
   }
-
-  // Reset the timer.
-  object_manager_profile_timer_.expires_from_now(heartbeat_period_);
-  object_manager_profile_timer_.async_wait(
-      [this](const boost::system::error_code &error) {
-        RAY_CHECK(!error);
-        GetObjectManagerProfileInfo();
-      });
 
   int64_t interval = current_time_ms() - start_time_ms;
   if (interval > RayConfig::instance().handler_warning_timeout_ms()) {
@@ -1081,12 +1055,18 @@ void NodeManager::ProcessRegisterClientRequestMessage(
       std::make_shared<Worker>(job_id, worker_id, language, worker_type,
                                worker_ip_address, client, client_call_manager_));
 
-  auto send_reply_callback = [this, client](Status status, int assigned_port) {
+  auto send_reply_callback = [this, client, job_id](Status status, int assigned_port) {
     flatbuffers::FlatBufferBuilder fbb;
+    std::string serialized_job_config;
+    auto job_config = worker_pool_.GetJobConfig(job_id);
+    if (job_config != boost::none) {
+      serialized_job_config = (*job_config).SerializeAsString();
+    }
     auto reply = ray::protocol::CreateRegisterClientReply(
         fbb, status.ok(), fbb.CreateString(status.ToString()),
         to_flatbuf(fbb, self_node_id_), assigned_port,
-        fbb.CreateString(initial_config_.raylet_config));
+        fbb.CreateString(initial_config_.raylet_config),
+        fbb.CreateString(serialized_job_config));
     fbb.Finish(reply);
     client->WriteMessageAsync(
         static_cast<int64_t>(protocol::MessageType::RegisterClientReply), fbb.GetSize(),
