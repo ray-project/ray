@@ -28,7 +28,7 @@
 namespace {
 
 // Duration between internal book-keeping heartbeats.
-const int kInternalHeartbeatMillis = 1000;
+const uint64_t kInternalHeartbeatMillis = 1000;
 
 void BuildCommonTaskSpec(
     ray::TaskSpecBuilder &builder, const JobID &job_id, const TaskID &task_id,
@@ -301,8 +301,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       worker_context_(options_.worker_type, worker_id, GetProcessJobID(options_)),
       io_work_(io_service_),
       client_call_manager_(new rpc::ClientCallManager(io_service_)),
-      death_check_timer_(io_service_),
-      internal_timer_(io_service_),
+      periodical_runner_(io_service_),
       task_queue_length_(0),
       num_executed_tasks_(0),
       task_execution_service_work_(task_execution_service_),
@@ -407,15 +406,13 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       });
 
   if (options_.worker_type == ray::WorkerType::WORKER) {
-    death_check_timer_.expires_from_now(boost::asio::chrono::milliseconds(
-        RayConfig::instance().raylet_death_check_interval_milliseconds()));
-    death_check_timer_.async_wait(
-        boost::bind(&CoreWorker::CheckForRayletFailure, this, _1));
+    periodical_runner_.RunFnPeriodically(
+        [this] { CheckForRayletFailure(); },
+        RayConfig::instance().raylet_death_check_interval_milliseconds());
   }
 
-  internal_timer_.expires_from_now(
-      boost::asio::chrono::milliseconds(kInternalHeartbeatMillis));
-  internal_timer_.async_wait(boost::bind(&CoreWorker::InternalHeartbeat, this, _1));
+  periodical_runner_.RunFnPeriodically([this] { InternalHeartbeat(); },
+                                       kInternalHeartbeatMillis);
 
   plasma_store_provider_.reset(new CoreWorkerPlasmaStoreProvider(
       options_.store_socket, local_raylet_client_, reference_counter_,
@@ -791,30 +788,14 @@ void CoreWorker::RegisterToGcs() {
   RAY_CHECK_OK(gcs_client_->Workers().AsyncAdd(worker_data, nullptr));
 }
 
-void CoreWorker::CheckForRayletFailure(const boost::system::error_code &error) {
-  if (error == boost::asio::error::operation_aborted) {
-    return;
-  }
-
+void CoreWorker::CheckForRayletFailure() {
   if (!IsParentProcessAlive()) {
     RAY_LOG(ERROR) << "Raylet failed. Shutting down.";
     Shutdown();
   }
-
-  // Reset the timer from the previous expiration time to avoid drift.
-  death_check_timer_.expires_at(
-      death_check_timer_.expiry() +
-      boost::asio::chrono::milliseconds(
-          RayConfig::instance().raylet_death_check_interval_milliseconds()));
-  death_check_timer_.async_wait(
-      boost::bind(&CoreWorker::CheckForRayletFailure, this, _1));
 }
 
-void CoreWorker::InternalHeartbeat(const boost::system::error_code &error) {
-  if (error == boost::asio::error::operation_aborted) {
-    return;
-  }
-
+void CoreWorker::InternalHeartbeat() {
   absl::MutexLock lock(&mutex_);
 
   while (!to_resubmit_.empty() && current_time_ms() > to_resubmit_.front().first) {
@@ -826,9 +807,6 @@ void CoreWorker::InternalHeartbeat(const boost::system::error_code &error) {
     }
     to_resubmit_.pop_front();
   }
-  internal_timer_.expires_at(internal_timer_.expiry() +
-                             boost::asio::chrono::milliseconds(kInternalHeartbeatMillis));
-  internal_timer_.async_wait(boost::bind(&CoreWorker::InternalHeartbeat, this, _1));
 }
 
 std::unordered_map<ObjectID, std::pair<size_t, size_t>>
@@ -1540,6 +1518,8 @@ Status CoreWorker::CreateActor(const RayFunction &function,
 Status CoreWorker::CreatePlacementGroup(
     const PlacementGroupCreationOptions &placement_group_creation_options,
     PlacementGroupID *return_placement_group_id) {
+  std::shared_ptr<std::promise<Status>> status_promise =
+      std::make_shared<std::promise<Status>>();
   const PlacementGroupID placement_group_id = PlacementGroupID::FromRandom();
   PlacementGroupSpecBuilder builder;
   builder.SetPlacementGroupSpec(
@@ -1550,9 +1530,21 @@ Status CoreWorker::CreatePlacementGroup(
   PlacementGroupSpecification placement_group_spec = builder.Build();
   *return_placement_group_id = placement_group_id;
   RAY_LOG(INFO) << "Submitting Placement Group creation to GCS: " << placement_group_id;
-  RAY_CHECK_OK(
-      gcs_client_->PlacementGroups().AsyncCreatePlacementGroup(placement_group_spec));
-  return Status::OK();
+  RAY_UNUSED(gcs_client_->PlacementGroups().AsyncCreatePlacementGroup(
+      placement_group_spec,
+      [status_promise](const Status &status) { status_promise->set_value(status); }));
+  auto status_future = status_promise->get_future();
+  if (status_future.wait_for(std::chrono::seconds(
+          RayConfig::instance().gcs_server_request_timeout_seconds())) !=
+      std::future_status::ready) {
+    std::ostringstream stream;
+    stream << "There was timeout in creating the placement group of id "
+           << placement_group_id
+           << ". It is probably "
+              "because GCS server is dead or there's a high load there.";
+    return Status::TimedOut(stream.str());
+  }
+  return status_future.get();
 }
 
 Status CoreWorker::RemovePlacementGroup(const PlacementGroupID &placement_group_id) {
