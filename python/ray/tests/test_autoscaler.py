@@ -401,6 +401,7 @@ class AutoscalingTest(unittest.TestCase):
         runner.respond_to_call(".State.Running",
                                ["false", "false", "false", "false"])
         runner.respond_to_call("json .Config.Env", ["[]"])
+
         def _create_node(node_config, tags, count, _skip_wait=False):
             assert tags[TAG_RAY_NODE_STATUS] == STATUS_UNINITIALIZED
             if not _skip_wait:
@@ -422,6 +423,7 @@ class AutoscalingTest(unittest.TestCase):
                         tags.get(TAG_RAY_USER_NODE_TYPE),
                         unique_ips=self.provider.unique_ips)
                     self.provider.next_id += 1
+
         self.provider.create_node = _create_node
         commands.get_or_create_head_node(
             SMALL_CLUSTER,
