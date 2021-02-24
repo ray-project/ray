@@ -73,6 +73,9 @@ def fillout_resources_kubernetes(config):
     for node_type in node_types:
 
         node_config = node_types[node_type]["node_config"]
+        # The next line is for compatibility with configs like
+        # kubernetes/example-ingress.yaml,
+        # cf. KubernetesNodeProvider.create_node().
         pod = node_config.get("pod", node_config)
         container_data = pod["spec"]["containers"][0]
 
