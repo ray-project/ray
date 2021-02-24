@@ -1,5 +1,6 @@
 from typing import List, Tuple, Dict, Any
 
+import os
 import sys
 import logging
 
@@ -81,7 +82,7 @@ class RayAPIStub:
             msg = "Python minor versions differ between client and server:" + \
                   f" client is {version_str}," + \
                   f" server is {conn_info['python_version']}"
-            if ignore_version:
+            if ignore_version or "RAY_IGNORE_VERSION_MISMATCH" in os.environ:
                 logger.warning(msg)
             else:
                 raise RuntimeError(msg)
@@ -89,7 +90,7 @@ class RayAPIStub:
             msg = "Client Ray installation incompatible with server:" + \
                   f" client is {CURRENT_PROTOCOL_VERSION}," + \
                   f" server is {conn_info['protocol_version']}"
-            if ignore_version:
+            if ignore_version or "RAY_IGNORE_VERSION_MISMATCH" in os.environ:
                 logger.warning(msg)
             else:
                 raise RuntimeError(msg)
