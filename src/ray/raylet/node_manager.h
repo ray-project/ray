@@ -160,6 +160,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// object ids.
   void TriggerGlobalGC();
 
+  /// Stop this node manager.
+  void Stop();
+
  private:
   /// Methods for handling nodes.
 
@@ -772,6 +775,12 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// ID of this node.
   NodeID self_node_id_;
   boost::asio::io_service &io_service_;
+  /// The io service used in heartbeat loop in case of it being
+  /// blocked by main thread.
+  boost::asio::io_service heartbeat_io_service_;
+  /// Heartbeat thread, using with heartbeat_io_service_.
+  std::unique_ptr<std::thread> heartbeat_thread_;
+  std::unique_ptr<PeriodicalRunner> heartbeat_runner_;
   ObjectManager &object_manager_;
   /// A Plasma object store client. This is used for creating new objects in
   /// the object store (e.g., for actor tasks that can't be run because the

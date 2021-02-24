@@ -255,6 +255,15 @@ NodeManager::NodeManager(boost::asio::io_service &io_service, const NodeID &self
                        }));
 
   RAY_CHECK_OK(SetupPlasmaSubscription());
+
+  // Init heartbeat thread and run its io service.
+  heartbeat_thread_.reset(new std::thread([this] {
+    SetThreadName("heartbeat");
+    /// The asio work to keep io_service_ alive.
+    boost::asio::io_service::work io_service_work_(io_service_);
+    heartbeat_io_service_.run();
+  }));
+  heartbeat_runner_.reset(new PeriodicalRunner(heartbeat_io_service_));
 }
 
 ray::Status NodeManager::RegisterGcs() {
@@ -327,7 +336,7 @@ ray::Status NodeManager::RegisterGcs() {
 
   // Start sending heartbeats to the GCS.
   last_heartbeat_at_ms_ = current_time_ms();
-  periodical_runner_.RunFnPeriodically(
+  heartbeat_runner_.RunFnPeriodically(
       [this] { Heartbeat(); },
       RayConfig::instance().raylet_heartbeat_period_milliseconds());
   periodical_runner_.RunFnPeriodically(
@@ -2654,6 +2663,15 @@ void NodeManager::TriggerGlobalGC() {
   should_global_gc_ = true;
   // We won't see our own request, so trigger local GC in the next heartbeat.
   should_local_gc_ = true;
+}
+
+void NodeManager::Stop() {
+  heartbeat_runner_.reset();
+  heartbeat_io_service_.stop();
+  if (heartbeat_thread_->joinable()) {
+    heartbeat_thread_->join();
+  }
+  heartbeat_thread_.reset();
 }
 
 void NodeManager::RecordMetrics() {
