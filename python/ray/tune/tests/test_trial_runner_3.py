@@ -1083,7 +1083,7 @@ class TrialRunnerPlacementGroupTest(unittest.TestCase):
             train,
             config={"start_time": start},
             resources_per_trial=placement_group_factory,
-            num_samples=scheduled,
+            num_samples=10,
             trial_executor=trial_executor,
             callbacks=[_TestCallback()],
             reuse_actors=reuse_actors,
