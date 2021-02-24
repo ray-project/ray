@@ -6,7 +6,7 @@ import tempfile
 import threading
 import time
 import unittest
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 import yaml
 import copy
 import sys
