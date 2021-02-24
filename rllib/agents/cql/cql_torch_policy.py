@@ -46,7 +46,7 @@ def q_values_repeat(model, obs, actions, twin=False):
     num_repeat = int(action_shape / obs_shape)
     obs_temp = obs.unsqueeze(1).repeat(1, num_repeat, 1).view(
         obs.shape[0] * num_repeat, obs.shape[1])
-    if twin:
+    if not twin:
         preds = model.get_q_values(obs_temp, actions)
     else:
         preds = model.get_twin_q_values(obs_temp, actions)
@@ -112,8 +112,8 @@ def cql_loss(policy: Policy, model: ModelV2,
     if policy.cur_iter >= bc_iters:
         min_q = model.get_q_values(model_out_t, policy_t)
         if twin_q:
-            twin_q = model.get_twin_q_values(model_out_t, policy_t)
-            min_q = torch.min(min_q, twin_q)
+            twin_q_ = model.get_twin_q_values(model_out_t, policy_t)
+            min_q = torch.min(min_q, twin_q_)
         actor_loss = (alpha.detach() * log_pis_t - min_q).mean()
     else:
         bc_logp = action_dist_t.logp(actions)
@@ -162,11 +162,13 @@ def cql_loss(policy: Policy, model: ModelV2,
     # CQL Loss (We are using Entropy version of CQL (the best version))
     rand_actions = convert_to_torch_tensor(
         torch.FloatTensor(actions.shape[0] * num_actions,
-                          actions.shape[-1]).uniform_(action_low, action_high))
+                          actions.shape[-1]).uniform_(action_low, action_high),
+        policy.device)
     curr_actions, curr_logp = policy_actions_repeat(model, action_dist_class,
                                                     obs, num_actions)
     next_actions, next_logp = policy_actions_repeat(model, action_dist_class,
                                                     next_obs, num_actions)
+
     curr_logp = curr_logp.view(actions.shape[0], num_actions, 1)
     next_logp = next_logp.view(actions.shape[0], num_actions, 1)
 

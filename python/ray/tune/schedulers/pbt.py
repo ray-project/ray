@@ -587,11 +587,18 @@ class PopulationBasedTraining(FIFOScheduler):
                 trial_executor.restore(
                     trial, new_state.last_checkpoint, block=True)
             else:
+                # Stop trial, but do not free resources (so we can use them
+                # again right away)
                 trial_executor.stop_trial(trial)
                 trial.set_experiment_tag(new_tag)
                 trial.set_config(new_config)
-                trial_executor.start_trial(
-                    trial, new_state.last_checkpoint, train=False)
+
+                if not trial_executor.start_trial(
+                        trial, new_state.last_checkpoint, train=False):
+                    logger.warning(
+                        f"Trial couldn't be reset: {trial}. Terminating "
+                        f"instead.")
+                    trial_executor.stop_trial(trial, error=True)
 
         self._num_perturbations += 1
         # Transfer over the last perturbation time as well
@@ -632,7 +639,7 @@ class PopulationBasedTraining(FIFOScheduler):
         candidates = []
         for trial in trial_runner.get_trials():
             if trial.status in [Trial.PENDING, Trial.PAUSED] and \
-                    trial_runner.has_resources(trial.resources):
+                    trial_runner.has_resources_for_trial(trial):
                 if not self._synch:
                     candidates.append(trial)
                 elif self._trial_state[trial].last_train_time < \

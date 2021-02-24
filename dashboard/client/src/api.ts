@@ -153,7 +153,7 @@ type BaseNodeInfo = {
   cpu: number; // System-wide CPU utilization expressed as a percentage
   cpus: [number, number]; // Number of logical CPUs and physical CPUs
   gpus: Array<GPUStats>; // GPU stats fetched from node, 1 entry per GPU
-  mem: [number, number, number]; // Total, available, and used percentage of memory
+  mem: [number, number, number, number]; // Total (bytes), available (bytes), used (percentage), and used (bytes) of memory
   disk: {
     [dir: string]: {
       total: number;

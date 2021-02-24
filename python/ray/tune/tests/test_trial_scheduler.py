@@ -221,6 +221,7 @@ class _MockTrialExecutor(TrialExecutor):
         trial.logger_running = True
         trial.restored_checkpoint = checkpoint_obj.value
         trial.status = Trial.RUNNING
+        return True
 
     def stop_trial(self, trial, error=False, error_msg=None):
         trial.status = Trial.ERROR if error else Trial.TERMINATED
@@ -264,6 +265,9 @@ class _MockTrialRunner():
 
     def get_trials(self):
         return self.trials
+
+    def has_resources_for_trial(self, trial):
+        return True
 
     def has_resources(self, resources):
         return True
