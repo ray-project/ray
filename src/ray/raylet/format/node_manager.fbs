@@ -147,10 +147,10 @@ table RegisterClientReply {
   raylet_id: string;
   // Port that this worker should listen on.
   port: int;
-  // Keys for internal config options.
-  system_config_keys: [string];
-  // Values for internal config options corresponding to keys above.
-  system_config_values: [string];
+  // Internal config options.
+  system_config: string;
+  // The config bytes of this job serialized with protobuf.
+  serialized_job_config: string;
 }
 
 table AnnounceWorkerPort {

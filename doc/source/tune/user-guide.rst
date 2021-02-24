@@ -25,7 +25,10 @@ By default, Tune automatically runs N concurrent trials, where N is the number o
     # If you have 4 CPUs on your machine, this will run 4 concurrent trials at a time.
     tune.run(trainable, num_samples=10)
 
-You can override this parallelism with ``resources_per_trial``:
+You can override this parallelism with ``resources_per_trial``. Here you can
+specify your resource requests using either a dictionary or a
+:class:`PlacementGroupFactory <ray.tune.utils.placement_groups.PlacementGroupFactory>`
+object. In any case, Ray Tune will try to start a placement group for each trial.
 
 .. code-block:: python
 
@@ -39,12 +42,20 @@ You can override this parallelism with ``resources_per_trial``:
     tune.run(trainable, num_samples=10, resources_per_trial={"cpu": 0.5})
 
 
-Tune will allocate the specified GPU and CPU from ``resources_per_trial`` to each individual trial. A trial will not be scheduled unless at least that amount of resources is available, preventing the cluster from being overloaded.
+Tune will allocate the specified GPU and CPU from ``resources_per_trial`` to each individual trial.
+Even if the trial cannot be scheduled right now, Ray Tune will still try to start
+the respective placement group. If not enough resources are available, this will trigger
+:ref:`autoscaling behavior<cluster-index>` if you're using the Ray cluster launcher.
+
+If your trainable function starts more remote workers, you will need to pass placement groups
+factory objects to request these resources. See the
+:class:`PlacementGroupFactory documentation <ray.tune.utils.placement_groups.PlacementGroupFactory>`
+for further information.
 
 Using GPUs
 ~~~~~~~~~~
 
-To leverage GPUs, you must set ``gpu`` in ``tune.run(resources_per_trial={})``. This will automatically set ``CUDA_VISIBLE_DEVICES`` for each trial.
+To leverage GPUs, you must set ``gpu`` in ``tune.run(resources_per_trial)``. This will automatically set ``CUDA_VISIBLE_DEVICES`` for each trial.
 
 .. code-block:: python
 
@@ -95,7 +106,7 @@ To attach to a Ray cluster, simply run ``ray.init`` before ``tune.run``. See :re
 
     # Connect to an existing distributed Ray cluster
     ray.init(address=<ray_address>)
-    tune.run(trainable, num_samples=100, resources_per_trial={"cpu": 2, "gpu": 1})
+    tune.run(trainable, num_samples=100, resources_per_trial=tune.PlacementGroupFactory([{"CPU": 2, "GPU": 1}]))
 
 Read more in the Tune :ref:`distributed experiments guide <tune-distributed>`.
 
@@ -749,6 +760,17 @@ These are the environment variables Ray Tune currently considers:
   with the parameter values in them)
 * **TUNE_MAX_PENDING_TRIALS_PG**: Maximum number of pending trials when placement groups are used. Defaults
   to ``1000``.
+* **TUNE_PLACEMENT_GROUP_AUTO_DISABLED**: Ray Tune automatically uses placement groups
+  instead of the legacy resource requests. Setting this to 1 enables legacy placement.
+* **TUNE_PLACEMENT_GROUP_CLEANUP_DISABLED**: Ray Tune cleans up existing placement groups
+  with the ``_tune__`` prefix in their name before starting a run. This is used to make sure
+  that scheduled placement groups are removed when multiple calls to ``tune.run()`` are
+  done in the same script. You might want to disable this if you run multiple Tune runs in
+  parallel from different scripts. Set to 1 to disable.
+* **TUNE_PLACEMENT_GROUP_WAIT_S**: Default time the trial executor waits for placement
+  groups to be placed before continuing the tuning loop. Setting this to a float
+  will block for that many seconds. This is mostly used for testing purposes. Defaults
+  to -1, which disables blocking.
 * **TUNE_RESULT_DIR**: Directory where Ray Tune trial results are stored. If this
   is not set, ``~/ray_results`` will be used.
 * **TUNE_RESULT_BUFFER_LENGTH**: Ray Tune can buffer results from trainables before they are passed
