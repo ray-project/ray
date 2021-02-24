@@ -500,13 +500,8 @@ class Trainer(Trainable):
         return Resources(
             cpu=cf["num_cpus_for_driver"],
             gpu=cf["num_gpus"],
-            memory=cf["memory"],
-            object_store_memory=cf["object_store_memory"],
             extra_cpu=cf["num_cpus_per_worker"] * num_workers,
-            extra_gpu=cf["num_gpus_per_worker"] * num_workers,
-            extra_memory=cf["memory_per_worker"] * num_workers,
-            extra_object_store_memory=cf["object_store_memory_per_worker"] *
-            num_workers)
+            extra_gpu=cf["num_gpus_per_worker"] * num_workers)
 
     @override(Trainable)
     @PublicAPI
