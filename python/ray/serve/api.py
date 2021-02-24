@@ -1,7 +1,6 @@
 import asyncio
 import atexit
 import time
-import logging
 from functools import wraps
 import os
 from uuid import UUID
@@ -673,35 +672,33 @@ def connect() -> Client:
     return Client(controller, controller_name, detached=True)
 
 
-def get_current_backend_tag() -> BackendTag:
-    """When called from within a backend, return its backend tag.
+@dataclass
+class BackendContext:
+    """Stores data for Serve API calls from within the user's backend code."""
+    backend_tag: BackendTag
+    replica_tag: ReplicaTag
 
-    Raises:
-        RayServeException if not called from within a Ray Serve backend.
+
+def get_backend_context():
+    """When called from a backend, return the backend tag and replica tag.
+
+    A replica tag uniquely identifies a single replica for a Ray Serve
+    backend.  Replica tags are of the form `<backend tag>#<random letters>`.
+
+    Example:
+
+        >>> serve.get_backend_context().backend_tag # my_backend
+        >>> serve.get_backend_context().replica_tag # my_backend#krcwoa
     """
     if _INTERNAL_REPLICA_CONTEXT is None:
-        raise RayServeException("`serve.get_current_backend_tag()`"
-                                "may only be called from within a"
+        raise RayServeException("`serve.get_backend_context()` "
+                                "may only be called from within a "
                                 "Ray Serve backend.")
     else:
-        return _INTERNAL_REPLICA_CONTEXT.backend_tag
+        backend_tag = _INTERNAL_REPLICA_CONTEXT.backend_tag
+        replica_tag = _INTERNAL_REPLICA_CONTEXT.replica_tag
 
-
-def get_current_replica_tag() -> ReplicaTag:
-    """When called from within a backend, return its replica tag.
-
-    A replica tag uniquely identifies a single replica (a process)
-    for a Ray Serve backend.
-
-    Raises:
-        RayServeException if not called from within a Ray Serve backend.
-    """
-    if _INTERNAL_REPLICA_CONTEXT is None:
-        raise RayServeException("`serve.get_current_replica_tag()`"
-                                "may only be called from within a"
-                                "Ray Serve backend.")
-    else:
-        return _INTERNAL_REPLICA_CONTEXT.replica_tag
+        return BackendContext(backend_tag, replica_tag)
 
 
 def accept_batch(f: Callable) -> Callable:
@@ -728,27 +725,3 @@ def accept_batch(f: Callable) -> Callable:
     """
     f._serve_accept_batch = True
     return f
-
-
-def get_backend_logger():
-    """When called from a backend, return a preconfigured `logging.Logger`.
-
-    The logger will prepend the current backend tag and current replica tag
-    to each log line.
-
-    Raises:
-        RayServeException if not called from within a Ray Serve backend.
-
-    Example:
-
-    >>> # Inside implementation of a Ray Serve backend
-        logger = serve.get_backend_logger()
-        logger.info("Some info!")
-
-    >>> INFO: backend=my_backend replica=my_backend#rQtNAb:Some info!
-    """
-    logging.basicConfig(level=logging.INFO)
-    name = (f" backend={ray.serve.get_current_backend_tag()}"
-            f" replica={ray.serve.get_current_replica_tag()}")
-    logger = logging.getLogger(name)
-    return logger
