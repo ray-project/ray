@@ -28,6 +28,7 @@
 #include "ray/common/task/task_common.h"
 #include "ray/gcs/gcs_client.h"
 #include "ray/raylet/worker.h"
+#include "ray/util/periodical_runner.h"
 
 namespace ray {
 
@@ -134,6 +135,12 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// \param job_id ID of the finished job.
   /// \return Void.
   void HandleJobFinished(const JobID &job_id);
+
+  /// \brief Get the job config by job id.
+  ///
+  /// \param job_id ID of the job.
+  /// \return Job config if given job is running, else nullptr.
+  boost::optional<const rpc::JobConfig &> GetJobConfig(const JobID &job_id) const;
 
   /// Register a new worker. The Worker should be added by the caller to the
   /// pool after it becomes idle (e.g., requests a work assignment).
@@ -431,9 +438,6 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// reasonable size.
   void TryKillingIdleWorkers();
 
-  /// Schedule the periodic killing of idle workers.
-  void ScheduleIdleWorkerKilling();
-
   /// Get all workers of the given process.
   ///
   /// \param process The process of workers.
@@ -506,8 +510,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   std::unordered_map<std::shared_ptr<WorkerInterface>, int64_t>
       idle_of_all_languages_map_;
 
-  /// The timer to trigger idle worker killing.
-  boost::asio::deadline_timer kill_idle_workers_timer_;
+  /// The runner to run function periodically.
+  PeriodicalRunner periodical_runner_;
 };
 
 }  // namespace raylet

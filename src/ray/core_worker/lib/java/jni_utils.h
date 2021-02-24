@@ -160,6 +160,21 @@ extern jfieldID java_actor_creation_options_group;
 /// bundleIndex field of ActorCreationOptions class
 extern jfieldID java_actor_creation_options_bundle_index;
 
+/// PlacementGroupCreationOptions class
+extern jclass java_placement_group_creation_options_class;
+/// PlacementStrategy class
+extern jclass java_placement_group_creation_options_strategy_class;
+/// global field of PlacementGroupCreationOptions class
+extern jfieldID java_placement_group_creation_options_global;
+/// name field of PlacementGroupCreationOptions class
+extern jfieldID java_placement_group_creation_options_name;
+/// bundles field of PlacementGroupCreationOptions class
+extern jfieldID java_placement_group_creation_options_bundles;
+/// strategy field of PlacementGroupCreationOptions class
+extern jfieldID java_placement_group_creation_options_strategy;
+/// value method of PlacementStrategy class
+extern jmethodID java_placement_group_creation_options_strategy_value;
+
 /// GcsClientOptions class
 extern jclass java_gcs_client_options_class;
 /// ip field of GcsClientOptions class
@@ -561,8 +576,9 @@ inline NativeT JavaProtobufObjectToNativeProtobufObject(JNIEnv *env, jobject jav
   return native_obj;
 }
 
-// Return an actor fullname with job id prepended if this tis a global actor.
-inline std::string GetActorFullName(bool global, std::string name) {
+// Return an actor or a placement group fullname with job id prepended if this is a global
+// actor or placement group.
+inline std::string GetFullName(bool global, std::string name) {
   if (name.empty()) {
     return "";
   }

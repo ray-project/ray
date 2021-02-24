@@ -97,13 +97,6 @@ void LocalObjectManager::FlushFreeObjects() {
   last_free_objects_at_ms_ = current_time_ms();
 }
 
-void LocalObjectManager::FlushFreeObjectsIfNeeded(int64_t now_ms) {
-  if (free_objects_period_ms_ > 0 &&
-      static_cast<int64_t>(now_ms - last_free_objects_at_ms_) > free_objects_period_ms_) {
-    FlushFreeObjects();
-  }
-}
-
 void LocalObjectManager::SpillObjectUptoMaxThroughput() {
   if (RayConfig::instance().object_spilling_config().empty() ||
       !RayConfig::instance().automatic_object_spilling_enabled()) {
@@ -267,9 +260,6 @@ void LocalObjectManager::UnpinSpilledObjectCallback(
     RAY_LOG(INFO) << "Failed to send spilled url for object " << object_id
                   << " to object directory, considering the object to have been freed: "
                   << status.ToString();
-    auto it = spilled_objects_url_.find(object_id);
-    RAY_CHECK(it != spilled_objects_url_.end());
-    spilled_objects_url_.erase(it);
   } else {
     RAY_LOG(DEBUG) << "Object " << object_id << " spilled to " << object_url
                    << " and object directory has been informed";

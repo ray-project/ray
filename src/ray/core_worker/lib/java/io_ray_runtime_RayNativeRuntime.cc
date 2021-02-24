@@ -268,7 +268,7 @@ Java_io_ray_runtime_RayNativeRuntime_nativeGetActorIdOfNamedActor(JNIEnv *env, j
                                                                   jstring actor_name,
                                                                   jboolean global) {
   const char *native_actor_name = env->GetStringUTFChars(actor_name, JNI_FALSE);
-  auto full_name = GetActorFullName(global, native_actor_name);
+  auto full_name = GetFullName(global, native_actor_name);
 
   const auto actor_handle =
       ray::CoreWorkerProcess::GetCoreWorker().GetNamedActorHandle(full_name).first;
