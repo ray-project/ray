@@ -173,7 +173,7 @@ class UpdateKL:
                 ("{} should be nested under policy id key".format(
                     LEARNER_STATS_KEY), fetches)
             if pi_id in fetches:
-                kl = fetches[pi_id].get("kl")
+                kl = fetches[pi_id][LEARNER_STATS_KEY].get("kl")
                 assert kl is not None, (fetches, pi_id)
                 # Make the actual `Policy.update_kl()` call.
                 pi.update_kl(kl)
@@ -194,6 +194,7 @@ def warn_about_bad_reward_scales(config, result):
     if DEFAULT_POLICY_ID in learner_stats:
         scaled_vf_loss = config["vf_loss_coeff"] * \
             learner_stats[DEFAULT_POLICY_ID][LEARNER_STATS_KEY]["vf_loss"]
+
         policy_loss = learner_stats[DEFAULT_POLICY_ID][LEARNER_STATS_KEY][
             "policy_loss"]
         if config.get("model", {}).get("vf_share_layers") and \
