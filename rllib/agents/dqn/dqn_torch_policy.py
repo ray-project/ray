@@ -364,6 +364,8 @@ def compute_q_values(policy: Policy,
             advantages_centered = action_scores - torch.unsqueeze(
                 advantages_mean, 1)
             value = state_score + advantages_centered
+            # if action masking we put back the mask
+            value.masked_fill_(action_scores == FLOAT_MIN, FLOAT_MIN)
     else:
         value = action_scores
 
