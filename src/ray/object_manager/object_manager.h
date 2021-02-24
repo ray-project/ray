@@ -99,7 +99,7 @@ class ObjectManagerInterface {
  public:
   virtual uint64_t Pull(const std::vector<rpc::ObjectReference> &object_refs) = 0;
   virtual void CancelPull(uint64_t request_id) = 0;
-  virtual bool IsPullRequestInactiveDueToOom(uint64_t request_id) const = 0;
+  virtual bool PullRequestActiveOrWaitingForMetadata(uint64_t request_id) const = 0;
   virtual ~ObjectManagerInterface(){};
 };
 
@@ -199,8 +199,8 @@ class ObjectManager : public ObjectManagerInterface,
   /// Get the port of the object manager rpc server.
   int GetServerPort() const { return object_manager_server_.GetPort(); }
 
-  bool IsPullRequestInactiveDueToOom(uint64_t pull_request_id) const {
-    return pull_manager_->IsPullRequestInactiveDueToOom(pull_request_id);
+  bool PullRequestActiveOrWaitingForMetadata(uint64_t pull_request_id) const {
+    return pull_manager_->PullRequestActiveOrWaitingForMetadata(pull_request_id);
   }
 
  public:

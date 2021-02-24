@@ -105,7 +105,11 @@ class PullManager {
 
   bool IsObjectActive(const ObjectID &object_id) const;
 
-  bool IsPullRequestInactiveDueToOom(uint64_t request_id) const;
+  /// Check whether the pull request is currently active or waiting for object
+  /// size information. If this returns false, then the pull request is most
+  /// likely inactive due to lack of memory. This can also return false if an
+  /// earlier request is waiting for metadata.
+  bool PullRequestActiveOrWaitingForMetadata(uint64_t request_id) const;
 
   std::string DebugString() const;
 
@@ -242,10 +246,6 @@ class PullManager {
   /// than the bytes available.
   absl::flat_hash_map<ObjectID, absl::flat_hash_set<uint64_t>>
       active_object_pull_requests_ GUARDED_BY(active_objects_mu_);
-
-  /// Whether there are requests in the queue that cannot be pulled because we
-  /// are at memory capacity.
-  bool at_memory_capacity_ = false;
 
   /// Internally maintained random number generator.
   std::mt19937_64 gen_;

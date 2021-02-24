@@ -160,6 +160,47 @@ def test_load_balancing_under_constrained_memory(ray_start_cluster):
     assert attempts < 100
 
 
+@pytest.mark.skipif(
+    platform.system() == "Windows", reason="Failing on Windows. Multi node.")
+def test_spillback_waiting_task_on_oom(ray_start_cluster):
+    # This test ensures that tasks are spilled if they are not schedulable due
+    # to lack of object store memory.
+    cluster = ray_start_cluster
+    object_size = 1e8
+    cluster.add_node(
+        num_cpus=1,
+        memory=1e9,
+        object_store_memory=object_size * 2,
+        _system_config={
+            "automatic_object_spilling_enabled": False,
+            "locality_aware_leasing_enabled": False,
+        })
+    ray.init(address=cluster.address)
+    cluster.add_node(
+        num_cpus=1,
+        resources={"custom": 1},
+        memory=1e9,
+        object_store_memory=object_size * 2)
+
+    @ray.remote(resources={"custom": 1})
+    def create_remote_object():
+        return np.zeros(int(object_size), dtype=np.uint8)
+
+    local_obj = ray.put(np.zeros(int(object_size * 1.5), dtype=np.uint8))
+
+    @ray.remote
+    def f(x):
+        return
+
+    dep = create_remote_object.remote()
+    ray.wait([dep], fetch_local=False)
+    # Wait for resource availabilities to propagate.
+    time.sleep(1)
+    # This task can't run on the local node. Make sure it gets spilled even
+    # though we have the local CPUs to run it.
+    ray.get(f.remote(dep))
+
+
 def test_locality_aware_leasing(ray_start_cluster):
     # This test ensures that a task will run where its task dependencies are
     # located. We run an initial non_local() task that is pinned to a

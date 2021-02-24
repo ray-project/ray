@@ -897,16 +897,19 @@ void ClusterTaskManager::ScheduleAndDispatchTasks() {
   DispatchScheduledTasksToWorkers(worker_pool_, leased_workers_);
   // TODO(swang): Spill from waiting queue first? Otherwise, we may end up
   // spilling a task whose args are already local.
+  // TODO(swang): Invoke ScheduleAndDispatchTasks() when we run out of memory
+  // in the PullManager or periodically, to make sure that we spill waiting
+  // tasks that are blocked.
   SpillWaitingTasks();
 }
 
 void ClusterTaskManager::SpillWaitingTasks() {
   // Try to spill waiting tasks to a remote node, prioritizing those at the end
   // of the queue. Waiting tasks are spilled if there are enough remote
-  // resources AND (we have no resources available locally or we cannot fetch
-  // their dependencies due to lack of object store memory). We consider object
-  // store memory separately from the task's placement resources since object
-  // store memory is managed separately from other resources.
+  // resources AND (we have no resources available locally OR their
+  // dependencies are not being fetched). We should not spill tasks whose
+  // dependencies are actively being fetched because some of their dependencies
+  // may already be local or in-flight to this node.
   //
   // NOTE(swang): We do not iterate by scheduling class here, so if we break
   // due to lack of remote resources, it is possible that a waiting task that
@@ -916,14 +919,13 @@ void ClusterTaskManager::SpillWaitingTasks() {
     it--;
     const auto &task = std::get<0>(*it);
     const auto &task_id = task.GetTaskSpecification().TaskId();
+    // Check whether this task's dependencies are not being pulled.  If this is
+    // true, then we should force the task onto a remote feasible node, even if
+    // we have enough resources available locally for placement.
+    bool force_spillback =
+        !task_dependency_manager_.TaskDependenciesPending(task_id);
     RAY_LOG(DEBUG) << "Attempting to spill back waiting task " << task_id
-                   << " to remote node";
-    // Check whether this task's dependencies are not being pulled due to lack
-    // of memory. If this is true, then we should force the task onto a remote
-    // feasible node, even if we have enough resources available locally for
-    // placement.
-    bool out_of_memory =
-        task_dependency_manager_.TaskDependenciesBlockedDueToOom(task_id);
+                   << " to remote node. Force spillback? " << force_spillback;
     auto placement_resources =
         task.GetTaskSpecification().GetRequiredPlacementResources().GetResourceMap();
     int64_t _unused;
@@ -933,7 +935,7 @@ void ClusterTaskManager::SpillWaitingTasks() {
     // memory availability.
     std::string node_id_string = cluster_resource_scheduler_->GetBestSchedulableNode(
         placement_resources, task.GetTaskSpecification().IsActorCreationTask(),
-        /*force_spillback=*/out_of_memory, &_unused, &is_infeasible);
+        /*force_spillback=*/force_spillback, &_unused, &is_infeasible);
     if (!node_id_string.empty() && node_id_string != self_node_id_.Binary()) {
       NodeID node_id = NodeID::FromBinary(node_id_string);
       Spillback(node_id, *it);

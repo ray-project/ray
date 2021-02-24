@@ -291,11 +291,11 @@ std::vector<TaskID> DependencyManager::HandleObjectLocal(const ray::ObjectID &ob
   return ready_task_ids;
 }
 
-bool DependencyManager::TaskDependenciesBlockedDueToOom(const TaskID &task_id) const {
+bool DependencyManager::TaskDependenciesPending(const TaskID &task_id) const {
   auto it = queued_task_requests_.find(task_id);
   RAY_CHECK(it != queued_task_requests_.end());
   RAY_CHECK(it->second.pull_request_id != 0);
-  return object_manager_.IsPullRequestInactiveDueToOom(it->second.pull_request_id);
+  return object_manager_.PullRequestActiveOrWaitingForMetadata(it->second.pull_request_id);
 }
 
 std::string DependencyManager::DebugString() const {
