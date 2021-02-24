@@ -77,7 +77,8 @@ class TrainOneStep:
             learn_timer.push_units_processed(batch.count)
         metrics.counters[STEPS_TRAINED_COUNTER] += batch.count
         if isinstance(batch, MultiAgentBatch):
-            metrics.counters[AGENT_STEPS_TRAINED_COUNTER] += batch.agent_steps()
+            metrics.counters[
+                AGENT_STEPS_TRAINED_COUNTER] += batch.agent_steps()
         # Update weights - after learning on the local worker - on all remote
         # workers.
         if self.workers.remote_workers():
