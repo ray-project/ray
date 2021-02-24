@@ -159,7 +159,7 @@ def build_q_model(policy: Policy, obs_space: gym.spaces.Space,
 
     if config["hiddens"]:
         # try to infer the last layer size, otherwise fall back to 256
-        num_outputs = ([256] + config["model"]["fcnet_hiddens"])[-1]
+        num_outputs = ([256] + list(config["model"]["fcnet_hiddens"]))[-1]
         config["model"]["no_final_linear"] = True
     else:
         num_outputs = action_space.n
