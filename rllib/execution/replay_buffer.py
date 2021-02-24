@@ -205,7 +205,8 @@ class PrioritizedReplayBuffer(ReplayBuffer):
             count = self._storage[idx].count
             # If zero-padded, count will not be the actual batch size of the
             # data.
-            if self._storage[idx].zero_padded:
+            if isinstance(self._storage[idx], SampleBatch) and \
+                    self._storage[idx].zero_padded:
                 actual_size = self._storage[idx].max_seq_len
             else:
                 actual_size = count
