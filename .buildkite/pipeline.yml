@@ -20,12 +20,14 @@
   conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
   commands:
     - LINUX_WHEELS=1 ./ci/travis/ci.sh build
+    - pip install docker
     - python ./ci/travis/build-docker-images.py PY37
 
 - label: ":docker: Build Images"
   conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
   commands:
     - LINUX_WHEELS=1 ./ci/travis/ci.sh build
+    - pip install docker
     - python ./ci/travis/build-docker-images.py PY36_PY38
 
 - label: ":book: Lint"
