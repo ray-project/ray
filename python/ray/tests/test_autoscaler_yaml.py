@@ -258,9 +258,6 @@ class AutoscalingConfigTest(unittest.TestCase):
         assert config["max_workers"] ==\
             prepared_node_types["worker_node_max_unspecified"]["max_workers"]\
             == 5
-        # Head type max workers filled to 0
-        assert prepared_config["available_node_types"]["head_node"][
-            "max_workers"] == 0
 
         # Repeat with a config that doesn't specify global max workers.
         # Default value of 2 should be pulled in for global max workers.
@@ -284,9 +281,6 @@ class AutoscalingConfigTest(unittest.TestCase):
         assert prepared_config["max_workers"] ==\
             prepared_node_types["worker_node_max_unspecified"]["max_workers"]\
             == 2
-        # Head type max workers filled to 0
-        assert prepared_config["available_node_types"]["head_node"][
-            "max_workers"] == 0
 
     def testGetDefaultHeadWorker(self):
         """

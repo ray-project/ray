@@ -34,6 +34,7 @@ available_node_types:
         node_config:
             InstanceType: m5.large
         min_workers: 0
+        nax_workers: 0
 
 head_node_type: head_node
 

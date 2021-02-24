@@ -211,22 +211,14 @@ def merge_setup_commands(config):
     return config
 
 
-def fill_node_type_max_workers(config: Dict[str, Any]) -> None:
+def fill_node_type_max_workers(config):
     """Sets default per-node max workers to global max_workers.
-
-    For the head node type, the default is 0.
-
     This equivalent to setting the default per-node max workers to infinity,
     with the only upper constraint coming from the global max_workers.
     """
     assert "max_workers" in config, "Global max workers should be set."
-    node_types = config["available_node_types"]
-    for node_type in node_types:
-        if node_type == config["head_node_type"]:
-            node_types[node_type].setdefault("max_workers", 0)
-        else:
-            node_types[node_type].setdefault("max_workers",
-                                             config["max_workers"])
+    for node_type in config["available_node_types"].values():
+        node_type.setdefault("max_workers", config["max_workers"])
 
 
 def with_head_node_ip(cmds, head_ip=None):
