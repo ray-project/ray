@@ -200,7 +200,7 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// \returns true if the task was spilled. The task may not be spilled if the
   /// spillback policy specifies the local node (which may happen if no other nodes have
   /// the available resources).
-  bool TrySpillback(const Work &spec, bool& is_infeasible);
+  bool TrySpillback(const Work &spec, bool &is_infeasible);
 
   /// Helper method to try dispatching a single task from the queue to an
   /// available worker. Returns whether the task should be removed from the

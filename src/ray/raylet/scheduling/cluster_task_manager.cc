@@ -252,7 +252,7 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
     if (is_infeasible) {
       infeasible_tasks_[shapes_it->first] = std::move(shapes_it->second);
       shapes_it = tasks_to_dispatch_.erase(shapes_it);
-    } else  if (dispatch_queue.empty()) {
+    } else if (dispatch_queue.empty()) {
       shapes_it = tasks_to_dispatch_.erase(shapes_it);
     } else {
       shapes_it++;
@@ -260,15 +260,15 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
   }
 }
 
-bool ClusterTaskManager::TrySpillback(const Work &work, bool& is_infeasible) {
+bool ClusterTaskManager::TrySpillback(const Work &work, bool &is_infeasible) {
   const auto &spec = std::get<0>(work).GetTaskSpecification();
   int64_t _unused;
   auto placement_resources = spec.GetRequiredPlacementResources().GetResourceMap();
   std::string node_id_string = cluster_resource_scheduler_->GetBestSchedulableNode(
       placement_resources, spec.IsActorCreationTask(), &_unused, &is_infeasible);
 
-
-  if (is_infeasible || node_id_string == self_node_id_.Binary() || node_id_string.empty()) {
+  if (is_infeasible || node_id_string == self_node_id_.Binary() ||
+      node_id_string.empty()) {
     return false;
   }
 
