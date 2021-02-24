@@ -41,7 +41,7 @@ For example,
     app_name = "example",
     num_executors = 10,
     executor_cores = 64,
-    memory_per_executor = "256GB"
+    executor_memory = "256GB"
   )
 
 ====================================
