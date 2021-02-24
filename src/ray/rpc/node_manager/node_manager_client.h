@@ -106,6 +106,9 @@ class NodeManagerWorkerClient
   /// Release unused bundles.
   VOID_RPC_CLIENT_METHOD(NodeManagerService, ReleaseUnusedBundles, grpc_client_, )
 
+  /// Get the system config from Raylet.
+  VOID_RPC_CLIENT_METHOD(NodeManagerService, GetSystemConfig, grpc_client_, )
+
  private:
   /// Constructor.
   ///

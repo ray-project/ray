@@ -135,6 +135,9 @@ CoreWorkerProcess::CoreWorkerProcess(const CoreWorkerOptions &options)
 
   RAY_LOG(INFO) << "Constructing CoreWorkerProcess. pid: " << getpid();
 
+  // NOTE(kfstorm): any initialization depending on RayConfig must happen after this line.
+  InitializeSystemConfig();
+
   if (options_.num_workers == 1) {
     // We need to create the worker instance here if:
     // 1. This is a driver process. In this case, the driver is ready to use right after
@@ -190,6 +193,45 @@ void CoreWorkerProcess::EnsureInitialized() {
 }
 
 void CoreWorkerProcess::HandleAtExit() { instance_.reset(); }
+
+void CoreWorkerProcess::InitializeSystemConfig() {
+  // We have to create a short-time thread here because the RPC request to get the system
+  // config from Raylet is asynchronous, and we need to synchronously initialize the
+  // system config in the constructor of `CoreWorkerProcess`.
+  std::promise<std::string> promise;
+  std::thread thread([&] {
+    boost::asio::io_service io_service;
+    boost::asio::io_service::work work(io_service);
+    rpc::ClientCallManager client_call_manager(io_service);
+    auto grpc_client = rpc::NodeManagerWorkerClient::make(
+        options_.raylet_ip_address, options_.node_manager_port, client_call_manager);
+    raylet::RayletClient raylet_client(grpc_client);
+
+    std::function<void(int64_t)> get_once = [&](int64_t num_attempts) {
+      raylet_client.GetSystemConfig([&](const Status &status,
+                                        const rpc::GetSystemConfigReply &reply) {
+        if (!status.ok()) {
+          if (num_attempts <= 1) {
+            RAY_LOG(FATAL) << "Failed to get the system config from Raylet: " << status;
+          } else {
+            std::this_thread::sleep_for(std::chrono::milliseconds(
+                RayConfig::instance().raylet_client_connect_timeout_milliseconds()));
+            get_once(num_attempts - 1);
+          }
+        } else {
+          promise.set_value(reply.system_config());
+          io_service.stop();
+        }
+      });
+    };
+
+    get_once(RayConfig::instance().raylet_client_num_connect_attempts());
+    io_service.run();
+  });
+  thread.join();
+
+  RayConfig::instance().initialize(promise.get_future().get());
+}
 
 std::shared_ptr<CoreWorker> CoreWorkerProcess::TryGetWorker(const WorkerID &worker_id) {
   if (!instance_) {
@@ -334,12 +376,11 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   NodeID local_raylet_id;
   int assigned_port;
   std::string serialized_job_config = options_.serialized_job_config;
-  std::string system_config;
   local_raylet_client_ = std::shared_ptr<raylet::RayletClient>(new raylet::RayletClient(
       io_service_, std::move(grpc_client), options_.raylet_socket, GetWorkerID(),
       options_.worker_type, worker_context_.GetCurrentJobID(), options_.language,
       options_.node_ip_address, &raylet_client_status, &local_raylet_id, &assigned_port,
-      &system_config, &serialized_job_config));
+      &serialized_job_config));
 
   if (!raylet_client_status.ok()) {
     // Avoid using FATAL log or RAY_CHECK here because they may create a core dump file.
@@ -355,9 +396,6 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   connected_ = true;
 
   RAY_CHECK(assigned_port >= 0);
-
-  // NOTE(edoakes): any initialization depending on RayConfig must happen after this line.
-  RayConfig::instance().initialize(system_config);
 
   // Parse job config from serialized string.
   job_config_.reset(new rpc::JobConfig());
