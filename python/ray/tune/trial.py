@@ -236,11 +236,14 @@ class Trial:
         self.location = Location()
 
         self.resources = resources or Resources(cpu=1, gpu=0)
-        self.placement_group_factory = None
-        if placement_group_factory:
-            self.placement_group_factory = placement_group_factory
-        elif isinstance(self.resources, PlacementGroupFactory):
-            self.placement_group_factory = self.resources
+        # `resources` is a PlacementGroupFactory -> Generate `Resources` object
+        # from it by counting all devices.
+        if isinstance(self.resources, PlacementGroupFactory):
+            # Allow users to manually override Trainable's
+            # `default_resource_request` with the given placement group factory.
+            self.placement_group_factory = \
+                placement_group_factory or self.resources
+            # Count
             counts = defaultdict(int)
             for bundle in self.placement_group_factory._bundles:
                 for device, c in bundle.items():
@@ -255,6 +258,8 @@ class Trial:
                 custom_resources=custom_resources,
                 has_placement_group=True,
             )
+        else:
+            self.placement_group_factory = placement_group_factory
 
         self._setup_resources()
 
