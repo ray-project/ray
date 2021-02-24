@@ -225,6 +225,17 @@ class Trial:
         if trainable_cls:
             default_resources = trainable_cls.default_resource_request(
                 self.config)
+            # New way: Trainable returns a PlacementGroupFactory object.
+            if isinstance(default_resources, PlacementGroupFactory):
+                placement_group_factory = default_resources
+                resources = None
+            # Set placement group factory to None for backwards compatibility.
+            else:
+                placement_group_factory = None
+                resources = default_resources
+
+            TODO: continue
+
             if default_resources:
                 if resources:
                     raise ValueError(
@@ -238,26 +249,27 @@ class Trial:
         self.resources = resources or Resources(cpu=1, gpu=0)
         # `resources` is a PlacementGroupFactory -> Generate `Resources` object
         # from it by counting all devices.
-        if isinstance(self.resources, PlacementGroupFactory):
+        if isinstance(resources, PlacementGroupFactory):
             # Allow users to manually override Trainable's
             # `default_resource_request` with the given placement group factory.
             self.placement_group_factory = \
-                placement_group_factory or self.resources
+                placement_group_factory or resources
             # Count
-            counts = defaultdict(int)
-            for bundle in self.placement_group_factory._bundles:
-                for device, c in bundle.items():
-                    counts[device.lower()] += c
-            custom_resources = {
-                k: c
-                for k, c in counts.items() if k not in ["cpu", "gpu"]
-            }
-            self.resources = Resources(
-                cpu=counts["cpu"],
-                gpu=counts["gpu"],
-                custom_resources=custom_resources,
-                has_placement_group=True,
-            )
+            #counts = defaultdict(int)
+            #for bundle in self.placement_group_factory._bundles:
+            #    for device, c in bundle.items():
+            #        counts[device.lower()] += c
+            #custom_resources = {
+            #    k: c
+            #    for k, c in counts.items() if k not in ["cpu", "gpu"]
+            #}
+            #self.resources = Resources(
+            #    cpu=counts["cpu"],
+            #    gpu=counts["gpu"],
+            #    custom_resources=custom_resources,
+            #    has_placement_group=True,
+            #)
+            #self.resources = None
         else:
             self.placement_group_factory = placement_group_factory
 
