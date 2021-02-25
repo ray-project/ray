@@ -136,7 +136,7 @@ def merge_legacy_yaml_with_defaults(
 
     if merged_config["head_node"]:
         # User specified a head config. Overwrite the default head.
-        merged_config["available_node_types"].pop(default_head_type, None)
+        merged_config["available_node_types"].pop(default_head_type)
         merged_config["available_node_types"][NODE_TYPE_LEGACY_HEAD] = {
             "node_config": merged_config["head_node"],
             "resources": merged_config["head_node"].get("resources") or {},
