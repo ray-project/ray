@@ -742,6 +742,40 @@ def test_actor_owner_node_dies_before_dependency_ready(ray_start_cluster):
     wait_for_condition(lambda: ray.get(caller.hang.remote()))
 
 
+def test_recreate_child_actor(ray_start_cluster):
+    @ray.remote
+    class Child:
+        def __init__(self):
+            pass
+
+        def ping(self):
+            return
+
+    @ray.remote
+    class Signal:
+        def __init__(self):
+            self.should_exit = True
+
+        def should_exit(self):
+            if self.should_exit:
+                self.should_exit = False
+                return True
+            return False
+
+    @ray.remote
+    def parent(signal):
+        should_exit = ray.get(signal.should_exit.remote())
+        c = Child.remote()
+        ray.get(c.ping.remote())
+        if should_exit:
+            sys.exit(-1)
+
+    cluster = ray_start_cluster
+    ray.init(address=cluster.address)
+    signal = Signal.remote()
+    ray.get(parent.remote(signal))
+
+
 if __name__ == "__main__":
     import pytest
     sys.exit(pytest.main(["-v", __file__]))

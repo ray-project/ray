@@ -1458,12 +1458,9 @@ Status CoreWorker::CreateActor(const RayFunction &function,
         "Async actor is currently not supported for the local mode");
   }
   const auto next_task_index = worker_context_.GetNextTaskIndex();
-  // NOTE(swang): Include the current time in the hash for the actor ID so that
-  // we avoid duplicating a previous actor ID, which is not allowed by the GCS.
-  // See https://github.com/ray-project/ray/issues/10481.
   const ActorID actor_id =
       ActorID::Of(worker_context_.GetCurrentJobID(), worker_context_.GetCurrentTaskID(),
-                  current_time_ms());
+                  next_task_index);
   const TaskID actor_creation_task_id = TaskID::ForActorCreationTask(actor_id);
   const JobID job_id = worker_context_.GetCurrentJobID();
   // Propagate existing environment variable overrides, but override them with any new
