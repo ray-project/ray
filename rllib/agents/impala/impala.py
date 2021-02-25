@@ -116,9 +116,10 @@ class OverrideDefaultResourceRequest:
                 # between aggregation workers and the learner (driver).
                 # Aggregation workers tree-aggregate experiences collected
                 # from RolloutWorkers (n rollout workers map to m
-                # aggregation workers, where m < n).
+                # aggregation workers, where m < n) and always use 1 CPU
+                # each.
                 "CPU": cf["num_cpus_for_driver"] +
-                cf["num_cpus_per_worker"] * cf["num_aggregation_workers"],
+                cf["num_aggregation_workers"],
                 "GPU": cf["num_gpus"]
             }] + [
                 {

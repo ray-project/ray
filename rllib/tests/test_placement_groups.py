@@ -115,6 +115,25 @@ class TestPlacementGroups(unittest.TestCase):
             verbose=2,
         )
 
+    def test_default_resource_request_plus_manual_leads_to_error(self):
+        config = DEFAULT_CONFIG.copy()
+        config["model"]["fcnet_hiddens"] = [10]
+        config["num_workers"] = 0
+        config["env"] = "CartPole-v0"
+
+        try:
+            tune.run(
+                "PG",
+                config=config,
+                stop={"training_iteration": 2},
+                resources_per_trial=PlacementGroupFactory([{
+                    "CPU": 1
+                }]),
+                verbose=2,
+            )
+        except ValueError as e:
+            assert "have been automatically set to" in e.args[0]
+
 
 if __name__ == "__main__":
     import pytest

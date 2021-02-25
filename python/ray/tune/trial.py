@@ -1,4 +1,3 @@
-from collections import defaultdict
 from typing import Callable, Dict, Sequence, Union
 import json
 
@@ -225,6 +224,16 @@ class Trial:
         if trainable_cls:
             default_resources = trainable_cls.default_resource_request(
                 self.config)
+
+            # If Trainable returns resources, do not allow manual overrid via
+            # `resources_per_trial` by the user.
+            if default_resources and (resources or placement_group_factory):
+                raise ValueError(
+                    "Resources for {} have been automatically set to {} "
+                    "by its `default_resource_request()` method. Please "
+                    "clear the `resources_per_trial` option.".format(
+                        trainable_cls, default_resources))
+
             # New way: Trainable returns a PlacementGroupFactory object.
             if isinstance(default_resources, PlacementGroupFactory):
                 placement_group_factory = default_resources
@@ -234,42 +243,11 @@ class Trial:
                 placement_group_factory = None
                 resources = default_resources
 
-            TODO: continue
-
-            if default_resources:
-                if resources:
-                    raise ValueError(
-                        "Resources for {} have been automatically set to {} "
-                        "by its `default_resource_request()` method. Please "
-                        "clear the `resources_per_trial` option.".format(
-                            trainable_cls, default_resources))
-                resources = default_resources
         self.location = Location()
 
         self.resources = resources or Resources(cpu=1, gpu=0)
-        # `resources` is a PlacementGroupFactory -> Generate `Resources` object
-        # from it by counting all devices.
         if isinstance(resources, PlacementGroupFactory):
-            # Allow users to manually override Trainable's
-            # `default_resource_request` with the given placement group factory.
-            self.placement_group_factory = \
-                placement_group_factory or resources
-            # Count
-            #counts = defaultdict(int)
-            #for bundle in self.placement_group_factory._bundles:
-            #    for device, c in bundle.items():
-            #        counts[device.lower()] += c
-            #custom_resources = {
-            #    k: c
-            #    for k, c in counts.items() if k not in ["cpu", "gpu"]
-            #}
-            #self.resources = Resources(
-            #    cpu=counts["cpu"],
-            #    gpu=counts["gpu"],
-            #    custom_resources=custom_resources,
-            #    has_placement_group=True,
-            #)
-            #self.resources = None
+            self.placement_group_factory = resources
         else:
             self.placement_group_factory = placement_group_factory
 
