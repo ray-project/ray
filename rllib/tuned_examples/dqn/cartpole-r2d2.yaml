@@ -12,7 +12,7 @@ cartpole-r2d2:
         burn_in: 20
         zero_init_states: true
         dueling: false
-        lr: 5e-4
+        lr: 0.0005
         # Give some more time to explore.
         exploration_config:
           epsilon_timesteps: 100000
