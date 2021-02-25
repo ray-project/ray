@@ -246,10 +246,7 @@ class Trial:
         self.location = Location()
 
         self.resources = resources or Resources(cpu=1, gpu=0)
-        if isinstance(resources, PlacementGroupFactory):
-            self.placement_group_factory = resources
-        else:
-            self.placement_group_factory = placement_group_factory
+        self.placement_group_factory = placement_group_factory
 
         self._setup_resources()
 
