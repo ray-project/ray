@@ -16,8 +16,8 @@ Performance and known benchmarks
 --------------------------------
 We are continuously benchmarking Ray Serve. The metrics we care about are latency, throughput, and scalability. We can confidently say:
 
-- Ray Serve’s latency overhead is single digit milliseconds, often times just 1-2 milliseconds.
-- For throughput, Serve achieves about 3-4k queries per second on a single machine (8 cores) using 1 http proxy and 8 backend replicas performing noop.
+- Ray Serve’s latency overhead is single digit milliseconds, around 1-2 milliseconds on average.
+- For throughput, Serve achieves about 3-4k queries per second on a single machine (8 cores) using 1 http proxy and 8 backend replicas performing noop requests.
 - It is horizontally scalable so you can add more machines to increase the overall throughput. Ray Serve is built on top of Ray, 
   so its scalability is bounded by Ray’s scalability. Please check out Ray’s `scalability envelope <https://github.com/ray-project/ray/blob/master/benchmarks/README.md>`_
   to learn more about the maximum number of nodes and other limitations.
@@ -25,12 +25,12 @@ We are continuously benchmarking Ray Serve. The metrics we care about are latenc
 You can check out our `microbenchmark instruction <https://github.com/ray-project/ray/blob/master/python/ray/serve/benchmarks/README.md>`_
 to benchmark on your hardware.
 
-Debug performance Issue
+Debugging performance issues
 -----------------------
-A typical performance issue in Serve has the symptom of high client call latency and low throughput.
+The performance issue you're most likely to encounter is high latency and/or low throughput for requests.
 This shows the system is processing fewer queries than desired! 
 
-If you have set up :ref:`monitoring <serve-monitoring>` with Ray and Ray Serve, you will observe that
+If you have set up :ref:`monitoring <serve-monitoring>` with Ray and Ray Serve, you will likely observe that
 ``serve_num_router_requests`` is constant while your load increases
 ``serve_backend_queuing_latency_ms`` is spiking up as queries queue up in the background
 
@@ -69,7 +69,7 @@ hitting the same queuing issue mentioned above, you might want to increase
 proper backpressure. You can increase the value in the :mod:`backend config <ray.serve.config.BackendConfig>`
 to allow more coroutines running in the same replica.
 
-Scale HTTP servers
+Scaling HTTP servers
 ^^^^^^^^^^^^^^^^^^
 Sometimes it’s not about your code: Serve’s HTTP server can become the bottleneck.
 Serve only starts a single HTTP server on the Ray head node by default. 
@@ -78,4 +78,3 @@ If your workload exceeds this number, you might want to consider starting one
 HTTP server per Ray node to spread the load by ``serve.start(http_options={“location”: “EveryNode”})``.
 This configuration tells Serve to spawn one HTTP server per node. 
 You should put an external load balancer in front of it.
-
