@@ -92,7 +92,7 @@ def get_filter_config(shape):
                                  or shape[1:] == [240, 320]):
         return filters_240x320x
     elif len(shape) in [2, 3] and (shape[:2] == [84, 84]
-                                 or shape[1:] == [84, 84]):
+                                   or shape[1:] == [84, 84]):
         return filters_84x84
     elif len(shape) in [2, 3] and (shape[:2] == [42, 42]
                                    or shape[1:] == [42, 42]):

@@ -590,6 +590,7 @@ class Trainer(Trainable):
                         pass
                     try:
                         import vizdoomgym
+                        vizdoomgym.__name__  # trick LINTer.
                     except (ModuleNotFoundError, ImportError):
                         pass
                     # Try creating a gym env. If this fails we can output a
@@ -599,12 +600,12 @@ class Trainer(Trainable):
                     except gym.error.Error:
                         raise ValueError(
                             "The env string you provided ({}) is a) not a "
-                            "known gym/PyBullet/VizdoomEnv environment specifier "
-                            "or b) not registered! To register your custom envs, "
-                            "do `from ray import tune; tune.register('[name]',"
-                            " lambda cfg: [return actual "
-                            "env from here using cfg])`. Then you can use "
-                            "[name] as your config['env'].".format(env))
+                            "known gym/PyBullet/VizdoomEnv environment "
+                            "specifier or b) not registered! To register your "
+                            "custom envs, do `from ray import tune; "
+                            "tune.register('[name]', lambda cfg: [return "
+                            "actual env from here using cfg])`. Then you can "
+                            "use [name] as your config['env'].".format(env))
 
                 self.env_creator = _creator
         else:

@@ -18,7 +18,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    ray.init(num_cpus=args.num_cpus or None, local_mode=True)#TODO
+    ray.init(num_cpus=args.num_cpus or None)
 
     config = {
         "env": "VizdoomBasic-v0",
@@ -37,8 +37,7 @@ if __name__ == "__main__":
         "framework": args.framework,
         # Run with tracing enabled for tfe/tf2.
         "eager_tracing": args.framework in ["tfe", "tf2"],
-
-        "num_workers": 0,#TODO
+        "num_workers": 2,
     }
 
     stop = {

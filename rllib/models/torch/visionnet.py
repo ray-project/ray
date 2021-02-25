@@ -229,7 +229,6 @@ class VisionNetwork(TorchModelV2, nn.Module):
         if not self.traj_view_framestacking:
             self._features = self._features.permute(0, 3, 1, 2)
         conv_out = self._convs(self._features)
-        print("SHAPE={}".format(conv_out.shape))
         # Store features to save forward pass when getting value_function out.
         if not self._value_branch_separate:
             self._features = conv_out

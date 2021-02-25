@@ -323,7 +323,7 @@ class AttentionWrapper(TorchModelV2, nn.Module):
 
         self._features, memory_outs = self.gtrxl(input_dict, state, seq_lens)
         model_out = self._logits_branch(self._features)
-        return model_out, [torch.squeeze(m, 0) for m in memory_outs]
+        return model_out, memory_outs
 
     @override(ModelV2)
     def get_initial_state(self) -> Union[List[np.ndarray], List[TensorType]]:
