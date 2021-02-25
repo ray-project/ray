@@ -246,9 +246,6 @@ cdef class JobID(BaseID):
     def is_nil(self):
         return self.data.IsNil()
 
-    def is_submitted_from_dashboard(self):
-        return self.data.IsSubmittedFromDashboard()
-
     cdef size_t hash(self):
         return self.data.Hash()
 

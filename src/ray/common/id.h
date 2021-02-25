@@ -116,8 +116,6 @@ class JobID : public BaseID<JobID> {
 
   JobID() : BaseID() {}
 
-  bool IsSubmittedFromDashboard() const { return *((uint32_t *)Data()) & (1 << 31); }
-
   MSGPACK_DEFINE(id_);
 
  private:

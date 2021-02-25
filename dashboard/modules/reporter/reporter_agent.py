@@ -237,9 +237,9 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
         # dashboard agent is a child of the raylet process.
         parent = curr_proc.parent()
         if parent is None or parent.pid == 1:
-            return []
+            return {}
         if parent.status() == psutil.STATUS_ZOMBIE:
-            return []
+            return {}
 
         return parent.as_dict(attrs=[
             "pid",
@@ -395,7 +395,7 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
             tags={"ip": ip})
 
         raylet_stats = self._get_raylet_stats()
-        raylet_pid = str(raylet_stats["pid"])
+        raylet_pid = str(raylet_stats["pid"] if raylet_stats else 0)
         # -- raylet CPU --
         raylet_cpu_usage = float(raylet_stats["cpu_percent"]) * 100
         raylet_cpu_record = Record(

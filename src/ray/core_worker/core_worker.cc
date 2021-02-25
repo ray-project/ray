@@ -1411,7 +1411,7 @@ void CoreWorker::SubmitTask(const RayFunction &function,
   auto constrained_resources = AddPlacementGroupConstraint(
       task_options.resources, placement_options.first, placement_options.second);
   const std::unordered_map<std::string, double> required_resources;
-  auto task_resource = job_id.IsSubmittedFromDashboard()
+  auto task_resource = job_config_->is_submitted_from_dashboard()
                            ? WithJobResource(job_id, constrained_resources)
                            : constrained_resources;
   auto task_name = task_options.name.empty()
@@ -1476,7 +1476,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
   auto new_resource = AddPlacementGroupConstraint(
       actor_creation_options.resources, actor_creation_options.placement_options.first,
       actor_creation_options.placement_options.second);
-  if (job_id.IsSubmittedFromDashboard()) {
+  if (job_config_->is_submitted_from_dashboard()) {
     new_resource = WithJobResource(job_id, new_resource);
     new_placement_resources = WithJobResource(job_id, new_placement_resources);
   }

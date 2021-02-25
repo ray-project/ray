@@ -414,7 +414,7 @@ void NodeManager::HandleJobSubmitted(const JobID &job_id, const JobTableData &jo
     return;
   }
 
-  if (job_id.IsSubmittedFromDashboard()) {
+  if (job_data.config().is_submitted_from_dashboard()) {
     auto job_table_data = std::make_shared<rpc::JobTableData>(job_data);
     const bool start_driver = job_data.raylet_id() == self_node_id_.Binary();
     agent_manager_->InitializeJobEnv(job_table_data, start_driver);
@@ -434,7 +434,7 @@ void NodeManager::HandleJobStarted(const JobID &job_id, const JobTableData &job_
     return;
   }
 
-  if (job_id.IsSubmittedFromDashboard()) {
+  if (job_data.config().is_submitted_from_dashboard()) {
     // Maybe this is a new node and has missed the `JobSubmitted` event.
     auto job_table_data = std::make_shared<rpc::JobTableData>(job_data);
     const bool start_driver = job_data.raylet_id() == self_node_id_.Binary();
@@ -474,7 +474,7 @@ void NodeManager::HandleJobFinished(const JobID &job_id, const JobTableData &job
     }
   }
 
-  if (job_id.IsSubmittedFromDashboard()) {
+  if (job_data.config().is_submitted_from_dashboard()) {
     // Clean job env.
     agent_manager_->ClearJobEnv(job_id);
   }
@@ -1155,7 +1155,9 @@ void NodeManager::ProcessRegisterClientRequestMessage(
     // Register the new driver.
     RAY_CHECK(pid >= 0);
     worker->SetProcess(Process::FromPid(pid));
-    if (job_id.IsSubmittedFromDashboard()) {
+    rpc::JobConfig job_config;
+    job_config.ParseFromString(message->serialized_job_config()->str());
+    if (job_config.is_submitted_from_dashboard()) {
       // Invoke this to avoid agent manager misreporting some errors.
       agent_manager_->OnDriverRegistered(job_id, pid);
       auto job_data = job_manager_.GetJobData(job_id);
@@ -1171,13 +1173,11 @@ void NodeManager::ProcessRegisterClientRequestMessage(
     // Compute a dummy driver task id from a given driver.
     const TaskID driver_task_id = TaskID::ComputeDriverTaskId(worker_id);
     worker->AssignTaskId(driver_task_id);
-    rpc::JobConfig job_config;
-    job_config.ParseFromString(message->serialized_job_config()->str());
     Status status = worker_pool_.RegisterDriver(worker, job_config, send_reply_callback);
     if (status.ok()) {
       local_queues_.AddDriverTaskId(driver_task_id);
       std::shared_ptr<rpc::JobTableData> job_data_ptr;
-      if (job_id.IsSubmittedFromDashboard()) {
+      if (job_config.is_submitted_from_dashboard()) {
         job_data_ptr = job_manager_.GetJobData(job_id);
         RAY_CHECK(job_data_ptr != nullptr);
         job_data_ptr->set_raylet_id(self_node_id_.Binary());

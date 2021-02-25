@@ -47,6 +47,7 @@ public class RayConfig {
   public int nodeManagerPort;
 
   public final List<String> codeSearchPath;
+  public final boolean isSubmittedFromDashboard = false;
 
   public final List<String> headArgs;
 
@@ -158,6 +159,10 @@ public class RayConfig {
       codeSearchPathString = System.getProperty("java.class.path");
     }
     codeSearchPath = Arrays.asList(codeSearchPathString.split(":"));
+
+    if (config.hasPath("ray.job.is-submitted-from-dashboard")) {
+      isSubmittedFromDashboard = config.getBoolean("ray.job.is-submitted-from-dashboard");
+    }
 
     numWorkersPerProcess = config.getInt("ray.job.num-java-workers-per-process");
 

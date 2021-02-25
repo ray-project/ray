@@ -466,6 +466,7 @@ ray.shutdown()
             "jvm_options": COMMON_JVM_OPTIONS + self._job_info.jvm_options(),
             "code_search_path": [job_package_dir],
             "python_worker_executable": python_executable,
+            "is_submitted_from_dashboard": True,
         }
 
         # User may set the config in ray.conf, in this case,

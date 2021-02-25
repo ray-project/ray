@@ -54,10 +54,6 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         counter_str = await self._dashboard_head.aioredis_client.incr(
             job_consts.REDIS_KEY_JOB_COUNTER)
         job_id_int = int(counter_str)
-        if job_id_int & (1 << 31):
-            raise Exception(
-                f"Job id overflow: {ray.JobID.from_int(job_id_int)}")
-        job_id_int |= (1 << 31)
         return ray.JobID.from_int(job_id_int)
 
     @routes.post("/jobs")

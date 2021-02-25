@@ -26,6 +26,7 @@ class JobConfig:
             jvm_options=None,
             code_search_path=None,
             python_worker_executable=None,
+            is_submitted_from_dashboard=False,
     ):
         if worker_env is None:
             self.worker_env = dict()
@@ -42,6 +43,7 @@ class JobConfig:
         else:
             self.code_search_path = code_search_path
         self.python_worker_executable = python_worker_executable or ""
+        self.is_submitted_from_dashboard = is_submitted_from_dashboard
 
     def serialize(self):
         job_config = ray.gcs_utils.JobConfig()
@@ -53,4 +55,6 @@ class JobConfig:
         job_config.jvm_options.extend(self.jvm_options)
         job_config.code_search_path.extend(self.code_search_path)
         job_config.python_worker_executable = self.python_worker_executable
+        job_config.is_submitted_from_dashboard = \
+            self.is_submitted_from_dashboard
         return job_config.SerializeToString()

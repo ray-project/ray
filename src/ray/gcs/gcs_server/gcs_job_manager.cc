@@ -37,7 +37,7 @@ void GcsJobManager::HandleAddJob(const rpc::AddJobRequest &request,
                 << request.data().config().DebugString();
 
   std::shared_ptr<JobTableData> job_table_data;
-  if (job_id.IsSubmittedFromDashboard()) {
+  if (request.data().config().is_submitted_from_dashboard()) {
     auto iter = jobs_.find(job_id);
     if (iter == jobs_.end()) {
       RAY_LOG(WARNING) << "Failed to add job " << job_id
@@ -241,6 +241,7 @@ Status GcsJobManager::SubmitJob(const ray::rpc::SubmitJobRequest &request,
   job_table_data->set_language(request.language());
   job_table_data->set_job_payload(request.job_payload());
   job_table_data->set_state(rpc::JobTableData::SUBMITTED);
+  job_table_data->mutable_config()->set_is_submitted_from_dashboard(true);
 
   auto driver_client_id = SelectDriver(*job_table_data);
   if (driver_client_id.IsNil()) {

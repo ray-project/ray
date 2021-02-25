@@ -245,7 +245,7 @@ Process WorkerPool::StartWorkerProcess(
 
   std::string cwd;
   if (job_config) {
-    if (language == Language::PYTHON && job_id.IsSubmittedFromDashboard()) {
+    if (language == Language::PYTHON && job_config->is_submitted_from_dashboard()) {
       // Use python worker executable from job config to make Python worker
       // run in virtualenv.
       worker_command_args[0] = job_config->python_worker_executable();
