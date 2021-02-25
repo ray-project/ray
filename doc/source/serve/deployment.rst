@@ -214,7 +214,7 @@ See the `Ray Dashboard documentation <../ray-dashboard.html>`__ for a detailed o
 
 Below is an example of what the Ray Dashboard might look like for a Serve deployment:
 
-.. image:: dashboard.png
+.. image:: image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/dashboard/serve-dashboard.png
     :align: center
 
 Here you can see the Serve controller actor, an HTTP proxy actor, and all of the replicas for each Serve backend in the deployment.
