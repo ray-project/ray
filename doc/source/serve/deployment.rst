@@ -218,7 +218,7 @@ Below is an example of what the Ray Dashboard might look like for a Serve deploy
     :align: center
 
 Here you can see the Serve controller actor, an HTTP proxy actor, and all of the replicas for each Serve backend in the deployment.
-To learn about the function of the controller and proxy actors, see `Ray Serve Architecture <architecture.html>`__.
+To learn about the function of the controller and proxy actors, see the `Serve Architecture page <architecture.html>`__.
 In this example pictured above, we have a single-node cluster with a backend class called Counter with ``num_replicas=2`` in its :class:`~ray.serve.BackendConfig`.
 
 Metrics
