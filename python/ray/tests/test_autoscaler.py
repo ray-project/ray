@@ -264,6 +264,55 @@ SMALL_CLUSTER = {
     "worker_start_ray_commands": ["start_ray_worker"],
 }
 
+MOCK_DEFAULT_CONFIG = {
+    "cluster_name": "default",
+    "max_workers": 2,
+    "upscaling_speed": 1.0,
+    "idle_timeout_minutes": 5,
+    "provider": {
+        "type": "mock",
+        "region": "us-east-1",
+        "availability_zone": "us-east-1a",
+    },
+    "docker": {
+        "image": "example",
+        "container_name": "mock",
+    },
+    "auth": {
+        "ssh_user": "ubuntu",
+        "ssh_private_key": os.devnull,
+    },
+    "available_node_types": {
+        "ray.head.default": {
+            "min_workers": 0,
+            "max_workers": 0,
+            "resources": {},
+            "node_config": {
+                "head_default_prop": 4
+            }
+        },
+        "ray.worker.small": {
+            "min_workers": 0,
+            "max_workers": 2,
+            "resources": {},
+            "node_config": {
+                "worker_default_prop": 7
+            }
+        }
+    },
+    "head_node_type": "ray.head.default",
+    "head_node": {},
+    "worker_nodes": {},
+    "file_mounts": {},
+    "cluster_synced_files": [],
+    "initialization_commands": [],
+    "setup_commands": [],
+    "head_setup_commands": [],
+    "worker_setup_commands": [],
+    "head_start_ray_commands": [],
+    "worker_start_ray_commands": [],
+}
+
 
 class LoadMetricsTest(unittest.TestCase):
     def testHeartbeat(self):
