@@ -99,3 +99,6 @@ head_start_ray_commands:
 worker_start_ray_commands:
     - ray stop
     - ray start --address=$RAY_HEAD_IP:6379
+
+head_node: {}
+worker_nodes: {}

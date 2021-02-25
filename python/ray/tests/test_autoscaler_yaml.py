@@ -15,6 +15,7 @@ from ray.autoscaler._private.util import prepare_config, validate_config,\
 from ray.autoscaler._private.providers import _NODE_PROVIDERS
 from ray.autoscaler._private.kubernetes.node_provider import\
     KubernetesNodeProvider
+from ray.autoscaler.tags import NODE_TYPE_LEGACY_HEAD, NODE_TYPE_LEGACY_WORKER
 
 from ray.test_utils import load_test_config, recursive_fnmatch
 
@@ -234,8 +235,6 @@ class AutoscalingConfigTest(unittest.TestCase):
         except Exception:
             self.fail("Failed to validate config with security group name!")
 
-
-"""
     def testMaxWorkerDefault(self):
         # Load config, call prepare config, check that default max_workers
         # is filled correctly for node types that don't specify it.
@@ -283,17 +282,6 @@ class AutoscalingConfigTest(unittest.TestCase):
             prepared_node_types["worker_node_max_unspecified"]["max_workers"]\
             == 2
 
-    def testGetDefaultHeadWorker(self):
-        providers = ["aws", "gcp", "azure"]
-        for provider in providers:
-            path = os.path.join(RAY_PATH, "autoscaler", provider,
-                                "defaults.yaml")
-            default_config = yaml.safe_load(open(path).read())
-            assert get_default_head(default_config) == default_config[
-                "available_node_types"]["ray.head.default"]["node_config"]
-            assert get_default_workers(default_config) == default_config[
-                "available_node_types"]["ray.worker.small"]["node_config"]
-
     def testFillEdgeLegacyConfigs(self):
         # Test edge cases: legacy configs which specify workers but not head
         # or vice-versa.
@@ -301,20 +289,32 @@ class AutoscalingConfigTest(unittest.TestCase):
         aws_defaults = _get_default_config(no_head["provider"])
         head_prepared = prepare_config(no_head)
         assert head_prepared["available_node_types"][
-            "ray-legacy-head-node-type"]["node_config"] ==\
-            head_prepared["head_node"] ==\
+            "ray.head.default"]["node_config"] ==\
             aws_defaults["available_node_types"]["ray.head.default"][
                 "node_config"]
+        assert head_prepared["head_node"] == {}
+        # Custom worker config preserved
+        assert head_prepared["available_node_types"][
+            "ray-legacy-worker-node-type"]["node_config"] == head_prepared[
+                "worker_nodes"] == {"foo": "bar"}
 
         no_workers = load_test_config("test_no_workers.yaml")
         workers_prepared = prepare_config(no_workers)
         assert workers_prepared["available_node_types"][
-            "ray-legacy-worker-node-type"]["node_config"] ==\
-            workers_prepared["worker_nodes"] ==\
+            "ray.worker.small"]["node_config"] ==\
             aws_defaults["available_node_types"]["ray.worker.small"][
                 "node_config"]
+        assert workers_prepared["worker_nodes"] == {}
+        # Custom head config preserved
+        assert workers_prepared["available_node_types"][
+            "ray-legacy-head-node-type"]["node_config"] == workers_prepared[
+                "head_node"] == {"baz": "qux"}
 
     def testExampleFull(self):
+        """
+        Test that example-full yamls are unmodified by prepared_config,
+        except possibly by having setup_commands merged.
+        """
         providers = ["aws", "gcp", "azure"]
         for provider in providers:
             path = os.path.join(RAY_PATH, "autoscaler", provider,
@@ -334,16 +334,24 @@ class AutoscalingConfigTest(unittest.TestCase):
             # custom head and workers
             legacy_config["head_node"] = {"blahblah": 0}
             legacy_config["worker_nodes"] = {"halbhalhb": 0}
-            defaults = _get_default_config(legacy_config["provider"])
-
-            legacy_config = rewrite_legacy_yaml_to_available_node_types(
-                legacy_config)
-            defaults = rewrite_legacy_yaml_to_available_node_types(defaults)
-
             legacy_config_copy = copy.deepcopy(legacy_config)
-            filled_legacy_config = fillout_defaults(legacy_config_copy)
-            assert legacy_config == filled_legacy_config
-"""
+            prepared_legacy = prepare_config(legacy_config_copy)
+            assert prepared_legacy["available_node_types"][
+                NODE_TYPE_LEGACY_HEAD]["max_workers"] == 0
+            assert prepared_legacy["available_node_types"][
+                NODE_TYPE_LEGACY_HEAD]["min_workers"] == 0
+            assert prepared_legacy["available_node_types"][
+                NODE_TYPE_LEGACY_HEAD]["node_config"] == legacy_config[
+                    "head_node"]
+
+            assert prepared_legacy["available_node_types"][
+                NODE_TYPE_LEGACY_WORKER]["max_workers"] == 2
+            assert prepared_legacy["available_node_types"][
+                NODE_TYPE_LEGACY_WORKER]["min_workers"] == 0
+            assert prepared_legacy["available_node_types"][
+                NODE_TYPE_LEGACY_WORKER]["node_config"] == legacy_config[
+                    "worker_nodes"]
+
 
 if __name__ == "__main__":
     import pytest
