@@ -109,7 +109,8 @@ def r2d2_loss(policy: Policy, model, _,
     # Q scores for actions which we know were selected in the given state.
     one_hot_selection = tf.one_hot(actions, policy.action_space.n)
     q_selected = tf.reduce_sum(
-        tf.where(q > tf.float32.min, q, 0.0) * one_hot_selection, axis=1)
+        tf.where(q > tf.float32.min, q, tf.zeros_like(q)) * one_hot_selection,
+        axis=1)
 
     if config["double_q"]:
         best_actions = tf.argmax(q, axis=1)
@@ -118,8 +119,8 @@ def r2d2_loss(policy: Policy, model, _,
 
     best_actions_one_hot = tf.one_hot(best_actions, policy.action_space.n)
     q_target_best = tf.reduce_sum(
-        tf.where(q_target > tf.float32.min, q_target, 0.0) *
-        best_actions_one_hot,
+        tf.where(q_target > tf.float32.min, q_target, tf.zeros_like(q_target))
+        * best_actions_one_hot,
         axis=1)
 
     if config["num_atoms"] > 1:
