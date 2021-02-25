@@ -113,9 +113,8 @@ class LocalObjectManager {
                                  const NodeID &node_id,
                                  std::function<void(const ray::Status &)> callback);
 
-  /// Clear any freed objects. This will trigger the callback for freed
-  /// objects.
-  void FlushFreeObjects();
+  /// Try to clear any objects that have been freed.
+  void FlushFreeObjectsIfNeeded(int64_t now_ms);
 
   /// Judge if objects are deletable from pending_delete_queue and delete them if
   /// necessary.
@@ -167,6 +166,10 @@ class LocalObjectManager {
 
   /// Release an object that has been freed by its owner.
   void ReleaseFreedObject(const ObjectID &object_id);
+
+  /// Clear any freed objects. This will trigger the callback for freed
+  /// objects.
+  void FlushFreeObjects();
 
   // A callback for unpinning spilled objects. This should be invoked after the object
   // has been spilled and after the object directory has been sent the spilled URL.

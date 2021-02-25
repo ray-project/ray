@@ -22,12 +22,10 @@ namespace gcs {
 GcsResourceManager::GcsResourceManager(
     boost::asio::io_service &main_io_service, std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
     std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage)
-    : periodical_runner_(main_io_service),
+    : resource_timer_(main_io_service),
       gcs_pub_sub_(gcs_pub_sub),
       gcs_table_storage_(gcs_table_storage) {
-  periodical_runner_.RunFnPeriodically(
-      [this] { SendBatchedResourceUsage(); },
-      RayConfig::instance().raylet_report_resources_period_milliseconds());
+  SendBatchedResourceUsage();
 }
 
 void GcsResourceManager::HandleGetResources(const rpc::GetResourcesRequest &request,
@@ -366,6 +364,20 @@ void GcsResourceManager::SendBatchedResourceUsage() {
                                        batch->SerializeAsString(), nullptr));
     resources_buffer_.clear();
   }
+
+  auto resources_period = boost::posix_time::milliseconds(
+      RayConfig::instance().raylet_report_resources_period_milliseconds());
+  resource_timer_.expires_from_now(resources_period);
+  resource_timer_.async_wait([this](const boost::system::error_code &error) {
+    if (error == boost::asio::error::operation_aborted) {
+      // `operation_aborted` is set when `resource_timer_` is canceled or destroyed.
+      // The Monitor lifetime may be short than the object who use it. (e.g. gcs_server)
+      return;
+    }
+    RAY_CHECK(!error) << "Sending batched resource usage failed with error: "
+                      << error.message();
+    SendBatchedResourceUsage();
+  });
 }
 
 void GcsResourceManager::UpdatePlacementGroupLoad(
