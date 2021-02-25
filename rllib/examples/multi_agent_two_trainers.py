@@ -22,8 +22,6 @@ from ray.tune.registry import register_env
 parser = argparse.ArgumentParser()
 # Use torch for both policies.
 parser.add_argument("--torch", action="store_true")
-# Mix PPO=tf and DQN=torch if set.
-parser.add_argument("--mixed-torch-tf", action="store_true")
 parser.add_argument("--as-test", action="store_true")
 parser.add_argument("--stop-iters", type=int, default=20)
 parser.add_argument("--stop-reward", type=float, default=50)
@@ -31,8 +29,6 @@ parser.add_argument("--stop-timesteps", type=int, default=100000)
 
 if __name__ == "__main__":
     args = parser.parse_args()
-    assert not (args.torch and args.mixed_torch_tf),\
-        "Use either --torch or --mixed-torch-tf, not both!"
 
     ray.init()
 
@@ -48,8 +44,8 @@ if __name__ == "__main__":
     policies = {
         "ppo_policy": (PPOTorchPolicy if args.torch else PPOTFPolicy,
                        obs_space, act_space, {}),
-        "dqn_policy": (DQNTorchPolicy if args.torch or args.mixed_torch_tf else
-                       DQNTFPolicy, obs_space, act_space, {}),
+        "dqn_policy": (DQNTorchPolicy if args.torch else DQNTFPolicy,
+                       obs_space, act_space, {}),
     }
 
     def policy_mapping_fn(agent_id):
@@ -87,7 +83,7 @@ if __name__ == "__main__":
             "n_step": 3,
             # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
             "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
-            "framework": "torch" if args.torch or args.mixed_torch_tf else "tf"
+            "framework": "torch" if args.torch else "tf"
         })
 
     # You should see both the printed X and Y approach 200 as this trains:
