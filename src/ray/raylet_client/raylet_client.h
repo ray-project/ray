@@ -142,7 +142,8 @@ class DependencyWaiterInterface {
 /// Inteface for getting resource reports.
 class ResourceRequestInterface {
  public:
-  virtual void RequestResourceReport(const rpc::ClientCallback<rpc::RequestResourceReportReply> &callback) = 0;
+  virtual void RequestResourceReport(
+      const rpc::ClientCallback<rpc::RequestResourceReportReply> &callback) = 0;
 
   virtual ~ResourceRequestInterface(){};
 };
@@ -150,8 +151,8 @@ class ResourceRequestInterface {
 class RayletClientInterface : public PinObjectsInterface,
                               public WorkerLeaseInterface,
                               public DependencyWaiterInterface,
-  public ResourceReserveInterface,
-  public ResourceRequestInterface {
+                              public ResourceReserveInterface,
+                              public ResourceRequestInterface {
  public:
   virtual ~RayletClientInterface(){};
 };
@@ -400,7 +401,8 @@ class RayletClient : public RayletClientInterface {
 
   void GlobalGC(const rpc::ClientCallback<rpc::GlobalGCReply> &callback);
 
-  void RequestResourceReport(const rpc::ClientCallback<rpc::RequestResourceReportReply> &callback);
+  void RequestResourceReport(
+      const rpc::ClientCallback<rpc::RequestResourceReportReply> &callback);
 
   // Subscribe to receive notification on plasma object
   void SubscribeToPlasma(const ObjectID &object_id, const rpc::Address &owner_address);

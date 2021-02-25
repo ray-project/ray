@@ -240,8 +240,8 @@ void GcsResourceManager::HandleGetAllResourceUsage(
   ++counts_[CountType::GET_ALL_RESOURCE_USAGE_REQUEST];
 }
 
-void GcsResourceManager::UpdateNodeResourceUsage(
-    const NodeID node_id, const rpc::ResourcesData &resources) {
+void GcsResourceManager::UpdateNodeResourceUsage(const NodeID node_id,
+                                                 const rpc::ResourcesData &resources) {
   auto iter = node_resource_usages_.find(node_id);
   if (iter == node_resource_usages_.end()) {
     auto resources_data = std::make_shared<rpc::ResourcesData>();
@@ -252,14 +252,12 @@ void GcsResourceManager::UpdateNodeResourceUsage(
       (*iter->second.mutable_resources_total()) = resources.resources_total();
     }
     if (resources.resources_available_changed()) {
-      (*iter->second.mutable_resources_available()) =
-          resources.resources_available();
+      (*iter->second.mutable_resources_available()) = resources.resources_available();
     }
     if (resources.resource_load_changed()) {
       (*iter->second.mutable_resource_load()) = resources.resource_load();
     }
-    (*iter->second.mutable_resource_load_by_shape()) =
-        resources.resource_load_by_shape();
+    (*iter->second.mutable_resource_load_by_shape()) = resources.resource_load_by_shape();
   }
 }
 

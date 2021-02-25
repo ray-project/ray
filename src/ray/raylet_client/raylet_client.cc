@@ -417,7 +417,8 @@ void raylet::RayletClient::GlobalGC(
   grpc_client_->GlobalGC(request, callback);
 }
 
-void raylet::RayletClient::RequestResourceReport(const rpc::ClientCallback<rpc::RequestResourceReportReply> &callback) {
+void raylet::RayletClient::RequestResourceReport(
+    const rpc::ClientCallback<rpc::RequestResourceReportReply> &callback) {
   rpc::RequestResourceReportRequest request;
   grpc_client_->RequestResourceReport(request, callback);
 }

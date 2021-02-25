@@ -342,7 +342,8 @@ void GcsServer::InstallEventListeners() {
 }
 
 void GcsServer::InitResourceReportPolling() {
-  gcs_resource_report_poller_ = std::unique_ptr<GcsResourceReportPoller>(new GcsResourceReportPoller(gcs_resource_manager_, raylet_client_pool_));
+  gcs_resource_report_poller_ = std::unique_ptr<GcsResourceReportPoller>(
+      new GcsResourceReportPoller(gcs_resource_manager_, raylet_client_pool_));
   gcs_resource_report_poller_->Start();
 }
 
