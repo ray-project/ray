@@ -1214,20 +1214,28 @@ TEST_F(ClusterResourceSchedulerTest, TestForceSpillback) {
   // No feasible nodes.
   int64_t total_violations;
   bool is_infeasible;
+  // Normally we prefer local.
   ASSERT_EQ(resource_scheduler.GetBestSchedulableNode(resource_spec, false,
                                                       /*force_spillback=*/false,
                                                       &total_violations, &is_infeasible),
             "local");
+  // If spillback is forced, we try to spill to remote, but only if there is a
+  // schedulable node.
   ASSERT_EQ(resource_scheduler.GetBestSchedulableNode(resource_spec, false,
                                                       /*force_spillback=*/true,
                                                       &total_violations, &is_infeasible),
             "");
-
-  resource_scheduler.AddOrUpdateNode(std::to_string(50), resource_spec, resource_spec);
+  // Choose a remote node that has the resources available.
+  resource_scheduler.AddOrUpdateNode(std::to_string(50), resource_spec, {});
   ASSERT_EQ(resource_scheduler.GetBestSchedulableNode(resource_spec, false,
                                                       /*force_spillback=*/true,
                                                       &total_violations, &is_infeasible),
-            "50");
+            "");
+  resource_scheduler.AddOrUpdateNode(std::to_string(51), resource_spec, resource_spec);
+  ASSERT_EQ(resource_scheduler.GetBestSchedulableNode(resource_spec, false,
+                                                      /*force_spillback=*/true,
+                                                      &total_violations, &is_infeasible),
+            "51");
 }
 
 }  // namespace ray
