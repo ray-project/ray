@@ -4,8 +4,9 @@ from typing import Dict, List, Tuple
 
 import gym
 import ray
-from ray.rllib.agents.dqn.dqn_tf_policy import (
-    PRIO_WEIGHTS, Q_SCOPE, Q_TARGET_SCOPE, postprocess_nstep_and_prio)
+from ray.rllib.agents.dqn.dqn_tf_policy import (PRIO_WEIGHTS, Q_SCOPE,
+                                                Q_TARGET_SCOPE,
+                                                postprocess_nstep_and_prio)
 from ray.rllib.agents.dqn.dqn_torch_model import DQNTorchModel
 from ray.rllib.agents.dqn.simple_q_torch_policy import TargetNetworkMixin
 from ray.rllib.models.catalog import ModelCatalog
@@ -46,8 +47,8 @@ class QLoss:
 
         if num_atoms > 1:
             # Distributional Q-learning which corresponds to an entropy loss
-            z = torch.range(
-                0.0, num_atoms - 1, dtype=torch.float32).to(rewards.device)
+            z = torch.range(0.0, num_atoms - 1,
+                            dtype=torch.float32).to(rewards.device)
             z = v_min + z * (v_max - v_min) / float(num_atoms - 1)
 
             # (batch_size, 1) * (1, num_atoms) = (batch_size, num_atoms)
@@ -70,10 +71,10 @@ class QLoss:
             u_project = F.one_hot(ub.long(), num_atoms)
             ml_delta = q_probs_tp1_best * (ub - b + floor_equal_ceil)
             mu_delta = q_probs_tp1_best * (b - lb)
-            ml_delta = torch.sum(
-                l_project * torch.unsqueeze(ml_delta, -1), dim=1)
-            mu_delta = torch.sum(
-                u_project * torch.unsqueeze(mu_delta, -1), dim=1)
+            ml_delta = torch.sum(l_project * torch.unsqueeze(ml_delta, -1),
+                                 dim=1)
+            mu_delta = torch.sum(u_project * torch.unsqueeze(mu_delta, -1),
+                                 dim=1)
             m = ml_delta + mu_delta
 
             # Rainbow paper claims that using this cross entropy loss for
@@ -93,8 +94,8 @@ class QLoss:
 
             # compute the error (potentially clipped)
             self.td_error = q_t_selected - q_t_selected_target.detach()
-            self.loss = torch.mean(
-                importance_weights.float() * huber_loss(self.td_error))
+            self.loss = torch.mean(importance_weights.float() *
+                                   huber_loss(self.td_error))
             self.stats = {
                 "mean_q": torch.mean(q_t_selected),
                 "min_q": torch.min(q_t_selected),
@@ -108,7 +109,6 @@ class ComputeTDErrorMixin:
 
     This allows us to prioritize on the worker side.
     """
-
     def __init__(self):
         def compute_td_error(obs_t, act_t, rew_t, obs_tp1, done_mask,
                              importance_weights):
@@ -279,8 +279,8 @@ def build_q_losses(policy: Policy, model, _,
         q_probs_tp1_best = torch.sum(
             q_probs_tp1 * torch.unsqueeze(q_tp1_best_one_hot_selection, -1), 1)
     else:
-        q_tp1_best_one_hot_selection = F.one_hot(
-            torch.argmax(q_tp1, 1), policy.action_space.n)
+        q_tp1_best_one_hot_selection = F.one_hot(torch.argmax(q_tp1, 1),
+                                                 policy.action_space.n)
         q_tp1_best = torch.sum(
             torch.where(q_tp1 > FLOAT_MIN, q_tp1,
                         torch.tensor(0.0, device=policy.device)) *
@@ -288,20 +288,22 @@ def build_q_losses(policy: Policy, model, _,
         q_probs_tp1_best = torch.sum(
             q_probs_tp1 * torch.unsqueeze(q_tp1_best_one_hot_selection, -1), 1)
 
-    policy.q_loss = QLoss(
-        q_t_selected, q_logits_t_selected, q_tp1_best, q_probs_tp1_best,
-        train_batch[PRIO_WEIGHTS], train_batch[SampleBatch.REWARDS],
-        train_batch[SampleBatch.DONES].float(), config["gamma"],
-        config["n_step"], config["num_atoms"], config["v_min"],
-        config["v_max"])
+    policy.q_loss = QLoss(q_t_selected, q_logits_t_selected, q_tp1_best,
+                          q_probs_tp1_best, train_batch[PRIO_WEIGHTS],
+                          train_batch[SampleBatch.REWARDS],
+                          train_batch[SampleBatch.DONES].float(),
+                          config["gamma"], config["n_step"],
+                          config["num_atoms"], config["v_min"],
+                          config["v_max"])
 
     return policy.q_loss.loss
 
 
 def adam_optimizer(policy: Policy,
                    config: TrainerConfigDict) -> "torch.optim.Optimizer":
-    return torch.optim.Adam(
-        policy.q_func_vars, lr=policy.cur_lr, eps=config["adam_epsilon"])
+    return torch.optim.Adam(policy.q_func_vars,
+                            lr=policy.cur_lr,
+                            eps=config["adam_epsilon"])
 
 
 def build_q_stats(policy: Policy, batch) -> Dict[str, TensorType]:
@@ -332,10 +334,11 @@ def compute_q_values(policy: Policy,
                      is_training: bool = False):
     config = policy.config
 
-    model_out, state = model({
-        SampleBatch.CUR_OBS: obs,
-        "is_training": is_training,
-    }, [], None)
+    model_out, state = model(
+        {
+            SampleBatch.CUR_OBS: obs,
+            "is_training": is_training,
+        }, [], None)
 
     if config["num_atoms"] > 1:
         (action_scores, z, support_logits_per_action, logits,
@@ -350,8 +353,8 @@ def compute_q_values(policy: Policy,
             support_logits_per_action_mean = torch.mean(
                 support_logits_per_action, dim=1)
             support_logits_per_action_centered = (
-                support_logits_per_action - torch.unsqueeze(
-                    support_logits_per_action_mean, dim=1))
+                support_logits_per_action -
+                torch.unsqueeze(support_logits_per_action_mean, dim=1))
             support_logits_per_action = torch.unsqueeze(
                 state_score, dim=1) + support_logits_per_action_centered
             support_prob_per_action = nn.functional.softmax(

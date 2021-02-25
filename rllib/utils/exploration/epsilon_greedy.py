@@ -25,7 +25,6 @@ class EpsilonGreedy(Exploration):
     Schedule), it produces a random action (if rand(1) < eps) or
     uses the model-computed one (if rand(1) >= eps).
     """
-
     def __init__(self,
                  action_space,
                  *,
@@ -46,8 +45,9 @@ class EpsilonGreedy(Exploration):
                 to use (instead of constructing one from the given parameters).
         """
         assert framework is not None
-        super().__init__(
-            action_space=action_space, framework=framework, **kwargs)
+        super().__init__(action_space=action_space,
+                         framework=framework,
+                         **kwargs)
 
         self.epsilon_schedule = \
             from_config(Schedule, epsilon_schedule, framework=framework) or \
@@ -58,11 +58,10 @@ class EpsilonGreedy(Exploration):
                 framework=self.framework)
 
         # The current timestep value (tf-var or python int).
-        self.last_timestep = get_variable(
-            np.array(0, np.int64),
-            framework=framework,
-            tf_name="timestep",
-            dtype=np.int64)
+        self.last_timestep = get_variable(np.array(0, np.int64),
+                                          framework=framework,
+                                          tf_name="timestep",
+                                          dtype=np.int64)
 
         # Build the tf-info-op.
         if self.framework in ["tf2", "tf", "tfe"]:
@@ -98,8 +97,8 @@ class EpsilonGreedy(Exploration):
         """
         # TODO: Support MultiActionDistr for tf.
         q_values = action_distribution.inputs
-        epsilon = self.epsilon_schedule(timestep if timestep is not None else
-                                        self.last_timestep)
+        epsilon = self.epsilon_schedule(
+            timestep if timestep is not None else self.last_timestep)
 
         # Get the exploit action as the one with the highest logit value.
         exploit_action = tf.argmax(q_values, axis=1)
@@ -110,20 +109,19 @@ class EpsilonGreedy(Exploration):
         random_valid_action_logits = tf.where(
             tf.equal(q_values, tf.float32.min),
             tf.ones_like(q_values) * tf.float32.min, tf.ones_like(q_values))
-        random_actions = tf.squeeze(
-            tf.random.categorical(random_valid_action_logits, 1), axis=1)
+        random_actions = tf.squeeze(tf.random.categorical(
+            random_valid_action_logits, 1),
+                                    axis=1)
 
         chose_random = tf.random.uniform(
-            tf.stack([batch_size]), minval=0, maxval=1,
-            dtype=tf.float32) < epsilon
+            tf.stack([batch_size
+                      ]), minval=0, maxval=1, dtype=tf.float32) < epsilon
 
-        action = tf.cond(
-            pred=tf.constant(explore, dtype=tf.bool)
-            if isinstance(explore, bool) else explore,
-            true_fn=(
-                lambda: tf.where(chose_random, random_actions, exploit_action)
-            ),
-            false_fn=lambda: exploit_action)
+        action = tf.cond(pred=tf.constant(explore, dtype=tf.bool)
+                         if isinstance(explore, bool) else explore,
+                         true_fn=(lambda: tf.where(
+                             chose_random, random_actions, exploit_action)),
+                         false_fn=lambda: exploit_action)
 
         if self.framework in ["tf2", "tfe"]:
             self.last_timestep = timestep
@@ -133,9 +131,10 @@ class EpsilonGreedy(Exploration):
             with tf1.control_dependencies([assign_op]):
                 return action, tf.zeros_like(action, dtype=tf.float32)
 
-    def _get_torch_exploration_action(
-            self, action_distribution: ActionDistribution, explore: bool,
-            timestep: Union[int, TensorType]):
+    def _get_torch_exploration_action(self,
+                                      action_distribution: ActionDistribution,
+                                      explore: bool,
+                                      timestep: Union[int, TensorType]):
         """Torch method to produce an epsilon exploration action.
 
         Args:
@@ -175,11 +174,12 @@ class EpsilonGreedy(Exploration):
                 # Mask out actions, whose Q-values are -inf, so that we don't
                 # even consider them for exploration.
                 random_valid_action_logits = torch.where(
-                    q_values <= FLOAT_MIN,
-                    torch.zeros_like(q_values), torch.ones_like(q_values))
+                    q_values <= FLOAT_MIN, torch.zeros_like(q_values),
+                    torch.ones_like(q_values))
                 # A random action.
-                random_actions = torch.squeeze(
-                    torch.multinomial(random_valid_action_logits, 1), axis=1)
+                random_actions = torch.squeeze(torch.multinomial(
+                    random_valid_action_logits, 1),
+                                               axis=1)
 
                 # Pick either random or greedy.
                 action = torch.where(

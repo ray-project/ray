@@ -77,16 +77,14 @@ def convert_to_torch_tensor(x, device=None):
         Any: A new struct with the same structure as `stats`, but with all
             values converted to torch Tensor types.
     """
-
     def mapping(item):
         # Already torch tensor -> make sure it's on right device.
         if torch.is_tensor(item):
             return item if device is None else item.to(device)
         # Special handling of "Repeated" values.
         elif isinstance(item, RepeatedValues):
-            return RepeatedValues(
-                tree.map_structure(mapping, item.values), item.lengths,
-                item.max_len)
+            return RepeatedValues(tree.map_structure(mapping, item.values),
+                                  item.lengths, item.max_len)
         # Numpy arrays.
         if isinstance(item, np.ndarray):
             # np.object_ type (e.g. info dicts in train batch): leave as-is.
@@ -167,12 +165,11 @@ def one_hot(x, space):
     if isinstance(space, Discrete):
         return nn.functional.one_hot(x.long(), space.n)
     elif isinstance(space, MultiDiscrete):
-        return torch.cat(
-            [
-                nn.functional.one_hot(x[:, i].long(), n)
-                for i, n in enumerate(space.nvec)
-            ],
-            dim=-1)
+        return torch.cat([
+            nn.functional.one_hot(x[:, i].long(), n)
+            for i, n in enumerate(space.nvec)
+        ],
+                         dim=-1)
     else:
         raise ValueError("Unsupported space for `one_hot`: {}".format(space))
 
