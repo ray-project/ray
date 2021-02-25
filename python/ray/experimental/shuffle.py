@@ -27,6 +27,7 @@ import time
 from typing import List, Iterable, Tuple, Callable, Any
 
 import ray
+from ray.cluster_utils import Cluster
 from ray import ObjectRef
 
 # TODO(ekl) why doesn't TypeVar() deserialize properly in Ray?
@@ -184,6 +185,16 @@ def simple_shuffle(
     return ray.get(shuffle_reduce_out)
 
 
+def build_cluster(num_nodes, num_cpus, object_store_memory):
+    cluster = Cluster()
+    for _ in range(num_nodes):
+        cluster.add_node(
+            num_cpus=num_cpus,
+            object_store_memory=object_store_memory)
+    cluster.wait_for_nodes()
+    return cluster
+
+
 def main():
     import argparse
     import numpy as np
@@ -194,12 +205,24 @@ def main():
     parser.add_argument("--object-store-memory", type=float, default=1e9)
     parser.add_argument("--num-partitions", type=int, default=5)
     parser.add_argument("--partition-size", type=float, default=200e6)
+    parser.add_argument("--num-nodes", type=int, default=None)
+    parser.add_argument("--num-cpus", type=int, default=8)
     args = parser.parse_args()
 
+    is_multi_node = args.num_nodes
     if args.ray_address:
+        print("Connecting to a existing cluster...")
         ray.init(address=args.ray_address)
+    elif is_multi_node:
+        print("Emulating a cluster...")
+        cluster = build_cluster(
+            args.num_nodes, args.num_cpus, args.object_store_memory)
+        ray.init(address=cluster.address)
     else:
-        ray.init(object_store_memory=args.object_store_memory)
+        print("Start a new cluster...")
+        ray.init(
+            num_cpus=args.num_cpus,
+            object_store_memory=args.object_store_memory)
 
     partition_size = int(args.partition_size)
     num_partitions = args.num_partitions
