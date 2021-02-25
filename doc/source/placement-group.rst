@@ -35,40 +35,74 @@ A **placement group strategy** is an algorithm for selecting nodes for bundle pl
 Starting a placement group
 --------------------------
 
-Ray placement group can be created via the ``ray.util.placement_group`` API. Placement groups take in a list of bundles and a :ref:`placement strategy <pgroup-strategy>`:
+Ray placement group can be created via the ``ray.util.placement_group`` API if you are using Python. With Java, you can use ``Ray.createPlacementGroup`` API. Placement groups take in a list of bundles and a :ref:`placement strategy <pgroup-strategy>`:
 
-.. code-block:: python
+.. tabs::
+  .. group-tab:: Python
 
-  # Import placement group APIs.
-  from ray.util.placement_group import (
-      placement_group,
-      placement_group_table,
-      remove_placement_group
-  )
+    .. code-block:: python
 
-  # Initialize Ray.
-  import ray
-  ray.init(num_gpus=2, resources={"extra_resource": 2})
+      # Import placement group APIs.
+      from ray.util.placement_group import (
+          placement_group,
+          placement_group_table,
+          remove_placement_group
+      )
 
-  bundle1 = {"GPU": 2}
-  bundle2 = {"extra_resource": 2}
+      # Initialize Ray.
+      import ray
+      ray.init(num_gpus=2, resources={"extra_resource": 2})
 
-  pg = placement_group([bundle1, bundle2], strategy="STRICT_PACK")
+      bundle1 = {"GPU": 2}
+      bundle2 = {"extra_resource": 2}
+
+      pg = placement_group([bundle1, bundle2], strategy="STRICT_PACK")
+
+  .. group-tab:: Java
+
+    .. code-block:: java
+
+      // Construct a list of bundles.
+      List<Map<String, Double>> bundles = new ArrayList<>();
+      Map<String, Double> bundle1 = new HashMap<>();
+      Map<String, Double> bundle2 = new HashMap<>();
+      bundle1.put("CPU", 2.0);
+      bundle2.put("extra_resource", 2.0);
+
+      bundles.add(bundle1);
+      bundles.add(bundle2);
+
+      // Make a creation option with bundles and strategy.
+      PlacementGroupCreationOptions options =
+        new PlacementGroupCreationOptions.Builder()
+          .setBundles(bundles)
+          .setStrategy(PlacementStrategy.STRICT_SPREAD)
+          .build();
+
+      PlacementGroup pg = Ray.createPlacementGroup(options);
 
 .. important:: Each bundle must be able to fit on a single node on the Ray cluster.
 
 Placement groups are atomically created - meaning that if there exists a bundle that cannot fit in any of the current nodes, then the entire placement group will not be ready.
 
-.. code-block:: python
+.. tabs::
+  .. group-tab:: Python
+    .. code-block:: python
 
-  # Wait until placement group is created.
-  ray.get(pg.ready())
+      # Wait until placement group is created.
+      ray.get(pg.ready())
 
-  # You can also use ray.wait.
-  ready, unready = ray.wait([pg.ready()], timeout=0)
+      # You can also use ray.wait.
+      ready, unready = ray.wait([pg.ready()], timeout=0)
 
-  # You can look at placement group states using this API.
-  print(placement_group_table(pg))
+      # You can look at placement group states using this API.
+      print(placement_group_table(pg))
+
+  .. group-tab:: Java
+
+    .. code-block:: java
+      // Wait for the placement group to be ready within the specified time(unit is seconds).
+      boolean ready = pg.wait(60);
 
 Infeasible placement groups will be pending until resources are available. The Ray Autoscaler will be aware of placement groups, and auto-scale the cluster to ensure pending groups can be placed as needed.
 
@@ -128,25 +162,48 @@ Let's create a placement group. Recall that each bundle is a collection of resou
 
   Once the placement group reserves resources, original resources are unavailable until the placement group is removed. For example:
 
-  .. code-block:: python
+  .. tabs::
+    .. group-tab:: Python
 
-    # Two "CPU"s are available.
-    ray.init(num_cpus=2)
+      .. code-block:: python
 
-    # Create a placement group.
-    pg = placement_group([{"CPU": 2}])
-    ray.get(pg.ready())
+        # Two "CPU"s are available.
+        ray.init(num_cpus=2)
 
-    # Now, 2 CPUs are not available anymore because they are pre-reserved by the placement group.
-    @ray.remote(num_cpus=2)
-    def f():
-        return True
+        # Create a placement group.
+        pg = placement_group([{"CPU": 2}])
+        ray.get(pg.ready())
 
-    # Won't be scheduled because there are no 2 cpus.
-    f.remote()
+        # Now, 2 CPUs are not available anymore because they are pre-reserved by the placement group.
+        @ray.remote(num_cpus=2)
+        def f():
+            return True
 
-    # Will be scheduled because 2 cpus are reserved by the placement group.
-    f.options(placement_group=pg).remote()
+        # Won't be scheduled because there are no 2 cpus.
+        f.remote()
+
+        # Will be scheduled because 2 cpus are reserved by the placement group.
+        f.options(placement_group=pg).remote()
+
+    .. group-tab:: Java
+
+      .. code-block:: java
+
+        // Construct a list of bundles.
+        List<Map<String, Double>> bundles = new ArrayList<>();
+        Map<String, Double> bundle = new HashMap<>();
+        bundle.put("CPU", 2.0);
+        bundles.add(bundle);
+
+        // Make a creation option with bundles and strategy.
+        PlacementGroupCreationOptions options =
+          new PlacementGroupCreationOptions.Builder()
+            .setBundles(bundles)
+            .setStrategy(PlacementStrategy.STRICT_SPREAD)
+            .build();
+
+        PlacementGroup pg = Ray.createPlacementGroup(options);
+
 
 .. code-block:: python
 
@@ -283,7 +340,6 @@ See :ref:`placement-group-lifetimes` for more details.
 
   .. group-tab:: Java
 
-    The named placement group is not implemented for Java APIs yet.
 
 .. _placement-group-lifetimes:
 
