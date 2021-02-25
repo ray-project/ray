@@ -58,7 +58,9 @@ def memory_summary(node_manager_address=None,
     return reply.memory_summary + "\n" + store_stats_summary(reply, stats_only)
 
 
-def node_stats(node_manager_address=None, node_manager_port=None):
+def node_stats(node_manager_address=None,
+               node_manager_port=None,
+               include_memory_info=True):
     """Returns NodeStats object describing memory usage in the cluster."""
 
     import grpc
@@ -82,7 +84,8 @@ def node_stats(node_manager_address=None, node_manager_port=None):
     )
     stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
     node_stats = stub.GetNodeStats(
-        node_manager_pb2.GetNodeStatsRequest(include_memory_info=True),
+        node_manager_pb2.GetNodeStatsRequest(
+            include_memory_info=include_memory_info),
         timeout=30.0)
     return node_stats
 

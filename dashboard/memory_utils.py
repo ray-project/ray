@@ -331,7 +331,7 @@ def construct_memory_table(workers_stats: List,
 
 
 def get_memory_summary(redis_address, redis_password, group_by, sort_by,
-                       line_wrap) -> str:
+                       line_wrap, stats_only) -> str:
     from ray.new_dashboard.modules.stats_collector.stats_collector_head\
          import node_stats_to_dict
 
@@ -346,8 +346,8 @@ def get_memory_summary(redis_address, redis_password, group_by, sort_by,
     core_worker_stats = []
     for raylet in state.node_table():
         stats = node_stats_to_dict(
-            node_stats(raylet["NodeManagerAddress"],
-                       raylet["NodeManagerPort"]))
+            node_stats(raylet["NodeManagerAddress"], raylet["NodeManagerPort"],
+                       (not stats_only)))
         core_worker_stats.extend(stats["coreWorkersStats"])
         assert type(stats) is dict and "coreWorkersStats" in stats
 
@@ -443,5 +443,5 @@ def memory_summary(redis_address,
     if stats_only:
         return get_store_stats_summary(redis_address, redis_password)
     return get_memory_summary(redis_address, redis_password, group_by, sort_by,
-                              line_wrap) + get_store_stats_summary(
+                              line_wrap, stats_only) + get_store_stats_summary(
                                   redis_address, redis_password)
