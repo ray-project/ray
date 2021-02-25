@@ -28,6 +28,10 @@ public class PlacementGroupTest extends BaseTest {
     public int getValue() {
       return value;
     }
+
+    public static String ping() {
+      return "pong";
+    }
   }
 
   // TODO(ffbin): Currently Java doesn't support multi-node tests.
@@ -223,5 +227,16 @@ public class PlacementGroupTest extends BaseTest {
     PlacementGroup resPlacementGroup = Ray.getPlacementGroup(pgName);
     Assert.assertNotNull(resPlacementGroup);
     Assert.assertEquals(resPlacementGroup.getBundles().size(), 1);
+  }
+
+  @Test(groups = {"cluster"})
+  public void testPlacementGroupForNormalTask() {
+    PlacementGroup placementGroup = PlacementGroupTestUtils.createSimpleGroup();
+    Assert.assertTrue(placementGroup.wait(60));
+
+    Assert.assertEquals(Ray.task(Counter::ping).setPlacementGroup(placementGroup, 0).setResource("CPU", 1.0).remote().get(), "pong");
+
+    // Make sure it will not affect the previous normal task.
+    Assert.assertEquals(Ray.task(Counter::ping).remote().get(), "pong");
   }
 }
