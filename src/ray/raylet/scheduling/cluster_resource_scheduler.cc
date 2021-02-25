@@ -556,6 +556,34 @@ void ClusterResourceScheduler::DeleteResource(const std::string &node_id_string,
   }
 }
 
+bool ClusterResourceScheduler::ContainsResource(const std::string &node_id_string,
+                                                const std::string &resource_name) {
+  int64_t node_id = string_to_int_map_.Get(node_id_string);
+  auto it = nodes_.find(node_id);
+  if (it == nodes_.end()) {
+    return false;
+  }
+
+  int idx = -1;
+  if (resource_name == ray::kCPU_ResourceLabel) {
+    idx = (int)CPU;
+  } else if (resource_name == ray::kGPU_ResourceLabel) {
+    idx = (int)GPU;
+  } else if (resource_name == ray::kTPU_ResourceLabel) {
+    idx = (int)TPU;
+  } else if (resource_name == ray::kMemory_ResourceLabel) {
+    idx = (int)MEM;
+  };
+  auto local_view = it->second.GetMutableLocalView();
+  if (idx != -1) {
+    return true;
+  }
+
+  int64_t resource_id = string_to_int_map_.Get(resource_name);
+  auto itr = local_view->custom_resources.find(resource_id);
+  return itr != local_view->custom_resources.end();
+}
+
 std::string ClusterResourceScheduler::DebugString(void) const {
   std::stringstream buffer;
   buffer << "\nLocal id: " << local_node_id_;

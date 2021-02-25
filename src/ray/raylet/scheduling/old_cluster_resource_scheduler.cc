@@ -115,4 +115,23 @@ std::string OldClusterResourceScheduler::GetLocalResourceViewString() const {
   return local_resources.GetAvailableResources().ToString();
 }
 
+void OldClusterResourceScheduler::AddLocalResource(const std::string &resource_name,
+                                                   double resource_total) {
+  local_available_resources_.AddOrUpdateResource(resource_name, resource_total);
+  UpdateResourceCapacity(self_node_id_string_, resource_name, resource_total);
+}
+
+bool OldClusterResourceScheduler::ContainsResource(const std::string &node_id_string,
+                                                   const std::string &resource_name) {
+  auto node_id = NodeID::FromBinary(node_id_string);
+  auto iter = cluster_resource_map_.find(node_id);
+  if (iter == cluster_resource_map_.end()) {
+    return false;
+  }
+
+  auto &scheduling_resources = iter->second;
+  const auto &resource_map = scheduling_resources.GetTotalResources().GetResourceMap();
+  return resource_map.count(resource_name) != 0;
+}
+
 }  // namespace ray
