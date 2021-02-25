@@ -199,7 +199,7 @@ class ObjectManager : public ObjectManagerInterface,
   /// Get the port of the object manager rpc server.
   int GetServerPort() const { return object_manager_server_.GetPort(); }
 
-  bool PullRequestActiveOrWaitingForMetadata(uint64_t pull_request_id) const {
+  bool PullRequestActiveOrWaitingForMetadata(uint64_t pull_request_id) const override {
     return pull_manager_->PullRequestActiveOrWaitingForMetadata(pull_request_id);
   }
 

@@ -142,6 +142,7 @@ def test_load_balancing_under_constrained_memory(ray_start_cluster):
 
     @ray.remote
     def f(i, x):
+        print(i, ray.worker.global_worker.node.unique_id)
         time.sleep(0.1)
         return ray.worker.global_worker.node.unique_id
 
@@ -149,15 +150,13 @@ def test_load_balancing_under_constrained_memory(ray_start_cluster):
     for i, dep in enumerate(deps):
         print(i, dep)
 
-    attempts = 0
-    while attempts < 100:
+    def attempt():
         locations = ray.get([f.remote(i, dep) for i, dep in enumerate(deps)])
         counts = collections.Counter(locations)
         print(f"Counts are {counts}")
-        if (len(counts) == num_nodes and counts.most_common()[-1][1] >= 25):
-            break
-        attempts += 1
-    assert attempts < 100
+        return len(counts) == num_nodes and counts.most_common()[-1][1] >= 25
+
+    wait_for_condition(attempt, timeout=200)
 
 
 @pytest.mark.skipif(
