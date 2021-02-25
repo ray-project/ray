@@ -189,8 +189,7 @@ def build_cluster(num_nodes, num_cpus, object_store_memory):
     cluster = Cluster()
     for _ in range(num_nodes):
         cluster.add_node(
-            num_cpus=num_cpus,
-            object_store_memory=object_store_memory)
+            num_cpus=num_cpus, object_store_memory=object_store_memory)
     cluster.wait_for_nodes()
     return cluster
 
@@ -215,8 +214,11 @@ def main():
         ray.init(address=args.ray_address)
     elif is_multi_node:
         print("Emulating a cluster...")
-        cluster = build_cluster(
-            args.num_nodes, args.num_cpus, args.object_store_memory)
+        print(f"Num nodes: {args.num_nodes}")
+        print(f"Num CPU per node: {args.num_cpus}")
+        print(f"Object store memory per node: {args.object_store_memory}")
+        cluster = build_cluster(args.num_nodes, args.num_cpus,
+                                args.object_store_memory)
         ray.init(address=cluster.address)
     else:
         print("Start a new cluster...")
