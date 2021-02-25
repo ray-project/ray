@@ -74,6 +74,10 @@ class ClusterResourceSchedulerInterface {
   virtual void AddLocalResource(const std::string &resource_name,
                                 double resource_total) = 0;
 
+  /// Check if a given resource from a given node exists.
+  ///
+  /// \param node_id_string: Node whose resource we want to check.
+  /// \param resource_name: Resource we want to check
   virtual bool ContainsResource(const std::string &node_id_string,
                                 const std::string &resource_name) = 0;
 };
