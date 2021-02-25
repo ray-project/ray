@@ -904,6 +904,7 @@ void ClusterTaskManager::ScheduleAndDispatchTasks() {
 }
 
 void ClusterTaskManager::SpillWaitingTasks() {
+  RAY_LOG(DEBUG) << "Attempting to spill back from waiting task queue";
   // Try to spill waiting tasks to a remote node, prioritizing those at the end
   // of the queue. Waiting tasks are spilled if there are enough remote
   // resources AND (we have no resources available locally OR their
@@ -946,6 +947,13 @@ void ClusterTaskManager::SpillWaitingTasks() {
       waiting_tasks_index_.erase(task_id);
       it = waiting_task_queue_.erase(it);
     } else {
+      if (node_id_string.empty()) {
+        RAY_LOG(DEBUG) << "Task " << task_id
+                       << " has blocked dependencies, but no other node has resources, "
+                          "keeping the task local";
+      } else {
+        RAY_LOG(DEBUG) << "Keeping waiting task " << task_id << " local";
+      }
       // We should keep the task local. Note that an earlier task in the queue
       // may have different resource requirements and could actually be
       // scheduled on a remote node.
