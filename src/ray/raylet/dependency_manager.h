@@ -38,7 +38,7 @@ class TaskDependencyManagerInterface {
       const TaskID &task_id,
       const std::vector<rpc::ObjectReference> &required_objects) = 0;
   virtual void RemoveTaskDependencies(const TaskID &task_id) = 0;
-  virtual bool TaskDependenciesPending(const TaskID &task_id) const = 0;
+  virtual bool TaskDependenciesBlocked(const TaskID &task_id) const = 0;
   virtual ~TaskDependencyManagerInterface(){};
 };
 
@@ -160,7 +160,7 @@ class DependencyManager : public TaskDependencyManagerInterface {
 
   /// Check whether a requested task's dependencies are not being fetched to
   /// the local node due to lack of memory.
-  bool TaskDependenciesPending(const TaskID &task_id) const;
+  bool TaskDependenciesBlocked(const TaskID &task_id) const;
 
   /// Returns debug string for class.
   ///

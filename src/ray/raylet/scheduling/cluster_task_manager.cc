@@ -919,10 +919,11 @@ void ClusterTaskManager::SpillWaitingTasks() {
     it--;
     const auto &task = std::get<0>(*it);
     const auto &task_id = task.GetTaskSpecification().TaskId();
-    // Check whether this task's dependencies are not being pulled.  If this is
-    // true, then we should force the task onto a remote feasible node, even if
-    // we have enough resources available locally for placement.
-    bool force_spillback = !task_dependency_manager_.TaskDependenciesPending(task_id);
+    // Check whether this task's dependencies are blocked (not being actively
+    // pulled).  If this is true, then we should force the task onto a remote
+    // feasible node, even if we have enough resources available locally for
+    // placement.
+    bool force_spillback = task_dependency_manager_.TaskDependenciesBlocked(task_id);
     RAY_LOG(DEBUG) << "Attempting to spill back waiting task " << task_id
                    << " to remote node. Force spillback? " << force_spillback;
     auto placement_resources =

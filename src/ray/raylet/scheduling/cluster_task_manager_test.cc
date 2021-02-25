@@ -118,8 +118,8 @@ class MockTaskDependencyManager : public TaskDependencyManagerInterface {
     RAY_CHECK(subscribed_tasks.erase(task_id));
   }
 
-  bool TaskDependenciesPending(const TaskID &task_id) const {
-    return blocked_tasks.count(task_id) == 0;
+  bool TaskDependenciesBlocked(const TaskID &task_id) const {
+    return blocked_tasks.count(task_id);
   }
 
   std::unordered_set<ObjectID> &missing_objects_;
