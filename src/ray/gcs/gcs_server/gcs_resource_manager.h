@@ -135,7 +135,10 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
   /// \param node_id Node id.
   /// \param request Request containing resource usage.
   void UpdateNodeResourceUsage(const NodeID node_id,
-                               const rpc::ReportResourceUsageRequest &request);
+                               const rpc::ResourcesData &resources);
+
+  /// Process a new resource report from a node, independent of the rpc handler it came from.
+  void UpdateFromResourceReport(const rpc::ResourcesData &data);
 
   /// Update the placement group load information so that it will be reported through
   /// heartbeat.
@@ -145,6 +148,7 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
       const std::shared_ptr<rpc::PlacementGroupLoad> placement_group_load);
 
  private:
+
   /// Delete the scheduling resources of the specified node.
   ///
   /// \param node_id Id of a node.

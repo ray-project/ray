@@ -417,6 +417,11 @@ void raylet::RayletClient::GlobalGC(
   grpc_client_->GlobalGC(request, callback);
 }
 
+void raylet::RayletClient::RequestResourceReport(const rpc::ClientCallback<rpc::RequestResourceReportReply> &callback) {
+  rpc::RequestResourceReportRequest request;
+  grpc_client_->RequestResourceReport(request, callback);
+}
+
 void raylet::RayletClient::SubscribeToPlasma(const ObjectID &object_id,
                                              const rpc::Address &owner_address) {
   flatbuffers::FlatBufferBuilder fbb;
