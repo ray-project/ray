@@ -82,13 +82,7 @@ void AgentManager::InitializeJobEnv(std::shared_ptr<rpc::JobTableData> job_data,
     if (status.ok()) {
       if (reply.status() == rpc::AGENT_RPC_STATUS_OK) {
         // Update job resource so that the driver/worker could lease worker from raylet.
-        gcs::NodeResourceInfoAccessor::ResourceMap resources;
-        auto resource = std::make_shared<rpc::ResourceTableData>();
-        resource->set_resource_capacity(kMaxResourceCapacity);
-        auto resource_name = JOB_RESOURCE_PREFIX + absl::AsciiStrToUpper(job_id.Hex());
-        resources.emplace(std::move(resource_name), std::move(resource));
-        RAY_CHECK_OK(gcs_client_->NodeResources().AsyncUpdateResources(
-            options_.node_id, resources, nullptr));
+        on_job_env_initialized_(job_id);
         if (start_driver) {
           auto it = starting_drivers_.find(job_id);
           if (it != starting_drivers_.end()) {

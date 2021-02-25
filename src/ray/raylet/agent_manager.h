@@ -54,11 +54,13 @@ class AgentManager : public rpc::AgentManagerServiceHandler {
 
   explicit AgentManager(Options options, std::shared_ptr<gcs::GcsClient> gcs_client,
                         JobClientFactoryFn job_client_factory,
-                        DelayExecutorFn delay_executor)
+                        DelayExecutorFn delay_executor,
+                        std::function<void(const JobID &)> on_job_env_initialized)
       : options_(std::move(options)),
         gcs_client_(std::move(gcs_client)),
         job_client_factory_(std::move(job_client_factory)),
-        delay_executor_(std::move(delay_executor)) {
+        delay_executor_(std::move(delay_executor)),
+        on_job_env_initialized_(std::move(on_job_env_initialized)) {
     StartAgent();
   }
 
@@ -82,6 +84,7 @@ class AgentManager : public rpc::AgentManagerServiceHandler {
   std::unique_ptr<rpc::JobClient> job_client_;
   JobClientFactoryFn job_client_factory_;
   DelayExecutorFn delay_executor_;
+  std::function<void(const JobID &)> on_job_env_initialized_;
 
   pid_t agent_pid_ = 0;
   int agent_port_ = 0;

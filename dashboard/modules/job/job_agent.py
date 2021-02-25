@@ -458,7 +458,8 @@ ray.shutdown()
 
         # Per job config
         job_config_items = {
-            "worker_env": self._job_info.env(),
+            "worker_env": dict(
+                self._job_info.env(), RAY_JOB_DIR=job_package_dir),
             "worker_cwd": job_package_dir,
             "num_java_workers_per_process": self._job_info.
             num_java_workers_per_process(),
@@ -648,12 +649,16 @@ class StartJavaDriver(JobProcessor):
 
     async def run(self):
         driver_cmd = self._build_java_worker_command()
+        temp_dir = self._job_info.temp_dir()
         log_dir = self._job_info.log_dir()
         job_id = self._job_info.job_id()
+        job_package_dir = job_consts.DOWNLOAD_PACKAGE_UNZIP_DIR.format(
+            temp_dir=temp_dir, job_id=job_id)
         stdout_file, stderr_file = self._new_log_files(log_dir,
                                                        f"driver-{job_id}")
-        return await self._start_driver(driver_cmd, stdout_file, stderr_file,
-                                        self._job_info.env())
+        return await self._start_driver(
+            driver_cmd, stdout_file, stderr_file,
+            dict(self._job_info.env(), RAY_JOB_DIR=job_package_dir))
 
 
 class JobAgent(dashboard_utils.DashboardAgentModule,

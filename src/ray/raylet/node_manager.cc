@@ -260,7 +260,9 @@ NodeManager::NodeManager(boost::asio::io_service &io_service, const NodeID &self
                        /*delay_executor=*/
                        [this](std::function<void()> task, uint32_t delay_ms) {
                          return execute_after(io_service_, task, delay_ms);
-                       }));
+                       },
+                       /*on_job_env_initialized=*/
+                       [this](const JobID &job_id) { AddJobResource(job_id); }));
 
   RAY_CHECK_OK(SetupPlasmaSubscription());
 }
@@ -2842,6 +2844,15 @@ void NodeManager::SendSpilledObjectRestorationRequestToRemoteNode(
                            << status.ToString();
         }
       });
+}
+
+void NodeManager::AddJobResource(const JobID &job_id) {
+  auto resource_label = JOB_RESOURCE_PREFIX + absl::AsciiStrToUpper(job_id.Hex());
+  bool exist = cluster_resource_scheduler_->ContainsResource(self_node_id_.Binary(),
+                                                             resource_label);
+  if (!exist) {
+    cluster_resource_scheduler_->AddLocalResource(resource_label, kMaxResourceCapacity);
+  }
 }
 
 }  // namespace raylet

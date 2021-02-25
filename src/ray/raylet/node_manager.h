@@ -161,6 +161,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// object ids.
   void TriggerGlobalGC();
 
+  /// Add job resource to local resource
+  void AddJobResource(const JobID &job_id);
+
  private:
   /// Methods for handling nodes.
 
