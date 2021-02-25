@@ -11,7 +11,7 @@ from unittest.mock import MagicMock, Mock, patch
 import pytest
 
 from ray.autoscaler._private.util import prepare_config, validate_config,\
-    fillout_defaults, _get_default_config, merge_setup_commands
+    _get_default_config, merge_setup_commands
 from ray.autoscaler._private.providers import _NODE_PROVIDERS
 from ray.autoscaler._private.kubernetes.node_provider import\
     KubernetesNodeProvider
@@ -294,9 +294,11 @@ class AutoscalingConfigTest(unittest.TestCase):
                 "node_config"]
         assert head_prepared["head_node"] == {}
         # Custom worker config preserved
-        assert head_prepared["available_node_types"][
-            "ray-legacy-worker-node-type"]["node_config"] == head_prepared[
-                "worker_nodes"] == {"foo": "bar"}
+        node_types = head_prepared["available_node_types"]
+        worker_type = node_types["ray-legacy-worker-node-type"]
+        assert worker_type["node_config"] == head_prepared["worker_nodes"] == {
+            "foo": "bar"
+        }
 
         no_workers = load_test_config("test_no_workers.yaml")
         workers_prepared = prepare_config(no_workers)
@@ -306,9 +308,11 @@ class AutoscalingConfigTest(unittest.TestCase):
                 "node_config"]
         assert workers_prepared["worker_nodes"] == {}
         # Custom head config preserved
-        assert workers_prepared["available_node_types"][
-            "ray-legacy-head-node-type"]["node_config"] == workers_prepared[
-                "head_node"] == {"baz": "qux"}
+        node_types = workers_prepared["available_node_types"]
+        head_type = node_types["ray-legacy-head-node-type"]
+        assert head_type["node_config"] == workers_prepared["head_node"] == {
+            "baz": "qux"
+        }
 
     def testExampleFull(self):
         """
@@ -322,7 +326,7 @@ class AutoscalingConfigTest(unittest.TestCase):
             config = yaml.safe_load(open(path).read())
             config_copy = copy.deepcopy(config)
             merge_setup_commands(config_copy)
-            assert config_copy == prepare_config(config), "provider"
+            assert config_copy == prepare_config(config)
 
     def testLegacyYaml(self):
         # Test correct default-merging behavior for legacy yamls.

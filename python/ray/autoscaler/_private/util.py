@@ -107,8 +107,14 @@ def prepare_config(config):
 def fillout_defaults(config: Dict[str, Any]) -> Dict[str, Any]:
     defaults = _get_default_config(config["provider"])
     defaults.update(config)
+
     # Just for clarity:
     merged_config = copy.deepcopy(defaults)
+
+    # Fill auth field to avoid key errors.
+    # This field is accessed when calling NodeUpdater but is not relevant to
+    # certain node providers and is thus left out of some cluster launching
+    # configs.
     merged_config["auth"] = merged_config.get("auth", {})
 
     # Handle merging logic if the original config was legacy-style
@@ -121,18 +127,12 @@ def fillout_defaults(config: Dict[str, Any]) -> Dict[str, Any]:
 
 def merge_legacy_yaml_with_defaults(
         merged_config: Dict[str, Any]) -> Dict[str, Any]:
-    # TODO(ameer/ekl/alex): we can also rewrite here many other fields
-    # that include initialization/setup/start commands and ImageId.
-    logger.debug("Converting legacy cluster config to multi node types.")
+    logger.info("Converting legacy cluster config to multi node types.")
 
     # Get default head and worker types.
     default_head_type = merged_config["head_node_type"]
-    default_worker_type = ""
-    for node_type in merged_config["available_node_types"]:
-        if node_type == default_head_type:
-            continue
-        else:
-            default_worker_type = node_type
+    default_worker_type = (merged_config["available_node_types"].keys() -
+                           {default_head_type}).pop()
 
     if merged_config["head_node"]:
         # User specified a head config. Overwrite the default head.
@@ -154,7 +154,7 @@ def merge_legacy_yaml_with_defaults(
             "node_config": merged_config["worker_nodes"],
             "resources": merged_config["worker_nodes"].get("resources") or {},
             "min_workers": merged_config.get("min_workers", 0),
-            "max_workers": merged_config.get("max_workers"),
+            "max_workers": merged_config["max_workers"],
         }
         # Resources field in worker field causes worker launch to fail.
         merged_config["worker_nodes"].pop("resources", None)
