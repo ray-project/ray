@@ -216,7 +216,9 @@ class HTTPProxyActor:
             sock.bind((self.host, self.port))
         except OSError:
             # The OS failed to bind a socket to the given host and port.
-            raise ValueError(f"Failed to bind HTTP proxy to '{self.host}:{self.port}'. Please make sure your http-host and http-port are specified correctly.")
+            raise ValueError(
+                f"""Failed to bind Ray Serve HTTP proxy to '{self.host}:{self.port}'.
+Please make sure your http-host and http-port are specified correctly.""")
 
         # Note(simon): we have to use lower level uvicorn Config and Server
         # class because we want to run the server as a coroutine. The only
