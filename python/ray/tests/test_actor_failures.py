@@ -744,36 +744,29 @@ def test_actor_owner_node_dies_before_dependency_ready(ray_start_cluster):
 
 def test_recreate_child_actor(ray_start_cluster):
     @ray.remote
-    class Child:
+    class Actor:
         def __init__(self):
             pass
 
-        def ping(self):
+        def ready(self):
             return
 
-    @ray.remote
-    class Signal:
+    @ray.remote(max_restarts=-1, max_task_retries=-1)
+    class Parent:
         def __init__(self):
-            self.should_exit = True
+            self.child = Actor.remote()
 
-        def should_exit(self):
-            if self.should_exit:
-                self.should_exit = False
-                return True
-            return False
+        def ready(self):
+            return ray.get(self.child.ready.remote())
 
-    @ray.remote
-    def parent(signal):
-        should_exit = ray.get(signal.should_exit.remote())
-        c = Child.remote()
-        ray.get(c.ping.remote())
-        if should_exit:
-            sys.exit(-1)
+        def pid(self):
+            return os.getpid()
 
-    cluster = ray_start_cluster
-    ray.init(address=cluster.address)
-    signal = Signal.remote()
-    ray.get(parent.remote(signal))
+    ray.init(address=ray_start_cluster.address)
+    p = Parent.remote()
+    pid = ray.get(p.pid.remote())
+    os.kill(pid, 9)
+    ray.get(p.ready.remote())
 
 
 if __name__ == "__main__":
