@@ -283,6 +283,12 @@ def build_tf_policy(
         @override(TFPolicy)
         def extra_compute_grad_fetches(self):
             if extra_learn_fetches_fn:
+                # TODO: (sven) in torch, extra_learn_fetches do not exist.
+                #  Hence, things like td_error are returned by the stats_fn
+                #  and end up under the LEARNER_STATS_KEY. We should
+                #  change tf to do this as well. However, this will confilct
+                #  the handling of LEARNER_STATS_KEY inside the multi-GPU
+                #  train op.
                 # Auto-add empty learner stats dict if needed.
                 return dict({
                     LEARNER_STATS_KEY: {}
