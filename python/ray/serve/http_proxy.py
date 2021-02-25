@@ -103,7 +103,7 @@ class HTTPProxy:
         self.route_table: Dict[str, Tuple[EndpointTag, List[str]]] = {}
 
         self.long_poll_client = LongPollClient(controller, {
-            (LongPollNamespace.ROUTE_TABLE, "ALL"): self._update_route_table,
+            LongPollNamespace.ROUTE_TABLE: self._update_route_table,
         })
 
         self.request_counter = metrics.Count(

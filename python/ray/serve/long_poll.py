@@ -3,10 +3,9 @@ import random
 from collections import defaultdict
 from dataclasses import dataclass
 from enum import Enum, auto
-from typing import Any, Tuple, Callable, DefaultDict, Dict, Set
+from typing import Any, Tuple, Callable, DefaultDict, Dict, Set, Union
 
 import ray
-from ray.serve.long_poll import LongPollNamespace
 from ray.serve.utils import logger
 
 
@@ -32,7 +31,7 @@ class UpdatedObject:
 # async def update_state(updated_object: Any):
 #     do_something(updated_object)
 UpdateStateCallable = Callable[[Any], None]
-KeyType = Tuple[LongPollNamespace, str]
+KeyType = Union[str, LongPollNamespace, Tuple[LongPollNamespace, str]]
 
 
 class LongPollClient:
@@ -54,16 +53,28 @@ class LongPollClient:
             host_actor,
             key_listeners: Dict[KeyType, UpdateStateCallable],
     ) -> None:
+        assert len(key_listeners) > 0
+
         self.host_actor = host_actor
         self.key_listeners = key_listeners
+        self._reset()
+
+    def _reset(self):
         self.snapshot_ids: Dict[KeyType, int] = {
             key: -1
-            for key in key_listeners.keys()
+            for key in self.key_listeners.keys()
         }
         self.object_snapshots: Dict[KeyType, Any] = dict()
 
         self._current_ref = None
         self._poll_once()
+
+    def update_key_listeners(
+            self,
+            key_listeners: Dict[KeyType, UpdateStateCallable],
+    ):
+        self.key_lisners = key_listeners
+        self._reset()
 
     def _poll_once(self) -> ray.ObjectRef:
         self._current_ref = self.host_actor.listen_for_change.remote(
@@ -72,12 +83,19 @@ class LongPollClient:
             lambda update: self._process_update(update))
 
     def _process_update(self, updates: Dict[str, UpdatedObject]):
-        if isinstance(updates, ray.exceptions.RayActorError):
+        if isinstance(updates, (ray.exceptions.RayActorError)):
             # This can happen during shutdown where the controller is
             # intentionally killed, the client should just gracefully
             # exit.
             logger.debug("LongPollClient failed to connect to host. "
                          "Shutting down.")
+            return
+
+        if isinstance(updates, (ray.exceptions.RayTaskError)):
+            # This can happen during shutdown where the controller is
+            # intentionally killed, the client should just gracefully
+            # exit.
+            logger.error("LongPollClient failed\n" + updates.traceback_str)
             return
 
         # Before we process the updates and calling callbacks, kick off
@@ -166,13 +184,11 @@ class LongPollHost:
                 self.snapshot_ids[updated_object_key])
         }
 
-    def notify_key_changed(
+    def notify_changed(
             self,
-            namespace: LongPollNamespace,
-            object_tag: str,
+            object_key: KeyType,
             updated_object: Any,
     ):
-        object_key = (namespace, object_tag)
         self.snapshot_ids[object_key] += 1
         self.object_snapshots[object_key] = updated_object
         logger.debug(f"LongPollHost: Notify change for key {object_key}.")

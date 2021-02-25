@@ -216,8 +216,7 @@ class BackendState:
             self, key: Optional[BackendTag] = None) -> None:
         for key, config in self.get_backend_configs(key).items():
             self._long_poll_host.notify_changed(
-                LongPollNamespace.BACKEND_CONFIGS,
-                key,
+                (LongPollNamespace.BACKEND_CONFIGS, key),
                 config,
             )
 
@@ -240,8 +239,7 @@ class BackendState:
             self, key: Optional[BackendTag] = None) -> None:
         for key, replica_dict in self.get_running_replica_handles(key).items():
             self._long_poll_host.notify_changed(
-                LongPollNamespace.REPLICA_HANDLES,
-                key,
+                (LongPollNamespace.REPLICA_HANDLES, key),
                 list(replica_dict.values()),
             )
 

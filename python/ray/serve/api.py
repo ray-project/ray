@@ -10,6 +10,7 @@ from uuid import UUID
 from warnings import warn
 
 from ray.actor import ActorHandle
+from ray.serve.common import EndpointTag
 from ray.serve.config import (BackendConfig, BackendMetadata, HTTPOptions,
                               ReplicaConfig)
 from ray.serve.constants import (DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT,
@@ -66,16 +67,22 @@ def _ensure_connected(f: Callable) -> Callable:
 
 
 class ThreadProxiedRouter:
-    def __init__(self, controller_handle, sync: bool):
+    def __init__(self, controller_handle, sync: bool,
+                 endpoint_tag: EndpointTag):
         self.controller_handle = controller_handle
         self.sync = sync
-        self.router = Router(controller_handle)
+        self.endpoint_tag = endpoint_tag
+        self.router = Router(controller_handle, endpoint_tag)
 
         if sync:
-            self.async_loop = create_or_get_async_loop_in_thread()
+            self._async_loop = create_or_get_async_loop_in_thread()
         else:
-            self.async_loop = asyncio.get_event_loop()
-            self.async_loop.create_task(self.router.setup_in_async_loop())
+            self._async_loop = asyncio.get_event_loop()
+
+    @property
+    def async_loop(self):
+        # called by handles
+        return self._async_loop
 
     def _remote(self, endpoint_name, handle_options, request_data,
                 kwargs) -> Coroutine:
@@ -93,7 +100,11 @@ class ThreadProxiedRouter:
 
     def __reduce__(self):
         deserializer = ThreadProxiedRouter
-        serialized_data = (self.controller_handle, self.sync)
+        serialized_data = (
+            self.controller_handle,
+            self.sync,
+            self.endpoint_tag,
+        )
         return deserializer, serialized_data
 
 
@@ -108,8 +119,9 @@ class Client:
         self._shutdown = False
         self._http_config = ray.get(controller.get_http_config.remote())
 
-        self._sync_proxied_router = None
-        self._async_proxied_router = None
+        # TODO(simon): remove this when dropping router object and making
+        # ServeHandle sync only.
+        self._cached_routers = dict()
 
         # NOTE(edoakes): Need this because the shutdown order isn't guaranteed
         # when the interpreter is exiting so we can't rely on __del__ (it
@@ -121,17 +133,15 @@ class Client:
 
             atexit.register(shutdown_serve_client)
 
-    def _get_proxied_router(self, sync: bool):
-        if sync:
-            if self._sync_proxied_router is None:
-                self._sync_proxied_router = ThreadProxiedRouter(
-                    self._controller, sync=True)
-            return self._sync_proxied_router
-        else:
-            if self._async_proxied_router is None:
-                self._async_proxied_router = ThreadProxiedRouter(
-                    self._controller, sync=False)
-            return self._async_proxied_router
+    def _get_proxied_router(self, sync: bool, endpoint: EndpointTag):
+        key = (sync, endpoint)
+        if key not in self._cached_routers:
+            self._cached_routers[key] = ThreadProxiedRouter(
+                self._controller,
+                sync,
+                endpoint,
+            )
+        return self._cached_routers[key]
 
     def __del__(self):
         if not self._detached:
@@ -520,10 +530,14 @@ class Client:
 
         if sync:
             handle = RayServeSyncHandle(
-                self._get_proxied_router(sync=sync), endpoint_name)
+                # NOTE(simon): this extra layer of router seems unnecessary
+                # BUT it's needed still because of the shared asyncio thread.
+                self._get_proxied_router(sync=sync, endpoint=endpoint_name),
+                endpoint_name)
         else:
             handle = RayServeHandle(
-                self._get_proxied_router(sync=sync), endpoint_name)
+                self._get_proxied_router(sync=sync, endpoint=endpoint_name),
+                endpoint_name)
         return handle
 
 

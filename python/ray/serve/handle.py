@@ -3,21 +3,9 @@ import concurrent.futures
 from dataclasses import dataclass, field
 from typing import Any, Dict, Optional, Union
 from enum import Enum
-import concurrent.futures
 
-import ray
 from ray.serve.utils import get_random_letters
 from ray.util import metrics
-
-
-class ServeFuture(concurrent.futures.Future):
-    def __init__(self):
-        super().__init__()
-
-        self._ray_object_ref: Optional[ray.ObjectRef] = None
-
-    def __await__(self):
-        return self._ray_object_ref.__await__()
 
 
 @dataclass(frozen=True)

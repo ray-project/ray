@@ -1,5 +1,4 @@
 from typing import Dict, Any, List, Optional, Tuple
-from build.lib.ray.experimental.serve import policy
 
 import ray.cloudpickle as pickle
 from ray.serve.common import BackendTag, EndpointTag, TrafficPolicy
@@ -38,15 +37,14 @@ class EndpointState:
 
     def _notify_route_table_changed(self):
         self._long_poll_host.notify_changed(LongPollNamespace.ROUTE_TABLE,
-                                            "ALL", self._routes)
+                                            self._routes)
 
     def _notify_traffic_policies_changed(
             self, filter_tag: Optional[EndpointTag] = None):
         for tag, policy in self._traffic_policies.items():
             if filter_tag is None or tag == filter_tag:
                 self._long_poll_host.notify_changed(
-                    LongPollNamespace.TRAFFIC_POLICIES,
-                    tag,
+                    (LongPollNamespace.TRAFFIC_POLICIES, tag),
                     policy,
                 )
 
