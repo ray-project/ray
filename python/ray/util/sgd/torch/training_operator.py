@@ -16,6 +16,7 @@ from ray.util.sgd.torch.constants import (
 )
 
 from torch.nn.parallel import DistributedDataParallel
+from torch.optim.lr_scheduler import _LRScheduler
 from torch.utils.data import DistributedSampler, DataLoader, IterableDataset
 
 logger = logging.getLogger(__name__)
@@ -161,11 +162,12 @@ class TrainingOperator:
             for model in models
         ]
 
-    def _return_items(self, items, original_items):
+    def _return_items(self, items, original_items, cls):
         """Helper method to return items in same format as original_items."""
         if isinstance(original_items, tuple):
             return tuple(items)
-        elif isinstance(original_items, Iterable):
+        elif (not isinstance(original_items, cls)
+              and isinstance(original_items, Iterable)):
             # Items is already a list.
             return items
         else:
@@ -246,9 +248,9 @@ class TrainingOperator:
             criterion (Callable, optional): Function to return loss
                 metric given features and target. If not provided,
                 must implement a custom training loop.
-            schedulers (torch.optim.lr_scheduler or Iterable[
-                torch.optim.lr_scheduler], optional): A learning rate
-                scheduler or multiple learning rate schedulers.
+            schedulers (torch.optim.lr_scheduler._LRScheduler or Iterable[
+                torch.optim.lr_scheduler._LRScheduler], optional): A learning
+                rate scheduler or multiple learning rate schedulers.
             ddp_args (dict|None): Dict containing keyword args for
                 DistributedDataParallel if distributed training is being
                 used. `module` and `device_ids` are automatically passed in,
@@ -272,11 +274,10 @@ class TrainingOperator:
         if apex_args and not isinstance(apex_args, dict):
             raise ValueError("apex_args needs to be a dict object.")
         apex_args = apex_args if apex_args else {}
-
         return_vals = []
         logger.debug("Registering models.")
         self._original_models = models
-        if not isinstance(self._original_models, Iterable):
+        if isinstance(self._original_models, torch.nn.Module):
             self._original_models = [self._original_models]
         assert all(
             isinstance(model, nn.Module) for model in self._original_models), (
@@ -288,13 +289,13 @@ class TrainingOperator:
 
         logger.debug("Registering optimizers.")
         self._optimizers = optimizers
-        if not isinstance(self._optimizers, Iterable):
+        if isinstance(self._optimizers, torch.optim.Optimizer):
             self._optimizers = [self._optimizers]
 
         if schedulers:
             logger.debug("Registering scheduler.")
             self._schedulers = schedulers
-            if not isinstance(self._schedulers, Iterable):
+            if isinstance(self._schedulers, _LRScheduler):
                 self._schedulers = [self._schedulers]
         else:
             if isinstance(schedulers, Iterable):
@@ -329,8 +330,10 @@ class TrainingOperator:
         else:
             self._models = self._original_models
 
-        return_vals.append(self._return_items(self._models, models))
-        return_vals.append(self._return_items(self._optimizers, optimizers))
+        return_vals.append(
+            self._return_items(self._models, models, torch.nn.Module))
+        return_vals.append(self._return_items(
+            self._optimizers, optimizers, torch.optim.Optimizer))
 
         if self._criterion is not None:
             return_vals.append(self._criterion)
@@ -343,7 +346,7 @@ class TrainingOperator:
                                  "'manual' if you will be manually stepping "
                                  "the schedulers.")
             return_vals.append(
-                self._return_items(self._schedulers, schedulers))
+                self._return_items(self._schedulers, schedulers, _LRScheduler))
 
         return tuple(return_vals)
 
