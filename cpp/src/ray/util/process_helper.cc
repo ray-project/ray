@@ -23,15 +23,42 @@ static std::string GetSessionDir(std::string redis_ip, int port, std::string pas
   return session_dir;
 }
 
-static void StartRayNode(int redis_port, std::string redis_password,
-                         int node_manager_port) {
-  std::vector<std::string> cmdargs(
-      {"ray", "start", "--head", "--port", std::to_string(redis_port), "--redis-password",
-       redis_password, "--node-manager-port", std::to_string(node_manager_port),
-       "--include-dashboard", "false"});
+static void StartRayNode(int redis_port, std::string redis_password) {
+  std::vector<std::string> cmdargs({"ray", "start", "--head", "--port",
+                                    std::to_string(redis_port), "--redis-password",
+                                    redis_password, "--include-dashboard", "false"});
   RAY_LOG(INFO) << CreateCommandLine(cmdargs);
   RAY_CHECK(!Process::Spawn(cmdargs, true).second);
   sleep(5);
+
+  // TODO
+  // public static void getAddressInfoAndFillConfig(RayConfig rayConfig) {
+  //   // NOTE(kfstorm): This method depends on an internal Python API of ray to get the
+  //   // address info of the local node.
+  //   String script =
+  //       String.format(
+  //           "import ray;"
+  //               + " print(ray._private.services.get_address_info_from_redis("
+  //               + "'%s', '%s', redis_password='%s'))",
+  //           rayConfig.getRedisAddress(), rayConfig.nodeIp, rayConfig.redisPassword);
+  //   List<String> command = Arrays.asList("python", "-c", script);
+
+  //   String output = null;
+  //   try {
+  //     output = runCommand(command);
+  //     // NOTE(kfstorm): We only parse the last line here in case there are some warning
+  //     // messages appear at the beginning.
+  //     String[] lines = output.split(System.lineSeparator());
+  //     String lastLine = lines[lines.length - 1];
+  //     JsonObject addressInfo = new JsonParser().parse(lastLine).getAsJsonObject();
+  //     rayConfig.rayletSocketName = addressInfo.get("raylet_socket_name").getAsString();
+  //     rayConfig.objectStoreSocketName =
+  //     addressInfo.get("object_store_address").getAsString(); rayConfig.nodeManagerPort
+  //     = addressInfo.get("node_manager_port").getAsInt();
+  //   } catch (Exception e) {
+  //     throw new RuntimeException("Failed to get address info. Output: " + output, e);
+  //   }
+  // }
   return;
 }
 
@@ -48,7 +75,7 @@ void ProcessHelper::RayStart(std::shared_ptr<RayConfig> config,
   std::string redis_ip = config->redis_ip;
   if (config->worker_type == WorkerType::DRIVER && redis_ip.empty()) {
     redis_ip = "127.0.0.1";
-    StartRayNode(config->redis_port, config->redis_password, config->node_manager_port);
+    StartRayNode(config->redis_port, config->redis_password);
   }
 
   auto session_dir =
