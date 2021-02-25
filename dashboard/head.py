@@ -12,6 +12,7 @@ from grpc.experimental import aio as aiogrpc
 import ray._private.services
 import ray.new_dashboard.consts as dashboard_consts
 import ray.new_dashboard.utils as dashboard_utils
+from ray import ray_constants
 from ray.core.generated import gcs_service_pb2
 from ray.core.generated import gcs_service_pb2_grpc
 from ray.new_dashboard.datacenter import DataSource, DataOrganizer
@@ -28,14 +29,16 @@ def gcs_node_info_to_dict(message):
 
 
 class DashboardHead:
-    def __init__(self, http_host, http_port, redis_address, redis_password,
-                 log_dir):
+    def __init__(self, http_host, http_port, http_port_retries, redis_address,
+                 redis_password, log_dir):
         # NodeInfoGcsService
         self._gcs_node_info_stub = None
         self._gcs_rpc_error_counter = 0
         # Public attributes are accessible for all head modules.
-        self.http_host = http_host
+        # Walkaround for issue: https://github.com/ray-project/ray/issues/7084
+        self.http_host = "127.0.0.1" if http_host == "localhost" else http_host
         self.http_port = http_port
+        self.http_port_retries = http_port_retries
         self.redis_address = dashboard_utils.address_tuple(redis_address)
         self.redis_password = redis_password
         self.log_dir = log_dir
@@ -47,8 +50,6 @@ class DashboardHead:
         self.grpc_port = self.server.add_insecure_port("[::]:0")
         logger.info("Dashboard head grpc address: %s:%s", self.ip,
                     self.grpc_port)
-        logger.info("Dashboard head http address: %s:%s", self.http_host,
-                    self.http_port)
 
     async def _get_nodes(self):
         """Read the client table.
@@ -177,13 +178,6 @@ class DashboardHead:
         # Start a grpc asyncio server.
         await self.server.start()
 
-        # Write the dashboard head port to redis.
-        await self.aioredis_client.set(dashboard_consts.REDIS_KEY_DASHBOARD,
-                                       self.ip + ":" + str(self.http_port))
-        await self.aioredis_client.set(
-            dashboard_consts.REDIS_KEY_DASHBOARD_RPC,
-            self.ip + ":" + str(self.grpc_port))
-
         async def _async_notify():
             """Notify signals from queue."""
             while True:
@@ -198,8 +192,32 @@ class DashboardHead:
         # Http server should be initialized after all modules loaded.
         app = aiohttp.web.Application()
         app.add_routes(routes=routes.bound_routes())
-        web_server = aiohttp.web._run_app(
-            app, host=self.http_host, port=self.http_port)
+
+        runner = aiohttp.web.AppRunner(app)
+        await runner.setup()
+        last_ex = None
+        for i in range(1 + self.http_port_retries):
+            try:
+                site = aiohttp.web.TCPSite(runner, self.http_host,
+                                           self.http_port)
+                await site.start()
+                break
+            except OSError as e:
+                last_ex = e
+                self.http_port += 1
+                logger.warning("Try to use port %s: %s", self.http_port, e)
+        else:
+            raise Exception(f"Failed to find a valid port for dashboard after "
+                            f"{self.http_port_retries} retries: {last_ex}")
+        http_host, http_port, *_ = site._server.sockets[0].getsockname()
+        logger.info("Dashboard head http address: %s:%s", http_host, http_port)
+
+        # Write the dashboard head port to redis.
+        await self.aioredis_client.set(ray_constants.REDIS_KEY_DASHBOARD,
+                                       f"{http_host}:{http_port}")
+        await self.aioredis_client.set(
+            dashboard_consts.REDIS_KEY_DASHBOARD_RPC,
+            f"{self.ip}:{self.grpc_port}")
 
         # Dump registered http routes.
         dump_routes = [
@@ -216,7 +234,6 @@ class DashboardHead:
             _async_notify(),
             DataOrganizer.purge(),
             DataOrganizer.organize(),
-            web_server,
         ]
         await asyncio.gather(*concurrent_tasks,
                              *(m.run(self.server) for m in modules))

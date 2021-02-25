@@ -32,12 +32,22 @@ class RayServeHandle:
     Example:
        >>> handle = serve_client.get_handle("my_endpoint")
        >>> handle
-       RayServeHandle(endpoint="my_endpoint")
-       >>> await handle.remote(my_request_content)
+       RayServeSyncHandle(endpoint="my_endpoint")
+       >>> handle.remote(my_request_content)
        ObjectRef(...)
-       >>> ray.get(await handle.remote(...))
+       >>> ray.get(handle.remote(...))
        # result
-       >>> ray.get(await handle.remote(let_it_crash_request))
+       >>> ray.get(handle.remote(let_it_crash_request))
+       # raises RayTaskError Exception
+
+       >>> async_handle = serve_client.get_handle("my_endpoint", sync=False)
+       >>> async_handle
+       RayServeHandle(endpoint="my_endpoint")
+       >>> await async_handle.remote(my_request_content)
+       ObjectRef(...)
+       >>> ray.get(await async_handle.remote(...))
+       # result
+       >>> ray.get(await async_handle.remote(let_it_crash_request))
        # raises RayTaskError Exception
     """
 
