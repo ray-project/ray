@@ -177,6 +177,7 @@ class ResourceSpec(
         # Choose a default object store size.
         system_memory = ray.utils.get_system_memory()
         avail_memory = ray.utils.estimate_available_memory()
+        cached_memory = ray.utils.get_cached_memory()
         object_store_memory = self.object_store_memory
         if object_store_memory is None:
             object_store_memory = int(
@@ -222,10 +223,13 @@ class ResourceSpec(
                     "object_store_memory=<bytes>).".format(
                         round(memory / 1e9, 2),
                         int(100 * (memory / system_memory))))
-                memory = 0.05 * system_memory
-                logger.warning(
-                    "Reset memory for tasks and actors to {} GB.".format(
-                        round(memory / 1e9, 2)))
+                # Linux, BSD has cached memory, which should
+                # also be considered as unused memory
+                if cached_memory + memory >= 0.05 * system_memory:
+                    memory = 0.05 * system_memory
+                    logger.warning(
+                        "Reset memory for tasks and actors to {} GB.".format(
+                            round(memory / 1e9, 2)))
 
         spec = ResourceSpec(num_cpus, num_gpus, memory, object_store_memory,
                             resources, redis_max_memory)
