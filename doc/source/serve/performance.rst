@@ -26,9 +26,8 @@ You can check out our `microbenchmark instruction <https://github.com/ray-projec
 to benchmark on your hardware.
 
 Debugging performance issues
------------------------
+----------------------------
 The performance issue you're most likely to encounter is high latency and/or low throughput for requests.
-This shows the system is processing fewer queries than desired! 
 
 If you have set up :ref:`monitoring <serve-monitoring>` with Ray and Ray Serve, you will likely observe that
 ``serve_num_router_requests`` is constant while your load increases
@@ -47,14 +46,14 @@ Batching
 If your backend can process a batch at a time at a sublinear latency 
 (for example, if it takes 1ms to process 1 query and 5ms to process 10 of them) 
 then batching is your best approach. Check out the :ref:`batching guide <serve-ml-batching>` to 
-make your backend accept batches. You might want to tune your ``max_batch_size`` and ``batch_wait_timeout`` to maximize the benefits:
+make your backend accept batches (especially for GPU-based ML inference). You might want to tune your ``max_batch_size`` and ``batch_wait_timeout`` to maximize the benefits:
 
 - ``max_batch_size`` specifies how big the batch should be. Generally, 
-   we recommend choosing the largest batch size your function can handle 
-   AND the performance improvement is no longer sublinear. Take a dummy 
-   example: suppose it takes 1ms to process 1 query, 5ms to process 10 queries,
-   and 6ms to process 11 queries. Here you should set the batch size to to 10 
-   because adding more queries won’t improve the performance.
+  we recommend choosing the largest batch size your function can handle 
+  AND the performance improvement is no longer sublinear. Take a dummy 
+  example: suppose it takes 1ms to process 1 query, 5ms to process 10 queries,
+  and 6ms to process 11 queries. Here you should set the batch size to to 10 
+  because adding more queries won’t improve the performance.
 - ``batch_wait_timeout`` specifies how the maximum amount of time to wait before
   a batch should be processed, even if it’s not full.  It should be set according 
   to `batch-wait-timeout + full batch processing time ~= expected latency`. The idea 
@@ -70,7 +69,7 @@ proper backpressure. You can increase the value in the :mod:`backend config <ray
 to allow more coroutines running in the same replica.
 
 Scaling HTTP servers
-^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^
 Sometimes it’s not about your code: Serve’s HTTP server can become the bottleneck.
 Serve only starts a single HTTP server on the Ray head node by default. 
 This single HTTP server can handle about 3k queries per second. 
