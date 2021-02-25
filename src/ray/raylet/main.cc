@@ -180,8 +180,12 @@ int main(int argc, char *argv[]) {
           RAY_LOG(DEBUG) << "Agent command is empty.";
         }
 
+        node_manager_config.heartbeat_period_ms =
+            RayConfig::instance().raylet_heartbeat_period_milliseconds();
         node_manager_config.report_resources_period_ms =
             RayConfig::instance().raylet_report_resources_period_milliseconds();
+        node_manager_config.debug_dump_period_ms =
+            RayConfig::instance().debug_dump_period_milliseconds();
         node_manager_config.record_metrics_period_ms =
             RayConfig::instance().metrics_report_interval_ms() / 2;
         node_manager_config.fair_queueing_enabled =

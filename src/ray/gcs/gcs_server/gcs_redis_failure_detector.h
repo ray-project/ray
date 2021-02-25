@@ -17,7 +17,6 @@
 #include <boost/asio.hpp>
 
 #include "ray/gcs/redis_context.h"
-#include "ray/util/periodical_runner.h"
 
 namespace ray {
 
@@ -45,6 +44,12 @@ class GcsRedisFailureDetector {
   void Start();
 
  protected:
+  /// A periodic timer that fires on every gcs detect period.
+  void Tick();
+
+  /// Schedule another tick after a short time.
+  void ScheduleTick();
+
   /// Check that if redis is inactive.
   void DetectRedis();
 
@@ -53,8 +58,8 @@ class GcsRedisFailureDetector {
   /// TODO(ffbin): We will use redis client later.
   std::shared_ptr<RedisContext> redis_context_;
 
-  /// The runner to run function periodically.
-  PeriodicalRunner periodical_runner_;
+  /// A timer that ticks every gcs_detect_timeout_milliseconds.
+  boost::asio::deadline_timer detect_timer_;
 
   /// A function is called when redis is detected to be unavailable.
   std::function<void()> callback_;

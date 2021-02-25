@@ -36,7 +36,6 @@
 #include "ray/rpc/node_manager/node_manager_client.h"
 #include "ray/rpc/worker/core_worker_client.h"
 #include "ray/rpc/worker/core_worker_server.h"
-#include "ray/util/periodical_runner.h"
 
 /// The set of gRPC handlers and their associated level of concurrency. If you want to
 /// add a new call to the worker gRPC server, do the following:
@@ -977,10 +976,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   void RegisterToGcs();
 
   /// Check if the raylet has failed. If so, shutdown.
-  void CheckForRayletFailure();
+  void CheckForRayletFailure(const boost::system::error_code &error);
 
   /// Heartbeat for internal bookkeeping.
-  void InternalHeartbeat();
+  void InternalHeartbeat(const boost::system::error_code &error);
 
   ///
   /// Private methods related to task submission.
@@ -1136,8 +1135,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Shared core worker client pool.
   std::shared_ptr<rpc::CoreWorkerClientPool> core_worker_client_pool_;
 
-  /// The runner to run function periodically.
-  PeriodicalRunner periodical_runner_;
+  /// Timer used to periodically check if the raylet has died.
+  boost::asio::steady_timer death_check_timer_;
+
+  /// Timer for internal book-keeping.
+  boost::asio::steady_timer internal_timer_;
 
   /// RPC server used to receive tasks to execute.
   std::unique_ptr<rpc::GrpcServer> core_worker_server_;
