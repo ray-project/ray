@@ -94,19 +94,18 @@ inline std::unordered_map<std::string, double> ToResources(JNIEnv *env,
       });
 }
 
-inline std::pair<ray::PlacementGroupID, int64_t> ToPlacementGroupOptions(JNIEnv *env, jobject callOptions) {
+inline std::pair<ray::PlacementGroupID, int64_t> ToPlacementGroupOptions(
+    JNIEnv *env, jobject callOptions) {
   auto placement_group_options = std::make_pair(ray::PlacementGroupID::Nil(), -1);
-  auto group = 
-        env->GetObjectField(callOptions, java_task_creation_options_group);
-  if(group) {
+  auto group = env->GetObjectField(callOptions, java_task_creation_options_group);
+  if (group) {
     auto placement_group_id = env->GetObjectField(group, java_placement_group_id);
-      auto java_id_bytes = static_cast<jbyteArray>(
-          env->CallObjectMethod(placement_group_id, java_base_id_get_bytes));
-      RAY_CHECK_JAVA_EXCEPTION(env);
-      auto id = JavaByteArrayToId<ray::PlacementGroupID>(env, java_id_bytes);
-      auto index = env->GetIntField(callOptions,
-                                    java_task_creation_options_bundle_index);
-      placement_group_options = std::make_pair(id, index);
+    auto java_id_bytes = static_cast<jbyteArray>(
+        env->CallObjectMethod(placement_group_id, java_base_id_get_bytes));
+    RAY_CHECK_JAVA_EXCEPTION(env);
+    auto id = JavaByteArrayToId<ray::PlacementGroupID>(env, java_id_bytes);
+    auto index = env->GetIntField(callOptions, java_task_creation_options_bundle_index);
+    placement_group_options = std::make_pair(id, index);
   }
   return placement_group_options;
 }

@@ -232,9 +232,9 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
   java_call_options_class = LoadClass(env, "io/ray/api/options/CallOptions");
   java_call_options_name =
       env->GetFieldID(java_call_options_class, "name", "Ljava/lang/String;");
-  java_task_creation_options_group = 
-      env->GetFieldID(java_call_options_class, "group", "Lio/ray/api/placementgroup/PlacementGroup;");
-  java_task_creation_options_bundle_index = 
+  java_task_creation_options_group = env->GetFieldID(
+      java_call_options_class, "group", "Lio/ray/api/placementgroup/PlacementGroup;");
+  java_task_creation_options_bundle_index =
       env->GetFieldID(java_call_options_class, "bundleIndex", "I");
 
   java_placement_group_class =

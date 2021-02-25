@@ -11,8 +11,8 @@ public class CallOptions extends BaseTaskOptions {
   public final PlacementGroup group;
   public final int bundleIndex;
 
-  private CallOptions(String name, Map<String, Double> resources,
-    PlacementGroup group, int bundleIndex) {
+  private CallOptions(
+      String name, Map<String, Double> resources, PlacementGroup group, int bundleIndex) {
     super(resources);
     this.name = name;
     this.group = group;

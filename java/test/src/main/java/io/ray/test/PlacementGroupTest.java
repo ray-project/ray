@@ -234,7 +234,13 @@ public class PlacementGroupTest extends BaseTest {
     PlacementGroup placementGroup = PlacementGroupTestUtils.createSimpleGroup();
     Assert.assertTrue(placementGroup.wait(60));
 
-    Assert.assertEquals(Ray.task(Counter::ping).setPlacementGroup(placementGroup, 0).setResource("CPU", 1.0).remote().get(), "pong");
+    Assert.assertEquals(
+        Ray.task(Counter::ping)
+            .setPlacementGroup(placementGroup, 0)
+            .setResource("CPU", 1.0)
+            .remote()
+            .get(),
+        "pong");
 
     // Make sure it will not affect the previous normal task.
     Assert.assertEquals(Ray.task(Counter::ping).remote().get(), "pong");
