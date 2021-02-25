@@ -250,6 +250,7 @@ Papers
    serve/ml-models.rst
    serve/advanced-traffic.rst
    serve/advanced.rst
+   serve/performance.rst
    serve/architecture.rst
    serve/tutorials/index.rst
    serve/faq.rst

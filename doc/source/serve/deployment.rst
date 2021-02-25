@@ -203,6 +203,8 @@ Please refer to the Kubernetes documentation for more information.
 .. _`NodePort`: https://kubernetes.io/docs/concepts/services-networking/service/#publishing-services-service-types
 
 
+.. _serve-monitoring:
+
 Monitoring
 ==========
 
