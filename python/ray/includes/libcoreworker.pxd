@@ -34,6 +34,7 @@ from ray.includes.common cimport (
     CWorkerType,
     CLanguage,
     CGcsClientOptions,
+    CJobConfig,
 )
 from ray.includes.function_descriptor cimport (
     CFunctionDescriptor,
@@ -48,6 +49,11 @@ ctypedef void (*ray_callback_function) \
 
 ctypedef void (*plasma_callback_function) \
     (CObjectID object_id, int64_t data_size, int64_t metadata_size)
+
+# NOTE: This ctypedef is needed, because Cython doesn't compile
+# "pair[shared_ptr[const CActorHandle], CRayStatus]".
+# This is a bug of cython: https://github.com/cython/cython/issues/3967.
+ctypedef shared_ptr[const CActorHandle] ActorHandleSharedPtr
 
 cdef extern from "ray/core_worker/profiling.h" nogil:
     cdef cppclass CProfiler "ray::worker::Profiler":
@@ -81,8 +87,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         c_string ExtensionData() const
 
     cdef cppclass CCoreWorker "ray::CoreWorker":
-        CWorkerType &GetWorkerType()
-        CLanguage &GetLanguage()
+        CWorkerType GetWorkerType()
+        CLanguage GetLanguage()
 
         void SubmitTask(
             const CRayFunction &function,
@@ -140,8 +146,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CRayStatus SerializeActorHandle(const CActorID &actor_id, c_string
                                         *bytes,
                                         CObjectID *c_actor_handle_id)
-        const CActorHandle* GetActorHandle(const CActorID &actor_id) const
-        pair[const CActorHandle*, CRayStatus] GetNamedActorHandle(
+        ActorHandleSharedPtr GetActorHandle(const CActorID &actor_id) const
+        pair[ActorHandleSharedPtr, CRayStatus] GetNamedActorHandle(
             const c_string &name)
         void AddLocalReference(const CObjectID &object_id)
         void RemoveLocalReference(const CObjectID &object_id)
@@ -164,20 +170,25 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CRayStatus Put(const CRayObject &object,
                        const c_vector[CObjectID] &contained_object_ids,
                        const CObjectID &object_id)
-        CRayStatus Create(const shared_ptr[CBuffer] &metadata,
-                          const size_t data_size,
-                          const c_vector[CObjectID] &contained_object_ids,
-                          CObjectID *object_id, shared_ptr[CBuffer] *data)
-        CRayStatus Create(const shared_ptr[CBuffer] &metadata,
-                          const size_t data_size,
-                          const CObjectID &object_id,
-                          const CAddress &owner_address,
-                          shared_ptr[CBuffer] *data)
-        CRayStatus Seal(const CObjectID &object_id, c_bool pin_object)
+        CRayStatus CreateOwned(const shared_ptr[CBuffer] &metadata,
+                               const size_t data_size,
+                               const c_vector[CObjectID] &contained_object_ids,
+                               CObjectID *object_id, shared_ptr[CBuffer] *data)
+        CRayStatus CreateExisting(const shared_ptr[CBuffer] &metadata,
+                                  const size_t data_size,
+                                  const CObjectID &object_id,
+                                  const CAddress &owner_address,
+                                  shared_ptr[CBuffer] *data)
+        CRayStatus SealOwned(const CObjectID &object_id, c_bool pin_object)
+        CRayStatus SealExisting(const CObjectID &object_id, c_bool pin_object)
         CRayStatus Get(const c_vector[CObjectID] &ids, int64_t timeout_ms,
                        c_vector[shared_ptr[CRayObject]] *results,
                        c_bool plasma_objects_only)
-        CRayStatus Contains(const CObjectID &object_id, c_bool *has_object)
+        CRayStatus GetIfLocal(
+            const c_vector[CObjectID] &ids,
+            c_vector[shared_ptr[CRayObject]] *results)
+        CRayStatus Contains(const CObjectID &object_id, c_bool *has_object,
+                            c_bool *is_in_plasma)
         CRayStatus Wait(const c_vector[CObjectID] &object_ids, int num_objects,
                         int64_t timeout_ms, c_vector[c_bool] *results,
                         c_bool fetch_local)
@@ -201,6 +212,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                                const double capacity,
                                const CNodeID &client_Id)
         CRayStatus SpillObjects(const c_vector[CObjectID] &object_ids)
+
+        CJobConfig GetJobConfig()
 
     cdef cppclass CCoreWorkerOptions "ray::CoreWorkerOptions":
         CWorkerType worker_type
@@ -232,13 +245,16 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         (void(const CWorkerID &) nogil) on_worker_shutdown
         (CRayStatus() nogil) check_signals
         (void() nogil) gc_collect
-        (c_vector[c_string](const c_vector[CObjectID] &) nogil) spill_objects
+        (c_vector[c_string](
+            const c_vector[CObjectID] &,
+            const c_vector[c_string] &) nogil) spill_objects
         (int64_t(
             const c_vector[CObjectID] &,
             const c_vector[c_string] &) nogil) restore_spilled_objects
         (void(
             const c_vector[c_string]&,
             CWorkerType) nogil) delete_spilled_objects
+        (void(const CRayObject&) nogil) unhandled_exception_handler
         (void(c_string *stack_out) nogil) get_lang_stack
         c_bool ref_counting_enabled
         c_bool is_local_mode

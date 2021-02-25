@@ -183,7 +183,7 @@ TEST_F(ActorManagerTest, TestAddAndGetActorHandleEndToEnd) {
   ASSERT_FALSE(actor_manager_->AddNewActorHandle(move(actor_handle2), task_id, call_site,
                                                  caller_address, false));
   // Make sure we can get an actor handle correctly.
-  const std::unique_ptr<ActorHandle> &actor_handle_to_get =
+  const std::shared_ptr<ActorHandle> actor_handle_to_get =
       actor_manager_->GetActorHandle(actor_id);
   ASSERT_TRUE(actor_handle_to_get->GetActorID() == actor_id);
 
@@ -230,7 +230,7 @@ TEST_F(ActorManagerTest, RegisterActorHandles) {
       std::move(actor_handle), outer_object_id, task_id, call_site, caller_address);
   ASSERT_TRUE(returned_actor_id == actor_id);
   // Let's try to get the handle and make sure it works.
-  const std::unique_ptr<ActorHandle> &actor_handle_to_get =
+  const std::shared_ptr<ActorHandle> actor_handle_to_get =
       actor_manager_->GetActorHandle(actor_id);
   ASSERT_TRUE(actor_handle_to_get->GetActorID() == actor_id);
   ASSERT_TRUE(actor_handle_to_get->CreationJobID() == job_id);

@@ -3,6 +3,7 @@ from concurrent import futures
 import grpc
 import base64
 from collections import defaultdict
+from dataclasses import dataclass
 
 from typing import Any
 from typing import Dict
@@ -17,12 +18,13 @@ import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 import time
 import inspect
 import json
+from ray.util.client.common import GRPC_MAX_MESSAGE_SIZE
 from ray.util.client.server.server_pickler import convert_from_arg
 from ray.util.client.server.server_pickler import dumps_from_server
 from ray.util.client.server.server_pickler import loads_from_client
 from ray.util.client.server.dataservicer import DataServicer
 from ray.util.client.server.logservicer import LogstreamServicer
-from ray.util.client.server.server_stubs import current_remote
+from ray.util.client.server.server_stubs import current_server
 from ray._private.client_mode_hook import disable_client_hook
 
 logger = logging.getLogger(__name__)
@@ -30,13 +32,38 @@ logger = logging.getLogger(__name__)
 
 class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
     def __init__(self):
+        # Stores client_id -> (ref_id -> ObjectRef)
         self.object_refs: Dict[str, Dict[bytes, ray.ObjectRef]] = defaultdict(
+            dict)
+        # Stores client_id -> (client_ref_id -> ref_id (in self.object_refs))
+        self.client_side_ref_map: Dict[str, Dict[bytes, bytes]] = defaultdict(
             dict)
         self.function_refs = {}
         self.actor_refs: Dict[bytes, ray.ActorHandle] = {}
         self.actor_owners: Dict[str, Set[bytes]] = defaultdict(set)
         self.registered_actor_classes = {}
-        self._current_function_stub = None
+
+    def KVPut(self, request, context=None) -> ray_client_pb2.KVPutResponse:
+        with disable_client_hook():
+            already_exists = ray.experimental.internal_kv._internal_kv_put(
+                request.key, request.value, overwrite=request.overwrite)
+        return ray_client_pb2.KVPutResponse(already_exists=already_exists)
+
+    def KVGet(self, request, context=None) -> ray_client_pb2.KVGetResponse:
+        with disable_client_hook():
+            value = ray.experimental.internal_kv._internal_kv_get(request.key)
+        return ray_client_pb2.KVGetResponse(value=value)
+
+    def KVDel(self, request, context=None) -> ray_client_pb2.KVDelResponse:
+        with disable_client_hook():
+            ray.experimental.internal_kv._internal_kv_del(request.key)
+        return ray_client_pb2.KVDelResponse()
+
+    def KVList(self, request, context=None) -> ray_client_pb2.KVListResponse:
+        with disable_client_hook():
+            keys = ray.experimental.internal_kv._internal_kv_list(
+                request.prefix)
+        return ray_client_pb2.KVListResponse(keys=keys)
 
     def ClusterInfo(self, request,
                     context=None) -> ray_client_pb2.ClusterInfoResponse:
@@ -61,6 +88,15 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             resp.resource_table.CopyFrom(
                 ray_client_pb2.ClusterInfoResponse.ResourceTable(
                     table=float_resources))
+        elif request.type == ray_client_pb2.ClusterInfoType.RUNTIME_CONTEXT:
+            ctx = ray_client_pb2.ClusterInfoResponse.RuntimeContext()
+            with disable_client_hook():
+                rtc = ray.get_runtime_context()
+                ctx.job_id = rtc.job_id.binary()
+                ctx.node_id = rtc.node_id.binary()
+                ctx.capture_client_tasks = \
+                    rtc.should_capture_child_tasks_in_placement_group
+            resp.runtime_context.CopyFrom(ctx)
         else:
             with disable_client_hook():
                 resp.json = self._return_debug_cluster_info(request, context)
@@ -102,6 +138,8 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             return
         count = len(self.object_refs[client_id])
         del self.object_refs[client_id]
+        if client_id in self.client_side_ref_map:
+            del self.client_side_ref_map[client_id]
         logger.debug(f"Released all {count} objects for client {client_id}")
 
     def _release_actors(self, client_id):
@@ -178,6 +216,9 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         with disable_client_hook():
             objectref = ray.put(obj)
         self.object_refs[client_id][objectref.binary()] = objectref
+        if len(request.client_ref_id) > 0:
+            self.client_side_ref_map[client_id][
+                request.client_ref_id] = objectref.binary()
         logger.debug("put: %s" % objectref)
         return ray_client_pb2.PutResponse(id=objectref.binary())
 
@@ -239,8 +280,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                 result.valid = True
                 return result
         except Exception as e:
-            logger.error(f"Caught schedule exception {e}")
-            raise e
+            logger.debug(f"Caught schedule exception, returning: {e}")
             return ray_client_pb2.ClientTaskTicket(
                 valid=False, error=cloudpickle.dumps(e))
 
@@ -269,7 +309,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         opts = decode_options(task.options)
         if opts is not None:
             remote_class = remote_class.options(**opts)
-        with current_remote(remote_class):
+        with current_server(self):
             actor = remote_class.remote(*arglist, **kwargs)
         self.actor_refs[actor._actor_id.binary()] = actor
         self.actor_owners[task.client_id].add(actor._actor_id.binary())
@@ -285,7 +325,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         opts = decode_options(task.options)
         if opts is not None:
             remote_func = remote_func.options(**opts)
-        with current_remote(remote_func):
+        with current_server(self):
             output = remote_func.remote(*arglist, **kwargs)
         ids = self.unify_and_track_outputs(output, task.client_id)
         return ray_client_pb2.ClientTaskTicket(return_ids=ids)
@@ -377,22 +417,37 @@ def decode_options(
     return opts
 
 
-_current_servicer: Optional[RayletServicer] = None
+@dataclass
+class ClientServerHandle:
+    """Holds the handles to the registered gRPC servicers and their server."""
+    task_servicer: RayletServicer
+    data_servicer: DataServicer
+    logs_servicer: LogstreamServicer
+    grpc_server: grpc.Server
+
+    # Add a hook for all the cases that previously
+    # expected simply a gRPC server
+    def __getattr__(self, attr):
+        return getattr(self.grpc_server, attr)
 
 
-# Used by tests to peek inside the servicer
-def _get_current_servicer():
-    global _current_servicer
-    return _current_servicer
+def serve(connection_str, ray_connect_handler=None):
+    def default_connect_handler():
+        with disable_client_hook():
+            if not ray.is_initialized():
+                return ray.init()
 
-
-def serve(connection_str):
-    server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
+    ray_connect_handler = ray_connect_handler or default_connect_handler
+    server = grpc.server(
+        futures.ThreadPoolExecutor(max_workers=10),
+        options=[
+            ("grpc.max_send_message_length", GRPC_MAX_MESSAGE_SIZE),
+            ("grpc.max_receive_message_length", GRPC_MAX_MESSAGE_SIZE),
+        ])
     task_servicer = RayletServicer()
-    data_servicer = DataServicer(task_servicer)
+    data_servicer = DataServicer(
+        task_servicer, ray_connect_handler=ray_connect_handler)
     logs_servicer = LogstreamServicer()
-    global _current_servicer
-    _current_servicer = task_servicer
     ray_client_pb2_grpc.add_RayletDriverServicer_to_server(
         task_servicer, server)
     ray_client_pb2_grpc.add_RayletDataStreamerServicer_to_server(
@@ -400,22 +455,51 @@ def serve(connection_str):
     ray_client_pb2_grpc.add_RayletLogStreamerServicer_to_server(
         logs_servicer, server)
     server.add_insecure_port(connection_str)
+    current_handle = ClientServerHandle(
+        task_servicer=task_servicer,
+        data_servicer=data_servicer,
+        logs_servicer=logs_servicer,
+        grpc_server=server,
+    )
     server.start()
-    return server
+    return current_handle
 
 
 def init_and_serve(connection_str, *args, **kwargs):
     with disable_client_hook():
         # Disable client mode inside the worker's environment
         info = ray.init(*args, **kwargs)
-    server = serve(connection_str)
-    return (server, info)
+
+    def ray_connect_handler():
+        # Ray client will disconnect from ray when
+        # num_clients == 0.
+        if ray.is_initialized():
+            return info
+        else:
+            return ray.init(*args, **kwargs)
+
+    server_handle = serve(
+        connection_str, ray_connect_handler=ray_connect_handler)
+    return (server_handle, info)
 
 
 def shutdown_with_server(server, _exiting_interpreter=False):
     server.stop(1)
     with disable_client_hook():
         ray.shutdown(_exiting_interpreter)
+
+
+def create_ray_handler(redis_address, redis_password):
+    def ray_connect_handler():
+        if redis_address:
+            if redis_password:
+                ray.init(address=redis_address, _redis_password=redis_password)
+            else:
+                ray.init(address=redis_address)
+        else:
+            ray.init()
+
+    return ray_connect_handler
 
 
 def main():
@@ -427,7 +511,7 @@ def main():
         "-p", "--port", type=int, default=50051, help="Port to bind to")
     parser.add_argument(
         "--redis-address",
-        required=True,
+        required=False,
         type=str,
         help="Address to use to connect to Ray")
     parser.add_argument(
@@ -437,14 +521,13 @@ def main():
         help="Password for connecting to Redis")
     args = parser.parse_args()
     logging.basicConfig(level="INFO")
-    if args.redis_password:
-        ray.init(
-            address=args.redis_address, _redis_password=args.redis_password)
-    else:
-        ray.init(address=args.redis_address)
+
+    ray_connect_handler = create_ray_handler(args.redis_address,
+                                             args.redis_password)
+
     hostport = "%s:%d" % (args.host, args.port)
     logger.info(f"Starting Ray Client server on {hostport}")
-    server = serve(hostport)
+    server = serve(hostport, ray_connect_handler)
     try:
         while True:
             time.sleep(1000)

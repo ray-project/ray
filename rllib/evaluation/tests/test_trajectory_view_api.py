@@ -25,7 +25,7 @@ from ray.rllib.utils.test_utils import framework_iterator, check
 
 class MyCallbacks(DefaultCallbacks):
     @override(DefaultCallbacks)
-    def on_learn_on_batch(self, *, policy, train_batch, **kwargs):
+    def on_learn_on_batch(self, *, policy, train_batch, result, **kwargs):
         assert train_batch.count == 201
         assert sum(train_batch.seq_lens) == 201
         for k, v in train_batch.data.items():

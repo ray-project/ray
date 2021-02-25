@@ -1,5 +1,7 @@
+from typing import Dict, List, Union
 import copy
 import json
+import glob
 import logging
 import numbers
 import os
@@ -11,6 +13,7 @@ from collections import defaultdict, deque
 from collections.abc import Mapping, Sequence
 from datetime import datetime
 from threading import Thread
+from typing import Optional
 
 import numpy as np
 import ray
@@ -18,10 +21,14 @@ import psutil
 
 logger = logging.getLogger(__name__)
 
-try:
-    import GPUtil
-except ImportError:
-    GPUtil = None
+
+def _import_gputil():
+    try:
+        import GPUtil
+    except ImportError:
+        GPUtil = None
+    return GPUtil
+
 
 _pinned_objects = []
 PINNED_OBJECT_PREFIX = "ray.tune.PinnedObject:"
@@ -40,6 +47,8 @@ class UtilMonitor(Thread):
 
     def __init__(self, start=True, delay=0.7):
         self.stopped = True
+        GPUtil = _import_gputil()
+        self.GPUtil = GPUtil
         if GPUtil is None and start:
             logger.warning("Install gputil for GPU system monitoring.")
 
@@ -64,10 +73,10 @@ class UtilMonitor(Thread):
                     float(psutil.cpu_percent(interval=None)))
                 self.values["ram_util_percent"].append(
                     float(getattr(psutil.virtual_memory(), "percent")))
-            if GPUtil is not None:
+            if self.GPUtil is not None:
                 gpu_list = []
                 try:
-                    gpu_list = GPUtil.getGPUs()
+                    gpu_list = self.GPUtil.getGPUs()
                 except Exception:
                     logger.debug("GPUtil failed to retrieve GPUs.")
                 for gpu in gpu_list:
@@ -124,11 +133,19 @@ class warn_if_slow:
     """
 
     DEFAULT_THRESHOLD = float(os.environ.get("TUNE_WARN_THRESHOLD_S", 0.5))
+    DEFAULT_MESSAGE = "The `{name}` operation took {duration:.3f} s, " \
+                      "which may be a performance bottleneck."
 
-    def __init__(self, name, threshold=None):
+    def __init__(self,
+                 name: str,
+                 threshold: Optional[float] = None,
+                 message: Optional[str] = None,
+                 disable: bool = False):
         self.name = name
         self.threshold = threshold or self.DEFAULT_THRESHOLD
+        self.message = message or self.DEFAULT_MESSAGE
         self.too_slow = False
+        self.disable = disable
 
     def __enter__(self):
         self.start = time.time()
@@ -136,12 +153,13 @@ class warn_if_slow:
 
     def __exit__(self, type, value, traceback):
         now = time.time()
+        if self.disable:
+            return
         if now - self.start > self.threshold and now - START_OF_TIME > 60.0:
             self.too_slow = True
-            _duration = now - self.start
+            duration = now - self.start
             logger.warning(
-                f"The `{self.name}` operation took {_duration:.3f} s, "
-                "which may be a performance bottleneck.")
+                self.message.format(name=self.name, duration=duration))
 
 
 class Tee(object):
@@ -406,27 +424,75 @@ def diagnose_serialization(trainable):
         return failure_set
 
 
-def wait_for_gpu(gpu_id=None, gpu_memory_limit=0.1, retry=20):
+def atomic_save(state: Dict, checkpoint_dir: str, file_name: str,
+                tmp_file_name: str):
+    """Atomically saves the state object to the checkpoint directory.
+
+    This is automatically used by tune.run during a Tune job.
+
+    Args:
+        state (dict): Object state to be serialized.
+        checkpoint_dir (str): Directory location for the checkpoint.
+        file_name (str): Final name of file.
+        tmp_file_name (str): Temporary name of file.
+    """
+    import ray.cloudpickle as cloudpickle
+    tmp_search_ckpt_path = os.path.join(checkpoint_dir, tmp_file_name)
+    with open(tmp_search_ckpt_path, "wb") as f:
+        cloudpickle.dump(state, f)
+
+    os.replace(tmp_search_ckpt_path, os.path.join(checkpoint_dir, file_name))
+
+
+def load_newest_checkpoint(dirpath: str, ckpt_pattern: str) -> dict:
+    """Returns the most recently modified checkpoint.
+
+    Assumes files are saved with an ordered name, most likely by
+    :obj:atomic_save.
+
+    Args:
+        dirpath (str): Directory in which to look for the checkpoint file.
+        ckpt_pattern (str): File name pattern to match to find checkpoint
+            files.
+
+    Returns:
+        (dict) Deserialized state dict.
+    """
+    import ray.cloudpickle as cloudpickle
+    full_paths = glob.glob(os.path.join(dirpath, ckpt_pattern))
+    if not full_paths:
+        return
+    most_recent_checkpoint = max(full_paths)
+    with open(most_recent_checkpoint, "rb") as f:
+        checkpoint_state = cloudpickle.load(f)
+    return checkpoint_state
+
+
+def wait_for_gpu(gpu_id=None,
+                 target_util=0.01,
+                 retry=20,
+                 delay_s=5,
+                 gpu_memory_limit=None):
     """Checks if a given GPU has freed memory.
 
     Requires ``gputil`` to be installed: ``pip install gputil``.
 
     Args:
-        gpu_id (Optional[str]): GPU id to check. Must be found
-            within GPUtil.getGPUs(). If none, resorts to
+        gpu_id (Optional[Union[int, str]]): GPU id or uuid to check.
+            Must be found within GPUtil.getGPUs(). If none, resorts to
             the first item returned from `ray.get_gpu_ids()`.
-        gpu_memory_limit (float): If memory usage is below
-            this quantity, the check will break.
-        retry (int): Number of times to check GPU limit. Sleeps 5
+        target_util (float): The utilization threshold to reach to unblock.
+            Set this to 0 to block until the GPU is completely free.
+        retry (int): Number of times to check GPU limit. Sleeps `delay_s`
             seconds between checks.
+        delay_s (int): Seconds to wait before check.
+        gpu_memory_limit (float): Deprecated.
 
     Returns:
-        bool
-            True if free.
+        bool: True if free.
 
     Raises:
-        RuntimeError
-            If GPUtil is not found, if no GPUs are detected
+        RuntimeError: If GPUtil is not found, if no GPUs are detected
             or if the check fails.
 
     Example:
@@ -439,21 +505,54 @@ def wait_for_gpu(gpu_id=None, gpu_memory_limit=0.1, retry=20):
 
         tune.run(tune_func, resources_per_trial={"GPU": 1}, num_samples=10)
     """
+    GPUtil = _import_gputil()
+    if gpu_memory_limit:
+        raise ValueError("'gpu_memory_limit' is deprecated. "
+                         "Use 'target_util' instead.")
     if GPUtil is None:
         raise RuntimeError(
             "GPUtil must be installed if calling `wait_for_gpu`.")
-    if not gpu_id:
+
+    if gpu_id is None:
         gpu_id_list = ray.get_gpu_ids()
         if not gpu_id_list:
-            raise RuntimeError(f"No GPU ids found from {ray.get_gpu_ids()}. "
+            raise RuntimeError("No GPU ids found from `ray.get_gpu_ids()`. "
                                "Did you set Tune resources correctly?")
         gpu_id = gpu_id_list[0]
-    gpu_object = GPUtil.getGPUs()[gpu_id]
+
+    gpu_attr = "id"
+    if isinstance(gpu_id, str):
+        if gpu_id.isdigit():
+            # GPU ID returned from `ray.get_gpu_ids()` is a str representation
+            # of the int GPU ID
+            gpu_id = int(gpu_id)
+        else:
+            # Could not coerce gpu_id to int, so assume UUID
+            # and compare against `uuid` attribute e.g.,
+            # 'GPU-04546190-b68d-65ac-101b-035f8faed77d'
+            gpu_attr = "uuid"
+    elif not isinstance(gpu_id, int):
+        raise ValueError(f"gpu_id ({type(gpu_id)}) must be type str/int.")
+
+    def gpu_id_fn(g):
+        # Returns either `g.id` or `g.uuid` depending on
+        # the format of the input `gpu_id`
+        return getattr(g, gpu_attr)
+
+    gpu_ids = {gpu_id_fn(g) for g in GPUtil.getGPUs()}
+    if gpu_id not in gpu_ids:
+        raise ValueError(
+            f"{gpu_id} not found in set of available GPUs: {gpu_ids}. "
+            "`wait_for_gpu` takes either GPU ordinal ID (e.g., '0') or "
+            "UUID (e.g., 'GPU-04546190-b68d-65ac-101b-035f8faed77d').")
+
     for i in range(int(retry)):
-        if gpu_object.memoryUsed > gpu_memory_limit:
-            logger.info(f"Waiting for GPU {gpu_id} memory to free. "
-                        f"Mem: {gpu_object.memoryUsed:0.3f}")
-            time.sleep(5)
+        gpu_object = next(
+            g for g in GPUtil.getGPUs() if gpu_id_fn(g) == gpu_id)
+        if gpu_object.memoryUtil > target_util:
+            logger.info(f"Waiting for GPU util to reach {target_util}. "
+                        f"Util: {gpu_object.memoryUtil:0.3f}")
+            time.sleep(delay_s)
         else:
             return True
     raise RuntimeError("GPU memory was not freed.")
@@ -557,7 +656,8 @@ def create_logdir(dirname: str, local_dir: str):
         dirname (str): Dirname to create in `local_dir`
         local_dir (str): Root directory for the log dir
 
-    Returns: full path to the newly created logdir.
+    Returns:
+        full path to the newly created logdir.
     """
     local_dir = os.path.expanduser(local_dir)
     logdir = os.path.join(local_dir, dirname)
@@ -569,6 +669,41 @@ def create_logdir(dirname: str, local_dir: str):
         logdir = os.path.join(local_dir, dirname)
     os.makedirs(logdir, exist_ok=True)
     return logdir
+
+
+def validate_warmstart(parameter_names: List[str],
+                       points_to_evaluate: List[Union[List, Dict]],
+                       evaluated_rewards: List):
+    """Generic validation of a Searcher's warm start functionality.
+    Raises exceptions in case of type and length mismatches betwee
+    parameters.
+    """
+    if points_to_evaluate:
+        if not isinstance(points_to_evaluate, list):
+            raise TypeError(
+                "points_to_evaluate expected to be a list, got {}.".format(
+                    type(points_to_evaluate)))
+        for point in points_to_evaluate:
+            if not isinstance(point, (dict, list)):
+                raise TypeError(
+                    f"points_to_evaluate expected to include list or dict, "
+                    f"got {point}.")
+
+            if not len(point) == len(parameter_names):
+                raise ValueError("Dim of point {}".format(point) +
+                                 " and parameter_names {}".format(
+                                     parameter_names) + " do not match.")
+
+    if points_to_evaluate and evaluated_rewards:
+        if not isinstance(evaluated_rewards, list):
+            raise TypeError(
+                "evaluated_rewards expected to be a list, got {}.".format(
+                    type(evaluated_rewards)))
+        if not len(evaluated_rewards) == len(points_to_evaluate):
+            raise ValueError(
+                "Dim of evaluated_rewards {}".format(evaluated_rewards) +
+                " and points_to_evaluate {}".format(points_to_evaluate) +
+                " do not match.")
 
 
 class SafeFallbackEncoder(json.JSONEncoder):

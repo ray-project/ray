@@ -193,17 +193,19 @@ class RayletClient : public RayletClientInterface {
   /// \param ip_address The IP address of the worker.
   /// \param status This will be populated with the result of connection attempt.
   /// \param raylet_id This will be populated with the local raylet's NodeID.
-  /// \param system_config This will be populated with internal config parameters
-  /// provided by the raylet.
   /// \param port The port that the worker should listen on for gRPC requests. If
   /// 0, the worker should choose a random port.
+  /// \param system_config This will be populated with internal config parameters
+  /// provided by the raylet.
+  /// \param serialized_job_config If this is a driver connection, the job config
+  /// provided by driver will be passed to Raylet. If this is a worker connection,
+  /// this will be populated with the current job config.
   RayletClient(boost::asio::io_service &io_service,
                std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client,
                const std::string &raylet_socket, const WorkerID &worker_id,
                rpc::WorkerType worker_type, const JobID &job_id, const Language &language,
                const std::string &ip_address, Status *status, NodeID *raylet_id,
-               int *port, std::unordered_map<std::string, std::string> *system_config,
-               const std::string &job_config);
+               int *port, std::string *system_config, std::string *serialized_job_config);
 
   /// Connect to the raylet via grpc only.
   ///
@@ -332,6 +334,15 @@ class RayletClient : public RayletClientInterface {
       const ObjectID &object_id,
       const rpc::ClientCallback<rpc::RequestObjectSpillageReply> &callback);
 
+  /// Ask the raylet to restore the object of a given id.
+  /// \param object_id Object id that the remote raylet needs to restore.
+  /// \param object_url Object URL where the object is spilled.
+  /// \param spilled_node_id Node id of a node where the object is spilled.
+  void RestoreSpilledObject(
+      const ObjectID &object_id, const std::string &object_url,
+      const NodeID &spilled_node_id,
+      const rpc::ClientCallback<rpc::RestoreSpilledObjectReply> &callback);
+
   /// Implements WorkerLeaseInterface.
   void RequestWorkerLease(
       const ray::TaskSpecification &resource_spec,
@@ -395,7 +406,6 @@ class RayletClient : public RayletClientInterface {
   std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client_;
   const WorkerID worker_id_;
   const JobID job_id_;
-  const std::string job_config_;
 
   /// A map from resource name to the resource IDs that are currently reserved
   /// for this worker. Each pair consists of the resource ID and the fraction

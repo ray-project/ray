@@ -37,7 +37,7 @@ class WorkerPoolMock : public WorkerPool {
   explicit WorkerPoolMock(boost::asio::io_service &io_service,
                           const WorkerCommandMap &worker_commands)
       : WorkerPool(io_service, POOL_SIZE_SOFT_LIMIT, 0, MAXIMUM_STARTUP_CONCURRENCY, 0, 0,
-                   {}, nullptr, worker_commands, {}, []() {}),
+                   {}, nullptr, worker_commands, []() {}),
         last_worker_process_() {}
 
   ~WorkerPoolMock() {
@@ -103,13 +103,11 @@ class WorkerPoolMock : public WorkerPool {
 class WorkerPoolTest : public ::testing::Test {
  public:
   WorkerPoolTest() : error_message_type_(1), client_call_manager_(io_service_) {
-    RayConfig::instance().initialize(
-        {{"object_spilling_config", "mock_config"},
-         {"max_io_workers", std::to_string(MAX_IO_WORKER_SIZE)}});
-    SetWorkerCommands(
-        {{Language::PYTHON, {"dummy_py_worker_command"}},
-         {Language::JAVA,
-          {"dummy_java_worker_command", "RAY_WORKER_RAYLET_CONFIG_PLACEHOLDER"}}});
+    RayConfig::instance().initialize("object_spilling_config,YQ==;max_io_workers," +
+                                     std::to_string(MAX_IO_WORKER_SIZE));
+    SetWorkerCommands({{Language::PYTHON, {"dummy_py_worker_command"}},
+                       {Language::JAVA,
+                        {"java", "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER", "MainClass"}}});
   }
 
   std::shared_ptr<WorkerInterface> CreateWorker(
@@ -268,7 +266,8 @@ TEST_F(WorkerPoolTest, HandleWorkerRegistration) {
   // Check that there's no starting worker process
   ASSERT_EQ(worker_pool_->NumWorkerProcessesStarting(), 0);
   for (const auto &worker : workers) {
-    worker_pool_->DisconnectWorker(worker);
+    worker_pool_->DisconnectWorker(
+        worker, /*disconnect_type=*/rpc::WorkerExitType::INTENDED_EXIT);
     // Check that we cannot lookup the worker after it's disconnected.
     ASSERT_EQ(worker_pool_->GetRegisteredWorker(worker->Connection()), nullptr);
   }
@@ -287,8 +286,8 @@ TEST_F(WorkerPoolTest, StartupPythonWorkerProcessCount) {
 TEST_F(WorkerPoolTest, StartupJavaWorkerProcessCount) {
   TestStartupWorkerProcessCount(
       Language::JAVA, NUM_WORKERS_PER_PROCESS_JAVA,
-      {"dummy_java_worker_command",
-       GetNumJavaWorkersPerProcessSystemProperty(NUM_WORKERS_PER_PROCESS_JAVA)});
+      {"java", GetNumJavaWorkersPerProcessSystemProperty(NUM_WORKERS_PER_PROCESS_JAVA),
+       "MainClass"});
 }
 
 TEST_F(WorkerPoolTest, InitialWorkerProcessCount) {
@@ -343,28 +342,6 @@ TEST_F(WorkerPoolTest, HandleWorkerPushPop) {
   ASSERT_EQ(popped_worker, nullptr);
 }
 
-TEST_F(WorkerPoolTest, PopActorWorker) {
-  // Create a worker.
-  auto worker = CreateWorker(Process::CreateNewDummy());
-  // Add the worker to the pool.
-  worker_pool_->PushWorker(worker);
-
-  // Assign an actor ID to the worker.
-  const auto task_spec = ExampleTaskSpec();
-  auto actor = worker_pool_->PopWorker(task_spec);
-  auto actor_id = ActorID::Of(JOB_ID, TaskID::ForDriverTask(JOB_ID), 1);
-  actor->AssignActorId(actor_id);
-  worker_pool_->PushWorker(actor);
-
-  // Check that there are no more non-actor workers.
-  ASSERT_EQ(worker_pool_->PopWorker(task_spec), nullptr);
-  // Check that we can pop the actor worker.
-  const auto actor_task_spec = ExampleTaskSpec(actor_id);
-  actor = worker_pool_->PopWorker(actor_task_spec);
-  ASSERT_EQ(actor, worker);
-  ASSERT_EQ(actor->GetActorId(), actor_id);
-}
-
 TEST_F(WorkerPoolTest, PopWorkersOfMultipleLanguages) {
   // Create a Python Worker, and add it to the pool
   auto py_worker = CreateWorker(Process::CreateNewDummy(), Language::PYTHON);
@@ -384,12 +361,6 @@ TEST_F(WorkerPoolTest, PopWorkersOfMultipleLanguages) {
 }
 
 TEST_F(WorkerPoolTest, StartWorkerWithDynamicOptionsCommand) {
-  const std::vector<std::string> java_worker_command = {
-      "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER", "dummy_java_worker_command",
-      "RAY_WORKER_RAYLET_CONFIG_PLACEHOLDER"};
-  SetWorkerCommands({{Language::PYTHON, {"dummy_py_worker_command"}},
-                     {Language::JAVA, java_worker_command}});
-
   TaskSpecification task_spec = ExampleTaskSpec(
       ActorID::Nil(), Language::JAVA, JOB_ID,
       ActorID::Of(JOB_ID, TaskID::ForDriverTask(JOB_ID), 1), {"test_op_0", "test_op_1"});
@@ -404,11 +375,11 @@ TEST_F(WorkerPoolTest, StartWorkerWithDynamicOptionsCommand) {
   const auto real_command =
       worker_pool_->GetWorkerCommand(worker_pool_->LastStartedWorkerProcess());
 
-  ASSERT_EQ(
-      real_command,
-      std::vector<std::string>(
-          {"test_op_0", "test_op_1", "-Dray.job.code-search-path=/test/code_serch_path",
-           "dummy_java_worker_command", GetNumJavaWorkersPerProcessSystemProperty(1)}));
+  ASSERT_EQ(real_command,
+            std::vector<std::string>({"java", "test_op_0", "test_op_1",
+                                      "-Dray.job.code-search-path=/test/code_serch_path",
+                                      GetNumJavaWorkersPerProcessSystemProperty(1),
+                                      "MainClass"}));
   worker_pool_->HandleJobFinished(JOB_ID);
 }
 
@@ -428,25 +399,19 @@ TEST_F(WorkerPoolTest, PopWorkerMultiTenancy) {
       worker_pool_->PushWorker(worker);
     }
   }
-
   std::unordered_set<WorkerID> worker_ids;
   for (int round = 0; round < 2; round++) {
     std::vector<std::shared_ptr<WorkerInterface>> workers;
 
-    // Pop workers for actor (creation) tasks.
+    // Pop workers for actor.
     for (auto job_id : job_ids) {
-      auto actor_id = ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 1);
-      // For the first round, we pop for actor creation tasks.
-      // For the second round, we pop for actor tasks.
-      auto task_spec =
-          ExampleTaskSpec(round == 0 ? ActorID::Nil() : actor_id, Language::PYTHON,
-                          job_id, round == 0 ? actor_id : ActorID::Nil());
+      auto actor_creation_id = ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 1);
+      // Pop workers for actor creation tasks.
+      auto task_spec = ExampleTaskSpec(/*actor_id=*/ActorID::Nil(), Language::PYTHON,
+                                       job_id, actor_creation_id);
       auto worker = worker_pool_->PopWorker(task_spec);
       ASSERT_TRUE(worker);
       ASSERT_EQ(worker->GetAssignedJobId(), job_id);
-      if (round == 0) {
-        worker->AssignActorId(actor_id);
-      }
       workers.push_back(worker);
     }
 
@@ -736,6 +701,42 @@ TEST_F(WorkerPoolTest, DeleteWorkerPushPop) {
     ASSERT_EQ(worker->GetWorkerType(), rpc::WorkerType::RESTORE_WORKER);
     worker_pool_->PushDeleteWorker(worker);
   });
+}
+
+TEST_F(WorkerPoolTest, NoPopOnCrashedWorkerProcess) {
+  // Start a Java worker process.
+  Process proc =
+      worker_pool_->StartWorkerProcess(Language::JAVA, rpc::WorkerType::WORKER, JOB_ID);
+  auto worker1 = CreateWorker(Process(), Language::JAVA);
+  auto worker2 = CreateWorker(Process(), Language::JAVA);
+
+  // We now imitate worker process crashing while core worker initializing.
+
+  // 1. we register both workers.
+  RAY_CHECK_OK(worker_pool_->RegisterWorker(worker1, proc.GetId(), [](Status, int) {}));
+  RAY_CHECK_OK(worker_pool_->RegisterWorker(worker2, proc.GetId(), [](Status, int) {}));
+
+  // 2. announce worker port for worker 1. When interacting with worker pool, it's
+  // PushWorker.
+  worker_pool_->PushWorker(worker1);
+
+  // 3. kill the worker process. Now let's assume that Raylet found that the connection
+  // with worker 1 disconnected first.
+  worker_pool_->DisconnectWorker(
+      worker1, /*disconnect_type=*/rpc::WorkerExitType::SYSTEM_ERROR_EXIT);
+
+  // 4. but the RPC for announcing worker port for worker 2 is already in Raylet input
+  // buffer. So now Raylet needs to handle worker 2.
+  worker_pool_->PushWorker(worker2);
+
+  // 5. Let's try to pop a worker to execute a task. Worker 2 shouldn't be popped because
+  // the process has crashed.
+  const auto task_spec = ExampleTaskSpec();
+  ASSERT_EQ(worker_pool_->PopWorker(task_spec), nullptr);
+
+  // 6. Now Raylet disconnects with worker 2.
+  worker_pool_->DisconnectWorker(
+      worker2, /*disconnect_type=*/rpc::WorkerExitType::SYSTEM_ERROR_EXIT);
 }
 
 }  // namespace raylet

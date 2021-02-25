@@ -90,6 +90,23 @@ def test_starlette_response(serve_instance):
     assert requests.get(
         "http://127.0.0.1:8000/redirect_response").text == "Hello, world!"
 
+    def streaming_response(_):
+        async def slow_numbers():
+            for number in range(1, 4):
+                yield str(number)
+                await asyncio.sleep(0.01)
+
+        return starlette.responses.StreamingResponse(
+            slow_numbers(), media_type="text/plain")
+
+    client.create_backend("streaming_response", streaming_response)
+    client.create_endpoint(
+        "streaming_response",
+        backend="streaming_response",
+        route="/streaming_response")
+    assert requests.get(
+        "http://127.0.0.1:8000/streaming_response").text == "123"
+
 
 def test_backend_user_config(serve_instance):
     client = serve_instance
@@ -666,6 +683,9 @@ def test_endpoint_input_validation(serve_instance):
     client.create_endpoint("endpoint", backend="backend")
 
 
+# This error is only printed because creation is run in the control loop, not
+# in the API path.
+@pytest.mark.skip()
 def test_create_infeasible_error(serve_instance):
     client = serve_instance
 
@@ -855,6 +875,10 @@ def test_serve_metrics(serve_instance):
             # gauge
             "replica_processing_queries",
             "replica_queued_queries",
+            # handle
+            "serve_handle_request_counter",
+            # ReplicaSet
+            "backend_queued_queries"
         ]
         for metric in expected_metrics:
             # For the final error round
@@ -963,6 +987,29 @@ def test_starlette_request(serve_instance):
 
     resp = requests.post("http://127.0.0.1:8000/api", data=long_string).text
     assert resp == long_string
+
+
+def test_variable_routes(serve_instance):
+    client = serve_instance
+
+    def f(starlette_request):
+        return starlette_request.path_params
+
+    client.create_backend("f", f)
+    client.create_endpoint("basic", backend="f", route="/api/{username}")
+
+    # Test multiple variables and test type conversion
+    client.create_endpoint(
+        "complex", backend="f", route="/api/{user_id:int}/{number:float}")
+
+    assert requests.get("http://127.0.0.1:8000/api/scaly").json() == {
+        "username": "scaly"
+    }
+
+    assert requests.get("http://127.0.0.1:8000/api/23/12.345").json() == {
+        "user_id": 23,
+        "number": 12.345
+    }
 
 
 if __name__ == "__main__":

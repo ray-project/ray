@@ -1,6 +1,7 @@
+from typing import Callable, Dict, Sequence, Union
 import json
-from typing import Sequence
 
+import ray
 import ray.cloudpickle as cloudpickle
 from collections import deque
 import copy
@@ -18,10 +19,14 @@ from ray.tune.checkpoint_manager import Checkpoint, CheckpointManager
 # have been defined yet. See https://github.com/ray-project/ray/issues/1716.
 from ray.tune.registry import get_trainable_cls, validate_trainable
 from ray.tune.result import DEFAULT_RESULTS_DIR, DONE, TRAINING_ITERATION
-from ray.tune.resources import Resources, json_to_resources, resources_to_json
+from ray.tune.resources import Resources, \
+    json_to_resources, resources_to_json
+from ray.tune.utils.placement_groups import PlacementGroupFactory, \
+    resource_dict_to_pg_factory
 from ray.tune.utils.serialization import TuneFunctionEncoder
 from ray.tune.utils.trainable import TrainableUtil
 from ray.tune.utils import date_str, flatten_dict
+from ray.util import log_once
 from ray.utils import binary_to_hex, hex_to_binary
 
 DEBUG_PRINT_INTERVAL = 5
@@ -165,6 +170,13 @@ class Trial:
 
     """
 
+    _nonjson_fields = [
+        "results",
+        "best_result",
+        "param_config",
+        "extra_arg",
+    ]
+
     PENDING = "PENDING"
     RUNNING = "RUNNING"
     PAUSED = "PAUSED"
@@ -179,6 +191,7 @@ class Trial:
                  evaluated_params=None,
                  experiment_tag="",
                  resources=None,
+                 placement_group_factory=None,
                  stopping_criterion=None,
                  remote_checkpoint_dir=None,
                  checkpoint_freq=0,
@@ -211,16 +224,32 @@ class Trial:
         if trainable_cls:
             default_resources = trainable_cls.default_resource_request(
                 self.config)
+
+            # If Trainable returns resources, do not allow manual overrid via
+            # `resources_per_trial` by the user.
             if default_resources:
-                if resources:
+                if resources or placement_group_factory:
                     raise ValueError(
                         "Resources for {} have been automatically set to {} "
                         "by its `default_resource_request()` method. Please "
                         "clear the `resources_per_trial` option.".format(
                             trainable_cls, default_resources))
-                resources = default_resources
+
+                # New way: Trainable returns a PlacementGroupFactory object.
+                if isinstance(default_resources, PlacementGroupFactory):
+                    placement_group_factory = default_resources
+                    resources = None
+                # Set placement group factory to None for backwards
+                # compatibility.
+                else:
+                    placement_group_factory = None
+                    resources = default_resources
         self.location = Location()
+
         self.resources = resources or Resources(cpu=1, gpu=0)
+        self.placement_group_factory = placement_group_factory
+        self._setup_resources()
+
         self.stopping_criterion = stopping_criterion or {}
 
         self.log_to_file = log_to_file
@@ -281,12 +310,6 @@ class Trial:
         self.param_config = None
         self.extra_arg = None
 
-        self._nonjson_fields = [
-            "results",
-            "best_result",
-            "param_config",
-            "extra_arg",
-        ]
         if trial_name_creator:
             self.custom_trial_name = trial_name_creator(self)
 
@@ -298,6 +321,36 @@ class Trial:
 
         self._state_json = None
         self._state_valid = False
+
+    def _setup_resources(self, log_always: bool = False):
+        """Set up resource and placement group requirements.
+
+        This will try to convert the resource request in ``self.resources``
+        to a placement group factory object. If this is unsuccessful,
+        placement groups will not be used.
+
+        Args:
+            log_always (bool): If True, this will always log a warning if
+                conversion from a resource dict to a placement group
+                definition was unsuccessful (e.g. when passing ``extra_``
+                requests).
+
+
+        """
+        if not self.placement_group_factory and \
+           not int(os.getenv("TUNE_PLACEMENT_GROUP_AUTO_DISABLED", "0")):
+            try:
+                self.placement_group_factory = resource_dict_to_pg_factory(
+                    self.resources)
+            except ValueError as exc:
+                if log_always or log_once("tune_pg_extra_resources"):
+                    logger.warning(exc)
+                self.placement_group_factory = None
+
+        if self.placement_group_factory:
+            resource_kwargs = self.resources._asdict()
+            resource_kwargs["has_placement_group"] = True
+            self.resources = Resources(**resource_kwargs)
 
     @property
     def node_ip(self):
@@ -330,6 +383,10 @@ class Trial:
         logdir_name = os.path.basename(self.logdir)
         return os.path.join(self.remote_checkpoint_dir_prefix, logdir_name)
 
+    @property
+    def uses_placement_groups(self):
+        return bool(self.placement_group_factory)
+
     def reset(self):
         return Trial(
             self.trainable_name,
@@ -339,6 +396,7 @@ class Trial:
             evaluated_params=self.evaluated_params,
             experiment_tag=self.experiment_tag,
             resources=self.resources,
+            placement_group_factory=self.placement_group_factory,
             stopping_criterion=self.stopping_criterion,
             remote_checkpoint_dir=self.remote_checkpoint_dir,
             checkpoint_freq=self.checkpoint_freq,
@@ -362,7 +420,8 @@ class Trial:
             os.makedirs(self.logdir, exist_ok=True)
         self.invalidate_json_state()
 
-    def update_resources(self, cpu, gpu, **kwargs):
+    def update_resources(
+            self, resources: Union[Dict, Callable, PlacementGroupFactory]):
         """EXPERIMENTAL: Updates the resource requirements.
 
         Should only be called when the trial is not running.
@@ -372,7 +431,14 @@ class Trial:
         """
         if self.status is Trial.RUNNING:
             raise ValueError("Cannot update resources while Trial is running.")
-        self.resources = Resources(cpu, gpu, **kwargs)
+
+        if isinstance(resources, PlacementGroupFactory):
+            self.placement_group_factory = resources
+        else:
+            self.resources = Resources(**resources)
+
+        self._setup_resources()
+
         self.invalidate_json_state()
 
     def set_runner(self, runner):
@@ -583,8 +649,6 @@ class Trial:
         Sets RUNNING trials to PENDING.
         Note this can only occur if the trial holds a PERSISTENT checkpoint.
         """
-        assert self.checkpoint.storage == Checkpoint.PERSISTENT, (
-            "Checkpoint must not be in-memory.")
         state = self.__dict__.copy()
         state["resources"] = resources_to_json(self.resources)
 
@@ -612,4 +676,9 @@ class Trial:
 
         self.__dict__.update(state)
         validate_trainable(self.trainable_name)
-        self.init_logdir()  # Create logdir if it does not exist
+
+        # Avoid creating logdir in client mode for returned trial results,
+        # since the dir might not be creatable locally. TODO(ekl) thsi is kind
+        # of a hack.
+        if not ray.util.client.ray.is_connected():
+            self.init_logdir()  # Create logdir if it does not exist

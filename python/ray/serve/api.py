@@ -66,6 +66,8 @@ def _ensure_connected(f: Callable) -> Callable:
 
 class ThreadProxiedRouter:
     def __init__(self, controller_handle, sync: bool):
+        self.controller_handle = controller_handle
+        self.sync = sync
         self.router = Router(controller_handle)
 
         if sync:
@@ -91,6 +93,11 @@ class ThreadProxiedRouter:
         coro = self.router.assign_request(request_metadata, request_data,
                                           **kwargs)
         return coro
+
+    def __reduce__(self):
+        deserializer = ThreadProxiedRouter
+        serialized_data = (self.controller_handle, self.sync)
+        return deserializer, serialized_data
 
 
 class Client:
@@ -169,11 +176,11 @@ class Client:
             self._shutdown = True
 
     @_ensure_connected
-    def _get_result(self, result_object_id: ray.ObjectRef) -> bool:
-        result_id: UUID = ray.get(result_object_id)
-        result = ray.get(self._controller.wait_for_event.remote(result_id))
-        logger.debug(f"Getting result_id ({result_id}) with result: {result}")
-        return result
+    def _wait_for_goal(self, result_object_id: ray.ObjectRef) -> bool:
+        goal_id: Optional[UUID] = ray.get(result_object_id)
+        if goal_id is not None:
+            ray.get(self._controller.wait_for_goal.remote(goal_id))
+            logger.debug(f"Goal {goal_id} completed.")
 
     @_ensure_connected
     def create_endpoint(self,
@@ -229,7 +236,7 @@ class Client:
                     "an element of type {}".format(type(method)))
             upper_methods.append(method.upper())
 
-        self._get_result(
+        self._wait_for_goal(
             self._controller.create_endpoint.remote(
                 endpoint_name, {backend: 1.0}, route, upper_methods))
 
@@ -262,7 +269,7 @@ class Client:
 
         Does not delete any associated backends.
         """
-        self._get_result(self._controller.delete_endpoint.remote(endpoint))
+        ray.get(self._controller.delete_endpoint.remote(endpoint))
 
     @_ensure_connected
     def list_endpoints(self) -> Dict[str, Dict[str, Any]]:
@@ -306,7 +313,7 @@ class Client:
                 "config_options must be a BackendConfig or dictionary.")
         if isinstance(config_options, dict):
             config_options = BackendConfig.parse_obj(config_options)
-        self._get_result(
+        self._wait_for_goal(
             self._controller.update_backend_config.remote(
                 backend_tag, config_options))
 
@@ -323,22 +330,23 @@ class Client:
     def create_backend(
             self,
             backend_tag: str,
-            func_or_class: Union[Callable, Type[Callable]],
-            *actor_init_args: Any,
+            backend_def: Union[Callable, Type[Callable], str],
+            *init_args: Any,
             ray_actor_options: Optional[Dict] = None,
             config: Optional[Union[BackendConfig, Dict[str, Any]]] = None,
             env: Optional[CondaEnv] = None) -> None:
         """Create a backend with the provided tag.
 
-        The backend will serve requests with func_or_class.
-
         Args:
             backend_tag (str): a unique tag assign to identify this backend.
-            func_or_class (callable, class): a function or a class implementing
-                __call__, returning a JSON-serializable object or a
-                Starlette Response object.
-            *actor_init_args (optional): the arguments to pass to the class
-                initialization method.
+            backend_def (callable, class, str): a function or class
+                implementing __call__ and returning a JSON-serializable object
+                or a Starlette Response object. A string import path can also
+                be provided (e.g., "my_module.MyClass"), in which case the
+                underlying function or class will be imported dynamically in
+                the worker replicas.
+            *init_args (optional): the arguments to pass to the class
+                initialization method. Not valid if backend_def is a function.
             ray_actor_options (optional): options to be passed into the
                 @ray.remote decorator for the backend actor.
             config (dict, serve.BackendConfig, optional): configuration options
@@ -386,9 +394,7 @@ class Client:
             ray_actor_options.update(
                 override_environment_variables={"PYTHONHOME": conda_env_dir})
         replica_config = ReplicaConfig(
-            func_or_class,
-            *actor_init_args,
-            ray_actor_options=ray_actor_options)
+            backend_def, *init_args, ray_actor_options=ray_actor_options)
         metadata = BackendMetadata(
             accepts_batches=replica_config.accepts_batches,
             is_blocking=replica_config.is_blocking)
@@ -404,7 +410,7 @@ class Client:
             raise TypeError("config must be a BackendConfig or a dictionary.")
 
         backend_config._validate_complete()
-        self._get_result(
+        self._wait_for_goal(
             self._controller.create_backend.remote(backend_tag, backend_config,
                                                    replica_config))
 
@@ -427,7 +433,7 @@ class Client:
             force (bool): Whether or not to force the deletion, without waiting
               for graceful shutdown. Default to false.
         """
-        self._get_result(
+        self._wait_for_goal(
             self._controller.delete_backend.remote(backend_tag, force))
 
     @_ensure_connected
@@ -447,7 +453,7 @@ class Client:
             traffic_policy_dictionary (dict): a dictionary maps backend names
                 to their traffic weights. The weights must sum to 1.
         """
-        self._get_result(
+        ray.get(
             self._controller.set_traffic.remote(endpoint_name,
                                                 traffic_policy_dictionary))
 
@@ -473,7 +479,7 @@ class Client:
                           (float, int)) or not 0 <= proportion <= 1:
             raise TypeError("proportion must be a float from 0 to 1.")
 
-        self._get_result(
+        ray.get(
             self._controller.shadow_traffic.remote(endpoint_name, backend_tag,
                                                    proportion))
 

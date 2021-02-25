@@ -11,8 +11,10 @@ import pytest
 
 from ray.autoscaler._private.util import prepare_config, validate_config
 from ray.autoscaler._private.providers import _NODE_PROVIDERS
+from ray.autoscaler._private.kubernetes.node_provider import\
+    KubernetesNodeProvider
 
-from ray.test_utils import recursive_fnmatch
+from ray.test_utils import load_test_config, recursive_fnmatch
 
 RAY_PATH = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
 CONFIG_PATHS = recursive_fnmatch(
@@ -25,6 +27,7 @@ CONFIG_PATHS += recursive_fnmatch(
 def ignore_k8s_operator_configs(paths):
     return [
         path for path in paths if "kubernetes/operator_configs" not in path
+        and "kubernetes/job-example.yaml" not in path
     ]
 
 
@@ -40,14 +43,44 @@ class AutoscalingConfigTest(unittest.TestCase):
             with open(config_path) as f:
                 config = yaml.safe_load(f)
             config = prepare_config(config)
+            if config["provider"]["type"] == "kubernetes":
+                KubernetesNodeProvider.fillout_available_node_types_resources(
+                    config)
             try:
                 validate_config(config)
             except Exception:
-                self.fail("Config did not pass validation test!")
+                self.fail(
+                    f"Config {config_path} did not pass validation test!")
 
     @pytest.mark.skipif(
-        sys.platform.startswith("win"),
-        reason="TODO(ameer): fails on Windows.")
+        sys.platform.startswith("win"), reason="Fails on Windows.")
+    def testValidateDefaultConfigMinMaxWorkers(self):
+        aws_config_path = os.path.join(
+            RAY_PATH, "autoscaler/aws/example-multi-node-type.yaml")
+        with open(aws_config_path) as f:
+            config = yaml.safe_load(f)
+        config = prepare_config(config)
+        for node_type in config["available_node_types"]:
+            config["available_node_types"][node_type]["resources"] = config[
+                "available_node_types"][node_type].get("resources", {})
+        try:
+            validate_config(config)
+        except Exception:
+            self.fail("Config did not pass validation test!")
+
+        config["max_workers"] = 0  # the sum of min_workers is 1.
+        with pytest.raises(ValueError):
+            validate_config(config)
+
+        # make sure edge case of exactly 1 passes too.
+        config["max_workers"] = 1
+        try:
+            validate_config(config)
+        except Exception:
+            self.fail("Config did not pass validation test!")
+
+    @pytest.mark.skipif(
+        sys.platform.startswith("win"), reason="Fails on Windows.")
     def testValidateDefaultConfigAWSMultiNodeTypes(self):
         aws_config_path = os.path.join(
             RAY_PATH, "autoscaler/aws/example-multi-node-type.yaml")
@@ -197,6 +230,53 @@ class AutoscalingConfigTest(unittest.TestCase):
                 "GroupName"] == group_name
         except Exception:
             self.fail("Failed to validate config with security group name!")
+
+    def testMaxWorkerDefault(self):
+
+        # Load config, call prepare config, check that default max_workers
+        # is filled correctly for node types that don't specify it.
+        # Check that max_workers is untouched for node types
+        # that do specify it.
+        config = load_test_config("test_multi_node.yaml")
+        node_types = config["available_node_types"]
+
+        # Max workers initially absent for this node type.
+        assert "max_workers" not in node_types["worker_node_max_unspecified"]
+        # Max workers specified for this node type.
+        assert "max_workers" in node_types["worker_node_max_specified"]
+
+        prepared_config = prepare_config(config)
+        prepared_node_types = prepared_config["available_node_types"]
+        # Max workers unchanged.
+        assert node_types["worker_node_max_specified"]["max_workers"] ==\
+            prepared_node_types["worker_node_max_specified"][
+                "max_workers"] == 3
+        # Max workers auto-filled with specified cluster-wide value of 5.
+        assert config["max_workers"] ==\
+            prepared_node_types["worker_node_max_unspecified"]["max_workers"]\
+            == config["max_workers"] == 5
+
+        # Repeat with a config that doesn't specify global max workers.
+        # Default value of 2 should be pulled in for global max workers.
+        config = load_test_config("test_multi_node.yaml")
+        # Delete global max_workers so it can be autofilled with default of 2.
+        del config["max_workers"]
+        node_types = config["available_node_types"]
+
+        # Max workers initially absent for this node type.
+        assert "max_workers" not in node_types["worker_node_max_unspecified"]
+        # Max workers specified for this node type.
+        assert "max_workers" in node_types["worker_node_max_specified"]
+
+        prepared_config = prepare_config(config)
+        prepared_node_types = prepared_config["available_node_types"]
+        # Max workers unchanged.
+        assert node_types["worker_node_max_specified"]["max_workers"] ==\
+            prepared_node_types["worker_node_max_specified"][
+                "max_workers"] == 3
+        # Max workers auto-filled with default cluster-wide value of 2.
+        assert prepared_node_types["worker_node_max_unspecified"][
+            "max_workers"] == 2
 
 
 if __name__ == "__main__":

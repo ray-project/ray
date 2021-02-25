@@ -5,17 +5,17 @@ import logging
 import pickle
 import platform
 import os
-from typing import Callable, Any, List, Dict, Tuple, Union, Optional, \
-    TYPE_CHECKING, Type, TypeVar
+from typing import Any, Callable, Dict, List, Optional, Tuple, Type, TypeVar, \
+    TYPE_CHECKING, Union
 
 import ray
-from ray.rllib.env.atari_wrappers import wrap_deepmind, is_atari
 from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.external_env import ExternalEnv
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.env.external_multi_agent_env import ExternalMultiAgentEnv
 from ray.rllib.env.vector_env import VectorEnv
+from ray.rllib.env.wrappers.atari_wrappers import wrap_deepmind, is_atari
 from ray.rllib.evaluation.sampler import AsyncSampler, SyncSampler
 from ray.rllib.evaluation.rollout_metrics import RolloutMetrics
 from ray.rllib.models import ModelCatalog
@@ -32,7 +32,7 @@ from ray.rllib.policy.torch_policy import TorchPolicy
 from ray.rllib.utils import merge_dicts
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.debug import summarize
-from ray.rllib.utils.deprecation import deprecation_warning
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.utils.filter import get_filter, Filter
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.sgd import do_minibatch_sgd
@@ -343,7 +343,8 @@ class RolloutWorker(ParallelIteratorWorker):
         elif log_level == "DEBUG":
             enable_periodic_logging()
 
-        env_context = EnvContext(env_config or {}, worker_index)
+        env_context = EnvContext(
+            env_config or {}, worker_index, num_workers=num_workers)
         self.env_context = env_context
         self.policy_config: TrainerConfigDict = policy_config
         if callbacks:
@@ -395,11 +396,29 @@ class RolloutWorker(ParallelIteratorWorker):
                 if clip_rewards is None:
                     clip_rewards = True
 
+                # Deprecated way of framestacking is used.
+                framestack = model_config.get("framestack") is True
+                # framestacking via trajectory view API is enabled.
+                num_framestacks = model_config.get("num_framestacks", 0)
+
+                # No trajectory view API: No traj. view based framestacking.
+                if not policy_config["_use_trajectory_view_api"]:
+                    model_config["num_framestacks"] = num_framestacks = 0
+                # Trajectory view API is on and num_framestacks=auto: Only
+                # stack traj. view based if old `framestack=[invalid value]`.
+                elif num_framestacks == "auto":
+                    if framestack == DEPRECATED_VALUE:
+                        model_config["num_framestacks"] = num_framestacks = 4
+                    else:
+                        model_config["num_framestacks"] = num_framestacks = 0
+                framestack_traj_view = num_framestacks > 1
+
                 def wrap(env):
                     env = wrap_deepmind(
                         env,
                         dim=model_config.get("dim"),
-                        framestack=model_config.get("framestack"))
+                        framestack=framestack,
+                        framestack_via_traj_view_api=framestack_traj_view)
                     if monitor_path:
                         from gym import wrappers
                         env = wrappers.Monitor(env, monitor_path, resume=True)
@@ -527,7 +546,9 @@ class RolloutWorker(ParallelIteratorWorker):
                 make_env=make_env,
                 num_envs=num_envs,
                 remote_envs=remote_worker_envs,
-                remote_env_batch_wait_ms=remote_env_batch_wait_ms)
+                remote_env_batch_wait_ms=remote_env_batch_wait_ms,
+                policy_config=policy_config,
+            )
 
         # `truncate_episodes`: Allow a batch to contain more than one episode
         # (fragments) and always make the batch `rollout_fragment_length`
@@ -564,6 +585,11 @@ class RolloutWorker(ParallelIteratorWorker):
                 raise ValueError(
                     "Unknown evaluation method: {}".format(method))
 
+        render = False
+        if policy_config.get("render_env") is True and \
+                (num_workers == 0 or worker_index == 1):
+            render = True
+
         if self.env is None:
             self.sampler = None
         elif sample_async:
@@ -589,6 +615,7 @@ class RolloutWorker(ParallelIteratorWorker):
                 _use_trajectory_view_api=_use_trajectory_view_api,
                 sample_collector_class=policy_config.get(
                     "sample_collector_class"),
+                render=render,
             )
             # Start the Sampler thread.
             self.sampler.start()
@@ -614,6 +641,7 @@ class RolloutWorker(ParallelIteratorWorker):
                 _use_trajectory_view_api=_use_trajectory_view_api,
                 sample_collector_class=policy_config.get(
                     "sample_collector_class"),
+                render=render,
             )
 
         self.input_reader: InputReader = input_creator(self.io_context)
@@ -835,6 +863,8 @@ class RolloutWorker(ParallelIteratorWorker):
             for pid, batch in samples.policy_batches.items():
                 if pid not in self.policies_to_train:
                     continue
+                # Decompress SampleBatch, in case some columns are compressed.
+                batch.decompress_if_needed()
                 policy = self.policy_map[pid]
                 if builder and hasattr(policy, "_build_learn_on_batch"):
                     to_fetch[pid] = policy._build_learn_on_batch(
@@ -1071,27 +1101,33 @@ class RolloutWorker(ParallelIteratorWorker):
                 obs_space = preprocessor.observation_space
             else:
                 preprocessors[name] = NoPreprocessor(obs_space)
-            if isinstance(obs_space, gym.spaces.Dict) or \
-                    isinstance(obs_space, gym.spaces.Tuple):
+
+            if isinstance(obs_space, (gym.spaces.Dict, gym.spaces.Tuple)):
                 raise ValueError(
                     "Found raw Tuple|Dict space as input to policy. "
                     "Please preprocess these observations with a "
                     "Tuple|DictFlatteningPreprocessor.")
-            if tf1 and tf1.executing_eagerly():
-                if hasattr(cls, "as_eager"):
-                    cls = cls.as_eager()
-                    if policy_config.get("eager_tracing"):
-                        cls = cls.with_tracing()
-                elif not issubclass(cls, TFPolicy):
-                    pass  # could be some other type of policy
-                else:
-                    raise ValueError("This policy does not support eager "
-                                     "execution: {}".format(cls))
-            if tf1:
+            # Tf.
+            framework = policy_config.get("framework", "tf")
+            if framework in ["tf2", "tf", "tfe"]:
+                assert tf1
+                if framework in ["tf2", "tfe"]:
+                    assert tf1.executing_eagerly()
+                    if hasattr(cls, "as_eager"):
+                        cls = cls.as_eager()
+                        if policy_config.get("eager_tracing"):
+                            cls = cls.with_tracing()
+                    elif not issubclass(cls, TFPolicy):
+                        pass  # could be some other type of policy
+                    else:
+                        raise ValueError("This policy does not support eager "
+                                         "execution: {}".format(cls))
                 with tf1.variable_scope(name):
                     policy_map[name] = cls(obs_space, act_space, merged_conf)
+            # non-tf.
             else:
                 policy_map[name] = cls(obs_space, act_space, merged_conf)
+
         if self.worker_index == 0:
             logger.info("Built policy map: {}".format(policy_map))
             logger.info("Built preprocessor map: {}".format(preprocessors))

@@ -125,14 +125,6 @@ class ActorInfoGcsServiceHandler {
   virtual void HandleGetAllActorInfo(const GetAllActorInfoRequest &request,
                                      GetAllActorInfoReply *reply,
                                      SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleRegisterActorInfo(const RegisterActorInfoRequest &request,
-                                       RegisterActorInfoReply *reply,
-                                       SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleUpdateActorInfo(const UpdateActorInfoRequest &request,
-                                     UpdateActorInfoReply *reply,
-                                     SendReplyCallback send_reply_callback) = 0;
 };
 
 /// The `GrpcService` for `ActorInfoGcsService`.
@@ -156,8 +148,6 @@ class ActorInfoGrpcService : public GrpcService {
     ACTOR_INFO_SERVICE_RPC_HANDLER(GetActorInfo);
     ACTOR_INFO_SERVICE_RPC_HANDLER(GetNamedActorInfo);
     ACTOR_INFO_SERVICE_RPC_HANDLER(GetAllActorInfo);
-    ACTOR_INFO_SERVICE_RPC_HANDLER(RegisterActorInfo);
-    ACTOR_INFO_SERVICE_RPC_HANDLER(UpdateActorInfo);
   }
 
  private:
@@ -183,10 +173,6 @@ class NodeInfoGcsServiceHandler {
                                     GetAllNodeInfoReply *reply,
                                     SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleSetInternalConfig(const SetInternalConfigRequest &request,
-                                       SetInternalConfigReply *reply,
-                                       SendReplyCallback send_reply_callback) = 0;
-
   virtual void HandleGetInternalConfig(const GetInternalConfigRequest &request,
                                        GetInternalConfigReply *reply,
                                        SendReplyCallback send_reply_callback) = 0;
@@ -211,7 +197,6 @@ class NodeInfoGrpcService : public GrpcService {
     NODE_INFO_SERVICE_RPC_HANDLER(RegisterNode);
     NODE_INFO_SERVICE_RPC_HANDLER(UnregisterNode);
     NODE_INFO_SERVICE_RPC_HANDLER(GetAllNodeInfo);
-    NODE_INFO_SERVICE_RPC_HANDLER(SetInternalConfig);
     NODE_INFO_SERVICE_RPC_HANDLER(GetInternalConfig);
   }
 
@@ -532,6 +517,10 @@ class PlacementGroupInfoGcsServiceHandler {
       const WaitPlacementGroupUntilReadyRequest &request,
       WaitPlacementGroupUntilReadyReply *reply,
       SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleGetNamedPlacementGroup(const GetNamedPlacementGroupRequest &request,
+                                            GetNamedPlacementGroupReply *reply,
+                                            SendReplyCallback send_reply_callback) = 0;
 };
 
 /// The `GrpcService` for `PlacementGroupInfoGcsService`.
@@ -553,6 +542,7 @@ class PlacementGroupInfoGrpcService : public GrpcService {
     PLACEMENT_GROUP_INFO_SERVICE_RPC_HANDLER(CreatePlacementGroup);
     PLACEMENT_GROUP_INFO_SERVICE_RPC_HANDLER(RemovePlacementGroup);
     PLACEMENT_GROUP_INFO_SERVICE_RPC_HANDLER(GetPlacementGroup);
+    PLACEMENT_GROUP_INFO_SERVICE_RPC_HANDLER(GetNamedPlacementGroup);
     PLACEMENT_GROUP_INFO_SERVICE_RPC_HANDLER(GetAllPlacementGroup);
     PLACEMENT_GROUP_INFO_SERVICE_RPC_HANDLER(WaitPlacementGroupUntilReady);
   }

@@ -21,7 +21,8 @@ from typing import TYPE_CHECKING
 
 from ray._private.client_mode_hook import disable_client_hook
 from ray.util.client.client_pickler import PickleStub
-from ray.util.client.server.server_stubs import ServerSelfReferenceSentinel
+from ray.util.client.server.server_stubs import ClientReferenceActor
+from ray.util.client.server.server_stubs import ClientReferenceFunction
 
 if TYPE_CHECKING:
     from ray.util.client.server.server import RayletServicer
@@ -61,9 +62,9 @@ class ServerPickler(cloudpickle.CloudPickler):
             actor_id = obj._actor_id.binary()
             if actor_id not in self.server.actor_refs:
                 # We're passing back a handle, probably inside a reference.
-                self.actor_refs[actor_id] = obj
-            if actor_id not in self.actor_owners[self.client_id]:
-                self.actor_owners[self.client_id].add(actor_id)
+                self.server.actor_refs[actor_id] = obj
+            if actor_id not in self.server.actor_owners[self.client_id]:
+                self.server.actor_owners[self.client_id].add(actor_id)
             return PickleStub(
                 type="Actor",
                 client_id=self.client_id,
@@ -88,12 +89,12 @@ class ClientUnpickler(pickle.Unpickler):
         elif pid.type == "Actor":
             return self.server.actor_refs[pid.ref_id]
         elif pid.type == "RemoteFuncSelfReference":
-            return ServerSelfReferenceSentinel()
+            return ClientReferenceFunction(pid.client_id, pid.ref_id)
         elif pid.type == "RemoteFunc":
             return self.server.lookup_or_register_func(
                 pid.ref_id, pid.client_id, pid.baseline_options)
         elif pid.type == "RemoteActorSelfReference":
-            return ServerSelfReferenceSentinel()
+            return ClientReferenceActor(pid.client_id, pid.ref_id)
         elif pid.type == "RemoteActor":
             return self.server.lookup_or_register_actor(
                 pid.ref_id, pid.client_id, pid.baseline_options)

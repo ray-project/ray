@@ -1,11 +1,20 @@
 """This file defines the interface between the ray client worker
 and the overall ray module API.
 """
+from ray.util.client.runtime_context import ClientWorkerPropertyAPI
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
+    from ray.actor import ActorClass
+    from ray.remote_function import RemoteFunction
     from ray.util.client.common import ClientStub
     from ray.util.client.common import ClientActorHandle
     from ray.util.client.common import ClientObjectRef
+
+
+def as_bytes(value):
+    if isinstance(value, str):
+        return value.encode("utf-8")
+    return value
 
 
 class ClientAPI:
@@ -173,6 +182,27 @@ class ClientAPI:
         return self.worker.get_cluster_info(
             ray_client_pb2.ClusterInfoType.NODES)
 
+    def method(self, num_returns=1):
+        """Annotate an actor method
+
+        Args:
+            num_returns: The number of object refs that should be returned by
+                invocations of this actor method.
+        """
+
+        # NOTE: So this follows the same logic as in ray/actor.py::method()
+        # The reason to duplicate it here is to simplify the client mode
+        # redirection logic. As the annotated method gets pickled and sent to
+        # the server from the client it carries this private variable, it
+        # activates the same logic on the server side; so there's no need to
+        # pass anything else. It's inside the class definition that becomes an
+        # actor. Similar annotations would follow the same way.
+        def annotate_method(method):
+            method.__ray_num_returns__ = num_returns
+            return method
+
+        return annotate_method
+
     def cluster_resources(self):
         """Get the current total cluster resources.
 
@@ -204,6 +234,50 @@ class ClientAPI:
         import ray.core.generated.ray_client_pb2 as ray_client_pb2
         return self.worker.get_cluster_info(
             ray_client_pb2.ClusterInfoType.AVAILABLE_RESOURCES)
+
+    def get_runtime_context(self):
+        """Return a Ray RuntimeContext describing the state on the server
+
+        Returns:
+            A RuntimeContext wrapping a client making get_cluster_info calls.
+        """
+        return ClientWorkerPropertyAPI(self.worker).build_runtime_context()
+
+    def _internal_kv_initialized(self) -> bool:
+        """Hook for internal_kv._internal_kv_initialized."""
+        return self.is_initialized()
+
+    def _internal_kv_get(self, key: bytes) -> bytes:
+        """Hook for internal_kv._internal_kv_get."""
+        return self.worker.internal_kv_get(as_bytes(key))
+
+    def _internal_kv_put(self,
+                         key: bytes,
+                         value: bytes,
+                         overwrite: bool = False) -> bool:
+        """Hook for internal_kv._internal_kv_put."""
+        return self.worker.internal_kv_put(
+            as_bytes(key), as_bytes(value), overwrite)
+
+    def _internal_kv_del(self, key: bytes) -> None:
+        """Hook for internal_kv._internal_kv_del."""
+        return self.worker.internal_kv_del(as_bytes(key))
+
+    def _internal_kv_list(self, prefix: bytes) -> bytes:
+        """Hook for internal_kv._internal_kv_list."""
+        return self.worker.internal_kv_list(as_bytes(prefix))
+
+    def _convert_actor(self, actor: "ActorClass") -> str:
+        """Register a ClientActorClass for the ActorClass and return a UUID"""
+        return self.worker._convert_actor(actor)
+
+    def _convert_function(self, func: "RemoteFunction") -> str:
+        """Register a ClientRemoteFunc for the ActorClass and return a UUID"""
+        return self.worker._convert_function(func)
+
+    def _get_converted(self, key: str) -> "ClientStub":
+        """Given a UUID, return the converted object"""
+        return self.worker._get_converted(key)
 
     def __getattr__(self, key: str):
         if not key.startswith("_"):

@@ -1,27 +1,29 @@
-import sys
 from contextlib import redirect_stdout, redirect_stderr
-from datetime import datetime
-
 import copy
+from datetime import datetime
 import logging
 import os
-import ray.cloudpickle as pickle
 import platform
-
-from ray.tune.utils.trainable import TrainableUtil
-from ray.tune.utils.util import Tee
 import shutil
+import sys
 import tempfile
 import time
+from typing import Any, Dict, Union
 import uuid
 
 import ray
-from ray.util.debug import log_once
+import ray.cloudpickle as pickle
+from ray.tune.resources import Resources
 from ray.tune.result import (
-    DEFAULT_RESULTS_DIR, TIME_THIS_ITER_S, TIMESTEPS_THIS_ITER, DONE,
-    TIMESTEPS_TOTAL, EPISODES_THIS_ITER, EPISODES_TOTAL, TRAINING_ITERATION,
-    RESULT_DUPLICATE, TRIAL_INFO, STDOUT_FILE, STDERR_FILE)
+    DEFAULT_RESULTS_DIR, SHOULD_CHECKPOINT, TIME_THIS_ITER_S,
+    TIMESTEPS_THIS_ITER, DONE, TIMESTEPS_TOTAL, EPISODES_THIS_ITER,
+    EPISODES_TOTAL, TRAINING_ITERATION, RESULT_DUPLICATE, TRIAL_INFO,
+    STDOUT_FILE, STDERR_FILE)
 from ray.tune.utils import UtilMonitor
+from ray.tune.utils.placement_groups import PlacementGroupFactory
+from ray.tune.utils.trainable import TrainableUtil
+from ray.tune.utils.util import Tee
+from ray.util.debug import log_once
 
 logger = logging.getLogger(__name__)
 
@@ -105,7 +107,8 @@ class Trainable:
         self._monitor = UtilMonitor(start=log_sys_usage)
 
     @classmethod
-    def default_resource_request(cls, config):
+    def default_resource_request(cls, config: Dict[str, Any]) -> \
+            Union[Resources, PlacementGroupFactory]:
         """Provides a static resource requirement for the given configuration.
 
         This can be overridden by sub-classes to set the correct trial resource
@@ -121,8 +124,12 @@ class Trainable:
                     extra_cpu=config["workers"],
                     extra_gpu=int(config["use_gpu"]) * config["workers"])
 
+        Args:
+            config[Dict[str, Any]]: The Trainable's config dict.
+
         Returns:
-            Resources: A Resources object consumed by Tune for queueing.
+            Union[Resources, PlacementGroupFactory]: A Resources object or
+                PlacementGroupFactory consumed by Tune for queueing.
         """
         return None
 
@@ -138,6 +145,48 @@ class Trainable:
     def get_current_ip(self):
         self._local_ip = ray.services.get_node_ip_address()
         return self._local_ip
+
+    def train_buffered(self,
+                       buffer_time_s: float,
+                       max_buffer_length: int = 1000):
+        """Runs multiple iterations of training.
+
+        Calls ``train()`` internally. Collects and combines multiple results.
+        This function will run ``self.train()`` repeatedly until one of
+        the following conditions is met: 1) the maximum buffer length is
+        reached, 2) the maximum buffer time is reached, or 3) a checkpoint
+        was created. Even if the maximum time is reached, it will always
+        block until at least one result is received.
+
+        Args:
+            buffer_time_s (float): Maximum time to buffer. The next result
+                received after this amount of time has passed will return
+                the whole buffer.
+            max_buffer_length (int): Maximum number of results to buffer.
+
+        """
+        results = []
+
+        now = time.time()
+        send_buffer_at = now + buffer_time_s
+        while now < send_buffer_at or not results:  # At least one result
+            result = self.train()
+            results.append(result)
+            if result.get(DONE, False):
+                # If the trial is done, return
+                break
+            elif result.get(SHOULD_CHECKPOINT, False):
+                # If a checkpoint was created, return
+                break
+            elif result.get(RESULT_DUPLICATE):
+                # If the function API trainable completed, return
+                break
+            elif len(results) >= max_buffer_length:
+                # If the buffer is full, return
+                break
+            now = time.time()
+
+        return results
 
     def train(self):
         """Runs one logical iteration of training.
@@ -387,6 +436,10 @@ class Trainable:
         Subclasses should override reset_config() to actually
         reset actor behavior for the new config."""
         self.config = new_config
+
+        trial_info = new_config.pop(TRIAL_INFO, None)
+        if trial_info:
+            self._trial_info = trial_info
 
         self._result_logger.flush()
         self._result_logger.close()

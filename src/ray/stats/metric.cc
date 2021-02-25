@@ -22,6 +22,8 @@ namespace ray {
 
 namespace stats {
 
+absl::Mutex Metric::registration_mutex_;
+
 static void RegisterAsView(opencensus::stats::ViewDescriptor view_descriptor,
                            const std::vector<opencensus::tags::TagKey> &keys) {
   // Register global keys.
@@ -85,19 +87,24 @@ void Metric::Record(double value, const TagsType &tags) {
     return;
   }
 
+  // NOTE(lingxuan.zlx): Double check for recording performance while
+  // processing in multithread and avoid race since metrics may invoke
+  // record in different threads or code pathes.
   if (measure_ == nullptr) {
-    // Measure could be registered before, so we try to get it first.
-    MeasureDouble registered_measure =
-        opencensus::stats::MeasureRegistry::GetMeasureDoubleByName(name_);
+    absl::MutexLock lock(&registration_mutex_);
+    if (measure_ == nullptr) {
+      // Measure could be registered before, so we try to get it first.
+      MeasureDouble registered_measure =
+          opencensus::stats::MeasureRegistry::GetMeasureDoubleByName(name_);
 
-    if (registered_measure.IsValid()) {
-      measure_.reset(new MeasureDouble(registered_measure));
-    } else {
-      measure_.reset(
-          new MeasureDouble(MeasureDouble::Register(name_, description_, unit_)));
+      if (registered_measure.IsValid()) {
+        measure_.reset(new MeasureDouble(registered_measure));
+      } else {
+        measure_.reset(
+            new MeasureDouble(MeasureDouble::Register(name_, description_, unit_)));
+      }
+      RegisterView();
     }
-
-    RegisterView();
   }
 
   // Do record.

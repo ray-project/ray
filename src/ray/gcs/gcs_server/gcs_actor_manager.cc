@@ -213,63 +213,6 @@ void GcsActorManager::HandleGetNamedActorInfo(
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   ++counts_[CountType::GET_NAMED_ACTOR_INFO_REQUEST];
 }
-void GcsActorManager::HandleRegisterActorInfo(
-    const rpc::RegisterActorInfoRequest &request, rpc::RegisterActorInfoReply *reply,
-    rpc::SendReplyCallback send_reply_callback) {
-  ActorID actor_id = ActorID::FromBinary(request.actor_table_data().actor_id());
-  RAY_LOG(DEBUG) << "Registering actor info, job id = " << actor_id.JobId()
-                 << ", actor id = " << actor_id;
-  const auto &actor_table_data = request.actor_table_data();
-  auto on_done = [this, actor_id, actor_table_data, reply,
-                  send_reply_callback](const Status &status) {
-    if (!status.ok()) {
-      RAY_LOG(ERROR) << "Failed to register actor info: " << status.ToString()
-                     << ", job id = " << actor_id.JobId() << ", actor id = " << actor_id;
-    } else {
-      RAY_CHECK_OK(gcs_pub_sub_->Publish(ACTOR_CHANNEL, actor_id.Hex(),
-                                         actor_table_data.SerializeAsString(), nullptr));
-      RAY_LOG(DEBUG) << "Finished registering actor info, job id = " << actor_id.JobId()
-                     << ", actor id = " << actor_id;
-    }
-    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
-  };
-
-  Status status =
-      gcs_table_storage_->ActorTable().Put(actor_id, actor_table_data, on_done);
-  if (!status.ok()) {
-    on_done(status);
-  }
-  ++counts_[CountType::REGISTER_ACTOR_INFO_REQUEST];
-}
-
-void GcsActorManager::HandleUpdateActorInfo(const rpc::UpdateActorInfoRequest &request,
-                                            rpc::UpdateActorInfoReply *reply,
-                                            rpc::SendReplyCallback send_reply_callback) {
-  ActorID actor_id = ActorID::FromBinary(request.actor_id());
-  RAY_LOG(DEBUG) << "Updating actor info, job id = " << actor_id.JobId()
-                 << ", actor id = " << actor_id;
-  const auto &actor_table_data = request.actor_table_data();
-  auto on_done = [this, actor_id, actor_table_data, reply,
-                  send_reply_callback](const Status &status) {
-    if (!status.ok()) {
-      RAY_LOG(ERROR) << "Failed to update actor info: " << status.ToString()
-                     << ", job id = " << actor_id.JobId() << ", actor id = " << actor_id;
-    } else {
-      RAY_CHECK_OK(gcs_pub_sub_->Publish(ACTOR_CHANNEL, actor_id.Hex(),
-                                         actor_table_data.SerializeAsString(), nullptr));
-      RAY_LOG(DEBUG) << "Finished updating actor info, job id = " << actor_id.JobId()
-                     << ", actor id = " << actor_id;
-    }
-    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
-  };
-
-  Status status =
-      gcs_table_storage_->ActorTable().Put(actor_id, actor_table_data, on_done);
-  if (!status.ok()) {
-    on_done(status);
-  }
-  ++counts_[CountType::UPDATE_ACTOR_INFO_REQUEST];
-}
 
 Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &request,
                                       RegisterActorCallback success_callback) {
@@ -560,9 +503,9 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id) {
   RAY_CHECK_OK(gcs_table_storage_->ActorTable().Put(
       actor->GetActorID(), *actor_table_data,
       [this, actor_id, actor_table_data](Status status) {
-        RAY_CHECK_OK(gcs_pub_sub_->Publish(ACTOR_CHANNEL, actor_id.Hex(),
-                                           actor_table_data->SerializeAsString(),
-                                           nullptr));
+        RAY_CHECK_OK(gcs_pub_sub_->Publish(
+            ACTOR_CHANNEL, actor_id.Hex(),
+            GenActorDataOnlyWithStates(*actor_table_data)->SerializeAsString(), nullptr));
         // Destroy placement group owned by this actor.
         destroy_owned_placement_group_if_needed_(actor_id);
       }));
@@ -599,7 +542,8 @@ void GcsActorManager::CollectStats() const {
 
 void GcsActorManager::OnWorkerDead(const ray::NodeID &node_id,
                                    const ray::WorkerID &worker_id,
-                                   bool intentional_exit) {
+                                   const rpc::WorkerExitType disconnect_type) {
+  bool intentional_exit = disconnect_type == rpc::WorkerExitType::INTENDED_EXIT;
   if (intentional_exit) {
     RAY_LOG(INFO) << "Worker " << worker_id << " on node " << node_id
                   << " intentional exit.";
@@ -698,14 +642,15 @@ void GcsActorManager::OnNodeDead(const NodeID &node_id) {
 }
 
 void GcsActorManager::ReconstructActor(const ActorID &actor_id, bool need_reschedule) {
-  auto &actor = registered_actors_[actor_id];
   // If the owner and this actor is dead at the same time, the actor
   // could've been destroyed and dereigstered before reconstruction.
-  if (actor == nullptr) {
+  auto iter = registered_actors_.find(actor_id);
+  if (iter == registered_actors_.end()) {
     RAY_LOG(DEBUG) << "Actor is destroyed before reconstruction, actor id = " << actor_id
                    << ", job id = " << actor_id.JobId();
     return;
   }
+  auto &actor = iter->second;
   auto node_id = actor->GetNodeID();
   auto worker_id = actor->GetWorkerID();
   auto mutable_actor_table_data = actor->GetMutableActorTableData();
@@ -733,7 +678,6 @@ void GcsActorManager::ReconstructActor(const ActorID &actor_id, bool need_resche
     // between memory cache and storage.
     mutable_actor_table_data->set_num_restarts(num_restarts + 1);
     mutable_actor_table_data->set_state(rpc::ActorTableData::RESTARTING);
-    const auto actor_table_data = actor->GetActorTableData();
     // Make sure to reset the address before flushing to GCS. Otherwise,
     // GCS will mistakenly consider this lease request succeeds when restarting.
     actor->UpdateAddress(rpc::Address());
@@ -741,10 +685,11 @@ void GcsActorManager::ReconstructActor(const ActorID &actor_id, bool need_resche
     // The backend storage is reliable in the future, so the status must be ok.
     RAY_CHECK_OK(gcs_table_storage_->ActorTable().Put(
         actor_id, *mutable_actor_table_data,
-        [this, actor_id, actor_table_data](Status status) {
-          RAY_CHECK_OK(gcs_pub_sub_->Publish(ACTOR_CHANNEL, actor_id.Hex(),
-                                             actor_table_data.SerializeAsString(),
-                                             nullptr));
+        [this, actor_id, mutable_actor_table_data](Status status) {
+          RAY_CHECK_OK(gcs_pub_sub_->Publish(
+              ACTOR_CHANNEL, actor_id.Hex(),
+              GenActorDataOnlyWithStates(*mutable_actor_table_data)->SerializeAsString(),
+              nullptr));
         }));
     gcs_actor_scheduler_->Schedule(actor);
   } else {
@@ -757,6 +702,7 @@ void GcsActorManager::ReconstructActor(const ActorID &actor_id, bool need_resche
     }
 
     mutable_actor_table_data->set_state(rpc::ActorTableData::DEAD);
+    mutable_actor_table_data->set_timestamp(current_sys_time_ms());
     // The backend storage is reliable in the future, so the status must be ok.
     RAY_CHECK_OK(gcs_table_storage_->ActorTable().Put(
         actor_id, *mutable_actor_table_data,
@@ -769,7 +715,8 @@ void GcsActorManager::ReconstructActor(const ActorID &actor_id, bool need_resche
           }
           RAY_CHECK_OK(gcs_pub_sub_->Publish(
               ACTOR_CHANNEL, actor_id.Hex(),
-              mutable_actor_table_data->SerializeAsString(), nullptr));
+              GenActorDataOnlyWithStates(*mutable_actor_table_data)->SerializeAsString(),
+              nullptr));
         }));
     // The actor is dead, but we should not remove the entry from the
     // registered actors yet. If the actor is owned, we will destroy the actor
@@ -810,9 +757,9 @@ void GcsActorManager::OnActorCreationSuccess(const std::shared_ptr<GcsActor> &ac
   RAY_CHECK_OK(gcs_table_storage_->ActorTable().Put(
       actor_id, actor_table_data,
       [this, actor_id, actor_table_data, actor](Status status) {
-        RAY_CHECK_OK(gcs_pub_sub_->Publish(ACTOR_CHANNEL, actor_id.Hex(),
-                                           actor_table_data.SerializeAsString(),
-                                           nullptr));
+        RAY_CHECK_OK(gcs_pub_sub_->Publish(
+            ACTOR_CHANNEL, actor_id.Hex(),
+            GenActorDataOnlyWithStates(actor_table_data)->SerializeAsString(), nullptr));
         // Invoke all callbacks for all registration requests of this actor (duplicated
         // requests are included) and remove all of them from
         // actor_to_create_callbacks_.
@@ -1018,10 +965,6 @@ std::string GcsActorManager::DebugString() const {
          << ", GetActorInfo request count: " << counts_[CountType::GET_ACTOR_INFO_REQUEST]
          << ", GetNamedActorInfo request count: "
          << counts_[CountType::GET_NAMED_ACTOR_INFO_REQUEST]
-         << ", RegisterActorInfo request count: "
-         << counts_[CountType::REGISTER_ACTOR_INFO_REQUEST]
-         << ", UpdateActorInfo request count: "
-         << counts_[CountType::UPDATE_ACTOR_INFO_REQUEST]
          << ", Registered actors count: " << registered_actors_.size()
          << ", Destroyed actors count: " << destroyed_actors_.size()
          << ", Named actors count: " << named_actors_.size()

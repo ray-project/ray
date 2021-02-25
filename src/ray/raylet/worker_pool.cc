@@ -60,13 +60,11 @@ WorkerPool::WorkerPool(boost::asio::io_service &io_service, int num_workers_soft
                        int max_worker_port, const std::vector<int> &worker_ports,
                        std::shared_ptr<gcs::GcsClient> gcs_client,
                        const WorkerCommandMap &worker_commands,
-                       const std::unordered_map<std::string, std::string> &raylet_config,
                        std::function<void()> starting_worker_timeout_callback)
     : io_service_(&io_service),
       num_workers_soft_limit_(num_workers_soft_limit),
       maximum_startup_concurrency_(maximum_startup_concurrency),
       gcs_client_(std::move(gcs_client)),
-      raylet_config_(raylet_config),
       starting_worker_timeout_callback_(starting_worker_timeout_callback),
       first_job_registered_python_worker_count_(0),
       first_job_driver_wait_num_python_workers_(std::min(
@@ -159,9 +157,8 @@ Process WorkerPool::StartWorkerProcess(
     return Process();
   }
   // Either there are no workers pending registration or the worker start is being forced.
-  RAY_LOG(DEBUG) << "Starting new worker process, current pool has "
-                 << state.idle_actor.size() << " actor workers, and " << state.idle.size()
-                 << " non-actor workers";
+  RAY_LOG(DEBUG) << "Starting new worker process, current pool has " << state.idle.size()
+                 << " workers";
 
   int workers_to_start = 1;
   if (dynamic_options.empty()) {
@@ -204,9 +201,13 @@ Process WorkerPool::StartWorkerProcess(
     }
   }
 
+  if (language == Language::JAVA) {
+    dynamic_options.push_back("-Dray.job.num-java-workers-per-process=" +
+                              std::to_string(workers_to_start));
+  }
+
   // Extract pointers from the worker command to pass into execvp.
   std::vector<std::string> worker_command_args;
-  bool worker_raylet_config_placeholder_found = false;
   for (auto const &token : state.worker_command) {
     if (token == kWorkerDynamicOptionPlaceholder) {
       for (const auto &dynamic_option : dynamic_options) {
@@ -217,38 +218,10 @@ Process WorkerPool::StartWorkerProcess(
       continue;
     }
 
-    if (token == kWorkerRayletConfigPlaceholder) {
-      worker_raylet_config_placeholder_found = true;
-      switch (language) {
-      case Language::JAVA:
-        for (auto &entry : raylet_config_) {
-          std::string arg;
-          arg.append("-Dray.raylet.config.");
-          arg.append(entry.first);
-          arg.append("=");
-          arg.append(entry.second);
-          worker_command_args.push_back(arg);
-        }
-        worker_command_args.push_back("-Dray.job.num-java-workers-per-process=" +
-                                      std::to_string(workers_to_start));
-        break;
-      default:
-        RAY_LOG(FATAL)
-            << "Raylet config placeholder is not supported for worker language "
-            << language;
-      }
-      continue;
-    }
-
     worker_command_args.push_back(token);
   }
 
-  // Currently only Java worker process supports multi-worker.
-  if (language == Language::JAVA) {
-    RAY_CHECK(worker_raylet_config_placeholder_found)
-        << "The " << kWorkerRayletConfigPlaceholder
-        << " placeholder is not found in worker command.";
-  } else if (language == Language::PYTHON) {
+  if (language == Language::PYTHON) {
     RAY_CHECK(worker_type == rpc::WorkerType::WORKER || IsIOWorkerType(worker_type));
     if (IsIOWorkerType(worker_type)) {
       // Without "--worker-type", by default the worker type is rpc::WorkerType::WORKER.
@@ -260,8 +233,9 @@ Process WorkerPool::StartWorkerProcess(
     RAY_CHECK(!RayConfig::instance().object_spilling_config().empty());
     RAY_LOG(DEBUG) << "Adding object spill config "
                    << RayConfig::instance().object_spilling_config();
-    worker_command_args.push_back("--object-spilling-config=" +
-                                  RayConfig::instance().object_spilling_config());
+    worker_command_args.push_back(
+        "--object-spilling-config=" +
+        absl::Base64Escape(RayConfig::instance().object_spilling_config()));
   }
 
   ProcessEnvironment env;
@@ -397,6 +371,13 @@ void WorkerPool::HandleJobFinished(const JobID &job_id) {
   // unfinished_jobs_.erase(job_id);
 }
 
+boost::optional<const rpc::JobConfig &> WorkerPool::GetJobConfig(
+    const JobID &job_id) const {
+  auto iter = all_jobs_.find(job_id);
+  return iter == all_jobs_.end() ? boost::none
+                                 : boost::optional<const rpc::JobConfig &>(iter->second);
+}
+
 Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker,
                                   pid_t pid,
                                   std::function<void(Status, int)> send_reply_callback) {
@@ -422,7 +403,8 @@ Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker
     send_reply_callback(status, /*port=*/0);
     return status;
   }
-  RAY_LOG(DEBUG) << "Registering worker with pid " << pid << ", port: " << port
+  RAY_LOG(DEBUG) << "Registering worker " << worker->WorkerId() << " with pid " << pid
+                 << ", port: " << port
                  << ", worker_type: " << rpc::WorkerType_Name(worker->GetWorkerType());
   worker->SetAssignedPort(port);
 
@@ -625,15 +607,11 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
     state.idle_dedicated_workers[task_id] = worker;
   } else {
     // The worker is not used for the actor creation task with dynamic options.
-    // Put the worker to the corresponding idle pool.
-    if (worker->GetActorId().IsNil()) {
-      state.idle.insert(worker);
-      int64_t now = current_time_ms();
-      idle_of_all_languages_.emplace_back(worker, now);
-      idle_of_all_languages_map_[worker] = now;
-    } else {
-      state.idle_actor[worker->GetActorId()] = worker;
-    }
+    // Put the worker to the idle pool.
+    state.idle.insert(worker);
+    int64_t now = current_time_ms();
+    idle_of_all_languages_.emplace_back(worker, now);
+    idle_of_all_languages_map_[worker] = now;
   }
 }
 
@@ -787,14 +765,18 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
         state.tasks_to_dedicated_workers[task_spec.TaskId()] = proc;
       }
     }
-  } else if (!task_spec.IsActorTask()) {
+  } else if (task_spec.IsActorTask()) {
+    // Code path of actor task.
+    RAY_CHECK(false) << "Direct call shouldn't reach here.";
+  } else {
     // Code path of normal task or actor creation task without dynamic worker options.
     // Find an available worker which is already assigned to this job.
     // Try to pop the most recently pushed worker.
     for (auto it = idle_of_all_languages_.rbegin(); it != idle_of_all_languages_.rend();
          it++) {
       if (task_spec.GetLanguage() != it->first->GetLanguage() ||
-          it->first->GetAssignedJobId() != task_spec.JobId()) {
+          it->first->GetAssignedJobId() != task_spec.JobId() ||
+          state.pending_disconnection_workers.count(it->first) > 0) {
         continue;
       }
       state.idle.erase(it->first);
@@ -811,14 +793,6 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
       // Start a new worker process.
       proc = StartWorkerProcess(task_spec.GetLanguage(), rpc::WorkerType::WORKER,
                                 task_spec.JobId());
-    }
-  } else {
-    // Code path of actor task.
-    const auto &actor_id = task_spec.ActorId();
-    auto actor_entry = state.idle_actor.find(actor_id);
-    if (actor_entry != state.idle_actor.end()) {
-      worker = std::move(actor_entry->second);
-      state.idle_actor.erase(actor_entry);
     }
   }
 
@@ -867,9 +841,12 @@ void WorkerPool::PrestartWorkers(const TaskSpecification &task_spec,
   }
 }
 
-bool WorkerPool::DisconnectWorker(const std::shared_ptr<WorkerInterface> &worker) {
+bool WorkerPool::DisconnectWorker(const std::shared_ptr<WorkerInterface> &worker,
+                                  rpc::WorkerExitType disconnect_type) {
   auto &state = GetStateForLanguage(worker->GetLanguage());
   RAY_CHECK(RemoveWorker(state.registered_workers, worker));
+  RAY_UNUSED(RemoveWorker(state.pending_disconnection_workers, worker));
+
   for (auto it = idle_of_all_languages_.begin(); it != idle_of_all_languages_.end();
        it++) {
     if (it->first == worker) {
@@ -880,7 +857,25 @@ bool WorkerPool::DisconnectWorker(const std::shared_ptr<WorkerInterface> &worker
   }
 
   MarkPortAsFree(worker->AssignedPort());
-  return RemoveWorker(state.idle, worker);
+  auto status = RemoveWorker(state.idle, worker);
+  if (disconnect_type != rpc::WorkerExitType::INTENDED_EXIT) {
+    // A Java worker process may have multiple workers. If one of them disconnects
+    // unintentionally (which means that the worker process has died), we remove the
+    // others from idle pool so that the failed actor will not be rescheduled on the same
+    // process.
+    auto pid = worker->GetProcess().GetId();
+    for (auto worker2 : state.registered_workers) {
+      if (worker2->GetProcess().GetId() == pid) {
+        // NOTE(kfstorm): We have to use a new field to record these workers (instead of
+        // just removing them from idle sets) because they may haven't announced worker
+        // port yet. When they announce worker port, they'll be marked idle again. So
+        // removing them from idle sets here doesn't really prevent them from being popped
+        // later.
+        state.pending_disconnection_workers.insert(worker2);
+      }
+    }
+  }
+  return status;
 }
 
 void WorkerPool::DisconnectDriver(const std::shared_ptr<WorkerInterface> &driver) {
@@ -891,7 +886,8 @@ void WorkerPool::DisconnectDriver(const std::shared_ptr<WorkerInterface> &driver
 
 inline WorkerPool::State &WorkerPool::GetStateForLanguage(const Language &language) {
   auto state = states_by_lang_.find(language);
-  RAY_CHECK(state != states_by_lang_.end()) << "Required Language isn't supported.";
+  RAY_CHECK(state != states_by_lang_.end())
+      << "Required Language isn't supported: " << Language_Name(language);
   return state->second;
 }
 
@@ -1047,6 +1043,10 @@ std::string WorkerPool::DebugString() const {
            << " workers: " << entry.second.registered_workers.size();
     result << "\n- num " << Language_Name(entry.first)
            << " drivers: " << entry.second.registered_drivers.size();
+    result << "\n- num object spill callbacks queued: "
+           << entry.second.spill_io_worker_state.pending_io_tasks.size();
+    result << "\n- num object restore queued: "
+           << entry.second.restore_io_worker_state.pending_io_tasks.size();
   }
   result << "\n- num idle workers: " << idle_of_all_languages_.size();
   return result.str();

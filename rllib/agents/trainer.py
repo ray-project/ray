@@ -30,12 +30,13 @@ from ray.rllib.utils.deprecation import deprecation_warning, DEPRECATED_VALUE
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.typing import TrainerConfigDict, \
     PartialTrainerConfigDict, EnvInfoDict, ResultDict, EnvType, PolicyID
+from ray.tune.logger import Logger, UnifiedLogger
 from ray.tune.registry import ENV_CREATOR, register_env, _global_registry
+from ray.tune.resources import Resources
+from ray.tune.result import DEFAULT_RESULTS_DIR
 from ray.tune.trainable import Trainable
 from ray.tune.trial import ExportFormat
-from ray.tune.resources import Resources
-from ray.tune.logger import Logger, UnifiedLogger
-from ray.tune.result import DEFAULT_RESULTS_DIR
+from ray.tune.utils.placement_groups import PlacementGroupFactory
 
 tf1, tf, tfv = try_import_tf()
 
@@ -52,7 +53,7 @@ COMMON_CONFIG: TrainerConfigDict = {
     # Number of rollout worker actors to create for parallel sampling. Setting
     # this to 0 will force rollouts to be done in the trainer actor.
     "num_workers": 2,
-    # Number of environments to evaluate vectorwise per worker. This enables
+    # Number of environments to evaluate vector-wise per worker. This enables
     # model inference batching, which can improve performance for inference
     # bottlenecked workloads.
     "num_envs_per_worker": 1,
@@ -92,10 +93,6 @@ COMMON_CONFIG: TrainerConfigDict = {
     "batch_mode": "truncate_episodes",
 
     # === Settings for the Trainer process ===
-    # Number of GPUs to allocate to the trainer process. Note that not all
-    # algorithms can take advantage of trainer GPUs. This can be fractional
-    # (e.g., 0.3 GPUs).
-    "num_gpus": 0,
     # Training batch size, if applicable. Should be >= rollout_fragment_length.
     # Samples batches will be concatenated together to a batch of this size,
     # which is then passed to SGD.
@@ -120,10 +117,18 @@ COMMON_CONFIG: TrainerConfigDict = {
     # set this if soft_horizon=True, unless your env is actually running
     # forever without returning done=True.
     "no_done_at_end": False,
-    # Arguments to pass to the env creator.
-    "env_config": {},
     # Environment name can also be passed via config.
     "env": None,
+    # Arguments to pass to the env creator.
+    "env_config": {},
+    # If True, try to render the environment on the local worker or on worker
+    # 1 (if num_workers > 0). For vectorized envs, this usually means that only
+    # the first sub-environment will be rendered.
+    "render_env": False,
+    # If True, store evaluation videos in the output dir.
+    # Alternatively, provide a path (str) to a directory here, where the env
+    # recordings should be stored instead.
+    "record_env": False,
     # Unsquash actions to the upper and lower bounds of env's action space
     "normalize_actions": False,
     # Whether to clip rewards during Policy's postprocessing.
@@ -213,9 +218,10 @@ COMMON_CONFIG: TrainerConfigDict = {
     },
     # Number of parallel workers to use for evaluation. Note that this is set
     # to zero by default, which means evaluation will be run in the trainer
-    # process. If you increase this, it will increase the Ray resource usage
-    # of the trainer since evaluation workers are created separately from
-    # rollout workers.
+    # process (only if evaluation_interval is not None). If you increase this,
+    # it will increase the Ray resource usage of the trainer since evaluation
+    # workers are created separately from rollout workers (used to sample data
+    # for training).
     "evaluation_num_workers": 0,
     # Customize the evaluation method. This must be a function of signature
     # (trainer: Trainer, eval_workers: WorkerSet) -> metrics: dict. See the
@@ -295,7 +301,11 @@ COMMON_CONFIG: TrainerConfigDict = {
     # The extra python environments need to set for worker processes.
     "extra_python_environs_for_worker": {},
 
-    # === Advanced Resource Settings ===
+    # === Resource Settings ===
+    # Number of GPUs to allocate to the trainer process. Note that not all
+    # algorithms can take advantage of trainer GPUs. This can be fractional
+    # (e.g., 0.3 GPUs).
+    "num_gpus": 0,
     # Number of CPUs to allocate per worker.
     "num_cpus_per_worker": 1,
     # Number of GPUs to allocate per worker. This can be fractional. This is
@@ -307,11 +317,21 @@ COMMON_CONFIG: TrainerConfigDict = {
     # Number of CPUs to allocate for the trainer. Note: this only takes effect
     # when running in Tune. Otherwise, the trainer runs in the main program.
     "num_cpus_for_driver": 1,
-    # Deprecated.
-    "memory": 0,
-    "object_store_memory": 0,
-    "memory_per_worker": 0,
-    "object_store_memory_per_worker": 0,
+    # The strategy for the placement group factory returned by
+    # `Trainer.default_resource_request()`. A PlacementGroup defines, which
+    # devices (resources) should always be co-located on the same node.
+    # For example, a Trainer with 2 rollout workers, running with
+    # num_gpus=1 will request a placement group with the bundles:
+    # [{"gpu": 1, "cpu": 1}, {"cpu": 1}, {"cpu": 1}], where the first bundle is
+    # for the driver and the other 2 bundles are for the two workers.
+    # These bundles can now be "placed" on the same or different
+    # nodes depending on the value of `placement_strategy`:
+    # "PACK": Packs bundles into as few nodes as possible.
+    # "SPREAD": Places bundles across distinct nodes as even as possible.
+    # "STRICT_PACK": Packs bundles into one node. The group is not allowed
+    #   to span multiple nodes.
+    # "STRICT_SPREAD": Packs bundles across distinct nodes.
+    "placement_strategy": "PACK",
 
     # === Offline Datasets ===
     # Specify how to generate experiences:
@@ -385,10 +405,11 @@ COMMON_CONFIG: TrainerConfigDict = {
     # Default value None allows overwriting with nested dicts
     "logger_config": None,
 
-    # === Replay Settings ===
-    # The number of contiguous environment steps to replay at once. This may
-    # be set to greater than 1 to support recurrent models.
-    "replay_sequence_length": 1,
+    # Deprecated keys.
+    "memory": 0,
+    "object_store_memory": 0,
+    "memory_per_worker": 0,
+    "object_store_memory_per_worker": 0,
 }
 # __sphinx_doc_end__
 # yapf: enable
@@ -488,21 +509,37 @@ class Trainer(Trainable):
     @classmethod
     @override(Trainable)
     def default_resource_request(
-            cls, config: PartialTrainerConfigDict) -> Resources:
+            cls, config: PartialTrainerConfigDict) -> \
+            Union[Resources, PlacementGroupFactory]:
         cf = dict(cls._default_config, **config)
         Trainer._validate_config(cf)
-        num_workers = cf["num_workers"] + cf["evaluation_num_workers"]
-        # TODO(ekl): add custom resources here once tune supports them
-        return Resources(
-            cpu=cf["num_cpus_for_driver"],
-            gpu=cf["num_gpus"],
-            memory=cf["memory"],
-            object_store_memory=cf["object_store_memory"],
-            extra_cpu=cf["num_cpus_per_worker"] * num_workers,
-            extra_gpu=cf["num_gpus_per_worker"] * num_workers,
-            extra_memory=cf["memory_per_worker"] * num_workers,
-            extra_object_store_memory=cf["object_store_memory_per_worker"] *
-            num_workers)
+
+        eval_config = cf["evaluation_config"]
+
+        # Return PlacementGroupFactory containing all needed resources
+        # (already properly defined as device bundles).
+        return PlacementGroupFactory(
+            bundles=[{
+                # Driver.
+                "CPU": cf["num_cpus_for_driver"],
+                "GPU": cf["num_gpus"]
+            }] + [
+                {
+                    # RolloutWorkers.
+                    "CPU": cf["num_cpus_per_worker"],
+                    "GPU": cf["num_gpus_per_worker"]
+                } for _ in range(cf["num_workers"])
+            ] + ([
+                {
+                    # Evaluation workers (+1 b/c of the additional local
+                    # worker)
+                    "CPU": eval_config.get("num_cpus_per_worker",
+                                           cf["num_cpus_per_worker"]),
+                    "GPU": eval_config.get("num_gpus_per_worker",
+                                           cf["num_gpus_per_worker"]),
+                } for _ in range(cf["evaluation_num_workers"] + 1)
+            ] if cf["evaluation_interval"] else []),
+            strategy=config.get("placement_strategy", "PACK"))
 
     @override(Trainable)
     @PublicAPI
@@ -534,14 +571,6 @@ class Trainer(Trainable):
 
         if hasattr(self, "workers") and isinstance(self.workers, WorkerSet):
             self._sync_filters_if_needed(self.workers)
-
-        if self.config["evaluation_interval"] == 1 or (
-                self._iteration > 0 and self.config["evaluation_interval"]
-                and self._iteration % self.config["evaluation_interval"] == 0):
-            evaluation_metrics = self._evaluate()
-            assert isinstance(evaluation_metrics, dict), \
-                "_evaluate() needs to return a dict."
-            result.update(evaluation_metrics)
 
         return result
 
@@ -670,7 +699,6 @@ class Trainer(Trainable):
                     extra_config["in_evaluation"] is True
                 extra_config.update({
                     "batch_mode": "complete_episodes",
-                    "rollout_fragment_length": 1,
                     "in_evaluation": True,
                 })
                 logger.debug(
@@ -848,13 +876,15 @@ class Trainer(Trainable):
         """
         if state is None:
             state = []
-        preprocessed = self.workers.local_worker().preprocessors[
-            policy_id].transform(observation)
-        filtered_obs = self.workers.local_worker().filters[policy_id](
-            preprocessed, update=False)
+        # Check the preprocessor and preprocess, if necessary.
+        pp = self.workers.local_worker().preprocessors[policy_id]
+        if type(pp).__name__ != "NoPreprocessor":
+            observation = pp.transform(observation)
+        filtered_observation = self.workers.local_worker().filters[policy_id](
+            observation, update=False)
 
         result = self.get_policy(policy_id).compute_single_action(
-            filtered_obs,
+            filtered_observation,
             state,
             prev_action,
             prev_reward,
@@ -1091,10 +1121,28 @@ class Trainer(Trainable):
 
     @staticmethod
     def _validate_config(config: PartialTrainerConfigDict):
-        if not config.get("_use_trajectory_view_api") and \
-                config.get("model", {}).get("_time_major"):
-            raise ValueError("`model._time_major` only supported "
-                             "iff `_use_trajectory_view_api` is True!")
+        model_config = config.get("model")
+        if model_config is None:
+            config["model"] = model_config = {}
+
+        if config.get("memory", 0) != 0:
+            deprecation_warning(old="memory")
+        if config.get("object_store_memory", 0) != 0:
+            deprecation_warning(old="object_store_memory")
+        if config.get("memory_per_worker", 0) != 0:
+            deprecation_warning(old="memory_per_worker")
+        if config.get("object_store_memory_per_worker", 0) != 0:
+            deprecation_warning(old="object_store_memory_per_worker")
+
+        if not config.get("_use_trajectory_view_api"):
+            traj_view_framestacks = model_config.get("num_framestacks", "auto")
+            if model_config.get("_time_major"):
+                raise ValueError("`model._time_major` only supported "
+                                 "iff `_use_trajectory_view_api` is True!")
+            elif traj_view_framestacks not in ["auto", 0]:
+                raise ValueError("`model.num_framestacks` only supported "
+                                 "iff `_use_trajectory_view_api` is True!")
+            model_config["num_framestacks"] = 0
 
         if isinstance(config["input_evaluation"], tuple):
             config["input_evaluation"] = list(config["input_evaluation"])
@@ -1104,15 +1152,15 @@ class Trainer(Trainable):
                     config["input_evaluation"]))
 
         # Check model config.
-        prev_a_r = config.get("model", {}).get("lstm_use_prev_action_reward",
-                                               DEPRECATED_VALUE)
+        prev_a_r = model_config.get("lstm_use_prev_action_reward",
+                                    DEPRECATED_VALUE)
         if prev_a_r != DEPRECATED_VALUE:
             deprecation_warning(
                 "model.lstm_use_prev_action_reward",
                 "model.lstm_use_prev_action and model.lstm_use_prev_reward",
                 error=False)
-            config["model"]["lstm_use_prev_action"] = prev_a_r
-            config["model"]["lstm_use_prev_reward"] = prev_a_r
+            model_config["lstm_use_prev_action"] = prev_a_r
+            model_config["lstm_use_prev_reward"] = prev_a_r
 
         # Check batching/sample collection settings.
         if config["batch_mode"] not in [

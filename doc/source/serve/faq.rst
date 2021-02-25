@@ -13,26 +13,6 @@ How do I deploy serve?
 
 See :doc:`deployment` for information about how to deploy serve.
 
-How do I delete backends and endpoints?
----------------------------------------
-
-To delete a backend, you can use :mod:`client.delete_backend <ray.serve.api.Client.delete_backend>`.
-Note that the backend must not be use by any endpoints in order to be delete.
-Once a backend is deleted, its tag can be reused.
-
-.. code-block:: python
-
-  client.delete_backend("simple_backend")
-
-
-To delete a endpoint, you can use :mod:`client.delete_endpoint <ray.serve.api.Client.delete_endpoint>`.
-Note that the endpoint will no longer work and return a 404 when queried.
-Once a endpoint is deleted, its tag can be reused.
-
-.. code-block:: python
-
-  client.delete_endpoint("simple_endpoint")
-
 How do I call an endpoint from Python code?
 -------------------------------------------
 
@@ -73,6 +53,20 @@ To call a method via Python, use :mod:`handle.options <ray.serve.handle.RayServe
 The call is the same as a regular query except a different method is called
 within the replica. It is compatible with batching as well.
 
+How do I use custom status codes in my response?
+---------------------------------------------------------
+
+You can return a `Starlette Response object <https://www.starlette.io/responses/>`_ from your backend code:
+
+.. code-block:: python
+
+    from starlette.responses import Response
+
+    def f(starlette_request):
+        return Response('Hello, world!', status_code=123, media_type='text/plain')
+    
+    client.create_backend("hello", f)
+
 How do I enable CORS and other HTTP features?
 ---------------------------------------------
 
@@ -81,14 +75,6 @@ and custom middlewares in Starlette format. The example below shows how to enabl
 `Cross-Origin Resource Sharing (CORS) <https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS>`_.
 You can follow the same pattern for other Starlette middlewares.
 
-.. note::
-
-  Serve does not list ``Starlette`` as one of its dependencies. To utilize this feature,
-  you will need to:
-
-  .. code-block:: bash
-
-    pip install starlette
 
 .. code-block:: python
 
@@ -233,13 +219,6 @@ to transparently put your Ray Serve application in K8s.
 Compare to these frameworks letting you deploy ML models on K8s, Ray Serve lacks
 the ability to declaratively configure your ML application via YAML files. In
 Ray Serve, you configure everything by Python code.
-
-How does Ray Serve scale behave on spikes?
-------------------------------------------
-You can easily scale your models just by changing the number of replicas in the `BackendConfig`.
-Ray Serve also has an experimental autoscaler that scales up your model replicas
-based on load. We can improve it and welcome any feedback! We also rely on the
-Ray cluster launcher for adding more machines.
 
 Is Ray Serve only for ML models?
 --------------------------------

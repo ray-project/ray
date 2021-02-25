@@ -28,7 +28,8 @@ public interface MapState<K, V> extends UnaryState<Map<K, V>> {
   /**
    * Returns the current value associated with the given key.
    *
-   * @param key The key of the mapping Returns The value of the mapping with the given key
+   * @param key The key of the mapping
+   * @return The value of the mapping with the given key
    */
   V get(K key);
 
@@ -64,8 +65,8 @@ public interface MapState<K, V> extends UnaryState<Map<K, V>> {
   /**
    * Returns whether there exists the given mapping.
    *
-   * @param key The key of the mapping Returns True if there exists a mapping whose key equals to
-   *     the given key
+   * @param key The key of the mapping
+   * @return True if there exists a mapping whose key equals to the given key
    */
   default boolean contains(K key) {
     return get().containsKey(key);
@@ -74,7 +75,7 @@ public interface MapState<K, V> extends UnaryState<Map<K, V>> {
   /**
    * Returns all the mappings in the state
    *
-   * <p>Returns An iterable view of all the key-value pairs in the state.
+   * @return An iterable view of all the key-value pairs in the state.
    */
   default Iterable<Entry<K, V>> entries() {
     return get().entrySet();
@@ -83,7 +84,7 @@ public interface MapState<K, V> extends UnaryState<Map<K, V>> {
   /**
    * Returns all the keys in the state
    *
-   * <p>Returns An iterable view of all the keys in the state.
+   * @return An iterable view of all the keys in the state.
    */
   default Iterable<K> keys() {
     return get().keySet();
@@ -92,7 +93,7 @@ public interface MapState<K, V> extends UnaryState<Map<K, V>> {
   /**
    * Returns all the values in the state.
    *
-   * <p>Returns An iterable view of all the values in the state.
+   * @return An iterable view of all the values in the state.
    */
   default Iterable<V> values() {
     return get().values();
@@ -101,7 +102,7 @@ public interface MapState<K, V> extends UnaryState<Map<K, V>> {
   /**
    * Iterates over all the mappings in the state.
    *
-   * <p>Returns An iterator over all the mappings in the state
+   * @return An iterator over all the mappings in the state
    */
   default Iterator<Entry<K, V>> iterator() {
     return get().entrySet().iterator();

@@ -20,12 +20,14 @@ INT32_MAX = (2**31) - 1
 
 
 class DataClient:
-    def __init__(self, channel: "grpc._channel.Channel", client_id: str):
+    def __init__(self, channel: "grpc._channel.Channel", client_id: str,
+                 metadata: list):
         """Initializes a thread-safe datapath over a Ray Client gRPC channel.
 
         Args:
             channel: connected gRPC channel
             client_id: the generated ID representing this client
+            metadata: metadata to pass to gRPC requests
         """
         self.channel = channel
         self.request_queue = queue.Queue()
@@ -34,6 +36,8 @@ class DataClient:
         self.cv = threading.Condition()
         self._req_id = 0
         self._client_id = client_id
+        self._metadata = metadata
+        self._in_shutdown = False
         self.data_thread.start()
 
     def _next_id(self) -> int:
@@ -52,7 +56,7 @@ class DataClient:
         stub = ray_client_pb2_grpc.RayletDataStreamerStub(self.channel)
         resp_stream = stub.Datapath(
             iter(self.request_queue.get, None),
-            metadata=(("client_id", self._client_id), ),
+            metadata=[("client_id", self._client_id)] + self._metadata,
             wait_for_ready=True)
         try:
             for response in resp_stream:
@@ -64,9 +68,19 @@ class DataClient:
                     self.ready_data[response.req_id] = response
                     self.cv.notify_all()
         except grpc.RpcError as e:
-            if grpc.StatusCode.CANCELLED == e.code():
+            with self.cv:
+                self._in_shutdown = True
+                self.cv.notify_all()
+            if e.code() == grpc.StatusCode.CANCELLED:
                 # Gracefully shutting down
                 logger.info("Cancelling data channel")
+            elif e.code() == grpc.StatusCode.UNAVAILABLE:
+                # TODO(barakmich): The server may have
+                # dropped. In theory, we can retry, as per
+                # https://grpc.github.io/grpc/core/md_doc_statuscodes.html but
+                # in practice we may need to think about the correct semantics
+                # here.
+                logger.info("Server disconnected from data channel")
             else:
                 logger.error(
                     f"Got Error from data channel -- shutting down: {e}")
@@ -85,10 +99,21 @@ class DataClient:
         self.request_queue.put(req)
         data = None
         with self.cv:
-            self.cv.wait_for(lambda: req_id in self.ready_data)
+            self.cv.wait_for(
+                lambda: req_id in self.ready_data or self._in_shutdown)
+            if self._in_shutdown:
+                raise ConnectionError(
+                    f"cannot send request {req}: data channel shutting down")
             data = self.ready_data[req_id]
             del self.ready_data[req_id]
         return data
+
+    def ConnectionInfo(self,
+                       context=None) -> ray_client_pb2.ConnectionInfoResponse:
+        datareq = ray_client_pb2.DataRequest(
+            connection_info=ray_client_pb2.ConnectionInfoRequest())
+        resp = self._blocking_send(datareq)
+        return resp.connection_info
 
     def GetObject(self, request: ray_client_pb2.GetRequest,
                   context=None) -> ray_client_pb2.GetResponse:
@@ -106,4 +131,9 @@ class DataClient:
                       request: ray_client_pb2.ReleaseRequest,
                       context=None) -> None:
         datareq = ray_client_pb2.DataRequest(release=request, )
-        self.request_queue.put(datareq)
+        # TODO: Make this nonblocking. There's a race here for named
+        # actors
+        # a = Actor.options(name="a", lifetime="detached").remote()
+        # del a
+        # b = ray.get_actor("a")
+        self._blocking_send(datareq)

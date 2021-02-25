@@ -109,7 +109,6 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// on. This takes precedence over min_worker_port and max_worker_port.
   /// \param worker_commands The commands used to start the worker process, grouped by
   /// language.
-  /// \param raylet_config The raylet config list of this node.
   /// \param starting_worker_timeout_callback The callback that will be triggered once
   /// it times out to start a worker.
   WorkerPool(boost::asio::io_service &io_service, int num_workers_soft_limit,
@@ -118,7 +117,6 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
              const std::vector<int> &worker_ports,
              std::shared_ptr<gcs::GcsClient> gcs_client,
              const WorkerCommandMap &worker_commands,
-             const std::unordered_map<std::string, std::string> &raylet_config,
              std::function<void()> starting_worker_timeout_callback);
 
   /// Destructor responsible for freeing a set of workers owned by this class.
@@ -136,6 +134,12 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// \param job_id ID of the finished job.
   /// \return Void.
   void HandleJobFinished(const JobID &job_id);
+
+  /// \brief Get the job config by job id.
+  ///
+  /// \param job_id ID of the job.
+  /// \return Job config if given job is running, else nullptr.
+  boost::optional<const rpc::JobConfig &> GetJobConfig(const JobID &job_id) const;
 
   /// Register a new worker. The Worker should be added by the caller to the
   /// pool after it becomes idle (e.g., requests a work assignment).
@@ -184,9 +188,11 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
 
   /// Disconnect a registered worker.
   ///
-  /// \param The worker to disconnect. The worker must be registered.
+  /// \param worker The worker to disconnect. The worker must be registered.
+  /// \param disconnect_type Type of a worker exit.
   /// \return Whether the given worker was in the pool of idle workers.
-  bool DisconnectWorker(const std::shared_ptr<WorkerInterface> &worker);
+  bool DisconnectWorker(const std::shared_ptr<WorkerInterface> &worker,
+                        rpc::WorkerExitType disconnect_type);
 
   /// Disconnect a registered driver.
   ///
@@ -358,8 +364,6 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
     std::unordered_map<TaskID, std::shared_ptr<WorkerInterface>> idle_dedicated_workers;
     /// The pool of idle non-actor workers.
     std::unordered_set<std::shared_ptr<WorkerInterface>> idle;
-    /// The pool of idle actor workers.
-    std::unordered_map<ActorID, std::shared_ptr<WorkerInterface>> idle_actor;
     // States for io workers used for spilling objects.
     IOWorkerState spill_io_worker_state;
     // States for io workers used for restoring objects.
@@ -369,6 +373,9 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
     std::unordered_set<std::shared_ptr<WorkerInterface>> registered_workers;
     /// All drivers that have registered and are still connected.
     std::unordered_set<std::shared_ptr<WorkerInterface>> registered_drivers;
+    /// All workers that have registered but is about to disconnect. They shouldn't be
+    /// popped anymore.
+    std::unordered_set<std::shared_ptr<WorkerInterface>> pending_disconnection_workers;
     /// A map from the pids of starting worker processes
     /// to the number of their unregistered workers.
     std::unordered_map<Process, int> starting_worker_processes;
@@ -472,8 +479,6 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   std::unique_ptr<std::queue<int>> free_ports_;
   /// A client connection to the GCS.
   std::shared_ptr<gcs::GcsClient> gcs_client_;
-  /// The raylet config list of this node.
-  std::unordered_map<std::string, std::string> raylet_config_;
   /// The callback that will be triggered once it times out to start a worker.
   std::function<void()> starting_worker_timeout_callback_;
   FRIEND_TEST(WorkerPoolTest, InitialWorkerProcessCount);

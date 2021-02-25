@@ -1,3 +1,5 @@
+.. _ray-dashboard:
+
 Ray Dashboard
 =============
 Ray's built-in dashboard provides metrics, charts, and other features that help
@@ -167,6 +169,43 @@ More information on how to interpret the flamegraph is available at https://gith
 .. image:: https://raw.githubusercontent.com/ray-project/images/master/docs/dashboard/dashboard-profiling.png
     :align: center
 
+Running Behind a Reverse Proxy
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+In ray 2.0.0, the dashboard works out-of-the-box when accessed via a reverse proxy. API requests no
+longer need to be proxied individually.
+
+Always access the dashboard with a trailing ``/`` at the end of the URL.
+For example, if your proxy is set up to handle requests to ``/ray/dashboard``, view the dashboard at ``www.my-website.com/ray/dashboard/``.
+
+The dashboard now sends HTTP requests with relative URL paths. Browsers will handle these requests as expected when the ``window.location.href`` ends in a trailing ``/``.
+
+This is a peculiarity of how many browsers handle requests with relative URLs, despite what `MDN <https://developer.mozilla.org/en-US/docs/Learn/Common_questions/What_is_a_URL#examples_of_relative_urls>`_
+defines as the expected behavior.
+
+Make your dashboard visible without a trailing ``/`` by including a rule in your reverse proxy that
+redirects the user's browser to ``/``, i.e. ``/ray/dashboard`` --> ``/ray/dashboard/``.
+
+Below is an example with a `traefik <https://doc.traefik.io/traefik/getting-started/quick-start/>`_ TOML file that accomplishes this:
+
+.. code-block:: yaml
+
+  [http]
+    [http.routers]
+      [http.routers.to-dashboard]
+        rule = "PathPrefix(`/ray/dashboard`)"
+        middlewares = ["test-redirectregex", "strip"]
+        service = "dashboard"
+    [http.middlewares]
+      [http.middlewares.test-redirectregex.redirectRegex]
+        regex = "^(.*)/ray/dashboard$"
+        replacement = "${1}/ray/dashboard/"
+      [http.middlewares.strip.stripPrefix]
+        prefixes = ["/ray/dashboard"]
+    [http.services]
+      [http.services.dashboard.loadBalancer]
+        [[http.services.dashboard.loadBalancer.servers]]
+          url = "http://localhost:8265"
+
 References
 ----------
 
@@ -266,7 +305,7 @@ objects are staying in local memory.
 **kill actor**: A button to kill an actor in a cluster. It has the same effect as calling ``ray.kill`` on an actor handle.
 
 **profile**: A button to run profiling. We currently support profiling for 10s,
-30s and 60s. It requires passwordless ``sudo``. The result of profiling is a py-spy html output displaying how much CPU time the actor spent in various methods. 
+30s and 60s. It requires passwordless ``sudo``. The result of profiling is a py-spy html output displaying how much CPU time the actor spent in various methods.
 
 
 Memory

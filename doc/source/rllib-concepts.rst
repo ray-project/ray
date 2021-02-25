@@ -287,7 +287,7 @@ Now let's look at each PPO policy definition:
         get_default_config=lambda: ray.rllib.agents.ppo.ppo.DEFAULT_CONFIG,
         loss_fn=ppo_surrogate_loss,
         stats_fn=kl_and_loss_stats,
-        extra_action_fetches_fn=vf_preds_and_logits_fetches,
+        extra_action_out_fn=vf_preds_and_logits_fetches,
         postprocess_fn=postprocess_ppo_gae,
         gradients_fn=clip_gradients,
         before_loss_init=setup_mixins,
@@ -314,7 +314,7 @@ Now let's look at each PPO policy definition:
 
         return stats_fetches
 
-``extra_actions_fetches_fn``: This function defines extra outputs that will be recorded when generating actions with the policy. For example, this enables saving the raw policy logits in the experience batch, which e.g. means it can be referenced in the PPO loss function via ``batch[BEHAVIOUR_LOGITS]``. Other values such as the current value prediction can also be emitted for debugging or optimization purposes:
+``extra_action_out_fn``: This function defines extra outputs that will be recorded when generating actions with the policy. For example, this enables saving the raw policy logits in the experience batch, which e.g. means it can be referenced in the PPO loss function via ``batch[BEHAVIOUR_LOGITS]``. Other values such as the current value prediction can also be emitted for debugging or optimization purposes:
 
 .. code-block:: python
 
@@ -363,7 +363,7 @@ Let's look at how to implement a different family of policies, by looking at the
         action_sampler_fn=build_action_sampler,
         loss_fn=build_q_losses,
         extra_action_feed_fn=exploration_setting_inputs,
-        extra_action_fetches_fn=lambda policy: {"q_values": policy.q_values},
+        extra_action_out_fn=lambda policy: {"q_values": policy.q_values},
         extra_learn_fetches_fn=lambda policy: {"td_error": policy.td_error},
         before_init=setup_early_mixins,
         after_init=setup_late_mixins,

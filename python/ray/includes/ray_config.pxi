@@ -10,12 +10,8 @@ cdef class Config:
         return RayConfig.instance().handler_warning_timeout_ms()
 
     @staticmethod
-    def raylet_heartbeat_timeout_milliseconds():
-        return RayConfig.instance().raylet_heartbeat_timeout_milliseconds()
-
-    @staticmethod
-    def light_report_resource_usage_enabled():
-        return RayConfig.instance().light_report_resource_usage_enabled()
+    def raylet_heartbeat_period_milliseconds():
+        return RayConfig.instance().raylet_heartbeat_period_milliseconds()
 
     @staticmethod
     def debug_dump_period_milliseconds():
