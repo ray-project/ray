@@ -368,13 +368,13 @@ def get_memory_summary(redis_address, redis_password, group_by, sort_by,
     summary_string = "{:<19}  {:<16}  {:<12}  {:<13}  {:<19}  {:<13}\n"
 
     object_ref_labels = [
-        "IP Address", "PID", "Type", "Object Ref", "Size", "Reference Type",
-        "Call Site"
+        "IP Address", "PID", "Type", "Call Site", "Size", "Reference Type", "Object Ref"
+        
     ]
-    object_ref_string = "{:<8}  {:<3}  {:<4}  {:<10}  {:<4}  {:<14}  {:<9}\n"
+    object_ref_string = "{:<8}  {:<3}  {:<4}  {:<9}  {:<4}  {:<14}  {:<10}\n"
     if size > line_wrap_threshold and line_wrap:
-        object_ref_string = "{:<12}  {:<5}  {:<6}  {:<56}  {:<6}  {:<18}  \
-{:<22}\n"
+        object_ref_string = "{:<12}  {:<5}  {:<6}  {:<22}  {:<6}  {:<18}  \
+{:<56}\n"
 
     mem += f"Grouping by {group_by}...\
         Sorting by {sort_by}...\n\n\n\n"
@@ -408,8 +408,8 @@ def get_memory_summary(redis_address, redis_password, group_by, sort_by,
                 num_lines = len(entry["call_site"])
             object_ref_values = [
                 entry["node_ip_address"], entry["pid"], entry["type"],
-                entry["object_ref"], entry["object_size"],
-                entry["reference_type"], entry["call_site"]
+                entry["call_site"], entry["object_size"],
+                entry["reference_type"], entry["object_ref"]
             ]
             for i in range(len(object_ref_values)):
                 if not isinstance(object_ref_values[i], list):
