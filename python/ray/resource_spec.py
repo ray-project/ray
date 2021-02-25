@@ -213,7 +213,7 @@ class ResourceSpec(
             memory = (avail_memory - object_store_memory - (redis_max_memory
                                                             if is_head else 0))
             if memory < 100e6 and memory < 0.05 * system_memory:
-                raise ValueError(
+                logger.warning(
                     "After taking into account object store and redis memory "
                     "usage, the amount of memory on this node available for "
                     "tasks and actors ({} GB) is less than {}% of total. "
@@ -222,6 +222,10 @@ class ResourceSpec(
                     "object_store_memory=<bytes>).".format(
                         round(memory / 1e9, 2),
                         int(100 * (memory / system_memory))))
+                memory = 0.05 * system_memory
+                logger.warning(
+                    "Reset memory for tasks and actors to {} GB.".format(
+                        round(memory / 1e9, 2)))
 
         spec = ResourceSpec(num_cpus, num_gpus, memory, object_store_memory,
                             resources, redis_max_memory)
