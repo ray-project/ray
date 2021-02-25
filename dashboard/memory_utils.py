@@ -368,8 +368,8 @@ def get_memory_summary(redis_address, redis_password, group_by, sort_by,
     summary_string = "{:<19}  {:<16}  {:<12}  {:<13}  {:<19}  {:<13}\n"
 
     object_ref_labels = [
-        "IP Address", "PID", "Type", "Call Site", "Size", "Reference Type", "Object Ref"
-        
+        "IP Address", "PID", "Type", "Call Site", "Size", "Reference Type",
+        "Object Ref"
     ]
     object_ref_string = "{:<8}  {:<3}  {:<4}  {:<9}  {:<4}  {:<14}  {:<10}\n"
     if size > line_wrap_threshold and line_wrap:
