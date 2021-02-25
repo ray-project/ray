@@ -96,6 +96,8 @@ However, an endpoint must be deleted in order to delete the backends that serve 
 
   client.delete_endpoint("simple_endpoint")
 
+.. _configuring-a-backend:
+
 Configuring a Backend
 =====================
 
