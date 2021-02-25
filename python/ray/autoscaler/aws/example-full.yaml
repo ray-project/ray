@@ -64,9 +64,12 @@ available_node_types:
         # The maximum number of worker nodes of this type to launch.
         # This takes precedence over min_workers.
         max_workers: 0
-        # Autoscaler auto-fills the node type's CPU and GPU resources based on the AWS instance type.
-        # The CPU resources below are included for the purposes of documentation.
-        resources: {"CPU": 2}
+        # The node type's CPU and GPU resources are auto-detected based on AWS instance type.
+        # If desired, you can override the autodetected CPU and GPU resources advertised to the autoscaler.
+        # You can also set custom resources.
+        # For example, to mark a node type as having 1 CPU, 1 GPU, and 5 units of a resource called "custom", set
+        # resources: {"CPU": 1, "GPU": 1, "custom": 5}
+        resources: {}
         # Provider-specific config for this node type, e.g. instance type. By default
         # Ray will auto-configure unspecified fields such as SubnetId and KeyName.
         # For more documentation on available fields, see:
@@ -87,9 +90,12 @@ available_node_types:
         # The maximum number of worker nodes of this type to launch.
         # This takes precedence over min_workers.
         max_workers: 2
-        # Autoscaler auto fills CPU and GPU resources based on the AWS instance type.
-        # The CPU resources below are included for the purposes of documentation.
-        resources: {"CPU": 2}
+        # The node type's CPU and GPU resources are auto-detected based on AWS instance type.
+        # If desired, you can override the autodetected CPU and GPU resources advertised to the autoscaler.
+        # You can also set custom resources.
+        # For example, to mark a node type as having 1 CPU, 1 GPU, and 5 units of a resource called "custom", set
+        # resources: {"CPU": 1, "GPU": 1, "custom": 5}
+        resources: {}
         # Provider-specific config for this node type, e.g. instance type. By default
         # Ray will auto-configure unspecified fields such as SubnetId and KeyName.
         # For more documentation on available fields, see:
