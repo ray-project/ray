@@ -227,27 +227,27 @@ class Trial:
 
             # If Trainable returns resources, do not allow manual overrid via
             # `resources_per_trial` by the user.
-            if default_resources and (resources or placement_group_factory):
-                raise ValueError(
-                    "Resources for {} have been automatically set to {} "
-                    "by its `default_resource_request()` method. Please "
-                    "clear the `resources_per_trial` option.".format(
-                        trainable_cls, default_resources))
+            if default_resources:
+                if resources or placement_group_factory:
+                    raise ValueError(
+                        "Resources for {} have been automatically set to {} "
+                        "by its `default_resource_request()` method. Please "
+                        "clear the `resources_per_trial` option.".format(
+                            trainable_cls, default_resources))
 
-            # New way: Trainable returns a PlacementGroupFactory object.
-            if isinstance(default_resources, PlacementGroupFactory):
-                placement_group_factory = default_resources
-                resources = None
-            # Set placement group factory to None for backwards compatibility.
-            else:
-                placement_group_factory = None
-                resources = default_resources
-
+                # New way: Trainable returns a PlacementGroupFactory object.
+                if isinstance(default_resources, PlacementGroupFactory):
+                    placement_group_factory = default_resources
+                    resources = None
+                # Set placement group factory to None for backwards
+                # compatibility.
+                else:
+                    placement_group_factory = None
+                    resources = default_resources
         self.location = Location()
 
         self.resources = resources or Resources(cpu=1, gpu=0)
         self.placement_group_factory = placement_group_factory
-
         self._setup_resources()
 
         self.stopping_criterion = stopping_criterion or {}
