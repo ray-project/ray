@@ -41,6 +41,7 @@ struct GcsServerConfig {
   bool retry_redis = true;
   bool is_test = false;
   std::string node_ip_address;
+  bool pull_based_resource_reporting;
 };
 
 class GcsNodeManager;

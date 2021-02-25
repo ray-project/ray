@@ -469,6 +469,9 @@ void NodeManager::FillResourceReport(rpc::ResourcesData *resources_data) {
 }
 
 void NodeManager::ReportResourceUsage() {
+  if (initial_config_.pull_based_resource_reporting) {
+    return;
+  }
   auto resources_data = std::make_shared<rpc::ResourcesData>();
   FillResourceReport(resources_data.get());
 

@@ -109,6 +109,9 @@ struct NodeManagerConfig {
   int max_io_workers;
   // The minimum object size that can be spilled by each spill operation.
   int64_t min_spilling_size;
+  // Whether to the raylet should push resource reports to GCS or wait for GCS to pull the
+  // reports from raylets.
+  bool pull_based_resource_reporting;
 };
 
 class NodeManager : public rpc::NodeManagerServiceHandler,

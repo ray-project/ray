@@ -29,6 +29,8 @@ class GcsResourceReportPoller {
 
   std::shared_ptr<GcsResourceManager> gcs_resource_manager_;
   std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool_;
+
+  boost::posix_time::milliseconds poll_period_ms_;
   boost::asio::deadline_timer poll_timer_;
 
   // A global lock for internal operations. This lock is shared between the main thread

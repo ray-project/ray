@@ -8,6 +8,8 @@ GcsResourceReportPoller::GcsResourceReportPoller(
     std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool)
     : gcs_resource_manager_(gcs_resource_manager),
       raylet_client_pool_(raylet_client_pool),
+      poll_period_ms_(boost::posix_time::milliseconds(
+          RayConfig::instance().gcs_resource_report_poll_period_ms())),
       poll_timer_(polling_service_) {}
 
 void GcsResourceReportPoller::Start() {
@@ -35,8 +37,10 @@ void GcsResourceReportPoller::GetAllResourceUsage() {
     auto node_id = NodeID::FromBinary(address.raylet_id());
     raylet_client->RequestResourceReport(
         [&, node_id](const Status &status, const rpc::RequestResourceReportReply &reply) {
-          // TODO (Alex): this callback is running on the wrong thread?
-          RAY_LOG(ERROR) << "Got report";
+          // TODO (Alex): This callback is always posted onto the main thread. Since most
+          // of the work is in the callback we should move this callback's execution to
+          // the polling thread. We will need to implement locking once we switch threads.
+          gcs_resource_manager_->UpdateFromResourceReport(reply.resources());
         });
   }
 }
