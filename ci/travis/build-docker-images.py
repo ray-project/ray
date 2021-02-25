@@ -217,7 +217,7 @@ def push_and_tag_images(push_base_images: bool, merge_build: bool = False):
         DOCKER_CLIENT.api.login(username=username, password=password)
 
     def docker_push(image, tag):
-        if merge_build():
+        if merge_build:
             print(f"PUSHING: {image}:{tag}, result:")
             # This docker API is janky. Without "stream=True" it returns a
             # massive string filled with every progress bar update, which can
@@ -298,8 +298,8 @@ def push_and_tag_images(push_base_images: bool, merge_build: bool = False):
 
 # Push infra here:
 # https://github.com/christian-korneck/docker-pushrm/blob/master/README-containers.md#push-a-readme-file-to-dockerhub # noqa
-def push_readmes():
-    if not _merge_build():
+def push_readmes(merge_build: bool):
+    if not merge_build:
         print("Not pushing README because this is a PR build.")
         return
     username, password = _get_docker_creds()
@@ -335,33 +335,48 @@ def push_readmes():
 # Build ray, ray-ml, autoscaler every time
 # build-docker-images.py --py-versions PY37 --build-type PR --rebuild-all
 MERGE = "MERGE"
-HUMAN ="HUMAN"
+HUMAN = "HUMAN"
 PR = "PR"
 BUILDKITE = "BUILDKITE"
 BUILD_TYPES = [MERGE, HUMAN, PR, BUILDKITE]
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--py-versions", choices=["PY36", "PY37", "PY38"], default="PY37", nargs='*', help="Which python versions to build. Must be in (PY36, PY37, PY38)")
     parser.add_argument(
-        "--build-type", choices=BUILD_TYPES, required=True, help="Whether to bypass checking if docker is affected")
-    parser.add_argument('--build-base', dest='base', action='store_true', help="Whether to build base-deps & ray-deps")
-    parser.add_argument('--no-build-base', dest='base', action='store_false')
+        "--py-versions",
+        choices=["PY36", "PY37", "PY38"],
+        default="PY37",
+        nargs="*",
+        help="Which python versions to build. Must be in (PY36, PY37, PY38)")
+    parser.add_argument(
+        "--build-type",
+        choices=BUILD_TYPES,
+        required=True,
+        help="Whether to bypass checking if docker is affected")
+    parser.add_argument(
+        "--build-base",
+        dest="base",
+        action="store_true",
+        help="Whether to build base-deps & ray-deps")
+    parser.add_argument("--no-build-base", dest="base", action="store_false")
     parser.set_defaults(base=True)
-    
 
     args = parser.parse_args()
     py_versions = args.py_versions
-    py_versions = py_versions if isinstance(py_versions, list) else [py_versions]
+    py_versions = py_versions if isinstance(py_versions,
+                                            list) else [py_versions]
     for key in set(PY_MATRIX.keys()):
         if key[1:].upper() not in py_versions:
             PY_MATRIX.pop(key)
-    assert len(PY_MATRIX) == len(py_versions), f"Length of PY_MATRIX != args {PY_MATRIX} : {args.py_versions}"
+    assert len(PY_MATRIX) == len(
+        py_versions
+    ), f"Length of PY_MATRIX != args {PY_MATRIX} : {args.py_versions}"
 
     print("Building the following python versions: ", PY_MATRIX)
     print("Building base images: ", args.base)
 
     build_type = args.build_type
-    if build_type in {HUMAN, MERGE, BUILDKITE} or _check_if_docker_files_modified():
+    if build_type in {HUMAN, MERGE, BUILDKITE
+                      } or _check_if_docker_files_modified():
         DOCKER_CLIENT = docker.from_env()
         copy_wheels()
         base_images_built = build_or_pull_base_images(args.base)
