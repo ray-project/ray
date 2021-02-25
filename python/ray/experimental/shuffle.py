@@ -64,7 +64,7 @@ class ObjectStoreWriter:
         return self.results
 
 
-class ObjectStoreWriterNonStreaming:
+class ObjectStoreWriterNonStreaming(ObjectStoreWriter):
     def __init__(self):
         self.results = []
 
