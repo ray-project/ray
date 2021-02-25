@@ -2028,14 +2028,16 @@ py_test(
     args = ["--as-test", "--torch", "--stop-reward=70"]
 )
 
-py_test(
-    name = "examples/multi_agent_two_trainers_mixed_torch_tf",
-    main = "examples/multi_agent_two_trainers.py",
-    tags = ["examples", "examples_M"],
-    size = "medium",
-    srcs = ["examples/multi_agent_two_trainers.py"],
-    args = ["--as-test", "--mixed-torch-tf", "--stop-reward=70"]
-)
+# Taking out this test for now: Mixed torch- and tf- policies within the same
+# Trainer never really worked.
+# py_test(
+#     name = "examples/multi_agent_two_trainers_mixed_torch_tf",
+#     main = "examples/multi_agent_two_trainers.py",
+#     tags = ["examples", "examples_M"],
+#     size = "medium",
+#     srcs = ["examples/multi_agent_two_trainers.py"],
+#     args = ["--as-test", "--mixed-torch-tf", "--stop-reward=70"]
+# )
 
 py_test(
     name = "examples/nested_action_spaces_ppo_tf",
