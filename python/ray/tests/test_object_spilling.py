@@ -5,6 +5,7 @@ import random
 import platform
 import subprocess
 import sys
+from collections import defaultdict
 
 import numpy as np
 import pytest
@@ -805,7 +806,6 @@ def test_spill_objects_on_object_transfer(object_spilling_config,
     platform.system() in ["Windows"], reason="Failing on "
     "Windows and Mac.")
 def test_file_deleted_when_driver_exits(tmp_path, shutdown_only):
-    # Limit our object store to 75 MiB of memory.
     temp_folder = tmp_path / "spill"
     temp_folder.mkdir()
 
@@ -856,5 +856,75 @@ os.kill(os.getpid(), sig)
     wait_for_condition(lambda: is_dir_empty(temp_folder, append_path=""))
 
 
+@pytest.mark.skipif(
+    platform.system() in ["Windows"], reason="Failing on "
+    "Windows.")
+def test_multiple_directories(tmp_path, shutdown_only):
+    num_dirs = 3
+    temp_dirs = []
+    for i in range(num_dirs):
+        temp_folder = tmp_path / f"spill_{i}"
+        temp_folder.mkdir()
+        temp_dirs.append(temp_folder)
+
+    # Limit our object store to 75 MiB of memory.
+    min_spilling_size = 0
+    object_spilling_config = json.dumps({
+        "type": "filesystem",
+        "params": {
+            "directory_path": [str(directory) for directory in temp_dirs]
+        }
+    })
+    address = ray.init(
+        object_store_memory=75 * 1024 * 1024,
+        _system_config={
+            "max_io_workers": 5,
+            "object_store_full_delay_ms": 100,
+            "object_spilling_config": object_spilling_config,
+            "min_spilling_size": min_spilling_size,
+        })
+
+    arr = np.ones(74 * 1024 * 1024, dtype=np.uint8)  # 74MB.
+    object_refs = []
+    # Now the storage is full.
+    object_refs.append(ray.put(arr))
+
+    num_object_spilled = 20
+    for _ in range(num_object_spilled):
+        object_refs.append(ray.put(arr))
+
+    num_files = defaultdict(int)
+    for temp_dir in temp_dirs:
+        temp_folder = temp_dir / ray.ray_constants.DEFAULT_OBJECT_PREFIX
+        for path in temp_folder.iterdir():
+            num_files[str(temp_folder)] += 1
+
+    for ref in object_refs:
+        assert np.array_equal(ray.get(ref), arr)
+
+    print("Check distribution...")
+    min_count = 5
+    is_distributed = [n_files >= min_count for n_files in num_files.values()]
+    assert all(is_distributed)
+
+    print("Check deletion...")
+    # Empty object refs.
+    object_refs = []
+    # Add a new object so that the last entry is evicted.
+    ref = ray.put(arr)
+    for temp_dir in temp_dirs:
+        temp_folder = temp_dir
+        wait_for_condition(lambda: is_dir_empty(temp_folder))
+    assert_no_thrashing(address["redis_address"])
+
+    # Now kill ray and see all directories are deleted.
+    print("Check directories are deleted...")
+    ray.shutdown()
+    for temp_dir in temp_dirs:
+        wait_for_condition(lambda: is_dir_empty(temp_dir, append_path=""))
+
+
 if __name__ == "__main__":
+    if sys.platform == "darwin":
+        sys.exit()
     sys.exit(pytest.main(["-sv", __file__]))

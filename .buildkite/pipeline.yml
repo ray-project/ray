@@ -20,12 +20,14 @@
   conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
   commands:
     - LINUX_WHEELS=1 ./ci/travis/ci.sh build
+    - pip install docker
     - python ./ci/travis/build-docker-images.py PY37
 
 - label: ":docker: Build Images"
   conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
   commands:
     - LINUX_WHEELS=1 ./ci/travis/ci.sh build
+    - pip install docker
     - python ./ci/travis/build-docker-images.py PY36_PY38
 
 - label: ":book: Lint"
@@ -75,10 +77,9 @@
     ]
   commands:
     - TORCH_VERSION=1.6 ./ci/travis/install-dependencies.sh
-    - bazel test --config=ci $(./scripts/bazel_export_options)
-      python/ray/new_dashboard/...
-    - bazel test --config=ci $(./scripts/bazel_export_options)
-      python/ray/serve/...
+    - ./dashboard/tests/run_ui_tests.sh
+    - bazel test --config=ci $(./scripts/bazel_export_options) python/ray/new_dashboard/...
+    - bazel test --config=ci $(./scripts/bazel_export_options) python/ray/serve/...
 
 - label: ":python: (Small & Large)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]

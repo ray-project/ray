@@ -7,7 +7,7 @@ import ray
 from ray.test_utils import (
     check_call_ray, run_string_as_driver, run_string_as_driver_nonblocking,
     wait_for_children_of_pid, wait_for_children_of_pid_to_exit,
-    kill_process_by_name, Semaphore)
+    wait_for_children_names_of_pid, kill_process_by_name, Semaphore)
 
 
 def test_calling_start_ray_head(call_ray_stop_only):
@@ -94,7 +94,7 @@ def test_calling_start_ray_head(call_ray_stop_only):
     blocked = subprocess.Popen(
         ["ray", "start", "--head", "--block", "--port", "0"])
 
-    wait_for_children_of_pid(blocked.pid, num_children=7, timeout=30)
+    wait_for_children_names_of_pid(blocked.pid, ["raylet"], timeout=30)
 
     blocked.poll()
     assert blocked.returncode is None

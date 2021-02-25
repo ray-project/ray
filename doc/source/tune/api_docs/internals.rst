@@ -122,10 +122,10 @@ Callbacks
 
 .. _resources-docstring:
 
-Resources
----------
+PlacementGroupFactory
+---------------------
 
-.. autoclass:: ray.tune.resources.Resources
+.. autoclass:: ray.tune.utils.placement_groups.PlacementGroupFactory
 
 
 
