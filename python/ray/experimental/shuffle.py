@@ -222,6 +222,7 @@ def main():
     parser.add_argument("--num-nodes", type=int, default=None)
     parser.add_argument("--num-cpus", type=int, default=8)
     parser.add_argument("--no-streaming", action="store_true", default=False)
+    parser.add_argument("--use-wait", action="store_true", default=False)
     args = parser.parse_args()
 
     is_multi_node = args.num_nodes
@@ -246,6 +247,7 @@ def main():
     num_partitions = args.num_partitions
     rows_per_partition = partition_size // (8 * 2)
     tracker = _StatusTracker.remote()
+    use_wait = args.use_wait
 
     def input_reader(i: PartitionID) -> Iterable[InType]:
         for _ in range(num_partitions):
@@ -256,13 +258,17 @@ def main():
     def output_writer(i: PartitionID,
                       shuffle_inputs: List[ObjectRef]) -> OutType:
         total = 0
-        ready, unready = ray.wait(shuffle_inputs)
-        while unready:
-            for obj_ref in ready:
+        if not use_wait:
+            for obj_ref in shuffle_inputs:
                 arr = ray.get(obj_ref)
                 total += arr.size * arr.itemsize
-            ready, unready = ray.wait(unready)
-            time.sleep(0.1)
+        else:
+            while shuffle_inputs:
+                [ready], shuffle_inputs = ray.wait(
+                    shuffle_inputs, num_returns=1)
+                arr = ray.get(ready)
+                total += arr.size * arr.itemsize
+
         tracker.inc2.remote()
         return total
 
