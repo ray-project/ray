@@ -9,7 +9,7 @@ The server runs `ray.init()` and acts like a normal Ray driver, controlled by th
 It does all the bookkeeping and keeps things in scope for the clients that connect.
 Generally, the client side lives in `ray/util/client` and the server lives in `ray/util/client/server`.
 By convention, the `ray/util/client` avoids importing `ray` directly, but the server side, being just another Ray application, is allowed to do so.
-This separation exists both for dependency cycle reasons and also to, if desired in the future, pull either portion out into it's own repo or sub-installation.
+This separation exists both for dependency cycle reasons and also to, if desired in the future, pull either portion out into its own repo or sub-installation.
 (eg, `pip install ray_client`)
 
 The `ray` global variable of type `RayAPIStub` in [`ray/util/client/__init__.py`](./__init__.py) acts as the equivalent API surface as does the `ray` package. 
@@ -79,11 +79,11 @@ It's a separate channel as it's ancillary to the continued connection of the cli
 It's also then a separate way for a log aggregator to connect without implementing the full API.
 This is also a bidirectional stream, where the client sends messages to control the verbosity and type of content, and the server streams back all the logs as they come in.
 
-### On CloudPickle
+#### On CloudPickle
 
 As per the introduction to this section, `pickle` and `cloudpickle` are the way to encode to Python-executable data for the generic transport of gRPC.
 
-Ray Client provides it's own pickle/unpickle subclasses in `client_pickler.py` and `server/server_pickler.py`. 
+Ray Client provides its own pickle/unpickle subclasses in `client_pickler.py` and `server/server_pickler.py`. 
 The reason it has its own subclasses is to solve the problem of mixing `Client*` stub objects.
 
 This is easier to describe by example.
@@ -100,7 +100,7 @@ To simplify all of this, the pickler subclasses were written.
 Now, whenever a Client-stub-object is serialized, a struct (as of writing, a tuple) is stored in its place, and when deserialized, the server "fills in" the appropriate non-stub object. 
 And vice versa -- if the server is encoding a return/response that is an `ObjectRef`, a tuple is passed on the wire instead and the deserializer on the client side turns it back into a `ClientObjectRef`
 
-This means that the client side deals as much as possible in it's stub objects, and the server side never sees a stub object, and there is a clean separation between the two. Now, a `ClientObjectRef` existing on the server is an error case, and not a case to be handled specially.
+This means that the client side deals as much as possible in its stub objects, and the server side never sees a stub object, and there is a clean separation between the two. Now, a `ClientObjectRef` existing on the server is an error case, and not a case to be handled specially.
 It also means that the server side works just like normal Ray and deals in the normal Ray objects and can encode them transparently into client objects as they are sent.
 Because never the twain shall meet, it's much easier to model and debug what's going on.
 
