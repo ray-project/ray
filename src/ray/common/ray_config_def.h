@@ -336,7 +336,7 @@ RAY_CONFIG(std::string, object_spilling_config, "")
 RAY_CONFIG(bool, automatic_object_spilling_enabled, true)
 
 /// The maximum number of I/O worker that raylet starts.
-RAY_CONFIG(int, max_io_workers, 1)
+RAY_CONFIG(int, max_io_workers, 4)
 
 /// Ray's object spilling fuses small objects into a single file before flushing them
 /// to optimize the performance.
