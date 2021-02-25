@@ -24,7 +24,7 @@ This will print out some statistics on the shuffle execution such as:
 """
 
 import time
-from typing import List, Iterable, Tuple, Callable, Any
+from typing import List, Iterable, Tuple, Callable, Any, Union
 
 import ray
 from ray.cluster_utils import Cluster
@@ -61,6 +61,17 @@ class ObjectStoreWriter:
 
     def finish(self) -> List[ObjectRef]:
         """Return list of object refs representing written items."""
+        return self.results
+
+
+class ObjectStoreWriterNonStreaming:
+    def __init__(self):
+        self.results = []
+
+    def add(self, item: InType) -> None:
+        self.results.append(item)
+
+    def finish(self) -> List[Any]:
         return self.results
 
 
@@ -121,16 +132,17 @@ def render_progress_bar(tracker, input_num_partitions, output_num_partitions):
     reduce_bar.close()
 
 
-def simple_shuffle(
-        *,
-        input_reader: Callable[[PartitionID], Iterable[InType]],
-        input_num_partitions: int,
-        output_num_partitions: int,
-        output_writer: Callable[[PartitionID, List[ObjectRef]], OutType],
-        partitioner: Callable[[Iterable[InType], int], Iterable[
-            PartitionID]] = round_robin_partitioner,
-        object_store_writer: ObjectStoreWriter = ObjectStoreWriter,
-        tracker: _StatusTracker = None) -> List[OutType]:
+def simple_shuffle(*,
+                   input_reader: Callable[[PartitionID], Iterable[InType]],
+                   input_num_partitions: int,
+                   output_num_partitions: int,
+                   output_writer: Callable[
+                       [PartitionID, List[Union[ObjectRef, Any]]], OutType],
+                   partitioner: Callable[[Iterable[InType], int], Iterable[
+                       PartitionID]] = round_robin_partitioner,
+                   object_store_writer: ObjectStoreWriter = ObjectStoreWriter,
+                   tracker: _StatusTracker = None,
+                   streaming: bool = True) -> List[OutType]:
     """Simple distributed shuffle in Ray.
 
     Args:
@@ -146,21 +158,24 @@ def simple_shuffle(
         object_store_writer: Class used to write input items to the
             object store in an efficient way. Defaults to a naive
             implementation that writes each input record as one object.
+        tracker: Tracker actor that is used to display the progress bar.
+        streaming: Whether or not if the shuffle will be streaming.
 
     Returns:
         List of outputs from the output writers.
     """
 
     @ray.remote(num_returns=output_num_partitions)
-    def shuffle_map(i: PartitionID) -> List[List[ObjectRef]]:
+    def shuffle_map(i: PartitionID) -> List[List[Union[Any, ObjectRef]]]:
         writers = [object_store_writer() for _ in range(output_num_partitions)]
         for out_i, item in partitioner(input_reader(i), output_num_partitions):
             writers[out_i].add(item)
         return [c.finish() for c in writers]
 
     @ray.remote
-    def shuffle_reduce(i: PartitionID,
-                       *mapper_outputs: List[List[ObjectRef]]) -> OutType:
+    def shuffle_reduce(
+            i: PartitionID,
+            *mapper_outputs: List[List[Union[Any, ObjectRef]]]) -> OutType:
         input_objects = []
         assert len(mapper_outputs) == input_num_partitions
         for obj_refs in mapper_outputs:
@@ -206,6 +221,7 @@ def main():
     parser.add_argument("--partition-size", type=float, default=200e6)
     parser.add_argument("--num-nodes", type=int, default=None)
     parser.add_argument("--num-cpus", type=int, default=8)
+    parser.add_argument("--no-streaming", action="store_true", default=False)
     args = parser.parse_args()
 
     is_multi_node = args.num_nodes
@@ -240,19 +256,38 @@ def main():
     def output_writer(i: PartitionID,
                       shuffle_inputs: List[ObjectRef]) -> OutType:
         total = 0
-        # TODO(ekl) using ray.wait can be more efficient for pipelining.
-        for obj_ref in shuffle_inputs:
-            arr = ray.get(obj_ref)
+        ready, unready = ray.wait(shuffle_inputs)
+        while unready:
+            for obj_ref in ready:
+                arr = ray.get(obj_ref)
+                total += arr.size * arr.itemsize
+            ready, unready = ray.wait(unready)
+            time.sleep(0.1)
+        tracker.inc2.remote()
+        return total
+
+    def output_writer_non_streaming(i: PartitionID,
+                                    shuffle_inputs: List[Any]) -> OutType:
+        total = 0
+        for arr in shuffle_inputs:
             total += arr.size * arr.itemsize
         tracker.inc2.remote()
         return total
+
+    if args.no_streaming:
+        output_writer_callable = output_writer_non_streaming
+        object_store_writer = ObjectStoreWriterNonStreaming
+    else:
+        object_store_writer = ObjectStoreWriter
+        output_writer_callable = output_writer
 
     start = time.time()
     output_sizes = simple_shuffle(
         input_reader=input_reader,
         input_num_partitions=num_partitions,
         output_num_partitions=num_partitions,
-        output_writer=output_writer,
+        output_writer=output_writer_callable,
+        object_store_writer=object_store_writer,
         tracker=tracker)
     delta = time.time() - start
 
