@@ -68,7 +68,7 @@ Training a Spark DataFrame with TensorFlow
   from raydp.utils import random_split
   train_df, test_df = random_split(df, [0.7, 0.3])
 
-  # Tensor Flow code
+  # TensorFlow code
   from tensorflow import keras
   input_1 = keras.Input(shape=(1,))
   input_2 = keras.Input(shape=(1,))
@@ -82,17 +82,18 @@ Training a Spark DataFrame with TensorFlow
   loss = keras.losses.MeanSquaredError()
 
   from raydp.tf import TFEstimator
-  estimator = TFEstimator(num_workers=2,
-                              model=model,
-                              optimizer=optimizer,
-                              loss=loss,
-                              metrics=["accuracy", "mse"],
-                              feature_columns=["x", "y"],
-                              label_column="z",
-                              batch_size=1000,
-                              num_epochs=2,
-                              use_gpu=False,
-                              config={"fit_config": {"steps_per_epoch": 2}})
+  estimator = TFEstimator(
+    num_workers=2,
+    model=model,
+    optimizer=optimizer,
+    loss=loss,
+    metrics=["accuracy", "mse"],
+    feature_columns=["x", "y"],
+    label_column="z",
+    batch_size=1000,
+    num_epochs=2,
+    use_gpu=False,
+    config={"fit_config": {"steps_per_epoch": 2}})
 
   estimator.fit_on_spark(train_df, test_df)
 
