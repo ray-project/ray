@@ -863,7 +863,8 @@ def test_torch_dataset(ray_start_4_cpus, use_local):
 
 @pytest.mark.parametrize("num_workers", [1, 2] if dist.is_available() else [1])
 @pytest.mark.parametrize("use_local", [True, False])
-def test_iterable_model(ray_start_2_cpus, num_workers, use_local):  # noqa: F811
+def test_iterable_model(ray_start_2_cpus, num_workers,
+                        use_local):  # noqa: F811
     def model_creator(config):
         return nn.Sequential(nn.Linear(1, config.get("hidden_size", 1)))
 
@@ -875,7 +876,10 @@ def test_iterable_model(ray_start_2_cpus, num_workers, use_local):  # noqa: F811
         return IterableOptimizer(model.parameters(), lr=config.get("lr", 1e-2))
 
     Operator = TrainingOperator.from_creators(
-        model_creator, optimizer_creator, data_creator, loss_creator=nn.MSELoss)
+        model_creator,
+        optimizer_creator,
+        data_creator,
+        loss_creator=nn.MSELoss)
 
     trainer = TorchTrainer(
         training_operator_cls=Operator,

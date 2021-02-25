@@ -332,8 +332,9 @@ class TrainingOperator:
 
         return_vals.append(
             self._return_items(self._models, models, torch.nn.Module))
-        return_vals.append(self._return_items(
-            self._optimizers, optimizers, torch.optim.Optimizer))
+        return_vals.append(
+            self._return_items(self._optimizers, optimizers,
+                               torch.optim.Optimizer))
 
         if self._criterion is not None:
             return_vals.append(self._criterion)
