@@ -865,21 +865,21 @@ def test_torch_dataset(ray_start_4_cpus, use_local):
 @pytest.mark.parametrize("use_local", [True, False])
 def test_iterable_model(ray_start_2_cpus, num_workers,
                         use_local):  # noqa: F811
-    def model_creator(config):
-        return nn.Sequential(nn.Linear(1, config.get("hidden_size", 1)))
-
     class IterableOptimizer(torch.optim.SGD):
         def __iter__(self):
             return self.param_groups
 
-    def optimizer_creator(model, config):
-        return IterableOptimizer(model.parameters(), lr=config.get("lr", 1e-2))
+    class Operator(TrainingOperator):
+        def setup(self, config):
+            model = nn.Sequential(nn.Linear(1, config.get("hidden_size", 1)))
+            optimizer = IterableOptimizer(
+                model.parameters(), lr=config.get("lr", 1e-2))
+            criterion = nn.MSELoss
 
-    Operator = TrainingOperator.from_creators(
-        model_creator,
-        optimizer_creator,
-        data_creator,
-        loss_creator=nn.MSELoss)
+            self.model, self.optimizer, self.criterion = self.register(
+                models=model, optimizers=optimizer, criterion=criterion)
+            train_ld, val_ld = data_creator(config)
+            self.register_data(train_loader=train_ld, validation_loader=val_ld)
 
     trainer = TorchTrainer(
         training_operator_cls=Operator,
