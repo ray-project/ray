@@ -71,6 +71,7 @@ to allow more coroutines running in the same replica.
 Scaling HTTP servers
 ^^^^^^^^^^^^^^^^^^^^
 Sometimes it’s not about your code: Serve’s HTTP server can become the bottleneck.
+If you observe that the CPU utilization for HTTPProxy actor spike up to 100%, the HTTP server is the bottleneck.
 Serve only starts a single HTTP server on the Ray head node by default. 
 This single HTTP server can handle about 3k queries per second. 
 If your workload exceeds this number, you might want to consider starting one
