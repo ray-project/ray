@@ -23,7 +23,7 @@ from ray.rllib.utils.test_utils import check
 class TestMultiAgentEnv(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init(num_cpus=4, local_mode=True)#TODO
+        ray.init(num_cpus=4)
 
     @classmethod
     def tearDownClass(cls) -> None:
