@@ -515,6 +515,7 @@ class Trainer(Trainable):
         Trainer._validate_config(cf)
 
         eval_config = cf["evaluation_config"]
+        obj_store_mem_per_worker = cf["object_store_memory_per_worker"]
 
         # Return PlacementGroupFactory containing all needed resources
         # (already properly defined as device bundles).
@@ -522,21 +523,30 @@ class Trainer(Trainable):
             bundles=[{
                 # Driver.
                 "CPU": cf["num_cpus_for_driver"],
-                "GPU": cf["num_gpus"]
+                "GPU": cf["num_gpus"],
+                "memory": cf["memory"],
+                "object_store_memory": cf["object_store_memory"],
             }] + [
                 {
                     # RolloutWorkers.
                     "CPU": cf["num_cpus_per_worker"],
-                    "GPU": cf["num_gpus_per_worker"]
+                    "GPU": cf["num_gpus_per_worker"],
+                    "memory": cf["memory_per_worker"],
+                    "object_store_memory": obj_store_mem_per_worker,
                 } for _ in range(cf["num_workers"])
             ] + ([
                 {
                     # Evaluation workers (+1 b/c of the additional local
-                    # worker)
+                    # worker).
                     "CPU": eval_config.get("num_cpus_per_worker",
                                            cf["num_cpus_per_worker"]),
                     "GPU": eval_config.get("num_gpus_per_worker",
                                            cf["num_gpus_per_worker"]),
+                    "memory": eval_config.get("memory_per_worker",
+                                              cf["memory_per_worker"]),
+                    "object_store_memory": eval_config.get(
+                        "object_store_memory_per_worker",
+                        obj_store_mem_per_worker),
                 } for _ in range(cf["evaluation_num_workers"] + 1)
             ] if cf["evaluation_interval"] else []),
             strategy=config.get("placement_strategy", "PACK"))

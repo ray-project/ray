@@ -22,7 +22,7 @@ from ray.tune.result import DEFAULT_RESULTS_DIR, DONE, TRAINING_ITERATION
 from ray.tune.resources import Resources, \
     json_to_resources, resources_to_json
 from ray.tune.utils.placement_groups import PlacementGroupFactory, \
-    resource_dict_to_pg_factory
+    pg_factory_to_resources, resource_dict_to_pg_factory
 from ray.tune.utils.serialization import TuneFunctionEncoder
 from ray.tune.utils.trainable import TrainableUtil
 from ray.tune.utils import date_str, flatten_dict
@@ -339,6 +339,8 @@ class Trial:
         """
         # Placement groups are force-disabled via env variable.
         if int(os.getenv("TUNE_PLACEMENT_GROUP_AUTO_DISABLED", "0")):
+            self.resources = pg_factory_to_resources(
+                self.placement_group_factory)
             self.placement_group_factory = None
 
         # Placement groups are not disabled, but none is given.

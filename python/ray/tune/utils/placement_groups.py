@@ -1,10 +1,10 @@
-import json
-import uuid
 from collections import defaultdict
 from inspect import signature
-from typing import Dict, List, Optional, Set, TYPE_CHECKING, Tuple
+import json
 import os
 import time
+from typing import Dict, List, Optional, Set, TYPE_CHECKING, Tuple
+import uuid
 
 import ray
 from ray import ObjectRef, logger
@@ -168,6 +168,26 @@ def resource_dict_to_pg_factory(spec: Optional[Dict[str, float]]):
     })
 
     return PlacementGroupFactory([bundle])
+
+
+def pg_factory_to_resources(
+        placement_group_factory: PlacementGroupFactory) -> Resources:
+    """Translates a PlacementGroupFactory into a Resources object.
+
+    Args:
+         placement_group_factory (PlacementGroupFactory): The
+            PlacementGroupFactory object to create a Resources object from.
+
+    Returns:
+        Resources: The Resources object.
+    """
+    counts = defaultdict(int)
+    for bundle in placement_group_factory._bundles:
+        for resource_type, count in bundle.items():
+            counts[resource_type.lower()] += count
+    num_cpus = counts.pop("cpu", 1)
+    num_gpus = counts.pop("gpu", 0)
+    return Resources(cpu=num_cpus, gpu=num_gpus, **counts)
 
 
 class PlacementGroupManager:
