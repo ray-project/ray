@@ -56,7 +56,8 @@ def test_get_rank(ray_start_distributed_2_nodes_4_gpus, world_size):
 
 
 @pytest.mark.parametrize("world_size", [2, 3, 4])
-def test_get_world_size(ray_start_distributed_2_nodes_4_gpus, world_size):
+def test_get_collective_group_size(ray_start_distributed_2_nodes_4_gpus,
+                                   world_size):
     actors, _ = create_collective_workers(world_size)
     actor0_world_size = ray.get(actors[0].report_world_size.remote())
     actor1_world_size = ray.get(actors[1].report_world_size.remote())

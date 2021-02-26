@@ -393,11 +393,6 @@ COMMON_CONFIG: TrainerConfigDict = {
     # Define logger-specific configuration to be used inside Logger
     # Default value None allows overwriting with nested dicts
     "logger_config": None,
-
-    # === Replay Settings ===
-    # The number of contiguous environment steps to replay at once. This may
-    # be set to greater than 1 to support recurrent models.
-    "replay_sequence_length": 1,
 }
 # __sphinx_doc_end__
 # yapf: enable

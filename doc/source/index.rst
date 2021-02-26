@@ -245,6 +245,7 @@ Papers
    :caption: Ray Serve
 
    serve/index.rst
+   serve/tutorial.rst
    serve/core-apis.rst
    serve/deployment.rst
    serve/ml-models.rst

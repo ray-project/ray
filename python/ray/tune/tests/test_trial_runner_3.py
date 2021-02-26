@@ -7,15 +7,11 @@ import sys
 import tempfile
 import unittest
 from unittest.mock import patch
-import numpy as np
 
 import ray
-from ray.cluster_utils import Cluster
 from ray.rllib import _register_all
 
-from ray import tune
-from ray.tune import Callback, TuneError
-from ray.tune.ray_trial_executor import RayTrialExecutor
+from ray.tune import TuneError
 from ray.tune.result import TRAINING_ITERATION
 from ray.tune.schedulers import TrialScheduler, FIFOScheduler
 from ray.tune.experiment import Experiment
@@ -26,11 +22,15 @@ from ray.tune.suggest.repeater import Repeater
 from ray.tune.suggest._mock import _MockSuggestionAlgorithm
 from ray.tune.suggest.suggestion import Searcher, ConcurrencyLimiter
 from ray.tune.suggest.search_generator import SearchGenerator
-from ray.util import placement_group
 
 
 class TrialRunnerTest3(unittest.TestCase):
     def setUp(self):
+        # Wait up to five seconds for placement groups when starting a trial
+        os.environ["TUNE_PLACEMENT_GROUP_WAIT_S"] = "5"
+        # Block for results even when placement groups are pending
+        os.environ["TUNE_TRIAL_STARTUP_GRACE_PERIOD"] = "0"
+
         self.tmpdir = tempfile.mkdtemp()
 
     def tearDown(self):
@@ -107,14 +107,19 @@ class TrialRunnerTest3(unittest.TestCase):
         self.assertEqual(trials[1].status, Trial.RUNNING)
         self.assertEqual(trials[-1].status, Trial.TERMINATED)
 
+        time.sleep(2)  # Wait for stopped placement group to free resources
         runner.step()
         self.assertEqual(trials[0].status, Trial.TERMINATED)
         self.assertEqual(trials[1].status, Trial.RUNNING)
         self.assertEqual(trials[2].status, Trial.RUNNING)
         self.assertEqual(trials[-1].status, Trial.TERMINATED)
 
+    @patch("ray.tune.trial_runner.TUNE_MAX_PENDING_TRIALS_PG", 1)
+    @patch("ray.tune.utils.placement_groups.TUNE_MAX_PENDING_TRIALS_PG", 1)
     def testSearchAlgNotification(self):
         """Checks notification of trial to the Search Algorithm."""
+        os.environ["TUNE_RESULT_BUFFER_LENGTH"] = "1"  # Don't finish early
+
         ray.init(num_cpus=4, num_gpus=2)
         experiment_spec = {"run": "__fake", "stop": {"training_iteration": 2}}
         experiments = [Experiment.from_json("test", experiment_spec)]
@@ -230,6 +235,8 @@ class TrialRunnerTest3(unittest.TestCase):
         self.assertTrue(search_alg.is_finished())
         self.assertTrue(runner.is_finished())
 
+    @patch("ray.tune.trial_runner.TUNE_MAX_PENDING_TRIALS_PG", 1)
+    @patch("ray.tune.utils.placement_groups.TUNE_MAX_PENDING_TRIALS_PG", 1)
     def testSearchAlgFinishes(self):
         """Empty SearchAlg changing state in `next_trials` does not crash."""
 
@@ -499,6 +506,8 @@ class TrialRunnerTest3(unittest.TestCase):
         runner2.step()  # Process save
         self.assertRaises(TuneError, runner2.step)
 
+    @patch("ray.tune.trial_runner.TUNE_MAX_PENDING_TRIALS_PG", 1)
+    @patch("ray.tune.utils.placement_groups.TUNE_MAX_PENDING_TRIALS_PG", 1)
     def testTrialNoSave(self):
         """Check that non-checkpointing trials are not saved."""
         ray.init(num_cpus=3)
@@ -594,9 +603,10 @@ class TrialRunnerTest3(unittest.TestCase):
         self.assertEqual(count_checkpoints(tmpdir), 2)
         shutil.rmtree(tmpdir)
 
-    @patch("ray.tune.ray_trial_executor.TUNE_RESULT_BUFFER_MIN_TIME_S", 0.5)
-    @patch("ray.tune.ray_trial_executor.TUNE_RESULT_BUFFER_LENGTH", 7)
     def testCheckpointFreqBuffered(self):
+        os.environ["TUNE_RESULT_BUFFER_LENGTH"] = "7"
+        os.environ["TUNE_RESULT_BUFFER_MIN_TIME_S"] = "1"
+
         def num_checkpoints(trial):
             return sum(
                 item.startswith("checkpoint_")
@@ -625,7 +635,11 @@ class TrialRunnerTest3(unittest.TestCase):
         self.assertEqual(trial.last_result[TRAINING_ITERATION], 9)
         self.assertEqual(num_checkpoints(trial), 3)
 
+    @patch("ray.tune.trial_runner.TUNE_MAX_PENDING_TRIALS_PG", 1)
+    @patch("ray.tune.utils.placement_groups.TUNE_MAX_PENDING_TRIALS_PG", 1)
     def testUserCheckpoint(self):
+        os.environ["TUNE_RESULT_BUFFER_LENGTH"] = "1"  # Don't finish early
+
         ray.init(num_cpus=3)
         runner = TrialRunner(
             local_checkpoint_dir=self.tmpdir, checkpoint_period=0)
@@ -648,9 +662,10 @@ class TrialRunnerTest3(unittest.TestCase):
         trials2 = runner2.get_trials()
         self.assertEqual(ray.get(trials2[0].runner.get_info.remote()), 1)
 
-    @patch("ray.tune.ray_trial_executor.TUNE_RESULT_BUFFER_MIN_TIME_S", 1)
-    @patch("ray.tune.ray_trial_executor.TUNE_RESULT_BUFFER_LENGTH", 8)
     def testUserCheckpointBuffered(self):
+        os.environ["TUNE_RESULT_BUFFER_LENGTH"] = "8"
+        os.environ["TUNE_RESULT_BUFFER_MIN_TIME_S"] = "1"
+
         def num_checkpoints(trial):
             return sum(
                 item.startswith("checkpoint_")
@@ -946,165 +961,6 @@ class ResourcesTest(unittest.TestCase):
         jsoned = resources_to_json(original)
         new_resource = json_to_resources(jsoned)
         self.assertEqual(original, new_resource)
-
-
-class TrialRunnerPlacementGroupTest(unittest.TestCase):
-    def setUp(self):
-        os.environ["TUNE_GLOBAL_CHECKPOINT_S"] = "10000"
-        self.head_cpus = 8
-        self.head_gpus = 4
-        self.head_custom = 16
-
-        self.cluster = Cluster(
-            initialize_head=True,
-            connect=True,
-            head_node_args={
-                "num_cpus": self.head_cpus,
-                "num_gpus": self.head_gpus,
-                "resources": {
-                    "custom": self.head_custom
-                },
-                "_system_config": {
-                    "num_heartbeats_timeout": 10
-                }
-            })
-        # Pytest doesn't play nicely with imports
-        _register_all()
-
-    def tearDown(self):
-        ray.shutdown()
-        self.cluster.shutdown()
-        _register_all()  # re-register the evicted objects
-
-    def testPlacementGroupRequests(self, scheduled=10):
-        """In this test we try to start 10 trials but only have resources
-        for 2. Placement groups should still be created and PENDING.
-
-        Eventually they should be scheduled sequentially (i.e. in pairs
-        of two)."""
-
-        def train(config):
-            time.sleep(1)
-            now = time.time()
-            tune.report(end=now - config["start_time"])
-
-        def placement_group_factory():
-            head_bundle = {"CPU": 4, "GPU": 0, "custom": 0}
-            child_bundle = {"custom": 1}
-
-            return placement_group([head_bundle, child_bundle, child_bundle])
-
-        trial_executor = RayTrialExecutor()
-
-        this = self
-
-        class _TestCallback(Callback):
-            def on_step_end(self, iteration, trials, **info):
-                if iteration == 1:
-                    this.assertEqual(scheduled, len(trials))
-                    this.assertEqual(
-                        scheduled,
-                        sum(
-                            len(s) for s in
-                            trial_executor._pg_manager._staging.values()) +
-                        sum(
-                            len(s)
-                            for s in trial_executor._pg_manager._ready.values(
-                            )) + len(trial_executor._pg_manager._in_use_pgs))
-
-        start = time.time()
-        out = tune.run(
-            train,
-            config={"start_time": start},
-            resources_per_trial=placement_group_factory,
-            num_samples=10,
-            trial_executor=trial_executor,
-            callbacks=[_TestCallback()])
-
-        trial_end_times = sorted(t.last_result["end"] for t in out.trials)
-        print("Trial end times:", trial_end_times)
-        max_diff = trial_end_times[-1] - trial_end_times[0]
-
-        # Not all trials have been run in parallel
-        self.assertGreater(max_diff, 5)
-
-        # Some trials should have run in parallel
-        self.assertLess(max_diff, 10)
-
-    @patch("ray.tune.trial_runner.TUNE_MAX_PENDING_TRIALS_PG", 6)
-    @patch("ray.tune.utils.placement_groups.TUNE_MAX_PENDING_TRIALS_PG", 6)
-    def testPlacementGroupLimitedRequests(self):
-        """Assert that maximum number of placement groups is enforced."""
-        self.testPlacementGroupRequests(scheduled=6)
-
-    def testPlacementGroupDistributedTraining(self):
-        """Run distributed training using placement groups.
-
-        Each trial requests 4 CPUs and starts 4 remote training workers.
-        """
-
-        def placement_group_factory():
-            head_bundle = {"CPU": 1, "GPU": 0, "custom": 0}
-            child_bundle = {"CPU": 1}
-
-            return placement_group(
-                [head_bundle, child_bundle, child_bundle, child_bundle])
-
-        @ray.remote
-        class TrainingActor:
-            def train(self, val):
-                time.sleep(1)
-                return val
-
-        def train(config):
-            base = config["base"]
-            actors = [TrainingActor.remote() for _ in range(4)]
-            futures = [
-                actor.train.remote(base + 2 * i)
-                for i, actor in enumerate(actors)
-            ]
-            results = ray.get(futures)
-
-            end = time.time() - config["start_time"]
-            tune.report(avg=np.mean(results), end=end)
-
-        trial_executor = RayTrialExecutor()
-
-        start = time.time()
-        out = tune.run(
-            train,
-            config={
-                "start_time": start,
-                "base": tune.grid_search(list(range(0, 100, 10)))
-            },
-            resources_per_trial=placement_group_factory,
-            num_samples=1,
-            trial_executor=trial_executor)
-
-        avgs = sorted(t.last_result["avg"] for t in out.trials)
-        self.assertSequenceEqual(avgs, list(range(3, 103, 10)))
-
-        trial_end_times = sorted(t.last_result["end"] for t in out.trials)
-        print("Trial end times:", trial_end_times)
-        max_diff = trial_end_times[-1] - trial_end_times[0]
-
-        # Not all trials have been run in parallel
-        self.assertGreater(max_diff, 5)
-
-        # Some trials should have run in parallel
-        # Todo: Re-enable when using buildkite
-        # self.assertLess(max_diff, 10)
-
-        # Assert proper cleanup
-        pg_manager = trial_executor._pg_manager
-        self.assertFalse(pg_manager._in_use_trials)
-        self.assertFalse(pg_manager._in_use_pgs)
-        self.assertFalse(pg_manager._staging_futures)
-        for pgf in pg_manager._staging:
-            self.assertFalse(pg_manager._staging[pgf])
-        for pgf in pg_manager._ready:
-            self.assertFalse(pg_manager._ready[pgf])
-        self.assertTrue(pg_manager._latest_staging_start_time)
 
 
 if __name__ == "__main__":
