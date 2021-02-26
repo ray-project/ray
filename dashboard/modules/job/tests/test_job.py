@@ -323,23 +323,34 @@ def test_submit_job(disable_aiohttp_cache, enable_test_module,
     assert job_info["jobId"] == job_id
 
     def _check_running():
-        try:
-            resp = requests.get(webui_url + f"/jobs/{job_id}")
-            resp.raise_for_status()
-            result = resp.json()
-            assert result["result"] is True, resp.text
-            job_info = result["data"]["detail"]["jobInfo"]
-            assert job_info["state"] == "RUNNING", job_info["failErrorMessage"]
-            job_actors = result["data"]["detail"]["jobActors"]
-            job_workers = result["data"]["detail"]["jobWorkers"]
-            assert len(job_actors) > 0
-            assert len(job_workers) > 0
-            return True
-        except Exception as ex:
-            logger.info(ex)
-            return False
+        resp = requests.get(webui_url + f"/jobs/{job_id}")
+        resp.raise_for_status()
+        result = resp.json()
+        assert result["result"] is True, resp.text
+        job_info = result["data"]["detail"]["jobInfo"]
+        assert job_info["state"] == "RUNNING", job_info["failErrorMessage"]
+        job_actors = result["data"]["detail"]["jobActors"]
+        job_workers = result["data"]["detail"]["jobWorkers"]
+        assert len(job_actors) > 0
+        assert len(job_workers) > 0
 
-    wait_for_condition(_check_running, timeout=30)
+    timeout_seconds = 60
+    start_time = time.time()
+    last_ex = None
+    while True:
+        time.sleep(5)
+        try:
+            _check_running()
+            break
+        except (AssertionError, KeyError, IndexError) as ex:
+            last_ex = ex
+        finally:
+            if time.time() > start_time + timeout_seconds:
+                ex_stack = traceback.format_exception(
+                    type(last_ex), last_ex,
+                    last_ex.__traceback__) if last_ex else []
+                ex_stack = "".join(ex_stack)
+                raise Exception(f"Timed out while testing, {ex_stack}")
 
 
 def test_get_job_info(disable_aiohttp_cache, ray_start_with_dashboard):
