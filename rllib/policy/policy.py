@@ -570,7 +570,8 @@ class Policy(metaclass=ABCMeta):
         # Default view requirements (equal to those that we would use before
         # the trajectory view API was introduced).
         return {
-            SampleBatch.OBS: ViewRequirement(space=self.observation_space),
+            SampleBatch.OBS: ViewRequirement(space=self.observation_space,
+                                             used_for_compute_actions=True),
             SampleBatch.NEXT_OBS: ViewRequirement(
                 data_col=SampleBatch.OBS,
                 shift=1,
