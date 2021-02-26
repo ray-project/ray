@@ -41,11 +41,13 @@ class RemoteCommandFailed(CommandFailed):
 class GetParameters:
     def __init__(self,
                  logs: bool = True,
+                 debug_state: bool = True,
                  pip: bool = True,
                  processes: bool = True,
                  processes_verbose: bool = True,
                  processes_list: Optional[List[Tuple[str, bool]]] = None):
         self.logs = logs
+        self.debug_state = debug_state
         self.pip = pip
         self.processes = processes
         self.processes_verbose = processes_verbose
@@ -148,7 +150,7 @@ class Archive:
 def get_local_ray_logs(
         archive: Archive,
         exclude: Optional[Sequence[str]] = None,
-        session_log_dir: str = "/tmp/ray/session_latest/logs") -> Archive:
+        session_log_dir: str = "/tmp/ray/session_latest") -> Archive:
     """Copy local log files into an archive.
 
     Args:
@@ -156,7 +158,7 @@ def get_local_ray_logs(
         exclude (Sequence[str]): Sequence of regex patterns. Files that match
             any of these patterns will not be included in the archive.
         session_dir (str): Path to the Ray session files. Defaults to
-            ``/tmp/ray/session_latest/logs``
+            ``/tmp/ray/session_latest``
 
     Returns:
         Open archive object.
@@ -167,7 +169,7 @@ def get_local_ray_logs(
 
     exclude = exclude or []
 
-    session_log_dir = os.path.expanduser(session_log_dir)
+    session_log_dir = os.path.join(os.path.expanduser(session_log_dir), "logs")
 
     with archive.subdir("logs", root=session_log_dir) as sd:
         for root, dirs, files in os.walk(session_log_dir):
@@ -178,6 +180,35 @@ def get_local_ray_logs(
                 if any(re.match(pattern, rel_path) for pattern in exclude):
                     continue
                 sd.add(file_path)
+
+    return archive
+
+
+def get_local_debug_state(archive: Archive,
+                          session_dir: str = "/tmp/ray/session_latest"
+                          ) -> Archive:
+    """Copy local log files into an archive.
+
+    Args:
+        archive (Archive): Archive object to add log files to.
+        session_dir (str): Path to the Ray session files. Defaults to
+            ``/tmp/ray/session_latest``
+
+    Returns:
+        Open archive object.
+
+    """
+    if not archive.is_open:
+        archive.open()
+
+    session_dir = os.path.expanduser(session_dir)
+    debug_state_file = os.path.join(session_dir, "debug_state.txt")
+
+    if not os.path.exists(debug_state_file):
+        raise LocalCommandFailed("No `debug_state.txt` file found.")
+
+    with archive.subdir("", root=session_dir) as sd:
+        sd.add(debug_state_file)
 
     return archive
 
@@ -289,6 +320,11 @@ def get_all_local_data(archive: Archive, parameters: GetParameters):
             get_local_ray_logs(archive=archive)
         except LocalCommandFailed as exc:
             cli_logger.error(exc)
+    if parameters.debug_state:
+        try:
+            get_local_debug_state(archive=archive)
+        except LocalCommandFailed as exc:
+            cli_logger.error(exc)
     if parameters.pip:
         try:
             get_local_pip_packages(archive=archive)
@@ -353,6 +389,9 @@ def create_and_get_archive_from_remote_node(remote_node: Node,
 
     collect_cmd = [script_path, "local-dump", "--stream"]
     collect_cmd += ["--logs"] if parameters.logs else ["--no-logs"]
+    collect_cmd += ["--debug-state"] if parameters.debug_state else [
+        "--no-debug-state"
+    ]
     collect_cmd += ["--pip"] if parameters.pip else ["--no-pip"]
     collect_cmd += ["--processes"] if parameters.processes else [
         "--no-processes"

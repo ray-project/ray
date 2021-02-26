@@ -1417,6 +1417,11 @@ def status(address, redis_password):
     default=True,
     help="Collect logs from ray session dir")
 @click.option(
+    "--debug-state/--no-debug-state",
+    is_flag=True,
+    default=True,
+    help="Collect debug_state.txt from ray session dir")
+@click.option(
     "--pip/--no-pip",
     is_flag=True,
     default=True,
@@ -1434,6 +1439,7 @@ def status(address, redis_password):
 def local_dump(stream: bool = False,
                output: Optional[str] = None,
                logs: bool = True,
+               debug_state: bool = True,
                pip: bool = True,
                processes: bool = True,
                processes_verbose: bool = False):
@@ -1450,6 +1456,7 @@ def local_dump(stream: bool = False,
         stream=stream,
         output=output,
         logs=logs,
+        debug_state=debug_state,
         pip=pip,
         processes=processes,
         processes_verbose=processes_verbose)
@@ -1505,6 +1512,11 @@ def local_dump(stream: bool = False,
     default=True,
     help="Collect logs from ray session dir")
 @click.option(
+    "--debug-state/--no-debug-state",
+    is_flag=True,
+    default=True,
+    help="Collect debug_state.txt from ray session dir")
+@click.option(
     "--pip/--no-pip",
     is_flag=True,
     default=True,
@@ -1527,6 +1539,7 @@ def cluster_dump(cluster_config_file: Optional[str] = None,
                  local: Optional[bool] = None,
                  output: Optional[str] = None,
                  logs: bool = True,
+                 debug_state: bool = True,
                  pip: bool = True,
                  processes: bool = True,
                  processes_verbose: bool = False):
@@ -1553,6 +1566,7 @@ def cluster_dump(cluster_config_file: Optional[str] = None,
         local=local,
         output=output,
         logs=logs,
+        debug_state=debug_state,
         pip=pip,
         processes=processes,
         processes_verbose=processes_verbose)
