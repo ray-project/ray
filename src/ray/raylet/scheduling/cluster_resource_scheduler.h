@@ -33,7 +33,7 @@ namespace ray {
 using rpc::HeartbeatTableData;
 
 // Specify resources that consists of unit-size instances.
-static std::unordered_set<int64_t> UnitInstanceResources{CPU, GPU, TPU};
+static std::unordered_set<int64_t> UnitInstanceResources{CPU, GPU};
 
 /// Class encapsulating the cluster resources and the logic to assign
 /// tasks to nodes based on the task's constraints and the available

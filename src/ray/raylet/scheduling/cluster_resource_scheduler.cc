@@ -433,8 +433,8 @@ bool ClusterResourceScheduler::IsAvailableResourceEmpty(
     idx = (int)CPU;
   } else if (resource_name == ray::kGPU_ResourceLabel) {
     idx = (int)GPU;
-  } else if (resource_name == ray::kTPU_ResourceLabel) {
-    idx = (int)TPU;
+  } else if (resource_name == ray::kObjectStoreMemory_ResourceLabel) {
+    idx = (int)OBJECT_STORE_MEM;
   } else if (resource_name == ray::kMemory_ResourceLabel) {
     idx = (int)MEM;
   };
@@ -471,8 +471,8 @@ void ClusterResourceScheduler::UpdateResourceCapacity(const std::string &node_id
     idx = (int)CPU;
   } else if (resource_name == ray::kGPU_ResourceLabel) {
     idx = (int)GPU;
-  } else if (resource_name == ray::kTPU_ResourceLabel) {
-    idx = (int)TPU;
+  } else if (resource_name == ray::kObjectStoreMemory_ResourceLabel) {
+    idx = (int)OBJECT_STORE_MEM;
   } else if (resource_name == ray::kMemory_ResourceLabel) {
     idx = (int)MEM;
   };
@@ -528,8 +528,8 @@ void ClusterResourceScheduler::DeleteResource(const std::string &node_id_string,
     idx = (int)CPU;
   } else if (resource_name == ray::kGPU_ResourceLabel) {
     idx = (int)GPU;
-  } else if (resource_name == ray::kTPU_ResourceLabel) {
-    idx = (int)TPU;
+  } else if (resource_name == ray::kObjectStoreMemory_ResourceLabel) {
+    idx = (int)OBJECT_STORE_MEM;
   } else if (resource_name == ray::kMemory_ResourceLabel) {
     idx = (int)MEM;
   };
@@ -928,8 +928,8 @@ std::string ClusterResourceScheduler::GetResourceNameFromIndex(int64_t res_idx) 
     return ray::kCPU_ResourceLabel;
   } else if (res_idx == GPU) {
     return ray::kGPU_ResourceLabel;
-  } else if (res_idx == TPU) {
-    return ray::kTPU_ResourceLabel;
+  } else if (res_idx == OBJECT_STORE_MEM) {
+    return ray::kObjectStoreMemory_ResourceLabel;
   } else if (res_idx == MEM) {
     return ray::kMemory_ResourceLabel;
   } else {

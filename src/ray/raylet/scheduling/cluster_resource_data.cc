@@ -2,7 +2,7 @@
 
 const std::string resource_labels[] = {ray::kCPU_ResourceLabel,
                                        ray::kMemory_ResourceLabel,
-                                       ray::kGPU_ResourceLabel, ray::kTPU_ResourceLabel};
+                                       ray::kGPU_ResourceLabel, ray::kObjectStoreMemory_ResourceLabel};
 
 const std::string ResourceEnumToString(PredefinedResources resource) {
   // TODO (Alex): We should replace this with a protobuf enum.
@@ -78,8 +78,8 @@ TaskRequest ResourceMapToTaskRequest(
       task_request.predefined_resources[CPU].demand = resource.second;
     } else if (resource.first == ray::kGPU_ResourceLabel) {
       task_request.predefined_resources[GPU].demand = resource.second;
-    } else if (resource.first == ray::kTPU_ResourceLabel) {
-      task_request.predefined_resources[TPU].demand = resource.second;
+    } else if (resource.first == ray::kObjectStoreMemory_ResourceLabel) {
+      task_request.predefined_resources[ObjectStoreMemory].demand = resource.second;
     } else if (resource.first == ray::kMemory_ResourceLabel) {
       task_request.predefined_resources[MEM].demand = resource.second;
     } else {
@@ -152,8 +152,8 @@ NodeResources ResourceMapToNodeResources(
       node_resources.predefined_resources[CPU] = resource_capacity;
     } else if (resource.first == ray::kGPU_ResourceLabel) {
       node_resources.predefined_resources[GPU] = resource_capacity;
-    } else if (resource.first == ray::kTPU_ResourceLabel) {
-      node_resources.predefined_resources[TPU] = resource_capacity;
+    } else if (resource.first == ray::kObjectStoreMemory_ResourceLabel) {
+      node_resources.predefined_resources[OBJECT_STORE_MEM] = resource_capacity;
     } else if (resource.first == ray::kMemory_ResourceLabel) {
       node_resources.predefined_resources[MEM] = resource_capacity;
     } else {
@@ -213,8 +213,8 @@ std::string NodeResources::DebugString(StringIdMap string_to_in_map) const {
     case GPU:
       buffer << "GPU: ";
       break;
-    case TPU:
-      buffer << "TPU: ";
+    case OBJECT_STORE_MEM:
+      buffer << "OBJECT_STORE_MEM: ";
       break;
     default:
       RAY_CHECK(false) << "This should never happen.";
@@ -264,8 +264,8 @@ std::string NodeResources::DictString(StringIdMap string_to_in_map) const {
     case GPU:
       name = "GPU";
       break;
-    case TPU:
-      name = "TPU";
+    case OBJECT_STORE_MEM:
+      name = "object_store_memory";
       break;
     default:
       RAY_CHECK(false) << "This should never happen.";
@@ -334,8 +334,8 @@ std::string NodeResourceInstances::DebugString(StringIdMap string_to_int_map) co
     case GPU:
       buffer << "GPU: ";
       break;
-    case TPU:
-      buffer << "TPU: ";
+    case OBJECT_STORE_MEM:
+      buffer << "OBJECT_STORE_MEM: ";
       break;
     default:
       RAY_CHECK(false) << "This should never happen.";

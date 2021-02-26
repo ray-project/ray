@@ -1072,7 +1072,7 @@ TEST_F(ClusterResourceSchedulerTest, ResourceUsageReportTest) {
     ASSERT_EQ(total["2"], 2);
     ASSERT_EQ(total["3"], 3);
 
-    // GCS doesn't like entries which are 0 (like TPU).
+    // GCS doesn't like entries which are 0.
     ASSERT_EQ(available.size(), 6);
     ASSERT_EQ(total.size(), 6);
   }
