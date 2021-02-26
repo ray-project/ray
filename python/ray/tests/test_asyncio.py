@@ -6,7 +6,8 @@ import threading
 import pytest
 
 import ray
-from ray.test_utils import SignalActor, wait_for_condition
+from ray.test_utils import SignalActor, wait_for_actor_killed, \
+    wait_for_condition
 
 
 def test_asyncio_actor(ray_start_regular_shared):
@@ -155,11 +156,10 @@ async def test_asyncio_get(ray_start_regular_shared, event_loop):
         await actor.throw_error.remote().as_future()
 
     ray.kill(actor)
-
-    try:
+    wait_for_actor_killed(actor._actor_id.hex(),
+                          ray.actors(actor._actor_id.hex())["NumRestarts"])
+    with pytest.raises(ray.exceptions.RayActorError):
         await actor.echo.remote(1)
-    except ray.exceptions.RayActorError:
-        pass
 
 
 def test_asyncio_actor_async_get(ray_start_regular_shared):

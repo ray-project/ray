@@ -240,6 +240,21 @@ def wait_for_num_actors(num_actors, state=None, timeout=10):
     raise RayTestTimeoutException("Timed out while waiting for global state.")
 
 
+def wait_for_actor_killed(actor_id,
+                          current_num_restarts,
+                          timeout=10,
+                          retry_interval_ms=100):
+    start = time.time()
+    while time.time() - start <= timeout:
+        actor_status = ray.actors(actor_id)
+        if actor_status["State"] == ray.gcs_utils.ActorTableData.DEAD \
+                or actor_status["NumRestarts"] > current_num_restarts:
+            return
+        time.sleep(retry_interval_ms / 1000.0)
+    raise RuntimeError(
+        "It took too much time to kill an actor: {}".format(actor_id))
+
+
 def wait_for_condition(condition_predictor, timeout=10, retry_interval_ms=100):
     """Wait until a condition is met or time out with an exception.
 

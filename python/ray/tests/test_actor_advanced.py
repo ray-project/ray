@@ -12,7 +12,7 @@ import ray
 import ray.test_utils
 import ray.cluster_utils
 from ray.test_utils import (run_string_as_driver, get_non_head_nodes,
-                            wait_for_condition)
+                            wait_for_actor_killed, wait_for_condition)
 from ray.experimental.internal_kv import _internal_kv_get, _internal_kv_put
 from ray._raylet import GlobalStateAccessor
 
@@ -1025,11 +1025,11 @@ def test_kill(ray_start_regular_shared):
     ready, _ = ray.wait([result], timeout=0.5)
     assert len(ready) == 0
     ray.kill(actor, no_restart=False)
+    wait_for_actor_killed(actor._actor_id.hex(),
+                          ray.actors(actor._actor_id.hex())["NumRestarts"])
 
-    try:
+    with pytest.raises(ray.exceptions.RayActorError):
         ray.get(result)
-    except ray.exceptions.RayActorError:
-        pass
 
     with pytest.raises(ValueError):
         ray.kill("not_an_actor_handle")

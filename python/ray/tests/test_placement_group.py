@@ -10,8 +10,8 @@ except ImportError:
 
 import ray
 from ray.test_utils import (generate_system_config_map, get_other_nodes,
-                            run_string_as_driver, wait_for_condition,
-                            get_error_message)
+                            run_string_as_driver, wait_for_actor_killed,
+                            wait_for_condition, get_error_message)
 import ray.cluster_utils
 from ray.exceptions import RaySystemError
 from ray._raylet import PlacementGroupID
@@ -905,10 +905,10 @@ def test_capture_child_actors(ray_start_cluster):
 
     # Kill an actor and wait until it is killed.
     ray.kill(a)
-    try:
+    wait_for_actor_killed(a._actor_id.hex(),
+                          ray.actors(a._actor_id.hex())["NumRestarts"])
+    with pytest.raises(ray.exceptions.RayActorError):
         ray.get(a.ready.remote())
-    except ray.exceptions.RayActorError:
-        pass
 
     # Now create an actor, but do not capture the current tasks
     a = Actor.options(
@@ -930,6 +930,8 @@ def test_capture_child_actors(ray_start_cluster):
 
     # Kill an actor and wait until it is killed.
     ray.kill(a)
+    wait_for_actor_killed(a._actor_id.hex(),
+                          ray.actors(a._actor_id.hex())["NumRestarts"])
     try:
         ray.get(a.ready.remote())
     except ray.exceptions.RayActorError:
@@ -1426,10 +1428,10 @@ ray.shutdown()
 
     # Kill an actor and wait until it is killed.
     ray.kill(a)
-    try:
+    wait_for_actor_killed(a._actor_id.hex(),
+                          ray.actors(a._actor_id.hex())["NumRestarts"])
+    with pytest.raises(ray.exceptions.RayActorError):
         ray.get(a.ready.remote())
-    except ray.exceptions.RayActorError:
-        pass
 
     # We should have 2 alive pgs and 4 alive actors.
     assert assert_alive_num_pg(2)
