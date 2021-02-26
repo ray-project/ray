@@ -676,7 +676,7 @@ def get_replica_context() -> ReplicaContext:
     """When called from a backend, returns the backend tag and replica tag.
 
     When not called from a backend, returns None.
-    
+
     A replica tag uniquely identifies a single replica for a Ray Serve
     backend at runtime.  Replica tags are of the form
     `<backend tag>#<random letters>`.
