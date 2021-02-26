@@ -452,7 +452,7 @@ not kept open by Ray Tune.
    logs and checkpoints will not be synced to the driver, so if you need to access them later, you will have to
    transfer them where you need them manually.
 
-2. You can use the :ref:`DurableTrainable <tune-durable-trainable>` to save logs and checkpoints to the cloud.
+2. You can use the :ref:`ray.tune.durable <tune-durable-trainable>` wrapper to save logs and checkpoints to a specified `upload_dir`.
    This is the preferred way to deal with this. All syncing will be taken care of automatically, as all nodes
    are able to access the cloud storage. Additionally, your results will be safe, so even when you're working on
    pre-emptible instances, you won't lose any of your data.
