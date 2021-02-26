@@ -21,7 +21,9 @@
 #include "ray/gcs/gcs_server/gcs_init_data.h"
 #include "ray/rpc/client_call.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
+#include "ray/util/periodical_runner.h"
 #include "src/ray/protobuf/gcs.pb.h"
+
 namespace ray {
 namespace gcs {
 
@@ -62,17 +64,9 @@ class GcsHeartbeatManager : public rpc::HeartbeatInfoHandler {
   void AddNode(const NodeID &node_id);
 
  protected:
-  /// A periodic timer that fires on every heartbeat period. Raylets that have
-  /// not sent a heartbeat within the last num_heartbeats_timeout ticks will be
-  /// marked as dead in the client table.
-  void Tick();
-
   /// Check that if any raylet is inactive due to no heartbeat for a period of time.
   /// If found any, mark it as dead.
   void DetectDeadNodes();
-
-  /// Schedule another tick after a short time.
-  void ScheduleTick();
 
  private:
   /// The main event loop for node failure detector.
@@ -82,8 +76,8 @@ class GcsHeartbeatManager : public rpc::HeartbeatInfoHandler {
   std::function<void(const NodeID &)> on_node_death_callback_;
   /// The number of heartbeats that can be missed before a node is removed.
   int64_t num_heartbeats_timeout_;
-  /// A timer that ticks every heartbeat_timeout_ms_ milliseconds.
-  boost::asio::deadline_timer detect_timer_;
+  /// The runner to run function periodically.
+  PeriodicalRunner periodical_runner_;
   /// For each Raylet that we receive a heartbeat from, the number of ticks
   /// that may pass before the Raylet will be declared dead.
   absl::flat_hash_map<NodeID, int64_t> heartbeats_;
