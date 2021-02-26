@@ -472,9 +472,10 @@ class DynamicTFPolicy(TFPolicy):
 
         if self.config["_use_trajectory_view_api"]:
             logger.info("Testing `compute_actions` w/ dummy batch.")
+            dummy_batch = UsageTrackingDict(self._dummy_batch)
             actions, state_outs, extra_fetches = \
                 self.compute_actions_from_input_dict(
-                    self._dummy_batch, explore=False, timestep=0)
+                    dummy_batch, explore=False, timestep=0)
             for key, value in extra_fetches.items():
                 self._dummy_batch[key] = np.zeros_like(value)
                 self._input_dict[key] = get_placeholder(value=value, name=key)
@@ -485,6 +486,10 @@ class DynamicTFPolicy(TFPolicy):
                         ViewRequirement(space=gym.spaces.Box(
                             -1.0, 1.0, shape=value.shape[1:],
                             dtype=value.dtype))
+            for key in dummy_batch.accessed_keys:
+                if key not in self.view_requirements:
+                    self.view_requirements[key] = ViewRequirement()
+                self.view_requirements[key].used_for_compute_actions = True
             dummy_batch = self._dummy_batch
         else:
 
