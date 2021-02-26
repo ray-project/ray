@@ -137,7 +137,7 @@ def find_redis_address(address=None):
     # --redis_address=123.456.78.910 --node_ip_address=123.456.78.910
     # --raylet_socket_name=... --store_socket_name=... --object_manager_port=0
     # --min_worker_port=10000 --max_worker_port=10999
-    # --redis_port=6379
+    # --node_manager_port=58578 --redis_port=6379
     # --maximum_startup_concurrency=8
     # --static_resource_list=node:123.456.78.910,1.0,object_store_memory,66
     # --config_list=plasma_store_as_thread,True
@@ -154,7 +154,7 @@ def find_redis_address(address=None):
     #     --agent_command=/usr/bin/python
     #     -u /usr/local/lib/python3.8/dist-packages/ray/new_dashboard/agent.py
     #         --redis-address=123.456.78.910:6379 --metrics-export-port=64229
-    #         --dashboard-agent-port=41856
+    #         --dashboard-agent-port=41856 --node-manager-port=58578
     #         --object-store-name=... --raylet-name=... --temp-dir=/tmp/ray
     #         --log-dir=/tmp/ray/session_2020-11-08_14-29-07_199128_278000/logs
     #         --redis-password=[MASKED] --object_store_memory=5037192806
