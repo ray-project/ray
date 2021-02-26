@@ -211,15 +211,14 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
         return {x: psutil.disk_usage(x) for x in dirs}
 
     def _get_workers(self):
-        curr_proc = psutil.Process()
-        parent = curr_proc.parent()
-        if parent is None or parent.pid == 1:
+        raylet_proc = self._get_raylet_proc()
+        if raylet_proc is None:
             return []
         else:
-            workers = set(parent.children())
+            workers = set(raylet_proc.children())
             self._workers.intersection_update(workers)
             self._workers.update(workers)
-            self._workers.discard(curr_proc)
+            self._workers.discard(psutil.Process())
             return [
                 w.as_dict(attrs=[
                     "pid",
@@ -231,36 +230,43 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
                 ]) for w in self._workers if w.status() != psutil.STATUS_ZOMBIE
             ]
 
-    def _get_raylet_stats(self):
-        curr_proc = psutil.Process()
-        # Here, parent is always raylet because the
-        # dashboard agent is a child of the raylet process.
-        parent = curr_proc.parent()
-        if parent is None or parent.pid == 1:
-            return []
-        if parent.status() == psutil.STATUS_ZOMBIE:
-            return []
-
-        return parent.as_dict(attrs=[
-            "pid",
-            "create_time",
-            "cpu_percent",
-            "cpu_times",
-            "cmdline",
-            "memory_info",
-        ])
-
     @staticmethod
-    def _get_raylet_cmdline():
+    def _get_raylet_proc():
         try:
             curr_proc = psutil.Process()
+            # Here, parent is always raylet because the
+            # dashboard agent is a child of the raylet process.
             parent = curr_proc.parent()
-            if parent.pid == 1:
-                return []
-            else:
-                return parent.cmdline()
+            if parent is not None:
+                if parent.pid == 1:
+                    return None
+                if parent.status() == psutil.STATUS_ZOMBIE:
+                    return None
+            return parent
         except (psutil.AccessDenied, ProcessLookupError):
+            pass
+        return None
+
+    def _get_raylet_stats(self):
+        raylet_proc = self._get_raylet_proc()
+        if raylet_proc is None:
+            return {}
+        else:
+            return raylet_proc.as_dict(attrs=[
+                "pid",
+                "create_time",
+                "cpu_percent",
+                "cpu_times",
+                "cmdline",
+                "memory_info",
+            ])
+
+    def _get_raylet_cmdline(self):
+        raylet_proc = self._get_raylet_proc()
+        if raylet_proc is None:
             return []
+        else:
+            return raylet_proc.cmdline()
 
     def _get_load_avg(self):
         if sys.platform == "win32":
@@ -300,6 +306,8 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
         }
 
     def _record_stats(self, stats):
+        records_reported = []
+
         ip = stats["ip"]
         # -- CPU per node --
         cpu_usage = float(stats["cpu"])
@@ -358,6 +366,10 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
                 gauge=self._gauges["node_gram_available"],
                 value=gram_available,
                 tags={"ip": ip})
+            records_reported.extend([
+                gpus_available_record, gpus_utilization_record,
+                gram_used_record, gram_available_record
+            ])
 
         # -- Disk per node --
         used, free = 0, 0
@@ -395,43 +407,36 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
             tags={"ip": ip})
 
         raylet_stats = self._get_raylet_stats()
-        raylet_pid = str(raylet_stats["pid"])
-        # -- raylet CPU --
-        raylet_cpu_usage = float(raylet_stats["cpu_percent"]) * 100
-        raylet_cpu_record = Record(
-            gauge=self._gauges["raylet_cpu"],
-            value=raylet_cpu_usage,
-            tags={
-                "ip": ip,
-                "pid": raylet_pid
-            })
+        if raylet_stats:
+            raylet_pid = str(raylet_stats["pid"])
+            # -- raylet CPU --
+            raylet_cpu_usage = float(raylet_stats["cpu_percent"]) * 100
+            raylet_cpu_record = Record(
+                gauge=self._gauges["raylet_cpu"],
+                value=raylet_cpu_usage,
+                tags={
+                    "ip": ip,
+                    "pid": raylet_pid
+                })
 
-        # -- raylet mem --
-        raylet_mem_usage = float(raylet_stats["memory_info"].rss) / 1e6
-        raylet_mem_record = Record(
-            gauge=self._gauges["raylet_mem"],
-            value=raylet_mem_usage,
-            tags={
-                "ip": ip,
-                "pid": raylet_pid
-            })
+            # -- raylet mem --
+            raylet_mem_usage = float(raylet_stats["memory_info"].rss) / 1e6
+            raylet_mem_record = Record(
+                gauge=self._gauges["raylet_mem"],
+                value=raylet_mem_usage,
+                tags={
+                    "ip": ip,
+                    "pid": raylet_pid
+                })
+            records_reported.extend([raylet_cpu_record, raylet_mem_record])
 
-        records_reported = [
+        records_reported.extend([
             cpu_record, cpu_count_record, mem_used_record,
             mem_available_record, mem_total_record, disk_usage_record,
             disk_utilization_percentage_record, network_sent_record,
             network_received_record, network_send_speed_record,
             network_receive_speed_record
-        ]
-
-        if gpus_available:
-            records_reported.extend([
-                gpus_available_record, gpus_utilization_record,
-                gram_used_record, gram_available_record
-            ])
-
-        raylet_records = [raylet_cpu_record, raylet_mem_record]
-        records_reported.extend(raylet_records)
+        ])
 
         self._metrics_agent.record_reporter_stats(records_reported)
 
