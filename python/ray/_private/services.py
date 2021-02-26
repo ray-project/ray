@@ -280,7 +280,8 @@ def get_address_info_from_redis_helper(redis_address,
 def get_address_info_from_redis(redis_address,
                                 node_ip_address,
                                 num_retries=5,
-                                redis_password=None):
+                                redis_password=None,
+                                log_warning=True):
     counter = 0
     while True:
         try:
@@ -289,8 +290,7 @@ def get_address_info_from_redis(redis_address,
         except Exception:
             if counter == num_retries:
                 raise
-            # No warning log for the first attempt.
-            if counter > 0:
+            if log_warning:
                 logger.warning(
                     "Some processes that the driver needs to connect to have "
                     "not registered with Redis, so retrying. Have you run "

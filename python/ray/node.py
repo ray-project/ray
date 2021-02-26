@@ -232,7 +232,8 @@ class Node:
             address_info = (ray._private.services.get_address_info_from_redis(
                 self.redis_address,
                 self._raylet_ip_address,
-                redis_password=self.redis_password))
+                redis_password=self.redis_password,
+                log_warning=False))
             self._ray_params.node_manager_port = address_info[
                 "node_manager_port"]
 
