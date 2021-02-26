@@ -162,7 +162,7 @@ py_test(
     args = ["--yaml-dir=tuned_examples/ppo", "--framework=torch"]
 )
 
-# DQN/Simple-Q
+# DQN/Simple-Q/R2D2
 py_test(
     name = "run_regression_tests_cartpole_dqn_tf",
     main = "tests/run_regression_tests.py",
@@ -174,6 +174,7 @@ py_test(
         "tuned_examples/dqn/cartpole-dqn.yaml",
         "tuned_examples/dqn/cartpole-dqn-softq.yaml",
         "tuned_examples/dqn/cartpole-dqn-param-noise.yaml",
+        "tuned_examples/dqn/cartpole-r2d2.yaml",
     ],
     args = ["--yaml-dir=tuned_examples/dqn"]
 )
@@ -189,6 +190,7 @@ py_test(
         "tuned_examples/dqn/cartpole-dqn.yaml",
         "tuned_examples/dqn/cartpole-dqn-softq.yaml",
         "tuned_examples/dqn/cartpole-dqn-param-noise.yaml",
+        "tuned_examples/dqn/cartpole-r2d2.yaml",
     ],
     args = ["--yaml-dir=tuned_examples/dqn", "--framework=torch"]
 )
@@ -2028,14 +2030,16 @@ py_test(
     args = ["--as-test", "--torch", "--stop-reward=70"]
 )
 
-py_test(
-    name = "examples/multi_agent_two_trainers_mixed_torch_tf",
-    main = "examples/multi_agent_two_trainers.py",
-    tags = ["examples", "examples_M"],
-    size = "medium",
-    srcs = ["examples/multi_agent_two_trainers.py"],
-    args = ["--as-test", "--mixed-torch-tf", "--stop-reward=70"]
-)
+# Taking out this test for now: Mixed torch- and tf- policies within the same
+# Trainer never really worked.
+# py_test(
+#     name = "examples/multi_agent_two_trainers_mixed_torch_tf",
+#     main = "examples/multi_agent_two_trainers.py",
+#     tags = ["examples", "examples_M"],
+#     size = "medium",
+#     srcs = ["examples/multi_agent_two_trainers.py"],
+#     args = ["--as-test", "--mixed-torch-tf", "--stop-reward=70"]
+# )
 
 py_test(
     name = "examples/nested_action_spaces_ppo_tf",
