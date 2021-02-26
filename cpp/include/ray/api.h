@@ -102,16 +102,17 @@ class Ray {
   static TaskCaller<boost::callable_traits::return_type_t<F>> Task(F func, Args... args);
 
   /// Generic version of creating an actor
-  /// It is used for creating an actor, such as: ActorCreator<Counter> creator = Ray::Actor(Counter::FactoryCreate, 1).
+  /// It is used for creating an actor, such as: ActorCreator<Counter> creator = 
+  /// Ray::Actor(Counter::FactoryCreate, 1).
   template <typename ActorType, typename... Args>
   static ActorCreator<ActorType> Actor(
       CreateActorFunc<ActorType, typename FilterArgType<Args>::type...> create_func,
       Args... args);
 
-  /// TODO: The bellow specific version of creating an actor will be replaced with generic
-  /// version later.
-  #include <ray/api/generated/create_funcs.generated.h>
-  #include "api/generated/create_actors.generated.h"
+/// TODO: The bellow specific version of creating an actor will be replaced with generic
+/// version later.
+#include <ray/api/generated/create_funcs.generated.h>
+#include "api/generated/create_actors.generated.h"
 
  private:
   static std::shared_ptr<RayRuntime> runtime_;
