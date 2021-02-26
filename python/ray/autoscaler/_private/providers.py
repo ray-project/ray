@@ -192,7 +192,24 @@ def _get_default_config(provider_config):
     package outside the autoscaler.
     """
     if provider_config["type"] == "external":
-        return {}
+        # Minimal config for compatibility with legacy-style external configs.
+        return {
+            "available_node_types":{
+                "head.empty":{
+                    "min_workers": 0,
+                    "max_workers": 0,
+                    "resources": {},
+                    "node_config": {},
+                },
+                "worker.empty":{
+                    "resources": {},
+                    "node_config": {},
+                }
+            },
+            "head_node_type": "head.empty",
+            "head_node": {},
+            "worker_nodes": {},
+        }
     load_config = _DEFAULT_CONFIGS.get(provider_config["type"])
     if load_config is None:
         raise NotImplementedError("Unsupported node provider: {}".format(
