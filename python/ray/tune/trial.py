@@ -337,8 +337,13 @@ class Trial:
 
 
         """
-        if not self.placement_group_factory and \
-           not int(os.getenv("TUNE_PLACEMENT_GROUP_AUTO_DISABLED", "0")):
+        # Placement groups are force-disabled via env variable.
+        if int(os.getenv("TUNE_PLACEMENT_GROUP_AUTO_DISABLED", "0")):
+            self.placement_group_factory = None
+
+        # Placement groups are not disabled, but none is given.
+        # Produce one automatically from self.resources.
+        elif not self.placement_group_factory:
             try:
                 self.placement_group_factory = resource_dict_to_pg_factory(
                     self.resources)
@@ -347,6 +352,7 @@ class Trial:
                     logger.warning(exc)
                 self.placement_group_factory = None
 
+        # Set placement group factory flag to True in Resources object.
         if self.placement_group_factory:
             resource_kwargs = self.resources._asdict()
             resource_kwargs["has_placement_group"] = True
