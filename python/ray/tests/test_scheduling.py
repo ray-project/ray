@@ -160,7 +160,6 @@ def test_load_balancing_under_constrained_memory(ray_start_cluster):
     ray.get(tasks)
 
 
-
 @pytest.mark.skipif(
     platform.system() == "Windows", reason="Failing on Windows. Multi node.")
 def test_spillback_waiting_task_on_oom(ray_start_cluster):
