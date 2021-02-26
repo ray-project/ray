@@ -545,8 +545,6 @@ class SimpleListCollector(SampleCollector):
         policy = self.policy_map[policy_id]
         keys = self.forward_pass_agent_keys[policy_id]
         buffers = {k: self.agent_collectors[k].buffers for k in keys}
-        #view_reqs = policy.model.view_requirements if \
-        #    getattr(policy, "model", None) else policy.view_requirements
         view_reqs = policy.view_requirements
 
         input_dict = {}
