@@ -743,7 +743,7 @@ class TrialRunner:
 
         flat_result = flatten_dict(result)
         self._validate_result_metrics(flat_result)
-        
+
         if self._stopper(trial.trial_id,
                          result) or trial.should_stop(flat_result):
             result.update(done=True)
