@@ -22,7 +22,7 @@ class RayConfig {
 
   std::string redis_password = "5241590000000000";
 
-  int node_manager_port = 0;
+  int node_manager_port = 62665;
 
   std::string lib_name = "";
 
