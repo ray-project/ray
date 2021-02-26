@@ -1002,7 +1002,6 @@ void ClusterResourceScheduler::FillResourceUsage(
     const auto &label = ResourceEnumToString((PredefinedResources)i);
     const auto &capacity = resources.predefined_resources[i];
     const auto &last_capacity = last_report_resources_->predefined_resources[i];
-
     // Note: available may be negative, but only report positive to GCS.
     if (capacity.available != last_capacity.available && capacity.available > 0) {
       resources_data->set_resources_available_changed(true);
@@ -1018,14 +1017,12 @@ void ClusterResourceScheduler::FillResourceUsage(
     const auto &capacity = it.second;
     const auto &last_capacity = last_report_resources_->custom_resources[custom_id];
     const auto &label = string_to_int_map_.Get(custom_id);
-
     // Note: available may be negative, but only report positive to GCS.
     if (capacity.available != last_capacity.available && capacity.available > 0) {
       resources_data->set_resources_available_changed(true);
       (*resources_data->mutable_resources_available())[label] =
           capacity.available.Double();
     }
-
     if (capacity.total != last_capacity.total) {
       (*resources_data->mutable_resources_total())[label] = capacity.total.Double();
     }
