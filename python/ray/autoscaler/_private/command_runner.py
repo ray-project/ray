@@ -858,6 +858,7 @@ class DockerCommandRunner(CommandRunnerInterface):
                                 self.ssh_command_runner.cluster_name), mount),
                         container=self.container_name,
                         dst=self._docker_expand_user(mount)))
+                self.run(f"sudo chown $(id -u):$(id -g) {mount} || true")
         self.initialized = True
         return docker_run_executed
 
