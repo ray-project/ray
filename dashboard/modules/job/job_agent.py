@@ -81,7 +81,9 @@ class JobInfo:
         return self._job_info["driverEntry"]
 
     def driver_args(self):
-        return self._job_info["driverArgs"]
+        driver_args = self._job_info["driverArgs"]
+        assert isinstance(driver_args, list)
+        return driver_args
 
     def initialize_env_timeout_seconds(self):
         timeout = self._job_info.get("initializeEnvTimeoutSeconds",
@@ -122,7 +124,9 @@ class JobInfo:
         return self._initialize_task
 
     def env(self):
-        env_dict = {}
+        job_package_dir = job_consts.DOWNLOAD_PACKAGE_UNZIP_DIR.format(
+            temp_dir=self._temp_dir, job_id=self._job_id)
+        env_dict = {"RAY_JOB_DIR": job_package_dir}
         # Support json values for env.
         for k, v in self._job_info.get("env", {}).items():
             if isinstance(v, str):
@@ -458,8 +462,7 @@ ray.shutdown()
 
         # Per job config
         job_config_items = {
-            "worker_env": dict(
-                self._job_info.env(), RAY_JOB_DIR=job_package_dir),
+            "worker_env": self._job_info.env(),
             "worker_cwd": job_package_dir,
             "num_java_workers_per_process": self._job_info.
             num_java_workers_per_process(),
@@ -469,24 +472,11 @@ ray.shutdown()
             "is_submitted_from_dashboard": True,
         }
 
-        # User may set the config in ray.conf, in this case,
-        # the value will be None.
-        job_config_items = {
-            k: v
-            for k, v in job_config_items.items() if v is not None
-        }
-
-        job_config_args = ", ".join(
-            f"{key}={repr(value)}" for key, value in job_config_items.items())
-
-        if isinstance(self._job_info.driver_args(), str):
-            driver_args = repr(self._job_info.driver_args())
-        else:
-            assert isinstance(self._job_info.driver_args(), list),\
-                "driver_args should be str or list instead of " \
-                f"{type(self._job_info.driver_args())}"
-            driver_args = ", ".join(
-                [repr(x) for x in self._job_info.driver_args()])
+        job_config_args = ", ".join(f"{key}={repr(value)}"
+                                    for key, value in job_config_items.items()
+                                    if value is not None)
+        driver_args = ", ".join(
+            [repr(x) for x in self._job_info.driver_args()])
         driver_code = self._template.format(
             job_id=repr(hex_to_binary(job_id)),
             job_config_args=job_config_args,
@@ -510,11 +500,8 @@ ray.shutdown()
         driver_cmd = [python, "-u", driver_file]
         stdout_file, stderr_file = self._new_log_files(log_dir,
                                                        f"driver-{job_id}")
-        job_package_dir = job_consts.DOWNLOAD_PACKAGE_UNZIP_DIR.format(
-            temp_dir=temp_dir, job_id=job_id)
-        env = dict(self._job_info.env(), RAY_JOB_DIR=job_package_dir)
         return await self._start_driver(driver_cmd, stdout_file, stderr_file,
-                                        env)
+                                        self._job_info.env())
 
 
 class PrepareJavaEnviron(JobProcessor):
@@ -581,45 +568,38 @@ class StartJavaDriver(JobProcessor):
         Returns:
             The command string for starting Java worker.
         """
+        ip, port = self._redis_address
         temp_dir = self._job_info.temp_dir()
         job_id = self._job_info.job_id()
         job_package_dir = job_consts.DOWNLOAD_PACKAGE_UNZIP_DIR.format(
             temp_dir=temp_dir, job_id=job_id)
 
-        pairs = []
-        ip, port = self._redis_address
-        redis_address = ip + ":" + str(port)
-        if redis_address is not None:
-            pairs.append(("ray.address", redis_address))
+        options = {
+            "ray.address": f"{ip}:{port}",
+            "ray.node-ip": self._node_ip,
+            "ray.redis.password": self._redis_password or "",
+            "ray.home": RAY_HOME,
+            "ray.run-mode": "CLUSTER",
+            "ray.logging.dir": self._log_dir,
+            "ray.job.id": self._job_info.job_id(),
+            "ray.job.worker-cwd": job_package_dir,
+            "ray.job.code-search-path": job_package_dir,
+            "ray.job.num-java-workers-per-process": self._job_info.
+            num_java_workers_per_process(),
+        }
+        options.update({
+            f"ray.job.worker-env.{key}": value
+            for key, value in self._job_info.env().items()
+        })
+        options.update({
+            f"ray.job.jvm-options.{i}": jvm_option
+            for i, jvm_option in enumerate(COMMON_JVM_OPTIONS +
+                                           self._job_info.jvm_options())
+        })
 
-        if self._redis_password is not None:
-            pairs.append(("ray.redis.password", self._redis_password))
-        else:
-            pairs.append(("ray.redis.password", ""))
-
-        if self._node_ip is not None:
-            pairs.append(("ray.node-ip", self._node_ip))
-
-        pairs.append(("ray.home", RAY_HOME))
-        pairs.append(("ray.job.id", self._job_info.job_id()))
-        pairs.append(("ray.run-mode", "CLUSTER"))
-        pairs.append(("ray.logging.dir", self._log_dir))
-
-        # Per job config
-        env = dict(self._job_info.env(), RAY_JOB_DIR=job_package_dir)
-        for key, value in env.items():
-            pairs.append(("ray.job.worker-env." + key, value))
-        pairs.append(("ray.job.worker-cwd", job_package_dir))
-        if self._job_info.num_java_workers_per_process() is not None:
-            pairs.append(("ray.job.num-java-workers-per-process",
-                          self._job_info.num_java_workers_per_process()))
-        for i, jvm_option in enumerate(COMMON_JVM_OPTIONS +
-                                       self._job_info.jvm_options()):
-            pairs.append(("ray.job.jvm-options." + str(i), jvm_option))
-
-        pairs.append(("ray.job.code-search-path", job_package_dir))
         command = ["java"] + COMMON_JVM_OPTIONS + [
-            "-D{}={}".format(*pair) for pair in pairs
+            f"-D{key}={value}" for key, value in options.items()
+            if value is not None
         ]
 
         # Add ray jars path to java classpath
@@ -627,21 +607,11 @@ class StartJavaDriver(JobProcessor):
             os.path.join(get_ray_jars_dir(), "*"),
             os.path.join(job_package_dir, "*"),
         ])
-        options = self._job_info.jvm_options()
-        cp_index = -1
-        for i in range(len(options)):
-            option = options[i]
-            if option == "-cp" or option == "-classpath":
-                cp_index = i + 1
-                break
-        if cp_index != -1:
-            options[cp_index] = options[cp_index] + os.pathsep + ray_jars
-        else:
-            options = ["-cp", ray_jars] + options
+        command += ["-cp", ray_jars]
         # Put `jvm_options` in the last, so it can overwrite the
-        # above options.
-        command += options
-
+        # above jvm_options.
+        command += self._job_info.jvm_options()
+        # Driver entry and driver args.
         command += ["io.ray.runtime.runner.worker.DefaultDriver"]
         command += [self._job_info.driver_entry()]
         command += self._job_info.driver_args()
@@ -650,16 +620,12 @@ class StartJavaDriver(JobProcessor):
 
     async def run(self):
         driver_cmd = self._build_java_worker_command()
-        temp_dir = self._job_info.temp_dir()
         log_dir = self._job_info.log_dir()
         job_id = self._job_info.job_id()
-        job_package_dir = job_consts.DOWNLOAD_PACKAGE_UNZIP_DIR.format(
-            temp_dir=temp_dir, job_id=job_id)
         stdout_file, stderr_file = self._new_log_files(log_dir,
                                                        f"driver-{job_id}")
-        return await self._start_driver(
-            driver_cmd, stdout_file, stderr_file,
-            dict(self._job_info.env(), RAY_JOB_DIR=job_package_dir))
+        return await self._start_driver(driver_cmd, stdout_file, stderr_file,
+                                        self._job_info.env())
 
 
 class JobAgent(dashboard_utils.DashboardAgentModule,
