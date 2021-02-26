@@ -1042,6 +1042,28 @@ absl::optional<LocalityData> ReferenceCounter::GetLocalityData(
   return locality_data;
 }
 
+bool ReferenceCounter::ReportLocalityData(const ObjectID &object_id,
+                                          const absl::flat_hash_set<NodeID> &locations,
+                                          uint64_t object_size) {
+  absl::MutexLock lock(&mutex_);
+  auto it = object_id_refs_.find(object_id);
+  if (it == object_id_refs_.end()) {
+    RAY_LOG(INFO) << "Tried to report locality data for an object " << object_id
+                  << " that doesn't exist in the reference table."
+                  << " The object has probably already been freed.";
+    return false;
+  }
+  RAY_CHECK(!it->second.owned_by_us)
+      << "ReportLocalityData should only be used for borrowed references.";
+  for (const auto &location : locations) {
+    it->second.locations.emplace(location);
+  }
+  if (object_size > 0) {
+    it->second.object_size = object_size;
+  }
+  return true;
+}
+
 void ReferenceCounter::PushToLocationSubscribers(ReferenceTable::iterator it) {
   const auto callbacks = it->second.location_subscription_callbacks;
   it->second.location_subscription_callbacks.clear();
