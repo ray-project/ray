@@ -14,11 +14,11 @@ from ray.util.collective.types import AllReduceOptions, \
     BarrierOptions, Backend, ReduceOptions, BroadcastOptions, \
     AllGatherOptions, ReduceScatterOptions, SendOptions, \
     RecvOptions
-from threading import Lock
+from ray.util.collective.collective_group.cuda_stream import \
+    get_stream_pool
 
 
 logger = logging.getLogger(__name__)
-NCCL_STREAM_POOL_SIZE = 32
 
 
 class Rendezvous:
@@ -112,43 +112,6 @@ class Rendezvous:
                 "Unable to get the NCCLUniqueID from the store.")
         return uid
 
-
-class StreamPool:
-    """The class that represents a stream pool associated with a GPU.
-
-    When multistream is enabled, we will allocate a pool of streams for each
-    GPU, and get available stream from this pool when a collective kernel is
-    initialized. This enables overlapping computation/communication kernels
-    using multiple CUDA streams, given that the streams a appropriately
-    synchronized.
-
-    Args:
-        size: the size of the pool, which should be fixed across all device.
-    """
-
-    def __init__(self, size):
-        self.size = size
-        self.pool = [None] * size
-        self.index = 0
-        self.mux = Lock()
-
-    def get_stream(self):
-        """Get an available stream from pool.
-
-        The function locks the stream pool and releases the lock before returning.
-
-        Returns:
-            stream (cupy.cuda.Stream): the stream on which the kernel should be assigned to.
-        """
-        self.mux.acquire()
-        # Create a new stream if it hasn't been initialized yet
-        if not self.pool[self.index]:
-            # TODO(Fu): double check whether to set the non_blocking variable
-            self.pool[self.index] = cupy.cuda.Stream(null=False)
-        stream = self.pool[self.index]
-        self.index = (self.index + 1) % self.size
-        self.mux.release()
-        return stream
 
 class NCCLGroup(BaseGroup):
     def __init__(self, world_size, rank, group_name):
@@ -459,14 +422,10 @@ class NCCLGroup(BaseGroup):
             with nccl_util.Device(device):
                 comms[i] = nccl_util.create_nccl_communicator(
                     actual_world_size, nccl_uid, actual_rank)
-                if ENV.NCCL_USE_MULTISTREAM.val:
-                    pool: StreamPool = self._dev_pool_map.get(comm_key,
-                                                              StreamPool(NCCL_STREAM_POOL_SIZE))
-                    streams[i] = pool.get_stream()
-                    # Stream(non_blocking=True)
-                    events[i] = cupy.cuda.Event() # TODO(Fu): double check the parameters
-                else:
-                    streams[i] = cupy.cuda.Stream.null
+                # request a stream from the pool
+                # note the device_idx is absolute index.
+                streams[i] = get_stream_pool(device).get_stream()
+                events[i] = cupy.cuda.Event() # TODO(Fu): double check the parameters
         nccl_util.groupEnd()
         # TODO(Fu): lock
         self._dev_comm_map[comm_key] = comms
@@ -547,15 +506,9 @@ class NCCLGroup(BaseGroup):
         # create the p2p communicators
         with nccl_util.Device(my_gpu_idx):
             comm = nccl_util.create_nccl_communicator(2, nccl_uid, my_p2p_rank)
-            #TODO(Fu): get the stream from pool
-            if ENV.NCCL_USE_MULTISTREAM.val:
-                pool: StreamPool = self._dev_pool_map.get(comm_key, StreamPool(self.POOL_SIZE))
-                stream = pool.get_stream()
-                event = cupy.cuda.Event()
-                # Stream(non_blocking=True)
-            else:
-                stream = cupy.cuda.Stream.null
-        
+            stream = get_stream_pool(my_gpu_idx).get_stream()
+            event = cupy.cuda.Event()
+
         #TODO(Fu): lock and might need to add event
         self._dev_comm_map[comm_key] = [comm]
         self._dev_streams_map[comm_key] = [stream]
