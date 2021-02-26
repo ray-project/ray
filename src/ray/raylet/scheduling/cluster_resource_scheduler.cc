@@ -988,10 +988,21 @@ void ClusterResourceScheduler::FillResourceUsage(
     }
   }
 
+  // Automatically report object store usage.
+  // XXX: this MUTATES the resources field, which is needed since we are storing
+  // it in last_report_resources_.
+  if (get_used_object_store_memory_ != nullptr) {
+    auto &capacity = resources.predefined_resources[OBJECT_STORE_MEM];
+    // Convert to 50MiB memory units.
+    double used = get_used_object_store_memory_() / (50. * 1024 * 1024);
+    capacity.available = FixedPoint(capacity.total.Double() - used);
+  }
+
   for (int i = 0; i < PredefinedResources_MAX; i++) {
     const auto &label = ResourceEnumToString((PredefinedResources)i);
     const auto &capacity = resources.predefined_resources[i];
     const auto &last_capacity = last_report_resources_->predefined_resources[i];
+
     // Note: available may be negative, but only report positive to GCS.
     if (capacity.available != last_capacity.available && capacity.available > 0) {
       resources_data->set_resources_available_changed(true);
@@ -1002,20 +1013,11 @@ void ClusterResourceScheduler::FillResourceUsage(
       (*resources_data->mutable_resources_total())[label] = capacity.total.Double();
     }
   }
-  for (auto &it : resources.custom_resources) {
+  for (const auto &it : resources.custom_resources) {
     uint64_t custom_id = it.first;
-    auto &capacity = it.second;
+    const auto &capacity = it.second;
     const auto &last_capacity = last_report_resources_->custom_resources[custom_id];
     const auto &label = string_to_int_map_.Get(custom_id);
-
-    // Automatically report object store usage.
-    // XXX: this MUTATES the resources field, which is needed since we are storing
-    // it in last_report_resources_.
-    if (label == "object_store_memory" && get_used_object_store_memory_ != nullptr) {
-      // Convert to 50MiB memory units.
-      double used = get_used_object_store_memory_() / (50. * 1024 * 1024);
-      capacity.available = FixedPoint(capacity.total.Double() - used);
-    }
 
     // Note: available may be negative, but only report positive to GCS.
     if (capacity.available != last_capacity.available && capacity.available > 0) {

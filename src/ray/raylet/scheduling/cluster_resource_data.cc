@@ -79,7 +79,7 @@ TaskRequest ResourceMapToTaskRequest(
     } else if (resource.first == ray::kGPU_ResourceLabel) {
       task_request.predefined_resources[GPU].demand = resource.second;
     } else if (resource.first == ray::kObjectStoreMemory_ResourceLabel) {
-      task_request.predefined_resources[ObjectStoreMemory].demand = resource.second;
+      task_request.predefined_resources[OBJECT_STORE_MEM].demand = resource.second;
     } else if (resource.first == ray::kMemory_ResourceLabel) {
       task_request.predefined_resources[MEM].demand = resource.second;
     } else {
