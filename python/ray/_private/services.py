@@ -1197,7 +1197,9 @@ def start_dashboard(require_dashboard,
             dashboard_returncode = process_info.process.poll()
             if dashboard_returncode is not None:
                 break
-            time.sleep(1)
+            # This is often on the critical path of ray.init() and ray start,
+            # so we need to poll often.
+            time.sleep(0.1)
         if dashboard_url is None:
             dashboard_log = os.path.join(logdir, "dashboard.log")
             returncode_str = (f", return code {dashboard_returncode}"
