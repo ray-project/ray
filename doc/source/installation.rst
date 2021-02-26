@@ -69,6 +69,7 @@ For example, here are the Ray 2.0.0.dev0 wheels for Python 3.5, MacOS for commit
 
 Install Ray With Maven
 ----------------------
+Before install it with Maven, you should install Ray by `pip install -U ray` .
 
 The latest Ray Java release can be found in `central repository <https://mvnrepository.com/artifact/io.ray>`__. To use the latest Ray Java release in your application, add the following entries in your ``pom.xml``:
 

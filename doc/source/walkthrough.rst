@@ -26,6 +26,8 @@ Installation
 
     To run this walkthrough, add `Ray API <https://mvnrepository.com/artifact/io.ray/ray-api>`_ and `Ray Runtime <https://mvnrepository.com/artifact/io.ray/ray-runtime>`_ as dependencies. Snapshot versions can be found in `sonatype repository <https://oss.sonatype.org/#nexus-search;quick~io.ray>`_.
 
+    Note: To run your Ray Java application in cluster mode, you must install it by `pip install -U ray` first. To run it in single process mode, there is no need to do this installation.
+
 Starting Ray
 ------------
 
