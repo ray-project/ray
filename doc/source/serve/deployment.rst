@@ -229,7 +229,7 @@ Querying a Serve endpoint with the above backend will produce a log line like th
 
 .. code-block:: bash
 
-  INFO -- Some info! component=serve backend=my_backend replica=my_backend#krcwoa
+  (pid=42161) 2021-02-26 11:05:21,709     INFO snippet_logger.py:13 -- Some info! component=serve backend=my_backend replica=my_backend#jZlnUI
 
 To write your own custom logger using Python's ``logging`` package, use the following method:
 

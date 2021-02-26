@@ -3,8 +3,8 @@ import ray
 from ray import serve
 import requests
 
-ray.init(address="auto")
-client = serve.connect()
+ray.init()
+client = serve.start()
 
 logger = logging.getLogger("ray")
 
