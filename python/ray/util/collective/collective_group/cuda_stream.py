@@ -2,7 +2,7 @@ import logging
 import threading
 
 import cupy
-import ray.util.collective.collective_group.nccl_util as nccl_util
+from ray.util.collective.collective_group import nccl_util
 from ray.util.collective.const import ENV
 
 
