@@ -284,6 +284,14 @@ void GcsServer::InitTaskInfoHandler() {
   rpc_server_.RegisterService(*task_info_service_);
 }
 
+void GcsServer::InitResourceReportPolling() {
+  gcs_resource_report_poller_ = std::unique_ptr<GcsResourceReportPoller>(
+                                                                         new GcsResourceReportPoller(100, gcs_resource_manager_, raylet_client_pool_));
+  if (config_.pull_based_resource_reporting) {
+    gcs_resource_report_poller_->Start();
+  }
+}
+
 void GcsServer::InitStatsHandler() {
   RAY_CHECK(gcs_table_storage_);
   stats_handler_.reset(new rpc::DefaultStatsHandler(gcs_table_storage_));
@@ -339,14 +347,6 @@ void GcsServer::InstallEventListeners() {
     gcs_actor_manager_->OnJobFinished(*job_id);
     gcs_placement_group_manager_->CleanPlacementGroupIfNeededWhenJobDead(*job_id);
   });
-}
-
-void GcsServer::InitResourceReportPolling() {
-  if (config_.pull_based_resource_reporting) {
-    gcs_resource_report_poller_ = std::unique_ptr<GcsResourceReportPoller>(
-        new GcsResourceReportPoller(gcs_resource_manager_, raylet_client_pool_));
-    gcs_resource_report_poller_->Start();
-  }
 }
 
 void GcsServer::CollectStats() {

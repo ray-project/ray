@@ -6,7 +6,8 @@ namespace gcs {
 
 class GcsResourceReportPoller {
  public:
-  GcsResourceReportPoller(std::shared_ptr<GcsResourceManager> gcs_resource_manager,
+  GcsResourceReportPoller(uint64_t max_concurrent_pulls,
+                          std::shared_ptr<GcsResourceManager> gcs_resource_manager,
                           std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool);
 
   /// This function is thread safe.
@@ -19,14 +20,18 @@ class GcsResourceReportPoller {
   void HandleNodeRemoved(std::shared_ptr<rpc::GcsNodeInfo> node_info);
 
  private:
-  void GetAllResourceUsage();
-
   /// Called every timer tick.
   void Tick();
+  void GetAllResourceUsage();
+  void LaunchPulls();
+  void NodeResourceReportReceived(const NodeID &node_id);
+  void PullRoundDone();
+
 
   std::unique_ptr<std::thread> polling_thread_;
   boost::asio::io_context polling_service_;
 
+  uint64_t max_concurrent_pulls_;
   std::shared_ptr<GcsResourceManager> gcs_resource_manager_;
   std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool_;
 
@@ -38,6 +43,16 @@ class GcsResourceReportPoller {
   absl::Mutex mutex_;
   // Information about how to connect to all the nodes in the cluster.
   std::unordered_map<NodeID, rpc::Address> nodes_to_poll_;
+
+  struct State {
+    // The ongoing pulls.
+    std::unordered_set<NodeID> inflight_pulls;
+    // The set of nodes we still need to pull from. We may not be able to pull from them because of the inflight limit.
+    std::vector<rpc::Address> to_pull;
+  };
+
+  State poll_state_;
+
 };
 
 }  // namespace gcs
