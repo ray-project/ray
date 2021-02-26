@@ -1,8 +1,8 @@
 import gc
 import numpy as np
-import time
 
 import ray
+from ray.test_utils import wait_for_condition
 
 MB = 1024 * 1024
 
@@ -36,19 +36,18 @@ def test_memory_request():
 def test_object_store_memory_reporting():
     try:
         ray.init(num_cpus=1, object_store_memory=500 * MB)
-        time.sleep(0.5)
-        assert ray.available_resources()["object_store_memory"] == 10.0
+        wait_for_condition(
+            lambda: ray.available_resources()["object_store_memory"] == 10.0)
         x1 = ray.put(np.zeros(150 * 1024 * 1024, dtype=np.uint8))
-        time.sleep(0.5)
-        assert ray.available_resources()["object_store_memory"] == 7.0
+        wait_for_condition(
+            lambda: ray.available_resources()["object_store_memory"] == 7.0)
         x2 = ray.put(np.zeros(75 * 1024 * 1024, dtype=np.uint8))
-        time.sleep(0.5)
-        assert ray.available_resources()["object_store_memory"] == 5.5
+        wait_for_condition(
+            lambda: ray.available_resources()["object_store_memory"] == 5.5)
         del x1
         del x2
-        gc.collect()
-        time.sleep(1.0)
-        assert ray.available_resources()["object_store_memory"] == 10.0
+        wait_for_condition(
+            lambda: ray.available_resources()["object_store_memory"] == 10.0)
     finally:
         ray.shutdown()
 
