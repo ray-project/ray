@@ -22,7 +22,6 @@
 #include "ray/common/ray_config.h"
 #include "ray/gcs/pb_util.h"
 #include "ray/util/logging.h"
-#include "ray/util/process.h"
 
 namespace ray {
 namespace raylet {

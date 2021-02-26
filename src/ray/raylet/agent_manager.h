@@ -25,6 +25,7 @@
 #include "ray/rpc/agent_manager/agent_manager_server.h"
 #include "ray/rpc/job/job_client.h"
 #include "ray/rpc/job/job_server.h"
+#include "ray/util/process.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
@@ -41,7 +42,7 @@ typedef std::function<std::shared_ptr<boost::asio::deadline_timer>(std::function
 struct DriverMonitorInfo {
   JobID job_id;
   bool has_registered;
-  pid_t driver_pid;
+  pid_t driver_pid;  // The type pid_t is defined in ray/util/process.h
   std::string driver_cmdline;
 };
 
