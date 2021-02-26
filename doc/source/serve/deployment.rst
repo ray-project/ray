@@ -220,10 +220,10 @@ Tracing Backends and Replicas
 
 When looking through log files of your Ray Serve application, it is useful to know which backend and replica each log line originated from.
 To automatically include the current backend tag and replica tag in your logs, simply call
-`logger = logging.getLogger("ray")`, and use `logger` within your backend code.
+``logger = logging.getLogger("ray")``, and use ``logger`` within your backend code:
 
 .. literalinclude:: ../../../python/ray/serve/examples/doc/snippet_logger.py
-  :lines: 1, 9, 12-13, 15-16
+  :lines: 1, 9, 11-13, 15-16
 
 Querying a Serve endpoint with the above backend will produce a log line like the following:
 
@@ -233,7 +233,7 @@ Querying a Serve endpoint with the above backend will produce a log line like th
 
 To write your own custom logger using Python's ``logging`` package, use the following method:
 
-.. autofunction:: ray.serve.get_backend_context
+.. autofunction:: ray.serve.get_replica_context
 
 Ray Serve logs can be ingested by your favorite external logging agent.  Ray logs from the current session are exported to the directory `/tmp/ray/session_latest/logs` and remain there until the next session starts.
 
@@ -311,11 +311,15 @@ On the welcome page, click "Add your first data source" and click "Loki" to add 
 
 Now click "Explore" in the left-side panel.  You are ready to run some queries!
 
-To filter all these Ray logs for the ones relevant to our backend, use the `LogQL <https://grafana.com/docs/loki/latest/logql/>`__ query ``{job="ray"} |= backend=my_backend``.  
+To filter all these Ray logs for the ones relevant to our backend, use the following `LogQL <https://grafana.com/docs/loki/latest/logql/>`__ query:
+
+.. code-block:: shell 
+
+  {job="ray"} |= "backend=my_backend"
 
 You should see something similar to the following:
 
-.. image:: loki.png
+.. image:: https://github.com/ray-project/images/blob/master/docs/serve/loki-serve.png
     :align: center
 
 Metrics
