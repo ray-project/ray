@@ -858,13 +858,6 @@ def test_duplicated_arg(ray_start_cluster):
             task_with_dup_arg_ref.remote(ref1, ref2, ref3, ref1, ref2, ref3)),
         sum([arr] * 6))
 
-    # Lastly, test with modin. This is a known use case.
-    import modin.pandas as pd
-    import pandas
-    df = pd.DataFrame([1])
-    pdf = pandas.DataFrame([1])
-    assert (df + df).equals((pdf + pdf))
-
 
 if __name__ == "__main__":
     import pytest
