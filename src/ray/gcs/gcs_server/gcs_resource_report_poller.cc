@@ -16,9 +16,13 @@ GcsResourceReportPoller::GcsResourceReportPoller(
 
 void GcsResourceReportPoller::Start() {
   polling_thread_ = std::unique_ptr<std::thread>(new std::thread{[&]() {
-    RAY_LOG(ERROR) << "Polling thread created";
+    RAY_LOG(ERROR) << "Polling thread created!";
+    boost::asio::io_service::work work(polling_service_);
+
+
     polling_service_.post([&]() { Tick(); });
     polling_service_.run();
+    RAY_CHECK(false) << "The polling service should never stop.";
   }});
 }
 
@@ -28,14 +32,13 @@ void GcsResourceReportPoller::Tick() {
 }
 
 void GcsResourceReportPoller::GetAllResourceUsage() {
-  RAY_LOG(ERROR) << "Getting all resource usage";
-
   {
     absl::MutexLock guard(&mutex_);
     for (const auto &pair : nodes_to_poll_) {
       poll_state_.to_pull.push_back(pair.second);
     }
   }
+  LaunchPulls();
 }
 
 void GcsResourceReportPoller::LaunchPulls() {
@@ -51,13 +54,18 @@ void GcsResourceReportPoller::LaunchPulls() {
                                            // of the work is in the callback we should move this callback's execution to
                                            // the polling thread. We will need to implement locking once we switch threads.
                                            gcs_resource_manager_->UpdateFromResourceReport(reply.resources());
-
+                                           RAY_LOG(ERROR) << "Posting continuation";
                                            polling_service_.post([this, node_id] {
                                                                    NodeResourceReportReceived(node_id);
                                                                  });
                                          });
     poll_state_.to_pull.pop_back();
     poll_state_.inflight_pulls.insert(node_id);
+  }
+
+  // Handle the edge case with 0 nodes.
+  if (poll_state_.to_pull.empty() && poll_state_.inflight_pulls.empty()) {
+    PullRoundDone();
   }
 }
 
@@ -67,22 +75,15 @@ void GcsResourceReportPoller::NodeResourceReportReceived(const NodeID &node_id) 
     poll_state_.inflight_pulls.erase(node_id);
   }
   LaunchPulls();
-
-  {
-    absl::MutexLock guard(&mutex_);
-    if (poll_state_.to_pull.empty() && poll_state_.inflight_pulls.empty()) {
-      PullRoundDone();
-    }
-  }
 }
 
 void GcsResourceReportPoller::PullRoundDone() {
+  RAY_LOG(ERROR) << "Round finished.";
   // TODO (Alex): Should this be an open system or closed?
-  RAY_LOG(ERROR) << "Round done";
   auto delay = boost::posix_time::milliseconds(100);
   poll_timer_.expires_from_now(delay);
   poll_timer_.async_wait([&](const boost::system::error_code &error) {
-                           RAY_CHECK(!error) << "Timer failed for no apparent reason.";
+                           RAY_CHECK(!error) << "Timer failed for no apparent reason." << error.message();
                            Tick();
                          });
 }
@@ -90,6 +91,7 @@ void GcsResourceReportPoller::PullRoundDone() {
 
 void GcsResourceReportPoller::HandleNodeAdded(
     std::shared_ptr<rpc::GcsNodeInfo> node_info) {
+  RAY_LOG(ERROR) << "Node added";
   NodeID node_id = NodeID::FromBinary(node_info->node_id());
   rpc::Address address;
   address.set_raylet_id(node_info->node_id());

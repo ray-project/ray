@@ -101,7 +101,7 @@ def verify_load_metrics(monitor, expected_resource_usage=None, timeout=30):
     pg_demands = [{"GPU": 2}, {"extra_resource": 2}]
     strategy = "STRICT_PACK"
     pg = placement_group(pg_demands, strategy=strategy)
-    pg.ready()
+    # ray.get(pg.ready())
     time.sleep(2)  # wait for placemnt groups to propogate.
 
     # Disable event clearing for test.
