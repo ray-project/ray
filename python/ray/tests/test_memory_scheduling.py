@@ -1,5 +1,5 @@
-import gc
 import numpy as np
+import time
 
 import ray
 from ray.test_utils import wait_for_condition
@@ -46,6 +46,25 @@ def test_object_store_memory_reporting():
             lambda: ray.available_resources()["object_store_memory"] == 5.5)
         del x1
         del x2
+        wait_for_condition(
+            lambda: ray.available_resources()["object_store_memory"] == 10.0)
+    finally:
+        ray.shutdown()
+
+
+def test_object_store_memory_reporting_task():
+    @ray.remote
+    def f(x):
+        time.sleep(60)
+
+    try:
+        ray.init(num_cpus=1, object_store_memory=500 * MB)
+        wait_for_condition(
+            lambda: ray.available_resources()["object_store_memory"] == 10.0)
+        x1 = f.remote(np.zeros(150 * 1024 * 1024, dtype=np.uint8))
+        wait_for_condition(
+            lambda: ray.available_resources()["object_store_memory"] == 7.0)
+        ray.cancel(x1, force=True)
         wait_for_condition(
             lambda: ray.available_resources()["object_store_memory"] == 10.0)
     finally:
