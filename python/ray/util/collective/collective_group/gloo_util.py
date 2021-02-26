@@ -1,12 +1,15 @@
 """Code to wrap some GLOO API calls."""
 import numpy
-from numpy.core.records import array
+import asyncio
 try:
     import pygloo
 except ImportError:
-    raise ImportError("Can not import pygloo. Please run 'pip install pygloo' to install pygloo.")
+    raise ImportError("Can not import pygloo."
+                      "Please run 'pip install pygloo' to install pygloo.")
 
+import ray
 from ray.util.collective.types import ReduceOp, torch_available
+from ray.util.queue import _QueueActor
 
 GLOO_REDUCE_OP_MAP = {
     ReduceOp.SUM: pygloo.ReduceOp.SUM,
@@ -68,13 +71,6 @@ if torch_available():
         torch.float64: numpy.float64,
     }
 
-# def get_gloo_build_version():
-#     return get_build_version()
-
-
-# def get_gloo_runtime_version():
-#     return get_version()
-
 
 def create_gloo_context(rank, world_size):
     """
@@ -86,7 +82,7 @@ def create_gloo_context(rank, world_size):
     Returns:
         context (pygloo.Context): a gloo context.
     """
-    context = pygloo.rendezvous.Context(rank, world_size);
+    context = pygloo.rendezvous.Context(rank, world_size)
     return context
 
 
@@ -114,7 +110,8 @@ def get_gloo_tensor_dtype(tensor):
             if tensor.device == "cpu":
                 return TORCH_GLOO_DTYPE_MAP[tensor.dtype]
             else:
-                raise ValueError("Got gpu tensor. But gloo only accept cpu tensor.")
+                raise ValueError("Got gpu tensor."
+                                 "But gloo only accept cpu tensor.")
     raise ValueError("Unsupported tensor type. "
                      "Got: {}.".format(type(tensor)))
 
@@ -215,3 +212,28 @@ def copy_tensor(dst_tensor, src_tensor):
         raise ValueError("Unsupported tensor type. Got: {} and {}. Supported "
                          "GPU tensor types are: torch.Tensor, cupy.ndarray."
                          .format(type(dst_tensor), type(src_tensor)))
+
+
+class glooQueue(_QueueActor):
+    def index(self, group_name):
+        try:
+            return self.queue._queue.index(group_name)
+        except ValueError:
+            return -1
+
+
+@ray.remote(num_cpus=0)
+class SignalActor:
+    def __init__(self, world_size):
+        self.ready_events = [asyncio.Event() for _ in range(world_size)]
+        self.world_size = world_size
+
+    def send(self, rank, clear=False):
+        self.ready_events[rank].set()
+        if clear:
+            self.ready_events[rank].clear()
+
+    async def wait(self, should_wait=True):
+        if should_wait:
+            for i in range(self.world_size):
+                await self.ready_events[i].wait()

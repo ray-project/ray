@@ -1,8 +1,6 @@
 import logging
 import datetime
-from sys import prefix
 import time
-from typing import ContextManager
 import os
 import shutil
 
@@ -19,9 +17,7 @@ from ray.util.collective.types import AllReduceOptions, \
     AllGatherOptions, ReduceScatterOptions, SendOptions, \
     RecvOptions
 
-
 from ray.util.collective.const import get_gloo_store_name
-
 logger = logging.getLogger(__name__)
 
 
@@ -42,27 +38,25 @@ class Rendezvous:
     def __init__(self, group_name, context, store_type, device_type):
         self._group_name = group_name
         self._context = context
-        self._ip_address, self._redis_port = ray.worker._global_node.redis_address.split(":")
+        self._ip_address, self._redis_port = \
+            ray.worker._global_node.redis_address.split(":")
 
         ray._private.services.get_node_ip_address()
         self._store_type = store_type
         self._device_type = device_type
         self._store = None
-        self._device =None
+        self._device = None
 
         self.create_store(store_type)
         self.create_device(device_type)
 
     def create_store(self, store_type):
         if store_type == "redis":
-            redisStore = pygloo.rendezvous.RedisStore(self._ip_address, int(self._redis_port))
-
+            redisStore = pygloo.rendezvous.RedisStore(
+                                self._ip_address, int(self._redis_port))
             redis_password = ray_constants.REDIS_DEFAULT_PASSWORD
             redisStore.authorize(redis_password)
             self._store = redisStore
-            # print(self._group_name.split("_")[0])
-            # self._store = pygloo.rendezvous.PrefixStore(self._group_name, redisStore)  # worker died with no reason. This affect multi-task appears in one application.
-            # print("prefix")
         elif store_type == "file":
             store_name = get_gloo_store_name(self._group_name)
             store_path = gloo_util.get_gloo_store_path(store_name)
@@ -77,8 +71,10 @@ class Rendezvous:
                 while not os.path.exists(store_path):
                     time.sleep(0.1)
 
-            fileStore = pygloo.rendezvous.FileStore(store_path) # Multi-machines needs nfs.
-            self._store = pygloo.rendezvous.PrefixStore(self._group_name, fileStore)
+            # Multi-machines needs nfs.
+            fileStore = pygloo.rendezvous.FileStore(store_path)
+            self._store = pygloo.rendezvous.PrefixStore(
+                                    self._group_name, fileStore)
         elif store_type == "hash":
             raise RuntimeError("No implementation for hash store")
         else:
@@ -91,7 +87,7 @@ class Rendezvous:
         elif device_type == "uv":
             raise RuntimeError("No implementation for uv")
 
-    def meet(self):
+    def meet(self, timeout_s=180):
         """
         Meet at the named actor store.
 
@@ -101,8 +97,53 @@ class Rendezvous:
         Return:
             None
         """
-        if self._store and self._device:
+        if timeout_s <= 0:
+            raise ValueError("The 'timeout' argument must be positive. "
+                             "Got '{}'.".format(timeout_s))
+
+        timeout_delta = datetime.timedelta(seconds=timeout_s)
+        elapsed = datetime.timedelta(seconds=0)
+        start_time = datetime.datetime.now()
+        q, s = None, None
+
+        if self._store_type == "redis":
+            while elapsed < timeout_delta:
+                try:
+                    q = ray.get_actor("gloo_queue")
+                    s = ray.get_actor(f"gloo_{self._group_name}_signal")
+                    break
+                except ValueError:
+                    if self._context.rank == 0:
+                        if not q:
+                            ray.remote(gloo_util.glooQueue).options(
+                                    name="gloo_queue",
+                                    lifetime="detached"
+                                ).remote(1000)
+                        if not s:
+                            gloo_util.SignalActor.options(
+                                    name=f"gloo_{self._group_name}_signal",
+                                    lifetime="detached"
+                                ).remote(self._context.size)
+                    else:
+                        time.sleep(0.1)
+                elapsed = datetime.datetime.now() - start_time
+            if not q:
+                raise RuntimeError("Unable to get gloo_queue.")
+            if self._context.rank == 0:
+                ray.get(q.put_nowait.remote(self._group_name))
+            while(ray.get(q.index.remote(self._group_name))):
+                time.sleep(0.1)
             self._context.connectFullMesh(self._store, self._device)
+            ray.get(s.send.remote(self._context.rank))
+            if self._context.rank == 0:
+                ray.get(s.wait.remote())
+                keys = []
+                keys += [f"rank_{i}" for i in range(self._context.size)]
+                keys += [f"{i}" for i in range(self._context.size)]
+                self._store.delKeys(keys)
+                group_name = ray.get(q.get_nowait.remote())
+                assert group_name == self._group_name
+                ray.kill(s)
 
     @property
     def store_type(self):
@@ -120,23 +161,28 @@ class Rendezvous:
     def device(self):
         return self._device
 
+
 class GLOOGroup(BaseGroup):
-    def __init__(self, world_size, rank, group_name, store_type = 'redis', device_type = 'tcp'):
+    def __init__(self, world_size, rank, group_name,
+                 store_type="redis", device_type="tcp"):
         """
         Init an GLOO collective group.
 
         Args:
             world_size (int): The number of processes.
             rank (int): The id of process
-            group_name (str): the unique user-specified group name.
-            store_type (str): the store type. Optional: "redis", "file", "hash".
-            device_type (str): the device type to transport. Optional: "tcp", "uv".
+            group_name (str): The unique user-specified group name.
+            store_type (str): The store type.
+                              Optional: "redis", "file", "hash".
+            device_type (str): The device type to transport.
+                               Optional: "tcp", "uv".
         """
         super(GLOOGroup, self).__init__(world_size, rank, group_name)
 
         self._gloo_context = self._get_gloo_context()
 
-        self._rendezvous = Rendezvous(self.group_name, self._gloo_context, store_type, device_type)
+        self._rendezvous = Rendezvous(self.group_name, self._gloo_context,
+                                      store_type, device_type)
         self._rendezvous.meet()
 
     def destroy_group(self):
@@ -148,12 +194,11 @@ class GLOOGroup(BaseGroup):
             # destroy the communicator
             self._gloo_context = None
 
-        if self.rank == 0 and self._rendezvous.store_type == "file" :
+        if self.rank == 0 and self._rendezvous.store_type == "file":
             store_name = get_gloo_store_name(self._group_name)
             store_path = gloo_util.get_gloo_store_path(store_name)
             if os.path.exists(store_path):
                 shutil.rmtree(store_path)
-
         super(GLOOGroup, self).destroy_group()
 
     @classmethod
@@ -182,7 +227,6 @@ class GLOOGroup(BaseGroup):
 
         self._collective(tensors, tensors, collective_fn)
 
-
     def barrier(self, barrier_options=BarrierOptions()):
         """
         Blocks until all processes reach this barrier.
@@ -199,7 +243,8 @@ class GLOOGroup(BaseGroup):
         """Reduce tensors following options.
 
         Args:
-            tensors (List): the list of tensors to be reduced, this list only have one tensor.
+            tensors (List): the list of tensors to be reduced,
+                            this list only have one tensor.
             reduce_options: reduce options.
 
         Returns:
@@ -301,12 +346,14 @@ class GLOOGroup(BaseGroup):
         """
 
         def collective_fn(input_tensor, output_tensor, context):
+            size = gloo_util.get_tensor_n_elements(input_tensor)
+            world_size = self._gloo_context.size
             pygloo.reduce_scatter(
                 context,
                 gloo_util.get_tensor_ptr(input_tensor),
                 gloo_util.get_tensor_ptr(output_tensor),
-                gloo_util.get_tensor_ptr(input_tensor),
-                reducescatter_options.recvElems,
+                size,
+                [size//world_size for _ in range(world_size)],
                 gloo_util.get_gloo_tensor_dtype(output_tensor),
                 gloo_util.get_gloo_reduce_op(reducescatter_options.reduceOp))
 
@@ -420,10 +467,11 @@ class GLOOGroup(BaseGroup):
 
         p2p_fn(tensors[0], self._gloo_context, peer_rank)
 
+
 def _check_cpu_tensors(tensors):
     """Check only have one tensor and located on CPU."""
     if not tensors or not isinstance(tensors, list):
-        raise  RuntimeError("'tensors' must be a nonempty list.")
+        raise RuntimeError("'tensors' must be a nonempty list.")
     if len(tensors) != 1:
         raise RuntimeError("Gloo only accept one tensor in the tensor list."
                            " Got {} != 1.".format(
@@ -468,7 +516,7 @@ def _check_inputs_compatibility_for_scatter_gather(tensors, tensor_lists):
     if len(tensors) != 1:
         raise RuntimeError(
             "Gloo only accept one tensor in the first argument 'tensors'."
-                           " Got {} != 1.".format(len(tensors)))
+            " Got {} != 1.".format(len(tensors)))
 
     if not tensor_lists or not isinstance(tensor_lists, list):
         raise RuntimeError("The second argument 'tensor_lists' "
@@ -477,8 +525,8 @@ def _check_inputs_compatibility_for_scatter_gather(tensors, tensor_lists):
     if len(tensor_lists) != 1:
         raise RuntimeError(
             "Gloo only accept one tensor list "
-               "in the second argument 'tensor_lists'."
-                   " Got {} != 1.".format(len(tensor_lists)))
+            "in the second argument 'tensor_lists'."
+            " Got {} != 1.".format(len(tensor_lists)))
 
     dtype = gloo_util.get_gloo_tensor_dtype(tensors[0])
     shape = gloo_util.get_tensor_shape(tensors[0])
