@@ -319,7 +319,7 @@ To filter all these Ray logs for the ones relevant to our backend, use the follo
 
 You should see something similar to the following:
 
-.. image:: https://github.com/ray-project/images/blob/master/docs/serve/loki-serve.png
+.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/serve/loki-serve.png
     :align: center
 
 Metrics
