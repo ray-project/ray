@@ -223,6 +223,10 @@ Process WorkerPool::StartWorkerProcess(
       }
       continue;
     }
+    RAY_CHECK(node_manager_port_ != 0)
+        << "Node manager port is not set yet. This shouldn't happen unless we are trying "
+           "to start a worker process before node manager server is started. In this "
+           "case, it's a bug and it should be fixed.";
     auto node_manager_port_position = token.find(kNodeManagerPortPlaceholder);
     if (node_manager_port_position != std::string::npos) {
       auto replaced_token = token;
