@@ -1103,7 +1103,7 @@ def start_dashboard(require_dashboard,
                     redis_address,
                     temp_dir,
                     logdir,
-                    port=ray_constants.DEFAULT_DASHBOARD_PORT,
+                    port=None,
                     stdout_file=None,
                     stderr_file=None,
                     redis_password=None,
@@ -1136,8 +1136,11 @@ def start_dashboard(require_dashboard,
     Returns:
         ProcessInfo for the process that was started.
     """
-    port_retries = 10
-    if port != ray_constants.DEFAULT_DASHBOARD_PORT:
+    if port is None:
+        port_retries = 10
+        port = ray_constants.DEFAULT_DASHBOARD_PORT
+    else:
+        port_retries = 0
         port_test_socket = socket.socket()
         port_test_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try:
@@ -1146,7 +1149,6 @@ def start_dashboard(require_dashboard,
         except socket.error:
             raise ValueError(
                 f"The given dashboard port {port} is already in use")
-        port_retries = 0
 
     dashboard_dir = "new_dashboard"
     dashboard_filepath = os.path.join(RAY_PATH, dashboard_dir, "dashboard.py")
