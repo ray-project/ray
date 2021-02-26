@@ -219,7 +219,7 @@ class VisionNetwork(TFModelV2):
                 data_col=SampleBatch.OBS,
                 shift="-{}:1".format(from_ - 1),
                 space=self.view_requirements[SampleBatch.OBS].space,
-                used_for_compute_actions=False,
+                #used_for_compute_actions=False,
             )
 
     def forward(self, input_dict: Dict[str, TensorType],

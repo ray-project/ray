@@ -632,6 +632,10 @@ class Policy(metaclass=ABCMeta):
                 self.view_requirements[key] = \
                     ViewRequirement(space=gym.spaces.Box(
                         -1.0, 1.0, shape=value.shape[1:], dtype=value.dtype))
+        for key in input_dict.accessed_keys:
+            if key not in self.view_requirements:
+                self.view_requirements[key] = ViewRequirement()
+            self.view_requirements[key].used_for_compute_actions = True
         batch_for_postproc = UsageTrackingDict(self._dummy_batch)
         batch_for_postproc.count = self._dummy_batch.count
         self.exploration.postprocess_trajectory(self, batch_for_postproc)
