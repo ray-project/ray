@@ -289,12 +289,14 @@ def get_address_info_from_redis(redis_address,
         except Exception:
             if counter == num_retries:
                 raise
+            # No warning log for the first attempt.
+            if counter > 0:
+                logger.warning(
+                    "Some processes that the driver needs to connect to have "
+                    "not registered with Redis, so retrying. Have you run "
+                    "'ray start' on this node?")
             # Some of the information may not be in Redis yet, so wait a little
             # bit.
-            logger.warning(
-                "Some processes that the driver needs to connect to have "
-                "not registered with Redis, so retrying. Have you run "
-                "'ray start' on this node?")
             time.sleep(1)
         counter += 1
 
