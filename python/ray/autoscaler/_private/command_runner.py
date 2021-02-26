@@ -858,7 +858,14 @@ class DockerCommandRunner(CommandRunnerInterface):
                                 self.ssh_command_runner.cluster_name), mount),
                         container=self.container_name,
                         dst=self._docker_expand_user(mount)))
-                self.run(f"sudo chown $(id -u):$(id -g) {mount} || true")
+                try:
+                    self.run(f"[[ $(id -u) = 0 ]] || "
+                             "sudo chown $(id -u):$(id -g) {mount}")
+                except Exception:
+                    cli_logger.warning(
+                        "The running user is neither `root`, "
+                        "nor is sudo installed. Ray may fail to autoscale "
+                        "because of permission issues.")
         self.initialized = True
         return docker_run_executed
 
