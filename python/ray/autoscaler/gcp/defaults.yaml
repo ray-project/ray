@@ -39,7 +39,7 @@ auth:
 # The key is the name of the node type, which is just for debugging purposes.
 # The node config specifies the launch config and physical instance type.
 available_node_types:
-    ray.head.default:
+    ray_head_default:
         # The minimum number of worker nodes of this type to launch.
         # This number should be >= 0.
         min_workers: 0
@@ -74,7 +74,7 @@ available_node_types:
             #   - kind: compute#networkInterface
             #     subnetwork: path/to/subnet
             #     aliasIpRanges: []
-    ray.worker.small:
+    ray_worker_small:
         # The minimum number of nodes of this type to launch.
         # This number should be >= 0.
         min_workers: 0
@@ -106,7 +106,7 @@ available_node_types:
     # https://cloud.google.com/compute/docs/reference/rest/v1/instances/insert
 
 # Specify the node type of the head node (as configured above).
-head_node_type: ray.head.default
+head_node_type: ray_head_default
 
 # Files or directories to copy to the head and worker nodes. The format is a
 # dictionary from REMOTE_PATH: LOCAL_PATH, e.g.
