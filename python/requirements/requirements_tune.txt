@@ -15,7 +15,7 @@ keras==2.4.3
 kubernetes==12.0.1
 lightgbm==3.1.1
 matplotlib==3.3.4
-mlflow==1.13.1
+mlflow==1.14.0
 mxnet==1.7.0.post1
 nevergrad==0.4.2.post5
 optuna==2.4.0
