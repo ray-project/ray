@@ -194,6 +194,27 @@ To configure the directory where objects are placed, use:
         },
     )
 
+You can also specify multiple directories for spilling to spread the IO load and disk space
+usage across multiple physical devices if needed (e.g., SSD devices):
+
+.. code-block:: python
+
+    ray.init(
+        _system_config={
+            "max_io_workers": 4,  # More IO workers for local storage. Each IO worker tries using a different directories.
+            "object_spilling_config": json.dumps(
+                {
+                  "type": "filesystem",
+                  "params": {
+                    # Each directory could mount at different devices.
+                    "directory_path": [
+                      "/tmp/spill",
+                      "/tmp/spill_1",
+                      "/tmp/spill_2"}},
+            )
+        },
+    )
+
 To enable object spilling to remote storage (any URI supported by `smart_open <https://pypi.org/project/smart-open/>`__):
 
 .. code-block:: python

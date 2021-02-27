@@ -1,6 +1,6 @@
 # coding: utf-8
+import os
 import unittest
-from unittest.mock import patch
 
 import ray
 from ray import tune
@@ -13,11 +13,16 @@ from ray.tune.suggest import BasicVariantGenerator
 from ray.tune.trial import Trial, Checkpoint
 from ray.tune.resources import Resources
 from ray.cluster_utils import Cluster
-from ray.util import placement_group
+from ray.tune.utils.placement_groups import PlacementGroupFactory
 
 
 class RayTrialExecutorTest(unittest.TestCase):
     def setUp(self):
+        # Wait up to five seconds for placement groups when starting a trial
+        os.environ["TUNE_PLACEMENT_GROUP_WAIT_S"] = "5"
+        # Block for results even when placement groups are pending
+        os.environ["TUNE_TRIAL_STARTUP_GRACE_PERIOD"] = "0"
+
         self.trial_executor = RayTrialExecutor(queue_trials=False)
         ray.init(num_cpus=2, ignore_reinit_error=True)
         _register_all()  # Needed for flaky tests
@@ -119,29 +124,29 @@ class RayTrialExecutorTest(unittest.TestCase):
 
     def _testPauseUnpause(self, result_buffer_length):
         """Tests that unpausing works for trials being processed."""
-        with patch(
-                "ray.tune.ray_trial_executor.TUNE_RESULT_BUFFER_LENGTH",
-                result_buffer_length
-        ), patch("ray.tune.ray_trial_executor.TUNE_RESULT_BUFFER_MIN_TIME_S",
-                 1):
-            base = max(result_buffer_length, 1)
+        os.environ["TUNE_RESULT_BUFFER_LENGTH"] = f"{result_buffer_length}"
+        os.environ["TUNE_RESULT_BUFFER_MIN_TIME_S"] = "1"
 
-            trial = Trial("__fake")
-            self.trial_executor.start_trial(trial)
-            self.assertEqual(Trial.RUNNING, trial.status)
-            trial.last_result = self.trial_executor.fetch_result(trial)[-1]
-            self.assertEqual(trial.last_result.get(TRAINING_ITERATION), base)
-            self.trial_executor.pause_trial(trial)
-            self.assertEqual(Trial.PAUSED, trial.status)
-            self.trial_executor.unpause_trial(trial)
-            self.assertEqual(Trial.PENDING, trial.status)
-            self.trial_executor.start_trial(trial)
-            self.assertEqual(Trial.RUNNING, trial.status)
-            trial.last_result = self.trial_executor.fetch_result(trial)[-1]
-            self.assertEqual(
-                trial.last_result.get(TRAINING_ITERATION), base * 2)
-            self.trial_executor.stop_trial(trial)
-            self.assertEqual(Trial.TERMINATED, trial.status)
+        # Need a new trial executor so the ENV vars are parsed again
+        self.trial_executor = RayTrialExecutor(queue_trials=False)
+
+        base = max(result_buffer_length, 1)
+
+        trial = Trial("__fake")
+        self.trial_executor.start_trial(trial)
+        self.assertEqual(Trial.RUNNING, trial.status)
+        trial.last_result = self.trial_executor.fetch_result(trial)[-1]
+        self.assertEqual(trial.last_result.get(TRAINING_ITERATION), base)
+        self.trial_executor.pause_trial(trial)
+        self.assertEqual(Trial.PAUSED, trial.status)
+        self.trial_executor.unpause_trial(trial)
+        self.assertEqual(Trial.PENDING, trial.status)
+        self.trial_executor.start_trial(trial)
+        self.assertEqual(Trial.RUNNING, trial.status)
+        trial.last_result = self.trial_executor.fetch_result(trial)[-1]
+        self.assertEqual(trial.last_result.get(TRAINING_ITERATION), base * 2)
+        self.trial_executor.stop_trial(trial)
+        self.assertEqual(Trial.TERMINATED, trial.status)
 
     def testPauseUnpauseNoBuffer(self):
         self._testPauseUnpause(0)
@@ -235,41 +240,44 @@ class RayExecutorQueueTest(unittest.TestCase):
             return Trial("__fake", resources=Resources(cpu=cpu, gpu=gpu))
 
         cpu_only = create_trial(1, 0)
-        self.assertTrue(self.trial_executor.has_resources(cpu_only.resources))
+        self.assertTrue(self.trial_executor.has_resources_for_trial(cpu_only))
         self.trial_executor.start_trial(cpu_only)
 
         gpu_only = create_trial(0, 1)
-        self.assertTrue(self.trial_executor.has_resources(gpu_only.resources))
+        self.assertTrue(self.trial_executor.has_resources_for_trial(gpu_only))
 
     def testHeadBlocking(self):
+        # Once resource requests are deprecated, remove this test
+        os.environ["TUNE_PLACEMENT_GROUP_AUTO_DISABLED"] = "1"
+
         def create_trial(cpu, gpu=0):
             return Trial("__fake", resources=Resources(cpu=cpu, gpu=gpu))
 
         gpu_trial = create_trial(1, 1)
-        self.assertTrue(self.trial_executor.has_resources(gpu_trial.resources))
+        self.assertTrue(self.trial_executor.has_resources_for_trial(gpu_trial))
         self.trial_executor.start_trial(gpu_trial)
 
         # TODO(rliaw): This behavior is probably undesirable, but right now
         # trials with different resource requirements is not often used.
         cpu_only_trial = create_trial(1, 0)
         self.assertFalse(
-            self.trial_executor.has_resources(cpu_only_trial.resources))
+            self.trial_executor.has_resources_for_trial(cpu_only_trial))
 
         self.cluster.add_node(num_cpus=1, num_gpus=1)
         self.cluster.wait_for_nodes()
 
         self.assertTrue(
-            self.trial_executor.has_resources(cpu_only_trial.resources))
+            self.trial_executor.has_resources_for_trial(cpu_only_trial))
         self.trial_executor.start_trial(cpu_only_trial)
 
         cpu_only_trial2 = create_trial(1, 0)
         self.assertTrue(
-            self.trial_executor.has_resources(cpu_only_trial2.resources))
+            self.trial_executor.has_resources_for_trial(cpu_only_trial2))
         self.trial_executor.start_trial(cpu_only_trial2)
 
         cpu_only_trial3 = create_trial(1, 0)
         self.assertFalse(
-            self.trial_executor.has_resources(cpu_only_trial3.resources))
+            self.trial_executor.has_resources_for_trial(cpu_only_trial3))
 
 
 class RayExecutorPlacementGroupTest(unittest.TestCase):
@@ -334,23 +342,72 @@ class RayExecutorPlacementGroupTest(unittest.TestCase):
         def train(config):
             tune.report(metric=0, resources=ray.available_resources())
 
-        def placement_group_factory():
-            head_bundle = {"CPU": 1, "GPU": 0, "custom": 4}
-            child_bundle = {"CPU": 2, "GPU": 1, "custom": 3}
+        head_bundle = {"CPU": 1, "GPU": 0, "custom": 4}
+        child_bundle = {"CPU": 2, "GPU": 1, "custom": 3}
 
-            return placement_group([head_bundle, child_bundle, child_bundle])
+        placement_group_factory = PlacementGroupFactory(
+            [head_bundle, child_bundle, child_bundle])
 
         out = tune.run(train, resources_per_trial=placement_group_factory)
 
-        self.assertDictEqual({
+        available = {
             key: val
             for key, val in out.trials[0].last_result["resources"].items()
             if key in ["CPU", "GPU", "custom"]
+        }
+
+        if not available:
+            self.skipTest(f"Warning: Ray reported no available resources, "
+                          f"but this is an error on the Ray core side. "
+                          f"Skipping this test for now.")
+
+        self.assertDictEqual(
+            available, {
+                "CPU": self.head_cpus - 5.0,
+                "GPU": self.head_gpus - 2.0,
+                "custom": self.head_custom - 10.0
+            })
+
+    def testPlacementGroupFactoryEquality(self):
+        """
+        Test that two different placement group factory objects are considered
+        equal and evaluate to the same hash.
+        """
+        from collections import Counter
+
+        pgf_1 = PlacementGroupFactory([{
+            "CPU": 2,
+            "GPU": 4,
+            "custom": 7
         }, {
-            "CPU": self.head_cpus - 5.0,
-            "GPU": self.head_gpus - 2.0,
-            "custom": self.head_custom - 10.0
-        })
+            "GPU": 2,
+            "custom": 1,
+            "CPU": 3
+        }], "PACK", "no_name", None)
+
+        pgf_2 = PlacementGroupFactory(
+            [{
+                "custom": 7,
+                "GPU": 4,
+                "CPU": 2,
+            }, {
+                "custom": 1,
+                "GPU": 2,
+                "CPU": 3
+            }],
+            strategy="PACK",
+            name="no_name",
+            lifetime=None)
+
+        self.assertEqual(pgf_1, pgf_2)
+
+        # Hash testing
+        counter = Counter()
+        counter[pgf_1] += 1
+        counter[pgf_2] += 1
+
+        self.assertEqual(counter[pgf_1], 2)
+        self.assertEqual(counter[pgf_2], 2)
 
 
 class LocalModeExecutorTest(RayTrialExecutorTest):
