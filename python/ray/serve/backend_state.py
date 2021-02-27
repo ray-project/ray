@@ -367,8 +367,6 @@ class BackendState:
         inconsistencies with starting/stopping a replica and then crashing
         before writing a checkpoint.
         """
-        logger.debug("Scaling backend '{}' to {} replicas".format(
-            backend_tag, num_replicas))
         assert (backend_tag in self._backend_metadata
                 ), "Backend {} is not registered.".format(backend_tag)
         assert num_replicas >= 0, ("Number of replicas must be"
@@ -386,7 +384,11 @@ class BackendState:
         if delta_num_replicas == 0:
             return False
 
-        elif delta_num_replicas > 0:
+        logger.debug(
+            f"Scaling backend '{backend_tag}' from {current_num_replicas} "
+            f"to {num_replicas} replicas")
+
+        if delta_num_replicas > 0:
             can_schedule = try_schedule_resources_on_nodes(requirements=[
                 backend_info.replica_config.resource_dict
                 for _ in range(delta_num_replicas)

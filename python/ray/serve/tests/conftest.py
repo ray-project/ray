@@ -53,19 +53,13 @@ def mock_controller_with_name():
             self.host = LongPollHost()
             self.backend_replicas = defaultdict(list)
             self.backend_configs = dict()
-            self.clear()
-
-        def clear(self):
-            self.host.notify_changed(LongPollNamespace.REPLICA_HANDLES, {})
-            self.host.notify_changed(LongPollNamespace.TRAFFIC_POLICIES, {})
-            self.host.notify_changed(LongPollNamespace.BACKEND_CONFIGS, {})
 
         async def listen_for_change(self, snapshot_ids):
             return await self.host.listen_for_change(snapshot_ids)
 
         def set_traffic(self, endpoint, traffic_policy):
-            self.host.notify_changed(LongPollNamespace.TRAFFIC_POLICIES,
-                                     {endpoint: traffic_policy})
+            self.host.notify_changed(
+                (LongPollNamespace.TRAFFIC_POLICIES, endpoint), traffic_policy)
 
         def add_new_replica(self,
                             backend_tag,
@@ -75,17 +69,21 @@ def mock_controller_with_name():
             self.backend_configs[backend_tag] = backend_config
 
             self.host.notify_changed(
-                LongPollNamespace.REPLICA_HANDLES,
-                self.backend_replicas,
+                (LongPollNamespace.REPLICA_HANDLES, backend_tag),
+                self.backend_replicas[backend_tag],
             )
-            self.host.notify_changed(LongPollNamespace.BACKEND_CONFIGS,
-                                     self.backend_configs)
+            self.host.notify_changed(
+                (LongPollNamespace.BACKEND_CONFIGS, backend_tag),
+                self.backend_configs[backend_tag],
+            )
 
         def update_backend(self, backend_tag: str,
                            backend_config: BackendConfig):
             self.backend_configs[backend_tag] = backend_config
-            self.host.notify_changed(LongPollNamespace.BACKEND_CONFIGS,
-                                     self.backend_configs)
+            self.host.notify_changed(
+                (LongPollNamespace.BACKEND_CONFIGS, backend_tag),
+                self.backend_configs[backend_tag],
+            )
 
     name = f"MockController{random.randint(0,10e4)}"
     yield name, MockControllerActor.options(name=name).remote()

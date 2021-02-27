@@ -92,10 +92,13 @@ class LongPollClient:
             return
 
         if isinstance(updates, (ray.exceptions.RayTaskError)):
-            # This can happen during shutdown where the controller is
-            # intentionally killed, the client should just gracefully
-            # exit.
-            logger.error("LongPollClient failed\n" + updates.traceback_str)
+            # This can happen during shutdown where the controller doesn't
+            # contain this key, we will just repull.
+            # NOTE(simon): should we repull or just wait in the long poll
+            # host?
+            if not isinstance(updates.as_instanceof_cause(), ValueError):
+                logger.error("LongPollHost errored\n" + updates.traceback_str)
+            self._poll_once()
             return
 
         # Before we process the updates and calling callbacks, kick off

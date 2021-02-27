@@ -199,6 +199,7 @@ class RayServeReplica:
                 (LongPollNamespace.BACKEND_CONFIGS, self.backend_tag): self.
                 _update_backend_configs,
             })
+        self.loop = asyncio.get_event_loop()
 
         self.error_counter = metrics.Count(
             "serve_backend_error_counter",
@@ -437,10 +438,13 @@ class RayServeReplica:
             reconfigure_method(user_config)
 
     def _update_backend_configs(self, new_config: BackendConfig) -> None:
-        self.config = new_config
-        self.batch_queue.set_config(self.config.max_batch_size or 1,
-                                    self.config.batch_wait_timeout)
-        self.reconfigure(self.config.user_config)
+        def perform_update():
+            self.config = new_config
+            self.batch_queue.set_config(self.config.max_batch_size or 1,
+                                        self.config.batch_wait_timeout)
+            self.reconfigure(self.config.user_config)
+
+        self.loop.call_soon_threadsafe(perform_update)
 
     async def handle_request(self, request: Query) -> asyncio.Future:
         request.tick_enter_replica = time.time()

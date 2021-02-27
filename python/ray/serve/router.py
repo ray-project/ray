@@ -1,18 +1,14 @@
 import asyncio
 import itertools
 from dataclasses import dataclass, field
-from enum import Enum
-from os import remove
-from random import Random
-from typing import Any, ChainMap, Dict, Iterable, List, Optional
+from typing import Any, Dict, Iterable, List, Optional
 
 from ray.actor import ActorHandle
-from ray.serve.common import BackendInfo, BackendTag, EndpointTag, TrafficPolicy
+from ray.serve.common import BackendTag, EndpointTag, TrafficPolicy
 from ray.serve.config import BackendConfig
 from ray.serve.endpoint_policy import EndpointPolicy, RandomEndpointPolicy
-from ray.serve.exceptions import RayServeException
 from ray.serve.long_poll import LongPollClient, LongPollNamespace
-from ray.serve.utils import compute_dict_delta, compute_iterable_delta, logger
+from ray.serve.utils import compute_iterable_delta, logger
 
 import ray
 from ray.util import metrics
@@ -51,7 +47,7 @@ class Query:
 class ReplicaSet:
     """Data structure representing a set of replica actor handles"""
 
-    def __init__(self, controller_handle, backend_tag):
+    def __init__(self, controller_handle, backend_tag, event_loop):
         self.backend_tag = backend_tag
         # NOTE(simon): We have to do this because max_concurrent_queries
         # and the replica handles come from different long poll keys.
@@ -68,7 +64,7 @@ class ReplicaSet:
         # Used to unblock this replica set waiting for free replicas. A newly
         # added replica or updated max_concurrent_queries value means the
         # query that waits on a free replica might be unblocked on.
-        self.config_updated_event = asyncio.Event()
+        self.config_updated_event = asyncio.Event(loop=event_loop)
         self.num_queued_queries = 0
         self.num_queued_queries_gauge = metrics.Gauge(
             "serve_backend_queued_queries",
@@ -88,13 +84,17 @@ class ReplicaSet:
                 update_worker_replicas,
             })
 
+    def _set_config_updated_event(self):
+        self.config_updated_event._loop.call_soon_threadsafe(
+            lambda: self.config_updated_event.set())
+
     def set_max_concurrent_queries(self, backend_config: BackendConfig):
         new_value = backend_config.max_concurrent_queries
         if new_value != self.max_concurrent_queries:
             self.max_concurrent_queries = new_value
             logger.debug(
                 f"ReplicaSet: changing max_concurrent_queries to {new_value}")
-            self.config_updated_event.set()
+            self._set_config_updated_event()
 
     def update_worker_replicas(self, worker_replicas: Iterable[ActorHandle]):
         added, removed, _ = compute_iterable_delta(
@@ -110,7 +110,7 @@ class ReplicaSet:
         if len(added) > 0 or len(removed) > 0:
             self.replica_iterator = itertools.cycle(
                 self.in_flight_queries.keys())
-            self.config_updated_event.set()
+            self._set_config_updated_event()
 
     def _try_assign_replica(self, query: Query) -> Optional[ray.ObjectRef]:
         """Try to assign query to a replica, return the object ref if succeeded
@@ -180,15 +180,13 @@ class ReplicaSet:
         return assigned_ref
 
 
-class _PendingEndpointFound(Enum):
-    """Enum for the status of pending endpoint registration."""
-    ADDED = 1
-    REMOVED = 2
-
-
 class Router:
-    def __init__(self, controller_handle: ActorHandle,
-                 endpoint_tag: EndpointTag):
+    def __init__(
+            self,
+            controller_handle: ActorHandle,
+            endpoint_tag: EndpointTag,
+            loop: asyncio.BaseEventLoop = None,
+    ):
         """Router process incoming queries: choose backend, and assign replica.
 
         Args:
@@ -198,7 +196,8 @@ class Router:
         self.endpoint_tag = endpoint_tag
         self.endpoint_policy: Optional[EndpointPolicy] = None
         self.backend_replicas: Dict[BackendTag, ReplicaSet] = dict()
-        self._pending_endpoint_registered = asyncio.Event()
+        self._pending_endpoint_registered = asyncio.Event(loop=loop)
+        self._loop = loop or asyncio.get_event_loop()
 
         # -- Metrics Registration -- #
         self.num_router_requests = metrics.Count(
@@ -215,9 +214,6 @@ class Router:
     def _update_traffic_policy(self, traffic_policy: TrafficPolicy):
         self.endpoint_policy = RandomEndpointPolicy(traffic_policy)
 
-        if not self._pending_endpoint_registered.is_set():
-            self._pending_endpoint_registered.set()
-
         backend_tags = traffic_policy.backend_tags
         added, removed, _ = compute_iterable_delta(
             self.backend_replicas.keys(),
@@ -228,9 +224,14 @@ class Router:
         for tag in removed:
             del self.backend_replicas[tag]
 
+        if not self._pending_endpoint_registered.is_set():
+            self._pending_endpoint_registered._loop.call_soon_threadsafe(
+                lambda: self._pending_endpoint_registered.set())
+
     def _get_or_create_replica_set(self, tag):
         if tag not in self.backend_replicas:
-            self.backend_replicas[tag] = ReplicaSet(self.controller, tag)
+            self.backend_replicas[tag] = ReplicaSet(self.controller, tag,
+                                                    self._loop)
         return self.backend_replicas[tag]
 
     async def assign_request(
@@ -256,7 +257,6 @@ class Router:
 
         chosen_backend, *shadow_backends = self.endpoint_policy.assign(query)
 
-        # TODO(simon): there will be race where chosen_backend isn't registed yet
         result_ref = await self._get_or_create_replica_set(
             chosen_backend).assign_replica(query)
         for backend in shadow_backends:

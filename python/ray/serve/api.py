@@ -72,12 +72,11 @@ class ThreadProxiedRouter:
         self.controller_handle = controller_handle
         self.sync = sync
         self.endpoint_tag = endpoint_tag
-        self.router = Router(controller_handle, endpoint_tag)
-
         if sync:
             self._async_loop = create_or_get_async_loop_in_thread()
         else:
             self._async_loop = asyncio.get_event_loop()
+        self.router = Router(controller_handle, endpoint_tag, self._async_loop)
 
     @property
     def async_loop(self):
@@ -528,16 +527,13 @@ class Client:
                 "to create sync handle. Learn more at https://docs.ray.io/en/"
                 "master/serve/advanced.html#sync-and-async-handles")
 
+        # NOTE(simon): this extra layer of router seems unnecessary
+        # BUT it's needed still because of the shared asyncio thread.
+        router = self._get_proxied_router(sync=sync, endpoint=endpoint_name)
         if sync:
-            handle = RayServeSyncHandle(
-                # NOTE(simon): this extra layer of router seems unnecessary
-                # BUT it's needed still because of the shared asyncio thread.
-                self._get_proxied_router(sync=sync, endpoint=endpoint_name),
-                endpoint_name)
+            handle = RayServeSyncHandle(router, endpoint_name)
         else:
-            handle = RayServeHandle(
-                self._get_proxied_router(sync=sync, endpoint=endpoint_name),
-                endpoint_name)
+            handle = RayServeHandle(router, endpoint_name)
         return handle
 
 
