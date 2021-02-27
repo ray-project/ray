@@ -905,7 +905,9 @@ TEST_F(ClusterTaskManagerTest, ArgumentEvicted) {
   AssertNoLeaks();
 }
 
-TEST_F(ClusterTaskManagerTest, ResourceTakenWhileResolving) {
+TEST_F(ClusterTaskManagerTest, FeasibleToNonFeasible) {
+  // Test the case, when resources changes in local node, the feasible task should
+  // able to transfer to infeasible task
   std::shared_ptr<MockWorker> worker =
       std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
   pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker));
