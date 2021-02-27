@@ -148,20 +148,20 @@ class KubernetesOperatorTest(unittest.TestCase):
 
             # Four pods remain
             wait_for_pods(4)
-
-            # Check job submission
-            cmd = f"kubectl -n {NAMESPACE} create -f {job_file.name}"
-            subprocess.check_call(cmd, shell=True)
-
-            cmd = f"kubectl -n {NAMESPACE} get pods --no-headers -o"\
-                " custom-columns=\":metadata.name\""
-            pods = subprocess.check_output(cmd, shell=True).decode().split()
-            job_pod = [pod for pod in pods if "job" in pod].pop()
-            time.sleep(10)
-            wait_for_job(job_pod)
-            cmd = f"kubectl -n {NAMESPACE} delete jobs --all"
-            subprocess.check_call(cmd, shell=True)
-
+#
+#            Check job submission
+            #  cmd = f"kubectl -n {NAMESPACE} create -f {job_file.name}"
+            #  subprocess.check_call(cmd, shell=True)
+#
+            #  cmd = f"kubectl -n {NAMESPACE} get pods --no-headers -o"\
+                #  " custom-columns=\":metadata.name\""
+            #  pods = subprocess.check_output(cmd, shell=True).decode().split()
+            #  job_pod = [pod for pod in pods if "job" in pod].pop()
+            #  time.sleep(10)
+            #  wait_for_job(job_pod)
+            #  cmd = f"kubectl -n {NAMESPACE} delete jobs --all"
+            #  subprocess.check_call(cmd, shell=True)
+#
             # Check that cluster updates work: increase minWorkers to 3
             # and check that one worker is created.
             example_cluster_edit = copy.deepcopy(example_cluster_config)
@@ -190,4 +190,4 @@ class KubernetesOperatorTest(unittest.TestCase):
 
 if __name__ == "__main__":
     kubernetes.config.load_kube_config()
-    sys.exit(pytest.main(["-v", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))
