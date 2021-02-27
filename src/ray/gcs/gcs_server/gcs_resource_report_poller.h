@@ -24,8 +24,17 @@ class GcsResourceReportPoller {
   void Tick();
   void GetAllResourceUsage();
   void LaunchPulls();
-  void NodeResourceReportReceived(const NodeID &node_id);
+  /* void NodeResourceReportReceived(const NodeID &node_id); */
   void PullRoundDone();
+
+
+
+
+
+
+
+
+
 
 
   std::unique_ptr<std::thread> polling_thread_;
@@ -34,8 +43,32 @@ class GcsResourceReportPoller {
   uint64_t max_concurrent_pulls_;
   std::shared_ptr<GcsResourceManager> gcs_resource_manager_;
   std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool_;
-
   boost::posix_time::milliseconds poll_period_ms_;
+
+  struct PullState {
+    NodeID node_id;
+    rpc::Address address;
+    int64_t last_pull_time;
+    std::unique_ptr<boost::asio::deadline_timer> next_pull_timer;
+  };
+
+  std::unordered_map<NodeID, PullState> nodes_;
+
+  void PullResourceReport(const NodeID &node_id);
+  void NodeResourceReportReceived(const NodeID &node_id);
+
+
+
+
+
+
+
+
+
+
+
+
+  /* boost::posix_time::milliseconds poll_period_ms_; */
   boost::asio::deadline_timer poll_timer_;
 
   // A global lock for internal operations. This lock is shared between the main thread
