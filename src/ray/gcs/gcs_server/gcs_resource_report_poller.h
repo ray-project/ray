@@ -53,8 +53,9 @@ class GcsResourceReportPoller {
   };
 
   std::unordered_map<NodeID, PullState> nodes_;
+  std::deque<NodeID> to_pull;
 
-  void PullResourceReport(const NodeID &node_id);
+  void TryPullResourceReport(const NodeID &node_id);
   void NodeResourceReportReceived(const NodeID &node_id);
 
 

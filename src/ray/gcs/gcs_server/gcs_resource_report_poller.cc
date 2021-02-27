@@ -48,12 +48,17 @@ void GcsResourceReportPoller::HandleNodeAdded(
   state.next_pull_timer = std::unique_ptr<boost::asio::deadline_timer>(new boost::asio::deadline_timer(polling_service_));
 
   polling_service_.post([&, node_id] () {
-                          PullResourceReport(node_id);
+                          TryPullResourceReport(node_id);
                         });
 }
 
-void GcsResourceReportPoller::PullResourceReport(const NodeID &node_id) {
+void GcsResourceReportPoller::TryPullResourceReport(const NodeID &node_id) {
   absl::MutexLock guard(&mutex_);
+
+
+
+
+
   auto it = nodes_.find(node_id);
   if (it == nodes_.end()) {
     RAY_LOG(DEBUG) << "Update finished, but node was already removed from the cluster. Ignoring.";
@@ -85,7 +90,7 @@ void GcsResourceReportPoller::NodeResourceReportReceived(const NodeID &node_id) 
   state.next_pull_timer->expires_from_now(poll_period_ms_);
   state.next_pull_timer->async_wait([&, node_id] (const boost::system::error_code &error){
                                      RAY_CHECK(!error) << "Timer failed for no apparent reason." << error.message();
-                                     PullResourceReport(node_id);
+                                     TryPullResourceReport(node_id);
                                    });
 }
 
