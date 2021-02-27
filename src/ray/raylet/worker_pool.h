@@ -123,6 +123,10 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// Destructor responsible for freeing a set of workers owned by this class.
   virtual ~WorkerPool();
 
+  /// Set the node manager port.
+  /// \param node_manager_port The port Raylet uses for listening to incoming connections.
+  void SetNodeManagerPort(int node_manager_port);
+
   /// Handles the event that a job is started.
   ///
   /// \param job_id ID of the started job.
@@ -475,6 +479,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// Keeps track of unused ports that newly-created workers can bind on.
   /// If null, workers will not be passed ports and will choose them randomly.
   std::unique_ptr<std::queue<int>> free_ports_;
+  /// The port Raylet uses for listening to incoming connections.
+  int node_manager_port_ = 0;
   /// A client connection to the GCS.
   std::shared_ptr<gcs::GcsClient> gcs_client_;
   /// The callback that will be triggered once it times out to start a worker.
