@@ -25,7 +25,7 @@ def get_nccl_store_name(group_name):
 class ENV(Enum):
     """ray.util.collective environment variables."""
 
-    NCCL_USE_MULTISTREAM = auto(), lambda v: (v or "False") == "True"
+    NCCL_USE_MULTISTREAM = auto(), lambda v: (v or "True") == "True"
 
     @property
     def val(self):
