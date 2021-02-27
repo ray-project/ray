@@ -159,7 +159,8 @@ void DependencyManager::CancelGetRequest(const WorkerID &worker_id) {
 /// Request dependencies for a queued task.
 bool DependencyManager::RequestTaskDependencies(
     const TaskID &task_id, const std::vector<rpc::ObjectReference> &required_objects) {
-  RAY_LOG(DEBUG) << "Adding dependencies for task " << task_id;
+  RAY_LOG(DEBUG) << "Adding dependencies for task " << task_id
+                 << ". Required objects length: " << required_objects.size();
   auto inserted = queued_task_requests_.emplace(task_id, required_objects);
   RAY_CHECK(inserted.second) << "Task depedencies can be requested only once per task.";
   auto &task_entry = inserted.first->second;

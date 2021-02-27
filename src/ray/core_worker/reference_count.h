@@ -434,8 +434,23 @@ class ReferenceCounter : public ReferenceCounterInterface,
   bool HandleObjectSpilled(const ObjectID &object_id, const std::string spilled_url,
                            const NodeID &spilled_node_id, int64_t size, bool release);
 
-  /// Get locality data for object.
+  /// Get locality data for object. This is used by the leasing policy to implement
+  /// locality-aware leasing.
+  ///
+  /// \param[in] object_id Object whose locality data we want.
+  /// \return Locality data.
   absl::optional<LocalityData> GetLocalityData(const ObjectID &object_id);
+
+  /// Report locality data for object. This is used by the FutureResolver to report
+  /// locality data for borrowed refs.
+  ///
+  /// \param[in] object_id Object whose locality data we're reporting.
+  /// \param[in] locations Locations of the object.
+  /// \param[in] object_size Size of the object.
+  /// \return True if the reference exists, false otherwise.
+  bool ReportLocalityData(const ObjectID &object_id,
+                          const absl::flat_hash_set<NodeID> &locations,
+                          uint64_t object_size);
 
  private:
   struct Reference {
