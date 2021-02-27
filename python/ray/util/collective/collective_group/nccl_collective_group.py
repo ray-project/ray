@@ -17,7 +17,6 @@ from ray.util.collective.types import AllReduceOptions, \
 from ray.util.collective.collective_group.cuda_stream import \
     get_stream_pool
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -425,7 +424,8 @@ class NCCLGroup(BaseGroup):
                 # request a stream from the pool
                 # note the device_idx is absolute index.
                 streams[i] = get_stream_pool(device).get_stream()
-                events[i] = cupy.cuda.Event() # TODO(Fu): double check the parameters
+                # TODO(Fu): double check the parameters
+                events[i] = cupy.cuda.Event()
         nccl_util.groupEnd()
         # TODO(Fu): lock
         self._dev_comm_map[comm_key] = comms
@@ -436,17 +436,12 @@ class NCCLGroup(BaseGroup):
     @staticmethod
     def _sync_streams(device_list, events, streams):
         """Let NCCL streams wait for current streams for every device."""
-        # FIXME: This behavior is different from nccl document. It seems like
-        # cupy allocate tensors on null streams.
-        # TODO(Fu): nccl document says we need recordStream besides calling this function
-        
+        # TODO(Fu): recordStream besides calling this function?
         if ENV.NCCL_USE_MULTISTREAM.val:
             for i, device in enumerate(device_list):
                 with nccl_util.Device(device):
-                    stream: cupy.cuda.Stream = streams[i]
-                    event: cupy.cuda.Event = events[i]
-                    event.record(cupy.cuda.get_current_stream())
-                    stream.wait_event(event)
+                    events[i].record(cupy.cuda.get_current_stream())
+                    streams[i].wait_event(events[i])
         else:
             cupy.cuda.Stream.null.synchronize()
 
@@ -593,23 +588,17 @@ class NCCLGroup(BaseGroup):
         # Make the collective call
         if preprocess_fn:
             preprocess_fn(streams)
+
         nccl_util.groupStart()
-        # recordStreams for synchronization as per nccl document
-        # for i, tensor in enumerate(input_tensors):
-        #     # TODO(Fu): device guard?
-        #     stream = streams[i]
-            # TODO(Fu): how to recordStreams as there are no library functions
-            # We also need to make sure input tensors are not freed before their 
-            # usages on ncclStreams finish. This can be achieved by calling 
-            # c10::cuda::CUDACachingAllocator::recordStream, which remembers the 
-            # usage stream (ncclStream), creates an event on the usage stream 
-            # when GC attempts to free the input tensor, and delays GC until that
-            # event is done.
-
-
+        # TODO(Fu): how to recordStreams as there are no library functions
+        # We also need to make sure input tensors are not freed before their
+        # usages on ncclStreams finish. This can be achieved by calling
+        # c10::cuda::CUDACachingAllocator::recordStream, which remembers the
+        # usage stream (ncclStream), creates an event on the usage stream
+        # when GC attempts to free the input tensor, and delays GC until that
+        # event is done.
         for i, tensor in enumerate(input_tensors):
             collective_fn(tensor, output_tensors[i], comms[i], streams[i])
-            
         nccl_util.groupEnd()
         if postprocess_fn:
             postprocess_fn(streams)

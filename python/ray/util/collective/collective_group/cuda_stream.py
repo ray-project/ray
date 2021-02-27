@@ -38,12 +38,13 @@ class StreamPool:
         self._pool_lock = threading.Lock()
 
     def get_stream(self):
-        """Get an available stream from pool.
+        """Get an available stream from the pool.
 
-        The function locks the stream pool and releases the lock before returning.
+        The function locks the stream pool and releases the lock before
+        returning.
 
         Returns:
-            stream (cupy.cuda.Stream): the stream on which the kernel should be assigned to.
+            stream (cupy.cuda.Stream): the returned stream from pool.
         """
 
         # check the flag
@@ -66,7 +67,8 @@ class StreamPool:
                 # this is the only place where self._pool will be written.
                 if ENV.NCCL_USE_MULTISTREAM.val:
                     logger.debug("NCCL multistream enabled.")
-                    self._pool[i] = cupy.cuda.Stream(null=False, non_blocking=False)
+                    self._pool[i] = cupy.cuda.Stream(
+                        null=False, non_blocking=False)
                 else:
                     logger.debug("NCCL multistream disabled.")
                     self._pool[i] = cupy.cuda.Stream.null
