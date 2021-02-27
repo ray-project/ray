@@ -20,6 +20,7 @@
 #include <chrono>
 #include <mutex>
 #include <random>
+#include "absl/time/clock.h"
 
 #include "ray/common/constants.h"
 #include "ray/common/status.h"
@@ -126,8 +127,9 @@ ActorID ActorID::Of(const JobID &job_id, const TaskID &parent_task_id,
   // NOTE(swang): Include the current time in the hash for the actor ID so that
   // we avoid duplicating a previous actor ID, which is not allowed by the GCS.
   // See https://github.com/ray-project/ray/issues/10481.
-  auto data = GenerateUniqueBytes(job_id, parent_task_id, parent_task_counter,
-                                  current_time_ms(), ActorID::kUniqueBytesLength);
+  auto data =
+      GenerateUniqueBytes(job_id, parent_task_id, parent_task_counter,
+                          absl::GetCurrentTimeNanos(), ActorID::kUniqueBytesLength);
   std::copy_n(job_id.Data(), JobID::kLength, std::back_inserter(data));
   RAY_CHECK(data.size() == kLength);
   return ActorID::FromBinary(data);
