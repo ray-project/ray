@@ -5,10 +5,8 @@ import cupy
 from ray.util.collective.collective_group import nccl_util
 from ray.util.collective.const import ENV
 
-
 NCCL_STREAM_POOL_SIZE = 32
 MAX_GPU_PER_ACTOR = 16
-
 
 logger = logging.getLogger(__name__)
 

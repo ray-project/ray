@@ -445,7 +445,6 @@ class NCCLGroup(BaseGroup):
         else:
             cupy.cuda.Stream.null.synchronize()
 
-
     def _get_nccl_p2p_communicator(self, comm_key, my_gpu_idx, peer_rank,
                                    peer_gpu_idx):
         """Create or retrieve an NCCL communicator for p2p tasks.
@@ -504,7 +503,7 @@ class NCCLGroup(BaseGroup):
             stream = get_stream_pool(my_gpu_idx).get_stream()
             event = cupy.cuda.Event()
 
-        #TODO(Fu): lock and might need to add event
+        # TODO(Fu): lock and might need to add event
         self._dev_comm_map[comm_key] = [comm]
         self._dev_streams_map[comm_key] = [stream]
         self._dev_event_map[comm_key] = [event]
@@ -637,9 +636,6 @@ class NCCLGroup(BaseGroup):
 
         # We have made sure that self.rank != peer_rank during API check.
         peer_p2p_rank = 0 if self.rank > peer_rank else 1
-        for i, tensor in enumerate(tensors):
-            stream = streams[i]
-            # TODO(Fu): recordStreams
         for i, tensor in enumerate(tensors):
             p2p_fn(tensors[i], comms[i], streams[i], peer_p2p_rank)
 
