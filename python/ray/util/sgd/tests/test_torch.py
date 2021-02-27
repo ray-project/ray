@@ -874,7 +874,7 @@ def test_iterable_model(ray_start_2_cpus, num_workers,
             model = nn.Sequential(nn.Linear(1, config.get("hidden_size", 1)))
             optimizer = IterableOptimizer(
                 model.parameters(), lr=config.get("lr", 1e-2))
-            criterion = nn.MSELoss
+            criterion = nn.MSELoss()
 
             self.model, self.optimizer, self.criterion = self.register(
                 models=model, optimizers=optimizer, criterion=criterion)

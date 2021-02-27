@@ -166,8 +166,11 @@ class TrainingOperator:
         """Helper method to return items in same format as original_items."""
         if isinstance(original_items, tuple):
             return tuple(items)
-        elif (not isinstance(original_items, cls)
-              and isinstance(original_items, Iterable)):
+        elif isinstance(original_items, Iterable):
+            if isinstance(original_items, cls):
+                assert len(items) == 1
+                return items[0]
+
             # Items is already a list.
             return items
         else:
@@ -248,9 +251,9 @@ class TrainingOperator:
             criterion (Callable, optional): Function to return loss
                 metric given features and target. If not provided,
                 must implement a custom training loop.
-            schedulers (torch.optim.lr_scheduler._LRScheduler or Iterable[
-                torch.optim.lr_scheduler._LRScheduler], optional): A learning
-                rate scheduler or multiple learning rate schedulers.
+            schedulers (torch.optim.lr_scheduler or Iterable[
+                torch.optim.lr_scheduler], optional): A learning rate
+                scheduler or multiple learning rate schedulers.
             ddp_args (dict|None): Dict containing keyword args for
                 DistributedDataParallel if distributed training is being
                 used. `module` and `device_ids` are automatically passed in,
@@ -295,7 +298,7 @@ class TrainingOperator:
         if schedulers:
             logger.debug("Registering scheduler.")
             self._schedulers = schedulers
-            if isinstance(self._schedulers, _LRScheduler):
+            if not isinstance(self._schedulers, Iterable):
                 self._schedulers = [self._schedulers]
         else:
             if isinstance(schedulers, Iterable):
