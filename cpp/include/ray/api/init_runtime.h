@@ -19,22 +19,24 @@
 namespace ray {
 namespace api {
 
-  struct InitRuntime{
-    static InitRuntime& Instance(){
-        static InitRuntime instance;
-        return instance;
-    }
+struct InitRuntime {
+  static InitRuntime &Instance() {
+    static InitRuntime instance;
+    return instance;
+  }
 
-    void Init(std::shared_ptr<RayRuntime> runtime){
-      runtime_ = runtime;
-    }
+  void Init(std::shared_ptr<RayRuntime> runtime) { runtime_ = runtime; }
 
-    std::shared_ptr<RayRuntime> Runtime(){
-        return runtime_;
-    }
+  std::shared_ptr<RayRuntime> &Runtime() { return runtime_; }
 
-    private:
-    std::shared_ptr<RayRuntime> runtime_;
-  };
-}
-}
+ private:
+  InitRuntime() = default;
+  InitRuntime(InitRuntime const &) = delete;
+  InitRuntime(InitRuntime &&) = delete;
+  InitRuntime &operator=(InitRuntime const &) = delete;
+  InitRuntime &operator=(InitRuntime &&) = delete;
+
+  std::shared_ptr<RayRuntime> runtime_;
+};
+}  // namespace api
+}  // namespace ray
