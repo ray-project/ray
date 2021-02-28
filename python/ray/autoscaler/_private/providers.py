@@ -195,16 +195,8 @@ def _get_default_config(provider_config):
         # Minimal config for compatibility with legacy-style external configs.
         return {
             "available_node_types": {
-                "head.empty": {
-                    "min_workers": 0,
-                    "max_workers": 0,
-                    "resources": {},
-                    "node_config": {},
-                },
-                "worker.empty": {
-                    "resources": {},
-                    "node_config": {},
-                }
+                "head.empty": {},
+                "worker.empty": {},
             },
             "head_node_type": "head.empty",
             "head_node": {},
