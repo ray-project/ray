@@ -292,7 +292,7 @@ MOCK_DEFAULT_CONFIG = {
                 "head_default_prop": 4
             }
         },
-        "ray.worker.small": {
+        "ray.worker.default": {
             "min_workers": 0,
             "max_workers": 2,
             "resources": {},

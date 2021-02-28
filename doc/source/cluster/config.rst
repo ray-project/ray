@@ -341,7 +341,7 @@ The key is the name of the node type, which is just for debugging purposes.
                 resources: {"CPU": 2}
                 min_workers: 0
                 max_workers: 0
-            ray.worker.small:
+            ray.worker.default:
                 node_config:
                   InstanceType: m5.large
                   InstanceMarketOptions:

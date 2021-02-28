@@ -70,7 +70,7 @@ available_node_types:
                       VolumeSize: 100
             # Additional options in the boto docs.
     # CPU workers.
-    ray.worker.small:
+    ray.worker.default:
         # This executes all commands on nodes of this type in the docker container,
         # and opens all the necessary ports to support the Ray cluster.
         docker:

@@ -65,7 +65,7 @@ available_node_types:
                 imageSku: 1804-gen2
                 imageVersion: 20.07.06
 
-    ray.worker.small:
+    ray.worker.default:
         # The minimum number of nodes of this type to launch.
         # This number should be >= 0.
         min_workers: 0

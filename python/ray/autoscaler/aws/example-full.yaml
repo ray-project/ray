@@ -83,7 +83,7 @@ available_node_types:
                   Ebs:
                       VolumeSize: 100
             # Additional options in the boto docs.
-    ray.worker.small:
+    ray.worker.default:
         # The minimum number of worker nodes of this type to launch.
         # This number should be >= 0.
         min_workers: 0

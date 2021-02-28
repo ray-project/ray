@@ -303,8 +303,8 @@ class AutoscalingConfigTest(unittest.TestCase):
         no_workers = load_test_config("test_no_workers.yaml")
         workers_prepared = prepare_config(no_workers)
         assert workers_prepared["available_node_types"][
-            "ray.worker.small"]["node_config"] ==\
-            aws_defaults["available_node_types"]["ray.worker.small"][
+            "ray.worker.default"]["node_config"] ==\
+            aws_defaults["available_node_types"]["ray.worker.default"][
                 "node_config"]
         assert workers_prepared["worker_nodes"] == {}
         # Custom head config preserved
