@@ -238,26 +238,31 @@ ray.shutdown()
 
 
 def test_not_killing_workers_that_own_objects(shutdown_only):
-    ray.init(num_cpus=2)
+    # Set the small interval for worker capping
+    # so that we can easily trigger it.
+    ray.init(num_cpus=2, _system_config={"kill_idle_workers_interval_ms": 10})
 
-    # Create a nested tasks to start 8 workers.
+    # Create a nested tasks to start 10 workers each of which owns an object.
     @ray.remote
     def nested(i):
         # The task owns an object.
-        if i > 8:
-            return [ray.put(np.ones(1*1024*1024, dtype=np.uint8))]
+        if i > 6:
+            return [ray.put(np.ones(1 * 1024 * 1024, dtype=np.uint8))]
         else:
-            return [ray.put(np.ones(1*1024*1024, dtype=np.uint8))] + ray.get(nested.remote(i+1))
+            return ([ray.put(np.ones(1 * 1024 * 1024, dtype=np.uint8))] +
+                    ray.get(nested.remote(i + 1)))
 
     ref = ray.get(nested.remote(0))
-
-    print(len(ray.state.workers()))
+    num_workers = len(ray.state.workers())
+    # Wait for worker capping. worker capping should be triggered
+    # every 10 ms, but we wait long enough to avoid a flaky test.
+    time.sleep(1)
     ref2 = ray.get(nested.remote(0))
-    print(len(ray.state.workers()))
-
-    print(ref)
-    import time
-    time.sleep(10)
+    # New workers shouldn't be registered because we reused the
+    # previous workers that own objects.
+    assert num_workers == len(ray.state.workers())
+    assert len(ref) == 8
+    assert len(ref2) == 8
 
 
 if __name__ == "__main__":
