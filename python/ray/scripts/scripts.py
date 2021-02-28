@@ -1376,7 +1376,7 @@ terminal width is less than 137 characters.")
     "--stats-only",
     is_flag=True,
     default=False,
-    help="Display node stats store summary only.")
+    help="Display plasma store stats only.")
 def memory(address, redis_password, group_by, sort_by, no_format, stats_only):
     """Print object references held in a Ray cluster."""
     if not address:
