@@ -1366,24 +1366,25 @@ def timeline(address):
     help="Sort object references in ascending order by a SortingType \
 (e.g. PID, OBJECT_SIZE, or REFERENCE_TYPE).")
 @click.option(
-    "--store-true",
-    type=bool,
-    default=False,
-    help="Display node stats store summary only.")
-@click.option(
     "--line-wrap",
+    is_flag=True,
     type=bool,
     default=True,
-    help="Wrap lines when displaying output. \
-Terminal must be sufficiently large (137 characters).")
-def memory(address, redis_password, group_by, sort_by, line_wrap, store_true):
-    """Print object references held in a Ray cluster."""
+    help="Wrap lines when displaying output.")
+@click.option(
+    "--stats-only",
+    is_flag=True,
+    default=False,
+    help="Display node stats store summary only.")
+def memory(address, redis_password, group_by, sort_by, line_wrap, stats_only):
+    """Print object references held in a Ray cluster. For best \
+experience, terminal should be sufficiently large (> 137 characters)."""
     if not address:
         address = services.get_ray_address_to_use_or_die()
     time = datetime.now()
     header = "=" * 8 + f" Object references status: {time} " + "=" * 8
     mem_stats = memory_summary_wrapper(address, redis_password, group_by,
-                                       sort_by, line_wrap, store_true)
+                                       sort_by, line_wrap, stats_only)
     print(f"{header}\n{mem_stats}")
 
 
