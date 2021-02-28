@@ -1,10 +1,26 @@
 
 #pragma once
 
+#include <ray/api/arguments.h>
+#include <ray/api/exec_funcs.h>
+
 #include "ray/core.h"
 
 namespace ray {
 namespace api {
+
+template <typename T>
+struct FilterArgType {
+  using type = T;
+};
+
+template <typename T>
+struct FilterArgType<ObjectRef<T>> {
+  using type = T;
+};
+
+template <typename ActorType, typename ReturnType, typename... Args>
+using ActorFunc = ReturnType (ActorType::*)(Args...);
 
 /// A handle to an actor which can be used to invoke a remote actor method, with the
 /// `Call` method.
@@ -35,6 +51,21 @@ class ActorHandle {
 };
 
 // ---------- implementation ----------
+template <typename ReturnType, typename ActorType, typename FuncType,
+          typename ExecFuncType, typename... ArgTypes>
+inline ActorTaskCaller<ReturnType> CallActorInternal(FuncType &actor_func,
+                                                     ExecFuncType &exec_func,
+                                                     ActorHandle<ActorType> &actor,
+                                                     ArgTypes &... args) {
+  std::vector<std::unique_ptr<::ray::TaskArg>> task_args;
+  Arguments::WrapArgs(&task_args, args...);
+  RemoteFunctionPtrHolder ptr;
+  MemberFunctionPtrHolder holder = *(MemberFunctionPtrHolder *)(&actor_func);
+  ptr.function_pointer = reinterpret_cast<uintptr_t>(holder.value[0]);
+  ptr.exec_function_pointer = reinterpret_cast<uintptr_t>(exec_func);
+  return ActorTaskCaller<ReturnType>(runtime_.get(), actor.ID(), ptr,
+                                     std::move(task_args));
+}
 
 template <typename ActorType>
 ActorHandle<ActorType>::ActorHandle() {}
@@ -54,7 +85,10 @@ template <typename ReturnType, typename... Args>
 ActorTaskCaller<ReturnType> ActorHandle<ActorType>::Task(
     ActorFunc<ActorType, ReturnType, typename FilterArgType<Args>::type...> actor_func,
     Args... args) {
-  return Ray::Task(actor_func, *this, args...);
+  return CallActorInternal<ReturnType, ActorType>(
+      actor_func,
+      ActorExecFunction<ReturnType, ActorType, typename FilterArgType<Args>::type...>,
+      *this, args...);
 }
 
 }  // namespace api

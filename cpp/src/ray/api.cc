@@ -7,8 +7,6 @@
 namespace ray {
 namespace api {
 
-std::shared_ptr<RayRuntime> Ray::runtime_ = nullptr;
-
 std::once_flag Ray::is_inited_;
 void Ray::Init() {
   std::call_once(is_inited_,
