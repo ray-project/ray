@@ -127,10 +127,15 @@ def fillout_defaults(config: Dict[str, Any]) -> Dict[str, Any]:
 
 def merge_legacy_yaml_with_defaults(
         merged_config: Dict[str, Any]) -> Dict[str, Any]:
+    """Rewrite legacy config's available node types after it has been merged
+    with defaults yaml.
+    """
     logger.info("Converting legacy cluster config to multi node types.")
 
     # Get default head and worker types.
     default_head_type = merged_config["head_node_type"]
+    # Default configs are assumed to have two node types -- one for the head
+    # and one for the workers.
     default_worker_type = (merged_config["available_node_types"].keys() -
                            {default_head_type}).pop()
 
