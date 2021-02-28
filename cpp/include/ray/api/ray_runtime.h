@@ -44,9 +44,5 @@ class RayRuntime {
                              std::vector<std::unique_ptr<::ray::TaskArg>> &args) = 0;
 };
 
-static std::shared_ptr<RayRuntime> runtime_ = nullptr;
-inline static std::shared_ptr<msgpack::sbuffer> Get(const ObjectID &id) {
-  return runtime_->Get(id);
-}
 }  // namespace api
 }  // namespace ray

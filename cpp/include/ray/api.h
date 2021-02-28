@@ -1,6 +1,7 @@
 
 #pragma once
 
+#include <ray/api/init_runtime.h>
 #include <ray/api/ray_runtime.h>
 #include <ray/api/object_ref.h>
 #include <ray/api/exec_funcs.h>
@@ -94,6 +95,9 @@ class Ray {
 #include "api/generated/create_actors.generated.h"
 
  private:
+
+  static std::shared_ptr<RayRuntime> runtime_;
+
   static std::once_flag is_inited_;
 
   template <typename ReturnType, typename FuncType, typename ExecFuncType,
