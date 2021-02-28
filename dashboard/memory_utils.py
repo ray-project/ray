@@ -396,7 +396,7 @@ def get_memory_summary(redis_address, redis_password, group_by, sort_by,
         for entry in group["entries"]:
             entry["object_size"] = str(
                 entry["object_size"]
-            ) + " MiB" if entry["object_size"] > -1 else "?"
+            ) + " B" if entry["object_size"] > -1 else "?"
             num_lines = 1
             if size > line_wrap_threshold and line_wrap:
                 call_site_length = 22

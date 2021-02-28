@@ -264,7 +264,7 @@ def test_memory_used_output(ray_start_regular):
     address = ray_start_regular["redis_address"]
 
     import numpy as np
-    ref = ray.put(np.ones(8 * 1024 * 1024, dtype=np.int8))
+    ray.put(np.ones(8 * 1024 * 1024, dtype=np.int8))
 
     info = memory_summary(address)
     print(info)
