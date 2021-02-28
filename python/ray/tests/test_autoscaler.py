@@ -1,4 +1,5 @@
 import json
+import jsonschema
 import os
 import shutil
 from subprocess import CalledProcessError
@@ -1693,6 +1694,28 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler = StandardAutoscaler(
             config_path, LoadMetrics(), max_failures=0, update_interval_s=0)
         assert isinstance(autoscaler.provider, NodeProvider)
+
+    def testLegacyExternalNodeScalerMissingFields(self):
+        """Should fail to validate legacy external config with missing
+        head_node, worker_nodes, or both."""
+        external_config = copy.deepcopy(SMALL_CLUSTER)
+        external_config["provider"] = {
+            "type": "external",
+            "module": "ray.autoscaler.node_provider.NodeProvider",
+        }
+
+        missing_workers, missing_head, missing_both = [
+            copy.deepcopy(external_config) for _ in range(3)
+        ]
+        del missing_workers["worker_nodes"]
+        del missing_head["head_node"]
+        del missing_both["worker_nodes"]
+        del missing_both["head_node"]
+
+        for faulty_config in missing_workers, missing_head, missing_both:
+            faulty_config = prepare_config(faulty_config)
+            with pytest.raises(jsonschema.ValidationError):
+                validate_config(faulty_config)
 
     def testExternalNodeScalerWrongImport(self):
         config = SMALL_CLUSTER.copy()
