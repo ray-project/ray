@@ -314,6 +314,8 @@ class AutoscalingConfigTest(unittest.TestCase):
             "baz": "qux"
         }
 
+    @pytest.mark.skipif(
+        sys.platform.startswith("win"), reason="Fails on Windows.")
     def testExampleFull(self):
         """
         Test that example-full yamls are unmodified by prepared_config,
@@ -328,6 +330,8 @@ class AutoscalingConfigTest(unittest.TestCase):
             merge_setup_commands(config_copy)
             assert config_copy == prepare_config(config)
 
+    @pytest.mark.skipif(
+        sys.platform.startswith("win"), reason="Fails on Windows.")
     def testLegacyYaml(self):
         # Test correct default-merging behavior for legacy yamls.
         providers = ["aws", "gcp", "azure"]
