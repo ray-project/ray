@@ -383,7 +383,7 @@ def get_memory_summary(redis_address, redis_password, group_by, sort_by,
         # Group summary
         summary = group["summary"]
         summary["total_object_size"] = str(
-            summary["total_object_size"]) + " MiB"
+            summary["total_object_size"]) + " B"
         mem += f"--- Summary for {group_by}: {key} ---\n"
         mem += summary_string\
             .format(*summary_labels)
