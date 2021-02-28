@@ -1375,7 +1375,7 @@ def timeline(address):
     type=bool,
     default=True,
     help="Wrap lines when displaying output. \
-Terminal must be sufficiently large.")
+Terminal must be sufficiently large (137 characters).")
 def memory(address, redis_password, group_by, sort_by, line_wrap, store_true):
     """Print object references held in a Ray cluster."""
     if not address:
