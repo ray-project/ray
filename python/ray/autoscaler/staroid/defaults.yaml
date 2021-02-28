@@ -182,7 +182,6 @@ available_node_types:
 
     ray.worker.default:
         min_workers: 0
-        max_workers: 2
         resources: {"CPU": 1}
         # Kubernetes pod config for worker node pods.
         node_config:
