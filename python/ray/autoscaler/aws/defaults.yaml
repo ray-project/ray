@@ -2,7 +2,7 @@
 cluster_name: default
 
 # The maximum number of workers nodes to launch in addition to the head
-# node. This takes precedence over min_workers.
+# node.
 max_workers: 2
 
 # The autoscaler will scale up the cluster faster with higher upscaling speed.
