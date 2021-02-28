@@ -264,12 +264,12 @@ def test_memory_used_output(ray_start_regular):
     address = ray_start_regular["redis_address"]
 
     import numpy as np
-    ray.put(np.ones(8 * 1024 * 1024, dtype=np.int8))
+    _ = ray.put(np.ones(8 * 1024 * 1024, dtype=np.int8))
 
     info = memory_summary(address)
     print(info)
     assert count(info, "Plasma memory usage 8 MiB") == 1, info
-    assert count(info, "8388861 B") == 1, info
+    assert count(info, "8388861 B") == 2, info
 
 
 if __name__ == "__main__":
