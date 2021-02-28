@@ -767,9 +767,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// \param disconnect_type The reason to disconnect the specified client.
   /// \param client_error_message Extra error messages about this disconnection
   /// \return Void.
-  void DisconnectClient(const std::shared_ptr<ClientConnection> &client,
-                        rpc::WorkerExitType disconnect_type,
-                        const std::string &client_error_message);
+  void DisconnectClient(
+      const std::shared_ptr<ClientConnection> &client,
+      rpc::WorkerExitType disconnect_type,
+      const std::shared_ptr<rpc::RayException> &creation_task_exception = nullptr);
 
   void DisconnectClient(const std::shared_ptr<ClientConnection> &client);
   /// The helper to dump the debug state of the cluster task manater.

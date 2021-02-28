@@ -18,6 +18,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "ray/common/buffer.h"
 #include "ray/common/bundle_spec.h"
 #include "ray/common/client_connection.h"
 #include "ray/common/status.h"
@@ -215,7 +216,9 @@ class RayletClient : public RayletClientInterface {
   /// propagate an error message to the driver.
   ///
   /// \return ray::Status.
-  ray::Status Disconnect(rpc::WorkerExitType exit_type, const std::string error_message);
+  ray::Status Disconnect(
+      rpc::WorkerExitType exit_type,
+      const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes);
 
   /// Tell the raylet which port this worker's gRPC server is listening on.
   ///

@@ -34,6 +34,7 @@ from ray.includes.common cimport (
     CWorkerType,
     CLanguage,
     CGcsClientOptions,
+    LocalMemoryBuffer,
 )
 from ray.includes.function_descriptor cimport (
     CFunctionDescriptor,
@@ -237,7 +238,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             const c_vector[CObjectID] &return_ids,
             const c_string debugger_breakpoint,
             c_vector[shared_ptr[CRayObject]] *returns,
-            c_string &error_message) nogil
+            shared_ptr[LocalMemoryBuffer] &creation_task_exception_pb_bytes)
          ) task_execution_callback
         (void(const CWorkerID &) nogil) on_worker_shutdown
         (CRayStatus() nogil) check_signals

@@ -100,18 +100,18 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spe
   } else {
     // Do not hold the lock while calling into task_finisher_.
     task_finisher_->MarkTaskCanceled(task_spec.TaskId());
-    std::string death_info;
+    std::shared_ptr<rpc::RayException> creation_task_exception = nullptr;
     {
       absl::MutexLock lock(&mu_);
       auto queue = client_queues_.find(task_spec.ActorId());
-      death_info = queue->second.death_info;
+      creation_task_exception = queue->second.creation_task_exception;
     }
-    std::string error_message = "cancelling task of dead actor, death_info=" + death_info;
-    auto status = Status::IOError(error_message);
+    auto status = Status::IOError("cancelling task of dead actor");
     // No need to increment the number of completed tasks since the actor is
     // dead.
-    RAY_UNUSED(!task_finisher_->PendingTaskFailed(
-        task_spec.TaskId(), rpc::ErrorType::ACTOR_DIED, &status, error_message));
+    RAY_UNUSED(!task_finisher_->PendingTaskFailed(task_spec.TaskId(),
+                                                  rpc::ErrorType::ACTOR_DIED, &status,
+                                                  creation_task_exception));
   }
 
   // If the task submission subsequently fails, then the client will receive
@@ -178,9 +178,9 @@ void CoreWorkerDirectActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
   SendPendingTasks(actor_id);
 }
 
-void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(const ActorID &actor_id,
-                                                         int64_t num_restarts, bool dead,
-                                                         const std::string &death_info) {
+void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
+    const ActorID &actor_id, int64_t num_restarts, bool dead,
+    const std::shared_ptr<rpc::RayException> &creation_task_exception) {
   RAY_LOG(DEBUG) << "Disconnecting from actor " << actor_id;
   absl::MutexLock lock(&mu_);
   auto queue = client_queues_.find(actor_id);
@@ -199,33 +199,32 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(const ActorID &actor_id
 
   if (dead) {
     queue->second.state = rpc::ActorTableData::DEAD;
-    queue->second.death_info = death_info;
+    queue->second.creation_task_exception = creation_task_exception;
     // If there are pending requests, treat the pending tasks as failed.
     RAY_LOG(INFO) << "Failing pending tasks for actor " << actor_id;
     auto &requests = queue->second.requests;
     auto head = requests.begin();
 
-    std::string error_message =
-        "cancelling all pending tasks of dead actor, death_info=" + death_info;
-    auto status = Status::IOError(error_message);
+    auto status = Status::IOError("cancelling all pending tasks of dead actor");
     while (head != requests.end()) {
       const auto &task_spec = head->second.first;
       task_finisher_->MarkTaskCanceled(task_spec.TaskId());
       // No need to increment the number of completed tasks since the actor is
       // dead.
-      RAY_UNUSED(!task_finisher_->PendingTaskFailed(
-          task_spec.TaskId(), rpc::ErrorType::ACTOR_DIED, &status, error_message));
+      RAY_UNUSED(!task_finisher_->PendingTaskFailed(task_spec.TaskId(),
+                                                    rpc::ErrorType::ACTOR_DIED, &status,
+                                                    creation_task_exception));
       head = requests.erase(head);
     }
 
     auto &wait_for_death_info_tasks = queue->second.wait_for_death_info_tasks;
 
-    RAY_LOG(INFO) << "Failing tasks waiting for Death info, size="
+    RAY_LOG(INFO) << "Failing tasks waiting for death info, size="
                   << wait_for_death_info_tasks.size() << ", actor_id=" << actor_id;
     for (auto &net_err_task : wait_for_death_info_tasks) {
       RAY_UNUSED(task_finisher_->MarkPendingTaskFailed(
           net_err_task.second.TaskId(), net_err_task.second, rpc::ErrorType::ACTOR_DIED,
-          error_message));
+          creation_task_exception));
     }
 
     // No need to clean up tasks that have been sent and are waiting for
@@ -248,9 +247,8 @@ void CoreWorkerDirectActorTaskSubmitter::CheckTimeoutTasks() {
     while (deque_itr != queue.wait_for_death_info_tasks.end() &&
            /*timeout timestamp*/ deque_itr->first < current_time_ms()) {
       auto task_spec = deque_itr->second;
-      task_finisher_->MarkPendingTaskFailed(
-          task_spec.TaskId(), task_spec, rpc::ErrorType::ACTOR_DIED,
-          "Network error, peer actor doesn't response.");
+      task_finisher_->MarkPendingTaskFailed(task_spec.TaskId(), task_spec,
+                                            rpc::ErrorType::ACTOR_DIED);
       deque_itr = queue.wait_for_death_info_tasks.erase(deque_itr);
     }
   }
@@ -355,7 +353,7 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(const ClientQueue &queue,
 
           bool immediately_mark_object_fail = (queue.state == rpc::ActorTableData::DEAD);
           bool will_retry = task_finisher_->PendingTaskFailed(
-              task_id, rpc::ErrorType::ACTOR_DIED, &status, queue.death_info,
+              task_id, rpc::ErrorType::ACTOR_DIED, &status, queue.creation_task_exception,
               immediately_mark_object_fail);
           if (will_retry) {
             increment_completed_tasks = false;

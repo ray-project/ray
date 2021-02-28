@@ -617,17 +617,21 @@ void CoreWorker::Shutdown() {
   }
 }
 
-void CoreWorker::Disconnect(rpc::WorkerExitType exit_type,
-                            const std::string &error_message) {
+void CoreWorker::Disconnect(
+    rpc::WorkerExitType exit_type,
+    const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes) {
   if (connected_) {
     connected_ = false;
     if (local_raylet_client_) {
-      RAY_IGNORE_EXPR(local_raylet_client_->Disconnect(exit_type, error_message));
+      RAY_IGNORE_EXPR(
+          local_raylet_client_->Disconnect(exit_type, creation_task_exception_pb_bytes));
     }
   }
 }
 
-void CoreWorker::Exit(rpc::WorkerExitType exit_type, const std::string &error_message) {
+void CoreWorker::Exit(
+    rpc::WorkerExitType exit_type,
+    const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes) {
   RAY_LOG(INFO) << "Exit signal received, this process will exit after all outstanding "
                    "tasks have finished"
                 << ", exit_type=" << rpc::WorkerExitType_Name(exit_type);
@@ -637,15 +641,15 @@ void CoreWorker::Exit(rpc::WorkerExitType exit_type, const std::string &error_me
       local_raylet_client_->NotifyDirectCallTaskBlocked(/*release_resources*/ true));
 
   // Callback to shutdown.
-  auto shutdown = [this, exit_type, error_message]() {
+  auto shutdown = [this, exit_type, creation_task_exception_pb_bytes]() {
     // To avoid problems, make sure shutdown is always called from the same
     // event loop each time.
-    task_execution_service_.post([this, exit_type, error_message]() {
+    task_execution_service_.post([this, exit_type, creation_task_exception_pb_bytes]() {
       if (exit_type == rpc::WorkerExitType::CREATION_TASK_ERROR ||
           exit_type == rpc::WorkerExitType::INTENDED_EXIT) {
         // Notify the raylet about this exit.
         // Only CREATION_TASK_ERROR and INTENDED_EXIT needs to disconnect manually.
-        Disconnect(exit_type, error_message);
+        Disconnect(exit_type, creation_task_exception_pb_bytes);
       }
       Shutdown();
     });
@@ -1903,12 +1907,13 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
   // worker ID for the current thread.
   CoreWorkerProcess::SetCurrentThreadWorkerId(GetWorkerID());
 
-  std::string error_message;
+  std::shared_ptr<LocalMemoryBuffer> creation_task_exception_pb_bytes = nullptr;
 
   status = options_.task_execution_callback(
       task_type, task_spec.GetName(), func,
       task_spec.GetRequiredResources().GetResourceMap(), args, arg_reference_ids,
-      return_ids, task_spec.GetDebuggerBreakpoint(), return_objects, error_message);
+      return_ids, task_spec.GetDebuggerBreakpoint(), return_objects,
+      creation_task_exception_pb_bytes);
 
   absl::optional<rpc::Address> caller_address(
       options_.is_local_mode ? absl::optional<rpc::Address>()
@@ -1970,11 +1975,11 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
                  << ", status=" << status;
 
   if (status.IsCreationTaskError()) {
-    Exit(rpc::WorkerExitType::CREATION_TASK_ERROR, error_message);
+    Exit(rpc::WorkerExitType::CREATION_TASK_ERROR, creation_task_exception_pb_bytes);
   } else if (status.IsIntentionalSystemExit()) {
-    Exit(rpc::WorkerExitType::INTENDED_EXIT, error_message);
+    Exit(rpc::WorkerExitType::INTENDED_EXIT, creation_task_exception_pb_bytes);
   } else if (status.IsUnexpectedSystemExit()) {
-    Exit(rpc::WorkerExitType::SYSTEM_ERROR_EXIT, error_message);
+    Exit(rpc::WorkerExitType::SYSTEM_ERROR_EXIT, creation_task_exception_pb_bytes);
   } else if (!status.ok()) {
     RAY_LOG(FATAL) << "Unexpected task status type : " << status;
   }
@@ -2413,7 +2418,7 @@ void CoreWorker::HandleKillActor(const rpc::KillActorRequest &request,
     // core dumps.
     _Exit(1);
   } else {
-    Exit(rpc::WorkerExitType::INTENDED_EXIT, "Worker was intentionally killed.");
+    Exit(rpc::WorkerExitType::INTENDED_EXIT);
   }
 }
 
@@ -2570,7 +2575,7 @@ void CoreWorker::HandleDeleteSpilledObjects(
 void CoreWorker::HandleExit(const rpc::ExitRequest &request, rpc::ExitReply *reply,
                             rpc::SendReplyCallback send_reply_callback) {
   send_reply_callback(Status::OK(), nullptr, nullptr);
-  Exit(rpc::WorkerExitType::INTENDED_EXIT, "Worker exit in CoreWorker::HandleExit.");
+  Exit(rpc::WorkerExitType::INTENDED_EXIT);
 }
 
 void CoreWorker::YieldCurrentFiber(FiberEvent &event) {

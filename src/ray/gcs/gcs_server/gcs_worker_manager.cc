@@ -29,7 +29,8 @@ void GcsWorkerManager::HandleReportWorkerFailure(
              << ", node id = " << node_id << ", address = " << worker_address.ip_address()
              << ", exit_type = "
              << rpc::WorkerExitType_Name(request.worker_failure().exit_type())
-             << ", exit_info = " << request.worker_failure().exit_info();
+             << ", has creation task exception = "
+             << request.worker_failure().has_creation_task_exception();
   if (request.worker_failure().exit_type() == rpc::WorkerExitType::INTENDED_EXIT) {
     RAY_LOG(INFO) << log_stream.str();
   } else {

@@ -135,13 +135,21 @@ raylet::RayletClient::RayletClient(
   }
 }
 
-Status raylet::RayletClient::Disconnect(rpc::WorkerExitType exit_type,
-                                        const std::string error_message) {
-  RAY_LOG(DEBUG) << "RayletClient::Disconnect, error_message=" << error_message;
+Status raylet::RayletClient::Disconnect(
+    rpc::WorkerExitType exit_type,
+    const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes) {
+  RAY_LOG(DEBUG) << "RayletClient::Disconnect, exit_type="
+                 << rpc::WorkerExitType_Name(exit_type);
   flatbuffers::FlatBufferBuilder fbb;
-  auto message = protocol::CreateDisconnectClientDirect(fbb, static_cast<int>(exit_type),
-                                                        error_message.c_str());
-  fbb.Finish(message);
+  protocol::DisconnectClientBuilder builder(fbb);
+  if (creation_task_exception_pb_bytes != nullptr) {
+    auto creation_task_exception_pb_bytes_fb_vector =
+        fbb.CreateVector(creation_task_exception_pb_bytes->Data(),
+                         creation_task_exception_pb_bytes->Size());
+    builder.add_creation_task_exception_pb(creation_task_exception_pb_bytes_fb_vector);
+  }
+  builder.add_disconnect_type(static_cast<int>(exit_type));
+  fbb.Finish(builder.Finish());
   auto status = conn_->WriteMessage(MessageType::DisconnectClient, &fbb);
   // Don't be too strict for disconnection errors.
   // Just create logs and prevent it from crash.

@@ -265,9 +265,10 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
   ShutdownIfNeeded();
 }
 
-bool TaskManager::PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_type,
-                                    Status *status, const std::string &error_message,
-                                    bool immediately_mark_object_fail) {
+bool TaskManager::PendingTaskFailed(
+    const TaskID &task_id, rpc::ErrorType error_type, Status *status,
+    const std::shared_ptr<rpc::RayException> &creation_task_exception,
+    bool immediately_mark_object_fail) {
   // Note that this might be the __ray_terminate__ task, so we don't log
   // loudly with ERROR here.
   RAY_LOG(DEBUG) << "Task " << task_id << " failed with error "
@@ -332,7 +333,7 @@ bool TaskManager::PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_
     RemoveFinishedTaskReferences(spec, release_lineage, rpc::Address(),
                                  ReferenceCounter::ReferenceTableProto());
     if (immediately_mark_object_fail) {
-      MarkPendingTaskFailed(task_id, spec, error_type, error_message);
+      MarkPendingTaskFailed(task_id, spec, error_type, creation_task_exception);
     }
   }
 
@@ -438,16 +439,18 @@ bool TaskManager::MarkTaskCanceled(const TaskID &task_id) {
   return it != submissible_tasks_.end();
 }
 
-void TaskManager::MarkPendingTaskFailed(const TaskID &task_id,
-                                        const TaskSpecification &spec,
-                                        rpc::ErrorType error_type,
-                                        const std::string &error_message) {
+void TaskManager::MarkPendingTaskFailed(
+    const TaskID &task_id, const TaskSpecification &spec, rpc::ErrorType error_type,
+    const std::shared_ptr<rpc::RayException> &creation_task_exception) {
   RAY_LOG(DEBUG) << "Treat task as failed. task_id: " << task_id
                  << ", error_type: " << ErrorType_Name(error_type);
   int64_t num_returns = spec.NumReturns();
   for (int i = 0; i < num_returns; i++) {
     const auto object_id = ObjectID::FromIndex(task_id, /*index=*/i + 1);
-    RAY_UNUSED(in_memory_store_->Put(RayObject(error_type, error_message), object_id));
+    std::string serialized_exception;
+    creation_task_exception->SerializeToString(&serialized_exception);
+    RAY_UNUSED(
+        in_memory_store_->Put(RayObject(error_type, serialized_exception), object_id));
   }
 }
 

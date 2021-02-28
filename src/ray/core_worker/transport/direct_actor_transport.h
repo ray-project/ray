@@ -51,8 +51,9 @@ class CoreWorkerDirectActorTaskSubmitterInterface {
   virtual void AddActorQueueIfNotExists(const ActorID &actor_id) = 0;
   virtual void ConnectActor(const ActorID &actor_id, const rpc::Address &address,
                             int64_t num_restarts) = 0;
-  virtual void DisconnectActor(const ActorID &actor_id, int64_t num_restarts, bool dead,
-                               const std::string &death_info) = 0;
+  virtual void DisconnectActor(
+      const ActorID &actor_id, int64_t num_restarts, bool dead,
+      const std::shared_ptr<rpc::RayException> &creation_task_exception = nullptr) = 0;
   virtual void KillActor(const ActorID &actor_id, bool force_kill, bool no_restart) = 0;
 
   virtual void CheckTimeoutTasks() = 0;
@@ -113,10 +114,12 @@ class CoreWorkerDirectActorTaskSubmitter
   /// ignore the command to connect.
   /// \param[in] dead Whether the actor is permanently dead. In this case, all
   /// pending tasks for the actor should be failed.
-  /// \param[in] death_info Reason why the actor is dead, only applies when
-  /// dead = true
-  void DisconnectActor(const ActorID &actor_id, int64_t num_restarts, bool dead,
-                       const std::string &death_info = "");
+  /// \param[in] creation_task_exception Reason why the actor is dead, only applies when
+  /// dead = true. If this arg is set, it means this actor died because of an exception
+  /// thrown in creation task.
+  void DisconnectActor(
+      const ActorID &actor_id, int64_t num_restarts, bool dead,
+      const std::shared_ptr<rpc::RayException> &creation_task_exception = nullptr);
 
   /// Set the timerstamp for the caller.
   void SetCallerCreationTimestamp(int64_t timestamp);
@@ -131,7 +134,7 @@ class CoreWorkerDirectActorTaskSubmitter
     /// queue will be marked failed and all other ClientQueue state is ignored.
     rpc::ActorTableData::ActorState state = rpc::ActorTableData::DEPENDENCIES_UNREADY;
     /// Only applies when state=DEAD.
-    std::string death_info;
+    std::shared_ptr<rpc::RayException> creation_task_exception = nullptr;
     /// How many times this actor has been restarted before. Starts at -1 to
     /// indicate that the actor is not yet created. This is used to drop stale
     /// messages from the GCS.

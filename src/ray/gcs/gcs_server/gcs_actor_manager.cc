@@ -542,17 +542,17 @@ void GcsActorManager::CollectStats() const {
 
 void GcsActorManager::OnWorkerDead(const ray::NodeID &node_id,
                                    const ray::WorkerID &worker_id) {
-  OnWorkerDead(node_id, worker_id, rpc::WorkerExitType::SYSTEM_ERROR_EXIT,
-               "No message avaliable.");
+  OnWorkerDead(node_id, worker_id, rpc::WorkerExitType::SYSTEM_ERROR_EXIT);
 }
 
-void GcsActorManager::OnWorkerDead(const ray::NodeID &node_id,
-                                   const ray::WorkerID &worker_id,
-                                   const rpc::WorkerExitType disconnect_type,
-                                   const std::string &exit_info) {
+void GcsActorManager::OnWorkerDead(
+    const ray::NodeID &node_id, const ray::WorkerID &worker_id,
+    const rpc::WorkerExitType disconnect_type,
+    const std::shared_ptr<rpc::RayException> &creation_task_exception) {
   RAY_LOG(INFO) << "Worker " << worker_id << " on node " << node_id
                 << " exited, type=" << rpc::WorkerExitType_Name(disconnect_type)
-                << ", exit_info=" << exit_info;
+                << ", creation_task_exception = "
+                << (creation_task_exception->formatted_exception_string());
 
   bool need_reconstruct = disconnect_type != rpc::WorkerExitType::INTENDED_EXIT &&
                           disconnect_type != rpc::WorkerExitType::CREATION_TASK_ERROR;
@@ -597,7 +597,8 @@ void GcsActorManager::OnWorkerDead(const ray::NodeID &node_id,
 
   // Otherwise, try to reconstruct the actor that was already created or in the creation
   // process.
-  ReconstructActor(actor_id, /*need_reschedule=*/need_reconstruct, exit_info);
+  ReconstructActor(actor_id, /*need_reschedule=*/need_reconstruct,
+                   creation_task_exception);
 }
 
 void GcsActorManager::OnNodeDead(const NodeID &node_id) {
@@ -647,12 +648,12 @@ void GcsActorManager::OnNodeDead(const NodeID &node_id) {
 }
 
 void GcsActorManager::ReconstructActor(const ActorID &actor_id) {
-  ReconstructActor(actor_id, /*need_reschedule=*/true,
-                   /*exit_info=*/"No exit info available.");
+  ReconstructActor(actor_id, /*need_reschedule=*/true);
 }
 
-void GcsActorManager::ReconstructActor(const ActorID &actor_id, bool need_reschedule,
-                                       const std::string &exit_info) {
+void GcsActorManager::ReconstructActor(
+    const ActorID &actor_id, bool need_reschedule,
+    const std::shared_ptr<rpc::RayException> &creation_task_exception) {
   auto &actor = registered_actors_[actor_id];
   // If the owner and this actor is dead at the same time, the actor
   // could've been destroyed and dereigstered before reconstruction.
@@ -671,7 +672,6 @@ void GcsActorManager::ReconstructActor(const ActorID &actor_id, bool need_resche
   int64_t remaining_restarts;
   // Destroy placement group owned by this actor.
   destroy_owned_placement_group_if_needed_(actor_id);
-  std::string actor_death_info = exit_info;
   if (!need_reschedule) {
     remaining_restarts = 0;
   } else if (max_restarts == -1) {
@@ -679,9 +679,6 @@ void GcsActorManager::ReconstructActor(const ActorID &actor_id, bool need_resche
   } else {
     int64_t remaining = max_restarts - num_restarts;
     remaining_restarts = std::max(remaining, static_cast<int64_t>(0));
-    if (remaining_restarts == 0) {
-      actor_death_info = "Actor is dead because max restarts exceed.";
-    }
   }
   RAY_LOG(INFO) << "Actor is failed " << actor_id << " on worker " << worker_id
                 << " at node " << node_id << ", need_reschedule = " << need_reschedule
@@ -716,7 +713,8 @@ void GcsActorManager::ReconstructActor(const ActorID &actor_id, bool need_resche
     }
 
     mutable_actor_table_data->set_state(rpc::ActorTableData::DEAD);
-    mutable_actor_table_data->set_death_info(actor_death_info);
+    mutable_actor_table_data->set_allocated_creation_task_exception(
+        new rpc::RayException(*creation_task_exception));
     mutable_actor_table_data->set_timestamp(current_sys_time_ms());
     // The backend storage is reliable in the future, so the status must be ok.
     RAY_CHECK_OK(gcs_table_storage_->ActorTable().Put(
