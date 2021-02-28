@@ -516,11 +516,15 @@ class FunctionRunner(Trainable):
             pass
 
 
-def wrap_function(train_func, warn=True):
+def wrap_function(train_func, durable=False, warn=True):
+    inherit_from = (FunctionRunner, )
+
     if hasattr(train_func, "__mixins__"):
-        inherit_from = train_func.__mixins__ + (FunctionRunner, )
-    else:
-        inherit_from = (FunctionRunner, )
+        inherit_from = train_func.__mixins__ + inherit_from
+
+    if durable:
+        from ray.tune import DurableTrainable
+        inherit_from = (DurableTrainable, ) + inherit_from
 
     func_args = inspect.getfullargspec(train_func).args
     use_checkpoint = detect_checkpoint_function(train_func)
@@ -617,7 +621,7 @@ def with_parameters(fn, **kwargs):
         )
 
     """
-    if not callable(fn):
+    if not callable(fn) or inspect.isclass(fn):
         raise ValueError(
             "`tune.with_parameters()` only works with the function API. "
             "If you want to pass parameters to Trainable _classes_, consider "
@@ -627,7 +631,7 @@ def with_parameters(fn, **kwargs):
     for k, v in kwargs.items():
         parameter_registry.put(prefix + k, v)
 
-    use_checkpoint = detect_checkpoint_function(fn)
+    use_checkpoint = detect_checkpoint_function(fn, partial=True)
     keys = list(kwargs.keys())
 
     def inner(config, checkpoint_dir=None):

@@ -394,6 +394,81 @@ We strongly advise to try reproduction on smaller toy problems first before rely
 on it for larger experiments.
 
 
+How can I avoid bottlenecks?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Sometimes you might run into a message like this:
+
+.. code-block::
+
+    The `experiment_checkpoint` operation took 2.43 seconds to complete, which may be a performance bottleneck
+
+Most commonly, the ``experiment_checkpoint`` operation is throwing this warning, but it might be something else,
+like ``process_trial_result``.
+
+These operations should usually take less than 500ms to complete. When it consistently takes longer, this might
+indicate a problem or inefficiencies. To get rid of this message, it is important to understand where it comes
+from.
+
+These are the main reasons this problem comes up:
+
+**The Trial config is very large**
+
+This is the case if you e.g. try to pass a dataset or other large object via the ``config`` parameter.
+If this is the case, the dataset is serialized and written to disk repeatedly during experiment
+checkpointing, which takes a long time.
+
+**Solution**: Use :func:`tune.with_parameters <ray.tune.with_parameters>` to pass large objects to
+function trainables via the objects store. For class trainables you can do this manually via ``ray.put()``
+and ``ray.get()``. If you need to pass a class definition, consider passing an
+indicator (e.g. a string) instead and let the trainable select the class instead. Generally, your config
+dictionary should only contain primitive types, like numbers or strings.
+
+**The Trial result is very large**
+
+This is the case if you return objects, data, or other large objects via the return value of ``step()`` in
+your class trainable or to ``tune.report()`` in your function trainable. The effect is the same as above:
+The results are repeatedly serialized and written to disk, and this can take a long time.
+
+**Solution**: Usually you should be able to write data to the trial directory instead. You can then pass a
+filename back (or assume it is a known location). The trial dir is usually the current working directory. Class
+trainables have the ``Trainable.logdir`` property and function trainables the :func:`ray.tune.get_trial_dir`
+function to retrieve the logdir. If you really have to, you can also ``ray.put()`` an object to the Ray
+object store and retrieve it with ``ray.get()`` on the other side. Generally, your result dictionary
+should only contain primitive types, like numbers or strings.
+
+**You are training a large number of trials on a cluster, or you are saving huge checkpoints**
+
+Checkpoints and logs are synced between nodes
+- usually at least to the driver on the head node, but sometimes between worker nodes if needed (e.g. when
+using :ref:`Population Based Training <tune-scheduler-pbt>`). If these checkpoints are very large (e.g. for
+NLP models), or if you are training a large number of trials, this syncing can take a long time.
+
+If nothing else is specified, syncing happens via SSH, which can lead to network overhead as connections are
+not kept open by Ray Tune.
+
+**Solution**: There are multiple solutions, depending on your needs:
+
+1. You can disable syncing to the driver in the :class:`tune.SyncConfig <ray.tune.SyncConfig>`. In this case,
+   logs and checkpoints will not be synced to the driver, so if you need to access them later, you will have to
+   transfer them where you need them manually.
+
+2. You can use the :ref:`ray.tune.durable <tune-durable-trainable>` wrapper to save logs and checkpoints to a specified `upload_dir`.
+   This is the preferred way to deal with this. All syncing will be taken care of automatically, as all nodes
+   are able to access the cloud storage. Additionally, your results will be safe, so even when you're working on
+   pre-emptible instances, you won't lose any of your data.
+
+**You are reporting results too often**
+
+Each result is processed by the search algorithm, trial scheduler, and callbacks (including loggers and the
+trial syncer). If you're reporting a large number of results per trial (e.g. multiple results per second),
+this can take a long time.
+
+**Solution**: The solution here is obvious: Just don't report results that often. In class trainables, ``step()``
+should maybe process a larger chunk of data. In function trainables, you can report only every n-th iteration
+of the training loop. Try to balance the number of results you really need to make scheduling or searching
+decisions. If you need more fine grained metrics for logging or tracking, consider using a separate logging
+mechanism for this instead of the Ray Tune-provided progress logging of results.
+
 
 
 Further Questions or Issues?

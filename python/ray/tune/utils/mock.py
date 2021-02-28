@@ -114,6 +114,8 @@ class FailureInjectorCallback(Callback):
         self.disable = disable
 
     def on_step_begin(self, **info):
+        if not os.path.exists(self.config_path):
+            return
         import click
         from ray.autoscaler._private.commands import kill_node
         failures = 0
