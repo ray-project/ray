@@ -1,3 +1,4 @@
+
 // Copyright 2017 The Ray Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -54,7 +55,8 @@ namespace ray {
 
 namespace raylet {
 
-WorkerPool::WorkerPool(boost::asio::io_service &io_service, int num_workers_soft_limit,
+WorkerPool::WorkerPool(boost::asio::io_service &io_service, const NodeID node_id,
+                       const std::string node_address, int num_workers_soft_limit,
                        int num_initial_python_workers_for_first_job,
                        int maximum_startup_concurrency, int min_worker_port,
                        int max_worker_port, const std::vector<int> &worker_ports,
@@ -62,6 +64,8 @@ WorkerPool::WorkerPool(boost::asio::io_service &io_service, int num_workers_soft
                        const WorkerCommandMap &worker_commands,
                        std::function<void()> starting_worker_timeout_callback)
     : io_service_(&io_service),
+      node_id_(node_id),
+      node_address_(node_address),
       num_workers_soft_limit_(num_workers_soft_limit),
       maximum_startup_concurrency_(maximum_startup_concurrency),
       gcs_client_(std::move(gcs_client)),
@@ -711,17 +715,28 @@ void WorkerPool::TryKillingIdleWorkers() {
       auto rpc_client = worker->rpc_client();
       RAY_CHECK(rpc_client);
       rpc::ExitRequest request;
-      rpc_client->Exit(request, [](const ray::Status &status, const rpc::ExitReply &r) {
-        if (!status.ok()) {
-          RAY_LOG(ERROR) << "Failed to send exit request: " << status.ToString();
-        }
-      });
-      // Remove the worker from the idle pool so it can't be popped anymore.
-      RemoveWorker(worker_state.idle, worker);
-      if (!worker->IsDead()) {
-        worker->MarkDead();
-        running_size--;
-      }
+      rpc_client->Exit(
+          request, [this, worker](const ray::Status &status, const rpc::ExitReply &r) {
+            if (!status.ok()) {
+              RAY_LOG(ERROR) << "Failed to send exit request: " << status.ToString();
+              return;
+            }
+
+            if (r.success()) {
+              auto &worker_state = GetStateForLanguage(worker->GetLanguage());
+              // If we could kill the worker properly, we remove them from the idle pool.
+              if (RemoveWorker(worker_state.idle, worker)) {
+                // If the worker is not idle at this moment, we don't mark them dead.
+                // It will be marked as dead after the current task is finished.
+                if (!worker->IsDead()) {
+                  worker->MarkDead();
+                }
+              }
+            }
+          });
+      // Always subtract the running size here so that it avoids killing too many io
+      // workers unncessarily.
+      running_size--;
     }
   }
 
@@ -977,7 +992,10 @@ void WorkerPool::WarnAboutSize() {
       state.last_warning_multiple = multiple;
       warning_message << "WARNING: " << num_workers_started_or_registered << " "
                       << Language_Name(entry.first)
-                      << " workers have been started. This could be a result of using "
+                      << " workers have been started on a node of the id: " << node_id_
+                      << " "
+                      << "and address: " << node_address_ << ". "
+                      << "This could be a result of using "
                       << "a large number of actors, or it could be a consequence of "
                       << "using nested tasks "
                       << "(see https://github.com/ray-project/ray/issues/3644) for "

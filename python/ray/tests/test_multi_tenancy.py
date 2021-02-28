@@ -5,6 +5,7 @@ import time
 
 import grpc
 import pytest
+import numpy as np
 
 import ray
 import ray.test_utils
@@ -234,6 +235,29 @@ ray.shutdown()
     # wait for a while to let workers register
     time.sleep(2)
     wait_for_condition(lambda: len(get_workers()) == before)
+
+
+def test_not_killing_workers_that_own_objects(shutdown_only):
+    ray.init(num_cpus=2)
+
+    # Create a nested tasks to start 8 workers.
+    @ray.remote
+    def nested(i):
+        # The task owns an object.
+        if i > 8:
+            return [ray.put(np.ones(1*1024*1024, dtype=np.uint8))]
+        else:
+            return [ray.put(np.ones(1*1024*1024, dtype=np.uint8))] + ray.get(nested.remote(i+1))
+
+    ref = ray.get(nested.remote(0))
+
+    print(len(ray.state.workers()))
+    ref2 = ray.get(nested.remote(0))
+    print(len(ray.state.workers()))
+
+    print(ref)
+    import time
+    time.sleep(10)
 
 
 if __name__ == "__main__":

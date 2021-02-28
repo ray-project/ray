@@ -96,6 +96,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// process should create and register the specified number of workers, and add them to
   /// the pool.
   ///
+  /// \param node_id The id of the current node.
+  /// \param node_address The address of the current node.
   /// \param num_workers_soft_limit The soft limit of the number of workers.
   /// \param num_initial_python_workers_for_first_job The number of initial Python
   /// workers for the first job.
@@ -112,7 +114,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// language.
   /// \param starting_worker_timeout_callback The callback that will be triggered once
   /// it times out to start a worker.
-  WorkerPool(boost::asio::io_service &io_service, int num_workers_soft_limit,
+  WorkerPool(boost::asio::io_service &io_service, const NodeID node_id,
+             const std::string node_address, int num_workers_soft_limit,
              int num_initial_python_workers_for_first_job,
              int maximum_startup_concurrency, int min_worker_port, int max_worker_port,
              const std::vector<int> &worker_ports,
@@ -472,6 +475,10 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
 
   /// For Process class for managing subprocesses (e.g. reaping zombies).
   boost::asio::io_service *io_service_;
+  /// Node ID of the current node.
+  const NodeID node_id_;
+  /// Address of the current node.
+  const std::string node_address_;
   /// The soft limit of the number of registered workers.
   int num_workers_soft_limit_;
   /// The maximum number of worker processes that can be started concurrently.
