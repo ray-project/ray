@@ -136,6 +136,7 @@ def merge_legacy_yaml_with_defaults(
     default_head_type = merged_config["head_node_type"]
     # Default configs are assumed to have two node types -- one for the head
     # and one for the workers.
+    assert len(merged_config["available_node_types"].keys()) == 2
     default_worker_type = (merged_config["available_node_types"].keys() -
                            {default_head_type}).pop()
 
