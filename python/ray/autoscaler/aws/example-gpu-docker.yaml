@@ -41,9 +41,8 @@ available_node_types:
         # This executes all commands on nodes of this type in the docker container,
         # and opens all the necessary ports to support the Ray cluster.
         docker:
-            image: "rayproject/ray-ml:latest-gpu"
-            # image: rayproject/ray:latest-gpu   # use this one if you don't need ML dependencies, it's faster to pull
-            container_name: "ray_nvidia_docker"
+            worker_image: "rayproject/ray-ml:latest-gpu"
+            # worker_image: rayproject/ray:latest-gpu   # use this one if you don't need ML dependencies, it's faster to pull
         # The minimum number of worker nodes of this type to launch.
         # This number should be >= 0.
         min_workers: 0
@@ -74,8 +73,7 @@ available_node_types:
         # This executes all commands on nodes of this type in the docker container,
         # and opens all the necessary ports to support the Ray cluster.
         docker:
-            image: "rayproject/ray-ml:latest-cpu"
-            container_name: "ray_docker"
+            worker_image: "rayproject/ray-ml:latest-cpu"
         # The minimum number of nodes of this type to launch.
         # This number should be >= 0.
         min_workers: 0
