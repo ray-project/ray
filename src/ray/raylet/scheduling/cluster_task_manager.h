@@ -294,7 +294,7 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   void RemoveFromBacklogTracker(const Task &task);
 
   friend class ClusterTaskManagerTest;
-  FRIEND_TEST(ClusterTaskManagerTest, ResourceTakenWhileResolving);
+  FRIEND_TEST(ClusterTaskManagerTest, FeasibleToNonFeasible);
 };
 }  // namespace raylet
 }  // namespace ray
