@@ -169,9 +169,9 @@ ray::Status OwnershipBasedObjectDirectory::ReportObjectRemoved(
                    Status status, const rpc::RemoveObjectLocationOwnerReply &reply) {
         if (!status.ok()) {
           RAY_LOG(DEBUG) << "Worker " << worker_id << " failed to remove the location "
-                        << node_id << " for " << object_id
-                        << ", the object has most likely been freed: "
-                        << status.ToString();
+                         << node_id << " for " << object_id
+                         << ", the object has most likely been freed: "
+                         << status.ToString();
         } else {
           RAY_LOG(DEBUG) << "Removed location " << node_id << " for object " << object_id
                          << " on owner " << worker_id;
