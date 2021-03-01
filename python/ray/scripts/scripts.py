@@ -26,7 +26,7 @@ from ray.autoscaler._private.constants import RAY_PROCESSES
 
 from ray.autoscaler._private.util import DEBUG_AUTOSCALING_ERROR, \
     DEBUG_AUTOSCALING_STATUS
-from ray.state import GlobalState
+from ray.internal.internal_api import memory_summary_wrapper
 import ray.ray_constants as ray_constants
 import ray.utils
 
@@ -261,6 +261,7 @@ def debug(address):
     "--node-manager-port",
     required=False,
     type=int,
+    default=0,
     help="the port to use for starting the node manager")
 @click.option(
     "--gcs-server-port",
@@ -1354,22 +1355,38 @@ def timeline(address):
     default=ray_constants.REDIS_DEFAULT_PASSWORD,
     help="Connect to ray with redis_password.")
 @click.option(
-    "--stats-only",
+    "--group-by",
+    type=click.Choice(["NODE_ADDRESS", "STACK_TRACE"]),
+    default="NODE_ADDRESS",
+    help="Group object references by a GroupByType \
+(e.g. NODE_ADDRESS or STACK_TRACE).")
+@click.option(
+    "--sort-by",
+    type=click.Choice(["PID", "OBJECT_SIZE", "REFERENCE_TYPE"]),
+    default="OBJECT_SIZE",
+    help="Sort object references in ascending order by a SortingType \
+(e.g. PID, OBJECT_SIZE, or REFERENCE_TYPE).")
+@click.option(
+    "--no-format",
     is_flag=True,
     type=bool,
+    default=True,
+    help="Display unformatted results. Defaults to true when \
+terminal width is less than 137 characters.")
+@click.option(
+    "--stats-only",
+    is_flag=True,
     default=False,
-    help="Connect to ray with redis_password.")
-def memory(address, redis_password, stats_only):
+    help="Display plasma store stats only.")
+def memory(address, redis_password, group_by, sort_by, no_format, stats_only):
     """Print object references held in a Ray cluster."""
     if not address:
         address = services.get_ray_address_to_use_or_die()
-    state = GlobalState()
-    state._initialize_global_state(address, redis_password)
-    raylet = state.node_table()[0]
-    print(
-        ray.internal.internal_api.memory_summary(raylet["NodeManagerAddress"],
-                                                 raylet["NodeManagerPort"],
-                                                 stats_only))
+    time = datetime.now()
+    header = "=" * 8 + f" Object references status: {time} " + "=" * 8
+    mem_stats = memory_summary_wrapper(address, redis_password, group_by,
+                                       sort_by, no_format, stats_only)
+    print(f"{header}\n{mem_stats}")
 
 
 @cli.command()

@@ -245,8 +245,18 @@ NodeManager::NodeManager(boost::asio::io_service &io_service, const NodeID &self
   node_manager_server_.RegisterService(agent_manager_service_);
   node_manager_server_.Run();
 
-  auto options =
-      AgentManager::Options({self_node_id, ParseCommandLine(config.agent_command)});
+  worker_pool_.SetNodeManagerPort(GetServerPort());
+
+  auto agent_command_line = ParseCommandLine(config.agent_command);
+  for (auto &arg : agent_command_line) {
+    auto node_manager_port_position = arg.find(kNodeManagerPortPlaceholder);
+    if (node_manager_port_position != std::string::npos) {
+      arg.replace(node_manager_port_position, strlen(kNodeManagerPortPlaceholder),
+                  std::to_string(GetServerPort()));
+    }
+  }
+
+  auto options = AgentManager::Options({self_node_id, agent_command_line});
   agent_manager_.reset(
       new AgentManager(std::move(options),
                        /*delay_executor=*/
