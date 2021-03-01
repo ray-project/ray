@@ -1,5 +1,5 @@
 ax-platform==0.1.9; python_version < '3.7'
-ax-platform==0.1.19; python_version >= '3.7'
+ax-platform==0.1.20; python_version >= '3.7'
 bayesian-optimization==1.2.0
 ConfigSpace==0.4.10
 dragonfly-opt==0.1.6
