@@ -148,7 +148,7 @@ To get started, we need to apply the `Kubernetes Custom Resource Definition`_ (C
 
 .. code-block:: shell
 
- $ kubectl apply -f ray/python/ray/autoscaler/kubernetes/operator_configs/cluster_crd.yaml
+ $ kubectl apply -f https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/kubernetes/operator_configs/cluster_crd.yaml
 
  customresourcedefinition.apiextensions.k8s.io/rayclusters.cluster.ray.io created
 
