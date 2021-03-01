@@ -338,7 +338,8 @@ class Trial:
 
         """
         # Placement groups are force-disabled via env variable.
-        if int(os.getenv("TUNE_PLACEMENT_GROUP_AUTO_DISABLED", "0")):
+        if self.placement_group_factory and \
+                int(os.getenv("TUNE_PLACEMENT_GROUP_AUTO_DISABLED", "0")):
             self.resources = pg_factory_to_resources(
                 self.placement_group_factory)
             self.placement_group_factory = None
