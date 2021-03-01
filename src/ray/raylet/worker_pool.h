@@ -16,6 +16,7 @@
 
 #include <inttypes.h>
 
+#include <algorithm>
 #include <boost/asio/io_service.hpp>
 #include <queue>
 #include <unordered_map>
@@ -522,6 +523,10 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// for lookup performance.
   std::unordered_map<std::shared_ptr<WorkerInterface>, int64_t>
       idle_of_all_languages_map_;
+
+  /// A map of idle workers that are pending exit.
+  absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>>
+      pending_exit_idle_workers_;
 
   /// The runner to run function periodically.
   PeriodicalRunner periodical_runner_;

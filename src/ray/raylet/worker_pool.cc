@@ -654,6 +654,9 @@ void WorkerPool::TryKillingIdleWorkers() {
 
   // Kill idle workers in FIFO order.
   for (const auto &idle_pair : idle_of_all_languages_) {
+    // Subtract the number of pending exit workers first. This will help us killing more
+    // idle workers that it needs to.
+    running_size -= pending_exit_idle_workers_.size();
     if (running_size <= static_cast<size_t>(num_workers_soft_limit_)) {
       break;
     }
@@ -663,6 +666,10 @@ void WorkerPool::TryKillingIdleWorkers() {
     }
 
     const auto &idle_worker = idle_pair.first;
+    if (pending_exit_idle_workers_.count(idle_worker->WorkerId())) {
+      // If the worker is pending exit, just skip it.
+      continue;
+    }
     if (idle_worker->IsDead()) {
       // This worker has already been killed.
       // This is possible because a Java worker process may hold multiple workers.
@@ -734,13 +741,15 @@ void WorkerPool::TryKillingIdleWorkers() {
                 }
               }
             }
+            RAY_CHECK(pending_exit_idle_workers_.count(worker->WorkerId()));
+            RAY_CHECK(pending_exit_idle_workers_.erase(worker->WorkerId()));
           });
-      // Always subtract the running size here so that it avoids killing too many idle
-      // workers unncessarily. This value could be wrong because we don't know if the
-      // worker is killed until we receive a response from them. It is fine because this
-      // just means we will kill less number of idle workers until the next time to kill
-      // idle workers.
-      running_size--;
+      if (!worker->IsDead()) {
+        // Register the worker to pending exit so that we can correctly calculate the
+        // running_size.
+        pending_exit_idle_workers_.emplace(worker->WorkerId(), worker);
+        running_size--;
+      }
     }
   }
 
