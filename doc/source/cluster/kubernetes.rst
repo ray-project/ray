@@ -176,7 +176,7 @@ To launch the operator in our namespace, we execute the following command.
 
 .. code-block:: shell
 
- $ kubectl -n ray apply -f ray/python/ray/autoscaler/kubernetes/operator_configs/operator.yaml
+ $ kubectl -n ray apply -f https://github.com/ray-project/ray/python/ray/autoscaler/kubernetes/operator_configs/operator.yaml
 
  serviceaccount/ray-operator-serviceaccount created
  role.rbac.authorization.k8s.io/ray-operator-role created
@@ -194,7 +194,7 @@ Finally, to launch a Ray cluster, we create a RayCluster custom resource.
 
 .. code-block:: shell
 
- $ kubectl -n ray apply -f ray/python/ray/autoscaler/kubernetes/operator_configs/example_cluster.yaml
+ $ kubectl -n ray apply -f https://github.com/ray-project/ray/python/ray/autoscaler/kubernetes/operator_configs/example_cluster.yaml
 
  raycluster.cluster.ray.io/example-cluster created
 
@@ -220,7 +220,7 @@ Let's launch another cluster in the same namespace, this one specifiying ``minWo
 
 .. code-block:: shell
 
- $ kubectl -n ray apply -f ray/python/ray/autoscaler/kubernetes/operator_configs/example_cluster2.yaml
+ $ kubectl -n ray apply -f https://github.com/ray-project/ray/python/ray/autoscaler/kubernetes/operator_configs/example_cluster2.yaml
 
 We confirm that both clusters are running in our namespace.
 
@@ -285,7 +285,7 @@ Either of the next two commands will delete our second cluster ``example-cluster
 
  $ kubectl -n ray delete raycluster example-cluster2
  # OR
- $ kubectl -n ray delete -f ray/python/ray/autoscaler/kubernetes/operator_configs/example_cluster2.yaml
+ $ kubectl -n ray delete -f https://github.com/ray-project/ray/python/ray/autoscaler/kubernetes/operator_configs/example_cluster2.yaml
 
 The pods associated with ``example-cluster2``  go into the ``TERMINATING`` phase. In a few moments, we check that these pods are gone:
 
@@ -305,7 +305,7 @@ To finish clean-up, we delete the cluster ``example-cluster`` and then the opera
 .. code-block:: shell
 
  $ kubectl -n ray delete raycluster example-cluster
- $ kubectl -n ray delete -f ray/python/ray/autoscaler/kubernetes/operator_configs/operator.yaml
+ $ kubectl -n ray delete -f https://github.com/ray-project/ray/python/ray/autoscaler/kubernetes/operator_configs/operator.yaml
 
 If you like, you can delete the RayCluster customer resource definition.
 (Using the operator again will then require reapplying the CRD.)
@@ -314,7 +314,7 @@ If you like, you can delete the RayCluster customer resource definition.
 
  $ kubectl delete crd rayclusters.cluster.ray.io
  # OR
- $ kubectl delete -f ray/python/ray/autoscaler/kubernetes/operator_configs/cluster_crd.yaml
+ $ kubectl delete -f https://github.com/ray-project/ray/python/ray/autoscaler/kubernetes/operator_configs/cluster_crd.yaml
 
 
 .. _ray-k8s-interact:
@@ -418,7 +418,7 @@ The following command submits a Job which executes an `example Ray program`_.
 
 .. code-block:: yaml
 
-  $ kubectl create -f ray/python/ray/autoscaler/kubernetes/job-example.yaml
+  $ kubectl create -f https://github.com/ray-project/ray/python/ray/autoscaler/kubernetes/job-example.yaml
 
 The program executed by the Job waits for three Ray nodes to connect and then tests object transfer
 between the nodes. Note that the program uses the environment variables
