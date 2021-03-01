@@ -120,6 +120,22 @@ class AWSNodeProvider(NodeProvider):
         # excessive DescribeInstances requests.
         self.cached_nodes = {}
 
+    def _gc_tag_cache(self):
+        # We opportunistically garbage collect the tag cache. Removing the
+        # cache entry immediately could result in a use after free error since
+        # termination in asynchronous, or can fail. A node should never be used
+        # after `self.non_terminated_nodes` forgets about it.
+        non_terminated_ids = set(self.cached_nodes.keys())
+        with self.tag_cache_lock:
+            for node_id in self.tag_cache_pending:
+                if node_id not in non_terminated_ids:
+                    del self.tag_cache_pending[node_id]
+            for node_id in self.tag_cache:
+                if node_id not in non_terminated_ids:
+                    del self.tag_cache[node_id]
+
+        pass
+
     def non_terminated_nodes(self, tag_filters):
         # Note that these filters are acceptable because they are set on
         #       node initialization, and so can never be sitting in the cache.
@@ -154,6 +170,7 @@ class AWSNodeProvider(NodeProvider):
                  for x in node.tags})
 
         self.cached_nodes = {node.id: node for node in nodes}
+        self._gc_tag_cache()
         return [node.id for node in nodes]
 
     def is_running(self, node_id):
@@ -427,9 +444,6 @@ class AWSNodeProvider(NodeProvider):
         else:
             node.terminate()
 
-        self.tag_cache.pop(node_id, None)
-        self.tag_cache_pending.pop(node_id, None)
-
     def terminate_nodes(self, node_ids):
         if not node_ids:
             return
@@ -462,10 +476,6 @@ class AWSNodeProvider(NodeProvider):
                 self.ec2.meta.client.terminate_instances(InstanceIds=spot_ids)
         else:
             self.ec2.meta.client.terminate_instances(InstanceIds=node_ids)
-
-        for node_id in node_ids:
-            self.tag_cache.pop(node_id, None)
-            self.tag_cache_pending.pop(node_id, None)
 
     def _get_node(self, node_id):
         """Refresh and get info for this node, updating the cache."""
