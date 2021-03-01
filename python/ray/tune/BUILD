@@ -234,6 +234,14 @@ py_test(
 )
 
 py_test(
+    name = "test_trial_runner_pg",
+    size = "medium",
+    srcs = ["tests/test_trial_runner_pg.py"],
+    deps = [":tune_lib"],
+    tags = ["exclusive"],
+)
+
+py_test(
     name = "test_trial_runner_callbacks",
     size = "small",
     srcs = ["tests/test_trial_runner_callbacks.py"],
@@ -438,6 +446,15 @@ py_test(
 )
 
 py_test(
+    name = "hebo_example",
+    size = "medium",
+    srcs = ["examples/hebo_example.py"],
+    deps = [":tune_lib"],
+    tags = ["exclusive", "example"],
+    args = ["--smoke-test"]
+)
+
+py_test(
     name = "horovod_simple",
     size = "medium",
     srcs = ["examples/horovod_simple.py"],
@@ -451,7 +468,8 @@ py_test(
     size = "medium",
     srcs = ["examples/hyperband_example.py"],
     deps = [":tune_lib"],
-    tags = ["exclusive", "example"]
+    tags = ["exclusive", "example"],
+    args = ["--smoke-test"]
 )
 
 py_test(

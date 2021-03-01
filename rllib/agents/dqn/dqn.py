@@ -82,6 +82,9 @@ DEFAULT_CONFIG = with_common_config({
     # Size of the replay buffer. Note that if async_updates is set, then
     # each worker will have a replay buffer of this size.
     "buffer_size": 50000,
+    # The number of contiguous environment steps to replay at once. This may
+    # be set to greater than 1 to support recurrent models.
+    "replay_sequence_length": 1,
     # If True prioritized replay buffer will be used.
     "prioritized_replay": True,
     # Alpha parameter for prioritized replay buffer.
@@ -94,6 +97,7 @@ DEFAULT_CONFIG = with_common_config({
     "prioritized_replay_beta_annealing_timesteps": 20000,
     # Epsilon to add to the TD errors when updating priorities.
     "prioritized_replay_eps": 1e-6,
+
     # Whether to LZ4 compress observations
     "compress_observations": False,
     # Callback to run before learning on a multi-agent batch of experiences.
@@ -194,7 +198,9 @@ def execution_plan(workers: WorkerSet,
         buffer_size=config["buffer_size"],
         replay_batch_size=config["train_batch_size"],
         replay_mode=config["multiagent"]["replay_mode"],
-        replay_sequence_length=config["replay_sequence_length"],
+        replay_sequence_length=config.get("replay_sequence_length", 1),
+        replay_burn_in=config.get("burn_in", 0),
+        replay_zero_init_states=config.get("zero_init_states", True),
         **prio_args)
 
     rollouts = ParallelRollouts(workers, mode="bulk_sync")

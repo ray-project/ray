@@ -200,26 +200,6 @@ Status ServiceBasedActorInfoAccessor::AsyncRegisterActor(
   return Status::OK();
 }
 
-Status ServiceBasedActorInfoAccessor::AsyncKillActor(
-    const ActorID &actor_id, bool force_kill, bool no_restart,
-    const ray::gcs::StatusCallback &callback) {
-  rpc::KillActorViaGcsRequest request;
-  request.set_actor_id(actor_id.Binary());
-  request.set_force_kill(force_kill);
-  request.set_no_restart(no_restart);
-  client_impl_->GetGcsRpcClient().KillActorViaGcs(
-      request, [callback](const Status &, const rpc::KillActorViaGcsReply &reply) {
-        if (callback) {
-          auto status =
-              reply.status().code() == (int)StatusCode::OK
-                  ? Status()
-                  : Status(StatusCode(reply.status().code()), reply.status().message());
-          callback(status);
-        }
-      });
-  return Status::OK();
-}
-
 Status ServiceBasedActorInfoAccessor::AsyncCreateActor(
     const ray::TaskSpecification &task_spec, const ray::gcs::StatusCallback &callback) {
   RAY_CHECK(task_spec.IsActorCreationTask() && callback);
@@ -621,39 +601,18 @@ void ServiceBasedNodeInfoAccessor::AsyncResubscribe(bool is_pubsub_server_restar
   }
 }
 
-Status ServiceBasedNodeInfoAccessor::AsyncSetInternalConfig(
-    std::unordered_map<std::string, std::string> &config) {
-  rpc::SetInternalConfigRequest request;
-  request.mutable_config()->mutable_config()->insert(config.begin(), config.end());
-
-  client_impl_->GetGcsRpcClient().SetInternalConfig(
-      request, [](const Status &status, const rpc::SetInternalConfigReply &reply) {
-        if (!status.ok()) {
-          RAY_LOG(ERROR) << "Failed to set internal config: " << status.message();
-        }
-      });
-  return Status::OK();
-}
-
 Status ServiceBasedNodeInfoAccessor::AsyncGetInternalConfig(
-    const OptionalItemCallback<std::unordered_map<std::string, std::string>> &callback) {
+    const OptionalItemCallback<std::string> &callback) {
   rpc::GetInternalConfigRequest request;
   client_impl_->GetGcsRpcClient().GetInternalConfig(
       request,
       [callback](const Status &status, const rpc::GetInternalConfigReply &reply) {
-        boost::optional<std::unordered_map<std::string, std::string>> config;
         if (status.ok()) {
-          if (reply.has_config()) {
-            RAY_LOG(DEBUG) << "Fetched internal config: " << reply.config().DebugString();
-            config = std::unordered_map<std::string, std::string>(
-                reply.config().config().begin(), reply.config().config().end());
-          } else {
-            RAY_LOG(DEBUG) << "No internal config was stored.";
-          }
+          RAY_LOG(DEBUG) << "Fetched internal config: " << reply.config();
         } else {
           RAY_LOG(ERROR) << "Failed to get internal config: " << status.message();
         }
-        callback(status, config);
+        callback(status, reply.config());
       });
   return Status::OK();
 }
@@ -1435,12 +1394,13 @@ ServiceBasedPlacementGroupInfoAccessor::ServiceBasedPlacementGroupInfoAccessor(
     : client_impl_(client_impl) {}
 
 Status ServiceBasedPlacementGroupInfoAccessor::AsyncCreatePlacementGroup(
-    const ray::PlacementGroupSpecification &placement_group_spec) {
+    const ray::PlacementGroupSpecification &placement_group_spec,
+    const StatusCallback &callback) {
   rpc::CreatePlacementGroupRequest request;
   request.mutable_placement_group_spec()->CopyFrom(placement_group_spec.GetMessage());
   client_impl_->GetGcsRpcClient().CreatePlacementGroup(
-      request, [placement_group_spec](const Status &,
-                                      const rpc::CreatePlacementGroupReply &reply) {
+      request, [placement_group_spec, callback](
+                   const Status &, const rpc::CreatePlacementGroupReply &reply) {
         auto status =
             reply.status().code() == (int)StatusCode::OK
                 ? Status()
@@ -1452,6 +1412,9 @@ Status ServiceBasedPlacementGroupInfoAccessor::AsyncCreatePlacementGroup(
           RAY_LOG(ERROR) << "Placement group id = "
                          << placement_group_spec.PlacementGroupId()
                          << " failed to be registered. " << status;
+        }
+        if (callback) {
+          callback(status);
         }
       });
   return Status::OK();

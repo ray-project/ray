@@ -203,8 +203,126 @@ Please refer to the Kubernetes documentation for more information.
 .. _`NodePort`: https://kubernetes.io/docs/concepts/services-networking/service/#publishing-services-service-types
 
 
+.. _serve-monitoring:
+
 Monitoring
 ==========
+
+Logging
+-------
+
+Logging in Ray Serve is simple and uses Python's standard logging facility.
+
+.. note::
+
+  For an general overview of logging in Ray, see `Ray Logging <../ray-logging.html>`__.
+
+Tracing Backends and Replicas
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+When looking through log files of your Ray Serve application, it is useful to know which backend and replica each log line originated from.
+To automatically include the current backend tag and replica tag in your logs, simply call
+``logger = logging.getLogger("ray")``, and use ``logger`` within your backend code:
+
+.. literalinclude:: ../../../python/ray/serve/examples/doc/snippet_logger.py
+  :lines: 1, 9, 11-13, 15-16
+
+Querying a Serve endpoint with the above backend will produce a log line like the following:
+
+.. code-block:: bash
+
+  (pid=42161) 2021-02-26 11:05:21,709     INFO snippet_logger.py:13 -- Some info! component=serve backend=my_backend replica=my_backend#jZlnUI
+
+To write your own custom logger using Python's ``logging`` package, use the following method:
+
+.. autofunction:: ray.serve.get_replica_context
+
+Ray Serve logs can be ingested by your favorite external logging agent.  Ray logs from the current session are exported to the directory `/tmp/ray/session_latest/logs` and remain there until the next session starts.
+
+Tutorial: Ray Serve with Loki
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Here is a quick walkthrough of how to explore and filter your logs using `Loki <https://grafana.com/oss/loki/>`__.
+Setup and configuration is very easy on Kubernetes, but in this tutorial we'll just set things up manually.
+
+First, install Loki and Promtail using the instructions on https://grafana.com.
+It will be convenient to save the Loki and Promtail executables in the same directory, and to navigate to this directory in your terminal before beginning this walkthrough.
+
+Now let's get our logs into Loki using Promtail.
+
+Save the following file as ``promtail-local-config.yaml``:
+
+.. code-block:: yaml
+
+  server:
+    http_listen_port: 9080
+    grpc_listen_port: 0
+
+  positions:
+    filename: /tmp/positions.yaml
+
+  clients:
+    - url: http://localhost:3100/loki/api/v1/push
+
+  scrape_configs:
+  - job_name: ray
+  static_configs:
+    - labels:
+      job: ray
+      __path__: /tmp/ray/session_latest/logs/*.*
+
+The relevant part for Ray is the ``static_configs`` field, where we have indicated the location of our log files with ``__path__``.  
+The expression ``*.*`` will match all files, but not directories, which cause an error with Promtail.
+
+We will run Loki locally.  Grab the default config file for Loki with the following command in your terminal:
+
+.. code-block:: shell
+
+  wget https://raw.githubusercontent.com/grafana/loki/v2.1.0/cmd/loki/loki-local-config.yaml
+
+Now start Loki:
+
+.. code-block:: shell
+
+  ./loki-darwin-amd64 -config.file=loki-local-config.yaml
+
+Here you may need to replace ``./loki-darwin-amd64`` with the path to your Loki executable file, which may have a different name depending on your operating system.
+
+Start Promtail and pass in the path to the config file we saved earlier:
+
+.. code-block:: shell
+
+  ./promtail-darwin-amd64 -config.file=promtail-local-config.yaml
+
+As above, you may need to replace ``./promtail-darwin-amd64`` with the appropriate filename and path.
+
+
+Now we are ready to start our Ray Serve deployment.  Start a long-running Ray cluster and Ray Serve instance in your terminal:
+
+.. code-block:: shell
+
+  ray start --head
+  serve start
+
+Now run the following Python script to deploy a basic Serve backend with a Serve backend logger:
+
+.. literalinclude:: ../../../python/ray/serve/examples/doc/backend_logger.py
+
+Now `install and run Grafana <https://grafana.com/docs/grafana/latest/installation/>`__ and navigate to ``http://localhost:3000``, where you can log in with the default username "admin" and default password "admin".
+On the welcome page, click "Add your first data source" and click "Loki" to add Loki as a data source.
+
+Now click "Explore" in the left-side panel.  You are ready to run some queries!
+
+To filter all these Ray logs for the ones relevant to our backend, use the following `LogQL <https://grafana.com/docs/loki/latest/logql/>`__ query:
+
+.. code-block:: shell 
+
+  {job="ray"} |= "backend=my_backend"
+
+You should see something similar to the following:
+
+.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/serve/loki-serve.png
+    :align: center
 
 Metrics
 -------

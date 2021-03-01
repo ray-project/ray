@@ -97,6 +97,9 @@ class LocalObjectManager {
                     std::function<void(const ray::Status &)> callback);
 
   /// Restore a spilled object from external storage back into local memory.
+  /// Note: This is no-op if the same restoration request is in flight or the requested
+  /// object wasn't spilled yet. The caller should ensure to retry object restoration in
+  /// this case.
   ///
   /// \param object_id The ID of the object to restore.
   /// \param object_url The URL where the object is spilled.
@@ -110,8 +113,9 @@ class LocalObjectManager {
                                  const NodeID &node_id,
                                  std::function<void(const ray::Status &)> callback);
 
-  /// Try to clear any objects that have been freed.
-  void FlushFreeObjectsIfNeeded(int64_t now_ms);
+  /// Clear any freed objects. This will trigger the callback for freed
+  /// objects.
+  void FlushFreeObjects();
 
   /// Judge if objects are deletable from pending_delete_queue and delete them if
   /// necessary.
@@ -137,6 +141,9 @@ class LocalObjectManager {
   /// \param Output parameter.
   void FillObjectSpillingStats(rpc::GetNodeStatsReply *reply) const;
 
+  /// Record object spilling stats to metrics.
+  void RecordObjectSpillingStats() const;
+
   std::string DebugString() const;
 
  private:
@@ -160,10 +167,6 @@ class LocalObjectManager {
 
   /// Release an object that has been freed by its owner.
   void ReleaseFreedObject(const ObjectID &object_id);
-
-  /// Clear any freed objects. This will trigger the callback for freed
-  /// objects.
-  void FlushFreeObjects();
 
   // A callback for unpinning spilled objects. This should be invoked after the object
   // has been spilled and after the object directory has been sent the spilled URL.

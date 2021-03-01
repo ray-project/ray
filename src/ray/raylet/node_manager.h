@@ -14,8 +14,6 @@
 
 #pragma once
 
-#include <boost/asio/steady_timer.hpp>
-
 // clang-format off
 #include "ray/rpc/grpc_client.h"
 #include "ray/rpc/node_manager/node_manager_server.h"
@@ -85,12 +83,8 @@ struct NodeManagerConfig {
   WorkerCommandMap worker_commands;
   /// The command used to start agent.
   std::string agent_command;
-  /// The time between heartbeats in milliseconds.
-  uint64_t heartbeat_period_ms;
   /// The time between reports resources in milliseconds.
   uint64_t report_resources_period_ms;
-  /// The time between debug dumps in milliseconds, or -1 to disable.
-  uint64_t debug_dump_period_ms;
   /// Whether to enable fair queueing between task classes in raylet.
   bool fair_queueing_enabled;
   /// Whether to enable automatic object deletion for object spilling.
@@ -102,8 +96,8 @@ struct NodeManagerConfig {
   /// The path of this ray session dir.
   std::string session_dir;
   /// The raylet config list of this node.
-  std::unordered_map<std::string, std::string> raylet_config;
-  // The time between record metrics in milliseconds, or -1 to disable.
+  std::string raylet_config;
+  // The time between record metrics in milliseconds, or 0 to disable.
   uint64_t record_metrics_period_ms;
   // The number if max io workers.
   int max_io_workers;
@@ -787,16 +781,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   std::shared_ptr<gcs::GcsClient> gcs_client_;
   /// The object table. This is shared with the object manager.
   std::shared_ptr<ObjectDirectoryInterface> object_directory_;
-  /// The timer used to send heartbeats.
-  boost::asio::steady_timer heartbeat_timer_;
-  /// The period used for the heartbeat timer.
-  std::chrono::milliseconds heartbeat_period_;
-  /// The timer used to report resources.
-  boost::asio::steady_timer report_resources_timer_;
+  /// The runner to run function periodically.
+  PeriodicalRunner periodical_runner_;
   /// The period used for the resources report timer.
-  std::chrono::milliseconds report_resources_period_;
-  /// The period between debug state dumps.
-  int64_t debug_dump_period_;
+  uint64_t report_resources_period_ms_;
   /// Whether to enable fair queueing between task classes in raylet.
   bool fair_queueing_enabled_;
   /// Incremented each time we encounter a potential resource deadlock condition.
@@ -806,14 +794,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   bool recorded_metrics_ = false;
   /// The path to the ray temp dir.
   std::string temp_dir_;
-  /// The timer used to get profiling information from the object manager and
-  /// push it to the GCS.
-  boost::asio::steady_timer object_manager_profile_timer_;
   /// The time that the last heartbeat was sent at. Used to make sure we are
   /// keeping up with heartbeats.
   uint64_t last_heartbeat_at_ms_;
-  /// The time that the last debug string was logged to the console.
-  uint64_t last_debug_dump_at_ms_;
   /// The number of heartbeats that we should wait before sending the
   /// next load report.
   uint8_t num_heartbeats_before_load_report_;
@@ -915,7 +898,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// Fields that are used to report metrics.
   /// The period between debug state dumps.
-  int64_t record_metrics_period_;
+  uint64_t record_metrics_period_ms_;
 
   /// Last time metrics are recorded.
   uint64_t metrics_last_recorded_time_ms_;

@@ -210,7 +210,7 @@ matrix:
         - . ./ci/travis/ci.sh test_wheels
         - export PATH="$HOME/miniconda3/bin:$PATH"
         - python -m pip install docker
-        - if [[ "$TRAVIS_PULL_REQUEST" != "false" ]]; then python $TRAVIS_BUILD_DIR/ci/travis/build-docker-images.py PY37; fi
+        - if [[ "$TRAVIS_PULL_REQUEST" != "false" ]]; then python $TRAVIS_BUILD_DIR/ci/travis/build-docker-images.py --py-versions PY37 --build-type PR --build-base; fi
         - bash ./java/build-jar-multiplatform.sh linux
       cache: false
 
@@ -233,7 +233,7 @@ matrix:
         - export PATH="$HOME/miniconda3/bin:$PATH"
         - conda install -y python=3.7.6
         - python -m pip install docker
-        - if [[ "$TRAVIS_PULL_REQUEST" != "false" ]]; then python $TRAVIS_BUILD_DIR/ci/travis/build-docker-images.py PY36_PY38; fi
+        - if [[ "$TRAVIS_PULL_REQUEST" != "false" ]]; then python $TRAVIS_BUILD_DIR/ci/travis/build-docker-images.py --py-versions PY36 PY38 --build-type PR --build-base; fi
       cache: false
 
     # Build and deploy multi-platform jars.
@@ -514,7 +514,7 @@ deploy:
 
   - provider: script
     edge: true # This supposedly opts in to deploy v2.
-    script: export PATH="$HOME/miniconda3/bin:$PATH"; ./ci/keep_alive python $TRAVIS_BUILD_DIR/ci/travis/build-docker-images.py PY37
+    script: export PATH="$HOME/miniconda3/bin:$PATH"; ./ci/keep_alive python $TRAVIS_BUILD_DIR/ci/travis/build-docker-images.py --py-versions PY37 --build-type MERGE --build-base
     skip_cleanup: true
     on:
       repo: ray-project/ray
@@ -556,7 +556,7 @@ deploy:
 
   - provider: script
     edge: true # This supposedly opts in to deploy v2.
-    script: export PATH="$HOME/miniconda3/bin:$PATH"; ./ci/keep_alive python $TRAVIS_BUILD_DIR/ci/travis/build-docker-images.py PY36_PY38
+    script: export PATH="$HOME/miniconda3/bin:$PATH"; ./ci/keep_alive python $TRAVIS_BUILD_DIR/ci/travis/build-docker-images.py --py-versions PY36 PY38 --build-type MERGE --build-base
     skip_cleanup: true
     on:
       repo: ray-project/ray

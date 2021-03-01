@@ -42,7 +42,6 @@ DEFINE_int32(num_initial_python_workers_for_first_job, 0,
              "Number of initial Python workers for the first job.");
 DEFINE_int32(maximum_startup_concurrency, 1, "Maximum startup concurrency");
 DEFINE_string(static_resource_list, "", "The static resource list of this node.");
-DEFINE_string(config_list, "", "The raylet config list of this node.");
 DEFINE_string(python_worker_command, "", "Python worker command.");
 DEFINE_string(java_worker_command, "", "Java worker command.");
 DEFINE_string(agent_command, "", "Dashboard agent command.");
@@ -50,12 +49,10 @@ DEFINE_string(cpp_worker_command, "", "CPP worker command.");
 DEFINE_string(redis_password, "", "The password of redis.");
 DEFINE_string(temp_dir, "", "Temporary directory.");
 DEFINE_string(session_dir, "", "The path of this ray session directory.");
-DEFINE_bool(head_node, false, "Whether this is the head node of the cluster.");
 // store options
 DEFINE_int64(object_store_memory, -1, "The initial memory of the object store.");
 DEFINE_string(plasma_directory, "", "The shared memory directory of the object store.");
 DEFINE_bool(huge_pages, false, "Whether enable huge pages");
-
 #ifndef RAYLET_TEST
 
 int main(int argc, char *argv[]) {
@@ -98,7 +95,6 @@ int main(int argc, char *argv[]) {
   // Configuration for the node manager.
   ray::raylet::NodeManagerConfig node_manager_config;
   std::unordered_map<std::string, double> static_resource_conf;
-  std::unordered_map<std::string, std::string> raylet_config;
 
   // IO Service for node manager.
   boost::asio::io_service main_service;
@@ -114,25 +110,14 @@ int main(int argc, char *argv[]) {
   gcs_client = std::make_shared<ray::gcs::ServiceBasedGcsClient>(client_options);
 
   RAY_CHECK_OK(gcs_client->Connect(main_service));
-
   std::unique_ptr<ray::raylet::Raylet> server(nullptr);
 
   RAY_CHECK_OK(gcs_client->Nodes().AsyncGetInternalConfig(
       [&](::ray::Status status,
-          const boost::optional<std::unordered_map<std::string, std::string>>
-              stored_raylet_config) {
-        // NOTE: We update the raylet_config map from above. This avoids a race
-        // condition between AsyncSetInternalConfig and AsyncGetInternalConfig on the
-        // head node. There is an unlikely race condition where a second node calls
-        // AsyncGetInternalConfig before the head finishes AsyncSetInternalConfig.
+          const boost::optional<std::string> &stored_raylet_config) {
         RAY_CHECK_OK(status);
-        if (stored_raylet_config.has_value()) {
-          for (auto pair : stored_raylet_config.get()) {
-            raylet_config[pair.first] = pair.second;
-          }
-        }
-
-        RayConfig::instance().initialize(raylet_config);
+        RAY_CHECK(stored_raylet_config.has_value());
+        RayConfig::instance().initialize(stored_raylet_config.get());
 
         // Parse the worker port list.
         std::istringstream worker_port_list_string(worker_port_list);
@@ -157,7 +142,7 @@ int main(int argc, char *argv[]) {
                            ? static_cast<int>(num_cpus_it->second)
                            : 0;
 
-        node_manager_config.raylet_config = raylet_config;
+        node_manager_config.raylet_config = stored_raylet_config.get();
         node_manager_config.resource_config =
             ray::ResourceSet(std::move(static_resource_conf));
         RAY_LOG(DEBUG) << "Starting raylet with static resource configuration: "
@@ -195,12 +180,8 @@ int main(int argc, char *argv[]) {
           RAY_LOG(DEBUG) << "Agent command is empty.";
         }
 
-        node_manager_config.heartbeat_period_ms =
-            RayConfig::instance().raylet_heartbeat_period_milliseconds();
         node_manager_config.report_resources_period_ms =
             RayConfig::instance().raylet_report_resources_period_milliseconds();
-        node_manager_config.debug_dump_period_ms =
-            RayConfig::instance().debug_dump_period_milliseconds();
         node_manager_config.record_metrics_period_ms =
             RayConfig::instance().metrics_report_interval_ms() / 2;
         node_manager_config.fair_queueing_enabled =
