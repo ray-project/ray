@@ -14,11 +14,8 @@ spec:
           imagePullPolicy: Always
           command: [ "/bin/bash", "-c", "--" ]
           args:
-            - "wget https://raw.githubusercontent.com/DmitriGekhtman/ray/move-k8s-test-scripts/doc/kubernetes/example_scripts/job_example.py &&
+            - "wget https://raw.githubusercontent.com/ray-project/ray/master/doc/kubernetes/example_scripts/job_example.py &&
               python job_example.py"
-          env:
-            - name: EXAMPLE_PROGRAM_PATH
-              value: "/home/ray/anaconda3/lib/python3.7/site-packages/ray/autoscaler/kubernetes/example_scripts/job_example.py"
           resources:
             requests:
               cpu: 100m
