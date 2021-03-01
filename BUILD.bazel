@@ -581,9 +581,9 @@ cc_library(
     strip_include_prefix = "src",
     visibility = ["//streaming:__subpackages__"],
     deps = [
-        ":job_rpc",
         ":agent_manager_rpc",
         ":gcs",
+        ":job_rpc",
         ":node_manager_fbs",
         ":node_manager_rpc",
         ":object_manager",
@@ -1850,12 +1850,12 @@ cc_binary(
 filegroup(
     name = "all_py_proto",
     srcs = [
-        "//src/ray/protobuf:job_agent_py_proto",
         "//src/ray/protobuf:agent_manager_py_proto",
         "//src/ray/protobuf:common_py_proto",
         "//src/ray/protobuf:core_worker_py_proto",
         "//src/ray/protobuf:gcs_py_proto",
         "//src/ray/protobuf:gcs_service_py_proto",
+        "//src/ray/protobuf:job_agent_py_proto",
         "//src/ray/protobuf:node_manager_py_proto",
         "//src/ray/protobuf:ray_client_py_proto",
         "//src/ray/protobuf:reporter_py_proto",
