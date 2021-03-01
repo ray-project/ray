@@ -1,4 +1,3 @@
-import math
 from collections import namedtuple
 import logging
 import os
@@ -70,23 +69,8 @@ class ResourceSpec(
 
         memory_units = ray_constants.to_memory_units(
             self.memory, round_up=False)
-        reservable_object_store_memory = (
-            self.object_store_memory *
-            ray_constants.PLASMA_RESERVABLE_MEMORY_FRACTION)
-        if (reservable_object_store_memory <
-                ray_constants.MEMORY_RESOURCE_UNIT_BYTES):
-            raise ValueError(
-                "The minimum amount of object_store_memory that can be "
-                "requested is {}, but you specified {}.".format(
-                    int(
-                        math.ceil(
-                            ray_constants.MEMORY_RESOURCE_UNIT_BYTES /
-                            ray_constants.PLASMA_RESERVABLE_MEMORY_FRACTION)),
-                    self.object_store_memory))
         object_store_memory_units = ray_constants.to_memory_units(
-            self.object_store_memory *
-            ray_constants.PLASMA_RESERVABLE_MEMORY_FRACTION,
-            round_up=False)
+            self.object_store_memory, round_up=False)
 
         resources = dict(
             self.resources,
@@ -250,7 +234,7 @@ def _autodetect_num_gpus():
         props = "AdapterCompatibility"
         cmdargs = ["WMIC", "PATH", "Win32_VideoController", "GET", props]
         lines = subprocess.check_output(cmdargs).splitlines()[1:]
-        result = len([l.rstrip() for l in lines if l.startswith(b"NVIDIA")])
+        result = len([x.rstrip() for x in lines if x.startswith(b"NVIDIA")])
     return result
 
 

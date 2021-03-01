@@ -311,6 +311,9 @@ class ObjectManager : public ObjectManagerInterface,
 
   void Tick(const boost::system::error_code &e);
 
+  /// Get the current object store memory usage.
+  int64_t GetUsedMemory() const { return used_memory_; }
+
  private:
   friend class TestObjectManager;
 
