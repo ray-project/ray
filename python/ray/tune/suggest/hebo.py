@@ -209,7 +209,8 @@ class HEBOSearch(Searcher):
             if self._evaluated_rewards:
                 self._opt.observe(
                     pd.DataFrame(self._points_to_evaluate),
-                    np.array(self._evaluated_rewards))
+                    np.array(self._evaluated_rewards) * self._metric_op
+                )
             else:
                 self._initial_points = self._points_to_evaluate
 
