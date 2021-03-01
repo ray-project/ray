@@ -55,6 +55,7 @@ from ray.includes.common cimport (
     CPlacementStrategy,
     CRayFunction,
     CWorkerType,
+    CJobConfig,
     move,
     LANGUAGE_CPP,
     LANGUAGE_JAVA,
@@ -332,6 +333,17 @@ cdef prepare_args(
                         CCoreWorkerProcess.GetCoreWorker().GetRpcAddress())))
 
 
+cdef raise_if_dependency_failed(arg):
+    """This method is used to improve the readability of backtrace.
+
+    With this method, the backtrace will always contain
+    raise_if_dependency_failed when the task is failed with dependency
+    failures.
+    """
+    if isinstance(arg, RayError):
+        raise arg
+
+
 cdef execute_task(
         CTaskType task_type,
         const c_string name,
@@ -460,8 +472,7 @@ cdef execute_task(
                             metadata_pairs, object_refs)
 
                     for arg in args:
-                        if isinstance(arg, RayError):
-                            raise arg
+                        raise_if_dependency_failed(arg)
                     args, kwargs = ray.signature.recover_args(args)
 
             if (<int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK):
@@ -933,16 +944,17 @@ cdef class CoreWorker:
                     c_object_ids, &results))
         return RayObjectsToDataMetadataPairs(results)
 
-    def object_exists(self, ObjectRef object_ref):
+    def object_exists(self, ObjectRef object_ref, memory_store_only=False):
         cdef:
             c_bool has_object
+            c_bool is_in_plasma
             CObjectID c_object_id = object_ref.native()
 
         with nogil:
             check_status(CCoreWorkerProcess.GetCoreWorker().Contains(
-                c_object_id, &has_object))
+                c_object_id, &has_object, &is_in_plasma))
 
-        return has_object
+        return has_object and (not memory_store_only or not is_in_plasma)
 
     cdef _create_put_buffer(self, shared_ptr[CBuffer] &metadata,
                             size_t data_size, ObjectRef object_ref,
@@ -1638,6 +1650,13 @@ cdef class CoreWorker:
         CCoreWorkerProcess.GetCoreWorker().SetResource(
             resource_name.encode("ascii"), capacity,
             CNodeID.FromBinary(client_id.binary()))
+
+    def get_job_config(self):
+        cdef CJobConfig c_job_config = \
+            CCoreWorkerProcess.GetCoreWorker().GetJobConfig()
+        job_config = ray.gcs_utils.JobConfig()
+        job_config.ParseFromString(c_job_config.SerializeAsString())
+        return job_config
 
 cdef void async_callback(shared_ptr[CRayObject] obj,
                          CObjectID object_ref,

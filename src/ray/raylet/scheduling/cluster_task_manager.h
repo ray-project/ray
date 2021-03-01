@@ -194,6 +194,14 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
       WorkerPoolInterface &worker_pool,
       std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers);
 
+  /// Helper method when the current node does not have the available resources to run a
+  /// task.
+  ///
+  /// \returns true if the task was spilled. The task may not be spilled if the
+  /// spillback policy specifies the local node (which may happen if no other nodes have
+  /// the available resources).
+  bool TrySpillback(const Work &spec);
+
   /// Helper method to try dispatching a single task from the queue to an
   /// available worker. Returns whether the task should be removed from the
   /// queue and whether the worker was successfully leased to execute the work.
@@ -277,8 +285,8 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   void Dispatch(
       std::shared_ptr<WorkerInterface> worker,
       std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers_,
-      const Task &task, rpc::RequestWorkerLeaseReply *reply,
-      std::function<void(void)> send_reply_callback);
+      std::shared_ptr<TaskResourceInstances> &allocated_instances, const Task &task,
+      rpc::RequestWorkerLeaseReply *reply, std::function<void(void)> send_reply_callback);
 
   void Spillback(const NodeID &spillback_to, const Work &work);
 

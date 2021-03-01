@@ -19,11 +19,14 @@ from ray.tune.checkpoint_manager import Checkpoint, CheckpointManager
 # have been defined yet. See https://github.com/ray-project/ray/issues/1716.
 from ray.tune.registry import get_trainable_cls, validate_trainable
 from ray.tune.result import DEFAULT_RESULTS_DIR, DONE, TRAINING_ITERATION
-from ray.tune.resources import PlacementGroupFactory, Resources, \
+from ray.tune.resources import Resources, \
     json_to_resources, resources_to_json
+from ray.tune.utils.placement_groups import PlacementGroupFactory, \
+    resource_dict_to_pg_factory
 from ray.tune.utils.serialization import TuneFunctionEncoder
 from ray.tune.utils.trainable import TrainableUtil
 from ray.tune.utils import date_str, flatten_dict
+from ray.util import log_once
 from ray.utils import binary_to_hex, hex_to_binary
 
 DEBUG_PRINT_INTERVAL = 5
@@ -230,12 +233,10 @@ class Trial:
                             trainable_cls, default_resources))
                 resources = default_resources
         self.location = Location()
+
         self.resources = resources or Resources(cpu=1, gpu=0)
         self.placement_group_factory = placement_group_factory
-        if self.placement_group_factory:
-            resource_kwargs = self.resources._asdict()
-            resource_kwargs["has_placement_group"] = True
-            self.resources = Resources(**resource_kwargs)
+        self._setup_resources()
 
         self.stopping_criterion = stopping_criterion or {}
 
@@ -308,6 +309,36 @@ class Trial:
 
         self._state_json = None
         self._state_valid = False
+
+    def _setup_resources(self, log_always: bool = False):
+        """Set up resource and placement group requirements.
+
+        This will try to convert the resource request in ``self.resources``
+        to a placement group factory object. If this is unsuccessful,
+        placement groups will not be used.
+
+        Args:
+            log_always (bool): If True, this will always log a warning if
+                conversion from a resource dict to a placement group
+                definition was unsuccessful (e.g. when passing ``extra_``
+                requests).
+
+
+        """
+        if not self.placement_group_factory and \
+           not int(os.getenv("TUNE_PLACEMENT_GROUP_AUTO_DISABLED", "0")):
+            try:
+                self.placement_group_factory = resource_dict_to_pg_factory(
+                    self.resources)
+            except ValueError as exc:
+                if log_always or log_once("tune_pg_extra_resources"):
+                    logger.warning(exc)
+                self.placement_group_factory = None
+
+        if self.placement_group_factory:
+            resource_kwargs = self.resources._asdict()
+            resource_kwargs["has_placement_group"] = True
+            self.resources = Resources(**resource_kwargs)
 
     @property
     def node_ip(self):
@@ -388,19 +419,13 @@ class Trial:
         """
         if self.status is Trial.RUNNING:
             raise ValueError("Cannot update resources while Trial is running.")
+
         if isinstance(resources, PlacementGroupFactory):
             self.placement_group_factory = resources
-        elif callable(resources):
-            self.placement_group_factory = PlacementGroupFactory(resources)
         else:
             self.resources = Resources(**resources)
-            self.placement_group_factory = None
 
-        if self.placement_group_factory and \
-           not self.resources.has_placement_group:
-            resource_kwargs = self.resources._asdict()
-            resource_kwargs["has_placement_group"] = True
-            self.resources = Resources(**resource_kwargs)
+        self._setup_resources()
 
         self.invalidate_json_state()
 
@@ -612,8 +637,6 @@ class Trial:
         Sets RUNNING trials to PENDING.
         Note this can only occur if the trial holds a PERSISTENT checkpoint.
         """
-        assert self.checkpoint.storage == Checkpoint.PERSISTENT, (
-            "Checkpoint must not be in-memory.")
         state = self.__dict__.copy()
         state["resources"] = resources_to_json(self.resources)
 

@@ -50,7 +50,7 @@ def test_get_rank(ray_start_single_node_2_gpus):
     assert actor1_rank == 0
 
 
-def test_get_world_size(ray_start_single_node_2_gpus):
+def test_get_collective_group_size(ray_start_single_node_2_gpus):
     world_size = 2
     actors, _ = create_collective_workers(world_size)
     actor0_world_size = ray.get(actors[0].report_world_size.remote())

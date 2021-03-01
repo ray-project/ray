@@ -79,8 +79,8 @@ This checklist is meant to be used in conjunction with the RELEASE_PROCESS.rst d
     - [ ] tune_small
     - [ ] tune_4x32
     - [ ] tune_32x4
-    - [ ] ft_small_non_elastic (flaky!)
-    - [ ] ft_small_elastic (flaky!)
+    - [ ] ft_small_non_elastic
+    - [ ] ft_small_elastic
 
 ## Final Steps
 - [ ] Wheels uploaded to Test PyPI

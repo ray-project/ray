@@ -37,8 +37,10 @@ class WorkerPoolMock : public WorkerPool {
   explicit WorkerPoolMock(boost::asio::io_service &io_service,
                           const WorkerCommandMap &worker_commands)
       : WorkerPool(io_service, POOL_SIZE_SOFT_LIMIT, 0, MAXIMUM_STARTUP_CONCURRENCY, 0, 0,
-                   {}, nullptr, worker_commands, {}, []() {}),
-        last_worker_process_() {}
+                   {}, nullptr, worker_commands, []() {}),
+        last_worker_process_() {
+    SetNodeManagerPort(1);
+  }
 
   ~WorkerPoolMock() {
     // Avoid killing real processes
@@ -103,13 +105,11 @@ class WorkerPoolMock : public WorkerPool {
 class WorkerPoolTest : public ::testing::Test {
  public:
   WorkerPoolTest() : error_message_type_(1), client_call_manager_(io_service_) {
-    RayConfig::instance().initialize(
-        {{"object_spilling_config", "mock_config"},
-         {"max_io_workers", std::to_string(MAX_IO_WORKER_SIZE)}});
-    SetWorkerCommands(
-        {{Language::PYTHON, {"dummy_py_worker_command"}},
-         {Language::JAVA,
-          {"dummy_java_worker_command", "RAY_WORKER_RAYLET_CONFIG_PLACEHOLDER"}}});
+    RayConfig::instance().initialize("object_spilling_config,YQ==;max_io_workers," +
+                                     std::to_string(MAX_IO_WORKER_SIZE));
+    SetWorkerCommands({{Language::PYTHON, {"dummy_py_worker_command"}},
+                       {Language::JAVA,
+                        {"java", "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER", "MainClass"}}});
   }
 
   std::shared_ptr<WorkerInterface> CreateWorker(
@@ -288,8 +288,8 @@ TEST_F(WorkerPoolTest, StartupPythonWorkerProcessCount) {
 TEST_F(WorkerPoolTest, StartupJavaWorkerProcessCount) {
   TestStartupWorkerProcessCount(
       Language::JAVA, NUM_WORKERS_PER_PROCESS_JAVA,
-      {"dummy_java_worker_command",
-       GetNumJavaWorkersPerProcessSystemProperty(NUM_WORKERS_PER_PROCESS_JAVA)});
+      {"java", GetNumJavaWorkersPerProcessSystemProperty(NUM_WORKERS_PER_PROCESS_JAVA),
+       "MainClass"});
 }
 
 TEST_F(WorkerPoolTest, InitialWorkerProcessCount) {
@@ -363,12 +363,6 @@ TEST_F(WorkerPoolTest, PopWorkersOfMultipleLanguages) {
 }
 
 TEST_F(WorkerPoolTest, StartWorkerWithDynamicOptionsCommand) {
-  const std::vector<std::string> java_worker_command = {
-      "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER", "dummy_java_worker_command",
-      "RAY_WORKER_RAYLET_CONFIG_PLACEHOLDER"};
-  SetWorkerCommands({{Language::PYTHON, {"dummy_py_worker_command"}},
-                     {Language::JAVA, java_worker_command}});
-
   TaskSpecification task_spec = ExampleTaskSpec(
       ActorID::Nil(), Language::JAVA, JOB_ID,
       ActorID::Of(JOB_ID, TaskID::ForDriverTask(JOB_ID), 1), {"test_op_0", "test_op_1"});
@@ -383,11 +377,11 @@ TEST_F(WorkerPoolTest, StartWorkerWithDynamicOptionsCommand) {
   const auto real_command =
       worker_pool_->GetWorkerCommand(worker_pool_->LastStartedWorkerProcess());
 
-  ASSERT_EQ(
-      real_command,
-      std::vector<std::string>(
-          {"test_op_0", "test_op_1", "-Dray.job.code-search-path=/test/code_serch_path",
-           "dummy_java_worker_command", GetNumJavaWorkersPerProcessSystemProperty(1)}));
+  ASSERT_EQ(real_command,
+            std::vector<std::string>({"java", "test_op_0", "test_op_1",
+                                      "-Dray.job.code-search-path=/test/code_serch_path",
+                                      GetNumJavaWorkersPerProcessSystemProperty(1),
+                                      "MainClass"}));
   worker_pool_->HandleJobFinished(JOB_ID);
 }
 

@@ -68,7 +68,7 @@ def fillout_resources_kubernetes(config):
     not currently support fractional CPU.
     """
     if "available_node_types" not in config:
-        return config["available_node_types"]
+        return config
     node_types = copy.deepcopy(config["available_node_types"])
     for node_type in node_types:
         container_data = node_types[node_type]["node_config"]["spec"][

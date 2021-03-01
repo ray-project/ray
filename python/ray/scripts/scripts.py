@@ -1,3 +1,5 @@
+from typing import Optional
+
 import click
 import copy
 from datetime import datetime
@@ -18,7 +20,10 @@ import ray._private.services as services
 from ray.autoscaler._private.commands import (
     attach_cluster, exec_cluster, create_or_update_cluster, monitor_cluster,
     rsync, teardown_cluster, get_head_node_ip, kill_node, get_worker_node_ips,
-    debug_status, RUN_ENV_TYPES)
+    get_local_dump_archive, get_cluster_dump_archive, debug_status,
+    RUN_ENV_TYPES)
+from ray.autoscaler._private.constants import RAY_PROCESSES
+
 from ray.autoscaler._private.util import DEBUG_AUTOSCALING_ERROR, \
     DEBUG_AUTOSCALING_STATUS
 from ray.state import GlobalState
@@ -256,6 +261,7 @@ def debug(address):
     "--node-manager-port",
     required=False,
     type=int,
+    default=0,
     help="the port to use for starting the node manager")
 @click.option(
     "--gcs-server-port",
@@ -704,31 +710,7 @@ def stop(force, verbose, log_style, log_color):
     # Note that raylet needs to exit before object store, otherwise
     # it cannot exit gracefully.
     is_linux = sys.platform.startswith("linux")
-    processes_to_kill = [
-        # The first element is the substring to filter.
-        # The second element, if True, is to filter ps results by command name
-        # (only the first 15 charactors of the executable name on Linux);
-        # if False, is to filter ps results by command with all its arguments.
-        # See STANDARD FORMAT SPECIFIERS section of
-        # http://man7.org/linux/man-pages/man1/ps.1.html
-        # about comm and args. This can help avoid killing non-ray processes.
-        # Format:
-        # Keyword to filter, filter by command (True)/filter by args (False)
-        ["raylet", True],
-        ["plasma_store", True],
-        ["gcs_server", True],
-        ["monitor.py", False],
-        ["ray.util.client.server", False],
-        ["redis-server", False],
-        ["default_worker.py", False],  # Python worker.
-        ["ray::", True],  # Python worker. TODO(mehrdadn): Fix for Windows
-        ["io.ray.runtime.runner.worker.DefaultWorker", False],  # Java worker.
-        ["log_monitor.py", False],
-        ["reporter.py", False],
-        ["dashboard.py", False],
-        ["new_dashboard/agent.py", False],
-        ["ray_process_reaper.py", False],
-    ]
+    processes_to_kill = RAY_PROCESSES
 
     process_infos = []
     for proc in psutil.process_iter(["name", "cmdline"]):
@@ -1319,12 +1301,12 @@ export IFS="
 # Call sudo to prompt for password before anything has been printed.
 sudo true
 workers=$(
-    ps aux | grep -E ' ray_|default_worker.py' | grep -v grep
+    ps aux | grep -E ' ray::|default_worker.py' | grep -v raylet | grep -v grep
 )
 for worker in $workers; do
     echo "Stack dump for $worker";
     pid=`echo $worker | awk '{print $2}'`;
-    sudo $pyspy dump --pid $pid;
+    sudo $pyspy dump --pid $pid --native;
     echo;
 done
     """
@@ -1412,6 +1394,187 @@ def status(address, redis_password):
     status = redis_client.hget(DEBUG_AUTOSCALING_STATUS, "value")
     error = redis_client.hget(DEBUG_AUTOSCALING_ERROR, "value")
     print(debug_status(status, error))
+
+
+@cli.command(hidden=True)
+@click.option(
+    "--stream",
+    "-S",
+    required=False,
+    type=bool,
+    is_flag=True,
+    default=False,
+    help="If True, will stream the binary archive contents to stdout")
+@click.option(
+    "--output",
+    "-o",
+    required=False,
+    type=str,
+    default=None,
+    help="Output file.")
+@click.option(
+    "--logs/--no-logs",
+    is_flag=True,
+    default=True,
+    help="Collect logs from ray session dir")
+@click.option(
+    "--debug-state/--no-debug-state",
+    is_flag=True,
+    default=True,
+    help="Collect debug_state.txt from ray session dir")
+@click.option(
+    "--pip/--no-pip",
+    is_flag=True,
+    default=True,
+    help="Collect installed pip packages")
+@click.option(
+    "--processes/--no-processes",
+    is_flag=True,
+    default=True,
+    help="Collect info on running processes")
+@click.option(
+    "--processes-verbose/--no-processes-verbose",
+    is_flag=True,
+    default=True,
+    help="Increase process information verbosity")
+def local_dump(stream: bool = False,
+               output: Optional[str] = None,
+               logs: bool = True,
+               debug_state: bool = True,
+               pip: bool = True,
+               processes: bool = True,
+               processes_verbose: bool = False):
+    """Collect local data and package into an archive.
+
+    Usage:
+
+        ray local-dump [--stream/--output file]
+
+    This script is called on remote nodes to fetch their data.
+    """
+    # This may stream data to stdout, so no printing here
+    get_local_dump_archive(
+        stream=stream,
+        output=output,
+        logs=logs,
+        debug_state=debug_state,
+        pip=pip,
+        processes=processes,
+        processes_verbose=processes_verbose)
+
+
+@cli.command()
+@click.argument("cluster_config_file", required=False, type=str)
+@click.option(
+    "--host",
+    "-h",
+    required=False,
+    type=str,
+    help="Single or list of hosts, separated by comma.")
+@click.option(
+    "--ssh-user",
+    "-U",
+    required=False,
+    type=str,
+    default=None,
+    help="Username of the SSH user.")
+@click.option(
+    "--ssh-key",
+    "-K",
+    required=False,
+    type=str,
+    default=None,
+    help="Path to the SSH key file.")
+@click.option(
+    "--docker",
+    "-d",
+    required=False,
+    type=str,
+    default=None,
+    help="Name of the docker container, if applicable.")
+@click.option(
+    "--local",
+    "-L",
+    required=False,
+    type=bool,
+    is_flag=True,
+    default=None,
+    help="Also include information about the local node.")
+@click.option(
+    "--output",
+    "-o",
+    required=False,
+    type=str,
+    default=None,
+    help="Output file.")
+@click.option(
+    "--logs/--no-logs",
+    is_flag=True,
+    default=True,
+    help="Collect logs from ray session dir")
+@click.option(
+    "--debug-state/--no-debug-state",
+    is_flag=True,
+    default=True,
+    help="Collect debug_state.txt from ray session dir")
+@click.option(
+    "--pip/--no-pip",
+    is_flag=True,
+    default=True,
+    help="Collect installed pip packages")
+@click.option(
+    "--processes/--no-processes",
+    is_flag=True,
+    default=True,
+    help="Collect info on running processes")
+@click.option(
+    "--processes-verbose/--no-processes-verbose",
+    is_flag=True,
+    default=True,
+    help="Increase process information verbosity")
+def cluster_dump(cluster_config_file: Optional[str] = None,
+                 host: Optional[str] = None,
+                 ssh_user: Optional[str] = None,
+                 ssh_key: Optional[str] = None,
+                 docker: Optional[str] = None,
+                 local: Optional[bool] = None,
+                 output: Optional[str] = None,
+                 logs: bool = True,
+                 debug_state: bool = True,
+                 pip: bool = True,
+                 processes: bool = True,
+                 processes_verbose: bool = False):
+    """Get log data from one or more nodes.
+
+    Best used with Ray cluster configs:
+
+        ray cluster-dump [cluster.yaml]
+
+    Include the --local flag to also collect and include data from the
+    local node.
+
+    Missing fields will be tried to be auto-filled.
+
+    You can also manually specify a list of hosts using the
+    ``--host <host1,host2,...>`` parameter.
+    """
+    archive_path = get_cluster_dump_archive(
+        cluster_config_file=cluster_config_file,
+        host=host,
+        ssh_user=ssh_user,
+        ssh_key=ssh_key,
+        docker=docker,
+        local=local,
+        output=output,
+        logs=logs,
+        debug_state=debug_state,
+        pip=pip,
+        processes=processes,
+        processes_verbose=processes_verbose)
+    if archive_path:
+        click.echo(f"Created archive: {archive_path}")
+    else:
+        click.echo("Could not create archive.")
 
 
 @cli.command(hidden=True)
@@ -1511,6 +1674,8 @@ cli.add_command(microbenchmark)
 cli.add_command(stack)
 cli.add_command(status)
 cli.add_command(memory)
+cli.add_command(local_dump)
+cli.add_command(cluster_dump)
 cli.add_command(global_gc)
 cli.add_command(timeline)
 cli.add_command(install_nightly)

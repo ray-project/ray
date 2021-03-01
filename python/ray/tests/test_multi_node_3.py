@@ -7,7 +7,7 @@ import ray
 from ray.test_utils import (
     check_call_ray, run_string_as_driver, run_string_as_driver_nonblocking,
     wait_for_children_of_pid, wait_for_children_of_pid_to_exit,
-    kill_process_by_name, Semaphore)
+    wait_for_children_names_of_pid, kill_process_by_name, Semaphore)
 
 
 def test_calling_start_ray_head(call_ray_stop_only):
@@ -94,7 +94,7 @@ def test_calling_start_ray_head(call_ray_stop_only):
     blocked = subprocess.Popen(
         ["ray", "start", "--head", "--block", "--port", "0"])
 
-    wait_for_children_of_pid(blocked.pid, num_children=7, timeout=30)
+    wait_for_children_names_of_pid(blocked.pid, ["raylet"], timeout=30)
 
     blocked.poll()
     assert blocked.returncode is None
@@ -387,6 +387,57 @@ ray.get(main_wait.release.remote())
     assert driver1_out_split[1][-1] == "2", driver1_out_split
     assert driver2_out_split[0][-1] == "3", driver2_out_split
     assert driver2_out_split[1][-1] == "4", driver2_out_split
+
+
+def test_spillback_distribution(ray_start_cluster):
+    cluster = ray_start_cluster
+    # Create a head node and wait until it is up.
+    cluster.add_node(num_cpus=0)
+    ray.init(address=cluster.address)
+    cluster.wait_for_nodes()
+
+    num_nodes = 3
+    # create 2 worker nodes.
+    for _ in range(num_nodes):
+        cluster.add_node(num_cpus=5)
+    cluster.wait_for_nodes()
+
+    @ray.remote
+    def task():
+        import time
+        time.sleep(1)
+        return ray.worker._global_node.unique_id
+
+    # Make sure tasks are spilled back non-deterministically.
+    task_refs = [task.remote() for _ in range(5)]
+    assert len(set(ray.get(task_refs))) != 1
+
+    @ray.remote(num_cpus=1)
+    class Actor1:
+        def __init__(self):
+            pass
+
+        def get_location(self):
+            return ray.worker.global_worker.node.unique_id
+
+    # Create a bunch of actors.
+    num_actors = 10
+    num_attempts = 20
+    minimum_count = 2
+
+    # Make sure that actors are spread between the raylets.
+    attempts = 0
+    while attempts < num_attempts:
+        actors = [Actor1.remote() for _ in range(num_actors)]
+        locations = ray.get([actor.get_location.remote() for actor in actors])
+        names = set(locations)
+        counts = [locations.count(name) for name in names]
+        print("Counts are {}.".format(counts))
+        if (len(names) == num_nodes
+                and all(count >= minimum_count for count in counts)):
+            break
+        attempts += 1
+    assert attempts < num_attempts
 
 
 if __name__ == "__main__":

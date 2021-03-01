@@ -10,6 +10,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.utils import add_mixins, force_list
 from ray.rllib.utils.annotations import override, DeveloperAPI
+from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.typing import AgentID, ModelGradients, TensorType, \
     TrainerConfigDict
@@ -43,7 +44,7 @@ def build_tf_policy(
         ], "tf.Operation"]] = None,
         grad_stats_fn: Optional[Callable[[Policy, SampleBatch, ModelGradients],
                                          Dict[str, TensorType]]] = None,
-        extra_action_fetches_fn: Optional[Callable[[Policy], Dict[
+        extra_action_out_fn: Optional[Callable[[Policy], Dict[
             str, TensorType]]] = None,
         extra_learn_fetches_fn: Optional[Callable[[Policy], Dict[
             str, TensorType]]] = None,
@@ -68,6 +69,9 @@ def build_tf_policy(
         get_batch_divisibility_req: Optional[Callable[[Policy], int]] = None,
         # TODO: (sven) deprecate once _use_trajectory_view_api is always True.
         obs_include_prev_action_reward: bool = True,
+        # Deprecated args.
+        extra_action_fetches_fn: Optional[Callable[[Policy], Dict[
+            str, TensorType]]] = None,
 ) -> Type[DynamicTFPolicy]:
     """Helper function for creating a dynamic tf policy at runtime.
 
@@ -124,7 +128,7 @@ def build_tf_policy(
             Dict[str, TensorType]]]): Optional callable that returns a dict of
             TF fetches given the policy, batch input, and gradient tensors. If
             None, will not collect any gradient stats.
-        extra_action_fetches_fn (Optional[Callable[[Policy],
+        extra_action_out_fn (Optional[Callable[[Policy],
             Dict[str, TensorType]]]): Optional callable that returns
             a dict of TF fetches given the policy object. If None, will not
             perform any extra fetches.
@@ -183,6 +187,13 @@ def build_tf_policy(
     original_kwargs = locals().copy()
     base = add_mixins(DynamicTFPolicy, mixins)
 
+    if extra_action_fetches_fn is not None:
+        deprecation_warning(
+            old="extra_action_fetches_fn",
+            new="extra_action_out_fn",
+            error=False)
+        extra_action_out_fn = extra_action_fetches_fn
+
     class policy_cls(base):
         def __init__(self,
                      obs_space,
@@ -203,13 +214,11 @@ def build_tf_policy(
                                          config):
                 if before_loss_init:
                     before_loss_init(policy, obs_space, action_space, config)
-                if extra_action_fetches_fn is None:
+                if extra_action_out_fn is None:
                     policy._extra_action_fetches = {}
                 else:
-                    policy._extra_action_fetches = extra_action_fetches_fn(
-                        policy)
-                    policy._extra_action_fetches = extra_action_fetches_fn(
-                        policy)
+                    policy._extra_action_fetches = extra_action_out_fn(policy)
+                    policy._extra_action_fetches = extra_action_out_fn(policy)
 
             DynamicTFPolicy.__init__(
                 self,
