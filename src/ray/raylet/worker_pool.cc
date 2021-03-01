@@ -726,15 +726,20 @@ void WorkerPool::TryKillingIdleWorkers() {
               // If we could kill the worker properly, we remove them from the idle pool.
               if (RemoveWorker(worker_state.idle, worker)) {
                 // If the worker is not idle at this moment, we don't mark them dead.
-                // It will be marked as dead after the current task is finished.
+                // In this case, the core worker will exit the process after
+                // finishing the assigned task, and DisconnectWorker will handle this
+                // part.
                 if (!worker->IsDead()) {
                   worker->MarkDead();
                 }
               }
             }
           });
-      // Always subtract the running size here so that it avoids killing too many io
-      // workers unncessarily.
+      // Always subtract the running size here so that it avoids killing too many idle
+      // workers unncessarily. This value could be wrong because we don't know if the
+      // worker is killed until we receive a response from them. It is fine because this
+      // just means we will kill less number of idle workers until the next time to kill
+      // idle workers.
       running_size--;
     }
   }
