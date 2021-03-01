@@ -45,7 +45,6 @@ available_node_types:
         resources: {}
         ## NOTE: Typically for local clusters, max_workers == len(worker_ips).
         min_workers: 0
-        max_workers: 0
         # Leave this empty
         node_config: {}
 head_node_type: ray.head.default
