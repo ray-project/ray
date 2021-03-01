@@ -7,6 +7,9 @@ from typing import List
 import ray
 
 from ray._raylet import (TaskID, ActorID, JobID)
+from ray.state import GlobalState
+from ray.internal.internal_api import node_stats, store_stats_summary
+from ray.ray_constants import REDIS_DEFAULT_PASSWORD
 import logging
 
 logger = logging.getLogger(__name__)
@@ -56,6 +59,32 @@ class ReferenceType:
     USED_BY_PENDING_TASK = "USED_BY_PENDING_TASK"
     CAPTURED_IN_OBJECT = "CAPTURED_IN_OBJECT"
     UNKNOWN_STATUS = "UNKNOWN_STATUS"
+
+
+def get_sorting_type(sort_by: str):
+    """Translate string input into SortingType instance"""
+    sort_by = sort_by.upper()
+    if sort_by == "PID":
+        return SortingType.PID
+    elif sort_by == "OBJECT_SIZE":
+        return SortingType.OBJECT_SIZE
+    elif sort_by == "REFERENCE_TYPE":
+        return SortingType.REFERENCE_TYPE
+    else:
+        raise Exception("The sort-by input provided is not one of\
+                PID, OBJECT_SIZE, or REFERENCE_TYPE.")
+
+
+def get_group_by_type(group_by: str):
+    """Translate string input into GroupByType instance"""
+    group_by = group_by.upper()
+    if group_by == "NODE_ADDRESS":
+        return GroupByType.NODE_ADDRESS
+    elif group_by == "STACK_TRACE":
+        return GroupByType.STACK_TRACE
+    else:
+        raise Exception("The group-by input provided is not one of\
+                NODE_ADDRESS or STACK_TRACE.")
 
 
 class MemoryTableEntry:
@@ -129,7 +158,7 @@ class MemoryTableEntry:
         actor_random_bits = object_ref_hex[TASKID_RANDOM_BITS_SIZE:
                                            TASKID_RANDOM_BITS_SIZE +
                                            ACTORID_RANDOM_BITS_SIZE]
-        if (random_bits == "f" * 16 and not actor_random_bits == "f" * 8):
+        if (random_bits == "f" * 16 and not actor_random_bits == "f" * 24):
             return True
         else:
             return False
@@ -299,3 +328,119 @@ def construct_memory_table(workers_stats: List,
     memory_table = MemoryTable(
         memory_table_entries, group_by_type=group_by, sort_by_type=sort_by)
     return memory_table
+
+
+def get_memory_summary(redis_address, redis_password, group_by, sort_by,
+                       line_wrap, stats_only) -> str:
+    from ray.new_dashboard.modules.stats_collector.stats_collector_head\
+         import node_stats_to_dict
+
+    # Get terminal size
+    import shutil
+    size = shutil.get_terminal_size((80, 20)).columns
+    line_wrap_threshold = 137
+
+    # Fetch core memory worker stats, store as a dictionary
+    state = GlobalState()
+    state._initialize_global_state(redis_address, redis_password)
+    core_worker_stats = []
+    for raylet in state.node_table():
+        stats = node_stats_to_dict(
+            node_stats(raylet["NodeManagerAddress"], raylet["NodeManagerPort"],
+                       (not stats_only)))
+        core_worker_stats.extend(stats["coreWorkersStats"])
+        assert type(stats) is dict and "coreWorkersStats" in stats
+
+    # Build memory table with "group_by" and "sort_by" parameters
+    group_by, sort_by = get_group_by_type(group_by), get_sorting_type(sort_by)
+    memory_table = construct_memory_table(core_worker_stats, group_by,
+                                          sort_by).as_dict()
+    assert "summary" in memory_table and "group" in memory_table
+
+    # Build memory summary
+    mem = ""
+    group_by, sort_by = group_by.name.lower().replace(
+        "_", " "), sort_by.name.lower().replace("_", " ")
+    summary_labels = [
+        "Mem Used by Objects", "Local References", "Pinned Count",
+        "Pending Tasks", "Captured in Objects", "Actor Handles"
+    ]
+    summary_string = "{:<19}  {:<16}  {:<12}  {:<13}  {:<19}  {:<13}\n"
+
+    object_ref_labels = [
+        "IP Address", "PID", "Type", "Call Site", "Size", "Reference Type",
+        "Object Ref"
+    ]
+    object_ref_string = "{:<8}  {:<3}  {:<4}  {:<9}  {:<4}  {:<14}  {:<10}\n"
+    if size > line_wrap_threshold and line_wrap:
+        object_ref_string = "{:<12}  {:<5}  {:<6}  {:<22}  {:<6}  {:<18}  \
+{:<56}\n"
+
+    mem += f"Grouping by {group_by}...\
+        Sorting by {sort_by}...\n\n\n\n"
+
+    for key, group in memory_table["group"].items():
+        # Group summary
+        summary = group["summary"]
+        summary["total_object_size"] = str(summary["total_object_size"]) + " B"
+        mem += f"--- Summary for {group_by}: {key} ---\n"
+        mem += summary_string\
+            .format(*summary_labels)
+        mem += summary_string\
+            .format(*summary.values()) + "\n"
+
+        # Memory table per group
+        mem += f"--- Object references for {group_by}: {key} ---\n"
+        mem += object_ref_string\
+            .format(*object_ref_labels)
+        for entry in group["entries"]:
+            entry["object_size"] = str(
+                entry["object_size"]
+            ) + " B" if entry["object_size"] > -1 else "?"
+            num_lines = 1
+            if size > line_wrap_threshold and line_wrap:
+                call_site_length = 22
+                entry["call_site"] = [
+                    entry["call_site"][i:i + call_site_length] for i in range(
+                        0, len(entry["call_site"]), call_site_length)
+                ]
+                num_lines = len(entry["call_site"])
+            object_ref_values = [
+                entry["node_ip_address"], entry["pid"], entry["type"],
+                entry["call_site"], entry["object_size"],
+                entry["reference_type"], entry["object_ref"]
+            ]
+            for i in range(len(object_ref_values)):
+                if not isinstance(object_ref_values[i], list):
+                    object_ref_values[i] = [object_ref_values[i]]
+                object_ref_values[i].extend(
+                    ["" for x in range(num_lines - len(object_ref_values[i]))])
+            for i in range(num_lines):
+                row = [elem[i] for elem in object_ref_values]
+                mem += object_ref_string\
+                    .format(*row)
+            mem += "\n"
+        mem += "\n\n\n"
+    return mem
+
+
+def get_store_stats_summary(redis_address, redis_password) -> str:
+    state = GlobalState()
+    state._initialize_global_state(redis_address, redis_password)
+    raylet = state.node_table()[0]
+    stats = node_stats(raylet["NodeManagerAddress"], raylet["NodeManagerPort"])
+    store_summary = store_stats_summary(stats)
+    return store_summary
+
+
+def memory_summary(redis_address,
+                   redis_password=REDIS_DEFAULT_PASSWORD,
+                   group_by="NODE_ADDRESS",
+                   sort_by="OBJECT_SIZE",
+                   line_wrap=True,
+                   stats_only=False):
+    if stats_only:
+        return get_store_stats_summary(redis_address, redis_password)
+    return get_memory_summary(redis_address, redis_password, group_by, sort_by,
+                              line_wrap, stats_only) + get_store_stats_summary(
+                                  redis_address, redis_password)
