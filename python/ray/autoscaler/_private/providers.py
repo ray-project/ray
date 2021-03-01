@@ -15,8 +15,8 @@ _provider_instances = {}
 # Minimal config for compatibility with legacy-style external configs.
 MINIMAL_EXTERNAL_CONFIG = {
     "available_node_types": {
-        "head.empty": {},
-        "worker.empty": {},
+        "ray-legacy-head-node-type": {},
+        "ray-legacy-worker-node-type": {},
     },
     "head_node_type": "head.empty",
     "head_node": {},
