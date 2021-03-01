@@ -260,7 +260,7 @@ NodeManager::NodeManager(boost::asio::io_service &io_service, const NodeID &self
   heartbeat_thread_.reset(new std::thread([this] {
     SetThreadName("heartbeat");
     /// The asio work to keep io_service_ alive.
-    boost::asio::io_service::work io_service_work_(io_service_);
+    boost::asio::io_service::work io_service_work_(heartbeat_io_service_);
     heartbeat_io_service_.run();
   }));
   heartbeat_runner_.reset(new PeriodicalRunner(heartbeat_io_service_));
