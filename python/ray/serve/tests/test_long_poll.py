@@ -1,4 +1,5 @@
 import sys
+import asyncio
 import time
 import os
 from typing import Dict
@@ -113,6 +114,25 @@ def test_client(serve_instance):
     assert 1999 in values
 
     assert callback_results == {"key_1": 100, "key_2": 1999}
+
+
+@pytest.mark.asyncio
+async def test_client_threadsafe(serve_instance):
+    host = ray.remote(LongPollHost).remote()
+    ray.get(host.notify_changed.remote("key_1", 100))
+
+    e = asyncio.Event()
+
+    def key_1_callback(_):
+        e.set()
+
+    _ = LongPollClient(
+        host, {
+            "key_1": key_1_callback,
+        },
+        call_in_event_loop=asyncio.get_event_loop())
+
+    await e.wait()
 
 
 if __name__ == "__main__":

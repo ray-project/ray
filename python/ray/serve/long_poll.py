@@ -1,9 +1,11 @@
 import asyncio
+from asyncio.events import AbstractEventLoop
 import random
 from collections import defaultdict
 from dataclasses import dataclass
 from enum import Enum, auto
-from typing import Any, Tuple, Callable, DefaultDict, Dict, Set, Union
+from typing import (Any, Optional, Tuple, Callable, DefaultDict, Dict, Set,
+                    Union)
 
 import ray
 from ray.serve.utils import logger
@@ -52,11 +54,13 @@ class LongPollClient:
             self,
             host_actor,
             key_listeners: Dict[KeyType, UpdateStateCallable],
+            call_in_event_loop: Optional[AbstractEventLoop] = None,
     ) -> None:
         assert len(key_listeners) > 0
 
         self.host_actor = host_actor
         self.key_listeners = key_listeners
+        self.event_loop = call_in_event_loop
         self._reset()
 
     def _reset(self):
@@ -67,7 +71,7 @@ class LongPollClient:
         self.object_snapshots: Dict[KeyType, Any] = dict()
 
         self._current_ref = None
-        self._poll_once()
+        self._poll_next()
 
     def update_key_listeners(
             self,
@@ -76,7 +80,10 @@ class LongPollClient:
         self.key_lisners = key_listeners
         self._reset()
 
-    def _poll_once(self) -> ray.ObjectRef:
+    def _poll_next(self):
+        """Poll the update. The callback is expected to scheduler another
+        _poll_next call.
+        """
         self._current_ref = self.host_actor.listen_for_change.remote(
             self.snapshot_ids)
         self._current_ref._on_completed(
@@ -98,19 +105,23 @@ class LongPollClient:
             # host?
             if not isinstance(updates.as_instanceof_cause(), ValueError):
                 logger.error("LongPollHost errored\n" + updates.traceback_str)
-            self._poll_once()
+            self._poll_next()
             return
 
         # Before we process the updates and calling callbacks, kick off
         # another poll so we can pipeline the polling and processing.
-        self._poll_once()
+        self._poll_next()
         logger.debug("LongPollClient received updates for keys: "
                      f"{list(updates.keys())}.")
         for key, update in updates.items():
             self.object_snapshots[key] = update.object_snapshot
             self.snapshot_ids[key] = update.snapshot_id
             callback = self.key_listeners[key]
-            callback(update.object_snapshot)
+            if self.event_loop is None:
+                callback(update.object_snapshot)
+            else:
+                self.event_loop.call_soon_threadsafe(
+                    lambda: callback(update.object_snapshot))
 
 
 class LongPollHost:

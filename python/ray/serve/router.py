@@ -47,7 +47,12 @@ class Query:
 class ReplicaSet:
     """Data structure representing a set of replica actor handles"""
 
-    def __init__(self, controller_handle, backend_tag, event_loop):
+    def __init__(
+            self,
+            controller_handle,
+            backend_tag,
+            event_loop: asyncio.AbstractEventLoop,
+    ):
         self.backend_tag = backend_tag
         # NOTE(simon): We have to do this because max_concurrent_queries
         # and the replica handles come from different long poll keys.
@@ -77,24 +82,23 @@ class ReplicaSet:
         })
 
         self.long_poll_client = LongPollClient(
-            controller_handle, {
+            controller_handle,
+            {
                 (LongPollNamespace.BACKEND_CONFIGS, backend_tag): self.
                 set_max_concurrent_queries,
                 (LongPollNamespace.REPLICA_HANDLES, backend_tag): self.
                 update_worker_replicas,
-            })
-
-    def _set_config_updated_event(self):
-        self.config_updated_event._loop.call_soon_threadsafe(
-            lambda: self.config_updated_event.set())
+            },
+            call_in_event_loop=event_loop,
+        )
 
     def set_max_concurrent_queries(self, backend_config: BackendConfig):
-        new_value = backend_config.max_concurrent_queries
+        new_value: int = backend_config.max_concurrent_queries
         if new_value != self.max_concurrent_queries:
             self.max_concurrent_queries = new_value
             logger.debug(
                 f"ReplicaSet: changing max_concurrent_queries to {new_value}")
-            self._set_config_updated_event()
+            self.config_updated_event.set()
 
     def update_worker_replicas(self, worker_replicas: Iterable[ActorHandle]):
         added, removed, _ = compute_iterable_delta(
@@ -110,7 +114,7 @@ class ReplicaSet:
         if len(added) > 0 or len(removed) > 0:
             self.replica_iterator = itertools.cycle(
                 self.in_flight_queries.keys())
-            self._set_config_updated_event()
+            self.config_updated_event.set()
 
     def _try_assign_replica(self, query: Query) -> Optional[ray.ObjectRef]:
         """Try to assign query to a replica, return the object ref if succeeded
@@ -206,10 +210,13 @@ class Router:
             tag_keys=("endpoint", ))
 
         self.long_poll_client = LongPollClient(
-            self.controller, {
+            self.controller,
+            {
                 (LongPollNamespace.TRAFFIC_POLICIES, endpoint_tag): self.
                 _update_traffic_policy,
-            })
+            },
+            call_in_event_loop=self._loop,
+        )
 
     def _update_traffic_policy(self, traffic_policy: TrafficPolicy):
         self.endpoint_policy = RandomEndpointPolicy(traffic_policy)
@@ -225,8 +232,7 @@ class Router:
             del self.backend_replicas[tag]
 
         if not self._pending_endpoint_registered.is_set():
-            self._pending_endpoint_registered._loop.call_soon_threadsafe(
-                lambda: self._pending_endpoint_registered.set())
+            self._pending_endpoint_registered.set()
 
     def _get_or_create_replica_set(self, tag):
         if tag not in self.backend_replicas:
