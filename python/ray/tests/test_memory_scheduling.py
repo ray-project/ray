@@ -123,7 +123,6 @@ class TestMemoryScheduling(unittest.TestCase):
             ray.init(num_cpus=2, object_store_memory=500 * MB)
             result = tune.run(
                 train_oom,
-                resources_per_trial={"object_store_memory": 150 * 1024 * 1024},
                 raise_on_failed_trial=False)
             self.assertTrue(result.trials[0].status, "ERROR")
             self.assertTrue("ObjectStoreFullError: Failed to put" in
