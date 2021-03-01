@@ -151,6 +151,10 @@ message GetObjectStatusReply {
   // The Ray object: either a concrete value, an in-Plasma indicator, or an
   // exception.
   RayObject object = 2;
+  // This object's locations.
+  repeated bytes node_ids = 3;
+  // The size of the object in bytes.
+  uint64 object_size = 4;
 }
 
 message WaitForActorOutOfScopeRequest {

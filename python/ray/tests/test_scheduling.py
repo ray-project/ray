@@ -228,6 +228,45 @@ def test_locality_aware_leasing_cached_objects(ray_start_cluster):
     assert ray.get(h.remote(f_obj1, f_obj2)) == worker2.unique_id
 
 
+def test_locality_aware_leasing_borrowed_objects(ray_start_cluster):
+    # This test ensures that a task will run where its task dependencies are
+    # located, even when those objects are borrowed.
+    cluster = ray_start_cluster
+
+    # Disable worker caching so worker leases are not reused, and disable
+    # inlining of return objects so return objects are always put into Plasma.
+    cluster.add_node(
+        num_cpus=1,
+        resources={"pin_head": 1},
+        _system_config={
+            "worker_lease_timeout_milliseconds": 0,
+            "max_direct_call_object_size": 0,
+        })
+    # Use a custom resource for pinning tasks to a node.
+    worker_node = cluster.add_node(num_cpus=1, resources={"pin_worker": 1})
+    ray.init(address=cluster.address)
+
+    @ray.remote
+    def f():
+        return ray.worker.global_worker.node.unique_id
+
+    @ray.remote
+    def g(x):
+        return ray.get(h.remote(x[0]))
+
+    @ray.remote
+    def h(x):
+        return ray.worker.global_worker.node.unique_id
+
+    # f will run on worker, f_obj will be pinned on worker.
+    f_obj = f.options(resources={"pin_worker": 1}).remote()
+    # g will run on head, f_obj will be borrowed by head, and we confirm that
+    # h(f_obj) is scheduled onto worker, the node that has f_obj.
+    assert ray.get(g.options(resources={
+        "pin_head": 1
+    }).remote([f_obj])) == worker_node.unique_id
+
+
 def test_lease_request_leak(shutdown_only):
     ray.init(
         num_cpus=1,
