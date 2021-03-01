@@ -1,5 +1,4 @@
 import dask
-import numpy as np
 import dask.array as da
 import pytest
 
@@ -35,9 +34,7 @@ def test_ray_dask_basic(ray_start_regular_shared):
 def test_ray_dask_persist(ray_start_regular_shared):
     arr = da.ones(5) + 2
     result = arr.persist(scheduler=ray_dask_get)
-    np.testing.assert_array_equal(
-        next(iter(result.dask.values())),
-        np.ones(5) + 2)
+    assert isinstance(next(iter(result.dask.values())), ray.ObjectRef)
 
 
 if __name__ == "__main__":

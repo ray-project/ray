@@ -400,11 +400,6 @@ COMMON_CONFIG: TrainerConfigDict = {
     # Default value None allows overwriting with nested dicts
     "logger_config": None,
 
-    # === Replay Settings ===
-    # The number of contiguous environment steps to replay at once. This may
-    # be set to greater than 1 to support recurrent models.
-    "replay_sequence_length": 1,
-
     # Deprecated values.
     # Uses the sync samples optimizer instead of the multi-gpu one. This is
     # usually slower, but you might want to try it if you run into issues with

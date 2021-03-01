@@ -434,8 +434,23 @@ class ReferenceCounter : public ReferenceCounterInterface,
   bool HandleObjectSpilled(const ObjectID &object_id, const std::string spilled_url,
                            const NodeID &spilled_node_id, int64_t size, bool release);
 
-  /// Get locality data for object.
+  /// Get locality data for object. This is used by the leasing policy to implement
+  /// locality-aware leasing.
+  ///
+  /// \param[in] object_id Object whose locality data we want.
+  /// \return Locality data.
   absl::optional<LocalityData> GetLocalityData(const ObjectID &object_id);
+
+  /// Report locality data for object. This is used by the FutureResolver to report
+  /// locality data for borrowed refs.
+  ///
+  /// \param[in] object_id Object whose locality data we're reporting.
+  /// \param[in] locations Locations of the object.
+  /// \param[in] object_size Size of the object.
+  /// \return True if the reference exists, false otherwise.
+  bool ReportLocalityData(const ObjectID &object_id,
+                          const absl::flat_hash_set<NodeID> &locations,
+                          uint64_t object_size);
 
  private:
   struct Reference {
@@ -727,9 +742,19 @@ class ReferenceCounter : public ReferenceCounterInterface,
   void ReleaseLineageReferencesInternal(const std::vector<ObjectID> &argument_ids)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
+  /// Add a new location for the given object. The owner must have the object ref in
+  /// scope, and the caller must have already acquired mutex_.
+  ///
+  /// \param[in] it The reference iterator for the object.
+  /// \param[in] node_id The new object location to be added.
+  void AddObjectLocationInternal(ReferenceTable::iterator it, const NodeID &node_id)
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
   /// Pushes location updates to subscribers of a particular reference, invoking all
   /// callbacks registered for the reference by GetLocationsAsync calls. This method
   /// also increments the reference's location version counter.
+  ///
+  /// \param[in] it The reference iterator for the object.
   void PushToLocationSubscribers(ReferenceTable::iterator it)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 

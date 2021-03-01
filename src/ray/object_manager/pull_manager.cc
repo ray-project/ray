@@ -25,7 +25,8 @@ PullManager::PullManager(
 uint64_t PullManager::Pull(const std::vector<rpc::ObjectReference> &object_ref_bundle,
                            std::vector<rpc::ObjectReference> *objects_to_locate) {
   auto bundle_it = pull_request_bundles_.emplace(next_req_id_++, object_ref_bundle).first;
-  RAY_LOG(DEBUG) << "Start pull request " << bundle_it->first;
+  RAY_LOG(DEBUG) << "Start pull request " << bundle_it->first
+                 << ". Bundle size: " << bundle_it->second.size();
 
   for (const auto &ref : object_ref_bundle) {
     auto obj_id = ObjectRefToId(ref);
@@ -103,7 +104,11 @@ void PullManager::DeactivatePullBundleRequest(
   for (const auto &ref : request_it->second) {
     absl::MutexLock lock(&active_objects_mu_);
     auto obj_id = ObjectRefToId(ref);
-    RAY_CHECK(active_object_pull_requests_[obj_id].erase(request_it->first));
+    if (!active_object_pull_requests_[obj_id].erase(request_it->first)) {
+      // If a bundle contains multiple duplicated object ids, the active pull request
+      // could've been already removed. Then do nothing.
+      continue;
+    }
     if (active_object_pull_requests_[obj_id].empty()) {
       RAY_LOG(DEBUG) << "Deactivating pull for object " << obj_id;
       auto it = object_pull_requests_.find(obj_id);
@@ -257,8 +262,13 @@ std::vector<ObjectID> PullManager::CancelPull(uint64_t request_id) {
   std::vector<ObjectID> object_ids_to_cancel_subscription;
   for (const auto &ref : bundle_it->second) {
     auto obj_id = ObjectRefToId(ref);
+    RAY_LOG(DEBUG) << "Removing an object pull request of id: " << obj_id;
     auto it = object_pull_requests_.find(obj_id);
-    RAY_CHECK(it != object_pull_requests_.end());
+    if (it == object_pull_requests_.end()) {
+      // If there are duplicated object ids in the bundle,
+      // it is possible we already pull the object.
+      continue;
+    }
     RAY_CHECK(it->second.bundle_request_ids.erase(bundle_it->first));
     if (it->second.bundle_request_ids.empty()) {
       object_pull_requests_.erase(it);
