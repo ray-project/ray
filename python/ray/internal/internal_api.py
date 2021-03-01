@@ -1,7 +1,6 @@
 import ray
 import ray.worker
 from ray import profiling
-from ray.ray_constants import REDIS_DEFAULT_PASSWORD
 
 __all__ = ["free", "global_gc"]
 MAX_MESSAGE_LENGTH = ray._config.max_grpc_message_size()
@@ -14,20 +13,17 @@ def global_gc():
     worker.core_worker.global_gc()
 
 
-def memory_summary_wrapper(redis_address,
-                           redis_password=REDIS_DEFAULT_PASSWORD,
-                           group_by="NODE_ADDRESS",
-                           sort_by="OBJECT_SIZE",
-                           line_wrap=True,
-                           stats_only=False):
-    from ray.new_dashboard.memory_utils import memory_summary
-    return memory_summary(redis_address, redis_password, group_by, sort_by,
-                          line_wrap, stats_only)
-
-
-def memory_summary(node_manager_address=None,
-                   node_manager_port=None,
+def memory_summary(group_by="NODE_ADDRESS",
+                   sort_by="OBJECT_SIZE",
+                   line_wrap=True,
                    stats_only=False):
+    from ray.new_dashboard.memory_utils import memory_summary
+    if stats_only:
+        return get_store_stats()
+    return memory_summary(group_by, sort_by, line_wrap) + get_store_stats()
+
+
+def get_store_stats(node_manager_address=None, node_manager_port=None):
     """Returns a formatted string describing memory usage in the cluster."""
 
     import grpc
@@ -52,10 +48,10 @@ def memory_summary(node_manager_address=None,
     )
     stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
     reply = stub.FormatGlobalMemoryInfo(
-        node_manager_pb2.FormatGlobalMemoryInfoRequest(), timeout=30.0)
-    if stats_only:
-        return store_stats_summary(reply)
-    return reply.memory_summary + "\n" + store_stats_summary(reply, stats_only)
+        node_manager_pb2.FormatGlobalMemoryInfoRequest(
+            include_memory_info=False),
+        timeout=30.0)
+    return store_stats_summary(reply)
 
 
 def node_stats(node_manager_address=None,
@@ -68,13 +64,8 @@ def node_stats(node_manager_address=None,
     from ray.core.generated import node_manager_pb2_grpc
 
     # We can ask any Raylet for the global memory info.
-    if (node_manager_address is None or node_manager_port is None):
-        raylet = ray.nodes()[0]
-        raylet_address = "{}:{}".format(raylet["NodeManagerAddress"],
-                                        raylet["NodeManagerPort"])
-    else:
-        raylet_address = "{}:{}".format(node_manager_address,
-                                        node_manager_port)
+    assert (node_manager_address is not None and node_manager_port is not None)
+    raylet_address = "{}:{}".format(node_manager_address, node_manager_port)
     channel = grpc.insecure_channel(
         raylet_address,
         options=[
