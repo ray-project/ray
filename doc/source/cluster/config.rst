@@ -348,7 +348,7 @@ The key is the name of the node type, which is just for debugging purposes.
                       MarketType: spot
                 resources: {"CPU": 2}
                 min_workers: 0
-                max_workers: 1
+                max_workers: 2
 
 .. _cluster-configuration-head-node-type:
 
