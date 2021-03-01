@@ -22,6 +22,7 @@ import ray.cloudpickle as cloudpickle
 from ray.cloudpickle.compat import pickle
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
+from ray.exceptions import GetTimeoutError
 from ray.util.client.client_pickler import convert_to_arg
 from ray.util.client.client_pickler import dumps_from_client
 from ray.util.client.client_pickler import loads_from_server
@@ -43,6 +44,11 @@ logger = logging.getLogger(__name__)
 
 INITIAL_TIMEOUT_SEC = 5
 MAX_TIMEOUT_SEC = 30
+
+# The max amount of time an operation can run blocking in the server. This
+# allows for Ctrl-C of the client to work without explicitly cancelling server
+# operations.
+MAX_BLOCKING_OPERATION_TIME_S = 2
 
 
 def backoff(timeout: int) -> int:
@@ -171,7 +177,28 @@ class Worker:
                             "list of IDs or just an ID: %s" % type(vals))
         if timeout is None:
             timeout = 0
-        out = [self._get(x, timeout) for x in to_get]
+            deadline = None
+        else:
+            deadline = time.monotonic() + timeout
+        out = []
+        for x in to_get:
+            res = None
+            # Implement non-blocking get with a short-polling loop. This allows
+            # cancellation of gets via Ctrl-C, since we never block for long.
+            while res is None:
+                try:
+                    if deadline:
+                        op_timeout = min(
+                            MAX_BLOCKING_OPERATION_TIME_S,
+                            max(deadline - time.monotonic(), 0.001))
+                    else:
+                        op_timeout = MAX_BLOCKING_OPERATION_TIME_S
+                    res = self._get(x, op_timeout)
+                except GetTimeoutError as e:
+                    if deadline and time.monotonic() > deadline:
+                        raise
+                    logger.debug("Internal retry for get {}".format(x))
+            out.append(res)
         if single:
             out = out[0]
         return out
@@ -188,7 +215,6 @@ class Worker:
             except pickle.UnpicklingError:
                 logger.exception("Failed to deserialize {}".format(data.error))
                 raise
-            logger.error(err)
             raise err
         return loads_from_server(data.data)
 
