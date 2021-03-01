@@ -15,7 +15,6 @@ import ray.rllib.agents.dqn as dqn
 from ray.rllib.env.wrappers.atari_wrappers import FrameStack, WarpFrame
 from ray import serve
 
-
 parser = argparse.ArgumentParser()
 parser.add_argument(
     "--framework", choices=["tf2", "tf", "tfe", "torch"], default="tf")
@@ -29,6 +28,7 @@ class ServeRLlibPolicy:
     """
 
     """
+
     def __init__(self, config, checkpoint_path):
         # Create the Trainer.
         self.trainer = dqn.DQNTrainer(config=config)
@@ -79,7 +79,8 @@ if __name__ == "__main__":
     # our `ServeRLlibPolicy` class above).
     client = serve.start()
     client.create_backend("backend", ServeRLlibPolicy, config, checkpoint_path)
-    client.create_endpoint("endpoint", backend="backend", route="/mspacman-rllib-policy")
+    client.create_endpoint(
+        "endpoint", backend="backend", route="/mspacman-rllib-policy")
 
     # Create the environment that we would like to receive
     # served actions for.
