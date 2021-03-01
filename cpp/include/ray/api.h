@@ -5,9 +5,9 @@
 #include <ray/api/actor_handle.h>
 #include <ray/api/actor_task_caller.h>
 #include <ray/api/exec_funcs.h>
-#include <ray/api/ray_runtime_holder.h>
 #include <ray/api/object_ref.h>
 #include <ray/api/ray_runtime.h>
+#include <ray/api/ray_runtime_holder.h>
 #include <ray/api/task_caller.h>
 #include <ray/api/wait_result.h>
 

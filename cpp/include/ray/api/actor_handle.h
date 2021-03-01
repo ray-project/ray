@@ -65,8 +65,8 @@ inline ActorTaskCaller<ReturnType> CallActorInternal(FuncType &actor_func,
   MemberFunctionPtrHolder holder = *(MemberFunctionPtrHolder *)(&actor_func);
   ptr.function_pointer = reinterpret_cast<uintptr_t>(holder.value[0]);
   ptr.exec_function_pointer = reinterpret_cast<uintptr_t>(exec_func);
-  return ActorTaskCaller<ReturnType>(ray_runtime.get(), actor.ID(),
-                                     ptr, std::move(task_args));
+  return ActorTaskCaller<ReturnType>(ray_runtime.get(), actor.ID(), ptr,
+                                     std::move(task_args));
 }
 
 template <typename ActorType>
