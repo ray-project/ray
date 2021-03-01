@@ -11,7 +11,6 @@ ServerPickler dumps ray objects from the server into the appropriate stubs.
 ClientUnpickler loads stubs from the client and finds their associated handle
 in the server instance.
 """
-import cloudpickle
 import io
 import sys
 import ray
@@ -19,6 +18,7 @@ import ray
 from typing import Any
 from typing import TYPE_CHECKING
 
+from ray import cloudpickle
 from ray._private.client_mode_hook import disable_client_hook
 from ray.util.client.client_pickler import PickleStub
 from ray.util.client.server.server_stubs import ClientReferenceActor

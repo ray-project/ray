@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING
 
 import grpc
 
-import ray.cloudpickle as cloudpickle
+from ray import cloudpickle
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 from ray.util.client.client_pickler import convert_to_arg
