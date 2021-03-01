@@ -39,15 +39,13 @@ KeyType = Union[str, LongPollNamespace, Tuple[LongPollNamespace, str]]
 class LongPollClient:
     """The asynchronous long polling client.
 
-    Internally, it runs `await object_ref` in a `while True` loop. When a
-    object notification arrived, the client will invoke callback if supplied.
-    Note that this client will wait the callback to be completed before issuing
-    the next poll.
-
     Args:
         host_actor(ray.ActorHandle): handle to actor embedding LongPollHost.
         key_listeners(Dict[str, AsyncCallable]): a dictionary mapping keys to
           callbacks to be called on state update for the corresponding keys.
+        call_in_event_loop(Optional[AbstractEventLoop]): an optional event loop
+          to post the callback into. The callbacks were called within a cpp
+          core worker thread if the event loop is not passed in.
     """
 
     def __init__(
