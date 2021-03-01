@@ -4,7 +4,7 @@
 #include <ray/api/actor_task_caller.h>
 #include <ray/api/arguments.h>
 #include <ray/api/exec_funcs.h>
-#include <ray/api/init_runtime.h>
+#include <ray/api/ray_runtime_holder.h>
 
 #include "ray/core.h"
 
