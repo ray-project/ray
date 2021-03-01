@@ -1137,18 +1137,24 @@ def start_dashboard(require_dashboard,
         ProcessInfo for the process that was started.
     """
     if port is None:
-        port_retries = 10
+        port_retries = 20
         port = ray_constants.DEFAULT_DASHBOARD_PORT
     else:
         port_retries = 0
         port_test_socket = socket.socket()
         port_test_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try:
-            port_test_socket.bind(("127.0.0.1", port))
+            port_test_socket.bind((host, port))
             port_test_socket.close()
-        except socket.error:
-            raise ValueError(
-                f"The given dashboard port {port} is already in use")
+        except socket.error as e:
+            if e.errno == 48:  # address already in use.
+                raise ValueError(
+                    f"Failed to bind to {host}:{port} because it's already "
+                    "occupied. You can use `ray start --dashboard-port ...` "
+                    "or `ray.init(dashboard_port=...)` to select a different "
+                    "port.")
+            else:
+                raise e
 
     dashboard_dir = "new_dashboard"
     dashboard_filepath = os.path.join(RAY_PATH, dashboard_dir, "dashboard.py")
