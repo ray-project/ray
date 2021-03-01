@@ -26,10 +26,7 @@ class TuneCallback(Callback):
                     on, self._allowed))
         self._on = on
 
-    def _handle(self,
-                trainer: Trainer,
-                pl_module: Optional[LightningModule],
-                is_epoch: bool = False):
+    def _handle(self, trainer: Trainer, pl_module: Optional[LightningModule]):
         raise NotImplementedError
 
     def on_init_start(self, trainer: Trainer):
@@ -64,11 +61,11 @@ class TuneCallback(Callback):
 
     def on_epoch_start(self, trainer: Trainer, pl_module: LightningModule):
         if "epoch_start" in self._on:
-            self._handle(trainer, pl_module, is_epoch=True)
+            self._handle(trainer, pl_module)
 
     def on_epoch_end(self, trainer: Trainer, pl_module: LightningModule):
         if "epoch_end" in self._on:
-            self._handle(trainer, pl_module, is_epoch=True)
+            self._handle(trainer, pl_module)
 
     def on_batch_start(self, trainer: Trainer, pl_module: LightningModule):
         if "batch_start" in self._on:
@@ -172,10 +169,7 @@ class TuneReportCallback(TuneCallback):
             metrics = [metrics]
         self._metrics = metrics
 
-    def _handle(self,
-                trainer: Trainer,
-                pl_module: LightningModule,
-                is_epoch: bool = False):
+    def _handle(self, trainer: Trainer, pl_module: LightningModule):
         # Don't report if just doing initial validation sanity checks.
         if trainer.running_sanity_check:
             return
@@ -220,13 +214,10 @@ class _TuneCheckpointCallback(TuneCallback):
         super(_TuneCheckpointCallback, self).__init__(on)
         self._filename = filename
 
-    def _handle(self,
-                trainer: Trainer,
-                pl_module: LightningModule,
-                is_epoch: bool = False):
+    def _handle(self, trainer: Trainer, pl_module: LightningModule):
         if trainer.running_sanity_check:
             return
-        step = trainer.current_epoch if is_epoch else trainer.global_step
+        step = f"epoch={trainer.current_epoch}-step={trainer.global_step}"
         with tune.checkpoint_dir(step=step) as checkpoint_dir:
             trainer.save_checkpoint(
                 os.path.join(checkpoint_dir, self._filename))
@@ -276,9 +267,6 @@ class TuneReportCheckpointCallback(TuneCallback):
         self._checkpoint = _TuneCheckpointCallback(filename, on)
         self._report = TuneReportCallback(metrics, on)
 
-    def _handle(self,
-                trainer: Trainer,
-                pl_module: LightningModule,
-                is_epoch: bool = False):
-        self._checkpoint._handle(trainer, pl_module, is_epoch)
-        self._report._handle(trainer, pl_module, is_epoch)
+    def _handle(self, trainer: Trainer, pl_module: LightningModule):
+        self._checkpoint._handle(trainer, pl_module)
+        self._report._handle(trainer, pl_module)
