@@ -85,7 +85,7 @@ void AgentManager::InitializeJobEnv(std::shared_ptr<rpc::JobTableData> job_data,
         if (start_driver) {
           auto it = starting_drivers_.find(job_id);
           if (it != starting_drivers_.end()) {
-            RAY_LOG(INFO) << "Driver " << reply.driver_pid() << " of job " << job_id
+            RAY_LOG(INFO) << "Driver " << it->second->driver_pid << " of job " << job_id
                           << " has been registered.";
             RAY_CHECK(it->second->has_registered);
             starting_drivers_.erase(job_id);

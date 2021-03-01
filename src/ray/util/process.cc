@@ -18,6 +18,7 @@
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN 1
 #endif
+#include <Psapi.h>  // EnumProcesses
 #include <Windows.h>
 #include <Winternl.h>
 #include <process.h>
@@ -137,11 +138,12 @@ class ProcessFD {
         (void)cmd.c_str();  // We'll need this to be null-terminated (but mutable) below
         TCHAR *cmdline = &*cmd.begin();
         STARTUPINFO si = {sizeof(si)};
-        LPCSTR_ lpCurrentDirectory = cwd.empty() ? NULL : cwd.c_str();
+        LPCSTR lpCurrentDirectory = cwd.empty() ? NULL : cwd.c_str();
         RAY_UNUSED(
             new_env_block.c_str());  // Ensure there's a final terminator for Windows
         char *const envp = &new_env_block[0];
-        if (CreateProcessA(NULL, cmdline, NULL, NULL, FALSE, 0, envp, NULL, &si, &pi)) {
+        if (CreateProcessA(NULL, cmdline, NULL, NULL, FALSE, 0, envp, lpCurrentDirectory,
+                           &si, &pi)) {
           succeeded = true;
           break;
         }
@@ -546,6 +548,99 @@ ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+from https://github.com/giampaolo/psutil
+*/
+
+#ifdef _WIN32
+DWORD *_get_pids(DWORD *numberOfReturnedPIDs) {
+  // Win32 SDK says the only way to know if our process array
+  // wasn't large enough is to check the returned size and make
+  // sure that it doesn't match the size of the array.
+  // If it does we allocate a larger array and try again
+
+  // Stores the actual array
+  DWORD *procArray = NULL;
+  DWORD procArrayByteSz;
+  int procArraySz = 0;
+
+  // Stores the byte size of the returned array from enumprocesses
+  DWORD enumReturnSz = 0;
+
+  do {
+    procArraySz += 1024;
+    if (procArray != NULL) free(procArray);
+    procArrayByteSz = procArraySz * sizeof(DWORD);
+    procArray = malloc(procArrayByteSz);
+    if (procArray == NULL) {
+      return NULL;
+    }
+    if (!EnumProcesses(procArray, procArrayByteSz, &enumReturnSz)) {
+      free(procArray);
+      return NULL;
+    }
+  } while (enumReturnSz == procArraySz * sizeof(DWORD));
+
+  // The number of elements is the returned size / size of each element
+  *numberOfReturnedPIDs = enumReturnSz / sizeof(DWORD);
+
+  return procArray;
+}
+
+// Return 1 if PID exists, 0 if not, -1 on error.
+int _pid_in_pids(DWORD pid) {
+  DWORD *proclist = NULL;
+  DWORD numberOfReturnedPIDs;
+  DWORD i;
+
+  proclist = _get_pids(&numberOfReturnedPIDs);
+  if (proclist == NULL) {
+    return -1;
+  }
+  for (i = 0; i < numberOfReturnedPIDs; i++) {
+    if (proclist[i] == pid) {
+      free(proclist);
+      return 1;
+    }
+  }
+  free(proclist);
+  return 0;
+}
+
+// Given a process handle checks whether it's actually running. If it
+// does return the handle, else return NULL with Python exception set.
+// This is needed because OpenProcess API sucks.
+HANDLE
+_check_phandle(HANDLE hProcess, DWORD pid) {
+  DWORD exitCode;
+
+  if (hProcess == NULL) {
+    return NULL;
+  }
+
+  if (check_exit_code == 0) return hProcess;
+
+  if (GetExitCodeProcess(hProcess, &exitCode)) {
+    // XXX - maybe STILL_ACTIVE is not fully reliable as per:
+    // http://stackoverflow.com/questions/1591342/#comment47830782_1591379
+    if (exitCode == STILL_ACTIVE) {
+      return hProcess;
+    }
+    if (_pid_in_pids(pid) == 1) {
+      return hProcess;
+    }
+    CloseHandle(hProcess);
+    return NULL;
+  }
+
+  if (GetLastError() == ERROR_ACCESS_DENIED) {
+    return hProcess;
+  }
+  CloseHandle(hProcess);
+  return NULL;
+}
+#endif
+
+/*
  * Check if PID exists.
  */
 bool Process::IsAlive(pid_t pid) {
@@ -562,7 +657,7 @@ bool Process::IsAlive(pid_t pid) {
   // Access denied means there's a process to deny access to.
   if ((hProcess == NULL) && (GetLastError() == ERROR_ACCESS_DENIED)) return true;
 
-  hProcess = psutil_check_phandle(hProcess, pid);
+  hProcess = _check_phandle(hProcess, pid);
   if (hProcess != NULL) {
     CloseHandle(hProcess);
     return true;
