@@ -1121,9 +1121,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// worker context.
   TaskID main_thread_task_id_ GUARDED_BY(mutex_);
 
-  // Flag indicating whether this worker has been shut down.
-  bool shutdown_ = false;
-
   /// Event loop where the IO events are handled. e.g. async GCS operations.
   boost::asio::io_service io_service_;
 
