@@ -25,8 +25,12 @@ args = parser.parse_args()
 
 
 class ServeRLlibPolicy:
-    """
+    """Callable class used by Ray Serve to handle async requests.
 
+    All the necessary serving logic is implemented in here:
+    - Creation and restoring of the (already trained) RLlib Trainer.
+    - Calls to trainer.compute_action upon receiving an action request
+      (with a current observation).
     """
 
     def __init__(self, config, checkpoint_path):
@@ -64,8 +68,10 @@ def train_rllib_policy(config):
 
 if __name__ == "__main__":
 
+    # Config for the served RLlib Policy/Trainer.
     config = {
         "framework": args.framework,
+        # local mode -> local env inside Trainer not needed!
         "num_workers": 0,
         "env": "MsPacman-v0",
     }
