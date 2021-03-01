@@ -242,11 +242,12 @@ def test_not_killing_workers_that_own_objects(shutdown_only):
     # so that we can easily trigger it.
     ray.init(num_cpus=2, _system_config={"kill_idle_workers_interval_ms": 10})
 
-    # Create a nested tasks to start 10 workers each of which owns an object.
+    expected_num_workers = 8
+    # Create a nested tasks to start 8 workers each of which owns an object.
     @ray.remote
     def nested(i):
         # The task owns an object.
-        if i > 6:
+        if i > expected_num_workers - 2:
             return [ray.put(np.ones(1 * 1024 * 1024, dtype=np.uint8))]
         else:
             return ([ray.put(np.ones(1 * 1024 * 1024, dtype=np.uint8))] +
@@ -261,8 +262,8 @@ def test_not_killing_workers_that_own_objects(shutdown_only):
     # New workers shouldn't be registered because we reused the
     # previous workers that own objects.
     assert num_workers == len(ray.state.workers())
-    assert len(ref) == 8
-    assert len(ref2) == 8
+    assert len(ref) == expected_num_workers
+    assert len(ref2) == expected_num_workers
 
 
 if __name__ == "__main__":
