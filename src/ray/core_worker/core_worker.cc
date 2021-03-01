@@ -207,9 +207,13 @@ void CoreWorkerProcess::InitializeSystemConfig() {
         options_.raylet_ip_address, options_.node_manager_port, client_call_manager);
     raylet::RayletClient raylet_client(grpc_client);
 
-    std::function<void(int64_t)> get_once = [&](int64_t num_attempts) {
-      raylet_client.GetSystemConfig([&](const Status &status,
+    std::function<void(int64_t)> get_once = [&get_once, &raylet_client, &promise,
+                                             &io_service](int64_t num_attempts) {
+      raylet_client.GetSystemConfig([num_attempts, &get_once, &promise, &io_service](
+                                        const Status &status,
                                         const rpc::GetSystemConfigReply &reply) {
+        RAY_LOG(DEBUG) << "Getting system config from raylet, remaining retries = "
+                       << num_attempts;
         if (!status.ok()) {
           if (num_attempts <= 1) {
             RAY_LOG(FATAL) << "Failed to get the system config from Raylet: " << status;
