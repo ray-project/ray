@@ -96,8 +96,6 @@ available_node_types:
   worker_node:
     # Minimum number of Ray workers of this Pod type.
     min_workers: 0
-    # Maximum number of Ray workers of this Pod type. Takes precedence over min_workers.
-    max_workers: 2
     node_config:
       apiVersion: v1
       kind: Pod
