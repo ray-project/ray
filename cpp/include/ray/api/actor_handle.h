@@ -1,9 +1,9 @@
 
 #pragma once
 
-#include <ray/api/init_runtime.h>
 #include <ray/api/arguments.h>
 #include <ray/api/exec_funcs.h>
+#include <ray/api/init_runtime.h>
 
 #include "ray/core.h"
 
@@ -64,8 +64,8 @@ inline ActorTaskCaller<ReturnType> CallActorInternal(FuncType &actor_func,
   MemberFunctionPtrHolder holder = *(MemberFunctionPtrHolder *)(&actor_func);
   ptr.function_pointer = reinterpret_cast<uintptr_t>(holder.value[0]);
   ptr.exec_function_pointer = reinterpret_cast<uintptr_t>(exec_func);
-  return ActorTaskCaller<ReturnType>(InitRuntime::Instance().Runtime().get(), actor.ID(), ptr,
-                                     std::move(task_args));
+  return ActorTaskCaller<ReturnType>(InitRuntime::Instance().Runtime().get(), actor.ID(),
+                                     ptr, std::move(task_args));
 }
 
 template <typename ActorType>
