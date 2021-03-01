@@ -50,6 +50,17 @@ void FutureResolver::ResolveFutureAsync(const ObjectID &object_id,
       // case, we put the corresponding RayObject into the in-memory store.
       // If the owner later fails or the object is released, the raylet
       // will eventually store an error in Plasma on our behalf.
+
+      // We save the returned locality data first in order to ensure that it
+      // is available for any tasks whose submission is triggered by the in-memory
+      // store Put().
+      absl::flat_hash_set<NodeID> locations;
+      for (const auto &node_id : reply.node_ids()) {
+        locations.emplace(NodeID::FromBinary(node_id));
+      }
+      report_locality_data_callback_(object_id, locations, reply.object_size());
+
+      // Put the RayObject into the in-memory store.
       const auto &data = reply.object().data();
       std::shared_ptr<LocalMemoryBuffer> data_buffer;
       if (data.size() > 0) {

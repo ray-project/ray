@@ -261,6 +261,7 @@ def debug(address):
     "--node-manager-port",
     required=False,
     type=int,
+    default=0,
     help="the port to use for starting the node manager")
 @click.option(
     "--gcs-server-port",
