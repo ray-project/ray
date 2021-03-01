@@ -95,7 +95,6 @@ class Ray {
 #include "api/generated/create_actors.generated.h"
 
  private:
-
   static std::shared_ptr<RayRuntime> runtime_;
 
   static std::once_flag is_inited_;
