@@ -247,6 +247,7 @@ class Worker:
         resp = self.data_client.PutObject(req)
         return ClientObjectRef(resp.id)
 
+    # TODO(ekl) respect MAX_BLOCKING_OPERATION_TIME_S for wait too
     def wait(self,
              object_refs: List[ClientObjectRef],
              *,
