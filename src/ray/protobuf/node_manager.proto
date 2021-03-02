@@ -160,6 +160,11 @@ message GlobalGCReply {
 // Accumulates memory info across all nodes. To access per-node memory info,
 // use GetNodeStats() calls instead.
 message FormatGlobalMemoryInfoRequest {
+  // Whether or not the reply should include memory summary.
+  // If it is true, it will add extra overhead to the system
+  // because getting memory info requires to ping every core worker
+  // in the cluster.
+  bool include_memory_info = 1;
 }
 
 message FormatGlobalMemoryInfoReply {

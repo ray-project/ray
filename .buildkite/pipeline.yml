@@ -21,14 +21,14 @@
   commands:
     - LINUX_WHEELS=1 ./ci/travis/ci.sh build
     - pip install docker
-    - python ./ci/travis/build-docker-images.py PY37
+    - python ./ci/travis/build-docker-images.py --py-versions PY37 --build-type BUILDKITE --build-base
 
 - label: ":docker: Build Images"
   conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
   commands:
     - LINUX_WHEELS=1 ./ci/travis/ci.sh build
     - pip install docker
-    - python ./ci/travis/build-docker-images.py PY36_PY38
+    - python ./ci/travis/build-docker-images.py --py-versions PY36 PY38 --build-type BUILDKITE --build-base
 
 - label: ":book: Lint"
   commands:
