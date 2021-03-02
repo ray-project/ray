@@ -17,6 +17,7 @@
 #include <atomic>
 #include <boost/asio.hpp>
 #include <thread>
+#include "ray/common/asio/io_context.h"
 
 namespace ray {
 
@@ -37,40 +38,40 @@ class IOServicePool {
   /// Select io_service by round robin.
   ///
   /// \return io_service
-  boost::asio::io_service *Get();
+  io_context_proxy *Get();
 
   /// Select io_service by hash.
   ///
   /// \param hash Use this hash to pick a io_service.
   /// The same hash will alway get the same io_service.
   /// \return io_service
-  boost::asio::io_service *Get(size_t hash);
+  io_context_proxy *Get(size_t hash);
 
   /// Get all io_service.
   /// This is only use for RedisClient::Connect().
-  std::vector<boost::asio::io_service *> GetAll();
+  std::vector<io_context_proxy *> GetAll();
 
  private:
   size_t io_service_num_{0};
 
   std::vector<std::thread> threads_;
-  std::vector<std::unique_ptr<boost::asio::io_service>> io_services_;
+  std::vector<std::unique_ptr<io_context_proxy>> io_services_;
 
   std::atomic<size_t> current_index_;
 };
 
-inline boost::asio::io_service *IOServicePool::Get() {
+inline io_context_proxy *IOServicePool::Get() {
   size_t index = ++current_index_ % io_service_num_;
   return io_services_[index].get();
 }
 
-inline boost::asio::io_service *IOServicePool::Get(size_t hash) {
+inline io_context_proxy *IOServicePool::Get(size_t hash) {
   size_t index = hash % io_service_num_;
   return io_services_[index].get();
 }
 
-inline std::vector<boost::asio::io_service *> IOServicePool::GetAll() {
-  std::vector<boost::asio::io_service *> io_services;
+inline std::vector<io_context_proxy *> IOServicePool::GetAll() {
+  std::vector<io_context_proxy *> io_services;
   for (auto &io_service : io_services_) {
     io_services.emplace_back(io_service.get());
   }

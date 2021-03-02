@@ -17,6 +17,7 @@
 #include <memory>
 #include <utility>
 
+#include "ray/common/asio/io_context.h"
 #include "ray/common/task/task.h"
 #include "ray/common/task/task_util.h"
 #include "ray/common/test_util.h"
@@ -27,7 +28,6 @@
 #include "ray/gcs/gcs_server/gcs_placement_group_manager.h"
 #include "ray/gcs/gcs_server/gcs_placement_group_scheduler.h"
 #include "ray/gcs/gcs_server/gcs_resource_manager.h"
-#include "ray/util/asio_util.h"
 
 namespace ray {
 
@@ -307,7 +307,7 @@ struct GcsServerMocker {
     }
 
    private:
-    boost::asio::io_service main_io_service_;
+    io_context_proxy main_io_service_;
     std::shared_ptr<gcs::StoreClient> store_client_ =
         std::make_shared<gcs::InMemoryStoreClient>(main_io_service_);
   };

@@ -52,7 +52,7 @@ int main(int argc, char *argv[]) {
 
   auto promise = std::make_shared<std::promise<void>>();
   std::thread([=] {
-    boost::asio::io_service service;
+    io_context_proxy service;
 
     // Init backend client.
     ray::gcs::RedisClientOptions redis_client_options(redis_address, redis_port,
@@ -86,7 +86,7 @@ int main(int argc, char *argv[]) {
   ray::stats::Init(global_tags, metrics_agent_port);
 
   // IO Service for main loop.
-  boost::asio::io_service main_service;
+  io_context_proxy main_service;
   // Ensure that the IO service keeps running. Without this, the main_service will exit
   // as soon as there is no more work to be processed.
   boost::asio::io_service::work work(main_service);

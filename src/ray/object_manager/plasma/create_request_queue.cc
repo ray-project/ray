@@ -18,8 +18,8 @@
 
 #include <memory>
 
+#include "ray/common/asio/io_context.h"
 #include "ray/object_manager/plasma/common.h"
-#include "ray/util/asio_util.h"
 #include "ray/util/util.h"
 
 namespace plasma {

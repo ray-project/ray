@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "ray/gcs/gcs_client/global_state_accessor.h"
+#include "ray/common/asio/io_context.h"
 
 #include <boost/algorithm/string.hpp>
 
@@ -34,7 +35,7 @@ GlobalStateAccessor::GlobalStateAccessor(const std::string &redis_address,
   options.is_test_client_ = is_test;
   gcs_client_.reset(new ServiceBasedGcsClient(options));
 
-  io_service_.reset(new boost::asio::io_service());
+  io_service_.reset(new io_context_proxy());
 
   std::promise<bool> promise;
   thread_io_service_.reset(new std::thread([this, &promise] {

@@ -31,6 +31,7 @@
 
 #include <boost/asio.hpp>
 
+#include "ray/common/asio/io_context.h"
 #include "ray/object_manager/plasma/connection.h"
 #include "ray/object_manager/plasma/plasma.h"
 #include "ray/object_manager/plasma/protocol.h"
@@ -180,7 +181,7 @@ class PlasmaClient::Impl : public std::enable_shared_from_this<PlasmaClient::Imp
                             bool is_sealed);
 
   /// The boost::asio IO context for the client.
-  boost::asio::io_service main_service_;
+  io_context_proxy main_service_;
   /// The connection to the store service.
   std::shared_ptr<StoreConn> store_conn_;
   /// Table of dlmalloc buffer files that have been memory mapped so far. This

@@ -24,6 +24,7 @@
 #include <unordered_set>
 #include <vector>
 
+#include "ray/common/asio/io_context.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/status.h"
 #include "ray/object_manager/common.h"
@@ -53,7 +54,7 @@ struct GetRequest;
 class PlasmaStore {
  public:
   // TODO: PascalCase PlasmaStore methods.
-  PlasmaStore(boost::asio::io_service &main_service, std::string directory,
+  PlasmaStore(io_context_proxy &main_service, std::string directory,
               bool hugepages_enabled, const std::string &socket_name,
               uint32_t delay_on_oom_ms, ray::SpillObjectsCallback spill_objects_callback,
               std::function<void()> object_store_full_callback);
@@ -269,7 +270,7 @@ class PlasmaStore {
   void DoAccept();
 
   // A reference to the asio io context.
-  boost::asio::io_service &io_context_;
+  io_context_proxy &io_context_;
   /// The name of the socket this object store listens on.
   std::string socket_name_;
   /// An acceptor for new clients.

@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include "ray/common/asio/io_context.h"
 #include "ray/rpc/grpc_server.h"
 #include "ray/rpc/server_call.h"
 #include "src/ray/protobuf/gcs_service.grpc.pb.h"
@@ -80,7 +81,7 @@ class JobInfoGrpcService : public GrpcService {
   /// Constructor.
   ///
   /// \param[in] handler The service handler that actually handle the requests.
-  explicit JobInfoGrpcService(boost::asio::io_service &io_service,
+  explicit JobInfoGrpcService(io_context_proxy &io_service,
                               JobInfoGcsServiceHandler &handler)
       : GrpcService(io_service), service_handler_(handler){};
 
@@ -137,7 +138,7 @@ class ActorInfoGrpcService : public GrpcService {
   /// Constructor.
   ///
   /// \param[in] handler The service handler that actually handle the requests.
-  explicit ActorInfoGrpcService(boost::asio::io_service &io_service,
+  explicit ActorInfoGrpcService(io_context_proxy &io_service,
                                 ActorInfoGcsServiceHandler &handler)
       : GrpcService(io_service), service_handler_(handler){};
 
@@ -189,7 +190,7 @@ class NodeInfoGrpcService : public GrpcService {
   /// Constructor.
   ///
   /// \param[in] handler The service handler that actually handle the requests.
-  explicit NodeInfoGrpcService(boost::asio::io_service &io_service,
+  explicit NodeInfoGrpcService(io_context_proxy &io_service,
                                NodeInfoGcsServiceHandler &handler)
       : GrpcService(io_service), service_handler_(handler){};
 
@@ -248,7 +249,7 @@ class NodeResourceInfoGrpcService : public GrpcService {
   /// Constructor.
   ///
   /// \param[in] handler The service handler that actually handle the requests.
-  explicit NodeResourceInfoGrpcService(boost::asio::io_service &io_service,
+  explicit NodeResourceInfoGrpcService(io_context_proxy &io_service,
                                        NodeResourceInfoGcsServiceHandler &handler)
       : GrpcService(io_service), service_handler_(handler){};
 
@@ -286,7 +287,7 @@ class HeartbeatInfoGrpcService : public GrpcService {
   /// Constructor.
   ///
   /// \param[in] handler The service handler that actually handle the requests.
-  explicit HeartbeatInfoGrpcService(boost::asio::io_service &io_service,
+  explicit HeartbeatInfoGrpcService(io_context_proxy &io_service,
                                     HeartbeatInfoGcsServiceHandler &handler)
       : GrpcService(io_service), service_handler_(handler){};
 
@@ -332,7 +333,7 @@ class ObjectInfoGrpcService : public GrpcService {
   /// Constructor.
   ///
   /// \param[in] handler The service handler that actually handle the requests.
-  explicit ObjectInfoGrpcService(boost::asio::io_service &io_service,
+  explicit ObjectInfoGrpcService(io_context_proxy &io_service,
                                  ObjectInfoGcsServiceHandler &handler)
       : GrpcService(io_service), service_handler_(handler){};
 
@@ -384,7 +385,7 @@ class TaskInfoGrpcService : public GrpcService {
   /// Constructor.
   ///
   /// \param[in] handler The service handler that actually handle the requests.
-  explicit TaskInfoGrpcService(boost::asio::io_service &io_service,
+  explicit TaskInfoGrpcService(io_context_proxy &io_service,
                                TaskInfoGcsServiceHandler &handler)
       : GrpcService(io_service), service_handler_(handler){};
 
@@ -427,8 +428,7 @@ class StatsGrpcService : public GrpcService {
   /// Constructor.
   ///
   /// \param[in] handler The service handler that actually handle the requests.
-  explicit StatsGrpcService(boost::asio::io_service &io_service,
-                            StatsGcsServiceHandler &handler)
+  explicit StatsGrpcService(io_context_proxy &io_service, StatsGcsServiceHandler &handler)
       : GrpcService(io_service), service_handler_(handler){};
 
  protected:
@@ -475,7 +475,7 @@ class WorkerInfoGrpcService : public GrpcService {
   /// Constructor.
   ///
   /// \param[in] handler The service handler that actually handle the requests.
-  explicit WorkerInfoGrpcService(boost::asio::io_service &io_service,
+  explicit WorkerInfoGrpcService(io_context_proxy &io_service,
                                  WorkerInfoGcsServiceHandler &handler)
       : GrpcService(io_service), service_handler_(handler){};
 
@@ -534,7 +534,7 @@ class PlacementGroupInfoGrpcService : public GrpcService {
   /// Constructor.
   ///
   /// \param[in] handler The service handler that actually handle the requests.
-  explicit PlacementGroupInfoGrpcService(boost::asio::io_service &io_service,
+  explicit PlacementGroupInfoGrpcService(io_context_proxy &io_service,
                                          PlacementGroupInfoGcsServiceHandler &handler)
       : GrpcService(io_service), service_handler_(handler){};
 

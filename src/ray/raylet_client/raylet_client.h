@@ -18,6 +18,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "ray/common/asio/io_context.h"
 #include "ray/common/bundle_spec.h"
 #include "ray/common/client_connection.h"
 #include "ray/common/status.h"
@@ -165,7 +166,7 @@ class RayletConnection {
   /// \param job_id The ID of the driver. This is non-nil if the client is a
   ///        driver.
   /// \return The connection information.
-  RayletConnection(boost::asio::io_service &io_service, const std::string &raylet_socket,
+  RayletConnection(io_context_proxy &io_service, const std::string &raylet_socket,
                    int num_retries, int64_t timeout);
 
   ray::Status WriteMessage(MessageType type,
@@ -205,7 +206,7 @@ class RayletClient : public RayletClientInterface {
   /// \param serialized_job_config If this is a driver connection, the job config
   /// provided by driver will be passed to Raylet. If this is a worker connection,
   /// this will be populated with the current job config.
-  RayletClient(boost::asio::io_service &io_service,
+  RayletClient(io_context_proxy &io_service,
                std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client,
                const std::string &raylet_socket, const WorkerID &worker_id,
                rpc::WorkerType worker_type, const JobID &job_id, const Language &language,

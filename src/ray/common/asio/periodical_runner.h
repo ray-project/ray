@@ -16,6 +16,7 @@
 
 #include <boost/asio.hpp>
 #include <boost/asio/deadline_timer.hpp>
+#include "ray/common/asio/io_context.h"
 
 namespace ray {
 
@@ -26,7 +27,7 @@ namespace ray {
 /// All registered functions will stop running once this object is destructed.
 class PeriodicalRunner {
  public:
-  PeriodicalRunner(boost::asio::io_service &io_service);
+  PeriodicalRunner(io_context_proxy &io_service);
 
   ~PeriodicalRunner();
 
@@ -37,7 +38,7 @@ class PeriodicalRunner {
                            boost::posix_time::milliseconds period,
                            boost::asio::deadline_timer &timer);
 
-  boost::asio::io_service &io_service_;
+  io_context_proxy &io_service_;
   std::vector<std::shared_ptr<boost::asio::deadline_timer>> timers_;
 };
 

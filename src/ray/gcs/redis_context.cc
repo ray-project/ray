@@ -208,7 +208,7 @@ int64_t RedisCallbackManager::AllocateCallbackIndex() {
 
 int64_t RedisCallbackManager::AddCallback(const RedisCallback &function,
                                           bool is_subscription,
-                                          boost::asio::io_service &io_service,
+                                          io_context_proxy &io_service,
                                           int64_t callback_index) {
   auto start_time = absl::GetCurrentTimeNanos() / 1000;
 
