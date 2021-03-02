@@ -216,7 +216,8 @@ class ResourceSpec(
             if memory < 100e6 and memory < 0.05 * system_memory:
                 # Linux, BSD has cached memory, which should
                 # also be considered as unused memory
-                memory += cached_memory
+                # we consider half of cached memory can be recycled.
+                memory += cached_memory / 2
                 if memory >= 0.05 * system_memory:
                     memory = 0.05 * system_memory
                     logger.warning(
