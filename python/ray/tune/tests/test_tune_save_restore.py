@@ -87,7 +87,7 @@ class SerialTuneRelativeLocalDirTest(unittest.TestCase):
         self.assertTrue(os.path.isdir(abs_trial_dir))
         self.assertTrue(
             os.path.isfile(
-                os.path.join(abs_trial_dir, "checkpoint_1/checkpoint-1")))
+                os.path.join(abs_trial_dir, "checkpoint_000001/checkpoint-1")))
 
     def _restore(self, exp_name, local_dir, absolute_local_dir):
         trial_name, abs_trial_dir = self._get_trial_dir(
@@ -95,7 +95,7 @@ class SerialTuneRelativeLocalDirTest(unittest.TestCase):
 
         checkpoint_path = os.path.join(
             local_dir, exp_name, trial_name,
-            "checkpoint_1/checkpoint-1")  # Relative checkpoint path
+            "checkpoint_000001/checkpoint-1")  # Relative checkpoint path
 
         # The file tune would find. The absolute checkpoint path.
         tune_find_file = os.path.abspath(os.path.expanduser(checkpoint_path))

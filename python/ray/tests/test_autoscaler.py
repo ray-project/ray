@@ -23,7 +23,7 @@ from ray.autoscaler._private.providers import (
 from ray.autoscaler.tags import TAG_RAY_NODE_KIND, TAG_RAY_NODE_STATUS, \
     STATUS_UP_TO_DATE, STATUS_UPDATE_FAILED, TAG_RAY_USER_NODE_TYPE, \
     NODE_TYPE_LEGACY_HEAD, NODE_TYPE_LEGACY_WORKER, NODE_KIND_HEAD, \
-    NODE_KIND_WORKER
+    NODE_KIND_WORKER, STATUS_UNINITIALIZED
 from ray.autoscaler.node_provider import NodeProvider
 from ray.test_utils import RayTestTimeoutException
 import pytest
@@ -401,6 +401,30 @@ class AutoscalingTest(unittest.TestCase):
         runner.respond_to_call(".State.Running",
                                ["false", "false", "false", "false"])
         runner.respond_to_call("json .Config.Env", ["[]"])
+
+        def _create_node(node_config, tags, count, _skip_wait=False):
+            assert tags[TAG_RAY_NODE_STATUS] == STATUS_UNINITIALIZED
+            if not _skip_wait:
+                self.provider.ready_to_create.wait()
+            if self.provider.fail_creates:
+                return
+            with self.provider.lock:
+                if self.provider.cache_stopped:
+                    for node in self.provider.mock_nodes.values():
+                        if node.state == "stopped" and count > 0:
+                            count -= 1
+                            node.state = "pending"
+                            node.tags.update(tags)
+                for _ in range(count):
+                    self.provider.mock_nodes[self.provider.next_id] = MockNode(
+                        self.provider.next_id,
+                        tags.copy(),
+                        node_config,
+                        tags.get(TAG_RAY_USER_NODE_TYPE),
+                        unique_ips=self.provider.unique_ips)
+                    self.provider.next_id += 1
+
+        self.provider.create_node = _create_node
         commands.get_or_create_head_node(
             SMALL_CLUSTER,
             printable_config_file=config_path,

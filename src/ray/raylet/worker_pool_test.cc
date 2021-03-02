@@ -38,7 +38,9 @@ class WorkerPoolMock : public WorkerPool {
                           const WorkerCommandMap &worker_commands)
       : WorkerPool(io_service, POOL_SIZE_SOFT_LIMIT, 0, MAXIMUM_STARTUP_CONCURRENCY, 0, 0,
                    {}, nullptr, worker_commands, []() {}),
-        last_worker_process_() {}
+        last_worker_process_() {
+    SetNodeManagerPort(1);
+  }
 
   ~WorkerPoolMock() {
     // Avoid killing real processes

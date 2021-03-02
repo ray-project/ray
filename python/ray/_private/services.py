@@ -280,7 +280,8 @@ def get_address_info_from_redis_helper(redis_address,
 def get_address_info_from_redis(redis_address,
                                 node_ip_address,
                                 num_retries=5,
-                                redis_password=None):
+                                redis_password=None,
+                                log_warning=True):
     counter = 0
     while True:
         try:
@@ -289,12 +290,13 @@ def get_address_info_from_redis(redis_address,
         except Exception:
             if counter == num_retries:
                 raise
+            if log_warning:
+                logger.warning(
+                    "Some processes that the driver needs to connect to have "
+                    "not registered with Redis, so retrying. Have you run "
+                    "'ray start' on this node?")
             # Some of the information may not be in Redis yet, so wait a little
             # bit.
-            logger.warning(
-                "Some processes that the driver needs to connect to have "
-                "not registered with Redis, so retrying. Have you run "
-                "'ray start' on this node?")
             time.sleep(1)
         counter += 1
 
@@ -1318,8 +1320,8 @@ def start_raylet(redis_address,
     Args:
         redis_address (str): The address of the primary Redis server.
         node_ip_address (str): The IP address of this node.
-        node_manager_port(int): The port to use for the node manager. This must
-            not be 0.
+        node_manager_port(int): The port to use for the node manager. If it's
+            0, a random port will be used.
         raylet_name (str): The name of the raylet socket to create.
         plasma_store_name (str): The name of the plasma store socket to connect
              to.
@@ -1356,9 +1358,7 @@ def start_raylet(redis_address,
     Returns:
         ProcessInfo for the process that was started.
     """
-    # The caller must provide a node manager port so that we can correctly
-    # populate the command to start a worker.
-    assert node_manager_port is not None and node_manager_port != 0
+    assert node_manager_port is not None and type(node_manager_port) == int
 
     if use_valgrind and use_profiler:
         raise ValueError("Cannot use valgrind and profiler at the same time.")
@@ -1395,7 +1395,6 @@ def start_raylet(redis_address,
         java_worker_command = build_java_worker_command(
             json.loads(java_worker_options) if java_worker_options else [],
             redis_address,
-            node_manager_port,
             plasma_store_name,
             raylet_name,
             redis_password,
@@ -1409,7 +1408,6 @@ def start_raylet(redis_address,
         cpp_worker_command = build_cpp_worker_command(
             "",
             redis_address,
-            node_manager_port,
             plasma_store_name,
             raylet_name,
             redis_password,
@@ -1423,7 +1421,7 @@ def start_raylet(redis_address,
         sys.executable,
         worker_path,
         f"--node-ip-address={node_ip_address}",
-        f"--node-manager-port={node_manager_port}",
+        "--node-manager-port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
         f"--object-store-name={plasma_store_name}",
         f"--raylet-name={raylet_name}",
         f"--redis-address={redis_address}",
@@ -1456,7 +1454,7 @@ def start_raylet(redis_address,
         f"--redis-address={redis_address}",
         f"--metrics-export-port={metrics_export_port}",
         f"--dashboard-agent-port={metrics_agent_port}",
-        f"--node-manager-port={node_manager_port}",
+        "--node-manager-port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
         f"--object-store-name={plasma_store_name}",
         f"--raylet-name={raylet_name}",
         f"--temp-dir={temp_dir}",
@@ -1533,10 +1531,15 @@ def get_ray_jars_dir():
     return os.path.abspath(os.path.join(current_dir, "jars"))
 
 
-def build_java_worker_command(java_worker_options, redis_address,
-                              node_manager_port, plasma_store_name,
-                              raylet_name, redis_password, session_dir,
-                              node_ip_address):
+def build_java_worker_command(
+        java_worker_options,
+        redis_address,
+        plasma_store_name,
+        raylet_name,
+        redis_password,
+        session_dir,
+        node_ip_address,
+):
     """This method assembles the command used to start a Java worker.
 
     Args:
@@ -1554,7 +1557,8 @@ def build_java_worker_command(java_worker_options, redis_address,
     pairs = []
     if redis_address is not None:
         pairs.append(("ray.address", redis_address))
-    pairs.append(("ray.raylet.node-manager-port", node_manager_port))
+    pairs.append(("ray.raylet.node-manager-port",
+                  "RAY_NODE_MANAGER_PORT_PLACEHOLDER"))
 
     if plasma_store_name is not None:
         pairs.append(("ray.object-store.socket-name", plasma_store_name))
@@ -1603,7 +1607,6 @@ def build_java_worker_command(java_worker_options, redis_address,
 def build_cpp_worker_command(
         cpp_worker_options,
         redis_address,
-        node_manager_port,
         plasma_store_name,
         raylet_name,
         redis_password,
@@ -1625,7 +1628,8 @@ def build_cpp_worker_command(
 
     command = [
         DEFAULT_WORKER_EXECUTABLE, plasma_store_name, raylet_name,
-        str(node_manager_port), redis_address, redis_password, session_dir
+        "RAY_NODE_MANAGER_PORT_PLACEHOLDER", redis_address, redis_password,
+        session_dir
     ]
 
     return command

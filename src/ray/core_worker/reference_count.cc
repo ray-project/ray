@@ -157,12 +157,18 @@ void ReferenceCounter::AddOwnedObject(const ObjectID &object_id,
   // If the entry doesn't exist, we initialize the direct reference count to zero
   // because this corresponds to a submitted task whose return ObjectID will be created
   // in the frontend language, incrementing the reference count.
-  object_id_refs_.emplace(object_id, Reference(owner_address, call_site, object_size,
-                                               is_reconstructable, pinned_at_raylet_id));
+  auto it = object_id_refs_
+                .emplace(object_id, Reference(owner_address, call_site, object_size,
+                                              is_reconstructable, pinned_at_raylet_id))
+                .first;
   if (!inner_ids.empty()) {
     // Mark that this object ID contains other inner IDs. Then, we will not GC
     // the inner objects until the outer object ID goes out of scope.
     AddNestedObjectIdsInternal(object_id, inner_ids, rpc_address_);
+  }
+  if (pinned_at_raylet_id.has_value()) {
+    // We eagerly add the pinned location to the set of object locations.
+    AddObjectLocationInternal(it, pinned_at_raylet_id.value());
   }
 }
 
@@ -553,6 +559,8 @@ void ReferenceCounter::UpdateObjectPinnedAtRaylet(const ObjectID &object_id,
     RAY_CHECK(it->second.owned_by_us);
     if (!it->second.OutOfScope(lineage_pinning_enabled_)) {
       it->second.pinned_at_raylet_id = raylet_id;
+      // We eagerly add the pinned location to the set of object locations.
+      AddObjectLocationInternal(it, raylet_id);
     }
   }
 }
@@ -920,9 +928,18 @@ bool ReferenceCounter::AddObjectLocation(const ObjectID &object_id,
                   << " that doesn't exist in the reference table";
     return false;
   }
-  it->second.locations.insert(node_id);
-  PushToLocationSubscribers(it);
+  AddObjectLocationInternal(it, node_id);
   return true;
+}
+
+void ReferenceCounter::AddObjectLocationInternal(ReferenceTable::iterator it,
+                                                 const NodeID &node_id) {
+  if (it->second.locations.emplace(node_id).second) {
+    // Only push to subscribers if we added a new location. We eagerly add the pinned
+    // location without waiting for the object store notification to trigger a location
+    // report, so there's a chance that we already knew about the node_id location.
+    PushToLocationSubscribers(it);
+  }
 }
 
 bool ReferenceCounter::RemoveObjectLocation(const ObjectID &object_id,
@@ -995,31 +1012,56 @@ absl::optional<LocalityData> ReferenceCounter::GetLocalityData(
   // Uses the reference table to return locality data for an object.
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
+    // We don't have any information about this object so we can't return valid locality
+    // data.
     RAY_LOG(DEBUG) << "Object " << object_id
                    << " not in reference table, locality data not available";
     return absl::nullopt;
   }
 
-  const auto &node_id = it->second.pinned_at_raylet_id;
-  if (!node_id.has_value()) {
-    RAY_LOG(DEBUG)
-        << "Reference " << it->second.call_site << " for object " << object_id
-        << " doesn't have a defined pinned raylet ID, locality data not available";
-    return absl::nullopt;
-  }
-  // The raylet ID to which this reference is pinned is defined.
-
+  // The size of this object.
   const auto object_size = it->second.object_size;
   if (object_size < 0) {
+    // We don't know the object size so we can't returned valid locality data.
     RAY_LOG(DEBUG) << "Reference " << it->second.call_site << " for object " << object_id
                    << " has an unknown object size, locality data not available";
     return absl::nullopt;
   }
-  // The object size of this reference is known.
 
+  // The locations of this object.
+  // - If we own this object and the ownership-based object directory is enabled, this
+  // will contain the complete up-to-date set of object locations.
+  // - If we own this object and the ownership-based object directory is disabled, this
+  // will only contain the pinned location, if known.
+  // - If we don't own this object, this will be empty.
+  const auto &node_ids = it->second.locations;
+
+  // We should only reach here if we have valid locality data to return.
   absl::optional<LocalityData> locality_data(
-      {static_cast<uint64_t>(object_size), {node_id.value()}});
+      {static_cast<uint64_t>(object_size), node_ids});
   return locality_data;
+}
+
+bool ReferenceCounter::ReportLocalityData(const ObjectID &object_id,
+                                          const absl::flat_hash_set<NodeID> &locations,
+                                          uint64_t object_size) {
+  absl::MutexLock lock(&mutex_);
+  auto it = object_id_refs_.find(object_id);
+  if (it == object_id_refs_.end()) {
+    RAY_LOG(INFO) << "Tried to report locality data for an object " << object_id
+                  << " that doesn't exist in the reference table."
+                  << " The object has probably already been freed.";
+    return false;
+  }
+  RAY_CHECK(!it->second.owned_by_us)
+      << "ReportLocalityData should only be used for borrowed references.";
+  for (const auto &location : locations) {
+    it->second.locations.emplace(location);
+  }
+  if (object_size > 0) {
+    it->second.object_size = object_size;
+  }
+  return true;
 }
 
 void ReferenceCounter::PushToLocationSubscribers(ReferenceTable::iterator it) {

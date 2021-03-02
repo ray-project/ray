@@ -37,6 +37,8 @@ constexpr char kTaskTablePrefix[] = "TaskTable";
 constexpr char kWorkerDynamicOptionPlaceholder[] =
     "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER";
 
+constexpr char kNodeManagerPortPlaceholder[] = "RAY_NODE_MANAGER_PORT_PLACEHOLDER";
+
 /// Public DNS address which is is used to connect and get local IP.
 constexpr char kPublicDNSServerIp[] = "8.8.8.8";
 constexpr int kPublicDNSServerPort = 53;

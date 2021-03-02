@@ -33,7 +33,7 @@ namespace ray {
 using rpc::HeartbeatTableData;
 
 // Specify resources that consists of unit-size instances.
-static std::unordered_set<int64_t> UnitInstanceResources{CPU, GPU, TPU};
+static std::unordered_set<int64_t> UnitInstanceResources{CPU, GPU};
 
 /// Class encapsulating the cluster resources and the logic to assign
 /// tasks to nodes based on the task's constraints and the available
@@ -51,7 +51,8 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
                            const NodeResources &local_node_resources);
   ClusterResourceScheduler(
       const std::string &local_node_id,
-      const std::unordered_map<std::string, double> &local_node_resources);
+      const std::unordered_map<std::string, double> &local_node_resources,
+      std::function<int64_t(void)> get_used_object_store_memory = nullptr);
 
   // Mapping from predefined resource indexes to resource strings
   std::string GetResourceNameFromIndex(int64_t res_idx);
@@ -442,6 +443,8 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   absl::flat_hash_map<int64_t, Node> nodes_;
   /// Identifier of local node.
   int64_t local_node_id_;
+  /// Internally maintained random number generator.
+  std::mt19937_64 gen_;
   /// Resources of local node.
   NodeResourceInstances local_resources_;
   /// Keep the mapping between node and resource IDs in string representation
@@ -449,6 +452,8 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   StringIdMap string_to_int_map_;
   /// Cached resources, used to compare with newest one in light heartbeat mode.
   std::unique_ptr<NodeResources> last_report_resources_;
+  /// Function to get used object store memory.
+  std::function<int64_t(void)> get_used_object_store_memory_;
 };
 
 }  // end namespace ray
