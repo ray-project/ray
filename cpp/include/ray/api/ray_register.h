@@ -19,6 +19,7 @@
 
 #include <boost/callable_traits.hpp>
 #include <functional>
+#include <memory>
 #include <string>
 #include <unordered_map>
 
@@ -57,16 +58,6 @@ struct AddType<First, std::tuple<Second...>> {
 template <class First, class Second>
 using AddType_t = typename AddType<First, Second>::type;
 
-template <typename OUT, typename IN>
-inline static OUT AddressOf(IN in) {
-  union {
-    IN in;
-    OUT out;
-  } u = {in};
-
-  return u.out;
-};
-
 namespace internal {
 
 class Router {
@@ -78,7 +69,9 @@ class Router {
 
   template <typename Function>
   bool RegisterRemoteFunction(std::string const &name, const Function &f) {
-    auto pair = func_ptr_to_key_map_.emplace(AddressOf<uintptr_t>(f), name);
+    /// Use std::addressof to get address of a function for free function now, it will be
+    /// improved to support member function later.
+    auto pair = func_ptr_to_key_map_.emplace((uint64_t)std::addressof(f), name);
     if (!pair.second) {
       return false;
     }
