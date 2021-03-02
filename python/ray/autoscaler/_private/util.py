@@ -121,11 +121,11 @@ def fillout_defaults(config: Dict[str, Any]) -> Dict[str, Any]:
     # but has at least one of head_node or worker_nodes.
     is_legacy_config = (("available_node_types" not in config) and
                         ("head_node" in config or "worker_nodes" in config))
-    # Just take care of this now, whether or not we have a legacy config:
-    merged_config.pop("min_workers", None)
     # Do merging logic for legacy configs.
     if is_legacy_config:
         merged_config = merge_legacy_yaml_with_defaults(merged_config)
+    # Take care of this here, whether or not we have a legacy config:
+    merged_config.pop("min_workers", None)
 
     return merged_config
 
