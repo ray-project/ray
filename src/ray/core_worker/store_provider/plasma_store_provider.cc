@@ -239,16 +239,12 @@ Status CoreWorkerPlasmaStoreProvider::GetIfLocal(
 
 Status UnblockIfNeeded(const std::shared_ptr<raylet::RayletClient> &client,
                        const WorkerContext &ctx) {
-  if (ctx.CurrentTaskIsDirectCall()) {
-    // NOTE: for direct call actors, we still need to issue an unblock IPC to release
-    // get subscriptions, even if the worker isn't blocked.
-    if (ctx.ShouldReleaseResourcesOnBlockingCalls() || ctx.CurrentActorIsDirectCall()) {
-      return client->NotifyDirectCallTaskUnblocked();
-    } else {
-      return Status::OK();  // We don't need to release resources.
-    }
+  // NOTE: for direct call actors, we still need to issue an unblock IPC to release
+  // get subscriptions, even if the worker isn't blocked.
+  if (ctx.ShouldReleaseResourcesOnBlockingCalls() || ctx.CurrentActorIsDirectCall()) {
+    return client->NotifyDirectCallTaskUnblocked();
   } else {
-    return client->NotifyUnblocked(ctx.GetCurrentTaskID());
+    return Status::OK();  // We don't need to release resources.
   }
 }
 
@@ -271,7 +267,7 @@ Status CoreWorkerPlasmaStoreProvider::Get(
     }
     RAY_RETURN_NOT_OK(
         FetchAndGetFromPlasmaStore(remaining, batch_ids, /*timeout_ms=*/0,
-                                   /*fetch_only=*/true, ctx.CurrentTaskIsDirectCall(),
+                                   /*fetch_only=*/true, true,
                                    ctx.GetCurrentTaskID(), results, got_exception));
   }
 
@@ -306,13 +302,13 @@ Status CoreWorkerPlasmaStoreProvider::Get(
 
     size_t previous_size = remaining.size();
     // This is a separate IPC from the FetchAndGet in direct call mode.
-    if (ctx.CurrentTaskIsDirectCall() && ctx.ShouldReleaseResourcesOnBlockingCalls()) {
+    if (ctx.ShouldReleaseResourcesOnBlockingCalls()) {
       RAY_RETURN_NOT_OK(raylet_client_->NotifyDirectCallTaskBlocked(
           RayConfig::instance().release_resources_during_plasma_fetch()));
     }
     RAY_RETURN_NOT_OK(
         FetchAndGetFromPlasmaStore(remaining, batch_ids, batch_timeout,
-                                   /*fetch_only=*/false, ctx.CurrentTaskIsDirectCall(),
+                                   /*fetch_only=*/false, true,
                                    ctx.GetCurrentTaskID(), results, got_exception));
     should_break = timed_out || *got_exception;
 
@@ -362,14 +358,14 @@ Status CoreWorkerPlasmaStoreProvider::Wait(
     }
 
     // This is a separate IPC from the Wait in direct call mode.
-    if (ctx.CurrentTaskIsDirectCall() && ctx.ShouldReleaseResourcesOnBlockingCalls()) {
+    if (ctx.ShouldReleaseResourcesOnBlockingCalls()) {
       RAY_RETURN_NOT_OK(raylet_client_->NotifyDirectCallTaskBlocked(
           RayConfig::instance().release_resources_during_plasma_fetch()));
     }
     const auto owner_addresses = reference_counter_->GetOwnerAddresses(id_vector);
     RAY_RETURN_NOT_OK(
         raylet_client_->Wait(id_vector, owner_addresses, num_objects, call_timeout,
-                             /*mark_worker_blocked*/ !ctx.CurrentTaskIsDirectCall(),
+                             /*mark_worker_blocked*/ false,
                              ctx.GetCurrentTaskID(), &result_pair));
 
     if (result_pair.first.size() >= static_cast<size_t>(num_objects)) {
@@ -382,7 +378,7 @@ Status CoreWorkerPlasmaStoreProvider::Wait(
       RAY_RETURN_NOT_OK(check_signals_());
     }
   }
-  if (ctx.CurrentTaskIsDirectCall() && ctx.ShouldReleaseResourcesOnBlockingCalls()) {
+  if (ctx.ShouldReleaseResourcesOnBlockingCalls()) {
     RAY_RETURN_NOT_OK(raylet_client_->NotifyDirectCallTaskUnblocked());
   }
   return Status::OK();

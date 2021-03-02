@@ -225,10 +225,6 @@ bool WorkerContext::CurrentActorIsDirectCall() const {
   return current_actor_is_direct_call_;
 }
 
-bool WorkerContext::CurrentTaskIsDirectCall() const {
-  return current_task_is_direct_call_ || current_actor_is_direct_call_;
-}
-
 int WorkerContext::CurrentActorMaxConcurrency() const {
   return current_actor_max_concurrency_;
 }
