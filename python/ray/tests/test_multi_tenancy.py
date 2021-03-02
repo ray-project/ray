@@ -284,13 +284,12 @@ def test_kill_idle_workers_that_are_behind_owned_workers(shutdown_only):
             "kill_idle_workers_interval_ms": 10,
             "worker_lease_timeout_milliseconds": 0
         })
-    expected_num_workers = N
 
     @ray.remote
     def nested(i):
-        if i >= (expected_num_workers * 2) - 1:
+        if i >= (N * 2) - 1:
             return [ray.put(np.ones(1 * 1024 * 1024, dtype=np.uint8))]
-        elif i >= expected_num_workers - 1:
+        elif i >= N:
             return ([ray.put(np.ones(1 * 1024 * 1024, dtype=np.uint8))] +
                     ray.get(nested.remote(i + 1)))
         else:
@@ -304,7 +303,7 @@ def test_kill_idle_workers_that_are_behind_owned_workers(shutdown_only):
     assert num_workers == N * 2
 
     # Make sure there are only N workers left after worker capping.
-    wait_for_condition(lambda: len(get_workers()) == N + 1)
+    wait_for_condition(lambda: len(get_workers()) == N)
 
 
 if __name__ == "__main__":
