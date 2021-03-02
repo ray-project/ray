@@ -1553,7 +1553,6 @@ void NodeManager::AsyncResolveObjects(
     const TaskID &current_task_id, bool ray_get, bool mark_worker_blocked) {
   std::shared_ptr<WorkerInterface> worker = worker_pool_.GetRegisteredWorker(client);
   if (!worker) {
-  } else {
     // The client is a driver. Drivers do not hold resources, so we simply mark
     // the task as blocked.
     worker = worker_pool_.GetRegisteredDriver(client);
