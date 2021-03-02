@@ -932,10 +932,8 @@ def test_capture_child_actors(ray_start_cluster):
     ray.kill(a)
     wait_for_actor_killed(a._actor_id.hex(),
                           ray.actors(a._actor_id.hex())["NumRestarts"])
-    try:
+    with pytest.raises(ray.exceptions.RayActorError):
         ray.get(a.ready.remote())
-    except ray.exceptions.RayActorError:
-        pass
 
     # Lastly, make sure when None is specified, actors are not scheduled
     # on the same placement group.
