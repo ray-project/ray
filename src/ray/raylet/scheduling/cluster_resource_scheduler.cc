@@ -993,8 +993,8 @@ void ClusterResourceScheduler::FillResourceUsage(
   // it in last_report_resources_.
   if (get_used_object_store_memory_ != nullptr) {
     auto &capacity = resources.predefined_resources[OBJECT_STORE_MEM];
-    // Convert to 50MiB memory units.
-    double used = get_used_object_store_memory_() / (50. * 1024 * 1024);
+    // Convert to 100MiB memory units.
+    double used = get_used_object_store_memory_() / (100. * 1024 * 1024);
     capacity.available = FixedPoint(capacity.total.Double() - used);
   }
 
