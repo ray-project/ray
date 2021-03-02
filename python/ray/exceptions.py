@@ -65,17 +65,12 @@ class RayTaskError(RayError):
     retrieved from the object store, the Python method that retrieved it checks
     to see if the object is a RayTaskError and if it is then an exception is
     thrown propagating the error message.
-
-    Attributes:
-        function_name (str): The name of the function that failed and produced
-            the RayTaskError.
-        traceback_str (str): The traceback from the exception.
     """
 
     def __init__(self,
                  function_name,
                  traceback_str,
-                 cause_cls,
+                 cause,
                  proctitle=None,
                  pid=None,
                  ip=None):
@@ -89,34 +84,43 @@ class RayTaskError(RayError):
         self.ip = ip or ray._private.services.get_node_ip_address()
         self.function_name = function_name
         self.traceback_str = traceback_str
-        self.cause_cls = cause_cls
+        # TODO(edoakes): should we handle non-serializable exception objects?
+        self.cause = cause
         assert traceback_str is not None
 
     def as_instanceof_cause(self):
-        """Returns copy that is an instance of the cause's Python class.
+        """Returns an exception that is an instance of the cause's class.
 
         The returned exception will inherit from both RayTaskError and the
-        cause class.
+        cause class and will contain all of the attributes of the cause
+        exception.
         """
 
-        if issubclass(RayTaskError, self.cause_cls):
+        cause_cls = self.cause.__class__
+        if issubclass(RayTaskError, cause_cls):
             return self  # already satisfied
 
-        if issubclass(self.cause_cls, RayError):
+        if issubclass(cause_cls, RayError):
             return self  # don't try to wrap ray internal errors
 
-        class cls(RayTaskError, self.cause_cls):
-            def __init__(self, function_name, traceback_str, cause_cls,
-                         proctitle, pid, ip):
-                RayTaskError.__init__(self, function_name, traceback_str,
-                                      cause_cls, proctitle, pid, ip)
+        cause = self.cause
+        error_msg = str(self)
 
-        name = f"RayTaskError({self.cause_cls.__name__})"
+        class cls(RayTaskError, cause_cls):
+            def __init__(self):
+                pass
+
+            def __getattr__(self, name):
+                return getattr(cause, name)
+
+            def __str__(self):
+                return error_msg
+
+        name = f"RayTaskError({cause_cls.__name__})"
         cls.__name__ = name
         cls.__qualname__ = name
 
-        return cls(self.function_name, self.traceback_str, self.cause_cls,
-                   self.proctitle, self.pid, self.ip)
+        return cls()
 
     def __str__(self):
         """Format a RayTaskError as a string."""

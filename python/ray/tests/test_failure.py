@@ -111,7 +111,12 @@ def test_failed_task(ray_start_regular, error_pubsub):
             assert False
 
     class CustomException(ValueError):
-        pass
+        def __init__(self, msg):
+            super().__init__(msg)
+            self.field = 1
+
+        def f(self):
+            return 2
 
     @ray.remote
     def f():
@@ -121,9 +126,12 @@ def test_failed_task(ray_start_regular, error_pubsub):
         ray.get(f.remote())
     except Exception as e:
         assert "This function failed." in str(e)
+        assert isinstance(e, ValueError)
         assert isinstance(e, CustomException)
         assert isinstance(e, ray.exceptions.RayTaskError)
         assert "RayTaskError(CustomException)" in repr(e)
+        assert e.field == 1
+        assert e.f() == 2
     else:
         # ray.get should throw an exception.
         assert False
