@@ -137,7 +137,8 @@ NodeManager::NodeManager(boost::asio::io_service &io_service, const NodeID &self
                    config.max_worker_port, config.worker_ports, gcs_client_,
                    config.worker_commands,
                    /*starting_worker_timeout_callback=*/
-                   [this] { cluster_task_manager_->ScheduleAndDispatchTasks(); }),
+                   [this] { cluster_task_manager_->ScheduleAndDispatchTasks(); },
+                   /*get_time=*/[this]() { return absl::GetCurrentTimeNanos() / 1e6; };),
       scheduling_policy_(local_queues_),
       reconstruction_policy_(
           io_service_,

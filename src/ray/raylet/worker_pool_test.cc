@@ -32,13 +32,51 @@ JobID JOB_ID = JobID::FromInt(1);
 
 std::vector<Language> LANGUAGES = {Language::PYTHON, Language::JAVA};
 
+class MockWorkerClient : public rpc::CoreWorkerClientInterface {
+ public:
+  MockWorkerClient(boost::asio::io_service &io_service) : io_service_(io_service) {}
+
+  void Exit(const rpc::ExitRequest &request,
+            const rpc::ClientCallback<rpc::ExitReply> &callback) {
+    callbacks_.push_back(callback);
+  }
+
+  bool ExitReplySucceed() {
+    if (callbacks_.size() == 0) {
+      return false;
+    }
+    const auto &callback = callbacks_.front();
+    callbacks_.pop_front();
+    rpc::ExitReply exit_reply;
+    exit_reply.set_success(true);
+    callback(Status::OK(), exit_reply);
+    return true;
+  }
+
+  bool ExitReplyFailed() {
+    if (callbacks_.size() == 0) {
+      return false;
+    }
+    const auto &callback = callbacks_.front();
+    callbacks_.pop_front();
+    rpc::ExitReply exit_reply;
+    exit_reply.set_success(false);
+    callback(Status::OK(), exit_reply);
+    return true;
+  }
+
+  std::list<rpc::ClientCallback<rpc::ExitReply>> callbacks_;
+  boost::asio::io_service &io_service_;
+};
+
 class WorkerPoolMock : public WorkerPool {
  public:
   explicit WorkerPoolMock(boost::asio::io_service &io_service,
                           const WorkerCommandMap &worker_commands)
       : WorkerPool(io_service, NodeID::FromRandom(), "", POOL_SIZE_SOFT_LIMIT, 0,
                    MAXIMUM_STARTUP_CONCURRENCY, 0, 0, {}, nullptr, worker_commands,
-                   []() {}),
+                   []() {},
+                   []() { return current_time_ms_; }),
         last_worker_process_() {
     SetNodeManagerPort(1);
   }
@@ -97,10 +135,19 @@ class WorkerPoolMock : public WorkerPool {
 
   int GetProcessSize() const { return worker_commands_by_proc_.size(); }
 
+  void SetCurrentTimeMs(double current_time) {
+    current_time_ms_ = current_time;
+  }
+
+  size_t GetIdleWorkerSize() {
+    return idle_of_all_languages_.size();
+  }
+
  private:
   Process last_worker_process_;
   // The worker commands by process.
   std::unordered_map<Process, std::vector<std::string>> worker_commands_by_proc_;
+  double current_time_ms_ = 0;
 };
 
 class WorkerPoolTest : public ::testing::Test {
@@ -135,6 +182,7 @@ class WorkerPoolTest : public ::testing::Test {
                                  "127.0.0.1", client, client_call_manager_);
     std::shared_ptr<WorkerInterface> worker =
         std::dynamic_pointer_cast<WorkerInterface>(worker_);
+    worker->Connect(absl::make_unique<MockWorkerClient>(io_service_));
     if (!proc.IsNull()) {
       worker->SetProcess(proc);
     }
@@ -740,6 +788,63 @@ TEST_F(WorkerPoolTest, NoPopOnCrashedWorkerProcess) {
   // 6. Now Raylet disconnects with worker 2.
   worker_pool_->DisconnectWorker(
       worker2, /*disconnect_type=*/rpc::WorkerExitType::SYSTEM_ERROR_EXIT);
+}
+
+TEST_F(WorkerPoolTest, TestWorkerCapping) {
+  auto job_id = JOB_ID;
+
+  // The driver of job 1 is already registered. Here we register the driver for job 2.
+  RegisterDriver(Language::PYTHON, job_id);
+
+  // Register 2 workers.
+  for (int i = 0; i < 2; i++) {
+    auto worker = CreateWorker(Process::CreateNewDummy(), Language::PYTHON, job_id);
+    worker_pool_->PushWorker(worker);
+  }
+
+  std::vector<std::shared_ptr<WorkerInterface>> workers;
+
+  // Pop workers for actor.
+  auto actor_creation_id = ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 1);
+  // Pop workers for actor creation tasks.
+  auto task_spec = ExampleTaskSpec(/*actor_id=*/ActorID::Nil(), Language::PYTHON,
+                                    job_id, actor_creation_id);
+  auto worker = worker_pool_->PopWorker(task_spec);
+  ASSERT_TRUE(worker);
+  ASSERT_EQ(worker->GetAssignedJobId(), job_id);
+  workers.push_back(worker);
+
+  // Pop workers for normal tasks.
+  auto task_spec = ExampleTaskSpec(ActorID::Nil(), Language::PYTHON, job_id);
+  auto worker = worker_pool_->PopWorker(task_spec);
+  ASSERT_TRUE(worker);
+  ASSERT_EQ(worker->GetAssignedJobId(), job_id);
+  workers.push_back(worker);
+
+  // After scheduling an actor and task, there's no more idle worker.
+  ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), 0);
+
+  // Return all workers.
+  for (auto worker : workers) {
+    worker_pool_->PushWorker(worker);
+  }
+  // Now 2 idle worekrs are available.
+  ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), 2);
+
+  // 400 ms has passed, so idle workers should be killed.
+  worker_pool_->SetCurrentTimeMs(400);
+  worker_pool_->TryKillingIdleWorkers();
+  // Idle workers haven't been killed because the core worker hasn't replied yet.
+  ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), 2);
+  // The first core worker exits.
+  workers[0]->rpc_client()->ExitReplySucceed();
+  worker_pool_->TryKillingIdleWorkers();
+  ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), 1);
+  // The second core worker doesn't exit.
+  workers[0]->rpc_client()->ExitReplyFailed();
+  worker_pool_->TryKillingIdleWorkers();
+  // Idle workers were not killed.
+  ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), 1);
 }
 
 }  // namespace raylet

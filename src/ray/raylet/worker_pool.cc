@@ -61,7 +61,8 @@ WorkerPool::WorkerPool(boost::asio::io_service &io_service, const NodeID node_id
                        int max_worker_port, const std::vector<int> &worker_ports,
                        std::shared_ptr<gcs::GcsClient> gcs_client,
                        const WorkerCommandMap &worker_commands,
-                       std::function<void()> starting_worker_timeout_callback)
+                       std::function<void()> starting_worker_timeout_callback,
+                       const std::function<double()> get_time)
     : io_service_(&io_service),
       node_id_(node_id),
       node_address_(node_address),
@@ -73,7 +74,8 @@ WorkerPool::WorkerPool(boost::asio::io_service &io_service, const NodeID node_id
       first_job_driver_wait_num_python_workers_(std::min(
           num_initial_python_workers_for_first_job, maximum_startup_concurrency)),
       num_initial_python_workers_for_first_job_(num_initial_python_workers_for_first_job),
-      periodical_runner_(io_service) {
+      periodical_runner_(io_service),
+      get_time_(get_time), {
   RAY_CHECK(maximum_startup_concurrency > 0);
 #ifndef _WIN32
   // Ignore SIGCHLD signals. If we don't do this, then worker processes will
@@ -635,7 +637,7 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
     // The worker is not used for the actor creation task with dynamic options.
     // Put the worker to the idle pool.
     state.idle.insert(worker);
-    int64_t now = current_time_ms();
+    int64_t now = get_time_();
     idle_of_all_languages_.emplace_back(worker, now);
     idle_of_all_languages_map_[worker] = now;
   }
@@ -644,7 +646,7 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
 void WorkerPool::TryKillingIdleWorkers() {
   RAY_CHECK(idle_of_all_languages_.size() == idle_of_all_languages_map_.size());
 
-  int64_t now = current_time_ms();
+  int64_t now = get_time_();
   size_t running_size = 0;
   for (const auto &worker : GetAllRegisteredWorkers()) {
     if (!worker->IsDead()) {
@@ -1014,7 +1016,7 @@ void WorkerPool::WarnAboutSize() {
                       << "(see https://github.com/ray-project/ray/issues/3644) for "
                       << "some a discussion of workarounds.";
       auto error_data_ptr = gcs::CreateErrorTableData(
-          "worker_pool_large", warning_message.str(), current_time_ms());
+          "worker_pool_large", warning_message.str(), get_time_());
       RAY_CHECK_OK(gcs_client_->Errors().AsyncReportJobError(error_data_ptr, nullptr));
     }
   }

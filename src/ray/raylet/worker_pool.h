@@ -115,6 +115,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// language.
   /// \param starting_worker_timeout_callback The callback that will be triggered once
   /// it times out to start a worker.
+  /// \param get_time A callback to get the current time.
   WorkerPool(boost::asio::io_service &io_service, const NodeID node_id,
              const std::string node_address, int num_workers_soft_limit,
              int num_initial_python_workers_for_first_job,
@@ -122,7 +123,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
              const std::vector<int> &worker_ports,
              std::shared_ptr<gcs::GcsClient> gcs_client,
              const WorkerCommandMap &worker_commands,
-             std::function<void()> starting_worker_timeout_callback);
+             std::function<void()> starting_worker_timeout_callback,
+             const std::function<double()> get_time);
 
   /// Destructor responsible for freeing a set of workers owned by this class.
   virtual ~WorkerPool();
@@ -317,6 +319,10 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// \return string.
   std::string DebugString() const;
 
+  /// Try killing idle workers to ensure the running workers are in a
+  /// reasonable size.
+  void TryKillingIdleWorkers();
+
  protected:
   /// Asynchronously start a new worker process. Once the worker process has
   /// registered with an external server, the process should create and
@@ -442,10 +448,6 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// worker.
   void TryStartIOWorkers(const Language &language, const rpc::WorkerType &worker_type);
 
-  /// Try killing idle workers to ensure the running workers are in a
-  /// reasonable size.
-  void TryKillingIdleWorkers();
-
   /// Get all workers of the given process.
   ///
   /// \param process The process of workers.
@@ -530,6 +532,9 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
 
   /// The runner to run function periodically.
   PeriodicalRunner periodical_runner_;
+
+  /// A callback to get the current time.
+  const std::function<double()> get_time_;
 };
 
 }  // namespace raylet
