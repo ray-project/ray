@@ -76,10 +76,20 @@ class StreamPool:
 # This is a map from GPU index to its stream pool.
 # It is supposed to be READ-ONLY out of this file
 _device_stream_pool_map = dict()
-for i in range(MAX_GPU_PER_ACTOR):
-    _device_stream_pool_map[i] = StreamPool(i)
+
+
+def _init_stream_pool():
+    global _device_stream_pool_map
+    for i in range(MAX_GPU_PER_ACTOR):
+        _device_stream_pool_map[i] = StreamPool(i)
 
 
 def get_stream_pool(device_idx):
     """Get the CUDA stream pool of a GPU device."""
+    # In case there will be multiple threads writing to the pool.
+    lock = threading.Lock()
+    lock.acquire()
+    if not _device_stream_pool_map:
+        _init_stream_pool()
+    lock.release()
     return _device_stream_pool_map[device_idx]
