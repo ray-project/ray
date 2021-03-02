@@ -117,9 +117,14 @@ def fillout_defaults(config: Dict[str, Any]) -> Dict[str, Any]:
     # configs.
     merged_config["auth"] = merged_config.get("auth", {})
 
-    # Handle merging logic if the original config was legacy-style
-    # (available_node_types unspecified).
-    if "available_node_types" not in config:
+    # A legacy config is one which doesn't have available_node_types,
+    # but has at least one of head_node or worker_nodes.
+    is_legacy_config = (("available_node_types" not in config) and
+                        ("head_node" in config or "worker_nodes" in config))
+    # Just take care of this now, whether or not we have a legacy config:
+    merged_config.pop("min_workers", None)
+    # Do merging logic for legacy configs.
+    if is_legacy_config:
         merged_config = merge_legacy_yaml_with_defaults(merged_config)
 
     return merged_config
@@ -130,7 +135,7 @@ def merge_legacy_yaml_with_defaults(
     """Rewrite legacy config's available node types after it has been merged
     with defaults yaml.
     """
-    logger.info("Converting legacy cluster config to multi node types.")
+    logger.warning("Converting legacy cluster config to multi node types.")
 
     # Get default head and worker types.
     default_head_type = merged_config["head_node_type"]
@@ -141,30 +146,38 @@ def merge_legacy_yaml_with_defaults(
                            {default_head_type}).pop()
 
     if merged_config["head_node"]:
-        # User specified a head config. Overwrite the default head.
-        merged_config["available_node_types"].pop(default_head_type)
-        merged_config["available_node_types"][NODE_TYPE_LEGACY_HEAD] = {
+        # User specified a head node in legacy config.
+        # Convert it into data for the head's node type.
+        head_node_info = {
             "node_config": merged_config["head_node"],
             "resources": merged_config["head_node"].get("resources") or {},
             "min_workers": 0,
             "max_workers": 0,
         }
-        # Resources field in head field causes worker launch to fail.
-        merged_config["head_node"].pop("resources", None)
-        # Update head type
-        merged_config["head_node_type"] = NODE_TYPE_LEGACY_HEAD
+    else:
+        # Use default data for the head's node type.
+        head_node_info = merged_config["available_node_types"][
+            default_head_type]
     if merged_config["worker_nodes"]:
-        # User specified a worker config. Overwrite the default worker.
-        merged_config["available_node_types"].pop(default_worker_type)
-        merged_config["available_node_types"][NODE_TYPE_LEGACY_WORKER] = {
+        # User specified a worker node in legacy config.
+        # Convert it into data for the workers' node type.
+        worker_node_info = {
             "node_config": merged_config["worker_nodes"],
             "resources": merged_config["worker_nodes"].get("resources") or {},
             "min_workers": merged_config.get("min_workers", 0),
             "max_workers": merged_config["max_workers"],
         }
-        # Resources field in worker field causes worker launch to fail.
-        merged_config["worker_nodes"].pop("resources", None)
-    merged_config.pop("min_workers", None)
+    else:
+        # Use default data for the workers' node type.
+        worker_node_info = merged_config["available_node_types"][
+            default_worker_type]
+
+    # Rewrite available_node_types.
+    merged_config["available_node_types"] = {
+        NODE_TYPE_LEGACY_HEAD: head_node_info,
+        NODE_TYPE_LEGACY_WORKER: worker_node_info
+    }
+    merged_config["head_node_type"] = NODE_TYPE_LEGACY_HEAD
 
     return merged_config
 
