@@ -509,7 +509,6 @@ class Trainer(Trainable):
         Trainer._validate_config(cf)
 
         eval_config = cf["evaluation_config"]
-        obj_store_mem_per_worker = cf["object_store_memory_per_worker"]
 
         # TODO(ekl): add custom resources here once tune supports them
         # Return PlacementGroupFactory containing all needed resources
@@ -520,14 +519,12 @@ class Trainer(Trainable):
                 "CPU": cf["num_cpus_for_driver"],
                 "GPU": cf["num_gpus"],
                 "memory": cf["memory"],
-                "object_store_memory": cf["object_store_memory"],
             }] + [
                 {
                     # RolloutWorkers.
                     "CPU": cf["num_cpus_per_worker"],
                     "GPU": cf["num_gpus_per_worker"],
                     "memory": cf["memory_per_worker"],
-                    "object_store_memory": obj_store_mem_per_worker,
                 } for _ in range(cf["num_workers"])
             ] + ([
                 {
@@ -539,9 +536,6 @@ class Trainer(Trainable):
                                            cf["num_gpus_per_worker"]),
                     "memory": eval_config.get("memory_per_worker",
                                               cf["memory_per_worker"]),
-                    "object_store_memory": eval_config.get(
-                        "object_store_memory_per_worker",
-                        obj_store_mem_per_worker),
                 } for _ in range(cf["evaluation_num_workers"] + 1)
             ] if cf["evaluation_interval"] else []),
             strategy=config.get("placement_strategy", "PACK"))
@@ -1129,15 +1123,6 @@ class Trainer(Trainable):
         model_config = config.get("model")
         if model_config is None:
             config["model"] = model_config = {}
-
-        if config.get("memory", 0) != 0:
-            deprecation_warning(old="memory")
-        if config.get("object_store_memory", 0) != 0:
-            deprecation_warning(old="object_store_memory")
-        if config.get("memory_per_worker", 0) != 0:
-            deprecation_warning(old="memory_per_worker")
-        if config.get("object_store_memory_per_worker", 0) != 0:
-            deprecation_warning(old="object_store_memory_per_worker")
 
         if not config.get("_use_trajectory_view_api"):
             traj_view_framestacks = model_config.get("num_framestacks", "auto")
