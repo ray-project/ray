@@ -1,3 +1,4 @@
+autogluon.core==0.0.16b20210113  # to pin autogluon.core
 ax-platform==0.1.9; python_version < '3.7'
 ax-platform==0.1.20; python_version >= '3.7'
 bayesian-optimization==1.2.0
