@@ -410,6 +410,11 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// Pool states per language.
   std::unordered_map<Language, State, std::hash<int>> states_by_lang_;
 
+  /// The pool of idle non-actor workers of all languages. This is used to kill idle
+  /// workers in FIFO order. The second element of std::pair is the time a worker becomes
+  /// idle.
+  std::list<std::pair<std::shared_ptr<WorkerInterface>, int64_t>> idle_of_all_languages_;
+
  private:
   /// A helper function that returns the reference of the pool state
   /// for a given language.
@@ -515,11 +520,6 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
 
   /// This map tracks the latest infos of unfinished jobs.
   absl::flat_hash_map<JobID, rpc::JobConfig> all_jobs_;
-
-  /// The pool of idle non-actor workers of all languages. This is used to kill idle
-  /// workers in FIFO order. The second element of std::pair is the time a worker becomes
-  /// idle.
-  std::list<std::pair<std::shared_ptr<WorkerInterface>, int64_t>> idle_of_all_languages_;
 
   /// This map stores the same data as `idle_of_all_languages_`, but in a map structure
   /// for lookup performance.

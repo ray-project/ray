@@ -75,7 +75,7 @@ WorkerPool::WorkerPool(boost::asio::io_service &io_service, const NodeID node_id
           num_initial_python_workers_for_first_job, maximum_startup_concurrency)),
       num_initial_python_workers_for_first_job_(num_initial_python_workers_for_first_job),
       periodical_runner_(io_service),
-      get_time_(get_time), {
+      get_time_(get_time) {
   RAY_CHECK(maximum_startup_concurrency > 0);
 #ifndef _WIN32
   // Ignore SIGCHLD signals. If we don't do this, then worker processes will
@@ -662,16 +662,18 @@ void WorkerPool::TryKillingIdleWorkers() {
     if (running_size <= static_cast<size_t>(num_workers_soft_limit_)) {
       break;
     }
-    if (now - idle_pair.second <
-        RayConfig::instance().idle_worker_killing_time_threshold_ms()) {
-      break;
-    }
 
     const auto &idle_worker = idle_pair.first;
     if (pending_exit_idle_workers_.count(idle_worker->WorkerId())) {
       // If the worker is pending exit, just skip it.
       continue;
     }
+
+    if (now - idle_pair.second <
+        RayConfig::instance().idle_worker_killing_time_threshold_ms()) {
+      break;
+    }
+
     if (idle_worker->IsDead()) {
       // This worker has already been killed.
       // This is possible because a Java worker process may hold multiple workers.
@@ -1015,8 +1017,8 @@ void WorkerPool::WarnAboutSize() {
                       << "using nested tasks "
                       << "(see https://github.com/ray-project/ray/issues/3644) for "
                       << "some a discussion of workarounds.";
-      auto error_data_ptr = gcs::CreateErrorTableData(
-          "worker_pool_large", warning_message.str(), get_time_());
+      auto error_data_ptr = gcs::CreateErrorTableData("worker_pool_large",
+                                                      warning_message.str(), get_time_());
       RAY_CHECK_OK(gcs_client_->Errors().AsyncReportJobError(error_data_ptr, nullptr));
     }
   }
