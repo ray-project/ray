@@ -272,7 +272,7 @@ def debug(address):
     "--min-worker-port",
     required=False,
     type=int,
-    default=10000,
+    default=10002,
     help="the lowest port number that workers will bind on. If not set, "
     "random ports will be chosen.")
 @click.option(

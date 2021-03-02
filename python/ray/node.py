@@ -218,6 +218,8 @@ class Node:
 
         if not connect_only and spawn_reaper and not self.kernel_fate_share:
             self.start_reaper_process()
+        if not connect_only:
+            self._ray_params.update_pre_selected_port()
 
         # Start processes.
         if head:
@@ -405,6 +407,10 @@ class Node:
             "log_rotation_max_bytes": self.max_bytes,
             "log_rotation_backup_count": self.backup_count
         }
+
+    @property
+    def port_assignment(self):
+        return self._ray_params.pre_selected_ports
 
     @property
     def address_info(self):
@@ -661,7 +667,8 @@ class Node:
              redis_max_clients=self._ray_params.redis_max_clients,
              redirect_worker_output=True,
              password=self._ray_params.redis_password,
-             fate_share=self.kernel_fate_share)
+             fate_share=self.kernel_fate_share,
+             ray_params=self._ray_params)
         assert (
             ray_constants.PROCESS_TYPE_REDIS_SERVER not in self.all_processes)
         self.all_processes[ray_constants.PROCESS_TYPE_REDIS_SERVER] = (

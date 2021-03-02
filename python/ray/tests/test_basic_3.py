@@ -138,5 +138,39 @@ def test_fair_queueing(shutdown_only):
     assert len(ready) == 1000, len(ready)
 
 
+def test_ports_assignment(ray_start_cluster):
+    # Make sure value error is raised when there are the same ports.
+
+    cluster = ray_start_cluster
+    with pytest.raises(ValueError):
+        cluster.add_node(dashboard_port=30000, metrics_export_port=30000)
+
+    pre_selected_ports = {
+        "redis_port": 30000,
+        "object_manager_port": 30001,
+        "node_manager_port": 30002,
+        "gcs_server_port": 30003,
+        "ray_client_server_port": 30004,
+        "dashboard_port": 30005,
+        "metrics_agent_port": 30006,
+        "metrics_export_port": 30007,
+    }
+
+    # Make sure we can start a node properly.
+    head_node = cluster.add_node(**pre_selected_ports)
+    cluster.wait_for_nodes()
+    cluster.remove_node(head_node)
+
+    # Make sure the wrong worker list will raise an exception.
+    with pytest.raises(ValueError):
+        head_node = cluster.add_node(
+            **pre_selected_ports, worker_port_list="30000,30001,30002,30003")
+
+    # Make sure the wrong min & max worker will raise an exception
+    with pytest.raises(ValueError):
+        head_node = cluster.add_node(
+            **pre_selected_ports, min_worker_port=25000, max_worker_port=35000)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

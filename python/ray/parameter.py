@@ -249,6 +249,57 @@ class RayParams:
 
         self._check_usage()
 
+    def update_pre_selected_port(self):
+        """Update the pre-selected port information
+
+        Returns:
+            The dictionary mapping of component -> ports.
+        """
+        # Create a dictionary of the component -> port mapping.
+        pre_selected_ports = {
+            "gcs": self._wrap_port(self.redis_port),
+            "object_manager": self._wrap_port(self.object_manager_port),
+            "node_manager": self._wrap_port(self.node_manager_port),
+            "gcs_server": self._wrap_port(self.gcs_server_port),
+            "client_server": self._wrap_port(self.ray_client_server_port),
+            "dashboard": self._wrap_port(self.dashboard_port),
+            "dashboard_agent": self._wrap_port(self.metrics_agent_port),
+            "metrics_export": self._wrap_port(self.metrics_export_port),
+        }
+        redis_shard_ports = self.redis_shard_ports
+        if redis_shard_ports is None:
+            redis_shard_ports = []
+        pre_selected_ports["redis_shards"] = redis_shard_ports
+        if self.worker_port_list is None:
+            if (self.min_worker_port is not None
+                    and self.max_worker_port is not None):
+                pre_selected_ports["worker_ports"] = [
+                    port for port in range(self.min_worker_port,
+                                           self.max_worker_port + 1)
+                ]
+            else:
+                # The dict is not updated when it requires random ports.
+                pre_selected_ports["worker_ports"] = []
+        else:
+            pre_selected_ports["worker_ports"] = self.worker_port_list
+
+        # Update the pre selected port set.
+        self.pre_selected_ports_set = set()
+        self.pre_selected_ports = pre_selected_ports
+        for comp, port_list in pre_selected_ports.items():
+            for port in port_list:
+                if port in self.pre_selected_ports_set:
+                    raise ValueError(
+                        f"Ray component {comp} tries to use "
+                        f"a port number {port} that is used by "
+                        "other components.\n"
+                        f"Port information: {pre_selected_ports}\n"
+                        "If you allocate ports, "
+                        "please make sure the same port is not used by "
+                        "multiple components.")
+                self.pre_selected_ports_set.add(port)
+        return pre_selected_ports
+
     def _check_usage(self):
         if self.worker_port_list is not None:
             for port_str in self.worker_port_list.split(","):
@@ -313,3 +364,10 @@ class RayParams:
         if numpy_major <= 1 and numpy_minor < 16:
             logger.warning("Using ray with numpy < 1.16.0 will result in slow "
                            "serialization. Upgrade numpy if using with ray.")
+
+    def _wrap_port(self, port):
+        # 0 port means select a random port for the grpc server.
+        if port is None or port == 0:
+            return []
+        else:
+            return [port]
