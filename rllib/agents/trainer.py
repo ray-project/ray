@@ -404,12 +404,6 @@ COMMON_CONFIG: TrainerConfigDict = {
     # Define logger-specific configuration to be used inside Logger
     # Default value None allows overwriting with nested dicts
     "logger_config": None,
-
-    # Deprecated keys.
-    "memory": 0,
-    "object_store_memory": 0,
-    "memory_per_worker": 0,
-    "object_store_memory_per_worker": 0,
 }
 # __sphinx_doc_end__
 # yapf: enable
@@ -517,6 +511,7 @@ class Trainer(Trainable):
         eval_config = cf["evaluation_config"]
         obj_store_mem_per_worker = cf["object_store_memory_per_worker"]
 
+        # TODO(ekl): add custom resources here once tune supports them
         # Return PlacementGroupFactory containing all needed resources
         # (already properly defined as device bundles).
         return PlacementGroupFactory(

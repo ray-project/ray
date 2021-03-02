@@ -1072,7 +1072,7 @@ TEST_F(ClusterResourceSchedulerTest, ResourceUsageReportTest) {
     ASSERT_EQ(total["2"], 2);
     ASSERT_EQ(total["3"], 3);
 
-    // GCS doesn't like entries which are 0 (like TPU).
+    // GCS doesn't like entries which are 0.
     ASSERT_EQ(available.size(), 6);
     ASSERT_EQ(total.size(), 6);
   }
@@ -1110,6 +1110,59 @@ TEST_F(ClusterResourceSchedulerTest, ResourceUsageReportTest) {
     ASSERT_EQ(total["1"], 1);
     ASSERT_EQ(total["2"], 2);
     ASSERT_EQ(total["3"], 3);
+  }
+}
+
+TEST_F(ClusterResourceSchedulerTest, ObjectStoreMemoryUsageTest) {
+  vector<int64_t> cust_ids{1};
+  NodeResources node_resources;
+  std::unordered_map<std::string, double> initial_resources(
+      {{"CPU", 1}, {"GPU", 2}, {"memory", 3}, {"object_store_memory", 10}});
+  int64_t used_object_store_memory = 125 * 1024 * 1024;
+  int64_t *ptr = &used_object_store_memory;
+  ClusterResourceScheduler resource_scheduler("0", initial_resources,
+                                              [&] { return *ptr; });
+  NodeResources other_node_resources;
+  vector<FixedPoint> other_pred_capacities{1. /* CPU */, 1. /* MEM */, 1. /* GPU */};
+  vector<FixedPoint> other_cust_capacities{10.};
+  initNodeResources(other_node_resources, other_pred_capacities, cust_ids,
+                    other_cust_capacities);
+  resource_scheduler.AddOrUpdateNode(12345, other_node_resources);
+
+  {
+    auto data = std::make_shared<rpc::ResourcesData>();
+    resource_scheduler.FillResourceUsage(data);
+    auto available = data->resources_available();
+    auto total = data->resources_total();
+    ASSERT_EQ(available["object_store_memory"], 7.5);
+    ASSERT_EQ(total["object_store_memory"], 10.0);
+  }
+
+  used_object_store_memory = 225 * 1024 * 1024;
+  {
+    auto data = std::make_shared<rpc::ResourcesData>();
+    resource_scheduler.FillResourceUsage(data);
+    auto available = data->resources_available();
+    auto total = data->resources_total();
+    ASSERT_EQ(available["object_store_memory"], 5.5);
+  }
+
+  used_object_store_memory = 0;
+  {
+    auto data = std::make_shared<rpc::ResourcesData>();
+    resource_scheduler.FillResourceUsage(data);
+    auto available = data->resources_available();
+    auto total = data->resources_total();
+    ASSERT_EQ(available["object_store_memory"], 10.0);
+  }
+
+  used_object_store_memory = 9999999999;
+  {
+    auto data = std::make_shared<rpc::ResourcesData>();
+    resource_scheduler.FillResourceUsage(data);
+    auto available = data->resources_available();
+    auto total = data->resources_total();
+    ASSERT_EQ(available["object_store_memory"], 0.0);
   }
 }
 

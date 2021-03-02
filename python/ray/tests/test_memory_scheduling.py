@@ -1,10 +1,8 @@
 import numpy as np
-import unittest
-import os
+import time
 
 import ray
-from ray import tune
-from ray.rllib import _register_all
+from ray.test_utils import wait_for_condition
 
 MB = 1024 * 1024
 
@@ -18,117 +16,59 @@ class Actor:
         return "ok"
 
 
-@ray.remote(object_store_memory=100 * MB)
-class Actor2:
-    def __init__(self):
-        pass
+def test_memory_request():
+    try:
+        ray.init(num_cpus=1, _memory=200 * MB)
+        # fits first 2
+        a = Actor.remote()
+        b = Actor.remote()
+        ok, _ = ray.wait(
+            [a.ping.remote(), b.ping.remote()], timeout=60.0, num_returns=2)
+        assert len(ok) == 2
+        # does not fit
+        c = Actor.remote()
+        ok, _ = ray.wait([c.ping.remote()], timeout=5.0)
+        assert len(ok) == 0
+    finally:
+        ray.shutdown()
 
-    def ping(self):
-        return "ok"
+
+def test_object_store_memory_reporting():
+    try:
+        ray.init(num_cpus=1, object_store_memory=500 * MB)
+        wait_for_condition(
+            lambda: ray.available_resources()["object_store_memory"] == 10.0)
+        x1 = ray.put(np.zeros(150 * 1024 * 1024, dtype=np.uint8))
+        wait_for_condition(
+            lambda: ray.available_resources()["object_store_memory"] == 7.0)
+        x2 = ray.put(np.zeros(75 * 1024 * 1024, dtype=np.uint8))
+        wait_for_condition(
+            lambda: ray.available_resources()["object_store_memory"] == 5.5)
+        del x1
+        del x2
+        wait_for_condition(
+            lambda: ray.available_resources()["object_store_memory"] == 10.0)
+    finally:
+        ray.shutdown()
 
 
-def train_oom(config, reporter):
-    ray.put(np.zeros(200 * 1024 * 1024))
-    reporter(result=123)
+def test_object_store_memory_reporting_task():
+    @ray.remote
+    def f(x):
+        time.sleep(60)
 
-
-class TestMemoryScheduling(unittest.TestCase):
-    def testMemoryRequest(self):
-        try:
-            ray.init(num_cpus=1, _memory=200 * MB)
-            # fits first 2
-            a = Actor.remote()
-            b = Actor.remote()
-            ok, _ = ray.wait(
-                [a.ping.remote(), b.ping.remote()],
-                timeout=60.0,
-                num_returns=2)
-            self.assertEqual(len(ok), 2)
-            # does not fit
-            c = Actor.remote()
-            ok, _ = ray.wait([c.ping.remote()], timeout=5.0)
-            self.assertEqual(len(ok), 0)
-        finally:
-            ray.shutdown()
-
-    def testObjectStoreMemoryRequest(self):
-        try:
-            ray.init(num_cpus=1, object_store_memory=300 * MB)
-            # fits first 2 (70% allowed)
-            a = Actor2.remote()
-            b = Actor2.remote()
-            ok, _ = ray.wait(
-                [a.ping.remote(), b.ping.remote()],
-                timeout=60.0,
-                num_returns=2)
-            self.assertEqual(len(ok), 2)
-            # does not fit
-            c = Actor2.remote()
-            ok, _ = ray.wait([c.ping.remote()], timeout=5.0)
-            self.assertEqual(len(ok), 0)
-        finally:
-            ray.shutdown()
-
-    def testTuneDriverStoreLimit(self):
-        os.environ["TUNE_PLACEMENT_GROUP_AUTO_DISABLED"] = "1"
-
-        try:
-            ray.init(
-                num_cpus=4,
-                _memory=100 * MB,
-                object_store_memory=100 * MB,
-            )
-            _register_all()
-            self.assertRaisesRegexp(
-                ray.tune.error.TuneError,
-                ".*Insufficient cluster resources.*",
-                lambda: tune.run(
-                    "PG",
-                    stop={"timesteps_total": 10000},
-                    config={
-                        "env": "CartPole-v0",
-                        # too large
-                        "object_store_memory": 10000 * 1024 * 1024,
-                        "framework": "tf",
-                    }))
-        finally:
-            ray.shutdown()
-
-    def testTuneWorkerStoreLimit(self):
-        os.environ["TUNE_PLACEMENT_GROUP_AUTO_DISABLED"] = "1"
-
-        try:
-            ray.init(
-                num_cpus=4,
-                _memory=100 * MB,
-                object_store_memory=100 * MB,
-            )
-            _register_all()
-            self.assertRaisesRegexp(
-                ray.tune.error.TuneError,
-                ".*Insufficient cluster resources.*",
-                lambda:
-                tune.run("PG", stop={"timesteps_total": 0}, config={
-                    "env": "CartPole-v0",
-                    "num_workers": 1,
-                    # too large
-                    "object_store_memory_per_worker": 10000 * 1024 * 1024,
-                    "framework": "tf",
-                }))
-        finally:
-            ray.shutdown()
-
-    def testTuneObjectLimitApplied(self):
-        try:
-            ray.init(num_cpus=2, object_store_memory=500 * MB)
-            result = tune.run(
-                train_oom,
-                raise_on_failed_trial=False)
-            self.assertTrue(result.trials[0].status, "ERROR")
-            self.assertTrue("ObjectStoreFullError: Failed to put" in
-                            result.trials[0].error_msg)
-        finally:
-            ray.shutdown()
+    try:
+        ray.init(num_cpus=1, object_store_memory=500 * MB)
+        wait_for_condition(
+            lambda: ray.available_resources()["object_store_memory"] == 10.0)
+        x1 = f.remote(np.zeros(150 * 1024 * 1024, dtype=np.uint8))
+        wait_for_condition(
+            lambda: ray.available_resources()["object_store_memory"] == 7.0)
+        ray.cancel(x1, force=True)
+        wait_for_condition(
+            lambda: ray.available_resources()["object_store_memory"] == 10.0)
+    finally:
+        ray.shutdown()
 
 
 if __name__ == "__main__":
