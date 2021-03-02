@@ -2615,17 +2615,20 @@ void NodeManager::HandleFormatGlobalMemoryInfo(
   auto replies = std::make_shared<std::vector<rpc::GetNodeStatsReply>>();
   auto local_request = std::make_shared<rpc::GetNodeStatsRequest>();
   auto local_reply = std::make_shared<rpc::GetNodeStatsReply>();
-  local_request->set_include_memory_info(true);
+  bool include_memory_info = request.include_memory_info();
+  local_request->set_include_memory_info(include_memory_info);
 
   unsigned int num_nodes = remote_node_manager_addresses_.size() + 1;
   rpc::GetNodeStatsRequest stats_req;
-  stats_req.set_include_memory_info(true);
+  stats_req.set_include_memory_info(include_memory_info);
 
-  auto store_reply = [replies, reply, num_nodes,
-                      send_reply_callback](const rpc::GetNodeStatsReply &local_reply) {
+  auto store_reply = [replies, reply, num_nodes, send_reply_callback,
+                      include_memory_info](const rpc::GetNodeStatsReply &local_reply) {
     replies->push_back(local_reply);
     if (replies->size() >= num_nodes) {
-      reply->set_memory_summary(FormatMemoryInfo(*replies));
+      if (include_memory_info) {
+        reply->set_memory_summary(FormatMemoryInfo(*replies));
+      }
       reply->mutable_store_stats()->CopyFrom(AccumulateStoreStats(*replies));
       send_reply_callback(Status::OK(), nullptr, nullptr);
     }
