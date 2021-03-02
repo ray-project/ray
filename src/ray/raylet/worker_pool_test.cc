@@ -46,10 +46,10 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
       return false;
     }
     const auto &callback = callbacks_.front();
-    callbacks_.pop_front();
     rpc::ExitReply exit_reply;
     exit_reply.set_success(true);
     callback(Status::OK(), exit_reply);
+    callbacks_.pop_front();
     return true;
   }
 
@@ -58,10 +58,10 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
       return false;
     }
     const auto &callback = callbacks_.front();
-    callbacks_.pop_front();
     rpc::ExitReply exit_reply;
     exit_reply.set_success(false);
     callback(Status::OK(), exit_reply);
+    callbacks_.pop_front();
     return true;
   }
 
@@ -137,6 +137,10 @@ class WorkerPoolMock : public WorkerPool {
   void SetCurrentTimeMs(double current_time) { current_time_ms_ = current_time; }
 
   size_t GetIdleWorkerSize() { return idle_of_all_languages_.size(); }
+
+  std::list<std::pair<std::shared_ptr<WorkerInterface>, int64_t>> &GetIdleWorkers() {
+    return idle_of_all_languages_;
+  }
 
  private:
   Process last_worker_process_;
@@ -849,15 +853,17 @@ TEST_F(WorkerPoolTest, TestWorkerCapping) {
   ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), num_workers);
 
   // The first core worker exits, so one of idle workers should've been killed.
-  // Since the idle workers are killed in FIFO, we can assume the index 0 and 1 will be
-  // killed.
-  auto mock_rpc_client_it = mock_worker_rpc_clients_.find(workers[0]->WorkerId());
+  // Since the idle workers are killed in FIFO, we can assume the first entry in the idle
+  // workers will be killed.
+  auto mock_rpc_client_it = mock_worker_rpc_clients_.find(
+      worker_pool_->GetIdleWorkers().front().first->WorkerId());
   mock_rpc_client_it->second->ExitReplySucceed();
   worker_pool_->TryKillingIdleWorkers();
   ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), num_workers - 1);
 
   // The second core worker doesn't exit, meaning idle worker shouldn't have been killed.
-  mock_rpc_client_it = mock_worker_rpc_clients_.find(workers[1]->WorkerId());
+  mock_rpc_client_it = mock_worker_rpc_clients_.find(
+      worker_pool_->GetIdleWorkers().front().first->WorkerId());
   mock_rpc_client_it->second->ExitReplyFailed();
   worker_pool_->TryKillingIdleWorkers();
   ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), num_workers - 1);
@@ -870,11 +876,13 @@ TEST_F(WorkerPoolTest, TestWorkerCapping) {
   // a pending exiting worker.
   worker_pool_->SetCurrentTimeMs(4000);
   worker_pool_->TryKillingIdleWorkers();
-  mock_rpc_client_it = mock_worker_rpc_clients_.find(workers[2]->WorkerId());
+  mock_rpc_client_it = mock_worker_rpc_clients_.find(
+      worker_pool_->GetIdleWorkers().back().first->WorkerId());
   ASSERT_FALSE(mock_rpc_client_it->second->ExitReplySucceed());
 
-  // The second worker is not successfully killed.
-  mock_rpc_client_it = mock_worker_rpc_clients_.find(workers[1]->WorkerId());
+  // Now let's make sure the pending exiting workers exitted properly.
+  mock_rpc_client_it = mock_worker_rpc_clients_.find(
+      worker_pool_->GetIdleWorkers().front().first->WorkerId());
   mock_rpc_client_it->second->ExitReplySucceed();
   worker_pool_->TryKillingIdleWorkers();
   ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), num_workers - 2);
@@ -883,8 +891,70 @@ TEST_F(WorkerPoolTest, TestWorkerCapping) {
   // worker.
   worker_pool_->SetCurrentTimeMs(5000);
   worker_pool_->TryKillingIdleWorkers();
-  mock_rpc_client_it = mock_worker_rpc_clients_.find(workers[2]->WorkerId());
+  mock_rpc_client_it = mock_worker_rpc_clients_.find(
+      worker_pool_->GetIdleWorkers().front().first->WorkerId());
   ASSERT_FALSE(mock_rpc_client_it->second->ExitReplySucceed());
+}
+
+TEST_F(WorkerPoolTest, TestWorkerCappingLaterNWorkersNotOwningObjects) {
+  ///
+  /// When there are 2 * N idle workers where the first N workers own objects,
+  /// make sure the later N workers are properly killed.
+  ///
+  auto job_id = JOB_ID;
+
+  // The driver of job 1 is already registered. Here we register the driver for job 2.
+  RegisterDriver(Language::PYTHON, job_id);
+
+  ///
+  /// Register 10 workers
+  ///
+  std::vector<std::shared_ptr<WorkerInterface>> workers;
+  int num_workers = POOL_SIZE_SOFT_LIMIT * 2;
+  for (int i = 0; i < num_workers; i++) {
+    Process proc = worker_pool_->StartWorkerProcess(Language::PYTHON,
+                                                    rpc::WorkerType::WORKER, job_id);
+    auto worker = CreateWorker(Process(), Language::PYTHON, job_id);
+    workers.push_back(worker);
+    RAY_CHECK_OK(worker_pool_->RegisterWorker(worker, proc.GetId(), [](Status, int) {}));
+    worker_pool_->OnWorkerStarted(worker);
+    ASSERT_EQ(worker_pool_->GetRegisteredWorker(worker->Connection()), worker);
+    worker_pool_->PushWorker(worker);
+  }
+  ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), num_workers);
+
+  ///
+  /// The first N workers will always failed to be killed because they own objects.
+  ///
+  // 2000 ms has passed, so idle workers should be killed.
+  worker_pool_->SetCurrentTimeMs(1000);
+  worker_pool_->TryKillingIdleWorkers();
+
+  for (int i = 0; i < num_workers / 2; i++) {
+    auto mock_rpc_client_it = mock_worker_rpc_clients_.find(workers[i]->WorkerId());
+    ASSERT_TRUE(mock_rpc_client_it->second->ExitReplyFailed());
+  }
+  worker_pool_->TryKillingIdleWorkers();
+  // None of first N workers are killed because they own objects.
+  ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), num_workers);
+
+  ///
+  /// After 1000ms, when it kills idle workers, it should kill the rest of them.
+  ///
+  worker_pool_->SetCurrentTimeMs(2000);
+  worker_pool_->TryKillingIdleWorkers();
+  for (int i = 0; i < num_workers / 2; i++) {
+    auto mock_rpc_client_it = mock_worker_rpc_clients_.find(workers[i]->WorkerId());
+    // These workers shouldn't get any Exit request.
+    ASSERT_FALSE(mock_rpc_client_it->second->ExitReplyFailed());
+  }
+  for (int i = num_workers / 2; i < num_workers; i++) {
+    auto mock_rpc_client_it = mock_worker_rpc_clients_.find(workers[i]->WorkerId());
+    // These workers shouldn't get any Exit request.
+    ASSERT_TRUE(mock_rpc_client_it->second->ExitReplySucceed());
+  }
+  worker_pool_->TryKillingIdleWorkers();
+  ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), num_workers / 2);
 }
 
 }  // namespace raylet

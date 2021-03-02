@@ -72,6 +72,10 @@ class MockWorker : public WorkerInterface {
 
   void Connect(int port) { RAY_CHECK(false) << "Method unused"; }
 
+  void Connect(std::shared_ptr<rpc::CoreWorkerClientInterface> rpc_client) {
+    RAY_CHECK(false) << "Method unused";
+  }
+
   int AssignedPort() const {
     RAY_CHECK(false) << "Method unused";
     return -1;
