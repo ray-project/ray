@@ -21,6 +21,7 @@ from ray.util.inspect import (
     is_class_method,
     is_static_method,
 )
+from ray.utils import get_conda_env_dir
 
 logger = logging.getLogger(__name__)
 
@@ -428,6 +429,7 @@ class ActorClass:
                 placement_group=None,
                 placement_group_bundle_index=-1,
                 placement_group_capture_child_tasks=None,
+                runtime_env=None,
                 override_environment_variables=None):
         """Configures and overrides the actor instantiation parameters.
 
@@ -469,6 +471,7 @@ class ActorClass:
                     placement_group_bundle_index=placement_group_bundle_index,
                     placement_group_capture_child_tasks=(
                         placement_group_capture_child_tasks),
+                    runtime_env=runtime_env,
                     override_environment_variables=(
                         override_environment_variables))
 
@@ -491,6 +494,7 @@ class ActorClass:
                 placement_group=None,
                 placement_group_bundle_index=-1,
                 placement_group_capture_child_tasks=None,
+                runtime_env=None,
                 override_environment_variables=None):
         """Create an actor.
 
@@ -528,6 +532,10 @@ class ActorClass:
             placement_group_capture_child_tasks: Whether or not children tasks
                 of this actor should implicitly use the same placement group
                 as its parent. It is True by default.
+            runtime_env (Dict[str, Any]): Specifies the runtime environment for
+                this actor or task and its children.  Currently supports the
+                key "conda_env", whose value should be a string which is the
+                name of the desired conda environment.
             override_environment_variables: Environment variables to override
                 and/or introduce for this actor.  This is a dictionary mapping
                 variable names to their values.
@@ -575,6 +583,7 @@ class ActorClass:
                 placement_group_bundle_index=placement_group_bundle_index,
                 placement_group_capture_child_tasks=(
                     placement_group_capture_child_tasks),
+                runtime_env=runtime_env,
                 override_environment_variables=(
                     override_environment_variables))
 
@@ -686,6 +695,12 @@ class ActorClass:
             function_signature = meta.method_meta.signatures["__init__"]
             creation_args = signature.flatten_args(function_signature, args,
                                                    kwargs)
+        if runtime_env:
+            conda_env = runtime_env.get("conda_env")
+            if conda_env is not None:
+                conda_env_dir = get_conda_env_dir(conda_env)
+                override_environment_variables.update(PYTHONHOME=conda_env_dir)
+
         actor_id = worker.core_worker.create_actor(
             meta.language,
             meta.actor_creation_function_descriptor,

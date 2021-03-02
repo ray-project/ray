@@ -9,8 +9,7 @@ import pytest
 import ray
 from ray.serve.utils import (ServeEncoder, chain_future, unpack_future,
                              try_schedule_resources_on_nodes,
-                             get_conda_env_dir, import_attr)
-
+                             import_attr)
 
 def test_bytes_encoder():
     data_before = {"inp": {"nest": b"bytes"}}
@@ -107,23 +106,12 @@ def test_mock_scheduler():
         [
             {
                 "CPU": 6
-            },  # Equals to the sum of cpus but shouldn't be scheduable.
+            },  # Equals to the sum of cpus but shouldn't be schedulable.
         ],
         deepcopy(ray_nodes)) == [False]
 
 
-def test_get_conda_env_dir(tmp_path):
-    d = tmp_path / "tf1"
-    d.mkdir()
-    os.environ["CONDA_PREFIX"] = str(d)
-    with pytest.raises(ValueError):
-        # env does not exist
-        env_dir = get_conda_env_dir("tf2")
-    tf2_dir = tmp_path / "tf2"
-    tf2_dir.mkdir()
-    env_dir = get_conda_env_dir("tf2")
-    assert (env_dir == str(tmp_path / "tf2"))
-    os.environ["CONDA_PREFIX"] = ""
+
 
 
 def test_import_attr():

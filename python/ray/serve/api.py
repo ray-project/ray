@@ -15,7 +15,7 @@ from ray.serve.constants import (DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT,
 from ray.serve.controller import ServeController, BackendTag, ReplicaTag
 from ray.serve.handle import RayServeHandle, RayServeSyncHandle
 from ray.serve.utils import (block_until_http_ready, format_actor_name,
-                             get_random_letters, logger, get_conda_env_dir,
+                             get_random_letters, logger,
                              get_current_node_resource_key)
 from ray.serve.exceptions import RayServeException
 from ray.serve.config import (BackendConfig, ReplicaConfig, BackendMetadata,
@@ -23,6 +23,7 @@ from ray.serve.config import (BackendConfig, ReplicaConfig, BackendMetadata,
 from ray.serve.env import CondaEnv
 from ray.serve.router import RequestMetadata, Router
 from ray.actor import ActorHandle
+from ray.utils import get_conda_env_dir
 
 _INTERNAL_REPLICA_CONTEXT = None
 global_async_loop = None
@@ -383,6 +384,7 @@ class Client:
             ray_actor_options = {}
         if env is None:
             # If conda is activated, default to conda env of this process.
+            # Without this code, backend would run in conda env of controller.
             if os.environ.get("CONDA_PREFIX"):
                 if "override_environment_variables" not in ray_actor_options:
                     ray_actor_options["override_environment_variables"] = {}
@@ -393,6 +395,7 @@ class Client:
             conda_env_dir = get_conda_env_dir(env.name)
             ray_actor_options.update(
                 override_environment_variables={"PYTHONHOME": conda_env_dir})
+                #TODO(architkulkarni): This deletes user's overrides. Fix.
         replica_config = ReplicaConfig(
             backend_def, *init_args, ray_actor_options=ray_actor_options)
         metadata = BackendMetadata(

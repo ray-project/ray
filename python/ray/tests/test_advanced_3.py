@@ -22,6 +22,7 @@ import subprocess
 
 from ray.test_utils import (check_call_ray, wait_for_condition,
                             wait_for_num_actors)
+from ray.utils import get_conda_env_dir
 
 logger = logging.getLogger(__name__)
 
@@ -784,6 +785,18 @@ def test_override_environment_variables_complex(shutdown_only):
             "a": "b",
         }).remote("z")) == "job_z")
 
+def test_get_conda_env_dir(tmp_path):
+    d = tmp_path / "tf1"
+    d.mkdir()
+    os.environ["CONDA_PREFIX"] = str(d)
+    with pytest.raises(ValueError):
+        # Env tf2 should not exist.
+        env_dir = get_conda_env_dir("tf2")
+    tf2_dir = tmp_path / "tf2"
+    tf2_dir.mkdir()
+    env_dir = get_conda_env_dir("tf2")
+    assert (env_dir == str(tmp_path / "tf2"))
+    os.environ["CONDA_PREFIX"] = ""
 
 def test_sync_job_config(shutdown_only):
     num_java_workers_per_process = 8
