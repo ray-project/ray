@@ -256,7 +256,7 @@ class RayParams:
             The dictionary mapping of component -> ports.
         """
 
-        def _wrap_port(port):
+        def wrap_port(port):
             # 0 port means select a random port for the grpc server.
             if port is None or port == 0:
                 return []
@@ -265,14 +265,14 @@ class RayParams:
 
         # Create a dictionary of the component -> port mapping.
         pre_selected_ports = {
-            "gcs": self._wrap_port(self.redis_port),
-            "object_manager": self._wrap_port(self.object_manager_port),
-            "node_manager": self._wrap_port(self.node_manager_port),
-            "gcs_server": self._wrap_port(self.gcs_server_port),
-            "client_server": self._wrap_port(self.ray_client_server_port),
-            "dashboard": self._wrap_port(self.dashboard_port),
-            "dashboard_agent": self._wrap_port(self.metrics_agent_port),
-            "metrics_export": self._wrap_port(self.metrics_export_port),
+            "gcs": wrap_port(self.redis_port),
+            "object_manager": wrap_port(self.object_manager_port),
+            "node_manager": wrap_port(self.node_manager_port),
+            "gcs_server": wrap_port(self.gcs_server_port),
+            "client_server": wrap_port(self.ray_client_server_port),
+            "dashboard": wrap_port(self.dashboard_port),
+            "dashboard_agent": wrap_port(self.metrics_agent_port),
+            "metrics_export": wrap_port(self.metrics_export_port),
         }
         redis_shard_ports = self.redis_shard_ports
         if redis_shard_ports is None:

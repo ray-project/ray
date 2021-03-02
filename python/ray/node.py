@@ -409,10 +409,6 @@ class Node:
         }
 
     @property
-    def port_assignment(self):
-        return self._ray_params.pre_selected_ports
-
-    @property
     def address_info(self):
         """Get a dictionary of addresses."""
         return {
