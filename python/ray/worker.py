@@ -1232,8 +1232,9 @@ def connect(node,
                 required_directories.append(working_dir)
             for module in required_modules:
                 assert inspect.ismodule(module)
-            pkg_file = ray_pkg.get_project_package_name(required_directories, required_modules)
-            job_config.runtime_env['package_uri'] = "gcs://" + pkg_file
+            if working_dir or required_modules:
+                pkg_file = ray_pkg.get_project_package_name(required_directories, required_modules)
+                job_config.runtime_env['package_uri'] = "gcs://" + pkg_file
 
     serialized_job_config = job_config.serialize()
     worker.core_worker = ray._raylet.CoreWorker(
