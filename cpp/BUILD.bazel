@@ -78,7 +78,9 @@ genrule(
 cc_test(
     name = "api_test",
     srcs = glob([
-        "src/ray/test/*.cc",
+        "src/ray/test/api_test.cc",
+        "src/ray/test/serialization_test.cc",
+        "src/ray/test/slow_function_test.cc",
     ]),
     copts = COPTS,
     linkstatic = False,
@@ -120,6 +122,19 @@ cc_binary(
     deps = [
         "ray_api",
         "@com_github_gflags_gflags//:gflags",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "api_v2_test",
+    srcs = glob([
+        "src/ray/test/api_v2_test.cc",
+    ]),
+    copts = COPTS,
+    linkstatic = False,
+    deps = [
+        "ray_api",
         "@com_google_googletest//:gtest_main",
     ],
 )
