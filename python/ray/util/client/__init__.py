@@ -1,5 +1,6 @@
 from typing import List, Tuple, Dict, Any
 
+import os
 import sys
 import logging
 
@@ -7,7 +8,7 @@ logger = logging.getLogger(__name__)
 
 # This version string is incremented to indicate breaking changes in the
 # protocol that require upgrading the client version.
-CURRENT_PROTOCOL_VERSION = "2020-02-01"
+CURRENT_PROTOCOL_VERSION = "2020-02-22"
 
 
 class RayAPIStub:
@@ -81,7 +82,7 @@ class RayAPIStub:
             msg = "Python minor versions differ between client and server:" + \
                   f" client is {version_str}," + \
                   f" server is {conn_info['python_version']}"
-            if ignore_version:
+            if ignore_version or "RAY_IGNORE_VERSION_MISMATCH" in os.environ:
                 logger.warning(msg)
             else:
                 raise RuntimeError(msg)
@@ -89,7 +90,7 @@ class RayAPIStub:
             msg = "Client Ray installation incompatible with server:" + \
                   f" client is {CURRENT_PROTOCOL_VERSION}," + \
                   f" server is {conn_info['protocol_version']}"
-            if ignore_version:
+            if ignore_version or "RAY_IGNORE_VERSION_MISMATCH" in os.environ:
                 logger.warning(msg)
             else:
                 raise RuntimeError(msg)

@@ -108,6 +108,6 @@ A3CTFPolicy = build_tf_policy(
     grad_stats_fn=grad_stats,
     gradients_fn=clip_gradients,
     postprocess_fn=compute_gae_for_sample_batch,
-    extra_action_fetches_fn=add_value_function_fetch,
+    extra_action_out_fn=add_value_function_fetch,
     before_loss_init=setup_mixins,
     mixins=[ValueNetworkMixin, LearningRateSchedule])

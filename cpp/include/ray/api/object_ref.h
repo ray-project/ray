@@ -18,6 +18,13 @@ class ObjectRef {
   ObjectRef();
   ~ObjectRef();
 
+  ObjectRef(const ObjectRef &rhs) { CopyAndAddRefrence(rhs.id_); }
+
+  ObjectRef &operator=(const ObjectRef &rhs) {
+    CopyAndAddRefrence(rhs.id_);
+    return *this;
+  }
+
   ObjectRef(const ObjectID &id);
 
   bool operator==(const ObjectRef<T> &object) const;
@@ -35,6 +42,13 @@ class ObjectRef {
   MSGPACK_DEFINE(id_);
 
  private:
+  void CopyAndAddRefrence(const ObjectID &id) {
+    id_ = id;
+    if (CoreWorkerProcess::IsInitialized()) {
+      auto &core_worker = CoreWorkerProcess::GetCoreWorker();
+      core_worker.AddLocalReference(id_);
+    }
+  }
   ObjectID id_;
 };
 
@@ -46,12 +60,9 @@ ObjectRef<T>::ObjectRef() {}
 
 template <typename T>
 ObjectRef<T>::ObjectRef(const ObjectID &id) {
-  id_ = id;
-  if (CoreWorkerProcess::IsInitialized()) {
-    auto &core_worker = CoreWorkerProcess::GetCoreWorker();
-    core_worker.AddLocalReference(id_);
-  }
+  CopyAndAddRefrence(id);
 }
+
 template <typename T>
 ObjectRef<T>::~ObjectRef() {
   if (CoreWorkerProcess::IsInitialized()) {

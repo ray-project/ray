@@ -364,6 +364,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest",
         "@msgpack",
     ],
@@ -698,6 +699,16 @@ cc_test(
         ":gcs",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "memory_store_test",
+    srcs = ["src/ray/core_worker/test/memory_store_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":core_worker_lib",
         "@com_google_googletest//:gtest_main",
     ],
 )

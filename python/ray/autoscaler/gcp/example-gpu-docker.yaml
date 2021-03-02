@@ -61,7 +61,7 @@ head_node:
         initializeParams:
           diskSizeGb: 50
           # See https://cloud.google.com/compute/docs/images for more images
-          sourceImage: projects/deeplearning-platform-release/global/images/family/tf-1-13-cu100
+          sourceImage: projects/deeplearning-platform-release/global/images/family/common-cu110
     guestAccelerators:
       - acceleratorType: projects/<project_id>/zones/us-west1-b/acceleratorTypes/nvidia-tesla-k80
         acceleratorCount: 1
@@ -84,7 +84,7 @@ worker_nodes:
         initializeParams:
           diskSizeGb: 50
           # See https://cloud.google.com/compute/docs/images for more images
-          sourceImage: projects/deeplearning-platform-release/global/images/family/tf-1-13-cu100
+          sourceImage: projects/deeplearning-platform-release/global/images/family/common-cu110
     guestAccelerators:
       - acceleratorType: projects/<project_id>/zones/us-west1-b/acceleratorTypes/nvidia-tesla-k80
         acceleratorCount: 1

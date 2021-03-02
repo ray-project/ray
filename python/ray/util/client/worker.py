@@ -183,7 +183,7 @@ class Worker:
         if not data.valid:
             try:
                 err = cloudpickle.loads(data.error)
-            except Exception:
+            except pickle.UnpicklingError:
                 logger.exception("Failed to deserialize {}".format(data.error))
                 raise
             logger.error(err)
@@ -273,7 +273,7 @@ class Worker:
         if not ticket.valid:
             try:
                 raise cloudpickle.loads(ticket.error)
-            except Exception:
+            except pickle.UnpicklingError:
                 logger.exception("Failed to deserialize {}".format(
                     ticket.error))
                 raise

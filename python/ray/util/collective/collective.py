@@ -123,11 +123,11 @@ def init_collective_group(world_size: int,
     _group_mgr.create_collective_group(backend, world_size, rank, group_name)
 
 
-def declare_collective_group(actors,
-                             world_size: int,
-                             ranks: List[int],
-                             backend=types.Backend.NCCL,
-                             group_name: str = "default"):
+def create_collective_group(actors,
+                            world_size: int,
+                            ranks: List[int],
+                            backend=types.Backend.NCCL,
+                            group_name: str = "default"):
     """Declare a list of actors as a collective group.
 
     Note: This function should be called in a driver process.
@@ -206,8 +206,8 @@ def get_rank(group_name: str = "default") -> int:
     return g.rank
 
 
-def get_world_size(group_name: str = "default") -> int:
-    """Return the size of the collective gropu with the given name.
+def get_collective_group_size(group_name: str = "default") -> int:
+    """Return the size of the collective group with the given name.
 
     Args:
         group_name: the name of the group to query

@@ -96,6 +96,8 @@ However, an endpoint must be deleted in order to delete the backends that serve 
 
   client.delete_endpoint("simple_endpoint")
 
+.. _configuring-a-backend:
+
 Configuring a Backend
 =====================
 
@@ -182,6 +184,9 @@ If you *do* want to enable this parallelism in your Serve backend, just set OMP_
   Some other libraries may not respect ``OMP_NUM_THREADS`` and have their own way to configure parallelism.
   For example, if you're using OpenCV, you'll need to manually set the number of threads using ``cv2.setNumThreads(num_threads)`` (set to 0 to disable multi-threading).
   You can check the configuration using ``cv2.getNumThreads()`` and ``cv2.getNumberOfCPUs()``.
+
+.. _serve-batching:
+
 
 Batching to Improve Performance
 -------------------------------

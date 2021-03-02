@@ -10,6 +10,7 @@
     <listeners>
         <listener class-name="io.ray.test.RayAlterSuiteListener" />
         <listener class-name="io.ray.test.TestProgressListener" />
+        <listener class-name="io.ray.test.SystemPropertyListener" />
         <listener class-name="io.ray.test.AnnotationTransformer" />
     </listeners>
 </suite>

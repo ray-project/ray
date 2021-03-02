@@ -1,0 +1,24 @@
+cartpole-r2d2:
+    env: CartPole-v0
+    run: R2D2
+    stop:
+        episode_reward_mean: 150
+        timesteps_total: 1000000
+    config:
+        # Works for both torch and tf.
+        framework: tf
+        num_workers: 0
+        # R2D2 settings.
+        burn_in: 20
+        zero_init_states: true
+        dueling: false
+        lr: 0.0005
+        # Give some more time to explore.
+        exploration_config:
+          epsilon_timesteps: 100000
+        # Wrap with an LSTM and use a very simple base-model.
+        model:
+            fcnet_hiddens: [32]
+            use_lstm: true
+            lstm_cell_size: 64
+            max_seq_len: 20

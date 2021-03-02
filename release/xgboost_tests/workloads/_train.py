@@ -19,6 +19,7 @@ def train_ray(path,
               ray_params=None,
               xgboost_params=None,
               **kwargs):
+    path = os.path.expanduser(path)
     if not os.path.exists(path):
         raise ValueError(f"Path does not exist: {path}")
 
@@ -88,7 +89,10 @@ def train_ray(path,
     taken = time.time() - start
     print(f"TRAIN TIME TAKEN: {taken:.2f} seconds")
 
-    bst.save_model("benchmark_{}.xgb".format("cpu" if not use_gpu else "gpu"))
+    out_file = os.path.expanduser(
+        "~/benchmark_{}.xgb".format("cpu" if not use_gpu else "gpu"))
+    bst.save_model(out_file)
+
     print("Final training error: {:.4f}".format(
         evals_result["train"]["error"][-1]))
     return bst, additional_results, taken

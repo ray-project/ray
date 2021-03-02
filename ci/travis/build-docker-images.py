@@ -1,3 +1,4 @@
+import argparse
 import datetime
 import json
 import functools
@@ -31,12 +32,9 @@ DOCKER_HUB_DESCRIPTION = {
 PY_MATRIX = {"-py36": "3.6.12", "-py37": "3.7.7", "-py38": "3.8.5"}
 
 
-def _merge_build():
-    return os.environ.get("TRAVIS_PULL_REQUEST").lower() == "false"
-
-
 def _release_build():
-    branch = os.environ.get("TRAVIS_BRANCH")
+    branch = (os.environ.get("TRAVIS_BRANCH")
+              or os.environ.get("BUILDKITE_BRANCH"))
     if not branch:
         print("Branch not found!")
         print(os.environ)
@@ -67,7 +65,7 @@ def _get_wheel_name(minor_version_number):
         return [os.path.basename(i) for i in matches]
 
 
-def _docker_affected():
+def _check_if_docker_files_modified():
     proc = subprocess.run(
         [
             sys.executable, f"{_get_curr_dir()}/determine_tests_to_run.py",
@@ -156,7 +154,7 @@ def copy_wheels():
         shutil.copy(source, ray_dep_dst)
 
 
-def build_or_pull_base_images(is_docker_affected: bool) -> List[str]:
+def build_or_pull_base_images(rebuild_base_images: bool = True) -> List[str]:
     """Returns images to tag and build"""
     DOCKER_CLIENT.api.pull(repository="rayproject/base-deps", tag="nightly")
 
@@ -177,7 +175,7 @@ def build_or_pull_base_images(is_docker_affected: bool) -> List[str]:
     DOCKER_CLIENT.api.pull(repository="rayproject/ray-deps", tag="nightly-cpu")
 
     # TODO(ilr) See if any caching happens
-    if True or (is_stale or is_docker_affected or _release_build()):
+    if (rebuild_base_images or is_stale or _release_build()):
         for image in ["base-deps", "ray-deps"]:
             _build_cpu_gpu_images(image, no_cache=False)
         return True
@@ -213,13 +211,13 @@ def _get_docker_creds() -> Tuple[str, str]:
 
 # For non-release builds, push "nightly" & "sha"
 # For release builds, push "nightly" & "latest" & "x.x.x"
-def push_and_tag_images(push_base_images: bool):
-    if _merge_build():
+def push_and_tag_images(push_base_images: bool, merge_build: bool = False):
+    if merge_build:
         username, password = _get_docker_creds()
         DOCKER_CLIENT.api.login(username=username, password=password)
 
     def docker_push(image, tag):
-        if _merge_build():
+        if merge_build:
             print(f"PUSHING: {image}:{tag}, result:")
             # This docker API is janky. Without "stream=True" it returns a
             # massive string filled with every progress bar update, which can
@@ -300,8 +298,8 @@ def push_and_tag_images(push_base_images: bool):
 
 # Push infra here:
 # https://github.com/christian-korneck/docker-pushrm/blob/master/README-containers.md#push-a-readme-file-to-dockerhub # noqa
-def push_readmes():
-    if not _merge_build():
+def push_readmes(merge_build: bool):
+    if not merge_build:
         print("Not pushing README because this is a PR build.")
         return
     username, password = _get_docker_creds()
@@ -335,26 +333,59 @@ def push_readmes():
 
 # Build base-deps/ray-deps only on file change, 2 weeks, per release
 # Build ray, ray-ml, autoscaler every time
-
+# build-docker-images.py --py-versions PY37 --build-type PR --rebuild-all
+MERGE = "MERGE"
+HUMAN = "HUMAN"
+PR = "PR"
+BUILDKITE = "BUILDKITE"
+BUILD_TYPES = [MERGE, HUMAN, PR, BUILDKITE]
 if __name__ == "__main__":
-    print("RUNNING WITH: ", sys.version)
-    if len(sys.argv) == 2:
-        version_to_drop = sys.argv[1]
-        if version_to_drop == "PY37":
-            PY_MATRIX.pop("-py36")
-            PY_MATRIX.pop("-py38")
-        else:
-            PY_MATRIX.pop("-py37")
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--py-versions",
+        choices=["PY36", "PY37", "PY38"],
+        default="PY37",
+        nargs="*",
+        help="Which python versions to build. Must be in (PY36, PY37, PY38)")
+    parser.add_argument(
+        "--build-type",
+        choices=BUILD_TYPES,
+        required=True,
+        help="Whether to bypass checking if docker is affected")
+    parser.add_argument(
+        "--build-base",
+        dest="base",
+        action="store_true",
+        help="Whether to build base-deps & ray-deps")
+    parser.add_argument("--no-build-base", dest="base", action="store_false")
+    parser.set_defaults(base=True)
+
+    args = parser.parse_args()
+    py_versions = args.py_versions
+    py_versions = py_versions if isinstance(py_versions,
+                                            list) else [py_versions]
+    for key in set(PY_MATRIX.keys()):
+        if key[1:].upper() not in py_versions:
+            PY_MATRIX.pop(key)
+    assert len(PY_MATRIX) == len(
+        py_versions
+    ), f"Length of PY_MATRIX != args {PY_MATRIX} : {args.py_versions}"
+
     print("Building the following python versions: ", PY_MATRIX)
-    if os.environ.get("TRAVIS") == "true":
-        is_docker_affected = _docker_affected()
-        if _merge_build() or is_docker_affected:
-            DOCKER_CLIENT = docker.from_env()
-            copy_wheels()
-            freshly_built = build_or_pull_base_images(is_docker_affected)
-            build_ray()
-            build_ray_ml()
-            push_and_tag_images(freshly_built)
-            # TODO(ilr) Re-Enable Push READMEs by using a normal password
-            # (not auth token :/)
-            # push_readmes()
+    print("Building base images: ", args.base)
+
+    build_type = args.build_type
+    if build_type in {HUMAN, MERGE, BUILDKITE
+                      } or _check_if_docker_files_modified():
+        DOCKER_CLIENT = docker.from_env()
+        copy_wheels()
+        base_images_built = build_or_pull_base_images(args.base)
+        build_ray()
+        build_ray_ml()
+
+        if build_type in {MERGE, PR}:  # Skipping push on buildkite
+            push_and_tag_images(base_images_built, build_type is MERGE)
+
+        # TODO(ilr) Re-Enable Push READMEs by using a normal password
+        # (not auth token :/)
+        # push_readmes(build_type is MERGE)
