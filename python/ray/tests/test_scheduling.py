@@ -217,6 +217,7 @@ def test_locality_aware_leasing(ray_start_cluster):
         _system_config={
             "worker_lease_timeout_milliseconds": 0,
             "max_direct_call_object_size": 0,
+            # Needed because the above test sets this to False.
             "locality_aware_leasing_enabled": True,
         })
     # Use a custom resource for pinning tasks to a node.
