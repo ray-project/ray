@@ -26,7 +26,7 @@ from ray.autoscaler._private.constants import RAY_PROCESSES
 
 from ray.autoscaler._private.util import DEBUG_AUTOSCALING_ERROR, \
     DEBUG_AUTOSCALING_STATUS
-from ray.internal.internal_api import memory_summary_wrapper
+from ray.internal.internal_api import memory_summary
 import ray.ray_constants as ray_constants
 import ray.utils
 
@@ -1384,8 +1384,8 @@ def memory(address, redis_password, group_by, sort_by, no_format, stats_only):
         address = services.get_ray_address_to_use_or_die()
     time = datetime.now()
     header = "=" * 8 + f" Object references status: {time} " + "=" * 8
-    mem_stats = memory_summary_wrapper(address, redis_password, group_by,
-                                       sort_by, no_format, stats_only)
+    mem_stats = memory_summary(address, redis_password, group_by, sort_by,
+                               no_format, stats_only)
     print(f"{header}\n{mem_stats}")
 
 
