@@ -816,10 +816,10 @@ def get_function_args(callable):
 
 
 def get_conda_env_dir(env_name):
-    """Find an validate the conda directory for a given env.
-    
+    """Find and validate the conda directory for a given conda environment.
+
     For example, given the environment name `tf1`, this function checks
-    the existence of the corresponding conda directory, e.g. 
+    the existence of the corresponding conda directory, e.g.
     `/Users/scaly/anaconda3/envs/tf1`, and returns it.
     """
     conda_prefix = os.environ.get("CONDA_PREFIX")

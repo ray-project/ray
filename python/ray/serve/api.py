@@ -395,7 +395,6 @@ class Client:
             conda_env_dir = get_conda_env_dir(env.name)
             ray_actor_options.update(
                 override_environment_variables={"PYTHONHOME": conda_env_dir})
-            #TODO(architkulkarni): This deletes user's overrides. Fix.
         replica_config = ReplicaConfig(
             backend_def, *init_args, ray_actor_options=ray_actor_options)
         metadata = BackendMetadata(
