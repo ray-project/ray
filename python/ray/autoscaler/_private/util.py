@@ -124,7 +124,8 @@ def fillout_defaults(config: Dict[str, Any]) -> Dict[str, Any]:
     # Do merging logic for legacy configs.
     if is_legacy_config:
         merged_config = merge_legacy_yaml_with_defaults(merged_config)
-    # Take care of this here, whether or not we have a legacy config:
+    # Take care of this here, in case a config does not specify any of head,
+    # workers, node types, but does specify min workers:
     merged_config.pop("min_workers", None)
 
     return merged_config
@@ -135,7 +136,11 @@ def merge_legacy_yaml_with_defaults(
     """Rewrite legacy config's available node types after it has been merged
     with defaults yaml.
     """
-    logger.warning("Converting legacy cluster config to multi node types.")
+    logger.warning("Converting legacy cluster config to multi node types.\n"
+                   "Refer to the docs for examples of multi-node-type "
+                   "autoscaling. \n"
+                   "https://docs.ray.io/en/master/cluster/config.html"
+                   "#full-configuration.")
 
     # Get default head and worker types.
     default_head_type = merged_config["head_node_type"]
