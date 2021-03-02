@@ -177,13 +177,16 @@ class ResourceSpec(
                     "when calling ray.init() or ray start.")
                 object_store_memory = (
                     ray_constants.DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES)
-        if object_store_memory < ray_constants.OBJECT_STORE_MINIMUM_MEMORY_BYTES:
-            logger.warning("Attempting to cap object store memory usage at {} "
-                           "bytes, but the minimum allowed is {} bytes. "
-                           "The minimum will be used.".format(
-                               object_store_memory,
-                               ray_constants.OBJECT_STORE_MINIMUM_MEMORY_BYTES))
-            object_store_memory = ray_constants.OBJECT_STORE_MINIMUM_MEMORY_BYTES
+        if (object_store_memory <
+                ray_constants.OBJECT_STORE_MINIMUM_MEMORY_BYTES):
+            logger.warning(
+                "Attempting to cap object store memory usage at {} "
+                "bytes, but the minimum allowed is {} bytes. "
+                "The minimum will be used.".format(
+                    object_store_memory,
+                    ray_constants.OBJECT_STORE_MINIMUM_MEMORY_BYTES))
+            object_store_memory = \
+                ray_constants.OBJECT_STORE_MINIMUM_MEMORY_BYTES
 
         redis_max_memory = self.redis_max_memory
         if redis_max_memory is None:
