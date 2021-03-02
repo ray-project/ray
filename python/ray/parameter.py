@@ -273,15 +273,14 @@ class RayParams:
         if self.worker_port_list is None:
             if (self.min_worker_port is not None
                     and self.max_worker_port is not None):
-                pre_selected_ports["worker_ports"] = [
-                    port for port in range(self.min_worker_port,
-                                           self.max_worker_port + 1)
-                ]
+                pre_selected_ports["worker_ports"] = list(
+                    range(self.min_worker_port, self.max_worker_port + 1))
             else:
                 # The dict is not updated when it requires random ports.
                 pre_selected_ports["worker_ports"] = []
         else:
-            pre_selected_ports["worker_ports"] = self.worker_port_list
+            pre_selected_ports["worker_ports"] = (
+                self.worker_port_list.split(","))
 
         # Update the pre selected port set.
         self.pre_selected_ports_set = set()
