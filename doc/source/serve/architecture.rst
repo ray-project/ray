@@ -1,3 +1,5 @@
+.. _serve-architecture:
+
 Serve Architecture
 ==================
 This document provides an overview of how each component in Serve works.
@@ -32,8 +34,8 @@ Lifetime of a Request
 When an HTTP request is sent to the router, the follow things happen:
 
 - The HTTP request is received and parsed.
-- The correct :ref:`endpoint <serve-endpoint>` associated with the HTTP url path is looked up.
-- One or more :ref:`backends <serve-backend>` is selected to handle the request given the :ref:`traffic
+- The correct endpoint associated with the HTTP url path is looked up.
+- One or more backends is selected to handle the request given the :ref:`traffic
   splitting <serve-split-traffic>` and :ref:`shadow testing <serve-shadow-testing>` rules. The requests for each backend
   are placed on a queue.
 - For each request in a backend queue, an available replica is looked up

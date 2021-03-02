@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "ray/raylet/local_object_manager.h"
+#include "ray/stats/stats.h"
 #include "ray/util/asio_util.h"
 #include "ray/util/util.h"
 
@@ -23,7 +24,6 @@ namespace raylet {
 void LocalObjectManager::PinObjects(const std::vector<ObjectID> &object_ids,
                                     std::vector<std::unique_ptr<RayObject>> &&objects,
                                     const rpc::Address &owner_address) {
-  RAY_CHECK(object_pinning_enabled_);
   for (size_t i = 0; i < object_ids.size(); i++) {
     const auto &object_id = object_ids[i];
     auto &object = objects[i];
@@ -61,20 +61,17 @@ void LocalObjectManager::WaitForObjectFree(const rpc::Address &owner_address,
 }
 
 void LocalObjectManager::ReleaseFreedObject(const ObjectID &object_id) {
-  // object_pinning_enabled_ flag is off when the --lru-evict flag is on.
-  if (object_pinning_enabled_) {
-    RAY_LOG(DEBUG) << "Unpinning object " << object_id;
-    // The object should be in one of these stats. pinned, spilling, or spilled.
-    RAY_CHECK((pinned_objects_.count(object_id) > 0) ||
-              (spilled_objects_url_.count(object_id) > 0) ||
-              (objects_pending_spill_.count(object_id) > 0));
-    if (automatic_object_deletion_enabled_) {
-      spilled_object_pending_delete_.push(object_id);
-    }
-    if (pinned_objects_.count(object_id)) {
-      pinned_objects_size_ -= pinned_objects_[object_id].first->GetSize();
-      pinned_objects_.erase(object_id);
-    }
+  RAY_LOG(DEBUG) << "Unpinning object " << object_id;
+  // The object should be in one of these stats. pinned, spilling, or spilled.
+  RAY_CHECK((pinned_objects_.count(object_id) > 0) ||
+            (spilled_objects_url_.count(object_id) > 0) ||
+            (objects_pending_spill_.count(object_id) > 0));
+  if (automatic_object_deletion_enabled_) {
+    spilled_object_pending_delete_.push(object_id);
+  }
+  if (pinned_objects_.count(object_id)) {
+    pinned_objects_size_ -= pinned_objects_[object_id].first->GetSize();
+    pinned_objects_.erase(object_id);
   }
 
   // Try to evict all copies of the object from the cluster.
@@ -93,18 +90,11 @@ void LocalObjectManager::FlushFreeObjects() {
     on_objects_freed_(objects_to_free_);
     objects_to_free_.clear();
   }
-  if (object_pinning_enabled_ && automatic_object_deletion_enabled_) {
+  if (automatic_object_deletion_enabled_) {
     // Deletion wouldn't work when the object pinning is not enabled.
     ProcessSpilledObjectsDeleteQueue(free_objects_batch_size_);
   }
   last_free_objects_at_ms_ = current_time_ms();
-}
-
-void LocalObjectManager::FlushFreeObjectsIfNeeded(int64_t now_ms) {
-  if (free_objects_period_ms_ > 0 &&
-      static_cast<int64_t>(now_ms - last_free_objects_at_ms_) > free_objects_period_ms_) {
-    FlushFreeObjects();
-  }
 }
 
 void LocalObjectManager::SpillObjectUptoMaxThroughput() {
@@ -294,7 +284,6 @@ void LocalObjectManager::UnpinSpilledObjectCallback(
   } else {
     url_ref_count_[base_url_it->second] += 1;
   }
-  spilled_objects_url_.emplace(object_id, object_url);
 
   (*num_remaining)--;
   if (*num_remaining == 0 && callback) {
@@ -318,10 +307,13 @@ void LocalObjectManager::AddSpilledUrls(
     auto it = objects_pending_spill_.find(object_id);
     RAY_CHECK(it != objects_pending_spill_.end());
 
+    // There are times that restore request comes before the url is added to the object
+    // directory. By adding the spilled url "before" adding it to the object directory, we
+    // can process the restore request before object directory replies.
+    spilled_objects_url_.emplace(object_id, object_url);
     auto unpin_callback =
         std::bind(&LocalObjectManager::UnpinSpilledObjectCallback, this, object_id,
                   object_url, num_remaining, callback, std::placeholders::_1);
-
     if (RayConfig::instance().ownership_based_object_directory_enabled()) {
       // TODO(Clark): Don't send RPC to owner if we're fulfilling an owner-initiated
       // spill RPC.
@@ -359,7 +351,8 @@ void LocalObjectManager::AsyncRestoreSpilledObject(
     return;
   }
 
-  if (!node_id.IsNil() && node_id != self_node_id_) {
+  if (is_external_storage_type_fs_ && node_id != self_node_id_) {
+    RAY_CHECK(!node_id.IsNil());
     // If we know where this object was spilled, and the current node is not that one,
     // send a RPC to a remote node that spilled the object to restore it.
     RAY_LOG(DEBUG) << "Send an object restoration request of id: " << object_id
@@ -377,8 +370,17 @@ void LocalObjectManager::AsyncRestoreSpilledObject(
   // Restore the object.
   RAY_LOG(DEBUG) << "Restoring spilled object " << object_id << " from URL "
                  << object_url;
-  if (!node_id.IsNil()) {
-    RAY_CHECK(spilled_objects_url_.count(object_id) > 0);
+  if (is_external_storage_type_fs_ && spilled_objects_url_.count(object_id) == 0) {
+    RAY_CHECK(!node_id.IsNil());
+    RAY_LOG(DEBUG)
+        << "Restoration request was ignored because the node didn't spill the object "
+        << object_id << " yet. It will be retried...";
+    // If the object wasn't spilled yet on this node, just return. The caller should retry
+    // in this case.
+    if (callback) {
+      callback(Status::OK());
+    }
+    return;
   }
 
   RAY_CHECK(objects_pending_restore_.emplace(object_id).second)
@@ -502,6 +504,17 @@ void LocalObjectManager::FillObjectSpillingStats(rpc::GetNodeStatsReply *reply) 
   stats->set_restore_time_total_s(restore_time_total_s_);
   stats->set_restored_bytes_total(restored_bytes_total_);
   stats->set_restored_objects_total(restored_objects_total_);
+}
+
+void LocalObjectManager::RecordObjectSpillingStats() const {
+  if (spilled_bytes_total_ != 0 && spill_time_total_s_ != 0) {
+    stats::SpillingBandwidthMB.Record(spilled_bytes_total_ / 1024 / 1024 /
+                                      spill_time_total_s_);
+  }
+  if (restored_bytes_total_ != 0 && restore_time_total_s_ != 0) {
+    stats::RestoringBandwidthMB.Record(restored_bytes_total_ / 1024 / 1024 /
+                                       restore_time_total_s_);
+  }
 }
 
 std::string LocalObjectManager::DebugString() const {

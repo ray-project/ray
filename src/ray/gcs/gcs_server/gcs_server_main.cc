@@ -48,8 +48,9 @@ int main(int argc, char *argv[]) {
   const std::string node_ip_address = FLAGS_node_ip_address;
   gflags::ShutDownCommandLineFlags();
 
-  auto promise =
-      std::make_shared<std::promise<std::unordered_map<std::string, std::string>>>();
+  RayConfig::instance().initialize(config_list);
+
+  auto promise = std::make_shared<std::promise<void>>();
   std::thread([=] {
     boost::asio::io_service service;
 
@@ -63,35 +64,21 @@ int main(int argc, char *argv[]) {
     // Init storage.
     auto storage = std::make_shared<ray::gcs::RedisGcsTableStorage>(redis_client);
 
-    // Parse the configuration list.
-    std::unordered_map<std::string, std::string> config;
-
-    std::istringstream config_string(config_list);
-    std::string config_name;
-    std::string config_value;
-
-    while (std::getline(config_string, config_name, ',')) {
-      RAY_CHECK(std::getline(config_string, config_value, ';'));
-      config[config_name] = config_value;
-    }
-
     // The internal_config is only set on the gcs--other nodes get it from GCS.
-    ray::rpc::SetInternalConfigRequest request;
-    request.mutable_config()->mutable_config()->insert(config.begin(), config.end());
-
-    auto on_done = [promise, &service, &config](const ray::Status &status) {
-      promise->set_value(config);
+    auto on_done = [promise, &service](const ray::Status &status) {
+      promise->set_value();
       service.stop();
     };
-    RAY_CHECK_OK(storage->InternalConfigTable().Put(ray::UniqueID::Nil(),
-                                                    request.config(), on_done));
+    ray::rpc::StoredConfig config;
+    config.set_config(config_list);
+    RAY_CHECK_OK(
+        storage->InternalConfigTable().Put(ray::UniqueID::Nil(), config, on_done));
     boost::asio::io_service::work work(service);
     service.run();
   })
       .detach();
-  auto config = promise->get_future().get();
+  promise->get_future().get();
 
-  RayConfig::instance().initialize(config);
   const ray::stats::TagsType global_tags = {
       {ray::stats::ComponentKey, "gcs_server"},
       {ray::stats::VersionKey, "2.0.0.dev0"},

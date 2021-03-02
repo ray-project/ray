@@ -16,9 +16,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import org.apache.commons.lang3.BooleanUtils;
 import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.math.NumberUtils;
 
 /** Configurations of Ray runtime. See `ray.default.conf` for the meaning of each field. */
 public class RayConfig {
@@ -47,7 +45,6 @@ public class RayConfig {
   public String rayletSocketName;
   // Listening port for node manager.
   public int nodeManagerPort;
-  public final Map<String, Object> rayletConfigParameters;
 
   public final List<String> codeSearchPath;
 
@@ -144,25 +141,6 @@ public class RayConfig {
       Preconditions.checkState(
           workerMode != WorkerType.WORKER,
           "Worker started by raylet should accept the node manager port from raylet.");
-    }
-
-    // Raylet parameters.
-    rayletConfigParameters = new HashMap<>();
-    Config rayletConfig = config.getConfig("ray.raylet.config");
-    for (Map.Entry<String, ConfigValue> entry : rayletConfig.entrySet()) {
-      Object value = entry.getValue().unwrapped();
-      if (value != null) {
-        if (value instanceof String) {
-          String valueString = (String) value;
-          Boolean booleanValue = BooleanUtils.toBooleanObject(valueString);
-          if (booleanValue != null) {
-            value = booleanValue;
-          } else if (NumberUtils.isParsable(valueString)) {
-            value = NumberUtils.createNumber(valueString);
-          }
-        }
-        rayletConfigParameters.put(entry.getKey(), value);
-      }
     }
 
     // Job code search path.

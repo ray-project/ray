@@ -1,6 +1,7 @@
 import numpy as np
 import unittest
 
+import ray
 import ray.rllib.agents.dqn as dqn
 from ray.rllib.agents.dqn.simple_q_tf_policy import build_q_losses as loss_tf
 from ray.rllib.agents.dqn.simple_q_torch_policy import build_q_losses as \
@@ -15,10 +16,21 @@ tf1, tf, tfv = try_import_tf()
 
 
 class TestSimpleQ(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        ray.init()
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        ray.shutdown()
+
     def test_simple_q_compilation(self):
         """Test whether a SimpleQTrainer can be built on all frameworks."""
         config = dqn.SIMPLE_Q_DEFAULT_CONFIG.copy()
-        config["num_workers"] = 0  # Run locally.
+        # Run locally.
+        config["num_workers"] = 0
+        # Test with compression.
+        config["compress_observations"] = True
         num_iterations = 2
 
         for _ in framework_iterator(config):

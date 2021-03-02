@@ -386,6 +386,10 @@ Status RedisStoreClient::RedisScanner::ScanKeys(
 
 void RedisStoreClient::RedisScanner::Scan(std::string match_pattern,
                                           const StatusCallback &callback) {
+  // This lock guards the iterator over shard_to_cursor_ because the callbacks
+  // can remove items from the shard_to_cursor_ map. If performance is a concern,
+  // we should consider using a reader-writer lock.
+  absl::MutexLock lock(&mutex_);
   if (shard_to_cursor_.empty()) {
     callback(Status::OK());
     return;

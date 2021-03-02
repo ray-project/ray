@@ -28,6 +28,7 @@
 #include "ray/stats/stats.h"
 #include "ray/util/asio_util.h"
 #include "ray/util/sample.h"
+#include "ray/util/util.h"
 
 namespace {
 
@@ -123,23 +124,17 @@ NodeManager::NodeManager(boost::asio::io_service &io_service, const NodeID &self
       object_manager_(object_manager),
       gcs_client_(gcs_client),
       object_directory_(object_directory),
-      heartbeat_timer_(io_service),
-      heartbeat_period_(std::chrono::milliseconds(config.heartbeat_period_ms)),
-      report_resources_timer_(io_service),
-      report_resources_period_(
-          std::chrono::milliseconds(config.report_resources_period_ms)),
-      debug_dump_period_(config.debug_dump_period_ms),
+      periodical_runner_(io_service),
+      report_resources_period_ms_(config.report_resources_period_ms),
       fair_queueing_enabled_(config.fair_queueing_enabled),
-      object_pinning_enabled_(config.object_pinning_enabled),
       temp_dir_(config.temp_dir),
-      object_manager_profile_timer_(io_service),
       initial_config_(config),
       local_available_resources_(config.resource_config),
       worker_pool_(io_service, config.num_workers_soft_limit,
                    config.num_initial_python_workers_for_first_job,
                    config.maximum_startup_concurrency, config.min_worker_port,
                    config.max_worker_port, config.worker_ports, gcs_client_,
-                   config.worker_commands, config.raylet_config,
+                   config.worker_commands,
                    /*starting_worker_timeout_callback=*/
                    [this] { cluster_task_manager_->ScheduleAndDispatchTasks(); }),
       scheduling_policy_(local_queues_),
@@ -162,7 +157,6 @@ NodeManager::NodeManager(boost::asio::io_service &io_service, const NodeID &self
           self_node_id_, RayConfig::instance().free_objects_batch_size(),
           RayConfig::instance().free_objects_period_milliseconds(), worker_pool_,
           gcs_client_->Objects(), worker_rpc_pool_,
-          /* object_pinning_enabled */ config.object_pinning_enabled,
           /* automatic_object_deletion_enabled */
           config.automatic_object_deletion_enabled,
           /*max_io_workers*/ config.max_io_workers,
@@ -185,9 +179,9 @@ NodeManager::NodeManager(boost::asio::io_service &io_service, const NodeID &self
       last_local_gc_ns_(absl::GetCurrentTimeNanos()),
       local_gc_interval_ns_(RayConfig::instance().local_gc_interval_s() * 1e9),
       local_gc_min_interval_ns_(RayConfig::instance().local_gc_min_interval_s() * 1e9),
-      record_metrics_period_(config.record_metrics_period_ms) {
+      record_metrics_period_ms_(config.record_metrics_period_ms) {
   RAY_LOG(INFO) << "Initializing NodeManager with ID " << self_node_id_;
-  RAY_CHECK(heartbeat_period_.count() > 0);
+  RAY_CHECK(RayConfig::instance().raylet_heartbeat_period_milliseconds() > 0);
   // Initialize the resource map with own cluster resource configuration.
   cluster_resource_map_.emplace(self_node_id_,
                                 SchedulingResources(config.resource_config));
@@ -333,12 +327,29 @@ ray::Status NodeManager::RegisterGcs() {
 
   // Start sending heartbeats to the GCS.
   last_heartbeat_at_ms_ = current_time_ms();
-  last_debug_dump_at_ms_ = current_time_ms();
-  Heartbeat();
-  ReportResourceUsage();
+  periodical_runner_.RunFnPeriodically(
+      [this] { Heartbeat(); },
+      RayConfig::instance().raylet_heartbeat_period_milliseconds());
+  periodical_runner_.RunFnPeriodically(
+      [this] {
+        DumpDebugState();
+        WarnResourceDeadlock();
+      },
+      RayConfig::instance().debug_dump_period_milliseconds());
+  periodical_runner_.RunFnPeriodically([this] { RecordMetrics(); },
+                                       record_metrics_period_ms_);
+  if (RayConfig::instance().free_objects_period_milliseconds() > 0) {
+    periodical_runner_.RunFnPeriodically(
+        [this] { local_object_manager_.FlushFreeObjects(); },
+        RayConfig::instance().free_objects_period_milliseconds());
+  }
+  periodical_runner_.RunFnPeriodically([this] { ReportResourceUsage(); },
+                                       report_resources_period_ms_);
   // Start the timer that gets object manager profiling information and sends it
   // to the GCS.
-  GetObjectManagerProfileInfo();
+  periodical_runner_.RunFnPeriodically(
+      [this] { GetObjectManagerProfileInfo(); },
+      RayConfig::instance().raylet_heartbeat_period_milliseconds());
 
   return ray::Status::OK();
 }
@@ -427,30 +438,6 @@ void NodeManager::Heartbeat() {
           RAY_LOG(FATAL) << "This node has beem marked as dead.";
         }
       }));
-
-  if (debug_dump_period_ > 0 &&
-      static_cast<int64_t>(now_ms - last_debug_dump_at_ms_) > debug_dump_period_) {
-    DumpDebugState();
-    WarnResourceDeadlock();
-    last_debug_dump_at_ms_ = now_ms;
-  }
-
-  if (record_metrics_period_ > 0 &&
-      static_cast<int64_t>(now_ms - metrics_last_recorded_time_ms_) >
-          record_metrics_period_) {
-    RecordMetrics();
-    metrics_last_recorded_time_ms_ = now_ms;
-  }
-
-  // Evict all copies of freed objects from the cluster.
-  local_object_manager_.FlushFreeObjectsIfNeeded(now_ms);
-
-  // Reset the timer.
-  heartbeat_timer_.expires_from_now(heartbeat_period_);
-  heartbeat_timer_.async_wait([this](const boost::system::error_code &error) {
-    RAY_CHECK(!error);
-    Heartbeat();
-  });
 }
 
 void NodeManager::ReportResourceUsage() {
@@ -486,13 +473,6 @@ void NodeManager::ReportResourceUsage() {
     RAY_CHECK_OK(gcs_client_->NodeResources().AsyncReportResourceUsage(resources_data,
                                                                        /*done*/ nullptr));
   }
-
-  // Reset the timer.
-  report_resources_timer_.expires_from_now(report_resources_period_);
-  report_resources_timer_.async_wait([this](const boost::system::error_code &error) {
-    RAY_CHECK(!error);
-    ReportResourceUsage();
-  });
 }
 
 void NodeManager::DoLocalGC() {
@@ -667,14 +647,6 @@ void NodeManager::GetObjectManagerProfileInfo() {
   if (profile_info->profile_events_size() > 0) {
     RAY_CHECK_OK(gcs_client_->Stats().AsyncAddProfileData(profile_info, nullptr));
   }
-
-  // Reset the timer.
-  object_manager_profile_timer_.expires_from_now(heartbeat_period_);
-  object_manager_profile_timer_.async_wait(
-      [this](const boost::system::error_code &error) {
-        RAY_CHECK(!error);
-        GetObjectManagerProfileInfo();
-      });
 
   int64_t interval = current_time_ms() - start_time_ms;
   if (interval > RayConfig::instance().handler_warning_timeout_ms()) {
@@ -1083,19 +1055,18 @@ void NodeManager::ProcessRegisterClientRequestMessage(
       std::make_shared<Worker>(job_id, worker_id, language, worker_type,
                                worker_ip_address, client, client_call_manager_));
 
-  auto send_reply_callback = [this, client](Status status, int assigned_port) {
+  auto send_reply_callback = [this, client, job_id](Status status, int assigned_port) {
     flatbuffers::FlatBufferBuilder fbb;
-    std::vector<std::string> system_config_keys;
-    std::vector<std::string> system_config_values;
-    for (auto kv : initial_config_.raylet_config) {
-      system_config_keys.push_back(kv.first);
-      system_config_values.push_back(kv.second);
+    std::string serialized_job_config;
+    auto job_config = worker_pool_.GetJobConfig(job_id);
+    if (job_config != boost::none) {
+      serialized_job_config = (*job_config).SerializeAsString();
     }
     auto reply = ray::protocol::CreateRegisterClientReply(
         fbb, status.ok(), fbb.CreateString(status.ToString()),
         to_flatbuf(fbb, self_node_id_), assigned_port,
-        string_vec_to_flatbuf(fbb, system_config_keys),
-        string_vec_to_flatbuf(fbb, system_config_values));
+        fbb.CreateString(initial_config_.raylet_config),
+        fbb.CreateString(serialized_job_config));
     fbb.Finish(reply);
     client->WriteMessageAsync(
         static_cast<int64_t>(protocol::MessageType::RegisterClientReply), fbb.GetSize(),
@@ -2069,52 +2040,42 @@ void NodeManager::HandleTaskReconstruction(const TaskID &task_id,
   rpc::Address owner_addr;
   bool has_owner = dependency_manager_.GetOwnerAddress(required_object_id, &owner_addr);
   if (has_owner) {
-    if (!RayConfig::instance().object_pinning_enabled()) {
-      // LRU eviction is enabled. The object may still be in scope, but we
-      // weren't able to fetch the value within the timeout, so the value has
-      // most likely been evicted. Mark the object as unreachable.
-      rpc::ObjectReference ref;
-      ref.set_object_id(required_object_id.Binary());
-      ref.mutable_owner_address()->CopyFrom(owner_addr);
-      MarkObjectsAsFailed(ErrorType::OBJECT_UNRECONSTRUCTABLE, {ref}, JobID::Nil());
-    } else {
-      RAY_LOG(DEBUG) << "Required object " << required_object_id
-                     << " fetch timed out, asking owner "
-                     << WorkerID::FromBinary(owner_addr.worker_id());
-      // The owner's address exists. Poll the owner to check if the object is
-      // still in scope. If not, mark the object as failed.
-      // TODO(swang): If the owner has died, we could also mark the object as
-      // failed as soon as we hear about the owner's failure from the GCS,
-      // avoiding the raylet's reconstruction timeout.
-      auto client = std::unique_ptr<rpc::CoreWorkerClient>(
-          new rpc::CoreWorkerClient(owner_addr, client_call_manager_));
+    RAY_LOG(DEBUG) << "Required object " << required_object_id
+                   << " fetch timed out, asking owner "
+                   << WorkerID::FromBinary(owner_addr.worker_id());
+    // The owner's address exists. Poll the owner to check if the object is
+    // still in scope. If not, mark the object as failed.
+    // TODO(swang): If the owner has died, we could also mark the object as
+    // failed as soon as we hear about the owner's failure from the GCS,
+    // avoiding the raylet's reconstruction timeout.
+    auto client = std::unique_ptr<rpc::CoreWorkerClient>(
+        new rpc::CoreWorkerClient(owner_addr, client_call_manager_));
 
-      rpc::GetObjectStatusRequest request;
-      request.set_object_id(required_object_id.Binary());
-      request.set_owner_worker_id(owner_addr.worker_id());
-      client->GetObjectStatus(request, [this, required_object_id, owner_addr](
-                                           Status status,
-                                           const rpc::GetObjectStatusReply &reply) {
-        if (!status.ok() || reply.status() == rpc::GetObjectStatusReply::OUT_OF_SCOPE ||
-            reply.status() == rpc::GetObjectStatusReply::FREED) {
-          // The owner is gone, or the owner replied that the object has
-          // gone out of scope (this is an edge case in the distributed ref
-          // counting protocol where a borrower dies before it can notify
-          // the owner of another borrower), or the object value has been
-          // freed. Store an error in the local plasma store so that an
-          // exception will be thrown when the worker tries to get the
-          // value.
-          rpc::ObjectReference ref;
-          ref.set_object_id(required_object_id.Binary());
-          ref.mutable_owner_address()->CopyFrom(owner_addr);
-          MarkObjectsAsFailed(ErrorType::OBJECT_UNRECONSTRUCTABLE, {ref}, JobID::Nil());
-        }
-        // Do nothing if the owner replied that the object is available. The
-        // object manager will continue trying to fetch the object, and this
-        // handler will get triggered again if the object is still
-        // unavailable after another timeout.
-      });
-    }
+    rpc::GetObjectStatusRequest request;
+    request.set_object_id(required_object_id.Binary());
+    request.set_owner_worker_id(owner_addr.worker_id());
+    client->GetObjectStatus(
+        request, [this, required_object_id, owner_addr](
+                     Status status, const rpc::GetObjectStatusReply &reply) {
+          if (!status.ok() || reply.status() == rpc::GetObjectStatusReply::OUT_OF_SCOPE ||
+              reply.status() == rpc::GetObjectStatusReply::FREED) {
+            // The owner is gone, or the owner replied that the object has
+            // gone out of scope (this is an edge case in the distributed ref
+            // counting protocol where a borrower dies before it can notify
+            // the owner of another borrower), or the object value has been
+            // freed. Store an error in the local plasma store so that an
+            // exception will be thrown when the worker tries to get the
+            // value.
+            rpc::ObjectReference ref;
+            ref.set_object_id(required_object_id.Binary());
+            ref.mutable_owner_address()->CopyFrom(owner_addr);
+            MarkObjectsAsFailed(ErrorType::OBJECT_UNRECONSTRUCTABLE, {ref}, JobID::Nil());
+          }
+          // Do nothing if the owner replied that the object is available. The
+          // object manager will continue trying to fetch the object, and this
+          // handler will get triggered again if the object is still
+          // unavailable after another timeout.
+        });
   } else {
     RAY_LOG(WARNING)
         << "Ray cannot get the value of ObjectIDs that are generated "
@@ -2416,18 +2377,16 @@ void NodeManager::HandlePinObjectIDs(const rpc::PinObjectIDsRequest &request,
   for (const auto &object_id_binary : request.object_ids()) {
     object_ids.push_back(ObjectID::FromBinary(object_id_binary));
   }
-  if (object_pinning_enabled_) {
-    std::vector<std::unique_ptr<RayObject>> results;
-    if (!GetObjectsFromPlasma(object_ids, &results)) {
-      RAY_LOG(WARNING)
-          << "Failed to get objects that should have been in the object store. These "
-             "objects may have been evicted while there are still references in scope.";
-      // TODO(suquark): Maybe "Status::ObjectNotFound" is more accurate here.
-      send_reply_callback(Status::Invalid("Failed to get objects."), nullptr, nullptr);
-      return;
-    }
-    local_object_manager_.PinObjects(object_ids, std::move(results), owner_address);
+  std::vector<std::unique_ptr<RayObject>> results;
+  if (!GetObjectsFromPlasma(object_ids, &results)) {
+    RAY_LOG(WARNING)
+        << "Failed to get objects that should have been in the object store. These "
+           "objects may have been evicted while there are still references in scope.";
+    // TODO(suquark): Maybe "Status::ObjectNotFound" is more accurate here.
+    send_reply_callback(Status::Invalid("Failed to get objects."), nullptr, nullptr);
+    return;
   }
+  local_object_manager_.PinObjects(object_ids, std::move(results), owner_address);
   // Wait for the object to be freed by the owner, which keeps the ref count.
   local_object_manager_.WaitForObjectFree(owner_address, object_ids);
   send_reply_callback(Status::OK(), nullptr, nullptr);
@@ -2734,6 +2693,7 @@ void NodeManager::RecordMetrics() {
 
   object_manager_.RecordMetrics();
   local_queues_.RecordMetrics();
+  local_object_manager_.RecordObjectSpillingStats();
 }
 
 void NodeManager::PublishInfeasibleTaskError(const Task &task) const {

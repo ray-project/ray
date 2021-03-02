@@ -36,6 +36,7 @@
 #include "ray/rpc/node_manager/node_manager_client.h"
 #include "ray/rpc/worker/core_worker_client.h"
 #include "ray/rpc/worker/core_worker_server.h"
+#include "ray/util/periodical_runner.h"
 
 /// The set of gRPC handlers and their associated level of concurrency. If you want to
 /// add a new call to the worker gRPC server, do the following:
@@ -82,6 +83,7 @@ struct CoreWorkerOptions {
         spill_objects(nullptr),
         restore_spilled_objects(nullptr),
         delete_spilled_objects(nullptr),
+        unhandled_exception_handler(nullptr),
         get_lang_stack(nullptr),
         kill_main(nullptr),
         ref_counting_enabled(false),
@@ -146,6 +148,8 @@ struct CoreWorkerOptions {
   /// Application-language callback to delete objects from external storage.
   std::function<void(const std::vector<std::string> &, rpc::WorkerType)>
       delete_spilled_objects;
+  /// Function to call on error objects never retrieved.
+  std::function<void(const RayObject &error)> unhandled_exception_handler;
   /// Language worker callback to get the current call stack.
   std::function<void(std::string *)> get_lang_stack;
   // Function that tries to interrupt the currently running Python thread.
@@ -577,8 +581,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   ///
   /// \param[in] object_id ID of the objects to check for.
   /// \param[out] has_object Whether or not the object is present.
+  /// \param[out] is_in_plasma Whether or not the object is in Plasma.
   /// \return Status.
-  Status Contains(const ObjectID &object_id, bool *has_object);
+  Status Contains(const ObjectID &object_id, bool *has_object,
+                  bool *is_in_plasma = nullptr);
 
   /// Wait for a list of objects to appear in the object store.
   /// Duplicate object ids are supported, and `num_objects` includes duplicate ids in this
@@ -732,7 +738,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Tell an actor to exit immediately, without completing outstanding work.
   ///
   /// \param[in] actor_id ID of the actor to kill.
-  /// \param[in] force_kill Whether to force kill an actor by killing the worker.
   /// \param[in] no_restart If set to true, the killed actor will not be
   /// restarted anymore.
   /// \param[out] Status
@@ -953,6 +958,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   void GetAsync(const ObjectID &object_id, SetResultCallback success_callback,
                 void *python_future);
 
+  // Get serialized job configuration.
+  const rpc::JobConfig &GetJobConfig() const;
+
  private:
   void SetCurrentTaskId(const TaskID &task_id);
 
@@ -969,10 +977,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   void RegisterToGcs();
 
   /// Check if the raylet has failed. If so, shutdown.
-  void CheckForRayletFailure(const boost::system::error_code &error);
+  void CheckForRayletFailure();
 
   /// Heartbeat for internal bookkeeping.
-  void InternalHeartbeat(const boost::system::error_code &error);
+  void InternalHeartbeat();
 
   ///
   /// Private methods related to task submission.
@@ -1128,11 +1136,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Shared core worker client pool.
   std::shared_ptr<rpc::CoreWorkerClientPool> core_worker_client_pool_;
 
-  /// Timer used to periodically check if the raylet has died.
-  boost::asio::steady_timer death_check_timer_;
-
-  /// Timer for internal book-keeping.
-  boost::asio::steady_timer internal_timer_;
+  /// The runner to run function periodically.
+  PeriodicalRunner periodical_runner_;
 
   /// RPC server used to receive tasks to execute.
   std::unique_ptr<rpc::GrpcServer> core_worker_server_;
@@ -1268,6 +1273,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   int64_t max_direct_call_object_size_;
 
   friend class CoreWorkerTest;
+
+  std::unique_ptr<rpc::JobConfig> job_config_;
 };
 
 }  // namespace ray

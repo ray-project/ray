@@ -1,8 +1,8 @@
 import atexit
-from collections import defaultdict
-from multiprocessing.pool import ThreadPool
-from dataclasses import dataclass
 import threading
+from collections import defaultdict
+from dataclasses import dataclass
+from multiprocessing.pool import ThreadPool
 
 import ray
 
@@ -79,6 +79,7 @@ def ray_dask_get(dsk, keys, **kwargs):
                 pools[thread][num_workers] = pool
 
     ray_callbacks = kwargs.pop("ray_callbacks", None)
+    persist = kwargs.pop("ray_persist", False)
 
     with local_ray_callbacks(ray_callbacks) as ray_callbacks:
         # Unpack the Ray-specific callbacks.
@@ -116,7 +117,10 @@ def ray_dask_get(dsk, keys, **kwargs):
         # Ray tasks are done. Otherwise, no intermediate objects will be
         # cleaned up until all Ray tasks are done.
         del dsk
-        result = ray_get_unpack(object_refs)
+        if persist:
+            result = object_refs
+        else:
+            result = ray_get_unpack(object_refs)
         if ray_finish_cbs is not None:
             for cb in ray_finish_cbs:
                 cb(result)
@@ -150,7 +154,9 @@ def _apply_async_wrapper(apply_async, real_func, *extra_args, **extra_kwargs):
         pass `real_func` in its place. To be passed to `dask.local.get_async`.
     """
 
-    def wrapper(func, args=(), kwds={}, callback=None):  # noqa: M511
+    def wrapper(func, args=(), kwds=None, callback=None):  # noqa: M511
+        if not kwds:
+            kwds = {}
         return apply_async(
             real_func,
             args=args + extra_args,
@@ -338,6 +344,7 @@ def dask_task_wrapper(func, repack, key, ray_pretask_cbs, ray_posttask_cbs,
     actual_args = [_execute_task(a, repacked_deps) for a in repacked_args]
     # Execute the actual underlying Dask task.
     result = func(*actual_args)
+
     if ray_posttask_cbs is not None:
         for cb, pre_state in zip(ray_posttask_cbs, pre_states):
             if cb is not None:
@@ -406,6 +413,7 @@ def ray_dask_get_sync(dsk, keys, **kwargs):
     """
 
     ray_callbacks = kwargs.pop("ray_callbacks", None)
+    persist = kwargs.pop("ray_persist", False)
 
     with local_ray_callbacks(ray_callbacks) as ray_callbacks:
         # Unpack the Ray-specific callbacks.
@@ -441,7 +449,10 @@ def ray_dask_get_sync(dsk, keys, **kwargs):
         # Ray tasks are done. Otherwise, no intermediate objects will be
         # cleaned up until all Ray tasks are done.
         del dsk
-        result = ray_get_unpack(object_refs)
+        if persist:
+            result = object_refs
+        else:
+            result = ray_get_unpack(object_refs)
         if ray_finish_cbs is not None:
             for cb in ray_finish_cbs:
                 cb(result)

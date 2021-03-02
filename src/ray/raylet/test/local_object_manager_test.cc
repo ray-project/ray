@@ -280,7 +280,6 @@ class LocalObjectManagerTest : public ::testing::Test {
         manager_node_id_(NodeID::FromRandom()),
         manager(manager_node_id_, free_objects_batch_size,
                 /*free_objects_period_ms=*/1000, worker_pool, object_table, client_pool,
-                /*object_pinning_enabled=*/true,
                 /*automatic_object_delete_enabled=*/true,
                 /*max_io_workers=*/2,
                 /*min_spilling_size=*/0,
@@ -305,7 +304,7 @@ class LocalObjectManagerTest : public ::testing::Test {
                   remote_node_set_restore_requested_[node_id].emplace(object_id);
                 }),
         unpins(std::make_shared<std::unordered_map<ObjectID, int>>()) {
-    RayConfig::instance().initialize({{"object_spilling_config", "mock_config"}});
+    RayConfig::instance().initialize("object_spilling_config,YQ==");
   }
 
   void TearDown() {
@@ -381,6 +380,11 @@ TEST_F(LocalObjectManagerTest, TestRestoreSpilledObject) {
     objects.push_back(std::move(object));
   }
   manager.PinObjects(object_ids, std::move(objects), owner_address);
+  // Make sure the restore request is no-op and return not found if the object wasn't
+  // spilled yet.
+  manager.AsyncRestoreSpilledObject(
+      object_ids[0], "url0", manager_node_id_,
+      [&](const Status &status) { ASSERT_TRUE(status.ok()); });
 
   manager.SpillObjects(object_ids,
                        [&](const Status &status) mutable { ASSERT_TRUE(status.ok()); });

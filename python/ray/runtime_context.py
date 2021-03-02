@@ -152,6 +152,13 @@ _runtime_context = None
 
 @client_mode_hook
 def get_runtime_context():
+    """Get the runtime context of the current driver/worker.
+
+    Example:
+
+    >>> ray.get_runtime_context().job_id # Get the job id.
+    >>> ray.get_runtime_context().get() # Get all the metadata.
+    """
     global _runtime_context
     if _runtime_context is None:
         _runtime_context = RuntimeContext(ray.worker.global_worker)

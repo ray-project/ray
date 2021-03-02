@@ -120,10 +120,6 @@ class Node:
             raise ValueError(
                 "Internal config parameters can only be set on the head node.")
 
-        if ray_params._lru_evict:
-            assert (connect_only or
-                    head), "LRU Evict can only be passed into the head node."
-
         self._raylet_ip_address = raylet_ip_address
 
         ray_params.update_if_absent(

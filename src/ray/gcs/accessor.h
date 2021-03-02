@@ -64,16 +64,6 @@ class ActorInfoAccessor {
   virtual Status AsyncRegisterActor(const TaskSpecification &task_spec,
                                     const StatusCallback &callback) = 0;
 
-  /// Kill actor via GCS asynchronously.
-  ///
-  /// \param actor_id The ID of actor to destroy.
-  /// \param force_kill Whether to force kill an actor by killing the worker.
-  /// \param no_restart If set to true, the killed actor will not be restarted anymore.
-  /// \param callback Callback that will be called after the actor is destroyed.
-  /// \return Status
-  virtual Status AsyncKillActor(const ActorID &actor_id, bool force_kill, bool no_restart,
-                                const StatusCallback &callback) = 0;
-
   /// Asynchronously request GCS to create the actor.
   ///
   /// This should be called after the worker has resolved the actor dependencies.
@@ -480,21 +470,12 @@ class NodeInfoAccessor {
   /// \param is_pubsub_server_restarted Whether pubsub server is restarted.
   virtual void AsyncResubscribe(bool is_pubsub_server_restarted) = 0;
 
-  /// Set the internal config string that will be used by all nodes started in the
-  /// cluster.
-  ///
-  /// \param config Map of config options
-  /// \return Status
-  virtual Status AsyncSetInternalConfig(
-      std::unordered_map<std::string, std::string> &config) = 0;
-
   /// Get the internal config string from GCS.
   ///
   /// \param callback Processes a map of config options
   /// \return Status
   virtual Status AsyncGetInternalConfig(
-      const OptionalItemCallback<std::unordered_map<std::string, std::string>>
-          &callback) = 0;
+      const OptionalItemCallback<std::string> &callback) = 0;
 
  protected:
   NodeInfoAccessor() = default;
@@ -734,7 +715,8 @@ class PlacementGroupInfoAccessor {
   /// written to GCS.
   /// \return Status.
   virtual Status AsyncCreatePlacementGroup(
-      const PlacementGroupSpecification &placement_group_spec) = 0;
+      const PlacementGroupSpecification &placement_group_spec,
+      const StatusCallback &callback) = 0;
 
   /// Get a placement group data from GCS asynchronously by id.
   ///
