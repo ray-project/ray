@@ -574,7 +574,7 @@ DWORD *_get_pids(DWORD *numberOfReturnedPIDs) {
     procArraySz += 1024;
     if (procArray != NULL) free(procArray);
     procArrayByteSz = procArraySz * sizeof(DWORD);
-    procArray = malloc(procArrayByteSz);
+    procArray = (DWORD *)malloc(procArrayByteSz);
     if (procArray == NULL) {
       return NULL;
     }
@@ -620,8 +620,6 @@ _check_phandle(HANDLE hProcess, DWORD pid) {
   if (hProcess == NULL) {
     return NULL;
   }
-
-  if (check_exit_code == 0) return hProcess;
 
   if (GetExitCodeProcess(hProcess, &exitCode)) {
     // XXX - maybe STILL_ACTIVE is not fully reliable as per:
