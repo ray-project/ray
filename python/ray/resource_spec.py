@@ -216,7 +216,8 @@ class ResourceSpec(
             if memory < 100e6 and memory < 0.05 * system_memory:
                 # Linux, BSD has cached memory, which should
                 # also be considered as unused memory
-                # we consider half of cached memory can be recycled.
+                # consider half of cached memory can be recycled.
+                # According to https://gitlab.com/procps-ng/procps/-/blob/master/proc/sysinfo.c#L805
                 memory += cached_memory / 2
                 if memory >= 0.05 * system_memory:
                     memory = 0.05 * system_memory
@@ -233,7 +234,6 @@ class ResourceSpec(
                         "object_store_memory=<bytes>).".format(
                             round(memory / 1e9, 2),
                             int(100 * (memory / system_memory))))
-
 
         spec = ResourceSpec(num_cpus, num_gpus, memory, object_store_memory,
                             resources, redis_max_memory)
