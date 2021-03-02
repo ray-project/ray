@@ -573,8 +573,8 @@ bool ClusterResourceScheduler::ContainsResource(const std::string &node_id_strin
     idx = (int)CPU;
   } else if (resource_name == ray::kGPU_ResourceLabel) {
     idx = (int)GPU;
-  } else if (resource_name == ray::kTPU_ResourceLabel) {
-    idx = (int)TPU;
+  } else if (resource_name == ray::kObjectStoreMemory_ResourceLabel) {
+    idx = (int)OBJECT_STORE_MEM;
   } else if (resource_name == ray::kMemory_ResourceLabel) {
     idx = (int)MEM;
   };
