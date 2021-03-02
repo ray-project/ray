@@ -134,10 +134,10 @@ ray::Status OwnershipBasedObjectDirectory::ReportObjectAdded(
       request, [worker_id, object_id, node_id](
                    Status status, const rpc::AddObjectLocationOwnerReply &reply) {
         if (!status.ok()) {
-          RAY_LOG(INFO) << "Worker " << worker_id << " failed to add the location "
-                        << node_id << " for " << object_id
-                        << ", the object has most likely been freed: "
-                        << status.ToString();
+          RAY_LOG(DEBUG) << "Worker " << worker_id << " failed to add the location "
+                         << node_id << " for " << object_id
+                         << ", the object has most likely been freed: "
+                         << status.ToString();
         } else {
           RAY_LOG(DEBUG) << "Added location " << node_id << " for object " << object_id
                          << " on owner " << worker_id;
@@ -168,10 +168,10 @@ ray::Status OwnershipBasedObjectDirectory::ReportObjectRemoved(
       request, [worker_id, object_id, node_id](
                    Status status, const rpc::RemoveObjectLocationOwnerReply &reply) {
         if (!status.ok()) {
-          RAY_LOG(INFO) << "Worker " << worker_id << " failed to remove the location "
-                        << node_id << " for " << object_id
-                        << ", the object has most likely been freed: "
-                        << status.ToString();
+          RAY_LOG(DEBUG) << "Worker " << worker_id << " failed to remove the location "
+                         << node_id << " for " << object_id
+                         << ", the object has most likely been freed: "
+                         << status.ToString();
         } else {
           RAY_LOG(DEBUG) << "Removed location " << node_id << " for object " << object_id
                          << " on owner " << worker_id;

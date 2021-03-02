@@ -303,6 +303,8 @@ def unflattened_lookup(flat_key, lookup, delimiter="/", **kwargs):
     Unflatten `flat_key` and iteratively look up in `lookup`. E.g.
     `flat_key="a/0/b"` will try to return `lookup["a"][0]["b"]`.
     """
+    if flat_key in lookup:
+        return lookup[flat_key]
     keys = deque(flat_key.split(delimiter))
     base = lookup
     while keys:

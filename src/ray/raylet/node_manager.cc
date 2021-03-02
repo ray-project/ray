@@ -114,6 +114,57 @@ std::string WorkerOwnerString(std::shared_ptr<WorkerInterface> &worker) {
   return buffer.str();
 }
 
+HeartbeatSender::HeartbeatSender(NodeID self_node_id,
+                                 std::shared_ptr<gcs::GcsClient> gcs_client)
+    : self_node_id_(self_node_id), gcs_client_(gcs_client) {
+  // Init heartbeat thread and run its io service.
+  heartbeat_thread_.reset(new std::thread([this] {
+    SetThreadName("heartbeat");
+    /// The asio work to keep io_service_ alive.
+    boost::asio::io_service::work io_service_work_(heartbeat_io_service_);
+    heartbeat_io_service_.run();
+  }));
+  heartbeat_runner_.reset(new PeriodicalRunner(heartbeat_io_service_));
+
+  // Start sending heartbeats to the GCS.
+  last_heartbeat_at_ms_ = current_time_ms();
+  heartbeat_runner_->RunFnPeriodically(
+      [this] { Heartbeat(); },
+      RayConfig::instance().raylet_heartbeat_period_milliseconds());
+}
+
+HeartbeatSender::~HeartbeatSender() {
+  heartbeat_runner_.reset();
+  heartbeat_io_service_.stop();
+  if (heartbeat_thread_->joinable()) {
+    heartbeat_thread_->join();
+  }
+  heartbeat_thread_.reset();
+}
+
+void HeartbeatSender::Heartbeat() {
+  uint64_t now_ms = current_time_ms();
+  uint64_t interval = now_ms - last_heartbeat_at_ms_;
+  if (interval > RayConfig::instance().num_heartbeats_warning() *
+                     RayConfig::instance().raylet_heartbeat_period_milliseconds()) {
+    RAY_LOG(WARNING)
+        << "Last heartbeat was sent " << interval
+        << " ms ago. There might be resource pressure on this node. If heartbeat keeps "
+           "lagging, this node can be marked as dead mistakenly.";
+  }
+  last_heartbeat_at_ms_ = now_ms;
+  stats::HeartbeatReportMs.Record(interval);
+
+  auto heartbeat_data = std::make_shared<HeartbeatTableData>();
+  heartbeat_data->set_node_id(self_node_id_.Binary());
+  RAY_CHECK_OK(
+      gcs_client_->Nodes().AsyncReportHeartbeat(heartbeat_data, [](Status status) {
+        if (status.IsDisconnected()) {
+          RAY_LOG(FATAL) << "This node has beem marked as dead.";
+        }
+      }));
+}
+
 NodeManager::NodeManager(boost::asio::io_service &io_service, const NodeID &self_node_id,
                          const NodeManagerConfig &config, ObjectManager &object_manager,
                          std::shared_ptr<gcs::GcsClient> gcs_client,
@@ -175,7 +226,6 @@ NodeManager::NodeManager(boost::asio::io_service &io_service, const NodeID &self
             SendSpilledObjectRestorationRequestToRemoteNode(object_id, spilled_url,
                                                             node_id);
           }),
-      report_worker_backlog_(RayConfig::instance().report_worker_backlog()),
       last_local_gc_ns_(absl::GetCurrentTimeNanos()),
       local_gc_interval_ns_(RayConfig::instance().local_gc_interval_s() * 1e9),
       local_gc_min_interval_ns_(RayConfig::instance().local_gc_min_interval_s() * 1e9),
@@ -198,8 +248,8 @@ NodeManager::NodeManager(boost::asio::io_service &io_service, const NodeID &self
     SchedulingResources &local_resources = cluster_resource_map_[self_node_id_];
     cluster_resource_scheduler_ =
         std::shared_ptr<ClusterResourceScheduler>(new ClusterResourceScheduler(
-            self_node_id_.Binary(),
-            local_resources.GetTotalResources().GetResourceMap()));
+            self_node_id_.Binary(), local_resources.GetTotalResources().GetResourceMap(),
+            [this]() { return object_manager_.GetUsedMemory(); }));
 
     auto get_node_info_func = [this](const NodeID &node_id) {
       return gcs_client_->Nodes().Get(node_id);
@@ -245,8 +295,18 @@ NodeManager::NodeManager(boost::asio::io_service &io_service, const NodeID &self
   node_manager_server_.RegisterService(agent_manager_service_);
   node_manager_server_.Run();
 
-  auto options =
-      AgentManager::Options({self_node_id, ParseCommandLine(config.agent_command)});
+  worker_pool_.SetNodeManagerPort(GetServerPort());
+
+  auto agent_command_line = ParseCommandLine(config.agent_command);
+  for (auto &arg : agent_command_line) {
+    auto node_manager_port_position = arg.find(kNodeManagerPortPlaceholder);
+    if (node_manager_port_position != std::string::npos) {
+      arg.replace(node_manager_port_position, strlen(kNodeManagerPortPlaceholder),
+                  std::to_string(GetServerPort()));
+    }
+  }
+
+  auto options = AgentManager::Options({self_node_id, agent_command_line});
   agent_manager_.reset(
       new AgentManager(std::move(options),
                        /*delay_executor=*/
@@ -258,6 +318,8 @@ NodeManager::NodeManager(boost::asio::io_service &io_service, const NodeID &self
 }
 
 ray::Status NodeManager::RegisterGcs() {
+  // Start sending heartbeat here to ensure it happening after raylet being registered.
+  heartbeat_sender_.reset(new HeartbeatSender(self_node_id_, gcs_client_));
   auto on_node_change = [this](const NodeID &node_id, const GcsNodeInfo &data) {
     if (data.state() == GcsNodeInfo::ALIVE) {
       NodeAdded(data);
@@ -325,11 +387,6 @@ ray::Status NodeManager::RegisterGcs() {
   RAY_RETURN_NOT_OK(
       gcs_client_->Jobs().AsyncSubscribeAll(job_subscribe_handler, nullptr));
 
-  // Start sending heartbeats to the GCS.
-  last_heartbeat_at_ms_ = current_time_ms();
-  periodical_runner_.RunFnPeriodically(
-      [this] { Heartbeat(); },
-      RayConfig::instance().raylet_heartbeat_period_milliseconds());
   periodical_runner_.RunFnPeriodically(
       [this] {
         DumpDebugState();
@@ -415,29 +472,6 @@ void NodeManager::HandleJobFinished(const JobID &job_id, const JobTableData &job
       KillWorker(worker);
     }
   }
-}
-
-void NodeManager::Heartbeat() {
-  uint64_t now_ms = current_time_ms();
-  uint64_t interval = now_ms - last_heartbeat_at_ms_;
-  if (interval > RayConfig::instance().num_heartbeats_warning() *
-                     RayConfig::instance().raylet_heartbeat_period_milliseconds()) {
-    RAY_LOG(WARNING)
-        << "Last heartbeat was sent " << interval
-        << " ms ago. There might be resource pressure on this node. If heartbeat keeps "
-           "lagging, this node can be marked as dead mistakenly.";
-  }
-  last_heartbeat_at_ms_ = now_ms;
-  stats::HeartbeatReportMs.Record(interval);
-
-  auto heartbeat_data = std::make_shared<HeartbeatTableData>();
-  heartbeat_data->set_node_id(self_node_id_.Binary());
-  RAY_CHECK_OK(
-      gcs_client_->Nodes().AsyncReportHeartbeat(heartbeat_data, [](Status status) {
-        if (status.IsDisconnected()) {
-          RAY_LOG(FATAL) << "This node has beem marked as dead.";
-        }
-      }));
 }
 
 void NodeManager::ReportResourceUsage() {
@@ -1438,7 +1472,7 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
   rpc::Task task_message;
   task_message.mutable_task_spec()->CopyFrom(request.resource_spec());
   auto backlog_size = -1;
-  if (report_worker_backlog_) {
+  if (RayConfig::instance().report_worker_backlog()) {
     backlog_size = request.backlog_size();
   }
   Task task(task_message, backlog_size);
@@ -2605,17 +2639,20 @@ void NodeManager::HandleFormatGlobalMemoryInfo(
   auto replies = std::make_shared<std::vector<rpc::GetNodeStatsReply>>();
   auto local_request = std::make_shared<rpc::GetNodeStatsRequest>();
   auto local_reply = std::make_shared<rpc::GetNodeStatsReply>();
-  local_request->set_include_memory_info(true);
+  bool include_memory_info = request.include_memory_info();
+  local_request->set_include_memory_info(include_memory_info);
 
   unsigned int num_nodes = remote_node_manager_addresses_.size() + 1;
   rpc::GetNodeStatsRequest stats_req;
-  stats_req.set_include_memory_info(true);
+  stats_req.set_include_memory_info(include_memory_info);
 
-  auto store_reply = [replies, reply, num_nodes,
-                      send_reply_callback](const rpc::GetNodeStatsReply &local_reply) {
+  auto store_reply = [replies, reply, num_nodes, send_reply_callback,
+                      include_memory_info](const rpc::GetNodeStatsReply &local_reply) {
     replies->push_back(local_reply);
     if (replies->size() >= num_nodes) {
-      reply->set_memory_summary(FormatMemoryInfo(*replies));
+      if (include_memory_info) {
+        reply->set_memory_summary(FormatMemoryInfo(*replies));
+      }
       reply->mutable_store_stats()->CopyFrom(AccumulateStoreStats(*replies));
       send_reply_callback(Status::OK(), nullptr, nullptr);
     }
@@ -2654,6 +2691,12 @@ void NodeManager::TriggerGlobalGC() {
   should_global_gc_ = true;
   // We won't see our own request, so trigger local GC in the next heartbeat.
   should_local_gc_ = true;
+}
+
+void NodeManager::Stop() {
+  if (heartbeat_sender_) {
+    heartbeat_sender_.reset();
+  }
 }
 
 void NodeManager::RecordMetrics() {

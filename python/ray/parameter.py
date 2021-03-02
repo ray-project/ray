@@ -119,7 +119,7 @@ class RayParams:
                  redis_port=None,
                  redis_shard_ports=None,
                  object_manager_port=None,
-                 node_manager_port=None,
+                 node_manager_port=0,
                  gcs_server_port=None,
                  node_ip_address=None,
                  raylet_ip_address=None,
