@@ -1547,6 +1547,35 @@ void NodeManager::HandleDirectCallTaskUnblocked(
   }
 }
 
+void NodeManager::AsyncResolveObjects(
+    const std::shared_ptr<ClientConnection> &client,
+    const std::vector<rpc::ObjectReference> &required_object_refs,
+    const TaskID &current_task_id, bool ray_get, bool mark_worker_blocked) {
+  std::shared_ptr<WorkerInterface> worker = worker_pool_.GetRegisteredWorker(client);
+  if (!worker) {
+  } else {
+    // The client is a driver. Drivers do not hold resources, so we simply mark
+    // the task as blocked.
+    worker = worker_pool_.GetRegisteredDriver(client);
+  }
+
+  RAY_CHECK(worker);
+  // Mark the task as blocked.
+  if (mark_worker_blocked) {
+    worker->AddBlockedTaskId(current_task_id);
+  }
+
+  // Subscribe to the objects required by the task. These objects will be
+  // fetched and/or restarted as necessary, until the objects become local
+  // or are unsubscribed.
+  if (ray_get) {
+    dependency_manager_.StartOrUpdateGetRequest(worker->WorkerId(), required_object_refs);
+  } else {
+    dependency_manager_.StartOrUpdateWaitRequest(worker->WorkerId(),
+                                                 required_object_refs);
+  }
+}
+
 void NodeManager::AsyncResolveObjectsFinish(
     const std::shared_ptr<ClientConnection> &client, const TaskID &current_task_id,
     bool was_blocked) {
