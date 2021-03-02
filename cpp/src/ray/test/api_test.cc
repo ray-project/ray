@@ -160,14 +160,16 @@ TEST(RayApiTest, CompareWithFuture) {
 RAY_REGISTER(Plus1);
 
 TEST(RayApiTest, RayRegister) {
-  bool r = Router::Instance().RegisterHandler("Return1", Return1);
+  using namespace ray::api::internal;
+
+  bool r = Router::Instance().RegisterRemoteFunction("Return1", Return1);
   EXPECT_TRUE(r);
 
   /// Duplicate register
-  bool r1 = Router::Instance().RegisterHandler("Return1", Return1);
+  bool r1 = Router::Instance().RegisterRemoteFunction("Return1", Return1);
   EXPECT_TRUE(!r1);
 
-  bool r2 = Router::Instance().RegisterHandler("Plus1", Plus1);
+  bool r2 = Router::Instance().RegisterRemoteFunction("Plus1", Plus1);
   EXPECT_TRUE(!r2);
 
   /// Find and call the registered function.
