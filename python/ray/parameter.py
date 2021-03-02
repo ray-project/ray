@@ -279,8 +279,9 @@ class RayParams:
                 # The dict is not updated when it requires random ports.
                 pre_selected_ports["worker_ports"] = []
         else:
-            pre_selected_ports["worker_ports"] = (
-                self.worker_port_list.split(","))
+            pre_selected_ports["worker_ports"] = [
+                int(port) for port in self.worker_port_list.split(",")
+            ]
 
         # Update the pre selected port set.
         self.pre_selected_ports_set = set()
