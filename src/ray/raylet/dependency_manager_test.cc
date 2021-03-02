@@ -45,8 +45,7 @@ class MockObjectManager : public ObjectManagerInterface {
 class DependencyManagerTest : public ::testing::Test {
  public:
   DependencyManagerTest()
-      : object_manager_mock_(),
-        dependency_manager_(object_manager_mock_) {}
+      : object_manager_mock_(), dependency_manager_(object_manager_mock_) {}
 
   void AssertNoLeaks() {
     ASSERT_TRUE(dependency_manager_.required_objects_.empty());
