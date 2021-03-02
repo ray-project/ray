@@ -166,6 +166,10 @@ class ResourceSpec(
             object_store_memory = int(
                 avail_memory *
                 ray_constants.DEFAULT_OBJECT_STORE_MEMORY_PROPORTION)
+            # Cap by shm size by default to avoid low performance.
+            if sys.platform == "linux" or sys.platform == "linux2":
+                shm_avail = ray.utils.get_shared_memory_bytes()
+                object_store_memory = min(shm_avail, object_store_memory)
             # Cap memory to avoid memory waste and perf issues on large nodes
             if (object_store_memory >
                     ray_constants.DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES):
