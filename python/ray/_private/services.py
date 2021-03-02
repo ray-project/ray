@@ -1710,10 +1710,12 @@ def determine_plasma_store_config(object_store_memory,
                          "plasma_directory argument must be provided.")
 
     if object_store_memory < ray_constants.OBJECT_STORE_MINIMUM_MEMORY_BYTES:
-        raise ValueError("Attempting to cap object store memory usage at {} "
-                         "bytes, but the minimum allowed is {} bytes.".format(
-                             object_store_memory,
-                             ray_constants.OBJECT_STORE_MINIMUM_MEMORY_BYTES))
+        object_store_memory = ray_constants.OBJECT_STORE_MINIMUM_MEMORY_BYTES
+        logger.warning("Attempting to cap object store memory usage at {} "
+                       "bytes, but the minimum allowed is {} bytes. "
+                       "The minimum will be used.".format(
+                           object_store_memory,
+                           ray_constants.OBJECT_STORE_MINIMUM_MEMORY_BYTES))
 
     # Print the object store memory using two decimal places.
     logger.debug(

@@ -1118,7 +1118,7 @@ TEST_F(ClusterResourceSchedulerTest, ObjectStoreMemoryUsageTest) {
   NodeResources node_resources;
   std::unordered_map<std::string, double> initial_resources(
       {{"CPU", 1}, {"GPU", 2}, {"memory", 3}, {"object_store_memory", 10}});
-  int64_t used_object_store_memory = 125 * 1024 * 1024;
+  int64_t used_object_store_memory = 250 * 1024 * 1024;
   int64_t *ptr = &used_object_store_memory;
   ClusterResourceScheduler resource_scheduler("0", initial_resources,
                                               [&] { return *ptr; });
@@ -1138,7 +1138,7 @@ TEST_F(ClusterResourceSchedulerTest, ObjectStoreMemoryUsageTest) {
     ASSERT_EQ(total["object_store_memory"], 10.0);
   }
 
-  used_object_store_memory = 225 * 1024 * 1024;
+  used_object_store_memory = 450 * 1024 * 1024;
   {
     auto data = std::make_shared<rpc::ResourcesData>();
     resource_scheduler.FillResourceUsage(data);
