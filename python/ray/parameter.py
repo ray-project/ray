@@ -298,7 +298,6 @@ class RayParams:
                         "please make sure the same port is not used by "
                         "multiple components.")
                 self.pre_selected_ports_set.add(port)
-        return pre_selected_ports
 
     def _check_usage(self):
         if self.worker_port_list is not None:
