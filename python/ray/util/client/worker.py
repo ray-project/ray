@@ -181,7 +181,7 @@ class Worker:
         else:
             deadline = time.monotonic() + timeout
         out = []
-        for x in to_get:
+        for obj_ref in to_get:
             res = None
             # Implement non-blocking get with a short-polling loop. This allows
             # cancellation of gets via Ctrl-C, since we never block for long.
@@ -193,11 +193,11 @@ class Worker:
                             max(deadline - time.monotonic(), 0.001))
                     else:
                         op_timeout = MAX_BLOCKING_OPERATION_TIME_S
-                    res = self._get(x, op_timeout)
-                except GetTimeoutError as e:
+                    res = self._get(obj_ref, op_timeout)
+                except GetTimeoutError:
                     if deadline and time.monotonic() > deadline:
                         raise
-                    logger.debug("Internal retry for get {}".format(x))
+                    logger.debug("Internal retry for get {}".format(obj_ref))
             out.append(res)
         if single:
             out = out[0]

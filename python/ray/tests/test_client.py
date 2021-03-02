@@ -20,7 +20,7 @@ def test_interrupt_ray_get(call_ray_stop_only):
         @ray.remote
         def block():
             print("blocking run")
-            time.sleep(99999)
+            time.sleep(99)
 
         @ray.remote
         def fast():
@@ -35,11 +35,10 @@ def test_interrupt_ray_get(call_ray_stop_only):
 
         it = Interrupt()
         it.start()
-        try:
+        with pytest.raises(KeyboardInterrupt):
             ray.get(block.remote())
-        except KeyboardInterrupt:
-            pass
 
+        # Assert we can still get new items after the interrupt.
         assert ray.get(fast.remote()) == "ok"
 
 
