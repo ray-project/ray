@@ -265,10 +265,9 @@ Status CoreWorkerPlasmaStoreProvider::Get(
     for (int64_t i = start; i < batch_size && i < total_size; i++) {
       batch_ids.push_back(id_vector[start + i]);
     }
-    RAY_RETURN_NOT_OK(
-        FetchAndGetFromPlasmaStore(remaining, batch_ids, /*timeout_ms=*/0,
-                                   /*fetch_only=*/true, true,
-                                   ctx.GetCurrentTaskID(), results, got_exception));
+    RAY_RETURN_NOT_OK(FetchAndGetFromPlasmaStore(
+        remaining, batch_ids, /*timeout_ms=*/0,
+        /*fetch_only=*/true, true, ctx.GetCurrentTaskID(), results, got_exception));
   }
 
   // If all objects were fetched already, return.
@@ -306,10 +305,9 @@ Status CoreWorkerPlasmaStoreProvider::Get(
       RAY_RETURN_NOT_OK(raylet_client_->NotifyDirectCallTaskBlocked(
           RayConfig::instance().release_resources_during_plasma_fetch()));
     }
-    RAY_RETURN_NOT_OK(
-        FetchAndGetFromPlasmaStore(remaining, batch_ids, batch_timeout,
-                                   /*fetch_only=*/false, true,
-                                   ctx.GetCurrentTaskID(), results, got_exception));
+    RAY_RETURN_NOT_OK(FetchAndGetFromPlasmaStore(
+        remaining, batch_ids, batch_timeout,
+        /*fetch_only=*/false, true, ctx.GetCurrentTaskID(), results, got_exception));
     should_break = timed_out || *got_exception;
 
     if ((previous_size - remaining.size()) < batch_ids.size()) {
@@ -363,10 +361,9 @@ Status CoreWorkerPlasmaStoreProvider::Wait(
           RayConfig::instance().release_resources_during_plasma_fetch()));
     }
     const auto owner_addresses = reference_counter_->GetOwnerAddresses(id_vector);
-    RAY_RETURN_NOT_OK(
-        raylet_client_->Wait(id_vector, owner_addresses, num_objects, call_timeout,
-                             /*mark_worker_blocked*/ false,
-                             ctx.GetCurrentTaskID(), &result_pair));
+    RAY_RETURN_NOT_OK(raylet_client_->Wait(
+        id_vector, owner_addresses, num_objects, call_timeout,
+        /*mark_worker_blocked*/ false, ctx.GetCurrentTaskID(), &result_pair));
 
     if (result_pair.first.size() >= static_cast<size_t>(num_objects)) {
       should_break = true;
