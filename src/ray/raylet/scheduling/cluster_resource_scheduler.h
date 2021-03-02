@@ -436,6 +436,8 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   absl::flat_hash_map<int64_t, Node> nodes_;
   /// Identifier of local node.
   int64_t local_node_id_;
+  /// Internally maintained random number generator.
+  std::mt19937_64 gen_;
   /// Resources of local node.
   NodeResourceInstances local_resources_;
   /// Keep the mapping between node and resource IDs in string representation
