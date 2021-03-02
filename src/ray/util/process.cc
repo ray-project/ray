@@ -18,8 +18,12 @@
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN 1
 #endif
-#include <Psapi.h>  // EnumProcesses
+// clang-format off
+// Disable clang-format reorder includes to
+// make sure Psapi.h is included after Windows.h
 #include <Windows.h>
+#include <Psapi.h>  // EnumProcesses
+// clang-format on
 #include <Winternl.h>
 #include <process.h>
 #else
