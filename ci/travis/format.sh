@@ -9,6 +9,7 @@ FLAKE8_VERSION_REQUIRED="3.7.7"
 YAPF_VERSION_REQUIRED="0.23.0"
 SHELLCHECK_VERSION_REQUIRED="0.7.1"
 MYPY_VERSION_REQUIRED="0.782"
+PYTHON_VERSION_REQUIRED="3.7.9"
 
 check_command_exist() {
     VERSION=""
@@ -50,6 +51,7 @@ YAPF_VERSION=$(yapf --version | awk '{print $2}')
 SHELLCHECK_VERSION=$(shellcheck --version | awk '/^version:/ {print $2}')
 MYPY_VERSION=$(mypy --version | awk '{print $2}')
 GOOGLE_JAVA_FORMAT_JAR=/tmp/google-java-format-1.7-all-deps.jar
+PYTHON_VERSION=$(python --version | awk '{print $2}')
 
 # params: tool name, tool version, required version
 tool_version_check() {
@@ -62,6 +64,7 @@ tool_version_check "flake8" "$FLAKE8_VERSION" "$FLAKE8_VERSION_REQUIRED"
 tool_version_check "yapf" "$YAPF_VERSION" "$YAPF_VERSION_REQUIRED"
 tool_version_check "shellcheck" "$SHELLCHECK_VERSION" "$SHELLCHECK_VERSION_REQUIRED"
 tool_version_check "mypy" "$MYPY_VERSION" "$MYPY_VERSION_REQUIRED"
+tool_version_check "python" "$PYTHON_VERSION" "$PYTHON_VERSION_REQUIRED"
 
 if which clang-format >/dev/null; then
   CLANG_FORMAT_VERSION=$(clang-format --version | awk '{print $3}')
