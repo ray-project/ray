@@ -517,8 +517,6 @@ Status ServiceBasedNodeInfoAccessor::AsyncReportHeartbeat(
   request.mutable_heartbeat()->CopyFrom(*data_ptr);
   client_impl_->GetGcsRpcClient().ReportHeartbeat(
       request, [callback](const Status &status, const rpc::ReportHeartbeatReply &reply) {
-        RAY_LOG(INFO) << "wangtao heartbeat" << reply.status().code() << " message "
-                      << reply.status().message();
         if (callback) {
           callback(status);
         }
