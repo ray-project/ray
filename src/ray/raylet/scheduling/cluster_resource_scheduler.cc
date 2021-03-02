@@ -537,6 +537,7 @@ void ClusterResourceScheduler::DeleteResource(const std::string &node_id_string,
   };
   auto local_view = it->second.GetMutableLocalView();
   if (idx != -1) {
+    local_view->predefined_resources[idx].available = 0;
     local_view->predefined_resources[idx].total = 0;
 
     if (node_id == local_node_id_) {
