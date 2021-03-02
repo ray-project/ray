@@ -13,14 +13,18 @@ def global_gc():
     worker.core_worker.global_gc()
 
 
-def memory_summary(group_by="NODE_ADDRESS",
+def memory_summary(address,
+                   redis_password=ray_constants.REDIS_DEFAULT_PASSWORD,
+                   group_by="NODE_ADDRESS",
                    sort_by="OBJECT_SIZE",
                    line_wrap=True,
                    stats_only=False):
     from ray.new_dashboard.memory_utils import memory_summary
     if stats_only:
-        return get_store_stats()
-    return memory_summary(group_by, sort_by, line_wrap) + get_store_stats()
+        return get_store_stats(address, redis_password)
+    return (memory_summary(
+                address, redis_password, group_by, sort_by, line_wrap)
+            + get_store_stats(address, redis_password))
 
 
 def get_store_stats(node_manager_address=None, node_manager_port=None):
