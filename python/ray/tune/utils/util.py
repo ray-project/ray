@@ -303,6 +303,8 @@ def unflattened_lookup(flat_key, lookup, delimiter="/", **kwargs):
     Unflatten `flat_key` and iteratively look up in `lookup`. E.g.
     `flat_key="a/0/b"` will try to return `lookup["a"][0]["b"]`.
     """
+    if flat_key in lookup:
+        return lookup[flat_key]
     keys = deque(flat_key.split(delimiter))
     base = lookup
     while keys:
@@ -602,13 +604,16 @@ def validate_save_restore(trainable_cls,
     return True
 
 
-def detect_checkpoint_function(train_func, abort=False):
+def detect_checkpoint_function(train_func, abort=False, partial=False):
     """Use checkpointing if any arg has "checkpoint_dir" and args = 2"""
     func_sig = inspect.signature(train_func)
     validated = True
     try:
         # check if signature is func(config, checkpoint_dir=None)
-        func_sig.bind({}, checkpoint_dir="tmp/path")
+        if partial:
+            func_sig.bind_partial({}, checkpoint_dir="tmp/path")
+        else:
+            func_sig.bind({}, checkpoint_dir="tmp/path")
     except Exception as e:
         logger.debug(str(e))
         validated = False

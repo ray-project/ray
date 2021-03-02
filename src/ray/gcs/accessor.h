@@ -715,7 +715,8 @@ class PlacementGroupInfoAccessor {
   /// written to GCS.
   /// \return Status.
   virtual Status AsyncCreatePlacementGroup(
-      const PlacementGroupSpecification &placement_group_spec) = 0;
+      const PlacementGroupSpecification &placement_group_spec,
+      const StatusCallback &callback) = 0;
 
   /// Get a placement group data from GCS asynchronously by id.
   ///

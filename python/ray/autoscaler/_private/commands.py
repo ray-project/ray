@@ -31,7 +31,8 @@ from ray.autoscaler._private.util import validate_config, hash_runtime_conf, \
 from ray.autoscaler._private.providers import _get_node_provider, \
     _NODE_PROVIDERS, _PROVIDER_PRETTY_NAMES
 from ray.autoscaler.tags import TAG_RAY_NODE_KIND, TAG_RAY_LAUNCH_CONFIG, \
-    TAG_RAY_NODE_NAME, NODE_KIND_WORKER, NODE_KIND_HEAD, TAG_RAY_USER_NODE_TYPE
+    TAG_RAY_NODE_NAME, NODE_KIND_WORKER, NODE_KIND_HEAD, \
+    TAG_RAY_USER_NODE_TYPE, STATUS_UNINITIALIZED, TAG_RAY_NODE_STATUS
 from ray.autoscaler._private.cli_logger import cli_logger, cf
 from ray.autoscaler._private.updater import NodeUpdaterThread
 from ray.autoscaler._private.command_runner import set_using_login_shells, \
@@ -611,6 +612,7 @@ def get_or_create_head_node(config: Dict[str, Any],
             head_node_tags[TAG_RAY_LAUNCH_CONFIG] = launch_hash
             head_node_tags[TAG_RAY_NODE_NAME] = "ray-{}-head".format(
                 config["cluster_name"])
+            head_node_tags[TAG_RAY_NODE_STATUS] = STATUS_UNINITIALIZED
             provider.create_node(head_node_config, head_node_tags, 1)
             cli_logger.print("Launched a new head node")
 
@@ -1135,6 +1137,7 @@ def _get_head_node(config: Dict[str, Any],
 def get_local_dump_archive(stream: bool = False,
                            output: Optional[str] = None,
                            logs: bool = True,
+                           debug_state: bool = True,
                            pip: bool = True,
                            processes: bool = True,
                            processes_verbose: bool = False) -> Optional[str]:
@@ -1144,6 +1147,7 @@ def get_local_dump_archive(stream: bool = False,
 
     parameters = GetParameters(
         logs=logs,
+        debug_state=debug_state,
         pip=pip,
         processes=processes,
         processes_verbose=processes_verbose)
@@ -1174,6 +1178,7 @@ def get_cluster_dump_archive(cluster_config_file: Optional[str] = None,
                              local: Optional[bool] = None,
                              output: Optional[str] = None,
                              logs: bool = True,
+                             debug_state: bool = True,
                              pip: bool = True,
                              processes: bool = True,
                              processes_verbose: bool = False) -> Optional[str]:
@@ -1185,6 +1190,11 @@ def get_cluster_dump_archive(cluster_config_file: Optional[str] = None,
         content_str += \
             "  - The logfiles of your Ray session\n" \
             "    This usually includes Python outputs (stdout/stderr)\n"
+
+    if debug_state:
+        content_str += \
+            "  - Debug state information on your Ray cluster \n" \
+            "    e.g. number of workers, drivers, objects, etc.\n"
 
     if pip:
         content_str += "  - Your installed Python packages (`pip freeze`)\n"
@@ -1231,6 +1241,7 @@ def get_cluster_dump_archive(cluster_config_file: Optional[str] = None,
 
     parameters = GetParameters(
         logs=logs,
+        debug_state=debug_state,
         pip=pip,
         processes=processes,
         processes_verbose=processes_verbose)

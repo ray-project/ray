@@ -70,7 +70,7 @@ WorkerPool::WorkerPool(boost::asio::io_service &io_service, int num_workers_soft
       first_job_driver_wait_num_python_workers_(std::min(
           num_initial_python_workers_for_first_job, maximum_startup_concurrency)),
       num_initial_python_workers_for_first_job_(num_initial_python_workers_for_first_job),
-      kill_idle_workers_timer_(io_service) {
+      periodical_runner_(io_service) {
   RAY_CHECK(maximum_startup_concurrency > 0);
 #ifndef _WIN32
   // Ignore SIGCHLD signals. If we don't do this, then worker processes will
@@ -102,7 +102,11 @@ WorkerPool::WorkerPool(boost::asio::io_service &io_service, int num_workers_soft
       free_ports_->push(port);
     }
   }
-  ScheduleIdleWorkerKilling();
+  if (RayConfig::instance().kill_idle_workers_interval_ms() > 0) {
+    periodical_runner_.RunFnPeriodically(
+        [this] { TryKillingIdleWorkers(); },
+        RayConfig::instance().kill_idle_workers_interval_ms());
+  }
 }
 
 WorkerPool::~WorkerPool() {
@@ -122,6 +126,12 @@ WorkerPool::~WorkerPool() {
     proc.Kill();
     // NOTE: Avoid calling Wait() here. It fails with ECHILD, as SIGCHLD is disabled.
   }
+}
+
+// NOTE(kfstorm): The node manager cannot be passed via WorkerPool constructor because the
+// grpc server is started after the WorkerPool instance is constructed.
+void WorkerPool::SetNodeManagerPort(int node_manager_port) {
+  node_manager_port_ = node_manager_port;
 }
 
 Process WorkerPool::StartWorkerProcess(
@@ -215,6 +225,19 @@ Process WorkerPool::StartWorkerProcess(
         worker_command_args.insert(worker_command_args.end(), options.begin(),
                                    options.end());
       }
+      continue;
+    }
+    RAY_CHECK(node_manager_port_ != 0)
+        << "Node manager port is not set yet. This shouldn't happen unless we are trying "
+           "to start a worker process before node manager server is started. In this "
+           "case, it's a bug and it should be fixed.";
+    auto node_manager_port_position = token.find(kNodeManagerPortPlaceholder);
+    if (node_manager_port_position != std::string::npos) {
+      auto replaced_token = token;
+      replaced_token.replace(node_manager_port_position,
+                             strlen(kNodeManagerPortPlaceholder),
+                             std::to_string(node_manager_port_));
+      worker_command_args.push_back(replaced_token);
       continue;
     }
 
@@ -612,20 +635,6 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
     int64_t now = current_time_ms();
     idle_of_all_languages_.emplace_back(worker, now);
     idle_of_all_languages_map_[worker] = now;
-  }
-}
-
-void WorkerPool::ScheduleIdleWorkerKilling() {
-  if (RayConfig::instance().kill_idle_workers_interval_ms() > 0) {
-    kill_idle_workers_timer_.expires_from_now(boost::posix_time::milliseconds(
-        RayConfig::instance().kill_idle_workers_interval_ms()));
-    kill_idle_workers_timer_.async_wait([this](const boost::system::error_code &error) {
-      if (error == boost::asio::error::operation_aborted) {
-        return;
-      }
-      TryKillingIdleWorkers();
-      ScheduleIdleWorkerKilling();
-    });
   }
 }
 

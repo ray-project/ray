@@ -13,9 +13,17 @@ def global_gc():
     worker.core_worker.global_gc()
 
 
-def memory_summary(node_manager_address=None,
-                   node_manager_port=None,
+def memory_summary(group_by="NODE_ADDRESS",
+                   sort_by="OBJECT_SIZE",
+                   line_wrap=True,
                    stats_only=False):
+    from ray.new_dashboard.memory_utils import memory_summary
+    if stats_only:
+        return get_store_stats()
+    return memory_summary(group_by, sort_by, line_wrap) + get_store_stats()
+
+
+def get_store_stats(node_manager_address=None, node_manager_port=None):
     """Returns a formatted string describing memory usage in the cluster."""
 
     import grpc
@@ -40,7 +48,41 @@ def memory_summary(node_manager_address=None,
     )
     stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
     reply = stub.FormatGlobalMemoryInfo(
-        node_manager_pb2.FormatGlobalMemoryInfoRequest(), timeout=30.0)
+        node_manager_pb2.FormatGlobalMemoryInfoRequest(
+            include_memory_info=False),
+        timeout=30.0)
+    return store_stats_summary(reply)
+
+
+def node_stats(node_manager_address=None,
+               node_manager_port=None,
+               include_memory_info=True):
+    """Returns NodeStats object describing memory usage in the cluster."""
+
+    import grpc
+    from ray.core.generated import node_manager_pb2
+    from ray.core.generated import node_manager_pb2_grpc
+
+    # We can ask any Raylet for the global memory info.
+    assert (node_manager_address is not None and node_manager_port is not None)
+    raylet_address = "{}:{}".format(node_manager_address, node_manager_port)
+    channel = grpc.insecure_channel(
+        raylet_address,
+        options=[
+            ("grpc.max_send_message_length", MAX_MESSAGE_LENGTH),
+            ("grpc.max_receive_message_length", MAX_MESSAGE_LENGTH),
+        ],
+    )
+    stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
+    node_stats = stub.GetNodeStats(
+        node_manager_pb2.GetNodeStatsRequest(
+            include_memory_info=include_memory_info),
+        timeout=30.0)
+    return node_stats
+
+
+def store_stats_summary(reply):
+    """Returns formatted string describing object store stats in all nodes."""
     store_summary = "--- Aggregate object store stats across all nodes ---\n"
     store_summary += (
         "Plasma memory usage {} MiB, {} objects, {}% full\n".format(
@@ -68,9 +110,7 @@ def memory_summary(node_manager_address=None,
     if reply.store_stats.consumed_bytes > 0:
         store_summary += ("Objects consumed by Ray tasks: {} MiB.".format(
             int(reply.store_stats.consumed_bytes / (1024 * 1024))))
-    if stats_only:
-        return store_summary
-    return reply.memory_summary + "\n" + store_summary
+    return store_summary
 
 
 def free(object_refs, local_only=False):

@@ -14,8 +14,6 @@
 
 #pragma once
 
-#include <boost/asio/steady_timer.hpp>
-
 // clang-format off
 #include "ray/rpc/grpc_client.h"
 #include "ray/rpc/node_manager/node_manager_server.h"
@@ -85,12 +83,8 @@ struct NodeManagerConfig {
   WorkerCommandMap worker_commands;
   /// The command used to start agent.
   std::string agent_command;
-  /// The time between heartbeats in milliseconds.
-  uint64_t heartbeat_period_ms;
   /// The time between reports resources in milliseconds.
   uint64_t report_resources_period_ms;
-  /// The time between debug dumps in milliseconds, or -1 to disable.
-  uint64_t debug_dump_period_ms;
   /// Whether to enable fair queueing between task classes in raylet.
   bool fair_queueing_enabled;
   /// Whether to enable automatic object deletion for object spilling.
@@ -103,12 +97,41 @@ struct NodeManagerConfig {
   std::string session_dir;
   /// The raylet config list of this node.
   std::string raylet_config;
-  // The time between record metrics in milliseconds, or -1 to disable.
+  // The time between record metrics in milliseconds, or 0 to disable.
   uint64_t record_metrics_period_ms;
   // The number if max io workers.
   int max_io_workers;
   // The minimum object size that can be spilled by each spill operation.
   int64_t min_spilling_size;
+};
+
+class HeartbeatSender {
+ public:
+  /// Create a heartbeat sender.
+  ///
+  /// \param self_node_id ID of this node.
+  /// \param gcs_client GCS client to send heartbeat.
+  HeartbeatSender(NodeID self_node_id, std::shared_ptr<gcs::GcsClient> gcs_client);
+
+  ~HeartbeatSender();
+
+ private:
+  /// Send heartbeats to the GCS.
+  void Heartbeat();
+
+  /// ID of this node.
+  NodeID self_node_id_;
+  /// A client connection to the GCS.
+  std::shared_ptr<gcs::GcsClient> gcs_client_;
+  /// The io service used in heartbeat loop in case of it being
+  /// blocked by main thread.
+  boost::asio::io_service heartbeat_io_service_;
+  /// Heartbeat thread, using with heartbeat_io_service_.
+  std::unique_ptr<std::thread> heartbeat_thread_;
+  std::unique_ptr<PeriodicalRunner> heartbeat_runner_;
+  /// The time that the last heartbeat was sent at. Used to make sure we are
+  /// keeping up with heartbeats.
+  uint64_t last_heartbeat_at_ms_;
 };
 
 class NodeManager : public rpc::NodeManagerServiceHandler,
@@ -166,6 +189,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// object ids.
   void TriggerGlobalGC();
 
+  /// Stop this node manager.
+  void Stop();
+
  private:
   /// Methods for handling nodes.
 
@@ -203,9 +229,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// This is called whenever there's an update to the resources on the local node.
   /// \return Void.
   void TryLocalInfeasibleTaskScheduling();
-
-  /// Send heartbeats to the GCS.
-  void Heartbeat();
 
   /// Report resource usage to the GCS.
   void ReportResourceUsage();
@@ -690,8 +713,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// \param readyIds: The tasks which are now ready to be dispatched.
   void TasksUnblocked(const std::vector<TaskID> &ready_ids) override;
 
-  /// Populate the relevant parts of the heartbeat table. This is intended for
-  /// sending raylet <-> gcs heartbeats. In particular, this should fill in
+  /// Populate the relevant parts of the resource usage. This is intended for
+  /// sending resource usage from raylet to gcs. In particular, this should fill in
   /// resource_load and resource_load_by_shape.
   ///
   /// \param Output parameter. `resource_load` and `resource_load_by_shape` are the only
@@ -778,6 +801,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// ID of this node.
   NodeID self_node_id_;
   boost::asio::io_service &io_service_;
+  /// Class to send heartbeat to GCS.
+  std::unique_ptr<HeartbeatSender> heartbeat_sender_;
   ObjectManager &object_manager_;
   /// A Plasma object store client. This is used for creating new objects in
   /// the object store (e.g., for actor tasks that can't be run because the
@@ -787,16 +812,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   std::shared_ptr<gcs::GcsClient> gcs_client_;
   /// The object table. This is shared with the object manager.
   std::shared_ptr<ObjectDirectoryInterface> object_directory_;
-  /// The timer used to send heartbeats.
-  boost::asio::steady_timer heartbeat_timer_;
-  /// The period used for the heartbeat timer.
-  std::chrono::milliseconds heartbeat_period_;
-  /// The timer used to report resources.
-  boost::asio::steady_timer report_resources_timer_;
+  /// The runner to run function periodically.
+  PeriodicalRunner periodical_runner_;
   /// The period used for the resources report timer.
-  std::chrono::milliseconds report_resources_period_;
-  /// The period between debug state dumps.
-  int64_t debug_dump_period_;
+  uint64_t report_resources_period_ms_;
   /// Whether to enable fair queueing between task classes in raylet.
   bool fair_queueing_enabled_;
   /// Incremented each time we encounter a potential resource deadlock condition.
@@ -806,17 +825,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   bool recorded_metrics_ = false;
   /// The path to the ray temp dir.
   std::string temp_dir_;
-  /// The timer used to get profiling information from the object manager and
-  /// push it to the GCS.
-  boost::asio::steady_timer object_manager_profile_timer_;
-  /// The time that the last heartbeat was sent at. Used to make sure we are
-  /// keeping up with heartbeats.
-  uint64_t last_heartbeat_at_ms_;
-  /// The time that the last debug string was logged to the console.
-  uint64_t last_debug_dump_at_ms_;
-  /// The number of heartbeats that we should wait before sending the
-  /// next load report.
-  uint8_t num_heartbeats_before_load_report_;
   /// Initial node manager configuration.
   const NodeManagerConfig initial_config_;
   /// The resources (and specific resource IDs) that are currently available.
@@ -870,14 +878,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// lease on.
   absl::flat_hash_map<WorkerID, std::vector<WorkerID>> leased_workers_by_owner_;
 
-  /// Whether to report the worker's backlog size in the GCS heartbeat.
-  const bool report_worker_backlog_;
-
-  /// Whether to trigger global GC in the next heartbeat. This will broadcast
+  /// Whether to trigger global GC in the next resource usage report. This will broadcast
   /// a global GC message to all raylets except for this one.
   bool should_global_gc_ = false;
 
-  /// Whether to trigger local GC in the next heartbeat. This will trigger gc
+  /// Whether to trigger local GC in the next resource usage report. This will trigger gc
   /// on all local workers of this raylet.
   bool should_local_gc_ = false;
 
@@ -915,7 +920,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// Fields that are used to report metrics.
   /// The period between debug state dumps.
-  int64_t record_metrics_period_;
+  uint64_t record_metrics_period_ms_;
 
   /// Last time metrics are recorded.
   uint64_t metrics_last_recorded_time_ms_;

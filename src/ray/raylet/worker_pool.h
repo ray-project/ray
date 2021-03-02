@@ -28,6 +28,7 @@
 #include "ray/common/task/task_common.h"
 #include "ray/gcs/gcs_client.h"
 #include "ray/raylet/worker.h"
+#include "ray/util/periodical_runner.h"
 
 namespace ray {
 
@@ -121,6 +122,10 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
 
   /// Destructor responsible for freeing a set of workers owned by this class.
   virtual ~WorkerPool();
+
+  /// Set the node manager port.
+  /// \param node_manager_port The port Raylet uses for listening to incoming connections.
+  void SetNodeManagerPort(int node_manager_port);
 
   /// Handles the event that a job is started.
   ///
@@ -437,9 +442,6 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// reasonable size.
   void TryKillingIdleWorkers();
 
-  /// Schedule the periodic killing of idle workers.
-  void ScheduleIdleWorkerKilling();
-
   /// Get all workers of the given process.
   ///
   /// \param process The process of workers.
@@ -477,6 +479,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// Keeps track of unused ports that newly-created workers can bind on.
   /// If null, workers will not be passed ports and will choose them randomly.
   std::unique_ptr<std::queue<int>> free_ports_;
+  /// The port Raylet uses for listening to incoming connections.
+  int node_manager_port_ = 0;
   /// A client connection to the GCS.
   std::shared_ptr<gcs::GcsClient> gcs_client_;
   /// The callback that will be triggered once it times out to start a worker.
@@ -512,8 +516,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   std::unordered_map<std::shared_ptr<WorkerInterface>, int64_t>
       idle_of_all_languages_map_;
 
-  /// The timer to trigger idle worker killing.
-  boost::asio::deadline_timer kill_idle_workers_timer_;
+  /// The runner to run function periodically.
+  PeriodicalRunner periodical_runner_;
 };
 
 }  // namespace raylet
