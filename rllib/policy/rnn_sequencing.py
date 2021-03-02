@@ -196,14 +196,14 @@ def chop_into_sequences(*,
     """Truncate and pad experiences into fixed-length sequences.
 
     Args:
+        feature_columns (list): List of arrays containing features.
+        state_columns (list): List of arrays containing LSTM state values.
+        max_seq_len (int): Max length of sequences before truncation.
         episode_ids (List[EpisodeID]): List of episode ids for each step.
         unroll_ids (List[UnrollID]): List of identifiers for the sample batch.
             This is used to make sure sequences are cut between sample batches.
         agent_indices (List[AgentID]): List of agent ids for each step. Note
             that this has to be combined with episode_ids for uniqueness.
-        feature_columns (list): List of arrays containing features.
-        state_columns (list): List of arrays containing LSTM state values.
-        max_seq_len (int): Max length of sequences before truncation.
         dynamic_max (bool): Whether to dynamically shrink the max seq len.
             For example, if max len is 20 and the actual max seq len in the
             data is 7, it will be shrunk to 7.
@@ -308,3 +308,120 @@ def chop_into_sequences(*,
         seq_lens = seq_lens[permutation]
 
     return feature_sequences, initial_states, seq_lens
+
+
+def timeslice_along_seq_lens_with_overlap(
+        sample_batch,
+        seq_lens=None,
+        zero_pad_max_seq_len=0,
+        pre_overlap=0,
+        zero_init_states=True) -> List["SampleBatch"]:
+    """Slices batch along `seq_lens` (each seq-len item produces one batch).
+
+    Asserts that seq_lens is given or sample_batch.seq_lens is not None.
+
+    Args:
+        sample_batch (SampleBatch): The SampleBatch to timeslice.
+        seq_lens (Optional[List[int]]): An optional list of seq_lens to slice
+            at. If None, use `sample_batch.seq_lens`.
+        zero_pad_max_seq_len (int): If >0, already zero-pad the resulting
+            slices up to this length. NOTE: This max-len will include the
+            additional timesteps gained via setting pre_overlap or
+            post_overlap > 0 (see Example).
+        pre_overlap (int): If >0, will overlap each two consecutive slices by
+            this many timesteps (toward the left side). This will cause
+            zero-padding at the very beginning of the batch.
+        zero_init_states (bool): Whether initial states should always be
+            zero'd. If False, will use the state_outs of the batch to
+            populate state_in values.
+
+    Returns:
+        List[SampleBatch]: The list of (new) SampleBatches.
+
+    Examples:
+        assert seq_lens == [5, 5, 2]
+        assert sample_batch.count == 12
+        # self = 0 1 2 3 4 | 5 6 7 8 9 | 10 11 <- timesteps
+        slices = timeslices_along_seq_lens(
+            zero_pad_max_seq_len=10,
+            pre_overlap=3)
+        # Z = zero padding (at beginning or end).
+        #             |pre (3)|     seq     | max-seq-len (up to 10)
+        # slices[0] = | Z Z Z |  0  1 2 3 4 | Z Z
+        # slices[1] = | 2 3 4 |  5  6 7 8 9 | Z Z
+        # slices[2] = | 7 8 9 | 10 11 Z Z Z | Z Z
+        # Note that `zero_pad_max_seq_len=10` includes the 3 pre-overlaps
+        #  count (makes sure each slice has exactly length 10).
+    """
+    if seq_lens is None:
+        seq_lens = sample_batch.seq_lens
+    assert seq_lens is not None and seq_lens != [], \
+        "Cannot timeslice along `seq_lens` when `seq_lens` is empty or None!"
+    # Generate n slices based on self.seq_lens.
+    start = 0
+    slices = []
+    for seq_len in seq_lens:
+        begin = start - pre_overlap
+        end = start + seq_len  # + post_overlap
+        slices.append((begin, end))
+        start += seq_len
+
+    timeslices = []
+    for begin, end in slices:
+        zero_length = None
+        data_begin = 0
+        zero_init_states_ = zero_init_states
+        if begin < 0:
+            zero_length = -begin
+            data_begin = 0
+            zero_init_states_ = True
+        else:
+            eps_ids = sample_batch[SampleBatch.EPS_ID][begin if begin >= 0 else
+                                                       0:end]
+            is_last_episode_ids = eps_ids == eps_ids[-1]
+            if is_last_episode_ids[0] is not True:
+                zero_length = int(sum(1.0 - is_last_episode_ids))
+                data_begin = begin + zero_length
+                zero_init_states_ = True
+
+        if zero_length is not None:
+            data = {
+                k: np.concatenate([
+                    np.zeros(
+                        shape=(zero_length, ) + v.shape[1:], dtype=v.dtype),
+                    v[data_begin:end]
+                ])
+                for k, v in sample_batch.data.items()
+            }
+        else:
+            data = {k: v[begin:end] for k, v in sample_batch.data.items()}
+
+        if zero_init_states_:
+            i = 0
+            key = "state_in_{}".format(i)
+            while key in data:
+                data[key] = np.zeros_like(sample_batch.data[key][0:1])
+                del data["state_out_{}".format(i)]
+                i += 1
+                key = "state_in_{}".format(i)
+        # TODO: This will not work with attention nets as their state_outs are
+        #  not compatible with state_ins.
+        else:
+            i = 0
+            key = "state_in_{}".format(i)
+            while key in data:
+                data[key] = sample_batch.data["state_out_{}".format(i)][
+                    begin - 1:begin]
+                del data["state_out_{}".format(i)]
+                i += 1
+                key = "state_in_{}".format(i)
+
+        timeslices.append(
+            SampleBatch(data, _seq_lens=[end - begin], _dont_check_lens=True))
+
+    # Zero-pad each slice if necessary.
+    if zero_pad_max_seq_len > 0:
+        for ts in timeslices:
+            ts.zero_pad(max_seq_len=zero_pad_max_seq_len, exclude_states=True)
+
+    return timeslices

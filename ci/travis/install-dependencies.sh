@@ -324,7 +324,7 @@ install_dependencies() {
 
   # Additional Tune/SGD/Doc test dependencies.
   if [ "${TUNE_TESTING-}" = 1 ] || [ "${SGD_TESTING-}" = 1 ] || [ "${DOC_TESTING-}" = 1 ]; then
-    pip install -r "${WORKSPACE_DIR}"/python/requirements/requirements_tune.txt
+    pip install --use-deprecated=legacy-resolver -r "${WORKSPACE_DIR}"/python/requirements/requirements_tune.txt
   fi
 
   # For Tune, install upstream dependencies.

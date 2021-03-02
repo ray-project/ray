@@ -55,6 +55,7 @@ from ray.includes.common cimport (
     CPlacementStrategy,
     CRayFunction,
     CWorkerType,
+    CJobConfig,
     move,
     LANGUAGE_CPP,
     LANGUAGE_JAVA,
@@ -943,16 +944,17 @@ cdef class CoreWorker:
                     c_object_ids, &results))
         return RayObjectsToDataMetadataPairs(results)
 
-    def object_exists(self, ObjectRef object_ref):
+    def object_exists(self, ObjectRef object_ref, memory_store_only=False):
         cdef:
             c_bool has_object
+            c_bool is_in_plasma
             CObjectID c_object_id = object_ref.native()
 
         with nogil:
             check_status(CCoreWorkerProcess.GetCoreWorker().Contains(
-                c_object_id, &has_object))
+                c_object_id, &has_object, &is_in_plasma))
 
-        return has_object
+        return has_object and (not memory_store_only or not is_in_plasma)
 
     cdef _create_put_buffer(self, shared_ptr[CBuffer] &metadata,
                             size_t data_size, ObjectRef object_ref,
@@ -1648,6 +1650,13 @@ cdef class CoreWorker:
         CCoreWorkerProcess.GetCoreWorker().SetResource(
             resource_name.encode("ascii"), capacity,
             CNodeID.FromBinary(client_id.binary()))
+
+    def get_job_config(self):
+        cdef CJobConfig c_job_config = \
+            CCoreWorkerProcess.GetCoreWorker().GetJobConfig()
+        job_config = ray.gcs_utils.JobConfig()
+        job_config.ParseFromString(c_job_config.SerializeAsString())
+        return job_config
 
 cdef void async_callback(shared_ptr[CRayObject] obj,
                          CObjectID object_ref,

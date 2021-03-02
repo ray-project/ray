@@ -292,19 +292,21 @@ This requires you to implement ``Trainable.reset_config``, which provides a new 
 Advanced Resource Allocation
 ----------------------------
 
-Trainables can themselves be distributed. If your trainable function / class creates further Ray actors or tasks that also consume CPU / GPU resources, you will want to set ``extra_cpu`` or ``extra_gpu`` inside ``tune.run`` to reserve extra resource slots. For example, if a trainable class requires 1 GPU itself, but also launches 4 actors, each using another GPU, then you should set ``"gpu": 1, "extra_gpu": 4``.
+Trainables can themselves be distributed. If your trainable function / class creates further Ray actors or tasks that also consume CPU / GPU resources, you will want to add more bundles to the :class:`PlacementGroupFactory` to reserve extra resource slots. For example, if a trainable class requires 1 GPU itself, but also launches 4 actors, each using another GPU, then you should use this:
 
 .. code-block:: python
-   :emphasize-lines: 4-8
+   :emphasize-lines: 4-10
 
     tune.run(
         my_trainable,
         name="my_trainable",
-        resources_per_trial={
-            "cpu": 1,
-            "gpu": 1,
-            "extra_gpu": 4
-        }
+        resources_per_trial=tune.PlacementGroupFactory([
+            {"CPU": 1, "GPU": 1},
+            {"GPU": 1},
+            {"GPU": 1},
+            {"GPU": 1},
+            {"GPU": 1}
+        ])
     )
 
 The ``Trainable`` also provides the ``default_resource_requests`` interface to automatically declare the ``resources_per_trial`` based on the given configuration.
@@ -375,10 +377,24 @@ Ray also offers lightweight integrations to distribute your TensorFlow training 
 .. autofunction:: ray.tune.integration.tensorflow.DistributedTrainableCreator
    :noindex:
 
+.. _tune-durable-trainable:
+
 tune.DurableTrainable
 ---------------------
 
+
+Tune provides a :func:`ray.tune.durable` wrapper that can be used to convert any kind of trainable
+to a ``DurableTrainable``, including pre-registered RLLib trainers and :ref:`function trainables <tune-function-api>`.
+
+
+The :class:`DurableTrainable <ray.tune.DurableTrainable>` syncs trial logs and checkpoints to cloud storage (via the `upload_dir`). This is especially
+useful when training a large number of distributed trials, as logs and checkpoints are otherwise synchronized
+via SSH, which quickly can become a performance bottleneck. The :class:`DurableTrainable <ray.tune.DurableTrainable>` class inherits from
+:class:`Trainable <ray.tune.Trainable>` and thus can be extended like the base class. 
+
 .. autoclass:: ray.tune.DurableTrainable
+
+.. autofunction:: ray.tune.durable
 
 
 StatusReporter

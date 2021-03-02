@@ -57,12 +57,16 @@ DEFAULT_CONFIG = with_common_config({
     "timesteps_per_iteration": 1000,
     # Update the target network every `target_network_update_freq` steps.
     "target_network_update_freq": 500,
+
     # === Replay buffer ===
     # Size of the replay buffer. Note that if async_updates is set, then
     # each worker will have a replay buffer of this size.
     "buffer_size": 50000,
+    # The number of contiguous environment steps to replay at once. This may
+    # be set to greater than 1 to support recurrent models.
+    "replay_sequence_length": 1,
     # Whether to LZ4 compress observations
-    "compress_observations": True,
+    "compress_observations": False,
 
     # === Optimization ===
     # Learning rate for adam optimizer

@@ -45,8 +45,8 @@ class LeasePolicyInterface {
   virtual ~LeasePolicyInterface() {}
 };
 
-typedef std::function<absl::optional<rpc::Address>(const NodeID &node_id)>
-    NodeAddrFactory;
+using NodeAddrFactory =
+    std::function<absl::optional<rpc::Address>(const NodeID &node_id)>;
 
 /// Class used by the core worker to implement a locality-aware lease policy for
 /// picking a worker node for a lease request. This class is not thread-safe.

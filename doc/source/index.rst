@@ -193,6 +193,7 @@ Papers
 - `Ray 1.0 Architecture whitepaper`_ **(new)**
 - `Ray Design Patterns`_ **(new)**
 - `RLlib paper`_
+- `RLlib flow paper`_
 - `Tune paper`_
 
 *Older papers:*
@@ -205,6 +206,7 @@ Papers
 .. _`Ray paper`: https://arxiv.org/abs/1712.05889
 .. _`Ray HotOS paper`: https://arxiv.org/abs/1703.03924
 .. _`RLlib paper`: https://arxiv.org/abs/1712.09381
+.. _`RLlib flow paper`: https://arxiv.org/abs/2011.12719
 .. _`Tune paper`: https://arxiv.org/abs/1807.05118
 
 .. toctree::
@@ -245,11 +247,13 @@ Papers
    :caption: Ray Serve
 
    serve/index.rst
+   serve/tutorial.rst
    serve/core-apis.rst
    serve/deployment.rst
    serve/ml-models.rst
    serve/advanced-traffic.rst
    serve/advanced.rst
+   serve/performance.rst
    serve/architecture.rst
    serve/tutorials/index.rst
    serve/faq.rst

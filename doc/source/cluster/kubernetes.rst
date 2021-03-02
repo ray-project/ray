@@ -418,7 +418,7 @@ The following command submits a Job which executes an `example Ray program`_.
 
 .. code-block:: yaml
 
-  $ kubectl create -f ray/python/ray/autoscaler/kubernetes/job-example.yaml
+  $ kubectl create -f ray/doc/kubernetes/job-example.yaml
 
 The program executed by the Job waits for three Ray nodes to connect and then tests object transfer
 between the nodes. Note that the program uses the environment variables
@@ -463,7 +463,7 @@ the following:
   example-cluster-ray-worker-zvglb   1/1     Running   0          11m
 
 .. _`environment variables`: https://kubernetes.io/docs/concepts/services-networking/service/#environment-variables
-.. _`example Ray program`: https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/kubernetes/example_scripts/job_example.py
+.. _`example Ray program`: https://github.com/ray-project/ray/blob/master/doc/kubernetes/example_scripts/job_example.py
 
 
 Using Ray Client to connect from outside the Kubernetes cluster
@@ -491,7 +491,7 @@ Then open a new shell and try out a sample program:
 
 .. code-block:: shell
 
-  $ python ray/python/ray/autoscaler/kubernetes/example_scripts/run_local_example.py
+  $ python ray/doc/kubernetes/example_scripts/run_local_example.py
 
 The program in this example uses ``ray.util.connect(127.0.0.1:10001)`` to connect to the Ray cluster.
 
@@ -510,7 +510,13 @@ It is also possible to execute a Ray program on the Ray head node.
 
 .. code-block:: shell
 
- $ kubectl -n ray exec example-cluster-ray-head-5455bb66c9-7l6xj -- python /home/ray/anaconda3/lib/python3.7/site-packages/ray/autoscaler/kubernetes/example_scripts/run_on_head.py
+ # Copy the test script onto the head node.
+ $ kubectl -n ray cp ray/doc/kubernetes/example_scripts/run_on_head.py example-cluster-ray-head-p9mfh:/home/ray
+
+ # Run the example program on the head node.
+ $ kubectl -n ray exec example-cluster-ray-head-p9mfh -- python /home/ray/run_on_head.py
+ # You should see repeated output for 10 iterations and then 'Success!'
+
 
 
 Alternatively, you can run tasks interactively on the cluster by connecting a remote
@@ -522,7 +528,7 @@ shell to one of the pods.
   $ kubectl -n ray exec -it example-cluster-ray-head-5455bb66c9-7l6xj -- bash
 
   # Run the example program on the head node.
-  root@ray-head-6f566446c-5rdmb:/# python /home/ray/anaconda3/lib/python3.7/site-packages/ray/autoscaler/kubernetes/example_scripts/run_on_head.py
+  root@ray-head-6f566446c-5rdmb:/# python /home/ray/run_on_head.py
   # You should see repeated output for 10 iterations and then 'Success!'
 
 
@@ -531,7 +537,7 @@ The program in this example uses ``ray.init(address="auto")`` to connect to the 
 Accessing the Dashboard
 -----------------------
 
-The Ray Dashboard can accessed locally using ``kubectl port-forward``.
+The Ray Dashboard can be accessed locally using ``kubectl port-forward``.
 
 .. code-block:: shell
 

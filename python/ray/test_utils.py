@@ -10,6 +10,7 @@ import socket
 import math
 
 from contextlib import redirect_stdout, redirect_stderr
+import yaml
 
 import ray
 import ray._private.services
@@ -123,6 +124,24 @@ def wait_for_pid_to_exit(pid, timeout=20):
         time.sleep(0.1)
     raise RayTestTimeoutException(
         f"Timed out while waiting for process {pid} to exit.")
+
+
+def wait_for_children_names_of_pid(pid, children_names, timeout=20):
+    p = psutil.Process(pid)
+    start_time = time.time()
+    children_names = set(children_names)
+    not_found_children = []
+    children = []
+    while time.time() - start_time < timeout:
+        children = p.children(recursive=False)
+        not_found_children = set(children_names) - {c.name() for c in children}
+        if len(not_found_children) == 0:
+            return
+        time.sleep(0.1)
+    raise RayTestTimeoutException(
+        "Timed out while waiting for process {} children to start "
+        "({} not found from children {}).".format(pid, not_found_children,
+                                                  children))
 
 
 def wait_for_children_of_pid(pid, num_children=1, timeout=20):
@@ -479,3 +498,13 @@ def fetch_prometheus(prom_addresses):
                         components_dict[address].add(
                             sample.labels["Component"])
     return components_dict, metric_names, metric_samples
+
+
+def load_test_config(config_file_name):
+    """Loads a config yaml from tests/test_cli_patterns."""
+    here = os.path.realpath(__file__)
+    parent = os.path.dirname(here)
+    config_path = os.path.join(parent, "tests/test_cli_patterns",
+                               config_file_name)
+    config = yaml.safe_load(open(config_path).read())
+    return config

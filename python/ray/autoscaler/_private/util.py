@@ -99,6 +99,7 @@ def prepare_config(config):
     with_defaults = fillout_defaults(config)
     merge_setup_commands(with_defaults)
     validate_docker_config(with_defaults)
+    fill_node_type_max_workers(with_defaults)
     return with_defaults
 
 
@@ -142,6 +143,17 @@ def merge_setup_commands(config):
     config["worker_setup_commands"] = (
         config["setup_commands"] + config["worker_setup_commands"])
     return config
+
+
+def fill_node_type_max_workers(config):
+    """Sets default per-node max workers to global max_workers.
+
+    This equivalent to setting the default per-node max workers to infinity,
+    with the only upper constraint coming from the global max_workers.
+    """
+    assert "max_workers" in config, "Global max workers should be set."
+    for node_type in config["available_node_types"].values():
+        node_type.setdefault("max_workers", config["max_workers"])
 
 
 def with_head_node_ip(cmds, head_ip=None):

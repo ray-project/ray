@@ -164,28 +164,6 @@ TEST_F(GlobalStateAccessorTest, TestNodeResourceTable) {
   }
 }
 
-TEST_F(GlobalStateAccessorTest, TestInternalConfig) {
-  rpc::StoredConfig initial_proto;
-  initial_proto.ParseFromString(global_state_->GetInternalConfig());
-  ASSERT_EQ(initial_proto.config().size(), 0);
-  std::promise<bool> promise;
-  std::unordered_map<std::string, std::string> begin_config;
-  begin_config["key1"] = "value1";
-  begin_config["key2"] = "value2";
-  RAY_CHECK_OK(gcs_client_->Nodes().AsyncSetInternalConfig(begin_config));
-  std::string returned;
-  rpc::StoredConfig new_proto;
-  auto end = std::chrono::system_clock::now() + timeout_ms_;
-  while (std::chrono::system_clock::now() < end && new_proto.config().size() == 0) {
-    returned = global_state_->GetInternalConfig();
-    new_proto.ParseFromString(returned);
-  }
-  ASSERT_EQ(new_proto.config().size(), begin_config.size());
-  for (auto pair : new_proto.config()) {
-    ASSERT_EQ(pair.second, begin_config[pair.first]);
-  }
-}
-
 TEST_F(GlobalStateAccessorTest, TestGetAllResourceUsage) {
   std::unique_ptr<std::string> resources = global_state_->GetAllResourceUsage();
   rpc::ResourceUsageBatchData resource_usage_batch_data;

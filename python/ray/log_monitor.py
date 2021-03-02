@@ -98,7 +98,11 @@ class LogMonitor:
                 # Test if the worker process that generated the log file
                 # is still alive. Only applies to worker processes.
                 if (file_info.worker_pid != "raylet"
-                        and file_info.worker_pid != "gcs_server"):
+                        and file_info.worker_pid != "gcs_server"
+                        and file_info.worker_pid != "autoscaler"):
+                    assert not isinstance(file_info.worker_pid, str), (
+                        f"PID should be an int type. "
+                        "Given PID: {file_info.worker_pid}.")
                     os.kill(file_info.worker_pid, 0)
             except OSError:
                 # The process is not alive any more, so move the log file
