@@ -312,8 +312,8 @@ class SSHOptions:
         ssh_key_option = ["-i", self.ssh_key] if self.ssh_key else []
         return ssh_key_option + [
             x for y in (["-o", "{}={}".format(k, v)]
-                        for k, v in self.arg_dict.items()
-                        if v is not None) for x in y
+                        for k, v in self.arg_dict.items() if v is not None)
+            for x in y
         ]
 
 
@@ -859,13 +859,30 @@ class DockerCommandRunner(CommandRunnerInterface):
                         container=self.container_name,
                         dst=self._docker_expand_user(mount)))
                 try:
-                    self.run(f"[[ $(id -u) = 0 ]] || "
-                             "sudo chown $(id -u):$(id -g) {mount}")
+                    # Check if the current user has read permission.
+                    # If they do not, try to change ownership!
+                    self.run(f"cat {mount} > /dev/null || "
+                             f"sudo chown $(id -u):$(id -g) {mount}")
                 except Exception:
+                    lsl_string = self.run(
+                        f"ls -l {mount}",
+                        with_output=True).decode("utf-8").strip()
+                    # The string is of format <Permission> <Links>
+                    # <Owner> <Group> <Size> <Date> <Name>
+                    permissions = lsl_string.split(" ")[0]
+                    owner = lsl_string.split(" ")[2]
+                    group = lsl_string.split(" ")[3]
+                    current_user = self.run(
+                        "whoami", with_output=True).decode("utf-8").strip()
                     cli_logger.warning(
-                        "The running user is neither `root`, "
-                        "nor is sudo installed. Ray may fail to autoscale "
-                        "because of permission issues.")
+                        f"File ({mount}) is owned by user:{owner} and group:"
+                        f"{group} with permissions ({permissions}). The "
+                        f"current user ({current_user}) does not have "
+                        "permission to read these files, and Ray may not be "
+                        "able to autoscale. This can be resolved by "
+                        "installing `sudo` in your container, or adding a "
+                        f"command like 'chown {current_user} {mount}' to "
+                        "your `setup_commands`.")
         self.initialized = True
         return docker_run_executed
 
@@ -895,9 +912,9 @@ class DockerCommandRunner(CommandRunnerInterface):
             shm_output = self.ssh_command_runner.run(
                 "cat /proc/meminfo || true",
                 with_output=True).decode().strip()
-            available_memory = int([
-                ln for ln in shm_output.split("\n") if "MemAvailable" in ln
-            ][0].split()[1])
+            available_memory = int(
+                [ln for ln in shm_output.split("\n")
+                 if "MemAvailable" in ln][0].split()[1])
             available_memory_bytes = available_memory * 1024
             # Overestimate SHM size by 10%
             shm_size = min((available_memory_bytes *
