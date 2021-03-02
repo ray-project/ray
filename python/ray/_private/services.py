@@ -124,11 +124,11 @@ def new_port(lower_bound=10000, upper_bound=65535, blacklist=None):
     port = random.randint(lower_bound, upper_bound)
     retry = 0
     while port in blacklist:
-        if retry > 20:
+        if retry > 100:
             break
         port = random.randint(lower_bound, upper_bound)
         retry += 1
-    if retry > 20:
+    if retry > 100:
         raise ValueError(
             "Failed to find a new port from the range "
             f"{lower_bound}-{upper_bound}. Blacklist: {blacklist}")

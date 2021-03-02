@@ -255,6 +255,14 @@ class RayParams:
         Returns:
             The dictionary mapping of component -> ports.
         """
+
+        def _wrap_port(port):
+            # 0 port means select a random port for the grpc server.
+            if port is None or port == 0:
+                return []
+            else:
+                return [port]
+
         # Create a dictionary of the component -> port mapping.
         pre_selected_ports = {
             "gcs": self._wrap_port(self.redis_port),
@@ -284,20 +292,19 @@ class RayParams:
             ]
 
         # Update the pre selected port set.
-        self.pre_selected_ports_set = set()
-        self.pre_selected_ports = pre_selected_ports
+        self.reserved_ports = set()
         for comp, port_list in pre_selected_ports.items():
             for port in port_list:
-                if port in self.pre_selected_ports_set:
+                if port in self.reserved_ports:
                     raise ValueError(
-                        f"Ray component {comp} tries to use "
+                        f"Ray component {comp} is trying to use "
                         f"a port number {port} that is used by "
                         "other components.\n"
                         f"Port information: {pre_selected_ports}\n"
                         "If you allocate ports, "
                         "please make sure the same port is not used by "
                         "multiple components.")
-                self.pre_selected_ports_set.add(port)
+                self.reserved_ports.add(port)
 
     def _check_usage(self):
         if self.worker_port_list is not None:
@@ -363,10 +370,3 @@ class RayParams:
         if numpy_major <= 1 and numpy_minor < 16:
             logger.warning("Using ray with numpy < 1.16.0 will result in slow "
                            "serialization. Upgrade numpy if using with ray.")
-
-    def _wrap_port(self, port):
-        # 0 port means select a random port for the grpc server.
-        if port is None or port == 0:
-            return []
-        else:
-            return [port]
