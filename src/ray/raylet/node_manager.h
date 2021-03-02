@@ -256,13 +256,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   void ResourceUsageBatchReceived(const ResourceUsageBatchData &resource_usage_batch);
 
   /// Methods for task scheduling.
-
-  /// Enqueue a placeable task to wait on object dependencies or be ready for
-  /// dispatch.
-  ///
-  /// \param task The task in question.
-  /// \return Void.
-  void EnqueuePlaceableTask(const Task &task);
   /// Mark the specified objects as failed with the given error type.
   ///
   /// \param error_type The type of the error that caused this task to fail.
@@ -271,19 +264,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   void MarkObjectsAsFailed(const ErrorType &error_type,
                            const std::vector<rpc::ObjectReference> object_ids,
                            const JobID &job_id);
-  /// Handle specified task's submission to the local node manager.
-  ///
-  /// \param task The task being submitted.
-  /// \return Void.
-  void SubmitTask(const Task &task);
-  /// Assign a task to a worker. The task is assumed to not be queued in local_queues_.
-  ///
-  /// \param[in] worker The worker to assign the task to.
-  /// \param[in] task The task in question.
-  /// \param[out] post_assign_callbacks Vector of callbacks that will be appended
-  /// to with any logic that should run after the DispatchTasks loop runs.
-  void AssignTask(const std::shared_ptr<WorkerInterface> &worker, const Task &task,
-                  std::vector<std::function<void()>> *post_assign_callbacks);
   /// Handle a worker finishing its assigned task.
   ///
   /// \param worker The worker that finished the task.
@@ -481,15 +461,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \return Void.
   void ProcessPushErrorRequestMessage(const uint8_t *message_data);
 
-  /// Finish assigning a task to a worker.
-  ///
-  /// \param worker Worker that the task is assigned to.
-  /// \param task_id Id of the task.
-  /// \param success Whether or not assigning the task was successful.
-  /// \return void.
-  void FinishAssignTask(const std::shared_ptr<WorkerInterface> &worker,
-                        const TaskID &task_id, bool success);
-
   /// Process worker subscribing to a given plasma object become available. This handler
   /// makes sure that the plasma object is local and calls core worker's PlasmaObjectReady
   /// gRPC endpoint.
@@ -613,6 +584,15 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \return Whether the request was successful.
   bool GetObjectsFromPlasma(const std::vector<ObjectID> &object_ids,
                             std::vector<std::unique_ptr<RayObject>> *results);
+
+  /// Disconnect a client.	
+  ///	
+  /// \param client The client that sent the message.	
+  /// \param disconnect_type The reason to disconnect the specified client.	
+  /// \return Void.	
+  void DisconnectClient(	
+      const std::shared_ptr<ClientConnection> &client,	
+      rpc::WorkerExitType disconnect_type = rpc::WorkerExitType::SYSTEM_ERROR_EXIT);	
 
   /// ID of this node.
   NodeID self_node_id_;
