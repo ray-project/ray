@@ -12,9 +12,7 @@ import threading
 import time
 import uuid
 
-from pathlib import Path
 from inspect import signature
-from zipfile import ZipFile
 import numpy as np
 import psutil
 import ray
@@ -814,25 +812,3 @@ def get_user():
 def get_function_args(callable):
     all_parameters = frozenset(signature(callable).parameters)
     return list(all_parameters)
-
-
-def _zip_module(path, zip_handler):
-    for from_file_name in path.glob("**/*"):
-        # We include pyc for performance
-        if from_file_name.match("*.py") or from_file_name.match("*.pyc"):
-            to_file_name = from_file_name.relative_to(path.parent)
-            zip_handler.write(from_file_name, to_file_name)
-
-
-def get_project_package_name(job_id: str) -> Path:
-    RAY_PKG_PREFIX = "_ray_pkg_"
-    pkg_file = "/tmp/" + RAY_PKG_PREFIX + job_id + ".zip"
-    return Path(pkg_file)
-
-
-def create_project_package(pkg_file: Path, dirs, modules):
-    with ZipFile(pkg_file, "w") as zip_handler:
-        for directory in dirs or []:
-            _zip_module(Path(directory), zip_handler)
-        for module in modules or []:
-            _zip_module(Path(module.__file__).parent, zip_handler)

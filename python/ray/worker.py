@@ -14,9 +14,8 @@ import threading
 import time
 import traceback
 from typing import Any, Dict, List, Iterator
-
+from pathlib import Path
 # Ray modules
-from ray.experimental import internal_kv
 from ray.autoscaler._private.constants import AUTOSCALER_EVENTS
 from filelock import FileLock
 from ray.autoscaler._private.util import DEBUG_AUTOSCALING_ERROR
@@ -53,8 +52,8 @@ from ray.exceptions import (
 from ray.function_manager import FunctionActorManager
 from ray.ray_logging import setup_logger
 from ray.ray_logging import global_worker_stdstream_dispatcher
-from ray.utils import (_random_string, check_oversized_pickle,
-                       create_project_package, get_project_package_name)
+from ray.utils import (_random_string, check_oversized_pickle)
+import ray.package as ray_pkg
 from ray.util.inspect import is_cython
 from ray.experimental.internal_kv import _internal_kv_get, \
     _internal_kv_initialized
@@ -500,8 +499,6 @@ def init(
         local_mode=False,
         ignore_reinit_error=False,
         include_dashboard=None,
-        required_directories=[],
-        required_modules=[],
         dashboard_host=ray_constants.DEFAULT_DASHBOARD_IP,
         dashboard_port=ray_constants.DEFAULT_DASHBOARD_PORT,
         job_config=None,
@@ -776,9 +773,7 @@ def init(
         worker=global_worker,
         driver_object_store_memory=_driver_object_store_memory,
         job_id=None,
-        job_config=job_config,
-        required_directories=required_directories,
-        required_modules=required_modules)
+        job_config=job_config)
     if job_config and job_config.code_search_path:
         global_worker.set_load_code_from_local(True)
     else:
@@ -1117,9 +1112,7 @@ def connect(node,
             worker=global_worker,
             driver_object_store_memory=None,
             job_id=None,
-            job_config=None,
-            required_directories=None,
-            required_modules=None):
+            job_config=None):
     """Connect this worker to the raylet, to Plasma, and to Redis.
 
     Args:
@@ -1226,8 +1219,23 @@ def connect(node,
     )
     if job_config is None:
         job_config = ray.job_config.JobConfig()
-    serialized_job_config = job_config.serialize()
 
+    # For now, we only support local directory and packages
+    required_directories = []
+    working_dir = job_config.runtime_env.get('working_dir')
+    required_modules = job_config.runtime_env.get('local_modules', [])
+    if mode == SCRIPT_MODE:
+        if not job_config.runtime_env.get('package_uri'):
+            if working_dir:
+                assert isinstance(working_dir, str)
+                assert Path(working_dir).exists()
+                required_directories.append(working_dir)
+            for module in required_modules:
+                assert inspect.ismodule(module)
+            pkg_file = ray_pkg.get_project_package_name(required_directories, required_modules)
+            job_config.runtime_env['package_uri'] = "gcs://" + pkg_file
+
+    serialized_job_config = job_config.serialize()
     worker.core_worker = ray._raylet.CoreWorker(
         mode, node.plasma_store_socket_name, node.raylet_socket_name, job_id,
         gcs_options, node.get_logs_dir_path(), node.node_ip_address,
@@ -1241,35 +1249,30 @@ def connect(node,
     ray.state.state._initialize_global_state(
         node.redis_address, redis_password=node.redis_password)
 
-    pkg_file = get_project_package_name(job_id.hex() if mode == SCRIPT_MODE
-                                        else os.getenv("RAY_JOB_ID"))
-    pkg_file_path = str(pkg_file)
-    if (required_directories or required_modules) and mode == SCRIPT_MODE:
-        # Create package if defined and ship it to remote storage
-        create_project_package(pkg_file, required_directories,
-                               required_modules)
-        # Push the data to remote storage
-        data = pkg_file.read_bytes()
-        internal_kv._internal_kv_put(pkg_file_path, data)
-        logger.debug(
-            f"Ray has packaged {required_directories} and {required_modules} "
-            "into {pkg_file_path} in {len(data)} bytes")
-    elif mode in (WORKER_MODE, RESTORE_WORKER_MODE, SPILL_WORKER_MODE):
-        internal_kv._internal_kv_get(pkg_file_path)
-        # For each node, the package will only be downloaded one time
-        # Locking to avoid multiple process download concurrently
-        lock = FileLock(pkg_file_path + ".lock")
-        with lock:
-            # TODO(yic): checksum calculation is required
-            if pkg_file.exists():
-                logger.debug(f"{pkg_file_path} has existed, skip downloading")
-            else:
-                code = internal_kv._internal_kv_get(pkg_file_path)
-                code = code or b""
-                pkg_file.write_bytes(code)
-                logger.debug(
-                    f"Downloaded {len(code)} bytes into {pkg_file_path}")
-        sys.path.insert(0, pkg_file_path)
+    pkg_uri = job_config.runtime_env.get('package_uri')
+    if pkg_uri:
+        (pkg_protocol, pkg_name) = ray_pkg.parse_uri(pkg_uri)
+        pkg_file = Path("/tmp/" + pkg_name)
+        if mode == SCRIPT_MODE:
+            if not ray_pkg.package_exists(pkg_protocol, pkg_uri):
+                logger.debug(f"{pkg_uri} doesn't exist. Create new package with {required_directories} and {required_modules} bytes")
+                ray_pkg.create_project_package(pkg_file, required_directories,
+                                       required_modules)
+                # Push the data to remote storage
+                pkg_size = ray_pkg.push_package(pkg_protocol, pkg_uri, pkg_file)
+                logger.debug(f"{pkg_uri} has been pushed with {pkg_size} bytes")
+        elif mode == WORKER_MODE:
+            # For each node, the package will only be downloaded one time
+            # Locking to avoid multiple process download concurrently
+            lock = FileLock(pkg_file + ".lock")
+            with lock:
+                # TODO(yic): checksum calculation is required
+                if pkg_file.exists():
+                    logger.debug(f"{pkg_uri} has existed locally, skip downloading")
+                else:
+                    pkg_size = ray_pkg.fetch_package(protocol, pkg_uri, pkg_file)
+                    logger.debug(f"Downloaded {pkg_size} bytes into {pkg_file}")
+            sys.path.insert(0, pkg_file_path)
 
     if driver_object_store_memory is not None:
         worker.core_worker.set_object_store_client_options(
