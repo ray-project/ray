@@ -699,6 +699,8 @@ class ActorClass:
             conda_env = runtime_env.get("conda_env")
             if conda_env is not None:
                 conda_env_dir = get_conda_env_dir(conda_env)
+                if override_environment_variables is None:
+                    override_environment_variables = {}
                 override_environment_variables.update(PYTHONHOME=conda_env_dir)
 
         actor_id = worker.core_worker.create_actor(
