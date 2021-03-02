@@ -785,6 +785,7 @@ def test_override_environment_variables_complex(shutdown_only):
             "a": "b",
         }).remote("z")) == "job_z")
 
+
 def test_get_conda_env_dir(tmp_path):
     d = tmp_path / "tf1"
     d.mkdir()
@@ -797,6 +798,7 @@ def test_get_conda_env_dir(tmp_path):
     env_dir = get_conda_env_dir("tf2")
     assert (env_dir == str(tmp_path / "tf2"))
     os.environ["CONDA_PREFIX"] = ""
+
 
 def test_sync_job_config(shutdown_only):
     num_java_workers_per_process = 8

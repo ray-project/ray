@@ -8,8 +8,8 @@ import pytest
 
 import ray
 from ray.serve.utils import (ServeEncoder, chain_future, unpack_future,
-                             try_schedule_resources_on_nodes,
-                             import_attr)
+                             try_schedule_resources_on_nodes, import_attr)
+
 
 def test_bytes_encoder():
     data_before = {"inp": {"nest": b"bytes"}}
@@ -109,9 +109,6 @@ def test_mock_scheduler():
             },  # Equals to the sum of cpus but shouldn't be schedulable.
         ],
         deepcopy(ray_nodes)) == [False]
-
-
-
 
 
 def test_import_attr():
