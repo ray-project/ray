@@ -10,8 +10,9 @@ except ImportError:
 
 import ray
 from ray.test_utils import (generate_system_config_map, get_other_nodes,
-                            run_string_as_driver, wait_for_actor_killed,
-                            wait_for_condition, get_error_message)
+                            kill_actor_and_wait_for_failure,
+                            run_string_as_driver, wait_for_condition,
+                            get_error_message)
 import ray.cluster_utils
 from ray.exceptions import RaySystemError
 from ray._raylet import PlacementGroupID
@@ -904,9 +905,7 @@ def test_capture_child_actors(ray_start_cluster):
     assert len(node_id_set) == 1
 
     # Kill an actor and wait until it is killed.
-    ray.kill(a)
-    wait_for_actor_killed(a._actor_id.hex(),
-                          ray.actors(a._actor_id.hex())["NumRestarts"])
+    kill_actor_and_wait_for_failure(a)
     with pytest.raises(ray.exceptions.RayActorError):
         ray.get(a.ready.remote())
 
@@ -929,9 +928,7 @@ def test_capture_child_actors(ray_start_cluster):
     assert len(node_id_set) == 2
 
     # Kill an actor and wait until it is killed.
-    ray.kill(a)
-    wait_for_actor_killed(a._actor_id.hex(),
-                          ray.actors(a._actor_id.hex())["NumRestarts"])
+    kill_actor_and_wait_for_failure(a)
     with pytest.raises(ray.exceptions.RayActorError):
         ray.get(a.ready.remote())
 
@@ -1425,9 +1422,7 @@ ray.shutdown()
     ray.get(a.schedule_nested_actor_with_detached_pg.remote())
 
     # Kill an actor and wait until it is killed.
-    ray.kill(a)
-    wait_for_actor_killed(a._actor_id.hex(),
-                          ray.actors(a._actor_id.hex())["NumRestarts"])
+    kill_actor_and_wait_for_failure(a)
     with pytest.raises(ray.exceptions.RayActorError):
         ray.get(a.ready.remote())
 

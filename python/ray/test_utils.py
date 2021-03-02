@@ -240,10 +240,10 @@ def wait_for_num_actors(num_actors, state=None, timeout=10):
     raise RayTestTimeoutException("Timed out while waiting for global state.")
 
 
-def wait_for_actor_killed(actor_id,
-                          current_num_restarts,
-                          timeout=10,
-                          retry_interval_ms=100):
+def kill_actor_and_wait_for_failure(actor, timeout=10, retry_interval_ms=100):
+    actor_id = actor._actor_id.hex()
+    current_num_restarts = ray.actors(actor_id)["NumRestarts"]
+    ray.kill(actor)
     start = time.time()
     while time.time() - start <= timeout:
         actor_status = ray.actors(actor_id)

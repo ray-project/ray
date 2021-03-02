@@ -10,8 +10,9 @@ import pytest
 
 import ray
 import ray.cluster_utils
-from ray.test_utils import (SignalActor, put_object, wait_for_actor_killed,
-                            wait_for_condition, new_scheduler_enabled)
+from ray.test_utils import (SignalActor, kill_actor_and_wait_for_failure,
+                            put_object, wait_for_condition,
+                            new_scheduler_enabled)
 
 logger = logging.getLogger(__name__)
 
@@ -466,10 +467,8 @@ def test_actor_holding_serialized_reference(one_worker_100MiB, use_ray_put,
 
     if failure:
         # Test that the actor exiting stops the reference from being pinned.
-        ray.kill(actor)
-        # Wait for the actor to exit.
-        wait_for_actor_killed(actor._actor_id.hex(),
-                              ray.actors(actor._actor_id.hex())["NumRestarts"])
+        # Kill the actor and wait for the actor to exit.
+        kill_actor_and_wait_for_failure(actor)
         with pytest.raises(ray.exceptions.RayActorError):
             ray.get(actor.delete_ref1.remote())
     else:
