@@ -518,13 +518,11 @@ class Trainer(Trainable):
                 # Driver.
                 "CPU": cf["num_cpus_for_driver"],
                 "GPU": cf["num_gpus"],
-                "memory": cf["memory"],
             }] + [
                 {
                     # RolloutWorkers.
                     "CPU": cf["num_cpus_per_worker"],
                     "GPU": cf["num_gpus_per_worker"],
-                    "memory": cf["memory_per_worker"],
                 } for _ in range(cf["num_workers"])
             ] + ([
                 {
@@ -534,8 +532,6 @@ class Trainer(Trainable):
                                            cf["num_cpus_per_worker"]),
                     "GPU": eval_config.get("num_gpus_per_worker",
                                            cf["num_gpus_per_worker"]),
-                    "memory": eval_config.get("memory_per_worker",
-                                              cf["memory_per_worker"]),
                 } for _ in range(cf["evaluation_num_workers"] + 1)
             ] if cf["evaluation_interval"] else []),
             strategy=config.get("placement_strategy", "PACK"))
