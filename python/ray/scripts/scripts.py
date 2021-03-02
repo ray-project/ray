@@ -29,7 +29,6 @@ from ray.autoscaler._private.constants import RAY_PROCESSES
 from ray.autoscaler._private.util import DEBUG_AUTOSCALING_ERROR, \
     DEBUG_AUTOSCALING_STATUS
 from ray.internal.internal_api import memory_summary
-from ray.state import GlobalState
 from ray.autoscaler._private.cli_logger import cli_logger, cf
 
 logger = logging.getLogger(__name__)
@@ -1382,11 +1381,10 @@ def memory(address, redis_password, group_by, sort_by, no_format, stats_only):
     """Print object references held in a Ray cluster."""
     if not address:
         address = services.get_ray_address_to_use_or_die()
-    state = GlobalState()
-    state._initialize_global_state(address, redis_password)
     time = datetime.now()
     header = "=" * 8 + f" Object references status: {time} " + "=" * 8
-    mem_stats = memory_summary(group_by, sort_by, no_format, stats_only)
+    mem_stats = memory_summary(address, redis_password, group_by, sort_by,
+                               no_format, stats_only)
     print(f"{header}\n{mem_stats}")
 
 

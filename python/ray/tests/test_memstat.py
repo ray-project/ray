@@ -75,7 +75,7 @@ def test_driver_put_ref(ray_start_regular):
 def test_worker_task_refs(ray_start_regular):
     @ray.remote
     def f(y):
-        from ray.new_dashboard.memory_utils import memory_summary
+        from ray.internal.internal_api import memory_summary
         x_id = ray.put("HI")
         info = memory_summary()
         del x_id
@@ -116,7 +116,7 @@ def test_actor_task_refs(ray_start_regular):
             self.refs = []
 
         def f(self, x):
-            from ray.new_dashboard.memory_utils import memory_summary
+            from ray.internal.internal_api import memory_summary
             self.refs.append(x)
             return memory_summary()
 

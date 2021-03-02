@@ -1,6 +1,9 @@
 import ray
+import ray._private.services as services
 import ray.worker
 from ray import profiling
+from ray import ray_constants
+from ray.state import GlobalState
 
 __all__ = ["free", "global_gc"]
 MAX_MESSAGE_LENGTH = ray._config.max_grpc_message_size()
@@ -13,21 +16,24 @@ def global_gc():
     worker.core_worker.global_gc()
 
 
-def memory_summary(address,
+def memory_summary(address=None,
                    redis_password=ray_constants.REDIS_DEFAULT_PASSWORD,
                    group_by="NODE_ADDRESS",
                    sort_by="OBJECT_SIZE",
                    line_wrap=True,
                    stats_only=False):
     from ray.new_dashboard.memory_utils import memory_summary
+    if not address:
+        address = services.get_ray_address_to_use_or_die()
+    state = GlobalState()
+    state._initialize_global_state(address, redis_password)
     if stats_only:
-        return get_store_stats(address, redis_password)
-    return (memory_summary(
-                address, redis_password, group_by, sort_by, line_wrap)
-            + get_store_stats(address, redis_password))
+        return get_store_stats(state)
+    return (memory_summary(state, group_by, sort_by, line_wrap) +
+            get_store_stats(state))
 
 
-def get_store_stats(node_manager_address=None, node_manager_port=None):
+def get_store_stats(state, node_manager_address=None, node_manager_port=None):
     """Returns a formatted string describing memory usage in the cluster."""
 
     import grpc
@@ -37,7 +43,7 @@ def get_store_stats(node_manager_address=None, node_manager_port=None):
     # We can ask any Raylet for the global memory info, that Raylet internally
     # asks all nodes in the cluster for memory stats.
     if (node_manager_address is None or node_manager_port is None):
-        raylet = ray.nodes()[0]
+        raylet = state.node_table()[0]
         raylet_address = "{}:{}".format(raylet["NodeManagerAddress"],
                                         raylet["NodeManagerPort"])
     else:
