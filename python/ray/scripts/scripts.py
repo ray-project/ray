@@ -249,6 +249,7 @@ def debug(address):
 @click.option(
     "--redis-shard-ports",
     required=False,
+    hidden=True,
     type=str,
     help="the port to use for the Redis shards other than the "
     "primary Redis shard")
