@@ -762,9 +762,11 @@ class TFPolicy(Policy):
         # `input_dict` given: Simply build what's in that dict.
         if input_dict is not None:
             if hasattr(self, "_input_dict"):
-                for key, value in input_dict.items():
+                for key in input_dict.keys():
                     if key in self._input_dict:
-                        builder.add_feed_dict({self._input_dict[key]: value})
+                        builder.add_feed_dict({
+                            self._input_dict[key]: input_dict[key]
+                        })
             # For policies that inherit directly from TFPolicy.
             else:
                 builder.add_feed_dict({
