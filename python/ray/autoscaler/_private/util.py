@@ -179,6 +179,10 @@ def merge_legacy_yaml_with_defaults(
     }
     merged_config["head_node_type"] = NODE_TYPE_LEGACY_HEAD
 
+    # Resources field in head/worker fields cause node launch to fail.
+    merged_config["head_node"].pop("resources", None)
+    merged_config["worker_nodes"].pop("resources", None)
+
     return merged_config
 
 
