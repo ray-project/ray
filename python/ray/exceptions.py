@@ -103,15 +103,14 @@ class RayTaskError(RayError):
         if issubclass(cause_cls, RayError):
             return self  # don't try to wrap ray internal errors
 
-        cause = self.cause
         error_msg = str(self)
 
         class cls(RayTaskError, cause_cls):
-            def __init__(self):
-                pass
+            def __init__(self, cause):
+                self.cause = cause
 
             def __getattr__(self, name):
-                return getattr(cause, name)
+                return getattr(self.cause, name)
 
             def __str__(self):
                 return error_msg
@@ -120,7 +119,7 @@ class RayTaskError(RayError):
         cls.__name__ = name
         cls.__qualname__ = name
 
-        return cls()
+        return cls(self.cause)
 
     def __str__(self):
         """Format a RayTaskError as a string."""
