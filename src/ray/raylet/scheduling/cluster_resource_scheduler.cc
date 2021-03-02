@@ -21,7 +21,8 @@ namespace ray {
 
 ClusterResourceScheduler::ClusterResourceScheduler(
     int64_t local_node_id, const NodeResources &local_node_resources)
-    : local_node_id_(local_node_id) {
+    : local_node_id_(local_node_id),
+      gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()) {
   AddOrUpdateNode(local_node_id_, local_node_resources);
   InitLocalResources(local_node_resources);
 }
@@ -233,7 +234,8 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(const TaskRequest &task
     // This an actor which requires no resources.
     // Pick a random node to to avoid all scheduling all actors on the local node.
     if (nodes_.size() > 0) {
-      int idx = std::rand() % nodes_.size();
+      std::uniform_int_distribution<int> distribution(0, nodes_.size() - 1);
+      int idx = distribution(gen_);
       for (auto &node : nodes_) {
         if (idx == 0) {
           best_nodes.emplace_back(node.first);
@@ -535,6 +537,7 @@ void ClusterResourceScheduler::DeleteResource(const std::string &node_id_string,
   };
   auto local_view = it->second.GetMutableLocalView();
   if (idx != -1) {
+    local_view->predefined_resources[idx].available = 0;
     local_view->predefined_resources[idx].total = 0;
 
     if (node_id == local_node_id_) {

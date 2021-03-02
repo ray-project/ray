@@ -143,6 +143,7 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
   for (auto shapes_it = tasks_to_dispatch_.begin();
        shapes_it != tasks_to_dispatch_.end();) {
     auto &dispatch_queue = shapes_it->second;
+    bool is_infeasible = false;
     for (auto work_it = dispatch_queue.begin(); work_it != dispatch_queue.end();) {
       auto &work = *work_it;
       const auto &task = std::get<0>(work);
@@ -209,7 +210,7 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
       if (!schedulable) {
         // The local node currently does not have the resources to run the task, so we
         // should try spilling to another node.
-        bool did_spill = TrySpillback(work);
+        bool did_spill = TrySpillback(work, is_infeasible);
         if (!did_spill) {
           // There must not be any other available nodes in the cluster, so the task
           // should stay on this node. We can skip the reest of the shape because the
@@ -248,7 +249,10 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
       }
       work_it = dispatch_queue.erase(work_it);
     }
-    if (dispatch_queue.empty()) {
+    if (is_infeasible) {
+      infeasible_tasks_[shapes_it->first] = std::move(shapes_it->second);
+      shapes_it = tasks_to_dispatch_.erase(shapes_it);
+    } else if (dispatch_queue.empty()) {
       shapes_it = tasks_to_dispatch_.erase(shapes_it);
     } else {
       shapes_it++;
@@ -256,20 +260,15 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
   }
 }
 
-bool ClusterTaskManager::TrySpillback(const Work &work) {
+bool ClusterTaskManager::TrySpillback(const Work &work, bool &is_infeasible) {
   const auto &spec = std::get<0>(work).GetTaskSpecification();
   int64_t _unused;
-  bool is_infeasible;
   auto placement_resources = spec.GetRequiredPlacementResources().GetResourceMap();
   std::string node_id_string = cluster_resource_scheduler_->GetBestSchedulableNode(
       placement_resources, spec.IsActorCreationTask(), &_unused, &is_infeasible);
 
-  // TODO(Alex): This check may actually fail in the case where placement group is
-  // removed. All tasks on the dispatch queue must at least be feasible on the local node.
-  RAY_CHECK(!is_infeasible)
-      << "Task cannot be infeasible when it is about to be dispatched";
-
-  if (node_id_string == self_node_id_.Binary() || node_id_string.empty()) {
+  if (is_infeasible || node_id_string == self_node_id_.Binary() ||
+      node_id_string.empty()) {
     return false;
   }
 
