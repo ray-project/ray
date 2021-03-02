@@ -67,7 +67,7 @@ For example, here are the Ray 2.0.0.dev0 wheels for Python 3.5, MacOS for commit
 
 .. _ray-install-java:
 
-Install Ray With Maven
+Install Ray Java with Maven
 ----------------------
 Before install it with Maven, you should install Ray by `pip install -U ray` .
 
