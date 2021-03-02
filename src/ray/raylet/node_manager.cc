@@ -341,10 +341,12 @@ ray::Status NodeManager::RegisterGcs() {
     } else if (job_data.state() == JobTableData::RUNNING) {
       HandleJobStarted(job_id, job_data);
     } else if (job_data.state() == JobTableData::FINISHED ||
-               job_data.state() == JobTableData::FAILED) {
+               job_data.state() == JobTableData::FAILED ||
+               job_data.state() == JobTableData::CANCEL) {
       HandleJobFinished(job_id, job_data);
     } else {
-      // The job state is UNKNOWN, just ignore.
+      RAY_CHECK(job_data.state() == JobTableData::INIT);
+      // The job state should be INIT, just ignore.
     }
   };
   RAY_RETURN_NOT_OK(
