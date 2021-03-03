@@ -21,20 +21,23 @@ namespace ray {
 
 ClusterResourceScheduler::ClusterResourceScheduler(
     int64_t local_node_id, const NodeResources &local_node_resources)
-    : local_node_id_(local_node_id) {
+    : local_node_id_(local_node_id),
+      gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()) {
   AddOrUpdateNode(local_node_id_, local_node_resources);
   InitLocalResources(local_node_resources);
 }
 
 ClusterResourceScheduler::ClusterResourceScheduler(
     const std::string &local_node_id,
-    const std::unordered_map<std::string, double> &local_node_resources) {
+    const std::unordered_map<std::string, double> &local_node_resources,
+    std::function<int64_t(void)> get_used_object_store_memory) {
   local_node_id_ = string_to_int_map_.Insert(local_node_id);
   NodeResources node_resources = ResourceMapToNodeResources(
       string_to_int_map_, local_node_resources, local_node_resources);
 
   AddOrUpdateNode(local_node_id_, node_resources);
   InitLocalResources(node_resources);
+  get_used_object_store_memory_ = get_used_object_store_memory;
 }
 
 void ClusterResourceScheduler::AddOrUpdateNode(
@@ -231,7 +234,8 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(const TaskRequest &task
     // This an actor which requires no resources.
     // Pick a random node to to avoid all scheduling all actors on the local node.
     if (nodes_.size() > 0) {
-      int idx = std::rand() % nodes_.size();
+      std::uniform_int_distribution<int> distribution(0, nodes_.size() - 1);
+      int idx = distribution(gen_);
       for (auto &node : nodes_) {
         if (idx == 0) {
           best_nodes.emplace_back(node.first);
@@ -431,8 +435,8 @@ bool ClusterResourceScheduler::IsAvailableResourceEmpty(
     idx = (int)CPU;
   } else if (resource_name == ray::kGPU_ResourceLabel) {
     idx = (int)GPU;
-  } else if (resource_name == ray::kTPU_ResourceLabel) {
-    idx = (int)TPU;
+  } else if (resource_name == ray::kObjectStoreMemory_ResourceLabel) {
+    idx = (int)OBJECT_STORE_MEM;
   } else if (resource_name == ray::kMemory_ResourceLabel) {
     idx = (int)MEM;
   };
@@ -469,8 +473,8 @@ void ClusterResourceScheduler::UpdateResourceCapacity(const std::string &node_id
     idx = (int)CPU;
   } else if (resource_name == ray::kGPU_ResourceLabel) {
     idx = (int)GPU;
-  } else if (resource_name == ray::kTPU_ResourceLabel) {
-    idx = (int)TPU;
+  } else if (resource_name == ray::kObjectStoreMemory_ResourceLabel) {
+    idx = (int)OBJECT_STORE_MEM;
   } else if (resource_name == ray::kMemory_ResourceLabel) {
     idx = (int)MEM;
   };
@@ -526,13 +530,14 @@ void ClusterResourceScheduler::DeleteResource(const std::string &node_id_string,
     idx = (int)CPU;
   } else if (resource_name == ray::kGPU_ResourceLabel) {
     idx = (int)GPU;
-  } else if (resource_name == ray::kTPU_ResourceLabel) {
-    idx = (int)TPU;
+  } else if (resource_name == ray::kObjectStoreMemory_ResourceLabel) {
+    idx = (int)OBJECT_STORE_MEM;
   } else if (resource_name == ray::kMemory_ResourceLabel) {
     idx = (int)MEM;
   };
   auto local_view = it->second.GetMutableLocalView();
   if (idx != -1) {
+    local_view->predefined_resources[idx].available = 0;
     local_view->predefined_resources[idx].total = 0;
 
     if (node_id == local_node_id_) {
@@ -926,8 +931,8 @@ std::string ClusterResourceScheduler::GetResourceNameFromIndex(int64_t res_idx) 
     return ray::kCPU_ResourceLabel;
   } else if (res_idx == GPU) {
     return ray::kGPU_ResourceLabel;
-  } else if (res_idx == TPU) {
-    return ray::kTPU_ResourceLabel;
+  } else if (res_idx == OBJECT_STORE_MEM) {
+    return ray::kObjectStoreMemory_ResourceLabel;
   } else if (res_idx == MEM) {
     return ray::kMemory_ResourceLabel;
   } else {
@@ -961,7 +966,7 @@ void ClusterResourceScheduler::UpdateLastResourceUsage(
   last_report_resources_.reset(new NodeResources(node_resources));
 }
 
-void ClusterResourceScheduler::FillResourceUsage(rpc::ResourcesData *resources_data) {
+void ClusterResourceScheduler::FillResourceUsage(rpc::ResourcesData &resources_data) {
   NodeResources resources;
 
   RAY_CHECK(GetNodeResources(local_node_id_, &resources))
@@ -985,18 +990,28 @@ void ClusterResourceScheduler::FillResourceUsage(rpc::ResourcesData *resources_d
     }
   }
 
+  // Automatically report object store usage.
+  // XXX: this MUTATES the resources field, which is needed since we are storing
+  // it in last_report_resources_.
+  if (get_used_object_store_memory_ != nullptr) {
+    auto &capacity = resources.predefined_resources[OBJECT_STORE_MEM];
+    // Convert to 50MiB memory units.
+    double used = get_used_object_store_memory_() / (50. * 1024 * 1024);
+    capacity.available = FixedPoint(capacity.total.Double() - used);
+  }
+
   for (int i = 0; i < PredefinedResources_MAX; i++) {
     const auto &label = ResourceEnumToString((PredefinedResources)i);
     const auto &capacity = resources.predefined_resources[i];
     const auto &last_capacity = last_report_resources_->predefined_resources[i];
     // Note: available may be negative, but only report positive to GCS.
     if (capacity.available != last_capacity.available && capacity.available > 0) {
-      resources_data->set_resources_available_changed(true);
-      (*resources_data->mutable_resources_available())[label] =
+      resources_data.set_resources_available_changed(true);
+      (*resources_data.mutable_resources_available())[label] =
           capacity.available.Double();
     }
     if (capacity.total != last_capacity.total) {
-      (*resources_data->mutable_resources_total())[label] = capacity.total.Double();
+      (*resources_data.mutable_resources_total())[label] = capacity.total.Double();
     }
   }
   for (const auto &it : resources.custom_resources) {
@@ -1006,12 +1021,12 @@ void ClusterResourceScheduler::FillResourceUsage(rpc::ResourcesData *resources_d
     const auto &label = string_to_int_map_.Get(custom_id);
     // Note: available may be negative, but only report positive to GCS.
     if (capacity.available != last_capacity.available && capacity.available > 0) {
-      resources_data->set_resources_available_changed(true);
-      (*resources_data->mutable_resources_available())[label] =
+      resources_data.set_resources_available_changed(true);
+      (*resources_data.mutable_resources_available())[label] =
           capacity.available.Double();
     }
     if (capacity.total != last_capacity.total) {
-      (*resources_data->mutable_resources_total())[label] = capacity.total.Double();
+      (*resources_data.mutable_resources_total())[label] = capacity.total.Double();
     }
   }
   if (resources != *last_report_resources_.get()) {

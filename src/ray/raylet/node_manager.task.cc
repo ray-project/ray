@@ -104,16 +104,16 @@ void NodeManager::TasksUnblocked(const std::vector<TaskID> &ready_ids) {
   DispatchTasks(MakeTasksByClass(ready_tasks));
 }
 
-void NodeManager::FillResourceUsage(rpc::ResourcesData *resources_data) {
+void NodeManager::FillResourceUsage(rpc::ResourcesData &resources_data) {
   SchedulingResources &local_resources = cluster_resource_map_[self_node_id_];
   local_resources.SetLoadResources(local_queues_.GetTotalResourceLoad());
   auto last_heartbeat_resources = gcs_client_->NodeResources().GetLastResourceUsage();
   if (!last_heartbeat_resources->GetLoadResources().IsEqual(
           local_resources.GetLoadResources())) {
-    resources_data->set_resource_load_changed(true);
+    resources_data.set_resource_load_changed(true);
     for (const auto &resource_pair :
          local_resources.GetLoadResources().GetResourceMap()) {
-      (*resources_data->mutable_resource_load())[resource_pair.first] =
+      (*resources_data.mutable_resource_load())[resource_pair.first] =
           resource_pair.second;
     }
   }
@@ -121,7 +121,7 @@ void NodeManager::FillResourceUsage(rpc::ResourcesData *resources_data) {
   // Add resource load by shape. This will be used by the new autoscaler.
   auto resource_load = local_queues_.GetResourceLoadByShape(
       RayConfig::instance().max_resource_shapes_per_load_report());
-  resources_data->mutable_resource_load_by_shape()->Swap(&resource_load);
+  resources_data.mutable_resource_load_by_shape()->Swap(&resource_load);
 }
 
 void NodeManager::TaskFinished(std::shared_ptr<WorkerInterface> worker, Task *task) {

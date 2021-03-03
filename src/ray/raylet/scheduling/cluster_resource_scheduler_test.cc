@@ -1052,11 +1052,11 @@ TEST_F(ClusterResourceSchedulerTest, ResourceUsageReportTest) {
   resource_scheduler.AddOrUpdateNode(12345, other_node_resources);
 
   {  // Cluster is idle.
-    auto data = std::make_shared<rpc::ResourcesData>();
+    rpc::ResourcesData data;
     resource_scheduler.FillResourceUsage(data);
 
-    auto available = data->resources_available();
-    auto total = data->resources_total();
+    auto available = data.resources_available();
+    auto total = data.resources_total();
 
     ASSERT_EQ(available[kCPU_ResourceLabel], 1);
     ASSERT_EQ(available[kGPU_ResourceLabel], 2);
@@ -1072,7 +1072,7 @@ TEST_F(ClusterResourceSchedulerTest, ResourceUsageReportTest) {
     ASSERT_EQ(total["2"], 2);
     ASSERT_EQ(total["3"], 3);
 
-    // GCS doesn't like entries which are 0 (like TPU).
+    // GCS doesn't like entries which are 0.
     ASSERT_EQ(available.size(), 6);
     ASSERT_EQ(total.size(), 6);
   }
@@ -1090,12 +1090,12 @@ TEST_F(ClusterResourceSchedulerTest, ResourceUsageReportTest) {
         {"1", 0.1},
     });
     resource_scheduler.AllocateLocalTaskResources(allocation_map, allocations);
-    auto data = std::make_shared<rpc::ResourcesData>();
+    rpc::ResourcesData data;
     resource_scheduler.UpdateLastResourceUsage(std::make_shared<SchedulingResources>());
     resource_scheduler.FillResourceUsage(data);
 
-    auto available = data->resources_available();
-    auto total = data->resources_total();
+    auto available = data.resources_available();
+    auto total = data.resources_total();
 
     ASSERT_EQ(available[kCPU_ResourceLabel], 0.9);
     ASSERT_EQ(available[kGPU_ResourceLabel], 2);
@@ -1113,6 +1113,59 @@ TEST_F(ClusterResourceSchedulerTest, ResourceUsageReportTest) {
   }
 }
 
+TEST_F(ClusterResourceSchedulerTest, ObjectStoreMemoryUsageTest) {
+  vector<int64_t> cust_ids{1};
+  NodeResources node_resources;
+  std::unordered_map<std::string, double> initial_resources(
+      {{"CPU", 1}, {"GPU", 2}, {"memory", 3}, {"object_store_memory", 10}});
+  int64_t used_object_store_memory = 125 * 1024 * 1024;
+  int64_t *ptr = &used_object_store_memory;
+  ClusterResourceScheduler resource_scheduler("0", initial_resources,
+                                              [&] { return *ptr; });
+  NodeResources other_node_resources;
+  vector<FixedPoint> other_pred_capacities{1. /* CPU */, 1. /* MEM */, 1. /* GPU */};
+  vector<FixedPoint> other_cust_capacities{10.};
+  initNodeResources(other_node_resources, other_pred_capacities, cust_ids,
+                    other_cust_capacities);
+  resource_scheduler.AddOrUpdateNode(12345, other_node_resources);
+
+  {
+    rpc::ResourcesData data;
+    resource_scheduler.FillResourceUsage(data);
+    auto available = data.resources_available();
+    auto total = data.resources_total();
+    ASSERT_EQ(available["object_store_memory"], 7.5);
+    ASSERT_EQ(total["object_store_memory"], 10.0);
+  }
+
+  used_object_store_memory = 225 * 1024 * 1024;
+  {
+    rpc::ResourcesData data;
+    resource_scheduler.FillResourceUsage(data);
+    auto available = data.resources_available();
+    auto total = data.resources_total();
+    ASSERT_EQ(available["object_store_memory"], 5.5);
+  }
+
+  used_object_store_memory = 0;
+  {
+    rpc::ResourcesData data;
+    resource_scheduler.FillResourceUsage(data);
+    auto available = data.resources_available();
+    auto total = data.resources_total();
+    ASSERT_EQ(available["object_store_memory"], 10.0);
+  }
+
+  used_object_store_memory = 9999999999;
+  {
+    rpc::ResourcesData data;
+    resource_scheduler.FillResourceUsage(data);
+    auto available = data.resources_available();
+    auto total = data.resources_total();
+    ASSERT_EQ(available["object_store_memory"], 0.0);
+  }
+}
+
 TEST_F(ClusterResourceSchedulerTest, DirtyLocalViewTest) {
   std::unordered_map<std::string, double> initial_resources({{"CPU", 1}});
   ClusterResourceScheduler resource_scheduler("local", initial_resources);
@@ -1127,7 +1180,7 @@ TEST_F(ClusterResourceSchedulerTest, DirtyLocalViewTest) {
   task_allocation = std::make_shared<TaskResourceInstances>();
   ASSERT_FALSE(resource_scheduler.AllocateLocalTaskResources(task_spec, task_allocation));
   // View of local resources is not affected by resource usage report.
-  auto data = std::make_shared<rpc::ResourcesData>();
+  rpc::ResourcesData data;
   resource_scheduler.FillResourceUsage(data);
   ASSERT_FALSE(resource_scheduler.AllocateLocalTaskResources(task_spec, task_allocation));
 
@@ -1135,7 +1188,7 @@ TEST_F(ClusterResourceSchedulerTest, DirtyLocalViewTest) {
     // Remote node reports updated resource availability.
     resource_scheduler.AddOrUpdateNode("remote", {{"CPU", 2.}},
                                        {{"CPU", num_slots_available}});
-    auto data = std::make_shared<rpc::ResourcesData>();
+    rpc::ResourcesData data;
     int64_t t;
     bool is_infeasible;
     for (int i = 0; i < 3; i++) {

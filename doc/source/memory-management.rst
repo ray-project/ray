@@ -33,21 +33,45 @@ The ``ray memory`` command can be used to help track down what ``ObjectRef`` ref
 
 Running ``ray memory`` from the command line while a Ray application is running will give you a dump of all of the ``ObjectRef`` references that are currently held by the driver, actors, and tasks in the cluster.
 
-::
+.. code-block:: text
 
-  -----------------------------------------------------------------------------------------------------
-  Object Ref                                Reference Type       Object Size   Reference Creation Site
-  =====================================================================================================
-  ; worker pid=18301
-  45b95b1c8bd3a9c4ffffffff010000c801000000  LOCAL_REFERENCE                ?   (deserialize task arg) __main__..f
-  ; driver pid=18281
-  f66d17bae2b0e765ffffffff010000c801000000  LOCAL_REFERENCE                ?   (task call) test.py:<module>:12
-  45b95b1c8bd3a9c4ffffffff010000c801000000  USED_BY_PENDING_TASK           ?   (task call) test.py:<module>:10
-  ef0a6c221819881cffffffff010000c801000000  LOCAL_REFERENCE                ?   (task call) test.py:<module>:11
-  ffffffffffffffffffffffff0100008801000000  LOCAL_REFERENCE               77   (put object) test.py:<module>:9
-  -----------------------------------------------------------------------------------------------------
+  ======== Object references status: 2021-02-23 22:02:22.072221 ========
+  Grouping by node address...        Sorting by object size...
 
-Each entry in this output corresponds to an ``ObjectRef`` that's currently pinning an object in the object store along with where the reference is (in the driver, in a worker, etc.), what type of reference it is (see below for details on the types of references), the size of the object in bytes, and where in the application the reference was created.
+
+  --- Summary for node address: 192.168.0.15 ---
+  Mem Used by Objects  Local References  Pinned Count  Pending Tasks  Captured in Objects  Actor Handles
+  287 MiB              4                 0             0              1                    0            
+
+  --- Object references for node address: 192.168.0.15 ---
+  IP Address    PID    Type    Object Ref                                                Size    Reference Type      Call Site             
+  192.168.0.15  6465   Driver  ffffffffffffffffffffffffffffffffffffffff0100000001000000  15 MiB  LOCAL_REFERENCE     (put object)
+                                                                                                                    | test.py:
+                                                                                                                    <module>:17           
+
+  192.168.0.15  6465   Driver  a67dc375e60ddd1affffffffffffffffffffffff0100000001000000  15 MiB  LOCAL_REFERENCE     (task call)
+                                                                                                                    | test.py:
+                                                                                                                    :<module>:18          
+
+  192.168.0.15  6465   Driver  ffffffffffffffffffffffffffffffffffffffff0100000002000000  18 MiB  CAPTURED_IN_OBJECT  (put object)  |
+                                                                                                                     test.py:
+                                                                                                                    <module>:19           
+
+  192.168.0.15  6465   Driver  ffffffffffffffffffffffffffffffffffffffff0100000004000000  21 MiB  LOCAL_REFERENCE     (put object)  |
+                                                                                                                     test.py:
+                                                                                                                    <module>:20           
+
+  192.168.0.15  6465   Driver  ffffffffffffffffffffffffffffffffffffffff0100000003000000  218 MiB  LOCAL_REFERENCE     (put object)  |
+                                                                                                                    test.py:
+                                                                                                                    <module>:20           
+
+  --- Aggregate object store stats across all nodes ---
+  Plasma memory usage 0 MiB, 4 objects, 0.0% full
+
+
+Each entry in this output corresponds to an ``ObjectRef`` that's currently pinning an object in the object store along with where the reference is (in the driver, in a worker, etc.), what type of reference it is (see below for details on the types of references), the size of the object in bytes, the process ID and IP address where the object was instantiated, and where in the application the reference was created.
+
+``ray memory`` comes with features to make the memory debugging experience more effective. For example, you can add arguments ``sort-by=OBJECT_SIZE`` and ``group-by=STACK_TRACE``, which may be particularly helpful for tracking down the line of code where a memory leak occurs. You can see the full suite of options by running ``ray memory --help``.  
 
 There are five types of references that can keep an object pinned:
 
@@ -64,15 +88,21 @@ There are five types of references that can keep an object pinned:
 
 In this example, we create references to two objects: one that is ``ray.put()`` in the object store and another that's the return value from ``f.remote()``.
 
-::
+.. code-block:: text
 
-  -----------------------------------------------------------------------------------------------------
-  Object Ref                                Reference Type       Object Size   Reference Creation Site
-  =====================================================================================================
-  ; driver pid=18867
-  ffffffffffffffffffffffff0100008801000000  LOCAL_REFERENCE               77   (put object) ../test.py:<module>:9
-  45b95b1c8bd3a9c4ffffffff010000c801000000  LOCAL_REFERENCE                ?   (task call) ../test.py:<module>:10
-  -----------------------------------------------------------------------------------------------------
+  --- Summary for node address: 192.168.0.15 ---
+  Mem Used by Objects  Local References  Pinned Count  Pending Tasks  Captured in Objects  Actor Handles
+  30 MiB               2                 0             0              0                    0            
+
+  --- Object references for node address: 192.168.0.15 ---
+  IP Address    PID    Type    Object Ref                                                Size    Reference Type      Call Site             
+  192.168.0.15  6867   Driver  ffffffffffffffffffffffffffffffffffffffff0100000001000000  15 MiB  LOCAL_REFERENCE     (put object)  |
+                                                                                                                    test.py:
+                                                                                                                    <module>:12           
+
+  192.168.0.15  6867   Driver  a67dc375e60ddd1affffffffffffffffffffffff0100000001000000  15 MiB  LOCAL_REFERENCE     (task call)
+                                                                                                                    | test.py:
+                                                                                                                    :<module>:13
 
 In the output from ``ray memory``, we can see that each of these is marked as a ``LOCAL_REFERENCE`` in the driver process, but the annotation in the "Reference Creation Site" indicates that the first was created as a "put object" and the second from a "task call."
 
@@ -88,14 +118,16 @@ In the output from ``ray memory``, we can see that each of these is marked as a 
 
 In this example, we create a ``numpy`` array and then store it in the object store. Then, we fetch the same numpy array from the object store and delete its ``ObjectRef``. In this case, the object is still pinned in the object store because the deserialized copy (stored in ``b``) points directly to the memory in the object store.
 
-::
+.. code-block:: text
 
-  -----------------------------------------------------------------------------------------------------
-  Object Ref                                Reference Type       Object Size   Reference Creation Site
-  =====================================================================================================
-  ; driver pid=25090
-  ffffffffffffffffffffffff0100008801000000  PINNED_IN_MEMORY             229   test.py:<module>:7
-  -----------------------------------------------------------------------------------------------------
+  --- Summary for node address: 192.168.0.15 ---
+  Mem Used by Objects  Local References  Pinned Count  Pending Tasks  Captured in Objects  Actor Handles
+  243 MiB              0                 1             0              0                    0            
+
+  --- Object references for node address: 192.168.0.15 ---
+  IP Address    PID    Type    Object Ref                                                Size    Reference Type      Call Site             
+  192.168.0.15  7066   Driver  ffffffffffffffffffffffffffffffffffffffff0100000001000000  243 MiB  PINNED_IN_MEMORY   test.
+                                                                                                                    py:<module>:19
 
 The output from ``ray memory`` displays this as the object being ``PINNED_IN_MEMORY``. If we ``del b``, the reference can be freed.
 
@@ -113,17 +145,24 @@ The output from ``ray memory`` displays this as the object being ``PINNED_IN_MEM
 
 In this example, we first create an object via ``ray.put()`` and then submit a task that depends on the object.
 
-::
+.. code-block:: text
 
-  -----------------------------------------------------------------------------------------------------
-  Object Ref                                Reference Type       Object Size   Reference Creation Site
-  =====================================================================================================
-  ; worker pid=18971
-  ffffffffffffffffffffffff0100008801000000  PINNED_IN_MEMORY              77   (deserialize task arg) __main__..f
-  ; driver pid=18958
-  ffffffffffffffffffffffff0100008801000000  USED_BY_PENDING_TASK          77   (put object) ../test.py:<module>:9
-  45b95b1c8bd3a9c4ffffffff010000c801000000  LOCAL_REFERENCE                ?   (task call) ../test.py:<module>:10
-  -----------------------------------------------------------------------------------------------------
+  --- Summary for node address: 192.168.0.15 ---
+  Mem Used by Objects  Local References  Pinned Count  Pending Tasks  Captured in Objects  Actor Handles
+  25 MiB               1                 1             1              0                    0            
+
+  --- Object references for node address: 192.168.0.15 ---
+  IP Address    PID    Type    Object Ref                                                Size    Reference Type      Call Site             
+  192.168.0.15  7207   Driver  a67dc375e60ddd1affffffffffffffffffffffff0100000001000000  ?       LOCAL_REFERENCE     (task call) 
+                                                                                                                      | test.py:
+                                                                                                                    :<module>:29          
+
+  192.168.0.15  7241   Worker  ffffffffffffffffffffffffffffffffffffffff0100000001000000  10 MiB  PINNED_IN_MEMORY    (deserialize task arg)
+                                                                                                                      __main__.f           
+
+  192.168.0.15  7207   Driver  ffffffffffffffffffffffffffffffffffffffff0100000001000000  15 MiB  USED_BY_PENDING_TASK  (put object)  |
+                                                                                                                    test.py:
+                                                                                                                    <module>:28
 
 While the task is running, we see that ``ray memory`` shows both a ``LOCAL_REFERENCE`` and a ``USED_BY_PENDING_TASK`` reference for the object in the driver process. The worker process also holds a reference to the object because it is ``PINNED_IN_MEMORY``, because the Python ``arg`` is directly referencing the memory in the plasma, so it can't be evicted.
 
@@ -141,17 +180,24 @@ While the task is running, we see that ``ray memory`` shows both a ``LOCAL_REFER
 
 In this example, we again create an object via ``ray.put()``, but then pass it to a task wrapped in another object (in this case, a list).
 
-::
+.. code-block:: text
 
-  -----------------------------------------------------------------------------------------------------
-  Object Ref                                Reference Type       Object Size   Reference Creation Site
-  =====================================================================================================
-  ; worker pid=19002
-  ffffffffffffffffffffffff0100008801000000  LOCAL_REFERENCE               77   (deserialize task arg) __main__..f
-  ; driver pid=18989
-  ffffffffffffffffffffffff0100008801000000  USED_BY_PENDING_TASK          77   (put object) ../test.py:<module>:9
-  45b95b1c8bd3a9c4ffffffff010000c801000000  LOCAL_REFERENCE                ?   (task call) ../test.py:<module>:10
-  -----------------------------------------------------------------------------------------------------
+  --- Summary for node address: 192.168.0.15 ---
+  Mem Used by Objects  Local References  Pinned Count  Pending Tasks  Captured in Objects  Actor Handles
+  15 MiB               2                 0             1              0                    0            
+
+  --- Object references for node address: 192.168.0.15 ---
+  IP Address    PID    Type    Object Ref                                                Size    Reference Type      Call Site             
+  192.168.0.15  7411   Worker  ffffffffffffffffffffffffffffffffffffffff0100000001000000  ?       LOCAL_REFERENCE     (deserialize task arg)
+                                                                                                                      __main__.f           
+
+  192.168.0.15  7373   Driver  a67dc375e60ddd1affffffffffffffffffffffff0100000001000000  ?       LOCAL_REFERENCE     (task call)  
+                                                                                                                    | test.py:
+                                                                                                                    :<module>:38          
+
+  192.168.0.15  7373   Driver  ffffffffffffffffffffffffffffffffffffffff0100000001000000  15 MiB  USED_BY_PENDING_TASK  (put object) 
+                                                                                                                    | test.py:
+                                                                                                                    <module>:37
 
 Now, both the driver and the worker process running the task hold a ``LOCAL_REFERENCE`` to the object in addition to it being ``USED_BY_PENDING_TASK`` on the driver. If this was an actor task, the actor could even hold a ``LOCAL_REFERENCE`` after the task completes by storing the ``ObjectRef`` in a member variable.
 
@@ -165,15 +211,21 @@ Now, both the driver and the worker process running the task hold a ``LOCAL_REFE
 
 In this example, we first create an object via ``ray.put()``, then capture its ``ObjectRef`` inside of another ``ray.put()`` object, and delete the first ``ObjectRef``. In this case, both objects are still pinned.
 
-::
+.. code-block:: text
 
-  -----------------------------------------------------------------------------------------------------
-  Object Ref                                Reference Type       Object Size   Reference Creation Site
-  =====================================================================================================
-  ; driver pid=19047
-  ffffffffffffffffffffffff0100008802000000  LOCAL_REFERENCE             1551   (put object) ../test.py:<module>:10
-  ffffffffffffffffffffffff0100008801000000  CAPTURED_IN_OBJECT            77   (put object) ../test.py:<module>:9
-  -----------------------------------------------------------------------------------------------------
+  --- Summary for node address: 192.168.0.15 ---
+  Mem Used by Objects  Local References  Pinned Count  Pending Tasks  Captured in Objects  Actor Handles
+  233 MiB              1                 0             0              1                    0            
+
+  --- Object references for node address: 192.168.0.15 ---
+  IP Address    PID    Type    Object Ref                                                Size    Reference Type      Call Site             
+  192.168.0.15  7473   Driver  ffffffffffffffffffffffffffffffffffffffff0100000001000000  15 MiB  CAPTURED_IN_OBJECT  (put object)  |
+                                                                                                                    test.py:
+                                                                                                                    <module>:41           
+
+  192.168.0.15  7473   Driver  ffffffffffffffffffffffffffffffffffffffff0100000002000000  218 MiB  LOCAL_REFERENCE     (put object)  |
+                                                                                                                    test.py:
+                                                                                                                    <module>:42 
 
 In the output of ``ray memory``, we see that the second object displays as a normal ``LOCAL_REFERENCE``, but the first object is listed as ``CAPTURED_IN_OBJECT``.
 
@@ -240,6 +292,8 @@ You can also view cluster-wide spill stats by using the ``ray memory`` command::
   Plasma memory usage 50 MiB, 1 objects, 50.0% full
   Spilled 200 MiB, 4 objects, avg write throughput 570 MiB/s
   Restored 150 MiB, 3 objects, avg read throughput 1361 MiB/s
+
+If you only want to display cluster-wide spill stats, use ``ray memory --stats-only=True``.
 
 Memory Aware Scheduling
 ~~~~~~~~~~~~~~~~~~~~~~~

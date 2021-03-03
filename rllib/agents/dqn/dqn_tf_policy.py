@@ -1,4 +1,4 @@
-"""Tensorflow policy class used for DQN"""
+"""TensorFlow policy class used for DQN"""
 
 from typing import Dict
 
@@ -159,7 +159,7 @@ def build_q_model(policy: Policy, obs_space: gym.spaces.Space,
 
     if config["hiddens"]:
         # try to infer the last layer size, otherwise fall back to 256
-        num_outputs = ([256] + config["model"]["fcnet_hiddens"])[-1]
+        num_outputs = ([256] + list(config["model"]["fcnet_hiddens"]))[-1]
         config["model"]["no_final_linear"] = True
     else:
         num_outputs = action_space.n
@@ -215,7 +215,8 @@ def get_distribution_inputs_and_class(policy: Policy,
                                       *,
                                       explore=True,
                                       **kwargs):
-    q_vals = compute_q_values(policy, model, obs_batch, explore)
+    q_vals = compute_q_values(
+        policy, model, {"obs": obs_batch}, state_batches=None, explore=explore)
     q_vals = q_vals[0] if isinstance(q_vals, tuple) else q_vals
 
     policy.q_values = q_vals
@@ -237,19 +238,20 @@ def build_q_losses(policy: Policy, model, _,
     """
     config = policy.config
     # q network evaluation
-    q_t, q_logits_t, q_dist_t = compute_q_values(
+    q_t, q_logits_t, q_dist_t, _ = compute_q_values(
         policy,
-        policy.q_model,
-        train_batch[SampleBatch.CUR_OBS],
+        policy.q_model, {"obs": train_batch[SampleBatch.CUR_OBS]},
+        state_batches=None,
         explore=False)
 
     # target q network evalution
-    q_tp1, q_logits_tp1, q_dist_tp1 = compute_q_values(
+    q_tp1, q_logits_tp1, q_dist_tp1, _ = compute_q_values(
         policy,
-        policy.target_q_model,
-        train_batch[SampleBatch.NEXT_OBS],
+        policy.target_q_model, {"obs": train_batch[SampleBatch.NEXT_OBS]},
+        state_batches=None,
         explore=False)
-    policy.target_q_func_vars = policy.target_q_model.variables()
+    if not hasattr(policy, "target_q_func_vars"):
+        policy.target_q_func_vars = policy.target_q_model.variables()
 
     # q scores for actions which we know were selected in the given state.
     one_hot_selection = tf.one_hot(
@@ -262,9 +264,10 @@ def build_q_losses(policy: Policy, model, _,
     # compute estimate of best possible value starting from state at t + 1
     if config["double_q"]:
         q_tp1_using_online_net, q_logits_tp1_using_online_net, \
-            q_dist_tp1_using_online_net = compute_q_values(
+            q_dist_tp1_using_online_net, _ = compute_q_values(
                 policy, policy.q_model,
-                train_batch[SampleBatch.NEXT_OBS],
+                {"obs": train_batch[SampleBatch.NEXT_OBS]},
+                state_batches=None,
                 explore=False)
         q_tp1_best_using_online_net = tf.argmax(q_tp1_using_online_net, 1)
         q_tp1_best_one_hot_selection = tf.one_hot(q_tp1_best_using_online_net,
@@ -329,13 +332,18 @@ def setup_late_mixins(policy: Policy, obs_space: gym.spaces.Space,
     TargetNetworkMixin.__init__(policy, obs_space, action_space, config)
 
 
-def compute_q_values(policy: Policy, model: ModelV2, obs: TensorType, explore):
+def compute_q_values(policy: Policy,
+                     model: ModelV2,
+                     input_dict,
+                     state_batches=None,
+                     seq_lens=None,
+                     explore=None,
+                     is_training: bool = False):
+
     config = policy.config
 
-    model_out, state = model({
-        SampleBatch.CUR_OBS: obs,
-        "is_training": policy._get_is_training_placeholder(),
-    }, [], None)
+    input_dict["is_training"] = policy._get_is_training_placeholder()
+    model_out, state = model(input_dict, state_batches or [], seq_lens)
 
     if config["num_atoms"] > 1:
         (action_scores, z, support_logits_per_action, logits,
@@ -368,7 +376,7 @@ def compute_q_values(policy: Policy, model: ModelV2, obs: TensorType, explore):
     else:
         value = action_scores
 
-    return value, logits, dist
+    return value, logits, dist, state
 
 
 def _adjust_nstep(n_step, gamma, obs, actions, rewards, new_obs, dones):
@@ -433,7 +441,7 @@ DQNTFPolicy = build_tf_policy(
     postprocess_fn=postprocess_nstep_and_prio,
     optimizer_fn=adam_optimizer,
     gradients_fn=clip_gradients,
-    extra_action_fetches_fn=lambda policy: {"q_values": policy.q_values},
+    extra_action_out_fn=lambda policy: {"q_values": policy.q_values},
     extra_learn_fetches_fn=lambda policy: {"td_error": policy.q_loss.td_error},
     before_init=setup_early_mixins,
     before_loss_init=setup_mid_mixins,

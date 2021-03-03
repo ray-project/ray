@@ -56,7 +56,7 @@ void OldClusterResourceScheduler::DeleteResource(const std::string &node_id_stri
   }
 }
 
-void OldClusterResourceScheduler::FillResourceUsage(rpc::ResourcesData *resources_data) {
+void OldClusterResourceScheduler::FillResourceUsage(rpc::ResourcesData &resources_data) {
   // TODO(atumanov): modify the heartbeat table protocol to use the ResourceSet
   // directly.
   // TODO(atumanov): implement a ResourceSet const_iterator.
@@ -67,17 +67,17 @@ void OldClusterResourceScheduler::FillResourceUsage(rpc::ResourcesData *resource
           local_resources.GetTotalResources())) {
     for (const auto &resource_pair :
          local_resources.GetTotalResources().GetResourceMap()) {
-      (*resources_data->mutable_resources_total())[resource_pair.first] =
+      (*resources_data.mutable_resources_total())[resource_pair.first] =
           resource_pair.second;
     }
   }
 
   if (!last_heartbeat_resources_->GetAvailableResources().IsEqual(
           local_resources.GetAvailableResources())) {
-    resources_data->set_resources_available_changed(true);
+    resources_data.set_resources_available_changed(true);
     for (const auto &resource_pair :
          local_resources.GetAvailableResources().GetResourceMap()) {
-      (*resources_data->mutable_resources_available())[resource_pair.first] =
+      (*resources_data.mutable_resources_available())[resource_pair.first] =
           resource_pair.second;
     }
   }
