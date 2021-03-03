@@ -1130,38 +1130,38 @@ TEST_F(ClusterResourceSchedulerTest, ObjectStoreMemoryUsageTest) {
   resource_scheduler.AddOrUpdateNode(12345, other_node_resources);
 
   {
-    auto data = std::make_shared<rpc::ResourcesData>();
+    rpc::ResourcesData data;
     resource_scheduler.FillResourceUsage(data);
-    auto available = data->resources_available();
-    auto total = data->resources_total();
+    auto available = data.resources_available();
+    auto total = data.resources_total();
     ASSERT_EQ(available["object_store_memory"], 7.5);
     ASSERT_EQ(total["object_store_memory"], 10.0);
   }
 
   used_object_store_memory = 225 * 1024 * 1024;
   {
-    auto data = std::make_shared<rpc::ResourcesData>();
+    rpc::ResourcesData data;
     resource_scheduler.FillResourceUsage(data);
-    auto available = data->resources_available();
-    auto total = data->resources_total();
+    auto available = data.resources_available();
+    auto total = data.resources_total();
     ASSERT_EQ(available["object_store_memory"], 5.5);
   }
 
   used_object_store_memory = 0;
   {
-    auto data = std::make_shared<rpc::ResourcesData>();
+    rpc::ResourcesData data;
     resource_scheduler.FillResourceUsage(data);
-    auto available = data->resources_available();
-    auto total = data->resources_total();
+    auto available = data.resources_available();
+    auto total = data.resources_total();
     ASSERT_EQ(available["object_store_memory"], 10.0);
   }
 
   used_object_store_memory = 9999999999;
   {
-    auto data = std::make_shared<rpc::ResourcesData>();
+    rpc::ResourcesData data;
     resource_scheduler.FillResourceUsage(data);
-    auto available = data->resources_available();
-    auto total = data->resources_total();
+    auto available = data.resources_available();
+    auto total = data.resources_total();
     ASSERT_EQ(available["object_store_memory"], 0.0);
   }
 }
