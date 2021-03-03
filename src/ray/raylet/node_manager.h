@@ -209,7 +209,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// Fill out the resource report. This can be called by either method to transport the
   /// report to GCS.
-  void FillResourceReport(rpc::ResourcesData *resources_data);
+  void FillResourceReport(rpc::ResourcesData &resources_data);
 
   /// Report resource usage to the GCS.
   void ReportResourceUsage();
@@ -705,7 +705,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   ///
   /// \param Output parameter. `resource_load` and `resource_load_by_shape` are the only
   /// fields used.
-  void FillResourceUsage(rpc::ResourcesData *data) override;
+  void FillResourceUsage(rpc::ResourcesData &data) override;
 
   /// Populate the list of pending or infeasible actor tasks for node stats.
   ///
