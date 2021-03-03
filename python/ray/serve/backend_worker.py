@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import traceback
 import inspect
 from collections.abc import Iterable
@@ -177,8 +178,8 @@ class RayServeReplica:
 
     def __init__(self, _callable: Callable, backend_config: BackendConfig,
                  is_function: bool, controller_handle: ActorHandle) -> None:
-        self.backend_tag = ray.serve.api.get_current_backend_tag()
-        self.replica_tag = ray.serve.api.get_current_replica_tag()
+        self.backend_tag = ray.serve.api.get_replica_context().backend_tag
+        self.replica_tag = ray.serve.api.get_replica_context().replica_tag
         self.callable = _callable
         self.is_function = is_function
 
@@ -258,6 +259,14 @@ class RayServeReplica:
         })
 
         self.restart_counter.record(1)
+
+        ray_logger = logging.getLogger("ray")
+        for handler in ray_logger.handlers:
+            handler.setFormatter(
+                logging.Formatter(
+                    handler.formatter._fmt +
+                    f" component=serve backend={self.backend_tag} "
+                    f"replica={self.replica_tag}"))
 
         asyncio.get_event_loop().create_task(self.main_loop())
 

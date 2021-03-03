@@ -537,8 +537,14 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
           std::move(actor_creator),
           RayConfig::instance().max_tasks_in_flight_per_worker(),
           boost::asio::steady_timer(io_service_)));
-  future_resolver_.reset(
-      new FutureResolver(memory_store_, core_worker_client_pool_, rpc_address_));
+  auto report_locality_data_callback =
+      [this](const ObjectID &object_id, const absl::flat_hash_set<NodeID> &locations,
+             uint64_t object_size) {
+        reference_counter_->ReportLocalityData(object_id, locations, object_size);
+      };
+  future_resolver_.reset(new FutureResolver(memory_store_,
+                                            std::move(report_locality_data_callback),
+                                            core_worker_client_pool_, rpc_address_));
   // Unfortunately the raylet client has to be constructed after the receivers.
   if (direct_task_receiver_ != nullptr) {
     task_argument_waiter_.reset(new DependencyWaiterImpl(*local_raylet_client_));
@@ -1685,7 +1691,9 @@ Status CoreWorker::KillActor(const ActorID &actor_id, bool force_kill, bool no_r
     stream << "Failed to find a corresponding actor handle for " << actor_id;
     return Status::Invalid(stream.str());
   }
-  direct_actor_submitter_->KillActor(actor_id, force_kill, no_restart);
+
+  RAY_CHECK_OK(
+      gcs_client_->Actors().AsyncKillActor(actor_id, force_kill, no_restart, nullptr));
   return Status::OK();
 }
 
@@ -2169,7 +2177,7 @@ void CoreWorker::HandleGetObjectStatus(const rpc::GetObjectStatusRequest &reques
     // Send the reply once the value has become available. The value is
     // guaranteed to become available eventually because we own the object and
     // its ref count is > 0.
-    memory_store_->GetAsync(object_id, [reply, send_reply_callback,
+    memory_store_->GetAsync(object_id, [this, object_id, reply, send_reply_callback,
                                         is_freed](std::shared_ptr<RayObject> obj) {
       if (is_freed) {
         reply->set_status(rpc::GetObjectStatusReply::FREED);
@@ -2194,6 +2202,14 @@ void CoreWorker::HandleGetObjectStatus(const rpc::GetObjectStatusRequest &reques
           object->add_nested_inlined_ids(nested_id.Binary());
         }
         reply->set_status(rpc::GetObjectStatusReply::CREATED);
+        // Set locality data.
+        const auto &locality_data = reference_counter_->GetLocalityData(object_id);
+        if (locality_data.has_value()) {
+          for (const auto &node_id : locality_data.value().nodes_containing_object) {
+            reply->add_node_ids(node_id.Binary());
+          }
+          reply->set_object_size(locality_data.value().object_size);
+        }
       }
       send_reply_callback(Status::OK(), nullptr, nullptr);
     });
@@ -2582,8 +2598,15 @@ void CoreWorker::HandleDeleteSpilledObjects(
 
 void CoreWorker::HandleExit(const rpc::ExitRequest &request, rpc::ExitReply *reply,
                             rpc::SendReplyCallback send_reply_callback) {
+  bool own_objects = reference_counter_->OwnObjects();
+  // Fail the request if it owns any object.
+  if (own_objects) {
+    reply->set_success(false);
+  } else {
+    reply->set_success(true);
+    Exit(/*intentional=*/true);
+  }
   send_reply_callback(Status::OK(), nullptr, nullptr);
-  Exit(/*intentional=*/true);
 }
 
 void CoreWorker::YieldCurrentFiber(FiberEvent &event) {
@@ -2682,5 +2705,7 @@ void CoreWorker::SetActorTitle(const std::string &title) {
 }
 
 const rpc::JobConfig &CoreWorker::GetJobConfig() const { return *job_config_; }
+
+bool CoreWorker::IsExiting() const { return exiting_; }
 
 }  // namespace ray

@@ -420,6 +420,11 @@ def test_ray_start_and_stop():
         subprocess.check_call(["ray", "stop"])
 
 
+def test_ray_memory(shutdown_only):
+    ray.init(num_cpus=1)
+    subprocess.check_call(["ray", "memory"])
+
+
 def test_invalid_unicode_in_worker_log(shutdown_only):
     info = ray.init(num_cpus=1)
 
@@ -813,6 +818,50 @@ def test_sync_job_config(shutdown_only):
     assert (job_config.num_java_workers_per_process ==
             num_java_workers_per_process)
     assert (job_config.worker_env == worker_env)
+
+
+def test_duplicated_arg(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=1)
+    ray.init(address=cluster.address)
+
+    @ray.remote
+    def task_with_dup_arg(*args):
+        return sum(args)
+
+    # Basic verification.
+    arr = np.ones(1 * 1024 * 1024, dtype=np.uint8)  # 1MB
+    ref = ray.put(arr)
+    assert np.array_equal(
+        ray.get(task_with_dup_arg.remote(ref, ref, ref)), sum([arr, arr, arr]))
+
+    # Make sure it works when it is mixed with other args.
+    ref2 = ray.put(arr)
+    assert np.array_equal(
+        ray.get(task_with_dup_arg.remote(ref, ref2, ref)), sum([arr, arr,
+                                                                arr]))
+
+    # Test complicated scenario with multi nodes.
+    cluster.add_node(num_cpus=1, resources={"worker_1": 1})
+    cluster.add_node(num_cpus=1, resources={"worker_2": 1})
+    cluster.wait_for_nodes()
+
+    @ray.remote
+    def create_remote_ref(arr):
+        return ray.put(arr)
+
+    @ray.remote
+    def task_with_dup_arg_ref(*args):
+        args = ray.get(list(args))
+        return sum(args)
+
+    ref1 = create_remote_ref.options(resources={"worker_1": 1}).remote(arr)
+    ref2 = create_remote_ref.options(resources={"worker_2": 1}).remote(arr)
+    ref3 = create_remote_ref.remote(arr)
+    np.array_equal(
+        ray.get(
+            task_with_dup_arg_ref.remote(ref1, ref2, ref3, ref1, ref2, ref3)),
+        sum([arr] * 6))
 
 
 if __name__ == "__main__":

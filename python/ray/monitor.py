@@ -97,7 +97,8 @@ class Monitor:
 
         # Initialize the gcs stub for getting all node resource usage.
         gcs_address = self.redis.get("GcsServerAddress").decode("utf-8")
-        gcs_channel = grpc.insecure_channel(gcs_address)
+        options = (("grpc.enable_http_proxy", 0), )
+        gcs_channel = grpc.insecure_channel(gcs_address, options=options)
         self.gcs_node_resources_stub = \
             gcs_service_pb2_grpc.NodeResourceInfoGcsServiceStub(gcs_channel)
 
@@ -240,7 +241,8 @@ class Monitor:
 
     def _handle_failure(self, error):
         logger.exception("Error in monitor loop")
-        if self.autoscaler is not None:
+        if self.autoscaler is not None and \
+           os.environ.get("RAY_AUTOSCALER_FATESHARE_WORKERS", "") == "1":
             self.autoscaler.kill_workers()
             # Take down autoscaler workers if necessary.
             self.destroy_autoscaler_workers()

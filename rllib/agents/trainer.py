@@ -316,11 +316,6 @@ COMMON_CONFIG: TrainerConfigDict = {
     # Number of CPUs to allocate for the trainer. Note: this only takes effect
     # when running in Tune. Otherwise, the trainer runs in the main program.
     "num_cpus_for_driver": 1,
-    # Deprecated.
-    "memory": 0,
-    "object_store_memory": 0,
-    "memory_per_worker": 0,
-    "object_store_memory_per_worker": 0,
 
     # === Offline Datasets ===
     # Specify how to generate experiences:
@@ -393,11 +388,6 @@ COMMON_CONFIG: TrainerConfigDict = {
     # Define logger-specific configuration to be used inside Logger
     # Default value None allows overwriting with nested dicts
     "logger_config": None,
-
-    # === Replay Settings ===
-    # The number of contiguous environment steps to replay at once. This may
-    # be set to greater than 1 to support recurrent models.
-    "replay_sequence_length": 1,
 }
 # __sphinx_doc_end__
 # yapf: enable
@@ -505,13 +495,8 @@ class Trainer(Trainable):
         return Resources(
             cpu=cf["num_cpus_for_driver"],
             gpu=cf["num_gpus"],
-            memory=cf["memory"],
-            object_store_memory=cf["object_store_memory"],
             extra_cpu=cf["num_cpus_per_worker"] * num_workers,
-            extra_gpu=cf["num_gpus_per_worker"] * num_workers,
-            extra_memory=cf["memory_per_worker"] * num_workers,
-            extra_object_store_memory=cf["object_store_memory_per_worker"] *
-            num_workers)
+            extra_gpu=cf["num_gpus_per_worker"] * num_workers)
 
     @override(Trainable)
     @PublicAPI

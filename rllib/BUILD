@@ -162,7 +162,7 @@ py_test(
     args = ["--yaml-dir=tuned_examples/ppo", "--framework=torch"]
 )
 
-# DQN/Simple-Q
+# DQN/R2D2
 py_test(
     name = "run_regression_tests_cartpole_dqn_tf",
     main = "tests/run_regression_tests.py",
@@ -170,10 +170,10 @@ py_test(
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = [
-        "tuned_examples/dqn/cartpole-simpleq.yaml",
         "tuned_examples/dqn/cartpole-dqn.yaml",
         "tuned_examples/dqn/cartpole-dqn-softq.yaml",
         "tuned_examples/dqn/cartpole-dqn-param-noise.yaml",
+        "tuned_examples/dqn/cartpole-r2d2.yaml",
     ],
     args = ["--yaml-dir=tuned_examples/dqn"]
 )
@@ -185,10 +185,35 @@ py_test(
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = [
-        "tuned_examples/dqn/cartpole-simpleq.yaml",
         "tuned_examples/dqn/cartpole-dqn.yaml",
         "tuned_examples/dqn/cartpole-dqn-softq.yaml",
         "tuned_examples/dqn/cartpole-dqn-param-noise.yaml",
+        "tuned_examples/dqn/cartpole-r2d2.yaml",
+    ],
+    args = ["--yaml-dir=tuned_examples/dqn", "--framework=torch"]
+)
+
+# Simple-Q
+py_test(
+    name = "run_regression_tests_cartpole_simpleq_tf",
+    main = "tests/run_regression_tests.py",
+    tags = ["learning_tests_tf", "learning_tests_cartpole"],
+    size = "medium",
+    srcs = ["tests/run_regression_tests.py"],
+    data = [
+        "tuned_examples/dqn/cartpole-simpleq.yaml",
+    ],
+    args = ["--yaml-dir=tuned_examples/dqn"]
+)
+
+py_test(
+    name = "run_regression_tests_cartpole_simpleq_torch",
+    main = "tests/run_regression_tests.py",
+    tags = ["learning_tests_torch", "learning_tests_cartpole"],
+    size = "medium",
+    srcs = ["tests/run_regression_tests.py"],
+    data = [
+        "tuned_examples/dqn/cartpole-simpleq.yaml",
     ],
     args = ["--yaml-dir=tuned_examples/dqn", "--framework=torch"]
 )
@@ -328,6 +353,31 @@ py_test(
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/ppo/repeatafterme-ppo-lstm.yaml"],
     args = ["--yaml-dir=tuned_examples/ppo", "--framework=torch"]
+)
+
+# R2D2
+py_test(
+    name = "run_regression_tests_cartpole_r2d2_tf",
+    main = "tests/run_regression_tests.py",
+    tags = ["learning_tests_tf", "learning_tests_cartpole"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = [
+        "tuned_examples/dqn/cartpole-r2d2.yaml",
+    ],
+    args = ["--yaml-dir=tuned_examples/dqn"]
+)
+
+py_test(
+    name = "run_regression_tests_cartpole_r2d2_torch",
+    main = "tests/run_regression_tests.py",
+    tags = ["learning_tests_torch", "learning_tests_cartpole"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = [
+        "tuned_examples/dqn/cartpole-r2d2.yaml",
+    ],
+    args = ["--yaml-dir=tuned_examples/dqn", "--framework=torch"]
 )
 
 # SAC
@@ -2028,14 +2078,16 @@ py_test(
     args = ["--as-test", "--torch", "--stop-reward=70"]
 )
 
-py_test(
-    name = "examples/multi_agent_two_trainers_mixed_torch_tf",
-    main = "examples/multi_agent_two_trainers.py",
-    tags = ["examples", "examples_M"],
-    size = "medium",
-    srcs = ["examples/multi_agent_two_trainers.py"],
-    args = ["--as-test", "--mixed-torch-tf", "--stop-reward=70"]
-)
+# Taking out this test for now: Mixed torch- and tf- policies within the same
+# Trainer never really worked.
+# py_test(
+#     name = "examples/multi_agent_two_trainers_mixed_torch_tf",
+#     main = "examples/multi_agent_two_trainers.py",
+#     tags = ["examples", "examples_M"],
+#     size = "medium",
+#     srcs = ["examples/multi_agent_two_trainers.py"],
+#     args = ["--as-test", "--mixed-torch-tf", "--stop-reward=70"]
+# )
 
 py_test(
     name = "examples/nested_action_spaces_ppo_tf",

@@ -1,10 +1,10 @@
-import axios from "axios";
 import { NodeDetailRsp, NodeListRsp } from "../type/node";
+import { get } from "./requestHandlers";
 
 export const getNodeList = async () => {
-  return await axios.get<NodeListRsp>("nodes?view=summary");
+  return await get<NodeListRsp>("nodes?view=summary");
 };
 
 export const getNodeDetail = async (id: string) => {
-  return await axios.get<NodeDetailRsp>(`nodes/${id}`);
+  return await get<NodeDetailRsp>(`nodes/${id}`);
 };
