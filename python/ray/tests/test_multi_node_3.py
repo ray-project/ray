@@ -394,7 +394,8 @@ ray.get(main_wait.release.remote())
 def test_spillback_distribution(ray_start_cluster):
     cluster = ray_start_cluster
     # Create a head node and wait until it is up.
-    cluster.add_node(num_cpus=0, _system_config={"scheduler_loadbalance_spillback": True})
+    cluster.add_node(
+        num_cpus=0, _system_config={"scheduler_loadbalance_spillback": True})
     ray.init(address=cluster.address)
     cluster.wait_for_nodes()
 
@@ -428,31 +429,12 @@ def test_spillback_distribution(ray_start_cluster):
         def get_location(self):
             return ray.worker.global_worker.current_node_id
 
-
     actors = [Actor1.remote() for _ in range(10)]
     locations = ray.get([actor.get_location.remote() for actor in actors])
     counter = Counter(locations)
     spread = max(counter.values()) - min(counter.values())
     assert spread < 6
     assert len(counter) > 1
-    # Create a bunch of actors.
-    # num_actors = 8
-    # num_attempts = 20
-    # minimum_count = 2
-
-    # # Make sure that actors are spread between the raylets.
-    # attempts = 0
-    # while attempts < num_attempts:
-    #     actors = [Actor1.remote() for _ in range(num_actors)]
-    #     locations = ray.get([actor.get_location.remote() for actor in actors])
-    #     names = set(locations)
-    #     counts = [locations.count(name) for name in names]
-    #     print("Counts are {}.".format(counts))
-    #     if (len(names) == num_nodes
-    #             and all(count >= minimum_count for count in counts)):
-    #         break
-    #     attempts += 1
-    # assert attempts < num_attempts
 
 
 if __name__ == "__main__":

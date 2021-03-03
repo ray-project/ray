@@ -29,10 +29,9 @@ ClusterResourceScheduler::ClusterResourceScheduler(
 
 ClusterResourceScheduler::ClusterResourceScheduler(
     const std::string &local_node_id,
- const std::unordered_map<std::string, double> &local_node_resources,
-    std::function<int64_t(void)> get_used_object_store_memory) :
-  loadbalance_spillback_(RayConfig::instance().scheduler_loadbalance_spillback())
-{
+    const std::unordered_map<std::string, double> &local_node_resources,
+    std::function<int64_t(void)> get_used_object_store_memory)
+    : loadbalance_spillback_(RayConfig::instance().scheduler_loadbalance_spillback()) {
   local_node_id_ = string_to_int_map_.Insert(local_node_id);
   NodeResources node_resources = ResourceMapToNodeResources(
       string_to_int_map_, local_node_resources, local_node_resources);
