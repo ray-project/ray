@@ -40,6 +40,6 @@ struct RayRuntimeHolder {
   std::shared_ptr<RayRuntime> runtime_;
 };
 
-static auto &ray_runtime = RayRuntimeHolder::Instance().Runtime();
+static auto &ray_runtime_instance = RayRuntimeHolder::Instance().Runtime();
 }  // namespace api
 }  // namespace ray
