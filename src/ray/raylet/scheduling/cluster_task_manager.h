@@ -157,21 +157,6 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   // Schedule and dispatch tasks.
   void ScheduleAndDispatchTasks() override;
 
-  /// Handle the resource usage updated event of the specified node.
-  ///
-  /// \param node_id ID of the node which resources are updated.
-  /// \param resource_data The node resources.
-  void OnNodeResourceUsageUpdated(const NodeID &node_id,
-                                  const rpc::ResourcesData &resource_data) override;
-
-  /// Handle the object missing event.
-  ///
-  /// \param object_id ID of the missing object.
-  /// \param waiting_task_ids IDs of tasks that are waitting for the specified missing
-  /// object.
-  void OnObjectMissing(const ObjectID &object_id,
-                       const std::vector<TaskID> &waiting_task_ids) override;
-
   /// The helper to dump the debug state of the cluster task manater.
   std::string DebugStr() const override;
 
