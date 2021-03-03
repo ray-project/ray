@@ -16,6 +16,10 @@ IMAGE_ENV = "KUBERNETES_OPERATOR_TEST_IMAGE"
 IMAGE = os.getenv(IMAGE_ENV, "rayproject/ray:nightly")
 NAMESPACE = "test-k8s-operator-examples"
 
+RAY_PATH = os.path.abspath(
+    os.path.dirname(
+        os.path.dirname(os.path.dirname(os.path.dirname(__file__)))))
+
 
 def retry_until_true(f):
     # Retry 60 times with 1 second delay between attempts.
@@ -86,7 +90,8 @@ class KubernetesOperatorTest(unittest.TestCase):
             example_cluster2_config_path = get_operator_config_path(
                 "example_cluster2.yaml")
             operator_config_path = get_operator_config_path("operator.yaml")
-            job_path = get_kubernetes_config_path("job-example.yaml")
+            job_path = os.path.join(RAY_PATH,
+                                    "doc/kubernetes/job-example.yaml")
             self.crd_path = get_operator_config_path("cluster_crd.yaml")
 
             # Load operator configs
@@ -190,4 +195,4 @@ class KubernetesOperatorTest(unittest.TestCase):
 
 if __name__ == "__main__":
     kubernetes.config.load_kube_config()
-    sys.exit(pytest.main(["-v", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

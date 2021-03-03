@@ -118,8 +118,13 @@ class MockTaskDependencyManager : public TaskDependencyManagerInterface {
     RAY_CHECK(subscribed_tasks.erase(task_id));
   }
 
+  bool TaskDependenciesBlocked(const TaskID &task_id) const {
+    return blocked_tasks.count(task_id);
+  }
+
   std::unordered_set<ObjectID> &missing_objects_;
   std::unordered_set<TaskID> subscribed_tasks;
+  std::unordered_set<TaskID> blocked_tasks;
 };
 
 class ClusterTaskManagerTest : public ::testing::Test {
@@ -133,15 +138,19 @@ class ClusterTaskManagerTest : public ::testing::Test {
         dependency_manager_(missing_objects_),
         task_manager_(
             id_, scheduler_, dependency_manager_,
+            /* is_owner_alive= */
             [this](const WorkerID &worker_id, const NodeID &node_id) {
               return is_owner_alive_;
             },
+            /* get_node_info= */
             [this](const NodeID &node_id) {
               node_info_calls_++;
               return node_info_[node_id];
             },
+            /* announce_infeasible_task= */
             [this](const Task &task) { announce_infeasible_task_calls_++; }, pool_,
             leased_workers_,
+            /* pin_task_arguments= */
             [this](const std::vector<ObjectID> &object_ids,
                    std::vector<std::unique_ptr<RayObject>> *results) {
               for (auto &obj_id : object_ids) {
@@ -178,7 +187,8 @@ class ClusterTaskManagerTest : public ::testing::Test {
   void AssertNoLeaks() {
     ASSERT_TRUE(task_manager_.tasks_to_schedule_.empty());
     ASSERT_TRUE(task_manager_.tasks_to_dispatch_.empty());
-    ASSERT_TRUE(task_manager_.waiting_tasks_.empty());
+    ASSERT_TRUE(task_manager_.waiting_tasks_index_.empty());
+    ASSERT_TRUE(task_manager_.waiting_task_queue_.empty());
     ASSERT_TRUE(task_manager_.infeasible_tasks_.empty());
     ASSERT_TRUE(task_manager_.pinned_task_arguments_.empty());
     ASSERT_EQ(task_manager_.num_pinned_task_arguments_, 0);
@@ -233,7 +243,7 @@ TEST_F(ClusterTaskManagerTest, BasicTest) {
 
   std::shared_ptr<MockWorker> worker =
       std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
-  pool_.PushWorker(std::dynamic_pointer_cast<WorkerInterface>(worker));
+  pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker));
 
   task_manager_.ScheduleAndDispatchTasks();
 
@@ -284,8 +294,8 @@ TEST_F(ClusterTaskManagerTest, ResourceTakenWhileResolving) {
       std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
   std::shared_ptr<MockWorker> worker2 =
       std::make_shared<MockWorker>(WorkerID::FromRandom(), 12345);
-  pool_.PushWorker(std::dynamic_pointer_cast<WorkerInterface>(worker2));
-  pool_.PushWorker(std::dynamic_pointer_cast<WorkerInterface>(worker));
+  pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker2));
+  pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker));
 
   rpc::RequestWorkerLeaseReply reply;
   int num_callbacks = 0;
@@ -389,8 +399,8 @@ TEST_F(ClusterTaskManagerTest, TestSpillAfterAssigned) {
 
   // Two workers start. First task is dispatched now, but resources are no
   // longer available for the second.
-  pool_.PushWorker(std::dynamic_pointer_cast<WorkerInterface>(worker));
-  pool_.PushWorker(std::dynamic_pointer_cast<WorkerInterface>(worker));
+  pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker));
+  pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker));
   task_manager_.ScheduleAndDispatchTasks();
   // Check that both tasks got removed from the queue.
   ASSERT_EQ(num_callbacks, 2);
@@ -436,7 +446,7 @@ TEST_F(ClusterTaskManagerTest, TaskCancellationTest) {
   ASSERT_TRUE(reply.canceled());
   ASSERT_EQ(leased_workers_.size(), 0);
 
-  pool_.PushWorker(std::dynamic_pointer_cast<WorkerInterface>(worker));
+  pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker));
   task_manager_.QueueAndScheduleTask(task, &reply, callback);
 
   // Task is now running so we can't cancel it.
@@ -461,7 +471,7 @@ TEST_F(ClusterTaskManagerTest, TaskCancelInfeasibleTask) {
   /* Make sure cancelTask works for infeasible tasks */
   std::shared_ptr<MockWorker> worker =
       std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
-  pool_.PushWorker(std::dynamic_pointer_cast<WorkerInterface>(worker));
+  pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker));
 
   Task task = CreateTask({{ray::kCPU_ResourceLabel, 12}});
   rpc::RequestWorkerLeaseReply reply;
@@ -499,7 +509,7 @@ TEST_F(ClusterTaskManagerTest, TaskCancelInfeasibleTask) {
 TEST_F(ClusterTaskManagerTest, HeartbeatTest) {
   std::shared_ptr<MockWorker> worker =
       std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
-  pool_.PushWorker(std::dynamic_pointer_cast<WorkerInterface>(worker));
+  pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker));
 
   {
     Task task = CreateTask({{ray::kCPU_ResourceLabel, 1}});
@@ -710,7 +720,7 @@ TEST_F(ClusterTaskManagerTest, OwnerDeadTest) {
 
   std::shared_ptr<MockWorker> worker =
       std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
-  pool_.PushWorker(std::dynamic_pointer_cast<WorkerInterface>(worker));
+  pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker));
 
   is_owner_alive_ = false;
   task_manager_.QueueAndScheduleTask(task, &reply, callback);
@@ -748,7 +758,7 @@ TEST_F(ClusterTaskManagerTest, TestInfeasibleTaskWarning) {
   AddNode(NodeID::FromRandom(), 8);
   std::shared_ptr<MockWorker> worker =
       std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
-  pool_.PushWorker(std::dynamic_pointer_cast<WorkerInterface>(worker));
+  pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker));
   task_manager_.ScheduleAndDispatchTasks();
   // Task shouldn't be scheduled yet.
   ASSERT_EQ(announce_infeasible_task_calls_, 1);
@@ -805,7 +815,7 @@ TEST_F(ClusterTaskManagerTest, TestAnyPendingTasks) {
    */
   std::shared_ptr<MockWorker> worker =
       std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
-  pool_.PushWorker(std::dynamic_pointer_cast<WorkerInterface>(worker));
+  pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker));
 
   // task1: running
   Task task = CreateTask({{ray::kCPU_ResourceLabel, 6}});
@@ -849,7 +859,7 @@ TEST_F(ClusterTaskManagerTest, ArgumentEvicted) {
   */
   std::shared_ptr<MockWorker> worker =
       std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
-  pool_.PushWorker(std::dynamic_pointer_cast<WorkerInterface>(worker));
+  pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker));
 
   rpc::RequestWorkerLeaseReply reply;
   int num_callbacks = 0;
@@ -881,7 +891,7 @@ TEST_F(ClusterTaskManagerTest, ArgumentEvicted) {
 
   /* Task argument gets evicted */
   missing_objects_.insert(missing_arg);
-  pool_.PushWorker(std::dynamic_pointer_cast<WorkerInterface>(worker));
+  pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker));
   task_manager_.ScheduleAndDispatchTasks();
   ASSERT_EQ(dependency_manager_.subscribed_tasks, expected_subscribed_tasks);
   ASSERT_EQ(num_callbacks, 0);
@@ -899,6 +909,57 @@ TEST_F(ClusterTaskManagerTest, ArgumentEvicted) {
             task.GetTaskSpecification().TaskId());
 
   AssertNoLeaks();
+}
+
+TEST_F(ClusterTaskManagerTest, FeasibleToNonFeasible) {
+  // Test the case, when resources changes in local node, the feasible task should
+  // able to transfer to infeasible task
+  std::shared_ptr<MockWorker> worker =
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
+  pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker));
+  Task task1 = CreateTask({{ray::kCPU_ResourceLabel, 4}});
+  rpc::RequestWorkerLeaseReply reply1;
+  bool callback_occurred1 = false;
+  task_manager_.QueueAndScheduleTask(
+      task1, &reply1,
+      [&callback_occurred1](Status, std::function<void()>, std::function<void()>) {
+        callback_occurred1 = true;
+      });
+  ASSERT_EQ(leased_workers_.size(), 1);
+  ASSERT_TRUE(callback_occurred1);
+  ASSERT_EQ(pool_.workers.size(), 0);
+  ASSERT_EQ(task_manager_.tasks_to_schedule_.size(), 0);
+  ASSERT_EQ(task_manager_.tasks_to_dispatch_.size(), 0);
+  ASSERT_EQ(task_manager_.infeasible_tasks_.size(), 0);
+
+  Task task2 = CreateTask({{ray::kCPU_ResourceLabel, 4}});
+  rpc::RequestWorkerLeaseReply reply2;
+  bool callback_occurred2 = false;
+  task_manager_.QueueAndScheduleTask(
+      task2, &reply2,
+      [&callback_occurred2](Status, std::function<void()>, std::function<void()>) {
+        callback_occurred2 = true;
+      });
+  ASSERT_EQ(leased_workers_.size(), 1);
+  ASSERT_FALSE(callback_occurred2);
+  ASSERT_EQ(pool_.workers.size(), 0);
+  ASSERT_EQ(task_manager_.tasks_to_schedule_.size(), 0);
+  // This task is under scheduling
+  ASSERT_EQ(task_manager_.tasks_to_dispatch_.size(), 1);
+  ASSERT_EQ(task_manager_.infeasible_tasks_.size(), 0);
+
+  Task finished_task;
+  task_manager_.TaskFinished(leased_workers_.begin()->second, &finished_task);
+  ASSERT_EQ(finished_task.GetTaskSpecification().TaskId(),
+            task1.GetTaskSpecification().TaskId());
+  // Delete cpu resource of local node, then task 2 should be turned into
+  // infeasible.
+  scheduler_->DeleteLocalResource(ray::kCPU_ResourceLabel);
+  task_manager_.ScheduleAndDispatchTasks();
+  ASSERT_FALSE(callback_occurred2);
+  ASSERT_EQ(task_manager_.tasks_to_schedule_.size(), 0);
+  ASSERT_EQ(task_manager_.tasks_to_dispatch_.size(), 0);
+  ASSERT_EQ(task_manager_.infeasible_tasks_.size(), 1);
 }
 
 TEST_F(ClusterTaskManagerTest, RleaseAndReturnWorkerCpuResources) {
@@ -952,6 +1013,94 @@ TEST_F(ClusterTaskManagerTest, RleaseAndReturnWorkerCpuResources) {
   // Check nothing will be changed.
   ASSERT_EQ(node_resources.predefined_resources[PredefinedResources::CPU].available, 7);
   ASSERT_EQ(node_resources.predefined_resources[PredefinedResources::GPU].available, 3);
+}
+
+TEST_F(ClusterTaskManagerTest, TestSpillWaitingTasks) {
+  // Cases to check:
+  // - resources available locally, task dependencies being fetched -> do not spill.
+  // - resources available locally, task dependencies blocked -> spill.
+  // - resources not available locally -> spill.
+  std::vector<Task> tasks;
+  std::vector<std::unique_ptr<rpc::RequestWorkerLeaseReply>> replies;
+  int num_callbacks = 0;
+  auto callback = [&](Status, std::function<void()>, std::function<void()>) {
+    num_callbacks++;
+  };
+  for (int i = 0; i < 5; i++) {
+    Task task = CreateTask({{ray::kCPU_ResourceLabel, 8}}, /*num_args=*/1);
+    tasks.push_back(task);
+    replies.push_back(std::unique_ptr<rpc::RequestWorkerLeaseReply>(
+        new rpc::RequestWorkerLeaseReply()));
+    // All tasks except the last one added are waiting for dependencies.
+    if (i < 4) {
+      auto missing_arg = task.GetTaskSpecification().GetDependencyIds()[0];
+      missing_objects_.insert(missing_arg);
+    }
+    task_manager_.QueueAndScheduleTask(task, replies[i].get(), callback);
+  }
+  ASSERT_EQ(num_callbacks, 0);
+
+  auto remote_node_id = NodeID::FromRandom();
+  AddNode(remote_node_id, 16);
+  // We are fetching dependencies for all waiting tasks and we have enough
+  // resources available locally to schedule them. We should not spill from the
+  // waiting queue.
+  task_manager_.ScheduleAndDispatchTasks();
+  ASSERT_EQ(num_callbacks, 0);
+
+  // All waiting tasks are blocked due to lack of memory. We should only spill
+  // up to the remote node's resource availability.
+  for (auto &task : tasks) {
+    dependency_manager_.blocked_tasks.insert(task.GetTaskSpecification().TaskId());
+  }
+  task_manager_.ScheduleAndDispatchTasks();
+  ASSERT_EQ(num_callbacks, 2);
+  // Spill from the back of the waiting queue.
+  ASSERT_EQ(replies[0]->retry_at_raylet_address().raylet_id(), "");
+  ASSERT_EQ(replies[1]->retry_at_raylet_address().raylet_id(), "");
+  ASSERT_EQ(replies[2]->retry_at_raylet_address().raylet_id(), remote_node_id.Binary());
+  ASSERT_EQ(replies[3]->retry_at_raylet_address().raylet_id(), remote_node_id.Binary());
+  ASSERT_FALSE(task_manager_.CancelTask(tasks[2].GetTaskSpecification().TaskId()));
+  ASSERT_FALSE(task_manager_.CancelTask(tasks[3].GetTaskSpecification().TaskId()));
+  // Do not spill back tasks ready to dispatch.
+  ASSERT_EQ(replies[4]->retry_at_raylet_address().raylet_id(), "");
+
+  // Add a new node. All task dependencies are being fetched again, so no
+  // spill.
+  AddNode(remote_node_id, 8);
+  dependency_manager_.blocked_tasks.clear();
+  task_manager_.ScheduleAndDispatchTasks();
+  ASSERT_EQ(num_callbacks, 2);
+
+  // Dispatch the ready task. Now we have no more resources available locally,
+  // so we should spill one waiting task.
+  std::shared_ptr<MockWorker> worker =
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
+  pool_.PushWorker(std::dynamic_pointer_cast<WorkerInterface>(worker));
+  task_manager_.ScheduleAndDispatchTasks();
+  ASSERT_EQ(num_callbacks, 4);
+  // One waiting task spilled.
+  ASSERT_EQ(replies[0]->retry_at_raylet_address().raylet_id(), "");
+  ASSERT_EQ(replies[1]->retry_at_raylet_address().raylet_id(), remote_node_id.Binary());
+  ASSERT_FALSE(task_manager_.CancelTask(tasks[1].GetTaskSpecification().TaskId()));
+  // One task dispatched.
+  ASSERT_EQ(replies[4]->worker_address().port(), 1234);
+
+  // Spillback is idempotent.
+  task_manager_.ScheduleAndDispatchTasks();
+  ASSERT_EQ(num_callbacks, 4);
+  // One waiting task spilled.
+  ASSERT_EQ(replies[0]->retry_at_raylet_address().raylet_id(), "");
+  ASSERT_EQ(replies[1]->retry_at_raylet_address().raylet_id(), remote_node_id.Binary());
+  ASSERT_FALSE(task_manager_.CancelTask(tasks[1].GetTaskSpecification().TaskId()));
+  // One task dispatched.
+  ASSERT_EQ(replies[4]->worker_address().port(), 1234);
+
+  Task finished_task;
+  task_manager_.TaskFinished(leased_workers_.begin()->second, &finished_task);
+  leased_workers_.clear();
+  ASSERT_TRUE(task_manager_.CancelTask(tasks[0].GetTaskSpecification().TaskId()));
+  AssertNoLeaks();
 }
 
 int main(int argc, char **argv) {
