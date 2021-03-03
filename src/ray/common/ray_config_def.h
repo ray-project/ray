@@ -107,6 +107,11 @@ RAY_CONFIG(bool, new_scheduler_enabled,
            getenv("RAY_ENABLE_NEW_SCHEDULER") == nullptr ||
                getenv("RAY_ENABLE_NEW_SCHEDULER") == std::string("1"))
 
+RAY_CONFIG(bool, scheduler_loadbalance_spillback,
+           getenv("RAY_SCHEDULER_LOADBALANCE_SPILLBACK") != nullptr &&
+           getenv("RAY_SCHEDULER_LOADBALANCE_SPILLBACK") == std::string("1")
+           )
+
 // The max allowed size in bytes of a return object from direct actor calls.
 // Objects larger than this size will be spilled/promoted to plasma.
 RAY_CONFIG(int64_t, max_direct_call_object_size, 100 * 1024)
