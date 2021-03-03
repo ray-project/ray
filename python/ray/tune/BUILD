@@ -596,23 +596,23 @@ py_test(
     args = ["--smoke-test"]
 )
 
-py_test(
-    name = "pbt_convnet_example",
-    size = "small",
-    srcs = ["examples/pbt_convnet_example.py"],
-    deps = [":tune_lib"],
-    tags = ["exclusive", "example"],
-    args = ["--smoke-test"]
-)
+# py_test(
+#     name = "pbt_convnet_example",
+#     size = "small",
+#     srcs = ["examples/pbt_convnet_example.py"],
+#     deps = [":tune_lib"],
+#     tags = ["exclusive", "example"],
+#     args = ["--smoke-test"]
+# )
 
-py_test(
-    name = "pbt_convnet_function_example",
-    size = "small",
-    srcs = ["examples/pbt_convnet_function_example.py"],
-    deps = [":tune_lib"],
-    tags = ["exclusive", "example"],
-    args = ["--smoke-test"]
-)
+# py_test(
+#     name = "pbt_convnet_function_example",
+#     size = "small",
+#     srcs = ["examples/pbt_convnet_function_example.py"],
+#     deps = [":tune_lib"],
+#     tags = ["exclusive", "example"],
+#     args = ["--smoke-test"]
+# )
 
 # py_test(
 #     name = "pbt_dcgan_mnist_func",

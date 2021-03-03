@@ -41,13 +41,13 @@ py_test(
     tags = ["exclusive", "tf"]
 )
 
-# py_test(
-#     name = "doc_code_torch_example",
-#     size = "small",
-#     main = "examples/doc_code/torch_example.py",
-#     srcs = ["examples/doc_code/torch_example.py"],
-#     tags = ["exclusive", "pytorch"]
-# )
+py_test(
+    name = "doc_code_torch_example",
+    size = "small",
+    main = "examples/doc_code/torch_example.py",
+    srcs = ["examples/doc_code/torch_example.py"],
+    tags = ["exclusive", "pytorch"]
+)
 
 # --------------------------------------------------------------------
 # Tests from the doc/source/tune/_tutorials directory.
