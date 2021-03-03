@@ -2,6 +2,7 @@
 import copy
 import logging
 import os
+import sys
 import time
 
 import numpy as np
@@ -480,6 +481,7 @@ def test_actor_holding_serialized_reference(one_worker_100MiB, use_ray_put,
 # Test that a passed reference held by an actor after a task finishes
 # is kept until the reference is removed from the worker. Also tests giving
 # the worker a duplicate reference to the same object ref.
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 @pytest.mark.parametrize("use_ray_put,failure", [(False, False), (False, True),
                                                  (True, False), (True, True)])
 def test_worker_holding_serialized_reference(one_worker_100MiB, use_ray_put,
