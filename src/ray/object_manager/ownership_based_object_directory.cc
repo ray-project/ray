@@ -49,9 +49,9 @@ bool UpdateObjectLocations(const rpc::GetObjectLocationsOwnerReply &location_rep
   std::unordered_set<NodeID> new_node_ids;
 
   if (!status.ok()) {
-    RAY_LOG(ERROR) << "Failed to return location updates to subscribers for " << object_id
-                   << ": " << status.ToString()
-                   << ", assuming that the object was freed or evicted.";
+    RAY_LOG(INFO) << "Failed to return location updates to subscribers for " << object_id
+                  << ": " << status.ToString()
+                  << ", assuming that the object was freed or evicted.";
     // When we can't get location updates from the owner, we assume that the object
     // was freed or evicted, so we send an empty location update to all subscribers.
     *node_ids = new_node_ids;
