@@ -11,7 +11,7 @@ std::once_flag Ray::is_inited_;
 void Ray::Init() {
   std::call_once(is_inited_, [] {
     auto runtime = AbstractRayRuntime::DoInit(RayConfig::GetInstance());
-    RayRuntimeHolder::Instance().Init(runtime);
+    internal::RayRuntimeHolder::Instance().Init(runtime);
   });
 }
 

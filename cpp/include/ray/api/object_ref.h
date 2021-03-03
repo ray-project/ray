@@ -58,7 +58,7 @@ class ObjectRef {
 // ---------- implementation ----------
 template <typename T>
 inline static std::shared_ptr<T> GetFromRuntime(const ObjectRef<T> &object) {
-  auto packed_object = ray_runtime_instance->Get(object.ID());
+  auto packed_object = internal::RayRuntime()->Get(object.ID());
   return Serializer::Deserialize<std::shared_ptr<T>>(packed_object->data(),
                                                      packed_object->size());
 }

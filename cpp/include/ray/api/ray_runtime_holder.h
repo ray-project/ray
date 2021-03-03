@@ -18,6 +18,7 @@
 
 namespace ray {
 namespace api {
+namespace internal {
 
 struct RayRuntimeHolder {
   static RayRuntimeHolder &Instance() {
@@ -27,7 +28,7 @@ struct RayRuntimeHolder {
 
   void Init(std::shared_ptr<RayRuntime> runtime) { runtime_ = runtime; }
 
-  std::shared_ptr<RayRuntime> &Runtime() { return runtime_; }
+  std::shared_ptr<RayRuntime> Runtime() { return runtime_; }
 
  private:
   RayRuntimeHolder() = default;
@@ -40,6 +41,10 @@ struct RayRuntimeHolder {
   std::shared_ptr<RayRuntime> runtime_;
 };
 
-static auto &ray_runtime_instance = RayRuntimeHolder::Instance().Runtime();
+inline static std::shared_ptr<RayRuntime> RayRuntime() {
+  return RayRuntimeHolder::Instance().Runtime();
+}
+
+}  // namespace internal
 }  // namespace api
 }  // namespace ray

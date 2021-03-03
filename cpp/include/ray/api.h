@@ -139,7 +139,7 @@ inline static std::vector<ObjectID> ObjectRefsToObjectIDs(
 template <typename T>
 inline ObjectRef<T> Ray::Put(const T &obj) {
   auto buffer = std::make_shared<msgpack::sbuffer>(Serializer::Serialize(obj));
-  auto id = ray_runtime_instance->Put(buffer);
+  auto id = internal::RayRuntime()->Put(buffer);
   return ObjectRef<T>(id);
 }
 
@@ -150,7 +150,7 @@ inline std::shared_ptr<T> Ray::Get(const ObjectRef<T> &object) {
 
 template <typename T>
 inline std::vector<std::shared_ptr<T>> Ray::Get(const std::vector<ObjectID> &ids) {
-  auto result = ray_runtime_instance->Get(ids);
+  auto result = internal::RayRuntime()->Get(ids);
   std::vector<std::shared_ptr<T>> return_objects;
   return_objects.reserve(result.size());
   for (auto it = result.begin(); it != result.end(); it++) {
@@ -168,7 +168,7 @@ inline std::vector<std::shared_ptr<T>> Ray::Get(const std::vector<ObjectRef<T>> 
 
 inline WaitResult Ray::Wait(const std::vector<ObjectID> &ids, int num_objects,
                             int timeout_ms) {
-  return ray_runtime_instance->Wait(ids, num_objects, timeout_ms);
+  return internal::RayRuntime()->Wait(ids, num_objects, timeout_ms);
 }
 
 template <typename ReturnType, typename FuncType, typename ExecFuncType,
@@ -180,7 +180,7 @@ inline TaskCaller<ReturnType> Ray::TaskInternal(FuncType &func, ExecFuncType &ex
   RemoteFunctionPtrHolder ptr;
   ptr.function_pointer = reinterpret_cast<uintptr_t>(func);
   ptr.exec_function_pointer = reinterpret_cast<uintptr_t>(exec_func);
-  return TaskCaller<ReturnType>(ray_runtime_instance.get(), ptr, std::move(task_args));
+  return TaskCaller<ReturnType>(internal::RayRuntime().get(), ptr, std::move(task_args));
 }
 
 template <typename ActorType, typename FuncType, typename ExecFuncType,
@@ -193,7 +193,7 @@ inline ActorCreator<ActorType> Ray::CreateActorInternal(FuncType &create_func,
   RemoteFunctionPtrHolder ptr;
   ptr.function_pointer = reinterpret_cast<uintptr_t>(create_func);
   ptr.exec_function_pointer = reinterpret_cast<uintptr_t>(exec_func);
-  return ActorCreator<ActorType>(ray_runtime_instance.get(), ptr, std::move(task_args));
+  return ActorCreator<ActorType>(internal::RayRuntime().get(), ptr, std::move(task_args));
 }
 
 /// Normal task.
