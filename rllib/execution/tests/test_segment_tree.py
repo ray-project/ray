@@ -1,9 +1,7 @@
 import numpy as np
-import timeit
 import unittest
 
 from ray.rllib.execution.segment_tree import SumSegmentTree, MinSegmentTree
-from ray.rllib.utils.test_utils import check
 
 
 class TestSegmentTree(unittest.TestCase):
