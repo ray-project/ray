@@ -1675,6 +1675,14 @@ def determine_plasma_store_config(object_store_memory,
             # /dev/shm.
             if shm_avail > object_store_memory:
                 plasma_directory = "/dev/shm"
+            elif not os.environ.get("RAY_OBJECT_STORE_ALLOW_SLOW_STORAGE"):
+                raise ValueError(
+                    "The configured object store size exceeds the capacity of "
+                    "/dev/shm. This will harm performance. To proceed "
+                    "regardless of this warning, you can set "
+                    "RAY_OBJECT_STORE_ALLOW_SLOW_STORAGE=1. Consider deleting "
+                    "files in /dev/shm or increasing its size with "
+                    "--shm-size in Docker.")
             else:
                 plasma_directory = ray.utils.get_user_temp_dir()
                 logger.warning(
