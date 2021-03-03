@@ -166,17 +166,19 @@ class ResourceSpec(
             object_store_memory = int(
                 avail_memory *
                 ray_constants.DEFAULT_OBJECT_STORE_MEMORY_PROPORTION)
+            max_cap = ray_constants.DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES
+            # Cap by shm size by default to avoid low performance.
+            if sys.platform == "linux" or sys.platform == "linux2":
+                shm_avail = ray.utils.get_shared_memory_bytes()
+                max_cap = min(shm_avail, max_cap)
             # Cap memory to avoid memory waste and perf issues on large nodes
-            if (object_store_memory >
-                    ray_constants.DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES):
+            if object_store_memory > max_cap:
                 logger.debug(
                     "Warning: Capping object memory store to {}GB. ".format(
-                        ray_constants.DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES //
-                        1e9) +
+                        max_cap // 1e9) +
                     "To increase this further, specify `object_store_memory` "
                     "when calling ray.init() or ray start.")
-                object_store_memory = (
-                    ray_constants.DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES)
+                object_store_memory = max_cap
 
         redis_max_memory = self.redis_max_memory
         if redis_max_memory is None:
