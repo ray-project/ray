@@ -319,13 +319,13 @@ py_test(
 )
 
 # Todo: Ensure MPLBACKEND=Agg
-py_test(
-    name = "tutorial",
-    size = "medium",
-    srcs = ["tests/tutorial.py"],
-    deps = [":tune_lib"],
-    tags = ["exclusive", "example"],
-)
+# py_test(
+#     name = "tutorial",
+#     size = "medium",
+#     srcs = ["tests/tutorial.py"],
+#     deps = [":tune_lib"],
+#     tags = ["exclusive", "example"],
+# )
 
 # --------------------------------------------------------------------
 # Examples from the python/ray/tune/examples directory.
