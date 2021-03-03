@@ -204,29 +204,7 @@ class JobProcessor:
         return cmd_index
 
     async def _check_call_cmd(self, cmd):
-        proc = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE)
-        self._running_proc.append(proc)
-        job_id = self._job_info.job_id()
-        cmd_index = self._get_next_cmd_index()
-        proc.cmd_index = cmd_index
-        logger.info("[%s] Run cmd[%s] %s", job_id, cmd_index, repr(cmd))
-        stdout, stderr = await proc.communicate()
-        if stdout:
-            logger.info("[%s] Output of cmd[%s]: %s", job_id, cmd_index,
-                        stdout.decode("utf-8"))
-        if proc.returncode != 0:
-            if stderr:
-                stderr = stderr.decode("utf-8")
-                logger.error("[%s] Output of cmd[%s]: %s", job_id, cmd_index,
-                             stderr)
-                raise Exception(
-                    f"Run command {repr(cmd)} exit with {proc.returncode}:\n"
-                    f"{stderr}")
-            raise Exception(
-                f"Run command {repr(cmd)} exit with {proc.returncode}.")
+        await self._check_output_cmd(cmd)
 
     async def _check_output_cmd(self, cmd):
         proc = await asyncio.create_subprocess_exec(
@@ -239,17 +217,14 @@ class JobProcessor:
         proc.cmd_index = cmd_index
         logger.info("[%s] Run cmd[%s] %s", job_id, cmd_index, repr(cmd))
         stdout, stderr = await proc.communicate()
-        if stdout:
-            stdout = stdout.decode("utf-8")
-            logger.info("[%s] Output of cmd[%s]: %s", job_id, cmd_index,
-                        stdout)
-        if stderr:
+        stdout = stdout.decode("utf-8")
+        logger.info("[%s] Output of cmd[%s]: %s", job_id, cmd_index, stdout)
+        if proc.returncode != 0:
             stderr = stderr.decode("utf-8")
-            if proc.returncode:
-                logger.error("[%s] Output of cmd[%s]: %s", job_id, cmd_index,
-                             stderr)
-                raise subprocess.CalledProcessError(
-                    proc.returncode, cmd, output=stdout, stderr=stderr)
+            logger.error("[%s] Output of cmd[%s]: %s", job_id, cmd_index,
+                         stderr)
+            raise subprocess.CalledProcessError(
+                proc.returncode, cmd, output=stdout, stderr=stderr)
         return stdout
 
     async def _start_driver(self, cmd, stdout, stderr, env):
