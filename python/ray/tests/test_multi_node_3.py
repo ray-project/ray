@@ -48,12 +48,12 @@ def test_calling_start_ray_head(call_ray_stop_only):
     check_call_ray(["stop"])
 
     # Test starting Ray with a worker port list.
-    check_call_ray(["start", "--head", "--worker-port-list", "10000,10001"])
+    check_call_ray(["start", "--head", "--worker-port-list", "10002,10003"])
     check_call_ray(["stop"])
 
     # Test starting Ray with a non-int in the worker port list.
     with pytest.raises(subprocess.CalledProcessError):
-        check_call_ray(["start", "--head", "--worker-port-list", "10000,a"])
+        check_call_ray(["start", "--head", "--worker-port-list", "10002,a"])
     check_call_ray(["stop"])
 
     # Test starting Ray with an invalid port in the worker port list.

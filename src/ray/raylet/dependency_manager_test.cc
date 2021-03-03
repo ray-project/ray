@@ -38,6 +38,10 @@ class MockObjectManager : public ObjectManagerInterface {
 
   void CancelPull(uint64_t request_id) { ASSERT_TRUE(active_requests.erase(request_id)); }
 
+  bool PullRequestActiveOrWaitingForMetadata(uint64_t request_id) const {
+    return active_requests.count(request_id);
+  }
+
   uint64_t req_id = 1;
   std::unordered_set<uint64_t> active_requests;
 };

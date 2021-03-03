@@ -35,6 +35,7 @@ class TaskDependencyManagerInterface {
       const TaskID &task_id,
       const std::vector<rpc::ObjectReference> &required_objects) = 0;
   virtual void RemoveTaskDependencies(const TaskID &task_id) = 0;
+  virtual bool TaskDependenciesBlocked(const TaskID &task_id) const = 0;
   virtual ~TaskDependencyManagerInterface(){};
 };
 
@@ -152,6 +153,10 @@ class DependencyManager : public TaskDependencyManagerInterface {
   /// had all of their dependencies fulfilled, but are now missing this object
   /// dependency.
   std::vector<TaskID> HandleObjectMissing(const ray::ObjectID &object_id);
+
+  /// Check whether a requested task's dependencies are not being fetched to
+  /// the local node due to lack of memory.
+  bool TaskDependenciesBlocked(const TaskID &task_id) const;
 
   /// Returns debug string for class.
   ///

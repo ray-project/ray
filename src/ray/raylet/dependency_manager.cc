@@ -156,7 +156,8 @@ bool DependencyManager::RequestTaskDependencies(
   RAY_LOG(DEBUG) << "Adding dependencies for task " << task_id
                  << ". Required objects length: " << required_objects.size();
   auto inserted = queued_task_requests_.emplace(task_id, required_objects);
-  RAY_CHECK(inserted.second) << "Task depedencies can be requested only once per task.";
+  RAY_CHECK(inserted.second) << "Task depedencies can be requested only once per task. "
+                             << task_id;
   auto &task_entry = inserted.first->second;
 
   for (const auto &ref : required_objects) {
@@ -278,6 +279,14 @@ std::vector<TaskID> DependencyManager::HandleObjectLocal(const ray::ObjectID &ob
   }
 
   return ready_task_ids;
+}
+
+bool DependencyManager::TaskDependenciesBlocked(const TaskID &task_id) const {
+  auto it = queued_task_requests_.find(task_id);
+  RAY_CHECK(it != queued_task_requests_.end());
+  RAY_CHECK(it->second.pull_request_id != 0);
+  return !object_manager_.PullRequestActiveOrWaitingForMetadata(
+      it->second.pull_request_id);
 }
 
 std::string DependencyManager::DebugString() const {
