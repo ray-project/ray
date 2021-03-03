@@ -235,8 +235,12 @@ class NodeUpdater:
 
                 cli_logger.print("Running `{}` as a test.", cf.bold("uptime"))
                 first_conn_refused_time = None
-                while time.time() < deadline and \
-                        not self.provider.is_terminated(self.node_id):
+                while True:
+                    if time.time() < deadline:
+                        raise Exception("wait_ready timeout exceeded.")
+                    if self.provider.is_terminated(self.node_id):
+                        raise Exception("wait_ready aborting because node detected as terminated.")
+
                     try:
                         # Run outside of the container
                         self.cmd_runner.run(
@@ -277,7 +281,6 @@ class NodeUpdater:
 
                         time.sleep(READY_CHECK_INTERVAL)
 
-        assert False, "Unable to connect to node"
 
     def do_update(self):
         self.provider.set_node_tags(
