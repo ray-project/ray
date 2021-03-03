@@ -17,8 +17,7 @@ RUN sudo apt-get update \
     && $HOME/anaconda3/bin/pip --no-cache-dir install -U -r requirements_ml_docker.txt \
     && $HOME/anaconda3/bin/pip --use-deprecated=legacy-resolver --no-cache-dir install -r requirements.txt \
     && $HOME/anaconda3/bin/pip --no-cache-dir install -r requirements_rllib.txt \
-    # TODO(rliaw) We use legacy resolver because autogluon.core was released and broke a bunch of builds.
-    && $HOME/anaconda3/bin/pip --use-deprecated=legacy-resolver --no-cache-dir install -r requirements_tune.txt \
+    && $HOME/anaconda3/bin/pip --no-cache-dir install -r requirements_tune.txt \
     # Remove dataclasses & typing because they are included in Python > 3.6
     && if [ $(python -c 'import sys; print(sys.version_info.minor)') != "6" ]; then \
         $HOME/anaconda3/bin/pip uninstall dataclasses typing -y; fi  \

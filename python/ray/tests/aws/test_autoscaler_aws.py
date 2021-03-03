@@ -1,8 +1,8 @@
 import pytest
 
 from ray.autoscaler._private.aws.config import _get_vpc_id_or_die, \
-                                               bootstrap_aws, \
-                                               DEFAULT_AMI
+    bootstrap_aws, \
+    DEFAULT_AMI
 import ray.tests.aws.utils.stubs as stubs
 import ray.tests.aws.utils.helpers as helpers
 from ray.tests.aws.utils.constants import AUX_SUBNET, DEFAULT_SUBNET, \
@@ -143,8 +143,10 @@ def test_fills_out_amis(iam_client_stub, ec2_client_stub):
     stubs.configure_subnet_default(ec2_client_stub)
 
     config = helpers.load_aws_example_config_file("example-full.yaml")
-    del config["head_node"]["ImageId"]
-    del config["worker_nodes"]["ImageId"]
+    del config["available_node_types"]["ray.head.default"]["node_config"][
+        "ImageId"]
+    del config["available_node_types"]["ray.worker.default"]["node_config"][
+        "ImageId"]
 
     # Pass in SG for stub to work
     config["head_node"]["SecurityGroupIds"] = ["sg-1234abcd"]

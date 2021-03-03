@@ -181,13 +181,15 @@ NodeManager::NodeManager(boost::asio::io_service &io_service, const NodeID &self
       temp_dir_(config.temp_dir),
       initial_config_(config),
       local_available_resources_(config.resource_config),
-      worker_pool_(io_service, config.num_workers_soft_limit,
+      worker_pool_(io_service, self_node_id_, config.node_manager_address,
+                   config.num_workers_soft_limit,
                    config.num_initial_python_workers_for_first_job,
                    config.maximum_startup_concurrency, config.min_worker_port,
                    config.max_worker_port, config.worker_ports, gcs_client_,
                    config.worker_commands,
                    /*starting_worker_timeout_callback=*/
-                   [this] { cluster_task_manager_->ScheduleAndDispatchTasks(); }),
+                   [this] { cluster_task_manager_->ScheduleAndDispatchTasks(); },
+                   /*get_time=*/[]() { return absl::GetCurrentTimeNanos() / 1e6; }),
       scheduling_policy_(local_queues_),
       reconstruction_policy_(
           io_service_,
