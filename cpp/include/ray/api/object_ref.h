@@ -57,7 +57,7 @@ class ObjectRef {
 
 // ---------- implementation ----------
 template <typename T>
-inline static std::shared_ptr<T> Get(const ObjectRef<T> &object) {
+inline static std::shared_ptr<T> GetFromRuntime(const ObjectRef<T> &object) {
   auto packed_object = ray_runtime->Get(object.ID());
   return Serializer::Deserialize<std::shared_ptr<T>>(packed_object->data(),
                                                      packed_object->size());
@@ -91,7 +91,7 @@ const ObjectID &ObjectRef<T>::ID() const {
 
 template <typename T>
 inline std::shared_ptr<T> ObjectRef<T>::Get() const {
-  return ray::api::Get(*this);
+  return GetFromRuntime(*this);
 }
 }  // namespace api
 }  // namespace ray

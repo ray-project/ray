@@ -145,7 +145,7 @@ inline ObjectRef<T> Ray::Put(const T &obj) {
 
 template <typename T>
 inline std::shared_ptr<T> Ray::Get(const ObjectRef<T> &object) {
-  return ray::api::Get(object);
+  return GetFromRuntime(object);
 }
 
 template <typename T>
