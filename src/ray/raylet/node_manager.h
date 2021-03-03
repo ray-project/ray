@@ -184,6 +184,15 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// object ids.
   void TriggerGlobalGC();
 
+  /// Mark the specified objects as failed with the given error type.
+  ///
+  /// \param error_type The type of the error that caused this task to fail.
+  /// \param object_ids The object ids to store error messages into.
+  /// \param job_id The optional job to push errors to if the writes fail.
+  void MarkObjectsAsFailed(const ErrorType &error_type,
+                           const std::vector<rpc::ObjectReference> object_ids,
+                           const JobID &job_id);
+
   /// Stop this node manager.
   void Stop();
 
@@ -255,15 +264,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param resource_usage_batch The batch of resource usage data.
   void ResourceUsageBatchReceived(const ResourceUsageBatchData &resource_usage_batch);
 
-  /// Methods for task scheduling.
-  /// Mark the specified objects as failed with the given error type.
-  ///
-  /// \param error_type The type of the error that caused this task to fail.
-  /// \param object_ids The object ids to store error messages into.
-  /// \param job_id The optional job to push errors to if the writes fail.
-  void MarkObjectsAsFailed(const ErrorType &error_type,
-                           const std::vector<rpc::ObjectReference> object_ids,
-                           const JobID &job_id);
   /// Handle a worker finishing its assigned task.
   ///
   /// \param worker The worker that finished the task.
