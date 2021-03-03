@@ -177,7 +177,6 @@ class ResourceSpec(
         # Choose a default object store size.
         system_memory = ray.utils.get_system_memory()
         avail_memory = ray.utils.estimate_available_memory()
-        cached_memory = ray.utils.get_cached_memory()
         object_store_memory = self.object_store_memory
         if object_store_memory is None:
             object_store_memory = int(
@@ -214,26 +213,15 @@ class ResourceSpec(
             memory = (avail_memory - object_store_memory - (redis_max_memory
                                                             if is_head else 0))
             if memory < 100e6 and memory < 0.05 * system_memory:
-                # Linux, BSD has cached memory, which should
-                # also be considered as unused memory
-                # consider half of cached memory can be recycled.
-                # According to https://gitlab.com/procps-ng/procps/-/blob/master/proc/sysinfo.c#L805
-                memory += cached_memory / 2
-                if memory >= 0.05 * system_memory:
-                    memory = 0.05 * system_memory
-                    logger.warning(
-                        "Reset memory for tasks and actors to {} GB.".format(
-                            round(memory / 1e9, 2)))
-                else:
-                    raise ValueError(
-                        "After taking into account object store and redis memory "
-                        "usage, the amount of memory on this node available for "
-                        "tasks and actors ({} GB) is less than {}% of total. "
-                        "You can adjust these settings with "
-                        "ray.init(memory=<bytes>, "
-                        "object_store_memory=<bytes>).".format(
-                            round(memory / 1e9, 2),
-                            int(100 * (memory / system_memory))))
+                raise ValueError(
+                    "After taking into account object store and redis memory "
+                    "usage, the amount of memory on this node available for "
+                    "tasks and actors ({} GB) is less than {}% of total. "
+                    "You can adjust these settings with "
+                    "ray.init(memory=<bytes>, "
+                    "object_store_memory=<bytes>).".format(
+                        round(memory / 1e9, 2),
+                        int(100 * (memory / system_memory))))
 
         spec = ResourceSpec(num_cpus, num_gpus, memory, object_store_memory,
                             resources, redis_max_memory)
