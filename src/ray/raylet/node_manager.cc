@@ -225,9 +225,6 @@ NodeManager::NodeManager(boost::asio::io_service &io_service, const NodeID &self
       record_metrics_period_ms_(config.record_metrics_period_ms) {
   RAY_LOG(INFO) << "Initializing NodeManager with ID " << self_node_id_;
   RAY_CHECK(RayConfig::instance().raylet_heartbeat_period_milliseconds() > 0);
-  // Initialize the resource map with own cluster resource configuration.
-  cluster_resource_map_.emplace(self_node_id_,
-                                SchedulingResources(config.resource_config));
 
   RAY_CHECK_OK(object_manager_.SubscribeObjAdded(
       [this](const object_manager::protocol::ObjectInfoT &object_info) {
@@ -237,7 +234,7 @@ NodeManager::NodeManager(boost::asio::io_service &io_service, const NodeID &self
   RAY_CHECK_OK(object_manager_.SubscribeObjDeleted(
       [this](const ObjectID &object_id) { HandleObjectMissing(object_id); }));
 
-  SchedulingResources &local_resources = cluster_resource_map_[self_node_id_];
+  SchedulingResources local_resources(config.resource_config);
   cluster_resource_scheduler_ =
       std::shared_ptr<ClusterResourceScheduler>(new ClusterResourceScheduler(
           self_node_id_.Binary(), local_resources.GetTotalResources().GetResourceMap(),
@@ -669,18 +666,6 @@ void NodeManager::NodeAdded(const GcsNodeInfo &node_info) {
   const NodeID node_id = NodeID::FromBinary(node_info.node_id());
 
   RAY_LOG(DEBUG) << "[NodeAdded] Received callback from node id " << node_id;
-  if (1 == cluster_resource_map_.count(node_id)) {
-    RAY_LOG(DEBUG) << "Received notification of a new node that already exists: "
-                   << node_id;
-    return;
-  }
-
-  if (node_id == self_node_id_) {
-    // We got a notification for ourselves, so we are connected to the GCS now.
-    // Save this NodeManager's resource information in the cluster resource map.
-    cluster_resource_map_[node_id] = initial_config_.resource_config;
-    return;
-  }
 
   // Store address of the new node manager for rpc requests.
   remote_node_manager_addresses_[node_id] =
@@ -843,7 +828,7 @@ void NodeManager::UpdateResourceUsage(const NodeID &node_id,
 
   // If light resource usage report enabled, we update remote resources only when related
   // resources map in heartbeat is not empty.
-  cluster_task_manager_->OnNodeResourceUsageUpdated(node_id, resource_data);
+  cluster_task_manager_->ScheduleAndDispatchTasks();
 }
 
 void NodeManager::ResourceUsageBatchReceived(
@@ -1670,8 +1655,6 @@ void NodeManager::HandleObjectMissing(const ObjectID &object_id) {
     }
   }
   RAY_LOG(DEBUG) << result.str();
-
-  cluster_task_manager_->OnObjectMissing(object_id, waiting_task_ids);
 }
 
 void NodeManager::ProcessSubscribePlasmaReady(
@@ -1772,9 +1755,6 @@ std::string NodeManager::DebugString() const {
     result << cluster_task_manager_->DebugStr();
   }
   result << "\nClusterResources:";
-  for (auto &pair : cluster_resource_map_) {
-    result << "\n" << pair.first.Hex() << ": " << pair.second.DebugString();
-  }
   result << "\n" << local_object_manager_.DebugString();
   result << "\n" << object_manager_.DebugString();
   result << "\n" << gcs_client_->DebugString();
@@ -2129,21 +2109,6 @@ void NodeManager::RecordMetrics() {
   // Last recorded time will be reset in the caller side.
   uint64_t current_time = current_time_ms();
   uint64_t duration_ms = current_time - metrics_last_recorded_time_ms_;
-
-  // Record available resources of this node.
-  const auto &available_resources =
-      cluster_resource_map_.at(self_node_id_).GetAvailableResources().GetResourceMap();
-  for (const auto &pair : available_resources) {
-    stats::LocalAvailableResource().Record(pair.second,
-                                           {{stats::ResourceNameKey, pair.first}});
-  }
-  // Record total resources of this node.
-  const auto &total_resources =
-      cluster_resource_map_.at(self_node_id_).GetTotalResources().GetResourceMap();
-  for (const auto &pair : total_resources) {
-    stats::LocalTotalResource().Record(pair.second,
-                                       {{stats::ResourceNameKey, pair.first}});
-  }
 
   // Record average number of tasks information per second.
   stats::AvgNumScheduledTasks.Record((double)metrics_num_task_scheduled_ *

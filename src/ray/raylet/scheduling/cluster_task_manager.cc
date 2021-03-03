@@ -888,20 +888,5 @@ void ClusterTaskManager::ScheduleAndDispatchTasks() {
   DispatchScheduledTasksToWorkers(worker_pool_, leased_workers_);
 }
 
-void ClusterTaskManager::OnNodeResourceUsageUpdated(
-    const NodeID &node_id, const rpc::ResourcesData &resource_data) {
-  // TODO(Shanly): This method will be removed and can be replaced by
-  // `ScheduleAndDispatchTasks` directly once we remove the legacy scheduler.
-  ScheduleAndDispatchTasks();
-}
-
-void ClusterTaskManager::OnObjectMissing(const ObjectID &object_id,
-                                         const std::vector<TaskID> &waiting_task_ids) {
-  // We don't need to do anything if the new scheduler is enabled because tasks
-  // will get moved back to waiting once they reach the front of the dispatch
-  // queue.
-  // TODO(Shanly): This method will be removed once we remove the legacy scheduler.
-}
-
 }  // namespace raylet
 }  // namespace ray
