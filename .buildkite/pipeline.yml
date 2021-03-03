@@ -1,3 +1,35 @@
+- label: ":ferris_wheel: Wheels and Jars"
+  conditions:
+    [
+      "RAY_CI_LINUX_WHEELS_AFFECTED",
+      "RAY_CI_JAVA_AFFECTED",
+      "RAY_CI_STREAMING_JAVA_AFFECTED",
+    ]
+  commands:
+    # Build the wheels and jars
+    - LINUX_WHEELS=1 LINUX_JARS=1 ./ci/travis/ci.sh build
+    - bash ./java/build-jar-multiplatform.sh linux
+    # Upload the wheels and jars
+    # We don't want to push on PRs, in fact, the copy_files will fail because unauthenticated.
+    - if [ "$BUILDKITE_PULL_REQUEST" != "false" ]; then exit 0; fi
+    - pip install -q docker aws_requests_auth boto3
+    - python .buildkite/copy_files.py --destination wheels --path ./.whl
+    - python .buildkite/copy_files.py --destination wheels --path ./.jar/linux
+
+- label: ":docker: Build Images"
+  conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
+  commands:
+    - LINUX_WHEELS=1 ./ci/travis/ci.sh build
+    - pip install docker
+    - python ./ci/travis/build-docker-images.py --py-versions PY37 --build-type BUILDKITE --build-base
+
+- label: ":docker: Build Images"
+  conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
+  commands:
+    - LINUX_WHEELS=1 ./ci/travis/ci.sh build
+    - pip install docker
+    - python ./ci/travis/build-docker-images.py --py-versions PY36 PY38 --build-type BUILDKITE --build-base
+
 - label: ":book: Lint"
   commands:
     - export LINT=1
@@ -8,18 +40,12 @@
 - label: ":java: Java"
   conditions: ["RAY_CI_JAVA_AFFECTED"]
   commands:
-    - apt-get install -y openjdk-8-jdk maven clang-format
-    # Compile Java again so bazel will compile Java as a language.
-    - RAY_INSTALL_JAVA=1 ./ci/travis/ci.sh build
     - ./java/test.sh
 
 - label: ":java: Streaming"
   conditions:
     ["RAY_CI_STREAMING_PYTHON_AFFECTED", "RAY_CI_STREAMING_JAVA_AFFECTED"]
   commands:
-    - apt-get install -y openjdk-8-jdk maven
-    # Compile Java again so bazel will compile Java as a language.
-    - RAY_INSTALL_JAVA=1 ./ci/travis/ci.sh build
     - bazel test --config=ci $(./scripts/bazel_export_options)
       //streaming:all
     - bash streaming/src/test/run_streaming_queue_test.sh
@@ -51,10 +77,9 @@
     ]
   commands:
     - TORCH_VERSION=1.6 ./ci/travis/install-dependencies.sh
-    - bazel test --config=ci $(./scripts/bazel_export_options)
-      python/ray/new_dashboard/...
-    - bazel test --config=ci $(./scripts/bazel_export_options)
-      python/ray/serve/...
+    - ./dashboard/tests/run_ui_tests.sh
+    - bazel test --config=ci $(./scripts/bazel_export_options) python/ray/new_dashboard/...
+    - bazel test --config=ci $(./scripts/bazel_export_options) python/ray/serve/...
 
 - label: ":python: (Small & Large)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]

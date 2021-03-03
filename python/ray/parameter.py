@@ -102,7 +102,6 @@ class RayParams:
         _system_config (dict): Configuration for overriding RayConfig
             defaults. Used to set system configuration and for experimental Ray
             core feature flags.
-        lru_evict (bool): Enable LRU eviction if space is needed.
         enable_object_reconstruction (bool): Enable plasma reconstruction on
             failure.
         start_initial_python_workers_for_first_job (bool): If true, start
@@ -120,7 +119,7 @@ class RayParams:
                  redis_port=None,
                  redis_shard_ports=None,
                  object_manager_port=None,
-                 node_manager_port=None,
+                 node_manager_port=0,
                  gcs_server_port=None,
                  node_ip_address=None,
                  raylet_ip_address=None,
@@ -199,30 +198,22 @@ class RayParams:
         self.start_initial_python_workers_for_first_job = (
             start_initial_python_workers_for_first_job)
         self._system_config = _system_config or {}
-        self._lru_evict = lru_evict
         self._enable_object_reconstruction = enable_object_reconstruction
         self._check_usage()
 
         # Set the internal config options for LRU eviction.
         if lru_evict:
-            # Turn off object pinning.
-            if self._system_config is None:
-                self._system_config = dict()
-            if self._system_config.get("object_pinning_enabled", False):
-                raise Exception(
-                    "Object pinning cannot be enabled if using LRU eviction.")
-            self._system_config["object_pinning_enabled"] = False
-            self._system_config["free_objects_period_milliseconds"] = 1000
+            raise DeprecationWarning(
+                "The lru_evict flag is deprecated as Ray natively "
+                "supports object spilling. Please read "
+                "https://docs.ray.io/en/master/memory-management.html#object-spilling "  # noqa
+                "for more details.")
 
         # Set the internal config options for object reconstruction.
         if enable_object_reconstruction:
             # Turn off object pinning.
             if self._system_config is None:
                 self._system_config = dict()
-            if lru_evict:
-                raise Exception(
-                    "Object reconstruction cannot be enabled if using LRU "
-                    "eviction.")
             print(self._system_config)
             self._system_config["lineage_pinning_enabled"] = True
             self._system_config["free_objects_period_milliseconds"] = -1

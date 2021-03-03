@@ -83,6 +83,8 @@ class TestPPO(unittest.TestCase):
         config["model"]["lstm_cell_size"] = 10
         config["model"]["max_seq_len"] = 20
         config["train_batch_size"] = 128
+        # Test with compression.
+        config["compress_observations"] = True
         num_iterations = 2
 
         for _ in framework_iterator(config):

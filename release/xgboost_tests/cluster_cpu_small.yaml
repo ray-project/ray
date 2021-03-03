@@ -1,7 +1,8 @@
 cluster_name: ray-xgboost-release-cpu-small
 
-min_workers: 3
-max_workers: 3
+max_workers: 4
+
+upscaling_speed: 32
 
 idle_timeout_minutes: 15
 
@@ -16,20 +17,25 @@ provider:
     availability_zone: us-west-2a
     cache_stopped_nodes: false
 
+available_node_types:
+    cpu_4_ondemand:
+        node_config:
+            InstanceType: m5.xlarge
+        resources: {"CPU": 4}
+        min_workers: 3
+        max_workers: 3
+
 auth:
     ssh_user: ubuntu
 
-head_node:
-    # 64 CPUs
-    InstanceType: m5.xlarge
+head_node_type: cpu_4_ondemand
+worker_default_node_type: cpu_4_ondemand
 
-worker_nodes:
-    # 64 CPUs
-    InstanceType: m5.xlarge
+file_mounts: {
+    "~/xgboost_tests": "."
+}
+
+file_mounts_sync_continuously: false
 
 setup_commands:
-    - pip install pytest xgboost_ray
-    - sudo mkdir -p /data || true
-    - sudo chown ray:1000 /data || true
-    - rm -rf /data/classification.parquet || true
-    - python ~/release-automation-xgboost_tests/create_test_data.py /data/classification.parquet --seed 1234 --num-rows 1000000 --num-cols 40 --num-partitions 100 --num-classes 2
+    - /bin/bash ~/xgboost_tests/setup_xgboost.sh

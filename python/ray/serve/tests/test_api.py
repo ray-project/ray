@@ -2,6 +2,9 @@ import asyncio
 from collections import defaultdict
 import time
 import os
+import io
+import logging
+from contextlib import redirect_stderr
 
 import requests
 import pytest
@@ -987,6 +990,58 @@ def test_starlette_request(serve_instance):
 
     resp = requests.post("http://127.0.0.1:8000/api", data=long_string).text
     assert resp == long_string
+
+
+def test_variable_routes(serve_instance):
+    client = serve_instance
+
+    def f(starlette_request):
+        return starlette_request.path_params
+
+    client.create_backend("f", f)
+    client.create_endpoint("basic", backend="f", route="/api/{username}")
+
+    # Test multiple variables and test type conversion
+    client.create_endpoint(
+        "complex", backend="f", route="/api/{user_id:int}/{number:float}")
+
+    assert requests.get("http://127.0.0.1:8000/api/scaly").json() == {
+        "username": "scaly"
+    }
+
+    assert requests.get("http://127.0.0.1:8000/api/23/12.345").json() == {
+        "user_id": 23,
+        "number": 12.345
+    }
+
+
+def test_backend_logger(serve_instance):
+    # Tests that backend tag and replica tag appear in Serve log output.
+
+    client = serve_instance
+
+    logger = logging.getLogger("ray")
+
+    class Counter:
+        def __init__(self):
+            self.count = 0
+
+        def __call__(self, request):
+            self.count += 1
+            logger.info(f"count: {self.count}")
+
+    client.create_backend("my_backend", Counter)
+    client.create_endpoint(
+        "my_endpoint", backend="my_backend", route="/counter")
+    f = io.StringIO()
+    with redirect_stderr(f):
+        requests.get("http://127.0.0.1:8000/counter")
+
+        def counter_log_success():
+            s = f.getvalue()
+            return "backend" in s and "replica" in s and "count" in s
+
+        wait_for_condition(counter_log_success)
 
 
 if __name__ == "__main__":

@@ -58,7 +58,7 @@ If using the command line, connect to the Ray cluster as follow:
     Ray sets the environment variable ``OMP_NUM_THREADS=1`` by default. This is done
     to avoid performance degradation with many workers (issue #6998). You can
     override this by explicitly setting ``OMP_NUM_THREADS``. ``OMP_NUM_THREADS`` is commonly
-    used in numpy, PyTorch, and Tensorflow to perform multit-threaded linear algebra.
+    used in numpy, PyTorch, and Tensorflow to perform multi-threaded linear algebra.
     In multi-worker setting, we want one thread per worker instead of many threads
     per worker to avoid contention. Some other libraries may have their own way to configure
     parallelism. For example, if you're using OpenCV, you should manually set the number of

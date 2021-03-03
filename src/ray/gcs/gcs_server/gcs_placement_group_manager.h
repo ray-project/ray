@@ -167,6 +167,14 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
       rpc::WaitPlacementGroupUntilReadyReply *reply,
       rpc::SendReplyCallback send_reply_callback) override;
 
+  /// Register a callback which will be invoked after successfully created.
+  ///
+  /// \param placement_group_id The placement group id which we want to listen.
+  /// \param callback Will be invoked after the placement group is created successfully or
+  /// be invoked if the placement group is deleted before create successfully.
+  void WaitPlacementGroup(const PlacementGroupID &placement_group_id,
+                          StatusCallback callback);
+
   /// Register placement_group asynchronously.
   ///
   /// \param placement_group The placement group to be created.
@@ -284,9 +292,11 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   /// execute_after).
   boost::asio::io_context &io_context_;
 
-  /// Callback of placement_group registration requests that are not yet flushed.
-  absl::flat_hash_map<PlacementGroupID, StatusCallback>
-      placement_group_to_register_callback_;
+  /// Callbacks of pending `RegisterPlacementGroup` requests.
+  /// Maps placement group ID to placement group registration callbacks, which is used to
+  /// filter duplicated messages from a driver/worker caused by some network problems.
+  absl::flat_hash_map<PlacementGroupID, std::vector<StatusCallback>>
+      placement_group_to_register_callbacks_;
 
   /// Callback of `WaitPlacementGroupUntilReady` requests.
   absl::flat_hash_map<PlacementGroupID, std::vector<StatusCallback>>

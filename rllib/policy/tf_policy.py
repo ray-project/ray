@@ -709,8 +709,13 @@ class TFPolicy(Policy):
             input_signature["prev_reward"] = \
                 tf1.saved_model.utils.build_tensor_info(
                     self._prev_reward_input)
+
         input_signature["is_training"] = \
             tf1.saved_model.utils.build_tensor_info(self._is_training)
+
+        if self._timestep is not None:
+            input_signature["timestep"] = \
+                tf1.saved_model.utils.build_tensor_info(self._timestep)
 
         for state_input in self._state_inputs:
             input_signature[state_input.name] = \
@@ -882,15 +887,20 @@ class TFPolicy(Policy):
             feed dict of data
         """
 
+        if not isinstance(train_batch,
+                          SampleBatch) or not train_batch.zero_padded:
+            pad_batch_to_sequences_of_same_size(
+                train_batch,
+                max_seq_len=self._max_seq_len,
+                shuffle=shuffle,
+                batch_divisibility_req=self._batch_divisibility_req,
+                feature_keys=list(self._loss_input_dict_no_rnn.keys()),
+                view_requirements=self.view_requirements,
+            )
+        else:
+            train_batch["seq_lens"] = train_batch.seq_lens
+
         # Get batch ready for RNNs, if applicable.
-        pad_batch_to_sequences_of_same_size(
-            train_batch,
-            shuffle=shuffle,
-            max_seq_len=self._max_seq_len,
-            batch_divisibility_req=self._batch_divisibility_req,
-            feature_keys=list(self._loss_input_dict_no_rnn.keys()),
-            view_requirements=self.view_requirements,
-        )
 
         # Mark the batch as "is_training" so the Model can use this
         # information.

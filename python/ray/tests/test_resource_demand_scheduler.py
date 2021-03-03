@@ -5,14 +5,16 @@ import yaml
 import tempfile
 import shutil
 import unittest
+from unittest import mock
 import copy
 
 import ray
+import ray.ray_constants
 from ray.autoscaler._private.util import \
-    rewrite_legacy_yaml_to_available_node_types, format_info_string, \
+    prepare_config, format_info_string, \
     format_info_string_no_node_types
-from ray.tests.test_autoscaler import SMALL_CLUSTER, MockProvider, \
-    MockProcessRunner
+from ray.tests.test_autoscaler import SMALL_CLUSTER, MOCK_DEFAULT_CONFIG, \
+    MockProvider, MockProcessRunner
 from ray.autoscaler._private.providers import (_NODE_PROVIDERS,
                                                _clear_provider_cache)
 from ray.autoscaler._private.autoscaler import StandardAutoscaler, \
@@ -36,6 +38,8 @@ from ray.autoscaler._private.constants import \
     AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE
 
 from time import sleep
+
+GET_DEFAULT_METHOD = "ray.autoscaler._private.util._get_default_config"
 
 TYPES_A = {
     "empty_node": {
@@ -1041,131 +1045,135 @@ def test_get_nodes_to_launch_max_launch_concurrency():
 
 
 def test_rewrite_legacy_yaml_to_available_node_types():
-    cluster_config = copy.deepcopy(SMALL_CLUSTER)  # Legacy cluster_config.
-    cluster_config = rewrite_legacy_yaml_to_available_node_types(
-        cluster_config)
-    assert cluster_config["available_node_types"][NODE_TYPE_LEGACY_HEAD][
-        "max_workers"] == 0
-    assert cluster_config["available_node_types"][NODE_TYPE_LEGACY_HEAD][
-        "min_workers"] == 0
-    assert cluster_config["available_node_types"][NODE_TYPE_LEGACY_HEAD][
-        "node_config"] == SMALL_CLUSTER["head_node"]
+    with mock.patch(GET_DEFAULT_METHOD, return_value=MOCK_DEFAULT_CONFIG):
+        cluster_config = copy.deepcopy(SMALL_CLUSTER)  # Legacy cluster_config.
+        cluster_config = prepare_config(cluster_config)
+        assert cluster_config["available_node_types"][NODE_TYPE_LEGACY_HEAD][
+            "max_workers"] == 0
+        assert cluster_config["available_node_types"][NODE_TYPE_LEGACY_HEAD][
+            "min_workers"] == 0
+        assert cluster_config["available_node_types"][NODE_TYPE_LEGACY_HEAD][
+            "node_config"] == SMALL_CLUSTER["head_node"]
 
-    assert cluster_config["available_node_types"][NODE_TYPE_LEGACY_WORKER][
-        "node_config"] == SMALL_CLUSTER["worker_nodes"]
-    assert cluster_config["available_node_types"][NODE_TYPE_LEGACY_WORKER][
-        "max_workers"] == SMALL_CLUSTER["max_workers"]
-    assert cluster_config["available_node_types"][NODE_TYPE_LEGACY_WORKER][
-        "min_workers"] == SMALL_CLUSTER["min_workers"]
+        assert cluster_config["available_node_types"][NODE_TYPE_LEGACY_WORKER][
+            "node_config"] == SMALL_CLUSTER["worker_nodes"]
+        assert cluster_config["available_node_types"][NODE_TYPE_LEGACY_WORKER][
+            "max_workers"] == SMALL_CLUSTER["max_workers"]
+        assert cluster_config["available_node_types"][NODE_TYPE_LEGACY_WORKER][
+            "min_workers"] == SMALL_CLUSTER["min_workers"]
 
 
 def test_handle_legacy_cluster_config_yaml():
-    provider = MockProvider()
-    head_resources = {"CPU": 8, "GPU": 1}
-    worker_resources = {"CPU": 32, "GPU": 8}
-    cluster_config = copy.deepcopy(SMALL_CLUSTER)  # Legacy cluster_config.
-    cluster_config = rewrite_legacy_yaml_to_available_node_types(
-        cluster_config)
-    scheduler = ResourceDemandScheduler(
-        provider,
-        cluster_config["available_node_types"],
-        0,
-        head_node_type=NODE_TYPE_LEGACY_HEAD)
-    provider.create_node({}, {
-        TAG_RAY_NODE_KIND: NODE_KIND_HEAD,
-        TAG_RAY_USER_NODE_TYPE: NODE_TYPE_LEGACY_HEAD
-    }, 1)
-    head_ip = provider.non_terminated_node_ips({})[0]
-    head_node_id = provider.non_terminated_nodes({})[0]
-    to_launch = scheduler.get_nodes_to_launch([], {}, [], {}, [],
-                                              {head_ip: head_resources})
-    assert to_launch == {}  # Should always be empty with max_workers = 0.
+    with mock.patch(GET_DEFAULT_METHOD, return_value=MOCK_DEFAULT_CONFIG):
+        provider = MockProvider()
+        head_resources = {"CPU": 8, "GPU": 1}
+        worker_resources = {"CPU": 32, "GPU": 8}
+        cluster_config = copy.deepcopy(SMALL_CLUSTER)  # Legacy cluster_config.
+        cluster_config = prepare_config(cluster_config)
+        scheduler = ResourceDemandScheduler(
+            provider,
+            cluster_config["available_node_types"],
+            0,
+            head_node_type=NODE_TYPE_LEGACY_HEAD)
+        provider.create_node({}, {
+            TAG_RAY_NODE_KIND: NODE_KIND_HEAD,
+            TAG_RAY_USER_NODE_TYPE: NODE_TYPE_LEGACY_HEAD
+        }, 1)
+        head_ip = provider.non_terminated_node_ips({})[0]
+        head_node_id = provider.non_terminated_nodes({})[0]
+        to_launch = scheduler.get_nodes_to_launch([], {}, [], {}, [],
+                                                  {head_ip: head_resources})
+        assert to_launch == {}  # Should always be empty with max_workers = 0.
 
-    scheduler.max_workers = 30
-    min_workers = scheduler.node_types[NODE_TYPE_LEGACY_WORKER]["min_workers"]
-    scheduler.node_types[NODE_TYPE_LEGACY_WORKER]["min_workers"] = 0
-    to_launch = scheduler.get_nodes_to_launch([head_node_id], {}, [], {}, [],
-                                              {head_ip: head_resources})
-    assert to_launch == {
-    }  # Since the resource demand does not require adding nodes.
-    to_launch = scheduler.get_nodes_to_launch([head_node_id], {},
-                                              [head_resources], {}, [],
-                                              {head_ip: head_resources})
-    assert to_launch == {
-    }  # Since the resource demand does not require adding nodes.
+        scheduler.max_workers = 30
+        min_workers = scheduler.node_types[NODE_TYPE_LEGACY_WORKER][
+            "min_workers"]
+        scheduler.node_types[NODE_TYPE_LEGACY_WORKER]["min_workers"] = 0
+        to_launch = scheduler.get_nodes_to_launch(
+            [head_node_id], {}, [], {}, [], {head_ip: head_resources})
+        assert to_launch == {
+        }  # Since the resource demand does not require adding nodes.
+        to_launch = scheduler.get_nodes_to_launch([head_node_id], {},
+                                                  [head_resources], {}, [],
+                                                  {head_ip: head_resources})
+        assert to_launch == {
+        }  # Since the resource demand does not require adding nodes.
 
-    scheduler.node_types[NODE_TYPE_LEGACY_WORKER]["min_workers"] = min_workers
-    # Returns min_workers when min_workers>0.
-    to_launch = scheduler.get_nodes_to_launch([head_node_id], {},
-                                              [head_resources], {}, [],
-                                              {head_ip: head_resources})
-    assert to_launch == {NODE_TYPE_LEGACY_WORKER: min_workers}
+        scheduler.node_types[NODE_TYPE_LEGACY_WORKER][
+            "min_workers"] = min_workers
+        # Returns min_workers when min_workers>0.
+        to_launch = scheduler.get_nodes_to_launch([head_node_id], {},
+                                                  [head_resources], {}, [],
+                                                  {head_ip: head_resources})
+        assert to_launch == {NODE_TYPE_LEGACY_WORKER: min_workers}
 
-    provider.create_node({}, {
-        TAG_RAY_NODE_KIND: NODE_KIND_WORKER,
-        TAG_RAY_NODE_STATUS: STATUS_UNINITIALIZED,
-        TAG_RAY_USER_NODE_TYPE: NODE_TYPE_LEGACY_WORKER
-    }, min_workers)
-    nodes = provider.non_terminated_nodes({})
-    to_launch = scheduler.get_nodes_to_launch(nodes, {}, [head_resources], {},
-                                              [], {head_ip: head_resources})
-    assert to_launch == {}  # A node is running, at some point it'll connect.
-    pending_launches = {NODE_TYPE_LEGACY_WORKER: 4}
-    to_launch = scheduler.get_nodes_to_launch([], pending_launches,
-                                              [head_resources], {}, [],
-                                              {head_ip: head_resources})
-    assert to_launch == {}  # A node is launching, at some point it'll connect.
+        provider.create_node({}, {
+            TAG_RAY_NODE_KIND: NODE_KIND_WORKER,
+            TAG_RAY_NODE_STATUS: STATUS_UNINITIALIZED,
+            TAG_RAY_USER_NODE_TYPE: NODE_TYPE_LEGACY_WORKER
+        }, min_workers)
+        nodes = provider.non_terminated_nodes({})
+        to_launch = scheduler.get_nodes_to_launch(
+            nodes, {}, [head_resources], {}, [], {head_ip: head_resources})
+        # A node is running, at some point it'll connect.
+        assert to_launch == {}
+        pending_launches = {NODE_TYPE_LEGACY_WORKER: 4}
+        to_launch = scheduler.get_nodes_to_launch([], pending_launches,
+                                                  [head_resources], {}, [],
+                                                  {head_ip: head_resources})
+        # A node is launching, at some point it'll connect.
+        assert to_launch == {}
 
-    # Now assume that we already launched/connected the nodes.
-    ips = provider.non_terminated_node_ips({})
-    lm = LoadMetrics()
-    worker_ips = []
-    for ip in ips:
-        if ip == head_ip:
-            lm.update(ip, head_resources, head_resources, {})
-        else:
-            lm.update(ip, worker_resources, worker_resources, {})
-            worker_ips.append(ip)
+        # Now assume that we already launched/connected the nodes.
+        ips = provider.non_terminated_node_ips({})
+        lm = LoadMetrics()
+        worker_ips = []
+        for ip in ips:
+            if ip == head_ip:
+                lm.update(ip, head_resources, head_resources, {})
+            else:
+                lm.update(ip, worker_resources, worker_resources, {})
+                worker_ips.append(ip)
 
-    assert not scheduler.node_types[NODE_TYPE_LEGACY_WORKER]["resources"]
-    to_launch = scheduler.get_nodes_to_launch(
-        nodes, {}, [], {}, [], lm.get_static_node_resources_by_ip())
-    assert scheduler.node_types[NODE_TYPE_LEGACY_WORKER][
-        "resources"] == worker_resources
-    assert to_launch == {}
-    utilizations = {ip: worker_resources for ip in worker_ips}
-    utilizations[head_ip] = head_resources
-    # Requires 4 nodes since worker resources is bigger than head reasources.
-    demands = [worker_resources] * (len(utilizations) + 3)
-    to_launch = scheduler.get_nodes_to_launch(
-        nodes, {}, demands, utilizations, [],
-        lm.get_static_node_resources_by_ip())
-    # 4 nodes are necessary to meet resource demand, but we never exceed
-    # max_workers.
-    assert to_launch == {}
-    scheduler.max_workers = 10
-    to_launch = scheduler.get_nodes_to_launch(
-        nodes, {}, demands, utilizations, [],
-        lm.get_static_node_resources_by_ip())
-    # 4 nodes are necessary to meet resource demand, but we never exceed
-    # max_workers.
-    assert to_launch == {}
-    scheduler.node_types[NODE_TYPE_LEGACY_WORKER]["max_workers"] = 10
-    to_launch = scheduler.get_nodes_to_launch(
-        nodes, {}, demands, utilizations, [],
-        lm.get_static_node_resources_by_ip())
-    # 4 nodes are necessary to meet resource demand.
-    assert to_launch == {NODE_TYPE_LEGACY_WORKER: 4}
-    to_launch = scheduler.get_nodes_to_launch(nodes, pending_launches, demands,
-                                              utilizations, [],
-                                              lm.get_node_resources())
-    # 0 because there are 4 pending launches and we only need 4.
-    assert to_launch == {}
-    to_launch = scheduler.get_nodes_to_launch(nodes, pending_launches,
-                                              demands * 2, utilizations, [],
-                                              lm.get_node_resources())
-    # 1 because there are 4 pending launches and we only allow a max of 5.
-    assert to_launch == {NODE_TYPE_LEGACY_WORKER: 1}
+        assert not scheduler.node_types[NODE_TYPE_LEGACY_WORKER]["resources"]
+        to_launch = scheduler.get_nodes_to_launch(
+            nodes, {}, [], {}, [], lm.get_static_node_resources_by_ip())
+        assert scheduler.node_types[NODE_TYPE_LEGACY_WORKER][
+            "resources"] == worker_resources
+        assert to_launch == {}
+        utilizations = {ip: worker_resources for ip in worker_ips}
+        utilizations[head_ip] = head_resources
+        # Needs 4 nodes since worker resources is bigger than head reasources.
+        demands = [worker_resources] * (len(utilizations) + 3)
+        to_launch = scheduler.get_nodes_to_launch(
+            nodes, {}, demands, utilizations, [],
+            lm.get_static_node_resources_by_ip())
+        # 4 nodes are necessary to meet resource demand, but we never exceed
+        # max_workers.
+        assert to_launch == {}
+        scheduler.max_workers = 10
+        to_launch = scheduler.get_nodes_to_launch(
+            nodes, {}, demands, utilizations, [],
+            lm.get_static_node_resources_by_ip())
+        # 4 nodes are necessary to meet resource demand, but we never exceed
+        # max_workers.
+        assert to_launch == {}
+        scheduler.node_types[NODE_TYPE_LEGACY_WORKER]["max_workers"] = 10
+        to_launch = scheduler.get_nodes_to_launch(
+            nodes, {}, demands, utilizations, [],
+            lm.get_static_node_resources_by_ip())
+        # 4 nodes are necessary to meet resource demand.
+        assert to_launch == {NODE_TYPE_LEGACY_WORKER: 4}
+        to_launch = scheduler.get_nodes_to_launch(nodes, pending_launches,
+                                                  demands, utilizations, [],
+                                                  lm.get_node_resources())
+        # 0 because there are 4 pending launches and we only need 4.
+        assert to_launch == {}
+        to_launch = scheduler.get_nodes_to_launch(
+            nodes, pending_launches, demands * 2, utilizations, [],
+            lm.get_node_resources())
+        # 1 because there are 4 pending launches and we only allow a max of 5.
+        assert to_launch == {NODE_TYPE_LEGACY_WORKER: 1}
 
 
 class LoadMetricsTest(unittest.TestCase):
@@ -1215,15 +1223,27 @@ class LoadMetricsTest(unittest.TestCase):
                 strategy=PlacementStrategy.PACK,
                 bundles=([Bundle(unit_resources={"GPU": 2})] * 2)),
         ]
-        lm.update("1.1.1.1", {"CPU": 64}, {"CPU": 2}, {})
+        lm.update(
+            "1.1.1.1",
+            {
+                "CPU": 64,
+                "memory": 20,  # 1000 MiB
+                "object_store_memory": 40  # 2000 MiB
+            },
+            {
+                "CPU": 2,
+                "memory": 10,  # 500 MiB
+                "object_store_memory": 20  # 1000 MiB
+            },
+            {})
         lm.update("1.1.1.2", {
             "CPU": 64,
             "GPU": 8,
-            "accelerator_type:V100": 1
+            "accelerator_type:V100": 1,
         }, {
             "CPU": 0,
             "GPU": 1,
-            "accelerator_type:V100": 1
+            "accelerator_type:V100": 1,
         }, {})
         lm.update("1.1.1.3", {
             "CPU": 64,
@@ -1257,6 +1277,9 @@ class LoadMetricsTest(unittest.TestCase):
 
         assert summary.usage["CPU"] == (190, 194)
         assert summary.usage["GPU"] == (15, 16)
+        assert summary.usage["memory"] == (500 * 2**20, 1000 * 2**20)
+        assert summary.usage["object_store_memory"] == \
+            (1000 * 2**20, 2000 * 2**20)
         assert summary.usage["accelerator_type:V100"][1] == 2, \
             "Not comparing the usage value due to floating point error."
 
@@ -1280,7 +1303,7 @@ class LoadMetricsTest(unittest.TestCase):
         # TODO (Alex): This set of nodes won't be very useful in practice
         # because the node:xxx.xxx.xxx.xxx resources means that no 2 nodes
         # should ever have the same set of resources.
-        assert len(summary.node_types) == 3
+        assert len(summary.node_types) == 3, summary.node_types
 
 
 class AutoscalingTest(unittest.TestCase):
@@ -2413,8 +2436,8 @@ def test_info_string():
             "CPU": (530, 544),
             "GPU": (2, 2),
             "AcceleratorType:V100": (0, 2),
-            "memory": (0, 1583.19),
-            "object_store_memory": (0, 471.02)
+            "memory": (2 * 2**30, 2**33),
+            "object_store_memory": (3.14 * 2**30, 2**34)
         },
         resource_demand=[({
             "CPU": 1
@@ -2457,11 +2480,11 @@ Resources
 --------------------------------------------------------
 
 Usage:
+ 0/2 AcceleratorType:V100
  530/544 CPU
  2/2 GPU
- 0/2 AcceleratorType:V100
- 0.00/77.304 GiB memory
- 0.00/22.999 GiB object_store_memory
+ 2.00/8.000 GiB memory
+ 3.14/16.000 GiB object_store_memory
 
 Demands:
  {'CPU': 1}: 150+ pending tasks/actors
@@ -2484,8 +2507,8 @@ def test_info_string_no_node_type():
             "CPU": (530, 544),
             "GPU": (2, 2),
             "AcceleratorType:V100": (0, 2),
-            "memory": (0, 1583.19),
-            "object_store_memory": (0, 471.02)
+            "memory": (2 * 2**30, 2**33),
+            "object_store_memory": (3.14 * 2**30, 2**34)
         },
         resource_demand=[({
             "CPU": 1
@@ -2512,11 +2535,11 @@ Node status
 Resources
 -----------------------------------------------------
 Usage:
+ 0/2 AcceleratorType:V100
  530/544 CPU
  2/2 GPU
- 0/2 AcceleratorType:V100
- 0.00/77.304 GiB memory
- 0.00/22.999 GiB object_store_memory
+ 2.00/8.000 GiB memory
+ 3.14/16.000 GiB object_store_memory
 
 Demands:
  {'CPU': 1}: 150+ pending tasks/actors

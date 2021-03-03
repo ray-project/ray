@@ -167,8 +167,14 @@ is generally the easiest way to run release tests.
 
    General Ray Tune functionality is implicitly tested via RLLib and XGBoost release tests.
    We are in the process of introducing scalability envelopes for Ray Tune.
-   This is an ongoing effort and will only be introduced in the next release.
-   For now, **you can ignore the tune_tests directory**.
+
+   Of the seven existing tests, three are currently not reaching their target time.
+   These three tests (test_result_throughput_cluster, test_result_throughput_single_node, and
+   test_network_overhead) are marked in the release checklist and don't have to be run at this time.
+
+   The other release tests are expected to run through without errors and to pass within a pre-specified time.
+   The time is checked in the test function and the output will let you know if a run was fast enough and
+   thus passed the test.
 
 10. **XGBoost release tests**
 
@@ -310,10 +316,11 @@ to proceed with the final stages of the release!
    of the docs, trigger a new build of the "latest" branch in
    readthedocs to see if that fixes it.
 
-7. **Update latest Docker Image:** Message Ian Rodney to bump the "latest" tag
+7. **Update latest Docker Image:** SET THE VERSION NUMBER IN `docker/fix-docker-latest.sh`, then run the script ot update the "latest" tag
    in Dockerhub for the 
-   ``rayproject/ray`` and ``rayproject/ray-ml`` Docker images to point to the Docker images built from the release. (If you have privileges in these
-   docker projects, you can do this step yourself.)
+   ``rayproject/ray`` and ``rayproject/ray-ml`` Docker images to point to the Docker images built from the release. (Make sure there is no permission denied error, you will likely have to ask Thomas for permissions).
+   
+   Check the dockerhub to verify the update worked. https://hub.docker.com/repository/docker/rayproject/ray/tags?page=1&name=latest&ordering=last_updated
 
 8. **Send out an email announcing the release** to the engineering@anyscale.com
    Google group, and post a slack message in the Announcements channel of the

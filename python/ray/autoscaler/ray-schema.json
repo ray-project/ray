@@ -337,8 +337,12 @@
                        "min_workers": {"type": "integer"},
                        "max_workers": {"type": "integer"},
                        "resources": {
-                           "type": "object",
-                           ".*": {"type": "number"}
+						   "patternProperties": {
+							   ".*":{
+								   "type": "integer",
+								   "minimum": 0
+							   }
+						   }
                        },
                        "initialization_commands": {
                            "$ref": "#/definitions/commands",
@@ -364,7 +368,8 @@
                                 "type": "array",
                                 "description": "analogous to head_run_options, merged with the global docker run_options."
                             }
-                        }
+                        },
+                        "additionalProperties": false
                     }
                     },
                     "additionalProperties": false

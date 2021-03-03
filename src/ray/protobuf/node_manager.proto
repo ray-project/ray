@@ -160,6 +160,11 @@ message GlobalGCReply {
 // Accumulates memory info across all nodes. To access per-node memory info,
 // use GetNodeStats() calls instead.
 message FormatGlobalMemoryInfoRequest {
+  // Whether or not the reply should include memory summary.
+  // If it is true, it will add extra overhead to the system
+  // because getting memory info requires to ping every core worker
+  // in the cluster.
+  bool include_memory_info = 1;
 }
 
 message FormatGlobalMemoryInfoReply {
@@ -179,6 +184,10 @@ message RequestObjectSpillageRequest {
 message RequestObjectSpillageReply {
   // Whether the object spilling was successful or not.
   bool success = 1;
+  // Object URL where the object is spilled.
+  string object_url = 2;
+  // The node id of a node where the object is spilled.
+  bytes spilled_node_id = 3;
 }
 
 message RestoreSpilledObjectRequest {

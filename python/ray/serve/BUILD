@@ -26,6 +26,14 @@ py_test(
 )
 
 py_test(
+    name = "test_async_goal_manager",
+    size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive"],
+    deps = [":serve_lib"],
+)
+
+py_test(
     name = "test_backend_worker",
     size = "small",
     srcs = serve_tests_srcs,
@@ -192,6 +200,14 @@ py_test(
 py_test(
     name = "tutorial_batch",
     size = "small",
+    srcs = glob(["examples/doc/*.py"]),
+    tags = ["exclusive"],
+    deps = [":serve_lib"]
+)
+
+py_test(
+    name = "tutorial_rllib",
+    size = "medium",
     srcs = glob(["examples/doc/*.py"]),
     tags = ["exclusive"],
     deps = [":serve_lib"]

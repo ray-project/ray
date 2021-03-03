@@ -44,6 +44,18 @@ public class GcsClient {
   }
 
   /**
+   * Get a placement group by name.
+   *
+   * @param name Name of the placement group.
+   * @param global Whether the named placement group is global.
+   * @return The placement group.
+   */
+  public PlacementGroup getPlacementGroupInfo(String name, boolean global) {
+    byte[] result = globalStateAccessor.getPlacementGroupInfo(name, global);
+    return result == null ? null : PlacementGroupUtils.generatePlacementGroupFromByteArray(result);
+  }
+
+  /**
    * Get all placement groups in this cluster.
    *
    * @return All placement groups.
@@ -96,17 +108,6 @@ public class GcsClient {
     }
 
     return new ArrayList<>(nodes.values());
-  }
-
-  public Map<String, String> getInternalConfig() {
-    Gcs.StoredConfig storedConfig;
-    byte[] conf = globalStateAccessor.getInternalConfig();
-    try {
-      storedConfig = Gcs.StoredConfig.parseFrom(conf);
-    } catch (InvalidProtocolBufferException e) {
-      throw new RuntimeException("Received invalid internal config protobuf from GCS.");
-    }
-    return storedConfig.getConfigMap();
   }
 
   private Map<String, Double> getResourcesForClient(UniqueId clientId) {
