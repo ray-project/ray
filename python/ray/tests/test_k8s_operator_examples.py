@@ -195,4 +195,4 @@ class KubernetesOperatorTest(unittest.TestCase):
 
 if __name__ == "__main__":
     kubernetes.config.load_kube_config()
-    sys.exit(pytest.main(["-v", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))
