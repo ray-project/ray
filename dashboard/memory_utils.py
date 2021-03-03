@@ -328,7 +328,10 @@ def construct_memory_table(workers_stats: List,
     return memory_table
 
 
-def get_memory_summary(group_by, sort_by, line_wrap) -> str:
+def memory_summary(state,
+                   group_by="NODE_ADDRESS",
+                   sort_by="OBJECT_SIZE",
+                   line_wrap=True) -> str:
     from ray.new_dashboard.modules.stats_collector.stats_collector_head\
          import node_stats_to_dict
 
@@ -339,7 +342,7 @@ def get_memory_summary(group_by, sort_by, line_wrap) -> str:
 
     # Fetch core memory worker stats, store as a dictionary
     core_worker_stats = []
-    for raylet in ray.nodes():
+    for raylet in state.node_table():
         stats = node_stats_to_dict(
             node_stats(raylet["NodeManagerAddress"],
                        raylet["NodeManagerPort"]))
@@ -417,9 +420,3 @@ def get_memory_summary(group_by, sort_by, line_wrap) -> str:
             mem += "\n"
         mem += "\n\n\n"
     return mem
-
-
-def memory_summary(group_by="NODE_ADDRESS",
-                   sort_by="OBJECT_SIZE",
-                   line_wrap=True):
-    return get_memory_summary(group_by, sort_by, line_wrap)
