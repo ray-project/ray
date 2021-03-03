@@ -240,7 +240,8 @@ class Monitor:
 
     def _handle_failure(self, error):
         logger.exception("Error in monitor loop")
-        if self.autoscaler is not None:
+        if self.autoscaler is not None and \
+           os.environ.get("RAY_AUTOSCALER_FATESHARE_WORKERS", "") == "1":
             self.autoscaler.kill_workers()
             # Take down autoscaler workers if necessary.
             self.destroy_autoscaler_workers()

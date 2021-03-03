@@ -380,6 +380,8 @@ message ExitRequest {
 }
 
 message ExitReply {
+  /// Whether or not exit succeeds. If the core worker owns any object, the request fails.
+  bool success = 1;
 }
 
 service CoreWorkerService {
