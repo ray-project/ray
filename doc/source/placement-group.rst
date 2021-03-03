@@ -160,7 +160,7 @@ Let's create a placement group. Recall that each bundle is a collection of resou
   pg = placement_group([gpu_bundle, extra_resource_bundle], strategy="STRICT_PACK")
 
   # Wait until placement group is created.
-  ray.get(pg.ready())Q
+  ray.get(pg.ready())
 
  .. note::
 
