@@ -212,6 +212,10 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// becomes feasible to schedule.
   void TryLocalInfeasibleTaskScheduling();
 
+  // Try to spill waiting tasks to a remote node, starting from the end of the
+  // queue.
+  void SpillWaitingTasks();
+
   const NodeID &self_node_id_;
   std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
   /// Class to make task dependencies to be local.
@@ -226,6 +230,8 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   const int max_resource_shapes_per_load_report_;
   const bool report_worker_backlog_;
 
+  /// TODO(swang): Add index from TaskID -> Work to avoid having to iterate
+  /// through queues to cancel tasks, etc.
   /// Queue of lease requests that are waiting for resources to become available.
   /// Tasks move from scheduled -> dispatch | waiting.
   std::unordered_map<SchedulingClass, std::deque<Work>> tasks_to_schedule_;
@@ -246,7 +252,19 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// All tasks in this map that have dependencies should be registered with
   /// the dependency manager, so that they can be moved to dispatch once their
   /// dependencies are local.
-  absl::flat_hash_map<TaskID, Work> waiting_tasks_;
+  ///
+  /// We keep these in a queue so that tasks can be spilled back from the end
+  /// of the queue. This is to try to prioritize spilling tasks whose
+  /// dependencies may not be fetched locally yet.
+  ///
+  /// Note that because tasks can also move from dispatch -> waiting, the order
+  /// in this queue may not match the order in which we initially received the
+  /// tasks. This also means that the PullManager may request dependencies for
+  /// these tasks in a different order than the waiting task queue.
+  std::list<Work> waiting_task_queue_;
+
+  /// An index for the above queue.
+  absl::flat_hash_map<TaskID, std::list<Work>::iterator> waiting_tasks_index_;
 
   /// Queue of lease requests that are infeasible.
   /// Tasks go between scheduling <-> infeasible.
