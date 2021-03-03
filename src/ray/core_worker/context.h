@@ -63,6 +63,10 @@ class WorkerContext {
   /// Returns whether we are in a direct call actor.
   bool CurrentActorIsDirectCall() const;
 
+  /// Returns whether we are in a direct call task. This encompasses both direct
+  /// actor and normal tasks.
+  bool CurrentTaskIsDirectCall() const;
+
   int CurrentActorMaxConcurrency() const;
 
   bool CurrentActorIsAsync() const;

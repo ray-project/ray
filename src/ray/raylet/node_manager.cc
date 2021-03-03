@@ -900,6 +900,13 @@ void NodeManager::ProcessClientMessage(const std::shared_ptr<ClientConnection> &
     std::shared_ptr<WorkerInterface> worker = worker_pool_.GetRegisteredWorker(client);
     HandleDirectCallTaskUnblocked(worker);
   } break;
+  case protocol::MessageType::NotifyUnblocked: {
+    // TODO(ekl) this is still used from core worker even in direct call mode to
+    // finish up get requests.
+    auto message = flatbuffers::GetRoot<protocol::NotifyUnblocked>(message_data);
+    AsyncResolveObjectsFinish(client, from_flatbuf<TaskID>(*message->task_id()),
+                              /*was_blocked*/ true);
+  } break;
   case protocol::MessageType::WaitRequest: {
     ProcessWaitRequestMessage(client, message_data);
   } break;
