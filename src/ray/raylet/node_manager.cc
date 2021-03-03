@@ -1103,14 +1103,8 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
     // Because in this case, its task is already cleaned up.
     RAY_LOG(DEBUG) << "Skip unblocking worker because it's already dead.";
   } else {
-    // Clean up any open ray.get calls that the worker made.
-    while (!worker->GetBlockedTaskIds().empty()) {
-      // NOTE(swang): AsyncResolveObjectsFinish will modify the worker, so it is
-      // not safe to pass in the iterator directly.
-      const TaskID task_id = *worker->GetBlockedTaskIds().begin();
-      AsyncResolveObjectsFinish(client, task_id, true);
-    }
     // Clean up any open ray.wait calls that the worker made.
+    dependency_manager_.CancelGetRequest(worker->WorkerId());
     dependency_manager_.CancelWaitRequest(worker->WorkerId());
   }
 
@@ -1560,11 +1554,6 @@ void NodeManager::AsyncResolveObjects(
   }
 
   RAY_CHECK(worker);
-  // Mark the task as blocked.
-  if (mark_worker_blocked) {
-    worker->AddBlockedTaskId(current_task_id);
-  }
-
   // Subscribe to the objects required by the task. These objects will be
   // fetched and/or restarted as necessary, until the objects become local
   // or are unsubscribed.
