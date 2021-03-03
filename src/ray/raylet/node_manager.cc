@@ -2755,6 +2755,12 @@ void NodeManager::PublishInfeasibleTaskError(const Task &task) const {
     suppress_warning = true;
   }
 
+  if (!task.GetTaskSpecification().GetRequiredPlacementResources().IsEmpty()) {
+    // If the task is part of a placement group, do nothing. If necessary, the infeasible
+    // warning should come from the placement group scheduling, not the task scheduling.
+    supress_warning = true;
+  }
+
   // Push a warning to the task's driver that this task is currently infeasible.
   if (!suppress_warning) {
     // TODO(rkn): Define this constant somewhere else.
