@@ -360,7 +360,7 @@ py_test(
     name = "run_regression_tests_cartpole_r2d2_tf",
     main = "tests/run_regression_tests.py",
     tags = ["learning_tests_tf", "learning_tests_cartpole"],
-    size = "medium",
+    size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = [
         "tuned_examples/dqn/cartpole-r2d2.yaml",
@@ -372,7 +372,7 @@ py_test(
     name = "run_regression_tests_cartpole_r2d2_torch",
     main = "tests/run_regression_tests.py",
     tags = ["learning_tests_torch", "learning_tests_cartpole"],
-    size = "medium",
+    size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = [
         "tuned_examples/dqn/cartpole-r2d2.yaml",
