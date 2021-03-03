@@ -1,5 +1,16 @@
 import ray
 
+
+class RuntimeEnv:
+    def __init__(self,
+                 working_dir: str = None,
+                 working_dir_uri: str = None,
+                 local_modules=[]):
+        self.working_dir = working_dir
+        self.working_dir_uri = working_dir_uri
+        self.local_modules = local_modules
+
+
 class JobConfig:
     """A class used to store the configurations of a job.
 
@@ -14,18 +25,17 @@ class JobConfig:
             `CLASSPATH` in Java and `PYTHONPATH` in Python.
     """
 
-    def __init__(
-            self,
-            worker_env=None,
-            num_java_workers_per_process=1,
-            jvm_options=None,
-            code_search_path=None,
-            runtime_env=None):
+    def __init__(self,
+                 worker_env=None,
+                 num_java_workers_per_process=1,
+                 jvm_options=None,
+                 code_search_path=None,
+                 runtime_env=RuntimeEnv()):
         self.worker_env = worker_env or dict()
         self.num_java_workers_per_process = num_java_workers_per_process
         self.jvm_options = jvm_options or []
         self.code_search_path = code_search_path or []
-        self.runtime_env = runtime_env or dict()
+        self.runtime_env = runtime_env
 
     def serialize(self):
         job_config = ray.gcs_utils.JobConfig()
@@ -35,6 +45,7 @@ class JobConfig:
             self.num_java_workers_per_process)
         job_config.jvm_options.extend(self.jvm_options)
         job_config.code_search_path.extend(self.code_search_path)
-        if 'working_dir_uri' in self.runtime_env:
-            job_config.runtime_env.working_dir_uri = self.runtime_env['working_dir_uri']
+        if self.runtime_env.working_dir_uri:
+            job_config.runtime_env.working_dir_uri = \
+              self.runtime_env.working_dir_uri
         return job_config.SerializeToString()

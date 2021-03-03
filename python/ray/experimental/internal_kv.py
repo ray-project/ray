@@ -16,10 +16,12 @@ def _internal_kv_get(key: Union[str, bytes]) -> bytes:
 
     return ray.worker.global_worker.redis_client.hget(key, "value")
 
+
 @client_mode_hook
 def _internal_kv_exists(key: Union[str, bytes]) -> bool:
     """Check key exists or not."""
     return ray.worker.global_worker.redis_client.hexists(key, "value")
+
 
 @client_mode_hook
 def _internal_kv_put(key: Union[str, bytes],

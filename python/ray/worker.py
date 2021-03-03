@@ -1222,10 +1222,11 @@ def connect(node,
 
     # For now, we only support local directory and packages
     required_directories = []
-    working_dir = job_config.runtime_env.get('working_dir')
-    required_modules = job_config.runtime_env.get('local_modules', [])
+    working_dir = job_config.runtime_env.working_dir
+    required_modules = job_config.runtime_env.local_modules
+
     if mode == SCRIPT_MODE:
-        if not job_config.runtime_env.get('working_dir_uri'):
+        if not job_config.runtime_env.working_dir_uri:
             if working_dir:
                 assert isinstance(working_dir, str)
                 assert Path(working_dir).exists()
@@ -1236,8 +1237,10 @@ def connect(node,
             for module in required_modules:
                 assert inspect.ismodule(module)
             if working_dir or required_modules:
-                pkg_file = ray_pkg.get_project_package_name(required_directories, required_modules)
-                job_config.runtime_env['working_dir_uri'] = ray_pkg.Protocol.GCS.value + pkg_file
+                pkg_name = ray_pkg.get_project_package_name(
+                    required_directories, required_modules)
+                job_config.runtime_env.working_dir_uri = \
+                  ray_pkg.Protocol.GCS.value + pkg_name
 
     serialized_job_config = job_config.serialize()
     worker.core_worker = ray._raylet.CoreWorker(
@@ -1258,15 +1261,22 @@ def connect(node,
     pkg_uri = job_config.runtime_env.working_dir_uri
     if pkg_uri:
         (pkg_protocol, pkg_name) = ray_pkg.parse_uri(pkg_uri)
-        pkg_file = Path("/tmp/" + pkg_name)
+        pkg_file = Path(ray_pkg.get_local_path(pkg_name))
+        # Driver must have access to the code locally
+        # In client mode, it'll be uploaded first
         if mode == SCRIPT_MODE:
             if not ray_pkg.package_exists(pkg_protocol, pkg_uri):
-                logger.debug(f"{pkg_uri} doesn't exist. Create new package with {required_directories} and {required_modules} bytes")
-                ray_pkg.create_project_package(pkg_file, required_directories,
-                                       required_modules)
+                logger.debug(
+                    f"{pkg_uri} doesn't exist. Create new package with"
+                    " {required_directories} and {required_modules} bytes")
+                if not pkg_file.exists():
+                    ray_pkg.create_project_package(
+                        pkg_file, required_directories, required_modules)
                 # Push the data to remote storage
-                pkg_size = ray_pkg.push_package(pkg_protocol, pkg_uri, pkg_file)
-                logger.debug(f"{pkg_uri} has been pushed with {pkg_size} bytes")
+                pkg_size = ray_pkg.push_package(pkg_protocol, pkg_uri,
+                                                pkg_file)
+                logger.debug(
+                    f"{pkg_uri} has been pushed with {pkg_size} bytes")
         elif mode == WORKER_MODE:
             # For each node, the package will only be downloaded one time
             # Locking to avoid multiple process download concurrently
@@ -1274,10 +1284,13 @@ def connect(node,
             with lock:
                 # TODO(yic): checksum calculation is required
                 if pkg_file.exists():
-                    logger.debug(f"{pkg_uri} has existed locally, skip downloading")
+                    logger.debug(
+                        f"{pkg_uri} has existed locally, skip downloading")
                 else:
-                    pkg_size = ray_pkg.fetch_package(pkg_protocol, pkg_uri, pkg_file)
-                    logger.debug(f"Downloaded {pkg_size} bytes into {pkg_file}")
+                    pkg_size = ray_pkg.fetch_package(pkg_protocol, pkg_uri,
+                                                     pkg_file)
+                    logger.debug(
+                        f"Downloaded {pkg_size} bytes into {pkg_file}")
             sys.path.insert(0, str(pkg_file))
 
     if driver_object_store_memory is not None:
