@@ -476,66 +476,19 @@ void NodeManager::HandleJobFinished(const JobID &job_id, const JobTableData &job
   }
 }
 
-void NodeManager::Heartbeat() {
-  uint64_t now_ms = current_time_ms();
-  uint64_t interval = now_ms - last_heartbeat_at_ms_;
-  if (interval > RayConfig::instance().num_heartbeats_warning() *
-                     RayConfig::instance().raylet_heartbeat_period_milliseconds()) {
-    RAY_LOG(WARNING)
-        << "Last heartbeat was sent " << interval
-        << " ms ago. There might be resource pressure on this node. If heartbeat keeps "
-           "lagging, this node can be marked as dead mistakenly.";
-  }
-  last_heartbeat_at_ms_ = now_ms;
-  stats::HeartbeatReportMs.Record(interval);
-
-  auto heartbeat_data = std::make_shared<HeartbeatTableData>();
-  heartbeat_data->set_node_id(self_node_id_.Binary());
-  RAY_CHECK_OK(
-      gcs_client_->Nodes().AsyncReportHeartbeat(heartbeat_data, [](Status status) {
-        if (status.IsDisconnected()) {
-          RAY_LOG(FATAL) << "This node has beem marked as dead.";
-        }
-      }));
-
-  if (debug_dump_period_ > 0 &&
-      static_cast<int64_t>(now_ms - last_debug_dump_at_ms_) > debug_dump_period_) {
-    DumpDebugState();
-    WarnResourceDeadlock();
-    last_debug_dump_at_ms_ = now_ms;
-  }
-
-  if (record_metrics_period_ > 0 &&
-      static_cast<int64_t>(now_ms - metrics_last_recorded_time_ms_) >
-          record_metrics_period_) {
-    RecordMetrics();
-    metrics_last_recorded_time_ms_ = now_ms;
-  }
-
-  // Evict all copies of freed objects from the cluster.
-  local_object_manager_.FlushFreeObjectsIfNeeded(now_ms);
-
-  // Reset the timer.
-  heartbeat_timer_.expires_from_now(heartbeat_period_);
-  heartbeat_timer_.async_wait([this](const boost::system::error_code &error) {
-    RAY_CHECK(!error);
-    Heartbeat();
-  });
-}
-
-void NodeManager::ReportResourceUsage() {
-  auto resources_data = std::make_shared<rpc::ResourcesData>();
-  resources_data->set_node_id(self_node_id_.Binary());
-  resources_data->set_node_manager_address(initial_config_.node_manager_address);
-  // Update local chche from gcs remote cache, this is needed when gcs restart.
+void NodeManager::FillResourceReport(rpc::ResourcesData &resources_data) {
+  resources_data.set_node_id(self_node_id_.Binary());
+  resources_data.set_node_manager_address(initial_config_.node_manager_address);
+  // Update local chache from gcs remote cache, this is needed when gcs restart.
   // We should always keep the cache view consistent.
   cluster_resource_scheduler_->UpdateLastResourceUsage(
-      gcs_client_->NodeResources().GetLastResourceUsage());
+                                                        gcs_client_->NodeResources().GetLastResourceUsage());
   cluster_resource_scheduler_->FillResourceUsage(resources_data);
   cluster_task_manager_->FillResourceUsage(resources_data);
 
   // Set the global gc bit on the outgoing heartbeat message.
   if (should_global_gc_) {
+    resources_data.set_should_global_gc(true);
     resources_data.set_should_global_gc(true);
     should_global_gc_ = false;
   }
