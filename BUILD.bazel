@@ -867,25 +867,6 @@ cc_test(
 )
 
 cc_test(
-    name = "reconstruction_policy_test",
-    srcs = ["src/ray/raylet/reconstruction_policy_test.cc"],
-    copts = COPTS + select({
-        "//:msvc-cl": [
-        ],
-        "//conditions:default": [
-            # Ignore this warning since it's impractical to fix in the relevant headers
-            "-Wno-inconsistent-missing-override",
-        ],
-    }),
-    deps = [
-        ":node_manager_fbs",
-        ":object_manager",
-        ":raylet_lib",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-cc_test(
     name = "worker_pool_test",
     srcs = ["src/ray/raylet/worker_pool_test.cc"],
     copts = COPTS,
