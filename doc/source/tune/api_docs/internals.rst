@@ -12,6 +12,14 @@ Main Components
 
 Tune's main components consist of TrialRunner, Trial objects, TrialExecutor, SearchAlg, TrialScheduler, and Trainable.
 
+.. _trial-runner-flow:
+
+This is an illustration of the high-level training flow and how some of the components interact:
+
+.. figure:: ../../images/tune-trial-runner-flow-horizontal.png
+    :class: horizontal-scroll
+
+
 TrialRunner
 ~~~~~~~~~~~
 [`source code <https://github.com/ray-project/ray/blob/master/python/ray/tune/trial_runner.py>`__]
