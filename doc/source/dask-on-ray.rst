@@ -89,6 +89,60 @@ default). This feature is available but off by default in Ray 1.2, and is on by 
 in Ray 1.3+. Please see your Ray version's object spilling documentation for steps to enable and/or configure
 object spilling.
 
+Persist
+-------
+
+.. _dask-on-ray-persist:
+
+Dask-on-Ray patches `dask.persist() 
+<https://docs.dask.org/en/latest/api.html#dask.persist>`__  in order to match `Dask 
+Distributed's persist semantics
+<https://distributed.dask.org/en/latest/manage-computation.html#client-persist>`; namely, calling `dask.persist()` with a Dask-on-Ray 
+scheduler will submit the tasks to the Ray cluster and return Ray futures inlined in the
+Dask collection. This is nice if you wish to compute some base collection (such as
+a Dask array), followed by multiple different downstream computations (such as
+aggregations): those downstream computations will be faster since that base collection
+computation was kicked off early and referenced by all downstream computations, often
+via shared memory.
+
+.. code-block:: python
+
+   import ray
+   from ray.util.dask import ray_dask_get
+   import dask
+   import dask.array as da
+   import numpy as np
+   # Start Ray.
+   # Tip: If you're connecting to an existing cluster, use ray.init(address="auto").
+   ray.init()
+
+   # Set the scheduler to ray_dask_get in your config so you don't have to specify it on
+   # each compute call.
+   dask.config.set(scheduler=ray_dask_get)
+
+   d_arr = da.ones(100)
+   print(dask.base.collections_to_dsk([d_arr]))
+   # {('ones-c345e6f8436ff9bcd68ddf25287d27f3',
+   #   0): (functools.partial(<function _broadcast_trick_inner at 0x7f27f1a71f80>,
+   #   dtype=dtype('float64')), (5,))}
+
+   # This submits all underlying Ray tasks to the cluster and returns a Dask array with
+   # the Ray futures inlined.
+   d_arr_p = d_arr.persist()
+
+   # Notice that the Ray ObjectRef is inlined. The dask.ones() task has been submitted
+   # to and is running on the Ray cluster.
+   dask.base.collections_to_dsk([d_arr_p])
+   # {('ones-c345e6f8436ff9bcd68ddf25287d27f3',
+   #   0): ObjectRef(8b4e50dc1ddac855ffffffffffffffffffffffff0100000001000000)}
+
+   # Future computations on this persisted Dask Array will be fast since we already
+   # started computing d_arr_p in the background.
+   d_arr_p.sum().compute()
+   d_arr_p.min().compute()
+   d_arr_p.max().compute()
+
+
 Custom optimization for Dask DataFrame shuffling
 ------------------------------------------------
 

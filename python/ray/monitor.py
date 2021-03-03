@@ -4,6 +4,7 @@ import argparse
 import logging
 import logging.handlers
 import os
+import sys
 import signal
 import time
 import traceback
@@ -239,7 +240,8 @@ class Monitor:
 
     def _handle_failure(self, error):
         logger.exception("Error in monitor loop")
-        if self.autoscaler is not None:
+        if self.autoscaler is not None and \
+           os.environ.get("RAY_AUTOSCALER_FATESHARE_WORKERS", "") == "1":
             self.autoscaler.kill_workers()
             # Take down autoscaler workers if necessary.
             self.destroy_autoscaler_workers()
@@ -344,6 +346,11 @@ if __name__ == "__main__":
         filename=args.logging_filename,
         max_bytes=args.logging_rotate_bytes,
         backup_count=args.logging_rotate_backup_count)
+
+    logger.info(f"Starting monitor using ray installation: {ray.__file__}")
+    logger.info(f"Ray version: {ray.__version__}")
+    logger.info(f"Ray commit: {ray.__commit__}")
+    logger.info(f"Monitor started with command: {sys.argv}")
 
     if args.autoscaling_config:
         autoscaling_config = os.path.expanduser(args.autoscaling_config)

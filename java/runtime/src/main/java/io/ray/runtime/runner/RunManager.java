@@ -69,7 +69,7 @@ public class RunManager {
         String.format(
             "import ray;"
                 + " print(ray._private.services.get_address_info_from_redis("
-                + "'%s', '%s', redis_password='%s'))",
+                + "'%s', '%s', redis_password='%s', log_warning=False))",
             rayConfig.getRedisAddress(), rayConfig.nodeIp, rayConfig.redisPassword);
     List<String> command = Arrays.asList("python", "-c", script);
 

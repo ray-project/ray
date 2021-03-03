@@ -484,6 +484,10 @@ cdef execute_task(
             with core_worker.profile_event(b"task:execute"):
                 task_exception = True
                 try:
+                    is_existing = core_worker.is_exiting()
+                    if is_existing:
+                        title = f"{title}::Exiting"
+                        next_title = f"{next_title}::Exiting"
                     with ray.worker._changeproctitle(title, next_title):
                         if debugger_breakpoint != b"":
                             ray.util.pdb.set_trace(
@@ -944,16 +948,17 @@ cdef class CoreWorker:
                     c_object_ids, &results))
         return RayObjectsToDataMetadataPairs(results)
 
-    def object_exists(self, ObjectRef object_ref):
+    def object_exists(self, ObjectRef object_ref, memory_store_only=False):
         cdef:
             c_bool has_object
+            c_bool is_in_plasma
             CObjectID c_object_id = object_ref.native()
 
         with nogil:
             check_status(CCoreWorkerProcess.GetCoreWorker().Contains(
-                c_object_id, &has_object))
+                c_object_id, &has_object, &is_in_plasma))
 
-        return has_object
+        return has_object and (not memory_store_only or not is_in_plasma)
 
     cdef _create_put_buffer(self, shared_ptr[CBuffer] &metadata,
                             size_t data_size, ObjectRef object_ref,
@@ -1606,6 +1611,9 @@ cdef class CoreWorker:
     def current_actor_is_asyncio(self):
         return (CCoreWorkerProcess.GetCoreWorker().GetWorkerContext()
                 .CurrentActorIsAsync())
+
+    def is_exiting(self):
+        return CCoreWorkerProcess.GetCoreWorker().IsExiting()
 
     cdef yield_current_fiber(self, CFiberEvent &fiber_event):
         with nogil:
