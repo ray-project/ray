@@ -180,7 +180,6 @@ NodeManager::NodeManager(boost::asio::io_service &io_service, const NodeID &self
       fair_queueing_enabled_(config.fair_queueing_enabled),
       temp_dir_(config.temp_dir),
       initial_config_(config),
-      local_available_resources_(config.resource_config),
       worker_pool_(io_service, self_node_id_, config.node_manager_address,
                    config.num_workers_soft_limit,
                    config.num_initial_python_workers_for_first_job,

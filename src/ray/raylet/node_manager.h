@@ -623,10 +623,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   std::string temp_dir_;
   /// Initial node manager configuration.
   const NodeManagerConfig initial_config_;
-  /// The resources (and specific resource IDs) that are currently available.
-  /// These two resource container is shared with `PlacementGroupResourceManager`.
-  ResourceIdSet local_available_resources_;
-  std::unordered_map<NodeID, SchedulingResources> cluster_resource_map_;
 
   /// A pool of workers.
   WorkerPool worker_pool_;
