@@ -257,6 +257,10 @@ message TaskLeaseData {
   uint64 timeout = 4;
 }
 
+message RuntimeEnv {
+  string working_dir_uri = 1;
+}
+
 message JobConfig {
   // Environment variables to be set on worker processes.
   map<string, string> worker_env = 1;
@@ -268,6 +272,8 @@ message JobConfig {
   // code. This will be used as `CLASSPATH` in Java, and `PYTHONPATH` in
   // Python.
   repeated string code_search_path = 4;
+  // Runtime environment to run the code
+  RuntimeEnv runtime_env = 5;
 }
 
 message JobTableData {

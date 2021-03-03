@@ -1225,16 +1225,19 @@ def connect(node,
     working_dir = job_config.runtime_env.get('working_dir')
     required_modules = job_config.runtime_env.get('local_modules', [])
     if mode == SCRIPT_MODE:
-        if not job_config.runtime_env.get('package_uri'):
+        if not job_config.runtime_env.get('working_dir_uri'):
             if working_dir:
                 assert isinstance(working_dir, str)
                 assert Path(working_dir).exists()
                 required_directories.append(working_dir)
+            # For now we include both code in working dir and local_modules
+            # in working_dir_uri.
+            # TODO(yic): Manage local modules and working dir separately
             for module in required_modules:
                 assert inspect.ismodule(module)
             if working_dir or required_modules:
                 pkg_file = ray_pkg.get_project_package_name(required_directories, required_modules)
-                job_config.runtime_env['package_uri'] = "gcs://" + pkg_file
+                job_config.runtime_env['working_dir_uri'] = ray_pkg.Protocol.GCS.value + pkg_file
 
     serialized_job_config = job_config.serialize()
     worker.core_worker = ray._raylet.CoreWorker(
@@ -1250,7 +1253,9 @@ def connect(node,
     ray.state.state._initialize_global_state(
         node.redis_address, redis_password=node.redis_password)
 
-    pkg_uri = job_config.runtime_env.get('package_uri')
+    # Reading job config from core worker
+    job_config = worker.core_worker.get_job_config()
+    pkg_uri = job_config.runtime_env.working_dir_uri
     if pkg_uri:
         (pkg_protocol, pkg_name) = ray_pkg.parse_uri(pkg_uri)
         pkg_file = Path("/tmp/" + pkg_name)
@@ -1265,15 +1270,15 @@ def connect(node,
         elif mode == WORKER_MODE:
             # For each node, the package will only be downloaded one time
             # Locking to avoid multiple process download concurrently
-            lock = FileLock(pkg_file + ".lock")
+            lock = FileLock(str(pkg_file) + ".lock")
             with lock:
                 # TODO(yic): checksum calculation is required
                 if pkg_file.exists():
                     logger.debug(f"{pkg_uri} has existed locally, skip downloading")
                 else:
-                    pkg_size = ray_pkg.fetch_package(protocol, pkg_uri, pkg_file)
+                    pkg_size = ray_pkg.fetch_package(pkg_protocol, pkg_uri, pkg_file)
                     logger.debug(f"Downloaded {pkg_size} bytes into {pkg_file}")
-            sys.path.insert(0, pkg_file_path)
+            sys.path.insert(0, str(pkg_file))
 
     if driver_object_store_memory is not None:
         worker.core_worker.set_object_store_client_options(
