@@ -37,6 +37,7 @@ KUBECTL_RSYNC = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "kubernetes/kubectl-rsync.sh")
 MAX_HOME_RETRIES = 3
 HOME_RETRY_DELAY_S = 5
+SSH_RETRY_DELAY_S = 5
 
 _config = {"use_login_shells": True, "silent_rsync": True}
 
@@ -356,7 +357,7 @@ class SSHCommandRunner(CommandRunnerInterface):
             cli_logger.labeled_value("Fetched IP", ip)
             return ip
 
-        interval = 10
+        interval = SSH_RETRY_DELAY_S
         with cli_logger.group("Waiting for IP"):
             while time.time() < deadline and \
                     not self.provider.is_terminated(self.node_id):
