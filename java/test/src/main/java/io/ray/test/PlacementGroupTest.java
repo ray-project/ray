@@ -18,7 +18,7 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 /**
- * TODO: Currently, Java doesn't support multi-node tests so we can't test all strategy temporarily
+ * TODO: Currently, Java doesn't support multi-node tests so we can't test all strategy temporarily.
  */
 @Test
 public class PlacementGroupTest extends BaseTest {
