@@ -67,7 +67,7 @@ public class CallOptions extends BaseTaskOptions {
      * Set the placement group to place this actor in.
      *
      * @param group The placement group of the actor.
-     * @param bundleIndex The index of the bundle to place this actor in.
+     * @param bundleIndex The index of the bundle to place this normal task in.
      * @return self
      */
     public Builder setPlacementGroup(PlacementGroup group, int bundleIndex) {
