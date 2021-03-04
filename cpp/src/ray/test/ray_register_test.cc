@@ -28,20 +28,20 @@ RAY_REGISTER(Plus1);
 TEST(RayApiTest, RayRegister) {
   using namespace ray::api::internal;
 
-  bool r = Router::Instance().RegisterRemoteFunction("Return1", Return1);
+  bool r = FunctionManager::Instance().RegisterRemoteFunction("Return1", Return1);
   EXPECT_TRUE(r);
 
   /// Duplicate register
-  bool r1 = Router::Instance().RegisterRemoteFunction("Return1", Return1);
+  bool r1 = FunctionManager::Instance().RegisterRemoteFunction("Return1", Return1);
   EXPECT_TRUE(!r1);
 
-  bool r2 = Router::Instance().RegisterRemoteFunction("Plus1", Plus1);
+  bool r2 = FunctionManager::Instance().RegisterRemoteFunction("Plus1", Plus1);
   EXPECT_TRUE(!r2);
 
   /// Find and call the registered function.
   auto args = std::make_tuple("Plus1", 1);
   auto buf = Serializer::Serialize(args);
-  auto result_buf = Router::Instance().Route(buf.data(), buf.size());
+  auto result_buf = TaskExecutionHandler(buf.data(), buf.size());
 
   /// Deserialize result.
   auto response =
@@ -52,7 +52,7 @@ TEST(RayApiTest, RayRegister) {
 
   /// Void function.
   auto buf1 = Serializer::Serialize(std::make_tuple("Return1"));
-  auto result_buf1 = Router::Instance().Route(buf1.data(), buf1.size());
+  auto result_buf1 = TaskExecutionHandler(buf1.data(), buf1.size());
   auto response1 =
       Serializer::Deserialize<VoidResponse>(result_buf.data(), result_buf.size());
   EXPECT_EQ(response1.error_code, ErrorCode::OK);
@@ -63,7 +63,7 @@ TEST(RayApiTest, RayRegister) {
 TEST(RayApiTest, NotExistFunction) {
   using namespace ray::api::internal;
   auto buf2 = Serializer::Serialize(std::make_tuple("Return11"));
-  auto result_buf2 = Router::Instance().Route(buf2.data(), buf2.size());
+  auto result_buf2 = TaskExecutionHandler(buf2.data(), buf2.size());
   auto response2 =
       Serializer::Deserialize<VoidResponse>(result_buf2.data(), result_buf2.size());
   EXPECT_EQ(response2.error_code, ErrorCode::FAIL);
@@ -73,7 +73,7 @@ TEST(RayApiTest, NotExistFunction) {
 TEST(RayApiTest, ArgumentsNotMatch) {
   using namespace ray::api::internal;
   auto buf3 = Serializer::Serialize(std::make_tuple("Plus1", "invalid arguments"));
-  auto result_buf3 = Router::Instance().Route(buf3.data(), buf3.size());
+  auto result_buf3 = TaskExecutionHandler(buf3.data(), buf3.size());
   auto response3 =
       Serializer::Deserialize<Response<int>>(result_buf3.data(), result_buf3.size());
   EXPECT_EQ(response3.error_code, ErrorCode::FAIL);
