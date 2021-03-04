@@ -1,4 +1,5 @@
 import json
+import jsonschema
 import os
 import shutil
 from subprocess import CalledProcessError
@@ -262,6 +263,55 @@ SMALL_CLUSTER = {
     "worker_setup_commands": ["worker_setup_cmd"],
     "head_start_ray_commands": ["start_ray_head"],
     "worker_start_ray_commands": ["start_ray_worker"],
+}
+
+MOCK_DEFAULT_CONFIG = {
+    "cluster_name": "default",
+    "max_workers": 2,
+    "upscaling_speed": 1.0,
+    "idle_timeout_minutes": 5,
+    "provider": {
+        "type": "mock",
+        "region": "us-east-1",
+        "availability_zone": "us-east-1a",
+    },
+    "docker": {
+        "image": "example",
+        "container_name": "mock",
+    },
+    "auth": {
+        "ssh_user": "ubuntu",
+        "ssh_private_key": os.devnull,
+    },
+    "available_node_types": {
+        "ray.head.default": {
+            "min_workers": 0,
+            "max_workers": 0,
+            "resources": {},
+            "node_config": {
+                "head_default_prop": 4
+            }
+        },
+        "ray.worker.default": {
+            "min_workers": 0,
+            "max_workers": 2,
+            "resources": {},
+            "node_config": {
+                "worker_default_prop": 7
+            }
+        }
+    },
+    "head_node_type": "ray.head.default",
+    "head_node": {},
+    "worker_nodes": {},
+    "file_mounts": {},
+    "cluster_synced_files": [],
+    "initialization_commands": [],
+    "setup_commands": [],
+    "head_setup_commands": [],
+    "worker_setup_commands": [],
+    "head_start_ray_commands": [],
+    "worker_start_ray_commands": [],
 }
 
 
@@ -1644,6 +1694,28 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler = StandardAutoscaler(
             config_path, LoadMetrics(), max_failures=0, update_interval_s=0)
         assert isinstance(autoscaler.provider, NodeProvider)
+
+    def testLegacyExternalNodeScalerMissingFields(self):
+        """Should fail to validate legacy external config with missing
+        head_node, worker_nodes, or both."""
+        external_config = copy.deepcopy(SMALL_CLUSTER)
+        external_config["provider"] = {
+            "type": "external",
+            "module": "ray.autoscaler.node_provider.NodeProvider",
+        }
+
+        missing_workers, missing_head, missing_both = [
+            copy.deepcopy(external_config) for _ in range(3)
+        ]
+        del missing_workers["worker_nodes"]
+        del missing_head["head_node"]
+        del missing_both["worker_nodes"]
+        del missing_both["head_node"]
+
+        for faulty_config in missing_workers, missing_head, missing_both:
+            faulty_config = prepare_config(faulty_config)
+            with pytest.raises(jsonschema.ValidationError):
+                validate_config(faulty_config)
 
     def testExternalNodeScalerWrongImport(self):
         config = SMALL_CLUSTER.copy()

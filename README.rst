@@ -278,6 +278,7 @@ More Information
 - `Ray 1.0 Architecture whitepaper`_ **(new)**
 - `Ray Design Patterns`_ **(new)**
 - `RLlib paper`_
+- `RLlib flow paper`_
 - `Tune paper`_
 
 *Older documents:*
@@ -295,6 +296,7 @@ More Information
 .. _`Ray paper`: https://arxiv.org/abs/1712.05889
 .. _`Ray HotOS paper`: https://arxiv.org/abs/1703.03924
 .. _`RLlib paper`: https://arxiv.org/abs/1712.09381
+.. _`RLlib flow paper`: https://arxiv.org/abs/2011.12719
 .. _`Tune paper`: https://arxiv.org/abs/1807.05118
 
 Getting Involved
