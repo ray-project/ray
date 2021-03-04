@@ -174,6 +174,10 @@ def pg_factory_to_resources(
         placement_group_factory: PlacementGroupFactory) -> Resources:
     """Translates a PlacementGroupFactory into a Resources object.
 
+    Thereby using the first bundle's resources for determining
+    the Resource object's `cpu` and `gpu` params and all other bundles
+    to determine the "extra_[cpu|gpu]" requirements.
+
     Args:
          placement_group_factory (PlacementGroupFactory): The
             PlacementGroupFactory object to create a Resources object from.
@@ -181,10 +185,18 @@ def pg_factory_to_resources(
     Returns:
         Resources: The Resources object.
     """
+    bundles = placement_group_factory._bundles
     counts = defaultdict(int)
-    for bundle in placement_group_factory._bundles:
-        for resource_type, count in bundle.items():
+    # Collect the head node resource requirements (first bundle).
+    if len(bundles) > 0:
+        for resource_type, count in bundles[0].items():
             counts[resource_type.lower()] += count
+    # Collect extra requirements (all other bundles).
+    if len(bundles) > 1:
+        for bundle in bundles[1:]:
+            for resource_type, count in bundle.items():
+                counts[f"extra_{resource_type.lower()}"] += count
+    # Convert to proper Resources object.
     num_cpus = counts.pop("cpu", 1)
     num_gpus = counts.pop("gpu", 0)
     return Resources(cpu=num_cpus, gpu=num_gpus, **counts)

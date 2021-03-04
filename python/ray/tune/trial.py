@@ -225,10 +225,10 @@ class Trial:
             default_resources = trainable_cls.default_resource_request(
                 self.config)
 
-            # If Trainable returns resources, do not allow manual overrid via
+            # If Trainable returns resources, do not allow manual override via
             # `resources_per_trial` by the user.
             if default_resources:
-                if resources or placement_group_factory:
+                if resources:
                     raise ValueError(
                         "Resources for {} have been automatically set to {} "
                         "by its `default_resource_request()` method. Please "
@@ -237,7 +237,11 @@ class Trial:
 
                 # New way: Trainable returns a PlacementGroupFactory object.
                 if isinstance(default_resources, PlacementGroupFactory):
-                    placement_group_factory = default_resources
+                    # If Trainable returns placement group factory, only use it
+                    # if no manual `placement_group_factory` are has been provided
+                    # by user.
+                    if placement_group_factory is None:
+                        placement_group_factory = default_resources
                     resources = None
                 # Set placement group factory to None for backwards
                 # compatibility.
@@ -337,16 +341,26 @@ class Trial:
 
 
         """
-        # Placement groups are force-disabled via env variable.
-        if int(os.getenv("TUNE_PLACEMENT_GROUP_AUTO_DISABLED", "0")):
-            if self.placement_group_factory:
-                self.resources = pg_factory_to_resources(
-                    self.placement_group_factory)
-            self.placement_group_factory = None
+        ## Placement group are force-disabled via env variable.
+        #if int(os.getenv("TUNE_PLACEMENT_GROUP_AUTO_DISABLED", "0")):
+        #    if self.placement_group_factory:
+        #        self.resources = pg_factory_to_resources(
+        #            self.placement_group_factory)
+        #    self.placement_group_factory = None
 
-        # Placement groups are not disabled, but none is given.
-        # Produce one automatically from self.resources.
-        elif not self.placement_group_factory:
+        ## Placement groups are not disabled, but none is given.
+        ## Produce one automatically from self.resources.
+        #elif not self.placement_group_factory:
+        #    try:
+        #        self.placement_group_factory = resource_dict_to_pg_factory(
+        #            self.resources)
+        #    except ValueError as exc:
+        #        if log_always or log_once("tune_pg_extra_resources"):
+        #            logger.warning(exc)
+        #        self.placement_group_factory = None
+
+        if not self.placement_group_factory and \
+           not int(os.getenv("TUNE_PLACEMENT_GROUP_AUTO_DISABLED", "0")):
             try:
                 self.placement_group_factory = resource_dict_to_pg_factory(
                     self.resources)
