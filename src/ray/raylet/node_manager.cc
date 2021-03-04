@@ -973,7 +973,6 @@ void NodeManager::ProcessRegisterClientRequestMessage(
     auto reply = ray::protocol::CreateRegisterClientReply(
         fbb, status.ok(), fbb.CreateString(status.ToString()),
         to_flatbuf(fbb, self_node_id_), assigned_port,
-        fbb.CreateString(initial_config_.raylet_config),
         fbb.CreateString(serialized_job_config));
     fbb.Finish(reply);
     client->WriteMessageAsync(
@@ -1853,6 +1852,13 @@ void NodeManager::HandlePinObjectIDs(const rpc::PinObjectIDsRequest &request,
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
+void NodeManager::HandleGetSystemConfig(const rpc::GetSystemConfigRequest &request,
+                                        rpc::GetSystemConfigReply *reply,
+                                        rpc::SendReplyCallback send_reply_callback) {
+  reply->set_system_config(initial_config_.raylet_config);
+  send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
 void NodeManager::HandleGetNodeStats(const rpc::GetNodeStatsRequest &node_stats_request,
                                      rpc::GetNodeStatsReply *reply,
                                      rpc::SendReplyCallback send_reply_callback) {
@@ -2116,7 +2122,21 @@ void NodeManager::RecordMetrics() {
   if (stats::StatsConfig::instance().IsStatsDisabled()) {
     return;
   }
-  cluster_task_manager_->RecordMetrics();
+  // Last recorded time will be reset in the caller side.
+  uint64_t current_time = current_time_ms();
+  uint64_t duration_ms = current_time - metrics_last_recorded_time_ms_;
+
+  // Record average number of tasks information per second.
+  stats::AvgNumScheduledTasks.Record((double)metrics_num_task_scheduled_ *
+                                     (1000.0 / (double)duration_ms));
+  metrics_num_task_scheduled_ = 0;
+  stats::AvgNumExecutedTasks.Record((double)metrics_num_task_executed_ *
+                                    (1000.0 / (double)duration_ms));
+  metrics_num_task_executed_ = 0;
+  stats::AvgNumSpilledBackTasks.Record((double)metrics_num_task_spilled_back_ *
+                                       (1000.0 / (double)duration_ms));
+  metrics_num_task_spilled_back_ = 0;
+
   object_manager_.RecordMetrics();
   local_object_manager_.RecordObjectSpillingStats();
 }
