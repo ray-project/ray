@@ -3,8 +3,8 @@
 
 #include <memory>
 
+#include <ray/api/util/function_helper.h>
 #include "../../util/address_helper.h"
-#include "../../util/function_helper.h"
 #include "../abstract_ray_runtime.h"
 
 namespace ray {
