@@ -245,6 +245,7 @@ def log_pubsub():
     yield p
     p.close()
 
+
 @pytest.fixture()
 def working_dir():
     import tempfile
