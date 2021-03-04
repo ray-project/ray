@@ -19,94 +19,95 @@ upscaling_speed: 1.0
 # and opens all the necessary ports to support the Ray cluster.
 # Empty string means disabled.
 docker:
-    image: "rayproject/ray-ml:latest-gpu"
+    image: "rayproject/ray-ml:latest-gpu" # You can change this to latest-cpu if you don't need GPU support and want a faster startup
     # image: rayproject/ray:latest-gpu   # use this one if you don't need ML dependencies, it's faster to pull
-    container_name: "ray_docker"
+    container_name: "ray_container"
     # If true, pulls latest version of image. Otherwise, `docker run` will only pull the image
     # if no cached version is present.
-    pull_before_run: False
+    pull_before_run: True
     run_options: []  # Extra options to pass into "docker run"
 
     # Example of running a GPU head with CPU workers
     # head_image: "rayproject/ray-ml:latest-gpu"
+    # Allow Ray to automatically detect GPUs
 
-    # worker_image: "rayproject/ray-ml:latest"
+    # worker_image: "rayproject/ray-ml:latest-cpu"
+    # worker_run_options: []
 
 # If a node is idle for this many minutes, it will be removed.
 idle_timeout_minutes: 5
 
 # Cloud-provider specific configuration.
 provider:
-    type: azure
-    # https://azure.microsoft.com/en-us/global-infrastructure/locations
-    location: westus2
-    resource_group: ray-cluster
-    # set subscription id otherwise the default from az cli will be used
-    # subscription_id: 00000000-0000-0000-0000-000000000000   
+    type: aws
+    region: us-west-2
+    # Availability zone(s), comma-separated, that nodes may be launched in.
+    # Nodes are currently spread between zones by a round-robin approach,
+    # however this implementation detail should not be relied upon.
+    availability_zone: us-west-2a,us-west-2b
+    # Whether to allow node reuse. If set to False, nodes will be terminated
+    # instead of stopped.
+    cache_stopped_nodes: True # If not present, the default is True.
 
 # How Ray will authenticate with newly launched nodes.
 auth:
     ssh_user: ubuntu
-    # you must specify paths to matching private and public key pair files
-    # use `ssh-keygen -t rsa -b 4096` to generate a new ssh key pair
-    ssh_private_key: ~/.ssh/id_rsa
-    # changes to this should match what is specified in file_mounts
-    ssh_public_key: ~/.ssh/id_rsa.pub
+# By default Ray creates a new private keypair, but you can also use your own.
+# If you do so, make sure to also set "KeyName" in the head and worker node
+# configurations below.
+#    ssh_private_key: /path/to/your/key.pem
 
-# Provider-specific config for the head node, e.g. instance type. By default
-# Ray will auto-configure unspecified fields using defaults.yaml
-head_node:
-    azure_arm_parameters:
-        vmSize: Standard_NC6
-        # List images https://docs.microsoft.com/en-us/azure/virtual-machines/linux/cli-ps-findimage
-        imagePublisher: microsoft-dsvm
-        imageOffer: ubuntu-1804
-        imageSku: "1804"
-        imageVersion: 20.07.06
 
 # Provider-specific config for worker nodes, e.g. instance type. By default
-# Ray will auto-configure unspecified fields using defaults.yaml
+# Ray will auto-configure unspecified fields such as SubnetId and KeyName.
+# For more documentation on available fields, see:
+# http://boto3.readthedocs.io/en/latest/reference/services/ec2.html#EC2.ServiceResource.create_instances
 worker_nodes:
-    azure_arm_parameters:
-        vmSize: Standard_NC6
-        # List images https://docs.microsoft.com/en-us/azure/virtual-machines/linux/cli-ps-findimage
-        imagePublisher: microsoft-dsvm
-        imageOffer: ubuntu-1804
-        imageSku: "1804"
-        imageVersion: 20.07.06
+    foo: bar
 
 # Files or directories to copy to the head and worker nodes. The format is a
 # dictionary from REMOTE_PATH: LOCAL_PATH, e.g.
 file_mounts: {
 #    "/path1/on/remote/machine": "/path1/on/local/machine",
 #    "/path2/on/remote/machine": "/path2/on/local/machine",
-     "/home/ubuntu/.ssh/id_rsa.pub": "~/.ssh/id_rsa.pub"
 }
+
+# Files or directories to copy from the head node to the worker nodes. The format is a
+# list of paths. The same path on the head node will be copied to the worker node.
+# This behavior is a subset of the file_mounts behavior. In the vast majority of cases
+# you should just use file_mounts. Only use this if you know what you're doing!
+cluster_synced_files: []
+
+# Whether changes to directories in file_mounts or cluster_synced_files in the head node
+# should sync to the worker node continuously
+file_mounts_sync_continuously: False
+
+# Patterns for files to exclude when running rsync up or rsync down
+rsync_exclude:
+    - "**/.git"
+    - "**/.git/**"
+
+# Pattern files to use for filtering out files when running rsync up or rsync down. The file is searched for
+# in the source directory and recursively through all subdirectories. For example, if .gitignore is provided
+# as a value, the behavior will match git's behavior for finding and using .gitignore files.
+rsync_filter:
+    - ".gitignore"
 
 # List of commands that will be run before `setup_commands`. If docker is
 # enabled, these commands will run outside the container and before docker
 # is setup.
-initialization_commands:
-    # get rid of annoying Ubuntu message
-    - touch ~/.sudo_as_admin_successful
+initialization_commands: []
 
 # List of shell commands to run to set up nodes.
-setup_commands:
-    # Note: if you're developing Ray, you probably want to create an AMI that
+setup_commands: []
+    # Note: if you're developing Ray, you probably want to create a Docker image that
     # has your Ray repo pre-cloned. Then, you can replace the pip installs
     # below with a git checkout <your_sha> (and possibly a recompile).
-    - echo 'eval "$(conda shell.bash hook)"' >> ~/.bashrc
-    # - echo 'conda activate py37_pytorch' >> ~/.bashrc
-    - echo 'conda activate py37_tensorflow' >> ~/.bashrc
-    - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl
-    # Consider uncommenting these if you also want to run apt-get commands during setup
-    # - sudo pkill -9 apt-get || true
-    # - sudo pkill -9 dpkg || true
-    # - sudo dpkg --configure -a
+    # Uncomment the following line if you want to run the nightly version of ray (as opposed to the latest)
+    # - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl
 
 # Custom commands that will be run on the head node after common setup.
-head_setup_commands: 
-    - pip install azure-cli-core==2.4.0 azure-mgmt-compute==12.0.0 azure-mgmt-msi==1.0.0 azure-mgmt-network==10.1.0
+head_setup_commands: []
 
 # Custom commands that will be run on worker nodes after common setup.
 worker_setup_commands: []

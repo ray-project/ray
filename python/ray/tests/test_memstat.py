@@ -3,7 +3,7 @@ import time
 
 import ray
 from ray.cluster_utils import Cluster
-from ray.new_dashboard.memory_utils import memory_summary
+from ray.internal.internal_api import memory_summary
 
 # Unique strings.
 DRIVER_PID = "Driver"
@@ -78,7 +78,7 @@ def test_worker_task_refs(ray_start_regular):
 
     @ray.remote
     def f(y):
-        from ray.new_dashboard.memory_utils import memory_summary
+        from ray.internal.internal_api import memory_summary
         x_id = ray.put("HI")
         info = memory_summary(address)
         del x_id
@@ -121,7 +121,7 @@ def test_actor_task_refs(ray_start_regular):
             self.refs = []
 
         def f(self, x):
-            from ray.new_dashboard.memory_utils import memory_summary
+            from ray.internal.internal_api import memory_summary
             self.refs.append(x)
             return memory_summary(address)
 
@@ -238,7 +238,6 @@ def test_group_by_sort_by(ray_start_regular):
 
     @ray.remote
     def f(y):
-        from ray.new_dashboard.memory_utils import memory_summary
         x_id = ray.put("HI")
         info_a = memory_summary(
             address, group_by="STACK_TRACE", sort_by="REFERENCE_TYPE")
@@ -262,7 +261,6 @@ def test_group_by_sort_by(ray_start_regular):
 
 def test_memory_used_output(ray_start_regular):
     address = ray_start_regular["redis_address"]
-
     import numpy as np
     _ = ray.put(np.ones(8 * 1024 * 1024, dtype=np.int8))
 
