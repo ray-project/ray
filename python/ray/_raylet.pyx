@@ -18,7 +18,6 @@ import pickle
 import sys
 import _thread
 import setproctitle
-from pathlib import Path
 
 from libc.stdint cimport (
     int32_t,
