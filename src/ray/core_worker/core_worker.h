@@ -273,6 +273,8 @@ class CoreWorkerProcess {
 
   static void HandleAtExit();
 
+  void InitializeSystemConfig();
+
   /// Get the `CoreWorker` instance by worker ID.
   ///
   /// \param[in] workerId The worker ID.
