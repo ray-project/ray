@@ -22,7 +22,7 @@ from ray.tune.result import DEFAULT_RESULTS_DIR, DONE, TRAINING_ITERATION
 from ray.tune.resources import Resources, \
     json_to_resources, resources_to_json
 from ray.tune.utils.placement_groups import PlacementGroupFactory, \
-    pg_factory_to_resources, resource_dict_to_pg_factory
+    resource_dict_to_pg_factory
 from ray.tune.utils.serialization import TuneFunctionEncoder
 from ray.tune.utils.trainable import TrainableUtil
 from ray.tune.utils import date_str, flatten_dict
@@ -228,7 +228,7 @@ class Trial:
             # If Trainable returns resources, do not allow manual override via
             # `resources_per_trial` by the user.
             if default_resources:
-                if resources:
+                if resources or placement_group_factory:
                     raise ValueError(
                         "Resources for {} have been automatically set to {} "
                         "by its `default_resource_request()` method. Please "
@@ -237,11 +237,11 @@ class Trial:
 
                 # New way: Trainable returns a PlacementGroupFactory object.
                 if isinstance(default_resources, PlacementGroupFactory):
-                    # If Trainable returns placement group factory, only use it
-                    # if no manual `placement_group_factory` are has been provided
-                    # by user.
-                    if placement_group_factory is None:
-                        placement_group_factory = default_resources
+                    ## If Trainable returns placement group factory, only use it
+                    ## if no manual `placement_group_factory` are has been
+                    ## provided by user.
+                    #if placement_group_factory is None:
+                    placement_group_factory = default_resources
                     resources = None
                 # Set placement group factory to None for backwards
                 # compatibility.
@@ -341,24 +341,6 @@ class Trial:
 
 
         """
-        ## Placement group are force-disabled via env variable.
-        #if int(os.getenv("TUNE_PLACEMENT_GROUP_AUTO_DISABLED", "0")):
-        #    if self.placement_group_factory:
-        #        self.resources = pg_factory_to_resources(
-        #            self.placement_group_factory)
-        #    self.placement_group_factory = None
-
-        ## Placement groups are not disabled, but none is given.
-        ## Produce one automatically from self.resources.
-        #elif not self.placement_group_factory:
-        #    try:
-        #        self.placement_group_factory = resource_dict_to_pg_factory(
-        #            self.resources)
-        #    except ValueError as exc:
-        #        if log_always or log_once("tune_pg_extra_resources"):
-        #            logger.warning(exc)
-        #        self.placement_group_factory = None
-
         if not self.placement_group_factory and \
            not int(os.getenv("TUNE_PLACEMENT_GROUP_AUTO_DISABLED", "0")):
             try:
