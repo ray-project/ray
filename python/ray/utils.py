@@ -554,7 +554,7 @@ def estimate_available_memory():
     # Linux, BSD has cached memory, which should
     # also be considered as unused memory
     # consider half of cached memory can be recycled.
-    # According to https://gitlab.com/procps-ng/procps/-/blob/master/proc/sysinfo.c#L805
+    # https://gitlab.com/procps-ng/procps/-/blob/master/proc/sysinfo.c#L805
     return get_system_memory() - get_used_memory() + get_cached_memory() / 2
 
 
