@@ -30,15 +30,15 @@ def _setup_cluster_for_test(ray_start_cluster):
 
     # Generate a metric in the driver.
     counter = Count("test_driver_counter", description="desc")
-    counter.record(1)
+    counter.increment()
 
     # Generate some metrics from actor & tasks.
     @ray.remote
     def f():
         counter = Count("test_counter", description="desc")
-        counter.record(1)
+        counter.increment()
         counter = ray.get(ray.put(counter))  # Test serialization.
-        counter.record(1)
+        counter.increment()
         ray.get(worker_should_exit.wait.remote())
 
     @ray.remote

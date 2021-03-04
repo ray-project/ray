@@ -69,7 +69,7 @@ class Metric:
         self._default_tags = default_tags
         return self
 
-    def record(self, value: float, tags: dict = None) -> None:
+    def record(self, value: float, tags: Dict[str, str] = None) -> None:
         """Record the metric point of the metric.
 
         Tags passed in will take precedence over the metric's default tags.
@@ -125,10 +125,11 @@ class Metric:
         }
 
 
-class Count(Metric):
-    """The count of the number of metric points.
+class Counter(Metric):
+    """A cumulative metric that is monotonically increasing.
 
-    This is corresponding to Prometheus' Count metric.
+    This corresponds to Prometheus' counter metric:
+    https://prometheus.io/docs/concepts/metric_types/#counter
 
     Args:
         name(str): Name of the metric.
@@ -148,6 +149,35 @@ class Count(Metric):
         deserializer = Count
         serialized_data = (self._name, self._description, self._tag_keys)
         return deserializer, serialized_data
+
+    def inc(self, value: float = 1, tags: Dict[str, str] = None):
+        """Increment the counter by `value` (defaults to 1).
+
+        Args:
+            value(float): Value to increment the counter by, defaults to 1.
+            tags(Dict[str, str]): Tags to set or override for this counter.
+        """
+        self.record(value, tags)
+
+
+class Count(Counter):
+    """The count of the number of metric points.
+
+    This corresponds to Prometheus' 'Count' metric.
+
+    This class is DEPRECATED, please use ray.util.metrics.Counter instead.
+
+    Args:
+        name(str): Name of the metric.
+        description(str): Description of the metric.
+        tag_keys(tuple): Tag keys of the metric.
+    """
+
+    def __init__(self,
+                 name: str,
+                 description: str = "",
+                 tag_keys: Optional[Tuple[str]] = None):
+        super().__init__(name, description, tag_keys)
 
 
 class Histogram(Metric):
