@@ -237,7 +237,6 @@ struct GcsServerMocker {
       return ray::Status::OK();
     }
 
-    /// ConfigInterface
     void GetSystemConfig(const ray::rpc::ClientCallback<ray::rpc::GetSystemConfigReply>
                              &callback) override {}
 

@@ -139,24 +139,17 @@ class DependencyWaiterInterface {
   virtual ~DependencyWaiterInterface(){};
 };
 
-/// Interface for fetching config.
-class ConfigInterface {
+class RayletClientInterface : public PinObjectsInterface,
+                              public WorkerLeaseInterface,
+                              public DependencyWaiterInterface,
+                              public ResourceReserveInterface {
  public:
+  virtual ~RayletClientInterface(){};
+
   /// Get the system config from Raylet.
   /// \param callback Callback that will be called after raylet replied the system config.
   virtual void GetSystemConfig(
       const rpc::ClientCallback<rpc::GetSystemConfigReply> &callback) = 0;
-
-  virtual ~ConfigInterface(){};
-};
-
-class RayletClientInterface : public PinObjectsInterface,
-                              public WorkerLeaseInterface,
-                              public DependencyWaiterInterface,
-                              public ResourceReserveInterface,
-                              public ConfigInterface {
- public:
-  virtual ~RayletClientInterface(){};
 };
 
 namespace raylet {
