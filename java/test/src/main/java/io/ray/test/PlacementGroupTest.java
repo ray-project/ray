@@ -17,6 +17,9 @@ import java.util.Map;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
+/**
+ * TODO: Currently, Java doesn't support multi-node tests so we can't test all strategy temporarily
+ */
 @Test
 public class PlacementGroupTest extends BaseTest {
 
@@ -37,7 +40,6 @@ public class PlacementGroupTest extends BaseTest {
     }
   }
 
-  // TODO(ffbin): Currently Java doesn't support multi-node tests.
   // This test just creates a placement group with one bundle.
   // It's not comprehensive to test all placement group test cases.
   public void testCreateAndCallActor() {
