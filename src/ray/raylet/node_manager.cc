@@ -973,7 +973,6 @@ void NodeManager::ProcessRegisterClientRequestMessage(
     auto reply = ray::protocol::CreateRegisterClientReply(
         fbb, status.ok(), fbb.CreateString(status.ToString()),
         to_flatbuf(fbb, self_node_id_), assigned_port,
-        fbb.CreateString(initial_config_.raylet_config),
         fbb.CreateString(serialized_job_config));
     fbb.Finish(reply);
     client->WriteMessageAsync(
@@ -1850,6 +1849,13 @@ void NodeManager::HandlePinObjectIDs(const rpc::PinObjectIDsRequest &request,
   local_object_manager_.PinObjects(object_ids, std::move(results), owner_address);
   // Wait for the object to be freed by the owner, which keeps the ref count.
   local_object_manager_.WaitForObjectFree(owner_address, object_ids);
+  send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
+void NodeManager::HandleGetSystemConfig(const rpc::GetSystemConfigRequest &request,
+                                        rpc::GetSystemConfigReply *reply,
+                                        rpc::SendReplyCallback send_reply_callback) {
+  reply->set_system_config(initial_config_.raylet_config);
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
