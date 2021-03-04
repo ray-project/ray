@@ -56,19 +56,22 @@ TEST(RayApiTest, RayRegister) {
   auto response1 =
       Serializer::Deserialize<VoidResponse>(result_buf.data(), result_buf.size());
   EXPECT_EQ(response1.error_code, ErrorCode::OK);
+}
 
-  /// We should consider the driver so is not same with the worker so, and find the error
-  /// reason.
-
-  /// Not exist function.
+/// We should consider the driver so is not same with the worker so, and find the error
+/// reason.
+TEST(RayApiTest, NotExistFunction) {
+  using namespace ray::api::internal;
   auto buf2 = Serializer::Serialize(std::make_tuple("Return11"));
   auto result_buf2 = Router::Instance().Route(buf2.data(), buf2.size());
   auto response2 =
       Serializer::Deserialize<VoidResponse>(result_buf2.data(), result_buf2.size());
   EXPECT_EQ(response2.error_code, ErrorCode::FAIL);
   EXPECT_FALSE(response2.error_msg.empty());
+}
 
-  /// Arguments not match.
+TEST(RayApiTest, ArgumentsNotMatch) {
+  using namespace ray::api::internal;
   auto buf3 = Serializer::Serialize(std::make_tuple("Plus1", "invalid arguments"));
   auto result_buf3 = Router::Instance().Route(buf3.data(), buf3.size());
   auto response3 =

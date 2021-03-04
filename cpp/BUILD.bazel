@@ -127,9 +127,9 @@ cc_binary(
 )
 
 cc_test(
-    name = "api_v2_test",
+    name = "ray_register_test",
     srcs = glob([
-        "src/ray/test/api_v2_test.cc",
+        "src/ray/test/ray_register_test.cc",
     ]),
     copts = COPTS,
     linkstatic = False,

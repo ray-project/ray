@@ -69,9 +69,9 @@ class Router {
 
   template <typename Function>
   bool RegisterRemoteFunction(std::string const &name, const Function &f) {
-    /// Use std::addressof to get address of a function for free function now, it will be
+    /// Now it is just support free function, it will be
     /// improved to support member function later.
-    auto pair = func_ptr_to_key_map_.emplace((uint64_t)std::addressof(f), name);
+    auto pair = func_ptr_to_key_map_.emplace((uint64_t)f, name);
     if (!pair.second) {
       return false;
     }
@@ -93,11 +93,6 @@ class Router {
         }
 
         result = it->second(data, size);
-        if (result.size() >= MAX_BUF_LEN) {
-          result = PackReturnValue(
-              ErrorCode::FAIL,
-              "the response result is out of range: more than 10M " + func_name);
-        }
       } catch (const std::exception &ex) {
         result = PackReturnValue(ErrorCode::FAIL, ex.what());
       }
@@ -178,8 +173,6 @@ class Router {
   std::unordered_map<std::string, std::function<std::string(const char *, size_t)>>
       map_invokers_;
   std::unordered_map<uintptr_t, std::string> func_ptr_to_key_map_;
-
-  const static size_t MAX_BUF_LEN = 1024 * 10 * 10;
 };
 }  // namespace internal
 
