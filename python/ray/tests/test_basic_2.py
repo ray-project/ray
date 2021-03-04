@@ -676,7 +676,8 @@ if __name__ == "__main__":
     print(ray.get(b.get.remote()))
 """
 
-    with tempfile.TemporaryDirectory() as tmpdir:
+    # Test code search path contains space.
+    with tempfile.TemporaryDirectory(suffix="a b") as tmpdir:
         test_driver = os.path.join(tmpdir, "test_load_code_from_local.py")
         with open(test_driver, "w") as f:
             f.write(code_test.format(repr(ray_start_regular["redis_address"])))
