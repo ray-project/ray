@@ -1,5 +1,6 @@
 import ray
 
+
 class JobConfig:
     """A class used to store the configurations of a job.
 
@@ -42,7 +43,7 @@ class JobConfig:
             self.num_java_workers_per_process)
         job_config.jvm_options.extend(self.jvm_options)
         job_config.code_search_path.extend(self.code_search_path)
-        if self.runtime_env.get('working_dir_uri'):
+        if self.runtime_env.get("working_dir_uri"):
             job_config.runtime_env.working_dir_uri = \
-              self.runtime_env.get('working_dir_uri')
+              self.runtime_env.get("working_dir_uri")
         return job_config.SerializeToString()
