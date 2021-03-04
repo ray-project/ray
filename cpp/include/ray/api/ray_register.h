@@ -19,8 +19,8 @@
 namespace ray {
 namespace api {
 
-inline static std::string TaskExecutionHandler(const char *data, std::size_t size) {
-  std::string result;
+inline static msgpack::sbuffer TaskExecutionHandler(const char *data, std::size_t size) {
+  msgpack::sbuffer result;
   do {
     try {
       auto p = Serializer::Deserialize<std::tuple<std::string>>(data, size);

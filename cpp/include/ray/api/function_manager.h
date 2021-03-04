@@ -62,26 +62,27 @@ struct Response {
 };
 
 template <typename T>
-static std::string PackReturnValue(int error_code, std::string error_msg, T result) {
-  auto buffer = Serializer::Serialize(
+inline static msgpack::sbuffer PackReturnValue(int error_code, std::string error_msg,
+                                               T result) {
+  return Serializer::Serialize(
       Response<T>{error_code, std::move(error_msg), std::move(result)});
-  return std::string(buffer.data(), buffer.size());
 }
 
-static std::string PackReturnValue(int error_code, std::string error_msg = "ok") {
-  auto buffer = Serializer::Serialize(VoidResponse{error_code, std::move(error_msg)});
-  return std::string(buffer.data(), buffer.size());
+inline static msgpack::sbuffer PackReturnValue(int error_code,
+                                               std::string error_msg = "ok") {
+  return Serializer::Serialize(VoidResponse{error_code, std::move(error_msg)});
 }
 
 template <typename Function>
 struct Invoker {
-  static inline std::string Apply(const Function &func, const char *data, size_t size) {
+  static inline msgpack::sbuffer Apply(const Function &func, const char *data,
+                                       size_t size) {
     using args_tuple = AddType_t<std::string, boost::callable_traits::args_t<Function>>;
 
-    std::string result;
+    msgpack::sbuffer result;
     try {
       auto tp = Serializer::Deserialize<args_tuple>(data, size);
-      Invoker<Function>::Call(func, result, std::move(tp));
+      result = Invoker<Function>::Call(func, std::move(tp));
     } catch (msgpack::type_error &e) {
       result =
           PackReturnValue(ErrorCode::FAIL, std::string("invalid arguments: ") + e.what());
@@ -96,25 +97,26 @@ struct Invoker {
   }
 
   template <typename F, size_t... I, typename Arg, typename... Args>
-  static typename std::result_of<F(Args...)>::type CallInternal(
-      const F &f, const absl::index_sequence<I...> &, std::tuple<Arg, Args...> tup) {
+  static absl::result_of_t<F(Args...)> CallInternal(const F &f,
+                                                    const absl::index_sequence<I...> &,
+                                                    std::tuple<Arg, Args...> tup) {
     return f(std::move(std::get<I + 1>(tup))...);
   }
 
   template <typename F, typename Arg, typename... Args>
-  static typename std::enable_if<
-      std::is_void<typename std::result_of<F(Args...)>::type>::value>::type
-  Call(const F &f, std::string &result, std::tuple<Arg, Args...> tp) {
+  static absl::enable_if_t<std::is_void<absl::result_of_t<F(Args...)>>::value,
+                           msgpack::sbuffer>
+  Call(const F &f, std::tuple<Arg, Args...> tp) {
     CallInternal(f, absl::make_index_sequence<sizeof...(Args)>{}, std::move(tp));
-    result = PackReturnValue(ErrorCode::OK);
+    return PackReturnValue(ErrorCode::OK);
   }
 
   template <typename F, typename Arg, typename... Args>
-  static typename std::enable_if<
-      !std::is_void<typename std::result_of<F(Args...)>::type>::value>::type
-  Call(const F &f, std::string &result, std::tuple<Arg, Args...> tp) {
+  static absl::enable_if_t<!std::is_void<absl::result_of_t<F(Args...)>>::value,
+                           msgpack::sbuffer>
+  Call(const F &f, std::tuple<Arg, Args...> tp) {
     auto r = CallInternal(f, absl::make_index_sequence<sizeof...(Args)>{}, std::move(tp));
-    result = PackReturnValue(ErrorCode::OK, "ok", r);
+    return PackReturnValue(ErrorCode::OK, "ok", r);
   }
 };
 
@@ -125,7 +127,7 @@ class FunctionManager {
     return instance;
   }
 
-  std::pair<bool, std::function<std::string(const char *, size_t)> *> GetFunction(
+  std::pair<bool, std::function<msgpack::sbuffer(const char *, size_t)> *> GetFunction(
       const std::string &func_name) {
     auto it = map_invokers_.find(func_name);
     if (it == map_invokers_.end()) {
@@ -160,7 +162,7 @@ class FunctionManager {
                                            std::placeholders::_1, std::placeholders::_2)};
   }
 
-  std::unordered_map<std::string, std::function<std::string(const char *, size_t)>>
+  std::unordered_map<std::string, std::function<msgpack::sbuffer(const char *, size_t)>>
       map_invokers_;
   std::unordered_map<uintptr_t, std::string> func_ptr_to_key_map_;
 };
