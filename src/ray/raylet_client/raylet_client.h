@@ -410,7 +410,7 @@ class RayletClient : public RayletClientInterface {
   void GlobalGC(const rpc::ClientCallback<rpc::GlobalGCReply> &callback);
 
   void RequestResourceReport(
-      const rpc::ClientCallback<rpc::RequestResourceReportReply> &callback);
+      const rpc::ClientCallback<rpc::RequestResourceReportReply> &callback) override;
 
   // Subscribe to receive notification on plasma object
   void SubscribeToPlasma(const ObjectID &object_id, const rpc::Address &owner_address);
