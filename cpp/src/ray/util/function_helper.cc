@@ -13,6 +13,11 @@
 namespace ray {
 namespace api {
 
+static const uintptr_t BaseAddressForHandle(void *handle) {
+  /// TODO(Guyang Song): Implement a cross-platform function.
+  return (uintptr_t)((NULL == handle) ? NULL : (void *)*(size_t const *)(handle));
+}
+
 uintptr_t FunctionHelper::LoadLibrary(std::string lib_name) {
   RAY_LOG(INFO) << "Start load library " << lib_name;
   uintptr_t base_addr = 0;
@@ -21,7 +26,7 @@ uintptr_t FunctionHelper::LoadLibrary(std::string lib_name) {
     lib = std::make_shared<boost::dll::shared_library>(
         lib_name, boost::dll::load_mode::type::rtld_lazy);
     /// Generate base address from library.
-    base_addr = (uintptr_t)lib->native();
+    base_addr = BaseAddressForHandle(lib->native());
   } catch (std::exception &e) {
     RAY_LOG(WARNING) << "Load library failed, lib_name: " << lib_name
                      << ", failed reason: " << e.what();
