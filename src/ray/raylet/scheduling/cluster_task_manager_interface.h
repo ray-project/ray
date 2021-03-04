@@ -114,12 +114,10 @@ class ClusterTaskManagerInterface {
                                int *num_pending_tasks) const = 0;
 
   /// The helper to dump the debug state of the cluster task manater.
-  ///
-  /// As the NodeManager inherites from ClusterTaskManager and the
-  /// `cluster_task_manager_->DebugString()` is invoked inside
-  /// `NodeManager::DebugString()`, which will leads to infinite loop and cause stack
-  /// overflow, so we should rename `DebugString` to `DebugStr` to avoid this.
   virtual std::string DebugStr() const = 0;
+
+  /// Report high frequency scheduling metrics.
+  virtual void RecordMetrics() = 0;
 };
 }  // namespace raylet
 }  // namespace ray

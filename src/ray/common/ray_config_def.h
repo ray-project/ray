@@ -95,7 +95,9 @@ RAY_CONFIG(size_t, free_objects_batch_size, 100)
 
 RAY_CONFIG(bool, lineage_pinning_enabled, false)
 
-/// Pick between 2 scheduling spillback strategies. Load balancing mode picks the node at uniform random from the valid options. The other mode is more likely to spill back many tasks to the same node.
+/// Pick between 2 scheduling spillback strategies. Load balancing mode picks the node at
+/// uniform random from the valid options. The other mode is more likely to spill back
+/// many tasks to the same node.
 RAY_CONFIG(bool, scheduler_loadbalance_spillback,
            getenv("RAY_SCHEDULER_LOADBALANCE_SPILLBACK") == nullptr ||
                getenv("RAY_SCHEDULER_LOADBALANCE_SPILLBACK") == std::string("0"))

@@ -64,10 +64,6 @@ static Gauge ObjectManagerPullRequests("object_manager_num_pull_requests",
                                        "Number of active pull requests for objects.",
                                        "requests");
 
-static Gauge NumInfeasibleTasks(
-    "num_infeasible_tasks",
-    "The number of tasks in the scheduler that are in the 'infeasible' state.", "tasks");
-
 static Histogram HeartbeatReportMs(
     "heartbeat_report_ms",
     "Heartbeat report time in raylet. If this value is high, that means there's a high "
@@ -79,29 +75,26 @@ static Histogram ProcessStartupTimeMs("process_startup_time_ms",
                                       "Time to start up a worker process.", "ms",
                                       {1, 10, 100, 1000, 10000});
 
-static Count NumWorkersStarted("_internal_num_processes_started", "The total number of worker processes the worker pool has created.", "processes");
+static Count NumWorkersStarted(
+    "_internal_num_processes_started",
+    "The total number of worker processes the worker pool has created.", "processes");
 
-static Count NumQueuedTasks("_internal_num_queued_tasks", "The cumulative number of lease requeusts that this raylet has received.", "tasks");
+static Gauge NumInfeasibleTasks(
+    "num_infeasible_tasks",
+    "The number of tasks in the scheduler that are in the 'infeasible' state.", "tasks");
 
-static Count NumDispatchedTasks("_internal_num_dispatched_tasks", "The cumulative number of lease requeusts that this raylet has granted.", "tasks");
+static Count NumQueuedTasks(
+    "_internal_num_queued_tasks",
+    "The cumulative number of lease requeusts that this raylet has received.", "tasks");
 
-static Count NumSpilledTasks("_internal_num_spilled_tasks", "The cumulative number of lease requeusts that this raylet has spilled to other raylets.", "tasks");
+static Count NumDispatchedTasks(
+    "_internal_num_dispatched_tasks",
+    "The cumulative number of lease requeusts that this raylet has granted.", "tasks");
 
-// TODO (Alex): Don't forget to remove these average metrics for the old scheduler.
-static Gauge AvgNumScheduledTasks(
-    "avg_num_scheduled_tasks",
-    "Number of tasks that are queued on this node per second. It doesn't guarantee "
-    "that the task will be executed in this node. If the task is executed, it is "
-    "recorded as avg_num_executed_tasks. If the task is not executed and needs to be "
-    "scheduled in other nodes, it will be recorded as avg_num_spilled_back_tasks",
-    "tasks");
-
-static Gauge AvgNumExecutedTasks("avg_num_executed_tasks",
-                                 "Number of executed tasks on this node per second.",
-                                 "tasks");
-
-static Gauge AvgNumSpilledBackTasks("avg_num_spilled_back_tasks",
-                                    "Number of spilled back tasks per second.", "tasks");
+static Count NumSpilledTasks("_internal_num_spilled_tasks",
+                             "The cumulative number of lease requeusts that this raylet "
+                             "has spilled to other raylets.",
+                             "tasks");
 
 static Gauge SpillingBandwidthMB("object_spilling_bandwidth_mb",
                                  "Bandwidth of object spilling.", "MB");

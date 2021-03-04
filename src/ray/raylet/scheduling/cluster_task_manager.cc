@@ -38,8 +38,7 @@ ClusterTaskManager::ClusterTaskManager(
       pin_task_arguments_(pin_task_arguments),
       metric_tasks_queued_(0),
       metric_tasks_dispatched_(0),
-      metric_tasks_spilled_(0)
-{}
+      metric_tasks_spilled_(0) {}
 
 bool ClusterTaskManager::SchedulePendingTasks() {
   // Always try to schedule infeasible tasks in case they are now feasible.
@@ -697,6 +696,12 @@ void ClusterTaskManager::RecordMetrics() {
   metric_tasks_queued_ = 0;
   metric_tasks_dispatched_ = 0;
   metric_tasks_spilled_ = 0;
+
+  uint64_t num_infeasible_tasks = 0;
+  for (const auto &pair : infeasible_tasks_) {
+    num_infeasible_tasks += pair.second.size();
+  }
+  stats::NumInfeasibleTasks.Record(num_infeasible_tasks);
 }
 
 void ClusterTaskManager::TryLocalInfeasibleTaskScheduling() {
