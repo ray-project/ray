@@ -647,7 +647,7 @@ def test_get_correct_node_ip():
         assert found_ip == "10.0.0.111"
 
 
-def test_load_code_from_local():
+def test_load_code_from_local(ray_start_regular):
     # This case writes a driver python file to a temporary directory.
     #
     # The driver starts a cluster with
@@ -670,7 +670,8 @@ class A:
 
 if __name__ == "__main__":
     current_path = os.path.dirname(__file__)
-    ray.init(ray.job_config.JobConfig(code_search_path=[current_path]))
+    job_config = ray.job_config.JobConfig(code_search_path=[current_path])
+    ray.init({}, job_config=job_config)
     b = A.B.remote()
     print(ray.get(b.get.remote()))
 """
@@ -678,7 +679,7 @@ if __name__ == "__main__":
     with tempfile.TemporaryDirectory() as tmpdir:
         test_driver = os.path.join(tmpdir, "test_load_code_from_local.py")
         with open(test_driver, "w") as f:
-            f.write(code_test)
+            f.write(code_test.format(repr(ray_start_regular["redis_address"])))
         output = subprocess.check_output([sys.executable, test_driver])
         assert b"OK" in output
 
