@@ -16,6 +16,7 @@
 
 #include <inttypes.h>
 
+#include <algorithm>
 #include <boost/asio/io_service.hpp>
 #include <queue>
 #include <unordered_map>
@@ -96,6 +97,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// process should create and register the specified number of workers, and add them to
   /// the pool.
   ///
+  /// \param node_id The id of the current node.
+  /// \param node_address The address of the current node.
   /// \param num_workers_soft_limit The soft limit of the number of workers.
   /// \param num_initial_python_workers_for_first_job The number of initial Python
   /// workers for the first job.
@@ -112,13 +115,16 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// language.
   /// \param starting_worker_timeout_callback The callback that will be triggered once
   /// it times out to start a worker.
-  WorkerPool(boost::asio::io_service &io_service, int num_workers_soft_limit,
+  /// \param get_time A callback to get the current time.
+  WorkerPool(boost::asio::io_service &io_service, const NodeID node_id,
+             const std::string node_address, int num_workers_soft_limit,
              int num_initial_python_workers_for_first_job,
              int maximum_startup_concurrency, int min_worker_port, int max_worker_port,
              const std::vector<int> &worker_ports,
              std::shared_ptr<gcs::GcsClient> gcs_client,
              const WorkerCommandMap &worker_commands,
-             std::function<void()> starting_worker_timeout_callback);
+             std::function<void()> starting_worker_timeout_callback,
+             const std::function<double()> get_time);
 
   /// Destructor responsible for freeing a set of workers owned by this class.
   virtual ~WorkerPool();
@@ -313,6 +319,10 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// \return string.
   std::string DebugString() const;
 
+  /// Try killing idle workers to ensure the running workers are in a
+  /// reasonable size.
+  void TryKillingIdleWorkers();
+
  protected:
   /// Asynchronously start a new worker process. Once the worker process has
   /// registered with an external server, the process should create and
@@ -401,6 +411,11 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// Pool states per language.
   std::unordered_map<Language, State, std::hash<int>> states_by_lang_;
 
+  /// The pool of idle non-actor workers of all languages. This is used to kill idle
+  /// workers in FIFO order. The second element of std::pair is the time a worker becomes
+  /// idle.
+  std::list<std::pair<std::shared_ptr<WorkerInterface>, int64_t>> idle_of_all_languages_;
+
  private:
   /// A helper function that returns the reference of the pool state
   /// for a given language.
@@ -439,10 +454,6 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// worker.
   void TryStartIOWorkers(const Language &language, const rpc::WorkerType &worker_type);
 
-  /// Try killing idle workers to ensure the running workers are in a
-  /// reasonable size.
-  void TryKillingIdleWorkers();
-
   /// Get all workers of the given process.
   ///
   /// \param process The process of workers.
@@ -473,6 +484,10 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
 
   /// For Process class for managing subprocesses (e.g. reaping zombies).
   boost::asio::io_service *io_service_;
+  /// Node ID of the current node.
+  const NodeID node_id_;
+  /// Address of the current node.
+  const std::string node_address_;
   /// The soft limit of the number of registered workers.
   int num_workers_soft_limit_;
   /// The maximum number of worker processes that can be started concurrently.
@@ -507,18 +522,20 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// This map tracks the latest infos of unfinished jobs.
   absl::flat_hash_map<JobID, rpc::JobConfig> all_jobs_;
 
-  /// The pool of idle non-actor workers of all languages. This is used to kill idle
-  /// workers in FIFO order. The second element of std::pair is the time a worker becomes
-  /// idle.
-  std::list<std::pair<std::shared_ptr<WorkerInterface>, int64_t>> idle_of_all_languages_;
-
   /// This map stores the same data as `idle_of_all_languages_`, but in a map structure
   /// for lookup performance.
   std::unordered_map<std::shared_ptr<WorkerInterface>, int64_t>
       idle_of_all_languages_map_;
 
+  /// A map of idle workers that are pending exit.
+  absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>>
+      pending_exit_idle_workers_;
+
   /// The runner to run function periodically.
   PeriodicalRunner periodical_runner_;
+
+  /// A callback to get the current time.
+  const std::function<double()> get_time_;
 };
 
 }  // namespace raylet

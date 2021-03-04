@@ -420,6 +420,11 @@ def test_ray_start_and_stop():
         subprocess.check_call(["ray", "stop"])
 
 
+def test_ray_memory(shutdown_only):
+    ray.init(num_cpus=1)
+    subprocess.check_call(["ray", "memory"])
+
+
 def test_invalid_unicode_in_worker_log(shutdown_only):
     info = ray.init(num_cpus=1)
 

@@ -105,6 +105,12 @@ class PullManager {
 
   bool IsObjectActive(const ObjectID &object_id) const;
 
+  /// Check whether the pull request is currently active or waiting for object
+  /// size information. If this returns false, then the pull request is most
+  /// likely inactive due to lack of memory. This can also return false if an
+  /// earlier request is waiting for metadata.
+  bool PullRequestActiveOrWaitingForMetadata(uint64_t request_id) const;
+
   std::string DebugString() const;
 
  private:
@@ -127,6 +133,23 @@ class PullManager {
     // object. This includes bundle requests whose objects are not actively
     // being pulled.
     absl::flat_hash_set<uint64_t> bundle_request_ids;
+  };
+
+  struct PullBundleRequest {
+    PullBundleRequest(const std::vector<rpc::ObjectReference> &requested_objects)
+        : objects(requested_objects), num_object_sizes_missing(objects.size()) {}
+    const std::vector<rpc::ObjectReference> objects;
+    size_t num_object_sizes_missing;
+    // The total number of bytes needed by this pull bundle request. Note that
+    // the objects may overlap with another request, so the actual amount of
+    // memory needed to activate this request may be less than this amount.
+    size_t num_bytes_needed = 0;
+
+    void RegisterObjectSize(size_t object_size) {
+      RAY_CHECK(num_object_sizes_missing > 0);
+      num_object_sizes_missing--;
+      num_bytes_needed += object_size;
+    }
   };
 
   /// Try to make an object local, by restoring the object from external
@@ -153,14 +176,13 @@ class PullManager {
   /// Activate the next pull request in the queue. This will start pulls for
   /// any objects in the request that are not already being pulled.
   bool ActivateNextPullBundleRequest(
-      const std::map<uint64_t, std::vector<rpc::ObjectReference>>::iterator
-          &next_request_it,
+      const std::map<uint64_t, PullBundleRequest>::iterator &next_request_it,
       std::vector<ObjectID> *objects_to_pull);
 
   /// Deactivate a pull request in the queue. This cancels any pull or restore
   /// operations for the object.
   void DeactivatePullBundleRequest(
-      const std::map<uint64_t, std::vector<rpc::ObjectReference>>::iterator &request_it,
+      const std::map<uint64_t, PullBundleRequest>::iterator &request_it,
       std::unordered_set<ObjectID> *objects_to_cancel);
 
   /// Trigger out-of-memory handling if the first request in the queue needs
@@ -184,7 +206,7 @@ class PullManager {
   /// The currently active pull requests. Each request is a bundle of objects
   /// that must be made local. The key is the ID that was assigned to that
   /// request, which can be used by the caller to cancel the request.
-  std::map<uint64_t, std::vector<rpc::ObjectReference>> pull_request_bundles_;
+  std::map<uint64_t, PullBundleRequest> pull_request_bundles_;
 
   /// The total number of bytes that we are currently pulling. This is the
   /// total size of the objects requested that we are actively pulling. To

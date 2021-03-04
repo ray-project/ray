@@ -1713,7 +1713,9 @@ Status CoreWorker::KillActor(const ActorID &actor_id, bool force_kill, bool no_r
     stream << "Failed to find a corresponding actor handle for " << actor_id;
     return Status::Invalid(stream.str());
   }
-  direct_actor_submitter_->KillActor(actor_id, force_kill, no_restart);
+
+  RAY_CHECK_OK(
+      gcs_client_->Actors().AsyncKillActor(actor_id, force_kill, no_restart, nullptr));
   return Status::OK();
 }
 
@@ -2618,8 +2620,15 @@ void CoreWorker::HandleDeleteSpilledObjects(
 
 void CoreWorker::HandleExit(const rpc::ExitRequest &request, rpc::ExitReply *reply,
                             rpc::SendReplyCallback send_reply_callback) {
+  bool own_objects = reference_counter_->OwnObjects();
+  // Fail the request if it owns any object.
+  if (own_objects) {
+    reply->set_success(false);
+  } else {
+    reply->set_success(true);
+    Exit(/*intentional=*/true);
+  }
   send_reply_callback(Status::OK(), nullptr, nullptr);
-  Exit(/*intentional=*/true);
 }
 
 void CoreWorker::YieldCurrentFiber(FiberEvent &event) {
@@ -2718,5 +2727,7 @@ void CoreWorker::SetActorTitle(const std::string &title) {
 }
 
 const rpc::JobConfig &CoreWorker::GetJobConfig() const { return *job_config_; }
+
+bool CoreWorker::IsExiting() const { return exiting_; }
 
 }  // namespace ray

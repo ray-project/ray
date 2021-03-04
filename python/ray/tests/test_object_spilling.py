@@ -98,11 +98,7 @@ def assert_no_thrashing(address):
     state = ray.state.GlobalState()
     state._initialize_global_state(address,
                                    ray.ray_constants.REDIS_DEFAULT_PASSWORD)
-    raylet = state.node_table()[0]
-    memory_summary = ray.internal.internal_api.memory_summary(
-        raylet["NodeManagerAddress"],
-        raylet["NodeManagerPort"],
-        stats_only=True)
+    memory_summary = ray.internal.internal_api.memory_summary(stats_only=True)
     restored_bytes = 0
     consumed_bytes = 0
 

@@ -738,6 +738,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Tell an actor to exit immediately, without completing outstanding work.
   ///
   /// \param[in] actor_id ID of the actor to kill.
+  /// \param[in] force_kill Whether to force kill an actor by killing the worker.
   /// \param[in] no_restart If set to true, the killed actor will not be
   /// restarted anymore.
   /// \param[out] Status
@@ -934,6 +935,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                                   rpc::SendReplyCallback send_reply_callback) override;
 
   // Make the this worker exit.
+  // This request fails if the core worker owns any object.
   void HandleExit(const rpc::ExitRequest &request, rpc::ExitReply *reply,
                   rpc::SendReplyCallback send_reply_callback) override;
 
@@ -960,6 +962,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   // Get serialized job configuration.
   const rpc::JobConfig &GetJobConfig() const;
+
+  /// Return true if the core worker is in the exit process.
+  bool IsExiting() const;
 
  private:
   void SetCurrentTaskId(const TaskID &task_id);
