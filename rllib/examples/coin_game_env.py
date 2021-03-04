@@ -1,5 +1,6 @@
 ##########
-# Contribution by the Center on Long-Term Risk: https://github.com/longtermrisk/marltoolbox
+# Contribution by the Center on Long-Term Risk:
+# https://github.com/longtermrisk/marltoolbox
 ##########
 import argparse
 import os
@@ -7,7 +8,8 @@ import os
 import ray
 from ray import tune
 from ray.rllib.agents.ppo import PPOTrainer
-from ray.rllib.examples.env.coin_game import CoinGame, AsymCoinGame
+from ray.rllib.examples.env.coin_game_non_vectorized_env import \
+    CoinGame, AsymCoinGame
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--tf", action="store_true")
@@ -75,6 +77,6 @@ def main(debug, stop_iters=2000, tf=False, asymmetric_env=False):
 
 if __name__ == "__main__":
     args = parser.parse_args()
-    debug_mode = False
+    debug_mode = True
     use_asymmetric_env = False
     main(debug_mode, args.stop_iters, args.tf, use_asymmetric_env)

@@ -1,5 +1,6 @@
 ##########
-# Contribution by the Center on Long-Term Risk: https://github.com/longtermrisk/marltoolbox
+# Contribution by the Center on Long-Term Risk:
+# https://github.com/longtermrisk/marltoolbox
 ##########
 import numpy as np
 

@@ -68,6 +68,6 @@ def get_rllib_config(seeds, debug=False, stop_iters=200, tf=False):
 
 
 if __name__ == "__main__":
-    debug_mode = False
+    debug_mode = True
     args = parser.parse_args()
     main(debug_mode, args.stop_iters, args.tf)
