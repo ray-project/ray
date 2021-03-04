@@ -240,6 +240,9 @@ class HEBOSearch(Searcher):
                     metric=self._metric,
                     mode=self._mode))
 
+        if not self._live_trial_mapping:
+            self._batch_filled = False
+
         if self._initial_points:
             params = self._initial_points.pop(0)
             suggestion = pd.DataFrame(params, index=[0])
@@ -269,9 +272,6 @@ class HEBOSearch(Searcher):
         if result:
             self._process_result(trial_id, result)
         self._live_trial_mapping.pop(trial_id)
-
-        if not self._live_trial_mapping:
-            self._batch_filled = False
 
     def _process_result(self, trial_id: str, result: Dict):
         trial_info = self._live_trial_mapping[trial_id]
