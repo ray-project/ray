@@ -227,7 +227,8 @@ message RequestResourceReportReply {
 // Service for inter-node-manager communication.
 service NodeManagerService {
   // Request the current resource usage from this raylet
-  rpc RequestResourceReport(RequestResourceReportRequest) returns (RequestResourceReportReply);
+  rpc RequestResourceReport(RequestResourceReportRequest)
+      returns (RequestResourceReportReply);
   // Request a worker from the raylet.
   rpc RequestWorkerLease(RequestWorkerLeaseRequest) returns (RequestWorkerLeaseReply);
   // Release a worker back to its raylet.
