@@ -237,10 +237,6 @@ class Trial:
 
                 # New way: Trainable returns a PlacementGroupFactory object.
                 if isinstance(default_resources, PlacementGroupFactory):
-                    ## If Trainable returns placement group factory, only use it
-                    ## if no manual `placement_group_factory` are has been
-                    ## provided by user.
-                    #if placement_group_factory is None:
                     placement_group_factory = default_resources
                     resources = None
                 # Set placement group factory to None for backwards
