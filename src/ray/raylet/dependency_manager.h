@@ -19,7 +19,6 @@
 #include "ray/common/id.h"
 #include "ray/common/task/task.h"
 #include "ray/object_manager/object_manager.h"
-#include "ray/raylet/reconstruction_policy.h"
 // clang-format on
 
 namespace ray {
@@ -27,8 +26,6 @@ namespace ray {
 namespace raylet {
 
 using rpc::TaskLeaseData;
-
-class ReconstructionPolicy;
 
 /// Used for unit-testing the ClusterTaskManager, which requests dependencies
 /// for queued tasks.
@@ -38,6 +35,7 @@ class TaskDependencyManagerInterface {
       const TaskID &task_id,
       const std::vector<rpc::ObjectReference> &required_objects) = 0;
   virtual void RemoveTaskDependencies(const TaskID &task_id) = 0;
+  virtual bool TaskDependenciesBlocked(const TaskID &task_id) const = 0;
   virtual ~TaskDependencyManagerInterface(){};
 };
 
@@ -52,9 +50,8 @@ class TaskDependencyManagerInterface {
 class DependencyManager : public TaskDependencyManagerInterface {
  public:
   /// Create a task dependency manager.
-  DependencyManager(ObjectManagerInterface &object_manager,
-                    ReconstructionPolicyInterface &reconstruction_policy)
-      : object_manager_(object_manager), reconstruction_policy_(reconstruction_policy) {}
+  DependencyManager(ObjectManagerInterface &object_manager)
+      : object_manager_(object_manager) {}
 
   /// Check whether an object is locally available.
   ///
@@ -157,6 +154,10 @@ class DependencyManager : public TaskDependencyManagerInterface {
   /// dependency.
   std::vector<TaskID> HandleObjectMissing(const ray::ObjectID &object_id);
 
+  /// Check whether a requested task's dependencies are not being fetched to
+  /// the local node due to lack of memory.
+  bool TaskDependenciesBlocked(const TaskID &task_id) const;
+
   /// Returns debug string for class.
   ///
   /// \return string.
@@ -220,13 +221,6 @@ class DependencyManager : public TaskDependencyManagerInterface {
 
   /// The object manager, used to fetch required objects from remote nodes.
   ObjectManagerInterface &object_manager_;
-  /// The reconstruction policy, used to reconstruct required objects that no
-  /// longer exist on any live nodes.
-  /// TODO(swang): This class is no longer needed for reconstruction, since the
-  /// object's owner handles reconstruction. We use this class as a timer to
-  /// detect the owner's failure. Remove this class and move the timer logic
-  /// into this class.
-  ReconstructionPolicyInterface &reconstruction_policy_;
 
   /// A map from the ID of a queued task to metadata about whether the task's
   /// dependencies are all local or not.

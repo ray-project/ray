@@ -12,6 +12,7 @@ import ray
 import ray.test_utils
 import ray.cluster_utils
 from ray.test_utils import (run_string_as_driver, get_non_head_nodes,
+                            kill_actor_and_wait_for_failure,
                             wait_for_condition)
 from ray.experimental.internal_kv import _internal_kv_get, _internal_kv_put
 from ray._raylet import GlobalStateAccessor
@@ -1024,7 +1025,7 @@ def test_kill(ray_start_regular_shared):
     result = actor.hang.remote()
     ready, _ = ray.wait([result], timeout=0.5)
     assert len(ready) == 0
-    ray.kill(actor, no_restart=False)
+    kill_actor_and_wait_for_failure(actor)
 
     with pytest.raises(ray.exceptions.RayActorError):
         ray.get(result)
@@ -1091,6 +1092,90 @@ def test_actor_resource_demand(shutdown_only):
             .num_infeasible_requests_queued == 2)
 
     global_state_accessor.disconnect()
+
+
+def test_kill_pending_actor_with_no_restart_true():
+    cluster = ray.init()
+    global_state_accessor = GlobalStateAccessor(
+        cluster["redis_address"], ray.ray_constants.REDIS_DEFAULT_PASSWORD)
+    global_state_accessor.connect()
+
+    @ray.remote(resources={"WORKER": 1.0})
+    class PendingActor:
+        pass
+
+    # Kill actor with `no_restart=True`.
+    actor = PendingActor.remote()
+    # TODO(ffbin): The raylet doesn't guarantee the order when dealing with
+    # RequestWorkerLease and CancelWorkerLease. If we kill the actor
+    # immediately after creating the actor, we may not be able to clean up
+    # the request cached by the raylet.
+    # See https://github.com/ray-project/ray/issues/13545 for details.
+    time.sleep(1)
+    ray.kill(actor, no_restart=True)
+
+    def condition1():
+        message = global_state_accessor.get_all_resource_usage()
+        resource_usages = ray.gcs_utils.ResourceUsageBatchData.FromString(
+            message)
+        if len(resource_usages.resource_load_by_shape.resource_demands) == 0:
+            return True
+        return False
+
+    # Actor is dead, so the infeasible task queue length is 0.
+    wait_for_condition(condition1, timeout=10)
+
+    global_state_accessor.disconnect()
+    ray.shutdown()
+
+
+def test_kill_pending_actor_with_no_restart_false():
+    cluster = ray.init()
+    global_state_accessor = GlobalStateAccessor(
+        cluster["redis_address"], ray.ray_constants.REDIS_DEFAULT_PASSWORD)
+    global_state_accessor.connect()
+
+    @ray.remote(resources={"WORKER": 1.0}, max_restarts=1)
+    class PendingActor:
+        pass
+
+    # Kill actor with `no_restart=False`.
+    actor = PendingActor.remote()
+    # TODO(ffbin): The raylet doesn't guarantee the order when dealing with
+    # RequestWorkerLease and CancelWorkerLease. If we kill the actor
+    # immediately after creating the actor, we may not be able to clean up
+    # the request cached by the raylet.
+    # See https://github.com/ray-project/ray/issues/13545 for details.
+    time.sleep(1)
+    ray.kill(actor, no_restart=False)
+
+    def condition1():
+        message = global_state_accessor.get_all_resource_usage()
+        resource_usages = ray.gcs_utils.ResourceUsageBatchData.FromString(
+            message)
+        if len(resource_usages.resource_load_by_shape.resource_demands) == 0:
+            return False
+        return True
+
+    # Actor restarts, so the infeasible task queue length is 1.
+    wait_for_condition(condition1, timeout=10)
+
+    # Kill actor again and actor is dead,
+    # so the infeasible task queue length is 0.
+    ray.kill(actor, no_restart=False)
+
+    def condition2():
+        message = global_state_accessor.get_all_resource_usage()
+        resource_usages = ray.gcs_utils.ResourceUsageBatchData.FromString(
+            message)
+        if len(resource_usages.resource_load_by_shape.resource_demands) == 0:
+            return True
+        return False
+
+    wait_for_condition(condition2, timeout=10)
+
+    global_state_accessor.disconnect()
+    ray.shutdown()
 
 
 if __name__ == "__main__":
