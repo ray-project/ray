@@ -142,16 +142,64 @@ def test_load_balancing_under_constrained_memory(ray_start_cluster):
 
     @ray.remote
     def f(i, x):
-        time.sleep(0.1)
         print(i, ray.worker.global_worker.node.unique_id)
+        time.sleep(0.1)
         return ray.worker.global_worker.node.unique_id
 
-    # TODO(swang): Actually test load balancing.
+    deps = [create_object.remote() for _ in range(num_tasks)]
+    for i, dep in enumerate(deps):
+        print(i, dep)
+
+    # TODO(swang): Actually test load balancing. Load balancing is currently
+    # flaky on Travis, probably due to the scheduling policy ping-ponging
+    # waiting tasks.
     deps = [create_object.remote() for _ in range(num_tasks)]
     tasks = [f.remote(i, dep) for i, dep in enumerate(deps)]
     for i, dep in enumerate(deps):
         print(i, dep)
     ray.get(tasks)
+
+
+@pytest.mark.skipif(
+    platform.system() == "Windows", reason="Failing on Windows. Multi node.")
+def test_spillback_waiting_task_on_oom(ray_start_cluster):
+    # This test ensures that tasks are spilled if they are not schedulable due
+    # to lack of object store memory.
+    cluster = ray_start_cluster
+    object_size = 1e8
+    cluster.add_node(
+        num_cpus=1,
+        memory=1e9,
+        object_store_memory=object_size * 2,
+        _system_config={
+            "automatic_object_spilling_enabled": False,
+            "locality_aware_leasing_enabled": False,
+        })
+    ray.init(address=cluster.address)
+    cluster.add_node(
+        num_cpus=1,
+        resources={"custom": 1},
+        memory=1e9,
+        object_store_memory=object_size * 2)
+
+    @ray.remote(resources={"custom": 1})
+    def create_remote_object():
+        return np.zeros(int(object_size), dtype=np.uint8)
+
+    local_obj = ray.put(np.zeros(int(object_size * 1.5), dtype=np.uint8))
+    print(local_obj)
+
+    @ray.remote
+    def f(x):
+        return
+
+    dep = create_remote_object.remote()
+    ray.wait([dep], fetch_local=False)
+    # Wait for resource availabilities to propagate.
+    time.sleep(1)
+    # This task can't run on the local node. Make sure it gets spilled even
+    # though we have the local CPUs to run it.
+    ray.get(f.remote(dep), timeout=30)
 
 
 def test_locality_aware_leasing(ray_start_cluster):
@@ -169,6 +217,8 @@ def test_locality_aware_leasing(ray_start_cluster):
         _system_config={
             "worker_lease_timeout_milliseconds": 0,
             "max_direct_call_object_size": 0,
+            # Needed because the above test sets this to False.
+            "locality_aware_leasing_enabled": True,
         })
     # Use a custom resource for pinning tasks to a node.
     non_local_node = cluster.add_node(num_cpus=1, resources={"pin": 1})

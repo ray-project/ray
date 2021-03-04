@@ -210,7 +210,17 @@ After defining our configuration, we will use the Ray Cluster Launcher to start 
 Run the application in the cloud
 --------------------------------
 
-We are now ready to execute the application in across multiple machines on our Ray cloud cluster. Run the following command:
+We are now ready to execute the application in across multiple machines on our Ray cloud cluster.
+First, we need to edit the initialization command ``ray.init()`` in ``script.py``.
+Change it to
+
+.. code-block:: python
+
+    ray.init(address='auto')
+
+This will allow Ray to connect to the remote cluster.
+
+Next, run the following command:
 
 .. code-block:: shell
 
