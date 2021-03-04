@@ -184,16 +184,18 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// Trigger global GC across the cluster to free up references to actors or
   /// object ids.
   void TriggerGlobalGC();
-  
+
   /// Add job resource to local resource
   void AddJobResource(const JobID &job_id);
 
   /// Mark the specified objects as failed with the given error type.
   ///
   /// \param error_type The type of the error that caused this task to fail.
+  /// \param object_ids The object ids to store error messages into.
   /// \param job_id The optional job to push errors to if the writes fail.
   void MarkObjectsAsFailed(const ErrorType &error_type,
                            const std::vector<rpc::ObjectReference> object_ids,
+                           const JobID &job_id);
 
   /// Stop this node manager.
   void Stop();
