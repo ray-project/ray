@@ -22,7 +22,7 @@ print(sum(ray.get([run_test.remote()] * 1000)))
 ray.shutdown()"""
 
 
-@pytest.fixture()
+@pytest.fixture
 def working_dir():
     import tempfile
     from pathlib import Path

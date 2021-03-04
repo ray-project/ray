@@ -1237,7 +1237,8 @@ def connect(node,
     if mode == SCRIPT_MODE:
         ray_pkg.driver_runtime_init(job_config)
     elif mode == WORKER_MODE:
-        ray_pkg.worker_runtime_init(worker.core_worker.get_job_config())
+        ray_pkg.worker_runtime_init(
+            worker.core_worker.get_job_config().runtime_env)
 
     if driver_object_store_memory is not None:
         worker.core_worker.set_object_store_client_options(

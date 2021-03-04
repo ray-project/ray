@@ -143,7 +143,7 @@ def update_runtime_env(job_config: JobConfig):
 
 
 def driver_runtime_init(job_config: JobConfig):
-    pkg_uri = job_config.get_pacakge_uri()
+    pkg_uri = job_config.get_package_uri()
     if not pkg_uri:
         return
     if not package_exists(pkg_uri):

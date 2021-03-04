@@ -43,7 +43,7 @@ class JobConfig:
             self.num_java_workers_per_process)
         job_config.jvm_options.extend(self.jvm_options)
         job_config.code_search_path.extend(self.code_search_path)
-        job_config.runtime_env = self._get_proto_runtime()
+        job_config.runtime_env.CopyFrom(self._get_proto_runtime())
         return job_config.SerializeToString()
 
     def get_package_uri(self):
