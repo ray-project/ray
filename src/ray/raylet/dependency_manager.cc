@@ -30,9 +30,6 @@ void DependencyManager::RemoveObjectIfNotNeeded(
                      << " request: " << required_object_it->second.wait_request_id;
       object_manager_.CancelPull(required_object_it->second.wait_request_id);
     }
-    if (!local_objects_.count(object_id)) {
-      reconstruction_policy_.Cancel(object_id);
-    }
     required_objects_.erase(required_object_it);
   }
 }
@@ -43,9 +40,6 @@ DependencyManager::GetOrInsertRequiredObject(const ObjectID &object_id,
   auto it = required_objects_.find(object_id);
   if (it == required_objects_.end()) {
     it = required_objects_.emplace(object_id, ref).first;
-    if (local_objects_.count(object_id) == 0) {
-      reconstruction_policy_.ListenAndMaybeReconstruct(object_id, ref.owner_address());
-    }
   }
   return it;
 }
@@ -233,10 +227,6 @@ std::vector<TaskID> DependencyManager::HandleObjectMissing(
       }
       task_entry.num_missing_dependencies++;
     }
-
-    // The object is missing and needed so wait for a possible failure again.
-    reconstruction_policy_.ListenAndMaybeReconstruct(object_entry->first,
-                                                     object_entry->second.owner_address);
   }
 
   // Process callbacks for all of the tasks dependent on the object that are
@@ -285,7 +275,6 @@ std::vector<TaskID> DependencyManager::HandleObjectLocal(const ray::ObjectID &ob
       object_manager_.CancelPull(object_entry->second.wait_request_id);
       object_entry->second.wait_request_id = 0;
     }
-    reconstruction_policy_.Cancel(object_entry->first);
     RemoveObjectIfNotNeeded(object_entry);
   }
 
