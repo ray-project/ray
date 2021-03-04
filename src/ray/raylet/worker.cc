@@ -93,6 +93,10 @@ void Worker::Connect(int port) {
       new rpc::CoreWorkerClient(addr, client_call_manager_));
 }
 
+void Worker::Connect(std::shared_ptr<rpc::CoreWorkerClientInterface> rpc_client) {
+  rpc_client_ = rpc_client;
+}
+
 void Worker::AssignTaskId(const TaskID &task_id) { assigned_task_id_ = task_id; }
 
 const TaskID &Worker::GetAssignedTaskId() const { return assigned_task_id_; }

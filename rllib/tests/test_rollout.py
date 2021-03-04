@@ -40,7 +40,7 @@ def rollout_test(algo, env="CartPole-v0", test_episode_rollout=False):
                   "}' --stop='{\"training_iteration\": 1}'" +
                   " --env={}".format(env))
 
-        checkpoint_path = os.popen("ls {}/default/*/checkpoint_1/"
+        checkpoint_path = os.popen("ls {}/default/*/checkpoint_000001/"
                                    "checkpoint-1".format(tmp_dir)).read()[:-1]
         if not os.path.exists(checkpoint_path):
             sys.exit(1)

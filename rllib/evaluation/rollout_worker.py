@@ -863,6 +863,8 @@ class RolloutWorker(ParallelIteratorWorker):
             for pid, batch in samples.policy_batches.items():
                 if pid not in self.policies_to_train:
                     continue
+                # Decompress SampleBatch, in case some columns are compressed.
+                batch.decompress_if_needed()
                 policy = self.policy_map[pid]
                 if builder and hasattr(policy, "_build_learn_on_batch"):
                     to_fetch[pid] = policy._build_learn_on_batch(

@@ -12,7 +12,8 @@ async def test_wait_for_goals():
     await manager.wait_for_goal(None)
 
     goal_id = manager.create_goal()
-    waiting = asyncio.create_task(manager.wait_for_goal(goal_id))
+    loop = asyncio.get_event_loop()
+    waiting = loop.create_task(manager.wait_for_goal(goal_id))
 
     assert not waiting.done(), "Unfinished task should not be done"
     manager.complete_goal(goal_id)

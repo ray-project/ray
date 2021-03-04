@@ -46,7 +46,6 @@ py_test_module_list(
 
 py_test_module_list(
   files = [
-    "test_memory_limits.py",
     "test_memory_scheduling.py",
     "test_metrics.py",
     "test_multi_node.py",
@@ -62,11 +61,11 @@ py_test_module_list(
     "test_reference_counting.py",
     "test_reference_counting_2.py",
     "test_resource_demand_scheduler.py",
+    "test_scheduling.py",
     "test_serialization.py",
     "test_stress.py",
     "test_stress_sharded.py",
     "test_tensorflow.py",
-    "test_unreconstructable_errors.py",
   ],
   size = "medium",
   extra_srcs = SRCS,
