@@ -836,7 +836,7 @@ cc_test(
     ],
     copts = COPTS,
     deps = [
-        ":raylet_lib",
+        ":object_manager",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -862,25 +862,6 @@ cc_test(
     deps = [
         ":plasma_store_server_lib",
         "@com_google_googletest//:gtest",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-cc_test(
-    name = "reconstruction_policy_test",
-    srcs = ["src/ray/raylet/reconstruction_policy_test.cc"],
-    copts = COPTS + select({
-        "//:msvc-cl": [
-        ],
-        "//conditions:default": [
-            # Ignore this warning since it's impractical to fix in the relevant headers
-            "-Wno-inconsistent-missing-override",
-        ],
-    }),
-    deps = [
-        ":node_manager_fbs",
-        ":object_manager",
-        ":raylet_lib",
         "@com_google_googletest//:gtest_main",
     ],
 )

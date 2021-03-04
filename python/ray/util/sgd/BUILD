@@ -140,14 +140,14 @@ py_test(
     args = ["--smoke-test"]
 )
 
-py_test(
-    name = "dcgan",
-    size = "small",
-    srcs = ["torch/examples/dcgan.py"],
-    tags = ["exclusive", "pytorch"],
-    deps = [":sgd_lib"],
-    args = ["--smoke-test", "--num-workers=2"]
-)
+# py_test(
+#     name = "dcgan",
+#     size = "small",
+#     srcs = ["torch/examples/dcgan.py"],
+#     tags = ["exclusive", "pytorch"],
+#     deps = [":sgd_lib"],
+#     args = ["--smoke-test", "--num-workers=2"]
+# )
 
 py_test(
     name = "raysgd_torch_signatures",
@@ -232,14 +232,14 @@ py_test(
     args = ["--no-gpu", "--mock-data", "--smoke-test", "--ray-num-workers=2", "--model=mobilenetv3_small_075", "data"]
 )
 
-py_test(
-    name = "mnist-ptl",
-    size = "small",
-    srcs = ["torch/examples/pytorch-lightning/mnist-ptl.py"],
-    tags = ["exclusive", "pytorch", "pytorch-lightning"],
-    deps = [":sgd_lib"],
-    args = ["--smoke-test"]
-)
+# py_test(
+#     name = "mnist-ptl",
+#     size = "small",
+#     srcs = ["torch/examples/pytorch-lightning/mnist-ptl.py"],
+#     tags = ["exclusive", "pytorch", "pytorch-lightning"],
+#     deps = [":sgd_lib"],
+#     args = ["--smoke-test"]
+# )
 
 # --------------------------------------------------------------------
 # SGD related tests from the ../../../../release directory.

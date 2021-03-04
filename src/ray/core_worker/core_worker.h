@@ -273,6 +273,8 @@ class CoreWorkerProcess {
 
   static void HandleAtExit();
 
+  void InitializeSystemConfig();
+
   /// Get the `CoreWorker` instance by worker ID.
   ///
   /// \param[in] workerId The worker ID.
@@ -738,6 +740,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Tell an actor to exit immediately, without completing outstanding work.
   ///
   /// \param[in] actor_id ID of the actor to kill.
+  /// \param[in] force_kill Whether to force kill an actor by killing the worker.
   /// \param[in] no_restart If set to true, the killed actor will not be
   /// restarted anymore.
   /// \param[out] Status

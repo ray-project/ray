@@ -113,21 +113,6 @@ class ClusterTaskManagerInterface {
                                int *num_pending_actor_creation,
                                int *num_pending_tasks) const = 0;
 
-  /// Handle the resource usage updated event of the specified node.
-  ///
-  /// \param node_id ID of the node which resources are updated.
-  /// \param resource_data The node resources.
-  virtual void OnNodeResourceUsageUpdated(const NodeID &node_id,
-                                          const rpc::ResourcesData &resource_data) = 0;
-
-  /// Handle the object missing event.
-  ///
-  /// \param object_id ID of the missing object.
-  /// \param waiting_task_ids IDs of tasks that are waitting for the specified missing
-  /// object.
-  virtual void OnObjectMissing(const ObjectID &object_id,
-                               const std::vector<TaskID> &waiting_task_ids) = 0;
-
   /// The helper to dump the debug state of the cluster task manater.
   ///
   /// As the NodeManager inherites from ClusterTaskManager and the
