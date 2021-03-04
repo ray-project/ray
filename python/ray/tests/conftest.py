@@ -244,25 +244,3 @@ def log_pubsub():
     p.psubscribe(log_channel)
     yield p
     p.close()
-
-
-@pytest.fixture()
-def working_dir():
-    import tempfile
-    from pathlib import Path
-    with tempfile.TemporaryDirectory() as tmp_dir:
-        path = Path(tmp_dir)
-        module_path = path / "test_module"
-        module_path.mkdir(parents=True)
-        init_file = module_path / "__init__.py"
-        test_file = module_path / "test.py"
-        with test_file.open(mode="w") as f:
-            f.write("""
-def one():
-    return 1
-""")
-        with init_file.open(mode="w") as f:
-            f.write("""
-from test_module.test import one
-""")
-        yield tmp_dir

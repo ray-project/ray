@@ -22,6 +22,28 @@ print(sum(ray.get([run_test.remote()] * 1000)))
 ray.shutdown()"""
 
 
+@pytest.fixture()
+def working_dir():
+    import tempfile
+    from pathlib import Path
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        path = Path(tmp_dir)
+        module_path = path / "test_module"
+        module_path.mkdir(parents=True)
+        init_file = module_path / "__init__.py"
+        test_file = module_path / "test.py"
+        with test_file.open(mode="w") as f:
+            f.write("""
+def one():
+    return 1
+""")
+        with init_file.open(mode="w") as f:
+            f.write("""
+from test_module.test import one
+""")
+        yield tmp_dir
+
+
 def test_single_node(ray_start_cluster_head, working_dir):
     cluster = ray_start_cluster_head
     redis_address = cluster.address

@@ -8,6 +8,7 @@ from zipfile import ZipFile
 from ray.job_config import JobConfig
 from enum import Enum
 from ray.experimental import internal_kv
+from ray.core.generated.common_pb2 import RuntimeEnv
 from urllib.parse import urlparse
 import os
 import sys
@@ -141,33 +142,36 @@ def update_runtime_env(job_config: JobConfig):
             "working_dir_uri"] = Protocol.GCS.value + "://" + pkg_name
 
 
-def init_runtime_env(is_driver: bool, job_config: JobConfig, pkg_uri: str):
-    if pkg_uri:
+def driver_runtime_init(job_config: JobConfig):
+    pkg_uri = job_config.get_pacakge_uri()
+    if not pkg_uri:
+        return
+    if not package_exists(pkg_uri):
         pkg_file = Path(_get_local_path(pkg_uri))
-        # Driver must have access to the code locally
-        # In client mode, it'll be uploaded first
-        if is_driver:
-            if not package_exists(pkg_uri):
-                working_dir = job_config.runtime_env.get("working_dir")
-                required_modules = job_config.runtime_env.get("local_modules")
-                logger.info(f"{pkg_uri} doesn't exist. Create new package with"
-                            f" {working_dir} and {required_modules}")
-                if not pkg_file.exists():
-                    create_project_package(pkg_file, working_dir,
-                                           required_modules)
-                # Push the data to remote storage
-                pkg_size = push_package(pkg_uri, pkg_file)
-                logger.info(f"{pkg_uri} has been pushed with {pkg_size} bytes")
+        working_dir = job_config.runtime_env.get("working_dir")
+        required_modules = job_config.runtime_env.get("local_modules")
+        logger.info(f"{pkg_uri} doesn't exist. Create new package with"
+                    f" {working_dir} and {required_modules}")
+        if not pkg_file.exists():
+            create_project_package(pkg_file, working_dir, required_modules)
+        # Push the data to remote storage
+        pkg_size = push_package(pkg_uri, pkg_file)
+        logger.info(f"{pkg_uri} has been pushed with {pkg_size} bytes")
+
+
+def worker_runtime_init(runtime_env: RuntimeEnv):
+    pkg_uri = runtime_env.working_dir_uri
+    if not pkg_uri:
+        return
+    pkg_file = Path(_get_local_path(pkg_uri))
+    # For each node, the package will only be downloaded one time
+    # Locking to avoid multiple process download concurrently
+    lock = FileLock(str(pkg_file) + ".lock")
+    with lock:
+        # TODO(yic): checksum calculation is required
+        if pkg_file.exists():
+            logger.info(f"{pkg_uri} has existed locally, skip downloading")
         else:
-            # For each node, the package will only be downloaded one time
-            # Locking to avoid multiple process download concurrently
-            lock = FileLock(str(pkg_file) + ".lock")
-            with lock:
-                # TODO(yic): checksum calculation is required
-                if pkg_file.exists():
-                    logger.info(
-                        f"{pkg_uri} has existed locally, skip downloading")
-                else:
-                    pkg_size = fetch_package(pkg_uri, pkg_file)
-                    logger.info(f"Downloaded {pkg_size} bytes into {pkg_file}")
-            sys.path.insert(0, str(pkg_file))
+            pkg_size = fetch_package(pkg_uri, pkg_file)
+            logger.info(f"Downloaded {pkg_size} bytes into {pkg_file}")
+    sys.path.insert(0, str(pkg_file))

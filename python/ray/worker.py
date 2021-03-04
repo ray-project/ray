@@ -1234,10 +1234,10 @@ def connect(node,
     # will use glog, which is intialized in `CoreWorker`.
     ray.state.state._initialize_global_state(
         node.redis_address, redis_password=node.redis_password)
-    worker_job_config = worker.core_worker.get_job_config()
-    package_uri = worker_job_config.runtime_env.working_dir_uri
-    if mode == SCRIPT_MODE or mode == WORKER_MODE:
-        ray_pkg.init_runtime_env(mode == SCRIPT_MODE, job_config, package_uri)
+    if mode == SCRIPT_MODE:
+        ray_pkg.driver_runtime_init(job_config)
+    elif mode == WORKER_MODE:
+        ray_pkg.worker_runtime_init(worker.core_worker.get_job_config())
 
     if driver_object_store_memory is not None:
         worker.core_worker.set_object_store_client_options(

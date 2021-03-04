@@ -46,9 +46,12 @@ class JobConfig:
         job_config.runtime_env = self._get_proto_runtime()
         return job_config.SerializeToString()
 
+    def get_package_uri(self):
+        return self.runtime_env.get("working_dir_uri")
+
     def _get_proto_runtime(self):
         from ray.core.generated.common_pb2 import RuntimeEnv
         runtime_env = RuntimeEnv()
-        if self.runtime_env.get("working_dir_uri"):
-            runtime_env.working_dir_urk = self.runtime_env.get(
-                "working_dir_uri")
+        if self.get_package_uri():
+            runtime_env.working_dir_uri = self.get_package_uri()
+        return runtime_env
