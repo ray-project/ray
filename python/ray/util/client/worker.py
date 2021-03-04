@@ -185,7 +185,7 @@ class Worker:
             res = None
             # Implement non-blocking get with a short-polling loop. This allows
             # cancellation of gets via Ctrl-C, since we never block for long.
-            while res is None:
+            while True:
                 try:
                     if deadline:
                         op_timeout = min(
@@ -194,6 +194,7 @@ class Worker:
                     else:
                         op_timeout = MAX_BLOCKING_OPERATION_TIME_S
                     res = self._get(obj_ref, op_timeout)
+                    break
                 except GetTimeoutError:
                     if deadline and time.monotonic() > deadline:
                         raise
