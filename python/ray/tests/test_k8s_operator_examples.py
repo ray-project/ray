@@ -57,7 +57,11 @@ def wait_for_logs():
 @retry_until_true
 def wait_for_job(job_pod):
     cmd = f"kubectl -n {NAMESPACE} logs {job_pod}"
-    out = subprocess.check_output(cmd, shell=True).decode()
+    try:
+        out = subprocess.check_output(cmd, shell=True).decode()
+    except subprocess.CalledProcessError as e:
+        print(e.output.decode())
+        raise (e)
     return ("success" in out.lower())
 
 
