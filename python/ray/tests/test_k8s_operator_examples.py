@@ -90,9 +90,7 @@ class KubernetesOperatorTest(unittest.TestCase):
             example_cluster2_config_path = get_operator_config_path(
                 "example_cluster2.yaml")
             operator_config_path = get_operator_config_path("operator.yaml")
-            job_path = os.path.join(RAY_PATH,
-                                    "doc/kubernetes/job-example.yaml")
-            self.crd_path = get_operator_config_path("cluster_crd.yaml")
+            job_path = get_kubernetes_config_path("job-example.yaml")
 
             # Load operator configs
             example_cluster_config = yaml.safe_load(
@@ -124,14 +122,6 @@ class KubernetesOperatorTest(unittest.TestCase):
             ]
             for file in files:
                 file.flush()
-
-            # Apply CR
-            cmd = f"kubectl apply -f {self.crd_path}"
-            subprocess.check_call(cmd, shell=True)
-
-            # Create namespace
-            cmd = f"kubectl create namespace {NAMESPACE}"
-            subprocess.check_call(cmd, shell=True)
 
             # Start operator and two clusters
             for file in files:
@@ -172,12 +162,6 @@ class KubernetesOperatorTest(unittest.TestCase):
 
             # Only operator pod remains.
             wait_for_pods(1)
-
-    def __del__(self):
-        cmd = f"kubectl delete -f {self.crd_path}"
-        subprocess.check_call(cmd, shell=True)
-        cmd = f"kubectl delete namespace {NAMESPACE}"
-        subprocess.check_call(cmd, shell=True)
 
 
 if __name__ == "__main__":
