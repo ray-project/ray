@@ -10,7 +10,7 @@ from ray.autoscaler.tags import TAG_RAY_NODE_STATUS, TAG_RAY_RUNTIME_CONFIG, \
     TAG_RAY_FILE_MOUNTS_CONTENTS, \
     STATUS_UP_TO_DATE, STATUS_UPDATE_FAILED, STATUS_WAITING_FOR_SSH, \
     STATUS_SETTING_UP, STATUS_SYNCING_FILES
-from ray.autoscaler._private.command_runner import NODE_START_WAIT_S, \
+from ray.autoscaler._private.command_runner import AUTOSCALER_NODE_START_WAIT_S, \
     ProcessRunnerError
 from ray.autoscaler._private.log_timer import LogTimer
 from ray.autoscaler._private.cli_logger import cli_logger, cf
@@ -284,7 +284,7 @@ class NodeUpdater:
             self.node_id, {TAG_RAY_NODE_STATUS: STATUS_WAITING_FOR_SSH})
         cli_logger.labeled_value("New status", STATUS_WAITING_FOR_SSH)
 
-        deadline = time.time() + NODE_START_WAIT_S
+        deadline = time.time() + AUTOSCALER_NODE_START_WAIT_S
         self.wait_ready(deadline)
         global_event_system.execute_callback(
             CreateClusterEvent.ssh_control_acquired)

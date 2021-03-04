@@ -18,8 +18,12 @@ AUTOSCALER_EVENTS = env_integer("AUTOSCALER_EVENTS", 1)
 # Whether to avoid launching GPU nodes for CPU only tasks.
 AUTOSCALER_CONSERVE_GPU_NODES = env_integer("AUTOSCALER_CONSERVE_GPU_NODES", 1)
 
-# How long to wait for a node to start, in seconds
-NODE_START_WAIT_S = env_integer("AUTOSCALER_NODE_START_WAIT_S", 900)
+# How long to wait for a node to start, in seconds.
+AUTOSCALER_NODE_START_WAIT_S = env_integer("AUTOSCALER_NODE_START_WAIT_S", 900)
+
+# Interval at which to check if node SSH became available.
+AUTOSCALER_NODE_SSH_INTERVAL_S = env_integer(
+    "AUTOSCALER_NODE_SSH_INTERVAL_S", 5)
 
 # Abort autoscaling if more than this number of errors are encountered. This
 # is a safety feature to prevent e.g. runaway node launches.

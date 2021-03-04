@@ -13,9 +13,10 @@ import warnings
 
 from ray.autoscaler.command_runner import CommandRunnerInterface
 from ray.autoscaler._private.constants import \
-                                     DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES,\
+                                     AUTOSCALER_NODE_SSH_INTERVAL_S, \
+                                     DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES, \
                                      DEFAULT_OBJECT_STORE_MEMORY_PROPORTION, \
-                                     NODE_START_WAIT_S
+                                     AUTOSCALER_NODE_START_WAIT_S
 from ray.autoscaler._private.docker import check_bind_mounts_cmd, \
                                   check_docker_running_cmd, \
                                   check_docker_image, \
@@ -37,7 +38,6 @@ KUBECTL_RSYNC = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "kubernetes/kubectl-rsync.sh")
 MAX_HOME_RETRIES = 3
 HOME_RETRY_DELAY_S = 5
-SSH_RETRY_DELAY_S = 5
 
 _config = {"use_login_shells": True, "silent_rsync": True}
 
@@ -357,7 +357,7 @@ class SSHCommandRunner(CommandRunnerInterface):
             cli_logger.labeled_value("Fetched IP", ip)
             return ip
 
-        interval = SSH_RETRY_DELAY_S
+        interval = AUTOSCALER_NODE_SSH_INTERVAL_S
         with cli_logger.group("Waiting for IP"):
             while time.time() < deadline and \
                     not self.provider.is_terminated(self.node_id):
@@ -377,7 +377,7 @@ class SSHCommandRunner(CommandRunnerInterface):
 
         # We assume that this never changes.
         #   I think that's reasonable.
-        deadline = time.time() + NODE_START_WAIT_S
+        deadline = time.time() + AUTOSCALER_NODE_START_WAIT_S
         with LogTimer(self.log_prefix + "Got IP"):
             ip = self._wait_for_ip(deadline)
 
