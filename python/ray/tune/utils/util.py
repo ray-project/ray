@@ -298,6 +298,32 @@ def unflatten_dict(dt, delimiter="/"):
     return out
 
 
+def unflatten_list_dict(dt, delimiter="/"):
+    """Unflatten nested dict and list."""
+    out_type = list if list(dt)[0].split(delimiter, 1)[0].isdigit() else dict
+    out = out_type()
+    for key, val in dt.items():
+        path = key.split(delimiter)
+
+        item = out
+        for i, k in enumerate(path[:-1]):
+            next_type = list if path[i+1].isdigit() else dict
+            if isinstance(item, dict):
+                item = item.setdefault(k, next_type())
+            elif isinstance(item, list):
+                if int(k) >= len(item):
+                    item.append(next_type())
+                    assert int(k) == len(item) - 1
+                item = item[int(k)]
+
+        if isinstance(item, dict):
+            item[path[-1]] = val
+        elif isinstance(item, list):
+            item.append(val)
+            assert int(path[-1]) == len(item) - 1
+    return out
+
+
 def unflattened_lookup(flat_key, lookup, delimiter="/", **kwargs):
     """
     Unflatten `flat_key` and iteratively look up in `lookup`. E.g.
