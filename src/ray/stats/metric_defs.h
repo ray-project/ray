@@ -79,6 +79,15 @@ static Histogram ProcessStartupTimeMs("process_startup_time_ms",
                                       "Time to start up a worker process.", "ms",
                                       {1, 10, 100, 1000, 10000});
 
+static Count NumWorkersStarted("_internal_num_processes_started", "The total number of worker processes the worker pool has created.", "processes");
+
+static Count NumQueuedTasks("_internal_num_queued_tasks", "The cumulative number of lease requeusts that this raylet has received.", "tasks");
+
+static Count NumDispatchedTasks("_internal_num_dispatched_tasks", "The cumulative number of lease requeusts that this raylet has granted.", "tasks");
+
+static Count NumSpilledTasks("_internal_num_spilled_tasks", "The cumulative number of lease requeusts that this raylet has spilled to other raylets.", "tasks");
+
+// TODO (Alex): Don't forget to remove these average metrics for the old scheduler.
 static Gauge AvgNumScheduledTasks(
     "avg_num_scheduled_tasks",
     "Number of tasks that are queued on this node per second. It doesn't guarantee "

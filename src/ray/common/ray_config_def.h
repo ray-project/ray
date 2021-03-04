@@ -18,11 +18,6 @@
 // Macro definition format: RAY_CONFIG(type, name, default_value).
 // NOTE: This file should NOT be included in any file other than ray_config.h.
 
-// IF YOU MODIFY THIS FILE and add a configuration parameter, you must change
-// at least two additional things:
-//     1. You must update the file "ray/python/ray/includes/ray_config.pxd".
-//     2. You must update the file "ray/python/ray/includes/ray_config.pxi".
-
 /// In theory, this is used to detect Ray cookie mismatches.
 /// This magic number (hex for "RAY") is used instead of zero, rationale is
 /// that it could still be possible that some random program sends an int64_t

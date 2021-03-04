@@ -2734,6 +2734,7 @@ void NodeManager::RecordMetrics() {
                                        (1000.0 / (double)duration_ms));
   metrics_num_task_spilled_back_ = 0;
 
+  cluster_task_manager_->RecordMetrics();
   object_manager_.RecordMetrics();
   local_queues_.RecordMetrics();
   local_object_manager_.RecordObjectSpillingStats();

@@ -172,6 +172,8 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   void OnObjectMissing(const ObjectID &object_id,
                        const std::vector<TaskID> &waiting_task_ids) override;
 
+  void RecordMetrics();
+
   /// The helper to dump the debug state of the cluster task manater.
   std::string DebugStr() const override;
 
@@ -275,6 +277,11 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// The total number of arguments pinned for running tasks.
   /// Used for debug purposes.
   size_t num_pinned_task_arguments_ = 0;
+
+  /// Metrics collected since the last report.
+  uint64_t metric_tasks_queued_;
+  uint64_t metric_tasks_dispatched_;
+  uint64_t metric_tasks_spilled_;
 
   /// Determine whether a task should be immediately dispatched,
   /// or placed on a wait queue.
