@@ -100,7 +100,7 @@ RAY_CONFIG(bool, lineage_pinning_enabled, false)
 /// many tasks to the same node.
 RAY_CONFIG(bool, scheduler_loadbalance_spillback,
            getenv("RAY_SCHEDULER_LOADBALANCE_SPILLBACK") == nullptr ||
-               getenv("RAY_SCHEDULER_LOADBALANCE_SPILLBACK") == std::string("0"))
+               getenv("RAY_SCHEDULER_LOADBALANCE_SPILLBACK") != std::string("0"))
 
 // The max allowed size in bytes of a return object from direct actor calls.
 // Objects larger than this size will be spilled/promoted to plasma.
