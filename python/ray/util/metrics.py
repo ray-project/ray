@@ -150,13 +150,18 @@ class Counter(Metric):
         serialized_data = (self._name, self._description, self._tag_keys)
         return deserializer, serialized_data
 
-    def inc(self, value: float = 1, tags: Dict[str, str] = None):
+    def inc(self, value: float = 1.0, tags: Dict[str, str] = None):
         """Increment the counter by `value` (defaults to 1).
 
         Args:
-            value(float): Value to increment the counter by, defaults to 1.
+            value(int, float): Value to increment the counter by (default=1).
             tags(Dict[str, str]): Tags to set or override for this counter.
         """
+        if not isinstance(value, (int, float)):
+            raise TypeError(f"value must be int or float, got {type(value)}.")
+        if value <= 0:
+            raise ValueError(f"value must be >0, got {value}")
+
         self.record(value, tags)
 
 
@@ -177,6 +182,9 @@ class Count(Counter):
                  name: str,
                  description: str = "",
                  tag_keys: Optional[Tuple[str]] = None):
+        logger.warning(
+            "`metrics.Count` has been renamed to `metrics.Counter`. "
+            "`metrics.Count` will be removed in a future release.")
         super().__init__(name, description, tag_keys)
 
 

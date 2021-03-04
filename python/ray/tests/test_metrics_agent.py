@@ -211,6 +211,11 @@ def test_basic_custom_metrics(metric_mock):
     # Make sure each of metric works as expected.
     # -- Count --
     count = Count("count", tag_keys=("a", ))
+    with pytest.raises(TypeError):
+        count.inc("hi")
+    with pytest.raises(ValueError):
+        count.inc(0)
+        count.inc(-1)
     count._metric = metric_mock
     count.record(1, {"a": "1"})
     metric_mock.record.assert_called_with(1, tags={"a": "1"})
