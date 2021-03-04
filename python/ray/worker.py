@@ -17,7 +17,6 @@ from typing import Any, Dict, List, Iterator
 
 # Ray modules
 from ray.autoscaler._private.constants import AUTOSCALER_EVENTS
-import ray._private.package as ray_pkg
 from ray.autoscaler._private.util import DEBUG_AUTOSCALING_ERROR
 import ray.cloudpickle as pickle
 import ray.gcs_utils
@@ -29,6 +28,7 @@ import ray.ray_constants as ray_constants
 import ray.remote_function
 import ray.serialization as serialization
 import ray._private.services as services
+import ray._private.package as ray_pkg
 import ray
 import setproctitle
 import ray.signature
@@ -52,7 +52,7 @@ from ray.exceptions import (
 from ray.function_manager import FunctionActorManager
 from ray.ray_logging import setup_logger
 from ray.ray_logging import global_worker_stdstream_dispatcher
-from ray.utils import (_random_string, check_oversized_pickle)
+from ray.utils import _random_string, check_oversized_pickle
 
 from ray.util.inspect import is_cython
 from ray.experimental.internal_kv import _internal_kv_get, \
@@ -669,6 +669,8 @@ def init(
         driver_mode = LOCAL_MODE
     else:
         driver_mode = SCRIPT_MODE
+        if job_config:
+            ray_pkg.update_runtime_env(job_config)
 
     if global_worker.connected:
         if ignore_reinit_error:
@@ -1219,9 +1221,6 @@ def connect(node,
     )
     if job_config is None:
         job_config = ray.job_config.JobConfig()
-
-    if mode == SCRIPT_MODE:
-        ray_pkg.update_runtime_env(job_config)
 
     serialized_job_config = job_config.serialize()
     worker.core_worker = ray._raylet.CoreWorker(
