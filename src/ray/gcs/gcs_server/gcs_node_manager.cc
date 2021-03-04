@@ -149,7 +149,7 @@ std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::RemoveNode(
       std::string type = "node_removed";
       std::ostringstream error_message;
       error_message << "The node with node id: " << node_id
-                    << " in the node ip: " << removed_node->node_manager_address()
+                    << " and ip: " << removed_node->node_manager_address()
                     << " has been marked dead because the detector"
                     << " has missed too many heartbeats from it. This can happen when a "
                        "raylet crashes unexpectedly or has lagging heartbeats.";
