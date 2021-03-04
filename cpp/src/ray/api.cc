@@ -7,12 +7,12 @@
 namespace ray {
 namespace api {
 
-std::shared_ptr<RayRuntime> Ray::runtime_ = nullptr;
-
 std::once_flag Ray::is_inited_;
 void Ray::Init() {
-  std::call_once(is_inited_,
-                 [] { runtime_ = AbstractRayRuntime::DoInit(RayConfig::GetInstance()); });
+  std::call_once(is_inited_, [] {
+    auto runtime = AbstractRayRuntime::DoInit(RayConfig::GetInstance());
+    internal::RayRuntimeHolder::Instance().Init(runtime);
+  });
 }
 
 void Ray::Shutdown() { AbstractRayRuntime::DoShutdown(RayConfig::GetInstance()); }
