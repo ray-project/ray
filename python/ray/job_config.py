@@ -43,7 +43,12 @@ class JobConfig:
             self.num_java_workers_per_process)
         job_config.jvm_options.extend(self.jvm_options)
         job_config.code_search_path.extend(self.code_search_path)
-        if self.runtime_env.get("working_dir_uri"):
-            job_config.runtime_env.working_dir_uri = \
-              self.runtime_env.get("working_dir_uri")
+        job_config.runtime_env = self._get_proto_runtime()
         return job_config.SerializeToString()
+
+    def _get_proto_runtime(self):
+        from ray.core.generated.common_pb2 import RuntimeEnv
+        runtime_env = RuntimeEnv()
+        if self.runtime_env.get("working_dir_uri"):
+            runtime_env.working_dir_urk = self.runtime_env.get(
+                "working_dir_uri")
