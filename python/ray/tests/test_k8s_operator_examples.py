@@ -14,7 +14,7 @@ import yaml
 
 IMAGE_ENV = "KUBERNETES_OPERATOR_TEST_IMAGE"
 IMAGE = os.getenv(IMAGE_ENV, "rayproject/ray:nightly")
-NAMESPACE = "test-k8s-operator-examples"
+NAMESPACE = "test-k8s-operator"
 
 RAY_PATH = os.path.abspath(
     os.path.dirname(
