@@ -5,7 +5,6 @@ It also checks that it is usable with a separate scheduler.
 import time
 
 from ray import tune
-from ray.tune.suggest import ConcurrencyLimiter
 from ray.tune.schedulers import AsyncHyperBandScheduler
 from ray.tune.suggest.hebo import HEBOSearch
 
