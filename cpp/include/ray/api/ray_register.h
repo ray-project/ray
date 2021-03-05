@@ -25,14 +25,14 @@ inline static msgpack::sbuffer TaskExecutionHandler(const char *data, std::size_
     try {
       auto p = ray::api::Serializer::Deserialize<std::tuple<std::string>>(data, size);
       auto &func_name = std::get<0>(p);
-      auto pair = FunctionManager::Instance().GetFunction(func_name);
-      if (!pair.first) {
+      auto func_ptr = FunctionManager::Instance().GetFunction(func_name);
+      if (func_ptr == nullptr) {
         result = PackReturnValue(internal::ErrorCode::FAIL,
                                  "unknown function: " + func_name, 0);
         break;
       }
 
-      result = (*pair.second)(data, size);
+      result = (*func_ptr)(data, size);
     } catch (const std::exception &ex) {
       result = PackReturnValue(internal::ErrorCode::FAIL, ex.what());
     }

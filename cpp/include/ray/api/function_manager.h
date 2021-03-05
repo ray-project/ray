@@ -127,14 +127,14 @@ class FunctionManager {
     return instance;
   }
 
-  std::pair<bool, std::function<msgpack::sbuffer(const char *, size_t)> *> GetFunction(
+  std::function<msgpack::sbuffer(const char *, size_t)> *GetFunction(
       const std::string &func_name) {
     auto it = map_invokers_.find(func_name);
     if (it == map_invokers_.end()) {
-      return {};
+      return nullptr;
     }
 
-    return std::make_pair(true, &it->second);
+    return &it->second;
   }
 
   template <typename Function>

@@ -29,10 +29,10 @@ TEST(RayApiTest, DuplicateRegister) {
 
   /// Duplicate register
   bool r1 = FunctionManager::Instance().RegisterRemoteFunction("Return", Return);
-  EXPECT_TRUE(!r1);
+  EXPECT_FALSE(r1);
 
   bool r2 = FunctionManager::Instance().RegisterRemoteFunction("PlusOne", PlusOne);
-  EXPECT_TRUE(!r2);
+  EXPECT_FALSE(r2);
 }
 
 TEST(RayApiTest, FindAndExecuteFunction) {
