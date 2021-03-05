@@ -15,7 +15,7 @@ from ray.tune.suggest import Searcher
 from ray.tune.suggest.suggestion import UNRESOLVED_SEARCH_SPACE, \
     UNDEFINED_METRIC_MODE, UNDEFINED_SEARCH_SPACE
 from ray.tune.suggest.variant_generator import parse_spec_vars
-from ray.tune.utils.util import flatten_dict, unflatten_dict, unflatten_list_dict
+from ray.tune.utils.util import flatten_dict, unflatten_list_dict
 
 logger = logging.getLogger(__name__)
 
