@@ -299,7 +299,27 @@ def unflatten_dict(dt, delimiter="/"):
 
 
 def unflatten_list_dict(dt, delimiter="/"):
-    """Unflatten nested dict and list."""
+    """Unflatten nested dict and list.
+
+    This function now has some limitations:
+    (1) The keys of dt must be str.
+    (2) If unflattened dt (the result) contains list, the index order must be
+        ascending when accessing dt. Otherwise, this function will throw
+        AssertionError.
+    (3) The unflattened dt (the result) shouldn't contain dict with number
+        keys.
+    Be careful to use this function. More details see #14487.
+
+    Args:
+        dt (dict): Flattened dictionary that is originally nested by multiple
+            list and dict.
+        delimiter (str): Delimiter of keys.
+
+    Example:
+        >>> dt = {"aaa/0/bb": 12, "aaa/1/cc": 56, "aaa/1/dd": 92}
+        >>> unflatten_list_dict(dt)
+        {'aaa': [{'bb': 12}, {'cc': 56, 'dd': 92}]}
+    """
     out_type = list if list(dt)[0].split(delimiter, 1)[0].isdigit() else dict
     out = out_type()
     for key, val in dt.items():
