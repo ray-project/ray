@@ -6,7 +6,8 @@ import threading
 import pytest
 
 import ray
-from ray.test_utils import SignalActor
+from ray.test_utils import SignalActor, kill_actor_and_wait_for_failure, \
+    wait_for_condition
 
 
 def test_asyncio_actor(ray_start_regular_shared):
@@ -154,7 +155,7 @@ async def test_asyncio_get(ray_start_regular_shared, event_loop):
     with pytest.raises(ray.exceptions.RayTaskError):
         await actor.throw_error.remote().as_future()
 
-    ray.kill(actor)
+    kill_actor_and_wait_for_failure(actor)
     with pytest.raises(ray.exceptions.RayActorError):
         await actor.echo.remote(1)
 
@@ -222,6 +223,37 @@ async def test_asyncio_exit_actor(ray_start_regular_shared):
 
     with pytest.raises(ray.exceptions.RayActorError):
         ray.get(a.ping.remote())
+
+
+def test_async_callback(ray_start_regular_shared):
+    global_set = set()
+
+    ref = ray.put(None)
+    ref._on_completed(lambda _: global_set.add("completed-1"))
+    wait_for_condition(lambda: "completed-1" in global_set)
+
+    signal = SignalActor.remote()
+
+    @ray.remote
+    def wait():
+        ray.get(signal.wait.remote())
+
+    ref = wait.remote()
+    ref._on_completed(lambda _: global_set.add("completed-2"))
+    assert "completed-2" not in global_set
+    signal.send.remote()
+    wait_for_condition(lambda: "completed-2" in global_set)
+
+
+def test_async_function_errored(ray_start_regular_shared):
+    @ray.remote
+    async def f():
+        pass
+
+    ref = f.remote()
+
+    with pytest.raises(ValueError):
+        ray.get(ref)
 
 
 if __name__ == "__main__":

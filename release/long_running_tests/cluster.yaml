@@ -15,3 +15,10 @@ auth:
 
 head_node:
     InstanceType: m5.xlarge
+    TagSpecifications:
+        - ResourceType: "instance"
+          Tags:
+            - Key: anyscale-user
+              Value: "release-automation@anyscale.com"
+            - Key: anyscale-custodian
+              Value: "ignore"

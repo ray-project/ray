@@ -239,8 +239,15 @@ class AWSNodeProvider(NodeProvider):
                     }],
                 )
 
-    def create_node(self, node_config, tags, count):
+    def create_node(self, node_config, tags, count) -> Dict[str, Any]:
+        """Creates instances.
+
+        Returns dict mapping instance id to ec2.Instance object for the created
+        instances.
+        """
         tags = copy.deepcopy(tags)
+
+        reused_nodes_dict = {}
         # Try to reuse previously stopped nodes with compatible configs
         if self.cache_stopped_nodes:
             # TODO(ekl) this is breaking the abstraction boundary a little by
@@ -273,6 +280,7 @@ class AWSNodeProvider(NodeProvider):
             reuse_nodes = list(
                 self.ec2.instances.filter(Filters=filters))[:count]
             reuse_node_ids = [n.id for n in reuse_nodes]
+            reused_nodes_dict = {n.id: n for n in reuse_nodes}
             if reuse_nodes:
                 cli_logger.print(
                     # todo: handle plural vs singular?
@@ -298,10 +306,17 @@ class AWSNodeProvider(NodeProvider):
                     self.set_node_tags(node_id, tags)
                 count -= len(reuse_node_ids)
 
+        created_nodes_dict = {}
         if count:
-            self._create_node(node_config, tags, count)
+            created_nodes_dict = self._create_node(node_config, tags, count)
+
+        all_created_nodes = reused_nodes_dict
+        all_created_nodes.update(created_nodes_dict)
+        return all_created_nodes
 
     def _create_node(self, node_config, tags, count):
+        created_nodes_dict = {}
+
         tags = to_aws_format(tags)
         conf = node_config.copy()
 
@@ -353,6 +368,7 @@ class AWSNodeProvider(NodeProvider):
                     "TagSpecifications": tag_specs
                 })
                 created = self.ec2_fail_fast.create_instances(**conf)
+                created_nodes_dict = {n.id: n for n in created}
 
                 # todo: timed?
                 # todo: handle plurality?
@@ -390,6 +406,7 @@ class AWSNodeProvider(NodeProvider):
                     cli_logger.print(
                         "create_instances: Attempt failed with {}, retrying.",
                         exc)
+        return created_nodes_dict
 
     def terminate_node(self, node_id):
         node = self._get_cached_node(node_id)
@@ -410,8 +427,12 @@ class AWSNodeProvider(NodeProvider):
         else:
             node.terminate()
 
-        self.tag_cache.pop(node_id, None)
-        self.tag_cache_pending.pop(node_id, None)
+        # TODO (Alex): We are leaking the tag cache here. Naively, we would
+        # want to just remove the cache entry here, but terminating can be
+        # asyncrhonous or error, which would result in a use after free error.
+        # If this leak becomes bad, we can garbage collect the tag cache when
+        # the node cache is updated.
+        pass
 
     def terminate_nodes(self, node_ids):
         if not node_ids:
@@ -445,10 +466,6 @@ class AWSNodeProvider(NodeProvider):
                 self.ec2.meta.client.terminate_instances(InstanceIds=spot_ids)
         else:
             self.ec2.meta.client.terminate_instances(InstanceIds=node_ids)
-
-        for node_id in node_ids:
-            self.tag_cache.pop(node_id, None)
-            self.tag_cache_pending.pop(node_id, None)
 
     def _get_node(self, node_id):
         """Refresh and get info for this node, updating the cache."""

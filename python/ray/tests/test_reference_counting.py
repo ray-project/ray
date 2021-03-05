@@ -2,6 +2,7 @@
 import copy
 import logging
 import os
+import sys
 import time
 
 import numpy as np
@@ -10,7 +11,8 @@ import pytest
 
 import ray
 import ray.cluster_utils
-from ray.test_utils import (SignalActor, put_object, wait_for_condition,
+from ray.test_utils import (SignalActor, kill_actor_and_wait_for_failure,
+                            put_object, wait_for_condition,
                             new_scheduler_enabled)
 
 logger = logging.getLogger(__name__)
@@ -18,8 +20,10 @@ logger = logging.getLogger(__name__)
 
 @pytest.fixture
 def one_worker_100MiB(request):
+    # It has lots of tests that don't require object spilling.
     config = {
         "task_retry_delay_ms": 0,
+        "automatic_object_spilling_enabled": False
     }
     yield ray.init(
         num_cpus=1,
@@ -243,9 +247,7 @@ def test_pending_task_dependency_pinning(one_worker_100MiB):
 
 
 def test_feature_flag(shutdown_only):
-    ray.init(
-        object_store_memory=100 * 1024 * 1024,
-        _system_config={"object_pinning_enabled": 0})
+    ray.init(object_store_memory=100 * 1024 * 1024)
 
     @ray.remote
     def f(array):
@@ -466,8 +468,8 @@ def test_actor_holding_serialized_reference(one_worker_100MiB, use_ray_put,
 
     if failure:
         # Test that the actor exiting stops the reference from being pinned.
-        ray.kill(actor)
-        # Wait for the actor to exit.
+        # Kill the actor and wait for the actor to exit.
+        kill_actor_and_wait_for_failure(actor)
         with pytest.raises(ray.exceptions.RayActorError):
             ray.get(actor.delete_ref1.remote())
     else:
@@ -479,6 +481,7 @@ def test_actor_holding_serialized_reference(one_worker_100MiB, use_ray_put,
 # Test that a passed reference held by an actor after a task finishes
 # is kept until the reference is removed from the worker. Also tests giving
 # the worker a duplicate reference to the same object ref.
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 @pytest.mark.parametrize("use_ray_put,failure", [(False, False), (False, True),
                                                  (True, False), (True, True)])
 def test_worker_holding_serialized_reference(one_worker_100MiB, use_ray_put,

@@ -36,7 +36,8 @@ public class WorkerLifecycleController {
   /**
    * Create JobWorker actor according to the execution vertex.
    *
-   * @param executionVertex target execution vertex Returns creation result
+   * @param executionVertex target execution vertex
+   * @return creation result
    */
   private boolean createWorker(ExecutionVertex executionVertex) {
     LOG.info(
@@ -84,7 +85,8 @@ public class WorkerLifecycleController {
    * Using context to init JobWorker.
    *
    * @param vertexToContextMap target JobWorker actor
-   * @param timeout timeout for waiting, unit: ms Returns initiation result
+   * @param timeout timeout for waiting, unit: ms
+   * @return initiation result
    */
   public boolean initWorkers(
       Map<ExecutionVertex, JobWorkerContext> vertexToContextMap, int timeout) {
@@ -120,7 +122,8 @@ public class WorkerLifecycleController {
    * Start JobWorkers to run task.
    *
    * @param executionGraph physical plan
-   * @param timeout timeout for waiting, unit: ms Returns starting result
+   * @param timeout timeout for waiting, unit: ms
+   * @return starting result
    */
   public boolean startWorkers(ExecutionGraph executionGraph, long lastCheckpointId, int timeout) {
     LOG.info("Begin starting workers.");
@@ -150,7 +153,8 @@ public class WorkerLifecycleController {
   /**
    * Stop and destroy JobWorkers' actor.
    *
-   * @param executionVertices target vertices Returns destroy result
+   * @param executionVertices target vertices
+   * @return destroy result
    */
   public boolean destroyWorkers(List<ExecutionVertex> executionVertices) {
     return asyncBatchExecute(this::destroyWorker, executionVertices);

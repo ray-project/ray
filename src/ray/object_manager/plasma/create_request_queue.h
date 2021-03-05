@@ -31,19 +31,16 @@ namespace plasma {
 
 class CreateRequestQueue {
  public:
-  using CreateObjectCallback =
-      std::function<PlasmaError(bool evict_if_full, PlasmaObject *result)>;
+  using CreateObjectCallback = std::function<PlasmaError(PlasmaObject *result)>;
 
-  CreateRequestQueue(int32_t max_retries, bool evict_if_full,
+  CreateRequestQueue(int64_t oom_grace_period_s,
                      ray::SpillObjectsCallback spill_objects_callback,
-                     std::function<void()> trigger_global_gc)
-      : max_retries_(max_retries),
-        evict_if_full_(evict_if_full),
+                     std::function<void()> trigger_global_gc,
+                     std::function<int64_t()> get_time)
+      : oom_grace_period_ns_(oom_grace_period_s * 1e9),
         spill_objects_callback_(spill_objects_callback),
-        trigger_global_gc_(trigger_global_gc) {
-    RAY_LOG(DEBUG) << "Starting plasma::CreateRequestQueue with " << max_retries_
-                   << " retries on OOM, evict if full? " << (evict_if_full_ ? 1 : 0);
-  }
+        trigger_global_gc_(trigger_global_gc),
+        get_time_(get_time) {}
 
   /// Add a request to the queue. The caller should use the returned request ID
   /// to later get the result of the request.
@@ -148,16 +145,9 @@ class CreateRequestQueue {
   /// a request by retrying. Start at 1 because 0 means "do not retry".
   uint64_t next_req_id_ = 1;
 
-  /// The maximum number of times to retry each request upon OOM.
-  const int32_t max_retries_;
-
-  /// The number of times the request at the head of the queue has been tried.
-  int32_t num_retries_ = 0;
-
-  /// On the first attempt to create an object, whether to evict from the
-  /// object store to make space. If the first attempt fails, then we will
-  /// always try to evict.
-  const bool evict_if_full_;
+  /// Grace period until we throw the OOM error to the application.
+  /// -1 means grace period is infinite.
+  const int64_t oom_grace_period_ns_;
 
   /// A callback to trigger object spilling. It tries to spill objects upto max
   /// throughput. It returns true if space is made by object spilling, and false if
@@ -167,6 +157,9 @@ class CreateRequestQueue {
   /// A callback to trigger global GC in the cluster if the object store is
   /// full.
   const std::function<void()> trigger_global_gc_;
+
+  /// A callback to return the current time.
+  const std::function<int64_t()> get_time_;
 
   /// Queue of object creation requests to respond to. Requests will be placed
   /// on this queue if the object store does not have enough room at the time
@@ -188,6 +181,9 @@ class CreateRequestQueue {
 
   /// Last time global gc was invoked in ms.
   uint64_t last_global_gc_ms_;
+
+  /// The time OOM timer first starts. It becomes -1 upon every creation success.
+  int64_t oom_start_time_ns_ = -1;
 
   friend class CreateRequestQueueTest;
 };

@@ -500,7 +500,11 @@ class Policy(metaclass=ABCMeta):
 
     @DeveloperAPI
     def export_model(self, export_dir: str) -> None:
-        """Export Policy to local directory for serving.
+        """Exports the Policy's Model to local directory for serving.
+
+        Note: The file format will depend on the deep learning framework used.
+        See the child classed of Policy and their `export_model`
+        implementations for more details.
 
         Args:
             export_dir (str): Local writable directory.
@@ -668,20 +672,25 @@ class Policy(metaclass=ABCMeta):
                 if key not in self.view_requirements:
                     self.view_requirements[key] = ViewRequirement()
             if self._loss:
-                # Tag those only needed for post-processing.
+                # Tag those only needed for post-processing (with some
+                # exceptions).
                 for key in batch_for_postproc.accessed_keys:
                     if key not in train_batch.accessed_keys and \
                             key in self.view_requirements and \
-                            key not in self.model.view_requirements:
+                            key not in self.model.view_requirements and \
+                            key not in [
+                                SampleBatch.EPS_ID, SampleBatch.AGENT_INDEX,
+                                SampleBatch.UNROLL_ID, SampleBatch.DONES,
+                                SampleBatch.REWARDS, SampleBatch.INFOS]:
                         self.view_requirements[key].used_for_training = False
                 # Remove those not needed at all (leave those that are needed
                 # by Sampler to properly execute sample collection).
-                # Also always leave DONES and REWARDS, no matter what.
+                # Also always leave DONES, REWARDS, INFOS, no matter what.
                 for key in list(self.view_requirements.keys()):
                     if key not in all_accessed_keys and key not in [
                         SampleBatch.EPS_ID, SampleBatch.AGENT_INDEX,
                         SampleBatch.UNROLL_ID, SampleBatch.DONES,
-                        SampleBatch.REWARDS] and \
+                        SampleBatch.REWARDS, SampleBatch.INFOS] and \
                             key not in self.model.view_requirements:
                         # If user deleted this key manually in postprocessing
                         # fn, warn about it and do not remove from
@@ -709,7 +718,8 @@ class Policy(metaclass=ABCMeta):
         ret = {}
         for view_col, view_req in self.view_requirements.items():
             if isinstance(view_req.space, (gym.spaces.Dict, gym.spaces.Tuple)):
-                _, shape = ModelCatalog.get_action_shape(view_req.space)
+                _, shape = ModelCatalog.get_action_shape(
+                    view_req.space, framework=self.config["framework"])
                 ret[view_col] = \
                     np.zeros((batch_size, ) + shape[1:], np.float32)
             else:

@@ -1,7 +1,6 @@
 import logging
 
 import ray
-from ray.rllib.agents.a3c.a3c_tf_policy import A3CTFPolicy
 from ray.rllib.agents.impala.vtrace_tf_policy import VTraceTFPolicy
 from ray.rllib.agents.trainer import Trainer, with_common_config
 from ray.rllib.agents.trainer_template import build_trainer
@@ -105,14 +104,9 @@ class OverrideDefaultResourceRequest:
         return Resources(
             cpu=cf["num_cpus_for_driver"],
             gpu=cf["num_gpus"],
-            memory=cf["memory"],
-            object_store_memory=cf["object_store_memory"],
             extra_cpu=cf["num_cpus_per_worker"] * cf["num_workers"] +
             cf["num_aggregation_workers"],
-            extra_gpu=cf["num_gpus_per_worker"] * cf["num_workers"],
-            extra_memory=cf["memory_per_worker"] * cf["num_workers"],
-            extra_object_store_memory=cf["object_store_memory_per_worker"] *
-            cf["num_workers"])
+            extra_gpu=cf["num_gpus_per_worker"] * cf["num_workers"])
 
 
 def make_learner_thread(local_worker, config):
@@ -160,6 +154,7 @@ def get_policy_class(config):
         if config["vtrace"]:
             return VTraceTFPolicy
         else:
+            from ray.rllib.agents.a3c.a3c_tf_policy import A3CTFPolicy
             return A3CTFPolicy
 
 

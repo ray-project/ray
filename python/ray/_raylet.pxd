@@ -101,7 +101,8 @@ cdef class CoreWorker:
     cdef _create_put_buffer(self, shared_ptr[CBuffer] &metadata,
                             size_t data_size, ObjectRef object_ref,
                             c_vector[CObjectID] contained_ids,
-                            CObjectID *c_object_id, shared_ptr[CBuffer] *data)
+                            CObjectID *c_object_id, shared_ptr[CBuffer] *data,
+                            owner_address=*)
     cdef store_task_outputs(
             self, worker, outputs, const c_vector[CObjectID] return_ids,
             c_vector[shared_ptr[CRayObject]] *returns)

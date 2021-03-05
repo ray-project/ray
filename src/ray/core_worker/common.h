@@ -144,8 +144,11 @@ using PlacementStrategy = rpc::PlacementStrategy;
 struct PlacementGroupCreationOptions {
   PlacementGroupCreationOptions(
       std::string name, PlacementStrategy strategy,
-      std::vector<std::unordered_map<std::string, double>> bundles)
-      : name(std::move(name)), strategy(strategy), bundles(std::move(bundles)) {}
+      std::vector<std::unordered_map<std::string, double>> bundles, bool is_detached)
+      : name(std::move(name)),
+        strategy(strategy),
+        bundles(std::move(bundles)),
+        is_detached(is_detached) {}
 
   /// The name of the placement group.
   const std::string name;
@@ -153,6 +156,8 @@ struct PlacementGroupCreationOptions {
   const PlacementStrategy strategy = rpc::PACK;
   /// The resource bundles in this placement group.
   const std::vector<std::unordered_map<std::string, double>> bundles;
+  /// Whether to keep the placement group persistent after its creator dead.
+  const bool is_detached = false;
 };
 
 }  // namespace ray

@@ -262,21 +262,44 @@ class DynamicTFPolicy(TFPolicy):
                     SampleBatch.PREV_REWARDS),
                 explore=explore,
                 is_training=self._input_dict["is_training"])
+        # Distribution generation is customized, e.g., DQN, DDPG.
         else:
-            # Distribution generation is customized, e.g., DQN, DDPG.
             if action_distribution_fn:
-                dist_inputs, dist_class, self._state_out = \
-                    action_distribution_fn(
-                        self, self.model,
-                        obs_batch=self._input_dict[SampleBatch.CUR_OBS],
-                        state_batches=self._state_inputs,
-                        seq_lens=self._seq_lens,
-                        prev_action_batch=self._input_dict.get(
-                            SampleBatch.PREV_ACTIONS),
-                        prev_reward_batch=self._input_dict.get(
-                            SampleBatch.PREV_REWARDS),
-                        explore=explore,
-                        is_training=self._input_dict["is_training"])
+
+                # Try new action_distribution_fn signature, supporting
+                # state_batches and seq_lens.
+                in_dict = self._input_dict
+                try:
+                    dist_inputs, dist_class, self._state_out = \
+                        action_distribution_fn(
+                            self,
+                            self.model,
+                            input_dict=in_dict,
+                            state_batches=self._state_inputs,
+                            seq_lens=self._seq_lens,
+                            explore=explore,
+                            timestep=timestep,
+                            is_training=in_dict["is_training"])
+                # Trying the old way (to stay backward compatible).
+                # TODO: Remove in future.
+                except TypeError as e:
+                    if "positional argument" in e.args[0] or \
+                            "unexpected keyword argument" in e.args[0]:
+                        dist_inputs, dist_class, self._state_out = \
+                            action_distribution_fn(
+                                self, self.model,
+                                obs_batch=in_dict[SampleBatch.CUR_OBS],
+                                state_batches=self._state_inputs,
+                                seq_lens=self._seq_lens,
+                                prev_action_batch=in_dict.get(
+                                    SampleBatch.PREV_ACTIONS),
+                                prev_reward_batch=in_dict.get(
+                                    SampleBatch.PREV_REWARDS),
+                                explore=explore,
+                                is_training=in_dict["is_training"])
+                    else:
+                        raise e
+
             # Default distribution generation behavior:
             # Pass through model. E.g., PG, PPO.
             else:
@@ -580,22 +603,26 @@ class DynamicTFPolicy(TFPolicy):
             # Add those needed for postprocessing and training.
             all_accessed_keys = train_batch.accessed_keys | \
                                 batch_for_postproc.accessed_keys
-            # Tag those only needed for post-processing.
+            # Tag those only needed for post-processing (with some exceptions).
             for key in batch_for_postproc.accessed_keys:
                 if key not in train_batch.accessed_keys and \
-                        key not in self.model.view_requirements:
+                        key not in self.model.view_requirements and \
+                        key not in [
+                            SampleBatch.EPS_ID, SampleBatch.AGENT_INDEX,
+                            SampleBatch.UNROLL_ID, SampleBatch.DONES,
+                            SampleBatch.REWARDS, SampleBatch.INFOS]:
                     if key in self.view_requirements:
                         self.view_requirements[key].used_for_training = False
                     if key in self._loss_input_dict:
                         del self._loss_input_dict[key]
             # Remove those not needed at all (leave those that are needed
             # by Sampler to properly execute sample collection).
-            # Also always leave DONES and REWARDS, no matter what.
+            # Also always leave DONES, REWARDS, and INFOS, no matter what.
             for key in list(self.view_requirements.keys()):
                 if key not in all_accessed_keys and key not in [
                     SampleBatch.EPS_ID, SampleBatch.AGENT_INDEX,
                     SampleBatch.UNROLL_ID, SampleBatch.DONES,
-                    SampleBatch.REWARDS] and \
+                    SampleBatch.REWARDS, SampleBatch.INFOS] and \
                         key not in self.model.view_requirements:
                     # If user deleted this key manually in postprocessing
                     # fn, warn about it and do not remove from

@@ -34,6 +34,7 @@ from ray.includes.common cimport (
     CWorkerType,
     CLanguage,
     CGcsClientOptions,
+    CJobConfig,
 )
 from ray.includes.function_descriptor cimport (
     CFunctionDescriptor,
@@ -86,8 +87,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         c_string ExtensionData() const
 
     cdef cppclass CCoreWorker "ray::CoreWorker":
-        CWorkerType &GetWorkerType()
-        CLanguage &GetLanguage()
+        CWorkerType GetWorkerType()
+        CLanguage GetLanguage()
 
         void SubmitTask(
             const CRayFunction &function,
@@ -169,20 +170,25 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CRayStatus Put(const CRayObject &object,
                        const c_vector[CObjectID] &contained_object_ids,
                        const CObjectID &object_id)
-        CRayStatus Create(const shared_ptr[CBuffer] &metadata,
-                          const size_t data_size,
-                          const c_vector[CObjectID] &contained_object_ids,
-                          CObjectID *object_id, shared_ptr[CBuffer] *data)
-        CRayStatus Create(const shared_ptr[CBuffer] &metadata,
-                          const size_t data_size,
-                          const CObjectID &object_id,
-                          const CAddress &owner_address,
-                          shared_ptr[CBuffer] *data)
-        CRayStatus Seal(const CObjectID &object_id, c_bool pin_object)
+        CRayStatus CreateOwned(const shared_ptr[CBuffer] &metadata,
+                               const size_t data_size,
+                               const c_vector[CObjectID] &contained_object_ids,
+                               CObjectID *object_id, shared_ptr[CBuffer] *data)
+        CRayStatus CreateExisting(const shared_ptr[CBuffer] &metadata,
+                                  const size_t data_size,
+                                  const CObjectID &object_id,
+                                  const CAddress &owner_address,
+                                  shared_ptr[CBuffer] *data)
+        CRayStatus SealOwned(const CObjectID &object_id, c_bool pin_object)
+        CRayStatus SealExisting(const CObjectID &object_id, c_bool pin_object)
         CRayStatus Get(const c_vector[CObjectID] &ids, int64_t timeout_ms,
                        c_vector[shared_ptr[CRayObject]] *results,
                        c_bool plasma_objects_only)
-        CRayStatus Contains(const CObjectID &object_id, c_bool *has_object)
+        CRayStatus GetIfLocal(
+            const c_vector[CObjectID] &ids,
+            c_vector[shared_ptr[CRayObject]] *results)
+        CRayStatus Contains(const CObjectID &object_id, c_bool *has_object,
+                            c_bool *is_in_plasma)
         CRayStatus Wait(const c_vector[CObjectID] &object_ids, int num_objects,
                         int64_t timeout_ms, c_vector[c_bool] *results,
                         c_bool fetch_local)
@@ -206,6 +212,10 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                                const double capacity,
                                const CNodeID &client_Id)
         CRayStatus SpillObjects(const c_vector[CObjectID] &object_ids)
+
+        CJobConfig GetJobConfig()
+
+        c_bool IsExiting() const
 
     cdef cppclass CCoreWorkerOptions "ray::CoreWorkerOptions":
         CWorkerType worker_type
@@ -237,13 +247,16 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         (void(const CWorkerID &) nogil) on_worker_shutdown
         (CRayStatus() nogil) check_signals
         (void() nogil) gc_collect
-        (c_vector[c_string](const c_vector[CObjectID] &) nogil) spill_objects
+        (c_vector[c_string](
+            const c_vector[CObjectID] &,
+            const c_vector[c_string] &) nogil) spill_objects
         (int64_t(
             const c_vector[CObjectID] &,
             const c_vector[c_string] &) nogil) restore_spilled_objects
         (void(
             const c_vector[c_string]&,
             CWorkerType) nogil) delete_spilled_objects
+        (void(const CRayObject&) nogil) unhandled_exception_handler
         (void(c_string *stack_out) nogil) get_lang_stack
         c_bool ref_counting_enabled
         c_bool is_local_mode
