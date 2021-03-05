@@ -199,19 +199,12 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
 
     @staticmethod
     def _get_mem_usage():
-        in_container = os.path.exists("/sys/fs/cgroup/memory/")
-        # If in a container, use ray.utils memory functions, which access
-        # data about the container, rather than the physical host.
-        if in_container:
-            total = ray.utils.get_system_memory()
-            used = ray.utils.get_used_memory()
-            available = total - used
-            # This format matches psutil.virtual_memory().percent:
-            percent = round(used / total, 3) * 100
-            return total, available, percent, used
-        else:
-            vm = psutil.virtual_memory()
-            return vm.total, vm.available, vm.percent, vm.used
+        total = ray.utils.get_system_memory()
+        used = ray.utils.get_used_memory()
+        available = total - used
+        # This format matches psutil.virtual_memory().percent:
+        percent = round(used / total, 3) * 100
+        return total, available, percent, used
 
     @staticmethod
     def _get_disk_usage():
