@@ -202,7 +202,6 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
         total = ray.utils.get_system_memory()
         used = ray.utils.get_used_memory()
         available = total - used
-        # This format matches psutil.virtual_memory().percent:
         percent = round(used / total, 3) * 100
         return total, available, percent, used
 
