@@ -257,10 +257,6 @@ message TaskLeaseData {
   uint64 timeout = 4;
 }
 
-message RuntimeEnv {
-  string working_dir_uri = 1;
-}
-
 message JobConfig {
   // Environment variables to be set on worker processes.
   map<string, string> worker_env = 1;
