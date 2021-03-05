@@ -516,11 +516,15 @@ class FunctionRunner(Trainable):
             pass
 
 
-def wrap_function(train_func, warn=True):
+def wrap_function(train_func, durable=False, warn=True):
+    inherit_from = (FunctionRunner, )
+
     if hasattr(train_func, "__mixins__"):
-        inherit_from = train_func.__mixins__ + (FunctionRunner, )
-    else:
-        inherit_from = (FunctionRunner, )
+        inherit_from = train_func.__mixins__ + inherit_from
+
+    if durable:
+        from ray.tune import DurableTrainable
+        inherit_from = (DurableTrainable, ) + inherit_from
 
     func_args = inspect.getfullargspec(train_func).args
     use_checkpoint = detect_checkpoint_function(train_func)
@@ -617,7 +621,7 @@ def with_parameters(fn, **kwargs):
         )
 
     """
-    if not callable(fn):
+    if not callable(fn) or inspect.isclass(fn):
         raise ValueError(
             "`tune.with_parameters()` only works with the function API. "
             "If you want to pass parameters to Trainable _classes_, consider "
@@ -627,7 +631,7 @@ def with_parameters(fn, **kwargs):
     for k, v in kwargs.items():
         parameter_registry.put(prefix + k, v)
 
-    use_checkpoint = detect_checkpoint_function(fn)
+    use_checkpoint = detect_checkpoint_function(fn, partial=True)
     keys = list(kwargs.keys())
 
     def inner(config, checkpoint_dir=None):
@@ -644,11 +648,16 @@ def with_parameters(fn, **kwargs):
             fn_kwargs[k] = parameter_registry.get(prefix + k)
         fn(config, **fn_kwargs)
 
+    fn_name = getattr(fn, "__name__", "tune_with_parameters")
+    inner.__name__ = fn_name
+
     # Use correct function signature if no `checkpoint_dir` parameter is set
     if not use_checkpoint:
 
         def _inner(config):
             inner(config, checkpoint_dir=None)
+
+        _inner.__name__ = fn_name
 
         if hasattr(fn, "__mixins__"):
             _inner.__mixins__ = fn.__mixins__
@@ -656,4 +665,5 @@ def with_parameters(fn, **kwargs):
 
     if hasattr(fn, "__mixins__"):
         inner.__mixins__ = fn.__mixins__
+
     return inner

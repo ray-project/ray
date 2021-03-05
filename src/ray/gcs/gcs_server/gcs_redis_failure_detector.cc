@@ -23,12 +23,14 @@ GcsRedisFailureDetector::GcsRedisFailureDetector(
     boost::asio::io_service &io_service, std::shared_ptr<RedisContext> redis_context,
     std::function<void()> callback)
     : redis_context_(redis_context),
-      detect_timer_(io_service),
+      periodical_runner_(io_service),
       callback_(std::move(callback)) {}
 
 void GcsRedisFailureDetector::Start() {
   RAY_LOG(INFO) << "Starting redis failure detector.";
-  Tick();
+  periodical_runner_.RunFnPeriodically(
+      [this] { DetectRedis(); },
+      RayConfig::instance().gcs_redis_heartbeat_interval_milliseconds());
 }
 
 void GcsRedisFailureDetector::DetectRedis() {
@@ -45,25 +47,6 @@ void GcsRedisFailureDetector::DetectRedis() {
     RAY_LOG(ERROR) << "Redis is disconnected.";
     callback_();
   }
-}
-
-/// A periodic timer that checks for timed out clients.
-void GcsRedisFailureDetector::Tick() {
-  DetectRedis();
-  ScheduleTick();
-}
-
-void GcsRedisFailureDetector::ScheduleTick() {
-  auto detect_period = boost::posix_time::milliseconds(
-      RayConfig::instance().gcs_redis_heartbeat_interval_milliseconds());
-  detect_timer_.expires_from_now(detect_period);
-  detect_timer_.async_wait([this](const boost::system::error_code &error) {
-    if (error == boost::asio::error::operation_aborted) {
-      return;
-    }
-    RAY_CHECK(!error) << "Detecting redis failed with error: " << error.message();
-    Tick();
-  });
 }
 
 }  // namespace gcs

@@ -64,12 +64,6 @@ parser.add_argument(
     default=ray_constants.LOGGER_FORMAT,
     help=ray_constants.LOGGER_FORMAT_HELP)
 parser.add_argument(
-    "--config-list",
-    required=False,
-    type=str,
-    default=None,
-    help="Override internal config options for the worker process.")
-parser.add_argument(
     "--temp-dir",
     required=False,
     type=str,
@@ -109,6 +103,21 @@ parser.add_argument(
     help="A list of directories or jar files separated by colon that specify "
     "the search path for user code. This will be used as `CLASSPATH` in "
     "Java and `PYTHONPATH` in Python.")
+parser.add_argument(
+    "--logging-rotate-bytes",
+    required=False,
+    type=int,
+    default=ray_constants.LOGGING_ROTATE_BYTES,
+    help="Specify the max bytes for rotating "
+    "log file, default is "
+    f"{ray_constants.LOGGING_ROTATE_BYTES} bytes.")
+parser.add_argument(
+    "--logging-rotate-backup-count",
+    required=False,
+    type=int,
+    default=ray_constants.LOGGING_ROTATE_BACKUP_COUNT,
+    help="Specify the backup count of rotated log file, default is "
+    f"{ray_constants.LOGGING_ROTATE_BACKUP_COUNT}.")
 if __name__ == "__main__":
     # NOTE(sang): For some reason, if we move the code below
     # to a separate function, tensorflow will capture that method

@@ -5,6 +5,7 @@ import json
 import time
 import logging
 import asyncio
+import subprocess
 import collections
 
 import numpy as np
@@ -21,6 +22,7 @@ from ray.test_utils import (format_web_url, wait_for_condition,
                             wait_until_succeeded_without_exception)
 from ray.autoscaler._private.util import (DEBUG_AUTOSCALING_STATUS_LEGACY,
                                           DEBUG_AUTOSCALING_ERROR)
+from ray.new_dashboard import dashboard
 import ray.new_dashboard.consts as dashboard_consts
 import ray.new_dashboard.utils as dashboard_utils
 import ray.new_dashboard.modules
@@ -144,7 +146,7 @@ def test_basic(ray_start_with_dashboard):
 
     # Check redis keys are set.
     logger.info("Check redis keys are set.")
-    dashboard_address = client.get(dashboard_consts.REDIS_KEY_DASHBOARD)
+    dashboard_address = client.get(ray_constants.REDIS_KEY_DASHBOARD)
     assert dashboard_address is not None
     dashboard_rpc_address = client.get(
         dashboard_consts.REDIS_KEY_DASHBOARD_RPC)
@@ -208,10 +210,10 @@ def test_http_get(enable_test_module, ray_start_with_dashboard):
 
     target_url = webui_url + "/test/dump"
 
-    timeout_seconds = 10
+    timeout_seconds = 30
     start_time = time.time()
     while True:
-        time.sleep(1)
+        time.sleep(3)
         try:
             response = requests.get(webui_url + "/test/http_get?url=" +
                                     target_url)
@@ -569,6 +571,85 @@ def test_immutable_types():
     d3 = dashboard_utils.ImmutableList([1, np.zeros([3, 5])])
     with pytest.raises(TypeError):
         print(d3[1])
+
+
+def test_http_proxy(enable_test_module, set_http_proxy, shutdown_only):
+    address_info = ray.init(num_cpus=1, include_dashboard=True)
+    assert (wait_until_server_available(address_info["webui_url"]) is True)
+
+    webui_url = address_info["webui_url"]
+    webui_url = format_web_url(webui_url)
+
+    timeout_seconds = 10
+    start_time = time.time()
+    while True:
+        time.sleep(1)
+        try:
+            response = requests.get(
+                webui_url + "/test/dump",
+                proxies={
+                    "http": None,
+                    "https": None
+                })
+            response.raise_for_status()
+            try:
+                response.json()
+                assert response.ok
+            except Exception as ex:
+                logger.info("failed response: %s", response.text)
+                raise ex
+            break
+        except (AssertionError, requests.exceptions.ConnectionError) as e:
+            logger.info("Retry because of %s", e)
+        finally:
+            if time.time() > start_time + timeout_seconds:
+                raise Exception("Timed out while testing.")
+
+
+def test_dashboard_port_conflict(ray_start_with_dashboard):
+    assert (wait_until_server_available(ray_start_with_dashboard["webui_url"])
+            is True)
+    address_info = ray_start_with_dashboard
+    address = address_info["redis_address"]
+    address = address.split(":")
+    assert len(address) == 2
+
+    client = redis.StrictRedis(
+        host=address[0],
+        port=int(address[1]),
+        password=ray_constants.REDIS_DEFAULT_PASSWORD)
+
+    host, port = address_info["webui_url"].split(":")
+    temp_dir = "/tmp/ray"
+    log_dir = "/tmp/ray/session_latest/logs"
+    dashboard_cmd = [
+        sys.executable, dashboard.__file__, f"--host={host}", f"--port={port}",
+        f"--temp-dir={temp_dir}", f"--log-dir={log_dir}",
+        f"--redis-address={address[0]}:{address[1]}",
+        f"--redis-password={ray_constants.REDIS_DEFAULT_PASSWORD}"
+    ]
+    logger.info("The dashboard should be exit: %s", dashboard_cmd)
+    p = subprocess.Popen(dashboard_cmd)
+    p.wait(5)
+
+    dashboard_cmd.append(f"--port-retries=10")
+    subprocess.Popen(dashboard_cmd)
+
+    timeout_seconds = 10
+    start_time = time.time()
+    while True:
+        time.sleep(1)
+        try:
+            dashboard_url = client.get(ray_constants.REDIS_KEY_DASHBOARD)
+            if dashboard_url:
+                new_port = int(dashboard_url.split(b":")[-1])
+                assert new_port > int(port)
+                break
+        except AssertionError as e:
+            logger.info("Retry because of %s", e)
+        finally:
+            if time.time() > start_time + timeout_seconds:
+                raise Exception("Timed out while testing.")
 
 
 if __name__ == "__main__":

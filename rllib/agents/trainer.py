@@ -52,7 +52,7 @@ COMMON_CONFIG: TrainerConfigDict = {
     # Number of rollout worker actors to create for parallel sampling. Setting
     # this to 0 will force rollouts to be done in the trainer actor.
     "num_workers": 2,
-    # Number of environments to evaluate vectorwise per worker. This enables
+    # Number of environments to evaluate vector-wise per worker. This enables
     # model inference batching, which can improve performance for inference
     # bottlenecked workloads.
     "num_envs_per_worker": 1,
@@ -120,10 +120,18 @@ COMMON_CONFIG: TrainerConfigDict = {
     # set this if soft_horizon=True, unless your env is actually running
     # forever without returning done=True.
     "no_done_at_end": False,
-    # Arguments to pass to the env creator.
-    "env_config": {},
     # Environment name can also be passed via config.
     "env": None,
+    # Arguments to pass to the env creator.
+    "env_config": {},
+    # If True, try to render the environment on the local worker or on worker
+    # 1 (if num_workers > 0). For vectorized envs, this usually means that only
+    # the first sub-environment will be rendered.
+    "render_env": False,
+    # If True, store evaluation videos in the output dir.
+    # Alternatively, provide a path (str) to a directory here, where the env
+    # recordings should be stored instead.
+    "record_env": False,
     # Unsquash actions to the upper and lower bounds of env's action space
     "normalize_actions": False,
     # Whether to clip rewards during Policy's postprocessing.
@@ -213,9 +221,10 @@ COMMON_CONFIG: TrainerConfigDict = {
     },
     # Number of parallel workers to use for evaluation. Note that this is set
     # to zero by default, which means evaluation will be run in the trainer
-    # process. If you increase this, it will increase the Ray resource usage
-    # of the trainer since evaluation workers are created separately from
-    # rollout workers.
+    # process (only if evaluation_interval is not None). If you increase this,
+    # it will increase the Ray resource usage of the trainer since evaluation
+    # workers are created separately from rollout workers (used to sample data
+    # for training).
     "evaluation_num_workers": 0,
     # Customize the evaluation method. This must be a function of signature
     # (trainer: Trainer, eval_workers: WorkerSet) -> metrics: dict. See the
@@ -307,11 +316,6 @@ COMMON_CONFIG: TrainerConfigDict = {
     # Number of CPUs to allocate for the trainer. Note: this only takes effect
     # when running in Tune. Otherwise, the trainer runs in the main program.
     "num_cpus_for_driver": 1,
-    # Deprecated.
-    "memory": 0,
-    "object_store_memory": 0,
-    "memory_per_worker": 0,
-    "object_store_memory_per_worker": 0,
 
     # === Offline Datasets ===
     # Specify how to generate experiences:
@@ -384,11 +388,6 @@ COMMON_CONFIG: TrainerConfigDict = {
     # Define logger-specific configuration to be used inside Logger
     # Default value None allows overwriting with nested dicts
     "logger_config": None,
-
-    # === Replay Settings ===
-    # The number of contiguous environment steps to replay at once. This may
-    # be set to greater than 1 to support recurrent models.
-    "replay_sequence_length": 1,
 }
 # __sphinx_doc_end__
 # yapf: enable
@@ -496,13 +495,8 @@ class Trainer(Trainable):
         return Resources(
             cpu=cf["num_cpus_for_driver"],
             gpu=cf["num_gpus"],
-            memory=cf["memory"],
-            object_store_memory=cf["object_store_memory"],
             extra_cpu=cf["num_cpus_per_worker"] * num_workers,
-            extra_gpu=cf["num_gpus_per_worker"] * num_workers,
-            extra_memory=cf["memory_per_worker"] * num_workers,
-            extra_object_store_memory=cf["object_store_memory_per_worker"] *
-            num_workers)
+            extra_gpu=cf["num_gpus_per_worker"] * num_workers)
 
     @override(Trainable)
     @PublicAPI
@@ -534,14 +528,6 @@ class Trainer(Trainable):
 
         if hasattr(self, "workers") and isinstance(self.workers, WorkerSet):
             self._sync_filters_if_needed(self.workers)
-
-        if self.config["evaluation_interval"] == 1 or (
-                self._iteration > 0 and self.config["evaluation_interval"]
-                and self._iteration % self.config["evaluation_interval"] == 0):
-            evaluation_metrics = self._evaluate()
-            assert isinstance(evaluation_metrics, dict), \
-                "_evaluate() needs to return a dict."
-            result.update(evaluation_metrics)
 
         return result
 
@@ -670,7 +656,6 @@ class Trainer(Trainable):
                     extra_config["in_evaluation"] is True
                 extra_config.update({
                     "batch_mode": "complete_episodes",
-                    "rollout_fragment_length": 1,
                     "in_evaluation": True,
                 })
                 logger.debug(
@@ -1102,7 +1087,7 @@ class Trainer(Trainable):
             if model_config.get("_time_major"):
                 raise ValueError("`model._time_major` only supported "
                                  "iff `_use_trajectory_view_api` is True!")
-            elif traj_view_framestacks != "auto":
+            elif traj_view_framestacks not in ["auto", 0]:
                 raise ValueError("`model.num_framestacks` only supported "
                                  "iff `_use_trajectory_view_api` is True!")
             model_config["num_framestacks"] = 0

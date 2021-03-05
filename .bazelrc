@@ -15,16 +15,15 @@ build:clang-cl --compiler=clang-cl
 build:msvc --compiler=msvc-cl
 # `LC_ALL` and `LANG` is needed for cpp worker tests, because they will call "ray start".
 # If we don't add them, python's `click` library will raise an error.
-test --action_env=LC_ALL
-test --action_env=LANG
+build --action_env=LC_ALL
+build --action_env=LANG
 # Allow C++ worker tests to execute "ray start" with the correct version of Python.
-test --action_env=VIRTUAL_ENV
-test --action_env=PYENV_VIRTUAL_ENV
-test --action_env=PYENV_VERSION
-test --action_env=PYENV_SHELL
-test --action_env=RAY_ENABLE_NEW_SCHEDULER
+build --action_env=VIRTUAL_ENV
+build --action_env=PYENV_VIRTUAL_ENV
+build --action_env=PYENV_VERSION
+build --action_env=PYENV_SHELL
 # This is needed for some core tests to run correctly
-test:windows --enable_runfiles
+build:windows --enable_runfiles
 # TODO(mehrdadn): Revert the "-\\.(asm|S)$" exclusion when this Bazel bug
 #                 for compiling assembly files is fixed on Windows:
 #                 https://github.com/bazelbuild/bazel/issues/8924
@@ -95,22 +94,24 @@ test:asan --test_env=ASAN_OPTIONS="detect_leaks=0"
 test:asan --test_env=LD_PRELOAD="/usr/lib/x86_64-linux-gnu/libasan.so.2 /usr/lib/gcc/x86_64-linux-gnu/7/libasan.so"
 # For example, for Ubuntu 18.04 libasan can be found here:
 # test:asan --test_env=LD_PRELOAD="/usr/lib/gcc/x86_64-linux-gnu/7/libasan.so"
+test:asan-buildkite --test_env=LD_PRELOAD="/usr/lib/x86_64-linux-gnu/libasan.so.5"
 
 # CI configuration:
 aquery:ci --color=no
 aquery:ci --noshow_progress
 build:ci --color=yes
 build:ci --curses=no
-build:ci --disk_cache=~/ray-bazel-cache
 build:ci --keep_going
-build:ci --remote_cache="https://storage.googleapis.com/ray-bazel-cache"
 build:ci --progress_report_interval=100
 build:ci --show_progress_rate_limit=15
 build:ci --show_task_finish
 build:ci --ui_actions_shown=1024
-build:ci-travis --show_timestamps  # Travis doesn't have an option to show timestamps, but GitHub Actions does
-# GitHub Actions has low disk space, so prefer hardlinks there.
-build:ci-github --experimental_repository_cache_hardlinks
+build:ci --show_timestamps
+build:ci-travis --disk_cache=~/ray-bazel-cache
+build:ci-travis --remote_cache="https://storage.googleapis.com/ray-bazel-cache"
+build:ci-github --experimental_repository_cache_hardlinks # GitHub Actions has low disk space, so prefer hardlinks there.
+build:ci-github --disk_cache=~/ray-bazel-cache
+build:ci-github --remote_cache="https://storage.googleapis.com/ray-bazel-cache"
 test:ci --flaky_test_attempts=3
 test:ci --nocache_test_results
 test:ci --spawn_strategy=local

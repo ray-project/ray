@@ -66,16 +66,26 @@ Raylet::Raylet(boost::asio::io_service &main_service, const std::string &socket_
       object_directory_(
           RayConfig::instance().ownership_based_object_directory_enabled()
               ? std::dynamic_pointer_cast<ObjectDirectoryInterface>(
-                    std::make_shared<OwnershipBasedObjectDirectory>(main_service,
-                                                                    gcs_client_))
+                    std::make_shared<OwnershipBasedObjectDirectory>(
+                        main_service, gcs_client_,
+
+                        [this](const ObjectID &obj_id) {
+                          rpc::ObjectReference ref;
+                          ref.set_object_id(obj_id.Binary());
+                          node_manager_.MarkObjectsAsFailed(
+                              ErrorType::OBJECT_UNRECONSTRUCTABLE, {ref}, JobID::Nil());
+                        }
+
+                        ))
               : std::dynamic_pointer_cast<ObjectDirectoryInterface>(
                     std::make_shared<ObjectDirectory>(main_service, gcs_client_))),
       object_manager_(
           main_service, self_node_id_, object_manager_config, object_directory_,
-          [this](const ObjectID &object_id, const std::string &spilled_url,
+          [this](const ObjectID &object_id, const std::string &object_url,
+                 const NodeID &node_id,
                  std::function<void(const ray::Status &)> callback) {
             node_manager_.GetLocalObjectManager().AsyncRestoreSpilledObject(
-                object_id, spilled_url, callback);
+                object_id, object_url, node_id, callback);
           },
           [this]() {
             // This callback is called from the plasma store thread.
@@ -123,6 +133,7 @@ void Raylet::Start() {
 void Raylet::Stop() {
   object_manager_.Stop();
   RAY_CHECK_OK(gcs_client_->Nodes().UnregisterSelf());
+  node_manager_.Stop();
   acceptor_.close();
 }
 
@@ -173,11 +184,15 @@ void Raylet::HandleAccept(const boost::system::error_code &error) {
                                             const std::vector<uint8_t> &message) {
       node_manager_.ProcessClientMessage(client, message_type, message.data());
     };
+    flatbuffers::FlatBufferBuilder fbb;
+    fbb.Finish(protocol::CreateDisconnectClient(fbb));
+    std::vector<uint8_t> message_data(fbb.GetBufferPointer(),
+                                      fbb.GetBufferPointer() + fbb.GetSize());
     // Accept a new local client and dispatch it to the node manager.
     auto new_connection = ClientConnection::Create(
         client_handler, message_handler, std::move(socket_), "worker",
         node_manager_message_enum,
-        static_cast<int64_t>(protocol::MessageType::DisconnectClient));
+        static_cast<int64_t>(protocol::MessageType::DisconnectClient), message_data);
   }
   // We're ready to accept another client.
   DoAccept();

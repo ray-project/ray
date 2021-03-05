@@ -18,6 +18,7 @@
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/gcs/redis_client.h"
 #include "ray/rpc/gcs_server/gcs_rpc_client.h"
+#include "ray/util/periodical_runner.h"
 
 namespace ray {
 namespace gcs {
@@ -66,8 +67,8 @@ class RAY_EXPORT ServiceBasedGcsClient : public GcsClient {
   std::unique_ptr<rpc::GcsRpcClient> gcs_rpc_client_;
   std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
 
-  // A timer used to check if gcs server address changed.
-  std::unique_ptr<boost::asio::deadline_timer> detect_timer_;
+  // The runner to run function periodically.
+  std::unique_ptr<PeriodicalRunner> periodical_runner_;
   std::function<bool(std::pair<std::string, int> *)> get_server_address_func_;
   std::function<void(bool)> resubscribe_func_;
   std::pair<std::string, int> current_gcs_server_address_;

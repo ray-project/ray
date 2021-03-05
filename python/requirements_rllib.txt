@@ -10,3 +10,16 @@ smart_open
 pybullet
 # For tests on PettingZoo's multi-agent envs.
 pettingzoo>=1.4.0
+# For tests on RecSim and Kaggle envs.
+recsim
+kaggle_environments
+
+# For MAML on PyTorch.
+higher
+
+# Unity3D testing
+mlagents
+mlagents_envs
+
+# Ray Serve example
+starlette

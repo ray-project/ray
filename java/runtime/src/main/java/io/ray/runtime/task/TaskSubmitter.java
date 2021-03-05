@@ -6,11 +6,10 @@ import io.ray.api.id.ObjectId;
 import io.ray.api.id.PlacementGroupId;
 import io.ray.api.options.ActorCreationOptions;
 import io.ray.api.options.CallOptions;
+import io.ray.api.options.PlacementGroupCreationOptions;
 import io.ray.api.placementgroup.PlacementGroup;
-import io.ray.api.placementgroup.PlacementStrategy;
 import io.ray.runtime.functionmanager.FunctionDescriptor;
 import java.util.List;
-import java.util.Map;
 
 /** A set of methods to submit tasks and create actors. */
 public interface TaskSubmitter {
@@ -21,7 +20,8 @@ public interface TaskSubmitter {
    * @param functionDescriptor The remote function to execute.
    * @param args Arguments of this task.
    * @param numReturns Return object count.
-   * @param options Options for this task. Returns Ids of the return objects.
+   * @param options Options for this task.
+   * @return Ids of the return objects.
    */
   List<ObjectId> submitTask(
       FunctionDescriptor functionDescriptor,
@@ -34,7 +34,8 @@ public interface TaskSubmitter {
    *
    * @param functionDescriptor The remote function that generates the actor object.
    * @param args Arguments of this task.
-   * @param options Options for this actor creation task. Returns Handle to the actor.
+   * @param options Options for this actor creation task.
+   * @return Handle to the actor.
    * @throws IllegalArgumentException if actor of specified name exists
    */
   BaseActorHandle createActor(
@@ -48,7 +49,8 @@ public interface TaskSubmitter {
    * @param functionDescriptor The remote function to execute.
    * @param args Arguments of this task.
    * @param numReturns Return object count.
-   * @param options Options for this task. Returns Ids of the return objects.
+   * @param options Options for this task.
+   * @return Ids of the return objects.
    */
   List<ObjectId> submitActorTask(
       BaseActorHandle actor,
@@ -60,12 +62,10 @@ public interface TaskSubmitter {
   /**
    * Create a placement group.
    *
-   * @param name Name of the placement group.
-   * @param bundles Pre-allocated resource list.
-   * @param strategy Actor placement strategy. Returns A handle to the created placement group.
+   * @param creationOptions Creation options of the placement group.
+   * @return A handle to the created placement group.
    */
-  PlacementGroup createPlacementGroup(
-      String name, List<Map<String, Double>> bundles, PlacementStrategy strategy);
+  PlacementGroup createPlacementGroup(PlacementGroupCreationOptions creationOptions);
 
   /**
    * Remove a placement group by id.
@@ -78,8 +78,8 @@ public interface TaskSubmitter {
    * Wait for the placement group to be ready within the specified time.
    *
    * @param id Id of placement group.
-   * @param timeoutMs Timeout in milliseconds. Returns True if the placement group is created. False
-   *     otherwise.
+   * @param timeoutMs Timeout in milliseconds.
+   * @return True if the placement group is created. False otherwise.
    */
   boolean waitPlacementGroupReady(PlacementGroupId id, int timeoutMs);
 

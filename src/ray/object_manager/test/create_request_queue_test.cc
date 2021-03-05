@@ -46,26 +46,34 @@ class MockClient : public ClientInterface {
 class CreateRequestQueueTest : public ::testing::Test {
  public:
   CreateRequestQueueTest()
-      : queue_(
-            /*max_retries=*/2,
-            /*evict_if_full=*/true,
+      : oom_grace_period_s_(1),
+        current_time_ns_(0),
+        queue_(
+            /*oom_grace_period_s=*/oom_grace_period_s_,
             /*spill_object_callback=*/[&]() { return false; },
-            /*on_global_gc=*/[&]() { num_global_gc_++; }) {}
+            /*on_global_gc=*/[&]() { num_global_gc_++; },
+            /*get_time=*/[&]() { return current_time_ns_; }) {}
 
   void AssertNoLeaks() {
     ASSERT_TRUE(queue_.queue_.empty());
     ASSERT_TRUE(queue_.fulfilled_requests_.empty());
   }
 
+  void TearDown() { current_time_ns_ = 0; }
+
+  int64_t oom_grace_period_s_;
+  int64_t current_time_ns_;
   CreateRequestQueue queue_;
   int num_global_gc_ = 0;
 };
 
 TEST_F(CreateRequestQueueTest, TestSimple) {
-  auto request = [&](bool evict_if_full, PlasmaObject *result) {
+  auto request = [&](PlasmaObject *result) {
     result->data_size = 1234;
     return PlasmaError::OK;
   };
+  // Advance the clock without processing objects. This shouldn't have an impact.
+  current_time_ns_ += 10e9;
   auto client = std::make_shared<MockClient>();
   auto req_id = queue_.AddRequest(ObjectID::Nil(), client, request);
   ASSERT_REQUEST_UNFINISHED(queue_, req_id);
@@ -96,10 +104,8 @@ TEST_F(CreateRequestQueueTest, TestSimple) {
 }
 
 TEST_F(CreateRequestQueueTest, TestOom) {
-  auto oom_request = [&](bool evict_if_full, PlasmaObject *result) {
-    return PlasmaError::OutOfMemory;
-  };
-  auto blocked_request = [&](bool evict_if_full, PlasmaObject *result) {
+  auto oom_request = [&](PlasmaObject *result) { return PlasmaError::OutOfMemory; };
+  auto blocked_request = [&](PlasmaObject *result) {
     result->data_size = 1234;
     return PlasmaError::OK;
   };
@@ -115,8 +121,9 @@ TEST_F(CreateRequestQueueTest, TestOom) {
   ASSERT_REQUEST_UNFINISHED(queue_, req_id2);
   ASSERT_EQ(num_global_gc_, 2);
 
-  // Retries used up. The first request should reply with OOM and the second
+  // Grace period is done. The first request should reply with OOM and the second
   // request should also be served.
+  current_time_ns_ += oom_grace_period_s_ * 2e9;
   ASSERT_TRUE(queue_.ProcessRequests().ok());
   ASSERT_EQ(num_global_gc_, 3);
 
@@ -129,17 +136,16 @@ TEST_F(CreateRequestQueueTest, TestOom) {
 
 TEST(CreateRequestQueueParameterTest, TestOomInfiniteRetry) {
   int num_global_gc_ = 0;
+  int64_t current_time_ns;
   CreateRequestQueue queue(
-      /*max_retries=*/-1,
-      /*evict_if_full=*/true,
+      /*oom_grace_period_s=*/100,
       // Spilling is failing.
       /*spill_object_callback=*/[&]() { return false; },
-      /*on_global_gc=*/[&]() { num_global_gc_++; });
+      /*on_global_gc=*/[&]() { num_global_gc_++; },
+      /*get_time=*/[&]() { return current_time_ns; });
 
-  auto oom_request = [&](bool evict_if_full, PlasmaObject *result) {
-    return PlasmaError::OutOfMemory;
-  };
-  auto blocked_request = [&](bool evict_if_full, PlasmaObject *result) {
+  auto oom_request = [&](PlasmaObject *result) { return PlasmaError::OutOfMemory; };
+  auto blocked_request = [&](PlasmaObject *result) {
     result->data_size = 1234;
     return PlasmaError::OK;
   };
@@ -148,7 +154,9 @@ TEST(CreateRequestQueueParameterTest, TestOomInfiniteRetry) {
   auto req_id1 = queue.AddRequest(ObjectID::Nil(), client, oom_request);
   auto req_id2 = queue.AddRequest(ObjectID::Nil(), client, blocked_request);
 
-  for (int i = 0; i < 3; i++) {
+  for (int i = 0; i < 10; i++) {
+    // Advance 1 second.
+    current_time_ns += 1e9;
     ASSERT_TRUE(queue.ProcessRequests().IsObjectStoreFull());
     ASSERT_EQ(num_global_gc_, i + 1);
   }
@@ -160,19 +168,19 @@ TEST(CreateRequestQueueParameterTest, TestOomInfiniteRetry) {
 
 TEST_F(CreateRequestQueueTest, TestTransientOom) {
   CreateRequestQueue queue(
-      /*max_retries=*/2,
-      /*evict_if_full=*/false,
+      /*oom_grace_period_s=*/oom_grace_period_s_,
       /*spill_object_callback=*/[&]() { return true; },
-      /*on_global_gc=*/[&]() { num_global_gc_++; });
+      /*on_global_gc=*/[&]() { num_global_gc_++; },
+      /*get_time=*/[&]() { return current_time_ns_; });
 
   auto return_status = PlasmaError::OutOfMemory;
-  auto oom_request = [&](bool evict_if_full, PlasmaObject *result) {
+  auto oom_request = [&](PlasmaObject *result) {
     if (return_status == PlasmaError::OK) {
       result->data_size = 1234;
     }
     return return_status;
   };
-  auto blocked_request = [&](bool evict_if_full, PlasmaObject *result) {
+  auto blocked_request = [&](PlasmaObject *result) {
     result->data_size = 1234;
     return PlasmaError::OK;
   };
@@ -181,14 +189,18 @@ TEST_F(CreateRequestQueueTest, TestTransientOom) {
   auto req_id1 = queue.AddRequest(ObjectID::Nil(), client, oom_request);
   auto req_id2 = queue.AddRequest(ObjectID::Nil(), client, blocked_request);
 
-  // Transient OOM should not use up any retries.
-  for (int i = 0; i < 3; i++) {
+  // Transient OOM should happen until the grace period.
+  for (int i = 0; i < 9; i++) {
+    // Advance 0.1 seconds. OOM grace period is 1 second, so it should return transient
+    // error.
+    current_time_ns_ += 1e8;
     ASSERT_TRUE(queue.ProcessRequests().IsTransientObjectStoreFull());
     ASSERT_REQUEST_UNFINISHED(queue, req_id1);
     ASSERT_REQUEST_UNFINISHED(queue, req_id2);
     ASSERT_EQ(num_global_gc_, i + 1);
   }
 
+  current_time_ns_ += oom_grace_period_s_ * 2e9;
   // Return OK for the first request. The second request should also be served.
   return_status = PlasmaError::OK;
   ASSERT_TRUE(queue.ProcessRequests().ok());
@@ -201,19 +213,19 @@ TEST_F(CreateRequestQueueTest, TestTransientOom) {
 TEST_F(CreateRequestQueueTest, TestTransientOomThenOom) {
   bool is_spilling_possible = true;
   CreateRequestQueue queue(
-      /*max_retries=*/2,
-      /*evict_if_full=*/false,
+      /*oom_grace_period_s=*/oom_grace_period_s_,
       /*spill_object_callback=*/[&]() { return is_spilling_possible; },
-      /*on_global_gc=*/[&]() { num_global_gc_++; });
+      /*on_global_gc=*/[&]() { num_global_gc_++; },
+      /*get_time=*/[&]() { return current_time_ns_; });
 
   auto return_status = PlasmaError::OutOfMemory;
-  auto oom_request = [&](bool evict_if_full, PlasmaObject *result) {
+  auto oom_request = [&](PlasmaObject *result) {
     if (return_status == PlasmaError::OK) {
       result->data_size = 1234;
     }
     return return_status;
   };
-  auto blocked_request = [&](bool evict_if_full, PlasmaObject *result) {
+  auto blocked_request = [&](PlasmaObject *result) {
     result->data_size = 1234;
     return PlasmaError::OK;
   };
@@ -222,8 +234,10 @@ TEST_F(CreateRequestQueueTest, TestTransientOomThenOom) {
   auto req_id1 = queue.AddRequest(ObjectID::Nil(), client, oom_request);
   auto req_id2 = queue.AddRequest(ObjectID::Nil(), client, blocked_request);
 
-  // Transient OOM should not use up any retries.
+  // Transient OOM should not use up any until grace period is done.
   for (int i = 0; i < 3; i++) {
+    // Advance 0.1 seconds. OOM grace period is 1 second.
+    current_time_ns_ += 1e8;
     ASSERT_TRUE(queue.ProcessRequests().IsTransientObjectStoreFull());
     ASSERT_REQUEST_UNFINISHED(queue, req_id1);
     ASSERT_REQUEST_UNFINISHED(queue, req_id2);
@@ -238,8 +252,9 @@ TEST_F(CreateRequestQueueTest, TestTransientOomThenOom) {
   ASSERT_REQUEST_UNFINISHED(queue, req_id2);
   ASSERT_EQ(num_global_gc_, 5);
 
-  // Retries used up. The first request should reply with OOM and the second
+  // Grace period is done. The first request should reply with OOM and the second
   // request should also be served.
+  current_time_ns_ += oom_grace_period_s_ * 2e9;
   ASSERT_TRUE(queue.ProcessRequests().ok());
   ASSERT_REQUEST_FINISHED(queue, req_id1, PlasmaError::OutOfMemory);
   ASSERT_REQUEST_FINISHED(queue, req_id2, PlasmaError::OK);
@@ -248,44 +263,25 @@ TEST_F(CreateRequestQueueTest, TestTransientOomThenOom) {
   AssertNoLeaks();
 }
 
-TEST_F(CreateRequestQueueTest, TestEvictIfFull) {
-  auto oom_request = [&](bool evict_if_full, PlasmaObject *result) {
-    RAY_CHECK(evict_if_full);
-    return PlasmaError::OutOfMemory;
-  };
-
-  auto client = std::make_shared<MockClient>();
-  static_cast<void>(queue_.AddRequest(ObjectID::Nil(), client, oom_request));
-  ASSERT_TRUE(queue_.ProcessRequests().IsObjectStoreFull());
-  ASSERT_TRUE(queue_.ProcessRequests().IsObjectStoreFull());
-}
-
 TEST(CreateRequestQueueParameterTest, TestNoEvictIfFull) {
+  int64_t current_time_ns = 0;
   CreateRequestQueue queue(
-      /*max_retries=*/2,
-      /*evict_if_full=*/false,
+      /*oom_grace_period_s=*/1,
       /*spill_object_callback=*/[&]() { return false; },
-      /*on_global_gc=*/[&]() {});
+      /*on_global_gc=*/[&]() {},
+      /*get_time=*/[&]() { return current_time_ns; });
 
-  bool first_try = true;
-  auto oom_request = [&](bool evict_if_full, PlasmaObject *result) {
-    if (first_try) {
-      RAY_CHECK(!evict_if_full);
-      first_try = false;
-    } else {
-      RAY_CHECK(evict_if_full);
-    }
-    return PlasmaError::OutOfMemory;
-  };
+  auto oom_request = [&](PlasmaObject *result) { return PlasmaError::OutOfMemory; };
 
   auto client = std::make_shared<MockClient>();
   static_cast<void>(queue.AddRequest(ObjectID::Nil(), client, oom_request));
   ASSERT_TRUE(queue.ProcessRequests().IsObjectStoreFull());
+  current_time_ns += 1e8;
   ASSERT_TRUE(queue.ProcessRequests().IsObjectStoreFull());
 }
 
 TEST_F(CreateRequestQueueTest, TestClientDisconnected) {
-  auto request = [&](bool evict_if_full, PlasmaObject *result) {
+  auto request = [&](PlasmaObject *result) {
     result->data_size = 1234;
     return PlasmaError::OK;
   };
@@ -314,7 +310,7 @@ TEST_F(CreateRequestQueueTest, TestClientDisconnected) {
 }
 
 TEST_F(CreateRequestQueueTest, TestTryRequestImmediately) {
-  auto request = [&](bool evict_if_full, PlasmaObject *result) {
+  auto request = [&](PlasmaObject *result) {
     result->data_size = 1234;
     return PlasmaError::OK;
   };
@@ -339,9 +335,7 @@ TEST_F(CreateRequestQueueTest, TestTryRequestImmediately) {
 
   // Queue is empty, but request would block. Check that we do not attempt to
   // retry the request.
-  auto oom_request = [&](bool evict_if_full, PlasmaObject *result) {
-    return PlasmaError::OutOfMemory;
-  };
+  auto oom_request = [&](PlasmaObject *result) { return PlasmaError::OutOfMemory; };
   result = queue_.TryRequestImmediately(ObjectID::Nil(), client, oom_request);
   ASSERT_EQ(result.first.data_size, 0);
   ASSERT_EQ(result.second, PlasmaError::OutOfMemory);
