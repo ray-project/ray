@@ -15,34 +15,31 @@
 #include <gtest/gtest.h>
 #include <ray/api.h>
 
-#include <future>
-#include <thread>
-
 using namespace ray::api;
 
-int Return1() { return 1; }
-int Plus1(int x) { return x + 1; }
+int Return() { return 1; }
+int PlusOne(int x) { return x + 1; }
 
-RAY_REGISTER(Plus1);
+RAY_REGISTER(PlusOne);
 
 TEST(RayApiTest, DuplicateRegister) {
   using namespace ray::api::internal;
 
-  bool r = FunctionManager::Instance().RegisterRemoteFunction("Return1", Return1);
+  bool r = FunctionManager::Instance().RegisterRemoteFunction("Return", Return);
   EXPECT_TRUE(r);
 
   /// Duplicate register
-  bool r1 = FunctionManager::Instance().RegisterRemoteFunction("Return1", Return1);
+  bool r1 = FunctionManager::Instance().RegisterRemoteFunction("Return", Return);
   EXPECT_TRUE(!r1);
 
-  bool r2 = FunctionManager::Instance().RegisterRemoteFunction("Plus1", Plus1);
+  bool r2 = FunctionManager::Instance().RegisterRemoteFunction("PlusOne", PlusOne);
   EXPECT_TRUE(!r2);
 }
 
 TEST(RayApiTest, FindAndExecuteFunction) {
   using namespace ray::api::internal;
   /// Find and call the registered function.
-  auto args = std::make_tuple("Plus1", 1);
+  auto args = std::make_tuple("PlusOne", 1);
   auto buf = Serializer::Serialize(args);
   auto result_buf = TaskExecutionHandler(buf.data(), buf.size());
 
@@ -56,7 +53,7 @@ TEST(RayApiTest, FindAndExecuteFunction) {
 
 TEST(RayApiTest, VoidFunction) {
   using namespace ray::api::internal;
-  auto buf1 = Serializer::Serialize(std::make_tuple("Return1"));
+  auto buf1 = Serializer::Serialize(std::make_tuple("Return"));
   auto result_buf = TaskExecutionHandler(buf1.data(), buf1.size());
   auto response =
       Serializer::Deserialize<VoidResponse>(result_buf.data(), result_buf.size());
@@ -77,7 +74,7 @@ TEST(RayApiTest, NotExistFunction) {
 
 TEST(RayApiTest, ArgumentsNotMatch) {
   using namespace ray::api::internal;
-  auto buf = Serializer::Serialize(std::make_tuple("Plus1", "invalid arguments"));
+  auto buf = Serializer::Serialize(std::make_tuple("PlusOne", "invalid arguments"));
   auto result_buf = TaskExecutionHandler(buf.data(), buf.size());
   auto response =
       Serializer::Deserialize<Response<int>>(result_buf.data(), result_buf.size());
