@@ -73,8 +73,12 @@ inline static msgpack::sbuffer PackReturnValue(int error_code,
   return ray::api::Serializer::Serialize(VoidResponse{error_code, std::move(error_msg)});
 }
 
+/// It's help to invoke functions and member functions, the class Invoker<Function> help
+/// do type erase.
 template <typename Function>
 struct Invoker {
+  /// Invoke functions by networking stream, at first deserialize the binary data to a
+  /// tuple, then call function with tuple.
   static inline msgpack::sbuffer Apply(const Function &func, const char *data,
                                        size_t size) {
     using args_tuple = AddType_t<std::string, boost::callable_traits::args_t<Function>>;
@@ -120,6 +124,8 @@ struct Invoker {
   }
 };
 
+/// Manage all ray remote functions, add remote functions by RAY_REMOTE, get functions by
+/// TaskExecutionHandler.
 class FunctionManager {
  public:
   static FunctionManager &Instance() {
