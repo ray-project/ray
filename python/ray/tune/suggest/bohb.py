@@ -312,7 +312,7 @@ class TuneBOHB(Searcher):
 
         cs = ConfigSpace.ConfigurationSpace()
         for path, domain in domain_vars:
-            par = "/".join([str(p) for p in path])
+            par = "/".join(str(p) for p in path)
             value = resolve_value(par, domain)
             cs.add_hyperparameter(value)
 
