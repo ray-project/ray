@@ -210,7 +210,7 @@ class GLOOGroup(BaseGroup):
         AllReduce a list of tensors following options.
 
         Args:
-            tensor: the tensor to be reduced, each tensor locates on a GPU
+            tensor: the tensor to be reduced, each tensor locates on CPU
             allreduce_options:
 
         Returns:
@@ -232,7 +232,7 @@ class GLOOGroup(BaseGroup):
         Blocks until all processes reach this barrier.
 
         Args:
-            barrier_options:
+            barrier_options: barrier options.
 
         Returns:
         """
@@ -265,7 +265,7 @@ class GLOOGroup(BaseGroup):
         self._collective(tensors, tensors, collective_fn)
 
     def broadcast(self, tensors, broadcast_options=BroadcastOptions()):
-        """Broadcast tensors to all other gpus following options.
+        """Broadcast tensors to all other processes following options.
 
         Args:
             tensors (List): tensors to be broadcast or received.
@@ -291,12 +291,12 @@ class GLOOGroup(BaseGroup):
                   tensor_lists,
                   tensors,
                   allgather_options=AllGatherOptions()):
-        """Allgather tensors across gpus into a list of tensors.
+        """Allgather tensors on CPU into a list of tensors.
 
         Args:
             tensor_lists (List[List[Tensor]]): allgathered tensors.
             tensors: the list of tensors to allgather across the group.
-                     Each tensor must lolcate on a GPU of the process.
+                     Each tensor must locate on CPU.
             allgather_options: allgather options.
 
         Returns:
@@ -316,7 +316,8 @@ class GLOOGroup(BaseGroup):
             _flatten_for_scatter_gather(tensor_list, copy=False)
             for tensor_list in tensor_lists
         ]
-
+        # for j, tensor in enumerate(tensor_lists[0]):
+        #     print(tensor.flags)
         def postprocess_fn():
             for i, tensor_list in enumerate(tensor_lists):
                 for j, tensor in enumerate(tensor_list):
@@ -336,7 +337,7 @@ class GLOOGroup(BaseGroup):
 
         Args:
             tensors (List): the output tensors (could be unspecified), each
-                            located on a GPU of the current process.
+                            located on CPU.
             tensor_lists (List[List]): the list of tensors to be reduced then
                                        scattered.
             reducescatter_options: reduce-scatter options.
@@ -375,7 +376,7 @@ class GLOOGroup(BaseGroup):
             preprocess_fn=preprocess_fn)
 
     def send(self, tensors, send_options=SendOptions()):
-        """Send a tensor to a destination gpu in the group.
+        """Send a tensor to a destination rank in the group.
 
         Args:
             tensors (List): the tensor to send.
@@ -396,7 +397,7 @@ class GLOOGroup(BaseGroup):
         self._point2point(tensors, p2p_fn, send_options.dst_rank)
 
     def recv(self, tensors, recv_options=RecvOptions()):
-        """Receive a tensor from a source gpu in the group.
+        """Receive a tensor from a source rank in the group.
 
         Args:
             tensors (List): the received tensor.
@@ -458,7 +459,6 @@ class GLOOGroup(BaseGroup):
             tensors: the tensor to send or receive.
             p2p_fn: the p2p function call.
             peer_rank (int): the rank of the peer process.
-            peer_gpu_idx (int): the index of the gpu on the peer process.
 
         Returns:
             None

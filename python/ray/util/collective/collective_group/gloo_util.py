@@ -107,11 +107,12 @@ def get_gloo_tensor_dtype(tensor):
         return NUMPY_GLOO_DTYPE_MAP[tensor.dtype.type]
     if torch_available():
         if isinstance(tensor, torch.Tensor):
-            if tensor.device == "cpu":
+            if not tensor.is_cuda:
                 return TORCH_GLOO_DTYPE_MAP[tensor.dtype]
             else:
-                raise ValueError("Got gpu tensor."
-                                 "But gloo only accept cpu tensor.")
+                print(type(tensor.device))
+                raise ValueError("Expect cpu tensor."
+                                 "Got {}.".format(tensor.device))
     raise ValueError("Unsupported tensor type. "
                      "Got: {}.".format(type(tensor)))
 
@@ -162,8 +163,7 @@ def get_tensor_device(tensor):
     if isinstance(tensor, numpy.ndarray):
         return 'cpu'
     elif torch_available() and isinstance(tensor, torch.Tensor):
-        device = tensor.device
-        return device
+        return "cpu" if not tensor.is_cuda else "cuda"
 
 
 def get_tensor_shape(tensor):
@@ -210,7 +210,7 @@ def copy_tensor(dst_tensor, src_tensor):
         copied = False
     if not copied:
         raise ValueError("Unsupported tensor type. Got: {} and {}. Supported "
-                         "GPU tensor types are: torch.Tensor, cupy.ndarray."
+                         "CPU tensor types are: torch.Tensor, numpy.ndarray."
                          .format(type(dst_tensor), type(src_tensor)))
 
 
