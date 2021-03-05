@@ -21,7 +21,7 @@ using namespace ray::internal;
 int Return() { return 1; }
 int PlusOne(int x) { return x + 1; }
 
-RAY_REGISTER(PlusOne);
+RAY_REMOTE(PlusOne);
 
 TEST(RayApiTest, DuplicateRegister) {
   bool r = FunctionManager::Instance().RegisterRemoteFunction("Return", Return);

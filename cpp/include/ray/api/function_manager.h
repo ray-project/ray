@@ -35,6 +35,8 @@ struct AddType<First, std::tuple<Second...>> {
   using type = std::tuple<First, Second...>;
 };
 
+/// Add a type to a tuple: AddType_t<int, std::tuple<double>> equal std::tuple<int,
+/// double>.
 template <class First, class Second>
 using AddType_t = typename AddType<First, Second>::type;
 
@@ -144,8 +146,7 @@ class FunctionManager {
       return false;
     }
 
-    RegisterNonMemberFunc(name, f);
-    return true;
+    return RegisterNonMemberFunc(name, f);
   }
 
  private:
@@ -155,9 +156,11 @@ class FunctionManager {
   FunctionManager(FunctionManager &&) = delete;
 
   template <typename Function>
-  void RegisterNonMemberFunc(std::string const &name, Function f) {
-    this->map_invokers_[name] = {std::bind(&Invoker<Function>::Apply, std::move(f),
-                                           std::placeholders::_1, std::placeholders::_2)};
+  bool RegisterNonMemberFunc(std::string const &name, Function f) {
+    return map_invokers_
+        .emplace(name, std::bind(&Invoker<Function>::Apply, std::move(f),
+                                 std::placeholders::_1, std::placeholders::_2))
+        .second;
   }
 
   std::unordered_map<std::string, std::function<msgpack::sbuffer(const char *, size_t)>>

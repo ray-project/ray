@@ -17,34 +17,32 @@
 #include <ray/api/function_manager.h>
 
 namespace ray {
-namespace api {
+namespace internal {
 
 inline static msgpack::sbuffer TaskExecutionHandler(const char *data, std::size_t size) {
   msgpack::sbuffer result;
   do {
     try {
-      auto p = Serializer::Deserialize<std::tuple<std::string>>(data, size);
+      auto p = ray::api::Serializer::Deserialize<std::tuple<std::string>>(data, size);
       auto &func_name = std::get<0>(p);
-      auto pair = internal::FunctionManager::Instance().GetFunction(func_name);
+      auto pair = FunctionManager::Instance().GetFunction(func_name);
       if (!pair.first) {
-        result = internal::PackReturnValue(internal::ErrorCode::FAIL,
-                                           "unknown function: " + func_name, 0);
+        result = PackReturnValue(internal::ErrorCode::FAIL,
+                                 "unknown function: " + func_name, 0);
         break;
       }
 
       result = (*pair.second)(data, size);
     } catch (const std::exception &ex) {
-      result = internal::PackReturnValue(internal::ErrorCode::FAIL, ex.what());
+      result = PackReturnValue(internal::ErrorCode::FAIL, ex.what());
     }
   } while (0);
 
   return result;
 }
+}  // namespace internal
 
-#define RAY_REGISTER(f)                 \
-  static auto ANONYMOUS_VARIABLE(var) = \
-      ray::internal::FunctionManager::Instance().RegisterRemoteFunction(#f, f);
-
+namespace {
 #define CONCATENATE_DIRECT(s1, s2) s1##s2
 #define CONCATENATE(s1, s2) CONCATENATE_DIRECT(s1, s2)
 #ifdef _MSC_VER
@@ -52,5 +50,13 @@ inline static msgpack::sbuffer TaskExecutionHandler(const char *data, std::size_
 #else
 #define ANONYMOUS_VARIABLE(str) CONCATENATE(str, __LINE__)
 #endif
+}  // namespace
+
+namespace api {
+
+#define RAY_REMOTE(f)                   \
+  static auto ANONYMOUS_VARIABLE(var) = \
+      ray::internal::FunctionManager::Instance().RegisterRemoteFunction(#f, f);
+
 }  // namespace api
 }  // namespace ray
