@@ -327,7 +327,7 @@ def unflatten_list_dict(dt, delimiter="/"):
 
         item = out
         for i, k in enumerate(path[:-1]):
-            next_type = list if path[i+1].isdigit() else dict
+            next_type = list if path[i + 1].isdigit() else dict
             if isinstance(item, dict):
                 item = item.setdefault(k, next_type())
             elif isinstance(item, list):
