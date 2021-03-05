@@ -16,6 +16,7 @@
 #include <ray/api.h>
 
 using namespace ray::api;
+using namespace ray::internal;
 
 int Return() { return 1; }
 int PlusOne(int x) { return x + 1; }
@@ -23,8 +24,6 @@ int PlusOne(int x) { return x + 1; }
 RAY_REGISTER(PlusOne);
 
 TEST(RayApiTest, DuplicateRegister) {
-  using namespace ray::api::internal;
-
   bool r = FunctionManager::Instance().RegisterRemoteFunction("Return", Return);
   EXPECT_TRUE(r);
 
@@ -37,7 +36,6 @@ TEST(RayApiTest, DuplicateRegister) {
 }
 
 TEST(RayApiTest, FindAndExecuteFunction) {
-  using namespace ray::api::internal;
   /// Find and call the registered function.
   auto args = std::make_tuple("PlusOne", 1);
   auto buf = Serializer::Serialize(args);
@@ -52,7 +50,6 @@ TEST(RayApiTest, FindAndExecuteFunction) {
 }
 
 TEST(RayApiTest, VoidFunction) {
-  using namespace ray::api::internal;
   auto buf1 = Serializer::Serialize(std::make_tuple("Return"));
   auto result_buf = TaskExecutionHandler(buf1.data(), buf1.size());
   auto response =
@@ -63,7 +60,6 @@ TEST(RayApiTest, VoidFunction) {
 /// We should consider the driver so is not same with the worker so, and find the error
 /// reason.
 TEST(RayApiTest, NotExistFunction) {
-  using namespace ray::api::internal;
   auto buf2 = Serializer::Serialize(std::make_tuple("Return11"));
   auto result_buf = TaskExecutionHandler(buf2.data(), buf2.size());
   auto response =
@@ -73,7 +69,6 @@ TEST(RayApiTest, NotExistFunction) {
 }
 
 TEST(RayApiTest, ArgumentsNotMatch) {
-  using namespace ray::api::internal;
   auto buf = Serializer::Serialize(std::make_tuple("PlusOne", "invalid arguments"));
   auto result_buf = TaskExecutionHandler(buf.data(), buf.size());
   auto response =

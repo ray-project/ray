@@ -25,8 +25,6 @@
 #include <unordered_map>
 
 namespace ray {
-namespace api {
-
 namespace internal {
 
 template <class, class>
@@ -64,13 +62,13 @@ struct Response {
 template <typename T>
 inline static msgpack::sbuffer PackReturnValue(int error_code, std::string error_msg,
                                                T result) {
-  return Serializer::Serialize(
+  return ray::api::Serializer::Serialize(
       Response<T>{error_code, std::move(error_msg), std::move(result)});
 }
 
 inline static msgpack::sbuffer PackReturnValue(int error_code,
                                                std::string error_msg = "ok") {
-  return Serializer::Serialize(VoidResponse{error_code, std::move(error_msg)});
+  return ray::api::Serializer::Serialize(VoidResponse{error_code, std::move(error_msg)});
 }
 
 template <typename Function>
@@ -81,7 +79,7 @@ struct Invoker {
 
     msgpack::sbuffer result;
     try {
-      auto tp = Serializer::Deserialize<args_tuple>(data, size);
+      auto tp = ray::api::Serializer::Deserialize<args_tuple>(data, size);
       result = Invoker<Function>::Call(func, std::move(tp));
     } catch (msgpack::type_error &e) {
       result =
@@ -167,6 +165,4 @@ class FunctionManager {
   std::unordered_map<uintptr_t, std::string> func_ptr_to_key_map_;
 };
 }  // namespace internal
-
-}  // namespace api
 }  // namespace ray

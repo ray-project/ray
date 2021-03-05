@@ -43,7 +43,7 @@ inline static msgpack::sbuffer TaskExecutionHandler(const char *data, std::size_
 
 #define RAY_REGISTER(f)                 \
   static auto ANONYMOUS_VARIABLE(var) = \
-      internal::FunctionManager::Instance().RegisterRemoteFunction(#f, f);
+      ray::internal::FunctionManager::Instance().RegisterRemoteFunction(#f, f);
 
 #define CONCATENATE_DIRECT(s1, s2) s1##s2
 #define CONCATENATE(s1, s2) CONCATENATE_DIRECT(s1, s2)
