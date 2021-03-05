@@ -78,7 +78,6 @@ class HEBOSearch(Searcher):
             will change global random states for `numpy` and `torch`
             on initalization and loading from checkpoint.
         max_concurrent (int, 8): Number of maximum concurrent trials.
-            High values may reduce suggestion quality.
         **kwargs: The keyword arguments will be passed to `HEBO()``.
 
     Tune automatically converts search spaces to HEBO's format:
