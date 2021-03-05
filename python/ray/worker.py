@@ -669,7 +669,9 @@ def init(
     else:
         driver_mode = SCRIPT_MODE
         if job_config:
-            ray_pkg.update_runtime_env(job_config)
+            # Rewrite the URI. Note the package isn't uploaded to the URI until
+            # later in the connect
+            ray_pkg.rewrite_working_dir_uri(job_config)
 
     if global_worker.connected:
         if ignore_reinit_error:

@@ -205,7 +205,7 @@ def package_exists(pkg_uri: str):
         raise NotImplementedError(f"Protocol {protocol} is not supported")
 
 
-def update_runtime_env(job_config: JobConfig):
+def rewrite_working_dir_uri(job_config: JobConfig):
     """This function is used to update the runtime field in job_config. The
     runtime field will be generated based on the hash of required files and
     modules.
