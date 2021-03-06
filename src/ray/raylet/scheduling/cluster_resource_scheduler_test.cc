@@ -1117,7 +1117,10 @@ TEST_F(ClusterResourceSchedulerTest, ObjectStoreMemoryUsageTest) {
   vector<int64_t> cust_ids{1};
   NodeResources node_resources;
   std::unordered_map<std::string, double> initial_resources(
-      {{"CPU", 1}, {"GPU", 2}, {"memory", 3}, {"object_store_memory", 1000 * 1024 * 1024}});
+      {{"CPU", 1},
+       {"GPU", 2},
+       {"memory", 3},
+       {"object_store_memory", 1000 * 1024 * 1024}});
   int64_t used_object_store_memory = 250 * 1024 * 1024;
   int64_t *ptr = &used_object_store_memory;
   ClusterResourceScheduler resource_scheduler("0", initial_resources,
