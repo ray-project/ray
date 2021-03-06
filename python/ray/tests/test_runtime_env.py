@@ -85,14 +85,14 @@ def test_two_node_module(two_node_cluster, working_dir):
 def test_two_node_uri(two_node_cluster, working_dir):
     cluster, _ = two_node_cluster
     redis_address = cluster.address
-    import ray._private.package as ray_pkg
+    import ray._private.runtime_env as runtime_env
     import tempfile
     from pathlib import Path
     with tempfile.NamedTemporaryFile(suffix="zip") as tmp_file:
-        pkg_name = ray_pkg.get_project_package_name(working_dir, [])
-        pkg_uri = ray_pkg.Protocol.PIN_GCS.value + "://" + pkg_name
-        ray_pkg.create_project_package(Path(tmp_file.name), working_dir, [])
-        ray_pkg.push_package(pkg_uri, Path(tmp_file.name))
+        pkg_name = runtime_env.get_project_package_name(working_dir, [])
+        pkg_uri = runtime_env.Protocol.PIN_GCS.value + "://" + pkg_name
+        runtime_env.create_project_package(working_dir, [], tmp_file.name)
+        runtime_env.push_package(pkg_uri, tmp_file.name)
         runtime_env = f"""{{ "working_dir_uri": "{pkg_uri}" }}"""
     script = driver_script.format(
         redis_address=redis_address,

@@ -9,6 +9,8 @@ from ray.job_config import JobConfig
 from enum import Enum
 from ray.experimental import internal_kv
 from ray.core.generated.common_pb2 import RuntimeEnv
+from typing import List, Tuple
+from types import ModuleType
 from urllib.parse import urlparse
 import os
 import sys
@@ -37,13 +39,13 @@ class Protocol(Enum):
     PIN_GCS = "pingcs", "For package created and managed by users."
 
 
-def _xor_bytes(left, right):
+def _xor_bytes(left: bytes, right: bytes) -> bytes:
     if left and right:
         return bytes(a ^ b for (a, b) in zip(left, right))
     return left or right
 
 
-def _zip_module(path, relative_path, zip_handler):
+def _zip_module(path: Path, relative_path: Path, zip_handler: ZipFile) -> None:
     """Go through all files and zip them into a zip file"""
     for from_file_name in path.glob("**/*"):
         file_size = from_file_name.stat().st_size
@@ -58,7 +60,7 @@ def _zip_module(path, relative_path, zip_handler):
         zip_handler.write(from_file_name, to_file_name)
 
 
-def _hash_modules(path):
+def _hash_modules(path: Path) -> bytes:
     """
     Helper function to create hash of a directory.
     It'll go through all the files in the directory and xor
@@ -79,24 +81,36 @@ def _hash_modules(path):
     return hash_val
 
 
-def _get_local_path(pkg_uri) -> str:
+def _get_local_path(pkg_uri: str) -> str:
     (_, pkg_name) = _parse_uri(pkg_uri)
     return os.path.join(PKG_DIR, pkg_name)
 
 
-def _parse_uri(pkg_uri: str) -> (Protocol, str):
+def _parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
     uri = urlparse(pkg_uri)
     protocol = Protocol(uri.scheme)
     return (protocol, uri.netloc)
 
 
 # TODO(yic): Fix this later to handle big directories in better way
-def get_project_package_name(working_dir, modules) -> str:
-    """This function will generate the name of the package by the working
+def get_project_package_name(working_dir: str, modules: List[str]) -> str:
+    """Get the name of the package by working dir and modules.
+
+    This function will generate the name of the package by the working
     directory and modules. It'll go through all the files in working_dir
     and modules and hash the contents of these files to get the hash value
     of this package. The final package name is: _ray_pkg_<HASH_VAL>.zip
+    Right now, only the modules given will be included. The dependencies
+    are not included automatically.
 
+    Examples:
+
+    .. code-block:: python
+        >>> import any_module
+        >>> get_project_package_name("/working_dir", [any_module])
+        .... _ray_pkg_af2734982a741.zip
+
+ e.g., _ray_pkg_029f88d5ecc55e1e4d64fc6e388fd103.zip
     Args:
         working_dir (str): The working directory.
         modules (list[module]): The python module.
@@ -117,18 +131,18 @@ def get_project_package_name(working_dir, modules) -> str:
     return RAY_PKG_PREFIX + hash_val.hex() + ".zip" if hash_val else None
 
 
-def create_project_package(pkg_file: Path, working_dir: str, modules):
-    """This function is used to create a package file based on working directory
+def create_project_package(working_dir: str, modules: List[ModuleType], output_path: str) -> None:
+    """Create a pckage that will be used by workers.
+
+    This function is used to create a package file based on working directory
     and python local modules.
 
     Args:
-        pkg_file (pathlib.Path): The path of file to be created.
         working_dir (str): The working directory.
         modules (list[module]): The python modules to be included.
-
-    Returns:
-        None
+        output_path (str): The path of file to be created.
     """
+    pkg_file = Path(output_path)
     with ZipFile(pkg_file, "w") as zip_handler:
         if working_dir:
             # put all files in /path/working_dir into zip
@@ -143,8 +157,10 @@ def create_project_package(pkg_file: Path, working_dir: str, modules):
             _zip_module(module_path, module_path.parent, zip_handler)
 
 
-def fetch_package(pkg_uri: str, pkg_file: Path):
-    """This function is used to fetch a pacakge from the given uri to local
+def fetch_package(pkg_uri: str, pkg_file: Path) -> int:
+    """Fetch a package from a given uri.
+
+    This function is used to fetch a pacakge from the given uri to local
     filesystem.
 
     Args:
@@ -165,31 +181,33 @@ def fetch_package(pkg_uri: str, pkg_file: Path):
         raise NotImplementedError(f"Protocol {protocol} is not supported")
 
 
-def _store_package_in_gcs(gcs_key: str, data: bytes):
+def _store_package_in_gcs(gcs_key: str, data: bytes) -> int:
     internal_kv._internal_kv_put(gcs_key, data)
     return len(data)
 
 
-def push_package(pkg_uri: str, pkg_file: Path):
-    """This function is to push a local file to remote uri. Right now, only GCS
+def push_package(pkg_uri: str, pkg_path: str) -> None:
+    """Push a package to uri.
+
+    This function is to push a local file to remote uri. Right now, only GCS
     is supported.
 
     Args:
         pkg_uri (str): The uri of the package to upload to.
-        pkg_file (Path): Path of the local file.
+        pkg_path (str): Path of the local file.
 
     Returns:
         The number of bytes uploaded.
     """
     (protocol, pkg_name) = _parse_uri(pkg_uri)
-    data = pkg_file.read_bytes()
+    data = Path(pkg_path).read_bytes()
     if protocol in (Protocol.GCS, Protocol.PIN_GCS):
         _store_package_in_gcs(pkg_uri, data)
     else:
         raise NotImplementedError(f"Protocol {protocol} is not supported")
 
 
-def package_exists(pkg_uri: str):
+def package_exists(pkg_uri: str) -> bool:
     """Check whether the package with given uri exists or not.
 
     Args:
@@ -205,16 +223,15 @@ def package_exists(pkg_uri: str):
         raise NotImplementedError(f"Protocol {protocol} is not supported")
 
 
-def rewrite_working_dir_uri(job_config: JobConfig):
-    """This function is used to update the runtime field in job_config. The
+def rewrite_working_dir_uri(job_config: JobConfig) -> None:
+    """Rewrite the working dir uri field in job_config.
+
+    This function is used to update the runtime field in job_config. The
     runtime field will be generated based on the hash of required files and
     modules.
 
     Args:
         job_config (JobConfig): The job config.
-
-    Return:
-        None
     """
     # For now, we only support local directory and packages
     working_dir = job_config.runtime_env.get("working_dir")
@@ -227,11 +244,13 @@ def rewrite_working_dir_uri(job_config: JobConfig):
             "working_dir_uri"] = Protocol.GCS.value + "://" + pkg_name
 
 
-def driver_runtime_init(job_config: JobConfig):
-    """Init runtime env for driver. It'll check whether the runtime
-    environment exists in the cluster or not. If it doesn't exist, a package
-    will be created based on the working directory and modules defined in job
-    config. The package will be uploaded to the cluster after this.
+def upload_runtime_env_package_if_needed(job_config: JobConfig) -> None:
+    """Upload runtime env if it's not there.
+
+    It'll check whether the runtime environment exists in the cluster or not.
+    If it doesn't exist, a package will be created based on the working
+    directory and modules defined in job config. The package will be
+    uploaded to the cluster after this.
 
     Args:
         job_config (JobConfig): The job config of driver.
@@ -240,21 +259,24 @@ def driver_runtime_init(job_config: JobConfig):
     if not pkg_uri:
         return
     if not package_exists(pkg_uri):
-        pkg_file = Path(_get_local_path(pkg_uri))
+        file_path = _get_local_path(pkg_uri)
+        pkg_file = Path(file_path)
         working_dir = job_config.runtime_env.get("working_dir")
         required_modules = job_config.runtime_env.get("local_modules")
         logger.info(f"{pkg_uri} doesn't exist. Create new package with"
                     f" {working_dir} and {required_modules}")
         if not pkg_file.exists():
-            create_project_package(pkg_file, working_dir, required_modules)
+            create_project_package(working_dir, required_modules, file_path)
         # Push the data to remote storage
         pkg_size = push_package(pkg_uri, pkg_file)
         logger.info(f"{pkg_uri} has been pushed with {pkg_size} bytes")
 
 
-def worker_runtime_init(runtime_env: RuntimeEnv):
-    """Init runtime env for worker. Necessary packages required to run the job will
-    be downloaded into local file system if it doesn't exist.
+def ensure_runtime_env_setup(runtime_env: RuntimeEnv) -> None:
+    """Make sure all required packages are downloaded it local.
+
+    Necessary packages required to run the job will be downloaded
+    into local file system if it doesn't exist.
 
     Args:
         runtime_env (RuntimeEnv): Runtime environment of the job

@@ -28,7 +28,7 @@ import ray.ray_constants as ray_constants
 import ray.remote_function
 import ray.serialization as serialization
 import ray._private.services as services
-import ray._private.package as ray_pkg
+import ray._private.runtime_env as runtime_env
 import ray
 import setproctitle
 import ray.signature
@@ -671,7 +671,7 @@ def init(
         if job_config:
             # Rewrite the URI. Note the package isn't uploaded to the URI until
             # later in the connect
-            ray_pkg.rewrite_working_dir_uri(job_config)
+            runtime_env.rewrite_working_dir_uri(job_config)
 
     if global_worker.connected:
         if ignore_reinit_error:
@@ -1237,9 +1237,9 @@ def connect(node,
     ray.state.state._initialize_global_state(
         node.redis_address, redis_password=node.redis_password)
     if mode == SCRIPT_MODE:
-        ray_pkg.driver_runtime_init(job_config)
+        runtime_env.upload_runtime_env_package_if_needed(job_config)
     elif mode == WORKER_MODE:
-        ray_pkg.worker_runtime_init(
+        runtime_env.ensure_runtime_env_setup(
             worker.core_worker.get_job_config().runtime_env)
 
     if driver_object_store_memory is not None:
