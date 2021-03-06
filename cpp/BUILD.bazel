@@ -74,6 +74,22 @@ genrule(
     visibility = ["//visibility:public"],
 )
 
+cc_library(
+    name="task_executor",
+    hdrs = glob([
+        "src/ray/runtime/task/*.h",
+        "src/ray/runtime/task/task_executor.h",
+    ]),
+    srcs = glob([
+        "src/ray/runtime/task/task_executor.cc",
+    ]),
+    strip_include_prefix = "src",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":ray_api",
+    ],
+)
+
 # test
 cc_test(
     name = "api_test",
@@ -84,6 +100,7 @@ cc_test(
     linkstatic = False,
     deps = [
         "ray_api",
+        ":task_executor",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -120,35 +137,6 @@ cc_binary(
     deps = [
         "ray_api",
         "@com_github_gflags_gflags//:gflags",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-cc_library(
-    name="task_executor",
-    hdrs = glob([
-        "src/ray/runtime/task/*.h",
-        "src/ray/runtime/task/task_executor.h",
-    ]),
-    srcs = glob([
-        "src/ray/runtime/task/task_executor.cc",
-    ]),
-    strip_include_prefix = "src",
-    visibility = ["//visibility:public"],
-    deps = [
-        ":ray_api",
-    ],
-)
-
-cc_test(
-    name = "ray_register_test",
-    srcs = glob([
-        "src/ray/test/ray_remote/ray_register_test.cc",
-    ]),
-    copts = COPTS,
-    linkstatic = False,
-    deps = [
-        ":task_executor",
         "@com_google_googletest//:gtest_main",
     ],
 )
