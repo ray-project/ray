@@ -15,7 +15,7 @@
 #include <gtest/gtest.h>
 #include <ray/api.h>
 #include <ray/api/serializer.h>
-#include <ray/runtime/task/task_executor.h>
+#include "cpp/src/ray/runtime/task/task_executor.h"
 
 using namespace ray::api;
 using namespace ray::internal;
