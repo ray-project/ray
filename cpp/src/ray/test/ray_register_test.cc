@@ -25,6 +25,14 @@ int PlusOne(int x) { return x + 1; }
 
 RAY_REMOTE(PlusOne);
 
+TEST(RayApiTest, NormalTask) {
+  Ray::Init();
+  ray::api::RayConfig::GetInstance()->use_ray_remote = true;
+  auto r = Ray::Task(PlusOne).Remote(2);
+  EXPECT_EQ(3, *(r.Get()));
+  ray::api::RayConfig::GetInstance()->use_ray_remote = false;
+}
+
 TEST(RayApiTest, DuplicateRegister) {
   bool r = FunctionManager::Instance().RegisterRemoteFunction("Return", Return);
   EXPECT_TRUE(r);

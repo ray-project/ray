@@ -11,10 +11,21 @@ class TaskCaller {
  public:
   TaskCaller();
 
+  TaskCaller(RayRuntime *runtime, RemoteFunctionPtrHolder ptr)
+      : runtime_(runtime), ptr_(ptr) {}
+
   TaskCaller(RayRuntime *runtime, RemoteFunctionPtrHolder ptr,
              std::vector<std::unique_ptr<::ray::TaskArg>> &&args);
 
   ObjectRef<ReturnType> Remote();
+
+  template <typename... Args>
+  ObjectRef<ReturnType> Remote(Args... args) {
+    auto tp = std::make_tuple(ptr_.function_name, args...);
+    Arguments::WrapArgs(&args_, tp);
+    auto returned_object_id = runtime_->Call(ptr_, args_);
+    return ObjectRef<ReturnType>(returned_object_id);
+  }
 
  private:
   RayRuntime *runtime_;

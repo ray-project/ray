@@ -6,6 +6,7 @@
 #include <ray/api/actor_task_caller.h>
 #include <ray/api/exec_funcs.h>
 #include <ray/api/object_ref.h>
+#include <ray/api/ray_config.h>
 #include <ray/api/ray_register.h>
 #include <ray/api/ray_runtime.h>
 #include <ray/api/ray_runtime_holder.h>
@@ -203,6 +204,15 @@ inline ActorCreator<ActorType> Ray::CreateActorInternal(FuncType &create_func,
 template <typename F, typename... Args>
 TaskCaller<boost::callable_traits::return_type_t<F>> Ray::Task(F func, Args... args) {
   using ReturnType = boost::callable_traits::return_type_t<F>;
+  if (ray::api::RayConfig::GetInstance()->use_ray_remote) {
+    RemoteFunctionPtrHolder func_holder{};
+    func_holder.function_name =
+        ray::internal::FunctionManager::Instance().GetFunctionName(func);
+    /// TODO if function_name is empty, throw exception
+    return TaskCaller<ReturnType>(ray::internal::RayRuntime().get(),
+                                  std::move(func_holder));
+  }
+
   return TaskInternal<ReturnType>(
       func, NormalExecFunction<ReturnType, typename FilterArgType<Args>::type...>,
       args...);

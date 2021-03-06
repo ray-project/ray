@@ -155,6 +155,16 @@ class FunctionManager {
     return RegisterNonMemberFunc(name, f);
   }
 
+  template <typename Function>
+  std::string GetFunctionName(const Function &f) {
+    auto it = func_ptr_to_key_map_.find((uint64_t)f);
+    if (it == func_ptr_to_key_map_.end()) {
+      return "";
+    }
+
+    return it->second;
+  }
+
  private:
   FunctionManager() = default;
   ~FunctionManager() = default;
