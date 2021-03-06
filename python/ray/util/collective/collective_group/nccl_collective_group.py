@@ -118,15 +118,13 @@ class NCCLGroup(BaseGroup):
         super(NCCLGroup, self).__init__(world_size, rank, group_name)
 
         # communicator and stream cache.
-        # TODO (Hao): we need a lock here...
+        # TODO (Hao): we need a lock here.
         self._dev_comm_map = {}
         self._dev_streams_map = {}
+        self._dev_event_map = {}
 
         # record the used GPU IDs.
         self._used_gpu_indices = set()
-
-        # TODO(Fu): might need an event map
-        self._dev_event_map = {}
 
         if nccl_util.get_nccl_build_version() < 2000:
             raise RuntimeError("NCCL in Ray requires NCCL >= 2.0.")
@@ -685,98 +683,4 @@ def _check_inputs_compatibility_for_scatter_gather(tensors, tensor_lists):
         s = nccl_util.get_tensor_shape(tensors[i])
         if s != shape:
             raise RuntimeError("All tensor operands to scatter/gather must "
-                               "have the same shape. Got '{}' and '{}'."
-                               .format(s, shape))
-        # check all tensors in `tensor_lists` match.
-        for t in tensor_lists[i]:
-            # check dtype
-            dt = nccl_util.get_nccl_tensor_dtype(t)
-            if dt != dtype:
-                raise RuntimeError(
-                    "All tensor operands to scatter/gather must "
-                    "have the same dtype. Got '{}' and '{}'.".format(
-                        dt, dtype))
-            s = nccl_util.get_tensor_shape(t)
-            if s != shape:
-                raise RuntimeError(
-                    "All tensor operands to scatter/gather must "
-                    "have the same shape. Got '{}' and '{}'.".format(s, shape))
-
-
-def _check_gpu_tensors(tensors):
-    """Check all tensors are distributed on different GPUs."""
-    if not tensors or not isinstance(tensors, list):
-        raise RuntimeError("'tensors' must be a nonempty list.")
-    if len(tensors) > nccl_util.get_num_gpus():
-        raise RuntimeError("Tensor list cannot be larger than the number"
-                           "of available GPUs. Got {} > {}.".format(
-                               len(tensors), nccl_util.get_num_gpus()))
-    t0 = tensors[0]
-    dt = nccl_util.get_nccl_tensor_dtype(t0)
-    s = nccl_util.get_tensor_shape(t0)
-    d = nccl_util.get_tensor_device(t0)
-    for i, t in enumerate(tensors):
-        if i == 0:
-            continue
-        # We need to check the following:
-        # (1) tensor is cuda (already checked during API)
-        # (2) tensor dtype
-        # (3) tensor shape match
-        # (4) each tensor is on a different GPU
-        dtype = nccl_util.get_nccl_tensor_dtype(t)
-        if dt != dtype:
-            raise RuntimeError("Tensors must have identical dtype. Got: '{}'."
-                               .format(dtype))
-        shape = nccl_util.get_tensor_shape(t)
-        if s != shape:
-            raise RuntimeError("Tensor must have identical shape. Got: '{}'."
-                               .format(shape))
-        device = nccl_util.get_tensor_device(t)
-        if device == d:
-            raise RuntimeError("Tensor must be on distinct GPUs.")
-
-
-def _get_comm_key_from_devices(devices):
-    """Return a key from a list of devices for collective calls.
-
-    For example, if the tensors are on gpus 0, 1, 2, 3,
-    then the key would be "0,1,2,3".
-
-    Args:
-        devices(list): a list of GPU device indices
-
-    Returns:
-        str: a string represents the key to query the communicator cache.
-
-    """
-    return ",".join([str(d) for d in devices])
-
-
-def _get_comm_key_send_recv(my_rank, my_gpu_idx, peer_rank, peer_gpu_idx):
-    """Return a key given source and destination ranks for p2p tasks.
-
-    The p2p key is in the following form:
-                [min_rank]_[gpu_index]:[max_rank]_[gpu_index].
-
-    Args:
-        my_rank (int): the rank of the source process.
-        my_gpu_idx (int): the source gpu index on the process.
-        peer_rank (int): the rank of the destination process.
-        peer_gpu_idx (int): the destination gpu index on the process.
-
-    Returns:
-        comm_key (str): a string key to query the communication cache.
-    """
-    if my_rank < peer_rank:
-        lower_key = str(my_rank) + "_" + str(my_gpu_idx)
-        higher_key = str(peer_rank) + "_" + str(peer_gpu_idx)
-    elif my_rank > peer_rank:
-        lower_key = str(peer_rank) + "_" + str(peer_gpu_idx)
-        higher_key = str(my_rank) + "_" + str(my_gpu_idx)
-    else:
-        raise RuntimeError(
-            "Send and recv happens on the same process. ray.util.collective "
-            "does not support this case as of now. Alternatively, consider "
-            "doing GPU to GPU memcpy?")
-    comm_key = lower_key + ":" + higher_key
-    return comm_key
+                               "have the same shape.")
