@@ -28,7 +28,7 @@ DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES = 200 * 10**9
 DEFAULT_OBJECT_STORE_MEMORY_PROPORTION = 0.3
 # The smallest cap on the memory used by the object store that we allow.
 # This must be greater than MEMORY_RESOURCE_UNIT_BYTES
-OBJECT_STORE_MINIMUM_MEMORY_BYTES = 100 * 1024 * 1024
+OBJECT_STORE_MINIMUM_MEMORY_BYTES = 75 * 1024 * 1024
 # The default maximum number of bytes that the non-primary Redis shards are
 # allowed to use unless overridden by the user.
 DEFAULT_REDIS_MAX_MEMORY_BYTES = 10**10
@@ -64,10 +64,10 @@ DUPLICATE_REMOTE_FUNCTION_THRESHOLD = 100
 # The maximum resource quantity that is allowed. TODO(rkn): This could be
 # relaxed, but the current implementation of the node manager will be slower
 # for large resource quantities due to bookkeeping of specific resource IDs.
-MAX_RESOURCE_QUANTITY = 100000
+MAX_RESOURCE_QUANTITY = 100e12
 
 # Each memory "resource" counts as this many bytes of memory.
-MEMORY_RESOURCE_UNIT_BYTES = 100 * 1024 * 1024
+MEMORY_RESOURCE_UNIT_BYTES = 1
 
 # Number of units 1 resource can be subdivided into.
 MIN_RESOURCE_GRANULARITY = 0.0001
