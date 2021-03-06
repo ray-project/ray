@@ -237,6 +237,9 @@ struct GcsServerMocker {
       return ray::Status::OK();
     }
 
+    void GetSystemConfig(const ray::rpc::ClientCallback<ray::rpc::GetSystemConfigReply>
+                             &callback) override {}
+
     ~MockRayletClient() {}
 
     int num_workers_requested = 0;

@@ -341,14 +341,13 @@ The key is the name of the node type, which is just for debugging purposes.
                 resources: {"CPU": 2}
                 min_workers: 0
                 max_workers: 0
-            ray.worker.small:
+            ray.worker.default:
                 node_config:
                   InstanceType: m5.large
                   InstanceMarketOptions:
                       MarketType: spot
                 resources: {"CPU": 2}
                 min_workers: 0
-                max_workers: 1
 
 .. _cluster-configuration-head-node-type:
 
@@ -1073,12 +1072,12 @@ Minimal configuration
             :language: yaml
 
     .. group-tab:: Azure
-    
+
         .. literalinclude:: ../../../python/ray/autoscaler/azure/example-minimal.yaml
             :language: yaml
 
     .. group-tab:: GCP
-    
+
         .. literalinclude:: ../../../python/ray/autoscaler/gcp/example-minimal.yaml
             :language: yaml
 
@@ -1092,11 +1091,11 @@ Full configuration
             :language: yaml
 
     .. group-tab:: Azure
-    
+
         .. literalinclude:: ../../../python/ray/autoscaler/azure/example-full.yaml
             :language: yaml
 
     .. group-tab:: GCP
-    
+
         .. literalinclude:: ../../../python/ray/autoscaler/gcp/example-full.yaml
             :language: yaml

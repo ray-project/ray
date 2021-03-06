@@ -858,6 +858,31 @@ class DockerCommandRunner(CommandRunnerInterface):
                                 self.ssh_command_runner.cluster_name), mount),
                         container=self.container_name,
                         dst=self._docker_expand_user(mount)))
+                try:
+                    # Check if the current user has read permission.
+                    # If they do not, try to change ownership!
+                    self.run(f"cat {mount} >/dev/null 2>&1 || "
+                             f"sudo chown $(id -u):$(id -g) {mount}")
+                except Exception:
+                    lsl_string = self.run(
+                        f"ls -l {mount}",
+                        with_output=True).decode("utf-8").strip()
+                    # The string is of format <Permission> <Links>
+                    # <Owner> <Group> <Size> <Date> <Name>
+                    permissions = lsl_string.split(" ")[0]
+                    owner = lsl_string.split(" ")[2]
+                    group = lsl_string.split(" ")[3]
+                    current_user = self.run(
+                        "whoami", with_output=True).decode("utf-8").strip()
+                    cli_logger.warning(
+                        f"File ({mount}) is owned by user:{owner} and group:"
+                        f"{group} with permissions ({permissions}). The "
+                        f"current user ({current_user}) does not have "
+                        "permission to read these files, and Ray may not be "
+                        "able to autoscale. This can be resolved by "
+                        "installing `sudo` in your container, or adding a "
+                        f"command like 'chown {current_user} {mount}' to "
+                        "your `setup_commands`.")
         self.initialized = True
         return docker_run_executed
 

@@ -81,6 +81,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// \param shutdown The shutdown callback to call.
   void DrainAndShutdown(std::function<void()> shutdown);
 
+  /// Return true if the worker owns any object.
+  bool OwnObjects() const;
+
   /// Increase the reference count for the ObjectID by one. If there is no
   /// entry for the ObjectID, one will be created. The object ID will not have
   /// any owner information, since we don't know how it was created.

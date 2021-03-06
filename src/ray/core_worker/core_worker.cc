@@ -135,6 +135,9 @@ CoreWorkerProcess::CoreWorkerProcess(const CoreWorkerOptions &options)
 
   RAY_LOG(INFO) << "Constructing CoreWorkerProcess. pid: " << getpid();
 
+  // NOTE(kfstorm): any initialization depending on RayConfig must happen after this line.
+  InitializeSystemConfig();
+
   if (options_.num_workers == 1) {
     // We need to create the worker instance here if:
     // 1. This is a driver process. In this case, the driver is ready to use right after
@@ -190,6 +193,49 @@ void CoreWorkerProcess::EnsureInitialized() {
 }
 
 void CoreWorkerProcess::HandleAtExit() { instance_.reset(); }
+
+void CoreWorkerProcess::InitializeSystemConfig() {
+  // We have to create a short-time thread here because the RPC request to get the system
+  // config from Raylet is asynchronous, and we need to synchronously initialize the
+  // system config in the constructor of `CoreWorkerProcess`.
+  std::promise<std::string> promise;
+  std::thread thread([&] {
+    boost::asio::io_service io_service;
+    boost::asio::io_service::work work(io_service);
+    rpc::ClientCallManager client_call_manager(io_service);
+    auto grpc_client = rpc::NodeManagerWorkerClient::make(
+        options_.raylet_ip_address, options_.node_manager_port, client_call_manager);
+    raylet::RayletClient raylet_client(grpc_client);
+
+    std::function<void(int64_t)> get_once = [&get_once, &raylet_client, &promise,
+                                             &io_service](int64_t num_attempts) {
+      raylet_client.GetSystemConfig([num_attempts, &get_once, &promise, &io_service](
+                                        const Status &status,
+                                        const rpc::GetSystemConfigReply &reply) {
+        RAY_LOG(DEBUG) << "Getting system config from raylet, remaining retries = "
+                       << num_attempts;
+        if (!status.ok()) {
+          if (num_attempts <= 1) {
+            RAY_LOG(FATAL) << "Failed to get the system config from Raylet: " << status;
+          } else {
+            std::this_thread::sleep_for(std::chrono::milliseconds(
+                RayConfig::instance().raylet_client_connect_timeout_milliseconds()));
+            get_once(num_attempts - 1);
+          }
+        } else {
+          promise.set_value(reply.system_config());
+          io_service.stop();
+        }
+      });
+    };
+
+    get_once(RayConfig::instance().raylet_client_num_connect_attempts());
+    io_service.run();
+  });
+  thread.join();
+
+  RayConfig::instance().initialize(promise.get_future().get());
+}
 
 std::shared_ptr<CoreWorker> CoreWorkerProcess::TryGetWorker(const WorkerID &worker_id) {
   if (!instance_) {
@@ -334,12 +380,11 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   NodeID local_raylet_id;
   int assigned_port;
   std::string serialized_job_config = options_.serialized_job_config;
-  std::string system_config;
   local_raylet_client_ = std::shared_ptr<raylet::RayletClient>(new raylet::RayletClient(
       io_service_, std::move(grpc_client), options_.raylet_socket, GetWorkerID(),
       options_.worker_type, worker_context_.GetCurrentJobID(), options_.language,
       options_.node_ip_address, &raylet_client_status, &local_raylet_id, &assigned_port,
-      &system_config, &serialized_job_config));
+      &serialized_job_config));
 
   if (!raylet_client_status.ok()) {
     // Avoid using FATAL log or RAY_CHECK here because they may create a core dump file.
@@ -355,9 +400,6 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   connected_ = true;
 
   RAY_CHECK(assigned_port >= 0);
-
-  // NOTE(edoakes): any initialization depending on RayConfig must happen after this line.
-  RayConfig::instance().initialize(system_config);
 
   // Parse job config from serialized string.
   job_config_.reset(new rpc::JobConfig());
@@ -1691,7 +1733,9 @@ Status CoreWorker::KillActor(const ActorID &actor_id, bool force_kill, bool no_r
     stream << "Failed to find a corresponding actor handle for " << actor_id;
     return Status::Invalid(stream.str());
   }
-  direct_actor_submitter_->KillActor(actor_id, force_kill, no_restart);
+
+  RAY_CHECK_OK(
+      gcs_client_->Actors().AsyncKillActor(actor_id, force_kill, no_restart, nullptr));
   return Status::OK();
 }
 
@@ -2596,8 +2640,15 @@ void CoreWorker::HandleDeleteSpilledObjects(
 
 void CoreWorker::HandleExit(const rpc::ExitRequest &request, rpc::ExitReply *reply,
                             rpc::SendReplyCallback send_reply_callback) {
+  bool own_objects = reference_counter_->OwnObjects();
+  // Fail the request if it owns any object.
+  if (own_objects) {
+    reply->set_success(false);
+  } else {
+    reply->set_success(true);
+    Exit(/*intentional=*/true);
+  }
   send_reply_callback(Status::OK(), nullptr, nullptr);
-  Exit(/*intentional=*/true);
 }
 
 void CoreWorker::YieldCurrentFiber(FiberEvent &event) {
@@ -2696,5 +2747,7 @@ void CoreWorker::SetActorTitle(const std::string &title) {
 }
 
 const rpc::JobConfig &CoreWorker::GetJobConfig() const { return *job_config_; }
+
+bool CoreWorker::IsExiting() const { return exiting_; }
 
 }  // namespace ray

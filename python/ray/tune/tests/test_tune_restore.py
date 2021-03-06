@@ -206,15 +206,6 @@ class TuneFailResumeGridTest(unittest.TestCase):
         shutil.rmtree(self.logdir)
         ray.shutdown()
 
-    def reset_ray(self):
-        # THIS IS A HACK -- should be removed once
-        # https://github.com/ray-project/ray/issues/14269 is merged.
-        ray.shutdown()
-        from ray.tune import register_trainable
-        register_trainable("trainable", MyTrainableClass)
-        register_trainable("MyTrainableClass", MyTrainableClass)
-        ray.init(local_mode=False, num_cpus=2)
-
     @patch("ray.tune.utils.placement_groups.TUNE_MAX_PENDING_TRIALS_PG", 1)
     @patch("ray.tune.trial_runner.TUNE_MAX_PENDING_TRIALS_PG", 1)
     def testFailResumeGridSearch(self):
@@ -235,7 +226,6 @@ class TuneFailResumeGridTest(unittest.TestCase):
                 callbacks=[self.FailureInjectorCallback()],
                 **config)
 
-        self.reset_ray()
         analysis = tune.run(
             "trainable",
             resume=True,
@@ -275,8 +265,6 @@ class TuneFailResumeGridTest(unittest.TestCase):
                 callbacks=[self.FailureInjectorCallback(5)],
                 search_alg=search_alg,
                 **config)
-
-        self.reset_ray()
 
         analysis = tune.run(
             "trainable",
@@ -322,8 +310,6 @@ class TuneFailResumeGridTest(unittest.TestCase):
                 search_alg=search_alg,
                 **config)
 
-        self.reset_ray()
-
         analysis = tune.run(
             "trainable",
             resume=True,
@@ -359,8 +345,6 @@ class TuneFailResumeGridTest(unittest.TestCase):
                 experiments,
                 callbacks=[self.FailureInjectorCallback(10)],
                 fail_fast=True)
-
-        self.reset_ray()
 
         analysis = tune.run(
             experiments,
@@ -407,12 +391,12 @@ class TuneExampleTest(unittest.TestCase):
         validate_save_restore(Cifar10Model)
         validate_save_restore(Cifar10Model, use_object_store=True)
 
-    def testPyTorchMNIST(self):
-        from ray.tune.examples.mnist_pytorch_trainable import TrainMNIST
-        from torchvision import datasets
-        datasets.MNIST("~/data", train=True, download=True)
-        validate_save_restore(TrainMNIST)
-        validate_save_restore(TrainMNIST, use_object_store=True)
+    # def testPyTorchMNIST(self):
+    #     from ray.tune.examples.mnist_pytorch_trainable import TrainMNIST
+    #     from torchvision import datasets
+    #     datasets.MNIST("~/data", train=True, download=True)
+    #     validate_save_restore(TrainMNIST)
+    #     validate_save_restore(TrainMNIST, use_object_store=True)
 
     def testHyperbandExample(self):
         from ray.tune.examples.hyperband_example import MyTrainableClass

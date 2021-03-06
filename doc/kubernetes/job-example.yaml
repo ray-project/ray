@@ -12,12 +12,10 @@ spec:
         - name: ray
           image: rayproject/ray:nightly
           imagePullPolicy: Always
-          command: ["python"]
+          command: [ "/bin/bash", "-c", "--" ]
           args:
-            - "$(EXAMPLE_PROGRAM_PATH)"
-          env:
-            - name: EXAMPLE_PROGRAM_PATH
-              value: "/home/ray/anaconda3/lib/python3.7/site-packages/ray/autoscaler/kubernetes/example_scripts/job_example.py"
+            - "wget https://raw.githubusercontent.com/ray-project/ray/master/doc/kubernetes/example_scripts/job_example.py &&
+              python job_example.py"
           resources:
             requests:
               cpu: 100m
