@@ -87,7 +87,6 @@ def test_two_node_uri(two_node_cluster, working_dir):
     redis_address = cluster.address
     import ray._private.runtime_env as runtime_env
     import tempfile
-    from pathlib import Path
     with tempfile.NamedTemporaryFile(suffix="zip") as tmp_file:
         pkg_name = runtime_env.get_project_package_name(working_dir, [])
         pkg_uri = runtime_env.Protocol.PIN_GCS.value + "://" + pkg_name

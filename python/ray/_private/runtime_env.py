@@ -131,7 +131,8 @@ def get_project_package_name(working_dir: str, modules: List[str]) -> str:
     return RAY_PKG_PREFIX + hash_val.hex() + ".zip" if hash_val else None
 
 
-def create_project_package(working_dir: str, modules: List[ModuleType], output_path: str) -> None:
+def create_project_package(working_dir: str, modules: List[ModuleType],
+                           output_path: str) -> None:
     """Create a pckage that will be used by workers.
 
     This function is used to create a package file based on working directory
