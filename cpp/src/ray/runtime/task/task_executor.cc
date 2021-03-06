@@ -112,8 +112,7 @@ void TaskExecutor::Invoke(
     auto &memory_buffer = args_buffer.at(0)->GetData();
     auto result = ray::internal::TaskExecutionHandler((char *)memory_buffer->Data(),
                                                       memory_buffer->Size());
-    std::shared_ptr<msgpack::sbuffer> data = std::make_shared<msgpack::sbuffer>();
-    data->write(result.data(), result.size());
+    auto data = std::make_shared<msgpack::sbuffer>(std::move(result));
     runtime->Put(std::move(data), task_spec.ReturnId(0));
     return;
   }
