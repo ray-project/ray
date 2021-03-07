@@ -328,6 +328,14 @@ def construct_memory_table(workers_stats: List,
     return memory_table
 
 
+def track_reference_size(group):
+    from collections import defaultdict
+    d = defaultdict(int)
+    for entry in group["entries"]:
+        d[entry["reference_type"]] += entry["object_size"]
+    return d
+
+
 def memory_summary(state,
                    group_by="NODE_ADDRESS",
                    sort_by="OBJECT_SIZE",
@@ -360,8 +368,8 @@ def memory_summary(state,
     group_by, sort_by = group_by.name.lower().replace(
         "_", " "), sort_by.name.lower().replace("_", " ")
     summary_labels = [
-        "Mem Used by Objects", "Local References", "Pinned Count",
-        "Pending Tasks", "Captured in Objects", "Actor Handles"
+        "Mem Used by Objects", "Local References", "Pinned", "Pending Tasks",
+        "Captured in Objects", "Actor Handles"
     ]
     summary_string = "{:<19}  {:<16}  {:<12}  {:<13}  {:<19}  {:<13}\n"
 
@@ -382,7 +390,23 @@ def memory_summary(state,
     for key, group in memory_table["group"].items():
         # Group summary
         summary = group["summary"]
+        extended_summary = track_reference_size(group)
         summary["total_object_size"] = str(summary["total_object_size"]) + " B"
+        summary["total_local_ref_count"] = str(
+            summary["total_local_ref_count"]
+        ) + f", ({extended_summary['LOCAL_REFERENCE']} B)"
+        summary["total_pinned_in_memory"] = str(
+            summary["total_pinned_in_memory"]
+        ) + f", ({extended_summary['PINNED_IN_MEMORY']} B)"
+        summary["total_used_by_pending_task"] = str(
+            summary["total_used_by_pending_task"]
+        ) + f", ({extended_summary['USED_BY_PENDING_TASK']} B)"
+        summary["total_captured_in_objects"] = str(
+            summary["total_captured_in_objects"]
+        ) + f", ({extended_summary['CAPTURED_IN_OBJECT']} B)"
+        summary["total_actor_handles"] = str(
+            summary["total_actor_handles"]
+        ) + f", ({extended_summary['ACTOR_HANDLE']} B)"
         mem += f"--- Summary for {group_by}: {key} ---\n"
         mem += summary_string\
             .format(*summary_labels)
