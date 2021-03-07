@@ -1227,13 +1227,13 @@ class LoadMetricsTest(unittest.TestCase):
             "1.1.1.1",
             {
                 "CPU": 64,
-                "memory": 20,  # 1000 MiB
-                "object_store_memory": 40  # 2000 MiB
+                "memory": 1000 * 1024 * 1024,
+                "object_store_memory": 2000 * 1024 * 1024,
             },
             {
                 "CPU": 2,
-                "memory": 10,  # 500 MiB
-                "object_store_memory": 20  # 1000 MiB
+                "memory": 500 * 1024 * 1024,  # 500 MiB
+                "object_store_memory": 1000 * 1024 * 1024,
             },
             {})
         lm.update("1.1.1.2", {
