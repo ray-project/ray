@@ -14,7 +14,6 @@ py_test_module_list(
     "test_async.py",
     "test_actor.py",
     "test_actor_advanced.py",
-    "test_advanced_3.py",
     "test_actor_failures.py",
     "test_actor_resources.py",
     "test_advanced.py",
@@ -126,6 +125,7 @@ py_test_module_list(
   files = [
     "test_failure.py",
     "test_stress_failure.py",
+    "test_advanced_3.py",
   ],
   size = "large",
   extra_srcs = SRCS,
