@@ -16,7 +16,6 @@ import os
 import sys
 
 PKG_DIR = "/tmp/ray/runtime_resources"
-Path(PKG_DIR).mkdir(parents=True, exist_ok=True)
 
 logger = logging.getLogger(__name__)
 

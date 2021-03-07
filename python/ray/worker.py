@@ -668,10 +668,6 @@ def init(
         driver_mode = LOCAL_MODE
     else:
         driver_mode = SCRIPT_MODE
-        if job_config:
-            # Rewrite the URI. Note the package isn't uploaded to the URI until
-            # later in the connect
-            runtime_env.rewrite_working_dir_uri(job_config)
 
     if global_worker.connected:
         if ignore_reinit_error:
@@ -768,6 +764,12 @@ def init(
             shutdown_at_exit=False,
             spawn_reaper=False,
             connect_only=True)
+
+    runtime_env.PKG_DIR = _global_node.get_runtime_env_dir_path()
+    if driver_mode == SCRIPT_MODE and job_config:
+        # Rewrite the URI. Note the package isn't uploaded to the URI until
+        # later in the connect
+        runtime_env.rewrite_working_dir_uri(job_config)
 
     connect(
         _global_node,
