@@ -289,7 +289,9 @@ class LoadMetrics:
         def format_resource(key, value):
             if key in ["object_store_memory", "memory"]:
                 return "{} GiB".format(
-                    round(value * MEMORY_RESOURCE_UNIT_BYTES / 1e9, 2))
+                    round(
+                        value * MEMORY_RESOURCE_UNIT_BYTES /
+                        (1024 * 1024 * 1024), 2))
             else:
                 return round(value, 2)
 
