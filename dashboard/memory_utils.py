@@ -369,13 +369,15 @@ def memory_summary(state,
         "IP Address", "PID", "Type", "Call Site", "Size", "Reference Type",
         "Object Ref"
     ]
-    object_ref_string = "{:<8}  {:<3}  {:<4}  {:<9}  {:<4}  {:<14}  {:<10}\n"
+    object_ref_string = "{:<8} | {:<3} | {:<4} | {:<9} \
+| {:<4} | {:<14} | {:<10}\n"
+
     if size > line_wrap_threshold and line_wrap:
         object_ref_string = "{:<12}  {:<5}  {:<6}  {:<22}  {:<6}  {:<18}  \
 {:<56}\n"
 
     mem += f"Grouping by {group_by}...\
-        Sorting by {sort_by}...\n\n\n\n"
+        Sorting by {sort_by}...\n\n\n"
 
     for key, group in memory_table["group"].items():
         # Group summary
@@ -403,6 +405,8 @@ def memory_summary(state,
                         0, len(entry["call_site"]), call_site_length)
                 ]
                 num_lines = len(entry["call_site"])
+            else:
+                mem += "\n"
             object_ref_values = [
                 entry["node_ip_address"], entry["pid"], entry["type"],
                 entry["call_site"], entry["object_size"],
@@ -418,5 +422,5 @@ def memory_summary(state,
                 mem += object_ref_string\
                     .format(*row)
             mem += "\n"
-        mem += "\n\n\n"
+        mem += "\n\n"
     return mem
