@@ -74,22 +74,6 @@ genrule(
     visibility = ["//visibility:public"],
 )
 
-cc_library(
-    name="task_executor",
-    hdrs = glob([
-        "src/ray/runtime/task/*.h",
-        "src/ray/runtime/task/task_executor.h",
-    ]),
-    srcs = glob([
-        "src/ray/runtime/task/task_executor.cc",
-    ]),
-    strip_include_prefix = "src",
-    visibility = ["//visibility:public"],
-    deps = [
-        ":ray_api",
-    ],
-)
-
 # test
 cc_test(
     name = "api_test",
@@ -100,7 +84,6 @@ cc_test(
     linkstatic = False,
     deps = [
         "ray_api",
-        ":task_executor",
         "@com_google_googletest//:gtest_main",
     ],
 )
