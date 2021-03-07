@@ -328,13 +328,14 @@ class LoadMetricsTest(unittest.TestCase):
         lm = LoadMetrics()
         lm.update("1.1.1.1", {"CPU": 2}, {"CPU": 0}, {})
         lm.update("2.2.2.2", {"CPU": 2, "GPU": 16}, {"CPU": 2, "GPU": 2}, {})
-        lm.update("3.3.3.3", {
-            "memory": 20,
-            "object_store_memory": 40
-        }, {
-            "memory": 0,
-            "object_store_memory": 20
-        }, {})
+        lm.update(
+            "3.3.3.3", {
+                "memory": 1.05 * 1024 * 1024 * 1024,
+                "object_store_memory": 2.1 * 1024 * 1024 * 1024,
+            }, {
+                "memory": 0,
+                "object_store_memory": 1.05 * 1024 * 1024 * 1024,
+            }, {})
         debug = lm.info_string()
         assert ("ResourceUsage: 2.0/4.0 CPU, 14.0/16.0 GPU, "
                 "1.05 GiB/1.05 GiB memory, "
