@@ -339,7 +339,8 @@ def track_reference_size(group):
 def memory_summary(state,
                    group_by="NODE_ADDRESS",
                    sort_by="OBJECT_SIZE",
-                   line_wrap=True) -> str:
+                   line_wrap=True,
+                   unit="B") -> str:
     from ray.new_dashboard.modules.stats_collector.stats_collector_head\
          import node_stats_to_dict
 
@@ -347,6 +348,9 @@ def memory_summary(state,
     import shutil
     size = shutil.get_terminal_size((80, 20)).columns
     line_wrap_threshold = 137
+
+    # Unit conversions
+    units = {"B": 10**0, "KB": 10**3, "MB": 10**6, "GB": 10**9}
 
     # Fetch core memory worker stats, store as a dictionary
     core_worker_stats = []
@@ -391,22 +395,23 @@ def memory_summary(state,
         # Group summary
         summary = group["summary"]
         extended_summary = track_reference_size(group)
-        summary["total_object_size"] = str(summary["total_object_size"]) + " B"
+        summary["total_object_size"] = str(
+            summary["total_object_size"]) + f" {unit}"
         summary["total_local_ref_count"] = str(
             summary["total_local_ref_count"]
-        ) + f", ({extended_summary['LOCAL_REFERENCE']} B)"
+        ) + f", ({extended_summary['LOCAL_REFERENCE'] / units[unit]} {unit})"
         summary["total_pinned_in_memory"] = str(
             summary["total_pinned_in_memory"]
-        ) + f", ({extended_summary['PINNED_IN_MEMORY']} B)"
+        ) + f", ({extended_summary['PINNED_IN_MEMORY'] / units[unit]} {unit})"
         summary["total_used_by_pending_task"] = str(
             summary["total_used_by_pending_task"]
-        ) + f", ({extended_summary['USED_BY_PENDING_TASK']} B)"
+        ) + f", ({extended_summary['USED_BY_PENDING_TASK'] / units[unit]} {unit})"
         summary["total_captured_in_objects"] = str(
             summary["total_captured_in_objects"]
-        ) + f", ({extended_summary['CAPTURED_IN_OBJECT']} B)"
+        ) + f", ({extended_summary['CAPTURED_IN_OBJECT'] / units[unit]} {unit})"
         summary["total_actor_handles"] = str(
             summary["total_actor_handles"]
-        ) + f", ({extended_summary['ACTOR_HANDLE']} B)"
+        ) + f", ({extended_summary['ACTOR_HANDLE'] / units[unit]} {unit})"
         mem += f"--- Summary for {group_by}: {key} ---\n"
         mem += summary_string\
             .format(*summary_labels)
@@ -419,8 +424,8 @@ def memory_summary(state,
             .format(*object_ref_labels)
         for entry in group["entries"]:
             entry["object_size"] = str(
-                entry["object_size"]
-            ) + " B" if entry["object_size"] > -1 else "?"
+                entry["object_size"] /
+                units[unit]) + f" {unit}" if entry["object_size"] > -1 else "?"
             num_lines = 1
             if size > line_wrap_threshold and line_wrap:
                 call_site_length = 22
