@@ -329,6 +329,8 @@ def construct_memory_table(workers_stats: List,
 
 
 def track_reference_size(group):
+    """Returns dictionary mapping reference type
+    to memory usage for a given memory table group."""
     from collections import defaultdict
     d = defaultdict(int)
     for entry in group["entries"]:
@@ -394,24 +396,24 @@ def memory_summary(state,
     for key, group in memory_table["group"].items():
         # Group summary
         summary = group["summary"]
-        extended_summary = track_reference_size(group)
+        ref_size = track_reference_size(group)
         summary["total_object_size"] = str(
-            summary["total_object_size"]) + f" {unit}"
+            summary["total_object_size"] / units[unit]) + f" {unit}"
         summary["total_local_ref_count"] = str(
             summary["total_local_ref_count"]
-        ) + f", ({extended_summary['LOCAL_REFERENCE'] / units[unit]} {unit})"
+        ) + f", ({ref_size['LOCAL_REFERENCE'] / units[unit]} {unit})"
         summary["total_pinned_in_memory"] = str(
             summary["total_pinned_in_memory"]
-        ) + f", ({extended_summary['PINNED_IN_MEMORY'] / units[unit]} {unit})"
+        ) + f", ({ref_size['PINNED_IN_MEMORY'] / units[unit]} {unit})"
         summary["total_used_by_pending_task"] = str(
             summary["total_used_by_pending_task"]
-        ) + f", ({extended_summary['USED_BY_PENDING_TASK'] / units[unit]} {unit})"
+        ) + f", ({ref_size['USED_BY_PENDING_TASK'] / units[unit]} {unit})"
         summary["total_captured_in_objects"] = str(
-            summary["total_captured_in_objects"]
-        ) + f", ({extended_summary['CAPTURED_IN_OBJECT'] / units[unit]} {unit})"
+            summary["total_captured_in_objects"]) + (
+                f", ({ref_size['CAPTURED_IN_OBJECT'] / units[unit]} {unit})")
         summary["total_actor_handles"] = str(
             summary["total_actor_handles"]
-        ) + f", ({extended_summary['ACTOR_HANDLE'] / units[unit]} {unit})"
+        ) + f", ({ref_size['ACTOR_HANDLE'] / units[unit]} {unit})"
         mem += f"--- Summary for {group_by}: {key} ---\n"
         mem += summary_string\
             .format(*summary_labels)
