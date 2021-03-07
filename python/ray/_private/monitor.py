@@ -261,8 +261,9 @@ class Monitor:
             redis_client, ray_constants.MONITOR_DIED_ERROR, message)
 
     def _signal_handler(self, sig, frame):
-        return self._handle_failure(f"Terminated with signal {sig}\n" +
-                                    "".join(traceback.format_stack(frame)))
+        self._handle_failure(f"Terminated with signal {sig}\n" +
+                             "".join(traceback.format_stack(frame)))
+        sys.exit(1)
 
     def run(self):
         # Register signal handlers for autoscaler termination.
