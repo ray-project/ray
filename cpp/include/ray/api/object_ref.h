@@ -104,5 +104,59 @@ template <typename T>
 inline std::shared_ptr<T> ObjectRef<T>::Get() const {
   return GetFromRuntime(*this);
 }
+
+template <>
+class ObjectRef<void> {
+ public:
+  ObjectRef() = default;
+  ~ObjectRef() {
+    if (CoreWorkerProcess::IsInitialized()) {
+      auto &core_worker = CoreWorkerProcess::GetCoreWorker();
+      core_worker.RemoveLocalReference(id_);
+    }
+  }
+
+  ObjectRef(const ObjectRef &rhs) { CopyAndAddRefrence(rhs.id_); }
+
+  ObjectRef &operator=(const ObjectRef &rhs) {
+    CopyAndAddRefrence(rhs.id_);
+    return *this;
+  }
+
+  ObjectRef(const ObjectID &id) { CopyAndAddRefrence(id); }
+
+  bool operator==(const ObjectRef<void> &object) const { return id_ == object.id_; }
+
+  /// Get a untyped ID of the object
+  const ObjectID &ID() const { return id_; }
+
+  /// Get the object from the object store.
+  /// This method will be blocked until the object is ready.
+  ///
+  /// \return shared pointer of the result.
+  void Get() const {
+    auto packed_object = internal::RayRuntime()->Get(id_);
+    if (ray::api::RayConfig::GetInstance()->use_ray_remote) {
+      auto response = Serializer::Deserialize<ray::internal::VoidResponse>(
+          packed_object->data(), packed_object->size());
+      if (response.error_code) {
+        throw RayException(response.error_msg);
+      }
+    }
+  }
+
+  /// Make ObjectRef serializable
+  MSGPACK_DEFINE(id_);
+
+ private:
+  void CopyAndAddRefrence(const ObjectID &id) {
+    id_ = id;
+    if (CoreWorkerProcess::IsInitialized()) {
+      auto &core_worker = CoreWorkerProcess::GetCoreWorker();
+      core_worker.AddLocalReference(id_);
+    }
+  }
+  ObjectID id_;
+};
 }  // namespace api
 }  // namespace ray

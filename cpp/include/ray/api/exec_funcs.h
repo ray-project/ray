@@ -16,6 +16,7 @@
 
 #include <ray/api/arguments.h>
 #include <ray/api/serializer.h>
+#include "absl/utility/utility.h"
 
 namespace ray {
 namespace api {
@@ -26,10 +27,10 @@ namespace api {
 /// ActorExecFunction the wrapper of actor member function.
 
 template <typename ReturnType, typename CastReturnType, typename... OtherArgTypes>
-std::shared_ptr<msgpack::sbuffer> ExecuteNormalFunction(
-    uintptr_t base_addr, size_t func_offset,
-    const std::vector<std::shared_ptr<RayObject>> &args_buffer, TaskType task_type,
-    std::shared_ptr<OtherArgTypes> &&... args) {
+absl::enable_if_t<!std::is_void<ReturnType>::value, std::shared_ptr<msgpack::sbuffer>>
+ExecuteNormalFunction(uintptr_t base_addr, size_t func_offset,
+                      const std::vector<std::shared_ptr<RayObject>> &args_buffer,
+                      TaskType task_type, std::shared_ptr<OtherArgTypes> &&... args) {
   int arg_index = 0;
   Arguments::UnwrapArgs(args_buffer, arg_index, &args...);
 
@@ -41,6 +42,14 @@ std::shared_ptr<msgpack::sbuffer> ExecuteNormalFunction(
   // TODO: No need use shared_ptr here, refactor later.
   return std::make_shared<msgpack::sbuffer>(
       Serializer::Serialize((CastReturnType)(return_value)));
+}
+
+template <typename ReturnType, typename CastReturnType, typename... OtherArgTypes>
+absl::enable_if_t<std::is_void<ReturnType>::value> ExecuteNormalFunction(
+    uintptr_t base_addr, size_t func_offset,
+    const std::vector<std::shared_ptr<RayObject>> &args_buffer, TaskType task_type,
+    std::shared_ptr<OtherArgTypes> &&... args) {
+  // TODO: Will support void functions for old api later.
 }
 
 template <typename ReturnType, typename ActorType, typename... OtherArgTypes>
@@ -69,10 +78,19 @@ std::shared_ptr<msgpack::sbuffer> ExecuteActorFunction(
 }
 
 template <typename ReturnType, typename... Args>
-std::shared_ptr<msgpack::sbuffer> NormalExecFunction(
+absl::enable_if_t<!std::is_void<ReturnType>::value, std::shared_ptr<msgpack::sbuffer>>
+NormalExecFunction(uintptr_t base_addr, size_t func_offset,
+                   const std::vector<std::shared_ptr<RayObject>> &args_buffer) {
+  return ExecuteNormalFunction<ReturnType, ReturnType, Args...>(
+      base_addr, func_offset, args_buffer, TaskType::NORMAL_TASK,
+      std::shared_ptr<Args>{}...);
+}
+
+template <typename ReturnType, typename... Args>
+absl::enable_if_t<std::is_void<ReturnType>::value> NormalExecFunction(
     uintptr_t base_addr, size_t func_offset,
     const std::vector<std::shared_ptr<RayObject>> &args_buffer) {
-  return ExecuteNormalFunction<ReturnType, ReturnType, Args...>(
+  ExecuteNormalFunction<ReturnType, ReturnType, Args...>(
       base_addr, func_offset, args_buffer, TaskType::NORMAL_TASK,
       std::shared_ptr<Args>{}...);
 }

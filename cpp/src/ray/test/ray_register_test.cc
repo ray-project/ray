@@ -23,7 +23,16 @@ using namespace ray::internal;
 int Return() { return 1; }
 int PlusOne(int x) { return x + 1; }
 
+int SumThree(int x, int y, int z) { return x + y + z; }
+
+void Hello() { std::cout << "hello\n"; }
+
+void VoidFunc(int x, int y) { std::cout << x + y << "\n"; }
+
 RAY_REMOTE(PlusOne);
+RAY_REMOTE(SumThree);
+RAY_REMOTE(Hello);
+RAY_REMOTE(VoidFunc);
 
 TEST(RayApiTest, DuplicateRegister) {
   bool r = FunctionManager::Instance().RegisterRemoteFunction("Return", Return);
@@ -87,6 +96,16 @@ TEST(RayApiTest, NormalTask) {
 
   auto r1 = Ray::Task(Return).Remote();
   EXPECT_EQ(1, *(r1.Get()));
+
+  auto r2 = Ray::Task(SumThree).Remote(1, 2, 3);
+  EXPECT_EQ(6, *(r2.Get()));
+
+  // Test void functions.
+  auto r3 = Ray::Task(Hello).Remote();
+  r3.Get();
+
+  auto r4 = Ray::Task(VoidFunc).Remote(1, 2);
+  r4.Get();
 
   ray::api::RayConfig::GetInstance()->use_ray_remote = false;
 }
