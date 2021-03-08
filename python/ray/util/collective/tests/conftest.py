@@ -76,34 +76,3 @@ def ray_start_single_node():
     address_info = ray.init("auto")
     yield address_info
     ray.shutdown()
-
-# # Hao: this fixture is a bit tricky.
-# # I use a bash script to start a ray cluster on
-# # my own on-premise cluster before run this fixture.
-# @pytest.fixture
-# def ray_start_distributed_2_nodes():
-#     # The cluster has a setup of 2 nodes, each node with 2
-#     # cpus. Each actor will be allocated 1 cpu.
-#     from ray.cluster_utils import Cluster
-#
-#     # Starts a head-node for the cluster.
-#     cluster = Cluster(
-#         initialize_head=True,
-#         head_node_args={
-#             "num_cpus": 10,
-#         })
-#
-#     ray.init("auto")
-#     yield
-#     clean_up()
-#     ray.shutdown()
-#
-#
-# @pytest.fixture
-# def ray_start_distributed_multicpu_2_nodes_4_cpus():
-#     # The cluster has a setup of 2 nodes, each node with 2
-#     # cpus. Each actor will be allocated 2 cpus.
-#     ray.init("auto")
-#     yield
-#     clean_up()
-#     ray.shutdown()

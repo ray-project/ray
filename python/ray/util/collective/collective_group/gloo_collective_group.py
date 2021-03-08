@@ -410,11 +410,6 @@ class GLOOGroup(BaseGroup):
 
         self._point2point(tensors, p2p_fn, recv_options.src_rank)
 
-    # def _get_gloo_context(self):
-    #     """Create or use a cached GLOO context for the collective task."""
-    #     context = gloo_util.create_gloo_context(self.rank, self.world_size)
-    #     return context
-
     def _collective(self,
                     input_tensors,
                     output_tensors,
