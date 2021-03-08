@@ -451,12 +451,12 @@ void NodeManager::HandleJobFinished(const JobID &job_id, const JobTableData &job
 void NodeManager::FillResourceReport(rpc::ResourcesData &resources_data) {
   resources_data.set_node_id(self_node_id_.Binary());
   resources_data.set_node_manager_address(initial_config_.node_manager_address);
-  // Update local chache from gcs remote cache, this is needed when gcs restart.
+  // Update local cache from gcs remote cache, this is needed when gcs restart.
   // We should always keep the cache view consistent.
   cluster_resource_scheduler_->UpdateLastResourceUsage(
       gcs_client_->NodeResources().GetLastResourceUsage());
   cluster_resource_scheduler_->FillResourceUsage(resources_data);
-    cluster_task_manager_->FillResourceUsage(resources_data);
+  cluster_task_manager_->FillResourceUsage(resources_data);
 
   // Set the global gc bit on the outgoing heartbeat message.
   if (should_global_gc_) {
@@ -1319,9 +1319,9 @@ void NodeManager::ProcessPushErrorRequestMessage(const uint8_t *message_data) {
   RAY_CHECK_OK(gcs_client_->Errors().AsyncReportJobError(error_data_ptr, nullptr));
 }
 
-void NodeManager::HandleRequestResourceReport(const rpc::RequestResourceReportRequest &request,
-                                rpc::RequestResourceReportReply *reply,
-                                 rpc::SendReplyCallback send_reply_callback) {
+void NodeManager::HandleRequestResourceReport(
+    const rpc::RequestResourceReportRequest &request,
+    rpc::RequestResourceReportReply *reply, rpc::SendReplyCallback send_reply_callback) {
   auto resources_data = reply->mutable_resources();
   FillResourceReport(*resources_data);
 

@@ -477,7 +477,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \return Status indicating whether setup was successful.
   ray::Status SetupPlasmaSubscription();
 
-  /// Handle a `RequestResourceReport`A
+  /// Handle a `RequestResourceReport` request.
   void HandleRequestResourceReport(const rpc::RequestResourceReportRequest &request,
                                    rpc::RequestResourceReportReply *reply,
                                    rpc::SendReplyCallback send_reply_callback) override;
