@@ -197,14 +197,14 @@ class ObjectLostError(RayError):
     """Indicates that an object has been lost due to node failure.
 
     Attributes:
-        object_ref: ID of the object.
+        object_ref_hex: Hex ID of the object.
     """
 
-    def __init__(self, object_ref):
-        self.object_ref = object_ref
+    def __init__(self, object_ref_hex):
+        self.object_ref_hex = object_ref_hex
 
     def __str__(self):
-        return (f"Object {self.object_ref.hex()} is lost due to node failure.")
+        return (f"Object {self.object_ref_hex} is lost due to node failure.")
 
 
 class GetTimeoutError(RayError):
