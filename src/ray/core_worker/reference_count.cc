@@ -30,6 +30,11 @@ namespace {}  // namespace
 
 namespace ray {
 
+bool ReferenceCounter::OwnObjects() const {
+  absl::MutexLock lock(&mutex_);
+  return !object_id_refs_.empty();
+}
+
 void ReferenceCounter::DrainAndShutdown(std::function<void()> shutdown) {
   absl::MutexLock lock(&mutex_);
   if (object_id_refs_.empty()) {

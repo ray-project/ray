@@ -136,6 +136,9 @@ DEFAULT_CONFIG = with_common_config({
 
 def validate_config(config: TrainerConfigDict) -> None:
     """Checks the config based on settings"""
+    if config["num_gpus"] > 1:
+        raise ValueError("`num_gpus` > 1 not yet supported for SlateQ!")
+
     if config["framework"] != "torch":
         raise ValueError("SlateQ only runs on PyTorch")
 
