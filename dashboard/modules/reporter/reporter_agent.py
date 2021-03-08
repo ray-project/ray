@@ -321,21 +321,21 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
             active_nodes = cluster_stats["autoscaler_report"]["active_nodes"]
             num_active_nodes = sum(active_nodes.values())
             cluster_active_nodes_record = Record(
-                gauge=self._gauges["cluster_active_nodes"],
+                gauge=METRICS_GAUGES["cluster_active_nodes"],
                 value=num_active_nodes,
                 tags={"ip": ip})
 
             failed_nodes = len(
                 cluster_stats["autoscaler_report"]["failed_nodes"])
             cluster_failed_nodes_record = Record(
-                gauge=self._gauges["cluster_failed_nodes"],
+                gauge=METRICS_GAUGES["cluster_failed_nodes"],
                 value=failed_nodes,
                 tags={"ip": ip})
 
             pending_nodes = len(
                 cluster_stats["autoscaler_report"]["pending_nodes"])
             cluster_pending_nodes_record = Record(
-                gauge=self._gauges["cluster_pending_nodes"],
+                gauge=METRICS_GAUGES["cluster_pending_nodes"],
                 value=pending_nodes,
                 tags={"ip": ip})
             records_reported.extend([
