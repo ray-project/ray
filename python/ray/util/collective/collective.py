@@ -15,7 +15,8 @@ logger = logging.getLogger(__name__)
 
 
 try:
-    from ray.util.collective.collective_group import NCCLGroup
+    from ray.util.collective.collective_group.\
+        nccl_collective_group import NCCLGroup
 except ImportError:
     _NCCL_AVAILABLE = False
     logger.warning("NCCL seems unavailable. Please install Cupy "
@@ -23,7 +24,8 @@ except ImportError:
                    "https://docs.cupy.dev/en/stable/install.html.")
 
 try:
-    from ray.util.collective.collective_group import GLOOGroup
+    from ray.util.collective.collective_group.\
+        gloo_collective_group import GLOOGroup
 except ImportError:
     _GLOO_AVAILABLE = False
     logger.warning("PyGloo seems unavailable. Please install PyGloo "
