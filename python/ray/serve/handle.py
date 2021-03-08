@@ -115,7 +115,7 @@ class RayServeHandle:
             ``**kwargs``: All keyword arguments will be available in
                 ``request.query_params``.
         """
-        self.request_counter.increment()
+        self.request_counter.inc()
         return await self.router._remote(
             self.endpoint_name, self.handle_options, request_data, kwargs)
 
@@ -148,7 +148,7 @@ class RayServeSyncHandle(RayServeHandle):
             ``**kwargs``: All keyword arguments will be available in
                 ``request.args``.
         """
-        self.request_counter.increment()
+        self.request_counter.inc()
         coro = self.router._remote(self.endpoint_name, self.handle_options,
                                    request_data, kwargs)
         future: concurrent.futures.Future = asyncio.run_coroutine_threadsafe(
