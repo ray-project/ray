@@ -45,6 +45,7 @@ from test_module.test import one
 """)
         yield tmp_dir
 
+
 @unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
 def test_single_node(ray_start_cluster_head, working_dir):
     cluster = ray_start_cluster_head
@@ -84,6 +85,7 @@ def test_two_node_module(two_node_cluster, working_dir):
     print(script)
     out = run_string_as_driver(script)
     assert out.strip().split()[-1] == "1000"
+
 
 @unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
 def test_two_node_uri(two_node_cluster, working_dir):

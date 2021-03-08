@@ -291,7 +291,6 @@ class Node:
         import ray._private.runtime_env as runtime_env
         runtime_env.PKG_DIR = self._runtime_env_dir
 
-
     def get_resource_spec(self):
         """Resolve and return the current resource spec for the node."""
 
