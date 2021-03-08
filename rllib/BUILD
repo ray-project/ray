@@ -601,7 +601,7 @@ py_test(
 py_test(
     name = "test_pg",
     tags = ["agents_dir"],
-    size = "small",
+    size = "medium",
     srcs = ["agents/pg/tests/test_pg.py"]
 )
 
