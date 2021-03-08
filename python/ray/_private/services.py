@@ -1330,7 +1330,6 @@ def start_raylet(redis_address,
                  stdout_file=None,
                  stderr_file=None,
                  config=None,
-                 java_worker_options=None,
                  huge_pages=False,
                  fate_share=None,
                  socket_to_use=None,
@@ -1373,7 +1372,6 @@ def start_raylet(redis_address,
             no redirection should happen, then this should be None.
         config (dict|None): Optional Raylet configuration that will
             override defaults in RayConfig.
-        java_worker_options (list): The command options for Java worker.
         max_bytes (int): Log rotation parameter. Corresponding to
             RotatingFileHandler's maxBytes.
         backup_count (int): Log rotation parameter. Corresponding to
@@ -1416,7 +1414,6 @@ def start_raylet(redis_address,
     include_java = has_java_command and ray_java_installed
     if include_java is True:
         java_worker_command = build_java_worker_command(
-            json.loads(java_worker_options) if java_worker_options else [],
             redis_address,
             plasma_store_name,
             raylet_name,
@@ -1555,7 +1552,6 @@ def get_ray_jars_dir():
 
 
 def build_java_worker_command(
-        java_worker_options,
         redis_address,
         plasma_store_name,
         raylet_name,
@@ -1566,7 +1562,6 @@ def build_java_worker_command(
     """This method assembles the command used to start a Java worker.
 
     Args:
-        java_worker_options (list): The command options for Java worker.
         redis_address (str): Redis address of GCS.
         plasma_store_name (str): The name of the plasma store socket to connect
            to.
@@ -1602,22 +1597,8 @@ def build_java_worker_command(
 
     # Add ray jars path to java classpath
     ray_jars = os.path.join(get_ray_jars_dir(), "*")
-    if java_worker_options is None:
-        options = []
-    else:
-        assert isinstance(java_worker_options, (tuple, list))
-        options = list(java_worker_options)
-    cp_index = -1
-    for i in range(len(options)):
-        option = options[i]
-        if option == "-cp" or option == "-classpath":
-            cp_index = i + 1
-            break
-    if cp_index != -1:
-        options[cp_index] = options[cp_index] + os.pathsep + ray_jars
-    else:
-        options = ["-cp", ray_jars] + options
-    # Put `java_worker_options` in the last, so it can overwrite the
+    options = ["-cp", ray_jars]
+
     # above options.
     command += options
 

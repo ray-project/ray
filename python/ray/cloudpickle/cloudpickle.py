@@ -73,14 +73,16 @@ else:  # pragma: no cover
 if sys.version_info >= (3, 8):
     from types import CellType
 else:
+
     def f():
         a = 1
 
         def g():
             return a
-        return g
-    CellType = type(f().__closure__[0])
 
+        return g
+
+    CellType = type(f().__closure__[0])
 
 # cloudpickle is meant for inter process communication: we expect all
 # communicating processes to run the same Python version hence we favor
@@ -132,7 +134,8 @@ def _whichmodule(obj, name):
     - Errors arising during module introspection are ignored, as those errors
       are considered unwanted side effects.
     """
-    if sys.version_info[:2] < (3, 7) and isinstance(obj, typing.TypeVar):  # pragma: no branch  # noqa
+    if sys.version_info[:2] < (3, 7) and isinstance(
+            obj, typing.TypeVar):  # pragma: no branch  # noqa
         # Workaround bug in old Python versions: prior to Python 3.7,
         # T.__module__ would always be set to "typing" even when the TypeVar T
         # would be defined in a different module.
@@ -152,11 +155,8 @@ def _whichmodule(obj, name):
     for module_name, module in sys.modules.copy().items():
         # Some modules such as coverage can inject non-module objects inside
         # sys.modules
-        if (
-                module_name == '__main__' or
-                module is None or
-                not isinstance(module, types.ModuleType)
-        ):
+        if (module_name == '__main__' or module is None
+                or not isinstance(module, types.ModuleType)):
             continue
         try:
             if _getattribute(module, name)[0] is obj:
@@ -180,10 +180,8 @@ def _is_importable(obj, name=None):
         # another Python process.
         return obj.__name__ in sys.modules
     else:
-        raise TypeError(
-            "cannot check importability of {} instances".format(
-                type(obj).__name__)
-        )
+        raise TypeError("cannot check importability of {} instances".format(
+            type(obj).__name__))
 
 
 def _lookup_module_and_qualname(obj, name=None):
@@ -281,8 +279,8 @@ def _find_imported_submodules(code, top_level_dependencies):
     subimports = []
     # check if any known dependency is an imported package
     for x in top_level_dependencies:
-        if (isinstance(x, types.ModuleType) and
-                hasattr(x, '__package__') and x.__package__):
+        if (isinstance(x, types.ModuleType) and hasattr(x, '__package__')
+                and x.__package__):
             # check if the package has any currently loaded sub-imports
             prefix = x.__name__ + '.'
             # A concurrent thread could mutate sys.modules,
@@ -359,7 +357,12 @@ def cell_set(cell, value):
         cell.cell_contents = value
     else:
         _cell_set = types.FunctionType(
-            _cell_set_template_code, {}, '_cell_set', (), (cell,),)
+            _cell_set_template_code,
+            {},
+            '_cell_set',
+            (),
+            (cell, ),
+        )
         _cell_set(value)
 
 
@@ -372,7 +375,7 @@ def _make_cell_set_template_code():
 
     _cell_set_template_code = types.CodeType(
         co.co_argcount,
-        co.co_kwonlyargcount,   # Python 3 only argument
+        co.co_kwonlyargcount,  # Python 3 only argument
         co.co_nlocals,
         co.co_stacksize,
         co.co_flags,
@@ -400,7 +403,6 @@ LOAD_GLOBAL = opcode.opmap['LOAD_GLOBAL']
 GLOBAL_OPS = (STORE_GLOBAL, DELETE_GLOBAL, LOAD_GLOBAL)
 HAVE_ARGUMENT = dis.HAVE_ARGUMENT
 EXTENDED_ARG = dis.EXTENDED_ARG
-
 
 _BUILTIN_TYPE_NAMES = {}
 for k, v in types.__dict__.items():
@@ -451,6 +453,7 @@ def _extract_class_dict(cls):
 
 
 if sys.version_info[:2] < (3, 7):  # pragma: no branch
+
     def _is_parametrized_type_hint(obj):
         # This is very cheap but might generate false positives.
         # general typing Constructs
@@ -465,10 +468,8 @@ if sys.version_info[:2] < (3, 7):  # pragma: no branch
         # typing.Union/Tuple for old Python 3.5
         is_union = getattr(obj, '__union_params__', None) is not None
         is_tuple = getattr(obj, '__tuple_params__', None) is not None
-        is_callable = (
-            getattr(obj, '__result__', None) is not None and
-            getattr(obj, '__args__', None) is not None
-        )
+        is_callable = (getattr(obj, '__result__', None) is not None
+                       and getattr(obj, '__args__', None) is not None)
         return any((is_typing, is_litteral, is_final, is_union, is_tuple,
                     is_callable))
 
@@ -525,13 +526,13 @@ def parametrized_type_hint_getinitargs(obj):
                 args = list(args)
         initargs = (Callable, (args, result))
     else:  # pragma: no cover
-        raise pickle.PicklingError(
-            "Cloudpickle Error: Unknown type {}".format(type(obj))
-        )
+        raise pickle.PicklingError("Cloudpickle Error: Unknown type {}".format(
+            type(obj)))
     return initargs
 
 
 # Tornado support
+
 
 def is_tornado_coroutine(func):
     """
@@ -606,6 +607,7 @@ def instance(cls):
 class _empty_cell_value(object):
     """sentinel for empty closures
     """
+
     @classmethod
     def __reduce__(cls):
         return cls.__name__
@@ -632,7 +634,7 @@ def _fill_function(*args):
         keys = ['globals', 'defaults', 'dict', 'module', 'closure_values']
         state = dict(zip(keys, args[1:]))
     else:
-        raise ValueError('Unexpected _fill_value arguments: %r' % (args,))
+        raise ValueError('Unexpected _fill_value arguments: %r' % (args, ))
 
     # - At pickling time, any dynamic global variable used by func is
     #   serialized by value (in state['globals']).
@@ -701,8 +703,8 @@ def _make_skel_func(code, cell_count, base_globals=None):
     warnings.warn(
         "A pickle file created using an old (<=1.4.1) version of cloudpicke "
         "is currently being loaded. This is not supported by cloudpickle and "
-        "will break in cloudpickle 1.7", category=UserWarning
-    )
+        "will break in cloudpickle 1.7",
+        category=UserWarning)
     # This is backward-compatibility code: for cloudpickle versions between
     # 0.5.4 and 0.7, base_globals could be a string or None. base_globals
     # should now always be a dictionary.
@@ -711,11 +713,8 @@ def _make_skel_func(code, cell_count, base_globals=None):
 
     base_globals['__builtins__'] = __builtins__
 
-    closure = (
-        tuple(_make_empty_cell() for _ in range(cell_count))
-        if cell_count >= 0 else
-        None
-    )
+    closure = (tuple(_make_empty_cell() for _ in range(cell_count))
+               if cell_count >= 0 else None)
     return types.FunctionType(code, base_globals, None, None, closure)
 
 
@@ -731,10 +730,9 @@ def _make_skeleton_class(type_constructor, name, bases, type_kwargs,
     The "extra" variable is meant to be a dict (or None) that can be used for
     forward compatibility shall the need arise.
     """
-    skeleton_class = types.new_class(
-        name, bases, {'metaclass': type_constructor},
-        lambda ns: ns.update(type_kwargs)
-    )
+    skeleton_class = types.new_class(name, bases,
+                                     {'metaclass': type_constructor},
+                                     lambda ns: ns.update(type_kwargs))
     return _lookup_class_or_track(class_tracker_id, skeleton_class)
 
 
@@ -789,9 +787,11 @@ def _make_skeleton_enum(bases, name, qualname, members, module,
 def _make_typevar(name, bound, constraints, covariant, contravariant,
                   class_tracker_id):
     tv = typing.TypeVar(
-        name, *constraints, bound=bound,
-        covariant=covariant, contravariant=contravariant
-    )
+        name,
+        *constraints,
+        bound=bound,
+        covariant=covariant,
+        contravariant=contravariant)
     if class_tracker_id is not None:
         return _lookup_class_or_track(class_tracker_id, tv)
     else:  # pragma: nocover
@@ -806,8 +806,11 @@ def _decompose_typevar(obj):
         # TypeVar instances are not weakref-able in Python 3.5.3
         class_tracker_id = None
     return (
-        obj.__name__, obj.__bound__, obj.__constraints__,
-        obj.__covariant__, obj.__contravariant__,
+        obj.__name__,
+        obj.__bound__,
+        obj.__constraints__,
+        obj.__covariant__,
+        obj.__contravariant__,
         class_tracker_id,
     )
 

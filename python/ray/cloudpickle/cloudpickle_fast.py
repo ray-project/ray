@@ -27,17 +27,34 @@ from collections import ChainMap
 
 from .compat import pickle, Pickler
 from .cloudpickle import (
-    _extract_code_globals, _BUILTIN_TYPE_NAMES, DEFAULT_PROTOCOL,
-    _find_imported_submodules, _get_cell_contents, _is_importable,
-    _builtin_type, _get_or_create_tracker_id,  _make_skeleton_class,
-    _make_skeleton_enum, _extract_class_dict, dynamic_subimport, subimport,
-    _typevar_reduce, _get_bases, _make_cell, _make_empty_cell, CellType,
-    _is_parametrized_type_hint, PYPY, cell_set,
-    parametrized_type_hint_getinitargs, _create_parametrized_type_hint,
+    _extract_code_globals,
+    _BUILTIN_TYPE_NAMES,
+    DEFAULT_PROTOCOL,
+    _find_imported_submodules,
+    _get_cell_contents,
+    _is_importable,
+    _builtin_type,
+    _get_or_create_tracker_id,
+    _make_skeleton_class,
+    _make_skeleton_enum,
+    _extract_class_dict,
+    dynamic_subimport,
+    subimport,
+    _typevar_reduce,
+    _get_bases,
+    _make_cell,
+    _make_empty_cell,
+    CellType,
+    _is_parametrized_type_hint,
+    PYPY,
+    cell_set,
+    parametrized_type_hint_getinitargs,
+    _create_parametrized_type_hint,
     builtin_code_type,
-    _make_dict_keys, _make_dict_values, _make_dict_items,
+    _make_dict_keys,
+    _make_dict_values,
+    _make_dict_items,
 )
-
 
 if pickle.HIGHEST_PROTOCOL >= 5 and not PYPY:
     # Shorthands similar to pickle.dump/pickle.dumps
@@ -53,8 +70,7 @@ if pickle.HIGHEST_PROTOCOL >= 5 and not PYPY:
         compatibility with older versions of Python.
         """
         CloudPickler(
-            file, protocol=protocol, buffer_callback=buffer_callback
-        ).dump(obj)
+            file, protocol=protocol, buffer_callback=buffer_callback).dump(obj)
 
     def dumps(obj, protocol=None, buffer_callback=None):
         """Serialize obj as a string of bytes allocated in memory
@@ -68,8 +84,7 @@ if pickle.HIGHEST_PROTOCOL >= 5 and not PYPY:
         """
         with io.BytesIO() as file:
             cp = CloudPickler(
-                file, protocol=protocol, buffer_callback=buffer_callback
-            )
+                file, protocol=protocol, buffer_callback=buffer_callback)
             cp.dump(obj)
             return file.getvalue()
 
@@ -105,9 +120,9 @@ else:
 
 load, loads = pickle.load, pickle.loads
 
-
 # COLLECTION OF OBJECTS __getnewargs__-LIKE METHODS
 # -------------------------------------------------
+
 
 def _class_getnewargs(obj):
     type_kwargs = {}
@@ -155,13 +170,13 @@ def _function_getstate(func):
     }
 
     f_globals_ref = _extract_code_globals(func.__code__)
-    f_globals = {k: func.__globals__[k] for k in f_globals_ref if k in
-                 func.__globals__}
+    f_globals = {
+        k: func.__globals__[k]
+        for k in f_globals_ref if k in func.__globals__
+    }
 
-    closure_values = (
-        list(map(_get_cell_contents, func.__closure__))
-        if func.__closure__ is not None else ()
-    )
+    closure_values = (list(map(_get_cell_contents, func.__closure__))
+                      if func.__closure__ is not None else ())
 
     # Extract currently-imported submodules used by func. Storing these modules
     # in a smoke _cloudpickle_subimports attribute of the object's state will
@@ -198,8 +213,9 @@ def _class_getstate(obj):
                 clsdict.pop('_abc_impl', None)
                 (registry, _, _, _) = abc._get_dump(obj)
 
-                clsdict["_abc_impl"] = [subclass_weakref()
-                                        for subclass_weakref in registry]
+                clsdict["_abc_impl"] = [
+                    subclass_weakref() for subclass_weakref in registry
+                ]
             else:
                 # FIXME(suquark): The upstream cloudpickle cannot work in Ray
                 # because sometimes both '_abc_registry' and '_get_dump' does
@@ -232,9 +248,10 @@ def _enum_getstate(obj):
     members = dict((e.name, e.value) for e in obj)
     # Cleanup the clsdict that will be passed to _rehydrate_skeleton_class:
     # Those attributes are already handled by the metaclass.
-    for attrname in ["_generate_next_value_", "_member_names_",
-                     "_member_map_", "_member_type_",
-                     "_value2member_map_"]:
+    for attrname in [
+            "_generate_next_value_", "_member_names_", "_member_map_",
+            "_member_type_", "_value2member_map_"
+    ]:
         clsdict.pop(attrname, None)
     for member in members:
         clsdict.pop(member)
@@ -253,25 +270,21 @@ def _enum_getstate(obj):
 # obj.__reduce__), some do not. The following methods were created to "fill
 # these holes".
 
+
 def _code_reduce(obj):
     """codeobject reducer"""
     if hasattr(obj, "co_posonlyargcount"):  # pragma: no branch
-        args = (
-            obj.co_argcount, obj.co_posonlyargcount,
-            obj.co_kwonlyargcount, obj.co_nlocals, obj.co_stacksize,
-            obj.co_flags, obj.co_code, obj.co_consts, obj.co_names,
-            obj.co_varnames, obj.co_filename, obj.co_name,
-            obj.co_firstlineno, obj.co_lnotab, obj.co_freevars,
-            obj.co_cellvars
-        )
+        args = (obj.co_argcount, obj.co_posonlyargcount, obj.co_kwonlyargcount,
+                obj.co_nlocals, obj.co_stacksize, obj.co_flags, obj.co_code,
+                obj.co_consts, obj.co_names, obj.co_varnames, obj.co_filename,
+                obj.co_name, obj.co_firstlineno, obj.co_lnotab,
+                obj.co_freevars, obj.co_cellvars)
     else:
-        args = (
-            obj.co_argcount, obj.co_kwonlyargcount, obj.co_nlocals,
-            obj.co_stacksize, obj.co_flags, obj.co_code, obj.co_consts,
-            obj.co_names, obj.co_varnames, obj.co_filename,
-            obj.co_name, obj.co_firstlineno, obj.co_lnotab,
-            obj.co_freevars, obj.co_cellvars
-        )
+        args = (obj.co_argcount, obj.co_kwonlyargcount, obj.co_nlocals,
+                obj.co_stacksize, obj.co_flags, obj.co_code, obj.co_consts,
+                obj.co_names, obj.co_varnames, obj.co_filename, obj.co_name,
+                obj.co_firstlineno, obj.co_lnotab, obj.co_freevars,
+                obj.co_cellvars)
     return types.CodeType, args
 
 
@@ -287,7 +300,7 @@ def _cell_reduce(obj):
 
 def _classmethod_reduce(obj):
     orig_func = obj.__func__
-    return type(obj), (orig_func,)
+    return type(obj), (orig_func, )
 
 
 def _file_reduce(obj):
@@ -296,8 +309,7 @@ def _file_reduce(obj):
 
     if not hasattr(obj, "name") or not hasattr(obj, "mode"):
         raise pickle.PicklingError(
-            "Cannot pickle files that do not map to an actual file"
-        )
+            "Cannot pickle files that do not map to an actual file")
     if obj is sys.stdout:
         return getattr, (sys, "stdout")
     if obj is sys.stderr:
@@ -308,13 +320,11 @@ def _file_reduce(obj):
         raise pickle.PicklingError("Cannot pickle closed files")
     if hasattr(obj, "isatty") and obj.isatty():
         raise pickle.PicklingError(
-            "Cannot pickle files that map to tty objects"
-        )
+            "Cannot pickle files that map to tty objects")
     if "r" not in obj.mode and "+" not in obj.mode:
         raise pickle.PicklingError(
-            "Cannot pickle files that are not opened for reading: %s"
-            % obj.mode
-        )
+            "Cannot pickle files that are not opened for reading: %s" %
+            obj.mode)
 
     name = obj.name
 
@@ -328,13 +338,12 @@ def _file_reduce(obj):
         obj.seek(curloc)
     except IOError as e:
         raise pickle.PicklingError(
-            "Cannot pickle file %s as it cannot be read" % name
-        ) from e
+            "Cannot pickle file %s as it cannot be read" % name) from e
     retval.write(contents)
     retval.seek(curloc)
 
     retval.name = name
-    return _file_reconstructor, (retval,)
+    return _file_reconstructor, (retval, )
 
 
 def _getset_descriptor_reduce(obj):
@@ -342,16 +351,16 @@ def _getset_descriptor_reduce(obj):
 
 
 def _mappingproxy_reduce(obj):
-    return types.MappingProxyType, (dict(obj),)
+    return types.MappingProxyType, (dict(obj), )
 
 
 def _memoryview_reduce(obj):
-    return bytes, (obj.tobytes(),)
+    return bytes, (obj.tobytes(), )
 
 
 def _module_reduce(obj):
     if _is_importable(obj):
-        return subimport, (obj.__name__,)
+        return subimport, (obj.__name__, )
     else:
         obj.__dict__.pop('__builtins__', None)
         return dynamic_subimport, (obj.__name__, vars(obj))
@@ -362,7 +371,7 @@ def _method_reduce(obj):
 
 
 def _logger_reduce(obj):
-    return logging.getLogger, (obj.name,)
+    return logging.getLogger, (obj.name, )
 
 
 def _root_logger_reduce(obj):
@@ -374,7 +383,7 @@ def _property_reduce(obj):
 
 
 def _weakset_reduce(obj):
-    return weakref.WeakSet, (list(obj),)
+    return weakref.WeakSet, (list(obj), )
 
 
 def _dynamic_class_reduce(obj):
@@ -386,27 +395,23 @@ def _dynamic_class_reduce(obj):
     from global modules.
     """
     if Enum is not None and issubclass(obj, Enum):
-        return (
-            _make_skeleton_enum, _enum_getnewargs(obj), _enum_getstate(obj),
-            None, None, _class_setstate
-        )
+        return (_make_skeleton_enum, _enum_getnewargs(obj),
+                _enum_getstate(obj), None, None, _class_setstate)
     else:
-        return (
-            _make_skeleton_class, _class_getnewargs(obj), _class_getstate(obj),
-            None, None, _class_setstate
-        )
+        return (_make_skeleton_class, _class_getnewargs(obj),
+                _class_getstate(obj), None, None, _class_setstate)
 
 
 def _class_reduce(obj):
     """Select the reducer depending on the dynamic nature of the class obj"""
     if obj is type(None):  # noqa
-        return type, (None,)
+        return type, (None, )
     elif obj is type(Ellipsis):
-        return type, (Ellipsis,)
+        return type, (Ellipsis, )
     elif obj is type(NotImplemented):
-        return type, (NotImplemented,)
+        return type, (NotImplemented, )
     elif obj in _BUILTIN_TYPE_NAMES:
-        return _builtin_type, (_BUILTIN_TYPE_NAMES[obj],)
+        return _builtin_type, (_BUILTIN_TYPE_NAMES[obj], )
     elif not _is_importable(obj):
         return _dynamic_class_reduce(obj)
     return NotImplemented
@@ -514,7 +519,6 @@ class CloudPickler(Pickler):
     _dispatch_table[_collections_abc.dict_values] = _dict_values_reduce
     _dispatch_table[_collections_abc.dict_items] = _dict_items_reduce
 
-
     dispatch_table = ChainMap(_dispatch_table, copyreg.dispatch_table)
     # TODO(suquark): Remove this patch when we use numpy >= 1.20.0 by default.
     # We import 'numpy.core' here, so numpy would register the
@@ -588,10 +592,8 @@ class CloudPickler(Pickler):
             return Pickler.dump(self, obj)
         except RuntimeError as e:
             if "recursion" in e.args[0]:
-                msg = (
-                    "Could not pickle object as excessively deep recursion "
-                    "required."
-                )
+                msg = ("Could not pickle object as excessively deep recursion "
+                       "required.")
                 raise pickle.PicklingError(msg) from e
             else:
                 raise
@@ -621,8 +623,7 @@ class CloudPickler(Pickler):
             if protocol is None:
                 protocol = DEFAULT_PROTOCOL
             Pickler.__init__(
-                self, file, protocol=protocol, buffer_callback=buffer_callback
-            )
+                self, file, protocol=protocol, buffer_callback=buffer_callback)
             # map functions __globals__ attribute ids, to ensure that functions
             # sharing the same global namespace at pickling time also share
             # their global namespace at unpickling time.
@@ -661,12 +662,11 @@ class CloudPickler(Pickler):
               reducers, such as Exceptions. See
               https://github.com/cloudpipe/cloudpickle/issues/248
             """
-            if sys.version_info[:2] < (3, 7) and _is_parametrized_type_hint(obj):  # noqa  # pragma: no branch
+            if sys.version_info[:2] < (3, 7) and _is_parametrized_type_hint(
+                    obj):  # noqa  # pragma: no branch
                 try:
-                    return (
-                        _create_parametrized_type_hint,
-                        parametrized_type_hint_getinitargs(obj)
-                    )
+                    return (_create_parametrized_type_hint,
+                            parametrized_type_hint_getinitargs(obj))
                 except Exception:
                     # TODO(suquark): Cloudpickle would misclassify pydantic classes into type hints.
                     # We temporarily ignores the exceptions here.
@@ -703,14 +703,23 @@ class CloudPickler(Pickler):
             self.globals_ref = {}
             assert hasattr(self, 'proto')
 
-        def _save_reduce_pickle5(self, func, args, state=None, listitems=None,
-                                 dictitems=None, state_setter=None, obj=None):
+        def _save_reduce_pickle5(self,
+                                 func,
+                                 args,
+                                 state=None,
+                                 listitems=None,
+                                 dictitems=None,
+                                 state_setter=None,
+                                 obj=None):
             save = self.save
             write = self.write
             self.save_reduce(
-                func, args, state=None, listitems=listitems,
-                dictitems=dictitems, obj=obj
-            )
+                func,
+                args,
+                state=None,
+                listitems=listitems,
+                dictitems=dictitems,
+                obj=obj)
             # backport of the Python 3.8 state_setter pickle operations
             save(state_setter)
             save(obj)  # simple BINGET opcode as obj is already memoized.
@@ -732,16 +741,17 @@ class CloudPickler(Pickler):
             dispatched here.
             """
             if obj is type(None):  # noqa
-                return self.save_reduce(type, (None,), obj=obj)
+                return self.save_reduce(type, (None, ), obj=obj)
             elif obj is type(Ellipsis):
-                return self.save_reduce(type, (Ellipsis,), obj=obj)
+                return self.save_reduce(type, (Ellipsis, ), obj=obj)
             elif obj is type(NotImplemented):
-                return self.save_reduce(type, (NotImplemented,), obj=obj)
+                return self.save_reduce(type, (NotImplemented, ), obj=obj)
             elif obj in _BUILTIN_TYPE_NAMES:
                 return self.save_reduce(
-                    _builtin_type, (_BUILTIN_TYPE_NAMES[obj],), obj=obj)
+                    _builtin_type, (_BUILTIN_TYPE_NAMES[obj], ), obj=obj)
 
-            if sys.version_info[:2] < (3, 7) and _is_parametrized_type_hint(obj):  # noqa  # pragma: no branch
+            if sys.version_info[:2] < (3, 7) and _is_parametrized_type_hint(
+                    obj):  # noqa  # pragma: no branch
                 # Parametrized typing constructs in Python < 3.7 are not
                 # compatible with type checks and ``isinstance`` semantics. For
                 # this reason, it is easier to detect them using a
@@ -750,14 +760,14 @@ class CloudPickler(Pickler):
                 self.save_reduce(
                     _create_parametrized_type_hint,
                     parametrized_type_hint_getinitargs(obj),
-                    obj=obj
-                )
+                    obj=obj)
             elif name is not None:
                 Pickler.save_global(self, obj, name=name)
             elif not _is_importable(obj, name=name):
                 self._save_reduce_pickle5(*_dynamic_class_reduce(obj), obj=obj)
             else:
                 Pickler.save_global(self, obj, name=name)
+
         dispatch[type] = save_global
 
         def save_function(self, obj, name=None):
@@ -772,8 +782,7 @@ class CloudPickler(Pickler):
                 return self.save_pypy_builtin_func(obj)
             else:
                 return self._save_reduce_pickle5(
-                    *self._dynamic_function_reduce(obj), obj=obj
-                )
+                    *self._dynamic_function_reduce(obj), obj=obj)
 
         def save_pypy_builtin_func(self, obj):
             """Save pypy equivalent of builtin functions.
