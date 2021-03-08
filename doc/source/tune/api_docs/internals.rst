@@ -16,6 +16,8 @@ Tune's main components consist of TrialRunner, Trial objects, TrialExecutor, Sea
 
 This is an illustration of the high-level training flow and how some of the components interact:
 
+*Note: This figure is horizontally scrollable*
+
 .. figure:: ../../images/tune-trial-runner-flow-horizontal.png
     :class: horizontal-scroll
 
