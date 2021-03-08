@@ -565,7 +565,7 @@ Conservative Q-Learning (CQL)
 
 In offline RL, the algorithm has no access to an environment, but can only sample from a fixed dataset of pre-collected state-action-reward tuples. In particular, CQL (Conservative Q-Learning) is an offline RL algorithm that mitigates the overestimation of Q-values outside the dataset distribution via conservative critic estimates. It does so by adding a simple Q regularizer loss to the standard Bellman update loss. This ensures that the critic does not output overly-optimistic Q-values and can be added on top of any off-policy Q-learning algorithm (here, we provide this for SAC).
 
-RLlib CQL is evaluated against the Behaviour Cloning benchmark (BC) at 500K gradient steps over the dataset. The only difference between BC and CQL config is the ``bc_iters`` parameter in CQL (how many gradient steps over BC loss). CQL is evaluated on the `D4RL <https://github.com/rail-berkeley/d4rl>`__ benchmark, which has pre-colleted offline datasets for many types of environments.
+RLlib's CQL is evaluated against the Behavior Cloning (BC) benchmark at 500K gradient steps over the dataset. The only difference between the BC- and CQL configs is the ``bc_iters`` parameter in CQL, indicating how many gradient steps we perform over the BC loss. CQL is evaluated on the `D4RL <https://github.com/rail-berkeley/d4rl>`__ benchmark, which has pre-collected offline datasets for many types of environments.
 
 Tuned examples: `HalfCheetah Random <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/cql/halfcheetah-cql.yaml>`__, `Hopper Random <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/cql/hopper-cql.yaml>`__
 
