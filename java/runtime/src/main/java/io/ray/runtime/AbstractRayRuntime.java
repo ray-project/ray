@@ -17,8 +17,8 @@ import io.ray.api.id.ObjectId;
 import io.ray.api.id.PlacementGroupId;
 import io.ray.api.options.ActorCreationOptions;
 import io.ray.api.options.CallOptions;
+import io.ray.api.options.PlacementGroupCreationOptions;
 import io.ray.api.placementgroup.PlacementGroup;
-import io.ray.api.placementgroup.PlacementStrategy;
 import io.ray.api.runtimecontext.RuntimeContext;
 import io.ray.runtime.config.RayConfig;
 import io.ray.runtime.context.RuntimeContextImpl;
@@ -38,7 +38,6 @@ import io.ray.runtime.task.TaskExecutor;
 import io.ray.runtime.task.TaskSubmitter;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.Callable;
 import java.util.stream.Collectors;
@@ -50,7 +49,6 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(AbstractRayRuntime.class);
   public static final String PYTHON_INIT_METHOD_NAME = "__init__";
-  private static final String DEFAULT_PLACEMENT_GROUP_NAME = "unnamed_group";
   protected RayConfig rayConfig;
   protected TaskExecutor taskExecutor;
   protected FunctionManager functionManager;
@@ -165,23 +163,11 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
   }
 
   @Override
-  public PlacementGroup createPlacementGroup(
-      String name, List<Map<String, Double>> bundles, PlacementStrategy strategy) {
-    boolean bundleResourceValid =
-        bundles.stream()
-            .allMatch(bundle -> bundle.values().stream().allMatch(resource -> resource > 0));
-
-    if (bundles.isEmpty() || !bundleResourceValid) {
-      throw new IllegalArgumentException(
-          "Bundles cannot be empty or bundle's resource must be positive.");
-    }
-    return taskSubmitter.createPlacementGroup(name, bundles, strategy);
-  }
-
-  @Override
-  public PlacementGroup createPlacementGroup(
-      List<Map<String, Double>> bundles, PlacementStrategy strategy) {
-    return createPlacementGroup(DEFAULT_PLACEMENT_GROUP_NAME, bundles, strategy);
+  public PlacementGroup createPlacementGroup(PlacementGroupCreationOptions creationOptions) {
+    Preconditions.checkNotNull(
+        creationOptions,
+        "`PlacementGroupCreationOptions` must be specified when creating a new placement group.");
+    return taskSubmitter.createPlacementGroup(creationOptions);
   }
 
   @Override
@@ -192,6 +178,11 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
   @Override
   public PlacementGroup getPlacementGroup(PlacementGroupId id) {
     return gcsClient.getPlacementGroupInfo(id);
+  }
+
+  @Override
+  public PlacementGroup getPlacementGroup(String name, boolean global) {
+    return gcsClient.getPlacementGroupInfo(name, global);
   }
 
   @Override

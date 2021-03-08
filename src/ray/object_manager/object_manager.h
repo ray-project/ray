@@ -99,6 +99,7 @@ class ObjectManagerInterface {
  public:
   virtual uint64_t Pull(const std::vector<rpc::ObjectReference> &object_refs) = 0;
   virtual void CancelPull(uint64_t request_id) = 0;
+  virtual bool PullRequestActiveOrWaitingForMetadata(uint64_t request_id) const = 0;
   virtual ~ObjectManagerInterface(){};
 };
 
@@ -197,6 +198,10 @@ class ObjectManager : public ObjectManagerInterface,
 
   /// Get the port of the object manager rpc server.
   int GetServerPort() const { return object_manager_server_.GetPort(); }
+
+  bool PullRequestActiveOrWaitingForMetadata(uint64_t pull_request_id) const override {
+    return pull_manager_->PullRequestActiveOrWaitingForMetadata(pull_request_id);
+  }
 
  public:
   /// Takes user-defined ObjectDirectoryInterface implementation.
@@ -310,6 +315,9 @@ class ObjectManager : public ObjectManagerInterface,
   void FillObjectStoreStats(rpc::GetNodeStatsReply *reply) const;
 
   void Tick(const boost::system::error_code &e);
+
+  /// Get the current object store memory usage.
+  int64_t GetUsedMemory() const { return used_memory_; }
 
  private:
   friend class TestObjectManager;

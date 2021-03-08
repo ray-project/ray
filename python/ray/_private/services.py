@@ -6,6 +6,7 @@ import json
 import logging
 import multiprocessing
 import os
+import mmap
 import random
 import shutil
 import signal
@@ -117,8 +118,21 @@ def address(ip_address, port):
     return ip_address + ":" + str(port)
 
 
-def new_port():
-    return random.randint(10000, 65535)
+def new_port(lower_bound=10000, upper_bound=65535, blacklist=None):
+    if not blacklist:
+        blacklist = set()
+    port = random.randint(lower_bound, upper_bound)
+    retry = 0
+    while port in blacklist:
+        if retry > 100:
+            break
+        port = random.randint(lower_bound, upper_bound)
+        retry += 1
+    if retry > 100:
+        raise ValueError(
+            "Failed to find a new port from the range "
+            f"{lower_bound}-{upper_bound}. Blacklist: {blacklist}")
+    return port
 
 
 def find_redis_address(address=None):
@@ -279,7 +293,8 @@ def get_address_info_from_redis_helper(redis_address,
 def get_address_info_from_redis(redis_address,
                                 node_ip_address,
                                 num_retries=5,
-                                redis_password=None):
+                                redis_password=None,
+                                log_warning=True):
     counter = 0
     while True:
         try:
@@ -288,12 +303,13 @@ def get_address_info_from_redis(redis_address,
         except Exception:
             if counter == num_retries:
                 raise
+            if log_warning:
+                logger.warning(
+                    "Some processes that the driver needs to connect to have "
+                    "not registered with Redis, so retrying. Have you run "
+                    "'ray start' on this node?")
             # Some of the information may not be in Redis yet, so wait a little
             # bit.
-            logger.warning(
-                "Some processes that the driver needs to connect to have "
-                "not registered with Redis, so retrying. Have you run "
-                "'ray start' on this node?")
             time.sleep(1)
         counter += 1
 
@@ -784,7 +800,8 @@ def start_redis(node_ip_address,
                 redis_max_clients=None,
                 redirect_worker_output=False,
                 password=None,
-                fate_share=None):
+                fate_share=None,
+                port_blacklist=None):
     """Start the Redis global state store.
 
     Args:
@@ -806,6 +823,8 @@ def start_redis(node_ip_address,
             to this value when they start up.
         password (str): Prevents external clients without the password
             from connecting to Redis if provided.
+        port_blacklist (set): A set of blacklist ports that shouldn't
+            be used when allocating a new port.
 
     Returns:
         A tuple of the address for the primary Redis shard, a list of
@@ -849,7 +868,8 @@ def start_redis(node_ip_address,
         redis_max_memory=None,
         stdout_file=redis_stdout_file,
         stderr_file=redis_stderr_file,
-        fate_share=fate_share)
+        fate_share=fate_share,
+        port_blacklist=port_blacklist)
     processes.append(p)
     redis_address = address(node_ip_address, port)
 
@@ -877,9 +897,9 @@ def start_redis(node_ip_address,
     # Start other Redis shards. Each Redis shard logs to a separate file,
     # prefixed by "redis-<shard number>".
     redis_shards = []
-    # Attempt to start the other Redis shards port range right after the
-    # primary Redis shard port.
-    last_shard_port = port
+    # If Redis shard ports are not provided, start the port range of the
+    # other Redis shards at a high, random port.
+    last_shard_port = new_port(blacklist=port_blacklist) - 1
     for i in range(num_redis_shards):
         redis_stdout_file, redis_stderr_file = redirect_files[i + 1]
         redis_executable = REDIS_EXECUTABLE
@@ -903,7 +923,8 @@ def start_redis(node_ip_address,
             redis_max_memory=redis_max_memory,
             stdout_file=redis_stdout_file,
             stderr_file=redis_stderr_file,
-            fate_share=fate_share)
+            fate_share=fate_share,
+            port_blacklist=port_blacklist)
         processes.append(p)
 
         shard_address = address(node_ip_address, redis_shard_port)
@@ -924,7 +945,8 @@ def _start_redis_instance(executable,
                           stderr_file=None,
                           password=None,
                           redis_max_memory=None,
-                          fate_share=None):
+                          fate_share=None,
+                          port_blacklist=None):
     """Start a single Redis server.
 
     Notes:
@@ -950,6 +972,8 @@ def _start_redis_instance(executable,
         redis_max_memory: The max amount of memory (in bytes) to allow redis
             to use, or None for no limit. Once the limit is exceeded, redis
             will start LRU eviction of entries.
+        port_blacklist (set): A set of blacklist ports that shouldn't
+            be used when allocating a new port.
 
     Returns:
         A tuple of the port used by Redis and ProcessInfo for the process that
@@ -987,7 +1011,7 @@ def _start_redis_instance(executable,
         # did not exit within 0.1 seconds).
         if process_info.process.poll() is None:
             break
-        port = new_port()
+        port = new_port(blacklist=port_blacklist)
         counter += 1
     if counter == num_retries:
         raise RuntimeError("Couldn't start Redis. "
@@ -1135,31 +1159,25 @@ def start_dashboard(require_dashboard,
     Returns:
         ProcessInfo for the process that was started.
     """
-    port_test_socket = socket.socket()
-    port_test_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    if port == ray_constants.DEFAULT_DASHBOARD_PORT:
-        while True:
-            try:
-                port_test_socket.bind(("127.0.0.1", port))
-                port_test_socket.close()
-                break
-            except socket.error:
-                port += 1
-    else:
+    port_retries = 10
+    if port != ray_constants.DEFAULT_DASHBOARD_PORT:
+        port_test_socket = socket.socket()
+        port_test_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try:
             port_test_socket.bind(("127.0.0.1", port))
             port_test_socket.close()
         except socket.error:
             raise ValueError(
                 f"The given dashboard port {port} is already in use")
+        port_retries = 0
 
     dashboard_dir = "new_dashboard"
     dashboard_filepath = os.path.join(RAY_PATH, dashboard_dir, "dashboard.py")
     command = [
         sys.executable, "-u", dashboard_filepath, f"--host={host}",
-        f"--port={port}", f"--redis-address={redis_address}",
-        f"--temp-dir={temp_dir}", f"--log-dir={logdir}",
-        f"--logging-rotate-bytes={max_bytes}",
+        f"--port={port}", f"--port-retries={port_retries}",
+        f"--redis-address={redis_address}", f"--temp-dir={temp_dir}",
+        f"--log-dir={logdir}", f"--logging-rotate-bytes={max_bytes}",
         f"--logging-rotate-backup-count={backup_count}"
     ]
 
@@ -1187,12 +1205,48 @@ def start_dashboard(require_dashboard,
             stderr_file=stderr_file,
             fate_share=fate_share)
 
-        dashboard_url = (
-            f"{host if host != '0.0.0.0' else get_node_ip_address()}:{port}")
+        redis_client = ray._private.services.create_redis_client(
+            redis_address, redis_password)
 
-        logger.info("View the Ray dashboard at {}{}http://{}{}{}".format(
-            colorama.Style.BRIGHT, colorama.Fore.GREEN, dashboard_url,
-            colorama.Fore.RESET, colorama.Style.NORMAL))
+        dashboard_url = None
+        dashboard_returncode = None
+        for _ in range(20):
+            dashboard_url = redis_client.get(ray_constants.REDIS_KEY_DASHBOARD)
+            if dashboard_url is not None:
+                dashboard_url = dashboard_url.decode("utf-8")
+                break
+            dashboard_returncode = process_info.process.poll()
+            if dashboard_returncode is not None:
+                break
+            time.sleep(1)
+        if dashboard_url is None:
+            dashboard_log = os.path.join(logdir, "dashboard.log")
+            returncode_str = (f", return code {dashboard_returncode}"
+                              if dashboard_returncode is not None else "")
+            # Read last n lines of dashboard log. The log file may be large.
+            n = 10
+            lines = []
+            try:
+                with open(dashboard_log, "rb") as f:
+                    with mmap.mmap(
+                            f.fileno(), 0, access=mmap.ACCESS_READ) as mm:
+                        end = mm.size()
+                        for _ in range(n):
+                            sep = mm.rfind(b"\n", 0, end - 1)
+                            if sep == -1:
+                                break
+                            lines.append(mm[sep + 1:end].decode("utf-8"))
+                            end = sep
+                lines.append(f" The last {n} lines of {dashboard_log}:")
+            except Exception:
+                pass
+            last_log_str = "\n".join(reversed(lines[-n:]))
+            raise Exception("Failed to start the dashboard"
+                            f"{returncode_str}.{last_log_str}")
+
+        logger.info("View the Ray dashboard at %s%shttp://%s%s%s",
+                    colorama.Style.BRIGHT, colorama.Fore.GREEN, dashboard_url,
+                    colorama.Fore.RESET, colorama.Style.NORMAL)
 
         return dashboard_url, process_info
     else:
@@ -1287,8 +1341,8 @@ def start_raylet(redis_address,
     Args:
         redis_address (str): The address of the primary Redis server.
         node_ip_address (str): The IP address of this node.
-        node_manager_port(int): The port to use for the node manager. This must
-            not be 0.
+        node_manager_port(int): The port to use for the node manager. If it's
+            0, a random port will be used.
         raylet_name (str): The name of the raylet socket to create.
         plasma_store_name (str): The name of the plasma store socket to connect
              to.
@@ -1325,9 +1379,7 @@ def start_raylet(redis_address,
     Returns:
         ProcessInfo for the process that was started.
     """
-    # The caller must provide a node manager port so that we can correctly
-    # populate the command to start a worker.
-    assert node_manager_port is not None and node_manager_port != 0
+    assert node_manager_port is not None and type(node_manager_port) == int
 
     if use_valgrind and use_profiler:
         raise ValueError("Cannot use valgrind and profiler at the same time.")
@@ -1364,7 +1416,6 @@ def start_raylet(redis_address,
         java_worker_command = build_java_worker_command(
             json.loads(java_worker_options) if java_worker_options else [],
             redis_address,
-            node_manager_port,
             plasma_store_name,
             raylet_name,
             redis_password,
@@ -1378,7 +1429,6 @@ def start_raylet(redis_address,
         cpp_worker_command = build_cpp_worker_command(
             "",
             redis_address,
-            node_manager_port,
             plasma_store_name,
             raylet_name,
             redis_password,
@@ -1392,7 +1442,7 @@ def start_raylet(redis_address,
         sys.executable,
         worker_path,
         f"--node-ip-address={node_ip_address}",
-        f"--node-manager-port={node_manager_port}",
+        "--node-manager-port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
         f"--object-store-name={plasma_store_name}",
         f"--raylet-name={raylet_name}",
         f"--redis-address={redis_address}",
@@ -1425,7 +1475,7 @@ def start_raylet(redis_address,
         f"--redis-address={redis_address}",
         f"--metrics-export-port={metrics_export_port}",
         f"--dashboard-agent-port={metrics_agent_port}",
-        f"--node-manager-port={node_manager_port}",
+        "--node-manager-port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
         f"--object-store-name={plasma_store_name}",
         f"--raylet-name={raylet_name}",
         f"--temp-dir={temp_dir}",
@@ -1502,10 +1552,15 @@ def get_ray_jars_dir():
     return os.path.abspath(os.path.join(current_dir, "jars"))
 
 
-def build_java_worker_command(java_worker_options, redis_address,
-                              node_manager_port, plasma_store_name,
-                              raylet_name, redis_password, session_dir,
-                              node_ip_address):
+def build_java_worker_command(
+        java_worker_options,
+        redis_address,
+        plasma_store_name,
+        raylet_name,
+        redis_password,
+        session_dir,
+        node_ip_address,
+):
     """This method assembles the command used to start a Java worker.
 
     Args:
@@ -1523,7 +1578,8 @@ def build_java_worker_command(java_worker_options, redis_address,
     pairs = []
     if redis_address is not None:
         pairs.append(("ray.address", redis_address))
-    pairs.append(("ray.raylet.node-manager-port", node_manager_port))
+    pairs.append(("ray.raylet.node-manager-port",
+                  "RAY_NODE_MANAGER_PORT_PLACEHOLDER"))
 
     if plasma_store_name is not None:
         pairs.append(("ray.object-store.socket-name", plasma_store_name))
@@ -1572,7 +1628,6 @@ def build_java_worker_command(java_worker_options, redis_address,
 def build_cpp_worker_command(
         cpp_worker_options,
         redis_address,
-        node_manager_port,
         plasma_store_name,
         raylet_name,
         redis_password,
@@ -1594,7 +1649,8 @@ def build_cpp_worker_command(
 
     command = [
         DEFAULT_WORKER_EXECUTABLE, plasma_store_name, raylet_name,
-        str(node_manager_port), redis_address, redis_password, session_dir
+        "RAY_NODE_MANAGER_PORT_PLACEHOLDER", redis_address, redis_password,
+        session_dir
     ]
 
     return command
@@ -1640,6 +1696,14 @@ def determine_plasma_store_config(object_store_memory,
             # /dev/shm.
             if shm_avail > object_store_memory:
                 plasma_directory = "/dev/shm"
+            elif not os.environ.get("RAY_OBJECT_STORE_ALLOW_SLOW_STORAGE"):
+                raise ValueError(
+                    "The configured object store size exceeds the capacity of "
+                    "/dev/shm. This will harm performance. To proceed "
+                    "regardless of this warning, you can set "
+                    "RAY_OBJECT_STORE_ALLOW_SLOW_STORAGE=1. Consider deleting "
+                    "files in /dev/shm or increasing its size with "
+                    "--shm-size in Docker.")
             else:
                 plasma_directory = ray.utils.get_user_temp_dir()
                 logger.warning(
