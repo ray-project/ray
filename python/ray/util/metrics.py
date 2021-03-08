@@ -27,9 +27,6 @@ class Metric:
                              "Please provide a metric name.")
         self._name = name
         self._description = description
-        # We don't specify unit because it won't be
-        # exported to Prometheus anyway.
-        self._unit = ""
         # The default tags key-value pair.
         self._default_tags = {}
         # Keys of tags.
@@ -144,7 +141,7 @@ class Count(Metric):
                  description: str = "",
                  tag_keys: Optional[Tuple[str]] = None):
         super().__init__(name, description, tag_keys)
-        self._metric = CythonCount(self._name, self._description, self._unit,
+        self._metric = CythonCount(self._name, self._description,
                                    self._tag_keys)
 
     def __reduce__(self):
@@ -179,8 +176,7 @@ class Histogram(Metric):
                 "Histogram class. e.g., Histogram(boundaries=[1.0, 2.0])")
         self.boundaries = boundaries
         self._metric = CythonHistogram(self._name, self._description,
-                                       self._unit, self.boundaries,
-                                       self._tag_keys)
+                                       self.boundaries, self._tag_keys)
 
     def __reduce__(self):
         deserializer = Histogram
@@ -212,7 +208,7 @@ class Gauge(Metric):
                  description: str = "",
                  tag_keys: Optional[Tuple[str]] = None):
         super().__init__(name, description, tag_keys)
-        self._metric = CythonGauge(self._name, self._description, self._unit,
+        self._metric = CythonGauge(self._name, self._description,
                                    self._tag_keys)
 
     def __reduce__(self):

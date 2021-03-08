@@ -86,7 +86,7 @@ raylet::RayletClient::RayletClient(
     const std::string &raylet_socket, const WorkerID &worker_id,
     rpc::WorkerType worker_type, const JobID &job_id, const Language &language,
     const std::string &ip_address, Status *status, NodeID *raylet_id, int *port,
-    std::string *system_config, std::string *serialized_job_config)
+    std::string *serialized_job_config)
     : grpc_client_(std::move(grpc_client)), worker_id_(worker_id), job_id_(job_id) {
   // For C++14, we could use std::make_unique
   conn_ = std::unique_ptr<raylet::RayletConnection>(
@@ -122,8 +122,6 @@ raylet::RayletClient::RayletClient(
   *raylet_id = NodeID::FromBinary(reply_message->raylet_id()->str());
   *port = reply_message->port();
 
-  RAY_CHECK(system_config);
-  *system_config = reply_message->system_config()->str();
   *serialized_job_config = reply_message->serialized_job_config()->str();
 }
 
@@ -425,6 +423,12 @@ void raylet::RayletClient::SubscribeToPlasma(const ObjectID &object_id,
   fbb.Finish(message);
 
   RAY_CHECK_OK(conn_->WriteMessage(MessageType::SubscribePlasmaReady, &fbb));
+}
+
+void raylet::RayletClient::GetSystemConfig(
+    const rpc::ClientCallback<rpc::GetSystemConfigReply> &callback) {
+  rpc::GetSystemConfigRequest request;
+  grpc_client_->GetSystemConfig(request, callback);
 }
 
 }  // namespace ray

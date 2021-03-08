@@ -145,6 +145,11 @@ class RayletClientInterface : public PinObjectsInterface,
                               public ResourceReserveInterface {
  public:
   virtual ~RayletClientInterface(){};
+
+  /// Get the system config from Raylet.
+  /// \param callback Callback that will be called after raylet replied the system config.
+  virtual void GetSystemConfig(
+      const rpc::ClientCallback<rpc::GetSystemConfigReply> &callback) = 0;
 };
 
 namespace raylet {
@@ -205,7 +210,7 @@ class RayletClient : public RayletClientInterface {
                const std::string &raylet_socket, const WorkerID &worker_id,
                rpc::WorkerType worker_type, const JobID &job_id, const Language &language,
                const std::string &ip_address, Status *status, NodeID *raylet_id,
-               int *port, std::string *system_config, std::string *serialized_job_config);
+               int *port, std::string *serialized_job_config);
 
   /// Connect to the raylet via grpc only.
   ///
@@ -388,6 +393,9 @@ class RayletClient : public RayletClientInterface {
   void PinObjectIDs(
       const rpc::Address &caller_address, const std::vector<ObjectID> &object_ids,
       const ray::rpc::ClientCallback<ray::rpc::PinObjectIDsReply> &callback) override;
+
+  void GetSystemConfig(
+      const rpc::ClientCallback<rpc::GetSystemConfigReply> &callback) override;
 
   void GlobalGC(const rpc::ClientCallback<rpc::GlobalGCReply> &callback);
 

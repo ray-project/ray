@@ -194,11 +194,11 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(
     int64_t start = current_time_ms();
     if (last_gc_time_ms + 1000 < start) {
       JNIEnv *env = GetJNIEnv();
-      RAY_LOG(INFO) << "Calling System.gc() ...";
+      RAY_LOG(DEBUG) << "Calling System.gc() ...";
       env->CallStaticObjectMethod(java_system_class, java_system_gc);
       last_gc_time_ms = current_time_ms();
-      RAY_LOG(INFO) << "GC finished in " << (double)(last_gc_time_ms - start) / 1000
-                    << " seconds.";
+      RAY_LOG(DEBUG) << "GC finished in " << (double)(last_gc_time_ms - start) / 1000
+                     << " seconds.";
     }
   };
 
