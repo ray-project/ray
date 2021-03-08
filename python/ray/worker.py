@@ -765,7 +765,6 @@ def init(
             spawn_reaper=False,
             connect_only=True)
 
-    runtime_env.PKG_DIR = _global_node.get_runtime_env_dir_path()
     if driver_mode == SCRIPT_MODE and job_config:
         # Rewrite the URI. Note the package isn't uploaded to the URI until
         # later in the connect

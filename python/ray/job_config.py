@@ -13,14 +13,18 @@ class JobConfig:
         code_search_path (list): A list of directories or jar files that
             specify the search path for user code. This will be used as
             `CLASSPATH` in Java and `PYTHONPATH` in Python.
-        runtime_env (dict): A dict used to specify runtime environment of
-            the job. There are three important fields.
-            - `working_dir (str)`: A string of working directory
-            - `working_dir_uri (str)`: A string of uri of the package stored.
-            - `local_modules (list[module])`: List of python modules.
-            `working_dir` and `working_dir_uri` are used for the same thing.
-            `working_dir_uri` will be used with higher priority. This field
-            is used for environment managed by user.
+        runtime_env (dict): A path to a local directory that will be zipped
+            up and unpackaged in the working directory of the task/actor.
+            There are three important fields.
+            - `working_dir (str)`: A path to a local directory that will be
+                zipped up and unpackaged in the working directory of the
+                task/actor.
+            - `working_dir_uri (str)`: Same as `working_dir` but a URI
+                referencing a stored archive instead of a local path.
+                Takes precedence over working_dir.
+            - `local_modules (list[module])`: A list of local Python modules
+                that will be zipped up and unpacked in a directory prepended
+                to the sys.path of tasks/actors.
     """
 
     def __init__(self,

@@ -15,7 +15,9 @@ from urllib.parse import urlparse
 import os
 import sys
 
-PKG_DIR = "/tmp/ray/runtime_resources"
+# We need to setup this variable before
+# using this module
+PKG_DIR = None
 
 logger = logging.getLogger(__name__)
 
@@ -34,8 +36,8 @@ class Protocol(Enum):
             self.__doc__ = doc
         return self
 
-    GCS = "gcs", "For package created and managed by system."
-    PIN_GCS = "pingcs", "For package created and managed by users."
+    GCS = "gcs", "For packages created and managed by the system."
+    PIN_GCS = "pingcs", "For packages created and managed by the users."
 
 
 def _xor_bytes(left: bytes, right: bytes) -> bytes:
@@ -60,8 +62,8 @@ def _zip_module(path: Path, relative_path: Path, zip_handler: ZipFile) -> None:
 
 
 def _hash_modules(path: Path) -> bytes:
-    """
-    Helper function to create hash of a directory.
+    """Helper function to create hash of a directory.
+
     It'll go through all the files in the directory and xor
     hash(file_name, file_content) to create a hash value.
     """
@@ -81,6 +83,7 @@ def _hash_modules(path: Path) -> bytes:
 
 
 def _get_local_path(pkg_uri: str) -> str:
+    assert PKG_DIR, "Please set PKG_DIR in the module first."
     (_, pkg_name) = _parse_uri(pkg_uri)
     return os.path.join(PKG_DIR, pkg_name)
 

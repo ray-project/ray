@@ -285,9 +285,12 @@ class Node:
         old_logs_dir = os.path.join(self._logs_dir, "old")
         try_to_create_directory(old_logs_dir)
         # Create a directory to be used for runtime environment.
-        self._runtime_env_dir = os.path.join(self._temp_dir,
+        self._runtime_env_dir = os.path.join(self._session_dir,
                                              "runtime_resources")
         try_to_create_directory(self._runtime_env_dir)
+        import ray._private.runtime_env as runtime_env
+        runtime_env.PKG_DIR = self._runtime_env_dir
+
 
     def get_resource_spec(self):
         """Resolve and return the current resource spec for the node."""
