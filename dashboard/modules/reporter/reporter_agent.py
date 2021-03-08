@@ -19,6 +19,9 @@ import ray.utils
 from ray.core.generated import reporter_pb2
 from ray.core.generated import reporter_pb2_grpc
 from ray.metrics_agent import MetricsAgent, Gauge, Record
+from ray.autoscaler._private.util import (DEBUG_AUTOSCALING_STATUS,
+                                          DEBUG_AUTOSCALING_STATUS_LEGACY,
+                                          DEBUG_AUTOSCALING_ERROR)
 import psutil
 
 logger = logging.getLogger(__name__)
@@ -124,7 +127,19 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
                                 "percentage", ["ip", "pid"]),
             "raylet_mem": Gauge("raylet_mem",
                                 "Memory usage of the raylet on a node", "mb",
-                                ["ip", "pid"])
+                                ["ip", "pid"]),
+            "cluster_active_nodes": Gauge(
+                "cluster_active_nodes",
+                "Active nodes on the cluster", "count", ["ip"]),
+            "cluster_failed_nodes": Gauge(
+                "cluster_failed_nodes",
+                "Failed nodes on the cluster", "count", ["ip"]),
+            "cluster_pending_nodes": Gauge(
+                "cluster_pending_nodes",
+                "Pending nodes on the cluster", "count", ["ip"]),
+            "cluster_instance_count_by_type": Gauge(
+                "cluster_instance_count_by_type",
+                "Instance count by type on a cluster", "count", ["ip"]),
         }
 
     async def GetProfilingStats(self, request, context):
@@ -299,8 +314,35 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
             "cmdline": self._get_raylet_cmdline(),
         }
 
-    def _record_stats(self, stats):
+    def _record_stats(self, stats, cluster_stats):
         ip = stats["ip"]
+
+        # -- Instance count of cluster --
+        if "autoscaler_report" in cluster_stats:
+            active_nodes = cluster_stats["autoscaler_report"][
+                "active_nodes"]
+            num_active_nodes = sum(active_nodes.values())
+            cluster_active_nodes_record = Record(
+                gauge=self._gauges["cluster_active_nodes"],
+                value=num_active_nodes,
+                tags={"ip": ip})
+
+            failed_nodes = len(
+                cluster_stats["autoscaler_report"]["failed_nodes"])
+            cluster_failed_nodes_record = Record(
+                gauge=self._gauges["cluster_failed_nodes"],
+                value=failed_nodes,
+                tags={"ip": ip})
+
+            pending_nodes = len(
+                cluster_stats["autoscaler_report"]["pending_nodes"])
+            cluster_pending_nodes_record = Record(
+                gauge=self._gauges["cluster_pending_nodes"],
+                value=pending_nodes,
+                tags={"ip": ip})
+
+        cluster_stats["load_metrics_report"]
+
         # -- CPU per node --
         cpu_usage = float(stats["cpu"])
         cpu_record = Record(
@@ -431,6 +473,12 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
             ])
 
         raylet_records = [raylet_cpu_record, raylet_mem_record]
+
+        if "autoscaler_report" in cluster_stats:
+            records_reported.extend([
+                cluster_active_nodes_record, cluster_failed_nodes_record,
+                cluster_pending_nodes_record
+            ])
         records_reported.extend(raylet_records)
 
         self._metrics_agent.record_reporter_stats(records_reported)
@@ -439,9 +487,16 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
         """Get any changes to the log files and push updates to Redis."""
         while True:
             try:
+                formatted_status_string = await aioredis_client.hget(
+                    DEBUG_AUTOSCALING_STATUS, "value")
+                formatted_status = json.loads(formatted_status_string.decode(
+                )) if formatted_status_string else {}
+                logger.info("####" + str(formatted_status))
+
                 stats = self._get_all_stats()
-                self._record_stats(stats)
+                self._record_stats(stats, formatted_status)
                 await aioredis_client.publish(self._key, jsonify_asdict(stats))
+
             except Exception:
                 logger.exception("Error publishing node physical stats.")
             await asyncio.sleep(
