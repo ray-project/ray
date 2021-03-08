@@ -4,7 +4,7 @@ import numpy as np
 import ray
 
 from ray.util.collective.types import Backend
-from ray.util.collective.tests_gloo.util import create_collective_workers
+from ray.util.collective.tests.cpu_util import create_collective_workers
 
 
 @pytest.mark.parametrize("backend", [Backend.GLOO])

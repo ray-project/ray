@@ -16,14 +16,13 @@ from ray.util.collective.types import AllReduceOptions, \
     BarrierOptions, Backend, ReduceOptions, BroadcastOptions, \
     AllGatherOptions, ReduceScatterOptions, SendOptions, \
     RecvOptions
+from ray.util.collective.const import get_store_name
 
-from ray.util.collective.const import get_gloo_store_name
 logger = logging.getLogger(__name__)
 
 
 class Rendezvous:
-    """
-    A rendezvous class for different actor/task processes to meet.
+    """A rendezvous class for different actor/task processes to meet.
 
     To initialize an GLOO collective communication group, different
     actors/tasks spawned in Ray in a collective group needs to meet
@@ -58,7 +57,7 @@ class Rendezvous:
             redisStore.authorize(redis_password)
             self._store = redisStore
         elif store_type == "file":
-            store_name = get_gloo_store_name(self._group_name)
+            store_name = get_store_name(self._group_name)
             store_path = gloo_util.get_gloo_store_path(store_name)
             if self._context.rank == 0:
                 if not os.path.exists(store_path):
@@ -88,11 +87,10 @@ class Rendezvous:
             raise RuntimeError("No implementation for uv")
 
     def meet(self, timeout_s=180):
-        """
-        Meet at the named actor store.
+        """Meet at the named actor store.
 
         Args:
-            timeout_s: timeout in seconds.
+            timeout_s (int): timeout in seconds.
 
         Return:
             None
@@ -165,37 +163,33 @@ class Rendezvous:
 class GLOOGroup(BaseGroup):
     def __init__(self, world_size, rank, group_name,
                  store_type="redis", device_type="tcp"):
-        """
-        Init an GLOO collective group.
+        """Init an GLOO collective group.
 
         Args:
             world_size (int): The number of processes.
             rank (int): The id of process
             group_name (str): The unique user-specified group name.
-            store_type (str): The store type.
-                              Optional: "redis", "file", "hash".
+            store_type (str): The store type. Optional: "redis",
+                              "file", "hash".
             device_type (str): The device type to transport.
                                Optional: "tcp", "uv".
         """
         super(GLOOGroup, self).__init__(world_size, rank, group_name)
-
-        self._gloo_context = self._get_gloo_context()
-
+        self._gloo_context = gloo_util.create_gloo_context(self.rank,
+                                                           self.world_size)
         self._rendezvous = Rendezvous(self.group_name, self._gloo_context,
                                       store_type, device_type)
         self._rendezvous.meet()
 
     def destroy_group(self):
-        """
-        Destroy the group and release the GLOO communicators safely.
-        """
+        """Destroy the group and release GLOO communicators."""
         if self._gloo_context is not None:
             pygloo.barrier(self._gloo_context)
             # destroy the communicator
             self._gloo_context = None
 
         if self.rank == 0 and self._rendezvous.store_type == "file":
-            store_name = get_gloo_store_name(self._group_name)
+            store_name = get_store_name(self._group_name)
             store_path = gloo_util.get_gloo_store_path(store_name)
             if os.path.exists(store_path):
                 shutil.rmtree(store_path)
@@ -206,14 +200,14 @@ class GLOOGroup(BaseGroup):
         return Backend.GLOO
 
     def allreduce(self, tensors, allreduce_options=AllReduceOptions()):
-        """
-        AllReduce a list of tensors following options.
+        """AllReduce a list of tensors following options.
 
         Args:
             tensor: the tensor to be reduced, each tensor locates on CPU
             allreduce_options:
 
         Returns:
+            None
         """
 
         def collective_fn(input_tensor, output_tensor, context):
@@ -228,13 +222,13 @@ class GLOOGroup(BaseGroup):
         self._collective(tensors, tensors, collective_fn)
 
     def barrier(self, barrier_options=BarrierOptions()):
-        """
-        Blocks until all processes reach this barrier.
+        """Blocks until all processes reach this barrier.
 
         Args:
             barrier_options: barrier options.
 
         Returns:
+            None
         """
         barrier_tensor = numpy.array([1])
         self.allreduce([barrier_tensor])
@@ -316,8 +310,7 @@ class GLOOGroup(BaseGroup):
             _flatten_for_scatter_gather(tensor_list, copy=False)
             for tensor_list in tensor_lists
         ]
-        # for j, tensor in enumerate(tensor_lists[0]):
-        #     print(tensor.flags)
+
         def postprocess_fn():
             for i, tensor_list in enumerate(tensor_lists):
                 for j, tensor in enumerate(tensor_list):
@@ -417,13 +410,10 @@ class GLOOGroup(BaseGroup):
 
         self._point2point(tensors, p2p_fn, recv_options.src_rank)
 
-    def _get_gloo_context(self):
-        """
-        Create or use a cached GLOO contextunicator for the collective task.
-
-        """
-        context = gloo_util.create_gloo_context(self.rank, self.world_size)
-        return context
+    # def _get_gloo_context(self):
+    #     """Create or use a cached GLOO context for the collective task."""
+    #     context = gloo_util.create_gloo_context(self.rank, self.world_size)
+    #     return context
 
     def _collective(self,
                     input_tensors,

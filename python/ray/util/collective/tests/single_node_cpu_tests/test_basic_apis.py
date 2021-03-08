@@ -3,7 +3,7 @@ import pytest
 import ray
 
 from ray.util.collective.types import Backend
-from ray.util.collective.tests_gloo.util import Worker, \
+from ray.util.collective.tests.cpu_util import Worker, \
     create_collective_workers
 
 

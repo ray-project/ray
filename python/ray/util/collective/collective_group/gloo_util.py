@@ -11,6 +11,7 @@ import ray
 from ray.util.collective.types import ReduceOp, torch_available
 from ray.util.queue import _QueueActor
 
+
 GLOO_REDUCE_OP_MAP = {
     ReduceOp.SUM: pygloo.ReduceOp.SUM,
     ReduceOp.PRODUCT: pygloo.ReduceOp.PRODUCT,
@@ -18,7 +19,6 @@ GLOO_REDUCE_OP_MAP = {
     ReduceOp.MAX: pygloo.ReduceOp.MAX,
 }
 
-# gloo types are the same with numpy types
 NUMPY_GLOO_DTYPE_MAP = {
     # INT types
     numpy.int: pygloo.glooDataType_t.glooInt8,
@@ -48,7 +48,7 @@ if torch_available():
         torch.long: pygloo.glooDataType_t.glooInt64,
         # FLOAT types
         torch.half: pygloo.glooDataType_t.glooFloat16,
-        torch.float: pygloo.glooDataType_t.glooFloat64,
+        torch.float: pygloo.glooDataType_t.glooFloat32,
         torch.float16: pygloo.glooDataType_t.glooFloat16,
         torch.float32: pygloo.glooDataType_t.glooFloat32,
         torch.float64: pygloo.glooDataType_t.glooFloat64,
@@ -65,7 +65,7 @@ if torch_available():
         torch.long: numpy.int64,
         # FLOAT types
         torch.half: numpy.half,
-        torch.float: numpy.float,
+        torch.float: numpy.float32,
         torch.float16: numpy.float16,
         torch.float32: numpy.float32,
         torch.float64: numpy.float64,
@@ -73,31 +73,31 @@ if torch_available():
 
 
 def create_gloo_context(rank, world_size):
-    """
-    Create an gloo context using gloo APIs.
+    """Create a GLOO context using GLOO APIs.
 
     Args:
         rank (int): the rank of this process.
-        world_size (int): the number of processes of this communcator group.
+        world_size (int): the number of processes of this collective group.
+
     Returns:
-        context (pygloo.Context): a gloo context.
+        context (pygloo.Context): a GLOO context.
     """
     context = pygloo.rendezvous.Context(rank, world_size)
     return context
 
 
 def get_gloo_reduce_op(reduce_op):
-    """
-    Map the reduce op to GLOO reduce op type.
+    """Map the reduce op to GLOO reduce op type.
 
     Args:
         reduce_op (ReduceOp): ReduceOp Enum (SUM/PRODUCT/MIN/MAX).
+
     Returns:
-        (pygloo.ReduceOp): the mapped gloo reduce op.
+        (pygloo.ReduceOp): the mapped GLOO reduce op.
     """
     if reduce_op not in GLOO_REDUCE_OP_MAP:
         raise RuntimeError(
-            "Gloo does not support reduce op: '{}'".format(reduce_op))
+            "Gloo does not support reduce op: '{}'.".format(reduce_op))
     return GLOO_REDUCE_OP_MAP[reduce_op]
 
 
@@ -110,8 +110,7 @@ def get_gloo_tensor_dtype(tensor):
             if not tensor.is_cuda:
                 return TORCH_GLOO_DTYPE_MAP[tensor.dtype]
             else:
-                print(type(tensor.device))
-                raise ValueError("Expect cpu tensor."
+                raise ValueError("Expect torch CPU tensor. "
                                  "Got {}.".format(tensor.device))
     raise ValueError("Unsupported tensor type. "
                      "Got: {}.".format(type(tensor)))
@@ -125,7 +124,7 @@ def get_numpy_tensor_dtype(tensor):
         if isinstance(tensor, torch.Tensor):
             return TORCH_NUMPY_DTYPE_MAP[tensor.dtype]
     raise ValueError("Unsupported tensor type. Got: {}. Supported "
-                     "cpu tensor types are: torch.Tensor, "
+                     "CPU tensor types are: torch.Tensor, "
                      "numpy.ndarray.".format(type(tensor)))
 
 
@@ -136,10 +135,12 @@ def get_tensor_ptr(tensor):
     if torch_available():
         if isinstance(tensor, torch.Tensor):
             if tensor.is_cuda:
-                raise RuntimeError("torch tensor must be on cpu.")
+                raise RuntimeError("Torch tensor must be on CPU "
+                                   "when using GLOO collectives.")
             return tensor.data_ptr()
-    raise ValueError("Unsupported tensor type. "
-                     "Got: {}.".format(type(tensor)))
+    raise ValueError("Unsupported tensor type. Got: {}. Supported "
+                     "CPU tensor types are: torch.Tensor, "
+                     "numpy.ndarray.".format(type(tensor)))
 
 
 def get_tensor_n_elements(tensor):
@@ -161,9 +162,15 @@ def get_gloo_store_path(store_name):
 
 def get_tensor_device(tensor):
     if isinstance(tensor, numpy.ndarray):
-        return 'cpu'
+        return "cpu"
     elif torch_available() and isinstance(tensor, torch.Tensor):
-        return "cpu" if not tensor.is_cuda else "cuda"
+        if not tensor.is_cuda:
+            return "cpu"
+        else:
+            return "cuda"
+    else:
+        raise RuntimeError("Unrecognized tensor type: "
+                           "'{}'.".format(type(tensor)))
 
 
 def get_tensor_shape(tensor):

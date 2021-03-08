@@ -6,7 +6,7 @@ import numpy as np
 import torch
 
 from ray.util.collective.types import Backend
-from ray.util.collective.tests_gloo.util import create_collective_workers, \
+from ray.util.collective.tests.cpu_util import create_collective_workers, \
     init_tensors_for_gather_scatter
 
 

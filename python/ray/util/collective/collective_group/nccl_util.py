@@ -33,7 +33,8 @@ NUMPY_NCCL_DTYPE_MAP = {
     numpy.int64: nccl.NCCL_INT64,
     # FLOAT types
     numpy.half: nccl.NCCL_HALF,
-    numpy.float: nccl.NCCL_FLOAT,
+    # note that numpy.float is float64.
+    numpy.float: nccl.NCCL_FLOAT64,
     numpy.float16: nccl.NCCL_FLOAT16,
     numpy.float32: nccl.NCCL_FLOAT32,
     numpy.float64: nccl.NCCL_FLOAT64,
@@ -70,7 +71,7 @@ if torch_available():
         torch.long: numpy.int64,
         # FLOAT types
         torch.half: numpy.half,
-        torch.float: numpy.float,
+        torch.float: numpy.float32,
         torch.float16: numpy.float16,
         torch.float32: numpy.float32,
         torch.float64: numpy.float64,
@@ -118,7 +119,7 @@ def get_nccl_reduce_op(reduce_op):
     """
     if reduce_op not in NCCL_REDUCE_OP_MAP:
         raise RuntimeError(
-            "NCCL does not support reduce op: '{}'".format(reduce_op))
+            "NCCL does not support reduce op: '{}'.".format(reduce_op))
     return NCCL_REDUCE_OP_MAP[reduce_op]
 
 
@@ -155,7 +156,8 @@ def get_tensor_ptr(tensor):
     if torch_available():
         if isinstance(tensor, torch.Tensor):
             if not tensor.is_cuda:
-                raise RuntimeError("Torch tensor must be on GPU.")
+                raise RuntimeError("Torch tensor must be on GPU "
+                                   "when using NCCL collectives.")
             return tensor.data_ptr()
     raise ValueError("Unsupported tensor type. Got: {}. Supported "
                      "GPU tensor types are: torch.Tensor, "

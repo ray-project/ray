@@ -1,14 +1,11 @@
 """Test the collective allgather API."""
-from numpy.lib.function_base import blackman
+import numpy as np
 import pytest
 import ray
-
-import numpy as np
 import torch
-
-from ray.util.collective.types import Backend
-from ray.util.collective.tests_gloo.util import create_collective_workers, \
+from ray.util.collective.tests.cpu_util import create_collective_workers, \
     init_tensors_for_gather_scatter
+from ray.util.collective.types import Backend
 
 
 @pytest.mark.parametrize("backend", [Backend.GLOO])

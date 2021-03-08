@@ -9,7 +9,7 @@ from ray.util.collective.const import ENV
 from ray.util.collective.collective_group import nccl_util
 from ray.util.collective.collective_group.base_collective_group \
     import BaseGroup
-from ray.util.collective.const import get_nccl_store_name
+from ray.util.collective.const import get_store_name
 from ray.util.collective.types import AllReduceOptions, \
     BarrierOptions, Backend, ReduceOptions, BroadcastOptions, \
     AllGatherOptions, ReduceScatterOptions, SendOptions, \
@@ -49,7 +49,7 @@ class Rendezvous:
         """Meet at the named actor store.
 
         Args:
-            timeout_s: timeout in seconds.
+            timeout_s (int): timeout in seconds.
 
         Return:
             None
@@ -57,7 +57,7 @@ class Rendezvous:
         if timeout_s <= 0:
             raise ValueError("The 'timeout' argument must be positive. "
                              "Got '{}'.".format(timeout_s))
-        self._store_name = get_nccl_store_name(self._store_key)
+        self._store_name = get_store_name(self._store_key)
         timeout_delta = datetime.timedelta(seconds=timeout_s)
         elapsed = datetime.timedelta(seconds=0)
         start_time = datetime.datetime.now()
@@ -524,7 +524,7 @@ class NCCLGroup(BaseGroup):
         Returns:
             None
         """
-        store_name = get_nccl_store_name(group_key)
+        store_name = get_store_name(group_key)
         store = ray.get_actor(store_name)
         # ray.get([store.__ray_terminate__.remote()])
         ray.kill(store)
@@ -543,7 +543,7 @@ class NCCLGroup(BaseGroup):
             NCCLUniqueID (str): NCCL unique ID.
         """
         group_uid = nccl_util.get_nccl_unique_id()
-        store_name = get_nccl_store_name(key)
+        store_name = get_store_name(key)
         # Avoid a potential circular dependency in ray/actor.py
         from ray.util.collective.util import NCCLUniqueIDStore
         store = NCCLUniqueIDStore.options(

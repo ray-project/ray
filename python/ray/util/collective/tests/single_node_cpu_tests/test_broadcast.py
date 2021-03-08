@@ -3,8 +3,9 @@ import pytest
 import numpy as np
 import ray
 
-from ray.util.collective.tests_gloo.util import create_collective_workers
+from ray.util.collective.tests.cpu_util import create_collective_workers
 from ray.util.collective.types import Backend
+
 
 @pytest.mark.parametrize("backend", [Backend.GLOO])
 @pytest.mark.parametrize("group_name", ["default", "test", "123?34!"])
@@ -17,7 +18,7 @@ def test_broadcast_different_name(ray_start_single_node, group_name,
             group_name=group_name,
             backend=backend
         )
-    ray.wait([
+    ray.get([
         a.set_buffer.remote(np.ones((10, ), dtype=np.float32) * (i + 2))
         for i, a in enumerate(actors)
     ])
@@ -37,7 +38,7 @@ def test_broadcast_different_array_size(ray_start_single_node,
                                         array_size, src_rank, backend):
     world_size = 2
     actors, _ = create_collective_workers(world_size, backend=backend)
-    ray.wait([
+    ray.get([
         a.set_buffer.remote(np.ones(array_size, dtype=np.float32) * (i + 2))
         for i, a in enumerate(actors)
     ])

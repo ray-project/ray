@@ -1,12 +1,10 @@
 """Test the collective allreduice API."""
+import numpy as np
 import pytest
 import ray
-from ray.util.collective.types import Backend, ReduceOp
-
-import numpy as np
 import torch
-
-from ray.util.collective.tests_gloo.util import create_collective_workers
+from from ray.util.collective.tests.cpu_util import create_collective_workers
+from ray.util.collective.types import Backend, ReduceOp
 
 
 @pytest.mark.parametrize("backend", [Backend.GLOO])
@@ -144,7 +142,7 @@ def test_allreduce_torch_numpy(ray_start_single_node, backend):
 
     ray.wait([actors[0].set_buffer.remote(torch.ones(10, ))])
     ray.wait([actors[1].set_buffer.remote(np.ones(10, dtype=np.float32))])
-    results = ray.get([a.do_allreduce.remote() for a in actors])
+    _ = ray.get([a.do_allreduce.remote() for a in actors])
 
 
 if __name__ == "__main__":
