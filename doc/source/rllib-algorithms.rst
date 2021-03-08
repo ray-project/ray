@@ -14,6 +14,7 @@ Algorithm           Frameworks Discrete Actions        Continuous Actions Multi-
 `A2C, A3C`_         tf + torch **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+Attention`_, `+autoreg`_
 `ARS`_              tf + torch **Yes**                 **Yes**            No
 `BC`_               tf + torch **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_
+`CQL`_              torch      No                      **Yes**            No          `+RNN`_, `+LSTM auto-wrapping`_, `+autoreg`_
 `ES`_               tf + torch **Yes**                 **Yes**            No
 `DDPG`_, `TD3`_     tf + torch No                      **Yes**            **Yes**
 `APEX-DDPG`_        tf + torch No                      **Yes**            **Yes**
@@ -551,6 +552,26 @@ RecSim environment wrapper: `Google RecSim <https://github.com/ray-project/ray/b
 **SlateQ-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
 .. literalinclude:: ../../rllib/agents/slateq/slateq.py
+   :language: python
+   :start-after: __sphinx_doc_begin__
+   :end-before: __sphinx_doc_end__
+
+.. _cql:
+
+Conservative Q-Learning (CQL)
+-----------------------------------
+|pytorch|
+`[paper] <https://arxiv.org/abs/2006.04779>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/agents/cql/cql.py>`__
+
+Offline RL is RL in the setting where there is no access to an environment, but a dataset of pre-collected state-action tuples. In particular, CQL is an offline RL algorithm that mitigates the overestimation of Q-values outside the dataset distribution via convservative critic estimates. CQL does this by adding a simple Q regularizer loss to the standard Belman update loss. This ensures that the critic does not output overly-optimistic Q-values and can be added on top of any off-policy Q-learning algorithm (e.g. SAC). 
+
+RLlib CQL is evaluated against the Behaviour Cloning benchmark (BC) at 500K gradient steps over the dataset. The only difference between BC and CQL config is the ``bc_iters`` parameter in CQL (how many gradient steps over BC loss). CQL is evaluated on the `D4RL <https://github.com/rail-berkeley/d4rl>`__ benchmark, which has pre-colleted offline datasets for many types of environments.
+
+Tuned examples: `HalfCheetah Random <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/cql/halfcheetah-cql.yaml>`__, `Hopper Random <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/cql/hopper-cql.yaml>`__
+
+**CQL-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
+
+.. literalinclude:: ../../rllib/agents/cql/cql.py
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
