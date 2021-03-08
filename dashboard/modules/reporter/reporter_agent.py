@@ -101,16 +101,16 @@ METRICS_GAUGES = {
     "raylet_cpu": Gauge("raylet_cpu", "CPU usage of the raylet on a node.",
                         "percentage", ["ip", "pid"]),
     "raylet_mem": Gauge("raylet_mem", "Memory usage of the raylet on a node",
-                        "mb", ["ip", "pid"])
-    "cluster_active_nodes": Gauge(
-                "cluster_active_nodes",
-                "Active nodes on the cluster", "count", ["ip"]),
-    "cluster_failed_nodes": Gauge(
-        "cluster_failed_nodes",
-        "Failed nodes on the cluster", "count", ["ip"]),
-    "cluster_pending_nodes": Gauge(
-        "cluster_pending_nodes",
-        "Pending nodes on the cluster", "count", ["ip"]),
+                        "mb", ["ip", "pid"]),
+    "cluster_active_nodes": Gauge("cluster_active_nodes",
+                                  "Active nodes on the cluster", "count",
+                                  ["ip"]),
+    "cluster_failed_nodes": Gauge("cluster_failed_nodes",
+                                  "Failed nodes on the cluster", "count",
+                                  ["ip"]),
+    "cluster_pending_nodes": Gauge("cluster_pending_nodes",
+                                   "Pending nodes on the cluster", "count",
+                                   ["ip"]),
     "cluster_instance_count_by_type": Gauge(
         "cluster_instance_count_by_type",
         "Instance count by type on a cluster", "count", ["ip"]),
@@ -311,7 +311,6 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
             "cmdline": self._get_raylet().get("cmdline", []),
         }
 
-
     @staticmethod
     def _record_stats(stats, cluster_stats):
         records_reported = []
@@ -319,8 +318,7 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
 
         # -- Instance count of cluster --
         if "autoscaler_report" in cluster_stats:
-            active_nodes = cluster_stats["autoscaler_report"][
-                "active_nodes"]
+            active_nodes = cluster_stats["autoscaler_report"]["active_nodes"]
             num_active_nodes = sum(active_nodes.values())
             cluster_active_nodes_record = Record(
                 gauge=self._gauges["cluster_active_nodes"],
@@ -340,8 +338,10 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
                 gauge=self._gauges["cluster_pending_nodes"],
                 value=pending_nodes,
                 tags={"ip": ip})
-            records_reported.extend([cluster_active_nodes_record, 
-            cluster_failed_nodes_record, cluster_pending_nodes_record])
+            records_reported.extend([
+                cluster_active_nodes_record, cluster_failed_nodes_record,
+                cluster_pending_nodes_record
+            ])
 
         cluster_stats["load_metrics_report"]
 
@@ -473,7 +473,8 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
             mem_available_record, mem_total_record, disk_usage_record,
             disk_utilization_percentage_record, network_sent_record,
             network_received_record, network_send_speed_record,
-            network_receive_speed_record])
+            network_receive_speed_record
+        ])
         return records_reported
 
     async def _perform_iteration(self, aioredis_client):
