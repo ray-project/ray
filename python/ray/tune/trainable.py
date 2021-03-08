@@ -779,6 +779,7 @@ class Trainable:
         Args:
             config (dict): Hyperparameters and other configs given.
                 Copy of `self.config`.
+
         """
         self._setup(config)
         if self._is_overridden("_setup") and log_once("_setup"):
