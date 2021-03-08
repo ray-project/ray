@@ -531,9 +531,6 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
 
     std::shared_ptr<rpc::TaskTableData> data = std::make_shared<rpc::TaskTableData>();
     data->mutable_task()->mutable_task_spec()->CopyFrom(builder.Build().GetMessage());
-    if (!options_.is_local_mode) {
-      RAY_CHECK_OK(gcs_client_->Tasks().AsyncAdd(data, nullptr));
-    }
     SetCurrentTaskId(task_id);
   }
 
@@ -2290,6 +2287,12 @@ void CoreWorker::HandleWaitForObjectEviction(
                            send_reply_callback)) {
     return;
   }
+
+  // SANG-TODO
+  // object_info_publisher->ConnectIfNeeded(consumer_address, connect_callback)
+  // object_info_publisher->RegisterSubscriber(object_id);
+  // object_info_publisher->Publish(object_id); // should invoke send_reply_callback
+  // object_info_publisher->UnRegisterSubscriber(object_id);
 
   // Send a response to trigger unpinning the object when it is no longer in scope.
   auto respond = [send_reply_callback](const ObjectID &object_id) {

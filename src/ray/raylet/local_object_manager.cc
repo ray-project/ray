@@ -41,6 +41,15 @@ void LocalObjectManager::PinObjects(const std::vector<ObjectID> &object_ids,
 void LocalObjectManager::WaitForObjectFree(const rpc::Address &owner_address,
                                            const std::vector<ObjectID> &object_ids) {
   for (const auto &object_id : object_ids) {
+    // SANG-TODO
+    // consumer should call object_info_consumer->ConnectIfNeeded(owner_address, connect_callback)
+    // auto callback = [this](ObjectId &object_id) {
+    //   if (!status.ok()) {...}
+    //   ReleaseFreedObject(object_id);
+    //   object_info_consumer->Unsubscribe()
+    // }
+    // object_info_consumer->Subscribe(object_id, callback);
+
     // Send a long-running RPC request to the owner for each object. When we get a
     // response or the RPC fails (due to the owner crashing), unpin the object.
     // TODO(edoakes): we should be batching these requests instead of sending one per
@@ -48,6 +57,7 @@ void LocalObjectManager::WaitForObjectFree(const rpc::Address &owner_address,
     rpc::WaitForObjectEvictionRequest wait_request;
     wait_request.set_object_id(object_id.Binary());
     wait_request.set_intended_worker_id(owner_address.worker_id());
+    // TODO-SANG Subscribe instead.
     auto owner_client = owner_client_pool_.GetOrConnect(owner_address);
     owner_client->WaitForObjectEviction(
         wait_request,
