@@ -3,7 +3,7 @@ import numpy as np
 import pytest
 import ray
 import torch
-from from ray.util.collective.tests.cpu_util import create_collective_workers
+from ray.util.collective.tests.cpu_util import create_collective_workers
 from ray.util.collective.types import Backend, ReduceOp
 
 

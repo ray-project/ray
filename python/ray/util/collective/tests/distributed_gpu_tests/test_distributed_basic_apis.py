@@ -70,9 +70,6 @@ def test_availability(ray_start_distributed_2_nodes_4_gpus):
     actor0_nccl_availability = ray.get(
         actors[0].report_nccl_availability.remote())
     assert actor0_nccl_availability
-    actor0_gloo_availability = ray.get(
-        actors[0].report_gloo_availability.remote())
-    assert not actor0_gloo_availability
 
 
 def test_is_group_initialized(ray_start_distributed_2_nodes_4_gpus):
