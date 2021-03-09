@@ -191,7 +191,7 @@ class Router:
         self._pending_endpoints: Dict[str, asyncio.Future] = dict()
 
         # -- Metrics Registration -- #
-        self.num_router_requests = metrics.Count(
+        self.num_router_requests = metrics.Counter(
             "serve_num_router_requests",
             description="The number of requests processed by the router.",
             tag_keys=("endpoint", ))
@@ -286,7 +286,7 @@ class Router:
             (await self._get_or_create_replica_set(backend)
              .assign_replica(query))
 
-        self.num_router_requests.record(1, tags={"endpoint": endpoint})
+        self.num_router_requests.inc(tags={"endpoint": endpoint})
 
         return result_ref
 

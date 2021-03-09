@@ -195,8 +195,11 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
 
     @staticmethod
     def _get_mem_usage():
-        vm = psutil.virtual_memory()
-        return vm.total, vm.available, vm.percent, vm.used
+        total = ray.utils.get_system_memory()
+        used = ray.utils.get_used_memory()
+        available = total - used
+        percent = round(used / total, 3) * 100
+        return total, available, percent, used
 
     @staticmethod
     def _get_disk_usage():
