@@ -30,12 +30,13 @@ from ray.rllib.utils.deprecation import deprecation_warning, DEPRECATED_VALUE
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.typing import TrainerConfigDict, \
     PartialTrainerConfigDict, EnvInfoDict, ResultDict, EnvType, PolicyID
+from ray.tune.logger import Logger, UnifiedLogger
 from ray.tune.registry import ENV_CREATOR, register_env, _global_registry
+from ray.tune.resources import Resources
+from ray.tune.result import DEFAULT_RESULTS_DIR
 from ray.tune.trainable import Trainable
 from ray.tune.trial import ExportFormat
-from ray.tune.resources import Resources
-from ray.tune.logger import Logger, UnifiedLogger
-from ray.tune.result import DEFAULT_RESULTS_DIR
+from ray.tune.utils.placement_groups import PlacementGroupFactory
 
 tf1, tf, tfv = try_import_tf()
 
@@ -92,10 +93,6 @@ COMMON_CONFIG: TrainerConfigDict = {
     "batch_mode": "truncate_episodes",
 
     # === Settings for the Trainer process ===
-    # Number of GPUs to allocate to the trainer process. Note that not all
-    # algorithms can take advantage of trainer GPUs. This can be fractional
-    # (e.g., 0.3 GPUs).
-    "num_gpus": 0,
     # Training batch size, if applicable. Should be >= rollout_fragment_length.
     # Samples batches will be concatenated together to a batch of this size,
     # which is then passed to SGD.
@@ -304,7 +301,16 @@ COMMON_CONFIG: TrainerConfigDict = {
     # The extra python environments need to set for worker processes.
     "extra_python_environs_for_worker": {},
 
-    # === Advanced Resource Settings ===
+    # === Resource Settings ===
+    # Number of GPUs to allocate to the trainer process. Note that not all
+    # algorithms can take advantage of trainer GPUs. Support for multi-GPU
+    # is currently only available for tf-[PPO/IMPALA/DQN/PG].
+    # This can be fractional (e.g., 0.3 GPUs).
+    "num_gpus": 0,
+    # Set to True for debugging (multi-)?GPU funcitonality on a CPU machine.
+    # GPU towers will be simulated by graphs located on CPUs in this case.
+    # Use `num_gpus` to test for different numbers of fake GPUs.
+    "_fake_gpus": False,
     # Number of CPUs to allocate per worker.
     "num_cpus_per_worker": 1,
     # Number of GPUs to allocate per worker. This can be fractional. This is
@@ -316,11 +322,21 @@ COMMON_CONFIG: TrainerConfigDict = {
     # Number of CPUs to allocate for the trainer. Note: this only takes effect
     # when running in Tune. Otherwise, the trainer runs in the main program.
     "num_cpus_for_driver": 1,
-    # Deprecated.
-    "memory": 0,
-    "object_store_memory": 0,
-    "memory_per_worker": 0,
-    "object_store_memory_per_worker": 0,
+    # The strategy for the placement group factory returned by
+    # `Trainer.default_resource_request()`. A PlacementGroup defines, which
+    # devices (resources) should always be co-located on the same node.
+    # For example, a Trainer with 2 rollout workers, running with
+    # num_gpus=1 will request a placement group with the bundles:
+    # [{"gpu": 1, "cpu": 1}, {"cpu": 1}, {"cpu": 1}], where the first bundle is
+    # for the driver and the other 2 bundles are for the two workers.
+    # These bundles can now be "placed" on the same or different
+    # nodes depending on the value of `placement_strategy`:
+    # "PACK": Packs bundles into as few nodes as possible.
+    # "SPREAD": Places bundles across distinct nodes as even as possible.
+    # "STRICT_PACK": Packs bundles into one node. The group is not allowed
+    #   to span multiple nodes.
+    # "STRICT_SPREAD": Packs bundles across distinct nodes.
+    "placement_strategy": "PACK",
 
     # === Offline Datasets ===
     # Specify how to generate experiences:
@@ -393,6 +409,13 @@ COMMON_CONFIG: TrainerConfigDict = {
     # Define logger-specific configuration to be used inside Logger
     # Default value None allows overwriting with nested dicts
     "logger_config": None,
+
+    # Deprecated values.
+    # Uses the sync samples optimizer instead of the multi-gpu one. This is
+    # usually slower, but you might want to try it if you run into issues with
+    # the default optimizer.
+    # This will be set automatically from now on.
+    "simple_optimizer": DEPRECATED_VALUE,
 }
 # __sphinx_doc_end__
 # yapf: enable
@@ -492,21 +515,38 @@ class Trainer(Trainable):
     @classmethod
     @override(Trainable)
     def default_resource_request(
-            cls, config: PartialTrainerConfigDict) -> Resources:
+            cls, config: PartialTrainerConfigDict) -> \
+            Union[Resources, PlacementGroupFactory]:
         cf = dict(cls._default_config, **config)
         Trainer._validate_config(cf)
-        num_workers = cf["num_workers"] + cf["evaluation_num_workers"]
+
+        eval_config = cf["evaluation_config"]
+
         # TODO(ekl): add custom resources here once tune supports them
-        return Resources(
-            cpu=cf["num_cpus_for_driver"],
-            gpu=cf["num_gpus"],
-            memory=cf["memory"],
-            object_store_memory=cf["object_store_memory"],
-            extra_cpu=cf["num_cpus_per_worker"] * num_workers,
-            extra_gpu=cf["num_gpus_per_worker"] * num_workers,
-            extra_memory=cf["memory_per_worker"] * num_workers,
-            extra_object_store_memory=cf["object_store_memory_per_worker"] *
-            num_workers)
+        # Return PlacementGroupFactory containing all needed resources
+        # (already properly defined as device bundles).
+        return PlacementGroupFactory(
+            bundles=[{
+                # Driver.
+                "CPU": cf["num_cpus_for_driver"],
+                "GPU": cf["num_gpus"],
+            }] + [
+                {
+                    # RolloutWorkers.
+                    "CPU": cf["num_cpus_per_worker"],
+                    "GPU": cf["num_gpus_per_worker"],
+                } for _ in range(cf["num_workers"])
+            ] + ([
+                {
+                    # Evaluation workers (+1 b/c of the additional local
+                    # worker).
+                    "CPU": eval_config.get("num_cpus_per_worker",
+                                           cf["num_cpus_per_worker"]),
+                    "GPU": eval_config.get("num_gpus_per_worker",
+                                           cf["num_gpus_per_worker"]),
+                } for _ in range(cf["evaluation_num_workers"] + 1)
+            ] if cf["evaluation_interval"] else []),
+            strategy=config.get("placement_strategy", "PACK"))
 
     @override(Trainable)
     @PublicAPI
@@ -1092,6 +1132,25 @@ class Trainer(Trainable):
         if model_config is None:
             config["model"] = model_config = {}
 
+        # Multi-GPU settings.
+        simple_optim_setting = config.get("simple_optimizer", DEPRECATED_VALUE)
+        if simple_optim_setting != DEPRECATED_VALUE:
+            deprecation_warning("simple_optimizer", error=False)
+
+        if config.get("num_gpus", 0) > 1:
+            if config.get("framework") in ["tfe", "tf2", "torch"]:
+                raise ValueError("`num_gpus` > 1 not supported yet for "
+                                 "framework={}!".format(
+                                     config.get("framework")))
+            elif simple_optim_setting is True:
+                raise ValueError(
+                    "Cannot use `simple_optimizer` if `num_gpus` > 1! "
+                    "Consider `simple_optimizer=False`.")
+            config["simple_optimizer"] = False
+        elif simple_optim_setting == DEPRECATED_VALUE:
+            config["simple_optimizer"] = True
+
+        # Trajectory View API settings.
         if not config.get("_use_trajectory_view_api"):
             traj_view_framestacks = model_config.get("num_framestacks", "auto")
             if model_config.get("_time_major"):
@@ -1102,6 +1161,7 @@ class Trainer(Trainable):
                                  "iff `_use_trajectory_view_api` is True!")
             model_config["num_framestacks"] = 0
 
+        # Offline RL settings.
         if isinstance(config["input_evaluation"], tuple):
             config["input_evaluation"] = list(config["input_evaluation"])
         elif not isinstance(config["input_evaluation"], list):
@@ -1128,6 +1188,7 @@ class Trainer(Trainable):
                              "complete_episodes]! Got {}".format(
                                  config["batch_mode"]))
 
+        # Check multi-agent batch count mode.
         if config["multiagent"].get("count_steps_by", "env_steps") not in \
                 ["env_steps", "agent_steps"]:
             raise ValueError(

@@ -118,8 +118,21 @@ def address(ip_address, port):
     return ip_address + ":" + str(port)
 
 
-def new_port():
-    return random.randint(10000, 65535)
+def new_port(lower_bound=10000, upper_bound=65535, blacklist=None):
+    if not blacklist:
+        blacklist = set()
+    port = random.randint(lower_bound, upper_bound)
+    retry = 0
+    while port in blacklist:
+        if retry > 100:
+            break
+        port = random.randint(lower_bound, upper_bound)
+        retry += 1
+    if retry > 100:
+        raise ValueError(
+            "Failed to find a new port from the range "
+            f"{lower_bound}-{upper_bound}. Blacklist: {blacklist}")
+    return port
 
 
 def find_redis_address(address=None):
@@ -251,6 +264,8 @@ def get_address_info_from_redis_helper(redis_address,
 
     relevant_client = None
     for client_info in client_table:
+        if not client_info["Alive"]:
+            continue
         client_node_ip_address = client_info["NodeManagerAddress"]
         if (client_node_ip_address == node_ip_address
                 or (client_node_ip_address == "127.0.0.1"
@@ -787,7 +802,8 @@ def start_redis(node_ip_address,
                 redis_max_clients=None,
                 redirect_worker_output=False,
                 password=None,
-                fate_share=None):
+                fate_share=None,
+                port_blacklist=None):
     """Start the Redis global state store.
 
     Args:
@@ -809,6 +825,8 @@ def start_redis(node_ip_address,
             to this value when they start up.
         password (str): Prevents external clients without the password
             from connecting to Redis if provided.
+        port_blacklist (set): A set of blacklist ports that shouldn't
+            be used when allocating a new port.
 
     Returns:
         A tuple of the address for the primary Redis shard, a list of
@@ -852,7 +870,8 @@ def start_redis(node_ip_address,
         redis_max_memory=None,
         stdout_file=redis_stdout_file,
         stderr_file=redis_stderr_file,
-        fate_share=fate_share)
+        fate_share=fate_share,
+        port_blacklist=port_blacklist)
     processes.append(p)
     redis_address = address(node_ip_address, port)
 
@@ -882,7 +901,7 @@ def start_redis(node_ip_address,
     redis_shards = []
     # If Redis shard ports are not provided, start the port range of the
     # other Redis shards at a high, random port.
-    last_shard_port = new_port() - 1
+    last_shard_port = new_port(blacklist=port_blacklist) - 1
     for i in range(num_redis_shards):
         redis_stdout_file, redis_stderr_file = redirect_files[i + 1]
         redis_executable = REDIS_EXECUTABLE
@@ -906,7 +925,8 @@ def start_redis(node_ip_address,
             redis_max_memory=redis_max_memory,
             stdout_file=redis_stdout_file,
             stderr_file=redis_stderr_file,
-            fate_share=fate_share)
+            fate_share=fate_share,
+            port_blacklist=port_blacklist)
         processes.append(p)
 
         shard_address = address(node_ip_address, redis_shard_port)
@@ -927,7 +947,8 @@ def _start_redis_instance(executable,
                           stderr_file=None,
                           password=None,
                           redis_max_memory=None,
-                          fate_share=None):
+                          fate_share=None,
+                          port_blacklist=None):
     """Start a single Redis server.
 
     Notes:
@@ -953,6 +974,8 @@ def _start_redis_instance(executable,
         redis_max_memory: The max amount of memory (in bytes) to allow redis
             to use, or None for no limit. Once the limit is exceeded, redis
             will start LRU eviction of entries.
+        port_blacklist (set): A set of blacklist ports that shouldn't
+            be used when allocating a new port.
 
     Returns:
         A tuple of the port used by Redis and ProcessInfo for the process that
@@ -990,7 +1013,7 @@ def _start_redis_instance(executable,
         # did not exit within 0.1 seconds).
         if process_info.process.poll() is None:
             break
-        port = new_port()
+        port = new_port(blacklist=port_blacklist)
         counter += 1
     if counter == num_retries:
         raise RuntimeError("Couldn't start Redis. "
@@ -1675,6 +1698,14 @@ def determine_plasma_store_config(object_store_memory,
             # /dev/shm.
             if shm_avail > object_store_memory:
                 plasma_directory = "/dev/shm"
+            elif not os.environ.get("RAY_OBJECT_STORE_ALLOW_SLOW_STORAGE"):
+                raise ValueError(
+                    "The configured object store size exceeds the capacity of "
+                    "/dev/shm. This will harm performance. To proceed "
+                    "regardless of this warning, you can set "
+                    "RAY_OBJECT_STORE_ALLOW_SLOW_STORAGE=1. Consider deleting "
+                    "files in /dev/shm or increasing its size with "
+                    "--shm-size in Docker.")
             else:
                 plasma_directory = ray.utils.get_user_temp_dir()
                 logger.warning(

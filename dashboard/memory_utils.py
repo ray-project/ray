@@ -7,9 +7,7 @@ from typing import List
 import ray
 
 from ray._raylet import (TaskID, ActorID, JobID)
-from ray.state import GlobalState
-from ray.internal.internal_api import node_stats, store_stats_summary
-from ray.ray_constants import REDIS_DEFAULT_PASSWORD
+from ray.internal.internal_api import node_stats
 import logging
 
 logger = logging.getLogger(__name__)
@@ -330,8 +328,10 @@ def construct_memory_table(workers_stats: List,
     return memory_table
 
 
-def get_memory_summary(redis_address, redis_password, group_by, sort_by,
-                       line_wrap, stats_only) -> str:
+def memory_summary(state,
+                   group_by="NODE_ADDRESS",
+                   sort_by="OBJECT_SIZE",
+                   line_wrap=True) -> str:
     from ray.new_dashboard.modules.stats_collector.stats_collector_head\
          import node_stats_to_dict
 
@@ -341,13 +341,11 @@ def get_memory_summary(redis_address, redis_password, group_by, sort_by,
     line_wrap_threshold = 137
 
     # Fetch core memory worker stats, store as a dictionary
-    state = GlobalState()
-    state._initialize_global_state(redis_address, redis_password)
     core_worker_stats = []
     for raylet in state.node_table():
         stats = node_stats_to_dict(
-            node_stats(raylet["NodeManagerAddress"], raylet["NodeManagerPort"],
-                       (not stats_only)))
+            node_stats(raylet["NodeManagerAddress"],
+                       raylet["NodeManagerPort"]))
         core_worker_stats.extend(stats["coreWorkersStats"])
         assert type(stats) is dict and "coreWorkersStats" in stats
 
@@ -422,25 +420,3 @@ def get_memory_summary(redis_address, redis_password, group_by, sort_by,
             mem += "\n"
         mem += "\n\n\n"
     return mem
-
-
-def get_store_stats_summary(redis_address, redis_password) -> str:
-    state = GlobalState()
-    state._initialize_global_state(redis_address, redis_password)
-    raylet = state.node_table()[0]
-    stats = node_stats(raylet["NodeManagerAddress"], raylet["NodeManagerPort"])
-    store_summary = store_stats_summary(stats)
-    return store_summary
-
-
-def memory_summary(redis_address,
-                   redis_password=REDIS_DEFAULT_PASSWORD,
-                   group_by="NODE_ADDRESS",
-                   sort_by="OBJECT_SIZE",
-                   line_wrap=True,
-                   stats_only=False):
-    if stats_only:
-        return get_store_stats_summary(redis_address, redis_password)
-    return get_memory_summary(redis_address, redis_password, group_by, sort_by,
-                              line_wrap, stats_only) + get_store_stats_summary(
-                                  redis_address, redis_password)

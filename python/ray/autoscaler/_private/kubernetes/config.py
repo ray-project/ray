@@ -71,8 +71,14 @@ def fillout_resources_kubernetes(config):
         return config
     node_types = copy.deepcopy(config["available_node_types"])
     for node_type in node_types:
-        container_data = node_types[node_type]["node_config"]["spec"][
-            "containers"][0]
+
+        node_config = node_types[node_type]["node_config"]
+        # The next line is for compatibility with configs like
+        # kubernetes/example-ingress.yaml,
+        # cf. KubernetesNodeProvider.create_node().
+        pod = node_config.get("pod", node_config)
+        container_data = pod["spec"]["containers"][0]
+
         autodetected_resources = get_autodetected_resources(container_data)
         if "resources" not in config["available_node_types"][node_type]:
             config["available_node_types"][node_type]["resources"] = {}

@@ -1,6 +1,9 @@
 
 #pragma once
 
+#include <ray/api/ray_runtime_holder.h>
+#include <ray/api/serializer.h>
+
 #include <memory>
 #include <msgpack.hpp>
 #include <utility>
@@ -53,7 +56,12 @@ class ObjectRef {
 };
 
 // ---------- implementation ----------
-#include <ray/api.h>
+template <typename T>
+inline static std::shared_ptr<T> GetFromRuntime(const ObjectRef<T> &object) {
+  auto packed_object = internal::RayRuntime()->Get(object.ID());
+  return Serializer::Deserialize<std::shared_ptr<T>>(packed_object->data(),
+                                                     packed_object->size());
+}
 
 template <typename T>
 ObjectRef<T>::ObjectRef() {}
@@ -83,7 +91,7 @@ const ObjectID &ObjectRef<T>::ID() const {
 
 template <typename T>
 inline std::shared_ptr<T> ObjectRef<T>::Get() const {
-  return Ray::Get(*this);
+  return GetFromRuntime(*this);
 }
 }  // namespace api
 }  // namespace ray

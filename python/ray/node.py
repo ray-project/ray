@@ -218,6 +218,8 @@ class Node:
 
         if not connect_only and spawn_reaper and not self.kernel_fate_share:
             self.start_reaper_process()
+        if not connect_only:
+            self._ray_params.update_pre_selected_port()
 
         # Start processes.
         if head:
@@ -284,6 +286,12 @@ class Node:
         try_to_create_directory(self._logs_dir)
         old_logs_dir = os.path.join(self._logs_dir, "old")
         try_to_create_directory(old_logs_dir)
+        # Create a directory to be used for runtime environment.
+        self._runtime_env_dir = os.path.join(self._session_dir,
+                                             "runtime_resources")
+        try_to_create_directory(self._runtime_env_dir)
+        import ray._private.runtime_env as runtime_env
+        runtime_env.PKG_DIR = self._runtime_env_dir
 
     def get_resource_spec(self):
         """Resolve and return the current resource spec for the node."""
@@ -431,6 +439,10 @@ class Node:
     def get_temp_dir_path(self):
         """Get the path of the temporary directory."""
         return self._temp_dir
+
+    def get_runtime_env_dir_path(self):
+        """Get the path of the runtime env."""
+        return self._runtime_env_dir
 
     def get_session_dir_path(self):
         """Get the path of the session directory."""
@@ -661,7 +673,8 @@ class Node:
              redis_max_clients=self._ray_params.redis_max_clients,
              redirect_worker_output=True,
              password=self._ray_params.redis_password,
-             fate_share=self.kernel_fate_share)
+             fate_share=self.kernel_fate_share,
+             port_blacklist=self._ray_params.reserved_ports)
         assert (
             ray_constants.PROCESS_TYPE_REDIS_SERVER not in self.all_processes)
         self.all_processes[ray_constants.PROCESS_TYPE_REDIS_SERVER] = (
