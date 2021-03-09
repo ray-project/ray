@@ -36,7 +36,7 @@ def test_get_rank(ray_start_distributed_multigpu_2_nodes_4_gpus):
     new_group_name = "default2"
     ranks = list(range(world_size))
     shuffle(ranks)
-    _ = ray.get([
+    ray.get([
         actor.init_group.remote(
             world_size, ranks[i], group_name=new_group_name)
         for i, actor in enumerate(actors)

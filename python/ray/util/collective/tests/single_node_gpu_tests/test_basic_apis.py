@@ -39,7 +39,7 @@ def test_get_rank(ray_start_single_node_2_gpus):
     # create a second group with a different name,
     # and different order of ranks.
     new_group_name = "default2"
-    _ = ray.get([
+    ray.get([
         actor.init_group.remote(
             world_size, world_size - 1 - i, group_name=new_group_name)
         for i, actor in enumerate(actors)

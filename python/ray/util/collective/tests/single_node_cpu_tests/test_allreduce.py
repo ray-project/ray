@@ -137,7 +137,7 @@ def test_allreduce_torch_numpy(ray_start_single_node, backend):
 
     ray.wait([actors[0].set_buffer.remote(torch.ones(10, ))])
     ray.wait([actors[1].set_buffer.remote(np.ones(10, dtype=np.float32))])
-    _ = ray.get([a.do_allreduce.remote() for a in actors])
+    ray.get([a.do_allreduce.remote() for a in actors])
 
 
 if __name__ == "__main__":
