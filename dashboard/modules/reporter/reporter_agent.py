@@ -86,8 +86,8 @@ METRICS_GAUGES = {
                              "Total disk usage (bytes) on a ray node", "bytes",
                              ["ip"]),
     "node_disk_free": Gauge("node_disk_free",
-                             "Total disk free (bytes) on a ray node", "bytes",
-                             ["ip"]),
+                            "Total disk free (bytes) on a ray node", "bytes",
+                            ["ip"]),
     "node_disk_utilization_percentage": Gauge(
         "node_disk_utilization_percentage",
         "Total disk utilization (percentage) on a ray node", "percentage",
@@ -323,15 +323,14 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
         if "autoscaler_report" in cluster_stats and str(ip) == str(
                 redis_address):
             active_nodes = cluster_stats["autoscaler_report"]["active_nodes"]
-            num_active_nodes = sum(active_nodes.values())
-            node_types = {
-                    f"node type {node_type}": count
-                    for (node_type, count) in active_nodes.items()
-                }
-            cluster_active_nodes_record = Record(
-                gauge=METRICS_GAUGES["cluster_active_nodes"],
-                value=num_active_nodes,
-                tags={"ip": ip, **node_types})
+            for node_type, active_node_count in active_nodes.items():
+                cluster_active_nodes_record = Record(
+                    gauge=METRICS_GAUGES["cluster_active_nodes"],
+                    value=active_node_count,
+                    tags={
+                        "ip": ip,
+                        "node_type": node_type
+                    })
 
             failed_nodes = len(
                 cluster_stats["autoscaler_report"]["failed_nodes"])
