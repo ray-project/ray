@@ -349,11 +349,10 @@ Process WorkerPool::StartProcess(const std::vector<std::string> &worker_command_
   argv.push_back("-v");
   argv.push_back("/root/test:/root/test");
   argv.push_back("--entrypoint");
-  argv.push_back("sleep");
+  argv.push_back(worker_command_args[0].c_str());
   argv.push_back("centos:8");
-  argv.push_back("1000");
-  for (const std::string &arg : worker_command_args) {
-    argv.push_back(arg.c_str());
+  for (int i = 1; i < worker_command_args.size(); i++) {
+    argv.push_back(worker_command_args[i].c_str());
   }
   argv.push_back(NULL);
   Process child(argv.data(), io_service_, ec, /*decouple=*/false, env);
