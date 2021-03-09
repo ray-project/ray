@@ -229,13 +229,14 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   void ResourceDeleted(const NodeID &node_id,
                        const std::vector<std::string> &resource_names);
 
-  /// Send heartbeats to the GCS.
-  void Heartbeat();
-
   /// Evaluates the local infeasible queue to check if any tasks can be scheduled.
   /// This is called whenever there's an update to the resources on the local node.
   /// \return Void.
   void TryLocalInfeasibleTaskScheduling();
+
+  /// Fill out the resource report. This can be called by either method to transport the
+  /// report to GCS.
+  void FillResourceReport(rpc::ResourcesData &resources_data);
 
   /// Report resource usage to the GCS.
   void ReportResourceUsage();
@@ -476,6 +477,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \return Status indicating whether setup was successful.
   ray::Status SetupPlasmaSubscription();
 
+  /// Handle a `RequestResourceReport` request.
+  void HandleRequestResourceReport(const rpc::RequestResourceReportRequest &request,
+                                   rpc::RequestResourceReportReply *reply,
+                                   rpc::SendReplyCallback send_reply_callback) override;
+
   /// Handle a `PrepareBundleResources` request.
   void HandlePrepareBundleResources(const rpc::PrepareBundleResourcesRequest &request,
                                     rpc::PrepareBundleResourcesReply *reply,
@@ -589,6 +595,14 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \return Whether the request was successful.
   bool GetObjectsFromPlasma(const std::vector<ObjectID> &object_ids,
                             std::vector<std::unique_ptr<RayObject>> *results);
+
+  /// Populate the relevant parts of the heartbeat table. This is intended for
+  /// sending raylet <-> gcs heartbeats. In particular, this should fill in
+  /// resource_load and resource_load_by_shape.
+  ///
+  /// \param Output parameter. `resource_load` and `resource_load_by_shape` are the only
+  /// fields used.
+  void FillResourceUsage(rpc::ResourcesData &data);
 
   /// Disconnect a client.
   ///

@@ -303,9 +303,14 @@ COMMON_CONFIG: TrainerConfigDict = {
 
     # === Resource Settings ===
     # Number of GPUs to allocate to the trainer process. Note that not all
-    # algorithms can take advantage of trainer GPUs. This can be fractional
-    # (e.g., 0.3 GPUs).
+    # algorithms can take advantage of trainer GPUs. Support for multi-GPU
+    # is currently only available for tf-[PPO/IMPALA/DQN/PG].
+    # This can be fractional (e.g., 0.3 GPUs).
     "num_gpus": 0,
+    # Set to True for debugging (multi-)?GPU funcitonality on a CPU machine.
+    # GPU towers will be simulated by graphs located on CPUs in this case.
+    # Use `num_gpus` to test for different numbers of fake GPUs.
+    "_fake_gpus": False,
     # Number of CPUs to allocate per worker.
     "num_cpus_per_worker": 1,
     # Number of GPUs to allocate per worker. This can be fractional. This is
@@ -404,6 +409,13 @@ COMMON_CONFIG: TrainerConfigDict = {
     # Define logger-specific configuration to be used inside Logger
     # Default value None allows overwriting with nested dicts
     "logger_config": None,
+
+    # Deprecated values.
+    # Uses the sync samples optimizer instead of the multi-gpu one. This is
+    # usually slower, but you might want to try it if you run into issues with
+    # the default optimizer.
+    # This will be set automatically from now on.
+    "simple_optimizer": DEPRECATED_VALUE,
 }
 # __sphinx_doc_end__
 # yapf: enable
@@ -1120,6 +1132,25 @@ class Trainer(Trainable):
         if model_config is None:
             config["model"] = model_config = {}
 
+        # Multi-GPU settings.
+        simple_optim_setting = config.get("simple_optimizer", DEPRECATED_VALUE)
+        if simple_optim_setting != DEPRECATED_VALUE:
+            deprecation_warning("simple_optimizer", error=False)
+
+        if config.get("num_gpus", 0) > 1:
+            if config.get("framework") in ["tfe", "tf2", "torch"]:
+                raise ValueError("`num_gpus` > 1 not supported yet for "
+                                 "framework={}!".format(
+                                     config.get("framework")))
+            elif simple_optim_setting is True:
+                raise ValueError(
+                    "Cannot use `simple_optimizer` if `num_gpus` > 1! "
+                    "Consider `simple_optimizer=False`.")
+            config["simple_optimizer"] = False
+        elif simple_optim_setting == DEPRECATED_VALUE:
+            config["simple_optimizer"] = True
+
+        # Trajectory View API settings.
         if not config.get("_use_trajectory_view_api"):
             traj_view_framestacks = model_config.get("num_framestacks", "auto")
             if model_config.get("_time_major"):
@@ -1130,6 +1161,7 @@ class Trainer(Trainable):
                                  "iff `_use_trajectory_view_api` is True!")
             model_config["num_framestacks"] = 0
 
+        # Offline RL settings.
         if isinstance(config["input_evaluation"], tuple):
             config["input_evaluation"] = list(config["input_evaluation"])
         elif not isinstance(config["input_evaluation"], list):
@@ -1156,6 +1188,7 @@ class Trainer(Trainable):
                              "complete_episodes]! Got {}".format(
                                  config["batch_mode"]))
 
+        # Check multi-agent batch count mode.
         if config["multiagent"].get("count_steps_by", "env_steps") not in \
                 ["env_steps", "agent_steps"]:
             raise ValueError(
