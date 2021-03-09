@@ -210,6 +210,13 @@ message ReleaseUnusedBundlesRequest {
 message ReleaseUnusedBundlesReply {
 }
 
+message GetSystemConfigRequest {
+}
+
+message GetSystemConfigReply {
+  string system_config = 1;
+}
+
 message RequestResourceReportRequest {
 }
 
@@ -220,7 +227,8 @@ message RequestResourceReportReply {
 // Service for inter-node-manager communication.
 service NodeManagerService {
   // Request the current resource usage from this raylet
-  rpc RequestResourceReport(RequestResourceReportRequest) returns (RequestResourceReportReply);
+  rpc RequestResourceReport(RequestResourceReportRequest)
+      returns (RequestResourceReportReply);
   // Request a worker from the raylet.
   rpc RequestWorkerLease(RequestWorkerLeaseRequest) returns (RequestWorkerLeaseReply);
   // Release a worker back to its raylet.
@@ -266,4 +274,6 @@ service NodeManagerService {
   // are still needed. And Raylet will release other bundles.
   rpc ReleaseUnusedBundles(ReleaseUnusedBundlesRequest)
       returns (ReleaseUnusedBundlesReply);
+  // Get the system config.
+  rpc GetSystemConfig(GetSystemConfigRequest) returns (GetSystemConfigReply);
 }

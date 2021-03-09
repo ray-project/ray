@@ -18,11 +18,6 @@
 // Macro definition format: RAY_CONFIG(type, name, default_value).
 // NOTE: This file should NOT be included in any file other than ray_config.h.
 
-// IF YOU MODIFY THIS FILE and add a configuration parameter, you must change
-// at least two additional things:
-//     1. You must update the file "ray/python/ray/includes/ray_config.pxd".
-//     2. You must update the file "ray/python/ray/includes/ray_config.pxi".
-
 /// In theory, this is used to detect Ray cookie mismatches.
 /// This magic number (hex for "RAY") is used instead of zero, rationale is
 /// that it could still be possible that some random program sends an int64_t
@@ -100,12 +95,12 @@ RAY_CONFIG(size_t, free_objects_batch_size, 100)
 
 RAY_CONFIG(bool, lineage_pinning_enabled, false)
 
-/// Whether to enable the new scheduler. The new scheduler is designed
-/// only to work with direct calls. Once direct calls are becoming
-/// the default, this scheduler will also become the default.
-RAY_CONFIG(bool, new_scheduler_enabled,
-           getenv("RAY_ENABLE_NEW_SCHEDULER") == nullptr ||
-               getenv("RAY_ENABLE_NEW_SCHEDULER") == std::string("1"))
+/// Pick between 2 scheduling spillback strategies. Load balancing mode picks the node at
+/// uniform random from the valid options. The other mode is more likely to spill back
+/// many tasks to the same node.
+RAY_CONFIG(bool, scheduler_loadbalance_spillback,
+           getenv("RAY_SCHEDULER_LOADBALANCE_SPILLBACK") != nullptr &&
+               getenv("RAY_SCHEDULER_LOADBALANCE_SPILLBACK") != std::string("1"))
 
 // The max allowed size in bytes of a return object from direct actor calls.
 // Objects larger than this size will be spilled/promoted to plasma.

@@ -10,7 +10,7 @@ client = serve.start()
 
 class MyBackendClass:
     def __init__(self):
-        self.my_counter = metrics.Count(
+        self.my_counter = metrics.Counter(
             "my_counter",
             description=("The number of excellent requests to this backend."),
             tag_keys=("backend", ))
@@ -20,7 +20,7 @@ class MyBackendClass:
 
     def __call__(self, request):
         if "excellent" in request.query_params:
-            self.my_counter.record(1)
+            self.my_counter.inc()
 
 
 client.create_backend("my_backend", MyBackendClass)

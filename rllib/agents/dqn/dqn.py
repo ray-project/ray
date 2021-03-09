@@ -22,7 +22,8 @@ from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.execution.replay_buffer import LocalReplayBuffer
 from ray.rllib.execution.replay_ops import Replay, StoreToReplayBuffer
 from ray.rllib.execution.rollout_ops import ParallelRollouts
-from ray.rllib.execution.train_ops import TrainOneStep, UpdateTargetNetwork
+from ray.rllib.execution.train_ops import TrainOneStep, UpdateTargetNetwork, \
+    TrainTFMultiGPU
 from ray.rllib.policy.policy import LEARNER_STATS_KEY, Policy
 from ray.rllib.utils.typing import TrainerConfigDict
 from ray.util.iter import LocalIterator
@@ -170,6 +171,13 @@ def validate_config(config: TrainerConfigDict) -> None:
             raise ValueError("Prioritized replay is not supported when "
                              "replay_sequence_length > 1.")
 
+    # Multi-agent mode and multi-GPU optimizer.
+    if config["multiagent"]["policies"] and not config["simple_optimizer"]:
+        logger.info(
+            "In multi-agent mode, policies will be optimized sequentially "
+            "by the multi-GPU optimizer. Consider setting "
+            "simple_optimizer=True if this doesn't work for you.")
+
 
 def execution_plan(workers: WorkerSet,
                    config: TrainerConfigDict) -> LocalIterator[dict]:
@@ -231,9 +239,22 @@ def execution_plan(workers: WorkerSet,
     # returned from the LocalReplay() iterator is passed to TrainOneStep to
     # take a SGD step, and then we decide whether to update the target network.
     post_fn = config.get("before_learn_on_batch") or (lambda b, *a: b)
+
+    if config["simple_optimizer"]:
+        train_step_op = TrainOneStep(workers)
+    else:
+        train_step_op = TrainTFMultiGPU(
+            workers=workers,
+            sgd_minibatch_size=config["train_batch_size"],
+            num_sgd_iter=1,
+            num_gpus=config["num_gpus"],
+            shuffle_sequences=True,
+            _fake_gpus=config["_fake_gpus"],
+            framework=config.get("framework"))
+
     replay_op = Replay(local_buffer=local_replay_buffer) \
         .for_each(lambda x: post_fn(x, workers, config)) \
-        .for_each(TrainOneStep(workers)) \
+        .for_each(train_step_op) \
         .for_each(update_prio) \
         .for_each(UpdateTargetNetwork(
             workers, config["target_network_update_freq"]))

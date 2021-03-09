@@ -18,7 +18,6 @@ import ray.cluster_utils
 import ray.test_utils
 from ray import resource_spec
 import setproctitle
-import subprocess
 
 from ray.test_utils import (check_call_ray, wait_for_condition,
                             wait_for_num_actors)
@@ -192,26 +191,6 @@ def test_object_ref_properties():
     id_dumps = pickle.dumps(object_ref)
     id_from_dumps = pickle.loads(id_dumps)
     assert id_from_dumps == object_ref
-
-
-@pytest.fixture
-def shutdown_only_with_initialization_check():
-    yield None
-    # The code after the yield will run as teardown code.
-    ray.shutdown()
-    assert not ray.is_initialized()
-
-
-def test_initialized(shutdown_only_with_initialization_check):
-    assert not ray.is_initialized()
-    ray.init(num_cpus=0)
-    assert ray.is_initialized()
-
-
-def test_initialized_local_mode(shutdown_only_with_initialization_check):
-    assert not ray.is_initialized()
-    ray.init(num_cpus=0, local_mode=True)
-    assert ray.is_initialized()
 
 
 def test_wait_reconstruction(shutdown_only):
@@ -412,12 +391,6 @@ def test_export_after_shutdown(ray_start_regular):
         ray.get(actor_handle.method.remote())
 
     ray.get(export_definitions_from_worker.remote(f, Actor))
-
-
-def test_ray_start_and_stop():
-    for i in range(10):
-        subprocess.check_call(["ray", "start", "--head"])
-        subprocess.check_call(["ray", "stop"])
 
 
 def test_invalid_unicode_in_worker_log(shutdown_only):

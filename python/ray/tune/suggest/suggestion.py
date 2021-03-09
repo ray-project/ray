@@ -265,7 +265,7 @@ class Searcher:
             success = False
 
         if success and os.path.exists(tmp_search_ckpt_path):
-            os.rename(
+            os.replace(
                 tmp_search_ckpt_path,
                 os.path.join(checkpoint_dir,
                              self.CKPT_FILE_TMPL.format(session_str)))
