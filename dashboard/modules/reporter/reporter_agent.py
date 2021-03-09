@@ -85,6 +85,9 @@ METRICS_GAUGES = {
     "node_disk_usage": Gauge("node_disk_usage",
                              "Total disk usage (bytes) on a ray node", "bytes",
                              ["ip"]),
+    "node_disk_free": Gauge("node_disk_free",
+                             "Total disk free (bytes) on a ray node", "bytes",
+                             ["ip"]),
     "node_disk_utilization_percentage": Gauge(
         "node_disk_utilization_percentage",
         "Total disk utilization (percentage) on a ray node", "percentage",
