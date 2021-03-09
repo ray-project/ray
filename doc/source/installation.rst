@@ -68,7 +68,7 @@ For example, here are the Ray 2.0.0.dev0 wheels for Python 3.5, MacOS for commit
 .. _ray-install-java:
 
 Install Ray Java with Maven
-----------------------
+---------------------------
 Before installing Ray Java with Maven, you should install Ray Python with `pip install -U ray` . Note that the versions of Ray Java and Ray Python must match.
 Note that nightly Ray python wheels are also required if you want to install Ray Java snapshot version.
 
