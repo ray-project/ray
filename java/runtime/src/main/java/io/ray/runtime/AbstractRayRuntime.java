@@ -21,6 +21,7 @@ import io.ray.api.options.PlacementGroupCreationOptions;
 import io.ray.api.placementgroup.PlacementGroup;
 import io.ray.api.runtimecontext.RuntimeContext;
 import io.ray.runtime.config.RayConfig;
+import io.ray.runtime.config.RunMode;
 import io.ray.runtime.context.RuntimeContextImpl;
 import io.ray.runtime.context.WorkerContext;
 import io.ray.runtime.functionmanager.FunctionDescriptor;
