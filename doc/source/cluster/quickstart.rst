@@ -1,7 +1,7 @@
 .. _ref-cluster-quick-start:
 
-Quick Start Cluster Autoscaling Demo
-====================================
+Ray Cluster Quick Start
+=======================
 
 This quick start demonstrates the capabilities of the Ray cluster. Using the Ray cluster, we'll take a sample application designed to run on a laptop and scale it up in the cloud. Ray will launch clusters and scale Python with just a few commands.
 
@@ -210,7 +210,17 @@ After defining our configuration, we will use the Ray Cluster Launcher to start 
 Run the application in the cloud
 --------------------------------
 
-We are now ready to execute the application in across multiple machines on our Ray cloud cluster. Run the following command:
+We are now ready to execute the application in across multiple machines on our Ray cloud cluster.
+First, we need to edit the initialization command ``ray.init()`` in ``script.py``.
+Change it to
+
+.. code-block:: python
+
+    ray.init(address='auto')
+
+This will allow Ray to connect to the remote cluster.
+
+Next, run the following command:
 
 .. code-block:: shell
 

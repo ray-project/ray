@@ -142,16 +142,64 @@ def test_load_balancing_under_constrained_memory(ray_start_cluster):
 
     @ray.remote
     def f(i, x):
-        time.sleep(0.1)
         print(i, ray.worker.global_worker.node.unique_id)
+        time.sleep(0.1)
         return ray.worker.global_worker.node.unique_id
 
-    # TODO(swang): Actually test load balancing.
+    deps = [create_object.remote() for _ in range(num_tasks)]
+    for i, dep in enumerate(deps):
+        print(i, dep)
+
+    # TODO(swang): Actually test load balancing. Load balancing is currently
+    # flaky on Travis, probably due to the scheduling policy ping-ponging
+    # waiting tasks.
     deps = [create_object.remote() for _ in range(num_tasks)]
     tasks = [f.remote(i, dep) for i, dep in enumerate(deps)]
     for i, dep in enumerate(deps):
         print(i, dep)
     ray.get(tasks)
+
+
+@pytest.mark.skipif(
+    platform.system() == "Windows", reason="Failing on Windows. Multi node.")
+def test_spillback_waiting_task_on_oom(ray_start_cluster):
+    # This test ensures that tasks are spilled if they are not schedulable due
+    # to lack of object store memory.
+    cluster = ray_start_cluster
+    object_size = 1e8
+    cluster.add_node(
+        num_cpus=1,
+        memory=1e9,
+        object_store_memory=object_size * 2,
+        _system_config={
+            "automatic_object_spilling_enabled": False,
+            "locality_aware_leasing_enabled": False,
+        })
+    ray.init(address=cluster.address)
+    cluster.add_node(
+        num_cpus=1,
+        resources={"custom": 1},
+        memory=1e9,
+        object_store_memory=object_size * 2)
+
+    @ray.remote(resources={"custom": 1})
+    def create_remote_object():
+        return np.zeros(int(object_size), dtype=np.uint8)
+
+    local_obj = ray.put(np.zeros(int(object_size * 1.5), dtype=np.uint8))
+    print(local_obj)
+
+    @ray.remote
+    def f(x):
+        return
+
+    dep = create_remote_object.remote()
+    ray.wait([dep], fetch_local=False)
+    # Wait for resource availabilities to propagate.
+    time.sleep(1)
+    # This task can't run on the local node. Make sure it gets spilled even
+    # though we have the local CPUs to run it.
+    ray.get(f.remote(dep), timeout=30)
 
 
 def test_locality_aware_leasing(ray_start_cluster):
@@ -169,6 +217,8 @@ def test_locality_aware_leasing(ray_start_cluster):
         _system_config={
             "worker_lease_timeout_milliseconds": 0,
             "max_direct_call_object_size": 0,
+            # Needed because the above test sets this to False.
+            "locality_aware_leasing_enabled": True,
         })
     # Use a custom resource for pinning tasks to a node.
     non_local_node = cluster.add_node(num_cpus=1, resources={"pin": 1})
@@ -184,6 +234,87 @@ def test_locality_aware_leasing(ray_start_cluster):
 
     # Test that task f() runs on the same node as non_local().
     assert ray.get(f.remote(non_local.remote())) == non_local_node.unique_id
+
+
+def test_locality_aware_leasing_cached_objects(ray_start_cluster):
+    # This test ensures that a task will run where its task dependencies are
+    # located, even when those objects aren't primary copies.
+    cluster = ray_start_cluster
+
+    # Disable worker caching so worker leases are not reused, and disable
+    # inlining of return objects so return objects are always put into Plasma.
+    cluster.add_node(
+        num_cpus=1,
+        _system_config={
+            "worker_lease_timeout_milliseconds": 0,
+            "max_direct_call_object_size": 0,
+            "ownership_based_object_directory_enabled": True,
+        })
+    # Use a custom resource for pinning tasks to a node.
+    cluster.add_node(num_cpus=1, resources={"pin_worker1": 1})
+    worker2 = cluster.add_node(num_cpus=1, resources={"pin_worker2": 1})
+    ray.init(address=cluster.address)
+
+    @ray.remote
+    def f():
+        return ray.worker.global_worker.node.unique_id
+
+    @ray.remote
+    def g(x):
+        return ray.worker.global_worker.node.unique_id
+
+    @ray.remote
+    def h(x, y):
+        return ray.worker.global_worker.node.unique_id
+
+    # f_obj1 pinned on worker1.
+    f_obj1 = f.options(resources={"pin_worker1": 1}).remote()
+    # f_obj2 pinned on worker2.
+    f_obj2 = f.options(resources={"pin_worker2": 1}).remote()
+    # f_obj1 cached copy pulled to worker 2 in order to execute g() task.
+    ray.get(g.options(resources={"pin_worker2": 1}).remote(f_obj1))
+    # Confirm that h is scheduled onto worker 2, since it should have the
+    # primary copy of f_obj12 and a cached copy of f_obj1.
+    assert ray.get(h.remote(f_obj1, f_obj2)) == worker2.unique_id
+
+
+def test_locality_aware_leasing_borrowed_objects(ray_start_cluster):
+    # This test ensures that a task will run where its task dependencies are
+    # located, even when those objects are borrowed.
+    cluster = ray_start_cluster
+
+    # Disable worker caching so worker leases are not reused, and disable
+    # inlining of return objects so return objects are always put into Plasma.
+    cluster.add_node(
+        num_cpus=1,
+        resources={"pin_head": 1},
+        _system_config={
+            "worker_lease_timeout_milliseconds": 0,
+            "max_direct_call_object_size": 0,
+        })
+    # Use a custom resource for pinning tasks to a node.
+    worker_node = cluster.add_node(num_cpus=1, resources={"pin_worker": 1})
+    ray.init(address=cluster.address)
+
+    @ray.remote
+    def f():
+        return ray.worker.global_worker.node.unique_id
+
+    @ray.remote
+    def g(x):
+        return ray.get(h.remote(x[0]))
+
+    @ray.remote
+    def h(x):
+        return ray.worker.global_worker.node.unique_id
+
+    # f will run on worker, f_obj will be pinned on worker.
+    f_obj = f.options(resources={"pin_worker": 1}).remote()
+    # g will run on head, f_obj will be borrowed by head, and we confirm that
+    # h(f_obj) is scheduled onto worker, the node that has f_obj.
+    assert ray.get(g.options(resources={
+        "pin_head": 1
+    }).remote([f_obj])) == worker_node.unique_id
 
 
 def test_lease_request_leak(shutdown_only):

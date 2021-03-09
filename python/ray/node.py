@@ -216,19 +216,10 @@ class Node:
             self._webui_url = (
                 ray._private.services.get_webui_url_from_redis(redis_client))
 
-        if head or not connect_only:
-            # We need to start a local raylet.
-            if (self._ray_params.node_manager_port is None
-                    or self._ray_params.node_manager_port == 0):
-                # No port specified. Pick a random port for the raylet to use.
-                # NOTE: There is a possible but unlikely race condition where
-                # the port is bound by another process between now and when the
-                # raylet starts.
-                self._ray_params.node_manager_port, self._socket = \
-                    self._get_unused_port(close_on_exit=False)
-
         if not connect_only and spawn_reaper and not self.kernel_fate_share:
             self.start_reaper_process()
+        if not connect_only:
+            self._ray_params.update_pre_selected_port()
 
         # Start processes.
         if head:
@@ -240,6 +231,13 @@ class Node:
 
         if not connect_only:
             self.start_ray_processes()
+            address_info = (ray._private.services.get_address_info_from_redis(
+                self.redis_address,
+                self._raylet_ip_address,
+                redis_password=self.redis_password,
+                log_warning=False))
+            self._ray_params.node_manager_port = address_info[
+                "node_manager_port"]
 
     def _register_shutdown_hooks(self):
         # Register the atexit handler. In this case, we shouldn't call sys.exit
@@ -665,7 +663,8 @@ class Node:
              redis_max_clients=self._ray_params.redis_max_clients,
              redirect_worker_output=True,
              password=self._ray_params.redis_password,
-             fate_share=self.kernel_fate_share)
+             fate_share=self.kernel_fate_share,
+             port_blacklist=self._ray_params.reserved_ports)
         assert (
             ray_constants.PROCESS_TYPE_REDIS_SERVER not in self.all_processes)
         self.all_processes[ray_constants.PROCESS_TYPE_REDIS_SERVER] = (

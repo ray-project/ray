@@ -86,11 +86,8 @@ raylet::RayletClient::RayletClient(
     const std::string &raylet_socket, const WorkerID &worker_id,
     rpc::WorkerType worker_type, const JobID &job_id, const Language &language,
     const std::string &ip_address, Status *status, NodeID *raylet_id, int *port,
-    std::string *system_config, const std::string &job_config)
-    : grpc_client_(std::move(grpc_client)),
-      worker_id_(worker_id),
-      job_id_(job_id),
-      job_config_(job_config) {
+    std::string *serialized_job_config)
+    : grpc_client_(std::move(grpc_client)), worker_id_(worker_id), job_id_(job_id) {
   // For C++14, we could use std::make_unique
   conn_ = std::unique_ptr<raylet::RayletConnection>(
       new raylet::RayletConnection(io_service, raylet_socket, -1, -1));
@@ -100,7 +97,7 @@ raylet::RayletClient::RayletClient(
   auto message = protocol::CreateRegisterClientRequest(
       fbb, static_cast<int>(worker_type), to_flatbuf(fbb, worker_id), getpid(),
       to_flatbuf(fbb, job_id), language, fbb.CreateString(ip_address), /*port=*/0,
-      fbb.CreateString(job_config_));
+      fbb.CreateString(*serialized_job_config));
   fbb.Finish(message);
   // Register the process ID with the raylet.
   // NOTE(swang): If raylet exits and we are registered as a worker, we will get killed.
@@ -125,8 +122,7 @@ raylet::RayletClient::RayletClient(
   *raylet_id = NodeID::FromBinary(reply_message->raylet_id()->str());
   *port = reply_message->port();
 
-  RAY_CHECK(system_config);
-  *system_config = reply_message->system_config()->str();
+  *serialized_job_config = reply_message->serialized_job_config()->str();
 }
 
 Status raylet::RayletClient::Disconnect() {
@@ -419,6 +415,12 @@ void raylet::RayletClient::GlobalGC(
   grpc_client_->GlobalGC(request, callback);
 }
 
+void raylet::RayletClient::RequestResourceReport(
+    const rpc::ClientCallback<rpc::RequestResourceReportReply> &callback) {
+  rpc::RequestResourceReportRequest request;
+  grpc_client_->RequestResourceReport(request, callback);
+}
+
 void raylet::RayletClient::SubscribeToPlasma(const ObjectID &object_id,
                                              const rpc::Address &owner_address) {
   flatbuffers::FlatBufferBuilder fbb;
@@ -427,6 +429,12 @@ void raylet::RayletClient::SubscribeToPlasma(const ObjectID &object_id,
   fbb.Finish(message);
 
   RAY_CHECK_OK(conn_->WriteMessage(MessageType::SubscribePlasmaReady, &fbb));
+}
+
+void raylet::RayletClient::GetSystemConfig(
+    const rpc::ClientCallback<rpc::GetSystemConfigReply> &callback) {
+  rpc::GetSystemConfigRequest request;
+  grpc_client_->GetSystemConfig(request, callback);
 }
 
 }  // namespace ray

@@ -162,7 +162,7 @@ def test_middleware():
 
 def test_http_proxy_fail_loudly():
     # Test that if the http server fail to start, serve.start should fail.
-    with pytest.raises(socket.gaierror):
+    with pytest.raises(ValueError):
         serve.start(http_options={"host": "bad.ip.address"})
 
     ray.shutdown()

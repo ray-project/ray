@@ -10,9 +10,11 @@ except ImportError:
 
 import ray
 from ray.test_utils import (generate_system_config_map, get_other_nodes,
+                            kill_actor_and_wait_for_failure,
                             run_string_as_driver, wait_for_condition,
                             get_error_message)
 import ray.cluster_utils
+from ray.exceptions import RaySystemError
 from ray._raylet import PlacementGroupID
 from ray.util.placement_group import (PlacementGroup, placement_group,
                                       remove_placement_group,
@@ -903,7 +905,7 @@ def test_capture_child_actors(ray_start_cluster):
     assert len(node_id_set) == 1
 
     # Kill an actor and wait until it is killed.
-    ray.kill(a)
+    kill_actor_and_wait_for_failure(a)
     with pytest.raises(ray.exceptions.RayActorError):
         ray.get(a.ready.remote())
 
@@ -926,7 +928,7 @@ def test_capture_child_actors(ray_start_cluster):
     assert len(node_id_set) == 2
 
     # Kill an actor and wait until it is killed.
-    ray.kill(a)
+    kill_actor_and_wait_for_failure(a)
     with pytest.raises(ray.exceptions.RayActorError):
         ray.get(a.ready.remote())
 
@@ -1420,7 +1422,7 @@ ray.shutdown()
     ray.get(a.schedule_nested_actor_with_detached_pg.remote())
 
     # Kill an actor and wait until it is killed.
-    ray.kill(a)
+    kill_actor_and_wait_for_failure(a)
     with pytest.raises(ray.exceptions.RayActorError):
         ray.get(a.ready.remote())
 
@@ -1481,13 +1483,17 @@ ray.shutdown()
     ray.get(actor.ping.remote())
 
     # Create another placement group and make sure its creation will failed.
-    same_name_pg = ray.util.placement_group(
-        [{
-            "CPU": 1
-        } for _ in range(2)],
-        strategy="STRICT_SPREAD",
-        name=global_placement_group_name)
-    assert not same_name_pg.wait(10)
+    error_creation_count = 0
+    try:
+        ray.util.placement_group(
+            [{
+                "CPU": 1
+            } for _ in range(2)],
+            strategy="STRICT_SPREAD",
+            name=global_placement_group_name)
+    except RaySystemError:
+        error_creation_count += 1
+    assert error_creation_count == 1
 
     # Remove a named placement group and make sure the second creation
     # will successful.
@@ -1508,6 +1514,36 @@ ray.shutdown()
     except ValueError:
         error_count = error_count + 1
     assert error_count == 1
+
+
+def test_placement_group_synchronous_registration(ray_start_cluster):
+    cluster = ray_start_cluster
+    # One node which only has one CPU.
+    cluster.add_node(num_cpus=1)
+    cluster.wait_for_nodes()
+    ray.init(address=cluster.address)
+
+    # Create a placement group that has two bundles and `STRICT_PACK` strategy,
+    # so, its registration will successful but scheduling failed.
+    placement_group = ray.util.placement_group(
+        name="name",
+        strategy="STRICT_PACK",
+        bundles=[{
+            "CPU": 1,
+        }, {
+            "CPU": 1
+        }])
+    # Make sure we can properly remove it immediately
+    # as its registration is synchronous.
+    ray.util.remove_placement_group(placement_group)
+
+    def is_placement_group_removed():
+        table = ray.util.placement_group_table(placement_group)
+        if "state" not in table:
+            return False
+        return table["state"] == "REMOVED"
+
+    wait_for_condition(is_placement_group_removed)
 
 
 if __name__ == "__main__":

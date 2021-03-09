@@ -200,6 +200,26 @@ Status ServiceBasedActorInfoAccessor::AsyncRegisterActor(
   return Status::OK();
 }
 
+Status ServiceBasedActorInfoAccessor::AsyncKillActor(
+    const ActorID &actor_id, bool force_kill, bool no_restart,
+    const ray::gcs::StatusCallback &callback) {
+  rpc::KillActorViaGcsRequest request;
+  request.set_actor_id(actor_id.Binary());
+  request.set_force_kill(force_kill);
+  request.set_no_restart(no_restart);
+  client_impl_->GetGcsRpcClient().KillActorViaGcs(
+      request, [callback](const Status &, const rpc::KillActorViaGcsReply &reply) {
+        if (callback) {
+          auto status =
+              reply.status().code() == (int)StatusCode::OK
+                  ? Status()
+                  : Status(StatusCode(reply.status().code()), reply.status().message());
+          callback(status);
+        }
+      });
+  return Status::OK();
+}
+
 Status ServiceBasedActorInfoAccessor::AsyncCreateActor(
     const ray::TaskSpecification &task_spec, const ray::gcs::StatusCallback &callback) {
   RAY_CHECK(task_spec.IsActorCreationTask() && callback);
@@ -1394,12 +1414,13 @@ ServiceBasedPlacementGroupInfoAccessor::ServiceBasedPlacementGroupInfoAccessor(
     : client_impl_(client_impl) {}
 
 Status ServiceBasedPlacementGroupInfoAccessor::AsyncCreatePlacementGroup(
-    const ray::PlacementGroupSpecification &placement_group_spec) {
+    const ray::PlacementGroupSpecification &placement_group_spec,
+    const StatusCallback &callback) {
   rpc::CreatePlacementGroupRequest request;
   request.mutable_placement_group_spec()->CopyFrom(placement_group_spec.GetMessage());
   client_impl_->GetGcsRpcClient().CreatePlacementGroup(
-      request, [placement_group_spec](const Status &,
-                                      const rpc::CreatePlacementGroupReply &reply) {
+      request, [placement_group_spec, callback](
+                   const Status &, const rpc::CreatePlacementGroupReply &reply) {
         auto status =
             reply.status().code() == (int)StatusCode::OK
                 ? Status()
@@ -1411,6 +1432,9 @@ Status ServiceBasedPlacementGroupInfoAccessor::AsyncCreatePlacementGroup(
           RAY_LOG(ERROR) << "Placement group id = "
                          << placement_group_spec.PlacementGroupId()
                          << " failed to be registered. " << status;
+        }
+        if (callback) {
+          callback(status);
         }
       });
   return Status::OK();

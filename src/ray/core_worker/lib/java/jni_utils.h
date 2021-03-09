@@ -142,6 +142,10 @@ extern jfieldID java_base_task_options_resources;
 extern jclass java_call_options_class;
 /// name field of CallOptions class
 extern jfieldID java_call_options_name;
+/// group field of CallOptions class
+extern jfieldID java_task_creation_options_group;
+/// bundleIndex field of CallOptions class
+extern jfieldID java_task_creation_options_bundle_index;
 
 /// ActorCreationOptions class
 extern jclass java_actor_creation_options_class;

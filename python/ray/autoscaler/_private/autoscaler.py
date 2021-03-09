@@ -756,6 +756,15 @@ class StandardAutoscaler:
         for node_id in all_node_ids:
             ip = self.provider.internal_ip(node_id)
             node_tags = self.provider.node_tags(node_id)
+
+            if not all(
+                    tag in node_tags
+                    for tag in (TAG_RAY_NODE_KIND, TAG_RAY_USER_NODE_TYPE,
+                                TAG_RAY_NODE_STATUS)):
+                # In some node providers, creation of a node and tags is not
+                # atomic, so just skip it.
+                continue
+
             if node_tags[TAG_RAY_NODE_KIND] == NODE_KIND_UNMANAGED:
                 continue
             node_type = node_tags[TAG_RAY_USER_NODE_TYPE]
