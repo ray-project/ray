@@ -39,7 +39,7 @@ RAY_CONFIG(int64_t, raylet_heartbeat_period_milliseconds, 100)
 /// If a component has not sent a heartbeat in the last num_heartbeats_timeout
 /// heartbeat intervals, the raylet monitor process will report
 /// it as dead to the db_client table.
-RAY_CONFIG(int64_t, num_heartbeats_timeout, 3000000)
+RAY_CONFIG(int64_t, num_heartbeats_timeout, 300)
 /// For a raylet, if the last heartbeat was sent more than this many
 /// heartbeat periods ago, then a warning will be logged that the heartbeat
 /// handler is drifting.
