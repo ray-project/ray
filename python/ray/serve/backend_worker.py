@@ -201,14 +201,14 @@ class RayServeReplica:
             LongPollKey.BACKEND_CONFIGS: self._update_backend_configs,
         })
 
-        self.error_counter = metrics.Count(
+        self.error_counter = metrics.Counter(
             "serve_backend_error_counter",
             description=("The number of exceptions that have "
                          "occurred in the backend."),
             tag_keys=("backend", ))
         self.error_counter.set_default_tags({"backend": self.backend_tag})
 
-        self.restart_counter = metrics.Count(
+        self.restart_counter = metrics.Counter(
             "serve_backend_replica_starts",
             description=("The number of times this replica "
                          "has been restarted due to failure."),
