@@ -104,16 +104,13 @@ METRICS_GAUGES = {
                         "mb", ["ip", "pid"]),
     "cluster_active_nodes": Gauge("cluster_active_nodes",
                                   "Active nodes on the cluster", "count",
-                                  ["ip"]),
+                                  ["ip", "node_type"]),
     "cluster_failed_nodes": Gauge("cluster_failed_nodes",
                                   "Failed nodes on the cluster", "count",
                                   ["ip"]),
     "cluster_pending_nodes": Gauge("cluster_pending_nodes",
                                    "Pending nodes on the cluster", "count",
                                    ["ip"]),
-    "cluster_instance_count_by_type": Gauge(
-        "cluster_instance_count_by_type",
-        "Instance count by type on a cluster", "count", ["ip"]),
 }
 
 
@@ -320,13 +317,18 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
         redis_address = stats["redis_address"]
 
         # -- Instance count of cluster --
-        if "autoscaler_report" in cluster_stats and str(ip) == str(redis_address):
+        if "autoscaler_report" in cluster_stats and str(ip) == str(
+                redis_address):
             active_nodes = cluster_stats["autoscaler_report"]["active_nodes"]
             num_active_nodes = sum(active_nodes.values())
             cluster_active_nodes_record = Record(
                 gauge=METRICS_GAUGES["cluster_active_nodes"],
                 value=num_active_nodes,
-                tags={"ip": ip})
+                # TODO: change the node type tag with for loop
+                tags={"ip": ip}.update({
+                    f"node type {node_type}": count
+                    for (node_type, count) in active_nodes.items()
+                }))
 
             failed_nodes = len(
                 cluster_stats["autoscaler_report"]["failed_nodes"])
@@ -418,6 +420,10 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
             gauge=METRICS_GAUGES["node_disk_usage"],
             value=used,
             tags={"ip": ip})
+        disk_free_record = Record(
+            gauge=METRICS_GAUGES["node_disk_free"],
+            value=free,
+            tags={"ip": ip})
         disk_utilization_percentage_record = Record(
             gauge=METRICS_GAUGES["node_disk_utilization_percentage"],
             value=disk_utilization,
@@ -472,9 +478,9 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
         records_reported.extend([
             cpu_record, cpu_count_record, mem_used_record,
             mem_available_record, mem_total_record, disk_usage_record,
-            disk_utilization_percentage_record, network_sent_record,
-            network_received_record, network_send_speed_record,
-            network_receive_speed_record
+            disk_free_record, disk_utilization_percentage_record,
+            network_sent_record, network_received_record,
+            network_send_speed_record, network_receive_speed_record
         ])
         return records_reported
 
