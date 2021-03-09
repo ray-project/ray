@@ -414,14 +414,13 @@ def restore_original_dimensions(obs: TensorType,
         observation space.
     """
 
-    if tensorlib == "tf":
+    if tensorlib in ["tf", "tfe", "tf2"]:
+        assert tf is not None
         tensorlib = tf
     elif tensorlib == "torch":
         assert torch is not None
         tensorlib = torch
     original_space = getattr(obs_space, "original_space", obs_space)
-    if original_space is obs_space:
-        return obs
     return _unpack_obs(obs, original_space, tensorlib=tensorlib)
 
 

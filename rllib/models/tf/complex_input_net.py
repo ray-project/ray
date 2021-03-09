@@ -48,9 +48,11 @@ class ComplexInputNetwork(TFModelV2):
         for i, component in enumerate(self.original_space):
             # Image space.
             if len(component.shape) == 3:
+                conv_filters_ = model_config.get("conv_filters")
+                if conv_filters_ is None:
+                    conv_filters_ = get_filter_config(component.shape)
                 config = {
-                    "conv_filters": model_config.get(
-                        "conv_filters", get_filter_config(component.shape)),
+                    "conv_filters": conv_filters_,
                     "conv_activation": model_config.get("conv_activation"),
                     "post_fcnet_hiddens": [],
                 }
