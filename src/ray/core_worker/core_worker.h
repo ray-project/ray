@@ -150,6 +150,7 @@ struct CoreWorkerOptions {
       delete_spilled_objects;
   /// Function to call on error objects never retrieved.
   std::function<void(const RayObject &error)> unhandled_exception_handler;
+  std::function<void(const std::string &)> runtime_env_cleanup;
   /// Language worker callback to get the current call stack.
   std::function<void(std::string *)> get_lang_stack;
   // Function that tries to interrupt the currently running Python thread.
@@ -915,6 +916,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Trigger local GC on this worker.
   void HandleLocalGC(const rpc::LocalGCRequest &request, rpc::LocalGCReply *reply,
                      rpc::SendReplyCallback send_reply_callback) override;
+
+  // Spill objects to external storage.
+  void HandleRuntimeEnvCleanup(const rpc::RuntimeEnvCleanupRequest &request,
+                               rpc::RuntimeEnvCleanupReply *reply,
+                               rpc::SendReplyCallback send_reply_callback) override;
 
   // Spill objects to external storage.
   void HandleSpillObjects(const rpc::SpillObjectsRequest &request,

@@ -641,6 +641,9 @@ cdef void gc_collect() nogil:
                 "gc.collect() freed {} refs in {} seconds".format(
                     num_freed, end - start))
 
+cdef void runtime_env_cleanup_handler(const c_string& uri) nogil:
+    with gil:
+        ray._private.runtime_env.delete_package_local(uri)
 
 cdef c_vector[c_string] spill_objects_handler(
         const c_vector[CObjectID]& object_ids_to_spill,
@@ -862,6 +865,7 @@ cdef class CoreWorker:
         options.spill_objects = spill_objects_handler
         options.restore_spilled_objects = restore_spilled_objects_handler
         options.delete_spilled_objects = delete_spilled_objects_handler
+        options.runtime_env_cleanup = runtime_env_cleanup_handler
         options.unhandled_exception_handler = unhandled_exception_handler
         options.get_lang_stack = get_py_stack
         options.ref_counting_enabled = True

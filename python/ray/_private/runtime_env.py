@@ -7,7 +7,7 @@ from pathlib import Path
 from zipfile import ZipFile
 from ray.job_config import JobConfig
 from enum import Enum
-from ray.experimental import internal_kv
+import ray.experimental as exp
 from ray.core.generated.common_pb2 import RuntimeEnv
 from typing import List, Tuple
 from types import ModuleType
@@ -160,6 +160,11 @@ def create_project_package(working_dir: str, modules: List[ModuleType],
             _zip_module(module_path, module_path.parent, zip_handler)
 
 
+def delete_package_local(pkg_uri: str):
+    local_path = Path(_get_local_path(pkg_uri))
+    local_path.unlink(missing_ok=True)
+
+
 def fetch_package(pkg_uri: str, pkg_file: Path) -> int:
     """Fetch a package from a given uri.
 
@@ -176,7 +181,7 @@ def fetch_package(pkg_uri: str, pkg_file: Path) -> int:
     """
     (protocol, pkg_name) = _parse_uri(pkg_uri)
     if protocol in (Protocol.GCS, Protocol.PIN_GCS):
-        code = internal_kv._internal_kv_get(pkg_uri)
+        code = exp.internal_kv._internal_kv_get(pkg_uri)
         code = code or b""
         pkg_file.write_bytes(code)
         return len(code)
@@ -185,7 +190,7 @@ def fetch_package(pkg_uri: str, pkg_file: Path) -> int:
 
 
 def _store_package_in_gcs(gcs_key: str, data: bytes) -> int:
-    internal_kv._internal_kv_put(gcs_key, data)
+    exp.internal_kv._internal_kv_put(gcs_key, data)
     return len(data)
 
 
@@ -221,7 +226,7 @@ def package_exists(pkg_uri: str) -> bool:
     """
     (protocol, pkg_name) = _parse_uri(pkg_uri)
     if protocol in (Protocol.GCS, Protocol.PIN_GCS):
-        return internal_kv._internal_kv_exists(pkg_uri)
+        return exp.internal_kv._internal_kv_exists(pkg_uri)
     else:
         raise NotImplementedError(f"Protocol {protocol} is not supported")
 

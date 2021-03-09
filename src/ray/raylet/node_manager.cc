@@ -222,7 +222,8 @@ NodeManager::NodeManager(boost::asio::io_service &io_service, const NodeID &self
       last_local_gc_ns_(absl::GetCurrentTimeNanos()),
       local_gc_interval_ns_(RayConfig::instance().local_gc_interval_s() * 1e9),
       local_gc_min_interval_ns_(RayConfig::instance().local_gc_min_interval_s() * 1e9),
-      record_metrics_period_ms_(config.record_metrics_period_ms) {
+      record_metrics_period_ms_(config.record_metrics_period_ms),
+      runtime_env_manager_(worker_pool_) {
   RAY_LOG(INFO) << "Initializing NodeManager with ID " << self_node_id_;
   RAY_CHECK(RayConfig::instance().raylet_heartbeat_period_milliseconds() > 0);
 
@@ -329,6 +330,10 @@ ray::Status NodeManager::RegisterGcs() {
   // Register a callback to monitor new nodes and a callback to monitor removed nodes.
   RAY_RETURN_NOT_OK(
       gcs_client_->Nodes().AsyncSubscribeToNodeChange(on_node_change, on_done));
+
+  // Register a callback to monitor new nodes and a callback to monitor removed nodes.
+  // RAY_RETURN_NOT_OK(
+  //     gcs_client_->Packages().AsyncSubscribeToNodeChange(on_node_change, on_done));
 
   // Subscribe to resource usage batches from the monitor.
   const auto &resource_usage_batch_added =

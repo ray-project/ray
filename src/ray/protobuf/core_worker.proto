@@ -384,6 +384,13 @@ message ExitReply {
   bool success = 1;
 }
 
+message RuntimeEnvCleanupRequest {
+  string uri = 1;
+}
+
+message RuntimeEnvCleanupReply {
+}
+
 service CoreWorkerService {
   // Push a task directly to this worker from another.
   rpc PushTask(PushTaskRequest) returns (PushTaskReply);
@@ -435,6 +442,9 @@ service CoreWorkerService {
   rpc AddSpilledUrl(AddSpilledUrlRequest) returns (AddSpilledUrlReply);
   // Notification from raylet that an object ID is available in local plasma.
   rpc PlasmaObjectReady(PlasmaObjectReadyRequest) returns (PlasmaObjectReadyReply);
+  // Cleanup runtime environment
+  rpc RuntimeEnvCleanup(RuntimeEnvCleanupRequest)
+      returns (RuntimeEnvCleanupReply);
   // Request for a worker to exit.
   rpc Exit(ExitRequest) returns (ExitReply);
 }

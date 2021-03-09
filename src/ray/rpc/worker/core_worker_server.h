@@ -46,6 +46,7 @@ namespace rpc {
   RPC_SERVICE_HANDLER(CoreWorkerService, DeleteSpilledObjects)           \
   RPC_SERVICE_HANDLER(CoreWorkerService, AddSpilledUrl)                  \
   RPC_SERVICE_HANDLER(CoreWorkerService, PlasmaObjectReady)              \
+  RPC_SERVICE_HANDLER(CoreWorkerService, RuntimeEnvCleanup)              \
   RPC_SERVICE_HANDLER(CoreWorkerService, Exit)
 
 #define RAY_CORE_WORKER_DECLARE_RPC_HANDLERS                              \
@@ -68,6 +69,7 @@ namespace rpc {
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(DeleteSpilledObjects)           \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(AddSpilledUrl)                  \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(PlasmaObjectReady)              \
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(RuntimeEnvCleanup)              \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(Exit)
 
 /// Interface of the `CoreWorkerServiceHandler`, see `src/ray/protobuf/core_worker.proto`.

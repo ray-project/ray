@@ -2549,6 +2549,18 @@ void CoreWorker::HandleLocalGC(const rpc::LocalGCRequest &request,
   }
 }
 
+void CoreWorker::HandleRuntimeEnvCleanup(const rpc::RuntimeEnvCleanupRequest &request,
+                                         rpc::RuntimeEnvCleanupReply *reply,
+                                         rpc::SendReplyCallback send_reply_callback) {
+  if (options_.runtime_env_cleanup) {
+    options_.runtime_env_cleanup(request.uri());
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+  } else {
+    send_reply_callback(Status::NotImplemented("RuntimeEnv cleanup not supported"),
+                        nullptr, nullptr);
+  }
+}
+
 void CoreWorker::HandleSpillObjects(const rpc::SpillObjectsRequest &request,
                                     rpc::SpillObjectsReply *reply,
                                     rpc::SendReplyCallback send_reply_callback) {

@@ -622,6 +622,15 @@ void WorkerPool::PopDeleteWorker(
   }
 }
 
+void WorkerPool::PushRuntimeEnvWorker(const std::shared_ptr<WorkerInterface> &worker) {
+  PushIOWorkerInternal(worker, rpc::WorkerType::RUNTIME_ENV_WORKER);
+}
+
+void WorkerPool::PopRuntimeEnvWorker(
+    std::function<void(std::shared_ptr<WorkerInterface>)> callback) {
+  PopIOWorkerInternal(rpc::WorkerType::RUNTIME_ENV_WORKER, callback);
+}
+
 void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
   // Since the worker is now idle, unset its assigned task ID.
   RAY_CHECK(worker->GetAssignedTaskId().IsNil())
@@ -1041,6 +1050,7 @@ bool WorkerPool::HasPendingWorkerForTask(const Language &language,
 void WorkerPool::TryStartIOWorkers(const Language &language) {
   TryStartIOWorkers(language, rpc::WorkerType::RESTORE_WORKER);
   TryStartIOWorkers(language, rpc::WorkerType::SPILL_WORKER);
+  TryStartIOWorkers(language, rpc::WorkerType::RUNTIME_ENV_WORKER);
 }
 
 void WorkerPool::TryStartIOWorkers(const Language &language,
