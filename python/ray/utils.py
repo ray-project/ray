@@ -409,6 +409,21 @@ def get_system_memory():
     return psutil_memory_in_bytes
 
 
+def get_cached_memory():
+    """Return the currently cached memory in bytes
+
+    Returns:
+        The total amount of cached memory
+    """
+    # Try to accurately figure out the cached memory.
+    psutil_virtual_memory = psutil.virtual_memory()
+    psutil_cached_memory_in_bytes = 0
+    if hasattr(psutil_virtual_memory, "cached"):
+        psutil_cached_memory_in_bytes = psutil_virtual_memory.cached
+
+    return psutil_cached_memory_in_bytes
+
+
 def _get_docker_cpus(
         cpu_quota_file_name="/sys/fs/cgroup/cpu/cpu.cfs_quota_us",
         cpu_share_file_name="/sys/fs/cgroup/cpu/cpu.cfs_period_us",
@@ -536,7 +551,11 @@ def estimate_available_memory():
         and total memory.
 
     """
-    return get_system_memory() - get_used_memory()
+    # Linux, BSD has cached memory, which should
+    # also be considered as unused memory
+    # consider half of cached memory can be recycled.
+    # https://gitlab.com/procps-ng/procps/-/blob/master/proc/sysinfo.c#L805
+    return get_system_memory() - get_used_memory() + get_cached_memory() / 2
 
 
 def get_shared_memory_bytes():

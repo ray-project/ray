@@ -1117,8 +1117,11 @@ TEST_F(ClusterResourceSchedulerTest, ObjectStoreMemoryUsageTest) {
   vector<int64_t> cust_ids{1};
   NodeResources node_resources;
   std::unordered_map<std::string, double> initial_resources(
-      {{"CPU", 1}, {"GPU", 2}, {"memory", 3}, {"object_store_memory", 10}});
-  int64_t used_object_store_memory = 125 * 1024 * 1024;
+      {{"CPU", 1},
+       {"GPU", 2},
+       {"memory", 3},
+       {"object_store_memory", 1000 * 1024 * 1024}});
+  int64_t used_object_store_memory = 250 * 1024 * 1024;
   int64_t *ptr = &used_object_store_memory;
   ClusterResourceScheduler resource_scheduler("0", initial_resources,
                                               [&] { return *ptr; });
@@ -1134,17 +1137,17 @@ TEST_F(ClusterResourceSchedulerTest, ObjectStoreMemoryUsageTest) {
     resource_scheduler.FillResourceUsage(data);
     auto available = data.resources_available();
     auto total = data.resources_total();
-    ASSERT_EQ(available["object_store_memory"], 7.5);
-    ASSERT_EQ(total["object_store_memory"], 10.0);
+    ASSERT_EQ(available["object_store_memory"], 750 * 1024 * 1024);
+    ASSERT_EQ(total["object_store_memory"], 1000 * 1024 * 1024);
   }
 
-  used_object_store_memory = 225 * 1024 * 1024;
+  used_object_store_memory = 450 * 1024 * 1024;
   {
     rpc::ResourcesData data;
     resource_scheduler.FillResourceUsage(data);
     auto available = data.resources_available();
     auto total = data.resources_total();
-    ASSERT_EQ(available["object_store_memory"], 5.5);
+    ASSERT_EQ(available["object_store_memory"], 550 * 1024 * 1024);
   }
 
   used_object_store_memory = 0;
@@ -1153,7 +1156,7 @@ TEST_F(ClusterResourceSchedulerTest, ObjectStoreMemoryUsageTest) {
     resource_scheduler.FillResourceUsage(data);
     auto available = data.resources_available();
     auto total = data.resources_total();
-    ASSERT_EQ(available["object_store_memory"], 10.0);
+    ASSERT_EQ(available["object_store_memory"], 1000 * 1024 * 1024);
   }
 
   used_object_store_memory = 9999999999;
@@ -1162,7 +1165,7 @@ TEST_F(ClusterResourceSchedulerTest, ObjectStoreMemoryUsageTest) {
     resource_scheduler.FillResourceUsage(data);
     auto available = data.resources_available();
     auto total = data.resources_total();
-    ASSERT_EQ(available["object_store_memory"], 0.0);
+    ASSERT_EQ(available["object_store_memory"], 0);
   }
 }
 

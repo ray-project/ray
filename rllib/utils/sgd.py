@@ -96,7 +96,7 @@ def do_minibatch_sgd(samples, policies, local_worker, num_sgd_iter,
     if isinstance(samples, SampleBatch):
         samples = MultiAgentBatch({DEFAULT_POLICY_ID: samples}, samples.count)
 
-    fetches = {}
+    fetches = defaultdict(dict)
     for policy_id in policies.keys():
         if policy_id not in samples.policy_batches:
             continue
@@ -106,14 +106,13 @@ def do_minibatch_sgd(samples, policies, local_worker, num_sgd_iter,
             batch[field] = standardized(batch[field])
 
         for i in range(num_sgd_iter):
-            iter_extra_fetches = defaultdict(list)
+            learner_stats = defaultdict(list)
             for minibatch in minibatches(batch, sgd_minibatch_size):
                 batch_fetches = (local_worker.learn_on_batch(
                     MultiAgentBatch({
                         policy_id: minibatch
                     }, minibatch.count)))[policy_id]
                 for k, v in batch_fetches.get(LEARNER_STATS_KEY, {}).items():
-                    iter_extra_fetches[k].append(v)
-            logger.debug("{} {}".format(i, averaged(iter_extra_fetches)))
-        fetches[policy_id] = averaged(iter_extra_fetches)
+                    learner_stats[k].append(v)
+        fetches[policy_id][LEARNER_STATS_KEY] = averaged(learner_stats)
     return fetches
