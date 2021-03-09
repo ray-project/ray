@@ -317,7 +317,7 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
         ip = stats["ip"]
 
         # -- Instance count of cluster --
-        if "autoscaler_report" in cluster_stats:
+        if "autoscaler_report" in cluster_stats and self._dashboard_agent.redis_address == ip:
             active_nodes = cluster_stats["autoscaler_report"]["active_nodes"]
             num_active_nodes = sum(active_nodes.values())
             cluster_active_nodes_record = Record(
