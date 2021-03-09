@@ -310,11 +310,12 @@ class ResourceDemandScheduler:
                 continue
             ip = self.provider.internal_ip(node_id)
             runtime_resources = max_resources_by_ip.get(ip)
-            runtime_resources = copy.deepcopy(runtime_resources)
-            resources = self.node_types[node_type].get("resources", {})
-            resources.update(runtime_resources)
-            self.node_types[node_type]["resources"] = resources
-            self.node_resource_updated.add(node_type)
+            if runtime_resources:
+                runtime_resources = copy.deepcopy(runtime_resources)
+                resources = self.node_types[node_type].get("resources", {})
+                resources.update(runtime_resources)
+                self.node_types[node_type]["resources"] = resources
+                self.node_resource_updated.add(node_type)
 
     def _infer_legacy_node_resources_if_needed(
             self, max_resources_by_ip: Dict[NodeIP, ResourceDict]
