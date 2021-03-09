@@ -43,7 +43,7 @@ def _download_from_github_if_needed(config_path: str) -> str:
 
 
 def load_package(config_path: str) -> RuntimePackage:
-    config_path = _download_from_github_if_needed(config_path):
+    config_path = _download_from_github_if_needed(config_path)
     config = yaml.safe_load(open(config_path).read())
     base_dir = os.path.abspath(os.path.dirname(config_path))
     runtime_env = config["runtime_env"]
