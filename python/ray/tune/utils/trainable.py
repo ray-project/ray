@@ -260,12 +260,12 @@ def with_parameters(trainable, **kwargs):
         from ray import tune
 
         class MyTrainable(tune.Trainable):
-            def setup(config, data=None):
+            def setup(self, config, data=None):
                 self.data = data
                 self.iter = iter(self.data)
                 self.next_sample = next(self.iter)
 
-            def step():
+            def step(self):
                 loss = update_model(self.next_sample)
                 try:
                     self.next_sample = next(self.iter)
