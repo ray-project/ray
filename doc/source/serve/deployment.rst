@@ -208,6 +208,21 @@ Please refer to the Kubernetes documentation for more information.
 Monitoring
 ==========
 
+Ray Dashboard
+-------------
+
+A high-level way to monitor your Ray Serve deployment (or any Ray application) is via the Ray Dashboard.
+See the `Ray Dashboard documentation <../ray-dashboard.html>`__ for a detailed overview, including instructions on how to view the dashboard.
+
+Below is an example of what the Ray Dashboard might look like for a Serve deployment:
+
+.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/dashboard/serve-dashboard.png
+    :align: center
+
+Here you can see the Serve controller actor, an HTTP proxy actor, and all of the replicas for each Serve backend in the deployment.
+To learn about the function of the controller and proxy actors, see the `Serve Architecture page <architecture.html>`__.
+In this example pictured above, we have a single-node cluster with a backend class called Counter with ``num_replicas=2`` in its :class:`~ray.serve.BackendConfig`.
+
 Logging
 -------
 
