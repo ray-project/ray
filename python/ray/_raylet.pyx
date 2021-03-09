@@ -552,7 +552,8 @@ cdef execute_task(
                 job_id=worker.current_job_id)
 
             if (<int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK):
-                raise RayActorCreationTaskFailedError.from_task_error(failure_object) from error
+                raise RayActorCreationTaskFailedError.\
+                    from_task_error(failure_object) from error
 
     if execution_info.max_calls != 0:
         # Reset the state of the worker for the next task to execute.
@@ -569,7 +570,8 @@ cdef execute_task(
 # return a protobuf-serialized ray_exception
 cdef shared_ptr[LocalMemoryBuffer] ray_error_to_memory_buf(ray_error):
     cdef bytes py_bytes = ray_error.to_bytes()
-    return make_shared[LocalMemoryBuffer](<uint8_t*>py_bytes, len(py_bytes), True)
+    return make_shared[LocalMemoryBuffer](
+        <uint8_t*>py_bytes, len(py_bytes), True)
 
 cdef CRayStatus task_execution_handler(
         CTaskType task_type,
@@ -589,15 +591,17 @@ cdef CRayStatus task_execution_handler(
                 # The call to execute_task should never raise an exception. If
                 # it does, that indicates that there was an internal error.
                 execute_task(task_type, task_name, ray_function, c_resources,
-                                c_args, c_arg_reference_ids, c_return_ids,
-                                debugger_breakpoint, returns)
+                             c_args, c_arg_reference_ids, c_return_ids,
+                             debugger_breakpoint, returns)
             except Exception as e:
                 sys_exit = SystemExit()
                 if isinstance(e, RayActorCreationTaskFailedError):
                     logger.exception("Error raised in creation task")
-                    # Cython's bug that doesn't allow reference assignment, this is 
-                    # a workaroud. See https://github.com/cython/cython/issues/1863
-                    (&creation_task_exception_pb_bytes)[0] = ray_error_to_memory_buf(e)
+                    # Cython's bug that doesn't allow reference assignment,
+                    # this is a workaroud.
+                    # See https://github.com/cython/cython/issues/1863
+                    (&creation_task_exception_pb_bytes)[0] = (
+                        ray_error_to_memory_buf(e))
                     sys_exit.is_creation_task_error = True
 
                 traceback_str = traceback.format_exc() + (

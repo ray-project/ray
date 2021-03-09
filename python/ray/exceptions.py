@@ -158,8 +158,9 @@ class RayActorError(RayError):
 
 
 class RayActorCreationTaskFailedError(RayTaskError, RayActorError):
-    """Indicates that the actor is failed to execute task because this actor is already
-    dead due to an exception thrown in its creation task.
+    """Indicates that the actor is failed to execute task
+    because this actor is already dead due to an exception
+    thrown in its creation task.
     """
 
     def __init__(self,
@@ -173,8 +174,8 @@ class RayActorCreationTaskFailedError(RayTaskError, RayActorError):
                               proctitle, pid, ip)
 
     def as_instanceof_cause(self):
-        """same as RayTaskError.as_instanceof_cause, but return an instance of RayActorCreationTaskFailedError
-        instead of RayTaskError
+        """same as RayTaskError.as_instanceof_cause, but return an
+        instance of RayActorCreationTaskFailedError instead of RayTaskError
         """
         return RayActorCreationTaskFailedError.from_task_error(
             super().as_instanceof_cause())

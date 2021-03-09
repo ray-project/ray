@@ -719,7 +719,7 @@ void GcsActorManager::ReconstructActor(
     mutable_actor_table_data->set_state(rpc::ActorTableData::DEAD);
     if (creation_task_exception != nullptr) {
       mutable_actor_table_data->set_allocated_creation_task_exception(
-        new rpc::RayException(*creation_task_exception));
+          new rpc::RayException(*creation_task_exception));
     }
     mutable_actor_table_data->set_timestamp(current_sys_time_ms());
     // The backend storage is reliable in the future, so the status must be ok.

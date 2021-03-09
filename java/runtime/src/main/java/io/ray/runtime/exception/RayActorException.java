@@ -22,9 +22,10 @@ public class RayActorException extends RayException {
   }
 
   public RayActorException(ActorId actorId, String deathInfo) {
-    super(String.format(
-        "The actor %s died unexpectedly before finishing this task, deathInfo=%s",
-        actorId, deathInfo));
+    super(
+        String.format(
+            "The actor %s died unexpectedly before finishing this task, deathInfo=%s",
+            actorId, deathInfo));
     this.actorId = actorId;
   }
 

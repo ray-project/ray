@@ -45,19 +45,19 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
       auto actor_id = task_spec.ActorCreationId();
       auto task_id = task_spec.TaskId();
       RAY_LOG(INFO) << "Creating actor via GCS actor id = : " << actor_id;
-      RAY_CHECK_OK(actor_creator_->AsyncCreateActor(task_spec, [this, actor_id,
-                                                                task_id](Status status) {
-        if (status.ok()) {
-          RAY_LOG(DEBUG) << "Created actor, actor id = " << actor_id;
-          task_finisher_->CompletePendingTask(task_id, rpc::PushTaskReply(),
-                                              rpc::Address());
-        } else {
-          RAY_LOG(ERROR) << "Failed to create actor " << actor_id
-                         << " with status: " << status.ToString();
-          RAY_UNUSED(task_finisher_->PendingTaskFailed(
-              task_id, rpc::ErrorType::ACTOR_CREATION_FAILED, &status));
-        }
-      }));
+      RAY_CHECK_OK(actor_creator_->AsyncCreateActor(
+          task_spec, [this, actor_id, task_id](Status status) {
+            if (status.ok()) {
+              RAY_LOG(DEBUG) << "Created actor, actor id = " << actor_id;
+              task_finisher_->CompletePendingTask(task_id, rpc::PushTaskReply(),
+                                                  rpc::Address());
+            } else {
+              RAY_LOG(ERROR) << "Failed to create actor " << actor_id
+                             << " with status: " << status.ToString();
+              RAY_UNUSED(task_finisher_->PendingTaskFailed(
+                  task_id, rpc::ErrorType::ACTOR_CREATION_FAILED, &status));
+            }
+          }));
       return;
     }
 
