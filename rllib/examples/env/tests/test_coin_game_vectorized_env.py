@@ -682,12 +682,9 @@ def test_get_and_set_env_state():
             }
             obs, reward, done, info = env.step(actions)
 
-            assert all([
-                v == initial_env_state_saved[k]
-                if not isinstance(v, np.ndarray) else
-                (v == initial_env_state_saved[k]).all()
-                for k, v in initial_env_state.items()
-            ])
+            assert all(v == initial_env_state_saved[k] if not isinstance(
+                v, np.ndarray) else (v == initial_env_state_saved[k]).all()
+                       for k, v in initial_env_state.items())
             env_state_after_step = env._save_env()
             env_after_step = copy.deepcopy(env)
 
@@ -695,20 +692,18 @@ def test_get_and_set_env_state():
             env_vars, env_initial_vars = vars(env), vars(env_initial)
             env_vars.pop("np_random", None)
             env_initial_vars.pop("np_random", None)
-            assert all([
+            assert all(
                 v == env_initial_vars[k] if not isinstance(v, np.ndarray) else
-                (v == env_initial_vars[k]).all() for k, v in env_vars.items()
-            ])
+                (v == env_initial_vars[k]).all() for k, v in env_vars.items())
 
             env._load_env(env_state_after_step)
             env_vars, env_after_step_vars = vars(env), vars(env_after_step)
             env_vars.pop("np_random", None)
             env_after_step_vars.pop("np_random", None)
-            assert all([
+            assert all(
                 v == env_after_step_vars[k] if not isinstance(v, np.ndarray)
                 else (v == env_after_step_vars[k]).all()
-                for k, v in env_vars.items()
-            ])
+                for k, v in env_vars.items())
 
             if done["__all__"]:
                 _ = env.reset()
