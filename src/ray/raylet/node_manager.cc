@@ -448,11 +448,10 @@ void NodeManager::HandleJobFinished(const JobID &job_id, const JobTableData &job
   }
 }
 
-void NodeManager::ReportResourceUsage() {
-  auto resources_data = std::make_shared<rpc::ResourcesData>();
-  resources_data->set_node_id(self_node_id_.Binary());
-  resources_data->set_node_manager_address(initial_config_.node_manager_address);
-  // Update local chche from gcs remote cache, this is needed when gcs restart.
+void NodeManager::FillResourceReport(rpc::ResourcesData &resources_data) {
+  resources_data.set_node_id(self_node_id_.Binary());
+  resources_data.set_node_manager_address(initial_config_.node_manager_address);
+  // Update local cache from gcs remote cache, this is needed when gcs restart.
   // We should always keep the cache view consistent.
   cluster_resource_scheduler_->UpdateLastResourceUsage(
       gcs_client_->NodeResources().GetLastResourceUsage());
@@ -461,9 +460,15 @@ void NodeManager::ReportResourceUsage() {
 
   // Set the global gc bit on the outgoing heartbeat message.
   if (should_global_gc_) {
-    resources_data->set_should_global_gc(true);
+    resources_data.set_should_global_gc(true);
+    resources_data.set_should_global_gc(true);
     should_global_gc_ = false;
   }
+}
+
+void NodeManager::ReportResourceUsage() {
+  auto resources_data = std::make_shared<rpc::ResourcesData>();
+  FillResourceReport(*resources_data);
 
   // Trigger local GC if needed. This throttles the frequency of local GC calls
   // to at most once per heartbeat interval.
@@ -1312,6 +1317,15 @@ void NodeManager::ProcessPushErrorRequestMessage(const uint8_t *message_data) {
   JobID job_id = from_flatbuf<JobID>(*message->job_id());
   auto error_data_ptr = gcs::CreateErrorTableData(type, error_message, timestamp, job_id);
   RAY_CHECK_OK(gcs_client_->Errors().AsyncReportJobError(error_data_ptr, nullptr));
+}
+
+void NodeManager::HandleRequestResourceReport(
+    const rpc::RequestResourceReportRequest &request,
+    rpc::RequestResourceReportReply *reply, rpc::SendReplyCallback send_reply_callback) {
+  auto resources_data = reply->mutable_resources();
+  FillResourceReport(*resources_data);
+
+  send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
 void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest &request,
