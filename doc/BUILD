@@ -3,19 +3,19 @@
 # Please keep these sorted alphabetically, but start with the
 # root directory.
 # --------------------------------------------------------------------
-# py_test(
-#     name = "plot_hyperparameter",
-#     size = "small",
-#     srcs = ["examples/plot_hyperparameter.py"],
-#     tags = ["exclusive"]
-# )
+py_test(
+    name = "plot_hyperparameter",
+    size = "small",
+    srcs = ["examples/plot_hyperparameter.py"],
+    tags = ["exclusive"]
+)
 
-# py_test(
-#     name = "plot_parameter_server",
-#     size = "medium",
-#     srcs = ["examples/plot_parameter_server.py"],
-#     tags = ["exclusive"]
-# )
+py_test(
+    name = "plot_parameter_server",
+    size = "medium",
+    srcs = ["examples/plot_parameter_server.py"],
+    tags = ["exclusive"]
+)
 
 py_test(
     name = "plot_pong_example",
@@ -41,13 +41,13 @@ py_test(
     tags = ["exclusive", "tf"]
 )
 
-# py_test(
-#     name = "doc_code_torch_example",
-#     size = "small",
-#     main = "examples/doc_code/torch_example.py",
-#     srcs = ["examples/doc_code/torch_example.py"],
-#     tags = ["exclusive", "pytorch"]
-# )
+py_test(
+    name = "doc_code_torch_example",
+    size = "small",
+    main = "examples/doc_code/torch_example.py",
+    srcs = ["examples/doc_code/torch_example.py"],
+    tags = ["exclusive", "pytorch"]
+)
 
 # --------------------------------------------------------------------
 # Tests from the doc/source/tune/_tutorials directory.
@@ -63,11 +63,11 @@ py_test(
     args = ["--smoke-test"]
 )
 
-# py_test(
-#     name = "tune_serve_integration_mnist",
-#     size = "medium",
-#     main = "source/tune/_tutorials/tune-serve-integration-mnist.py",
-#     srcs = ["source/tune/_tutorials/tune-serve-integration-mnist.py"],
-#     tags = ["exclusive", "example"],
-#     args = ["--smoke-test", "--from_scratch", "--day 0"]
-# )
+py_test(
+    name = "tune_serve_integration_mnist",
+    size = "medium",
+    main = "source/tune/_tutorials/tune-serve-integration-mnist.py",
+    srcs = ["source/tune/_tutorials/tune-serve-integration-mnist.py"],
+    tags = ["exclusive", "example"],
+    args = ["--smoke-test", "--from_scratch", "--day 0"]
+)
