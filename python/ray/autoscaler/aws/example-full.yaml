@@ -129,6 +129,7 @@ setup_commands:
     # has your Ray repo pre-cloned. Then, you can replace the pip installs
     # below with a git checkout <your_sha> (and possibly a recompile).
     # Uncomment the following line if you want to run the nightly version of ray (as opposed to the latest)
+    - pip uninstall -y ray
     - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl
     - cd /tmp ; rm -rf ray-src ; git clone https://github.com/kathryn-zhou/ray.git ray-src ; cd ray-src ; git checkout cluster-stats ; cd python/ray ; python setup-dev.py -y
 # Custom commands that will be run on the head node after common setup.
