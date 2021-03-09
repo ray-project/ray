@@ -815,6 +815,25 @@ def get_function_args(callable):
     return list(all_parameters)
 
 
+def get_conda_bin_executable(executable_name):
+    """
+    Return path to the specified executable, assumed to be discoverable within
+    the 'bin' subdirectory of a conda installation.  Adapted from
+    https://github.com/mlflow/mlflow.
+
+    The conda home directory (expected to contain a 'bin' subdirectory) is
+    configurable via the ``mlflow.projects.MLFLOW_CONDA_HOME`` environment
+    variable. If ``mlflow.projects.MLFLOW_CONDA_HOME`` is unspecified, this
+    method simply returns the passed-in executable name.
+    """
+
+    # Use CONDA_EXE as per https://github.com/conda/conda/issues/7126
+    if "CONDA_EXE" in os.environ:
+        conda_bin_dir = os.path.dirname(os.environ["CONDA_EXE"])
+        return os.path.join(conda_bin_dir, executable_name)
+    return executable_name
+
+
 def get_conda_env_dir(env_name):
     """Find and validate the conda directory for a given conda environment.
 
