@@ -1554,8 +1554,6 @@ def test_placement_group_gpu_set(ray_start_cluster):
     cluster.wait_for_nodes()
     ray.init(address=cluster.address)
 
-    # Create a placement group that has two bundles and `STRICT_PACK` strategy,
-    # so, its registration will successful but scheduling failed.
     placement_group = ray.util.placement_group(
         name="name",
         strategy="PACK",
