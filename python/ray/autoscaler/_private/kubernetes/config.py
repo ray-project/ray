@@ -11,7 +11,13 @@ from ray.ray_constants import MEMORY_RESOURCE_UNIT_BYTES
 
 logger = logging.getLogger(__name__)
 
-MEMORY_SIZE_UNITS = {"K": 2**10, "M": 2**20, "G": 2**30, "T": 2**40, "P": 2**50}
+MEMORY_SIZE_UNITS = {
+    "K": 2**10,
+    "M": 2**20,
+    "G": 2**30,
+    "T": 2**40,
+    "P": 2**50
+}
 
 
 class InvalidNamespaceError(ValueError):
@@ -180,7 +186,7 @@ def _parse_memory_resource(resource):
         pass
     memory_size = re.sub(r"([KMGTP]+)", r" \1", resource_str)
     number, unit_index = [item.strip() for item in memory_size.split()]
-    unit_index = unit_index[0: 1]
+    unit_index = unit_index[0:1]
     return number * MEMORY_SIZE_UNITS[unit_index]
 
 

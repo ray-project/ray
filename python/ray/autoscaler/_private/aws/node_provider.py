@@ -516,12 +516,15 @@ class AWSNodeProvider(NodeProvider):
                     "DefaultVCpus"]
                 memory_total = instances_dict[instance_type]["MemoryInfo"][
                     "SizeInMiB"]
+                memory_total = int(memory_total) * 1024 * 1024
                 memory_units = memory_total / MEMORY_RESOURCE_UNIT_BYTES
                 memory_resources = int(memory_units * 0.6)
                 object_store_memory = int(memory_units * 0.3)
                 autodetected_resources = {
-                    "CPU": cpus, "memory": memory_resources,
-                    "object_store_memory": object_store_memory}
+                    "CPU": cpus,
+                    "memory": memory_resources,
+                    "object_store_memory": object_store_memory
+                }
                 gpus = instances_dict[instance_type].get("GpuInfo",
                                                          {}).get("Gpus")
                 if gpus is not None:
