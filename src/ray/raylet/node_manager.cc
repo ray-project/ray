@@ -2142,11 +2142,7 @@ void NodeManager::RecordMetrics() {
 }
 
 void NodeManager::PublishInfeasibleTaskError(const Task &task) const {
-  // This block is used to suppress infeasible task warning.
   bool suppress_warning = false;
-  const auto &required_resources = task.GetTaskSpecification().GetRequiredResources();
-  const auto &resources_map = required_resources.GetResourceMap();
-  const auto &it = resources_map.begin();
 
   if (!task.GetTaskSpecification().PlacementGroupBundleId().first.IsNil()) {
     // If the task is part of a placement group, do nothing. If necessary, the infeasible
