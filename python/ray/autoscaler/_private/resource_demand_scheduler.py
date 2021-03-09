@@ -21,6 +21,7 @@ from ray.autoscaler._private.constants import AUTOSCALER_CONSERVE_GPU_NODES
 from ray.autoscaler.tags import (
     TAG_RAY_USER_NODE_TYPE, NODE_KIND_UNMANAGED, NODE_TYPE_LEGACY_WORKER,
     NODE_KIND_WORKER, NODE_TYPE_LEGACY_HEAD, TAG_RAY_NODE_KIND, NODE_KIND_HEAD)
+import ray.ray_constants as ray_constants
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +52,21 @@ class ResourceDemandScheduler:
                  head_node_type: NodeType,
                  upscaling_speed: float = 1) -> None:
         self.provider = provider
-        self.node_types = copy.deepcopy(node_types)
+
+        node_types = copy.deepcopy(node_types)
+        # convert memory and object_store_memory to memory unit
+        for node_type in node_types:
+            res = node_types[node_type].get("resources", {})
+            if "memory" in res:
+                size = float(res["memory"])
+                res["memory"] = ray_constants.to_memory_units(size, False)
+            if "object_store_memory" in res:
+                size = float(res["object_store_memory"])
+                res["object_store_memory"] = ray_constants.to_memory_units(
+                    size, False)
+            if res:
+                node_types[node_type]["resources"] = res
+        self.node_types = node_types
         self.node_resource_updated = set()
         self.max_workers = max_workers
         self.head_node_type = head_node_type
