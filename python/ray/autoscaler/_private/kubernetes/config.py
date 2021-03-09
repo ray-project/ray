@@ -187,7 +187,7 @@ def _parse_memory_resource(resource):
     memory_size = re.sub(r"([KMGTP]+)", r" \1", resource_str)
     number, unit_index = [item.strip() for item in memory_size.split()]
     unit_index = unit_index[0:1]
-    return number * MEMORY_SIZE_UNITS[unit_index]
+    return float(number) * MEMORY_SIZE_UNITS[unit_index]
 
 
 def _configure_namespace(provider_config):
