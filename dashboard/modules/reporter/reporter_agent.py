@@ -324,14 +324,15 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
                 redis_address):
             active_nodes = cluster_stats["autoscaler_report"]["active_nodes"]
             num_active_nodes = sum(active_nodes.values())
+            logger.info("~~~~~ tags" + {"ip": ip}.update({
+                    f"node type {node_type}": count
+                    for (node_type, count) in active_nodes.items()
+                }))
             cluster_active_nodes_record = Record(
                 gauge=METRICS_GAUGES["cluster_active_nodes"],
                 value=num_active_nodes,
                 # TODO: change the node type tag with for loop
-                tags={"ip": ip}.update({
-                    f"node type {node_type}": count
-                    for (node_type, count) in active_nodes.items()
-                }))
+                tags={"ip": ip})
 
             failed_nodes = len(
                 cluster_stats["autoscaler_report"]["failed_nodes"])
