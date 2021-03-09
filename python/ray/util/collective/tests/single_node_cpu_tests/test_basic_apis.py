@@ -11,7 +11,8 @@ from ray.util.collective.tests.cpu_util import Worker, \
 @pytest.mark.parametrize("group_name", ["default", "test", "123?34!"])
 def test_init_two_actors(ray_start_single_node, group_name, backend):
     world_size = 2
-    actors, results = create_collective_workers(world_size, group_name, backend=backend)
+    actors, results = create_collective_workers(
+        world_size, group_name, backend=backend)
     for i in range(world_size):
         assert (results[i])
 
@@ -24,7 +25,8 @@ def test_init_multiple_groups(ray_start_single_node, backend):
     for i in range(num_groups):
         group_name = str(i)
         init_results = ray.get([
-            actor.init_group.remote(world_size, k, group_name=group_name, backend=backend)
+            actor.init_group.remote(
+                world_size, k, group_name=group_name, backend=backend)
             for k, actor in enumerate(actors)
         ])
         for j in range(world_size):
@@ -45,8 +47,10 @@ def test_get_rank(ray_start_single_node, backend):
     new_group_name = "default2"
     _ = ray.get([
         actor.init_group.remote(
-            world_size, world_size - 1 - i, group_name=new_group_name, backend=backend)
-        for i, actor in enumerate(actors)
+            world_size,
+            world_size - 1 - i,
+            group_name=new_group_name,
+            backend=backend) for i, actor in enumerate(actors)
     ])
     actor0_rank = ray.get(actors[0].report_rank.remote(new_group_name))
     assert actor0_rank == 1

@@ -10,14 +10,11 @@ from ray.util.collective.tests.cpu_util import create_collective_workers
 @pytest.mark.parametrize("backend", [Backend.GLOO])
 @pytest.mark.parametrize("group_name", ["default", "test", "123?34!"])
 @pytest.mark.parametrize("dst_rank", [0, 1])
-def test_reduce_different_name(ray_start_single_node, group_name,
-                               dst_rank, backend):
+def test_reduce_different_name(ray_start_single_node, group_name, dst_rank,
+                               backend):
     world_size = 2
     actors, _ = create_collective_workers(
-            num_workers=world_size,
-            group_name=group_name,
-            backend=backend
-        )
+        num_workers=world_size, group_name=group_name, backend=backend)
     results = ray.get(
         [a.do_reduce.remote(group_name, dst_rank) for a in actors])
     for i in range(world_size):
@@ -52,7 +49,8 @@ def test_reduce_different_array_size(ray_start_single_node, array_size,
 @pytest.mark.parametrize("backend", [Backend.GLOO])
 @pytest.mark.parametrize("dst_rank", [0, 1])
 def test_reduce_multiple_group(ray_start_single_node,
-                               dst_rank, backend,
+                               dst_rank,
+                               backend,
                                num_groups=5):
     world_size = 2
     actors, _ = create_collective_workers(world_size, backend=backend)

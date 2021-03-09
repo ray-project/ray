@@ -12,10 +12,7 @@ from ray.util.collective.types import Backend, ReduceOp
 def test_allreduce_different_name(ray_start_single_node, group_name, backend):
     world_size = 2
     actors, _ = create_collective_workers(
-            num_workers=world_size,
-            group_name=group_name,
-            backend=backend
-        )
+        num_workers=world_size, group_name=group_name, backend=backend)
     results = ray.get([a.do_allreduce.remote(group_name) for a in actors])
     assert (results[0] == np.ones((10, ), dtype=np.float32) * world_size).all()
     assert (results[1] == np.ones((10, ), dtype=np.float32) * world_size).all()
@@ -23,8 +20,8 @@ def test_allreduce_different_name(ray_start_single_node, group_name, backend):
 
 @pytest.mark.parametrize("backend", [Backend.GLOO])
 @pytest.mark.parametrize("array_size", [2, 2**5, 2**10, 2**15, 2**20])
-def test_allreduce_different_array_size(ray_start_single_node,
-                                        array_size, backend):
+def test_allreduce_different_array_size(ray_start_single_node, array_size,
+                                        backend):
     world_size = 2
     actors, _ = create_collective_workers(world_size, backend=backend)
     ray.wait([
@@ -67,8 +64,7 @@ def test_allreduce_destroy(ray_start_single_node,
 
 
 @pytest.mark.parametrize("backend", [Backend.GLOO])
-def test_allreduce_multiple_group(ray_start_single_node,
-                                  backend,
+def test_allreduce_multiple_group(ray_start_single_node, backend,
                                   num_groups=5):
     world_size = 2
     actors, _ = create_collective_workers(world_size, backend=backend)
@@ -85,8 +81,7 @@ def test_allreduce_multiple_group(ray_start_single_node,
 
 
 @pytest.mark.parametrize("backend", [Backend.GLOO])
-def test_allreduce_different_op(ray_start_single_node,
-                                backend):
+def test_allreduce_different_op(ray_start_single_node, backend):
     world_size = 2
     actors, _ = create_collective_workers(world_size, backend=backend)
 

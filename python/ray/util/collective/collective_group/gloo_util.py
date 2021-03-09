@@ -11,7 +11,6 @@ import ray
 from ray.util.collective.types import ReduceOp, torch_available
 from ray.util.queue import _QueueActor
 
-
 GLOO_REDUCE_OP_MAP = {
     ReduceOp.SUM: pygloo.ReduceOp.SUM,
     ReduceOp.PRODUCT: pygloo.ReduceOp.PRODUCT,

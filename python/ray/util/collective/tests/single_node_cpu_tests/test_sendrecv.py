@@ -12,14 +12,11 @@ from ray.util.collective.tests.cpu_util import create_collective_workers
 @pytest.mark.parametrize("dst_rank", [0, 1])
 @pytest.mark.parametrize(
     "array_size", [2, 2**5, 2**10, 2**15, 2**20, [2, 2], [5, 9, 10, 85]])
-def test_reduce_different_name(ray_start_single_node, group_name,
-                               array_size, dst_rank, backend):
+def test_reduce_different_name(ray_start_single_node, group_name, array_size,
+                               dst_rank, backend):
     world_size = 2
     actors, _ = create_collective_workers(
-            num_workers=world_size,
-            group_name=group_name,
-            backend=backend
-        )
+        num_workers=world_size, group_name=group_name, backend=backend)
     ray.wait([
         a.set_buffer.remote(np.ones(array_size, dtype=np.float32) * (i + 1))
         for i, a in enumerate(actors)

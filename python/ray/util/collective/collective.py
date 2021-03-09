@@ -10,9 +10,7 @@ from ray.util.collective import types
 _NCCL_AVAILABLE = True
 _GLOO_AVAILABLE = True
 
-
 logger = logging.getLogger(__name__)
-
 
 try:
     from ray.util.collective.collective_group.\
@@ -64,8 +62,12 @@ class GroupManager(object):
             raise RuntimeError("Ray does not support MPI.")
         elif backend == types.Backend.GLOO:
             logger.debug("Creating GLOO group: '{}'...".format(group_name))
-            g = GLOOGroup(world_size, rank, group_name, store_type='redis',
-                          device_type='tcp')
+            g = GLOOGroup(
+                world_size,
+                rank,
+                group_name,
+                store_type='redis',
+                device_type='tcp')
             self._name_group_map[group_name] = g
             self._group_name_map[g] = group_name
         elif backend == types.Backend.NCCL:
