@@ -52,8 +52,8 @@ void instrumented_io_context::post(std::function<void()> handler,
   // Get this handler's stats.
   mutex_.ReaderLock();
   auto it = post_handler_stats_.find(name);
-  mutex_.ReaderUnlock();
   if (it == post_handler_stats_.end()) {
+    mutex_.ReaderUnlock();
     // Lock the table until we have added the entry. We use try_emplace and handle a
     // failed insertion in case the item was added before we acquire the writers lock;
     // this allows the common path, in which the handler already exists in the hash table,
@@ -69,6 +69,8 @@ void instrumented_io_context::post(std::function<void()> handler,
       // the table.
       RAY_CHECK(it != post_handler_stats_.end());
     }
+  } else {
+    mutex_.ReaderUnlock();
   }
   {
     absl::MutexLock lock(&(it->second->mutex));
@@ -162,7 +164,7 @@ instrumented_io_context::get_handler_stats() const {
 }
 
 inline std::string to_human_readable(double duration) {
-  static const std::array<std::string, 4> to_unit{"ns", "us", "ms", "s"};
+  static const std::array<std::string, 4> to_unit{{"ns", "us", "ms", "s"}};
   size_t idx = std::min(to_unit.size() - 1,
                         static_cast<size_t>(std::log(duration) / std::log(1000)));
   double new_duration = duration / std::pow(1000, idx);
