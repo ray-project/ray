@@ -24,7 +24,13 @@ class RuntimePackage:
 
         for symbol in dir(self._module):
             if not symbol.startswith("_"):
-                setattr(self, symbol, getattr(self._module, symbol))
+                value = getattr(self._module, symbol)
+                if (isinstance(value, ray.remote_function.RemoteFunction)
+                        or isinstance(value, ray.actor.ActorClass)):
+                    # TODO(ekl) set the runtime env here.
+                    setattr(self, symbol, getattr(self._module, symbol))
+                else:
+                    setattr(self, symbol, getattr(self._module, symbol))
 
     def __repr__(self):
         return "ray.RuntimePackage(module={}, runtime_env={})".format(
@@ -32,13 +38,30 @@ class RuntimePackage:
 
 
 def load_package(config_path: str) -> RuntimePackage:
-    config = yaml.load(open(config_path).read())
+    # TODO(ekl) support github URIs for the config.
+    config = yaml.safe_load(open(config_path).read())
     base_dir = os.path.abspath(os.path.dirname(config_path))
+    runtime_env = config["runtime_env"]
+
+    # Autofill working directory.
+    if "files" not in runtime_env:
+        # TODO(ekl) if this is a local directory, we should auto archive and
+        # upload this to remote storage.
+        runtime_env["files"] = base_dir
+
+    # Autofill conda config.
+    conda_yaml = os.path.join(base_dir, "conda.yaml")
+    if os.path.exists(conda_yaml):
+        if "conda" in runtime_env:
+            raise ValueError(
+                "Both conda.yaml and conda: section found in package")
+        runtime_env["conda"] = yaml.safe_load(open(conda_yaml).read())
+
     pkg = RuntimePackage(
         name=config["name"],
         desc=config["description"],
         stub_file=os.path.join(base_dir, config["stub_file"]),
-        runtime_env=config["runtime_env"])
+        runtime_env=runtime_env)
     return pkg
 
 
