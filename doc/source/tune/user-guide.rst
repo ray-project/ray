@@ -273,6 +273,8 @@ You can restore a single trial checkpoint by using ``tune.run(restore=<checkpoin
     )
 
 
+.. _tune-distributed-checkpointing:
+
 Distributed Checkpointing
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
