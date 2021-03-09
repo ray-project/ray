@@ -28,6 +28,7 @@ import ray.ray_constants as ray_constants
 import ray.remote_function
 import ray.serialization as serialization
 import ray._private.services as services
+import ray._private.runtime_env as runtime_env
 import ray
 import setproctitle
 import ray.signature
@@ -646,7 +647,6 @@ def init(
     if "RAY_ADDRESS" in os.environ:
         if address is None or address == "auto":
             address = os.environ["RAY_ADDRESS"]
-
     # Convert hostnames to numerical IP address.
     if _node_ip_address is not None:
         node_ip_address = services.address_to_ip(_node_ip_address)
@@ -764,6 +764,11 @@ def init(
             shutdown_at_exit=False,
             spawn_reaper=False,
             connect_only=True)
+
+    if driver_mode == SCRIPT_MODE and job_config:
+        # Rewrite the URI. Note the package isn't uploaded to the URI until
+        # later in the connect
+        runtime_env.rewrite_working_dir_uri(job_config)
 
     connect(
         _global_node,
@@ -1218,6 +1223,7 @@ def connect(node,
     )
     if job_config is None:
         job_config = ray.job_config.JobConfig()
+
     serialized_job_config = job_config.serialize()
     worker.core_worker = ray._raylet.CoreWorker(
         mode, node.plasma_store_socket_name, node.raylet_socket_name, job_id,
@@ -1231,6 +1237,11 @@ def connect(node,
     # will use glog, which is intialized in `CoreWorker`.
     ray.state.state._initialize_global_state(
         node.redis_address, redis_password=node.redis_password)
+    if mode == SCRIPT_MODE:
+        runtime_env.upload_runtime_env_package_if_needed(job_config)
+    elif mode == WORKER_MODE:
+        runtime_env.ensure_runtime_env_setup(
+            worker.core_worker.get_job_config().runtime_env)
 
     if driver_object_store_memory is not None:
         worker.core_worker.set_object_store_client_options(

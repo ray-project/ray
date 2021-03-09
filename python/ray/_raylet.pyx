@@ -871,7 +871,6 @@ cdef class CoreWorker:
         options.terminate_asyncio_thread = terminate_asyncio_thread
         options.serialized_job_config = serialized_job_config
         options.metrics_agent_port = metrics_agent_port
-
         CCoreWorkerProcess.Initialize(options)
 
     def __dealloc__(self):
