@@ -71,7 +71,7 @@ void instrumented_io_context::post(std::function<void()> handler,
     }
   }
   {
-    absl::WriterMutexLock lock(&(it->second->mutex));
+    absl::MutexLock lock(&(it->second->mutex));
     it->second->stats.cum_count++;
     it->second->stats.curr_count++;
   }
@@ -95,7 +95,7 @@ void instrumented_io_context::post(std::function<void()> handler,
         const auto execution_time_ns = end_execution - start_execution;
         // Update handler-specific stats.
         {
-          absl::WriterMutexLock lock(&(stats->mutex));
+          absl::MutexLock lock(&(stats->mutex));
           // Handler-specific execution stats.
           stats->stats.cum_execution_time += execution_time_ns;
           // Handler-specific current count.
@@ -103,7 +103,7 @@ void instrumented_io_context::post(std::function<void()> handler,
         }
         // Update global stats.
         {
-          absl::WriterMutexLock lock(&(global_stats_.mutex));
+          absl::MutexLock lock(&(global_stats_.mutex));
           // Global queue stats.
           global_stats_.stats.cum_queue_time += queue_time_ns;
           if (global_stats_.stats.min_queue_time > queue_time_ns) {
@@ -121,7 +121,7 @@ void instrumented_io_context::post(std::function<void()> handler,
 /// This acquires a reader lock on the provided global stats, and creates a
 /// lockless copy of the stats.
 inline GlobalStats to_global_stats_view(const GuardedGlobalStats &stats) {
-  absl::ReaderMutexLock lock(&(stats.mutex));
+  absl::MutexLock lock(&(stats.mutex));
   return GlobalStats(stats.stats);
 }
 
@@ -133,7 +133,7 @@ GlobalStats instrumented_io_context::get_global_stats() const {
 /// This acquires a reader lock on the provided guarded handler stats, and creates a
 /// lockless copy of the stats.
 inline HandlerStats to_handler_stats_view(const GuardedHandlerStats &stats) {
-  absl::ReaderMutexLock lock(&(stats.mutex));
+  absl::MutexLock lock(&(stats.mutex));
   return HandlerStats(stats.stats);
 }
 
