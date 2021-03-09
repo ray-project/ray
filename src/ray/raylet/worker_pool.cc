@@ -341,6 +341,17 @@ Process WorkerPool::StartProcess(const std::vector<std::string> &worker_command_
   // Launch the process to create the worker.
   std::error_code ec;
   std::vector<const char *> argv;
+  argv.push_back("podman");
+  argv.push_back("run");
+  argv.push_back("-it");
+  argv.push_back("--cgroup-manager=cgroupfs");
+  argv.push_back("--network=host");
+  argv.push_back("-v");
+  argv.push_back("/root/test:/root/test");
+  argv.push_back("--entrypoint");
+  argv.push_back("sleep");
+  argv.push_back("centos:8");
+  argv.push_back("1000");
   for (const std::string &arg : worker_command_args) {
     argv.push_back(arg.c_str());
   }
