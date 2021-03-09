@@ -31,6 +31,11 @@ public class RuntimeContextImpl implements RuntimeContext {
   }
 
   @Override
+  public TaskId getCurrentTaskId() {
+    return runtime.getWorkerContext().getCurrentTaskId();
+  }
+
+  @Override
   public boolean wasCurrentActorRestarted() {
     if (isSingleProcess()) {
       return false;

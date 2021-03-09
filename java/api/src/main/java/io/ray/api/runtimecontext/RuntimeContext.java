@@ -10,6 +10,9 @@ public interface RuntimeContext {
   /** Get the current Job ID. */
   JobId getCurrentJobId();
 
+  /** Get current task ID. */
+  TaskId getCurrentTaskId();
+
   /**
    * Get the current actor ID.
    *

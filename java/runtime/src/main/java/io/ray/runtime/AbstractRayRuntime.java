@@ -275,6 +275,9 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
       Object[] args,
       Optional<Class<?>> returnType) {
     int numReturns = returnType.isPresent() ? 1 : 0;
+    if (LOGGER.isDebugEnabled()) {
+      LOGGER.debug("Submitting Actor Task {}.", functionDescriptor);
+    }
     List<FunctionArg> functionArgs = ArgumentsBuilder.wrap(args, functionDescriptor.getLanguage());
     List<ObjectId> returnIds =
         taskSubmitter.submitActorTask(rayActor, functionDescriptor, functionArgs, numReturns, null);
@@ -288,6 +291,19 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
 
   private BaseActorHandle createActorImpl(
       FunctionDescriptor functionDescriptor, Object[] args, ActorCreationOptions options) {
+    if (LOGGER.isDebugEnabled()) {
+      if (options == null) {
+        LOGGER.debug("Creating Actor {} with default options.", functionDescriptor);
+      } else {
+        LOGGER.debug("Creating Actor {}, jvmOptions = {}.", functionDescriptor, options.jvmOptions);
+      }
+    }
+    if (rayConfig.runMode == RunMode.SINGLE_PROCESS
+        && functionDescriptor.getLanguage() != Language.JAVA) {
+      throw new IllegalArgumentException(
+          "Ray doesn't support cross-language invocation in local mode.");
+    }
+
     List<FunctionArg> functionArgs = ArgumentsBuilder.wrap(args, functionDescriptor.getLanguage());
     if (functionDescriptor.getLanguage() != Language.JAVA && options != null) {
       Preconditions.checkState(Strings.isNullOrEmpty(options.jvmOptions));
