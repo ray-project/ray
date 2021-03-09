@@ -27,9 +27,13 @@ class RuntimePackage:
                 value = getattr(self._module, symbol)
                 if (isinstance(value, ray.remote_function.RemoteFunction)
                         or isinstance(value, ray.actor.ActorClass)):
-                    # TODO(ekl) set the runtime env here.
-                    # setattr(self, symbol, value.option(runtime_env=runtime_env))
-                    setattr(self, symbol, value)
+                    # TODO(ekl) use the runtime_env option here.
+                    setattr(
+                        self,
+                        symbol,
+                        value.options(override_environment_variables={
+                            "PYTHONPATH": runtime_env["files"]
+                        }))
                 else:
                     setattr(self, symbol, value)
 
@@ -75,7 +79,7 @@ def load_package(config_path: str) -> RuntimePackage:
 if __name__ == "__main__":
     pkg = load_package("./example_pkg/ray_pkg.yaml")
     print("-> Loaded package", pkg)
-    print("-> Package symbols", dir(pkg))
+    print("-> Package symbols", [x for x in dir(pkg) if not x.startswith("_")])
 
     ray.init()
     print("-> Testing method call")
