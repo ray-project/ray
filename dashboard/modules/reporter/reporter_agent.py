@@ -131,6 +131,10 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
         self._cpu_counts = (psutil.cpu_count(),
                             psutil.cpu_count(logical=False))
         self._ip = ray._private.services.get_node_ip_address()
+        logger.info("~~~~ ip" + str(self._ip))
+        logger.info("~~~~ redis address" + str(dashboard_agent.redis_address))
+        logger.info("~~~~ redis address ip" + str(dashboard_agent.redis_address_ip))
+        # self.redis_address = dashboard_agent.redis_address
         self._hostname = socket.gethostname()
         self._workers = set()
         self._network_stats_hist = [(0, (0.0, 0.0))]  # time, (sent, recv)
@@ -317,7 +321,7 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
         ip = stats["ip"]
 
         # -- Instance count of cluster --
-        if "autoscaler_report" in cluster_stats and self._dashboard_agent.redis_address == ip:
+        if "autoscaler_report" in cluster_stats:
             active_nodes = cluster_stats["autoscaler_report"]["active_nodes"]
             num_active_nodes = sum(active_nodes.values())
             cluster_active_nodes_record = Record(
@@ -342,8 +346,6 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
                 cluster_active_nodes_record, cluster_failed_nodes_record,
                 cluster_pending_nodes_record
             ])
-
-        cluster_stats["load_metrics_report"]
 
         # -- CPU per node --
         cpu_usage = float(stats["cpu"])
@@ -485,7 +487,6 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
                     DEBUG_AUTOSCALING_STATUS, "value")
                 formatted_status = json.loads(formatted_status_string.decode(
                 )) if formatted_status_string else {}
-                logger.info("####" + str(formatted_status))
 
                 stats = self._get_all_stats()
                 records_reported = self._record_stats(stats, formatted_status)
