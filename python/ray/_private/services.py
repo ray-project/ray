@@ -1597,8 +1597,6 @@ def build_java_worker_command(
 
     # Add ray jars path to java classpath
     ray_jars = os.path.join(get_ray_jars_dir(), "*")
-
-    # above options.
     command += ["-cp", ray_jars]
 
     command += ["RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER"]
