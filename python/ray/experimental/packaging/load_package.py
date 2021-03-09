@@ -28,9 +28,10 @@ class RuntimePackage:
                 if (isinstance(value, ray.remote_function.RemoteFunction)
                         or isinstance(value, ray.actor.ActorClass)):
                     # TODO(ekl) set the runtime env here.
-                    setattr(self, symbol, getattr(self._module, symbol))
+                    # setattr(self, symbol, value.option(runtime_env=runtime_env))
+                    setattr(self, symbol, value)
                 else:
-                    setattr(self, symbol, getattr(self._module, symbol))
+                    setattr(self, symbol, value)
 
     def __repr__(self):
         return "ray.RuntimePackage(module={}, runtime_env={})".format(
