@@ -709,12 +709,12 @@ def test_warning_for_infeasible_tasks(ray_start_regular, error_pubsub):
     assert errors[0].type == ray_constants.INFEASIBLE_TASK_ERROR
 
     # Placement group cannot be made, but no warnings should occur.
-    pg = placement_group([{"GPU": 1}], strategy=
-        "STRICT_PACK")
+    pg = placement_group([{"GPU": 1}], strategy="STRICT_PACK")
     pg.ready()
     f.options(placement_group=pg).remote()
 
-    errors = get_error_message(p, 1, ray_constants.INFEASIBLE_TASK_ERROR, timeout=5)
+    errors = get_error_message(
+        p, 1, ray_constants.INFEASIBLE_TASK_ERROR, timeout=5)
     assert len(errors) == 0, errors
 
 
