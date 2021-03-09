@@ -1,13 +1,17 @@
 import copy
 import logging
 import math
+import re
 
 from kubernetes import client
 from kubernetes.client.rest import ApiException
 
 from ray.autoscaler._private.kubernetes import auth_api, core_api, log_prefix
+from ray.ray_constants import MEMORY_RESOURCE_UNIT_BYTES
 
 logger = logging.getLogger(__name__)
+
+MEMORY_SIZE_UNITS = {"K": 2**10, "M": 2**20, "G": 2**30, "T": 2**40, "P": 2**50}
 
 
 class InvalidNamespaceError(ValueError):
@@ -105,6 +109,11 @@ def get_autodetected_resources(container_data):
         if node_type_resources[key] == 0:
             del node_type_resources[key]
 
+    memory_limits = _get_resource(container_resources, "memory", "limit")
+    units = memory_limits / MEMORY_RESOURCE_UNIT_BYTES
+    node_type_resources["memory"] = int(units * 0.6)
+    node_type_resources["object_store_memory"] = int(units * 0.3)
+
     return node_type_resources
 
 
@@ -127,7 +136,7 @@ def _get_resource(container_resources, resource_name, field_name):
 
     Args:
         container_resources (dict): Container's resource field.
-        resource_name (str): One of 'cpu' or 'gpu'.
+        resource_name (str): One of 'cpu', 'gpu' or memory.
         field_name (str): One of 'requests' or 'limits'.
 
     Returns:
@@ -148,16 +157,31 @@ def _get_resource(container_resources, resource_name, field_name):
     # E.g. 'nvidia.com/gpu' or 'cpu'.
     resource_key = matching_keys.pop()
     resource_quantity = resources[resource_key]
-    return _parse_resource(resource_quantity)
+    if resource_name == "memory":
+        return _parse_memory_resource(resource_quantity)
+    else:
+        return _parse_cpu_or_gpu_resource(resource_quantity)
 
 
-def _parse_resource(resource):
+def _parse_cpu_or_gpu_resource(resource):
     resource_str = str(resource)
     if resource_str[-1] == "m":
         # For example, '500m' rounds up to 1.
         return math.ceil(int(resource_str[:-1]) / 1000)
     else:
         return int(resource_str)
+
+
+def _parse_memory_resource(resource):
+    resource_str = str(resource)
+    try:
+        return int(resource_str)
+    except ValueError:
+        pass
+    memory_size = re.sub(r"([KMGTP]+)", r" \1", resource_str)
+    number, unit_index = [item.strip() for item in memory_size.split()]
+    unit_index = unit_index[0: 1]
+    return number * MEMORY_SIZE_UNITS[unit_index]
 
 
 def _configure_namespace(provider_config):

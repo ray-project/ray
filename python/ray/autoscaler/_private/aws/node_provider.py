@@ -20,6 +20,7 @@ from ray.autoscaler._private.log_timer import LogTimer
 
 from ray.autoscaler._private.aws.utils import boto_exception_handler
 from ray.autoscaler._private.cli_logger import cli_logger, cf
+from ray.ray_constants import MEMORY_RESOURCE_UNIT_BYTES
 
 logger = logging.getLogger(__name__)
 
@@ -513,7 +514,14 @@ class AWSNodeProvider(NodeProvider):
             if instance_type in instances_dict:
                 cpus = instances_dict[instance_type]["VCpuInfo"][
                     "DefaultVCpus"]
-                autodetected_resources = {"CPU": cpus}
+                memory_total = instances_dict[instance_type]["MemoryInfo"][
+                    "SizeInMiB"]
+                memory_units = memory_total / MEMORY_RESOURCE_UNIT_BYTES
+                memory_resources = int(memory_units * 0.6)
+                object_store_memory = int(memory_units * 0.3)
+                autodetected_resources = {
+                    "CPU": cpus, "memory": memory_resources,
+                    "object_store_memory": object_store_memory}
                 gpus = instances_dict[instance_type].get("GpuInfo",
                                                          {}).get("Gpus")
                 if gpus is not None:
