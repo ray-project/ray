@@ -519,8 +519,8 @@ class AWSNodeProvider(NodeProvider):
                 memory_total = int(memory_total) * 1024 * 1024
                 memory_units = ray_constants.to_memory_units(
                     memory_total, False)
-                memory_resources = memory_units * 0.6
-                object_store_memory = memory_units * 0.3
+                memory_resources = int(memory_units * 0.6)
+                object_store_memory = int(memory_units * 0.3)
                 autodetected_resources = {
                     "CPU": cpus,
                     "memory": memory_resources,

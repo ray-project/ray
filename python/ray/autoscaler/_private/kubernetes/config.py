@@ -117,8 +117,8 @@ def get_autodetected_resources(container_data):
 
     memory_limits = _get_resource(container_resources, "memory", "limits")
     units = ray_constants.to_memory_units(memory_limits, False)
-    node_type_resources["memory"] = units * 0.6
-    node_type_resources["object_store_memory"] = units * 0.3
+    node_type_resources["memory"] = int(units * 0.6)
+    node_type_resources["object_store_memory"] = int(units * 0.3)
 
     return node_type_resources
 
