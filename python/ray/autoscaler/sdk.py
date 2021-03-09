@@ -17,7 +17,8 @@ def create_or_update_cluster(cluster_config: Union[dict, str],
                              *,
                              no_restart: bool = False,
                              restart_only: bool = False,
-                             no_config_cache: bool = False) -> Dict[str, Any]:
+                             no_config_cache: bool = False,
+                             no_monitor_on_head: bool = False) -> Dict[str, Any]:
     """Create or updates an autoscaling Ray cluster from a config json.
 
     Args:
@@ -30,6 +31,10 @@ def create_or_update_cluster(cluster_config: Union[dict, str],
             restart Ray. This cannot be used with 'no-restart'.
         no_config_cache (bool): Whether to disable the config cache and fully
             resolve all environment settings from the Cloud provider again.
+        no_monitor_on_head (bool): Whether to skip syncing autoscaler config
+            files to head node. This saves some unnecessary cluster setup steps
+            if the autoscaler is running in a separate container or on a
+            separate machine, like in k8s environment.
     """
     with _as_config_file(cluster_config) as config_file:
         return commands.create_or_update_cluster(
@@ -42,7 +47,8 @@ def create_or_update_cluster(cluster_config: Union[dict, str],
             override_cluster_name=None,
             no_config_cache=no_config_cache,
             redirect_command_output=None,
-            use_login_shells=True)
+            use_login_shells=True,
+            no_monitor_on_head=no_monitor_on_head)
 
 
 def teardown_cluster(cluster_config: Union[dict, str],
