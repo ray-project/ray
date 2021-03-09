@@ -15,7 +15,7 @@
 #include "ray/gcs/gcs_server/gcs_placement_group_manager.h"
 
 #include "ray/common/asio/asio_util.h"
-#include "ray/common/asio/io_context.h"
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/ray_config.h"
 #include "ray/gcs/pb_util.h"
 #include "ray/stats/stats.h"
@@ -110,7 +110,7 @@ bool GcsPlacementGroup::IsDetached() const {
 /////////////////////////////////////////////////////////////////////////////////////////
 
 GcsPlacementGroupManager::GcsPlacementGroupManager(
-    io_context_proxy &io_context,
+    instrumented_io_context &io_context,
     std::shared_ptr<GcsPlacementGroupSchedulerInterface> scheduler,
     std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
     GcsResourceManager &gcs_resource_manager)

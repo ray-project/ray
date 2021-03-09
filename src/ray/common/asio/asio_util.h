@@ -17,7 +17,7 @@
 #include <boost/asio.hpp>
 
 inline std::shared_ptr<boost::asio::deadline_timer> execute_after(
-    io_context_proxy &io_context, const std::function<void()> &fn,
+    instrumented_io_context &io_context, const std::function<void()> &fn,
     uint32_t delay_milliseconds) {
   auto timer = std::make_shared<boost::asio::deadline_timer>(io_context);
   timer->expires_from_now(boost::posix_time::milliseconds(delay_milliseconds));

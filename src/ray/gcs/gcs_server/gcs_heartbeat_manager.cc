@@ -21,7 +21,7 @@ namespace ray {
 namespace gcs {
 
 GcsHeartbeatManager::GcsHeartbeatManager(
-    io_context_proxy &io_service,
+    instrumented_io_context &io_service,
     std::function<void(const NodeID &)> on_node_death_callback)
     : io_service_(io_service),
       on_node_death_callback_(std::move(on_node_death_callback)),

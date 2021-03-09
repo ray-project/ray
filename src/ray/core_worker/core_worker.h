@@ -1129,7 +1129,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   TaskID main_thread_task_id_ GUARDED_BY(mutex_);
 
   /// Event loop where the IO events are handled. e.g. async GCS operations.
-  io_context_proxy io_service_;
+  instrumented_io_context io_service_;
 
   /// Keeps the io_service_ alive.
   boost::asio::io_service::work io_work_;
@@ -1230,7 +1230,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   std::atomic<int64_t> num_executed_tasks_;
 
   /// Event loop where tasks are processed.
-  io_context_proxy task_execution_service_;
+  instrumented_io_context task_execution_service_;
 
   /// The asio work to keep task_execution_service_ alive.
   boost::asio::io_service::work task_execution_service_work_;

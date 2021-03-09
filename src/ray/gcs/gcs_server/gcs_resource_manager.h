@@ -15,7 +15,7 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "ray/common/asio/io_context.h"
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/asio/periodical_runner.h"
 #include "ray/common/id.h"
 #include "ray/common/task/scheduling_resources.h"
@@ -42,7 +42,7 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
   /// \param main_io_service The main event loop.
   /// \param gcs_pub_sub GCS message publisher.
   /// \param gcs_table_storage GCS table external storage accessor.
-  explicit GcsResourceManager(io_context_proxy &main_io_service,
+  explicit GcsResourceManager(instrumented_io_context &main_io_service,
                               std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
                               std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage);
 

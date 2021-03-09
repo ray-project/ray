@@ -14,7 +14,7 @@
 
 #pragma once
 
-#include "ray/common/asio/io_context.h"
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/asio/periodical_runner.h"
 #include "ray/gcs/gcs_client.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
@@ -28,7 +28,7 @@ class RAY_EXPORT ServiceBasedGcsClient : public GcsClient {
  public:
   explicit ServiceBasedGcsClient(const GcsClientOptions &options);
 
-  Status Connect(io_context_proxy &io_service) override;
+  Status Connect(instrumented_io_context &io_service) override;
 
   void Disconnect() override;
 

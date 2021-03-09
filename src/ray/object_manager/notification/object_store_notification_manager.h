@@ -21,7 +21,7 @@
 #include <vector>
 
 #include "absl/synchronization/mutex.h"
-#include "ray/common/asio/io_context.h"
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
 #include "ray/object_manager/format/object_manager_generated.h"
@@ -33,7 +33,7 @@ namespace ray {
 /// Encapsulates notification handling from the object store.
 class ObjectStoreNotificationManager {
  public:
-  ObjectStoreNotificationManager(io_context_proxy &io_service)
+  ObjectStoreNotificationManager(instrumented_io_context &io_service)
       : main_service_(&io_service), num_adds_processed_(0), num_removes_processed_(0) {}
   virtual ~ObjectStoreNotificationManager() {}
   /// Subscribe to notifications of objects added to local store.
@@ -89,7 +89,7 @@ class ObjectStoreNotificationManager {
  private:
   /// Weak reference to main service. We ensure this object is destroyed before
   /// main_service_ is stopped.
-  io_context_proxy *main_service_;
+  instrumented_io_context *main_service_;
   std::vector<std::function<void(const object_manager::protocol::ObjectInfoT &)>>
       add_handlers_;
   std::vector<std::function<void(const ray::ObjectID &)>> rem_handlers_;

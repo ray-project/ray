@@ -18,7 +18,7 @@
 
 namespace ray {
 
-PeriodicalRunner::PeriodicalRunner(io_context_proxy &io_service)
+PeriodicalRunner::PeriodicalRunner(instrumented_io_context &io_service)
     : io_service_(io_service) {}
 
 PeriodicalRunner::~PeriodicalRunner() {

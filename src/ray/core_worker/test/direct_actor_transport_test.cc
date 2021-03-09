@@ -14,7 +14,7 @@
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-#include "ray/common/asio/io_context.h"
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/common/test_util.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
@@ -514,7 +514,7 @@ class DirectActorReceiverTest : public ::testing::Test {
  private:
   rpc::Address rpc_address_;
   MockWorkerContext worker_context_;
-  io_context_proxy main_io_service_;
+  instrumented_io_context main_io_service_;
   std::shared_ptr<MockWorkerClient> worker_client_;
   std::shared_ptr<DependencyWaiter> dependency_waiter_;
 };

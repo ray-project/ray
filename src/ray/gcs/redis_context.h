@@ -21,7 +21,7 @@
 #include <mutex>
 #include <unordered_map>
 
-#include "ray/common/asio/io_context.h"
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
 #include "ray/gcs/redis_async_context.h"
@@ -121,7 +121,7 @@ class RedisCallbackManager {
     CallbackItem() = default;
 
     CallbackItem(const RedisCallback &callback, bool is_subscription, int64_t start_time,
-                 io_context_proxy &io_service)
+                 instrumented_io_context &io_service)
         : callback_(callback),
           is_subscription_(is_subscription),
           start_time_(start_time),
@@ -138,7 +138,7 @@ class RedisCallbackManager {
     RedisCallback callback_;
     bool is_subscription_;
     int64_t start_time_;
-    io_context_proxy *io_service_;
+    instrumented_io_context *io_service_;
   };
 
   /// Allocate an index at which we can add a callback later on.
@@ -146,7 +146,7 @@ class RedisCallbackManager {
 
   /// Add a callback at an optionally specified index.
   int64_t AddCallback(const RedisCallback &function, bool is_subscription,
-                      io_context_proxy &io_service, int64_t callback_index = -1);
+                      instrumented_io_context &io_service, int64_t callback_index = -1);
 
   /// Remove a callback.
   void RemoveCallback(int64_t callback_index);
@@ -167,7 +167,7 @@ class RedisCallbackManager {
 
 class RedisContext {
  public:
-  RedisContext(io_context_proxy &io_service)
+  RedisContext(instrumented_io_context &io_service)
       : io_service_(io_service), context_(nullptr) {}
 
   ~RedisContext();
@@ -306,14 +306,14 @@ class RedisContext {
     return *async_redis_subscribe_context_;
   }
 
-  io_context_proxy &io_service() { return io_service_; }
+  instrumented_io_context &io_service() { return io_service_; }
 
  private:
   // These functions avoid problems with dependence on hiredis headers with clang-cl.
   static int GetRedisError(redisContext *context);
   static void FreeRedisReply(void *reply);
 
-  io_context_proxy &io_service_;
+  instrumented_io_context &io_service_;
   redisContext *context_;
   std::unique_ptr<RedisAsyncContext> redis_async_context_;
   std::unique_ptr<RedisAsyncContext> async_redis_subscribe_context_;

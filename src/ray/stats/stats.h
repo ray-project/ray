@@ -22,7 +22,7 @@
 #include "opencensus/stats/internal/delta_producer.h"
 #include "opencensus/stats/stats.h"
 #include "opencensus/tags/tag_key.h"
-#include "ray/common/asio/io_context.h"
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/asio/io_service_pool.h"
 #include "ray/common/ray_config.h"
 #include "ray/stats/metric.h"
@@ -78,7 +78,7 @@ static inline void Init(const TagsType &global_tags, const int metrics_agent_por
 
   metrics_io_service_pool = std::make_shared<IOServicePool>(1);
   metrics_io_service_pool->Run();
-  io_context_proxy *metrics_io_service = metrics_io_service_pool->Get();
+  instrumented_io_context *metrics_io_service = metrics_io_service_pool->Get();
   RAY_CHECK(metrics_io_service != nullptr);
 
   // Default exporter is a metrics agent exporter.

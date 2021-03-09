@@ -14,7 +14,7 @@
 
 #pragma once
 
-#include "ray/common/asio/io_context.h"
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/rpc/grpc_server.h"
 #include "ray/rpc/server_call.h"
 #include "src/ray/protobuf/node_manager.grpc.pb.h"
@@ -125,7 +125,7 @@ class NodeManagerGrpcService : public GrpcService {
   ///
   /// \param[in] io_service See super class.
   /// \param[in] handler The service handler that actually handle the requests.
-  NodeManagerGrpcService(io_context_proxy &io_service,
+  NodeManagerGrpcService(instrumented_io_context &io_service,
                          NodeManagerServiceHandler &service_handler)
       : GrpcService(io_service), service_handler_(service_handler){};
 

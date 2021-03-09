@@ -17,7 +17,7 @@
 namespace ray {
 
 OwnershipBasedObjectDirectory::OwnershipBasedObjectDirectory(
-    io_context_proxy &io_service, std::shared_ptr<gcs::GcsClient> &gcs_client,
+    instrumented_io_context &io_service, std::shared_ptr<gcs::GcsClient> &gcs_client,
     std::function<void(const ObjectID &)> mark_as_failed)
     : ObjectDirectory(io_service, gcs_client),
       client_call_manager_(io_service),

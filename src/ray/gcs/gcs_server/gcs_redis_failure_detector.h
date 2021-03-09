@@ -16,7 +16,7 @@
 
 #include <boost/asio.hpp>
 
-#include "ray/common/asio/io_context.h"
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/asio/periodical_runner.h"
 #include "ray/gcs/redis_context.h"
 
@@ -38,7 +38,7 @@ class GcsRedisFailureDetector {
   /// \param io_service The event loop to run the monitor on.
   /// \param redis_context The redis context is used to ping redis.
   /// \param callback Callback that will be called when redis is detected as not alive.
-  explicit GcsRedisFailureDetector(io_context_proxy &io_service,
+  explicit GcsRedisFailureDetector(instrumented_io_context &io_service,
                                    std::shared_ptr<RedisContext> redis_context,
                                    std::function<void()> callback);
 

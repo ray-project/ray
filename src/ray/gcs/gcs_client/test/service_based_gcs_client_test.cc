@@ -15,7 +15,7 @@
 #include "ray/gcs/gcs_client/service_based_gcs_client.h"
 
 #include "gtest/gtest.h"
-#include "ray/common/asio/io_context.h"
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/test_util.h"
 #include "ray/gcs/gcs_client/service_based_accessor.h"
 #include "ray/gcs/gcs_server/gcs_server.h"
@@ -45,14 +45,14 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
     config_.is_test = true;
     config_.redis_port = TEST_REDIS_SERVER_PORTS.front();
 
-    client_io_service_.reset(new io_context_proxy());
+    client_io_service_.reset(new instrumented_io_context());
     client_io_service_thread_.reset(new std::thread([this] {
       std::unique_ptr<boost::asio::io_service::work> work(
           new boost::asio::io_service::work(*client_io_service_));
       client_io_service_->run();
     }));
 
-    server_io_service_.reset(new io_context_proxy());
+    server_io_service_.reset(new instrumented_io_context());
     gcs_server_.reset(new gcs::GcsServer(config_, *server_io_service_));
     gcs_server_->Start();
     server_io_service_thread_.reset(new std::thread([this] {
@@ -93,7 +93,7 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
     gcs_server_.reset();
     RAY_LOG(INFO) << "Finished stopping GCS service.";
 
-    server_io_service_.reset(new io_context_proxy());
+    server_io_service_.reset(new instrumented_io_context());
     gcs_server_.reset(new gcs::GcsServer(config_, *server_io_service_));
     gcs_server_->Start();
     server_io_service_thread_.reset(new std::thread([this] {
@@ -539,12 +539,12 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
   gcs::GcsServerConfig config_;
   std::unique_ptr<gcs::GcsServer> gcs_server_;
   std::unique_ptr<std::thread> server_io_service_thread_;
-  std::unique_ptr<io_context_proxy> server_io_service_;
+  std::unique_ptr<instrumented_io_context> server_io_service_;
 
   // GCS client.
   std::unique_ptr<gcs::GcsClient> gcs_client_;
   std::unique_ptr<std::thread> client_io_service_thread_;
-  std::unique_ptr<io_context_proxy> client_io_service_;
+  std::unique_ptr<instrumented_io_context> client_io_service_;
 
   // Timeout waiting for GCS server reply, default is 2s.
   const std::chrono::milliseconds timeout_ms_{2000};

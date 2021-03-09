@@ -29,7 +29,7 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/time/clock.h"
-#include "ray/common/asio/io_context.h"
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/status.h"
@@ -212,8 +212,8 @@ class ObjectManager : public ObjectManagerInterface,
   /// \param main_service The main asio io_service.
   /// \param config ObjectManager configuration.
   /// \param object_directory An object implementing the object directory interface.
-  explicit ObjectManager(io_context_proxy &main_service, const NodeID &self_node_id,
-                         const ObjectManagerConfig &config,
+  explicit ObjectManager(instrumented_io_context &main_service,
+                         const NodeID &self_node_id, const ObjectManagerConfig &config,
                          std::shared_ptr<ObjectDirectoryInterface> object_directory,
                          RestoreSpilledObjectCallback restore_spilled_object,
                          SpillObjectsCallback spill_objects_callback = nullptr,
@@ -324,7 +324,8 @@ class ObjectManager : public ObjectManagerInterface,
   friend class TestObjectManager;
 
   struct WaitState {
-    WaitState(io_context_proxy &service, int64_t timeout_ms, const WaitCallback &callback)
+    WaitState(instrumented_io_context &service, int64_t timeout_ms,
+              const WaitCallback &callback)
         : timeout_ms(timeout_ms),
           timeout_timer(std::unique_ptr<boost::asio::deadline_timer>(
               new boost::asio::deadline_timer(
@@ -422,7 +423,7 @@ class ObjectManager : public ObjectManagerInterface,
 
   /// Weak reference to main service. We ensure this object is destroyed before
   /// main_service_ is stopped.
-  io_context_proxy *main_service_;
+  instrumented_io_context *main_service_;
 
   NodeID self_node_id_;
   const ObjectManagerConfig config_;
@@ -435,7 +436,7 @@ class ObjectManager : public ObjectManagerInterface,
   ObjectBufferPool buffer_pool_;
 
   /// Multi-thread asio service, deal with all outgoing and incoming RPC request.
-  io_context_proxy rpc_service_;
+  instrumented_io_context rpc_service_;
 
   /// Keep rpc service running when no task in rpc service.
   boost::asio::io_service::work rpc_work_;

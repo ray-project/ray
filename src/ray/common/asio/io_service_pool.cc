@@ -24,8 +24,9 @@ IOServicePool::~IOServicePool() {}
 
 void IOServicePool::Run() {
   for (size_t i = 0; i < io_service_num_; ++i) {
-    io_services_.emplace_back(std::unique_ptr<io_context_proxy>(new io_context_proxy));
-    io_context_proxy &io_service = *io_services_[i];
+    io_services_.emplace_back(
+        std::unique_ptr<instrumented_io_context>(new instrumented_io_context));
+    instrumented_io_context &io_service = *io_services_[i];
     threads_.emplace_back([&io_service] {
       boost::asio::io_service::work work(io_service);
       io_service.run();

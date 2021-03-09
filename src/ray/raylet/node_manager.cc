@@ -19,7 +19,7 @@
 #include <memory>
 
 #include "ray/common/asio/asio_util.h"
-#include "ray/common/asio/io_context.h"
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/buffer.h"
 #include "ray/common/common_protocol.h"
 #include "ray/common/constants.h"
@@ -166,7 +166,7 @@ void HeartbeatSender::Heartbeat() {
       }));
 }
 
-NodeManager::NodeManager(io_context_proxy &io_service, const NodeID &self_node_id,
+NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self_node_id,
                          const NodeManagerConfig &config, ObjectManager &object_manager,
                          std::shared_ptr<gcs::GcsClient> gcs_client,
                          std::shared_ptr<ObjectDirectoryInterface> object_directory,

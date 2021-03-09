@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/common/asio/io_context.h"
+#include "ray/common/asio/instrumented_io_context.h"
 #include <algorithm>
 #include <cmath>
 #include <iomanip>
@@ -45,10 +45,11 @@ capture_impl<T, F> capture(T &&x, F &&f) {
 }
 
 /// Set stats collection flag based on corresponding Ray config flag.
-const bool io_context_proxy::stats_collection_enabled_ =
+const bool instrumented_io_context::stats_collection_enabled_ =
     RayConfig::instance().asio_event_loop_stats_collection_enabled();
 
-void io_context_proxy::post(std::function<void()> handler, const std::string &name) {
+void instrumented_io_context::post(std::function<void()> handler,
+                                   const std::string &name) {
   if (!stats_collection_enabled_) {
     return boost::asio::io_context::post(std::move(handler));
   }
@@ -162,11 +163,11 @@ HandlerStats to_stats_view(const GuardedHandlerStats &stats) {
   return HandlerStats(stats.stats);
 }
 
-HandlerStats io_context_proxy::get_global_stats() const {
+HandlerStats instrumented_io_context::get_global_stats() const {
   return to_stats_view(global_stats_);
 }
 
-absl::optional<HandlerStats> io_context_proxy::get_handler_stats(
+absl::optional<HandlerStats> instrumented_io_context::get_handler_stats(
     const std::string &handler_name) const {
   absl::ReaderMutexLock lock(&mutex_);
   auto it = post_handler_stats_.find(handler_name);
@@ -176,8 +177,8 @@ absl::optional<HandlerStats> io_context_proxy::get_handler_stats(
   return to_stats_view(*it->second);
 }
 
-std::vector<std::pair<std::string, HandlerStats>> io_context_proxy::get_handler_stats()
-    const {
+std::vector<std::pair<std::string, HandlerStats>>
+instrumented_io_context::get_handler_stats() const {
   // We lock the stats table while copying the table into a vector.
   absl::ReaderMutexLock lock(&mutex_);
   std::vector<std::pair<std::string, HandlerStats>> stats;
@@ -204,7 +205,7 @@ std::string to_human_readable(int64_t duration) {
   return to_human_readable(static_cast<double>(duration));
 }
 
-std::string io_context_proxy::StatsString() const {
+std::string instrumented_io_context::StatsString() const {
   if (!stats_collection_enabled_) {
     return "Stats collection disabled, turn on asio_event_loop_stats_collection_enabled "
            "flag to enable event loop stats collection";

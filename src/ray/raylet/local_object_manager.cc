@@ -13,7 +13,7 @@
 // limitations under the License.
 
 #include "ray/raylet/local_object_manager.h"
-#include "ray/common/asio/io_context.h"
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/stats/stats.h"
 #include "ray/util/util.h"
 

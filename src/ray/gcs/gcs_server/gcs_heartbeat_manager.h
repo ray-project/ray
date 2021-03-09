@@ -16,7 +16,7 @@
 #pragma once
 
 #include "absl/container/flat_hash_map.h"
-#include "ray/common/asio/io_context.h"
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/asio/periodical_runner.h"
 #include "ray/common/id.h"
 #include "ray/gcs/accessor.h"
@@ -38,7 +38,7 @@ class GcsHeartbeatManager : public rpc::HeartbeatInfoHandler {
   /// \param on_node_death_callback Callback that will be called when node death is
   /// detected.
   explicit GcsHeartbeatManager(
-      io_context_proxy &io_service,
+      instrumented_io_context &io_service,
       std::function<void(const NodeID &)> on_node_death_callback);
 
   /// Handle heartbeat rpc come from raylet.
@@ -71,7 +71,7 @@ class GcsHeartbeatManager : public rpc::HeartbeatInfoHandler {
 
  private:
   /// The main event loop for node failure detector.
-  io_context_proxy &io_service_;
+  instrumented_io_context &io_service_;
   std::unique_ptr<std::thread> io_service_thread_;
   /// The callback of node death.
   std::function<void(const NodeID &)> on_node_death_callback_;

@@ -17,7 +17,7 @@
 #include <memory>
 #include <utility>
 
-#include "ray/common/asio/io_context.h"
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/task/task.h"
 #include "ray/common/task/task_util.h"
 #include "ray/common/test_util.h"
@@ -307,7 +307,7 @@ struct GcsServerMocker {
     }
 
    private:
-    io_context_proxy main_io_service_;
+    instrumented_io_context main_io_service_;
     std::shared_ptr<gcs::StoreClient> store_client_ =
         std::make_shared<gcs::InMemoryStoreClient>(main_io_service_);
   };

@@ -19,7 +19,7 @@
 #include <boost/asio.hpp>
 
 #include "absl/synchronization/mutex.h"
-#include "ray/common/asio/io_context.h"
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/grpc_util.h"
 #include "ray/common/status.h"
 #include "ray/util/util.h"
@@ -173,7 +173,7 @@ class ClientCallManager {
   ///
   /// \param[in] main_service The main event loop, to which the callback functions will be
   /// posted.
-  explicit ClientCallManager(io_context_proxy &main_service, int num_threads = 1)
+  explicit ClientCallManager(instrumented_io_context &main_service, int num_threads = 1)
       : main_service_(main_service), num_threads_(num_threads), shutdown_(false) {
     rr_index_ = rand() % num_threads_;
     // Start the polling threads.
@@ -275,7 +275,7 @@ class ClientCallManager {
   }
 
   /// The main event loop, to which the callback functions will be posted.
-  io_context_proxy &main_service_;
+  instrumented_io_context &main_service_;
 
   /// The number of polling threads.
   int num_threads_;

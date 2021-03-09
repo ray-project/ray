@@ -20,7 +20,7 @@ extern "C" {
 #include "hiredis/async.h"
 }
 
-RedisAsioClient::RedisAsioClient(io_context_proxy &io_service,
+RedisAsioClient::RedisAsioClient(instrumented_io_context &io_service,
                                  ray::gcs::RedisAsyncContext &redis_async_context)
     : redis_async_context_(redis_async_context),
       io_service_(io_service),

@@ -54,7 +54,7 @@ namespace ray {
 
 namespace raylet {
 
-Raylet::Raylet(io_context_proxy &main_service, const std::string &socket_name,
+Raylet::Raylet(instrumented_io_context &main_service, const std::string &socket_name,
                const std::string &node_ip_address, const std::string &redis_address,
                int redis_port, const std::string &redis_password,
                const NodeManagerConfig &node_manager_config,

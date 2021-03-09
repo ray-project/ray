@@ -50,7 +50,7 @@ struct GuardedHandlerStats {
 };
 
 /// A proxy for boost::asio::io_context that collects statistics about posted handlers.
-class io_context_proxy : public boost::asio::io_context {
+class instrumented_io_context : public boost::asio::io_context {
  public:
   /// A proxy post function that collects count, queueing, and execution statistics for
   /// the given handler.

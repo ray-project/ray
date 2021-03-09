@@ -4,7 +4,7 @@
 #include <memory>
 
 #include "absl/synchronization/mutex.h"
-#include "ray/common/asio/io_context.h"
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/object_manager/notification/object_store_notification_manager.h"
 #include "ray/object_manager/plasma/store.h"
 
@@ -37,7 +37,7 @@ class PlasmaStoreRunner {
   int64_t system_memory_;
   bool hugepages_enabled_;
   std::string plasma_directory_;
-  mutable io_context_proxy main_service_;
+  mutable instrumented_io_context main_service_;
   std::unique_ptr<PlasmaStore> store_;
   std::shared_ptr<ray::ObjectStoreNotificationManager> listener_;
 };

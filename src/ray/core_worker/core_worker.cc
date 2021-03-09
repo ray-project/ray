@@ -200,7 +200,7 @@ void CoreWorkerProcess::InitializeSystemConfig() {
   // system config in the constructor of `CoreWorkerProcess`.
   std::promise<std::string> promise;
   std::thread thread([&] {
-    io_context_proxy io_service;
+    instrumented_io_context io_service;
     boost::asio::io_service::work work(io_service);
     rpc::ClientCallManager client_call_manager(io_service);
     auto grpc_client = rpc::NodeManagerWorkerClient::make(

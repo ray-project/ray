@@ -14,7 +14,7 @@
 
 #pragma once
 
-#include "ray/common/asio/io_context.h"
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/rpc/grpc_server.h"
 #include "ray/rpc/server_call.h"
 #include "src/ray/protobuf/agent_manager.grpc.pb.h"
@@ -50,7 +50,7 @@ class AgentManagerGrpcService : public GrpcService {
   ///
   /// \param[in] port See `GrpcService`.
   /// \param[in] handler The service handler that actually handle the requests.
-  AgentManagerGrpcService(io_context_proxy &io_service,
+  AgentManagerGrpcService(instrumented_io_context &io_service,
                           AgentManagerServiceHandler &service_handler)
       : GrpcService(io_service), service_handler_(service_handler){};
 

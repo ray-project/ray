@@ -16,7 +16,7 @@
 
 namespace ray {
 
-ObjectDirectory::ObjectDirectory(io_context_proxy &io_service,
+ObjectDirectory::ObjectDirectory(instrumented_io_context &io_service,
                                  std::shared_ptr<gcs::GcsClient> &gcs_client)
     : io_service_(io_service), gcs_client_(gcs_client) {}
 

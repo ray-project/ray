@@ -15,7 +15,7 @@
 #include "ray/gcs/gcs_client/global_state_accessor.h"
 
 #include "gtest/gtest.h"
-#include "ray/common/asio/io_context.h"
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/test_util.h"
 #include "ray/gcs/gcs_server/gcs_server.h"
 #include "ray/gcs/test/gcs_test_util.h"
@@ -38,7 +38,7 @@ class GlobalStateAccessorTest : public ::testing::Test {
     config.is_test = true;
     config.redis_port = TEST_REDIS_SERVER_PORTS.front();
 
-    io_service_.reset(new io_context_proxy());
+    io_service_.reset(new instrumented_io_context());
     gcs_server_.reset(new gcs::GcsServer(config, *io_service_));
     gcs_server_->Start();
 
@@ -82,7 +82,7 @@ class GlobalStateAccessorTest : public ::testing::Test {
   gcs::GcsServerConfig config;
   std::unique_ptr<gcs::GcsServer> gcs_server_;
   std::unique_ptr<std::thread> thread_io_service_;
-  std::unique_ptr<io_context_proxy> io_service_;
+  std::unique_ptr<instrumented_io_context> io_service_;
 
   // GCS client.
   std::unique_ptr<gcs::GcsClient> gcs_client_;

@@ -17,7 +17,7 @@
 #include <map>
 #include <string>
 
-#include "ray/common/asio/io_context.h"
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/status.h"
 #include "ray/gcs/asio.h"
 #include "ray/util/logging.h"
@@ -61,7 +61,7 @@ class RedisClient {
   /// This io_service must be single-threaded. Because `RedisAsioClient` is
   /// non-thread safe.
   /// \return Status
-  Status Connect(io_context_proxy &io_service);
+  Status Connect(instrumented_io_context &io_service);
 
   // TODO(micafan) Maybe it's not necessary to use multi threads.
   /// Connect to Redis. Non-thread safe.
@@ -71,7 +71,7 @@ class RedisClient {
   /// an event loop. Each io_service must be single-threaded. Because `RedisAsioClient`
   /// is non-thread safe.
   /// \return Status
-  Status Connect(std::vector<io_context_proxy *> io_services);
+  Status Connect(std::vector<instrumented_io_context *> io_services);
 
   /// Disconnect with Redis. Non-thread safe.
   void Disconnect();

@@ -16,7 +16,7 @@
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-#include "ray/common/asio/io_context.h"
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/constants.h"
 #include "ray/raylet/node_manager.h"
 #include "ray/util/process.h"
@@ -35,7 +35,7 @@ std::vector<Language> LANGUAGES = {Language::PYTHON, Language::JAVA};
 
 class MockWorkerClient : public rpc::CoreWorkerClientInterface {
  public:
-  MockWorkerClient(io_context_proxy &io_service) : io_service_(io_service) {}
+  MockWorkerClient(instrumented_io_context &io_service) : io_service_(io_service) {}
 
   void Exit(const rpc::ExitRequest &request,
             const rpc::ClientCallback<rpc::ExitReply> &callback) {
@@ -67,12 +67,12 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
   }
 
   std::list<rpc::ClientCallback<rpc::ExitReply>> callbacks_;
-  io_context_proxy &io_service_;
+  instrumented_io_context &io_service_;
 };
 
 class WorkerPoolMock : public WorkerPool {
  public:
-  explicit WorkerPoolMock(io_context_proxy &io_service,
+  explicit WorkerPoolMock(instrumented_io_context &io_service,
                           const WorkerCommandMap &worker_commands)
       : WorkerPool(io_service, NodeID::FromRandom(), "", POOL_SIZE_SOFT_LIMIT, 0,
                    MAXIMUM_STARTUP_CONCURRENCY, 0, 0, {}, nullptr, worker_commands,
@@ -250,7 +250,7 @@ class WorkerPoolTest : public ::testing::Test {
       mock_worker_rpc_clients_;
 
  protected:
-  io_context_proxy io_service_;
+  instrumented_io_context io_service_;
   std::unique_ptr<WorkerPoolMock> worker_pool_;
   int64_t error_message_type_;
   rpc::ClientCallManager client_call_manager_;

@@ -15,7 +15,7 @@
 #include "ray/gcs/gcs_server/gcs_server.h"
 
 #include "ray/common/asio/asio_util.h"
-#include "ray/common/asio/io_context.h"
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/network_util.h"
 #include "ray/common/ray_config.h"
 #include "ray/gcs/gcs_server/gcs_actor_manager.h"
@@ -31,7 +31,7 @@ namespace ray {
 namespace gcs {
 
 GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
-                     io_context_proxy &main_service)
+                     instrumented_io_context &main_service)
     : config_(config),
       main_service_(main_service),
       rpc_server_(config.grpc_server_name, config.grpc_server_port,

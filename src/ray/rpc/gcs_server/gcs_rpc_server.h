@@ -14,7 +14,7 @@
 
 #pragma once
 
-#include "ray/common/asio/io_context.h"
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/rpc/grpc_server.h"
 #include "ray/rpc/server_call.h"
 #include "src/ray/protobuf/gcs_service.grpc.pb.h"
@@ -81,7 +81,7 @@ class JobInfoGrpcService : public GrpcService {
   /// Constructor.
   ///
   /// \param[in] handler The service handler that actually handle the requests.
-  explicit JobInfoGrpcService(io_context_proxy &io_service,
+  explicit JobInfoGrpcService(instrumented_io_context &io_service,
                               JobInfoGcsServiceHandler &handler)
       : GrpcService(io_service), service_handler_(handler){};
 
@@ -138,7 +138,7 @@ class ActorInfoGrpcService : public GrpcService {
   /// Constructor.
   ///
   /// \param[in] handler The service handler that actually handle the requests.
-  explicit ActorInfoGrpcService(io_context_proxy &io_service,
+  explicit ActorInfoGrpcService(instrumented_io_context &io_service,
                                 ActorInfoGcsServiceHandler &handler)
       : GrpcService(io_service), service_handler_(handler){};
 
@@ -190,7 +190,7 @@ class NodeInfoGrpcService : public GrpcService {
   /// Constructor.
   ///
   /// \param[in] handler The service handler that actually handle the requests.
-  explicit NodeInfoGrpcService(io_context_proxy &io_service,
+  explicit NodeInfoGrpcService(instrumented_io_context &io_service,
                                NodeInfoGcsServiceHandler &handler)
       : GrpcService(io_service), service_handler_(handler){};
 
@@ -249,7 +249,7 @@ class NodeResourceInfoGrpcService : public GrpcService {
   /// Constructor.
   ///
   /// \param[in] handler The service handler that actually handle the requests.
-  explicit NodeResourceInfoGrpcService(io_context_proxy &io_service,
+  explicit NodeResourceInfoGrpcService(instrumented_io_context &io_service,
                                        NodeResourceInfoGcsServiceHandler &handler)
       : GrpcService(io_service), service_handler_(handler){};
 
@@ -287,7 +287,7 @@ class HeartbeatInfoGrpcService : public GrpcService {
   /// Constructor.
   ///
   /// \param[in] handler The service handler that actually handle the requests.
-  explicit HeartbeatInfoGrpcService(io_context_proxy &io_service,
+  explicit HeartbeatInfoGrpcService(instrumented_io_context &io_service,
                                     HeartbeatInfoGcsServiceHandler &handler)
       : GrpcService(io_service), service_handler_(handler){};
 
@@ -333,7 +333,7 @@ class ObjectInfoGrpcService : public GrpcService {
   /// Constructor.
   ///
   /// \param[in] handler The service handler that actually handle the requests.
-  explicit ObjectInfoGrpcService(io_context_proxy &io_service,
+  explicit ObjectInfoGrpcService(instrumented_io_context &io_service,
                                  ObjectInfoGcsServiceHandler &handler)
       : GrpcService(io_service), service_handler_(handler){};
 
@@ -385,7 +385,7 @@ class TaskInfoGrpcService : public GrpcService {
   /// Constructor.
   ///
   /// \param[in] handler The service handler that actually handle the requests.
-  explicit TaskInfoGrpcService(io_context_proxy &io_service,
+  explicit TaskInfoGrpcService(instrumented_io_context &io_service,
                                TaskInfoGcsServiceHandler &handler)
       : GrpcService(io_service), service_handler_(handler){};
 
@@ -428,7 +428,8 @@ class StatsGrpcService : public GrpcService {
   /// Constructor.
   ///
   /// \param[in] handler The service handler that actually handle the requests.
-  explicit StatsGrpcService(io_context_proxy &io_service, StatsGcsServiceHandler &handler)
+  explicit StatsGrpcService(instrumented_io_context &io_service,
+                            StatsGcsServiceHandler &handler)
       : GrpcService(io_service), service_handler_(handler){};
 
  protected:
@@ -475,7 +476,7 @@ class WorkerInfoGrpcService : public GrpcService {
   /// Constructor.
   ///
   /// \param[in] handler The service handler that actually handle the requests.
-  explicit WorkerInfoGrpcService(io_context_proxy &io_service,
+  explicit WorkerInfoGrpcService(instrumented_io_context &io_service,
                                  WorkerInfoGcsServiceHandler &handler)
       : GrpcService(io_service), service_handler_(handler){};
 
@@ -534,7 +535,7 @@ class PlacementGroupInfoGrpcService : public GrpcService {
   /// Constructor.
   ///
   /// \param[in] handler The service handler that actually handle the requests.
-  explicit PlacementGroupInfoGrpcService(io_context_proxy &io_service,
+  explicit PlacementGroupInfoGrpcService(instrumented_io_context &io_service,
                                          PlacementGroupInfoGcsServiceHandler &handler)
       : GrpcService(io_service), service_handler_(handler){};
 

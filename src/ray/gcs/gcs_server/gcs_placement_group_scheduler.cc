@@ -21,7 +21,8 @@ namespace ray {
 namespace gcs {
 
 GcsPlacementGroupScheduler::GcsPlacementGroupScheduler(
-    io_context_proxy &io_context, std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
+    instrumented_io_context &io_context,
+    std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
     const gcs::GcsNodeManager &gcs_node_manager, GcsResourceManager &gcs_resource_manager,
     GcsResourceScheduler &gcs_resource_scheduler,
     std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool)

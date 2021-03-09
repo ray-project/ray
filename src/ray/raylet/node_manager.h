@@ -36,7 +36,7 @@
 #include "ray/raylet/worker_pool.h"
 #include "ray/rpc/worker/core_worker_client_pool.h"
 #include "ray/util/ordered_set.h"
-#include "ray/common/asio/io_context.h"
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/bundle_spec.h"
 #include "ray/raylet/placement_group_resource_manager.h"
 // clang-format on
@@ -122,7 +122,7 @@ class HeartbeatSender {
   std::shared_ptr<gcs::GcsClient> gcs_client_;
   /// The io service used in heartbeat loop in case of it being
   /// blocked by main thread.
-  io_context_proxy heartbeat_io_service_;
+  instrumented_io_context heartbeat_io_service_;
   /// Heartbeat thread, using with heartbeat_io_service_.
   std::unique_ptr<std::thread> heartbeat_thread_;
   std::unique_ptr<PeriodicalRunner> heartbeat_runner_;
@@ -137,7 +137,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   ///
   /// \param resource_config The initial set of node resources.
   /// \param object_manager A reference to the local object manager.
-  NodeManager(io_context_proxy &io_service, const NodeID &self_node_id,
+  NodeManager(instrumented_io_context &io_service, const NodeID &self_node_id,
               const NodeManagerConfig &config, ObjectManager &object_manager,
               std::shared_ptr<gcs::GcsClient> gcs_client,
               std::shared_ptr<ObjectDirectoryInterface> object_directory_,
@@ -602,7 +602,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
 
   /// ID of this node.
   NodeID self_node_id_;
-  io_context_proxy &io_service_;
+  instrumented_io_context &io_service_;
   /// Class to send heartbeat to GCS.
   std::unique_ptr<HeartbeatSender> heartbeat_sender_;
   ObjectManager &object_manager_;

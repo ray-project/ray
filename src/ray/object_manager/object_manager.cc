@@ -51,7 +51,8 @@ ObjectStoreRunner::~ObjectStoreRunner() {
   }
 }
 
-ObjectManager::ObjectManager(io_context_proxy &main_service, const NodeID &self_node_id,
+ObjectManager::ObjectManager(instrumented_io_context &main_service,
+                             const NodeID &self_node_id,
                              const ObjectManagerConfig &config,
                              std::shared_ptr<ObjectDirectoryInterface> object_directory,
                              RestoreSpilledObjectCallback restore_spilled_object,
