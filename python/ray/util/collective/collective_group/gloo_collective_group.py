@@ -448,7 +448,7 @@ def _check_cpu_tensors(tensors):
         raise RuntimeError("Gloo only accept one tensor in the tensor list."
                            " Got {} != 1.".format(len(tensors)))
     d = gloo_util.get_tensor_device(tensors[0])
-    if d != 'cpu':
+    if d != "cpu":
         raise RuntimeError("Gloo only accept cpu tensor." " Got {}.".format(d))
 
 

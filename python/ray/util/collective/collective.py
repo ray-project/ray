@@ -66,8 +66,8 @@ class GroupManager(object):
                 world_size,
                 rank,
                 group_name,
-                store_type='redis',
-                device_type='tcp')
+                store_type="redis",
+                device_type="tcp")
             self._name_group_map[group_name] = g
             self._group_name_map[g] = group_name
         elif backend == types.Backend.NCCL:
