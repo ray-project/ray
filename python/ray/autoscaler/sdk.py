@@ -13,12 +13,13 @@ from ray.autoscaler._private.event_system import (  # noqa: F401
 from ray.autoscaler._private.cli_logger import cli_logger
 
 
-def create_or_update_cluster(cluster_config: Union[dict, str],
-                             *,
-                             no_restart: bool = False,
-                             restart_only: bool = False,
-                             no_config_cache: bool = False,
-                             no_monitor_on_head: bool = False) -> Dict[str, Any]:
+def create_or_update_cluster(
+        cluster_config: Union[dict, str],
+        *,
+        no_restart: bool = False,
+        restart_only: bool = False,
+        no_config_cache: bool = False,
+        no_monitor_on_head: bool = False) -> Dict[str, Any]:
     """Create or updates an autoscaling Ray cluster from a config json.
 
     Args:
