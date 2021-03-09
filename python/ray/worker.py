@@ -424,12 +424,14 @@ def get_gpu_ids():
 
     # TODO(ilr) Handle inserting resources in local mode
     all_resource_ids = global_worker.core_worker.resource_ids()
-    assigned_ids = []
+    assigned_ids = set()
     for resource, assignment in all_resource_ids.items():
         # Handle both normal and placement group GPU resources.
         if resource == "GPU" or resource.startswith("GPU_group_"):
             for resource_id, _ in assignment:
-                assigned_ids.append(resource_id)
+                assigned_ids.add(resource_id)
+
+    assigned_ids = list(assigned_ids)
     # If the user had already set CUDA_VISIBLE_DEVICES, then respect that (in
     # the sense that only GPU IDs that appear in CUDA_VISIBLE_DEVICES should be
     # returned).
