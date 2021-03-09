@@ -32,7 +32,7 @@ from ray.autoscaler._private.providers import _get_node_provider, \
     _NODE_PROVIDERS, _PROVIDER_PRETTY_NAMES
 from ray.autoscaler.tags import TAG_RAY_NODE_KIND, TAG_RAY_LAUNCH_CONFIG, \
     TAG_RAY_NODE_NAME, NODE_KIND_WORKER, NODE_KIND_HEAD, \
-    TAG_RAY_USER_NODE_TYPE, STATUS_UNINITIALIZED, TAG_RAY_NODE_STATUS
+    TAG_RAY_USER_NODE_TYPE, STATUS_UNINITIALIZED, STATUS_UP_TO_DATE, TAG_RAY_NODE_STATUS
 from ray.autoscaler._private.cli_logger import cli_logger, cf
 from ray.autoscaler._private.updater import NodeUpdaterThread
 from ray.autoscaler._private.command_runner import set_using_login_shells, \
@@ -1110,6 +1110,7 @@ def _get_head_node(config: Dict[str, Any],
     provider = _get_node_provider(config["provider"], config["cluster_name"])
     head_node_tags = {
         TAG_RAY_NODE_KIND: NODE_KIND_HEAD,
+        TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
     }
     nodes = provider.non_terminated_nodes(head_node_tags)
 
