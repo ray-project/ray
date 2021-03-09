@@ -384,7 +384,7 @@ if __name__ == "__main__":
         build_ray_ml()
 
         if build_type in {MERGE, PR}:  # Skipping push on buildkite
-            push_and_tag_images(base_images_built, build_type is MERGE)
+            push_and_tag_images(base_images_built, build_type == MERGE)
 
         # TODO(ilr) Re-Enable Push READMEs by using a normal password
         # (not auth token :/)

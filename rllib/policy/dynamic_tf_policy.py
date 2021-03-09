@@ -160,7 +160,11 @@ class DynamicTFPolicy(TFPolicy):
 
         # Setup self.model.
         if existing_model:
-            self.model = existing_model
+            if isinstance(existing_model, list):
+                self.model = existing_model[0]
+                # TODO: (sven) hack, but works for `target_[q_]?model`.
+                for i in range(1, len(existing_model)):
+                    setattr(self, existing_model[i][0], existing_model[i][1])
         elif make_model:
             self.model = make_model(self, obs_space, action_space, config)
         else:
@@ -389,7 +393,11 @@ class DynamicTFPolicy(TFPolicy):
             self.action_space,
             self.config,
             existing_inputs=input_dict,
-            existing_model=self.model)
+            existing_model=[
+                self.model,
+                ("target_q_model", getattr(self, "target_q_model", None)),
+                ("target_model", getattr(self, "target_model", None)),
+            ])
 
         instance._loss_input_dict = input_dict
         loss = instance._do_loss_init(input_dict)

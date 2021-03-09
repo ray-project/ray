@@ -86,7 +86,7 @@ def r2d2_loss(policy: Policy, model, _,
     # Q-network evaluation (at t).
     q, _, _, _ = compute_q_values(
         policy,
-        policy.q_model,
+        model,
         train_batch,
         state_batches=state_batches,
         seq_lens=train_batch.get("seq_lens"),
