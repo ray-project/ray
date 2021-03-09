@@ -154,8 +154,37 @@ class RayActorError(RayError):
     """
 
     def __str__(self):
-        return ("The actor died unexpectedly before finishing this task."
-                f" Death info: {super().__str__()}")
+        return ("The actor died unexpectedly before finishing this task.")
+
+
+class RayActorCreationTaskFailedError(RayTaskError, RayActorError):
+    """Indicates that the actor is failed to execute task because this actor is already
+    dead due to an exception thrown in its creation task.
+    """
+
+    def __init__(self,
+                 function_name,
+                 traceback_str,
+                 cause_cls,
+                 proctitle=None,
+                 pid=None,
+                 ip=None):
+        RayTaskError.__init__(self, function_name, traceback_str, cause_cls,
+                              proctitle, pid, ip)
+
+    def as_instanceof_cause(self):
+        """same as RayTaskError.as_instanceof_cause, but return an instance of RayActorCreationTaskFailedError
+        instead of RayTaskError
+        """
+        return RayActorCreationTaskFailedError.from_task_error(
+            super().as_instanceof_cause())
+
+    @staticmethod
+    def from_task_error(task_error):
+        return RayActorCreationTaskFailedError(
+            task_error.function_name, task_error.traceback_str,
+            task_error.cause_cls, task_error.proctitle, task_error.pid,
+            task_error.ip)
 
 
 class RaySystemError(RayError):

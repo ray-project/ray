@@ -1971,9 +1971,8 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
       resource_ids_.reset(new ResourceMappingType());
     }
   }
-  RAY_LOG(DEBUG) << "Finished executing task " << task_spec.TaskId()
-                 << ", status=" << status;
-
+  RAY_LOG(INFO) << "Finished executing task " << task_spec.TaskId()
+                << ", status=" << status;
   if (status.IsCreationTaskError()) {
     Exit(rpc::WorkerExitType::CREATION_TASK_ERROR, creation_task_exception_pb_bytes);
   } else if (status.IsIntentionalSystemExit()) {

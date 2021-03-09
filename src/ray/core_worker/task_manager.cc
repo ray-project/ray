@@ -14,7 +14,11 @@
 
 #include "ray/core_worker/task_manager.h"
 
+#include "ray/common/buffer.h"
+#include "ray/common/constants.h"
 #include "ray/util/util.h"
+
+#include "msgpack.hpp"
 
 namespace ray {
 
@@ -447,10 +451,34 @@ void TaskManager::MarkPendingTaskFailed(
   int64_t num_returns = spec.NumReturns();
   for (int i = 0; i < num_returns; i++) {
     const auto object_id = ObjectID::FromIndex(task_id, /*index=*/i + 1);
-    std::string serialized_exception;
-    creation_task_exception->SerializeToString(&serialized_exception);
-    RAY_UNUSED(
-        in_memory_store_->Put(RayObject(error_type, serialized_exception), object_id));
+    if (creation_task_exception != nullptr) {
+      // Structure of bytes stored in object store:
+      // rpc::RayException
+      // ->pb-serialized bytes
+      // ->msgpack-serialized bytes
+      // ->[offset][msgpack-serialized bytes]
+      std::string pb_serialized_exception;
+      creation_task_exception->SerializeToString(&pb_serialized_exception);
+      msgpack::sbuffer msgpack_serialized_exception;
+      msgpack::packer<msgpack::sbuffer> packer(msgpack_serialized_exception);
+      packer.pack_bin(pb_serialized_exception.size());
+      packer.pack_bin_body(pb_serialized_exception.data(),
+                           pb_serialized_exception.size());
+      ray::LocalMemoryBuffer final_buffer(msgpack_serialized_exception.size() +
+                                          kMessagePackOffset);
+      // copy msgpack-serialized bytes
+      std::memcpy(final_buffer.Data() + kMessagePackOffset,
+                  msgpack_serialized_exception.data(),
+                  msgpack_serialized_exception.size());
+      // copy offset
+      msgpack::sbuffer msgpack_int;
+      msgpack::pack(msgpack_int, msgpack_serialized_exception.size());
+      std::memcpy(final_buffer.Data(), msgpack_int.data(), msgpack_int.size());
+      RAY_UNUSED(in_memory_store_->Put(
+          RayObject(error_type, final_buffer.Data(), final_buffer.Size()), object_id));
+    } else {
+      RAY_UNUSED(in_memory_store_->Put(RayObject(error_type), object_id));
+    }
   }
 }
 

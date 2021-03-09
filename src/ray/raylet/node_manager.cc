@@ -1201,9 +1201,9 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
 void NodeManager::DisconnectClient(
     const std::shared_ptr<ClientConnection> &client, rpc::WorkerExitType disconnect_type,
     const std::shared_ptr<rpc::RayException> &creation_task_exception) {
-  RAY_LOG(DEBUG) << "NodeManager::DisconnectClient, disconnect_type=" << disconnect_type
-                 << "has creation task exception = "
-                 << (creation_task_exception != nullptr);
+  RAY_LOG(INFO) << "NodeManager::DisconnectClient, disconnect_type=" << disconnect_type
+                << ", has creation task exception = "
+                << (creation_task_exception != nullptr);
   std::shared_ptr<WorkerInterface> worker = worker_pool_.GetRegisteredWorker(client);
   bool is_worker = false, is_driver = false;
   if (worker) {
@@ -1244,6 +1244,11 @@ void NodeManager::DisconnectClient(
   // Erase any lease metadata.
   leased_workers_.erase(worker->WorkerId());
 
+  if (creation_task_exception != nullptr) {
+    RAY_LOG(INFO) << "Formatted creation task exception: "
+                  << creation_task_exception->formatted_exception_string()
+                  << ", worker_id: " << worker->WorkerId();
+  }
   // Publish the worker failure.
   auto worker_failure_data_ptr = gcs::CreateWorkerFailureData(
       self_node_id_, worker->WorkerId(), worker->IpAddress(), worker->Port(),
@@ -1317,7 +1322,8 @@ void NodeManager::ProcessDisconnectClientMessage(
   std::shared_ptr<rpc::RayException> creation_task_exception = nullptr;
   if (exception_pb != nullptr) {
     creation_task_exception = std::make_shared<rpc::RayException>();
-    creation_task_exception->ParseFromString(exception_pb->GetAsString(0)->str());
+    creation_task_exception->ParseFromString(std::string(
+        reinterpret_cast<const char *>(exception_pb->data()), exception_pb->size()));
   }
   DisconnectClient(client, disconnect_type, creation_task_exception);
 }

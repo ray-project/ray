@@ -138,6 +138,9 @@ void ActorManager::HandleActorStateNotification(const ActorID &actor_id,
   } else if (actor_data.state() == rpc::ActorTableData::DEAD) {
     std::shared_ptr<rpc::RayException> creation_task_exception = nullptr;
     if (actor_data.has_creation_task_exception()) {
+      RAY_LOG(INFO) << "Creation task formatted exception: "
+                    << actor_data.creation_task_exception().formatted_exception_string()
+                    << ", actor_id: " << actor_id;
       creation_task_exception =
           std::make_shared<rpc::RayException>(actor_data.creation_task_exception());
     }

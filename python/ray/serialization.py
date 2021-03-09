@@ -212,7 +212,11 @@ class SerializationContext:
             elif error_type == ErrorType.Value("WORKER_DIED"):
                 return WorkerCrashedError()
             elif error_type == ErrorType.Value("ACTOR_DIED"):
-                return RayActorError(data.to_pybytes().decode())
+                if data:
+                    obj = self._deserialize_msgpack_data(data, metadata_fields)
+                    return RayError.from_bytes(obj)
+                else:
+                    return RayActorError()
             elif error_type == ErrorType.Value("TASK_CANCELLED"):
                 return TaskCancelledError()
             elif error_type == ErrorType.Value("OBJECT_UNRECONSTRUCTABLE"):

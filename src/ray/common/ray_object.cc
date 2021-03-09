@@ -16,11 +16,16 @@
 
 namespace ray {
 
-std::shared_ptr<LocalMemoryBuffer> MakeBufferFromString(const std::string str) {
-  auto metadata = const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(str.data()));
+std::shared_ptr<LocalMemoryBuffer> MakeBufferFromString(const uint8_t *data,
+                                                        size_t data_size) {
+  auto metadata = const_cast<uint8_t *>(data);
   auto meta_buffer =
-      std::make_shared<LocalMemoryBuffer>(metadata, str.size(), /*copy_data=*/true);
+      std::make_shared<LocalMemoryBuffer>(metadata, data_size, /*copy_data=*/true);
   return meta_buffer;
+}
+
+std::shared_ptr<LocalMemoryBuffer> MakeBufferFromString(const std::string &str) {
+  return MakeBufferFromString(reinterpret_cast<const uint8_t *>(str.data()), str.size());
 }
 
 std::shared_ptr<LocalMemoryBuffer> MakeErrorMetadataBuffer(rpc::ErrorType error_type) {
@@ -34,6 +39,11 @@ RayObject::RayObject(rpc::ErrorType error_type)
 RayObject::RayObject(rpc::ErrorType error_type, const std::string &append_data)
     : RayObject(MakeBufferFromString(append_data), MakeErrorMetadataBuffer(error_type),
                 {}) {}
+
+RayObject::RayObject(rpc::ErrorType error_type, const uint8_t *append_data,
+                     size_t append_data_size)
+    : RayObject(MakeBufferFromString(append_data, append_data_size),
+                MakeErrorMetadataBuffer(error_type), {}) {}
 
 bool RayObject::IsException(rpc::ErrorType *error_type) const {
   if (metadata_ == nullptr) {

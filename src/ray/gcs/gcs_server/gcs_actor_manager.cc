@@ -551,8 +551,12 @@ void GcsActorManager::OnWorkerDead(
     const std::shared_ptr<rpc::RayException> &creation_task_exception) {
   RAY_LOG(INFO) << "Worker " << worker_id << " on node " << node_id
                 << " exited, type=" << rpc::WorkerExitType_Name(disconnect_type)
-                << ", creation_task_exception = "
-                << (creation_task_exception->formatted_exception_string());
+                << ", has creation_task_exception = "
+                << (creation_task_exception != nullptr);
+  if (creation_task_exception != nullptr) {
+    RAY_LOG(INFO) << "Formatted creation task exception: "
+                  << creation_task_exception->formatted_exception_string();
+  }
 
   bool need_reconstruct = disconnect_type != rpc::WorkerExitType::INTENDED_EXIT &&
                           disconnect_type != rpc::WorkerExitType::CREATION_TASK_ERROR;
@@ -713,8 +717,10 @@ void GcsActorManager::ReconstructActor(
     }
 
     mutable_actor_table_data->set_state(rpc::ActorTableData::DEAD);
-    mutable_actor_table_data->set_allocated_creation_task_exception(
+    if (creation_task_exception != nullptr) {
+      mutable_actor_table_data->set_allocated_creation_task_exception(
         new rpc::RayException(*creation_task_exception));
+    }
     mutable_actor_table_data->set_timestamp(current_sys_time_ms());
     // The backend storage is reliable in the future, so the status must be ok.
     RAY_CHECK_OK(gcs_table_storage_->ActorTable().Put(

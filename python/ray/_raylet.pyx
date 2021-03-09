@@ -101,6 +101,7 @@ import ray.ray_constants as ray_constants
 from ray import profiling
 from ray.exceptions import (
     RayActorError,
+    RayActorCreationTaskFailedError,
     RayError,
     RaySystemError,
     RayTaskError,
@@ -551,9 +552,7 @@ cdef execute_task(
                 job_id=worker.current_job_id)
 
             if (<int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK):
-                actor_error = RayActorError()
-                actor_error.is_creation_task_error = True
-                raise actor_error from e
+                raise RayActorCreationTaskFailedError.from_task_error(failure_object) from error
 
     if execution_info.max_calls != 0:
         # Reset the state of the worker for the next task to execute.
@@ -567,6 +566,10 @@ cdef execute_task(
             exit.is_ray_terminate = True
             raise exit
 
+# return a protobuf-serialized ray_exception
+cdef shared_ptr[LocalMemoryBuffer] ray_error_to_memory_buf(ray_error):
+    cdef bytes py_bytes = ray_error.to_bytes()
+    return make_shared[LocalMemoryBuffer](<uint8_t*>py_bytes, len(py_bytes), True)
 
 cdef CRayStatus task_execution_handler(
         CTaskType task_type,
@@ -578,50 +581,46 @@ cdef CRayStatus task_execution_handler(
         const c_vector[CObjectID] &c_return_ids,
         const c_string debugger_breakpoint,
         c_vector[shared_ptr[CRayObject]] *returns,
-        shared_ptr[LocalMemoryBuffer] &creation_task_exception_pb_bytes):
-    cdef bytes error_pb_bytes;
-    try:
-        client_was_enabled = _disable_client_hook()
+        shared_ptr[LocalMemoryBuffer] &creation_task_exception_pb_bytes) nogil:
+    with gil:
         try:
-            # The call to execute_task should never raise an exception. If
-            # it does, that indicates that there was an internal error.
-            execute_task(task_type, task_name, ray_function, c_resources,
-                            c_args, c_arg_reference_ids, c_return_ids,
-                            debugger_breakpoint, returns)
-        except Exception as e:
-            traceback_str = traceback.format_exc() + (
-                "An unexpected internal error occurred while the worker "
-                "was executing a task.")
-            ray.utils.push_error_to_driver(
-                ray.worker.global_worker,
-                "worker_crash",
-                traceback_str,
-                job_id=None)
-            sys_exit = SystemExit(1)
-            # assign all attrs like is_ray_terminate,
-            # is_creation_task_error to new exception
-            for attr in e.__dict__.keys():
-                setattr(sys_exit, attr, getattr(e, attr))
-            raise sys_exit from e
-    except SystemExit as e:
-        # Tell the core worker to exit as soon as the result objects
-        # are processed.
-        if hasattr(e, "is_ray_terminate"):
-            return CRayStatus.IntentionalSystemExit()
-        elif hasattr(e, "is_creation_task_error"):
-            logger.exception("Error raised in creation task")
-            error_pb_bytes = e.to_bytes()
-            # Cython's bug that doesn't allow reference assignment
-            # , this is a workaroud.
-            # See https://github.com/cython/cython/issues/1863
-            (&creation_task_exception_pb_bytes)[0] = \
-                make_shared[LocalMemoryBuffer](<uint8_t*>error_pb_bytes, len(error_pb_bytes), True)
-            return CRayStatus.CreationTaskError()
-        else:
-            logger.exception("SystemExit was raised from the worker")
-            return CRayStatus.UnexpectedSystemExit()
-    finally:
-        _enable_client_hook(client_was_enabled)
+            client_was_enabled = _disable_client_hook()
+            try:
+                # The call to execute_task should never raise an exception. If
+                # it does, that indicates that there was an internal error.
+                execute_task(task_type, task_name, ray_function, c_resources,
+                                c_args, c_arg_reference_ids, c_return_ids,
+                                debugger_breakpoint, returns)
+            except Exception as e:
+                sys_exit = SystemExit()
+                if isinstance(e, RayActorCreationTaskFailedError):
+                    logger.exception("Error raised in creation task")
+                    # Cython's bug that doesn't allow reference assignment, this is 
+                    # a workaroud. See https://github.com/cython/cython/issues/1863
+                    (&creation_task_exception_pb_bytes)[0] = ray_error_to_memory_buf(e)
+                    sys_exit.is_creation_task_error = True
+
+                traceback_str = traceback.format_exc() + (
+                    "An unexpected internal error occurred while the worker "
+                    "was executing a task.")
+                ray.utils.push_error_to_driver(
+                    ray.worker.global_worker,
+                    "worker_crash",
+                    traceback_str,
+                    job_id=None)
+                raise sys_exit
+        except SystemExit as e:
+            # Tell the core worker to exit as soon as the result objects
+            # are processed.
+            if hasattr(e, "is_ray_terminate"):
+                return CRayStatus.IntentionalSystemExit()
+            elif hasattr(e, "is_creation_task_error"):
+                return CRayStatus.CreationTaskError()
+            else:
+                logger.exception("SystemExit was raised from the worker")
+                return CRayStatus.UnexpectedSystemExit()
+        finally:
+            _enable_client_hook(client_was_enabled)
 
     return CRayStatus.OK()
 

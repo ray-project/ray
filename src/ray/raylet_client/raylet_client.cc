@@ -138,14 +138,21 @@ raylet::RayletClient::RayletClient(
 Status raylet::RayletClient::Disconnect(
     rpc::WorkerExitType exit_type,
     const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes) {
-  RAY_LOG(DEBUG) << "RayletClient::Disconnect, exit_type="
-                 << rpc::WorkerExitType_Name(exit_type);
+  RAY_LOG(INFO) << "RayletClient::Disconnect, exit_type="
+                << rpc::WorkerExitType_Name(exit_type)
+                << ", has creation_task_exception_pb_bytes="
+                << (creation_task_exception_pb_bytes != nullptr);
   flatbuffers::FlatBufferBuilder fbb;
-  protocol::DisconnectClientBuilder builder(fbb);
+  flatbuffers::Offset<flatbuffers::Vector<uint8_t>>
+      creation_task_exception_pb_bytes_fb_vector;
   if (creation_task_exception_pb_bytes != nullptr) {
-    auto creation_task_exception_pb_bytes_fb_vector =
+    creation_task_exception_pb_bytes_fb_vector =
         fbb.CreateVector(creation_task_exception_pb_bytes->Data(),
                          creation_task_exception_pb_bytes->Size());
+  }
+  protocol::DisconnectClientBuilder builder(fbb);
+  // Add to table builder here to avoid nested construction of flatbuffers
+  if (creation_task_exception_pb_bytes != nullptr) {
     builder.add_creation_task_exception_pb(creation_task_exception_pb_bytes_fb_vector);
   }
   builder.add_disconnect_type(static_cast<int>(exit_type));
