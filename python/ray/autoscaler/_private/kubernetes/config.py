@@ -7,7 +7,7 @@ from kubernetes import client
 from kubernetes.client.rest import ApiException
 
 from ray.autoscaler._private.kubernetes import auth_api, core_api, log_prefix
-from ray.ray_constants import MEMORY_RESOURCE_UNIT_BYTES
+import ray.ray_constants as ray_constants
 
 logger = logging.getLogger(__name__)
 
@@ -115,10 +115,10 @@ def get_autodetected_resources(container_data):
         if node_type_resources[key] == 0:
             del node_type_resources[key]
 
-    memory_limits = _get_resource(container_resources, "memory", "limit")
-    units = memory_limits / MEMORY_RESOURCE_UNIT_BYTES
-    node_type_resources["memory"] = int(units * 0.6)
-    node_type_resources["object_store_memory"] = int(units * 0.3)
+    memory_limits = _get_resource(container_resources, "memory", "limits")
+    units = ray_constants.to_memory_units(memory_limits, False)
+    node_type_resources["memory"] = units * 0.6
+    node_type_resources["object_store_memory"] = units * 0.3
 
     return node_type_resources
 

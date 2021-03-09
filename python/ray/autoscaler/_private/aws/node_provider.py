@@ -20,7 +20,7 @@ from ray.autoscaler._private.log_timer import LogTimer
 
 from ray.autoscaler._private.aws.utils import boto_exception_handler
 from ray.autoscaler._private.cli_logger import cli_logger, cf
-from ray.ray_constants import MEMORY_RESOURCE_UNIT_BYTES
+import ray.ray_constants as ray_constants
 
 logger = logging.getLogger(__name__)
 
@@ -517,9 +517,10 @@ class AWSNodeProvider(NodeProvider):
                 memory_total = instances_dict[instance_type]["MemoryInfo"][
                     "SizeInMiB"]
                 memory_total = int(memory_total) * 1024 * 1024
-                memory_units = memory_total / MEMORY_RESOURCE_UNIT_BYTES
-                memory_resources = int(memory_units * 0.6)
-                object_store_memory = int(memory_units * 0.3)
+                memory_units = ray_constants.to_memory_units(
+                    memory_total, False)
+                memory_resources = memory_units * 0.6
+                object_store_memory = memory_units * 0.3
                 autodetected_resources = {
                     "CPU": cpus,
                     "memory": memory_resources,
