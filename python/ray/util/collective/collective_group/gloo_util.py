@@ -20,7 +20,7 @@ GLOO_REDUCE_OP_MAP = {
 
 NUMPY_GLOO_DTYPE_MAP = {
     # INT types
-    numpy.int: pygloo.glooDataType_t.glooInt8,
+    numpy.int: pygloo.glooDataType_t.glooInt64,
     numpy.uint8: pygloo.glooDataType_t.glooUint8,
     numpy.uint32: pygloo.glooDataType_t.glooUint32,
     numpy.uint64: pygloo.glooDataType_t.glooUint64,
@@ -39,7 +39,7 @@ NUMPY_GLOO_DTYPE_MAP = {
 if torch_available():
     import torch
     TORCH_GLOO_DTYPE_MAP = {
-        torch.int: pygloo.glooDataType_t.glooInt8,
+        torch.int: pygloo.glooDataType_t.glooInt32,
         torch.uint8: pygloo.glooDataType_t.glooUint8,
         torch.int8: pygloo.glooDataType_t.glooInt8,
         torch.int32: pygloo.glooDataType_t.glooInt32,
@@ -56,7 +56,7 @@ if torch_available():
 
     TORCH_NUMPY_DTYPE_MAP = {
         # INT types
-        torch.int: numpy.int,
+        torch.int: numpy.int32,
         torch.uint8: numpy.uint8,
         torch.int8: numpy.int8,
         torch.int32: numpy.int32,
@@ -220,6 +220,8 @@ def copy_tensor(dst_tensor, src_tensor):
                          .format(type(dst_tensor), type(src_tensor)))
 
 
+# Note(Hao): this requires Ray >= 1.2.0,
+# otherwise _QueueActor is an actor class.
 class glooQueue(_QueueActor):
     def index(self, group_name):
         try:
