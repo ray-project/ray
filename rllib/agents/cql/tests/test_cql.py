@@ -36,8 +36,7 @@ class TestCQL(unittest.TestCase):
                 trainer = cql.CQLTrainer(config=config, env=env)
                 for i in range(num_iterations):
                     trainer.train()
-                check_compute_single_action(
-                    trainer)
+                check_compute_single_action(trainer)
                 trainer.stop()
 
 
