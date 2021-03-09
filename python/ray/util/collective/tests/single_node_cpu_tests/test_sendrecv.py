@@ -64,7 +64,7 @@ def test_sendrecv_torch_numpy(ray_start_single_node, dst_rank, backend):
 
 
 @pytest.mark.parametrize("backend", [Backend.GLOO])
-def test_sendrecv_invalid_rank(ray_start_single_node, dst_rank=3, backend="nccl"):
+def test_sendrecv_invalid_rank(ray_start_single_node, backend, dst_rank=3):
     world_size = 2
     actors, _ = create_collective_workers(world_size, backend=backend)
     with pytest.raises(ValueError):

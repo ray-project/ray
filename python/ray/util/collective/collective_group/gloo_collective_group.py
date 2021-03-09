@@ -33,7 +33,6 @@ class Rendezvous:
     Args:
         group_name (str): the unique user-specified group name.
     """
-
     def __init__(self, group_name, context, store_type, device_type):
         self._group_name = group_name
         self._context = context
@@ -66,25 +65,24 @@ class Rendezvous:
                     shutil.rmtree(store_path)
                     os.makedirs(store_path)
             else:
-                import time
                 while not os.path.exists(store_path):
                     time.sleep(0.1)
-
-            # Multi-machines needs nfs.
+            # Note: multi-machines needs a shared NFS.
             fileStore = pygloo.rendezvous.FileStore(store_path)
             self._store = pygloo.rendezvous.PrefixStore(
                                     self._group_name, fileStore)
         elif store_type == "hash":
-            raise RuntimeError("No implementation for hash store")
+            raise NotImplementedError("No implementation for hash store.")
         else:
-            raise RuntimeError(f"Unrecognized store type: {store_type}")
+            raise RuntimeError("Unrecognized store type: {}."
+                               .format(store_type))
 
     def create_device(self, device_type):
         if device_type == "tcp":
             attr = pygloo.transport.tcp.attr(self._ip_address)
             self._device = pygloo.transport.tcp.CreateDevice(attr)
         elif device_type == "uv":
-            raise RuntimeError("No implementation for uv")
+            raise NotImplementedError("No implementation for uv.")
 
     def meet(self, timeout_s=180):
         """Meet at the named actor store.

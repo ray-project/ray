@@ -24,8 +24,8 @@ def test_init_multiple_groups(ray_start_distributed_2_nodes_4_gpus,
     for i in range(num_groups):
         group_name = str(i)
         init_results = ray.get([
-            actor.init_group.remote(world_size, i, group_name=group_name)
-            for i, actor in enumerate(actors)
+            actor.init_group.remote(world_size, k, group_name=group_name)
+            for k, actor in enumerate(actors)
         ])
         for j in range(world_size):
             assert init_results[j]
@@ -62,14 +62,6 @@ def test_get_collective_group_size(ray_start_distributed_2_nodes_4_gpus,
     actor0_world_size = ray.get(actors[0].report_world_size.remote())
     actor1_world_size = ray.get(actors[1].report_world_size.remote())
     assert actor0_world_size == actor1_world_size == world_size
-
-
-def test_availability(ray_start_distributed_2_nodes_4_gpus):
-    world_size = 4
-    actors, _ = create_collective_workers(world_size)
-    actor0_nccl_availability = ray.get(
-        actors[0].report_nccl_availability.remote())
-    assert actor0_nccl_availability
 
 
 def test_is_group_initialized(ray_start_distributed_2_nodes_4_gpus):

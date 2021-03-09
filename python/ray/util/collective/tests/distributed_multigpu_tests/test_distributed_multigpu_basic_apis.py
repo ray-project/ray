@@ -47,14 +47,6 @@ def test_get_rank(ray_start_distributed_multigpu_2_nodes_4_gpus):
     assert actor1_rank == ranks[1]
 
 
-def test_availability(ray_start_distributed_multigpu_2_nodes_4_gpus):
-    world_size = 2
-    actors, _ = create_collective_multigpu_workers(world_size)
-    actor0_nccl_availability = ray.get(
-        actors[0].report_nccl_availability.remote())
-    assert actor0_nccl_availability
-
-
 def test_is_group_initialized(ray_start_distributed_multigpu_2_nodes_4_gpus):
     world_size = 2
     actors, _ = create_collective_multigpu_workers(world_size)
