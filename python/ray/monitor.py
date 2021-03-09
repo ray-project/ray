@@ -361,6 +361,8 @@ if __name__ == "__main__":
         args.redis_address,
         autoscaling_config,
         redis_password=args.redis_password,
-        log_dir=args.logs_dir)
+        # TODO (Alex): We need to figure out the best way to display the node
+        # failure logs before setting the log dir.
+        log_dir=None)
 
     monitor.run()
