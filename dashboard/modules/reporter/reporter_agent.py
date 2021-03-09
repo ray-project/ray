@@ -131,10 +131,7 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
         self._cpu_counts = (psutil.cpu_count(),
                             psutil.cpu_count(logical=False))
         self._ip = ray._private.services.get_node_ip_address()
-        logger.info("~~~~ ip" + str(self._ip))
-        logger.info("~~~~ redis address" + str(dashboard_agent.redis_address))
-        logger.info("~~~~ redis address ip" + str(dashboard_agent.redis_address_ip))
-        # self.redis_address = dashboard_agent.redis_address
+        self._redis_address, _ = dashboard_agent.redis_address
         self._hostname = socket.gethostname()
         self._workers = set()
         self._network_stats_hist = [(0, (0.0, 0.0))]  # time, (sent, recv)
@@ -300,6 +297,7 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
             "now": now,
             "hostname": self._hostname,
             "ip": self._ip,
+            "redis_address": self._redis_address,
             "cpu": self._get_cpu_percent(),
             "cpus": self._cpu_counts,
             "mem": self._get_mem_usage(),
@@ -319,9 +317,10 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
     def _record_stats(stats, cluster_stats):
         records_reported = []
         ip = stats["ip"]
+        redis_address = stats["redis_address"]
 
         # -- Instance count of cluster --
-        if "autoscaler_report" in cluster_stats:
+        if "autoscaler_report" in cluster_stats and str(ip) == str(redis_address):
             active_nodes = cluster_stats["autoscaler_report"]["active_nodes"]
             num_active_nodes = sum(active_nodes.values())
             cluster_active_nodes_record = Record(
