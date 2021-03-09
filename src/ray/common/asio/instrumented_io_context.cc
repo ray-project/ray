@@ -44,19 +44,10 @@ capture_impl<T, F> capture(T &&x, F &&f) {
   return capture_impl<T, F>(std::forward<T>(x), std::forward<F>(f));
 }
 
-/// Set stats collection flag based on corresponding Ray config flag.
-const bool instrumented_io_context::stats_collection_enabled_ =
-    RayConfig::instance().asio_event_loop_stats_collection_enabled();
-
 void instrumented_io_context::post(std::function<void()> handler,
                                    const std::string &name) {
-  if (!stats_collection_enabled_) {
+  if (!RayConfig::instance().asio_event_loop_stats_collection_enabled()) {
     return boost::asio::io_context::post(std::move(handler));
-  }
-  {
-    absl::WriterMutexLock lock(&(global_stats_.mutex));
-    global_stats_.stats.cum_count++;
-    global_stats_.stats.curr_count++;
   }
   // Get this handler's stats.
   mutex_.ReaderLock();
@@ -84,7 +75,7 @@ void instrumented_io_context::post(std::function<void()> handler,
     it->second->stats.cum_count++;
     it->second->stats.curr_count++;
   }
-  const auto start = std::chrono::steady_clock::now();
+  int64_t start = absl::GetCurrentTimeNanos();
   // References are only invalidated upon deletion of the corresponding item from the
   // table, which we won't do until this io_context is deleted. Provided that
   // GuardedHandlerStats synchronizes internal access, we can concurrently write to these
@@ -95,37 +86,18 @@ void instrumented_io_context::post(std::function<void()> handler,
   // we move to C++14.
   auto wrapped_handler = capture(
       std::move(handler), [this, name, start, stats](std::function<void()> handler) {
-        const auto start_execution = std::chrono::steady_clock::now();
+        int64_t start_execution = absl::GetCurrentTimeNanos();
         // Execute actual handler.
         handler();
-        const auto end_execution = std::chrono::steady_clock::now();
+        int64_t end_execution = absl::GetCurrentTimeNanos();
         // Update queue and execution time stats.
-        const auto queue_time_ns =
-            std::chrono::duration_cast<std::chrono::nanoseconds>(start_execution - start)
-                .count();
-        const auto execution_time_ns =
-            std::chrono::duration_cast<std::chrono::nanoseconds>(end_execution -
-                                                                 start_execution)
-                .count();
+        const auto queue_time_ns = start_execution - start;
+        const auto execution_time_ns = end_execution - start_execution;
         // Update handler-specific stats.
         {
           absl::WriterMutexLock lock(&(stats->mutex));
-          // Handler-specific queue stats.
-          stats->stats.cum_queue_time += queue_time_ns;
-          if (stats->stats.min_queue_time > queue_time_ns) {
-            stats->stats.min_queue_time = queue_time_ns;
-          }
-          if (stats->stats.max_queue_time < queue_time_ns) {
-            stats->stats.max_queue_time = queue_time_ns;
-          }
           // Handler-specific execution stats.
           stats->stats.cum_execution_time += execution_time_ns;
-          if (stats->stats.min_execution_time > execution_time_ns) {
-            stats->stats.min_execution_time = execution_time_ns;
-          }
-          if (stats->stats.max_execution_time < execution_time_ns) {
-            stats->stats.max_execution_time = execution_time_ns;
-          }
           // Handler-specific current count.
           stats->stats.curr_count--;
         }
@@ -140,31 +112,29 @@ void instrumented_io_context::post(std::function<void()> handler,
           if (global_stats_.stats.max_queue_time < queue_time_ns) {
             global_stats_.stats.max_queue_time = queue_time_ns;
           }
-          // Global execution stats.
-          global_stats_.stats.cum_execution_time += execution_time_ns;
-          if (global_stats_.stats.min_execution_time > execution_time_ns) {
-            global_stats_.stats.min_execution_time = execution_time_ns;
-          }
-          if (global_stats_.stats.max_execution_time < execution_time_ns) {
-            global_stats_.stats.max_execution_time = execution_time_ns;
-          }
-          // Global current count.
-          global_stats_.stats.curr_count--;
         }
       });
   boost::asio::io_context::post(std::move(wrapped_handler));
 }
 
+/// A helper for creating a snapshot view of the global stats.
+/// This acquires a reader lock on the provided global stats, and creates a
+/// lockless copy of the stats.
+inline GlobalStats to_global_stats_view(const GuardedGlobalStats &stats) {
+  absl::ReaderMutexLock lock(&(stats.mutex));
+  return GlobalStats(stats.stats);
+}
+
+GlobalStats instrumented_io_context::get_global_stats() const {
+  return to_global_stats_view(global_stats_);
+}
+
 /// A helper for creating a snapshot view of the stats for a handler.
 /// This acquires a reader lock on the provided guarded handler stats, and creates a
 /// lockless copy of the stats.
-HandlerStats to_stats_view(const GuardedHandlerStats &stats) {
+inline HandlerStats to_handler_stats_view(const GuardedHandlerStats &stats) {
   absl::ReaderMutexLock lock(&(stats.mutex));
   return HandlerStats(stats.stats);
-}
-
-HandlerStats instrumented_io_context::get_global_stats() const {
-  return to_stats_view(global_stats_);
 }
 
 absl::optional<HandlerStats> instrumented_io_context::get_handler_stats(
@@ -174,7 +144,7 @@ absl::optional<HandlerStats> instrumented_io_context::get_handler_stats(
   if (it == post_handler_stats_.end()) {
     return {};
   }
-  return to_stats_view(*it->second);
+  return to_handler_stats_view(*it->second);
 }
 
 std::vector<std::pair<std::string, HandlerStats>>
@@ -186,12 +156,12 @@ instrumented_io_context::get_handler_stats() const {
   std::transform(
       post_handler_stats_.begin(), post_handler_stats_.end(), std::back_inserter(stats),
       [](const std::pair<std::string, std::shared_ptr<GuardedHandlerStats>> &p) {
-        return std::make_pair(p.first, to_stats_view(*p.second));
+        return std::make_pair(p.first, to_handler_stats_view(*p.second));
       });
   return stats;
 }
 
-std::string to_human_readable(double duration) {
+inline std::string to_human_readable(double duration) {
   static const std::array<std::string, 4> to_unit{"ns", "us", "ms", "s"};
   size_t idx = std::min(to_unit.size() - 1,
                         static_cast<size_t>(std::log(duration) / std::log(1000)));
@@ -201,34 +171,15 @@ std::string to_human_readable(double duration) {
   return result.str();
 }
 
-std::string to_human_readable(int64_t duration) {
+inline std::string to_human_readable(int64_t duration) {
   return to_human_readable(static_cast<double>(duration));
 }
 
 std::string instrumented_io_context::StatsString() const {
-  if (!stats_collection_enabled_) {
+  if (!RayConfig::instance().asio_event_loop_stats_collection_enabled()) {
     return "Stats collection disabled, turn on asio_event_loop_stats_collection_enabled "
            "flag to enable event loop stats collection";
   }
-  std::stringstream result;
-  const auto global_stats = get_global_stats();
-  result << "\nGlobal stats: " << global_stats.cum_count << " total ("
-         << global_stats.curr_count << " active)";
-  result << "\n"
-         << "Queueing time: mean = "
-         << to_human_readable(global_stats.cum_queue_time /
-                              static_cast<double>(global_stats.cum_count))
-         << ", max = " << to_human_readable(global_stats.max_queue_time)
-         << ", min = " << to_human_readable(global_stats.min_queue_time)
-         << ", total = " << to_human_readable(global_stats.cum_queue_time);
-  result << "\n"
-         << "Execution time:  mean = "
-         << to_human_readable(global_stats.cum_execution_time /
-                              static_cast<double>(global_stats.cum_count))
-         << ", max = " << to_human_readable(global_stats.max_execution_time)
-         << ", min = " << to_human_readable(global_stats.min_execution_time)
-         << ", total = " << to_human_readable(global_stats.cum_execution_time);
-  result << "\nHandler stats:";
   auto stats = get_handler_stats();
   // Sort stats by cumulative count, outside of the table lock.
   sort(stats.begin(), stats.end(),
@@ -236,23 +187,36 @@ std::string instrumented_io_context::StatsString() const {
           const std::pair<std::string, HandlerStats> &b) {
          return a.second.cum_count > b.second.cum_count;
        });
+  int64_t cum_count = 0;
+  int64_t curr_count = 0;
+  int64_t cum_execution_time = 0;
+  std::stringstream handler_stats_stream;
   for (const auto &entry : stats) {
-    result << "\n\t" << entry.first << ": " << entry.second.cum_count << " total ("
-           << entry.second.curr_count << " active)";
-    result << "\n\t\t"
-           << "Queueing time: mean = "
-           << to_human_readable(entry.second.cum_queue_time /
-                                static_cast<double>(entry.second.cum_count))
-           << ", max = " << to_human_readable(entry.second.max_queue_time)
-           << ", min = " << to_human_readable(entry.second.min_queue_time)
-           << ", total = " << to_human_readable(entry.second.cum_queue_time);
-    result << "\n\t\t"
-           << "Execution time: mean = "
-           << to_human_readable(entry.second.cum_execution_time /
-                                static_cast<double>(entry.second.cum_count))
-           << ", max = " << to_human_readable(entry.second.max_execution_time)
-           << ", min = " << to_human_readable(entry.second.min_execution_time)
-           << ", total = " << to_human_readable(entry.second.cum_execution_time);
+    cum_count += entry.second.cum_count;
+    curr_count += entry.second.curr_count;
+    cum_execution_time += entry.second.cum_execution_time;
+    handler_stats_stream << "\n\t" << entry.first << " - " << entry.second.cum_count
+                         << " total (" << entry.second.curr_count
+                         << " active), CPU time: mean = "
+                         << to_human_readable(entry.second.cum_execution_time /
+                                              static_cast<double>(entry.second.cum_count))
+                         << ", total = "
+                         << to_human_readable(entry.second.cum_execution_time);
   }
-  return result.str();
+  const auto global_stats = get_global_stats();
+  std::stringstream stats_stream;
+  stats_stream << "\nGlobal stats: " << cum_count << " total (" << curr_count
+               << " active)";
+  stats_stream << "\nQueueing time: mean = "
+               << to_human_readable(global_stats.cum_queue_time /
+                                    static_cast<double>(cum_count))
+               << ", max = " << to_human_readable(global_stats.max_queue_time)
+               << ", min = " << to_human_readable(global_stats.min_queue_time)
+               << ", total = " << to_human_readable(global_stats.cum_queue_time);
+  stats_stream << "\nExecution time:  mean = "
+               << to_human_readable(cum_execution_time / static_cast<double>(cum_count))
+               << ", total = " << to_human_readable(cum_execution_time);
+  stats_stream << "\nHandler stats:";
+  stats_stream << handler_stats_stream.rdbuf();
+  return stats_stream.str();
 }

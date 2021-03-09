@@ -27,21 +27,33 @@ struct HandlerStats {
   int64_t cum_count = 0;
   int64_t curr_count = 0;
 
+  // Execution stats.
+  int64_t cum_execution_time = 0;
+};
+
+/// Count and queueing statistics over all asio handlers.
+struct GlobalStats {
   // Queue stats.
   int64_t cum_queue_time = 0;
   int64_t min_queue_time = std::numeric_limits<int64_t>::max();
   int64_t max_queue_time = -1;
-
-  // Execution stats.
-  int64_t cum_execution_time = 0;
-  int64_t min_execution_time = std::numeric_limits<int64_t>::max();
-  int64_t max_execution_time = -1;
 };
 
 /// A mutex wrapper around a handler stats struct.
 struct GuardedHandlerStats {
   // Stats for some handler.
   HandlerStats stats;
+
+  // The mutex protecting the reading and writing of these stats.
+  // This mutex should be acquired with a reader lock before reading, and should be
+  // acquired with a writer lock before writing.
+  mutable absl::Mutex mutex;
+};
+
+/// A mutex wrapper around a handler stats struct.
+struct GuardedGlobalStats {
+  // Stats over all handlers.
+  GlobalStats stats;
 
   // The mutex protecting the reading and writing of these stats.
   // This mutex should be acquired with a reader lock before reading, and should be
@@ -65,7 +77,7 @@ class instrumented_io_context : public boost::asio::io_context {
   /// across all handlers.
   ///
   /// \return A snapshot view of the global handler stats.
-  HandlerStats get_global_stats() const;
+  GlobalStats get_global_stats() const;
 
   /// Returns a snapshot view of the count, queueing, and execution statistics for the
   /// provided handler.
@@ -91,7 +103,7 @@ class instrumented_io_context : public boost::asio::io_context {
 
  private:
   /// Global stats, across all handlers.
-  GuardedHandlerStats global_stats_;
+  GuardedGlobalStats global_stats_;
 
   /// Table of per-handler post stats.
   /// We use a std::shared_ptr value in order to ensure pointer stability.
@@ -100,9 +112,4 @@ class instrumented_io_context : public boost::asio::io_context {
 
   /// Protects access to the per-handler post stats table.
   mutable absl::Mutex mutex_;
-
-  /// Whether stats collection is enabled. If it is disabled, the proxy post function
-  /// immediately forwards the handler to the io_context post function, and will not
-  /// collect any statistics.
-  const static bool stats_collection_enabled_;
 };
