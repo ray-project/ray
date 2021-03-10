@@ -36,7 +36,7 @@ def load_package(config_path: str) -> "_RuntimePackage":
 
         >>> # Load from GitHub.
         >>> my_pkg = ray.util.load_package(
-        ...   "https://raw.githubusercontent.com/user/repo/branch"
+        ...   "https://raw.githubusercontent.com/user/repo/refspec"
         ...   "/path/to/package/my_pkg.yaml")
 
         >>> # Inspect the package runtime env.
