@@ -440,7 +440,7 @@ actor via the ``runtime_env`` parameter as follows:
 
 .. code-block:: python
 
-    my_actor = MyActor.options(runtime_env={"conda_env": "my_env"})
+    my_actor = MyActor.options(runtime_env={"conda_env": "my_env"}).remote()
 
 Nested tasks and actors will inherit the conda environment of their parent by default.
 
