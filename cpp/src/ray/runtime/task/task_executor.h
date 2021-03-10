@@ -11,19 +11,21 @@ namespace ray {
 namespace internal {
 
 /// Execute remote functions by networking stream.
-inline static msgpack::sbuffer TaskExecutionHandler(const char *data, std::size_t size) {
+inline static msgpack::sbuffer TaskExecutionHandler(
+    const std::vector<std::shared_ptr<RayObject>> &args_buffer) {
+  auto &memory_buffer = args_buffer.at(0)->GetData();
   msgpack::sbuffer result;
   do {
     try {
-      auto p = ray::api::Serializer::Deserialize<std::tuple<std::string>>(data, size);
-      auto &func_name = std::get<0>(p);
+      auto func_name = ray::api::Serializer::Deserialize<std::string>(
+          (char *)memory_buffer->Data(), memory_buffer->Size());
       auto func_ptr = FunctionManager::Instance().GetFunction(func_name);
       if (func_ptr == nullptr) {
         result = PackError("unknown function: " + func_name);
         break;
       }
 
-      result = (*func_ptr)(data, size);
+      result = (*func_ptr)(args_buffer);
     } catch (const std::exception &ex) {
       result = PackError(ex.what());
     }

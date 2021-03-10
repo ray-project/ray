@@ -35,6 +35,18 @@ class Serializer {
     return unpacked.get().as<T>();
   }
 
+  template <typename T>
+  static std::pair<bool, T> DeserializeWhenNil(const char *data, size_t size) {
+    T val;
+    size_t off = 0;
+    msgpack::unpacked unpacked = msgpack::unpack(data, size, off);
+    if (!unpacked.get().convert_if_not_nil(val)) {
+      return {false, {}};
+    }
+
+    return {true, val};
+  }
+
   static bool HasError(char *data, size_t size) {
     size_t off = 0;
     msgpack::unpacked unpacked = msgpack::unpack(data, 1, off);
