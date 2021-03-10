@@ -44,10 +44,10 @@ class GcsResourceReportPoller {
   void Stop();
 
   /// Event handler when a new node joins the cluster.
-  void HandleNodeAdded(std::shared_ptr<rpc::GcsNodeInfo> node_info);
+  void HandleNodeAdded(std::shared_ptr<rpc::GcsNodeInfo> node_info) LOCKS_EXCLUDED(mutex_);
 
   /// Event handler when a node leaves the cluster.
-  void HandleNodeRemoved(std::shared_ptr<rpc::GcsNodeInfo> node_info);
+  void HandleNodeRemoved(std::shared_ptr<rpc::GcsNodeInfo> node_info) LOCKS_EXCLUDED(mutex_);
 
  private:
   // An asio service which does the polling work.
@@ -85,12 +85,12 @@ class GcsResourceReportPoller {
 
   /// Try to pull from the node. We may not be able to if it violates max concurrent
   /// pulls. This method is thread safe.
-  void TryPullResourceReport(const NodeID &node_id);
+  void TryPullResourceReport(const NodeID &node_id) LOCKS_EXCLUDED(mutex_);
   /// Pull resource report without validation. This method is NOT thread safe.
   void PullResourceReport(PullState &state);
   /// A resource report was successfully pulled (and the resource manager was already
   /// updated). This method is thread safe.
-  void NodeResourceReportReceived(const NodeID &node_id);
+  void NodeResourceReportReceived(const NodeID &node_id) LOCKS_EXCLUDED(mutex_);
 };
 
 }  // namespace gcs
