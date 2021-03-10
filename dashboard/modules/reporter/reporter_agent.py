@@ -168,7 +168,7 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
     @staticmethod
     def _get_cpu_percent():
         if IN_KUBERNETES_POD:
-            k8s_utils.cpu_percent()
+            return k8s_utils.cpu_percent()
         else:
             return psutil.cpu_percent()
 

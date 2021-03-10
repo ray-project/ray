@@ -1,5 +1,4 @@
 import logging
-import time
 
 logger = logging.getLogger(__name__)
 
@@ -42,8 +41,8 @@ def cpu_percent():
         else:
             cpu_delta = cpu_usage - last_cpu_usage
             # "System time passed." (Typically close to clock time.)
-            system_delta = ((system_usage - last_system_usage)
-                            / _host_num_cpus())
+            system_delta = (
+                (system_usage - last_system_usage) / _host_num_cpus())
 
             quotient = cpu_delta / system_delta
             cpu_percent = round(quotient * 100 / container_cpu_count(), 1)
@@ -51,8 +50,7 @@ def cpu_percent():
         last_cpu_usage = cpu_usage
         return cpu_percent
     except Exception as e:
-        logger.exception("Error computing CPU usage of Ray Kubernetes pod.",
-                         e)
+        logger.exception("Error computing CPU usage of Ray Kubernetes pod.", e)
         return 0.0
 
 
@@ -109,8 +107,10 @@ def _host_num_cpus():
     if host_num_cpus is None:
         proc_stat_lines = open(PROC_STAT_PATH).read().split("\n")
         split_proc_stat_lines = [line.split() for line in proc_stat_lines]
-        cpu_lines = [split_line for split_line in split_proc_stat_lines if
-                     len(split_line) > 0 and "cpu" in split_line[0]]
+        cpu_lines = [
+            split_line for split_line in split_proc_stat_lines
+            if len(split_line) > 0 and "cpu" in split_line[0]
+        ]
         # Number of lines starting with a word including 'cpu', subtracting
         # 1 for the first summary line.
         host_num_cpus = len(cpu_lines) - 1
