@@ -103,6 +103,7 @@ class TrialExecutor:
         Args:
             error (bool): Whether to mark this trial as terminated in error.
             error_msg (str): Optional error message.
+
         """
         raise NotImplementedError("Subclasses of TrialExecutor must provide "
                                   "stop_trial() method")
@@ -171,7 +172,7 @@ class TrialExecutor:
             if trial.uses_placement_groups:
                 return
             if trial.status == Trial.PENDING:
-                if not self.has_resources(trial.resources):
+                if not self.has_resources_for_trial(trial):
                     resource_string = trial.resources.summary_string()
                     trial_resource_help_msg = trial.get_trainable_cls(
                     ).resource_help(trial.config)

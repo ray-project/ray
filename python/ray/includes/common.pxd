@@ -279,3 +279,7 @@ cdef extern from "ray/gcs/gcs_client.h" nogil:
         CGcsClientOptions(const c_string &ip, int port,
                           const c_string &password,
                           c_bool is_test_client)
+
+cdef extern from "src/ray/protobuf/gcs.pb.h" nogil:
+    cdef cppclass CJobConfig "ray::rpc::JobConfig":
+        const c_string &SerializeAsString()

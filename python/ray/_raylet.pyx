@@ -55,6 +55,7 @@ from ray.includes.common cimport (
     CPlacementStrategy,
     CRayFunction,
     CWorkerType,
+    CJobConfig,
     move,
     LANGUAGE_CPP,
     LANGUAGE_JAVA,
@@ -332,6 +333,17 @@ cdef prepare_args(
                         CCoreWorkerProcess.GetCoreWorker().GetRpcAddress())))
 
 
+cdef raise_if_dependency_failed(arg):
+    """This method is used to improve the readability of backtrace.
+
+    With this method, the backtrace will always contain
+    raise_if_dependency_failed when the task is failed with dependency
+    failures.
+    """
+    if isinstance(arg, RayError):
+        raise arg
+
+
 cdef execute_task(
         CTaskType task_type,
         const c_string name,
@@ -460,8 +472,7 @@ cdef execute_task(
                             metadata_pairs, object_refs)
 
                     for arg in args:
-                        if isinstance(arg, RayError):
-                            raise arg
+                        raise_if_dependency_failed(arg)
                     args, kwargs = ray.signature.recover_args(args)
 
             if (<int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK):
@@ -473,6 +484,10 @@ cdef execute_task(
             with core_worker.profile_event(b"task:execute"):
                 task_exception = True
                 try:
+                    is_existing = core_worker.is_exiting()
+                    if is_existing:
+                        title = f"{title}::Exiting"
+                        next_title = f"{next_title}::Exiting"
                     with ray.worker._changeproctitle(title, next_title):
                         if debugger_breakpoint != b"":
                             ray.util.pdb.set_trace(
@@ -528,10 +543,10 @@ cdef execute_task(
             if isinstance(error, RayTaskError):
                 # Avoid recursive nesting of RayTaskError.
                 failure_object = RayTaskError(function_name, backtrace,
-                                              error.cause_cls, proctitle=title)
+                                              error.cause, proctitle=title)
             else:
                 failure_object = RayTaskError(function_name, backtrace,
-                                              error.__class__, proctitle=title)
+                                              error, proctitle=title)
             errors = []
             for _ in range(c_return_ids.size()):
                 errors.append(failure_object)
@@ -628,7 +643,8 @@ cdef void gc_collect() nogil:
 
 
 cdef c_vector[c_string] spill_objects_handler(
-        const c_vector[CObjectID]& object_ids_to_spill) nogil:
+        const c_vector[CObjectID]& object_ids_to_spill,
+        const c_vector[c_string]& owner_addresses) nogil:
     cdef c_vector[c_string] return_urls
     with gil:
         object_refs = VectorToObjectRefs(object_ids_to_spill)
@@ -636,7 +652,8 @@ cdef c_vector[c_string] spill_objects_handler(
             with ray.worker._changeproctitle(
                     ray_constants.WORKER_PROCESS_TYPE_SPILL_WORKER,
                     ray_constants.WORKER_PROCESS_TYPE_SPILL_WORKER_IDLE):
-                urls = external_storage.spill_objects(object_refs)
+                urls = external_storage.spill_objects(
+                    object_refs, owner_addresses)
             for url in urls:
                 return_urls.push_back(url)
         except Exception:
@@ -720,6 +737,20 @@ cdef void delete_spilled_objects_handler(
                 "delete_spilled_objects_error",
                 traceback.format_exc() + exception_str,
                 job_id=None)
+
+
+cdef void unhandled_exception_handler(const CRayObject& error) nogil:
+    with gil:
+        worker = ray.worker.global_worker
+        data = None
+        metadata = None
+        if error.HasData():
+            data = Buffer.make(error.GetData())
+        if error.HasMetadata():
+            metadata = Buffer.make(error.GetMetadata()).to_pybytes()
+        # TODO(ekl) why does passing a ObjectRef.nil() lead to shutdown errors?
+        object_ids = [None]
+        worker.raise_errors([(data, metadata)], object_ids)
 
 
 # This function introduces ~2-7us of overhead per call (i.e., it can be called
@@ -831,6 +862,7 @@ cdef class CoreWorker:
         options.spill_objects = spill_objects_handler
         options.restore_spilled_objects = restore_spilled_objects_handler
         options.delete_spilled_objects = delete_spilled_objects_handler
+        options.unhandled_exception_handler = unhandled_exception_handler
         options.get_lang_stack = get_py_stack
         options.ref_counting_enabled = True
         options.is_local_mode = local_mode
@@ -839,7 +871,6 @@ cdef class CoreWorker:
         options.terminate_asyncio_thread = terminate_asyncio_thread
         options.serialized_job_config = serialized_job_config
         options.metrics_agent_port = metrics_agent_port
-
         CCoreWorkerProcess.Initialize(options)
 
     def __dealloc__(self):
@@ -916,21 +947,26 @@ cdef class CoreWorker:
                     c_object_ids, &results))
         return RayObjectsToDataMetadataPairs(results)
 
-    def object_exists(self, ObjectRef object_ref):
+    def object_exists(self, ObjectRef object_ref, memory_store_only=False):
         cdef:
             c_bool has_object
+            c_bool is_in_plasma
             CObjectID c_object_id = object_ref.native()
 
         with nogil:
             check_status(CCoreWorkerProcess.GetCoreWorker().Contains(
-                c_object_id, &has_object))
+                c_object_id, &has_object, &is_in_plasma))
 
-        return has_object
+        return has_object and (not memory_store_only or not is_in_plasma)
 
     cdef _create_put_buffer(self, shared_ptr[CBuffer] &metadata,
                             size_t data_size, ObjectRef object_ref,
                             c_vector[CObjectID] contained_ids,
-                            CObjectID *c_object_id, shared_ptr[CBuffer] *data):
+                            CObjectID *c_object_id, shared_ptr[CBuffer] *data,
+                            owner_address=None):
+        cdef:
+            CAddress c_owner_address
+
         if object_ref is None:
             with nogil:
                 check_status(CCoreWorkerProcess.GetCoreWorker().CreateOwned(
@@ -938,11 +974,16 @@ cdef class CoreWorker:
                              c_object_id, data))
         else:
             c_object_id[0] = object_ref.native()
+            if owner_address is None:
+                c_owner_address = CCoreWorkerProcess.GetCoreWorker(
+                    ).GetRpcAddress()
+            else:
+                c_owner_address = CAddress()
+                c_owner_address.ParseFromString(owner_address)
             with nogil:
                 check_status(CCoreWorkerProcess.GetCoreWorker().CreateExisting(
                             metadata, data_size, c_object_id[0],
-                            CCoreWorkerProcess.GetCoreWorker().GetRpcAddress(),
-                            data))
+                            c_owner_address, data))
 
         # If data is nullptr, that means the ObjectRef already existed,
         # which we ignore.
@@ -951,7 +992,8 @@ cdef class CoreWorker:
         return data.get() == NULL
 
     def put_file_like_object(
-            self, metadata, data_size, file_like, ObjectRef object_ref):
+            self, metadata, data_size, file_like, ObjectRef object_ref,
+            owner_address):
         """Directly create a new Plasma Store object from a file like
         object. This avoids extra memory copy.
 
@@ -961,6 +1003,7 @@ cdef class CoreWorker:
             file_like: A python file object that provides the `readinto`
                 interface.
             object_ref: The new ObjectRef.
+            owner_address: Owner address for this object ref.
         """
         cdef:
             CObjectID c_object_id
@@ -975,7 +1018,7 @@ cdef class CoreWorker:
         object_already_exists = self._create_put_buffer(
             metadata_buf, data_size, object_ref,
             ObjectRefsToVector([]),
-            &c_object_id, &data_buf)
+            &c_object_id, &data_buf, owner_address)
         if object_already_exists:
             logger.debug("Object already exists in 'put_file_like_object'.")
             return
@@ -1430,9 +1473,13 @@ cdef class CoreWorker:
             object_ref.native())
 
     def remove_object_ref_reference(self, ObjectRef object_ref):
-        # Note: faster to not release GIL for short-running op.
-        CCoreWorkerProcess.GetCoreWorker().RemoveLocalReference(
-            object_ref.native())
+        cdef:
+            CObjectID c_object_id = object_ref.native()
+        # We need to release the gil since object destruction may call the
+        # unhandled exception handler.
+        with nogil:
+            CCoreWorkerProcess.GetCoreWorker().RemoveLocalReference(
+                c_object_id)
 
     def serialize_and_promote_object_ref(self, ObjectRef object_ref):
         cdef:
@@ -1564,6 +1611,9 @@ cdef class CoreWorker:
         return (CCoreWorkerProcess.GetCoreWorker().GetWorkerContext()
                 .CurrentActorIsAsync())
 
+    def is_exiting(self):
+        return CCoreWorkerProcess.GetCoreWorker().IsExiting()
+
     cdef yield_current_fiber(self, CFiberEvent &fiber_event):
         with nogil:
             CCoreWorkerProcess.GetCoreWorker().YieldCurrentFiber(fiber_event)
@@ -1606,6 +1656,13 @@ cdef class CoreWorker:
         CCoreWorkerProcess.GetCoreWorker().SetResource(
             resource_name.encode("ascii"), capacity,
             CNodeID.FromBinary(client_id.binary()))
+
+    def get_job_config(self):
+        cdef CJobConfig c_job_config = \
+            CCoreWorkerProcess.GetCoreWorker().GetJobConfig()
+        job_config = ray.gcs_utils.JobConfig()
+        job_config.ParseFromString(c_job_config.SerializeAsString())
+        return job_config
 
 cdef void async_callback(shared_ptr[CRayObject] obj,
                          CObjectID object_ref,

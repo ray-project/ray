@@ -126,11 +126,11 @@ class FIFOScheduler(TrialScheduler):
             self, trial_runner: "trial_runner.TrialRunner") -> Optional[Trial]:
         for trial in trial_runner.get_trials():
             if (trial.status == Trial.PENDING
-                    and trial_runner.has_resources(trial.resources)):
+                    and trial_runner.has_resources_for_trial(trial)):
                 return trial
         for trial in trial_runner.get_trials():
             if (trial.status == Trial.PAUSED
-                    and trial_runner.has_resources(trial.resources)):
+                    and trial_runner.has_resources_for_trial(trial)):
                 return trial
         return None
 

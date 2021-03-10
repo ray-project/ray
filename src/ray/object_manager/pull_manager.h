@@ -15,7 +15,6 @@
 #include "ray/object_manager/common.h"
 #include "ray/object_manager/format/object_manager_generated.h"
 #include "ray/object_manager/notification/object_store_notification_manager_ipc.h"
-#include "ray/object_manager/object_buffer_pool.h"
 #include "ray/object_manager/object_directory.h"
 #include "ray/object_manager/ownership_based_object_directory.h"
 #include "ray/object_manager/plasma/store_runner.h"
@@ -32,13 +31,17 @@ class PullManager {
   ///
   /// \param self_node_id the current node
   /// \param object_is_local A callback which should return true if a given object is
-  /// already on the local node. \param send_pull_request A callback which should send a
+  /// already on the local node.
+  /// \param send_pull_request A callback which should send a
   /// pull request to the specified node.
+  /// \param cancel_pull_request A callback which should
+  /// cancel pulling an object.
   /// \param restore_spilled_object A callback which should
   /// retrieve an spilled object from the external store.
   PullManager(
       NodeID &self_node_id, const std::function<bool(const ObjectID &)> object_is_local,
       const std::function<void(const ObjectID &, const NodeID &)> send_pull_request,
+      const std::function<void(const ObjectID &)> cancel_pull_request,
       const RestoreSpilledObjectCallback restore_spilled_object,
       const std::function<double()> get_time, int pull_timeout_ms,
       size_t num_bytes_available, std::function<void()> object_store_full_callback);
@@ -100,6 +103,14 @@ class PullManager {
   /// The number of ongoing object pulls.
   int NumActiveRequests() const;
 
+  bool IsObjectActive(const ObjectID &object_id) const;
+
+  /// Check whether the pull request is currently active or waiting for object
+  /// size information. If this returns false, then the pull request is most
+  /// likely inactive due to lack of memory. This can also return false if an
+  /// earlier request is waiting for metadata.
+  bool PullRequestActiveOrWaitingForMetadata(uint64_t request_id) const;
+
   std::string DebugString() const;
 
  private:
@@ -124,12 +135,30 @@ class PullManager {
     absl::flat_hash_set<uint64_t> bundle_request_ids;
   };
 
+  struct PullBundleRequest {
+    PullBundleRequest(const std::vector<rpc::ObjectReference> &requested_objects)
+        : objects(requested_objects), num_object_sizes_missing(objects.size()) {}
+    const std::vector<rpc::ObjectReference> objects;
+    size_t num_object_sizes_missing;
+    // The total number of bytes needed by this pull bundle request. Note that
+    // the objects may overlap with another request, so the actual amount of
+    // memory needed to activate this request may be less than this amount.
+    size_t num_bytes_needed = 0;
+
+    void RegisterObjectSize(size_t object_size) {
+      RAY_CHECK(num_object_sizes_missing > 0);
+      num_object_sizes_missing--;
+      num_bytes_needed += object_size;
+    }
+  };
+
   /// Try to make an object local, by restoring the object from external
   /// storage or by fetching the object from one of its expected client
   /// locations. This does nothing if the object is not needed by any pull
   /// request or if it is already local. This also sets a timeout for when to
   /// make the next attempt to make the object local.
-  void TryToMakeObjectLocal(const ObjectID &object_id);
+  void TryToMakeObjectLocal(const ObjectID &object_id)
+      EXCLUSIVE_LOCKS_REQUIRED(active_objects_mu_);
 
   /// Try to Pull an object from one of its expected client locations. If there
   /// are more client locations to try after this attempt, then this method
@@ -147,15 +176,14 @@ class PullManager {
   /// Activate the next pull request in the queue. This will start pulls for
   /// any objects in the request that are not already being pulled.
   bool ActivateNextPullBundleRequest(
-      const std::map<uint64_t, std::vector<rpc::ObjectReference>>::iterator
-          &next_request_it,
+      const std::map<uint64_t, PullBundleRequest>::iterator &next_request_it,
       std::vector<ObjectID> *objects_to_pull);
 
   /// Deactivate a pull request in the queue. This cancels any pull or restore
   /// operations for the object.
   void DeactivatePullBundleRequest(
-      const std::map<uint64_t, std::vector<rpc::ObjectReference>>::iterator &request_it,
-      std::unordered_set<ObjectID> *objects_to_cancel = nullptr);
+      const std::map<uint64_t, PullBundleRequest>::iterator &request_it,
+      std::unordered_set<ObjectID> *objects_to_cancel);
 
   /// Trigger out-of-memory handling if the first request in the queue needs
   /// more space than the bytes available. This is needed to make room for the
@@ -166,6 +194,7 @@ class PullManager {
   NodeID self_node_id_;
   const std::function<bool(const ObjectID &)> object_is_local_;
   const std::function<void(const ObjectID &, const NodeID &)> send_pull_request_;
+  const std::function<void(const ObjectID &)> cancel_pull_request_;
   const RestoreSpilledObjectCallback restore_spilled_object_;
   const std::function<double()> get_time_;
   uint64_t pull_timeout_ms_;
@@ -177,7 +206,7 @@ class PullManager {
   /// The currently active pull requests. Each request is a bundle of objects
   /// that must be made local. The key is the ID that was assigned to that
   /// request, which can be used by the caller to cancel the request.
-  std::map<uint64_t, std::vector<rpc::ObjectReference>> pull_request_bundles_;
+  std::map<uint64_t, PullBundleRequest> pull_request_bundles_;
 
   /// The total number of bytes that we are currently pulling. This is the
   /// total size of the objects requested that we are actively pulling. To
@@ -207,12 +236,16 @@ class PullManager {
   /// object managers.
   std::unordered_map<ObjectID, ObjectPullRequest> object_pull_requests_;
 
+  // Protects state that is shared by the threads used to receive object
+  // chunks.
+  mutable absl::Mutex active_objects_mu_;
+
   /// The objects that we are currently fetching. This is a subset of the
   /// objects that we have been asked to fetch. The total size of these objects
   /// is the number of bytes that we are currently pulling, and it must be less
   /// than the bytes available.
   absl::flat_hash_map<ObjectID, absl::flat_hash_set<uint64_t>>
-      active_object_pull_requests_;
+      active_object_pull_requests_ GUARDED_BY(active_objects_mu_);
 
   /// Internally maintained random number generator.
   std::mt19937_64 gen_;

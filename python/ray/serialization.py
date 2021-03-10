@@ -1,19 +1,14 @@
 import logging
 import threading
+import traceback
 
 import ray.cloudpickle as pickle
 from ray import ray_constants
 import ray.utils
 from ray.gcs_utils import ErrorType
 from ray.exceptions import (
-    RayError,
-    PlasmaObjectNotAvailable,
-    RayTaskError,
-    RayActorError,
-    TaskCancelledError,
-    WorkerCrashedError,
-    ObjectLostError,
-)
+    RayError, PlasmaObjectNotAvailable, RayTaskError, RayActorError,
+    TaskCancelledError, WorkerCrashedError, ObjectLostError, RaySystemError)
 from ray._raylet import (
     split_buffer,
     unpack_pickle5_buffers,
@@ -221,7 +216,7 @@ class SerializationContext:
             elif error_type == ErrorType.Value("TASK_CANCELLED"):
                 return TaskCancelledError()
             elif error_type == ErrorType.Value("OBJECT_UNRECONSTRUCTABLE"):
-                return ObjectLostError(ray.ObjectRef(object_ref.binary()))
+                return ObjectLostError(object_ref.hex())
             else:
                 assert error_type != ErrorType.Value("OBJECT_IN_PLASMA"), \
                     "Tried to get object that has been promoted to plasma."
@@ -242,8 +237,13 @@ class SerializationContext:
                                                 data_metadata_pairs):
             assert self.get_outer_object_ref() is None
             self.set_outer_object_ref(object_ref)
-            results.append(
-                self._deserialize_object(data, metadata, object_ref))
+            obj = None
+            try:
+                obj = self._deserialize_object(data, metadata, object_ref)
+            except Exception as e:
+                logger.exception(e)
+                obj = RaySystemError(e, traceback.format_exc())
+            results.append(obj)
             # Must clear ObjectRef to not hold a reference.
             self.set_outer_object_ref(None)
         return results

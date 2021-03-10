@@ -1,4 +1,5 @@
 import jsonschema
+import logging
 import os
 import sys
 import tempfile
@@ -9,10 +10,14 @@ import copy
 from unittest.mock import MagicMock, Mock, patch
 import pytest
 
-from ray.autoscaler._private.util import prepare_config, validate_config
+from ray.autoscaler._private.util import prepare_config, validate_config,\
+    _get_default_config, merge_setup_commands
 from ray.autoscaler._private.providers import _NODE_PROVIDERS
+from ray.autoscaler._private.kubernetes.node_provider import\
+    KubernetesNodeProvider
+from ray.autoscaler.tags import NODE_TYPE_LEGACY_HEAD, NODE_TYPE_LEGACY_WORKER
 
-from ray.test_utils import recursive_fnmatch
+from ray.test_utils import load_test_config, recursive_fnmatch
 
 RAY_PATH = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
 CONFIG_PATHS = recursive_fnmatch(
@@ -25,6 +30,7 @@ CONFIG_PATHS += recursive_fnmatch(
 def ignore_k8s_operator_configs(paths):
     return [
         path for path in paths if "kubernetes/operator_configs" not in path
+        and "kubernetes/job-example.yaml" not in path
     ]
 
 
@@ -34,16 +40,21 @@ CONFIG_PATHS = ignore_k8s_operator_configs(CONFIG_PATHS)
 class AutoscalingConfigTest(unittest.TestCase):
     def testValidateDefaultConfig(self):
         for config_path in CONFIG_PATHS:
-            if "aws/example-multi-node-type.yaml" in config_path:
-                # aws is tested in testValidateDefaultConfigAWSMultiNodeTypes.
-                continue
-            with open(config_path) as f:
-                config = yaml.safe_load(f)
-            config = prepare_config(config)
             try:
+                if "aws/example-multi-node-type.yaml" in config_path:
+                    # aws tested in testValidateDefaultConfigAWSMultiNodeTypes.
+                    continue
+                with open(config_path) as f:
+                    config = yaml.safe_load(f)
+                config = prepare_config(config)
+                if config["provider"]["type"] == "kubernetes":
+                    KubernetesNodeProvider.\
+                        fillout_available_node_types_resources(config)
                 validate_config(config)
             except Exception:
-                self.fail("Config did not pass validation test!")
+                logging.exception("")
+                self.fail(
+                    f"Config {config_path} did not pass validation test!")
 
     @pytest.mark.skipif(
         sys.platform.startswith("win"), reason="Fails on Windows.")
@@ -223,6 +234,131 @@ class AutoscalingConfigTest(unittest.TestCase):
                 "GroupName"] == group_name
         except Exception:
             self.fail("Failed to validate config with security group name!")
+
+    def testMaxWorkerDefault(self):
+        # Load config, call prepare config, check that default max_workers
+        # is filled correctly for node types that don't specify it.
+        # Check that max_workers is untouched for node types
+        # that do specify it.
+        config = load_test_config("test_multi_node.yaml")
+        node_types = config["available_node_types"]
+
+        # Max workers initially absent for this node type.
+        assert "max_workers" not in node_types["worker_node_max_unspecified"]
+        # Max workers specified for this node type.
+        assert "max_workers" in node_types["worker_node_max_specified"]
+
+        prepared_config = prepare_config(config)
+        prepared_node_types = prepared_config["available_node_types"]
+        # Max workers unchanged.
+        assert node_types["worker_node_max_specified"]["max_workers"] ==\
+            prepared_node_types["worker_node_max_specified"][
+                "max_workers"] == 3
+        # Max workers auto-filled with specified cluster-wide value of 5.
+        assert config["max_workers"] ==\
+            prepared_node_types["worker_node_max_unspecified"]["max_workers"]\
+            == 5
+
+        # Repeat with a config that doesn't specify global max workers.
+        # Default value of 2 should be pulled in for global max workers.
+        config = load_test_config("test_multi_node.yaml")
+        # Delete global max_workers so it can be autofilled with default of 2.
+        del config["max_workers"]
+        node_types = config["available_node_types"]
+
+        # Max workers initially absent for this node type.
+        assert "max_workers" not in node_types["worker_node_max_unspecified"]
+        # Max workers specified for this node type.
+        assert "max_workers" in node_types["worker_node_max_specified"]
+
+        prepared_config = prepare_config(config)
+        prepared_node_types = prepared_config["available_node_types"]
+        # Max workers unchanged.
+        assert node_types["worker_node_max_specified"]["max_workers"] ==\
+            prepared_node_types["worker_node_max_specified"][
+                "max_workers"] == 3
+        # Max workers auto-filled with default cluster-wide value of 2.
+        assert prepared_config["max_workers"] ==\
+            prepared_node_types["worker_node_max_unspecified"]["max_workers"]\
+            == 2
+
+    def testFillEdgeLegacyConfigs(self):
+        # Test edge cases: legacy configs which specify workers but not head
+        # or vice-versa.
+        no_head = load_test_config("test_no_head.yaml")
+        aws_defaults = _get_default_config(no_head["provider"])
+        head_prepared = prepare_config(no_head)
+        assert head_prepared["available_node_types"][
+            "ray-legacy-head-node-type"]["node_config"] ==\
+            aws_defaults["available_node_types"][
+                "ray.head.default"]["node_config"]
+        assert head_prepared["head_node"] == {}
+        # Custom worker config preserved
+        node_types = head_prepared["available_node_types"]
+        worker_type = node_types["ray-legacy-worker-node-type"]
+        assert worker_type["node_config"] == head_prepared["worker_nodes"] == {
+            "foo": "bar"
+        }
+
+        no_workers = load_test_config("test_no_workers.yaml")
+        workers_prepared = prepare_config(no_workers)
+        assert workers_prepared["available_node_types"][
+            "ray-legacy-worker-node-type"]["node_config"] ==\
+            aws_defaults["available_node_types"][
+                "ray.worker.default"]["node_config"]
+        assert workers_prepared["worker_nodes"] == {}
+        # Custom head config preserved
+        node_types = workers_prepared["available_node_types"]
+        head_type = node_types["ray-legacy-head-node-type"]
+        assert head_type["node_config"] == workers_prepared["head_node"] == {
+            "baz": "qux"
+        }
+
+    @pytest.mark.skipif(
+        sys.platform.startswith("win"), reason="Fails on Windows.")
+    def testExampleFull(self):
+        """
+        Test that example-full yamls are unmodified by prepared_config,
+        except possibly by having setup_commands merged.
+        """
+        providers = ["aws", "gcp", "azure"]
+        for provider in providers:
+            path = os.path.join(RAY_PATH, "autoscaler", provider,
+                                "example-full.yaml")
+            config = yaml.safe_load(open(path).read())
+            config_copy = copy.deepcopy(config)
+            merge_setup_commands(config_copy)
+            assert config_copy == prepare_config(config)
+
+    @pytest.mark.skipif(
+        sys.platform.startswith("win"), reason="Fails on Windows.")
+    def testLegacyYaml(self):
+        # Test correct default-merging behavior for legacy yamls.
+        providers = ["aws", "gcp", "azure"]
+        for provider in providers:
+            path = os.path.join(RAY_PATH, "autoscaler", provider,
+                                "example-full-legacy.yaml")
+            legacy_config = yaml.safe_load(open(path).read())
+            # custom head and workers
+            legacy_config["head_node"] = {"blahblah": 0}
+            legacy_config["worker_nodes"] = {"halbhalhb": 0}
+            legacy_config_copy = copy.deepcopy(legacy_config)
+            prepared_legacy = prepare_config(legacy_config_copy)
+            assert prepared_legacy["available_node_types"][
+                NODE_TYPE_LEGACY_HEAD]["max_workers"] == 0
+            assert prepared_legacy["available_node_types"][
+                NODE_TYPE_LEGACY_HEAD]["min_workers"] == 0
+            assert prepared_legacy["available_node_types"][
+                NODE_TYPE_LEGACY_HEAD]["node_config"] == legacy_config[
+                    "head_node"]
+
+            assert prepared_legacy["available_node_types"][
+                NODE_TYPE_LEGACY_WORKER]["max_workers"] == 2
+            assert prepared_legacy["available_node_types"][
+                NODE_TYPE_LEGACY_WORKER]["min_workers"] == 0
+            assert prepared_legacy["available_node_types"][
+                NODE_TYPE_LEGACY_WORKER]["node_config"] == legacy_config[
+                    "worker_nodes"]
 
 
 if __name__ == "__main__":

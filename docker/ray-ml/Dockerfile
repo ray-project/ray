@@ -6,8 +6,7 @@ ARG PYTHON_MINOR_VERSION=7
 COPY requirements.txt ./
 COPY requirements_ml_docker.txt ./
 COPY requirements_rllib.txt ./
-# Docker image uses Python 3.7
-COPY linux-py3."$PYTHON_MINOR_VERSION"-requirements_tune.txt ./requirements_tune.txt
+COPY requirements_tune.txt ./requirements_tune.txt
 
 RUN sudo apt-get update \
     && sudo apt-get install -y gcc \

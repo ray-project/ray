@@ -94,6 +94,22 @@ inline std::unordered_map<std::string, double> ToResources(JNIEnv *env,
       });
 }
 
+inline std::pair<ray::PlacementGroupID, int64_t> ToPlacementGroupOptions(
+    JNIEnv *env, jobject callOptions) {
+  auto placement_group_options = std::make_pair(ray::PlacementGroupID::Nil(), -1);
+  auto group = env->GetObjectField(callOptions, java_task_creation_options_group);
+  if (group) {
+    auto placement_group_id = env->GetObjectField(group, java_placement_group_id);
+    auto java_id_bytes = static_cast<jbyteArray>(
+        env->CallObjectMethod(placement_group_id, java_base_id_get_bytes));
+    RAY_CHECK_JAVA_EXCEPTION(env);
+    auto id = JavaByteArrayToId<ray::PlacementGroupID>(env, java_id_bytes);
+    auto index = env->GetIntField(callOptions, java_task_creation_options_bundle_index);
+    placement_group_options = std::make_pair(id, index);
+  }
+  return placement_group_options;
+}
+
 inline ray::TaskOptions ToTaskOptions(JNIEnv *env, jint numReturns, jobject callOptions) {
   std::unordered_map<std::string, double> resources;
   std::string name = "";
@@ -156,7 +172,7 @@ inline ray::ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
     }
   }
 
-  auto full_name = GetActorFullName(global, name);
+  auto full_name = GetFullName(global, name);
   ray::ActorCreationOptions actor_creation_options{
       max_restarts,
       0,  // TODO: Allow setting max_task_retries from Java.
@@ -185,7 +201,22 @@ inline ray::PlacementStrategy ConvertStrategy(jint java_strategy) {
 }
 
 inline ray::PlacementGroupCreationOptions ToPlacementGroupCreationOptions(
-    JNIEnv *env, jstring name, jobject java_bundles, jint java_strategy) {
+    JNIEnv *env, jobject placementGroupCreationOptions) {
+  // We have make sure the placementGroupCreationOptions is not null in java api.
+  bool global = env->GetBooleanField(placementGroupCreationOptions,
+                                     java_placement_group_creation_options_global);
+  std::string name = "";
+  jstring java_name = (jstring)env->GetObjectField(
+      placementGroupCreationOptions, java_placement_group_creation_options_name);
+  if (java_name) {
+    name = JavaStringToNativeString(env, java_name);
+  }
+  jobject java_obj_strategy = env->GetObjectField(
+      placementGroupCreationOptions, java_placement_group_creation_options_strategy);
+  jint java_strategy = env->CallIntMethod(
+      java_obj_strategy, java_placement_group_creation_options_strategy_value);
+  jobject java_bundles = env->GetObjectField(
+      placementGroupCreationOptions, java_placement_group_creation_options_bundles);
   std::vector<std::unordered_map<std::string, double>> bundles;
   JavaListToNativeVector<std::unordered_map<std::string, double>>(
       env, java_bundles, &bundles, [](JNIEnv *env, jobject java_bundle) {
@@ -200,8 +231,9 @@ inline ray::PlacementGroupCreationOptions ToPlacementGroupCreationOptions(
               return value;
             });
       });
-  return ray::PlacementGroupCreationOptions(JavaStringToNativeString(env, name),
-                                            ConvertStrategy(java_strategy), bundles,
+  auto full_name = GetFullName(global, name);
+  return ray::PlacementGroupCreationOptions(full_name, ConvertStrategy(java_strategy),
+                                            bundles,
                                             /*is_detached=*/false);
 }
 
@@ -216,14 +248,14 @@ JNIEXPORT jobject JNICALL Java_io_ray_runtime_task_NativeTaskSubmitter_nativeSub
       ToRayFunction(env, functionDescriptor, functionDescriptorHash);
   auto task_args = ToTaskArgs(env, args);
   auto task_options = ToTaskOptions(env, numReturns, callOptions);
+  auto placement_group_options = ToPlacementGroupOptions(env, callOptions);
 
   std::vector<ObjectID> return_ids;
   // TODO (kfstorm): Allow setting `max_retries` via `CallOptions`.
   ray::CoreWorkerProcess::GetCoreWorker().SubmitTask(
       ray_function, task_args, task_options, &return_ids,
       /*max_retries=*/0,
-      /*placement_options=*/
-      std::pair<ray::PlacementGroupID, int64_t>(ray::PlacementGroupID::Nil(), 0),
+      /*placement_options=*/placement_group_options,
       /*placement_group_capture_child_tasks=*/true,
       /*debugger_breakpoint*/ "");
 
@@ -277,8 +309,8 @@ Java_io_ray_runtime_task_NativeTaskSubmitter_nativeSubmitActorTask(
 
 JNIEXPORT jbyteArray JNICALL
 Java_io_ray_runtime_task_NativeTaskSubmitter_nativeCreatePlacementGroup(
-    JNIEnv *env, jclass, jstring name, jobject bundles, jint strategy) {
-  auto options = ToPlacementGroupCreationOptions(env, name, bundles, strategy);
+    JNIEnv *env, jclass, jobject placementGroupCreationOptions) {
+  auto options = ToPlacementGroupCreationOptions(env, placementGroupCreationOptions);
   ray::PlacementGroupID placement_group_id;
   auto status = ray::CoreWorkerProcess::GetCoreWorker().CreatePlacementGroup(
       options, &placement_group_id);

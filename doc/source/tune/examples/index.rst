@@ -43,6 +43,7 @@ Search Algorithm Examples
 - :doc:`/tune/examples/optuna_example`: Example script showing usage of :ref:`OptunaSearch <tune-optuna>` [`Optuna website <https://optuna.org/>`__]
 - :doc:`/tune/examples/zoopt_example`: Example script showing usage of :ref:`ZOOptSearch <zoopt>` [`ZOOpt website <https://github.com/polixir/ZOOpt>`__]
 - :doc:`/tune/examples/sigopt_example`: Example script showing usage of :ref:`SigOptSearch <sigopt>` [`SigOpt website <https://sigopt.com/>`__]
+- :doc:`/tune/examples/hebo_example`: Example script showing usage of :ref:`HEBOSearch <tune-hebo>` [`HEBO website <https://github.com/huawei-noah/noah-research/tree/master/HEBO>`__]
 
 
 **Sigopt (Contributed)**

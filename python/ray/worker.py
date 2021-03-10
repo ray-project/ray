@@ -9,7 +9,6 @@ import json
 import logging
 import os
 import redis
-from six.moves import queue
 import sys
 import threading
 import time
@@ -18,6 +17,7 @@ from typing import Any, Dict, List, Iterator
 
 # Ray modules
 from ray.autoscaler._private.constants import AUTOSCALER_EVENTS
+from ray.autoscaler._private.util import DEBUG_AUTOSCALING_ERROR
 import ray.cloudpickle as pickle
 import ray.gcs_utils
 import ray.memory_monitor as memory_monitor
@@ -28,6 +28,7 @@ import ray.ray_constants as ray_constants
 import ray.remote_function
 import ray.serialization as serialization
 import ray._private.services as services
+import ray._private.runtime_env as runtime_env
 import ray
 import setproctitle
 import ray.signature
@@ -53,6 +54,8 @@ from ray.ray_logging import setup_logger
 from ray.ray_logging import global_worker_stdstream_dispatcher
 from ray.utils import _random_string, check_oversized_pickle
 from ray.util.inspect import is_cython
+from ray.experimental.internal_kv import _internal_kv_get, \
+    _internal_kv_initialized
 from ray._private.client_mode_hook import client_mode_hook
 
 SCRIPT_MODE = 0
@@ -67,6 +70,12 @@ ERROR_KEY_PREFIX = b"Error:"
 # into the program using Ray. Ray provides a default configuration at
 # entry/init points.
 logger = logging.getLogger(__name__)
+
+
+# Visible for testing.
+def _unhandled_error_handler(e: Exception):
+    logger.error("Unhandled error (suppress with "
+                 "RAY_IGNORE_UNHANDLED_ERRORS=1): {}".format(e))
 
 
 class Worker:
@@ -277,6 +286,14 @@ class Worker:
             self.core_worker.put_serialized_object(
                 serialized_value, object_ref=object_ref))
 
+    def raise_errors(self, data_metadata_pairs, object_refs):
+        context = self.get_serialization_context()
+        out = context.deserialize_objects(data_metadata_pairs, object_refs)
+        if "RAY_IGNORE_UNHANDLED_ERRORS" in os.environ:
+            return
+        for e in out:
+            _unhandled_error_handler(e)
+
     def deserialize_objects(self, data_metadata_pairs, object_refs):
         context = self.get_serialization_context()
         return context.deserialize_objects(data_metadata_pairs, object_refs)
@@ -407,12 +424,14 @@ def get_gpu_ids():
 
     # TODO(ilr) Handle inserting resources in local mode
     all_resource_ids = global_worker.core_worker.resource_ids()
-    assigned_ids = []
+    assigned_ids = set()
     for resource, assignment in all_resource_ids.items():
         # Handle both normal and placement group GPU resources.
         if resource == "GPU" or resource.startswith("GPU_group_"):
             for resource_id, _ in assignment:
-                assigned_ids.append(resource_id)
+                assigned_ids.add(resource_id)
+
+    assigned_ids = list(assigned_ids)
     # If the user had already set CUDA_VISIBLE_DEVICES, then respect that (in
     # the sense that only GPU IDs that appear in CUDA_VISIBLE_DEVICES should be
     # returned).
@@ -496,7 +515,6 @@ def init(
         _driver_object_store_memory=None,
         _memory=None,
         _redis_password=ray_constants.REDIS_DEFAULT_PASSWORD,
-        _java_worker_options=None,
         _temp_dir=None,
         _lru_evict=False,
         _metrics_export_port=None,
@@ -587,13 +605,6 @@ def init(
         _temp_dir (str): If provided, specifies the root temporary
             directory for the Ray process. Defaults to an OS-specific
             conventional location, e.g., "/tmp/ray".
-        _java_worker_options: Overwrite the options to start Java workers.
-        _lru_evict (bool): If True, when an object store is full, it will evict
-            objects in LRU order to make more space and when under memory
-            pressure, ray.ObjectLostError may be thrown. If False, then
-            reference counting will be used to decide which objects are safe
-            to evict and when under memory pressure, ray.ObjectStoreFullError
-            may be thrown.
         _metrics_export_port(int): Port number Ray exposes system metrics
             through a Prometheus endpoint. It is currently under active
             development, and the API is subject to change.
@@ -636,7 +647,6 @@ def init(
     if "RAY_ADDRESS" in os.environ:
         if address is None or address == "auto":
             address = os.environ["RAY_ADDRESS"]
-
     # Convert hostnames to numerical IP address.
     if _node_ip_address is not None:
         node_ip_address = services.address_to_ip(_node_ip_address)
@@ -701,7 +711,6 @@ def init(
             redis_max_memory=_redis_max_memory,
             plasma_store_socket_name=None,
             temp_dir=_temp_dir,
-            java_worker_options=_java_worker_options,
             start_initial_python_workers_for_first_job=True,
             _system_config=_system_config,
             lru_evict=_lru_evict,
@@ -731,9 +740,6 @@ def init(
         if _system_config is not None and len(_system_config) != 0:
             raise ValueError("When connecting to an existing cluster, "
                              "_system_config must not be provided.")
-        if _lru_evict:
-            raise ValueError("When connecting to an existing cluster, "
-                             "_lru_evict must not be provided.")
         if _enable_object_reconstruction:
             raise ValueError(
                 "When connecting to an existing cluster, "
@@ -758,6 +764,11 @@ def init(
             spawn_reaper=False,
             connect_only=True)
 
+    if driver_mode == SCRIPT_MODE and job_config:
+        # Rewrite the URI. Note the package isn't uploaded to the URI until
+        # later in the connect
+        runtime_env.rewrite_working_dir_uri(job_config)
+
     connect(
         _global_node,
         mode=driver_mode,
@@ -768,6 +779,17 @@ def init(
         job_config=job_config)
     if job_config and job_config.code_search_path:
         global_worker.set_load_code_from_local(True)
+    else:
+        # Because `ray.shutdown()` doesn't reset this flag, for multiple
+        # sessions in one process, the 2nd `ray.init()` will reuse the
+        # flag of last session. For example:
+        #     ray.init(load_code_from_local=True)
+        #     ray.shutdown()
+        #     ray.init()
+        #     # Here the flag `load_code_from_local` is still True if we
+        #     # doesn't have this `else` branch.
+        #     ray.shutdown()
+        global_worker.set_load_code_from_local(False)
 
     for hook in _post_init_hooks:
         hook()
@@ -849,7 +871,8 @@ normal_excepthook = sys.excepthook
 
 def custom_excepthook(type, value, tb):
     # If this is a driver, push the exception to GCS worker table.
-    if global_worker.mode == SCRIPT_MODE:
+    if global_worker.mode == SCRIPT_MODE and hasattr(global_worker,
+                                                     "worker_id"):
         error_message = "".join(traceback.format_tb(tb))
         worker_id = global_worker.worker_id
         worker_type = ray.gcs_utils.DRIVER
@@ -862,13 +885,6 @@ def custom_excepthook(type, value, tb):
 
 
 sys.excepthook = custom_excepthook
-
-# The last time we raised a TaskError in this process. We use this value to
-# suppress redundant error messages pushed from the workers.
-last_task_error_raise_time = 0
-
-# The max amount of seconds to wait before printing out an uncaught error.
-UNCAUGHT_ERROR_GRACE_PERIOD = 5
 
 
 def print_logs(redis_client, threads_stopped, job_id):
@@ -1020,42 +1036,7 @@ def print_worker_logs(data: Dict[str, str], print_file: Any):
                 file=print_file)
 
 
-def print_error_messages_raylet(task_error_queue, threads_stopped):
-    """Prints message received in the given output queue.
-
-    This checks periodically if any un-raised errors occurred in the
-    background.
-
-    Args:
-        task_error_queue (queue.Queue): A queue used to receive errors from the
-            thread that listens to Redis.
-        threads_stopped (threading.Event): A threading event used to signal to
-            the thread that it should exit.
-    """
-
-    while True:
-        # Exit if we received a signal that we should stop.
-        if threads_stopped.is_set():
-            return
-
-        try:
-            error, t = task_error_queue.get(block=False)
-        except queue.Empty:
-            threads_stopped.wait(timeout=0.01)
-            continue
-        # Delay errors a little bit of time to attempt to suppress redundant
-        # messages originating from the worker.
-        while t + UNCAUGHT_ERROR_GRACE_PERIOD > time.time():
-            threads_stopped.wait(timeout=1)
-            if threads_stopped.is_set():
-                break
-        if t < last_task_error_raise_time + UNCAUGHT_ERROR_GRACE_PERIOD:
-            logger.debug(f"Suppressing error from worker: {error}")
-        else:
-            logger.error(f"Possible unhandled error from worker: {error}")
-
-
-def listen_error_messages_raylet(worker, task_error_queue, threads_stopped):
+def listen_error_messages_raylet(worker, threads_stopped):
     """Listen to error messages in the background on the driver.
 
     This runs in a separate thread on the driver and pushes (error, time)
@@ -1063,8 +1044,6 @@ def listen_error_messages_raylet(worker, task_error_queue, threads_stopped):
 
     Args:
         worker: The worker class that this thread belongs to.
-        task_error_queue (queue.Queue): A queue used to communicate with the
-            thread that prints the errors found by this thread.
         threads_stopped (threading.Event): A threading event used to signal to
             the thread that it should exit.
     """
@@ -1080,7 +1059,12 @@ def listen_error_messages_raylet(worker, task_error_queue, threads_stopped):
     worker.error_message_pubsub_client.psubscribe(error_pubsub_channel)
 
     try:
-        # Get the errors that occurred before the call to subscribe.
+        if _internal_kv_initialized():
+            # Get any autoscaler errors that occurred before the call to
+            # subscribe.
+            error_message = _internal_kv_get(DEBUG_AUTOSCALING_ERROR)
+            if error_message is not None:
+                logger.warning(error_message.decode())
 
         while True:
             # Exit if we received a signal that we should stop.
@@ -1103,8 +1087,9 @@ def listen_error_messages_raylet(worker, task_error_queue, threads_stopped):
 
             error_message = error_data.error_message
             if (error_data.type == ray_constants.TASK_PUSH_ERROR):
-                # Delay it a bit to see if we can suppress it
-                task_error_queue.put((error_message, time.time()))
+                # TODO(ekl) remove task push errors entirely now that we have
+                # the separate unhandled exception handler.
+                pass
             else:
                 logger.warning(error_message)
     except (OSError, redis.exceptions.ConnectionError) as e:
@@ -1237,6 +1222,7 @@ def connect(node,
     )
     if job_config is None:
         job_config = ray.job_config.JobConfig()
+
     serialized_job_config = job_config.serialize()
     worker.core_worker = ray._raylet.CoreWorker(
         mode, node.plasma_store_socket_name, node.raylet_socket_name, job_id,
@@ -1250,6 +1236,11 @@ def connect(node,
     # will use glog, which is intialized in `CoreWorker`.
     ray.state.state._initialize_global_state(
         node.redis_address, redis_password=node.redis_password)
+    if mode == SCRIPT_MODE:
+        runtime_env.upload_runtime_env_package_if_needed(job_config)
+    elif mode == WORKER_MODE:
+        runtime_env.ensure_runtime_env_setup(
+            worker.core_worker.get_job_config().runtime_env)
 
     if driver_object_store_memory is not None:
         worker.core_worker.set_object_store_client_options(
@@ -1267,19 +1258,12 @@ def connect(node,
     # temporarily using this implementation which constantly queries the
     # scheduler for new error messages.
     if mode == SCRIPT_MODE:
-        q = queue.Queue()
         worker.listener_thread = threading.Thread(
             target=listen_error_messages_raylet,
             name="ray_listen_error_messages",
-            args=(worker, q, worker.threads_stopped))
-        worker.printer_thread = threading.Thread(
-            target=print_error_messages_raylet,
-            name="ray_print_error_messages",
-            args=(q, worker.threads_stopped))
+            args=(worker, worker.threads_stopped))
         worker.listener_thread.daemon = True
         worker.listener_thread.start()
-        worker.printer_thread.daemon = True
-        worker.printer_thread.start()
         if log_to_driver:
             global_worker_stdstream_dispatcher.add_handler(
                 "ray_print_logs", print_to_stdstream)
@@ -1332,8 +1316,6 @@ def disconnect(exiting_interpreter=False):
             worker.import_thread.join_import_thread()
         if hasattr(worker, "listener_thread"):
             worker.listener_thread.join()
-        if hasattr(worker, "printer_thread"):
-            worker.printer_thread.join()
         if hasattr(worker, "logger_thread"):
             worker.logger_thread.join()
         worker.threads_stopped.clear()
@@ -1445,13 +1427,11 @@ def get(object_refs, *, timeout=None):
             raise ValueError("'object_refs' must either be an object ref "
                              "or a list of object refs.")
 
-        global last_task_error_raise_time
         # TODO(ujvl): Consider how to allow user to retrieve the ready objects.
         values, debugger_breakpoint = worker.get_objects(
             object_refs, timeout=timeout)
         for i, value in enumerate(values):
             if isinstance(value, RayError):
-                last_task_error_raise_time = time.time()
                 if isinstance(value, ray.exceptions.ObjectLostError):
                     worker.core_worker.dump_object_store_memory_usage()
                 if isinstance(value, RayTaskError):
