@@ -2,6 +2,9 @@
 # file must be importable by the driver program, which has its own runtime
 # environment separate from that of this package.
 
+# !!!
+# Stub files can only import ray + built-in packages.
+# !!!
 import ray
 
 
