@@ -15,6 +15,7 @@ import ray
 from ray.experimental.internal_kv import _internal_kv_get
 from ray.autoscaler._private.util import DEBUG_AUTOSCALING_ERROR
 import ray.utils
+from ray.util.placement_group import placement_group
 import ray.ray_constants as ray_constants
 from ray.exceptions import RayTaskError
 from ray.cluster_utils import Cluster
@@ -66,67 +67,6 @@ def test_unhandled_errors(ray_start_regular):
         assert num_exceptions == 2, num_exceptions
     finally:
         del os.environ["RAY_IGNORE_UNHANDLED_ERRORS"]
-
-
-def test_failed_task(ray_start_regular, error_pubsub):
-    @ray.remote
-    def throw_exception_fct1():
-        raise Exception("Test function 1 intentionally failed.")
-
-    @ray.remote
-    def throw_exception_fct2():
-        raise Exception("Test function 2 intentionally failed.")
-
-    @ray.remote(num_returns=3)
-    def throw_exception_fct3(x):
-        raise Exception("Test function 3 intentionally failed.")
-
-    p = error_pubsub
-
-    throw_exception_fct1.remote()
-    throw_exception_fct1.remote()
-
-    msgs = get_error_message(p, 2, ray_constants.TASK_PUSH_ERROR)
-    assert len(msgs) == 2
-    for msg in msgs:
-        assert "Test function 1 intentionally failed." in msg.error_message
-
-    x = throw_exception_fct2.remote()
-    try:
-        ray.get(x)
-    except Exception as e:
-        assert "Test function 2 intentionally failed." in str(e)
-    else:
-        # ray.get should throw an exception.
-        assert False
-
-    x, y, z = throw_exception_fct3.remote(1.0)
-    for ref in [x, y, z]:
-        try:
-            ray.get(ref)
-        except Exception as e:
-            assert "Test function 3 intentionally failed." in str(e)
-        else:
-            # ray.get should throw an exception.
-            assert False
-
-    class CustomException(ValueError):
-        pass
-
-    @ray.remote
-    def f():
-        raise CustomException("This function failed.")
-
-    try:
-        ray.get(f.remote())
-    except Exception as e:
-        assert "This function failed." in str(e)
-        assert isinstance(e, CustomException)
-        assert isinstance(e, ray.exceptions.RayTaskError)
-        assert "RayTaskError(CustomException)" in repr(e)
-    else:
-        # ray.get should throw an exception.
-        assert False
 
 
 def test_push_error_to_driver_through_redis(ray_start_regular, error_pubsub):
@@ -767,6 +707,15 @@ def test_warning_for_infeasible_tasks(ray_start_regular, error_pubsub):
     errors = get_error_message(p, 1, ray_constants.INFEASIBLE_TASK_ERROR)
     assert len(errors) == 1
     assert errors[0].type == ray_constants.INFEASIBLE_TASK_ERROR
+
+    # Placement group cannot be made, but no warnings should occur.
+    pg = placement_group([{"GPU": 1}], strategy="STRICT_PACK")
+    pg.ready()
+    f.options(placement_group=pg).remote()
+
+    errors = get_error_message(
+        p, 1, ray_constants.INFEASIBLE_TASK_ERROR, timeout=5)
+    assert len(errors) == 0, errors
 
 
 def test_warning_for_infeasible_zero_cpu_actor(shutdown_only):

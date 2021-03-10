@@ -219,6 +219,8 @@ def get_policy_class(config):
 
 
 def validate_config(config):
+    if config["num_gpus"] > 1:
+        raise ValueError("`num_gpus` > 1 not yet supported for MAML!")
     if config["inner_adaptation_steps"] <= 0:
         raise ValueError("Inner Adaptation Steps must be >=1!")
     if config["maml_optimizer_steps"] <= 0:
