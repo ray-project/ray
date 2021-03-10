@@ -19,14 +19,13 @@ inline static msgpack::sbuffer TaskExecutionHandler(const char *data, std::size_
       auto &func_name = std::get<0>(p);
       auto func_ptr = FunctionManager::Instance().GetFunction(func_name);
       if (func_ptr == nullptr) {
-        result = PackReturnValue(internal::ErrorCode::FAIL,
-                                 "unknown function: " + func_name, 0);
+        result = PackError("unknown function: " + func_name);
         break;
       }
 
       result = (*func_ptr)(data, size);
     } catch (const std::exception &ex) {
-      result = PackReturnValue(internal::ErrorCode::FAIL, ex.what());
+      result = PackError(ex.what());
     }
   } while (0);
 

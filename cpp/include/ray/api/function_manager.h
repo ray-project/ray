@@ -40,37 +40,22 @@ struct AddType<First, std::tuple<Second...>> {
 template <class First, class Second>
 using AddType_t = typename AddType<First, Second>::type;
 
-enum ErrorCode {
-  OK = 0,
-  FAIL = 1,
-};
-
-struct VoidResponse {
-  int error_code;
-  std::string error_msg;
-
-  MSGPACK_DEFINE(error_code, error_msg);
-};
-
 template <typename T>
-struct Response {
-  int error_code;
-  std::string error_msg;
-  T data;
-
-  MSGPACK_DEFINE(error_code, error_msg, data);
-};
-
-template <typename T>
-inline static msgpack::sbuffer PackReturnValue(int error_code, std::string error_msg,
-                                               T result) {
-  return ray::api::Serializer::Serialize(
-      Response<T>{error_code, std::move(error_msg), std::move(result)});
+inline static msgpack::sbuffer PackReturnValue(T result) {
+  return ray::api::Serializer::Serialize(std::move(result));
 }
 
-inline static msgpack::sbuffer PackReturnValue(int error_code,
-                                               std::string error_msg = "ok") {
-  return ray::api::Serializer::Serialize(VoidResponse{error_code, std::move(error_msg)});
+inline static msgpack::sbuffer PackVoid() {
+  return ray::api::Serializer::Serialize(msgpack::type::nil_t());
+}
+
+inline static msgpack::sbuffer PackError(std::string error_msg) {
+  msgpack::sbuffer sbuffer;
+  msgpack::packer<msgpack::sbuffer> packer(sbuffer);
+  packer.pack(msgpack::type::nil_t());
+  packer.pack(std::move(error_msg));
+
+  return sbuffer;
 }
 
 /// It's help to invoke functions and member functions, the class Invoker<Function> help
@@ -88,13 +73,11 @@ struct Invoker {
       auto tp = ray::api::Serializer::Deserialize<args_tuple>(data, size);
       result = Invoker<Function>::Call(func, std::move(tp));
     } catch (msgpack::type_error &e) {
-      result =
-          PackReturnValue(ErrorCode::FAIL, std::string("invalid arguments: ") + e.what());
+      result = PackError(std::string("invalid arguments: ") + e.what());
     } catch (const std::exception &e) {
-      result = PackReturnValue(ErrorCode::FAIL,
-                               std::string("function execute exception: ") + e.what());
+      result = PackError(std::string("function execute exception: ") + e.what());
     } catch (...) {
-      result = PackReturnValue(ErrorCode::FAIL, "unknown exception");
+      result = PackError("unknown exception");
     }
 
     return result;
@@ -112,7 +95,7 @@ struct Invoker {
                            msgpack::sbuffer>
   Call(const F &f, std::tuple<Arg, Args...> tp) {
     CallInternal(f, absl::make_index_sequence<sizeof...(Args)>{}, std::move(tp));
-    return PackReturnValue(ErrorCode::OK);
+    return PackVoid();
   }
 
   template <typename F, typename Arg, typename... Args>
@@ -120,7 +103,7 @@ struct Invoker {
                            msgpack::sbuffer>
   Call(const F &f, std::tuple<Arg, Args...> tp) {
     auto r = CallInternal(f, absl::make_index_sequence<sizeof...(Args)>{}, std::move(tp));
-    return PackReturnValue(ErrorCode::OK, "ok", r);
+    return PackReturnValue(r);
   }
 };
 
