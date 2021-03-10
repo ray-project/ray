@@ -95,7 +95,7 @@ from ray.includes.global_state_accessor cimport CGlobalStateAccessor
 
 import ray
 from ray import external_storage
-from ray.async_compat import (
+from ray._private.async_compat import (
     sync_to_async, get_new_event_loop)
 import ray.memory_monitor as memory_monitor
 import ray.ray_constants as ray_constants

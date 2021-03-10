@@ -11,7 +11,7 @@ import starlette.responses
 
 import ray
 from ray.actor import ActorHandle
-from ray.async_compat import sync_to_async
+from ray._private.async_compat import sync_to_async
 
 from ray.serve.utils import (parse_request_item, _get_logger, chain_future,
                              unpack_future, import_attr)
