@@ -52,7 +52,8 @@ def test_unmatched_tensor_list_length(ray_start_distributed_2_nodes,
     world_size = 4
     actors, _ = create_collective_workers(world_size, backend=backend)
     list_buffer = [np.ones(10, dtype=np.float32) for _ in range(length)]
-    ray.wait([a.set_list_buffer.remote(list_buffer, copy=True) for a in actors])
+    ray.wait([a.set_list_buffer.remote(list_buffer, copy=True)
+              for a in actors])
     if length != world_size:
         with pytest.raises(RuntimeError):
             ray.get([a.do_allgather.remote() for a in actors])
