@@ -12,6 +12,10 @@ You can run this file for an example of loading a "hello world" package.
 
 import importlib.util
 import os
+import re
+import hashlib
+import subprocess
+import tempfile
 import yaml
 
 import ray
@@ -51,14 +55,15 @@ def load_package(config_path: str) -> "_RuntimePackage":
         >>> def f(): ...
     """
 
-    if not os.path.exists(config_path):
-        raise ValueError("Config file does not exist: {}".format(config_path))
-
     if not ray.is_initialized():
         # TODO(ekl) lift this requirement?
         raise RuntimeError("Ray must be initialized first to load packages.")
 
     config_path = _download_from_github_if_needed(config_path)
+
+    if not os.path.exists(config_path):
+        raise ValueError("Config file does not exist: {}".format(config_path))
+
     # TODO(ekl) validate schema?
     config = yaml.safe_load(open(config_path).read())
     base_dir = os.path.abspath(os.path.dirname(config_path))
@@ -70,7 +75,7 @@ def load_package(config_path: str) -> "_RuntimePackage":
             working_dir=base_dir, modules=[])
         pkg_uri = runtime_support.Protocol.GCS.value + "://" + pkg_name
         if not runtime_support.package_exists(pkg_uri):
-            tmp_path = "/tmp/ray/_tmp{}".format(pkg_name)
+            tmp_path = os.path.join(_pkg_tmp(), "_tmp{}".format(pkg_name))
             runtime_support.create_project_package(
                 working_dir=base_dir, modules=[], output_path=tmp_path)
             # TODO(ekl) does this get garbage collected correctly with the
@@ -98,7 +103,41 @@ def load_package(config_path: str) -> "_RuntimePackage":
 
 
 def _download_from_github_if_needed(config_path: str) -> str:
-    # TODO(ekl) support github URIs for the config.
+    if config_path.startswith("http"):
+        if "github" not in config_path:
+            raise ValueError(
+                "Only GitHub URLs are supported by load_package().")
+        if "raw.githubusercontent.com" not in config_path:
+            raise ValueError(
+                "GitHub URL must start with raw.githubusercontent.com")
+        URL_FORMAT = ".*raw.githubusercontent.com/([^/]*)/([^/]*)/([^/]*)/(.*)"
+        match = re.match(URL_FORMAT, config_path)
+        if not match:
+            raise ValueError(
+                "GitHub URL must be of format {}".format(URL_FORMAT))
+        gh_user = match.group(1)
+        gh_repo = match.group(2)
+        gh_branch = match.group(3)
+        gh_subdir = match.group(4)
+        hasher = hashlib.sha1()
+        hasher.update(config_path.encode("utf-8"))
+        config_key = hasher.hexdigest()
+        final_path = os.path.join(_pkg_tmp(),
+                                  "github_snapshot_{}".format(config_key))
+        if not os.path.exists(final_path):
+            tmp = tempfile.mkdtemp(
+                prefix="github_{}".format(gh_repo), dir=_pkg_tmp())
+            subprocess.check_call([
+                "curl", "-L", "https://github.com/{}/{}/tarball/{}".format(
+                    gh_user, gh_repo, gh_branch), "--output", tmp + ".tar.gz"
+            ])
+            subprocess.check_call([
+                "tar", "xzf", tmp + ".tar.gz", "-C", tmp,
+                "--strip-components=1"
+            ])
+            os.rename(tmp, final_path)
+        return os.path.join(final_path, gh_subdir)
+
     return config_path
 
 
@@ -148,8 +187,16 @@ class _RuntimePackage:
             self._module, self._runtime_env)
 
 
+def _pkg_tmp():
+    tmp = "/tmp/ray/packaging"
+    os.makedirs(tmp, exist_ok=True)
+    return tmp
+
+
 if __name__ == "__main__":
     ray.init()
+
+    print("-> Testing load local")
     pkg = load_package("./example_pkg/ray_pkg.yaml")
     print("-> Loaded package", pkg)
     print("-> Package symbols", [x for x in dir(pkg) if not x.startswith("_")])
@@ -157,5 +204,12 @@ if __name__ == "__main__":
     a = pkg.MyActor.remote()
     print(ray.get(a.f.remote()))
     print("-> Testing method call")
-    for _ in range(5):
-        print(ray.get(pkg.my_func.remote()))
+    print(ray.get(pkg.my_func.remote()))
+
+    print("-> Testing load from github")
+    pkg2 = load_package(
+        "http://raw.githubusercontent.com/ericl/ray/packaging/"
+        "python/ray/experimental/packaging/example_pkg/ray_pkg.yaml")
+    print("-> Loaded package", pkg2)
+    print("-> Testing method call")
+    print(ray.get(pkg2.my_func.remote()))
