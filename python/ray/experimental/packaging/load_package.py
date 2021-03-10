@@ -8,30 +8,6 @@ runtime environment, which can include:
  - Different Docker container images.
 
 You can run this file for an example of loading a "hello world" package.
-
-Examples:
-    >>> # Load from local.
-    >>> my_pkg = load_package("~/path/to/my_pkg.yaml")
-
-    >>> # Load from GitHub.
-    >>> my_pkg = ray.util.load_package(
-    ...   "https://github.com/demo/foo/blob/v3.0/project/my_pkg.yaml")
-
-    >>> # Inspect the package runtime env.
-    >>> print(my_pkg._runtime_env)
-    ... {"conda": {...},
-    ...  "docker": "anyscale-ml/ray-ml:nightly-py38-cpu",
-    ...  "files": "https://github.com/demo/foo/blob/v3.0/project/"}
-
-    >>> # Run remote functions from the package.
-    >>> my_pkg.my_func.remote(1, 2)
-
-    >>> # Create actors from the package.
-    >>> actor = my_pkg.MyActor.remote(3, 4)
-
-    >>> # Create new remote funcs in a package.
-    >>> @ray.remote(runtime_env=my_pkg._runtime_env)
-    >>> def f(): ...
 """
 
 import importlib.util
@@ -87,6 +63,38 @@ def _download_from_github_if_needed(config_path: str) -> str:
 
 
 def load_package(config_path: str) -> _RuntimePackage:
+    """Load the code package given its config path.
+
+    Args:
+        config_path (str): The path to the configuration YAML that defines
+            the package. For documentation on the packaging format, see the
+            example YAML in ``example_pkg/ray_pkg.yaml``.
+
+    Examples:
+        >>> # Load from local.
+        >>> my_pkg = load_package("~/path/to/my_pkg.yaml")
+
+        >>> # Load from GitHub.
+        >>> my_pkg = ray.util.load_package(
+        ...   "https://github.com/demo/foo/blob/v3.0/project/my_pkg.yaml")
+
+        >>> # Inspect the package runtime env.
+        >>> print(my_pkg._runtime_env)
+        ... {"conda": {...},
+        ...  "docker": "anyscale-ml/ray-ml:nightly-py38-cpu",
+        ...  "files": "https://github.com/demo/foo/blob/v3.0/project/"}
+
+        >>> # Run remote functions from the package.
+        >>> my_pkg.my_func.remote(1, 2)
+
+        >>> # Create actors from the package.
+        >>> actor = my_pkg.MyActor.remote(3, 4)
+
+        >>> # Create new remote funcs in a package.
+        >>> @ray.remote(runtime_env=my_pkg._runtime_env)
+        >>> def f(): ...
+    """
+
     if not os.path.exists(config_path):
         raise ValueError("Config file does not exist: {}".format(config_path))
 
