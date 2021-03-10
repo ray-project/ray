@@ -15,10 +15,48 @@
 #pragma once
 
 #include <ray/api/arguments.h>
+#include <ray/api/function_manager.h>
 #include <ray/api/serializer.h>
+#include <boost/dll.hpp>
+#include <msgpack.hpp>
 #include "absl/utility/utility.h"
+#include "ray/core.h"
 
 namespace ray {
+
+namespace internal {
+/// Execute remote functions by networking stream.
+inline static msgpack::sbuffer TaskExecutionHandler(
+    const std::vector<std::shared_ptr<RayObject>> &args_buffer) {
+  auto &memory_buffer = args_buffer.at(0)->GetData();
+  msgpack::sbuffer result;
+  do {
+    try {
+      auto func_name = ray::api::Serializer::Deserialize<std::string>(
+          (char *)memory_buffer->Data(), memory_buffer->Size());
+      auto func_ptr = FunctionManager::Instance().GetFunction(func_name);
+      if (func_ptr == nullptr) {
+        result = PackError("unknown function: " + func_name);
+        break;
+      }
+
+      result = (*func_ptr)(args_buffer);
+    } catch (const std::exception &ex) {
+      result = PackError(ex.what());
+    }
+  } while (0);
+
+  return result;
+}
+
+inline static msgpack::sbuffer CallInDll(
+    const std::vector<std::shared_ptr<RayObject>> &args_buffer) {
+  return TaskExecutionHandler(args_buffer);
+}
+}  // namespace internal
+
+BOOST_DLL_ALIAS(ray::internal::CallInDll, CallInDll);
+
 namespace api {
 /// The following execution functions are wrappers of remote functions.
 /// Execution functions make remote functions executable in distributed system.

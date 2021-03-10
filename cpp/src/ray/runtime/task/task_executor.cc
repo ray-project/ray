@@ -3,6 +3,7 @@
 
 #include <memory>
 
+#include <ray/api/exec_funcs.h>
 #include "../../util/address_helper.h"
 #include "../../util/function_helper.h"
 #include "../abstract_ray_runtime.h"
@@ -58,12 +59,24 @@ Status TaskExecutor::ExecuteTask(
     data = (*exec_function)(base_addr, std::stoul(typed_descriptor->FunctionOffset()),
                             args_buffer, current_actor_);
   } else {  // NORMAL_TASK
-    typedef std::shared_ptr<msgpack::sbuffer> (*ExecFunction)(
-        uintptr_t base_addr, size_t func_offset,
-        const std::vector<std::shared_ptr<RayObject>> &args_buffer);
-    ExecFunction exec_function = (ExecFunction)(base_addr + std::stoul(exec_func_offset));
-    data = (*exec_function)(base_addr, std::stoul(typed_descriptor->FunctionOffset()),
-                            args_buffer);
+    if (ray::api::RayConfig::GetInstance()->use_ray_remote) {
+      auto lib =
+          FunctionHelper::GetInstance().LoadDll(lib_name);
+      RAY_CHECK(lib);
+
+      auto execute_func = boost::dll::import_alias<msgpack::sbuffer(
+          const std::vector<std::shared_ptr<::ray::RayObject>> &)>(*lib, "CallInDll");
+      auto result = execute_func(std::vector<std::shared_ptr<::ray::RayObject>>{});
+      data = std::make_shared<msgpack::sbuffer>(std::move(result));
+    } else {
+      typedef std::shared_ptr<msgpack::sbuffer> (*ExecFunction)(
+          uintptr_t base_addr, size_t func_offset,
+          const std::vector<std::shared_ptr<RayObject>> &args_buffer);
+      ExecFunction exec_function =
+          (ExecFunction)(base_addr + std::stoul(exec_func_offset));
+      data = (*exec_function)(base_addr, std::stoul(typed_descriptor->FunctionOffset()),
+                              args_buffer);
+    }
   }
 
   std::vector<size_t> data_sizes;

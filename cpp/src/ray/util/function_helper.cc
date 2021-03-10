@@ -10,11 +10,39 @@
 namespace ray {
 namespace api {
 
-uintptr_t base_addr = 0;
-
 static const uintptr_t BaseAddressForHandle(void *handle) {
   /// TODO(Guyang Song): Implement a cross-platform function.
   return (uintptr_t)((NULL == handle) ? NULL : (void *)*(size_t const *)(handle));
+}
+
+std::shared_ptr<boost::dll::shared_library> FunctionHelper::LoadDll(
+    const std::string &lib_name) {
+  RAY_LOG(INFO) << "Start load library " << lib_name;
+
+  auto it = libraries_.find(lib_name);
+  if (it != libraries_.end()) {
+    return it->second;
+  }
+
+  std::shared_ptr<boost::dll::shared_library> lib = nullptr;
+  try {
+    lib = std::make_shared<boost::dll::shared_library>(
+        lib_name, boost::dll::load_mode::type::rtld_lazy);
+  } catch (std::exception &e) {
+    RAY_LOG(WARNING) << "Load library failed, lib_name: " << lib_name
+                     << ", failed reason: " << e.what();
+  } catch (...) {
+    RAY_LOG(WARNING) << "Load library failed, lib_name: " << lib_name
+                     << ", unknown failed reason.";
+  }
+
+  if (lib == nullptr) {
+    return nullptr;
+  }
+
+  RAY_LOG(INFO) << "Loaded library: " << lib_name << " successfully.";
+  RAY_CHECK(libraries_.emplace(lib_name, lib).second);
+  return lib;
 }
 
 uintptr_t FunctionHelper::LoadLibrary(std::string lib_name) {
