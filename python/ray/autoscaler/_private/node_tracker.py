@@ -1,6 +1,3 @@
-import os
-import sys
-
 from ray.autoscaler._private import constants
 
 
@@ -40,8 +37,7 @@ class NodeTracker:
 
     def track(self, node_id, ip=None, node_type=None):
         if node_id not in self.node_mapping:
-            self._add_node_mapping(
-                node_id, (ip, node_type))
+            self._add_node_mapping(node_id, (ip, node_type))
 
     def get_all_failed_node_info(self, non_failed_ids):
         failed_nodes = self.node_mapping.keys() - non_failed_ids

@@ -121,7 +121,6 @@ class StandardAutoscaler:
         # failed nodes. It is best effort only.
         self.node_tracker = NodeTracker()
 
-
         # Expand local file_mounts to allow ~ in the paths. This can't be done
         # earlier when the config is written since we might be on different
         # platform and the expansion would result in wrong path.
