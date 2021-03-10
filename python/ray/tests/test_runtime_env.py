@@ -1,6 +1,10 @@
+import os
 import pytest
 import sys
 import unittest
+
+import ray
+from ray.experimental.packaging import load_package
 from ray.test_utils import run_string_as_driver
 
 driver_script = """
@@ -105,6 +109,17 @@ def test_two_node_uri(two_node_cluster, working_dir):
         runtime_env=runtime_env)
     out = run_string_as_driver(script)
     assert out.strip().split()[-1] == "1000"
+
+
+@unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
+def test_experimental_package(shutdown_only):
+    ray.init(num_cpus=2)
+    pkg = load_package.load_package(
+        os.path.join(os.path.dirname(__file__),
+                     "../experimental/packaging/example_pkg/ray_pkg.yaml"))
+    a = pkg.MyActor.remote()
+    assert ray.get(a.f.remote()) == "hello world"
+    assert ray.get(pkg.my_func.remote()) == "hello world"
 
 
 if __name__ == "__main__":
