@@ -121,7 +121,7 @@ def test_two_node_uri(two_node_cluster, working_dir):
 def conda_envs():
     ray.init()
     for var in ["CONDA_EXE", "CONDA_PREFIX", "CONDA_DEFAULT_ENV"]:
-        logger.info(f"{var}={os.environ.get(var)}")
+        print(f"{var}={os.environ.get(var)}")
 
     conda_path = get_conda_bin_executable("conda")
     init_cmd = (f". {os.path.dirname(conda_path)}"
