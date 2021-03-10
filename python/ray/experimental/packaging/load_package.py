@@ -126,11 +126,15 @@ def _download_from_github_if_needed(config_path: str) -> str:
         gh_repo = match.group(2)
         gh_branch = match.group(3)
         gh_subdir = match.group(4)
+
+        # Compute the cache key based on the URL.
         hasher = hashlib.sha1()
         hasher.update(config_path.encode("utf-8"))
         config_key = hasher.hexdigest()
         final_path = os.path.join(_pkg_tmp(),
                                   "github_snapshot_{}".format(config_key))
+
+        # Only download the repo if needed.
         if not os.path.exists(final_path):
             tmp = tempfile.mkdtemp(
                 prefix="github_{}".format(gh_repo), dir=_pkg_tmp())
