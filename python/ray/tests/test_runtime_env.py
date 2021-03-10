@@ -3,12 +3,15 @@ import sys
 import os
 import unittest
 import subprocess
+import logging
 
 from unittest import mock
 import ray
 from ray.test_utils import run_string_as_driver
 from ray.utils import get_conda_env_dir, get_conda_bin_executable
 from ray.job_config import JobConfig
+
+logger = logging.getLogger(__name__)
 
 driver_script = """
 import sys
@@ -117,6 +120,9 @@ def test_two_node_uri(two_node_cluster, working_dir):
 @pytest.fixture(scope="session")
 def conda_envs():
     ray.init()
+    for var in ["CONDA_EXE", "CONDA_PREFIX", "CONDA_DEFAULT_ENV"]:
+        logger.info(f"{var}={os.environ.get(var)}")
+
     conda_path = get_conda_bin_executable("conda")
     init_cmd = (f". {os.path.dirname(conda_path)}"
                 f"/../etc/profile.d/conda.sh")

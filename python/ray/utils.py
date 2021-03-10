@@ -820,11 +820,6 @@ def get_conda_bin_executable(executable_name):
     Return path to the specified executable, assumed to be discoverable within
     the 'bin' subdirectory of a conda installation.  Adapted from
     https://github.com/mlflow/mlflow.
-
-    The conda home directory (expected to contain a 'bin' subdirectory) is
-    configurable via the ``mlflow.projects.MLFLOW_CONDA_HOME`` environment
-    variable. If ``mlflow.projects.MLFLOW_CONDA_HOME`` is unspecified, this
-    method simply returns the passed-in executable name.
     """
 
     # Use CONDA_EXE as per https://github.com/conda/conda/issues/7126
