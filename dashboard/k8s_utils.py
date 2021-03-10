@@ -48,7 +48,8 @@ def cpu_percent():
             cpu_percent = round(quotient * 100 / container_cpu_count(), 1)
         last_system_usage = system_usage
         last_cpu_usage = cpu_usage
-        return cpu_percent
+        # Computed percentage might be slightly above 100%.
+        return min(cpu_percent, 100.0)
     except Exception as e:
         logger.exception("Error computing CPU usage of Ray Kubernetes pod.", e)
         return 0.0
