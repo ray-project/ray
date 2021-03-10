@@ -126,7 +126,7 @@ def test_experimental_package(shutdown_only):
 def test_experimental_package_github(shutdown_only):
     ray.init(num_cpus=2)
     pkg = ray.experimental.load_package(
-        "http://raw.githubusercontent.com/ericl/ray/packaging/"
+        "http://raw.githubusercontent.com/ray-project/ray/master/"
         "python/ray/experimental/packaging/example_pkg/ray_pkg.yaml")
     a = pkg.MyActor.remote()
     assert ray.get(a.f.remote()) == "hello world"

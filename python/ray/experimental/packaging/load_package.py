@@ -217,7 +217,7 @@ if __name__ == "__main__":
 
     print("-> Testing load from github")
     pkg2 = load_package(
-        "http://raw.githubusercontent.com/ericl/ray/packaging/"
+        "http://raw.githubusercontent.com/ray-project/ray/master/"
         "python/ray/experimental/packaging/example_pkg/ray_pkg.yaml")
     print("-> Loaded package", pkg2)
     print("-> Testing method call")
