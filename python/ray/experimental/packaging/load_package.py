@@ -1,7 +1,7 @@
 """Support for loading code packages into Ray at runtime.
 
 Ray packages allow developers to define self-contained code modules that can
-be imported reproducibly into ny Ray cluster. Each package can define its own
+be imported reproducibly into any Ray cluster. Each package can define its own
 runtime environment, which can encapsulate:
  - Different versions of code (e.g., from different git commits).
  - Different Python libraries (e.g., conda environments, pip dependencies).
