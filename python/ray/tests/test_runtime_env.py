@@ -219,9 +219,13 @@ def test_job_config_conda_env(conda_envs):
 
 
 def test_get_conda_env_dir(tmp_path):
+    # Simulate starting in an env named tf1.
     d = tmp_path / "tf1"
     d.mkdir()
-    with mock.patch.dict(os.environ, {"CONDA_PREFIX": str(d)}):
+    with mock.patch.dict(os.environ, {
+            "CONDA_PREFIX": str(d),
+            "CONDA_DEFAULT_ENV": "tf1"
+    }):
         with pytest.raises(ValueError):
             # Env tf2 should not exist.
             env_dir = get_conda_env_dir("tf2")
