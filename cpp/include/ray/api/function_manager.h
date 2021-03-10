@@ -132,6 +132,7 @@ struct Invoker {
   static absl::result_of_t<F(Args...)> CallInternal(const F &f,
                                                     const absl::index_sequence<I...> &,
                                                     std::tuple<Args...> tup) {
+    (void)tup;
     return f(std::move(std::get<I>(tup))...);
   }
 };
