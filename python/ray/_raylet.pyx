@@ -643,7 +643,7 @@ cdef void gc_collect() nogil:
 
 cdef void runtime_env_cleanup_handler(const c_string& uri) nogil:
     with gil:
-        ray._private.runtime_env.delete_package_local(uri.decode())
+        ray._private.runtime_env._delete_package_local(uri.decode())
 
 
 cdef c_vector[c_string] spill_objects_handler(

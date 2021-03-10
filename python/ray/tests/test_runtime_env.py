@@ -1,9 +1,9 @@
 import pytest
 import sys
 import unittest
+from pathlib import Path
 from ray.test_utils import run_string_as_driver
 import ray
-
 driver_script = """
 import sys
 sys.path.insert(0, "{working_dir}")
@@ -26,9 +26,12 @@ ray.shutdown()"""
 
 
 @pytest.fixture
-def working_dir():
+def working_env():
     import tempfile
-    from pathlib import Path
+    from ray._private.runtime_env import (
+        get_project_package_name,
+        _get_local_path
+    )
     with tempfile.TemporaryDirectory() as tmp_dir:
         path = Path(tmp_dir)
         module_path = path / "test_module"
@@ -44,11 +47,13 @@ def one():
             f.write("""
 from test_module.test import one
 """)
-        yield tmp_dir
+
+        yield (tmp_dir, get_project_package_name(tmp_dir, []))
 
 
 @unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
-def test_single_node(ray_start_cluster_head, working_dir):
+def test_single_node(ray_start_cluster_head, working_env):
+    (working_dir, pkg_name) = working_env
     cluster = ray_start_cluster_head
     redis_address = cluster.address
     runtime_env = f"""{{  "working_dir": "{working_dir}" }}"""
@@ -59,11 +64,14 @@ def test_single_node(ray_start_cluster_head, working_dir):
 
     out = run_string_as_driver(script)
     assert out.strip().split()[-1] == "1000"
-    ray.shutdown()
+    from ray._private.runtime_env import PKG_DIR
+    pkg_path = Path(PKG_DIR) / pkg_name
+    assert not pkg_path.exists()
 
 
 @unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
-def test_two_node(two_node_cluster, working_dir):
+def test_two_node(two_node_cluster, working_env):
+    (working_dir, pkg_name) = working_env
     cluster, _ = two_node_cluster
     redis_address = cluster.address
     runtime_env = f"""{{  "working_dir": "{working_dir}" }}"""
@@ -73,11 +81,14 @@ def test_two_node(two_node_cluster, working_dir):
         runtime_env=runtime_env)
     out = run_string_as_driver(script)
     assert out.strip().split()[-1] == "1000"
-    ray.shutdown()
+    from ray._private.runtime_env import PKG_DIR
+    pkg_path = Path(PKG_DIR) / pkg_name
+    assert not pkg_path.exists()
 
 
 @unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
-def test_two_node_module(two_node_cluster, working_dir):
+def test_two_node_module(two_node_cluster, working_env):
+    (working_dir, pkg_name) = working_env
     cluster, _ = two_node_cluster
     redis_address = cluster.address
     runtime_env = """{  "local_modules": [test_module] }"""
@@ -88,10 +99,14 @@ def test_two_node_module(two_node_cluster, working_dir):
     print(script)
     out = run_string_as_driver(script)
     assert out.strip().split()[-1] == "1000"
-    ray.shutdown()
+    from ray._private.runtime_env import PKG_DIR
+    pkg_path = Path(PKG_DIR) / pkg_name
+    assert not pkg_path.exists()
+
 
 @unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
-def test_two_node_uri(two_node_cluster, working_dir):
+def test_two_node_uri(two_node_cluster, working_env):
+    (working_dir, pkg_name) = working_env
     cluster, _ = two_node_cluster
     redis_address = cluster.address
     import ray._private.runtime_env as runtime_env
@@ -108,7 +123,9 @@ def test_two_node_uri(two_node_cluster, working_dir):
         runtime_env=runtime_env)
     out = run_string_as_driver(script)
     assert out.strip().split()[-1] == "1000"
-    ray.shutdown()
+    from ray._private.runtime_env import PKG_DIR
+    pkg_path = Path(PKG_DIR) / pkg_name
+    assert not Path(pkg_name).exists()
 
 
 if __name__ == "__main__":
