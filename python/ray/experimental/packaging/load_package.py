@@ -24,7 +24,7 @@ Examples:
     >>> actor = my_pkg.MyActor.remote(3, 4)
 
     >>> # Create new remote funcs in a package.
-    >>> @ray.remote(runtime_env=my_pkg.runtime_env())
+    >>> @ray.remote(runtime_env=my_pkg._runtime_env)
     >>> def f(): ...
 """
 
