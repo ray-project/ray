@@ -19,7 +19,7 @@ import ray._private.runtime_env as runtime_support
 
 
 class _RuntimePackage:
-    """Represents a loaded Ray package.
+    """Represents a Ray package loaded via ``load_package()``.
 
     This class provides access to the symbols defined by the stub file of the
     package (e.g., remote functions and actor definitions). You can also
