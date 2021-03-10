@@ -14,7 +14,7 @@ import pytest
 import ray
 import ray.ray_constants as ray_constants
 import ray.util.accelerators
-import ray.cluster_utils
+import ray._private.cluster_utils
 import ray.test_utils
 from ray import resource_spec
 import setproctitle

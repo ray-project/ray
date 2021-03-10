@@ -7,7 +7,7 @@ import time
 import numpy as np
 import pytest
 
-import ray.cluster_utils
+import ray._private.cluster_utils
 from ray.test_utils import (
     dicts_equal,
     wait_for_pid_to_exit,

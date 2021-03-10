@@ -27,7 +27,7 @@ import time
 from typing import List, Iterable, Tuple, Callable, Any, Union
 
 import ray
-from ray.cluster_utils import Cluster
+from ray._private.cluster_utils import Cluster
 from ray import ObjectRef
 
 # TODO(ekl) why doesn't TypeVar() deserialize properly in Ray?
