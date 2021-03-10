@@ -23,6 +23,7 @@ from ray.autoscaler._private.legacy_info_string import legacy_log_info_string
 from ray.autoscaler._private.providers import _get_node_provider
 from ray.autoscaler._private.updater import NodeUpdaterThread
 from ray.autoscaler._private.node_launcher import NodeLauncher
+from ray.autoscaler._private.node_tracker import NodeTracker
 from ray.autoscaler._private.resource_demand_scheduler import \
     get_bin_pack_residual, ResourceDemandScheduler, NodeType, NodeID, NodeIP, \
     ResourceDict
@@ -115,6 +116,11 @@ class StandardAutoscaler:
             )
             node_launcher.daemon = True
             node_launcher.start()
+
+        # NodeTracker maintains soft state to track the number of recently
+        # failed nodes. It is best effort only.
+        self.node_tracker = NodeTracker()
+
 
         # Expand local file_mounts to allow ~ in the paths. This can't be done
         # earlier when the config is written since we might be on different
@@ -649,6 +655,9 @@ class StandardAutoscaler:
                       node_resources, docker_config):
         logger.info(f"Creating new (spawn_updater) updater thread for node"
                     f" {node_id}.")
+        ip = self.provider.internal_ip(node_id)
+        node_type = self._get_node_type(node_id)
+        self.node_tracker.track(node_id, ip, node_type)
         updater = NodeUpdaterThread(
             node_id=node_id,
             provider_config=self.config["provider"],
@@ -739,6 +748,7 @@ class StandardAutoscaler:
         active_nodes = Counter()
         pending_nodes = []
         failed_nodes = []
+        non_failed = set()
 
         for node_id in all_node_ids:
             ip = self.provider.internal_ip(node_id)
@@ -761,6 +771,7 @@ class StandardAutoscaler:
             is_active = self.load_metrics.is_active(ip)
             if is_active:
                 active_nodes[node_type] += 1
+                non_failed.add(node_id)
             else:
                 status = node_tags[TAG_RAY_NODE_STATUS]
                 pending_states = [
@@ -770,12 +781,9 @@ class StandardAutoscaler:
                 is_pending = status in pending_states
                 if is_pending:
                     pending_nodes.append((ip, node_type, status))
-                else:
-                    # TODO (Alex): Failed nodes are now immediately killed, so
-                    # this list will almost always be empty. We should ideally
-                    # keep a cache of recently failed nodes and their startup
-                    # logs.
-                    failed_nodes.append((ip, node_type))
+                    non_failed.add(node_id)
+
+        failed_nodes = self.node_tracker.get_all_failed_node_info(non_failed)
 
         # The concurrent counter leaves some 0 counts in, so we need to
         # manually filter those out.
