@@ -38,6 +38,7 @@ import io.ray.runtime.task.FunctionArg;
 import io.ray.runtime.task.TaskExecutor;
 import io.ray.runtime.task.TaskSubmitter;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.Callable;
@@ -72,6 +73,9 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
 
   @Override
   public <T> ObjectRef<T> put(T obj) {
+    if (LOGGER.isDebugEnabled()) {
+      LOGGER.debug("Putting Object in Task {}.", workerContext.getCurrentTaskId());
+    }
     ObjectId objectId = objectStore.put(obj);
     return new ObjectRefImpl<T>(objectId, (Class<T>) (obj == null ? Object.class : obj.getClass()));
   }
@@ -91,21 +95,35 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
       objectIds.add(objectRefImpl.getId());
       objectType = objectRefImpl.getType();
     }
+    if (LOGGER.isDebugEnabled()) {
+      LOGGER.debug("Getting Objects {}.", Arrays.toString(objectIds.toArray()));
+    }
     return objectStore.get(objectIds, objectType);
   }
 
   @Override
   public void free(List<ObjectRef<?>> objectRefs, boolean localOnly) {
-    objectStore.delete(
+    List<ObjectId> objectIds =
         objectRefs.stream()
             .map(ref -> ((ObjectRefImpl<?>) ref).getId())
-            .collect(Collectors.toList()),
-        localOnly);
+            .collect(Collectors.toList());
+    if (LOGGER.isDebugEnabled()) {
+      LOGGER.debug(
+          "Freeing Objects {}, localOnly = {}.", Arrays.toString(objectIds.toArray()), localOnly);
+    }
+    objectStore.delete(objectIds, localOnly);
   }
 
   @Override
   public <T> WaitResult<T> wait(
       List<ObjectRef<T>> waitList, int numReturns, int timeoutMs, boolean fetchLocal) {
+    if (LOGGER.isDebugEnabled()) {
+      LOGGER.debug(
+          "Waiting Objects {} with minimum number {} within {} ms.",
+          Arrays.toString(waitList.toArray()),
+          numReturns,
+          timeoutMs);
+    }
     return objectStore.wait(waitList, numReturns, timeoutMs, fetchLocal);
   }
 
@@ -260,6 +278,9 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
       CallOptions options) {
     int numReturns = returnType.isPresent() ? 1 : 0;
     List<FunctionArg> functionArgs = ArgumentsBuilder.wrap(args, functionDescriptor.getLanguage());
+    if (options == null) {
+      options = new CallOptions.Builder().build();
+    }
     List<ObjectId> returnIds =
         taskSubmitter.submitTask(functionDescriptor, functionArgs, numReturns, options);
     Preconditions.checkState(returnIds.size() == numReturns);
