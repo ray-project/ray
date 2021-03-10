@@ -115,8 +115,9 @@ def test_two_node_uri(two_node_cluster, working_dir):
 def test_experimental_package(shutdown_only):
     ray.init(num_cpus=2)
     pkg = load_package.load_package(
-        os.path.join(os.path.dirname(__file__),
-                     "../experimental/packaging/example_pkg/ray_pkg.yaml"))
+        os.path.join(
+            os.path.dirname(__file__),
+            "../experimental/packaging/example_pkg/ray_pkg.yaml"))
     a = pkg.MyActor.remote()
     assert ray.get(a.f.remote()) == "hello world"
     assert ray.get(pkg.my_func.remote()) == "hello world"
