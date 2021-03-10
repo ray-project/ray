@@ -90,6 +90,13 @@
     - bazel test --config=ci $(./scripts/bazel_export_options)
       --test_tag_filters=-kubernetes,-jenkins_only,client_tests
       --test_env=RAY_CLIENT_MODE=1
+      # runtime_env conda_env is tested here, so inject conda env vars.
+      --test_env=CONDA_EXE
+      --test_env=CONDA_PYTHON_EXE
+      --test_env=CONDA_SHLVL
+      --test_env=CONDA_PREFIX
+      --test_env=CONDA_DEFAULT_ENV
+      --test_env=CONDA_PROMPT_MODIFIER
       python/ray/tests/...
 - label: ":python: (Medium A-J)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]

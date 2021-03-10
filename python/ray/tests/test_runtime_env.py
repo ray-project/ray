@@ -124,8 +124,10 @@ def conda_envs():
         print(f"{var}={os.environ.get(var)}")
 
     conda_path = get_conda_bin_executable("conda")
+    print(f"conda_path: {conda_path}")
     init_cmd = (f". {os.path.dirname(conda_path)}"
                 f"/../etc/profile.d/conda.sh")
+    print(f"init_cmd: {init_cmd}")
     subprocess.run([f"{init_cmd} && conda activate"], shell=True)
     current_conda_env = os.environ.get("CONDA_DEFAULT_ENV")
     assert current_conda_env is not None
