@@ -2,8 +2,8 @@
 #include "ray/util/logging.h"
 namespace ray {
 
-void RuntimeEnvManagerBase::IncrUriReference(const std::string &hex_id,
-                                                 const rpc::RuntimeEnv &runtime_env) {
+void RuntimeEnvManagerBase::AddUriReference(const std::string &hex_id,
+                                            const rpc::RuntimeEnv &runtime_env) {
   if (!runtime_env.working_dir_uri().empty()) {
     const auto &uri = runtime_env.working_dir_uri();
     uri_reference_[uri]++;
@@ -11,7 +11,7 @@ void RuntimeEnvManagerBase::IncrUriReference(const std::string &hex_id,
   }
 }
 
-void RuntimeEnvManagerBase::DecrUriReference(const std::string &hex_id) {
+void RuntimeEnvManagerBase::RemoveUriReference(const std::string &hex_id) {
   for (const auto &uri : id_to_uris_[hex_id]) {
     --uri_reference_[uri];
     auto ref_cnt = uri_reference_[uri];

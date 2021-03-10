@@ -33,12 +33,11 @@ class RuntimeEnvManagerBase {
   ///
   /// \param[in] hex_id The id of the runtime env. It can be an actor or job id.
   /// \param[in] runtime_env The runtime env used by the id.
-  void IncrUriReference(const std::string &hex_id,
-                            const rpc::RuntimeEnv &runtime_env);
+  void AddUriReference(const std::string &hex_id, const rpc::RuntimeEnv &runtime_env);
 
   /// Decrease the reference of uri by job_id
   /// \param[in] hex_id The id of the runtime env.
-  void DecrUrieReference(const std::string &hex_id);
+  void RemoveUriReference(const std::string &hex_id);
 
   virtual ~RuntimeEnvManagerBase() {}
 
