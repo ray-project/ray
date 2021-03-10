@@ -116,4 +116,4 @@ def test_reduce_invalid_rank(ray_start_distributed_2_nodes_4_gpus, dst_rank=7):
     world_size = 4
     actors, _ = create_collective_workers(world_size)
     with pytest.raises(ValueError):
-        _ = ray.get([a.do_reduce.remote(dst_rank=dst_rank) for a in actors])
+        ray.get([a.do_reduce.remote(dst_rank=dst_rank) for a in actors])
