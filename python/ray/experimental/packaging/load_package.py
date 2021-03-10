@@ -3,9 +3,10 @@ import os
 import yaml
 
 import ray
+import ray._private.runtime_env as runtime_support
 
 
-class RuntimePackage:
+class _RuntimePackage:
     def __init__(self, name: str, desc: str, stub_file: str,
                  runtime_env: dict):
         self._name = name
@@ -27,18 +28,20 @@ class RuntimePackage:
                 value = getattr(self._module, symbol)
                 if (isinstance(value, ray.remote_function.RemoteFunction)
                         or isinstance(value, ray.actor.ActorClass)):
-                    # TODO(ekl) use the runtime_env option here.
+                    # TODO(ekl) use the runtime_env option here instead of
+                    # the override env vars. Currently this doesn't work since
+                    # there is no way to define per-task job config.
                     setattr(
                         self,
                         symbol,
                         value.options(override_environment_variables={
-                            "PYTHONPATH": runtime_env["files"]
+                            "RAY_RUNTIME_ENV_FILES": runtime_env["files"]
                         }))
                 else:
                     setattr(self, symbol, value)
 
     def __repr__(self):
-        return "ray.RuntimePackage(module={}, runtime_env={})".format(
+        return "ray._RuntimePackage(module={}, runtime_env={})".format(
             self._module, self._runtime_env)
 
 
@@ -47,18 +50,34 @@ def _download_from_github_if_needed(config_path: str) -> str:
     return config_path
 
 
-def load_package(config_path: str) -> RuntimePackage:
+def load_package(config_path: str) -> _RuntimePackage:
+    if not os.path.exists(config_path):
+        raise ValueError("Config file does not exist: {}".format(config_path))
+
+    if not ray.is_initialized():
+        # TODO(ekl) lift this requirement?
+        raise RuntimeError("Ray must be initialized first to load packages.")
+
     config_path = _download_from_github_if_needed(config_path)
     # TODO(ekl) validate schema?
     config = yaml.safe_load(open(config_path).read())
     base_dir = os.path.abspath(os.path.dirname(config_path))
     runtime_env = config["runtime_env"]
 
-    # Autofill working directory.
+    # Autofill working directory by uploading to GCS storage.
     if "files" not in runtime_env:
-        # TODO(ekl) if this is a local directory, we should auto archive and
-        # upload this to remote storage.
-        runtime_env["files"] = base_dir
+        pkg_name = runtime_support.get_project_package_name(
+            working_dir=base_dir, modules=[])
+        pkg_uri = runtime_support.Protocol.GCS.value + "://" + pkg_name
+        if not runtime_support.package_exists(pkg_uri):
+            tmp_path = "/tmp/ray/_tmp{}".format(pkg_name)
+            runtime_support.create_project_package(
+                working_dir=base_dir, modules=[], output_path=tmp_path)
+            runtime_support.push_package(pkg_uri, tmp_path)
+            if not runtime_support.package_exists(pkg_uri):
+                raise RuntimeError(
+                    "Failed to upload package {}".format(pkg_uri))
+            runtime_env["files"] = pkg_uri
 
     # Autofill conda config.
     conda_yaml = os.path.join(base_dir, "conda.yaml")
@@ -68,7 +87,7 @@ def load_package(config_path: str) -> RuntimePackage:
                 "Both conda.yaml and conda: section found in package")
         runtime_env["conda"] = yaml.safe_load(open(conda_yaml).read())
 
-    pkg = RuntimePackage(
+    pkg = _RuntimePackage(
         name=config["name"],
         desc=config["description"],
         stub_file=os.path.join(base_dir, config["stub_file"]),
@@ -77,13 +96,13 @@ def load_package(config_path: str) -> RuntimePackage:
 
 
 if __name__ == "__main__":
+    ray.init()
     pkg = load_package("./example_pkg/ray_pkg.yaml")
     print("-> Loaded package", pkg)
     print("-> Package symbols", [x for x in dir(pkg) if not x.startswith("_")])
-
-    ray.init()
-    print("-> Testing method call")
-    print(ray.get(pkg.my_func.remote()))
     print("-> Testing actor call")
     a = pkg.MyActor.remote()
     print(ray.get(a.f.remote()))
+    print("-> Testing method call")
+    for _ in range(5):
+        print(ray.get(pkg.my_func.remote()))
