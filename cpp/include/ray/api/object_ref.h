@@ -63,7 +63,9 @@ inline static std::shared_ptr<T> GetFromRuntime(const ObjectRef<T> &object) {
   if (ray::api::RayConfig::GetInstance()->use_ray_remote) {
     bool has_error = Serializer::HasError(packed_object->data(), packed_object->size());
     if (has_error) {
-      throw RayException("has error");
+      std::string err_msg = Serializer::Deserialize<std::string>(
+          packed_object->data(), packed_object->size(), 1);
+      throw RayException(err_msg);
     }
   }
 
