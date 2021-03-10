@@ -10,7 +10,7 @@ import ray.actor
 import ray.node
 import ray.ray_constants as ray_constants
 import ray._private.utils
-from ray.parameter import RayParams
+from ray._private.parameter import RayParams
 from ray.ray_logging import get_worker_log_file_name, configure_log_file
 
 parser = argparse.ArgumentParser(

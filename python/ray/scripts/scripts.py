@@ -471,7 +471,7 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
 
     redirect_worker_output = None if not no_redirect_worker_output else True
     redirect_output = None if not no_redirect_output else True
-    ray_params = ray.parameter.RayParams(
+    ray_params = ray._private.parameter.RayParams(
         node_ip_address=node_ip_address,
         min_worker_port=min_worker_port,
         max_worker_port=max_worker_port,

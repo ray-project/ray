@@ -23,7 +23,7 @@ import ray.gcs_utils
 import ray._private.memory_monitor as memory_monitor
 import ray.node
 import ray.job_config
-import ray.parameter
+import ray._private.parameter
 import ray.ray_constants as ray_constants
 import ray.remote_function
 import ray.serialization as serialization
@@ -687,7 +687,7 @@ def init(
     global _global_node
     if redis_address is None:
         # In this case, we need to start a new cluster.
-        ray_params = ray.parameter.RayParams(
+        ray_params = ray._private.parameter.RayParams(
             redis_address=redis_address,
             node_ip_address=node_ip_address,
             raylet_ip_address=raylet_ip_address,
@@ -746,7 +746,7 @@ def init(
                 "_enable_object_reconstruction must not be provided.")
 
         # In this case, we only need to connect the node.
-        ray_params = ray.parameter.RayParams(
+        ray_params = ray._private.parameter.RayParams(
             node_ip_address=node_ip_address,
             raylet_ip_address=raylet_ip_address,
             redis_address=redis_address,
