@@ -93,7 +93,6 @@ class RayParams:
             monitor the log files for all processes on this node and push their
             contents to Redis.
         autoscaling_config: path to autoscaling config file.
-        java_worker_options (list): The command options for Java worker.
         metrics_agent_port(int): The port to bind metrics agent.
         metrics_export_port(int): The port at which metrics are exposed
             through a Prometheus endpoint.
@@ -147,7 +146,6 @@ class RayParams:
                  temp_dir=None,
                  include_log_monitor=None,
                  autoscaling_config=None,
-                 java_worker_options=None,
                  start_initial_python_workers_for_first_job=False,
                  _system_config=None,
                  enable_object_reconstruction=False,
@@ -191,7 +189,6 @@ class RayParams:
         self.temp_dir = temp_dir
         self.include_log_monitor = include_log_monitor
         self.autoscaling_config = autoscaling_config
-        self.java_worker_options = java_worker_options
         self.metrics_agent_port = metrics_agent_port
         self.metrics_export_port = metrics_export_port
         self.no_monitor = no_monitor
