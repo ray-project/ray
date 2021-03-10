@@ -119,7 +119,7 @@ def conda_envs():
     ray.init()
     conda_path = get_conda_bin_executable("conda")
     init_cmd = (f"source {os.path.dirname(conda_path)}"
-                    f"/../etc/profile.d/conda.sh")
+                f"/../etc/profile.d/conda.sh")
     subprocess.run([f"{init_cmd} && conda activate"], shell=True)
     current_conda_env = os.environ.get("CONDA_DEFAULT_ENV")
     assert current_conda_env is not None
@@ -150,7 +150,7 @@ def conda_envs():
     def remove_tf_env(tf_version: str):
         subprocess.run(
             ["conda", "remove", "-n", f"tf-{tf_version}", "--all", "-y"])
-    
+
     ray.get([remove_tf_env.remote(version) for version in tf_versions])
     subprocess.run([f"{init_cmd} && conda deactivate"], shell=True)
     ray.shutdown()
