@@ -4,6 +4,7 @@ import unittest
 from pathlib import Path
 from ray.test_utils import run_string_as_driver
 import ray
+
 driver_script = """
 import sys
 import logging
@@ -29,19 +30,17 @@ class TestActor(object):
     def one(self):
         return test_module.one()
 
-
 {execute_statement}
 
-ray.shutdown()"""
+ray.shutdown()
+from time import sleep
+sleep(5)
+"""
 
 
 @pytest.fixture
-def working_env():
+def working_dir():
     import tempfile
-    from ray._private.runtime_env import (
-        get_project_package_name,
-        _get_local_path
-    )
     with tempfile.TemporaryDirectory() as tmp_dir:
         path = Path(tmp_dir)
         module_path = path / "test_module"
@@ -58,12 +57,11 @@ def one():
 from test_module.test import one
 """)
 
-        yield (tmp_dir, get_project_package_name(tmp_dir, []))
+        yield tmp_dir
 
 
 @unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
-def test_single_node(ray_start_cluster_head, working_env):
-    (working_dir, pkg_name) = working_env
+def test_single_node(ray_start_cluster_head, working_dir):
     cluster = ray_start_cluster_head
     redis_address = cluster.address
     runtime_env = f"""{{  "working_dir": "{working_dir}" }}"""
@@ -72,13 +70,11 @@ def test_single_node(ray_start_cluster_head, working_env):
     out = run_string_as_driver(script)
     assert out.strip().split()[-1] == "1000"
     from ray._private.runtime_env import PKG_DIR
-    pkg_path = Path(PKG_DIR) / pkg_name
-    assert not pkg_path.exists()
+    assert len(list(Path(PKG_DIR).glob("*.zip"))) == 0
 
 
 @unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
-def test_two_node(two_node_cluster, working_env):
-    (working_dir, pkg_name) = working_env
+def test_two_node(two_node_cluster, working_dir):
     cluster, _ = two_node_cluster
     redis_address = cluster.address
     runtime_env = f"""{{  "working_dir": "{working_dir}" }}"""
@@ -87,13 +83,11 @@ def test_two_node(two_node_cluster, working_env):
     out = run_string_as_driver(script)
     assert out.strip().split()[-1] == "1000"
     from ray._private.runtime_env import PKG_DIR
-    pkg_path = Path(PKG_DIR) / pkg_name
-    assert not pkg_path.exists()
+    assert len(list(Path(PKG_DIR).glob("*.zip"))) == 0
 
 
 @unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
-def test_two_node_module(two_node_cluster, working_env):
-    (working_dir, pkg_name) = working_env
+def test_two_node_module(two_node_cluster, working_dir):
     cluster, _ = two_node_cluster
     redis_address = cluster.address
     runtime_env = """{  "local_modules": [test_module] }"""
@@ -103,13 +97,11 @@ def test_two_node_module(two_node_cluster, working_env):
     out = run_string_as_driver(script)
     assert out.strip().split()[-1] == "1000"
     from ray._private.runtime_env import PKG_DIR
-    pkg_path = Path(PKG_DIR) / pkg_name
-    assert not pkg_path.exists()
+    assert len(list(Path(PKG_DIR).glob("*.zip"))) == 0
 
 
 @unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
-def test_two_node_uri(two_node_cluster, working_env):
-    (working_dir, pkg_name) = working_env
+def test_two_node_uri(two_node_cluster, working_dir):
     cluster, _ = two_node_cluster
     redis_address = cluster.address
     import ray._private.runtime_env as runtime_env
@@ -125,13 +117,11 @@ def test_two_node_uri(two_node_cluster, working_env):
     out = run_string_as_driver(script)
     assert out.strip().split()[-1] == "1000"
     from ray._private.runtime_env import PKG_DIR
-    pkg_path = Path(PKG_DIR) / pkg_name
-    assert not pkg_path.exists()
+    assert len(list(Path(PKG_DIR).glob("*.zip"))) == 0
 
 
 @unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
-def test_regular_actors(ray_start_cluster_head, working_env):
-    (working_dir, pkg_name) = working_env
+def test_regular_actors(ray_start_cluster_head, working_dir):
     cluster = ray_start_cluster_head
     redis_address = cluster.address
     runtime_env = f"""{{  "working_dir": "{working_dir}" }}"""
@@ -143,13 +133,11 @@ print(sum(ray.get([test_actor.one.remote()] * 1000)))
     out = run_string_as_driver(script)
     assert out.strip().split()[-1] == "1000"
     from ray._private.runtime_env import PKG_DIR
-    pkg_path = Path(PKG_DIR) / pkg_name
-    assert not pkg_path.exists()
+    assert len(list(Path(PKG_DIR).glob("*.zip"))) == 0
 
 
 @unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
-def test_detached_actors(ray_start_cluster_head, working_env):
-    (working_dir, pkg_name) = working_env
+def test_detached_actors(ray_start_cluster_head, working_dir):
     cluster = ray_start_cluster_head
     redis_address = cluster.address
     runtime_env = f"""{{  "working_dir": "{working_dir}" }}"""
@@ -161,14 +149,14 @@ print(sum(ray.get([test_actor.one.remote()] * 1000)))
     out = run_string_as_driver(script)
     assert out.strip().split()[-1] == "1000"
     from ray._private.runtime_env import PKG_DIR
-    pkg_path = Path(PKG_DIR) / pkg_name
     # It's a detached actors, so it should still be there
-    assert pkg_path.exists()
+    assert len(list(Path(PKG_DIR).glob("*.zip"))) == 1
     test_actor = ray.get_actor("test_actor")
     assert sum(ray.get([test_actor.one.remote()] * 1000)) == 1000
     ray.kill(test_actor)
-    assert not pkg_path.exists()
-
+    from time import sleep
+    sleep(5)
+    assert len(list(Path(PKG_DIR).glob("*.zip"))) == 0
 
 
 if __name__ == "__main__":

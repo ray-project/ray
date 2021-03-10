@@ -24,4 +24,4 @@ void RuntimeEnvManagerBase::DecrPackageReference(const std::string &hex_id) {
   id_to_uris_.erase(hex_id);
 }
 
-}
+}  // namespace ray

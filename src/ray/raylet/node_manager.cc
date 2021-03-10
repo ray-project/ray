@@ -426,7 +426,8 @@ void NodeManager::HandleJobStarted(const JobID &job_id, const JobTableData &job_
   RAY_CHECK(!job_data.is_dead());
 
   worker_pool_.HandleJobStarted(job_id, job_data.config());
-  runtime_env_manager_.IncrPackageReference(job_id.Hex(), job_data.config().runtime_env());
+  runtime_env_manager_.IncrPackageReference(job_id.Hex(),
+                                            job_data.config().runtime_env());
   // Tasks of this job may already arrived but failed to pop a worker because the job
   // config is not local yet. So we trigger dispatching again here to try to
   // reschedule these tasks.
@@ -1613,7 +1614,7 @@ bool NodeManager::FinishAssignedTask(const std::shared_ptr<WorkerInterface> &wor
   // std::shared_ptr<WorkerInterface> instead of refs.
   auto &worker = *worker_ptr;
   TaskID task_id = worker.GetAssignedTaskId();
-  if(worker.IsDetachedActor()) {
+  if (worker.IsDetachedActor()) {
     runtime_env_manager_.DecrPackageReference(worker.GetActorId().Hex());
   }
   RAY_LOG(DEBUG) << "Finished task " << task_id;
@@ -1661,7 +1662,8 @@ void NodeManager::FinishAssignedActorCreationTask(WorkerInterface &worker,
     auto job_id = task.GetTaskSpecification().JobId();
     auto job_config = worker_pool_.GetJobConfig(job_id);
     RAY_CHECK(job_config);
-    runtime_env_manager_.IncrPackageReference(actor_id.Hex(), job_config->runtime_env());;
+    runtime_env_manager_.IncrPackageReference(actor_id.Hex(), job_config->runtime_env());
+    ;
   }
 }
 

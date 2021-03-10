@@ -3,7 +3,7 @@
 namespace ray {
 namespace raylet {
 
-void RuntimeEnvManager::DeleteURI(const std::string& uri) {
+void RuntimeEnvManager::DeleteURI(const std::string &uri) {
   io_worker_pool_.PopRuntimeEnvWorker(
       [uri, this](std::shared_ptr<WorkerInterface> io_worker) {
         rpc::RuntimeEnvCleanupRequest request;
@@ -16,5 +16,5 @@ void RuntimeEnvManager::DeleteURI(const std::string& uri) {
       });
 }
 
-}
-}
+}  // namespace raylet
+}  // namespace ray

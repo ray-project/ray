@@ -76,10 +76,10 @@ from ray.state import (  # noqa: E402
     cluster_resources, available_resources,
 )
 from ray.worker import (  # noqa: E402,F401
-    LOCAL_MODE, SCRIPT_MODE, WORKER_MODE, RESTORE_WORKER_MODE, RUNTIME_ENV_WORKER_MODE,
-    SPILL_WORKER_MODE, cancel, get, get_actor, get_gpu_ids, get_resource_ids,
-    get_dashboard_url, init, is_initialized, put, kill, remote, shutdown,
-    show_in_dashboard, wait,
+    LOCAL_MODE, SCRIPT_MODE, WORKER_MODE, RESTORE_WORKER_MODE,
+    RUNTIME_ENV_WORKER_MODE, SPILL_WORKER_MODE, cancel, get, get_actor,
+    get_gpu_ids, get_resource_ids, get_dashboard_url, init, is_initialized,
+    put, kill, remote, shutdown, show_in_dashboard, wait,
 )
 import ray.internal  # noqa: E402
 # We import ray.actor because some code is run in actor.py which initializes

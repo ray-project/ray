@@ -162,6 +162,7 @@ def create_project_package(working_dir: str, modules: List[ModuleType],
 
 def _delete_package_local(pkg_uri: str):
     local_path = Path(_get_local_path(pkg_uri))
+    logger.info(f"try to delete {pkg_uri} locally ({local_path})")
     local_path.unlink(missing_ok=True)
 
 

@@ -21,13 +21,15 @@ namespace raylet {
 
 class RuntimeEnvManager : public RuntimeEnvManagerBase {
  public:
-  RuntimeEnvManager(IOWorkerPoolInterface& io_worker_pool)
+  RuntimeEnvManager(IOWorkerPoolInterface &io_worker_pool)
       : io_worker_pool_(io_worker_pool) {}
+
  protected:
-  void DeleteURI(const std::string& uri) override;
+  void DeleteURI(const std::string &uri) override;
+
  private:
   IOWorkerPoolInterface &io_worker_pool_;
 };
 
-}
-}
+}  // namespace raylet
+}  // namespace ray
