@@ -18,7 +18,7 @@ import ray
 import ray._private.runtime_env as runtime_support
 
 
-def load_package(config_path: str) -> _RuntimePackage:
+def load_package(config_path: str) -> "_RuntimePackage":
     """Load the code package given its config path.
 
     Args:
