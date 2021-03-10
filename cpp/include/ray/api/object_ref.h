@@ -1,6 +1,7 @@
 
 #pragma once
 
+#include <ray/api/ray_config.h>
 #include <ray/api/ray_runtime_holder.h>
 #include <ray/api/serializer.h>
 
@@ -59,6 +60,13 @@ class ObjectRef {
 template <typename T>
 inline static std::shared_ptr<T> GetFromRuntime(const ObjectRef<T> &object) {
   auto packed_object = internal::RayRuntime()->Get(object.ID());
+  if (ray::api::RayConfig::GetInstance()->use_ray_remote) {
+    bool has_error = Serializer::HasError(packed_object->data(), packed_object->size());
+    if (has_error) {
+      throw RayException("has error");
+    }
+  }
+
   return Serializer::Deserialize<std::shared_ptr<T>>(packed_object->data(),
                                                      packed_object->size());
 }
