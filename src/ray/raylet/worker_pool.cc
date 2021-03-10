@@ -329,15 +329,6 @@ void WorkerPool::MonitorStartingWorkerProcess(const Process &proc,
 
 Process WorkerPool::StartProcess(const std::vector<std::string> &worker_command_args,
                                  const ProcessEnvironment &env) {
-  if (RAY_LOG_ENABLED(DEBUG)) {
-    std::stringstream stream;
-    stream << "Starting worker process with command:";
-    for (const auto &arg : worker_command_args) {
-      stream << " " << arg;
-    }
-    RAY_LOG(DEBUG) << stream.str();
-  }
-
   // Launch the process to create the worker.
   std::error_code ec;
   std::vector<const char *> argv;
@@ -351,10 +342,18 @@ Process WorkerPool::StartProcess(const std::vector<std::string> &worker_command_
   argv.push_back("--entrypoint");
   argv.push_back(worker_command_args[0].c_str());
   argv.push_back("ray");
-  for (int i = 1; i < worker_command_args.size(); i++) {
+  for (std::vector<std::string>::size_type i = 1; i < worker_command_args.size(); i++) {
     argv.push_back(worker_command_args[i].c_str());
   }
   argv.push_back(NULL);
+  if (RAY_LOG_ENABLED(DEBUG)) {
+    std::stringstream stream;
+    stream << "Starting worker process with command:";
+    for (const auto &arg : worker_command_args) {
+      stream << " " << arg;
+    }
+    RAY_LOG(DEBUG) << stream.str();
+  }
   Process child(argv.data(), io_service_, ec, /*decouple=*/false, env);
   if (!child.IsValid() || ec) {
     // errorcode 24: Too many files. This is caused by ulimit.
