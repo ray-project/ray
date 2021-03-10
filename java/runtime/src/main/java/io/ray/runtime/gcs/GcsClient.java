@@ -132,8 +132,6 @@ public class GcsClient {
   }
 
   public boolean wasCurrentActorRestarted(ActorId actorId) {
-    byte[] key = ArrayUtils.addAll(TablePrefix.ACTOR.toString().getBytes(), actorId.getBytes());
-
     // TODO(ZhuSenlin): Get the actor table data from CoreWorker later.
     byte[] value = globalStateAccessor.getActorInfo(actorId);
     if (value == null) {
