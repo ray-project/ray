@@ -35,6 +35,7 @@ RUN_PLASMA_STORE_PROFILER = False
 # Location of the redis server and module.
 RAY_HOME = os.path.join(os.path.dirname(os.path.dirname(__file__)), "../..")
 RAY_PATH = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
+RAY_PRIVATE_DIR = "_private"
 REDIS_EXECUTABLE = os.path.join(
     RAY_PATH, "core/src/ray/thirdparty/redis/src/redis-server" + EXE_SUFFIX)
 REDIS_MODULE = os.path.join(
@@ -785,7 +786,8 @@ def start_reaper(fate_share=None):
             # other user processes.
             return None
 
-    reaper_filepath = os.path.join(RAY_PATH, "ray_process_reaper.py")
+    reaper_filepath = os.path.join(RAY_PATH, RAY_PRIVATE_DIR,
+                                   "ray_process_reaper.py")
     command = [sys.executable, "-u", reaper_filepath]
     process_info = start_ray_process(
         command,
@@ -1107,7 +1109,8 @@ def start_log_monitor(redis_address,
     Returns:
         ProcessInfo for the process that was started.
     """
-    log_monitor_filepath = os.path.join(RAY_PATH, "log_monitor.py")
+    log_monitor_filepath = os.path.join(RAY_PATH, RAY_PRIVATE_DIR,
+                                        "log_monitor.py")
     command = [
         sys.executable, "-u", log_monitor_filepath,
         f"--redis-address={redis_address}", f"--logs-dir={logs_dir}",
@@ -1874,7 +1877,7 @@ def start_monitor(redis_address,
     Returns:
         ProcessInfo for the process that was started.
     """
-    monitor_path = os.path.join(RAY_PATH, "monitor.py")
+    monitor_path = os.path.join(RAY_PATH, RAY_PRIVATE_DIR, "monitor.py")
     command = [
         sys.executable, "-u", monitor_path, f"--logs-dir={logs_dir}",
         f"--redis-address={redis_address}",
