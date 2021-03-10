@@ -91,7 +91,7 @@ class GlobalState:
         self.redis_client = services.create_redis_client(
             self.redis_address, self.redis_password)
         self.global_state_accessor = GlobalStateAccessor(
-            self.redis_address, self.redis_password, False)
+            self.redis_address, self.redis_password)
         self.global_state_accessor.connect()
         start_time = time.time()
 

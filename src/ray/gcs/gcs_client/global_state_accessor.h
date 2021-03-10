@@ -30,9 +30,8 @@ class GlobalStateAccessor {
   ///
   /// \param redis_address The address of GCS Redis.
   /// \param redis_password The password of GCS Redis.
-  /// \param is_test Whether this accessor is used for tests.
   explicit GlobalStateAccessor(const std::string &redis_address,
-                               const std::string &redis_password, bool is_test = false);
+                               const std::string &redis_password);
 
   ~GlobalStateAccessor();
 

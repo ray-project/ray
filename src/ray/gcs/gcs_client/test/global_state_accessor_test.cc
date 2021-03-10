@@ -34,7 +34,7 @@ class GlobalStateAccessorTest : public ::testing::Test {
     config.grpc_server_name = "MockedGcsServer";
     config.grpc_server_thread_num = 1;
     config.redis_address = "127.0.0.1";
-    config.is_test = true;
+    config.enable_sharding_conn = false;
     config.redis_port = TEST_REDIS_SERVER_PORTS.front();
 
     io_service_.reset(new boost::asio::io_service());
@@ -54,14 +54,14 @@ class GlobalStateAccessorTest : public ::testing::Test {
 
     // Create GCS client.
     gcs::GcsClientOptions options(config.redis_address, config.redis_port,
-                                  config.redis_password, config.is_test);
+                                  config.redis_password);
     gcs_client_.reset(new gcs::ServiceBasedGcsClient(options));
     RAY_CHECK_OK(gcs_client_->Connect(*io_service_));
 
     // Create global state.
     std::stringstream address;
     address << config.redis_address << ":" << config.redis_port;
-    global_state_.reset(new gcs::GlobalStateAccessor(address.str(), "", true));
+    global_state_.reset(new gcs::GlobalStateAccessor(address.str(), ""));
     RAY_CHECK(global_state_->Connect());
   }
 

@@ -30,11 +30,11 @@ class RedisContext;
 class RedisClientOptions {
  public:
   RedisClientOptions(const std::string &ip, int port, const std::string &password,
-                     bool is_test_client = false)
+                     bool enable_sharding_conn = true)
       : server_ip_(ip),
         server_port_(port),
         password_(password),
-        is_test_client_(is_test_client) {}
+        enable_sharding_conn_(enable_sharding_conn) {}
 
   // Redis server address
   std::string server_ip_;
@@ -43,8 +43,8 @@ class RedisClientOptions {
   // Password of Redis.
   std::string password_;
 
-  // Whether this client is used for tests.
-  bool is_test_client_{false};
+  // Whether we enable sharding for accessing data.
+  bool enable_sharding_conn_{true};
 };
 
 /// \class RedisClient

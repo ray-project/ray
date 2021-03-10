@@ -36,7 +36,7 @@ class GcsPubSubTest : public ::testing::Test {
     }));
 
     gcs::RedisClientOptions redis_client_options(
-        "127.0.0.1", TEST_REDIS_SERVER_PORTS.front(), "", true);
+        "127.0.0.1", TEST_REDIS_SERVER_PORTS.front(), "", /*enable_sharding_conn=*/false);
     client_ = std::make_shared<gcs::RedisClient>(redis_client_options);
     RAY_CHECK_OK(client_->Connect(io_service_));
     pub_sub_ = std::make_shared<gcs::GcsPubSub>(client_);
