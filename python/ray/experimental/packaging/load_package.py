@@ -51,7 +51,7 @@ def load_package(config_path: str) -> "_RuntimePackage":
         >>> # Create actors from the package.
         >>> actor = my_pkg.MyActor.remote(3, 4)
 
-        >>> # Create new remote funcs in a package.
+        >>> # Create new remote funcs in the same env as a package.
         >>> @ray.remote(runtime_env=my_pkg._runtime_env)
         >>> def f(): ...
     """
