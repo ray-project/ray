@@ -6,6 +6,7 @@ import sys
 import socket
 import tempfile
 import time
+import subprocess
 
 import numpy as np
 import pickle
@@ -781,7 +782,7 @@ def conda_envs():
         command_separator = " && "
         command_str = command_separator.join(commands)
         subprocess.run([command_str], shell=True)
-    
+
     tf_versions = ["1.15.0", "2.3.0"]
     ray.get([create_tf_env.remote(version) for version in tf_versions])
     ray.shutdown()
@@ -827,6 +828,7 @@ def test_job_config_conda_env(conda_envs):
     @ray.remote
     def get_conda_env():
         return tf.__version__
+
     for tf_version in ["1.15.0", "2.3.0"]:
         runtime_env = {"conda_env": f"tf-{tf_version}"}
         ray.init(job_config=JobConfig(runtime_env=runtime_env))

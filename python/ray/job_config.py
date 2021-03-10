@@ -6,9 +6,6 @@ class JobConfig:
     """A class used to store the configurations of a job.
 
     Attributes:
-        runtime_env (dict): Specifies environment for worker processes.
-            Supports the key "conda_env" which maps to the name (str) of an
-            existing conda env the worker process should start in.
         worker_env (dict): Environment variables to be set on worker
             processes.
         num_java_workers_per_process (int): The number of java workers per
@@ -19,7 +16,7 @@ class JobConfig:
             `CLASSPATH` in Java and `PYTHONPATH` in Python.
         runtime_env (dict): A path to a local directory that will be zipped
             up and unpackaged in the working directory of the task/actor.
-            There are three important fields.
+            There are four important fields.
             - `working_dir (str)`: A path to a local directory that will be
                 zipped up and unpackaged in the working directory of the
                 task/actor.
@@ -29,16 +26,16 @@ class JobConfig:
             - `local_modules (list[module])`: A list of local Python modules
                 that will be zipped up and unpacked in a directory prepended
                 to the sys.path of tasks/actors.
+            - `conda_env (str)`: The name of an existing conda environment
+                that worker processes should start in.
     """
 
-    def __init__(
-            self,
-            worker_env=None,
-            num_java_workers_per_process=1,
-            jvm_options=None,
-            code_search_path=None,
-            runtime_env=None
-    ):
+    def __init__(self,
+                 worker_env=None,
+                 num_java_workers_per_process=1,
+                 jvm_options=None,
+                 code_search_path=None,
+                 runtime_env=None):
         if worker_env is None:
             self.worker_env = dict()
         else:
