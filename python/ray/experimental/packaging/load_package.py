@@ -104,6 +104,12 @@ def load_package(config_path: str) -> "_RuntimePackage":
 
 
 def _download_from_github_if_needed(config_path: str) -> str:
+    """Resolve a GitHub raw link to the config file to a local path.
+
+    If the user specifies a GitHub raw URL, download the repo specified at
+    that particular URL locally. This lets us treat YAMLs linked from GitHub
+    the same as local files.
+    """
     if config_path.startswith("http"):
         if "github" not in config_path:
             raise ValueError(
