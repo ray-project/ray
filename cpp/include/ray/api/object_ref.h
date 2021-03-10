@@ -65,6 +65,7 @@ inline static std::shared_ptr<T> GetFromRuntime(const ObjectRef<T> &object) {
     if (has_error) {
       std::string err_msg = Serializer::Deserialize<std::string>(
           packed_object->data(), packed_object->size(), 1);
+      RAY_LOG(WARNING) << "Exception message: " << err_msg;
       throw RayException(err_msg);
     }
   }
@@ -139,6 +140,7 @@ class ObjectRef<void> {
     if (has_error) {
       std::string err_msg = Serializer::Deserialize<std::string>(
           packed_object->data(), packed_object->size(), 1);
+      RAY_LOG(WARNING) << "Exception message: " << err_msg;
       throw RayException(err_msg);
     }
   }
