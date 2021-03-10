@@ -1,3 +1,31 @@
+"""Support for loading code packages into Ray at runtime.
+
+Ray packages allow developers to define self-contained code modules that can
+be imported reproducibly into ny Ray cluster. Each package can define its own
+runtime environment, which can encapsulate:
+ - Different versions of code (e.g., from different git commits).
+ - Different Python libraries (e.g., conda environments, pip dependencies).
+ - Different Docker container images.
+
+Examples:
+    >>> # Load from local
+    >>> my_pkg = load_package(path = "~/path/to/my_pkg.yaml")
+
+    >>> # Inspect the package runtime env.
+    >>> print(my_pkg._runtime_env)
+    ... {"conda": {...}, "files": "gcs://_ray_pkg_e2366b976a91975bbc73b.zip"}
+
+    >>> # Run remote functions from the package.
+    >>> my_pkg.my_func.remote(1, 2)
+
+    >>> # Create actors from the package.
+    >>> actor = my_pkg.MyActor.remote(3, 4)
+
+    >>> # Create new remote funcs in a package.
+    >>> @ray.remote(runtime_env=my_pkg.runtime_env())
+    >>> def f(): ...
+"""
+
 import importlib.util
 import os
 import yaml
