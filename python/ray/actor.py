@@ -5,7 +5,7 @@ import _thread
 
 import ray.ray_constants as ray_constants
 import ray._raylet
-import ray.signature as signature
+import ray._private.signature as signature
 import ray.worker
 from ray.util.placement_group import (
     PlacementGroup, check_placement_group_index, get_current_placement_group)

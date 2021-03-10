@@ -32,7 +32,6 @@ import ray._private.runtime_env as runtime_env
 import ray._private.import_thread as import_thread
 import ray
 import setproctitle
-import ray.signature
 import ray.state
 
 from ray import (

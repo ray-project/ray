@@ -473,7 +473,7 @@ cdef execute_task(
 
                     for arg in args:
                         raise_if_dependency_failed(arg)
-                    args, kwargs = ray.signature.recover_args(args)
+                    args, kwargs = ray._private.signature.recover_args(args)
 
             if (<int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK):
                 actor = worker.actors[core_worker.get_actor_id()]
