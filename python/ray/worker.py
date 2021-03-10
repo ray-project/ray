@@ -49,7 +49,7 @@ from ray.exceptions import (
     RayTaskError,
     ObjectStoreFullError,
 )
-from ray.function_manager import FunctionActorManager
+from ray._private.function_manager import FunctionActorManager
 from ray.ray_logging import setup_logger
 from ray.ray_logging import global_worker_stdstream_dispatcher
 from ray._private.utils import _random_string, check_oversized_pickle
