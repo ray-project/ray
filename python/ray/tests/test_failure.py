@@ -836,10 +836,10 @@ def test_warning_for_many_duplicate_remote_functions_and_actors(shutdown_only):
     ch = logging.StreamHandler(log_capture_string)
 
     # TODO(rkn): It's terrible to have to rely on this implementation detail,
-    # the fact that the warning comes from ray.import_thread.logger. However,
-    # I didn't find a good way to capture the output for all loggers
+    # the fact that the warning comes from ray._private.import_thread.logger.
+    # However, I didn't find a good way to capture the output for all loggers
     # simultaneously.
-    ray.import_thread.logger.addHandler(ch)
+    ray._private.import_thread.logger.addHandler(ch)
 
     ray.get(create_remote_function.remote())
 
@@ -849,7 +849,7 @@ def test_warning_for_many_duplicate_remote_functions_and_actors(shutdown_only):
         if len(log_contents) > 0:
             break
 
-    ray.import_thread.logger.removeHandler(ch)
+    ray._private.import_thread.logger.removeHandler(ch)
 
     assert "remote function" in log_contents
     assert "has been exported {} times.".format(
@@ -875,7 +875,7 @@ def test_warning_for_many_duplicate_remote_functions_and_actors(shutdown_only):
 
     # TODO(rkn): As mentioned above, it's terrible to have to rely on this
     # implementation detail.
-    ray.import_thread.logger.addHandler(ch)
+    ray._private.import_thread.logger.addHandler(ch)
 
     ray.get(create_actor_class.remote())
 
@@ -885,7 +885,7 @@ def test_warning_for_many_duplicate_remote_functions_and_actors(shutdown_only):
         if len(log_contents) > 0:
             break
 
-    ray.import_thread.logger.removeHandler(ch)
+    ray._private.import_thread.logger.removeHandler(ch)
 
     assert "actor" in log_contents
     assert "has been exported {} times.".format(

@@ -29,6 +29,7 @@ import ray.remote_function
 import ray.serialization as serialization
 import ray._private.services as services
 import ray._private.runtime_env as runtime_env
+import ray._private.import_thread as import_thread
 import ray
 import setproctitle
 import ray.signature
@@ -40,7 +41,6 @@ from ray import (
     ObjectRef,
     Language,
 )
-from ray import import_thread
 from ray import profiling
 
 from ray.exceptions import (
