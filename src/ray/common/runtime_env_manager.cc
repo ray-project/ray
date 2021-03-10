@@ -14,9 +14,9 @@ void RuntimeEnvManagerBase::AddUriReference(const std::string &hex_id,
 void RuntimeEnvManagerBase::RemoveUriReference(const std::string &hex_id) {
   for (const auto &uri : id_to_uris_[hex_id]) {
     --uri_reference_[uri];
-    auto ref_cnt = uri_reference_[uri];
-    RAY_CHECK(ref_cnt >= 0);
-    if (ref_cnt == 0) {
+    auto ref_count = uri_reference_[uri];
+    RAY_CHECK(ref_count >= 0);
+    if (ref_count == 0) {
       uri_reference_.erase(uri);
       RAY_LOG(INFO) << "Deleting uri: " << uri;
       DeleteURI(uri);
