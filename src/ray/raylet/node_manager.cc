@@ -454,7 +454,7 @@ void NodeManager::FillResourceReport(rpc::ResourcesData &resources_data) {
   // Update local cache from gcs remote cache, this is needed when gcs restart.
   // We should always keep the cache view consistent.
   cluster_resource_scheduler_->UpdateLastResourceUsage(
-                                                        gcs_client_->NodeResources().GetLastResourceUsage());
+      gcs_client_->NodeResources().GetLastResourceUsage());
   cluster_resource_scheduler_->FillResourceUsage(resources_data);
   cluster_task_manager_->FillResourceUsage(resources_data);
 

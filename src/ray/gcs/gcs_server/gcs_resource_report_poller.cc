@@ -14,12 +14,11 @@ GcsResourceReportPoller::GcsResourceReportPoller(
       poll_period_ms_(boost::posix_time::milliseconds(
           RayConfig::instance().gcs_resource_report_poll_period_ms())) {}
 
-GcsResourceReportPoller::~GcsResourceReportPoller() {
-  Stop();
-}
+GcsResourceReportPoller::~GcsResourceReportPoller() { Stop(); }
 
 void GcsResourceReportPoller::Start() {
-  polling_thread_ = std::unique_ptr<std::thread>(new std::thread{[&]() {
+  polling_thread_.reset(new std::thread{[this]() {
+    SetThreadName("resource_report_poller");
     boost::asio::io_service::work work(polling_service_);
 
     polling_service_.run();
@@ -54,8 +53,7 @@ void GcsResourceReportPoller::HandleNodeAdded(
   state.next_pull_timer = std::unique_ptr<boost::asio::deadline_timer>(
       new boost::asio::deadline_timer(polling_service_));
 
-
-  polling_service_.post([&, node_id]() { TryPullResourceReport(node_id); });
+  polling_service_.post([this, node_id]() { TryPullResourceReport(node_id); });
 }
 
 void GcsResourceReportPoller::HandleNodeRemoved(
@@ -101,7 +99,8 @@ void GcsResourceReportPoller::PullResourceReport(PullState &state) {
           gcs_resource_manager_->UpdateFromResourceReport(reply.resources());
           polling_service_.post([this, node_id] { NodeResourceReportReceived(node_id); });
         } else {
-          RAY_LOG(INFO) << "Couldn't get resource request from raylet: " << node_id << ". " << status.ToString();
+          RAY_LOG(INFO) << "Couldn't get resource request from raylet " << node_id << ": "
+                        << status.ToString();
         }
       });
 }
@@ -121,8 +120,9 @@ void GcsResourceReportPoller::NodeResourceReportReceived(const NodeID &node_id) 
   state.next_pull_timer->async_wait([&, node_id](const boost::system::error_code &error) {
     if (!error) {
       TryPullResourceReport(node_id);
+    } else {
+      RAY_LOG(INFO) << "GcsResourceReportPoller timer failed: " << error.message() << ".";
     }
-    RAY_LOG(INFO) << "GcsResourceReportPoller timer failed: " << error.message() << ".";
   });
 }
 

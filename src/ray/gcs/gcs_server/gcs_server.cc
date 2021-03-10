@@ -134,8 +134,8 @@ void GcsServer::Stop() {
     gcs_heartbeat_manager_->Stop();
 
     if (config_.pull_based_resource_reporting) {
-        gcs_resource_report_poller_->Stop();
-      }
+      gcs_resource_report_poller_->Stop();
+    }
 
     is_stopped_ = true;
     RAY_LOG(INFO) << "GCS server stopped.";
