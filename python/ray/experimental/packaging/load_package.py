@@ -73,6 +73,8 @@ def load_package(config_path: str) -> _RuntimePackage:
             tmp_path = "/tmp/ray/_tmp{}".format(pkg_name)
             runtime_support.create_project_package(
                 working_dir=base_dir, modules=[], output_path=tmp_path)
+            # TODO(ekl) does this get garbage collected correctly with the
+            # current job id?
             runtime_support.push_package(pkg_uri, tmp_path)
             if not runtime_support.package_exists(pkg_uri):
                 raise RuntimeError(
