@@ -3,7 +3,7 @@
 # environment separate from that of this package.
 
 # !!!
-# Stub files can only import ray + built-in packages.
+# Stub files can only import ray at top-level.
 # !!!
 import ray
 

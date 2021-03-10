@@ -57,7 +57,8 @@ def load_package(config_path: str) -> "_RuntimePackage":
     """
 
     if not ray.is_initialized():
-        # TODO(ekl) lift this requirement?
+        # TODO(ekl) we can lift this requirement if we defer uploading the
+        # package to GCS until ray is initialized.
         raise RuntimeError("Ray must be initialized first to load packages.")
 
     config_path = _download_from_github_if_needed(config_path)
@@ -166,9 +167,7 @@ class _RuntimePackage:
         self._description = desc
         self._stub_file = stub_file
         self._runtime_env = runtime_env
-
-        if not os.path.exists(stub_file):
-            raise ValueError("Stub file does not exist: {}".format(stub_file))
+        _validate_stub_file(self._stub_file)
 
         spec = importlib.util.spec_from_file_location(self._name,
                                                       self._stub_file)
@@ -194,6 +193,21 @@ class _RuntimePackage:
     def __repr__(self):
         return "ray._RuntimePackage(module={}, runtime_env={})".format(
             self._module, self._runtime_env)
+
+
+def _validate_stub_file(stub_file: str):
+    if not os.path.exists(stub_file):
+        raise ValueError("Stub file does not exist: {}".format(stub_file))
+    for line in open(stub_file):
+        line = line.replace("\n", "")
+        if line.startswith("import ") or line.startswith("from "):
+            if line != "import ray" and "noqa" not in line:
+                raise ValueError(
+                    "Stub files are only allowed to import `ray` "
+                    "at top-level, found `{}`. Please either remove or "
+                    "change this into a lazy import. To unsafely allow "
+                    "this import, add `# noqa` to the line "
+                    "in question.".format(line))
 
 
 def _pkg_tmp():
