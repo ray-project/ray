@@ -1240,7 +1240,10 @@ def connect(node,
         runtime_env.upload_runtime_env_package_if_needed(job_config)
     elif mode == WORKER_MODE:
         runtime_env.ensure_runtime_env_setup(
-            worker.core_worker.get_job_config().runtime_env)
+            os.environ.get(
+                "RAY_RUNTIME_ENV_FILES",
+                worker.core_worker.get_job_config()
+                .runtime_env.working_dir_uri))
 
     if driver_object_store_memory is not None:
         worker.core_worker.set_object_store_client_options(
