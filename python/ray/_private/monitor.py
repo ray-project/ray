@@ -263,7 +263,7 @@ class Monitor:
     def _signal_handler(self, sig, frame):
         self._handle_failure(f"Terminated with signal {sig}\n" +
                              "".join(traceback.format_stack(frame)))
-        sys.exit(1)
+        sys.exit(sig + 128)
 
     def run(self):
         # Register signal handlers for autoscaler termination.
