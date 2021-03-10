@@ -203,6 +203,16 @@ inline ActorCreator<ActorType> Ray::CreateActorInternal(FuncType &create_func,
 template <typename F, typename... Args>
 TaskCaller<boost::callable_traits::return_type_t<F>> Ray::Task(F func, Args... args) {
   using ReturnType = boost::callable_traits::return_type_t<F>;
+  if (ray::api::RayConfig::GetInstance()->use_ray_remote) {
+    auto function_name = ray::internal::FunctionManager::Instance().GetFunctionName(func);
+    if (function_name.empty()) {
+      throw RayException(function_name + " not exsit!");
+    }
+    /// TODO if function_name is empty, throw exception
+    return TaskCaller<ReturnType>(ray::internal::RayRuntime().get(),
+                                  std::move(function_name));
+  }
+
   return TaskInternal<ReturnType>(
       func, NormalExecFunction<ReturnType, typename FilterArgType<Args>::type...>,
       args...);

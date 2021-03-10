@@ -108,9 +108,17 @@ void TaskExecutor::Invoke(
         std::make_shared<RayObject>(memory_buffer, nullptr, std::vector<ObjectID>()));
   }
 
+  std::shared_ptr<msgpack::sbuffer> data;
+  if (ray::api::RayConfig::GetInstance()->use_ray_remote) {
+    auto result = internal::TaskExecutionHandler(args_buffer);
+    data = std::make_shared<msgpack::sbuffer>(std::move(result));
+    runtime->Put(std::move(data), task_spec.ReturnId(0));
+    return;
+  }
+
   auto function_descriptor = task_spec.FunctionDescriptor();
   auto typed_descriptor = function_descriptor->As<ray::CppFunctionDescriptor>();
-  std::shared_ptr<msgpack::sbuffer> data;
+
   if (actor) {
     typedef std::shared_ptr<msgpack::sbuffer> (*ExecFunction)(
         uintptr_t base_addr, size_t func_offset,

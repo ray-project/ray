@@ -66,8 +66,6 @@ struct Invoker {
       new_vector = std::vector<std::shared_ptr<RayObject>>(first, args_buffer.end());
     }
 
-    std::cout << "args count: " << std::tuple_size<ArgsTuple>::value << '\n';
-
     msgpack::sbuffer result;
     ArgsTuple tp{};
     try {
@@ -167,6 +165,16 @@ class FunctionManager {
     }
 
     return RegisterNonMemberFunc(name, f);
+  }
+
+  template <typename Function>
+  std::string GetFunctionName(const Function &f) {
+    auto it = func_ptr_to_key_map_.find((uint64_t)f);
+    if (it == func_ptr_to_key_map_.end()) {
+      return "";
+    }
+
+    return it->second;
   }
 
  private:
