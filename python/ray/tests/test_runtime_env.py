@@ -4,7 +4,6 @@ import sys
 import unittest
 
 import ray
-from ray.experimental.packaging import load_package
 from ray.test_utils import run_string_as_driver
 
 driver_script = """
@@ -114,7 +113,7 @@ def test_two_node_uri(two_node_cluster, working_dir):
 @unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
 def test_experimental_package(shutdown_only):
     ray.init(num_cpus=2)
-    pkg = load_package.load_package(
+    pkg = ray.experimental.load_package(
         os.path.join(
             os.path.dirname(__file__),
             "../experimental/packaging/example_pkg/ray_pkg.yaml"))
@@ -126,7 +125,7 @@ def test_experimental_package(shutdown_only):
 @unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
 def test_experimental_package_github(shutdown_only):
     ray.init(num_cpus=2)
-    pkg = load_package.load_package(
+    pkg = ray.experimental.load_package(
         "http://raw.githubusercontent.com/ericl/ray/packaging/"
         "python/ray/experimental/packaging/example_pkg/ray_pkg.yaml")
     a = pkg.MyActor.remote()
