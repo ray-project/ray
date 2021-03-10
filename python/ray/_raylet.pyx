@@ -101,7 +101,6 @@ import ray.ray_constants as ray_constants
 from ray import profiling
 from ray.exceptions import (
     RayActorError,
-    RayActorCreationTaskFailedError,
     RayError,
     RaySystemError,
     RayTaskError,
@@ -552,8 +551,7 @@ cdef execute_task(
                 job_id=worker.current_job_id)
 
             if (<int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK):
-                raise RayActorCreationTaskFailedError.\
-                    from_task_error(failure_object) from error
+                raise RayActorError.from_task_error(failure_object) from error
 
     if execution_info.max_calls != 0:
         # Reset the state of the worker for the next task to execute.
@@ -595,7 +593,7 @@ cdef CRayStatus task_execution_handler(
                              debugger_breakpoint, returns)
             except Exception as e:
                 sys_exit = SystemExit()
-                if isinstance(e, RayActorCreationTaskFailedError):
+                if isinstance(e, RayActorError) and e.has_creation_task_error():
                     logger.exception("Error raised in creation task")
                     # Cython's bug that doesn't allow reference assignment,
                     # this is a workaroud.
