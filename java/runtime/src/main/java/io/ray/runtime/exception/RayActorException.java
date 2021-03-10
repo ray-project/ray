@@ -8,7 +8,7 @@ import io.ray.api.id.ActorId;
  * <p>This exception could happen either because the actor process dies while executing a task, or
  * because a task is submitted to a dead actor.
  */
-public class RayActorException extends RayException {
+public class RayActorException extends RayTaskException {
 
   public ActorId actorId;
 
@@ -18,14 +18,6 @@ public class RayActorException extends RayException {
 
   public RayActorException(ActorId actorId) {
     super(String.format("The actor %s died unexpectedly before finishing this task.", actorId));
-    this.actorId = actorId;
-  }
-
-  public RayActorException(ActorId actorId, String deathInfo) {
-    super(
-        String.format(
-            "The actor %s died unexpectedly before finishing this task, deathInfo=%s",
-            actorId, deathInfo));
     this.actorId = actorId;
   }
 

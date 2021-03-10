@@ -5,6 +5,7 @@ import com.google.protobuf.InvalidProtocolBufferException;
 import io.ray.api.id.ObjectId;
 import io.ray.runtime.actor.NativeActorHandle;
 import io.ray.runtime.exception.RayActorException;
+import io.ray.runtime.exception.RayException;
 import io.ray.runtime.exception.RayTaskException;
 import io.ray.runtime.exception.RayWorkerException;
 import io.ray.runtime.exception.UnreconstructableException;
@@ -77,32 +78,14 @@ public class ObjectSerializer {
         return new RayWorkerException();
       } else if (Bytes.indexOf(meta, ACTOR_EXCEPTION_META) == 0) {
         if (data != null && data.length > 0) {
-          byte[] serialized = Serializer.decode(data, byte[].class);
-          try {
-            return RayActorCreationTaskException.fromBytes(serialized);
-          } catch (InvalidProtocolBufferException e) {
-            throw new IllegalArgumentException(
-                "Can't deserialize RayTaskException object: " + objectId.toString());
-          }
+          // should be a RayActorCreationTaskException
+          return deserializeRayException(data, objectId);
         }
-        return new RayActorException(IdUtil.getActorIdFromObjectId(objectId), new String(data));
+        return new RayActorException(IdUtil.getActorIdFromObjectId(objectId));
       } else if (Bytes.indexOf(meta, UNRECONSTRUCTABLE_EXCEPTION_META) == 0) {
         return new UnreconstructableException(objectId);
       } else if (Bytes.indexOf(meta, TASK_EXECUTION_EXCEPTION_META) == 0) {
-        // Serialization logic of task execution exception: an instance of
-        // `io.ray.runtime.exception.RayTaskException`
-        //    -> a `RayException` protobuf message
-        //    -> protobuf-serialized bytes
-        //    -> MessagePack-serialized bytes.
-        // So here the `data` variable is MessagePack-serialized bytes, and the `serialized`
-        // variable is protobuf-serialized bytes. They are not the same.
-        byte[] serialized = Serializer.decode(data, byte[].class);
-        try {
-          return RayTaskException.fromBytes(serialized);
-        } catch (InvalidProtocolBufferException e) {
-          throw new IllegalArgumentException(
-              "Can't deserialize RayTaskException object: " + objectId.toString());
-        }
+        return deserializeRayException(data, objectId);
       } else if (Bytes.indexOf(meta, OBJECT_METADATA_TYPE_ACTOR_HANDLE) == 0) {
         byte[] serialized = Serializer.decode(data, byte[].class);
         return NativeActorHandle.fromBytes(serialized);
@@ -195,5 +178,22 @@ public class ObjectSerializer {
 
   static void resetOuterObjectId() {
     outerObjectId.set(null);
+  }
+
+  private static RayException deserializeRayException(byte[] msgPackData, ObjectId objectId) {
+    // Serialization logic of task execution exception: an instance of
+    // `io.ray.runtime.exception.RayTaskException`
+    //    -> a `RayException` protobuf message
+    //    -> protobuf-serialized bytes
+    //    -> MessagePack-serialized bytes.
+    // So here the `data` variable is MessagePack-serialized bytes, and the `serialized`
+    // variable is protobuf-serialized bytes. They are not the same.
+    byte[] pbData = Serializer.decode(msgPackData, byte[].class);
+    try {
+      return RayException.fromBytes(pbData);
+    } catch (InvalidProtocolBufferException e) {
+      throw new IllegalArgumentException(
+          "Can't deserialize RayActorCreationTaskException object: " + objectId.toString());
+    }
   }
 }
