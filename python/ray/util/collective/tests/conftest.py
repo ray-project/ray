@@ -72,7 +72,15 @@ def ray_start_distributed_multigpu_2_nodes_4_gpus():
 
 @pytest.fixture
 def ray_start_single_node():
-    # Please start this fixture in a cluster with 2 cpus.
     address_info = ray.init(num_cpus=8)
     yield address_info
+    ray.shutdown()
+
+
+@pytest.fixture
+def ray_start_distributed_2_nodes():
+    # The cluster has a setup of 2 nodes.
+
+    ray.init("auto")
+    yield
     ray.shutdown()
