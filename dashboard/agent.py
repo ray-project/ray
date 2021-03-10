@@ -25,7 +25,7 @@ import ray._private.services
 import ray._private.utils
 from ray.core.generated import agent_manager_pb2
 from ray.core.generated import agent_manager_pb2_grpc
-from ray.ray_logging import setup_component_logger
+from ray._private.ray_logging import setup_component_logger
 
 try:
     create_task = asyncio.create_task

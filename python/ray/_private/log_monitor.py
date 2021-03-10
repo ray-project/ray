@@ -14,7 +14,7 @@ import traceback
 import ray.ray_constants as ray_constants
 import ray._private.services as services
 import ray._private.utils
-from ray.ray_logging import setup_component_logger
+from ray._private.ray_logging import setup_component_logger
 
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray provides a default configuration at

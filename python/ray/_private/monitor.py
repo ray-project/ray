@@ -25,7 +25,7 @@ from ray.autoscaler._private.util import DEBUG_AUTOSCALING_STATUS, \
 
 from ray.core.generated import gcs_service_pb2, gcs_service_pb2_grpc
 import ray.ray_constants as ray_constants
-from ray.ray_logging import setup_component_logger
+from ray._private.ray_logging import setup_component_logger
 from ray.experimental.internal_kv import _internal_kv_put, \
     _internal_kv_initialized, _internal_kv_get, _internal_kv_del
 

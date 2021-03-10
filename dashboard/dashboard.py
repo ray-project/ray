@@ -22,7 +22,7 @@ import ray.new_dashboard.utils as dashboard_utils
 import ray.ray_constants as ray_constants
 import ray._private.services
 import ray._private.utils
-from ray.ray_logging import setup_component_logger
+from ray._private.ray_logging import setup_component_logger
 from ray._private.metrics_agent import PrometheusServiceDiscoveryWriter
 
 # Logger for this module. It should be configured at the entry point
