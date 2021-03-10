@@ -2477,10 +2477,10 @@ Healthy:
  20 m4.4xlarge
 Pending:
  m4.4xlarge, 2 launching
- 1.2.3.4: m4.4xlarge, waiting-for-ssh, /path/to/file.out
- 1.2.3.5: m4.4xlarge, waiting-for-ssh, /path/to/file2.out
+ 1.2.3.4: m4.4xlarge, waiting-for-ssh
+ 1.2.3.5: m4.4xlarge, waiting-for-ssh
 Recent failures:
- 1.2.3.4.6: p3.2xlarge, /tmp/ray/session_latest/abcdef.out
+ 1.2.3.4.6: p3.2xlarge
 
 Resources
 --------------------------------------------------------
