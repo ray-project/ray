@@ -18,57 +18,6 @@ import ray
 import ray._private.runtime_env as runtime_support
 
 
-class _RuntimePackage:
-    """Represents a Ray package loaded via ``load_package()``.
-
-    This class provides access to the symbols defined by the stub file of the
-    package (e.g., remote functions and actor definitions). You can also
-    access the raw runtime env defined by the package via ``pkg._runtime_env``.
-    """
-
-    def __init__(self, name: str, desc: str, stub_file: str,
-                 runtime_env: dict):
-        self._name = name
-        self._description = desc
-        self._stub_file = stub_file
-        self._runtime_env = runtime_env
-
-        if not os.path.exists(stub_file):
-            raise ValueError("Stub file does not exist: {}".format(stub_file))
-
-        spec = importlib.util.spec_from_file_location(self._name,
-                                                      self._stub_file)
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
-        self._module = module
-
-        for symbol in dir(self._module):
-            if not symbol.startswith("_"):
-                value = getattr(self._module, symbol)
-                if (isinstance(value, ray.remote_function.RemoteFunction)
-                        or isinstance(value, ray.actor.ActorClass)):
-                    # TODO(ekl) use the runtime_env option here instead of
-                    # the override env vars. Currently this doesn't work since
-                    # there is no way to define per-task job config.
-                    setattr(
-                        self,
-                        symbol,
-                        value.options(override_environment_variables={
-                            "RAY_RUNTIME_ENV_FILES": runtime_env["files"]
-                        }))
-                else:
-                    setattr(self, symbol, value)
-
-    def __repr__(self):
-        return "ray._RuntimePackage(module={}, runtime_env={})".format(
-            self._module, self._runtime_env)
-
-
-def _download_from_github_if_needed(config_path: str) -> str:
-    # TODO(ekl) support github URIs for the config.
-    return config_path
-
-
 def load_package(config_path: str) -> _RuntimePackage:
     """Load the code package given its config path.
 
@@ -146,6 +95,57 @@ def load_package(config_path: str) -> _RuntimePackage:
         stub_file=os.path.join(base_dir, config["stub_file"]),
         runtime_env=runtime_env)
     return pkg
+
+
+def _download_from_github_if_needed(config_path: str) -> str:
+    # TODO(ekl) support github URIs for the config.
+    return config_path
+
+
+class _RuntimePackage:
+    """Represents a Ray package loaded via ``load_package()``.
+
+    This class provides access to the symbols defined by the stub file of the
+    package (e.g., remote functions and actor definitions). You can also
+    access the raw runtime env defined by the package via ``pkg._runtime_env``.
+    """
+
+    def __init__(self, name: str, desc: str, stub_file: str,
+                 runtime_env: dict):
+        self._name = name
+        self._description = desc
+        self._stub_file = stub_file
+        self._runtime_env = runtime_env
+
+        if not os.path.exists(stub_file):
+            raise ValueError("Stub file does not exist: {}".format(stub_file))
+
+        spec = importlib.util.spec_from_file_location(self._name,
+                                                      self._stub_file)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        self._module = module
+
+        for symbol in dir(self._module):
+            if not symbol.startswith("_"):
+                value = getattr(self._module, symbol)
+                if (isinstance(value, ray.remote_function.RemoteFunction)
+                        or isinstance(value, ray.actor.ActorClass)):
+                    # TODO(ekl) use the runtime_env option here instead of
+                    # the override env vars. Currently this doesn't work since
+                    # there is no way to define per-task job config.
+                    setattr(
+                        self,
+                        symbol,
+                        value.options(override_environment_variables={
+                            "RAY_RUNTIME_ENV_FILES": runtime_env["files"]
+                        }))
+                else:
+                    setattr(self, symbol, value)
+
+    def __repr__(self):
+        return "ray._RuntimePackage(module={}, runtime_env={})".format(
+            self._module, self._runtime_env)
 
 
 if __name__ == "__main__":
