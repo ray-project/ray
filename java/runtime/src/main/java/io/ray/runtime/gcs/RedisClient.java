@@ -1,7 +1,6 @@
 package io.ray.runtime.gcs;
 
 import com.google.common.base.Strings;
-import java.util.List;
 import java.util.Map;
 import redis.clients.jedis.Jedis;
 import redis.clients.jedis.JedisPool;
