@@ -5,7 +5,7 @@ import io.ray.api.id.JobId;
 import io.ray.api.id.TaskId;
 import io.ray.api.id.UniqueId;
 import io.ray.runtime.RayRuntimeInternal;
-import io.ray.runtime.exception.RayActorCreationTaskException;
+import io.ray.runtime.exception.RayActorException;
 import io.ray.runtime.exception.RayIntentionalSystemExitException;
 import io.ray.runtime.exception.RayTaskException;
 import io.ray.runtime.functionmanager.JavaFunctionDescriptor;
@@ -177,7 +177,7 @@ public abstract class TaskExecutor<T extends TaskExecutor.ActorContext> {
           returnObjects.add(serializedException);
         }
       } else {
-        throw new RayActorCreationTaskException(e);
+        throw new RayActorException(e);
       }
     } finally {
       Thread.currentThread().setContextClassLoader(oldLoader);
