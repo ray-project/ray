@@ -381,12 +381,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \return Void.
   void HandleJobFinished(const JobID &job_id, const JobTableData &job_data);
 
-  /// Process client message of SubmitTask
-  ///
-  /// \param message_data A pointer to the message data.
-  /// \return Void.
-  void ProcessSubmitTaskMessage(const uint8_t *message_data);
-
   /// Process client message of NotifyDirectCallTaskBlocked
   ///
   /// \param message_data A pointer to the message data.

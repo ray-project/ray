@@ -331,10 +331,6 @@ ray::Status NodeManager::RegisterGcs() {
   RAY_RETURN_NOT_OK(
       gcs_client_->Nodes().AsyncSubscribeToNodeChange(on_node_change, on_done));
 
-  // Register a callback to monitor new nodes and a callback to monitor removed nodes.
-  // RAY_RETURN_NOT_OK(
-  //     gcs_client_->Packages().AsyncSubscribeToNodeChange(on_node_change, on_done));
-
   // Subscribe to resource usage batches from the monitor.
   const auto &resource_usage_batch_added =
       [this](const ResourceUsageBatchData &resource_usage_batch) {

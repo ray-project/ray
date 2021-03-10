@@ -151,6 +151,9 @@ print(sum(ray.get([test_actor.one.remote()] * 1000)))
     from ray._private.runtime_env import PKG_DIR
     # It's a detached actors, so it should still be there
     assert len(list(Path(PKG_DIR).glob("*.zip"))) == 1
+    pkg = list(Path(PKG_DIR).glob("*.zip"))[0]
+    import sys
+    sys.path.insert(0, str(pkg))
     test_actor = ray.get_actor("test_actor")
     assert sum(ray.get([test_actor.one.remote()] * 1000)) == 1000
     ray.kill(test_actor)
