@@ -439,7 +439,7 @@ def format_info_string(lm_summary, autoscaler_summary, time=None):
     failure_lines = []
     for ip, node_type, log_path in (autoscaler_summary.failed_nodes[
             -AUTOSCALER_MAX_FAILURES_DISPLAYED:]):
-        line = f" {ip}: {node_type}, {log_path}"
+        line = f" {ip}: {node_type}"
         failure_lines.append(line)
     failure_report = "Recent failures:\n"
     if failure_lines:
