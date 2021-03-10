@@ -44,7 +44,7 @@ RUN arch=$(uname -m); \
     elif [ "$arch" == "x86_64" ]; then \
 	BAZEL=bazelisk-linux-amd64; \
     fi; \
-    wget -q https://github.com/bazelbuild/bazelisk/releases/download/v1.7.4/${BAZEL} -O /tmp/${BAZEL}; \
+    wget -q https://github.com/bazelbuild/bazelisk/releases/download/v1.7.5/${BAZEL} -O /tmp/${BAZEL}; \
     chmod a+x /tmp/${BAZEL};\
     sudo mv /tmp/${BAZEL} /usr/bin/bazel; \
     export PATH=$PATH:/usr/bin;

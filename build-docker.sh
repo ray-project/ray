@@ -53,7 +53,7 @@ shift
 done
 
 # Build base-deps, ray-deps, and ray.
-for IMAGE in "base-deps" "ray-deps" "ray"
+for IMAGE in "base-deps" "ray-deps" "ray-wheel" "ray" "ray-nb"
 do
   rm ./docker/${IMAGE}/ray.tar ./docker/${IMAGE}/git-rev ./docker/${IMAGE}/requirements.txt || echo "No need to cleanup"
   git rev-parse HEAD > ./docker/${IMAGE}/git-rev
