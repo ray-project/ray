@@ -242,13 +242,14 @@ python dependencies.  For example, you can simultaneously serve one backend
 that uses legacy Tensorflow 1 and another backend that uses Tensorflow 2.
 
 Currently this is supported using `conda <https://docs.conda.io/en/latest/>`_
-via Ray's built-in `runtime_env` option for actors.  TODO(link)
-As with all other actor options, pass these in via `ray_actor_options` in
+via Ray's built-in `runtime_env` option for actors.
+As with all other actor options, pass these in via ``ray_actor_options`` in
 your call to
 :mod:`client.create_backend <ray.serve.api.Client.create_backend>`.
 You must have a conda environment set up for each set of
 dependencies you want to isolate.  If using a multi-node cluster, the
-desired conda environment must be present on all nodes.
+desired conda environment must be present on all nodes.  
+See :ref:`conda-environments-for-tasks-and-actors` for details.
 
 Here's an example script.  For it to work, first create a conda
 environment named ``ray-tf1`` with Ray Serve and Tensorflow 1 installed,

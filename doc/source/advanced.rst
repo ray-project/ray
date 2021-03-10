@@ -423,6 +423,8 @@ To get information about the current available resource capacity of your cluster
 .. autofunction:: ray.available_resources
     :noindex:
 
+.. _conda-environments-for-tasks-and-actors:
+
 Conda Environments for Tasks and Actors
 -----------------------------------------
 
