@@ -18,6 +18,8 @@
 #include <fstream>
 #include <memory>
 
+#include "ray/common/asio/asio_util.h"
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/buffer.h"
 #include "ray/common/common_protocol.h"
 #include "ray/common/constants.h"
@@ -26,7 +28,6 @@
 #include "ray/gcs/pb_util.h"
 #include "ray/raylet/format/node_manager_generated.h"
 #include "ray/stats/stats.h"
-#include "ray/util/asio_util.h"
 #include "ray/util/sample.h"
 #include "ray/util/util.h"
 
@@ -165,7 +166,7 @@ void HeartbeatSender::Heartbeat() {
       }));
 }
 
-NodeManager::NodeManager(boost::asio::io_service &io_service, const NodeID &self_node_id,
+NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self_node_id,
                          const NodeManagerConfig &config, ObjectManager &object_manager,
                          std::shared_ptr<gcs::GcsClient> gcs_client,
                          std::shared_ptr<ObjectDirectoryInterface> object_directory,
@@ -1794,6 +1795,9 @@ std::string NodeManager::DebugString() const {
     result << "\n" << entry.first;
   }
 
+  // Event loop stats.
+  result << "\nEvent loop stats:" << io_service_.StatsString();
+
   result << "\nDebugString() time ms: " << (current_time_ms() - now_ms);
   return result.str();
 }
@@ -2156,18 +2160,11 @@ void NodeManager::RecordMetrics() {
 }
 
 void NodeManager::PublishInfeasibleTaskError(const Task &task) const {
-  // This block is used to suppress infeasible task warning.
   bool suppress_warning = false;
-  const auto &required_resources = task.GetTaskSpecification().GetRequiredResources();
-  const auto &resources_map = required_resources.GetResourceMap();
-  const auto &it = resources_map.begin();
-  // It is a hack to suppress infeasible task warning.
-  // If the first resource of a task requires this magic number, infeasible warning is
-  // suppressed. It is currently only used by placement group ready API. We don't want
-  // to have this in ray_config_def.h because the use case is very narrow, and we don't
-  // want to expose this anywhere.
-  double INFEASIBLE_TASK_SUPPRESS_MAGIC_NUMBER = 0.0101;
-  if (it != resources_map.end() && it->second == INFEASIBLE_TASK_SUPPRESS_MAGIC_NUMBER) {
+
+  if (!task.GetTaskSpecification().PlacementGroupBundleId().first.IsNil()) {
+    // If the task is part of a placement group, do nothing. If necessary, the infeasible
+    // warning should come from the placement group scheduling, not the task scheduling.
     suppress_warning = true;
   }
 
