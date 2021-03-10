@@ -1458,15 +1458,11 @@ class AutoscalingTest(unittest.TestCase):
         lm.set_resource_requests([{"CPU": 64}] * 2)
         autoscaler.update()
 
-        self.provider.create_node(
-            {}, {
-                TAG_RAY_NODE_KIND: NODE_KIND_WORKER,
-                TAG_RAY_USER_NODE_TYPE: "m4.4xlarge",
-                TAG_RAY_NODE_STATUS: STATUS_UPDATE_FAILED
-            },
-            1,
-            _skip_wait=True)
-        self.waitForNodes(5)
+        # TODO (Alex): We should find a more robust way of simulating a node
+        # failure here.
+        obj = \
+            ("172.0.0.4", "m4.4xlarge")
+        autoscaler.node_tracker._add_node_mapping(4, obj)
 
         print(f"Head ip: {head_ip}")
         summary = autoscaler.summary()
@@ -2474,7 +2470,7 @@ Pending:
  1.2.3.4: m4.4xlarge, waiting-for-ssh
  1.2.3.5: m4.4xlarge, waiting-for-ssh
 Recent failures:
- (no failures)
+ 1.2.3.6: p3.2xlarge
 
 Resources
 --------------------------------------------------------
