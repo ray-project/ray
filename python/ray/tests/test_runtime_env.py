@@ -4,6 +4,7 @@ import os
 import unittest
 import subprocess
 
+from unittest import mock
 import ray
 from ray.test_utils import run_string_as_driver
 from ray.utils import get_conda_env_dir, get_conda_bin_executable
@@ -151,9 +152,9 @@ def conda_envs():
     ray.shutdown()
 
 
-@pytest.mark.skipif(
-    os.environ.get("CONDA_DEFAULT_ENV") is None,
-    reason="must be run from within a conda environment")
+# @pytest.mark.skipif(
+#     os.environ.get("CONDA_DEFAULT_ENV") is None,
+#     reason="must be run from within a conda environment")
 def test_task_conda_env(conda_envs, shutdown_only):
     import tensorflow as tf
     ray.init()
@@ -169,9 +170,26 @@ def test_task_conda_env(conda_envs, shutdown_only):
         assert ray.get(task.remote()) == tf_version
 
 
-@pytest.mark.skipif(
-    os.environ.get("CONDA_DEFAULT_ENV") is None,
-    reason="must be run from within a conda environment")
+# # TODO(architkulkarni)
+# @pytest.mark.skipif(
+#     os.environ.get("CONDA_DEFAULT_ENV") is None,
+#     reason="must be run from within a conda environment")
+# def test_inheritance_conda_env(conda_envs, shutdown_only):
+#     import tensorflow as tf
+#     ray.init()
+
+#     @ray.remote
+#     def get_tf_version():
+#         return tf.__version__
+
+#     @ray.remote
+#     def wrapped_tf_version():
+#         return ray.get(get_tf_version.remote())
+
+
+# @pytest.mark.skipif(
+#     os.environ.get("CONDA_DEFAULT_ENV") is None,
+#     reason="must be run from within a conda environment")
 def test_job_config_conda_env(conda_envs):
     import tensorflow as tf
 
@@ -191,15 +209,14 @@ def test_job_config_conda_env(conda_envs):
 def test_get_conda_env_dir(tmp_path):
     d = tmp_path / "tf1"
     d.mkdir()
-    os.environ["CONDA_PREFIX"] = str(d)
-    with pytest.raises(ValueError):
-        # Env tf2 should not exist.
+    with mock.patch.dict(os.environ, {"CONDA_PREFIX": str(d)}):
+        with pytest.raises(ValueError):
+            # Env tf2 should not exist.
+            env_dir = get_conda_env_dir("tf2")
+        tf2_dir = tmp_path / "tf2"
+        tf2_dir.mkdir()
         env_dir = get_conda_env_dir("tf2")
-    tf2_dir = tmp_path / "tf2"
-    tf2_dir.mkdir()
-    env_dir = get_conda_env_dir("tf2")
-    assert (env_dir == str(tmp_path / "tf2"))
-    os.environ["CONDA_PREFIX"] = ""
+        assert (env_dir == str(tmp_path / "tf2"))
 
 
 if __name__ == "__main__":
