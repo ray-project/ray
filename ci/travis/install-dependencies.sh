@@ -347,8 +347,6 @@ install_dependencies() {
         tensorflow=="${TF_VERSION-2.2.0}" gym
     fi
   fi
-  echo DEBUG DEBUG
-  pip freeze | grep torch
 
   # Additional Tune dependency for Horovod.
   # This must be run last (i.e., torch cannot be re-installed after this)
