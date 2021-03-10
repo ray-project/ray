@@ -517,11 +517,9 @@ class AWSNodeProvider(NodeProvider):
                     "SizeInMiB"]
                 memory_total = int(memory_total) * 1024 * 1024
                 memory_resources = int(memory_total * 0.6)
-                object_store_memory = int(memory_total * 0.3)
                 autodetected_resources = {
                     "CPU": cpus,
-                    "memory": memory_resources,
-                    "object_store_memory": object_store_memory
+                    "memory": memory_resources
                 }
                 gpus = instances_dict[instance_type].get("GpuInfo",
                                                          {}).get("Gpus")

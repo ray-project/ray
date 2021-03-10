@@ -91,8 +91,10 @@ def fillout_resources_kubernetes(config):
         autodetected_resources = get_autodetected_resources(container_data)
         if "resources" not in config["available_node_types"][node_type]:
             config["available_node_types"][node_type]["resources"] = {}
-        config["available_node_types"][node_type]["resources"].update(
-            autodetected_resources)
+        autodetected_resources.update(
+            config["available_node_types"][node_type]["resources"])
+        config["available_node_types"][node_type][
+            "resources"] = autodetected_resources
         logger.debug(
             "Updating the resources of node type {} to include {}.".format(
                 node_type, autodetected_resources))
@@ -116,7 +118,6 @@ def get_autodetected_resources(container_data):
 
     memory_limits = _get_resource(container_resources, "memory", "limits")
     node_type_resources["memory"] = int(memory_limits * 0.6)
-    node_type_resources["object_store_memory"] = int(memory_limits * 0.3)
 
     return node_type_resources
 

@@ -102,15 +102,18 @@ class AutoscalingConfigTest(unittest.TestCase):
         orig_new_config = copy.deepcopy(new_config)
         expected_available_node_types = orig_new_config["available_node_types"]
         expected_available_node_types["cpu_4_ondemand"]["resources"] = {
-            "CPU": 4
+            "CPU": 4,
+            "memory": 10307921510,
         }
         expected_available_node_types["cpu_16_spot"]["resources"] = {
             "CPU": 16,
+            "memory": 41231686041,
             "Custom1": 1,
             "is_spot": 1
         }
         expected_available_node_types["gpu_8_ondemand"]["resources"] = {
             "CPU": 32,
+            "memory": 157195803033,
             "GPU": 4,
             "accelerator_type:V100": 1
         }
@@ -120,16 +123,25 @@ class AutoscalingConfigTest(unittest.TestCase):
                 "InstanceType": "m4.xlarge",
                 "VCpuInfo": {
                     "DefaultVCpus": 4
+                },
+                "MemoryInfo": {
+                    "SizeInMiB": 16384
                 }
             }, {
                 "InstanceType": "m4.4xlarge",
                 "VCpuInfo": {
                     "DefaultVCpus": 16
+                },
+                "MemoryInfo": {
+                    "SizeInMiB": 65536
                 }
             }, {
                 "InstanceType": "p3.8xlarge",
                 "VCpuInfo": {
                     "DefaultVCpus": 32
+                },
+                "MemoryInfo": {
+                    "SizeInMiB": 249856
                 },
                 "GpuInfo": {
                     "Gpus": [{
