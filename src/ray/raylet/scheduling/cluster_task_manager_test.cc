@@ -576,11 +576,11 @@ TEST_F(ClusterTaskManagerTest, HeartbeatTest) {
   }
 
   {
-    auto data = std::make_shared<rpc::ResourcesData>();
+    rpc::ResourcesData data;
     task_manager_.FillResourceUsage(data);
 
     auto load_by_shape =
-        data->mutable_resource_load_by_shape()->mutable_resource_demands();
+        data.mutable_resource_load_by_shape()->mutable_resource_demands();
     ASSERT_EQ(load_by_shape->size(), 3);
 
     std::vector<std::vector<unsigned int>> expected = {
@@ -655,9 +655,9 @@ TEST_F(ClusterTaskManagerTest, BacklogReportTest) {
   ASSERT_EQ(node_info_calls_, 0);
 
   {  // No tasks can run because the worker pool is empty.
-    auto data = std::make_shared<rpc::ResourcesData>();
+    rpc::ResourcesData data;
     task_manager_.FillResourceUsage(data);
-    auto resource_load_by_shape = data->resource_load_by_shape();
+    auto resource_load_by_shape = data.resource_load_by_shape();
     auto shape1 = resource_load_by_shape.resource_demands()[0];
 
     ASSERT_EQ(shape1.backlog_size(), 55);
@@ -672,9 +672,9 @@ TEST_F(ClusterTaskManagerTest, BacklogReportTest) {
   task_manager_.ScheduleAndDispatchTasks();
 
   {
-    auto data = std::make_shared<rpc::ResourcesData>();
+    rpc::ResourcesData data;
     task_manager_.FillResourceUsage(data);
-    auto resource_load_by_shape = data->resource_load_by_shape();
+    auto resource_load_by_shape = data.resource_load_by_shape();
     auto shape1 = resource_load_by_shape.resource_demands()[0];
 
     ASSERT_TRUE(callback_occurred);
@@ -690,9 +690,9 @@ TEST_F(ClusterTaskManagerTest, BacklogReportTest) {
   RAY_LOG(ERROR) << "Finished cancelling tasks";
 
   {
-    auto data = std::make_shared<rpc::ResourcesData>();
+    rpc::ResourcesData data;
     task_manager_.FillResourceUsage(data);
-    auto resource_load_by_shape = data->resource_load_by_shape();
+    auto resource_load_by_shape = data.resource_load_by_shape();
     ASSERT_EQ(resource_load_by_shape.resource_demands().size(), 0);
 
     while (!leased_workers_.empty()) {

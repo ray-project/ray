@@ -28,6 +28,7 @@ import ray.ray_constants as ray_constants
 import ray.remote_function
 import ray.serialization as serialization
 import ray._private.services as services
+import ray._private.runtime_env as runtime_env
 import ray
 import setproctitle
 import ray.signature
@@ -423,12 +424,14 @@ def get_gpu_ids():
 
     # TODO(ilr) Handle inserting resources in local mode
     all_resource_ids = global_worker.core_worker.resource_ids()
-    assigned_ids = []
+    assigned_ids = set()
     for resource, assignment in all_resource_ids.items():
         # Handle both normal and placement group GPU resources.
         if resource == "GPU" or resource.startswith("GPU_group_"):
             for resource_id, _ in assignment:
-                assigned_ids.append(resource_id)
+                assigned_ids.add(resource_id)
+
+    assigned_ids = list(assigned_ids)
     # If the user had already set CUDA_VISIBLE_DEVICES, then respect that (in
     # the sense that only GPU IDs that appear in CUDA_VISIBLE_DEVICES should be
     # returned).
@@ -512,7 +515,6 @@ def init(
         _driver_object_store_memory=None,
         _memory=None,
         _redis_password=ray_constants.REDIS_DEFAULT_PASSWORD,
-        _java_worker_options=None,
         _temp_dir=None,
         _lru_evict=False,
         _metrics_export_port=None,
@@ -603,7 +605,6 @@ def init(
         _temp_dir (str): If provided, specifies the root temporary
             directory for the Ray process. Defaults to an OS-specific
             conventional location, e.g., "/tmp/ray".
-        _java_worker_options: Overwrite the options to start Java workers.
         _metrics_export_port(int): Port number Ray exposes system metrics
             through a Prometheus endpoint. It is currently under active
             development, and the API is subject to change.
@@ -646,7 +647,6 @@ def init(
     if "RAY_ADDRESS" in os.environ:
         if address is None or address == "auto":
             address = os.environ["RAY_ADDRESS"]
-
     # Convert hostnames to numerical IP address.
     if _node_ip_address is not None:
         node_ip_address = services.address_to_ip(_node_ip_address)
@@ -711,7 +711,6 @@ def init(
             redis_max_memory=_redis_max_memory,
             plasma_store_socket_name=None,
             temp_dir=_temp_dir,
-            java_worker_options=_java_worker_options,
             start_initial_python_workers_for_first_job=True,
             _system_config=_system_config,
             lru_evict=_lru_evict,
@@ -764,6 +763,11 @@ def init(
             shutdown_at_exit=False,
             spawn_reaper=False,
             connect_only=True)
+
+    if driver_mode == SCRIPT_MODE and job_config:
+        # Rewrite the URI. Note the package isn't uploaded to the URI until
+        # later in the connect
+        runtime_env.rewrite_working_dir_uri(job_config)
 
     connect(
         _global_node,
@@ -1218,6 +1222,7 @@ def connect(node,
     )
     if job_config is None:
         job_config = ray.job_config.JobConfig()
+
     serialized_job_config = job_config.serialize()
     worker.core_worker = ray._raylet.CoreWorker(
         mode, node.plasma_store_socket_name, node.raylet_socket_name, job_id,
@@ -1231,6 +1236,11 @@ def connect(node,
     # will use glog, which is intialized in `CoreWorker`.
     ray.state.state._initialize_global_state(
         node.redis_address, redis_password=node.redis_password)
+    if mode == SCRIPT_MODE:
+        runtime_env.upload_runtime_env_package_if_needed(job_config)
+    elif mode == WORKER_MODE:
+        runtime_env.ensure_runtime_env_setup(
+            worker.core_worker.get_job_config().runtime_env)
 
     if driver_object_store_memory is not None:
         worker.core_worker.set_object_store_client_options(
