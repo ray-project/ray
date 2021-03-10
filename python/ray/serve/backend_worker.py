@@ -190,7 +190,7 @@ class RayServeReplica:
 
         self.num_ongoing_requests = 0
 
-        self.request_counter = metrics.Count(
+        self.request_counter = metrics.Counter(
             "serve_backend_request_counter",
             description=("The number of queries that have been "
                          "processed in this replica."),
@@ -321,7 +321,7 @@ class RayServeReplica:
         try:
             result = await method_to_call(arg)
             result = await self.ensure_serializable_response(result)
-            self.request_counter.record(1)
+            self.request_counter.inc()
         except Exception as e:
             import os
             if "RAY_PDB" in os.environ:
@@ -355,7 +355,7 @@ class RayServeReplica:
                     "Please only send the same type of requests in batching "
                     "mode.")
 
-            self.request_counter.record(batch_size)
+            self.request_counter.inc(batch_size)
 
             call_method = sync_to_async(call_methods.pop())
             result_list = await call_method(args)
