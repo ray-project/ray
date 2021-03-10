@@ -190,8 +190,6 @@ class _RuntimePackage:
                         value.options(override_environment_variables={
                             "RAY_RUNTIME_ENV_FILES": runtime_env["files"]
                         }))
-                else:
-                    setattr(self, symbol, value)
 
     def __repr__(self):
         return "ray._RuntimePackage(module={}, runtime_env={})".format(
