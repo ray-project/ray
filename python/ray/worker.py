@@ -20,7 +20,7 @@ from ray.autoscaler._private.constants import AUTOSCALER_EVENTS
 from ray.autoscaler._private.util import DEBUG_AUTOSCALING_ERROR
 import ray.cloudpickle as pickle
 import ray.gcs_utils
-import ray.memory_monitor as memory_monitor
+import ray._private.memory_monitor as memory_monitor
 import ray.node
 import ray.job_config
 import ray.parameter
