@@ -1,3 +1,4 @@
+import os
 import pytest
 import sys
 import unittest
@@ -160,6 +161,29 @@ print(sum(ray.get([test_actor.one.remote()] * 1000)))
     from time import sleep
     sleep(5)
     assert len(list(Path(PKG_DIR).glob("*.zip"))) == 0
+
+
+@unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
+def test_experimental_package(shutdown_only):
+    ray.init(num_cpus=2)
+    pkg = ray.experimental.load_package(
+        os.path.join(
+            os.path.dirname(__file__),
+            "../experimental/packaging/example_pkg/ray_pkg.yaml"))
+    a = pkg.MyActor.remote()
+    assert ray.get(a.f.remote()) == "hello world"
+    assert ray.get(pkg.my_func.remote()) == "hello world"
+
+
+@unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
+def test_experimental_package_github(shutdown_only):
+    ray.init(num_cpus=2)
+    pkg = ray.experimental.load_package(
+        "http://raw.githubusercontent.com/ericl/ray/packaging/"
+        "python/ray/experimental/packaging/example_pkg/ray_pkg.yaml")
+    a = pkg.MyActor.remote()
+    assert ray.get(a.f.remote()) == "hello world"
+    assert ray.get(pkg.my_func.remote()) == "hello world"
 
 
 if __name__ == "__main__":

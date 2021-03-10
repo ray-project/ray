@@ -16,6 +16,7 @@
 
 #include "absl/base/optimization.h"
 #include "absl/container/flat_hash_map.h"
+#include "ray/common/asio/periodical_runner.h"
 #include "ray/common/buffer.h"
 #include "ray/common/placement_group.h"
 #include "ray/core_worker/actor_handle.h"
@@ -36,7 +37,6 @@
 #include "ray/rpc/node_manager/node_manager_client.h"
 #include "ray/rpc/worker/core_worker_client.h"
 #include "ray/rpc/worker/core_worker_server.h"
-#include "ray/util/periodical_runner.h"
 
 /// The set of gRPC handlers and their associated level of concurrency. If you want to
 /// add a new call to the worker gRPC server, do the following:
@@ -1135,7 +1135,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   TaskID main_thread_task_id_ GUARDED_BY(mutex_);
 
   /// Event loop where the IO events are handled. e.g. async GCS operations.
-  boost::asio::io_service io_service_;
+  instrumented_io_context io_service_;
 
   /// Keeps the io_service_ alive.
   boost::asio::io_service::work io_work_;
@@ -1236,7 +1236,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   std::atomic<int64_t> num_executed_tasks_;
 
   /// Event loop where tasks are processed.
-  boost::asio::io_service task_execution_service_;
+  instrumented_io_context task_execution_service_;
 
   /// The asio work to keep task_execution_service_ alive.
   boost::asio::io_service::work task_execution_service_work_;

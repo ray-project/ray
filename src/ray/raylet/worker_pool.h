@@ -24,12 +24,13 @@
 #include <vector>
 
 #include "gtest/gtest.h"
+#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/common/asio/periodical_runner.h"
 #include "ray/common/client_connection.h"
 #include "ray/common/task/task.h"
 #include "ray/common/task/task_common.h"
 #include "ray/gcs/gcs_client.h"
 #include "ray/raylet/worker.h"
-#include "ray/util/periodical_runner.h"
 
 namespace ray {
 
@@ -121,7 +122,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// \param starting_worker_timeout_callback The callback that will be triggered once
   /// it times out to start a worker.
   /// \param get_time A callback to get the current time.
-  WorkerPool(boost::asio::io_service &io_service, const NodeID node_id,
+  WorkerPool(instrumented_io_context &io_service, const NodeID node_id,
              const std::string node_address, int num_workers_soft_limit,
              int num_initial_python_workers_for_first_job,
              int maximum_startup_concurrency, int min_worker_port, int max_worker_port,
@@ -492,7 +493,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   bool IsIOWorkerType(const rpc::WorkerType &worker_type);
 
   /// For Process class for managing subprocesses (e.g. reaping zombies).
-  boost::asio::io_service *io_service_;
+  instrumented_io_context *io_service_;
   /// Node ID of the current node.
   const NodeID node_id_;
   /// Address of the current node.

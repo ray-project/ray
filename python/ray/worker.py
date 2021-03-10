@@ -425,12 +425,14 @@ def get_gpu_ids():
 
     # TODO(ilr) Handle inserting resources in local mode
     all_resource_ids = global_worker.core_worker.resource_ids()
-    assigned_ids = []
+    assigned_ids = set()
     for resource, assignment in all_resource_ids.items():
         # Handle both normal and placement group GPU resources.
         if resource == "GPU" or resource.startswith("GPU_group_"):
             for resource_id, _ in assignment:
-                assigned_ids.append(resource_id)
+                assigned_ids.add(resource_id)
+
+    assigned_ids = list(assigned_ids)
     # If the user had already set CUDA_VISIBLE_DEVICES, then respect that (in
     # the sense that only GPU IDs that appear in CUDA_VISIBLE_DEVICES should be
     # returned).
@@ -514,7 +516,6 @@ def init(
         _driver_object_store_memory=None,
         _memory=None,
         _redis_password=ray_constants.REDIS_DEFAULT_PASSWORD,
-        _java_worker_options=None,
         _temp_dir=None,
         _lru_evict=False,
         _metrics_export_port=None,
@@ -605,7 +606,6 @@ def init(
         _temp_dir (str): If provided, specifies the root temporary
             directory for the Ray process. Defaults to an OS-specific
             conventional location, e.g., "/tmp/ray".
-        _java_worker_options: Overwrite the options to start Java workers.
         _metrics_export_port(int): Port number Ray exposes system metrics
             through a Prometheus endpoint. It is currently under active
             development, and the API is subject to change.
@@ -712,7 +712,6 @@ def init(
             redis_max_memory=_redis_max_memory,
             plasma_store_socket_name=None,
             temp_dir=_temp_dir,
-            java_worker_options=_java_worker_options,
             start_initial_python_workers_for_first_job=True,
             _system_config=_system_config,
             lru_evict=_lru_evict,
@@ -1242,7 +1241,10 @@ def connect(node,
         runtime_env.upload_runtime_env_package_if_needed(job_config)
     elif mode == WORKER_MODE:
         runtime_env.ensure_runtime_env_setup(
-            worker.core_worker.get_job_config().runtime_env)
+            os.environ.get(
+                "RAY_RUNTIME_ENV_FILES",
+                worker.core_worker.get_job_config()
+                .runtime_env.working_dir_uri))
 
     if driver_object_store_memory is not None:
         worker.core_worker.set_object_store_client_options(
