@@ -38,8 +38,10 @@ Status ServiceBasedGcsClient::Connect(boost::asio::io_service &io_service) {
   }
 
   // Connect to redis.
-  RedisClientOptions redis_client_options(options_.server_ip_, options_.server_port_,
-                                          options_.password_, options_.is_test_client_);
+  RedisClientOptions redis_client_options(
+      options_.server_ip_, options_.server_port_, options_.password_,
+      options_.is_test_client_, options_.enable_sync_conn_, options_.enable_async_conn_,
+      options_.enable_subscribe_conn_);
   redis_client_.reset(new RedisClient(redis_client_options));
   RAY_CHECK_OK(redis_client_->Connect(io_service));
 

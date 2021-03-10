@@ -423,6 +423,13 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
                 << ", raylet " << local_raylet_id;
 
   // Initialize gcs client.
+  // As asynchronous context of redis client is not used in this gcs client. We would not
+  // open connection for it by setting `enable_async_conn` as false.
+  gcs::GcsClientOptions gcs_options = gcs::GcsClientOptions(
+      options_.gcs_options.server_ip_, options_.gcs_options.server_port_,
+      options_.gcs_options.password_, options_.gcs_options.is_test_client_,
+      /*enable_sync_conn=*/true, /*enable_async_conn=*/false,
+      /*enable_subscribe_conn=*/true);
   gcs_client_ = std::make_shared<ray::gcs::ServiceBasedGcsClient>(options_.gcs_options);
 
   RAY_CHECK_OK(gcs_client_->Connect(io_service_));
