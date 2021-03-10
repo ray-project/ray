@@ -118,7 +118,7 @@ def test_two_node_uri(two_node_cluster, working_dir):
 def conda_envs():
     ray.init()
     conda_path = get_conda_bin_executable("conda")
-    init_cmd = (f"source {os.path.dirname(conda_path)}"
+    init_cmd = (f". {os.path.dirname(conda_path)}"
                 f"/../etc/profile.d/conda.sh")
     subprocess.run([f"{init_cmd} && conda activate"], shell=True)
     current_conda_env = os.environ.get("CONDA_DEFAULT_ENV")
