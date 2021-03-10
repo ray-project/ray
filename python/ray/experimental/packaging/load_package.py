@@ -10,10 +10,10 @@ runtime environment, which can include:
 You can run this file for an example of loading a "hello world" package.
 
 Examples:
-    >>> # Load from local
+    >>> # Load from local.
     >>> my_pkg = load_package("~/path/to/my_pkg.yaml")
 
-    >>> # Load from GitHub
+    >>> # Load from GitHub.
     >>> my_pkg = ray.util.load_package(
     ...   "https://github.com/demo/foo/blob/v3.0/project/my_pkg.yaml")
 
