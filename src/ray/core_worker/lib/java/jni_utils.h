@@ -100,8 +100,8 @@ extern jclass java_ray_intentional_system_exit_exception_class;
 /// RayActorCreationTaskException class
 extern jclass java_ray_actor_creation_task_exception_class;
 
-/// serializeToString method of RayActorCreationTaskException
-extern jmethodID java_ray_actor_creation_task_exception_serialize_to_string;
+/// toBytes method of RayException
+extern jmethodID java_ray_exception_to_bytes;
 
 /// JniExceptionUtil class
 extern jclass java_jni_exception_util_class;
@@ -579,7 +579,11 @@ inline std::string GetActorFullName(bool global, std::string name) {
 
 inline void SerializeActorCreationException(JNIEnv *env, jthrowable creation_exception,
                                             std::string &exception_str) {
-  jobject exception_jstr = env->CallObjectMethod(
-      creation_exception, java_ray_actor_creation_task_exception_serialize_to_string);
-  exception_str = JavaStringToNativeString(env, static_cast<jstring>(exception_jstr));
+  jbyteArray exception_jbyte_array = static_cast<jbyteArray>(
+      env->CallObjectMethod(creation_exception, java_ray_exception_to_bytes));
+  int len = env->GetArrayLength(exception_jbyte_array);
+  int8_t *buf = new int8_t *[len];
+  env->GetByteArrayRegion(exception_jbyte_array, 0, len, reinterpret_cast<jbyte *>(buf));
+  exception_str = std::string(buf, len);
+  delete buf;
 }

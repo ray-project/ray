@@ -188,9 +188,8 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
   java_ray_actor_creation_task_exception_class =
       LoadClass(env, "io/ray/runtime/exception/RayActorCreationTaskException");
 
-  java_ray_actor_creation_task_exception_serialize_to_string =
-      env->GetMethodID(java_ray_actor_creation_task_exception_class, "serializeToString",
-                       "()Ljava/lang/String;");
+  java_ray_exception_to_bytes =
+      env->GetMethodID(java_ray_exception_class, "toBytes", "()[B");
 
   java_jni_exception_util_class = LoadClass(env, "io/ray/runtime/util/JniExceptionUtil");
   java_jni_exception_util_get_stack_trace = env->GetStaticMethodID(
