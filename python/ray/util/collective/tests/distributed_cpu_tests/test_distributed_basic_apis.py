@@ -11,25 +11,25 @@ from ray.util.collective.tests.cpu_util import Worker, \
 @pytest.mark.parametrize("backend", [Backend.GLOO])
 @pytest.mark.parametrize("world_size", [2, 3, 4])
 @pytest.mark.parametrize("group_name", ["default", "test", "123?34!"])
-def test_init_two_actors(ray_start_distributed_2_nodes, world_size,
-                         group_name, backend):
-    actors, results = create_collective_workers(world_size, group_name,
-                                                backend=backend)
+def test_init_two_actors(ray_start_distributed_2_nodes, world_size, group_name,
+                         backend):
+    actors, results = create_collective_workers(
+        world_size, group_name, backend=backend)
     for i in range(world_size):
         assert (results[i])
 
 
 @pytest.mark.parametrize("backend", [Backend.GLOO])
 @pytest.mark.parametrize("world_size", [2, 3, 4])
-def test_init_multiple_groups(ray_start_distributed_2_nodes,
-                              world_size, backend):
+def test_init_multiple_groups(ray_start_distributed_2_nodes, world_size,
+                              backend):
     num_groups = 5
     actors = [Worker.remote() for _ in range(world_size)]
     for i in range(num_groups):
         group_name = str(i)
         init_results = ray.get([
-            actor.init_group.remote(world_size, i, group_name=group_name,
-                                    backend=backend)
+            actor.init_group.remote(
+                world_size, i, group_name=group_name, backend=backend)
             for i, actor in enumerate(actors)
         ])
         for j in range(world_size):
@@ -38,8 +38,7 @@ def test_init_multiple_groups(ray_start_distributed_2_nodes,
 
 @pytest.mark.parametrize("backend", [Backend.GLOO])
 @pytest.mark.parametrize("world_size", [2, 3, 4])
-def test_get_rank(ray_start_distributed_2_nodes, world_size,
-                  backend):
+def test_get_rank(ray_start_distributed_2_nodes, world_size, backend):
     actors, _ = create_collective_workers(world_size, backend=backend)
     actor0_rank = ray.get(actors[0].report_rank.remote())
     assert actor0_rank == 0
@@ -53,8 +52,7 @@ def test_get_rank(ray_start_distributed_2_nodes, world_size,
     shuffle(ranks)
     _ = ray.get([
         actor.init_group.remote(
-            world_size, ranks[i], group_name=new_group_name,
-            backend=backend)
+            world_size, ranks[i], group_name=new_group_name, backend=backend)
         for i, actor in enumerate(actors)
     ])
     actor0_rank = ray.get(actors[0].report_rank.remote(new_group_name))
@@ -65,8 +63,7 @@ def test_get_rank(ray_start_distributed_2_nodes, world_size,
 
 @pytest.mark.parametrize("backend", [Backend.GLOO])
 @pytest.mark.parametrize("world_size", [2, 3, 4])
-def test_get_world_size(ray_start_distributed_2_nodes, world_size,
-                        backend):
+def test_get_world_size(ray_start_distributed_2_nodes, world_size, backend):
     actors, _ = create_collective_workers(world_size, backend=backend)
     actor0_world_size = ray.get(actors[0].report_world_size.remote())
     actor1_world_size = ray.get(actors[1].report_world_size.remote())

@@ -19,10 +19,7 @@ def test_sendrecv(ray_start_distributed_2_nodes, group_name, array_size,
         return
     world_size = 4
     actors, _ = create_collective_workers(
-            num_workers=world_size,
-            group_name=group_name,
-            backend=backend
-        )
+        num_workers=world_size, group_name=group_name, backend=backend)
     ray.get([
         a.set_buffer.remote(np.ones(array_size, dtype=np.float32) * (i + 1))
         for i, a in enumerate(actors)

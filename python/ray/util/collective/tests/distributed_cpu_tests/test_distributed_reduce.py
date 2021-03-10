@@ -10,14 +10,11 @@ from ray.util.collective.tests.cpu_util import create_collective_workers
 @pytest.mark.parametrize("backend", [Backend.GLOO])
 @pytest.mark.parametrize("group_name", ["default", "test", "123?34!"])
 @pytest.mark.parametrize("dst_rank", [0, 1, 2, 3])
-def test_reduce_different_name(ray_start_distributed_2_nodes,
-                               group_name, backend, dst_rank):
+def test_reduce_different_name(ray_start_distributed_2_nodes, group_name,
+                               backend, dst_rank):
     world_size = 4
     actors, _ = create_collective_workers(
-            num_workers=world_size,
-            group_name=group_name,
-            backend=backend
-        )
+        num_workers=world_size, group_name=group_name, backend=backend)
     results = ray.get(
         [a.do_reduce.remote(group_name, dst_rank) for a in actors])
     for i in range(world_size):
@@ -31,8 +28,8 @@ def test_reduce_different_name(ray_start_distributed_2_nodes,
 @pytest.mark.parametrize("backend", [Backend.GLOO])
 @pytest.mark.parametrize("array_size", [2, 2**5, 2**10, 2**15, 2**20])
 @pytest.mark.parametrize("dst_rank", [0, 1, 2, 3])
-def test_reduce_different_array_size(ray_start_distributed_2_nodes,
-                                     backend, array_size, dst_rank):
+def test_reduce_different_array_size(ray_start_distributed_2_nodes, backend,
+                                     array_size, dst_rank):
     world_size = 4
     actors, _ = create_collective_workers(world_size, backend=backend)
     ray.wait([
@@ -51,8 +48,7 @@ def test_reduce_different_array_size(ray_start_distributed_2_nodes,
 
 @pytest.mark.parametrize("backend", [Backend.GLOO])
 @pytest.mark.parametrize("dst_rank", [0, 1, 2, 3])
-def test_reduce_different_op(ray_start_distributed_2_nodes, backend,
-                             dst_rank):
+def test_reduce_different_op(ray_start_distributed_2_nodes, backend, dst_rank):
     world_size = 4
     actors, _ = create_collective_workers(world_size, backend=backend)
 
@@ -106,8 +102,7 @@ def test_reduce_different_op(ray_start_distributed_2_nodes, backend,
 
 @pytest.mark.parametrize("backend", [Backend.GLOO])
 @pytest.mark.parametrize("dst_rank", [0, 1])
-def test_reduce_torch_numpy(ray_start_distributed_2_nodes, backend,
-                            dst_rank):
+def test_reduce_torch_numpy(ray_start_distributed_2_nodes, backend, dst_rank):
     import torch
     world_size = 4
     actors, _ = create_collective_workers(world_size, backend=backend)
@@ -122,7 +117,8 @@ def test_reduce_torch_numpy(ray_start_distributed_2_nodes, backend,
 
 
 @pytest.mark.parametrize("backend", [Backend.GLOO])
-def test_reduce_invalid_rank(ray_start_distributed_2_nodes, backend,
+def test_reduce_invalid_rank(ray_start_distributed_2_nodes,
+                             backend,
                              dst_rank=7):
     world_size = 4
     actors, _ = create_collective_workers(world_size, backend=backend)

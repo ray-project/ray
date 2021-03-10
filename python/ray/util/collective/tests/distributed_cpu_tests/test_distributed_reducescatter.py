@@ -26,15 +26,15 @@ def test_reducescatter_different_array_size(
             assert (results[i] == np.ones(array_size, dtype=np.float32) *
                     world_size).all()
         else:
-            assert (results[i] == torch.ones(
-                array_size, dtype=torch.float32) * world_size).all()
+            assert (results[i] == torch.ones(array_size, dtype=torch.float32) *
+                    world_size).all()
 
 
 @pytest.mark.parametrize("backend", [Backend.GLOO])
 @pytest.mark.parametrize("dtype",
                          [np.uint8, np.float16, np.float32, np.float64])
-def test_reducescatter_different_dtype(ray_start_distributed_2_nodes,
-                                       dtype, backend):
+def test_reducescatter_different_dtype(ray_start_distributed_2_nodes, dtype,
+                                       backend):
     world_size = 4
     actors, _ = create_collective_workers(world_size, backend=backend)
     init_tensors_for_gather_scatter(actors, dtype=dtype)
@@ -68,8 +68,7 @@ def test_reducescatter_torch_numpy(ray_start_distributed_2_nodes, backend):
         t = np.ones(shape, dtype=np.float32) * (i + 1)
         ray.wait([a.set_buffer.remote(t)])
         list_buffer = [
-            torch.ones(shape, dtype=torch.float32)
-            for _ in range(world_size)
+            torch.ones(shape, dtype=torch.float32) for _ in range(world_size)
         ]
         ray.wait([a.set_list_buffer.remote(list_buffer)])
     results = ray.get([a.do_reducescatter.remote() for a in actors])
@@ -87,16 +86,15 @@ def test_reducescatter_torch_numpy(ray_start_distributed_2_nodes, backend):
         list_buffer = []
         for j in range(world_size):
             if j % 2 == 0:
-                list_buffer.append(
-                    torch.ones(shape, dtype=torch.float32))
+                list_buffer.append(torch.ones(shape, dtype=torch.float32))
             else:
                 list_buffer.append(np.ones(shape, dtype=np.float32))
         ray.wait([a.set_list_buffer.remote(list_buffer)])
     results = ray.get([a.do_reducescatter.remote() for a in actors])
     for i in range(world_size):
         if i % 2 == 0:
-            assert (results[i] == torch.ones(
-                shape, dtype=torch.float32) * world_size).all()
+            assert (results[i] == torch.ones(shape, dtype=torch.float32) *
+                    world_size).all()
         else:
             assert (results[i] == np.ones(shape, dtype=np.float32) *
                     world_size).all()
@@ -113,14 +111,13 @@ def test_reducescatter_torch_numpy(ray_start_distributed_2_nodes, backend):
             if j % 2 == 0:
                 list_buffer.append(np.ones(shape, dtype=np.float32))
             else:
-                list_buffer.append(
-                    torch.ones(shape, dtype=torch.float32))
+                list_buffer.append(torch.ones(shape, dtype=torch.float32))
         ray.wait([a.set_list_buffer.remote(list_buffer)])
     results = ray.get([a.do_reducescatter.remote() for a in actors])
     for i in range(world_size):
         if i % 2 == 0:
-            assert (results[i] == torch.ones(
-                shape, dtype=torch.float32) * world_size).all()
+            assert (results[i] == torch.ones(shape, dtype=torch.float32) *
+                    world_size).all()
         else:
             assert (results[i] == np.ones(shape, dtype=np.float32) *
                     world_size).all()

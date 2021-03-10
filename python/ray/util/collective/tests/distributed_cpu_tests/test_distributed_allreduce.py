@@ -13,13 +13,10 @@ from ray.util.collective.tests.cpu_util import create_collective_workers
 @pytest.mark.parametrize("backend", [Backend.GLOO])
 @pytest.mark.parametrize("group_name", ["default", "test", "123?34!"])
 @pytest.mark.parametrize("world_size", [2, 3, 4])
-def test_allreduce_different_name(ray_start_distributed_2_nodes,
-                                  group_name, world_size, backend):
+def test_allreduce_different_name(ray_start_distributed_2_nodes, group_name,
+                                  world_size, backend):
     actors, _ = create_collective_workers(
-            num_workers=world_size,
-            group_name=group_name,
-            backend=backend
-        )
+        num_workers=world_size, group_name=group_name, backend=backend)
     results = ray.get([a.do_allreduce.remote(group_name) for a in actors])
     assert (results[0] == np.ones((10, ), dtype=np.float32) * world_size).all()
     assert (results[1] == np.ones((10, ), dtype=np.float32) * world_size).all()
@@ -89,8 +86,7 @@ def test_allreduce_multiple_group(ray_start_distributed_2_nodes,
 
 
 @pytest.mark.parametrize("backend", [Backend.GLOO])
-def test_allreduce_different_op(ray_start_distributed_2_nodes,
-                                backend):
+def test_allreduce_different_op(ray_start_distributed_2_nodes, backend):
     world_size = 4
     actors, _ = create_collective_workers(world_size, backend=backend)
 
@@ -126,8 +122,8 @@ def test_allreduce_different_op(ray_start_distributed_2_nodes,
 @pytest.mark.parametrize("backend", [Backend.GLOO])
 @pytest.mark.parametrize("dtype",
                          [np.uint8, np.float16, np.float32, np.float64])
-def test_allreduce_different_dtype(ray_start_distributed_2_nodes,
-                                   dtype, backend):
+def test_allreduce_different_dtype(ray_start_distributed_2_nodes, dtype,
+                                   backend):
     world_size = 4
     actors, _ = create_collective_workers(world_size, backend=backend)
     ray.wait([a.set_buffer.remote(np.ones(10, dtype=dtype)) for a in actors])
@@ -137,8 +133,7 @@ def test_allreduce_different_dtype(ray_start_distributed_2_nodes,
 
 
 @pytest.mark.parametrize("backend", [Backend.GLOO])
-def test_allreduce_torch_numpy(ray_start_distributed_2_nodes,
-                               backend):
+def test_allreduce_torch_numpy(ray_start_distributed_2_nodes, backend):
     # import torch
     world_size = 4
     actors, _ = create_collective_workers(world_size, backend=backend)

@@ -34,8 +34,9 @@ def clean_up():
         except ValueError:
             actor = None
         if actor:
-            logger.debug("Killing actor with group_key: '{}' and store: '{}'."
-                         .format(group_key, store_name))
+            logger.debug(
+                "Killing actor with group_key: '{}' and store: '{}'.".format(
+                    group_key, store_name))
             ray.kill(actor)
 
 
