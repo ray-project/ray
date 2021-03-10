@@ -11,11 +11,17 @@ You can run this file for an example of loading a "hello world" package.
 
 Examples:
     >>> # Load from local
-    >>> my_pkg = load_package(path = "~/path/to/my_pkg.yaml")
+    >>> my_pkg = load_package("~/path/to/my_pkg.yaml")
+
+    >>> # Load from GitHub
+    >>> my_pkg = ray.util.load_package(
+    ...   "https://github.com/demo/foo/blob/v3.0/project/my_pkg.yaml")
 
     >>> # Inspect the package runtime env.
     >>> print(my_pkg._runtime_env)
-    ... {"conda": {...}, "files": "gcs://_ray_pkg_e2366b976a91975bbc73b.zip"}
+    ... {"conda": {...},
+    ...  "docker": "anyscale-ml/ray-ml:nightly-py38-cpu",
+    ...  "files": "https://github.com/demo/foo/blob/v3.0/project/"}
 
     >>> # Run remote functions from the package.
     >>> my_pkg.my_func.remote(1, 2)
