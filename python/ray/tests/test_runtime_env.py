@@ -1,7 +1,13 @@
 import pytest
 import sys
+import os
 import unittest
+import subprocess
+
+import ray
 from ray.test_utils import run_string_as_driver
+from ray.utils import get_conda_env_dir, get_conda_bin_executable
+from ray.job_config import JobConfig
 
 driver_script = """
 import sys
@@ -105,6 +111,95 @@ def test_two_node_uri(two_node_cluster, working_dir):
         runtime_env=runtime_env)
     out = run_string_as_driver(script)
     assert out.strip().split()[-1] == "1000"
+
+
+@pytest.fixture(scope="session")
+def conda_envs():
+    ray.init()
+    current_conda_env = os.environ.get("CONDA_DEFAULT_ENV")
+    # Create two copies of current conda env with different tf versions.
+    @ray.remote
+    def create_tf_env(tf_version: str):
+        conda_path = get_conda_bin_executable("conda")
+        init_cmd = (f"source {os.path.dirname(conda_path)}"
+                    f"/../etc/profile.d/conda.sh")
+        subprocess.run([
+            "conda", "create", "-n", f"tf-{tf_version}", f"--clone",
+            current_conda_env, "-y"
+        ])
+        commands = [
+            init_cmd, f"conda activate tf-{tf_version}",
+            f"pip install tensorflow=={tf_version}", "conda deactivate"
+        ]
+        command_separator = " && "
+        command_str = command_separator.join(commands)
+        subprocess.run([command_str], shell=True)
+
+    tf_versions = ["1.15.0", "2.3.0"]
+    ray.get([create_tf_env.remote(version) for version in tf_versions])
+    ray.shutdown()
+    yield
+
+    ray.init()
+
+    @ray.remote
+    def remove_tf_env(tf_version: str):
+        subprocess.run(
+            ["conda", "remove", "-n", f"tf-{tf_version}", "--all", "-y"])
+
+    ray.get([remove_tf_env.remote(version) for version in tf_versions])
+    ray.shutdown()
+
+
+@pytest.mark.skipif(
+    os.environ.get("CONDA_DEFAULT_ENV") is None,
+    reason="must be run from within a conda environment")
+def test_task_conda_env(conda_envs, shutdown_only):
+    import tensorflow as tf
+    ray.init()
+
+    @ray.remote
+    def get_tf_version():
+        return tf.__version__
+
+    tf_versions = ["1.15.0", "2.3.0"]
+    for tf_version in tf_versions:
+        runtime_env = {"conda_env": f"tf-{tf_version}"}
+        task = get_tf_version.options(runtime_env=runtime_env)
+        assert ray.get(task.remote()) == tf_version
+
+
+@pytest.mark.skipif(
+    os.environ.get("CONDA_DEFAULT_ENV") is None,
+    reason="must be run from within a conda environment")
+def test_job_config_conda_env(conda_envs):
+    import tensorflow as tf
+
+    tf_version = "1.15.0"
+
+    @ray.remote
+    def get_conda_env():
+        return tf.__version__
+
+    for tf_version in ["1.15.0", "2.3.0"]:
+        runtime_env = {"conda_env": f"tf-{tf_version}"}
+        ray.init(job_config=JobConfig(runtime_env=runtime_env))
+        assert ray.get(get_conda_env.remote()) == tf_version
+        ray.shutdown()
+
+
+def test_get_conda_env_dir(tmp_path):
+    d = tmp_path / "tf1"
+    d.mkdir()
+    os.environ["CONDA_PREFIX"] = str(d)
+    with pytest.raises(ValueError):
+        # Env tf2 should not exist.
+        env_dir = get_conda_env_dir("tf2")
+    tf2_dir = tmp_path / "tf2"
+    tf2_dir.mkdir()
+    env_dir = get_conda_env_dir("tf2")
+    assert (env_dir == str(tmp_path / "tf2"))
+    os.environ["CONDA_PREFIX"] = ""
 
 
 if __name__ == "__main__":
