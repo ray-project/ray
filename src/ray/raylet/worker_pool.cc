@@ -347,10 +347,10 @@ Process WorkerPool::StartProcess(const std::vector<std::string> &worker_command_
   argv.push_back("--cgroup-manager=cgroupfs");
   argv.push_back("--network=host");
   argv.push_back("-v");
-  argv.push_back("/root/test:/root/test");
+  argv.push_back("/tmp/ray:/tmp/ray");
   argv.push_back("--entrypoint");
   argv.push_back(worker_command_args[0].c_str());
-  argv.push_back("centos:8");
+  argv.push_back("ray");
   for (int i = 1; i < worker_command_args.size(); i++) {
     argv.push_back(worker_command_args[i].c_str());
   }
