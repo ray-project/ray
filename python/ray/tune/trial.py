@@ -224,14 +224,26 @@ class Trial:
         if trainable_cls:
             default_resources = trainable_cls.default_resource_request(
                 self.config)
+
+            # If Trainable returns resources, do not allow manual override via
+            # `resources_per_trial` by the user.
             if default_resources:
-                if resources:
+                if resources or placement_group_factory:
                     raise ValueError(
                         "Resources for {} have been automatically set to {} "
                         "by its `default_resource_request()` method. Please "
                         "clear the `resources_per_trial` option.".format(
                             trainable_cls, default_resources))
-                resources = default_resources
+
+                # New way: Trainable returns a PlacementGroupFactory object.
+                if isinstance(default_resources, PlacementGroupFactory):
+                    placement_group_factory = default_resources
+                    resources = None
+                # Set placement group factory to None for backwards
+                # compatibility.
+                else:
+                    placement_group_factory = None
+                    resources = default_resources
         self.location = Location()
 
         self.resources = resources or Resources(cpu=1, gpu=0)
@@ -335,6 +347,7 @@ class Trial:
                     logger.warning(exc)
                 self.placement_group_factory = None
 
+        # Set placement group factory flag to True in Resources object.
         if self.placement_group_factory:
             resource_kwargs = self.resources._asdict()
             resource_kwargs["has_placement_group"] = True

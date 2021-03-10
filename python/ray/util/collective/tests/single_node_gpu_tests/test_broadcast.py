@@ -64,4 +64,4 @@ def test_broadcast_invalid_rank(ray_start_single_node_2_gpus, src_rank=3):
     world_size = 2
     actors, _ = create_collective_workers(world_size)
     with pytest.raises(ValueError):
-        _ = ray.get([a.do_broadcast.remote(src_rank=src_rank) for a in actors])
+        ray.get([a.do_broadcast.remote(src_rank=src_rank) for a in actors])

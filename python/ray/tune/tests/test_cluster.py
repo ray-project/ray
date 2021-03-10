@@ -782,6 +782,7 @@ def test_cluster_interrupt_searcher(start_connected_cluster, tmpdir):
     # Wait until the right checkpoint is saved.
     # The trainable returns every 0.5 seconds, so this should not miss
     # the checkpoint.
+    trials = []
     for i in range(50):
         if TrialRunner.checkpoint_exists(local_checkpoint_dir):
             # Inspect the internal trialrunner
