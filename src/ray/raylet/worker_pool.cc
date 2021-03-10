@@ -349,7 +349,7 @@ Process WorkerPool::StartProcess(const std::vector<std::string> &worker_command_
   if (RAY_LOG_ENABLED(DEBUG)) {
     std::stringstream stream;
     stream << "Starting worker process with command:";
-    for (const auto &arg : worker_command_args) {
+    for (const auto &arg : argv) {
       stream << " " << arg;
     }
     RAY_LOG(DEBUG) << stream.str();
