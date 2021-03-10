@@ -123,6 +123,17 @@ def test_experimental_package(shutdown_only):
     assert ray.get(pkg.my_func.remote()) == "hello world"
 
 
+@unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
+def test_experimental_package_github(shutdown_only):
+    ray.init(num_cpus=2)
+    pkg = load_package.load_package(
+        "http://raw.githubusercontent.com/ericl/ray/packaging/"
+        "python/ray/experimental/packaging/example_pkg/ray_pkg.yaml")
+    a = pkg.MyActor.remote()
+    assert ray.get(a.f.remote()) == "hello world"
+    assert ray.get(pkg.my_func.remote()) == "hello world"
+
+
 if __name__ == "__main__":
     import sys
     sys.exit(pytest.main(["-sv", __file__]))
