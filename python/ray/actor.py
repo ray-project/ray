@@ -667,7 +667,7 @@ class ActorClass:
                 meta.modified_class, meta.actor_creation_function_descriptor,
                 meta.method_meta.methods.keys())
 
-        resources = ray.utils.resources_from_resource_arguments(
+        resources = ray._private.utils.resources_from_resource_arguments(
             cpus_to_use, meta.num_gpus, meta.memory, meta.object_store_memory,
             meta.resources, meta.accelerator_type, num_cpus, num_gpus, memory,
             object_store_memory, resources, accelerator_type)

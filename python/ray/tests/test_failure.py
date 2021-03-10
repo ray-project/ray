@@ -14,7 +14,7 @@ import redis
 import ray
 from ray.experimental.internal_kv import _internal_kv_get
 from ray.autoscaler._private.util import DEBUG_AUTOSCALING_ERROR
-import ray.utils
+import ray._private.utils
 from ray.util.placement_group import placement_group
 import ray.ray_constants as ray_constants
 from ray.exceptions import RayTaskError
@@ -75,7 +75,7 @@ def test_push_error_to_driver_through_redis(ray_start_regular, error_pubsub):
     redis_client = ray._private.services.create_redis_client(
         address, password=ray.ray_constants.REDIS_DEFAULT_PASSWORD)
     error_message = "Test error message"
-    ray.utils.push_error_to_driver_through_redis(
+    ray._private.utils.push_error_to_driver_through_redis(
         redis_client, ray_constants.DASHBOARD_AGENT_DIED_ERROR, error_message)
     errors = get_error_message(error_pubsub, 1,
                                ray_constants.DASHBOARD_AGENT_DIED_ERROR)
@@ -1279,7 +1279,7 @@ def test_gcs_server_failiure_report(ray_start_regular, log_pubsub):
             time.sleep(0.01)
             cnt += 1
             continue
-        data = json.loads(ray.utils.decode(msg["data"]))
+        data = json.loads(ray._private.utils.decode(msg["data"]))
         assert data["pid"] == "gcs_server"
 
 
@@ -1369,7 +1369,7 @@ def test_raylet_node_manager_server_failure(ray_start_cluster_head,
             time.sleep(0.01)
             cnt += 1
             continue
-        data = json.loads(ray.utils.decode(msg["data"]))
+        data = json.loads(ray._private.utils.decode(msg["data"]))
         if data["pid"] == "raylet":
             found = any("Failed to start the grpc server." in line
                         for line in data["lines"])

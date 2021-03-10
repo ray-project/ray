@@ -21,7 +21,7 @@ import ray.new_dashboard.head as dashboard_head
 import ray.new_dashboard.utils as dashboard_utils
 import ray.ray_constants as ray_constants
 import ray._private.services
-import ray.utils
+import ray._private.utils
 from ray.ray_logging import setup_component_logger
 from ray.metrics_agent import PrometheusServiceDiscoveryWriter
 
@@ -224,11 +224,12 @@ if __name__ == "__main__":
         # Something went wrong, so push an error to all drivers.
         redis_client = ray._private.services.create_redis_client(
             args.redis_address, password=args.redis_password)
-        traceback_str = ray.utils.format_error_message(traceback.format_exc())
+        traceback_str = ray._private.utils.format_error_message(
+            traceback.format_exc())
         message = f"The dashboard on node {platform.uname()[1]} " \
                   f"failed with the following " \
                   f"error:\n{traceback_str}"
-        ray.utils.push_error_to_driver_through_redis(
+        ray._private.utils.push_error_to_driver_through_redis(
             redis_client, ray_constants.DASHBOARD_DIED_ERROR, message)
         if isinstance(e, FrontendNotFoundError):
             logger.warning(message)

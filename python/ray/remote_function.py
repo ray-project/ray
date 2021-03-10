@@ -250,7 +250,7 @@ class RemoteFunction:
         check_placement_group_index(placement_group,
                                     placement_group_bundle_index)
 
-        resources = ray.utils.resources_from_resource_arguments(
+        resources = ray._private.utils.resources_from_resource_arguments(
             self._num_cpus, self._num_gpus, self._memory,
             self._object_store_memory, self._resources, self._accelerator_type,
             num_cpus, num_gpus, memory, object_store_memory, resources,

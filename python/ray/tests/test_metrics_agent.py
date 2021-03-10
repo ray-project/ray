@@ -305,7 +305,7 @@ def test_metrics_override_shouldnt_warn(ray_start_regular, log_pubsub):
             time.sleep(0.01)
             continue
 
-        log_lines = json.loads(ray.utils.decode(msg["data"]))["lines"]
+        log_lines = json.loads(ray._private.utils.decode(msg["data"]))["lines"]
         for line in log_lines:
             assert "Attempt to register measure" not in line
 
