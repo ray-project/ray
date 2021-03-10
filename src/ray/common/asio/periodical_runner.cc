@@ -12,13 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/util/periodical_runner.h"
+#include "ray/common/asio/periodical_runner.h"
 
 #include "ray/util/logging.h"
 
 namespace ray {
 
-PeriodicalRunner::PeriodicalRunner(boost::asio::io_service &io_service)
+PeriodicalRunner::PeriodicalRunner(instrumented_io_context &io_service)
     : io_service_(io_service) {}
 
 PeriodicalRunner::~PeriodicalRunner() {

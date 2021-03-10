@@ -54,7 +54,7 @@ namespace ray {
 
 namespace raylet {
 
-WorkerPool::WorkerPool(boost::asio::io_service &io_service, const NodeID node_id,
+WorkerPool::WorkerPool(instrumented_io_context &io_service, const NodeID node_id,
                        const std::string node_address, int num_workers_soft_limit,
                        int num_initial_python_workers_for_first_job,
                        int maximum_startup_concurrency, int min_worker_port,
