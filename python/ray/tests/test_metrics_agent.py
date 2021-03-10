@@ -10,7 +10,7 @@ import pytest
 
 import ray
 from ray.ray_constants import PROMETHEUS_SERVICE_DISCOVERY_FILE
-from ray.metrics_agent import PrometheusServiceDiscoveryWriter
+from ray._private.metrics_agent import PrometheusServiceDiscoveryWriter
 from ray.util.metrics import Count, Histogram, Gauge
 from ray.test_utils import wait_for_condition, SignalActor, fetch_prometheus
 
