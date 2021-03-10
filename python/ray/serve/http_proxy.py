@@ -106,7 +106,7 @@ class HTTPProxy:
             LongPollKey.ROUTE_TABLE: self._update_route_table,
         })
 
-        self.request_counter = metrics.Count(
+        self.request_counter = metrics.Counter(
             "serve_num_http_requests",
             description="The number of HTTP requests processed.",
             tag_keys=("route", ))
@@ -156,7 +156,7 @@ class HTTPProxy:
         assert scope["type"] == "http"
         current_path = scope["path"]
 
-        self.request_counter.record(1, tags={"route": current_path})
+        self.request_counter.inc(tags={"route": current_path})
 
         await self.router(scope, receive, send)
 
