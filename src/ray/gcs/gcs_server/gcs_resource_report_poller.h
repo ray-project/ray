@@ -89,7 +89,7 @@ class GcsResourceReportPoller {
   /// pulls. This method is thread safe.
   void TryPullResourceReport(const NodeID &node_id) LOCKS_EXCLUDED(mutex_);
   /// Pull resource report without validation. This method is NOT thread safe.
-  void PullResourceReport(PullState &state);
+  void PullResourceReport(PullState &state) LOCKS_EXCLUDED(mutex_);
   /// A resource report was successfully pulled (and the resource manager was already
   /// updated). This method is thread safe.
   void NodeResourceReportReceived(const NodeID &node_id) LOCKS_EXCLUDED(mutex_);
