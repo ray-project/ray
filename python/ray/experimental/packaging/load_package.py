@@ -7,6 +7,8 @@ runtime environment, which can include:
  - Different Python libraries (e.g., conda environments, pip dependencies).
  - Different Docker container images.
 
+You can run this file for an example of loading a "hello world" package.
+
 Examples:
     >>> # Load from local
     >>> my_pkg = load_package(path = "~/path/to/my_pkg.yaml")
