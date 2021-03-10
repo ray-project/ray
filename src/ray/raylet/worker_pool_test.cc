@@ -894,6 +894,41 @@ TEST_F(WorkerPoolTest, TestWorkerCapping) {
   mock_rpc_client_it = mock_worker_rpc_clients_.find(
       worker_pool_->GetIdleWorkers().front().first->WorkerId());
   ASSERT_FALSE(mock_rpc_client_it->second->ExitReplySucceed());
+
+  // Start two IO workers. These don't count towards the limit.
+  {
+    RAY_LOG(INFO) << "XXX";
+    Process proc = worker_pool_->StartWorkerProcess(
+        Language::PYTHON, rpc::WorkerType::SPILL_WORKER, job_id);
+    auto worker = CreateSpillWorker(Process());
+    RAY_CHECK_OK(worker_pool_->RegisterWorker(worker, proc.GetId(), [](Status, int) {}));
+    worker_pool_->OnWorkerStarted(worker);
+    ASSERT_EQ(worker_pool_->GetRegisteredWorker(worker->Connection()), worker);
+    worker_pool_->PushSpillWorker(worker);
+  }
+  {
+    RAY_LOG(INFO) << "YYY";
+    Process proc = worker_pool_->StartWorkerProcess(
+        Language::PYTHON, rpc::WorkerType::RESTORE_WORKER, job_id);
+    auto worker = CreateRestoreWorker(Process());
+    RAY_CHECK_OK(worker_pool_->RegisterWorker(worker, proc.GetId(), [](Status, int) {}));
+    worker_pool_->OnWorkerStarted(worker);
+    ASSERT_EQ(worker_pool_->GetRegisteredWorker(worker->Connection()), worker);
+    worker_pool_->PushRestoreWorker(worker);
+  }
+  // All workers still alive.
+  worker_pool_->SetCurrentTimeMs(10000);
+  worker_pool_->TryKillingIdleWorkers();
+  ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), num_workers - 2);
+  for (auto &worker : worker_pool_->GetIdleWorkers()) {
+    mock_rpc_client_it = mock_worker_rpc_clients_.find(worker.first->WorkerId());
+    ASSERT_FALSE(mock_rpc_client_it->second->ExitReplySucceed());
+  }
+  int num_callbacks = 0;
+  auto callback = [&](std::shared_ptr<WorkerInterface> worker) { num_callbacks++; };
+  worker_pool_->PopSpillWorker(callback);
+  worker_pool_->PopRestoreWorker(callback);
+  ASSERT_EQ(num_callbacks, 2);
 }
 
 TEST_F(WorkerPoolTest, TestWorkerCappingLaterNWorkersNotOwningObjects) {
