@@ -161,11 +161,8 @@ def create_project_package(working_dir: str, modules: List[ModuleType],
 
 
 def _delete_package_local(pkg_uri: str):
-    (protocol, _) = _parse_uri(pkg_uri)
-    if protocol == Protocol.GCS:
-        local_path = Path(_get_local_path(pkg_uri))
-        logger.info(f"Delete {local_path}")
-        local_path.unlink(missing_ok=True)
+    local_path = Path(_get_local_path(pkg_uri))
+    local_path.unlink(missing_ok=True)
 
 
 def fetch_package(pkg_uri: str, pkg_file: Path) -> int:

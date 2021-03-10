@@ -1066,6 +1066,12 @@ void NodeManager::HandleWorkerAvailable(const std::shared_ptr<WorkerInterface> &
     return;
   }
 
+  if (worker->GetWorkerType() == rpc::WorkerType::RUNTIME_ENV_WORKER) {
+    // Return the worker to the idle pool.
+    worker_pool_.PushRuntimeEnvWorker(worker);
+    return;
+  }
+
   bool worker_idle = true;
 
   // If the worker was assigned a task, mark it as finished.
@@ -1607,6 +1613,9 @@ bool NodeManager::FinishAssignedTask(const std::shared_ptr<WorkerInterface> &wor
   // std::shared_ptr<WorkerInterface> instead of refs.
   auto &worker = *worker_ptr;
   TaskID task_id = worker.GetAssignedTaskId();
+  if(worker.IsDetachedActor()) {
+    runtime_env_manager_.DecrPackageReference(worker.GetActorId().Hex());
+  }
   RAY_LOG(DEBUG) << "Finished task " << task_id;
 
   Task task;
@@ -1649,6 +1658,10 @@ void NodeManager::FinishAssignedActorCreationTask(WorkerInterface &worker,
 
   if (task_spec.IsDetachedActor()) {
     worker.MarkDetachedActor();
+    auto job_id = task.GetTaskSpecification().JobId();
+    auto job_config = worker_pool_.GetJobConfig(job_id);
+    RAY_CHECK(job_config);
+    runtime_env_manager_.IncrPackageReference(actor_id.Hex(), job_config->runtime_env());;
   }
 }
 

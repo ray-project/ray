@@ -6,6 +6,7 @@ from ray.test_utils import run_string_as_driver
 import ray
 driver_script = """
 import sys
+import logging
 sys.path.insert(0, "{working_dir}")
 import test_module
 import ray
@@ -14,13 +15,22 @@ job_config = ray.job_config.JobConfig(
     runtime_env={runtime_env}
 )
 
-ray.init(address="{redis_address}", job_config=job_config)
+ray.init(address="{redis_address}",
+         job_config=job_config,
+         logging_level=logging.DEBUG)
 
 @ray.remote
 def run_test():
     return test_module.one()
 
-print(sum(ray.get([run_test.remote()] * 1000)))
+@ray.remote
+class TestActor(object):
+    @ray.method(num_returns=1)
+    def one(self):
+        return test_module.one()
+
+
+{execute_statement}
 
 ray.shutdown()"""
 
@@ -57,11 +67,8 @@ def test_single_node(ray_start_cluster_head, working_env):
     cluster = ray_start_cluster_head
     redis_address = cluster.address
     runtime_env = f"""{{  "working_dir": "{working_dir}" }}"""
-    script = driver_script.format(
-        redis_address=redis_address,
-        working_dir=working_dir,
-        runtime_env=runtime_env)
-
+    execute_statement = "print(sum(ray.get([run_test.remote()] * 1000)))"
+    script = driver_script.format(**locals())
     out = run_string_as_driver(script)
     assert out.strip().split()[-1] == "1000"
     from ray._private.runtime_env import PKG_DIR
@@ -75,10 +82,8 @@ def test_two_node(two_node_cluster, working_env):
     cluster, _ = two_node_cluster
     redis_address = cluster.address
     runtime_env = f"""{{  "working_dir": "{working_dir}" }}"""
-    script = driver_script.format(
-        redis_address=redis_address,
-        working_dir=working_dir,
-        runtime_env=runtime_env)
+    execute_statement = "print(sum(ray.get([run_test.remote()] * 1000)))"
+    script = driver_script.format(**locals())
     out = run_string_as_driver(script)
     assert out.strip().split()[-1] == "1000"
     from ray._private.runtime_env import PKG_DIR
@@ -92,10 +97,8 @@ def test_two_node_module(two_node_cluster, working_env):
     cluster, _ = two_node_cluster
     redis_address = cluster.address
     runtime_env = """{  "local_modules": [test_module] }"""
-    script = driver_script.format(
-        redis_address=redis_address,
-        working_dir=working_dir,
-        runtime_env=runtime_env)
+    execute_statement = "print(sum(ray.get([run_test.remote()] * 1000)))"
+    script = driver_script.format(**locals())
     print(script)
     out = run_string_as_driver(script)
     assert out.strip().split()[-1] == "1000"
@@ -117,15 +120,55 @@ def test_two_node_uri(two_node_cluster, working_env):
         runtime_env.create_project_package(working_dir, [], tmp_file.name)
         runtime_env.push_package(pkg_uri, tmp_file.name)
         runtime_env = f"""{{ "working_dir_uri": "{pkg_uri}" }}"""
-    script = driver_script.format(
-        redis_address=redis_address,
-        working_dir=working_dir,
-        runtime_env=runtime_env)
+        execute_statement = "print(sum(ray.get([run_test.remote()] * 1000)))"
+    script = driver_script.format(**locals())
     out = run_string_as_driver(script)
     assert out.strip().split()[-1] == "1000"
     from ray._private.runtime_env import PKG_DIR
     pkg_path = Path(PKG_DIR) / pkg_name
-    assert not Path(pkg_name).exists()
+    assert not pkg_path.exists()
+
+
+@unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
+def test_regular_actors(ray_start_cluster_head, working_env):
+    (working_dir, pkg_name) = working_env
+    cluster = ray_start_cluster_head
+    redis_address = cluster.address
+    runtime_env = f"""{{  "working_dir": "{working_dir}" }}"""
+    execute_statement = """
+test_actor = TestActor.options(name="test_actor").remote()
+print(sum(ray.get([test_actor.one.remote()] * 1000)))
+"""
+    script = driver_script.format(**locals())
+    out = run_string_as_driver(script)
+    assert out.strip().split()[-1] == "1000"
+    from ray._private.runtime_env import PKG_DIR
+    pkg_path = Path(PKG_DIR) / pkg_name
+    assert not pkg_path.exists()
+
+
+@unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
+def test_detached_actors(ray_start_cluster_head, working_env):
+    (working_dir, pkg_name) = working_env
+    cluster = ray_start_cluster_head
+    redis_address = cluster.address
+    runtime_env = f"""{{  "working_dir": "{working_dir}" }}"""
+    execute_statement = """
+test_actor = TestActor.options(name="test_actor", lifetime="detached").remote()
+print(sum(ray.get([test_actor.one.remote()] * 1000)))
+"""
+    script = driver_script.format(**locals())
+    out = run_string_as_driver(script)
+    assert out.strip().split()[-1] == "1000"
+    from ray._private.runtime_env import PKG_DIR
+    pkg_path = Path(PKG_DIR) / pkg_name
+    # It's a detached actors, so it should still be there
+    assert pkg_path.exists()
+    test_actor = ray.get_actor("test_actor")
+    assert sum(ray.get([test_actor.one.remote()] * 1000)) == 1000
+    ray.kill(test_actor)
+    assert not pkg_path.exists()
+
 
 
 if __name__ == "__main__":
