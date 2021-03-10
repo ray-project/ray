@@ -44,10 +44,12 @@ class GcsResourceReportPoller {
   void Stop();
 
   /// Event handler when a new node joins the cluster.
-  void HandleNodeAdded(std::shared_ptr<rpc::GcsNodeInfo> node_info) LOCKS_EXCLUDED(mutex_);
+  void HandleNodeAdded(std::shared_ptr<rpc::GcsNodeInfo> node_info)
+      LOCKS_EXCLUDED(mutex_);
 
   /// Event handler when a node leaves the cluster.
-  void HandleNodeRemoved(std::shared_ptr<rpc::GcsNodeInfo> node_info) LOCKS_EXCLUDED(mutex_);
+  void HandleNodeRemoved(std::shared_ptr<rpc::GcsNodeInfo> node_info)
+      LOCKS_EXCLUDED(mutex_);
 
  private:
   // An asio service which does the polling work.
