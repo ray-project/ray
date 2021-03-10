@@ -79,7 +79,7 @@ def load_package(config_path: str) -> "_RuntimePackage":
             if not runtime_support.package_exists(pkg_uri):
                 raise RuntimeError(
                     "Failed to upload package {}".format(pkg_uri))
-            runtime_env["files"] = pkg_uri
+        runtime_env["files"] = pkg_uri
 
     # Autofill conda config.
     conda_yaml = os.path.join(base_dir, "conda.yaml")
