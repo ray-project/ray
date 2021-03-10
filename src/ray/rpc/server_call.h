@@ -144,7 +144,7 @@ class ServerCallImpl : public ServerCall {
       // Handle service for rpc call has stopped, we must handle the call here
       // to send reply and remove it from cq
       RAY_LOG(DEBUG) << "Handle service has been closed.";
-      SendReply(Status::Invalid("HandleServiceClosed"));
+      SendReply(Reply(), Status::Invalid("HandleServiceClosed"));
     }
   }
 
@@ -157,10 +157,11 @@ class ServerCallImpl : public ServerCall {
     // We create this before handling the request so that the it can be populated by
     // the completion queue in the background if a new request comes in.
     factory.CreateCall();
+    auto reply = std::make_shared<Reply>();
     (service_handler_.*handle_request_function_)(
-        request_, &reply_,
-        [this](Status status, std::function<void()> success,
-               std::function<void()> failure) {
+        request_, reply.get(),
+        [this, reply](Status status, std::function<void()> success,
+                      std::function<void()> failure) {
           // These two callbacks must be set before `SendReply`, because `SendReply`
           // is async and this `ServerCall` might be deleted right after `SendReply`.
           send_reply_success_callback_ = std::move(success);
@@ -169,7 +170,7 @@ class ServerCallImpl : public ServerCall {
           // When the handler is done with the request, tell gRPC to finish this request.
           // Must send reply at the bottom of this callback, once we invoke this funciton,
           // this server call might be deleted
-          SendReply(status);
+          SendReply(*reply, status);
         });
   }
 
@@ -189,9 +190,9 @@ class ServerCallImpl : public ServerCall {
 
  private:
   /// Tell gRPC to finish this request and send reply asynchronously.
-  void SendReply(const Status &status) {
+  void SendReply(const Reply &reply, const Status &status) {
     state_ = ServerCallState::SENDING_REPLY;
-    response_writer_.Finish(reply_, RayStatusToGrpcStatus(status), this);
+    response_writer_.Finish(reply, RayStatusToGrpcStatus(status), this);
   }
 
   /// State of this call.
@@ -218,9 +219,6 @@ class ServerCallImpl : public ServerCall {
 
   /// The request message.
   Request request_;
-
-  /// The reply message.
-  Reply reply_;
 
   /// The callback when sending reply successes.
   std::function<void()> send_reply_success_callback_ = nullptr;

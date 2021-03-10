@@ -62,7 +62,9 @@ class ClientCallImpl : public ClientCall {
   /// Constructor.
   ///
   /// \param[in] callback The callback function to handle the reply.
-  explicit ClientCallImpl(const ClientCallback<Reply> &callback) : callback_(callback) {}
+  explicit ClientCallImpl(
+      const std::function<void(const Status &status, std::shared_ptr<Reply>)> &callback)
+      : reply_(new Reply), callback_(callback) {}
 
   Status GetStatus() override {
     absl::MutexLock lock(&mutex_);
@@ -81,16 +83,16 @@ class ClientCallImpl : public ClientCall {
       status = return_status_;
     }
     if (callback_ != nullptr) {
-      callback_(status, reply_);
+      callback_(status, std::move(reply_));
     }
   }
 
  private:
   /// The reply message.
-  Reply reply_;
+  std::shared_ptr<Reply> reply_;
 
   /// The callback function to handle the reply.
-  ClientCallback<Reply> callback_;
+  std::function<void(const Status &status, std::shared_ptr<Reply>)> callback_;
 
   /// The response reader.
   std::unique_ptr<grpc_impl::ClientAsyncResponseReader<Reply>> response_reader_;
@@ -204,7 +206,13 @@ class ClientCallManager {
       typename GrpcService::Stub &stub,
       const PrepareAsyncFunction<GrpcService, Request, Reply> prepare_async_function,
       const Request &request, const ClientCallback<Reply> &callback) {
-    auto call = std::make_shared<ClientCallImpl<Reply>>(callback);
+    auto call = std::make_shared<ClientCallImpl<Reply>>(
+        [this, callback](const Status &status, std::shared_ptr<Reply> reply) {
+          if (callback && !main_service_.stopped() && !shutdown_) {
+            main_service_.post([status, reply, callback] { callback(status, *reply); });
+          }
+        });
+
     // Send request.
     // Find the next completion queue to wait for response.
     call->response_reader_ = (stub.*prepare_async_function)(
@@ -218,7 +226,7 @@ class ClientCallManager {
     // `ClientCall` is safe to use. But `response_reader_->Finish` only accepts a raw
     // pointer.
     auto tag = new ClientCallTag(call);
-    call->response_reader_->Finish(&call->reply_, &call->status_, (void *)tag);
+    call->response_reader_->Finish(call->reply_.get(), &call->status_, (void *)tag);
     return call;
   }
 
@@ -248,16 +256,10 @@ class ClientCallManager {
       } else if (status != grpc::CompletionQueue::TIMEOUT) {
         auto tag = reinterpret_cast<ClientCallTag *>(got_tag);
         tag->GetCall()->SetReturnStatus();
-        if (ok && !main_service_.stopped() && !shutdown_) {
-          // Post the callback to the main event loop.
-          main_service_.post([tag]() {
-            tag->GetCall()->OnReplyReceived();
-            // The call is finished, and we can delete this tag now.
-            delete tag;
-          });
-        } else {
-          delete tag;
+        if (ok) {
+          tag->GetCall()->OnReplyReceived();
         }
+        delete tag;
       }
     }
   }
