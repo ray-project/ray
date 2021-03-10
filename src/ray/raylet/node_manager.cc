@@ -426,6 +426,7 @@ void NodeManager::HandleJobStarted(const JobID &job_id, const JobTableData &job_
   RAY_CHECK(!job_data.is_dead());
 
   worker_pool_.HandleJobStarted(job_id, job_data.config());
+  runtime_env_manager_.IncrPackageReference(job_id.Hex(), job_data.config().runtime_env());
   // Tasks of this job may already arrived but failed to pop a worker because the job
   // config is not local yet. So we trigger dispatching again here to try to
   // reschedule these tasks.
@@ -451,6 +452,7 @@ void NodeManager::HandleJobFinished(const JobID &job_id, const JobTableData &job
       KillWorker(worker);
     }
   }
+  runtime_env_manager_.DecrPackageReference(job_id.Hex());
 }
 
 void NodeManager::FillResourceReport(rpc::ResourcesData &resources_data) {

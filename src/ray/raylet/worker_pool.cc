@@ -950,7 +950,8 @@ inline WorkerPool::State &WorkerPool::GetStateForLanguage(const Language &langua
 
 inline bool WorkerPool::IsIOWorkerType(const rpc::WorkerType &worker_type) {
   return worker_type == rpc::WorkerType::SPILL_WORKER ||
-         worker_type == rpc::WorkerType::RESTORE_WORKER;
+         worker_type == rpc::WorkerType::RESTORE_WORKER ||
+         worker_type == rpc::WorkerType::RUNTIME_ENV_WORKER;
 }
 
 std::vector<std::shared_ptr<WorkerInterface>> WorkerPool::GetWorkersRunningTasksForJob(

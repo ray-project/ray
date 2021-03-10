@@ -2,6 +2,7 @@ import pytest
 import sys
 import unittest
 from ray.test_utils import run_string_as_driver
+import ray
 
 driver_script = """
 import sys
@@ -58,6 +59,7 @@ def test_single_node(ray_start_cluster_head, working_dir):
 
     out = run_string_as_driver(script)
     assert out.strip().split()[-1] == "1000"
+    ray.shutdown()
 
 
 @unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
@@ -71,6 +73,7 @@ def test_two_node(two_node_cluster, working_dir):
         runtime_env=runtime_env)
     out = run_string_as_driver(script)
     assert out.strip().split()[-1] == "1000"
+    ray.shutdown()
 
 
 @unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
@@ -85,7 +88,7 @@ def test_two_node_module(two_node_cluster, working_dir):
     print(script)
     out = run_string_as_driver(script)
     assert out.strip().split()[-1] == "1000"
-
+    ray.shutdown()
 
 @unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
 def test_two_node_uri(two_node_cluster, working_dir):
@@ -105,6 +108,7 @@ def test_two_node_uri(two_node_cluster, working_dir):
         runtime_env=runtime_env)
     out = run_string_as_driver(script)
     assert out.strip().split()[-1] == "1000"
+    ray.shutdown()
 
 
 if __name__ == "__main__":
