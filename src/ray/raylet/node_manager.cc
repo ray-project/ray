@@ -1140,6 +1140,10 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
         cluster_task_manager_->TaskFinished(worker, &task);
       }
 
+      if (worker->IsDetachedActor()) {
+        runtime_env_manager_.DecrPackageReference(actor_id.Hex());
+      }
+
       if (disconnect_type == rpc::WorkerExitType::SYSTEM_ERROR_EXIT) {
         // Push the error to driver.
         const JobID &job_id = worker->GetAssignedJobId();
@@ -1610,9 +1614,6 @@ bool NodeManager::FinishAssignedTask(const std::shared_ptr<WorkerInterface> &wor
   // std::shared_ptr<WorkerInterface> instead of refs.
   auto &worker = *worker_ptr;
   TaskID task_id = worker.GetAssignedTaskId();
-  if (worker.IsDetachedActor()) {
-    runtime_env_manager_.DecrPackageReference(worker.GetActorId().Hex());
-  }
   RAY_LOG(DEBUG) << "Finished task " << task_id;
 
   Task task;
