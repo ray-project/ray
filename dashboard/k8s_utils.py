@@ -69,10 +69,14 @@ def container_cpu_count():
     but as of time of writing, Ray example configs set only CPU requests.)
     """
     global container_num_cpus
-    if container_num_cpus is None:
-        cpu_shares = int(open(CPU_SHARES_PATH).read())
-        container_num_cpus = cpu_shares / 1024
-    return container_num_cpus
+    try:
+        if container_num_cpus is None:
+            cpu_shares = int(open(CPU_SHARES_PATH).read())
+            container_num_cpus = cpu_shares / 1024
+        return container_num_cpus
+    except Exception as e:
+        logger.exception("Error computing CPU limit of Ray Kubernetes pod.", e)
+        return 1.0
 
 
 def _cpu_usage():
