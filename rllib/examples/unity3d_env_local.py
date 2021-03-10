@@ -153,7 +153,8 @@ if __name__ == "__main__":
         config=config,
         stop=stop,
         verbose=1,
-        checkpoint_freq=10,
+        checkpoint_freq=5,
+        checkpoint_at_end=True,
         restore=args.from_checkpoint)
 
     # And check the results.
