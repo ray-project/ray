@@ -166,6 +166,8 @@ class Counter(Metric):
     def inc(self, value: Union[int, float] = 1.0, tags: Dict[str, str] = None):
         """Increment the counter by `value` (defaults to 1).
 
+        Tags passed in will take precedence over the metric's default tags.
+
         Args:
             value(int, float): Value to increment the counter by (default=1).
             tags(Dict[str, str]): Tags to set or override for this counter.
@@ -267,6 +269,8 @@ class Gauge(Metric):
 
     def set(self, value: Union[int, float], tags: Dict[str, str] = None):
         """Set the gauge to the given `value`.
+
+        Tags passed in will take precedence over the metric's default tags.
 
         Args:
             value(int, float): Value to set the gauge to.
