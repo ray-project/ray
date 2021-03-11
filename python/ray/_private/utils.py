@@ -412,8 +412,9 @@ def get_system_memory():
 
 def _get_docker_cpus(
         cpu_quota_file_name="/sys/fs/cgroup/cpu/cpu.cfs_quota_us",
-        cpu_share_file_name="/sys/fs/cgroup/cpu/cpu.cfs_period_us",
-        cpuset_file_name="/sys/fs/cgroup/cpuset/cpuset.cpus"):
+        cpu_period_file_name="/sys/fs/cgroup/cpu/cpu.cfs_period_us",
+        cpuset_file_name="/sys/fs/cgroup/cpuset/cpuset.cpus",
+        cpu_share_file_name="/sys/fs/cgroup/cpu/cpu.shares"):
     # TODO (Alex): Don't implement this logic oursleves.
     # Docker has 2 underyling ways of implementing CPU limits:
     # https://docs.docker.com/config/containers/resource_constraints/#configure-the-default-cfs-scheduler
@@ -422,22 +423,22 @@ def _get_docker_cpus(
     # docker, the number of vCPUs on a machine is whichever is set (ties broken
     # by smaller value).
 
-    cpu_quota = None
+    cpu_quota = float("inf")
     # See: https://bugs.openjdk.java.net/browse/JDK-8146115
     if os.path.exists(cpu_quota_file_name) and os.path.exists(
-            cpu_quota_file_name):
+            cpu_period_file_name):
         try:
             with open(cpu_quota_file_name, "r") as quota_file, open(
-                    cpu_share_file_name, "r") as period_file:
+                    cpu_period_file_name, "r") as period_file:
                 cpu_quota = float(quota_file.read()) / float(
                     period_file.read())
         except Exception as e:
             logger.exception("Unexpected error calculating docker cpu quota.",
                              e)
     if cpu_quota < 0:
-        cpu_quota = None
+        cpu_quota = float("inf")
 
-    cpuset_num = None
+    cpuset_num = float("inf")
     if os.path.exists(cpuset_file_name):
         try:
             with open(cpuset_file_name) as cpuset_file:
@@ -455,10 +456,19 @@ def _get_docker_cpus(
             logger.exception("Unexpected error calculating docker cpuset ids.",
                              e)
 
-    if cpu_quota and cpuset_num:
-        return min(cpu_quota, cpuset_num)
-    else:
-        return cpu_quota or cpuset_num
+    cpu_share = float("inf")
+    if os.path.exists(cpu_share_file_name):
+        try:
+            with open(cpu_share_file_name, "r") as share_file:
+                cpu_share = float(share_file.read()) / 1024
+        except Exception as e:
+            logger.exception("Unexpected error calculating docker cpu quota.",
+                             e)
+    num_cpus = min(cpu_quota, cpuset_num, cpu_share)
+    if num_cpus == float("inf"):
+        # None of the three methods read the number of CPUs.
+        num_cpus = None
+    return num_cpus
 
 
 def get_num_cpus():
@@ -494,6 +504,9 @@ def get_num_cpus():
                     f"truncated from {docker_count} to "
                     f"{int(docker_count)}.")
             docker_count = int(docker_count)
+            # Round up fraction less than 1.
+            if docker_count == 0:
+                docker_count = 1
             cpu_count = docker_count
 
     except Exception:

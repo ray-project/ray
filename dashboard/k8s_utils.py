@@ -1,8 +1,9 @@
 import logging
 
+import ray.utils
+
 logger = logging.getLogger(__name__)
 
-CPU_SHARES_PATH = "/sys/fs/cgroup/cpu/cpu.shares"
 CPU_USAGE_PATH = "/sys/fs/cgroup/cpuacct/cpuacct.usage"
 PROC_STAT_PATH = "/proc/stat"
 
@@ -45,7 +46,7 @@ def cpu_percent():
                 (system_usage - last_system_usage) / _host_num_cpus())
 
             quotient = cpu_delta / system_delta
-            cpu_percent = round(quotient * 100 / container_cpu_count(), 1)
+            cpu_percent = round(quotient * 100 / ray.utils.get_num_cpus(), 1)
         last_system_usage = system_usage
         last_cpu_usage = cpu_usage
         # Computed percentage might be slightly above 100%.
@@ -53,31 +54,6 @@ def cpu_percent():
     except Exception as e:
         logger.exception("Error computing CPU usage of Ray Kubernetes pod.", e)
         return 0.0
-
-
-def container_cpu_count():
-    """Get number of CPUs available for use by this container, in terms of
-    cgroup cpu shares.
-
-    This is the number of CPUs K8s has assigned to the container based
-    on pod spec requests and limits.
-
-    Note: using cpu_quota as in ray.utils._get_docker_cpus() works
-    only if the user set CPU limit in their pod spec (in addition to CPU
-    request). Otherwise, the quota is unset.
-
-    (Ray users should be encouraged to set CPU limits in their K8s configs,
-    but as of time of writing, Ray example configs set only CPU requests.)
-    """
-    global container_num_cpus
-    try:
-        if container_num_cpus is None:
-            cpu_shares = int(open(CPU_SHARES_PATH).read())
-            container_num_cpus = cpu_shares / 1024
-        return container_num_cpus
-    except Exception as e:
-        logger.exception("Error computing CPU limit of Ray Kubernetes pod.", e)
-        return 1.0
 
 
 def _cpu_usage():
