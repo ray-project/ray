@@ -7,6 +7,21 @@ from typing import Any, Callable, List, Optional
 from ray.serve.exceptions import RayServeException
 
 
+class _RaisedExceptionWrapper:
+    """Wraps an underlying exception to be raised later.
+
+    This is used to distinguish between the case when user code *raises*
+    an exception and *returns* an exception.
+    """
+
+    def __init__(self, underlying):
+        assert isinstance(underlying, Exception)
+        self._underlying = underlying
+
+    def raise_underlying(self):
+        raise self._underlying
+
+
 class _BatchQueue:
     def __init__(self,
                  max_batch_size: int,
@@ -95,16 +110,13 @@ class _BatchQueue:
                 else:
                     results = await func(args)
 
-                print("RESULTS", results)
                 if len(results) != len(batch):
                     raise RayServeException(
                         "Batched function doesn't preserve batch size. "
                         f"The input list has length {len(batch)} but the "
                         f"returned list has length {len(results)}.")
             except Exception as e:
-                print("GOT EXCEPTION :(")
-                results = [_ExceptionWrapper(e)] * len(batch)
-                print("RESULTS", results)
+                results = [_RaisedExceptionWrapper(e)] * len(batch)
 
             for i, result in enumerate(results):
                 futures[i].set_result(result)
@@ -124,15 +136,6 @@ class _BatchQueue:
         # already being destroyed.
         self._handle_batch_task.cancel()
         asyncio.get_event_loop.run_until_complete(await_task())
-
-
-class _ExceptionWrapper:
-    def __init__(self, underlying):
-        assert isinstance(underlying, Exception)
-        self._underlying = underlying
-
-    def raise_underlying(self):
-        raise self._underlying
 
 
 def batch(func=None, max_batch_size=10, batch_wait_timeout_s=0.1):
@@ -182,34 +185,42 @@ def batch(func=None, max_batch_size=10, batch_wait_timeout_s=0.1):
     def _batch_decorator(func):
         @wraps(func)
         async def batch_wrapper(*args, **kwargs):
-            nonlocal func
-            is_method = False
+            # Check if this is a method rather than a function by checking
+            # to see if `func` is the attribute of the first (`self`) argument
+            # under `func.__name__`. Unfortunately, this is the most robust
+            # solution to this I was able to find. It would also be preferable
+            # to do this check when the decorator runs, rather than when the
+            # method is called.
+            args = list(args)
+            self = None
             if len(args) > 0:
                 method = getattr(args[0], func.__name__, False)
                 if method:
                     wrapped = getattr(method, "__wrapped__", False)
                     if wrapped and wrapped == func:
-                        is_method = True
-
-            self = None
-            args = list(args)
-            if is_method:
-                self = args.pop(0)
+                        self = args.pop(0)
 
             if len(args) != 1:
                 raise ValueError("@serve.batch functions can only take a "
                                  "single argument as input")
 
-            if len(kwargs) > 0:
+            if len(kwargs) != 0:
                 raise ValueError(
-                    "kwargs not supported for @serve.batch functions")
+                    "@serve.batch functions do not support kwargs")
 
-            batch_queue_attr = f"__serve_batch_queue_{func.__name__}"
-            if is_method:
+            if self is not None:
+                # For methods, inject the batch queue as an
+                # attribute of the object.
                 batch_queue_object = self
             else:
+                # For functions, inject the batch queue as an
+                # attribute of the function.
                 batch_queue_object = func
 
+            # The first time the function runs, we lazily construct the batch
+            # queue and inject it under a custom attribute name. On subsequent
+            # runs, we just get a reference to the attribute.
+            batch_queue_attr = f"__serve_batch_queue_{func.__name__}"
             if not hasattr(batch_queue_object, batch_queue_attr):
                 batch_queue = _BatchQueue(max_batch_size, batch_wait_timeout_s,
                                           func)
@@ -220,7 +231,7 @@ def batch(func=None, max_batch_size=10, batch_wait_timeout_s=0.1):
             future = asyncio.get_event_loop().create_future()
             batch_queue.put((self, args[0], future))
             result = await future
-            if isinstance(result, _ExceptionWrapper):
+            if isinstance(result, _RaisedExceptionWrapper):
                 result.raise_underlying()
 
             return result
