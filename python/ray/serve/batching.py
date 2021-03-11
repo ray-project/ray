@@ -2,7 +2,7 @@ import asyncio
 from functools import wraps
 from inspect import iscoroutinefunction
 import time
-from typing import Any, Callable, List, Optional
+from typing import Any, Callable, List, Optional, overload, TypeVar
 
 from ray.serve.exceptions import RayServeException
 
@@ -136,6 +136,23 @@ class _BatchQueue:
         # already being destroyed.
         self._handle_batch_task.cancel()
         asyncio.get_event_loop.run_until_complete(await_task())
+
+
+T = TypeVar("T")
+R = TypeVar("R")
+F = TypeVar("F", bound=Callable[[List[T]], List[R]])
+G = TypeVar("G", bound=Callable[[T], R])
+
+
+@overload
+def batch(func: F) -> G:
+    pass
+
+
+@overload
+def batch(max_batch_size: int = 10,
+          batch_wait_timeout_s: float = 0.1) -> Callable[[F], G]:
+    pass
 
 
 def batch(_func=None, max_batch_size=10, batch_wait_timeout_s=0.1):
