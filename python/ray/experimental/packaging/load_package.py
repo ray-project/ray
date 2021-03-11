@@ -142,7 +142,7 @@ def _download_from_github_if_needed(config_path: str) -> str:
             tmp = tempfile.mkdtemp(
                 prefix="github_{}".format(gh_repo), dir=_pkg_tmp())
             subprocess.check_call([
-                "curl", "-L", "https://github.com/{}/{}/tarball/{}".format(
+                "curl", "--fail", "-L", "https://github.com/{}/{}/tarball/{}".format(
                     gh_user, gh_repo, gh_branch), "--output", tmp + ".tar.gz"
             ])
             subprocess.check_call([
