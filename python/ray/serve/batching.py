@@ -138,7 +138,7 @@ class _BatchQueue:
         asyncio.get_event_loop.run_until_complete(await_task())
 
 
-def batch(func=None, max_batch_size=10, batch_wait_timeout_s=0.1):
+def batch(_func=None, max_batch_size=10, batch_wait_timeout_s=0.1):
     """Converts a function to asynchronously handle batches.
 
     The function can be a standalone function or a class method, and must
@@ -157,13 +157,21 @@ def batch(func=None, max_batch_size=10, batch_wait_timeout_s=0.1):
         async def handle_single(self, s: str):
             # Will return s.lower().
             return await handle_batch(s)
+
+    Arguments:
+        max_batch_size (int): the maximum batch size that will be executed in
+            one call to the underlying function.
+        batch_wait_timeout_s (float): the maximum duration to wait for
+            `max_batch_size` elements before running the underlying function.
     """
-    if func is not None:
-        if not callable(func):
+    # `_func` will be None in the case when the decorator is parametrized.
+    # See the comment at the end of this function for a detailed explanation.
+    if _func is not None:
+        if not callable(_func):
             raise TypeError("@serve.batch can only be used to "
                             "decorate functions or methods.")
 
-        if not iscoroutinefunction(func):
+        if not iscoroutinefunction(_func):
             raise TypeError(
                 "Functions decorated with @serve.batch must be 'async def'")
 
@@ -182,22 +190,22 @@ def batch(func=None, max_batch_size=10, batch_wait_timeout_s=0.1):
     if batch_wait_timeout_s < 0:
         raise ValueError("batch_wait_timeout_s must be a float >= 0")
 
-    def _batch_decorator(func):
-        @wraps(func)
+    def _batch_decorator(_func):
+        @wraps(_func)
         async def batch_wrapper(*args, **kwargs):
             # Check if this is a method rather than a function by checking
-            # to see if `func` is the attribute of the first (`self`) argument
-            # under `func.__name__`. Unfortunately, this is the most robust
+            # to see if `_func` is the attribute of the first (`self`) argument
+            # under `_func.__name__`. Unfortunately, this is the most robust
             # solution to this I was able to find. It would also be preferable
             # to do this check when the decorator runs, rather than when the
             # method is called.
             args = list(args)
             self = None
             if len(args) > 0:
-                method = getattr(args[0], func.__name__, False)
+                method = getattr(args[0], _func.__name__, False)
                 if method:
                     wrapped = getattr(method, "__wrapped__", False)
-                    if wrapped and wrapped == func:
+                    if wrapped and wrapped == _func:
                         self = args.pop(0)
 
             if len(args) != 1:
@@ -215,15 +223,15 @@ def batch(func=None, max_batch_size=10, batch_wait_timeout_s=0.1):
             else:
                 # For functions, inject the batch queue as an
                 # attribute of the function.
-                batch_queue_object = func
+                batch_queue_object = _func
 
             # The first time the function runs, we lazily construct the batch
             # queue and inject it under a custom attribute name. On subsequent
             # runs, we just get a reference to the attribute.
-            batch_queue_attr = f"__serve_batch_queue_{func.__name__}"
+            batch_queue_attr = f"__serve_batch_queue_{_func.__name__}"
             if not hasattr(batch_queue_object, batch_queue_attr):
                 batch_queue = _BatchQueue(max_batch_size, batch_wait_timeout_s,
-                                          func)
+                                          _func)
                 setattr(batch_queue_object, batch_queue_attr, batch_queue)
             else:
                 batch_queue = getattr(batch_queue_object, batch_queue_attr)
@@ -238,4 +246,11 @@ def batch(func=None, max_batch_size=10, batch_wait_timeout_s=0.1):
 
         return batch_wrapper
 
-    return _batch_decorator(func) if callable(func) else _batch_decorator
+    # Unfortunately, this is required to handle both non-parametrized
+    # (@serve.batch) and parametrized (@serve.batch(**kwargs)) usage.
+    # In the former case, `serve.batch` will be called with the underlying
+    # function as the sole argument. In the latter case, it will first be
+    # called with **kwargs, then the result of that call will be called
+    # with the underlying function as the sole argument (i.e., it must be a
+    # "decorator factory.").
+    return _batch_decorator(_func) if callable(_func) else _batch_decorator
