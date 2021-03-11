@@ -1682,7 +1682,8 @@ def determine_plasma_store_config(object_store_memory,
             if shm_avail > object_store_memory:
                 plasma_directory = "/dev/shm"
             elif (not os.environ.get("RAY_OBJECT_STORE_ALLOW_SLOW_STORAGE")
-                  and object_store_memory > 10e9):
+                  and object_store_memory >
+                  ray_constants.REQUIRE_SHM_SIZE_THRESHOLD):
                 raise ValueError(
                     "The configured object store size ({} GB) exceeds "
                     "/dev/shm size ({} GB). This will harm performance. "
