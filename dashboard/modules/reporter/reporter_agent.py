@@ -109,10 +109,10 @@ METRICS_GAUGES = {
                                   ["node_type"]),
     "cluster_failed_nodes": Gauge("cluster_failed_nodes",
                                   "Failed nodes on the cluster", "count",
-                                  ["ip"]),
+                                  []),
     "cluster_pending_nodes": Gauge("cluster_pending_nodes",
                                    "Pending nodes on the cluster", "count",
-                                   ["ip"]),
+                                   []),
 }
 
 
@@ -338,14 +338,14 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
             cluster_failed_nodes_record = Record(
                 gauge=METRICS_GAUGES["cluster_failed_nodes"],
                 value=failed_nodes,
-                tags={"ip": ip})
+                tags={})
 
             pending_nodes = len(
                 cluster_stats["autoscaler_report"]["pending_nodes"])
             cluster_pending_nodes_record = Record(
                 gauge=METRICS_GAUGES["cluster_pending_nodes"],
                 value=pending_nodes,
-                tags={"ip": ip})
+                tags={})
             records_reported.extend(
                 [cluster_failed_nodes_record, cluster_pending_nodes_record])
 
