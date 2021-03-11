@@ -160,7 +160,11 @@ class DynamicTFPolicy(TFPolicy):
 
         # Setup self.model.
         if existing_model:
-            self.model = existing_model
+            if isinstance(existing_model, list):
+                self.model = existing_model[0]
+                # TODO: (sven) hack, but works for `target_[q_]?model`.
+                for i in range(1, len(existing_model)):
+                    setattr(self, existing_model[i][0], existing_model[i][1])
         elif make_model:
             self.model = make_model(self, obs_space, action_space, config)
         else:
@@ -262,21 +266,44 @@ class DynamicTFPolicy(TFPolicy):
                     SampleBatch.PREV_REWARDS),
                 explore=explore,
                 is_training=self._input_dict["is_training"])
+        # Distribution generation is customized, e.g., DQN, DDPG.
         else:
-            # Distribution generation is customized, e.g., DQN, DDPG.
             if action_distribution_fn:
-                dist_inputs, dist_class, self._state_out = \
-                    action_distribution_fn(
-                        self, self.model,
-                        obs_batch=self._input_dict[SampleBatch.CUR_OBS],
-                        state_batches=self._state_inputs,
-                        seq_lens=self._seq_lens,
-                        prev_action_batch=self._input_dict.get(
-                            SampleBatch.PREV_ACTIONS),
-                        prev_reward_batch=self._input_dict.get(
-                            SampleBatch.PREV_REWARDS),
-                        explore=explore,
-                        is_training=self._input_dict["is_training"])
+
+                # Try new action_distribution_fn signature, supporting
+                # state_batches and seq_lens.
+                in_dict = self._input_dict
+                try:
+                    dist_inputs, dist_class, self._state_out = \
+                        action_distribution_fn(
+                            self,
+                            self.model,
+                            input_dict=in_dict,
+                            state_batches=self._state_inputs,
+                            seq_lens=self._seq_lens,
+                            explore=explore,
+                            timestep=timestep,
+                            is_training=in_dict["is_training"])
+                # Trying the old way (to stay backward compatible).
+                # TODO: Remove in future.
+                except TypeError as e:
+                    if "positional argument" in e.args[0] or \
+                            "unexpected keyword argument" in e.args[0]:
+                        dist_inputs, dist_class, self._state_out = \
+                            action_distribution_fn(
+                                self, self.model,
+                                obs_batch=in_dict[SampleBatch.CUR_OBS],
+                                state_batches=self._state_inputs,
+                                seq_lens=self._seq_lens,
+                                prev_action_batch=in_dict.get(
+                                    SampleBatch.PREV_ACTIONS),
+                                prev_reward_batch=in_dict.get(
+                                    SampleBatch.PREV_REWARDS),
+                                explore=explore,
+                                is_training=in_dict["is_training"])
+                    else:
+                        raise e
+
             # Default distribution generation behavior:
             # Pass through model. E.g., PG, PPO.
             else:
@@ -366,7 +393,11 @@ class DynamicTFPolicy(TFPolicy):
             self.action_space,
             self.config,
             existing_inputs=input_dict,
-            existing_model=self.model)
+            existing_model=[
+                self.model,
+                ("target_q_model", getattr(self, "target_q_model", None)),
+                ("target_model", getattr(self, "target_model", None)),
+            ])
 
         instance._loss_input_dict = input_dict
         loss = instance._do_loss_init(input_dict)

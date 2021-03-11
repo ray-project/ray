@@ -11,7 +11,7 @@ import ray.gcs_utils
 import ray.new_dashboard.modules.reporter.reporter_consts as reporter_consts
 import ray.new_dashboard.utils as dashboard_utils
 import ray._private.services
-import ray.utils
+import ray._private.utils
 from ray.autoscaler._private.util import (DEBUG_AUTOSCALING_STATUS,
                                           DEBUG_AUTOSCALING_STATUS_LEGACY,
                                           DEBUG_AUTOSCALING_ERROR)
@@ -142,7 +142,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
                 # The key is b'RAY_REPORTER:{node id hex}',
                 # e.g. b'RAY_REPORTER:2b4fbd406898cc86fb88fb0acfd5456b0afd87cf'
                 key, data = msg
-                data = json.loads(ray.utils.decode(data))
+                data = json.loads(ray._private.utils.decode(data))
                 key = key.decode("utf-8")
                 node_id = key.split(":")[-1]
                 DataSource.node_physical_stats[node_id] = data

@@ -1,8 +1,10 @@
-import copy
-import logging
-from pickle import PicklingError
-import os
 from typing import Sequence
+import copy
+import inspect
+import logging
+import os
+
+from pickle import PicklingError
 
 from ray.tune.error import TuneError
 from ray.tune.registry import register_trainable, get_trainable_cls
@@ -11,7 +13,6 @@ from ray.tune.sample import Domain
 from ray.tune.stopper import CombinedStopper, FunctionStopper, Stopper, \
     TimeoutStopper
 from ray.tune.utils import date_str, detect_checkpoint_function
-
 logger = logging.getLogger(__name__)
 
 
@@ -135,7 +136,8 @@ class Experiment:
                 "`tune.run()`.")
 
         config = config or {}
-        if callable(run) and detect_checkpoint_function(run):
+        if callable(run) and not inspect.isclass(run) and \
+                detect_checkpoint_function(run):
             if checkpoint_at_end:
                 raise ValueError("'checkpoint_at_end' cannot be used with a "
                                  "checkpointable function. You can specify "

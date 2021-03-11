@@ -81,7 +81,7 @@ class Worker:
         return rank
 
     def report_world_size(self, group_name="default"):
-        ws = col.get_world_size(group_name)
+        ws = col.get_collective_group_size(group_name)
         return ws
 
     def report_nccl_availability(self):
@@ -330,7 +330,7 @@ class MultiGPUWorker:
         return rank
 
     def report_world_size(self, group_name="default"):
-        ws = col.get_world_size(group_name)
+        ws = col.get_collective_group_size(group_name)
         return ws
 
     def report_nccl_availability(self):

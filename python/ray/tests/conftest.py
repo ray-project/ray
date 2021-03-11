@@ -7,7 +7,7 @@ import pytest
 import subprocess
 
 import ray
-from ray.cluster_utils import Cluster
+from ray._private.cluster_utils import Cluster
 from ray.test_utils import init_error_pubsub
 
 
@@ -181,7 +181,7 @@ def call_ray_start(request):
         request, "param", "ray start --head --num-cpus=1 --min-worker-port=0 "
         "--max-worker-port=0 --port 0")
     command_args = parameter.split(" ")
-    out = ray.utils.decode(
+    out = ray._private.utils.decode(
         subprocess.check_output(command_args, stderr=subprocess.STDOUT))
     # Get the redis address from the output.
     redis_substring_prefix = "--address='"
@@ -217,7 +217,7 @@ def two_node_cluster():
         "object_timeout_milliseconds": 200,
         "num_heartbeats_timeout": 10,
     }
-    cluster = ray.cluster_utils.Cluster(
+    cluster = ray._private.cluster_utils.Cluster(
         head_node_args={"_system_config": system_config})
     for _ in range(2):
         remote_node = cluster.add_node(num_cpus=1)

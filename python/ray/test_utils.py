@@ -14,7 +14,7 @@ import yaml
 
 import ray
 import ray._private.services
-import ray.utils
+import ray._private.utils
 import requests
 from prometheus_client.parser import text_string_to_metric_families
 from ray.scripts.scripts import main as ray_main
@@ -126,6 +126,24 @@ def wait_for_pid_to_exit(pid, timeout=20):
         f"Timed out while waiting for process {pid} to exit.")
 
 
+def wait_for_children_names_of_pid(pid, children_names, timeout=20):
+    p = psutil.Process(pid)
+    start_time = time.time()
+    children_names = set(children_names)
+    not_found_children = []
+    children = []
+    while time.time() - start_time < timeout:
+        children = p.children(recursive=False)
+        not_found_children = set(children_names) - {c.name() for c in children}
+        if len(not_found_children) == 0:
+            return
+        time.sleep(0.1)
+    raise RayTestTimeoutException(
+        "Timed out while waiting for process {} children to start "
+        "({} not found from children {}).".format(pid, not_found_children,
+                                                  children))
+
+
 def wait_for_children_of_pid(pid, num_children=1, timeout=20):
     p = psutil.Process(pid)
     start_time = time.time()
@@ -177,10 +195,10 @@ def run_string_as_driver(driver_script):
     with proc:
         output = proc.communicate(driver_script.encode("ascii"))[0]
         if proc.returncode:
-            print(ray.utils.decode(output))
+            print(ray._private.utils.decode(output))
             raise subprocess.CalledProcessError(proc.returncode, proc.args,
                                                 output, proc.stderr)
-        out = ray.utils.decode(output)
+        out = ray._private.utils.decode(output)
     return out
 
 
@@ -220,6 +238,21 @@ def wait_for_num_actors(num_actors, state=None, timeout=10):
             return
         time.sleep(0.1)
     raise RayTestTimeoutException("Timed out while waiting for global state.")
+
+
+def kill_actor_and_wait_for_failure(actor, timeout=10, retry_interval_ms=100):
+    actor_id = actor._actor_id.hex()
+    current_num_restarts = ray.actors(actor_id)["NumRestarts"]
+    ray.kill(actor)
+    start = time.time()
+    while time.time() - start <= timeout:
+        actor_status = ray.actors(actor_id)
+        if actor_status["State"] == ray.gcs_utils.ActorTableData.DEAD \
+                or actor_status["NumRestarts"] > current_num_restarts:
+            return
+        time.sleep(retry_interval_ms / 1000.0)
+    raise RuntimeError(
+        "It took too much time to kill an actor: {}".format(actor_id))
 
 
 def wait_for_condition(condition_predictor, timeout=10, retry_interval_ms=100):

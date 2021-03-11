@@ -15,12 +15,11 @@ from ray.serve.constants import (DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT,
 from ray.serve.controller import ServeController, BackendTag, ReplicaTag
 from ray.serve.handle import RayServeHandle, RayServeSyncHandle
 from ray.serve.utils import (block_until_http_ready, format_actor_name,
-                             get_random_letters, logger, get_conda_env_dir,
+                             get_random_letters, logger,
                              get_current_node_resource_key)
 from ray.serve.exceptions import RayServeException
 from ray.serve.config import (BackendConfig, ReplicaConfig, BackendMetadata,
                               HTTPOptions)
-from ray.serve.env import CondaEnv
 from ray.serve.router import RequestMetadata, Router
 from ray.actor import ActorHandle
 
@@ -29,11 +28,11 @@ global_async_loop = None
 
 
 @dataclass
-class InternalReplicaContext:
+class ReplicaContext:
     """Stores data for Serve API calls from within the user's backend code."""
     backend_tag: BackendTag
     replica_tag: ReplicaTag
-    controller_name: str
+    _internal_controller_name: str
 
 
 def create_or_get_async_loop_in_thread():
@@ -50,8 +49,8 @@ def create_or_get_async_loop_in_thread():
 
 def _set_internal_replica_context(backend_tag, replica_tag, controller_name):
     global _INTERNAL_REPLICA_CONTEXT
-    _INTERNAL_REPLICA_CONTEXT = InternalReplicaContext(
-        backend_tag, replica_tag, controller_name)
+    _INTERNAL_REPLICA_CONTEXT = ReplicaContext(backend_tag, replica_tag,
+                                               controller_name)
 
 
 def _ensure_connected(f: Callable) -> Callable:
@@ -333,8 +332,8 @@ class Client:
             backend_def: Union[Callable, Type[Callable], str],
             *init_args: Any,
             ray_actor_options: Optional[Dict] = None,
-            config: Optional[Union[BackendConfig, Dict[str, Any]]] = None,
-            env: Optional[CondaEnv] = None) -> None:
+            config: Optional[Union[BackendConfig, Dict[str, Any]]] = None
+    ) -> None:
         """Create a backend with the provided tag.
 
         Args:
@@ -365,12 +364,6 @@ class Client:
                 - "user_config" (experimental): Arguments to pass to the
                 reconfigure method of the backend. The reconfigure method is
                 called if "user_config" is not None.
-            env (serve.CondaEnv, optional): conda environment to run this
-                backend in.  Requires the caller to be running in an activated
-                conda environment (not necessarily ``env``), and requires
-                ``env`` to be an existing conda environment on all nodes.  If
-                ``env`` is not provided but conda is activated, the backend
-                will run in the conda environment of the caller.
         """
         if backend_tag in self.list_backends().keys():
             raise ValueError(
@@ -381,18 +374,18 @@ class Client:
             config = {}
         if ray_actor_options is None:
             ray_actor_options = {}
-        if env is None:
-            # If conda is activated, default to conda env of this process.
-            if os.environ.get("CONDA_PREFIX"):
-                if "override_environment_variables" not in ray_actor_options:
-                    ray_actor_options["override_environment_variables"] = {}
-                ray_actor_options["override_environment_variables"].update({
-                    "PYTHONHOME": os.environ.get("CONDA_PREFIX")
-                })
-        else:
-            conda_env_dir = get_conda_env_dir(env.name)
-            ray_actor_options.update(
-                override_environment_variables={"PYTHONHOME": conda_env_dir})
+
+        # If conda is activated and a conda env is not specified in runtime_env
+        # in ray_actor_options, default to conda env of this process (client).
+        # Without this code, the backend would run in the controller's conda
+        # env, which is likely different from that of the client.
+        if ray_actor_options.get("runtime_env") is None:
+            ray_actor_options["runtime_env"] = {}
+        if ray_actor_options["runtime_env"].get("conda_env") is None:
+            current_env = os.environ.get("CONDA_DEFAULT_ENV")
+            if current_env is not None and current_env != "":
+                ray_actor_options["runtime_env"]["conda_env"] = current_env
+
         replica_config = ReplicaConfig(
             backend_def, *init_args, ray_actor_options=ray_actor_options)
         metadata = BackendMetadata(
@@ -658,7 +651,7 @@ def connect() -> Client:
     if _INTERNAL_REPLICA_CONTEXT is None:
         controller_name = SERVE_CONTROLLER_NAME
     else:
-        controller_name = _INTERNAL_REPLICA_CONTEXT.controller_name
+        controller_name = _INTERNAL_REPLICA_CONTEXT._internal_controller_name
 
     # Try to get serve controller if it exists
     try:
@@ -672,35 +665,26 @@ def connect() -> Client:
     return Client(controller, controller_name, detached=True)
 
 
-def get_current_backend_tag() -> BackendTag:
-    """When called from within a backend, return its backend tag.
+def get_replica_context() -> ReplicaContext:
+    """When called from a backend, returns the backend tag and replica tag.
+
+    When not called from a backend, returns None.
+
+    A replica tag uniquely identifies a single replica for a Ray Serve
+    backend at runtime.  Replica tags are of the form
+    `<backend tag>#<random letters>`.
 
     Raises:
-        RayServeException if not called from within a Ray Serve backend.
+        RayServeException: if not called from within a Ray Serve backend
+    Example:
+        >>> serve.get_replica_context().backend_tag # my_backend
+        >>> serve.get_replica_context().replica_tag # my_backend#krcwoa
     """
     if _INTERNAL_REPLICA_CONTEXT is None:
-        raise RayServeException("`serve.get_current_backend_tag()`"
-                                "may only be called from within a"
+        raise RayServeException("`serve.get_replica_context()` "
+                                "may only be called from within a "
                                 "Ray Serve backend.")
-    else:
-        return _INTERNAL_REPLICA_CONTEXT.backend_tag
-
-
-def get_current_replica_tag() -> ReplicaTag:
-    """When called from within a backend, return its replica tag.
-
-    A replica tag uniquely identifies a single replica (a process)
-    for a Ray Serve backend.
-
-    Raises:
-        RayServeException if not called from within a Ray Serve backend.
-    """
-    if _INTERNAL_REPLICA_CONTEXT is None:
-        raise RayServeException("`serve.get_current_replica_tag()`"
-                                "may only be called from within a"
-                                "Ray Serve backend.")
-    else:
-        return _INTERNAL_REPLICA_CONTEXT.replica_tag
+    return _INTERNAL_REPLICA_CONTEXT
 
 
 def accept_batch(f: Callable) -> Callable:

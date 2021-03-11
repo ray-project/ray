@@ -5,14 +5,17 @@ import time
 import ray
 import cupy
 
+from ray.util.collective.const import ENV
 from ray.util.collective.collective_group import nccl_util
 from ray.util.collective.collective_group.base_collective_group \
     import BaseGroup
-from ray.util.collective.const import get_nccl_store_name
+from ray.util.collective.const import get_store_name
 from ray.util.collective.types import AllReduceOptions, \
     BarrierOptions, Backend, ReduceOptions, BroadcastOptions, \
     AllGatherOptions, ReduceScatterOptions, SendOptions, \
     RecvOptions
+from ray.util.collective.collective_group.cuda_stream import \
+    get_stream_pool
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +49,7 @@ class Rendezvous:
         """Meet at the named actor store.
 
         Args:
-            timeout_s: timeout in seconds.
+            timeout_s (int): timeout in seconds.
 
         Return:
             None
@@ -54,7 +57,7 @@ class Rendezvous:
         if timeout_s <= 0:
             raise ValueError("The 'timeout' argument must be positive. "
                              "Got '{}'.".format(timeout_s))
-        self._store_name = get_nccl_store_name(self._store_key)
+        self._store_name = get_store_name(self._store_key)
         timeout_delta = datetime.timedelta(seconds=timeout_s)
         elapsed = datetime.timedelta(seconds=0)
         start_time = datetime.datetime.now()
@@ -121,6 +124,9 @@ class NCCLGroup(BaseGroup):
 
         # record the used GPU IDs.
         self._used_gpu_indices = set()
+
+        # TODO(Fu): might need an event map
+        self._dev_event_map = {}
 
         if nccl_util.get_nccl_build_version() < 2000:
             raise RuntimeError("NCCL in Ray requires NCCL >= 2.0.")
@@ -290,7 +296,7 @@ class NCCLGroup(BaseGroup):
                       tensors,
                       tensor_lists,
                       reducescatter_options=ReduceScatterOptions()):
-        """Reduce the scatter a list of tensors across the group.
+        """Reduce then scatter a list of tensors across the group.
 
         Args:
             tensors (List): the output tensors (could be unspecified), each
@@ -319,7 +325,6 @@ class NCCLGroup(BaseGroup):
         ]
 
         def preprocess_fn(stream):
-            # TODO(Hao): designate a copy stream.
             for i, tensor_list in enumerate(tensor_lists):
                 for j, tensor in enumerate(tensor_list):
                     nccl_util.copy_tensor(input_flattened[i][j], tensor)
@@ -406,25 +411,36 @@ class NCCLGroup(BaseGroup):
         actual_world_size = len(device_list) * self.world_size
         comms = [None] * len(device_list)
         streams = [None] * len(device_list)
+        events = [None] * len(device_list)
         nccl_util.groupStart()
         for i, device in enumerate(device_list):
             actual_rank = self.rank * len(device_list) + i
             with nccl_util.Device(device):
                 comms[i] = nccl_util.create_nccl_communicator(
                     actual_world_size, nccl_uid, actual_rank)
-                streams[i] = cupy.cuda.Stream.null
-                # Stream(non_blocking=True)
+                # request a stream from the pool
+                # note the device_idx is absolute index.
+                streams[i] = get_stream_pool(device).get_stream()
+                # TODO(Fu): double check the parameters
+                events[i] = cupy.cuda.Event()
         nccl_util.groupEnd()
+        # TODO(Fu): lock
         self._dev_comm_map[comm_key] = comms
         self._dev_streams_map[comm_key] = streams
+        self._dev_event_map[comm_key] = events
         return comms
 
     @staticmethod
-    def _sync_streams():
+    def _sync_streams(device_list, events, streams):
         """Let NCCL streams wait for current streams for every device."""
-        # FIXME: This behavior is different from nccl document. It seems like
-        # cupy allocate tensors on null streams.
-        cupy.cuda.Stream.null.synchronize()
+        # TODO(Fu): recordStream besides calling this function?
+        if ENV.NCCL_USE_MULTISTREAM.val:
+            for i, device in enumerate(device_list):
+                with nccl_util.Device(device):
+                    events[i].record(cupy.cuda.get_current_stream())
+                    streams[i].wait_event(events[i])
+        else:
+            cupy.cuda.Stream.null.synchronize()
 
     def _get_nccl_p2p_communicator(self, comm_key, my_gpu_idx, peer_rank,
                                    peer_gpu_idx):
@@ -481,10 +497,13 @@ class NCCLGroup(BaseGroup):
         # create the p2p communicators
         with nccl_util.Device(my_gpu_idx):
             comm = nccl_util.create_nccl_communicator(2, nccl_uid, my_p2p_rank)
-            stream = cupy.cuda.Stream.null
-            # Stream(non_blocking=True)
+            stream = get_stream_pool(my_gpu_idx).get_stream()
+            event = cupy.cuda.Event()
+
+        # TODO(Fu): lock and might need to add event
         self._dev_comm_map[comm_key] = [comm]
         self._dev_streams_map[comm_key] = [stream]
+        self._dev_event_map[comm_key] = [event]
         return [comm]
 
     def _generate_group_key(self, comm_key):
@@ -505,7 +524,7 @@ class NCCLGroup(BaseGroup):
         Returns:
             None
         """
-        store_name = get_nccl_store_name(group_key)
+        store_name = get_store_name(group_key)
         store = ray.get_actor(store_name)
         # ray.get([store.__ray_terminate__.remote()])
         ray.kill(store)
@@ -524,7 +543,7 @@ class NCCLGroup(BaseGroup):
             NCCLUniqueID (str): NCCL unique ID.
         """
         group_uid = nccl_util.get_nccl_unique_id()
-        store_name = get_nccl_store_name(key)
+        store_name = get_store_name(key)
         # Avoid a potential circular dependency in ray/actor.py
         from ray.util.collective.util import NCCLUniqueIDStore
         store = NCCLUniqueIDStore.options(
@@ -557,14 +576,23 @@ class NCCLGroup(BaseGroup):
         key = _get_comm_key_from_devices(devices)
         comms = self._get_nccl_collective_communicator(key, devices)
         streams = self._dev_streams_map[key]
+        events = self._dev_event_map[key]
 
         # TODO(Hao): sync streams and events
-        self._sync_streams()
+        self._sync_streams(devices, events, streams)
 
         # Make the collective call
         if preprocess_fn:
             preprocess_fn(streams)
+
         nccl_util.groupStart()
+        # TODO(Fu): how to recordStreams as there are no library functions
+        # We also need to make sure input tensors are not freed before their
+        # usages on ncclStreams finish. This can be achieved by calling
+        # c10::cuda::CUDACachingAllocator::recordStream, which remembers the
+        # usage stream (ncclStream), creates an event on the usage stream
+        # when GC attempts to free the input tensor, and delays GC until that
+        # event is done.
         for i, tensor in enumerate(input_tensors):
             collective_fn(tensor, output_tensors[i], comms[i], streams[i])
         nccl_util.groupEnd()
@@ -598,9 +626,10 @@ class NCCLGroup(BaseGroup):
         comms = self._get_nccl_p2p_communicator(comm_key, my_gpu_idx,
                                                 peer_rank, peer_gpu_idx)
         streams = self._dev_streams_map[comm_key]
+        events = self._dev_event_map[comm_key]
 
         # TODO(Hao): sync streams and events
-        self._sync_streams()
+        self._sync_streams([my_gpu_idx], events, streams)
 
         # We have made sure that self.rank != peer_rank during API check.
         peer_p2p_rank = 0 if self.rank > peer_rank else 1
