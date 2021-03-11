@@ -15,12 +15,12 @@ import ray.gcs_utils
 import ray.new_dashboard.modules.reporter.reporter_consts as reporter_consts
 import ray.new_dashboard.utils as dashboard_utils
 import ray._private.services
-import ray.utils
+import ray._private.utils
 from ray.core.generated import reporter_pb2
 from ray.core.generated import reporter_pb2_grpc
-from ray.metrics_agent import MetricsAgent, Gauge, Record
 from ray.autoscaler._private.util import (
-    DEBUG_AUTOSCALING_STATUS, )
+    DEBUG_AUTOSCALING_STATUS)
+from ray._private.metrics_agent import MetricsAgent, Gauge, Record
 import psutil
 
 logger = logging.getLogger(__name__)
@@ -141,9 +141,9 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
     async def GetProfilingStats(self, request, context):
         pid = request.pid
         duration = request.duration
-        profiling_file_path = os.path.join(ray.utils.get_ray_temp_dir(),
-                                           f"{pid}_profiling.txt")
-        sudo = "sudo" if ray.utils.get_user() != "root" else ""
+        profiling_file_path = os.path.join(
+            ray._private.utils.get_ray_temp_dir(), f"{pid}_profiling.txt")
+        sudo = "sudo" if ray._private.utils.get_user() != "root" else ""
         process = await asyncio.create_subprocess_shell(
             f"{sudo} $(which py-spy) record "
             f"-o {profiling_file_path} -p {pid} -d {duration} -f speedscope",
@@ -210,8 +210,8 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
 
     @staticmethod
     def _get_mem_usage():
-        total = ray.utils.get_system_memory()
-        used = ray.utils.get_used_memory()
+        total = ray._private.utils.get_system_memory()
+        used = ray._private.utils.get_used_memory()
         available = total - used
         percent = round(used / total, 3) * 100
         return total, available, percent, used
@@ -220,7 +220,7 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
     def _get_disk_usage():
         dirs = [
             os.environ["USERPROFILE"] if sys.platform == "win32" else os.sep,
-            ray.utils.get_user_temp_dir(),
+            ray._private.utils.get_user_temp_dir(),
         ]
         return {x: psutil.disk_usage(x) for x in dirs}
 

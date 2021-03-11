@@ -1,15 +1,12 @@
 import asyncio
-import os
 import json
-from copy import deepcopy
 
 import numpy as np
 import pytest
 
 import ray
 from ray.serve.utils import (ServeEncoder, chain_future, unpack_future,
-                             try_schedule_resources_on_nodes,
-                             get_conda_env_dir, import_attr)
+                             import_attr)
 
 
 def test_bytes_encoder():
@@ -69,61 +66,6 @@ async def test_future_chaining():
     for future in single_futures:
         with pytest.raises(ValueError):
             await future
-
-
-def test_mock_scheduler():
-    ray_nodes = {
-        "AAA": {
-            "CPU": 2.0,
-            "GPU": 2.0
-        },
-        "BBB": {
-            "CPU": 4.0,
-        }
-    }
-
-    assert try_schedule_resources_on_nodes(
-        [
-            {
-                "CPU": 2,
-                "GPU": 2
-            },  # node 1
-            {
-                "CPU": 4
-            }  # node 2
-        ],
-        deepcopy(ray_nodes)) == [True, True]
-
-    assert try_schedule_resources_on_nodes([
-        {
-            "CPU": 100
-        },
-        {
-            "GPU": 1
-        },
-    ], deepcopy(ray_nodes)) == [False, True]
-
-    assert try_schedule_resources_on_nodes(
-        [
-            {
-                "CPU": 6
-            },  # Equals to the sum of cpus but shouldn't be scheduable.
-        ],
-        deepcopy(ray_nodes)) == [False]
-
-
-def test_get_conda_env_dir(tmp_path):
-    d = tmp_path / "tf1"
-    d.mkdir()
-    os.environ["CONDA_PREFIX"] = str(d)
-    with pytest.raises(ValueError):
-        # env does not exist
-        env_dir = get_conda_env_dir("tf2")
-    tf2_dir = tmp_path / "tf2"
-    tf2_dir.mkdir()
-    env_dir = get_conda_env_dir("tf2")
-    assert (env_dir == str(tmp_path / "tf2"))
-    os.environ["CONDA_PREFIX"] = ""
 
 
 def test_import_attr():

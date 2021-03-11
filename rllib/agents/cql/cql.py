@@ -87,7 +87,7 @@ def execution_plan(workers, config):
         buffer_size=config["buffer_size"],
         replay_batch_size=config["train_batch_size"],
         replay_mode=config["multiagent"]["replay_mode"],
-        replay_sequence_length=config["replay_sequence_length"],
+        replay_sequence_length=config.get("replay_sequence_length", 1),
         **prio_args)
 
     global replay_buffer
@@ -131,8 +131,9 @@ def after_init(trainer):
     # Add the entire dataset to Replay Buffer (global variable)
     global replay_buffer
     local_worker = trainer.workers.local_worker
-    dataset = local_worker().input_reader.dataset
-    replay_buffer.add_batch(dataset)
+    if "d4rl" in trainer.config["input"]:
+        dataset = local_worker().input_reader.dataset
+        replay_buffer.add_batch(dataset)
 
 
 CQLTrainer = SACTrainer.with_updates(

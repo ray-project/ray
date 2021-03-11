@@ -17,9 +17,10 @@
 #include "absl/base/thread_annotations.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/clock.h"
+#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/common/asio/periodical_runner.h"
 #include "ray/core_worker/context.h"
 #include "ray/gcs/gcs_client.h"
-#include "ray/util/periodical_runner.h"
 
 namespace ray {
 
@@ -28,7 +29,7 @@ namespace worker {
 class Profiler {
  public:
   Profiler(WorkerContext &worker_context, const std::string &node_ip_address,
-           boost::asio::io_service &io_service,
+           instrumented_io_context &io_service,
            const std::shared_ptr<gcs::GcsClient> &gcs_client);
 
   // Add an event to the queue to be flushed periodically.
@@ -42,7 +43,7 @@ class Profiler {
   absl::Mutex mutex_;
 
   // ASIO IO service event loop. Must be started by the caller.
-  boost::asio::io_service &io_service_;
+  instrumented_io_context &io_service_;
 
   /// The runner to run function periodically.
   PeriodicalRunner periodical_runner_;

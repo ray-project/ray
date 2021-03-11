@@ -508,6 +508,14 @@ py_test(
     srcs = ["agents/ars/tests/test_ars.py"]
 )
 
+# CQLTrainer
+py_test(
+    name = "test_cql",
+    tags = ["agents_dir"],
+    size = "medium",
+    srcs = ["agents/cql/tests/test_cql.py"]
+)
+
 # DDPGTrainer
 py_test(
     name = "test_ddpg",
