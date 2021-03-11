@@ -334,6 +334,9 @@ Process WorkerPool::StartProcess(const std::vector<std::string> &worker_command_
   std::vector<const char *> argv;
   argv.push_back("podman");
   argv.push_back("run");
+  argv.push_back("--log-level=debug");
+  argv.push_back("-u");
+  argv.push_back("root");
   // argv.push_back("-t");
   argv.push_back("--cgroup-manager=cgroupfs");
   argv.push_back("--network=host");
