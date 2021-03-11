@@ -245,6 +245,15 @@ def test_job_config_conda_env(conda_envs):
 
 def test_get_conda_env_dir(tmp_path):
     from pathlib import Path
+    """
+    Typical output of `conda env list`, for context:
+    
+    base                 /Users/scaly/anaconda3
+    my_env_1             /Users/scaly/anaconda3/envs/my_env_1
+
+    For this test, `tmp_path` is a stand-in for `Users/scaly/anaconda3`.
+    """
+
     # Simulate starting in an env named tf1.
     d = tmp_path / "envs" / "tf1"
     Path.mkdir(d, parents=True)
