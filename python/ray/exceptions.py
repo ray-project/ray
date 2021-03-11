@@ -178,9 +178,16 @@ class RayActorError(RayError):
     def has_creation_task_error(self):
         return self.creation_task_error is not None
 
+    def get_creation_task_error(self):
+        if self.creation_task_error is not None:
+            return self.creation_task_error
+        return None
+
     def __str__(self):
         if self.creation_task_error:
-            return self.creation_task_error.__str__()
+            return ("The actor died because of an error" +
+                    " raised in its creation task, " +
+                    self.creation_task_error.__str__())
         return ("The actor died unexpectedly before finishing this task.")
 
     @staticmethod

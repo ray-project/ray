@@ -554,7 +554,6 @@ cdef execute_task(
                 ray_constants.TASK_PUSH_ERROR,
                 str(failure_object),
                 job_id=worker.current_job_id)
-
             if (<int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK):
                 raise RayActorError.from_task_error(failure_object)
 
@@ -600,17 +599,20 @@ cdef CRayStatus task_execution_handler(
                 sys_exit = SystemExit()
                 if isinstance(e, RayActorError) and \
                    e.has_creation_task_error():
-                    logger.exception("Error raised in creation task")
+                    traceback_str = str(e)
+                    logger.error(
+                        f"Error raised in creation task:\n{traceback_str}")
                     # Cython's bug that doesn't allow reference assignment,
                     # this is a workaroud.
                     # See https://github.com/cython/cython/issues/1863
                     (&creation_task_exception_pb_bytes)[0] = (
                         ray_error_to_memory_buf(e))
                     sys_exit.is_creation_task_error = True
-
-                traceback_str = traceback.format_exc() + (
-                    "An unexpected internal error occurred while the worker "
-                    "was executing a task.")
+                else:
+                    traceback_str = traceback.format_exc() + (
+                        "An unexpected internal error "
+                        "occurred while the worker "
+                        "was executing a task.")
                 ray._private.utils.push_error_to_driver(
                     ray.worker.global_worker,
                     "worker_crash",
