@@ -249,16 +249,14 @@ on other nodes as well. Please refer to the
 about these placement strategies.
 
 
-How can I pass further parameter values to my trainable function?
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-**This is only applicable for the Tune function API.**
+How can I pass further parameter values to my trainable?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Ray Tune expects your trainable functions to accept only up to two parameters,
 ``config`` and ``checkpoint_dir``. But sometimes there are cases where
 you want to pass constant arguments, like the number of epochs to run,
 or a dataset to train on. Ray Tune offers a wrapper function to achieve
-just that, called ``tune.with_parameters()``:
+just that, called :func:`tune.with_parameters() <ray.tune.with_parameters>`:
 
 .. code-block:: python
 
@@ -282,6 +280,11 @@ This function works similarly to ``functools.partial``, but it stores
 the parameters directly in the Ray object store. This means that you
 can pass even huge objects like datasets, and Ray makes sure that these
 are efficiently stored and retrieved on your cluster machines.
+
+:func:`tune.with_parameters() <ray.tune.with_parameters>`
+also works with class trainables. Please see
+:ref:`here for further details <tune-with-parameters>` and examples.
+
 
 How can I reproduce experiments
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

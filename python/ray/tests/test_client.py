@@ -3,10 +3,43 @@ import time
 import sys
 import logging
 import threading
+import _thread
 
 import ray.util.client.server.server as ray_client_server
 from ray.util.client.common import ClientObjectRef
 from ray.util.client.ray_client_helpers import ray_start_client_server
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+def test_interrupt_ray_get(call_ray_stop_only):
+    import ray
+    ray.init(num_cpus=2)
+
+    with ray_start_client_server() as ray:
+
+        @ray.remote
+        def block():
+            print("blocking run")
+            time.sleep(99)
+
+        @ray.remote
+        def fast():
+            print("fast run")
+            time.sleep(1)
+            return "ok"
+
+        class Interrupt(threading.Thread):
+            def run(self):
+                time.sleep(2)
+                _thread.interrupt_main()
+
+        it = Interrupt()
+        it.start()
+        with pytest.raises(KeyboardInterrupt):
+            ray.get(block.remote())
+
+        # Assert we can still get new items after the interrupt.
+        assert ray.get(fast.remote()) == "ok"
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")

@@ -16,6 +16,7 @@
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/gcs/accessor.h"
 #include "ray/raylet/test/util.h"
@@ -317,7 +318,7 @@ class LocalObjectManagerTest : public ::testing::Test {
            "&offset=" + std::to_string(offset);
   }
 
-  boost::asio::io_service io_service_;
+  instrumented_io_context io_service_;
   size_t free_objects_batch_size = 3;
   std::shared_ptr<MockWorkerClient> owner_client;
   rpc::CoreWorkerClientPool client_pool;

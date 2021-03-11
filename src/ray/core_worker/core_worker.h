@@ -16,6 +16,7 @@
 
 #include "absl/base/optimization.h"
 #include "absl/container/flat_hash_map.h"
+#include "ray/common/asio/periodical_runner.h"
 #include "ray/common/buffer.h"
 #include "ray/common/placement_group.h"
 #include "ray/core_worker/actor_handle.h"
@@ -36,7 +37,6 @@
 #include "ray/rpc/node_manager/node_manager_client.h"
 #include "ray/rpc/worker/core_worker_client.h"
 #include "ray/rpc/worker/core_worker_server.h"
-#include "ray/util/periodical_runner.h"
 
 /// The set of gRPC handlers and their associated level of concurrency. If you want to
 /// add a new call to the worker gRPC server, do the following:
@@ -272,6 +272,8 @@ class CoreWorkerProcess {
   static void EnsureInitialized();
 
   static void HandleAtExit();
+
+  void InitializeSystemConfig();
 
   /// Get the `CoreWorker` instance by worker ID.
   ///
@@ -738,6 +740,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Tell an actor to exit immediately, without completing outstanding work.
   ///
   /// \param[in] actor_id ID of the actor to kill.
+  /// \param[in] force_kill Whether to force kill an actor by killing the worker.
   /// \param[in] no_restart If set to true, the killed actor will not be
   /// restarted anymore.
   /// \param[out] Status
@@ -934,6 +937,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                                   rpc::SendReplyCallback send_reply_callback) override;
 
   // Make the this worker exit.
+  // This request fails if the core worker owns any object.
   void HandleExit(const rpc::ExitRequest &request, rpc::ExitReply *reply,
                   rpc::SendReplyCallback send_reply_callback) override;
 
@@ -960,6 +964,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   // Get serialized job configuration.
   const rpc::JobConfig &GetJobConfig() const;
+
+  /// Return true if the core worker is in the exit process.
+  bool IsExiting() const;
 
  private:
   void SetCurrentTaskId(const TaskID &task_id);
@@ -1122,7 +1129,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   TaskID main_thread_task_id_ GUARDED_BY(mutex_);
 
   /// Event loop where the IO events are handled. e.g. async GCS operations.
-  boost::asio::io_service io_service_;
+  instrumented_io_context io_service_;
 
   /// Keeps the io_service_ alive.
   boost::asio::io_service::work io_work_;
@@ -1223,7 +1230,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   std::atomic<int64_t> num_executed_tasks_;
 
   /// Event loop where tasks are processed.
-  boost::asio::io_service task_execution_service_;
+  instrumented_io_context task_execution_service_;
 
   /// The asio work to keep task_execution_service_ alive.
   boost::asio::io_service::work task_execution_service_work_;

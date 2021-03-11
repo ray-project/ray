@@ -15,6 +15,7 @@
 #include <iostream>
 
 #include "gflags/gflags.h"
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/status.h"
@@ -97,7 +98,7 @@ int main(int argc, char *argv[]) {
   std::unordered_map<std::string, double> static_resource_conf;
 
   // IO Service for node manager.
-  boost::asio::io_service main_service;
+  instrumented_io_context main_service;
 
   // Ensure that the IO service keeps running. Without this, the service will exit as soon
   // as there is no more work to be processed.
@@ -110,7 +111,7 @@ int main(int argc, char *argv[]) {
   gcs_client = std::make_shared<ray::gcs::ServiceBasedGcsClient>(client_options);
 
   RAY_CHECK_OK(gcs_client->Connect(main_service));
-  std::unique_ptr<ray::raylet::Raylet> server(nullptr);
+  std::unique_ptr<ray::raylet::Raylet> raylet(nullptr);
 
   RAY_CHECK_OK(gcs_client->Nodes().AsyncGetInternalConfig(
       [&](::ray::Status status,
@@ -229,22 +230,22 @@ int main(int argc, char *argv[]) {
         ray::stats::Init(global_tags, metrics_agent_port);
 
         // Initialize the node manager.
-        server.reset(new ray::raylet::Raylet(
+        raylet.reset(new ray::raylet::Raylet(
             main_service, raylet_socket_name, node_ip_address, redis_address, redis_port,
             redis_password, node_manager_config, object_manager_config, gcs_client,
             metrics_export_port));
 
-        server->Start();
+        raylet->Start();
       }));
 
   // Destroy the Raylet on a SIGTERM. The pointer to main_service is
   // guaranteed to be valid since this function will run the event loop
   // instead of returning immediately.
   // We should stop the service and remove the local socket file.
-  auto handler = [&main_service, &raylet_socket_name, &server, &gcs_client](
+  auto handler = [&main_service, &raylet_socket_name, &raylet, &gcs_client](
                      const boost::system::error_code &error, int signal_number) {
     RAY_LOG(INFO) << "Raylet received SIGTERM, shutting down...";
-    server->Stop();
+    raylet->Stop();
     gcs_client->Disconnect();
     ray::stats::Shutdown();
     main_service.stop();
