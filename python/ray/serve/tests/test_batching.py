@@ -1,3 +1,5 @@
+import asyncio
+
 import pytest
 
 import ray
@@ -223,16 +225,18 @@ async def test_batch_size_one_long_timeout(use_class):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("use_class", [True, False])
-async def test_batch_size_one_zero_timeout(use_class):
-    @serve.batch(max_batch_size=1, batch_wait_timeout_s=1000)
+async def test_batch_size_multiple_zero_timeout(use_class):
+    @serve.batch(max_batch_size=2, batch_wait_timeout_s=0)
     async def zero_timeout(requests):
+        await asyncio.sleep(1)
         if "raise" in requests:
             1 / 0
         return requests
 
     class ZeroTimeout:
-        @serve.batch(max_batch_size=1, batch_wait_timeout_s=1000)
+        @serve.batch(max_batch_size=2, batch_wait_timeout_s=0)
         async def zero_timeout(self, requests):
+            await asyncio.sleep(1)
             if "raise" in requests:
                 1 / 0
             return requests
@@ -248,6 +252,71 @@ async def test_batch_size_one_zero_timeout(use_class):
     assert await call("hi") == "hi"
     with pytest.raises(ZeroDivisionError):
         await call("raise")
+
+    # Check that 2 requests will be executed together if available.
+    # The first should cause a size-one batch to be executed, then
+    # the next two should be executed together (signaled by both
+    # having the exception).
+    t1 = asyncio.get_event_loop().create_task(call("hi1"))
+    await asyncio.sleep(0.5)
+    t2 = asyncio.get_event_loop().create_task(call("hi2"))
+    t3 = asyncio.get_event_loop().create_task(call("raise"))
+
+    assert await t1 == "hi1"
+
+    with pytest.raises(ZeroDivisionError):
+        await t2
+    with pytest.raises(ZeroDivisionError):
+        await t3
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("use_class", [True, False])
+async def test_batch_size_multiple_long_timeout(use_class):
+    @serve.batch(max_batch_size=3, batch_wait_timeout_s=1000)
+    async def long_timeout(requests):
+        if "raise" in requests:
+            1 / 0
+        return requests
+
+    class LongTimeout:
+        @serve.batch(max_batch_size=3, batch_wait_timeout_s=1000)
+        async def long_timeout(self, requests):
+            if "raise" in requests:
+                1 / 0
+            return requests
+
+    cls = LongTimeout()
+
+    async def call(arg):
+        if use_class:
+            return await cls.long_timeout(arg)
+        else:
+            return await long_timeout(arg)
+
+    t1 = asyncio.get_event_loop().create_task(call("hi1"))
+    t2 = asyncio.get_event_loop().create_task(call("hi2"))
+    done, pending = await asyncio.wait([t1, t2], timeout=0.1)
+    assert len(done) == 0
+    t3 = asyncio.get_event_loop().create_task(call("hi3"))
+    done, pending = await asyncio.wait([t1, t2, t3], timeout=100)
+    assert set(done) == set([t1, t2, t3])
+    assert [t1.result(), t2.result(), t3.result()] == ["hi1", "hi2", "hi3"]
+
+    t1 = asyncio.get_event_loop().create_task(call("hi1"))
+    t2 = asyncio.get_event_loop().create_task(call("raise"))
+    done, pending = await asyncio.wait([t1, t2], timeout=0.1)
+    assert len(done) == 0
+    t3 = asyncio.get_event_loop().create_task(call("hi3"))
+    done, pending = await asyncio.wait([t1, t2, t3], timeout=100)
+    assert set(done) == set([t1, t2, t3])
+    assert all([isinstance(t.exception(), ZeroDivisionError) for t in done])
+    with pytest.raises(ZeroDivisionError):
+        t1.result()
+    with pytest.raises(ZeroDivisionError):
+        t2.result()
+    with pytest.raises(ZeroDivisionError):
+        t3.result()
 
 
 if __name__ == "__main__":
