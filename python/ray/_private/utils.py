@@ -844,7 +844,7 @@ def get_conda_env_dir(env_name):
         conda_exe = os.environ.get("CONDA_EXE")
         if conda_exe is None:
             raise ValueError(
-                "Ray Serve cannot find environment variables set by conda. "
+                "Ray cannot find environment variables set by conda. "
                 "Please verify conda is installed.")
         # Example: CONDA_EXE=$HOME/anaconda3/bin/python
         # Strip out /bin/python by going up two parent directories.
@@ -854,15 +854,21 @@ def get_conda_env_dir(env_name):
     # 1. We are in a conda (base) env: CONDA_DEFAULT_ENV=base and
     #    CONDA_PREFIX=$HOME/anaconda3
     # 2. We are in a user-created conda env: CONDA_DEFAULT_ENV=$env_name and
-    #    CONDA_PREFIX=$HOME/anaconda3/envs/$env_name
+    #    CONDA_PREFIX=$HOME/anaconda3/envs/$current_env_name
     if os.environ.get("CONDA_DEFAULT_ENV") == "base":
-        # Caller is running in base conda env.
+        # Caller's curent environment is (base).
         # Not recommended by conda, but we can still support it.
-        env_dir = os.path.join(conda_prefix, "envs", env_name)
+        if (env_name == "base"):
+            # Desired environment is (base), located at e.g. $HOME/anaconda3
+            env_dir = conda_prefix
+        else:
+            # Desired environment is user-created, e.g.
+            # $HOME/anaconda3/envs/$env_name
+            env_dir = os.path.join(conda_prefix, "envs", env_name)
     else:
         # Now `conda_prefix` should be something like
-        # $HOME/anaconda3/envs/$env_name
-        # We want to strip the $env_name component.
+        # $HOME/anaconda3/envs/$current_env_name
+        # We want to replace the last component with the desired env name.
         conda_envs_dir = os.path.split(conda_prefix)[0]
         env_dir = os.path.join(conda_envs_dir, env_name)
     if not os.path.isdir(env_dir):
