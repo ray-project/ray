@@ -39,8 +39,6 @@ def test_dashboard(shutdown_only):
                     f"Dashboard output log: {out_log}\n")
 
 
-
-
 if __name__ == "__main__":
     import pytest
     import sys

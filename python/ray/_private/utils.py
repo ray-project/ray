@@ -415,8 +415,8 @@ def get_system_memory():
 def _get_docker_cpus(
         cpu_quota_file_name="/sys/fs/cgroup/cpu/cpu.cfs_quota_us",
         cpu_period_file_name="/sys/fs/cgroup/cpu/cpu.cfs_period_us",
-        cpuset_file_name="/sys/fs/cgroup/cpuset/cpuset.cpus") -> Optional[
-            float]:
+        cpuset_file_name="/sys/fs/cgroup/cpuset/cpuset.cpus"
+) -> Optional[float]:
     # TODO (Alex): Don't implement this logic oursleves.
     # Docker has 2 underyling ways of implementing CPU limits:
     # https://docs.docker.com/config/containers/resource_constraints/#configure-the-default-cfs-scheduler
@@ -464,8 +464,7 @@ def _get_docker_cpus(
         return cpu_quota or cpuset_num
 
 
-def get_k8s_cpus(cpu_share_file_name="/sys/fs/cgroup/cpu/cpu.shares"
-                 ) -> float:
+def get_k8s_cpus(cpu_share_file_name="/sys/fs/cgroup/cpu/cpu.shares") -> float:
     """Get number of CPUs available for use by this container, in terms of
     cgroup cpu shares.
 

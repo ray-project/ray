@@ -643,8 +643,7 @@ def test_detect_docker_cpus():
     sys.platform.startswith("win"), reason="No need to test on Windows.")
 def test_k8s_cpu():
     """Test all the functions in dashboard/k8s_utils.py.
-    Also test ray.utils.get_num_cpus in the context of a docker container with
-    cpu quota unset.
+    Also test ray.utils.get_num_cpus when running in a container in K8s.
     Files were obtained from within a K8s pod with 2 CPU request, CPU limit
     unset, with 1 CPU of stress applied.
     """
@@ -694,24 +693,25 @@ def test_k8s_cpu():
 
     CPUSHARES = "2048"
 
-    shares_file, cpu_file, proc_stat_file = [tempfile.NamedTemporaryFile("w+")
-                                             for _ in range(3)]
+    shares_file, cpu_file, proc_stat_file = [
+        tempfile.NamedTemporaryFile("w+") for _ in range(3)
+    ]
     shares_file.write(CPUSHARES)
     cpu_file.write(CPUACCTUSAGE1)
     proc_stat_file.write(PROCSTAT1)
     for file in shares_file, cpu_file, proc_stat_file:
         file.flush()
-    with mock.patch("ray.new_dashboard.k8s_utils.ray.utils.os.environ",
+    with mock.patch("ray.utils.os.environ",
                     {"KUBERNETES_SERVICE_HOST"}),\
             mock.patch("ray.new_dashboard.k8s_utils.CPU_USAGE_PATH",
                        cpu_file.name),\
             mock.patch("ray.new_dashboard.k8s_utils.PROC_STAT_PATH",
                        proc_stat_file.name),\
-            mock.patch("ray.new_dashboard.k8s_utils.ray.utils."
-                       "_get_k8s_cpus.__defaults__", (shares_file.name,)):
+            mock.patch("ray.utils.get_k8s_cpus.__defaults__",
+                       (shares_file.name,)):
 
         # Test helpers
-        assert k8s_utils.ray.utils.get_num_cpus() == 2.0
+        assert ray.utils.get_num_cpus() == 2
         assert k8s_utils._cpu_usage() == 2268980984108
         assert k8s_utils._system_usage() == 1551775030000000
         assert k8s_utils._host_num_cpus() == 8
