@@ -3,7 +3,7 @@ from typing import Dict, Optional
 import pytest
 import ray
 from ray import tune
-from ray.cluster_utils import Cluster
+from ray._private.cluster_utils import Cluster
 from ray.tune.integration.tensorflow import DistributedTrainableCreator
 from ray.tune.examples.tf_distributed_keras_example import train_mnist
 

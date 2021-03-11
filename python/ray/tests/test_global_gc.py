@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 
 import ray
-import ray.cluster_utils
+import ray._private.cluster_utils
 from ray.test_utils import wait_for_condition
 from ray.internal.internal_api import global_gc
 
@@ -53,7 +53,7 @@ def test_auto_local_gc(shutdown_only):
 
 
 def test_global_gc(shutdown_only):
-    cluster = ray.cluster_utils.Cluster()
+    cluster = ray._private.cluster_utils.Cluster()
     for _ in range(2):
         cluster.add_node(num_cpus=1, num_gpus=0)
     ray.init(address=cluster.address)
@@ -96,7 +96,7 @@ def test_global_gc(shutdown_only):
 
 
 def test_global_gc_when_full(shutdown_only):
-    cluster = ray.cluster_utils.Cluster()
+    cluster = ray._private.cluster_utils.Cluster()
     for _ in range(2):
         cluster.add_node(
             num_cpus=1, num_gpus=0, object_store_memory=100 * 1024 * 1024)

@@ -28,7 +28,7 @@ ProfileEvent::ProfileEvent(const std::shared_ptr<Profiler> &profiler,
 }
 
 Profiler::Profiler(WorkerContext &worker_context, const std::string &node_ip_address,
-                   boost::asio::io_service &io_service,
+                   instrumented_io_context &io_service,
                    const std::shared_ptr<gcs::GcsClient> &gcs_client)
     : io_service_(io_service),
       periodical_runner_(io_service_),

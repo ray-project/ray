@@ -20,7 +20,7 @@
 namespace ray {
 
 ObjectStoreNotificationManagerIPC::ObjectStoreNotificationManagerIPC(
-    boost::asio::io_service &io_service, const std::string &store_socket_name,
+    instrumented_io_context &io_service, const std::string &store_socket_name,
     bool exit_on_error)
     : ObjectStoreNotificationManager(io_service),
       length_(0),

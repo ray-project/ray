@@ -4,7 +4,7 @@ import traceback
 
 import ray.cloudpickle as pickle
 from ray import ray_constants
-import ray.utils
+import ray._private.utils
 from ray.gcs_utils import ErrorType
 from ray.exceptions import (
     RayError, PlasmaObjectNotAvailable, RayTaskError, RayActorError,

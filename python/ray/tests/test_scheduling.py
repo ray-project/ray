@@ -10,7 +10,7 @@ import pytest
 
 import ray
 import ray.util.accelerators
-import ray.cluster_utils
+import ray._private.cluster_utils
 import ray.test_utils
 
 from ray.test_utils import (wait_for_condition, new_scheduler_enabled)
