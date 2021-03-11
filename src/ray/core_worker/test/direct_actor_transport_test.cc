@@ -89,7 +89,8 @@ class MockTaskFinisher : public TaskFinisherInterface {
                                          const rpc::Address &addr));
   MOCK_METHOD5(PendingTaskFailed,
                bool(const TaskID &task_id, rpc::ErrorType error_type, Status *status,
-                    const std::string &error_message, bool immediately_mark_object_fail));
+                    const std::shared_ptr<rpc::RayException> &creation_task_exception,
+                    bool immediately_mark_object_fail));
 
   MOCK_METHOD2(OnTaskDependenciesInlined,
                void(const std::vector<ObjectID> &, const std::vector<ObjectID> &));
@@ -98,7 +99,8 @@ class MockTaskFinisher : public TaskFinisherInterface {
 
   MOCK_METHOD4(MarkPendingTaskFailed,
                void(const TaskID &task_id, const TaskSpecification &spec,
-                    rpc::ErrorType error_type, const std::string &error_message));
+                    rpc::ErrorType error_type,
+                    const std::shared_ptr<rpc::RayException> &creation_task_exception));
 };
 
 class DirectActorSubmitterTest : public ::testing::Test {
