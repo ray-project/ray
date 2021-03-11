@@ -245,7 +245,7 @@ def test_job_config_conda_env(conda_envs):
 
 def test_get_conda_env_dir(tmp_path):
     # Simulate starting in an env named tf1.
-    d = tmp_path / "tf1"
+    d = tmp_path / "envs" / "tf1"
     d.mkdir()
     with mock.patch.dict(os.environ, {
             "CONDA_PREFIX": str(d),
@@ -254,10 +254,22 @@ def test_get_conda_env_dir(tmp_path):
         with pytest.raises(ValueError):
             # Env tf2 should not exist.
             env_dir = get_conda_env_dir("tf2")
-        tf2_dir = tmp_path / "tf2"
+        tf2_dir = tmp_path / "envs" / "tf2"
         tf2_dir.mkdir()
         env_dir = get_conda_env_dir("tf2")
-        assert (env_dir == str(tmp_path / "tf2"))
+        assert (env_dir == str(tmp_path / "envs" / "tf2"))
+
+    # Simulate starting in (base) conda env.
+    with mock.patch.dict(os.environ, {
+            "CONDA_PREFIX": tmp_path,
+            "CONDA_DEFAULT_ENV": "base"
+    }):
+        with pytest.raises(ValueError):
+            # Env tf3 should not exist.
+            env_dir = get_conda_env_dir("tf3")
+        # Env tf2 still should exist.
+        env_dir = get_conda_env_dir("tf2")
+        assert (env_dir == str(tmp_path / "envs" / "tf2"))
 
 
 @unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
