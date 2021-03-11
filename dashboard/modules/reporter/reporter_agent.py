@@ -19,9 +19,8 @@ import ray.utils
 from ray.core.generated import reporter_pb2
 from ray.core.generated import reporter_pb2_grpc
 from ray.metrics_agent import MetricsAgent, Gauge, Record
-from ray.autoscaler._private.util import (DEBUG_AUTOSCALING_STATUS,
-                                          DEBUG_AUTOSCALING_STATUS_LEGACY,
-                                          DEBUG_AUTOSCALING_ERROR)
+from ray.autoscaler._private.util import (
+    DEBUG_AUTOSCALING_STATUS, )
 import psutil
 
 logger = logging.getLogger(__name__)
