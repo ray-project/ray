@@ -6,6 +6,7 @@ import base64
 import json
 import logging
 import time
+import threading
 import uuid
 from collections import defaultdict
 from typing import Any
@@ -58,6 +59,16 @@ def backoff(timeout: int) -> int:
     return timeout
 
 
+def with_lock(method: Any) -> Any:
+    """Wraps a class method to run under the cls._lock field."""
+
+    def f(self, *arg, **kws):
+        with self._lock:
+            return method(self, *arg, **kws)
+
+    return f
+
+
 class Worker:
     def __init__(self,
                  conn_str: str = "",
@@ -81,6 +92,7 @@ class Worker:
         self._conn_state = grpc.ChannelConnectivity.IDLE
         self._client_id = make_client_id()
         self._converted: Dict[str, ClientStub] = {}
+        self._lock = threading.RLock()
 
         grpc_options = [
             ("grpc.max_send_message_length", GRPC_MAX_MESSAGE_SIZE),
@@ -147,10 +159,12 @@ class Worker:
         self.log_client.set_logstream_level(logging.INFO)
         self.closed = False
 
+    @with_lock
     def _on_channel_state_change(self, conn_state: grpc.ChannelConnectivity):
         logger.debug(f"client gRPC channel state change: {conn_state}")
         self._conn_state = conn_state
 
+    @with_lock
     def connection_info(self):
         try:
             data = self.data_client.ConnectionInfo()
@@ -164,6 +178,7 @@ class Worker:
             "protocol_version": data.protocol_version,
         }
 
+    @with_lock
     def get(self, vals, *, timeout: Optional[float] = None) -> Any:
         to_get = []
         single = False
@@ -204,6 +219,7 @@ class Worker:
             out = out[0]
         return out
 
+    @with_lock
     def _get(self, ref: ClientObjectRef, timeout: float):
         req = ray_client_pb2.GetRequest(id=ref.id, timeout=timeout)
         try:
@@ -219,6 +235,7 @@ class Worker:
             raise err
         return loads_from_server(data.data)
 
+    @with_lock
     def put(self, vals, *, client_ref_id: bytes = None):
         to_put = []
         single = False
@@ -233,6 +250,7 @@ class Worker:
             out = out[0]
         return out
 
+    @with_lock
     def _put(self, val, *, client_ref_id: bytes = None):
         if isinstance(val, ClientObjectRef):
             raise TypeError(
@@ -249,6 +267,7 @@ class Worker:
         return ClientObjectRef(resp.id)
 
     # TODO(ekl) respect MAX_BLOCKING_OPERATION_TIME_S for wait too
+    @with_lock
     def wait(self,
              object_refs: List[ClientObjectRef],
              *,
@@ -283,6 +302,7 @@ class Worker:
 
         return (client_ready_object_ids, client_remaining_object_ids)
 
+    @with_lock
     def call_remote(self, instance, *args, **kwargs) -> List[bytes]:
         task = instance._prepare_client_task()
         for arg in args:
@@ -292,6 +312,7 @@ class Worker:
             task.kwargs[k].CopyFrom(convert_to_arg(v, self._client_id))
         return self._call_schedule_for_task(task)
 
+    @with_lock
     def _call_schedule_for_task(
             self, task: ray_client_pb2.ClientTask) -> List[bytes]:
         logger.debug("Scheduling %s" % task)
@@ -309,6 +330,7 @@ class Worker:
                 raise
         return ticket.return_ids
 
+    @with_lock
     def call_release(self, id: bytes) -> None:
         if self.closed:
             return
@@ -317,16 +339,19 @@ class Worker:
             self._release_server(id)
             del self.reference_count[id]
 
+    @with_lock
     def _release_server(self, id: bytes) -> None:
         if self.data_client is not None:
             logger.debug(f"Releasing {id}")
             self.data_client.ReleaseObject(
                 ray_client_pb2.ReleaseRequest(ids=[id]))
 
+    @with_lock
     def call_retain(self, id: bytes) -> None:
         logger.debug(f"Retaining {id.hex()}")
         self.reference_count[id] += 1
 
+    @with_lock
     def close(self):
         self.log_client.close()
         self.data_client.close()
@@ -336,6 +361,7 @@ class Worker:
         self.server = None
         self.closed = True
 
+    @with_lock
     def get_actor(self, name: str) -> ClientActorHandle:
         task = ray_client_pb2.ClientTask()
         task.type = ray_client_pb2.ClientTask.NAMED_ACTOR
@@ -344,6 +370,7 @@ class Worker:
         assert len(ids) == 1
         return ClientActorHandle(ClientActorRef(ids[0]))
 
+    @with_lock
     def terminate_actor(self, actor: ClientActorHandle,
                         no_restart: bool) -> None:
         if not isinstance(actor, ClientActorHandle):
@@ -359,6 +386,7 @@ class Worker:
         except grpc.RpcError as e:
             raise decode_exception(e.details())
 
+    @with_lock
     def terminate_task(self, obj: ClientObjectRef, force: bool,
                        recursive: bool) -> None:
         if not isinstance(obj, ClientObjectRef):
@@ -376,6 +404,7 @@ class Worker:
         except grpc.RpcError as e:
             raise decode_exception(e.details())
 
+    @with_lock
     def get_cluster_info(self, type: ray_client_pb2.ClusterInfoType.TypeEnum):
         req = ray_client_pb2.ClusterInfoRequest()
         req.type = type
@@ -388,11 +417,13 @@ class Worker:
             return resp.runtime_context
         return json.loads(resp.json)
 
+    @with_lock
     def internal_kv_get(self, key: bytes) -> bytes:
         req = ray_client_pb2.KVGetRequest(key=key)
         resp = self.server.KVGet(req, metadata=self.metadata)
         return resp.value
 
+    @with_lock
     def internal_kv_put(self, key: bytes, value: bytes,
                         overwrite: bool) -> bool:
         req = ray_client_pb2.KVPutRequest(
@@ -400,20 +431,24 @@ class Worker:
         resp = self.server.KVPut(req, metadata=self.metadata)
         return resp.already_exists
 
+    @with_lock
     def internal_kv_del(self, key: bytes) -> None:
         req = ray_client_pb2.KVDelRequest(key=key)
         self.server.KVDel(req, metadata=self.metadata)
 
+    @with_lock
     def internal_kv_list(self, prefix: bytes) -> bytes:
         req = ray_client_pb2.KVListRequest(prefix=prefix)
         return self.server.KVList(req, metadata=self.metadata).keys
 
+    @with_lock
     def is_initialized(self) -> bool:
         if self.server is not None:
             return self.get_cluster_info(
                 ray_client_pb2.ClusterInfoType.IS_INITIALIZED)
         return False
 
+    @with_lock
     def ping_server(self) -> bool:
         """Simple health check.
 
@@ -426,9 +461,11 @@ class Worker:
             return result is not None
         return False
 
+    @with_lock
     def is_connected(self) -> bool:
         return self._conn_state == grpc.ChannelConnectivity.READY
 
+    @with_lock
     def _convert_actor(self, actor: "ActorClass") -> str:
         """Register a ClientActorClass for the ActorClass and return a UUID"""
         key = uuid.uuid4().hex
@@ -448,6 +485,7 @@ class Worker:
             })
         return key
 
+    @with_lock
     def _convert_function(self, func: "RemoteFunction") -> str:
         """Register a ClientRemoteFunc for the ActorClass and return a UUID"""
         key = uuid.uuid4().hex
@@ -466,6 +504,7 @@ class Worker:
             })
         return key
 
+    @with_lock
     def _get_converted(self, key: str) -> "ClientStub":
         """Given a UUID, return the converted object"""
         return self._converted[key]
