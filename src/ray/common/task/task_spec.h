@@ -36,10 +36,15 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   TaskSpecification() {}
 
   /// Construct from a protobuf message object.
-  /// The input message will be **copied** into this object.
+  /// The input message will be copied/moved into this object.
   ///
   /// \param message The protobuf message.
-  explicit TaskSpecification(rpc::TaskSpec message) : MessageWrapper(message) {
+  explicit TaskSpecification(rpc::TaskSpec &&message)
+      : MessageWrapper(std::move(message)) {
+    ComputeResources();
+  }
+
+  explicit TaskSpecification(const rpc::TaskSpec &message) : MessageWrapper(message) {
     ComputeResources();
   }
 
@@ -121,7 +126,7 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   /// Return the ObjectIDs of any dependencies passed by reference to this
   /// task. This is recomputed each time, so it can be used if the task spec is
   /// mutated.
-  ///
+  /// \param add_dummy_dependency whether add dummy object to dependencies or not.
   /// \return The recomputed IDs of the dependencies for the task.
   std::vector<ObjectID> GetDependencyIds() const;
 
@@ -129,7 +134,8 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   /// be used if the task spec is mutated.
   ///
   /// \return The recomputed dependencies for the task.
-  std::vector<rpc::ObjectReference> GetDependencies() const;
+  std::vector<rpc::ObjectReference> GetDependencies(
+      bool add_dummy_dependency = true) const;
 
   std::string GetDebuggerBreakpoint() const;
 

@@ -53,24 +53,23 @@ bool TaskSpecification::PlacementGroupCaptureChildTasks() const {
 }
 
 void TaskSpecification::ComputeResources() {
-  auto required_resources = MapFromProtobuf(message_->required_resources());
-  auto required_placement_resources =
-      MapFromProtobuf(message_->required_placement_resources());
-  if (required_placement_resources.empty()) {
-    required_placement_resources = required_resources;
-  }
+  auto &required_resources = message_->required_resources();
 
   if (required_resources.empty()) {
-    // A static nil object is used here to avoid allocating the empty object every time.
     required_resources_ = ResourceSet::Nil();
   } else {
-    required_resources_.reset(new ResourceSet(required_resources));
+    required_resources_.reset(new ResourceSet(MapFromProtobuf(required_resources)));
   }
+
+  auto &required_placement_resources = message_->required_placement_resources().empty()
+                                           ? required_resources
+                                           : message_->required_placement_resources();
 
   if (required_placement_resources.empty()) {
     required_placement_resources_ = ResourceSet::Nil();
   } else {
-    required_placement_resources_.reset(new ResourceSet(required_placement_resources));
+    required_placement_resources_.reset(
+        new ResourceSet(MapFromProtobuf(required_placement_resources)));
   }
 
   if (!IsActorTask()) {
@@ -174,14 +173,15 @@ std::vector<ObjectID> TaskSpecification::GetDependencyIds() const {
   return dependencies;
 }
 
-std::vector<rpc::ObjectReference> TaskSpecification::GetDependencies() const {
+std::vector<rpc::ObjectReference> TaskSpecification::GetDependencies(
+    bool add_dummy_dependency) const {
   std::vector<rpc::ObjectReference> dependencies;
   for (size_t i = 0; i < NumArgs(); ++i) {
     if (ArgByRef(i)) {
       dependencies.push_back(message_->args(i).object_ref());
     }
   }
-  if (IsActorTask()) {
+  if (add_dummy_dependency && IsActorTask()) {
     const auto &dummy_ref =
         GetReferenceForActorDummyObject(PreviousActorTaskDummyObjectId());
     dependencies.push_back(dummy_ref);

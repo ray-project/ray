@@ -367,7 +367,10 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
     const rpc::PushTaskRequest &request, rpc::PushTaskReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   RAY_CHECK(waiter_ != nullptr) << "Must call init() prior to use";
-  const TaskSpecification task_spec(request.task_spec());
+  // Use `mutable_task_spec()` here as `task_spec()` returns a const reference
+  // which doesn't work with std::move.
+  TaskSpecification task_spec(
+      std::move(*(const_cast<rpc::PushTaskRequest &>(request).mutable_task_spec())));
 
   // If GCS server is restarted after sending an actor creation task to this core worker,
   // the restarted GCS server will send the same actor creation task to the core worker
@@ -466,7 +469,7 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
     send_reply_callback(Status::Invalid("client cancelled stale rpc"), nullptr, nullptr);
   };
 
-  auto dependencies = task_spec.GetDependencies();
+  auto dependencies = task_spec.GetDependencies(false);
 
   if (task_spec.IsActorTask()) {
     auto it = actor_scheduling_queues_.find(task_spec.CallerWorkerId());
@@ -478,9 +481,6 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
       it = result.first;
     }
 
-    // Pop the dummy actor dependency.
-    // TODO(swang): Remove this with legacy raylet code.
-    dependencies.pop_back();
     it->second->Add(request.sequence_number(), request.client_processed_up_to(),
                     accept_callback, reject_callback, task_spec.TaskId(), dependencies);
   } else {
