@@ -9,6 +9,7 @@ import io.ray.runtime.util.SystemUtil;
  *
  * <p>This exception could happen either because the actor process dies while executing a task, or
  * because a task is submitted to a dead actor.
+ *
  * <p>If the actor died because of an exception thrown in its creation tasks, RayActorError will
  * contains this exception as the cause exception.
  */

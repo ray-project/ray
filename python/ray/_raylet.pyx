@@ -593,7 +593,8 @@ cdef CRayStatus task_execution_handler(
                              debugger_breakpoint, returns)
             except Exception as e:
                 sys_exit = SystemExit()
-                if isinstance(e, RayActorError) and e.has_creation_task_error():
+                if isinstance(e, RayActorError) and \
+                   e.has_creation_task_error():
                     logger.exception("Error raised in creation task")
                     # Cython's bug that doesn't allow reference assignment,
                     # this is a workaroud.

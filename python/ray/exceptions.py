@@ -153,7 +153,7 @@ class RayActorError(RayError):
     executing a task, or because a task is submitted to a dead actor.
 
     If the actor is dead because of an exception thrown in its creation tasks,
-    RayActorError will contains this exception. 
+    RayActorError will contains this exception.
     """
 
     def __init__(self,

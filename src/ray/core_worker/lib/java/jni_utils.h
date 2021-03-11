@@ -98,7 +98,7 @@ extern jclass java_ray_exception_class;
 extern jclass java_ray_intentional_system_exit_exception_class;
 
 /// RayActorCreationTaskException class
-extern jclass java_ray_actor_creation_task_exception_class;
+extern jclass java_ray_actor_exception_class;
 
 /// toBytes method of RayException
 extern jmethodID java_ray_exception_to_bytes;
@@ -577,13 +577,13 @@ inline std::string GetActorFullName(bool global, std::string name) {
                       "-" + name;
 }
 
-inline void SerializeActorCreationException(JNIEnv *env, jthrowable creation_exception,
-                                            std::string &exception_str) {
+inline std::shared_ptr<ray::LocalMemoryBuffer> SerializeActorCreationException(
+    JNIEnv *env, jthrowable creation_exception) {
   jbyteArray exception_jbyte_array = static_cast<jbyteArray>(
       env->CallObjectMethod(creation_exception, java_ray_exception_to_bytes));
   int len = env->GetArrayLength(exception_jbyte_array);
-  int8_t *buf = new int8_t *[len];
-  env->GetByteArrayRegion(exception_jbyte_array, 0, len, reinterpret_cast<jbyte *>(buf));
-  exception_str = std::string(buf, len);
-  delete buf;
+  auto buf = std::make_shared<ray::LocalMemoryBuffer>(len);
+  env->GetByteArrayRegion(exception_jbyte_array, 0, len,
+                          reinterpret_cast<jbyte *>(buf->Data()));
+  return buf;
 }

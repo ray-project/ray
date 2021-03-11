@@ -112,7 +112,7 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(
          const std::vector<ObjectID> &arg_reference_ids,
          const std::vector<ObjectID> &return_ids, const std::string &debugger_breakpoint,
          std::vector<std::shared_ptr<ray::RayObject>> *results,
-         std::string &error_message) {
+         std::shared_ptr<ray::LocalMemoryBuffer> &creation_task_exception_pb) {
         JNIEnv *env = GetJNIEnv();
         RAY_CHECK(java_task_executor);
 
@@ -153,9 +153,8 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(
           if (env->IsInstanceOf(throwable,
                                 java_ray_intentional_system_exit_exception_class)) {
             status_to_return = ray::Status::IntentionalSystemExit();
-          } else if (env->IsInstanceOf(throwable,
-                                       java_ray_actor_creation_task_exception_class)) {
-            SerializeActorCreationException(env, throwable, error_message);
+          } else if (env->IsInstanceOf(throwable, java_ray_actor_exception_class)) {
+            creation_task_exception_pb = SerializeActorCreationException(env, throwable);
             status_to_return = ray::Status::CreationTaskError();
           } else {
             RAY_LOG(ERROR) << "Unkown java exception was thrown while executing tasks.";
