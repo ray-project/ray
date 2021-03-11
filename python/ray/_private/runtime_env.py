@@ -14,6 +14,8 @@ from urllib.parse import urlparse
 import os
 import sys
 
+from ray._private.utils import get_conda_env_dir
+
 # We need to setup this variable before
 # using this module
 PKG_DIR = None
@@ -22,6 +24,41 @@ logger = logging.getLogger(__name__)
 
 FILE_SIZE_WARNING = 10 * 1024 * 1024  # 10MB
 FILE_SIZE_LIMIT = 50 * 1024 * 1024  # 50MB
+
+
+class RuntimeEnvDict:
+    """Parses a validated runtime env dictionary from the user."""
+
+    def __init__(self, runtime_env_json: dict):
+        if "conda" in runtime_env_json:
+            self.conda = runtime_env_json["conda"]
+        else:
+            self.conda = None
+        if "files" in runtime_env_json:
+            self.files = runtime_env_json["files"]
+        else:
+            self.files = None
+        # TODO(ekl) we should have better schema validation here.
+
+    def to_worker_env_vars(self, override_environment_variables: dict) -> dict:
+        """Given existing worker env vars, return an updated dict.
+
+        This sets any necessary env vars to setup the runtime env.
+        TODO(ekl): env vars is probably not the right long term impl.
+        """
+        if override_environment_variables is None:
+            override_environment_variables = {}
+        if self.conda:
+            conda_env_dir = get_conda_env_dir(self.conda)
+            if override_environment_variables is None:
+                override_environment_variables = {}
+            override_environment_variables.update(PYTHONHOME=conda_env_dir)
+        if self.files:
+            if override_environment_variables is None:
+                override_environment_variables = {}
+            override_environment_variables.update(
+                RAY_RUNTIME_ENV_FILES=self.files)
+        return override_environment_variables
 
 
 class Protocol(Enum):

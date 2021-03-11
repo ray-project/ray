@@ -183,15 +183,8 @@ class _RuntimePackage:
                 value = getattr(self._module, symbol)
                 if (isinstance(value, ray.remote_function.RemoteFunction)
                         or isinstance(value, ray.actor.ActorClass)):
-                    # TODO(ekl) use the runtime_env option here instead of
-                    # the override env vars. Currently this doesn't work since
-                    # there is no way to define per-task job config.
                     setattr(
-                        self,
-                        symbol,
-                        value.options(override_environment_variables={
-                            "RAY_RUNTIME_ENV_FILES": runtime_env["files"]
-                        }))
+                        self, symbol, value.options(runtime_env=runtime_env))
 
     def __repr__(self):
         return "ray._RuntimePackage(module={}, runtime_env={})".format(

@@ -6,6 +6,7 @@ import _thread
 import ray.ray_constants as ray_constants
 import ray._raylet
 import ray._private.signature as signature
+import ray._private.runtime_env as runtime_support
 import ray.worker
 from ray.util.placement_group import (
     PlacementGroup, check_placement_group_index, get_current_placement_group)
@@ -21,7 +22,6 @@ from ray.util.inspect import (
     is_class_method,
     is_static_method,
 )
-from ray._private.utils import get_conda_env_dir
 
 logger = logging.getLogger(__name__)
 
@@ -696,12 +696,9 @@ class ActorClass:
             creation_args = signature.flatten_args(function_signature, args,
                                                    kwargs)
         if runtime_env:
-            conda_env = runtime_env.get("conda_env")
-            if conda_env is not None:
-                conda_env_dir = get_conda_env_dir(conda_env)
-                if override_environment_variables is None:
-                    override_environment_variables = {}
-                override_environment_variables.update(PYTHONHOME=conda_env_dir)
+            parsed = runtime_support.RuntimeEnvDict(runtime_env)
+            override_environment_variables = parsed.to_worker_env_vars(
+                override_environment_variables)
 
         actor_id = worker.core_worker.create_actor(
             meta.language,
