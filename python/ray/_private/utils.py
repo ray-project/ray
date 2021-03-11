@@ -2,6 +2,7 @@ import binascii
 import errno
 import hashlib
 import logging
+import math
 import multiprocessing
 import os
 import signal
@@ -10,6 +11,7 @@ import sys
 import tempfile
 import threading
 import time
+from typing import Optional
 import uuid
 
 from inspect import signature
@@ -412,8 +414,9 @@ def get_system_memory():
 
 def _get_docker_cpus(
         cpu_quota_file_name="/sys/fs/cgroup/cpu/cpu.cfs_quota_us",
-        cpu_share_file_name="/sys/fs/cgroup/cpu/cpu.cfs_period_us",
-        cpuset_file_name="/sys/fs/cgroup/cpuset/cpuset.cpus"):
+        cpu_period_file_name="/sys/fs/cgroup/cpu/cpu.cfs_period_us",
+        cpuset_file_name="/sys/fs/cgroup/cpuset/cpuset.cpus") -> Optional[
+            float]:
     # TODO (Alex): Don't implement this logic oursleves.
     # Docker has 2 underyling ways of implementing CPU limits:
     # https://docs.docker.com/config/containers/resource_constraints/#configure-the-default-cfs-scheduler
@@ -428,13 +431,13 @@ def _get_docker_cpus(
             cpu_quota_file_name):
         try:
             with open(cpu_quota_file_name, "r") as quota_file, open(
-                    cpu_share_file_name, "r") as period_file:
+                    cpu_period_file_name, "r") as period_file:
                 cpu_quota = float(quota_file.read()) / float(
                     period_file.read())
         except Exception as e:
             logger.exception("Unexpected error calculating docker cpu quota.",
                              e)
-    if cpu_quota < 0:
+    if (cpu_quota is not None) and (cpu_quota < 0):
         cpu_quota = None
 
     cpuset_num = None
@@ -460,7 +463,9 @@ def _get_docker_cpus(
     else:
         return cpu_quota or cpuset_num
 
-def _get_k8s_cpus(cpu_share_file_name="/sys/fs/cgroup/cpu/cpu.shares"):
+
+def get_k8s_cpus(cpu_share_file_name="/sys/fs/cgroup/cpu/cpu.shares"
+                 ) -> float:
     """Get number of CPUs available for use by this container, in terms of
     cgroup cpu shares.
 
@@ -480,9 +485,9 @@ def _get_k8s_cpus(cpu_share_file_name="/sys/fs/cgroup/cpu/cpu.shares"):
         return 1.0
 
 
-def get_num_cpus():
+def get_num_cpus() -> int:
     if "KUBERNETES_SERVICE_HOST" in os.environ:
-        return _get_k8s_cpus()
+        return int(math.ceil(get_k8s_cpus()))
     cpu_count = multiprocessing.cpu_count()
     if os.environ.get("RAY_USE_MULTIPROCESSING_CPU_COUNT"):
         logger.info(
