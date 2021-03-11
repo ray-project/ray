@@ -440,8 +440,9 @@ def format_info_string(lm_summary, autoscaler_summary, time=None):
     for ip, node_type in autoscaler_summary.failed_nodes:
         line = f" {ip}: {node_type}"
         failure_lines.append(line)
-    failure_lines = failure_lines[
-        -constants.AUTOSCALER_MAX_FAILURES_DISPLAYED:]
+    failure_lines = failure_lines[:
+                                  -constants.AUTOSCALER_MAX_FAILURES_DISPLAYED:
+                                  -1]
     failure_report = "Recent failures:\n"
     if failure_lines:
         failure_report += "\n".join(failure_lines)

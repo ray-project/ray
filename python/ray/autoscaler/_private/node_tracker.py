@@ -1,4 +1,5 @@
 from ray.autoscaler._private import constants
+from typing import List, Set, Tuple
 
 
 class NodeTracker:
@@ -8,21 +9,16 @@ class NodeTracker:
     ip can be interchangeably used, but the node_id -> ip relation is not
     bijective _across time_ since IP addresses can be reused. Therefore, we
     should treat node_id as the only unique identifier.
-
     """
 
     def __init__(self):
         # Mapping from node_id -> (ip, node type, stdout_path, process runner)
-        # TODO(Alex): In the spirit of statelessness, we should try to load
-        # this mapping from the filesystem. _Technically_ this tracker is only
-        # used for "recent" failures though, so remembering old nodes is a best
-        # effort, therefore it's already correct
         self.node_mapping = {}
 
         # A quick, inefficient FIFO cache implementation.
         self.lru_order = []
 
-    def _add_node_mapping(self, node_id, value):
+    def _add_node_mapping(self, node_id: str, value: str):
         if node_id in self.node_mapping:
             return
 
@@ -35,11 +31,30 @@ class NodeTracker:
         self.node_mapping[node_id] = value
         self.lru_order.append(node_id)
 
-    def track(self, node_id, ip=None, node_type=None):
+    def track(self, node_id: str, ip: str, node_type: str):
+        """
+        Begin to track a new node.
+
+        Args:
+            node_id (str): The node id.
+            ip (str): The node ip address.
+            node_type (str): The node type.
+        """
         if node_id not in self.node_mapping:
             self._add_node_mapping(node_id, (ip, node_type))
 
-    def get_all_failed_node_info(self, non_failed_ids):
+    def get_all_failed_node_info(
+            self, non_failed_ids: Set[str]) -> List[Tuple[str, str]]:
+        """Get the information about all failed nodes. A failed node is any node which
+        we began to track that is not pending or alive (i.e. not failed).
+
+        Args:
+            non_failed_ids (set): Nodes are failed unless they are in this set.
+
+        Returns:
+            List[Tuple[str, str]]: A list of tuples. Each tuple is the ip
+            address and type of a failed node.
+        """
         failed_nodes = self.node_mapping.keys() - non_failed_ids
         failed_info = []
         # Returning the list in order is important for display purposes.
