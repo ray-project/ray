@@ -5,6 +5,7 @@ import time
 from typing import Dict, List
 
 import numpy as np
+import ray.ray_constants
 import ray._private.services as services
 from ray.autoscaler._private.constants import MEMORY_RESOURCE_UNIT_BYTES,\
     AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE
@@ -190,6 +191,19 @@ class LoadMetrics:
     def get_pending_placement_groups(self):
         return self.pending_placement_groups
 
+    def resources_avail_summary(self) -> str:
+        """Return a concise string of cluster size to report to event logs.
+
+        For example, "3 CPUs, 4 GPUs".
+        """
+        total_resources = reduce(add_resources,
+                                 self.static_resources_by_ip.values()
+                                 ) if self.static_resources_by_ip else {}
+        out = "{} CPUs".format(int(total_resources.get("CPU", 0)))
+        if "GPU" in total_resources:
+            out += ", {} GPUs".format(int(total_resources["GPU"]))
+        return out
+
     def summary(self):
         available_resources = reduce(add_resources,
                                      self.dynamic_resources_by_ip.values()
@@ -199,8 +213,15 @@ class LoadMetrics:
                                  ) if self.static_resources_by_ip else {}
         usage_dict = {}
         for key in total_resources:
-            total = total_resources[key]
-            usage_dict[key] = (total - available_resources[key], total)
+            if key in ["memory", "object_store_memory"]:
+                total = total_resources[key] * \
+                    ray.ray_constants.MEMORY_RESOURCE_UNIT_BYTES
+                available = available_resources[key] * \
+                    ray.ray_constants.MEMORY_RESOURCE_UNIT_BYTES
+                usage_dict[key] = (total - available, total)
+            else:
+                total = total_resources[key]
+                usage_dict[key] = (total - available_resources[key], total)
 
         summarized_demand_vector = freq_of_dicts(
             self.get_resource_demand_vector(clip=False))
@@ -268,7 +289,9 @@ class LoadMetrics:
         def format_resource(key, value):
             if key in ["object_store_memory", "memory"]:
                 return "{} GiB".format(
-                    round(value * MEMORY_RESOURCE_UNIT_BYTES / 1e9, 2))
+                    round(
+                        value * MEMORY_RESOURCE_UNIT_BYTES /
+                        (1024 * 1024 * 1024), 2))
             else:
                 return round(value, 2)
 

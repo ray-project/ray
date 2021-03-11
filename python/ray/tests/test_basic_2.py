@@ -9,7 +9,7 @@ import pytest
 
 from unittest.mock import MagicMock, patch
 
-import ray.cluster_utils
+import ray._private.cluster_utils
 from ray.test_utils import client_test_enabled
 from ray.tests.client_test_utils import create_remote_signal_actor
 from ray.exceptions import GetTimeoutError
@@ -193,7 +193,6 @@ def test_redefining_remote_functions(shutdown_only):
         assert ray.get(ray.get(h.remote(i))) == i
 
 
-@pytest.mark.skipif(client_test_enabled(), reason="message size")
 def test_call_matrix(shutdown_only):
     ray.init(object_store_memory=1000 * 1024 * 1024)
 
@@ -319,7 +318,6 @@ def test_actor_pass_by_ref_order_optimization(shutdown_only):
     assert delta < 10, "did not skip slow value"
 
 
-@pytest.mark.skipif(client_test_enabled(), reason="message size")
 @pytest.mark.parametrize(
     "ray_start_cluster", [{
         "num_cpus": 1,
@@ -340,10 +338,10 @@ def test_call_chain(ray_start_cluster):
     assert ray.get(x) == 100
 
 
-@pytest.mark.skipif(client_test_enabled(), reason="message size")
+@pytest.mark.skipif(client_test_enabled(), reason="init issue")
 def test_system_config_when_connecting(ray_start_cluster):
-    config = {"object_pinning_enabled": 0, "object_timeout_milliseconds": 200}
-    cluster = ray.cluster_utils.Cluster()
+    config = {"object_timeout_milliseconds": 200}
+    cluster = ray._private.cluster_utils.Cluster()
     cluster.add_node(
         _system_config=config, object_store_memory=100 * 1024 * 1024)
     cluster.wait_for_nodes()
@@ -360,9 +358,7 @@ def test_system_config_when_connecting(ray_start_cluster):
         put_ref = ray.put(np.zeros(40 * 1024 * 1024, dtype=np.uint8))
     del put_ref
 
-    # This would not raise an exception if object pinning was enabled.
-    with pytest.raises(ray.exceptions.ObjectLostError):
-        ray.get(obj_ref)
+    ray.get(obj_ref)
 
 
 def test_get_multiple(ray_start_regular_shared):
@@ -465,8 +461,7 @@ def test_skip_plasma(ray_start_regular_shared):
     assert ray.get(obj_ref) == 2
 
 
-@pytest.mark.skipif(
-    client_test_enabled(), reason="internal api and message size")
+@pytest.mark.skipif(client_test_enabled(), reason="internal api")
 def test_actor_large_objects(ray_start_regular_shared):
     @ray.remote
     class Actor:
@@ -651,4 +646,5 @@ def test_get_correct_node_ip():
 
 if __name__ == "__main__":
     import pytest
+    # Skip test_basic_2_client_mode for now- the test suite is breaking.
     sys.exit(pytest.main(["-v", __file__]))

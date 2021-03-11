@@ -14,6 +14,8 @@
 
 #include "ray/gcs/gcs_server/gcs_server.h"
 
+#include "ray/common/asio/asio_util.h"
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/network_util.h"
 #include "ray/common/ray_config.h"
 #include "ray/gcs/gcs_server/gcs_actor_manager.h"
@@ -24,13 +26,12 @@
 #include "ray/gcs/gcs_server/gcs_worker_manager.h"
 #include "ray/gcs/gcs_server/stats_handler_impl.h"
 #include "ray/gcs/gcs_server/task_info_handler_impl.h"
-#include "ray/util/asio_util.h"
 
 namespace ray {
 namespace gcs {
 
 GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
-                     boost::asio::io_service &main_service)
+                     instrumented_io_context &main_service)
     : config_(config),
       main_service_(main_service),
       rpc_server_(config.grpc_server_name, config.grpc_server_port,
@@ -152,7 +153,8 @@ void GcsServer::InitGcsHeartbeatManager(const GcsInitData &gcs_init_data) {
       heartbeat_manager_io_service_, /*on_node_death_callback=*/
       [this](const NodeID &node_id) {
         main_service_.post(
-            [this, node_id] { return gcs_node_manager_->OnNodeFailure(node_id); });
+            [this, node_id] { return gcs_node_manager_->OnNodeFailure(node_id); },
+            "GcsServer.NodeDeathCallback");
       });
   // Initialize by gcs tables data.
   gcs_heartbeat_manager_->Initialize(gcs_init_data);
@@ -326,7 +328,7 @@ void GcsServer::InstallEventListeners() {
         auto worker_id = WorkerID::FromBinary(worker_address.worker_id());
         auto node_id = NodeID::FromBinary(worker_address.raylet_id());
         gcs_actor_manager_->OnWorkerDead(node_id, worker_id,
-                                         worker_failure_data->intentional_disconnect());
+                                         worker_failure_data->exit_type());
       });
 
   // Install job event listeners.
@@ -350,6 +352,7 @@ void GcsServer::PrintDebugInfo() {
          << gcs_actor_manager_->DebugString() << "\n"
          << gcs_object_manager_->DebugString() << "\n"
          << gcs_placement_group_manager_->DebugString() << "\n"
+         << gcs_pub_sub_->DebugString() << "\n"
          << ((rpc::DefaultTaskInfoHandler *)task_info_handler_.get())->DebugString();
   // TODO(ffbin): We will get the session_dir in the next PR, and write the log to
   // gcs_debug_state.txt.

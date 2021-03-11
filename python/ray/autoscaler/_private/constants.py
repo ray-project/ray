@@ -12,8 +12,18 @@ def env_integer(key, default):
     return default
 
 
-# How long to wait for a node to start, in seconds
-NODE_START_WAIT_S = env_integer("AUTOSCALER_NODE_START_WAIT_S", 900)
+# Whether event logging to driver is enabled. Set to 0 to disable.
+AUTOSCALER_EVENTS = env_integer("AUTOSCALER_EVENTS", 1)
+
+# Whether to avoid launching GPU nodes for CPU only tasks.
+AUTOSCALER_CONSERVE_GPU_NODES = env_integer("AUTOSCALER_CONSERVE_GPU_NODES", 1)
+
+# How long to wait for a node to start, in seconds.
+AUTOSCALER_NODE_START_WAIT_S = env_integer("AUTOSCALER_NODE_START_WAIT_S", 900)
+
+# Interval at which to check if node SSH became available.
+AUTOSCALER_NODE_SSH_INTERVAL_S = env_integer("AUTOSCALER_NODE_SSH_INTERVAL_S",
+                                             5)
 
 # Abort autoscaling if more than this number of errors are encountered. This
 # is a safety feature to prevent e.g. runaway node launches.
@@ -48,3 +58,29 @@ BOTO_CREATE_MAX_RETRIES = env_integer("BOTO_CREATE_MAX_RETRIES", 5)
 
 # ray home path in the container image
 RAY_HOME = "/home/ray"
+
+RAY_PROCESSES = [
+    # The first element is the substring to filter.
+    # The second element, if True, is to filter ps results by command name
+    # (only the first 15 charactors of the executable name on Linux);
+    # if False, is to filter ps results by command with all its arguments.
+    # See STANDARD FORMAT SPECIFIERS section of
+    # http://man7.org/linux/man-pages/man1/ps.1.html
+    # about comm and args. This can help avoid killing non-ray processes.
+    # Format:
+    # Keyword to filter, filter by command (True)/filter by args (False)
+    ["raylet", True],
+    ["plasma_store", True],
+    ["gcs_server", True],
+    ["monitor.py", False],
+    ["ray.util.client.server", False],
+    ["redis-server", False],
+    ["default_worker.py", False],  # Python worker.
+    ["ray::", True],  # Python worker. TODO(mehrdadn): Fix for Windows
+    ["io.ray.runtime.runner.worker.DefaultWorker", False],  # Java worker.
+    ["log_monitor.py", False],
+    ["reporter.py", False],
+    ["dashboard.py", False],
+    ["new_dashboard/agent.py", False],
+    ["ray_process_reaper.py", False],
+]

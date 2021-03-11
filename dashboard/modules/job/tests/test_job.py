@@ -6,7 +6,7 @@ import requests
 import traceback
 
 import ray
-from ray.utils import hex_to_binary
+from ray._private.utils import hex_to_binary
 from ray.new_dashboard.tests.conftest import *  # noqa
 from ray.test_utils import (
     format_web_url,
@@ -91,11 +91,11 @@ def test_get_job_info(disable_aiohttp_cache, ray_start_with_dashboard):
         for k in check_worker_keys:
             assert k in one_job_worker
 
-    timeout_seconds = 10
+    timeout_seconds = 30
     start_time = time.time()
     last_ex = None
     while True:
-        time.sleep(1)
+        time.sleep(5)
         try:
             _check()
             break

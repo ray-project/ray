@@ -7,9 +7,14 @@ import traceback
 import random
 import pytest
 import ray
+import redis
 import threading
+import ray.new_dashboard.modules.stats_collector.stats_collector_consts \
+    as stats_collector_consts
+import ray.new_dashboard.utils as dashboard_utils
+import ray.ray_constants as ray_constants
 from datetime import datetime, timedelta
-from ray.cluster_utils import Cluster
+from ray._private.cluster_utils import Cluster
 from ray.new_dashboard.tests.conftest import *  # noqa
 from ray.test_utils import (format_web_url, wait_until_server_available,
                             wait_for_condition,
@@ -154,7 +159,9 @@ def test_get_all_node_details(disable_aiohttp_cache, ray_start_with_dashboard):
         # Workers information should be in the detailed payload
         assert "workers" in node
         assert "logCount" in node
-        assert node["logCount"] == 2
+        # Two lines printed by ActorWithObjs
+        # One line printed by autoscaler: monitor.py:118 -- Monitor: Started
+        assert node["logCount"] > 2
         print(node["workers"])
         assert len(node["workers"]) == 2
         assert node["workers"][0]["logCount"] == 1
@@ -371,6 +378,128 @@ def test_errors(enable_test_module, disable_aiohttp_cache,
 
     wait_until_succeeded_without_exception(
         check_errs, (AssertionError), timeout_ms=1000)
+
+
+def test_nil_node(enable_test_module, disable_aiohttp_cache,
+                  ray_start_with_dashboard):
+    assert (wait_until_server_available(ray_start_with_dashboard["webui_url"])
+            is True)
+    webui_url = ray_start_with_dashboard["webui_url"]
+    assert wait_until_server_available(webui_url)
+    webui_url = format_web_url(webui_url)
+
+    @ray.remote(num_gpus=1)
+    class InfeasibleActor:
+        pass
+
+    infeasible_actor = InfeasibleActor.remote()  # noqa
+
+    timeout_seconds = 5
+    start_time = time.time()
+    last_ex = None
+    while True:
+        time.sleep(1)
+        try:
+            resp = requests.get(f"{webui_url}/logical/actors")
+            resp_json = resp.json()
+            resp_data = resp_json["data"]
+            actors = resp_data["actors"]
+            assert len(actors) == 1
+            response = requests.get(webui_url + "/test/dump?key=node_actors")
+            response.raise_for_status()
+            result = response.json()
+            assert stats_collector_consts.NIL_NODE_ID not in result["data"][
+                "nodeActors"]
+            break
+        except Exception as ex:
+            last_ex = ex
+        finally:
+            if time.time() > start_time + timeout_seconds:
+                ex_stack = traceback.format_exception(
+                    type(last_ex), last_ex,
+                    last_ex.__traceback__) if last_ex else []
+                ex_stack = "".join(ex_stack)
+                raise Exception(f"Timed out while testing, {ex_stack}")
+
+
+def test_actor_pubsub(disable_aiohttp_cache, ray_start_with_dashboard):
+    timeout = 5
+    assert (wait_until_server_available(ray_start_with_dashboard["webui_url"])
+            is True)
+    address_info = ray_start_with_dashboard
+    address = address_info["redis_address"]
+    address = address.split(":")
+    assert len(address) == 2
+
+    client = redis.StrictRedis(
+        host=address[0],
+        port=int(address[1]),
+        password=ray_constants.REDIS_DEFAULT_PASSWORD)
+
+    p = client.pubsub(ignore_subscribe_messages=True)
+    p.psubscribe(ray.gcs_utils.RAY_ACTOR_PUBSUB_PATTERN)
+
+    @ray.remote
+    class DummyActor:
+        def __init__(self):
+            pass
+
+    # Create a dummy actor.
+    a = DummyActor.remote()
+
+    def handle_pub_messages(client, msgs, timeout, expect_num):
+        start_time = time.time()
+        while time.time() - start_time < timeout and len(msgs) < expect_num:
+            msg = client.get_message()
+            if msg is None:
+                time.sleep(0.01)
+                continue
+            pubsub_msg = ray.gcs_utils.PubSubMessage.FromString(msg["data"])
+            actor_data = ray.gcs_utils.ActorTableData.FromString(
+                pubsub_msg.data)
+            msgs.append(actor_data)
+
+    msgs = []
+    handle_pub_messages(p, msgs, timeout, 2)
+
+    # Assert we received published actor messages with state
+    # DEPENDENCIES_UNREADY and ALIVE.
+    assert len(msgs) == 2
+
+    # Kill actor.
+    ray.kill(a)
+    handle_pub_messages(p, msgs, timeout, 3)
+
+    # Assert we received published actor messages with state DEAD.
+    assert len(msgs) == 3
+
+    def actor_table_data_to_dict(message):
+        return dashboard_utils.message_to_dict(
+            message, {
+                "actorId", "parentId", "jobId", "workerId", "rayletId",
+                "actorCreationDummyObjectId", "callerId", "taskId",
+                "parentTaskId", "sourceActorId", "placementGroupId"
+            },
+            including_default_value_fields=False)
+
+    non_state_keys = ("actorId", "jobId", "taskSpec")
+    for msg in msgs:
+        actor_data_dict = actor_table_data_to_dict(msg)
+        # DEPENDENCIES_UNREADY is 0, which would not be keeped in dict. We
+        # need check its original value.
+        if msg.state == 0:
+            assert len(actor_data_dict) > 5
+            for k in non_state_keys:
+                assert k in actor_data_dict
+        # For status that is not DEPENDENCIES_UNREADY, only states fields will
+        # be published.
+        elif actor_data_dict["state"] in ("ALIVE", "DEAD"):
+            assert actor_data_dict.keys() == {
+                "state", "address", "timestamp", "pid"
+            }
+        else:
+            raise Exception("Unknown state: {}".format(
+                actor_data_dict["state"]))
 
 
 if __name__ == "__main__":

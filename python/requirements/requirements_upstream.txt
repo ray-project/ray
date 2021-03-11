@@ -3,4 +3,4 @@
 # So we separate its own requirements file.
 
 tune-sklearn==0.2.1
-xgboost_ray==0.0.1
+xgboost_ray==0.0.2

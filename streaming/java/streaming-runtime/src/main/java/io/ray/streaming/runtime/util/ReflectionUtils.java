@@ -20,7 +20,7 @@ public class ReflectionUtils {
   /**
    * For covariant return type, return the most specific method.
    *
-   * <p>Returns all methods named by {@code methodName},
+   * @return all methods named by {@code methodName},
    */
   public static List<Method> findMethods(Class<?> cls, String methodName) {
     List<Class<?>> classes = new ArrayList<>();

@@ -29,6 +29,7 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/time/clock.h"
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/status.h"
@@ -99,6 +100,7 @@ class ObjectManagerInterface {
  public:
   virtual uint64_t Pull(const std::vector<rpc::ObjectReference> &object_refs) = 0;
   virtual void CancelPull(uint64_t request_id) = 0;
+  virtual bool PullRequestActiveOrWaitingForMetadata(uint64_t request_id) const = 0;
   virtual ~ObjectManagerInterface(){};
 };
 
@@ -106,8 +108,9 @@ class ObjectManagerInterface {
 class ObjectManager : public ObjectManagerInterface,
                       public rpc::ObjectManagerServiceHandler {
  public:
-  using RestoreSpilledObjectCallback = std::function<void(
-      const ObjectID &, const std::string &, std::function<void(const ray::Status &)>)>;
+  using RestoreSpilledObjectCallback =
+      std::function<void(const ObjectID &, const std::string &, const NodeID &,
+                         std::function<void(const ray::Status &)>)>;
 
   /// Implementation of object manager service
 
@@ -158,7 +161,15 @@ class ObjectManager : public ObjectManagerInterface,
                        std::shared_ptr<rpc::ObjectManagerClient> rpc_client,
                        std::function<void(const Status &)> on_complete);
 
-  /// Receive object chunk from remote object manager, small object may contain one chunk
+  /// Receive an object chunk from a remote object manager. Small object may
+  /// fit in one chunk.
+  ///
+  /// If this is the last remaining chunk for an object, then the object will
+  /// be sealed. Else, we will keep the plasma buffer open until the remaining
+  /// chunks are received.
+  ///
+  /// If the object is no longer being actively pulled, the object will not be
+  /// created.
   ///
   /// \param node_id Node id of remote object manager which sends this chunk
   /// \param object_id Object id
@@ -167,10 +178,13 @@ class ObjectManager : public ObjectManagerInterface,
   /// \param metadata_size Metadata size
   /// \param chunk_index Chunk index
   /// \param data Chunk data
-  ray::Status ReceiveObjectChunk(const NodeID &node_id, const ObjectID &object_id,
-                                 const rpc::Address &owner_address, uint64_t data_size,
-                                 uint64_t metadata_size, uint64_t chunk_index,
-                                 const std::string &data);
+  /// \return Whether the chunk was successfully written into the local object
+  /// store. This can fail if the chunk was already received in the past, or if
+  /// the object is no longer being actively pulled.
+  bool ReceiveObjectChunk(const NodeID &node_id, const ObjectID &object_id,
+                          const rpc::Address &owner_address, uint64_t data_size,
+                          uint64_t metadata_size, uint64_t chunk_index,
+                          const std::string &data);
 
   /// Send pull request
   ///
@@ -186,6 +200,10 @@ class ObjectManager : public ObjectManagerInterface,
   /// Get the port of the object manager rpc server.
   int GetServerPort() const { return object_manager_server_.GetPort(); }
 
+  bool PullRequestActiveOrWaitingForMetadata(uint64_t pull_request_id) const override {
+    return pull_manager_->PullRequestActiveOrWaitingForMetadata(pull_request_id);
+  }
+
  public:
   /// Takes user-defined ObjectDirectoryInterface implementation.
   /// When this constructor is used, the ObjectManager assumes ownership of
@@ -194,7 +212,7 @@ class ObjectManager : public ObjectManagerInterface,
   /// \param main_service The main asio io_service.
   /// \param config ObjectManager configuration.
   /// \param object_directory An object implementing the object directory interface.
-  explicit ObjectManager(boost::asio::io_service &main_service,
+  explicit ObjectManager(instrumented_io_context &main_service,
                          const NodeID &self_node_id, const ObjectManagerConfig &config,
                          std::shared_ptr<ObjectDirectoryInterface> object_directory,
                          RestoreSpilledObjectCallback restore_spilled_object,
@@ -299,11 +317,14 @@ class ObjectManager : public ObjectManagerInterface,
 
   void Tick(const boost::system::error_code &e);
 
+  /// Get the current object store memory usage.
+  int64_t GetUsedMemory() const { return used_memory_; }
+
  private:
   friend class TestObjectManager;
 
   struct WaitState {
-    WaitState(boost::asio::io_service &service, int64_t timeout_ms,
+    WaitState(instrumented_io_context &service, int64_t timeout_ms,
               const WaitCallback &callback)
         : timeout_ms(timeout_ms),
           timeout_timer(std::unique_ptr<boost::asio::deadline_timer>(
@@ -355,7 +376,7 @@ class ObjectManager : public ObjectManagerInterface,
 
   /// Handle starting, running, and stopping asio rpc_service.
   void StartRpcService();
-  void RunRpcService();
+  void RunRpcService(int index);
   void StopRpcService();
 
   /// Handle an object being added to this node. This adds the object to the
@@ -392,18 +413,17 @@ class ObjectManager : public ObjectManagerInterface,
   /// chunk.
   /// \param end_time_us The time when the object manager finished receiving the
   /// chunk.
-  /// \param status The status of the receive (e.g., did it succeed or fail).
   /// \return Void.
   void HandleReceiveFinished(const ObjectID &object_id, const NodeID &node_id,
                              uint64_t chunk_index, double start_time_us,
-                             double end_time_us, ray::Status status);
+                             double end_time_us);
 
   /// Handle Push task timeout.
   void HandlePushTaskTimeout(const ObjectID &object_id, const NodeID &node_id);
 
   /// Weak reference to main service. We ensure this object is destroyed before
   /// main_service_ is stopped.
-  boost::asio::io_service *main_service_;
+  instrumented_io_context *main_service_;
 
   NodeID self_node_id_;
   const ObjectManagerConfig config_;
@@ -416,7 +436,7 @@ class ObjectManager : public ObjectManagerInterface,
   ObjectBufferPool buffer_pool_;
 
   /// Multi-thread asio service, deal with all outgoing and incoming RPC request.
-  boost::asio::io_service rpc_service_;
+  instrumented_io_context rpc_service_;
 
   /// Keep rpc service running when no task in rpc service.
   boost::asio::io_service::work rpc_work_;

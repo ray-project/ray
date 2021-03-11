@@ -30,6 +30,7 @@ class Backend(object):
     """A class to represent different backends."""
     NCCL = "nccl"
     MPI = "mpi"
+    GLOO = "gloo"
     UNRECOGNIZED = "unrecognized"
 
     def __new__(cls, name: str):
@@ -38,7 +39,7 @@ class Backend(object):
             raise ValueError("Unrecognized backend: '{}'. "
                              "Only NCCL is supported".format(name))
         if backend == Backend.MPI:
-            raise NotImplementedError()
+            raise RuntimeError("Ray does not support MPI backend.")
         return backend
 
 
@@ -67,6 +68,7 @@ class BarrierOptions:
 class ReduceOptions:
     reduceOp = ReduceOp.SUM
     root_rank = 0
+    root_tensor = 0  # index for multi-gpu reduce operations
     timeout_ms = unset_timeout_ms
 
 
@@ -85,6 +87,7 @@ class AllGatherOptions:
 @dataclass
 class BroadcastOptions:
     root_rank = 0
+    root_tensor = 0
     timeout_ms = unset_timeout_ms
 
 
@@ -92,3 +95,17 @@ class BroadcastOptions:
 class ReduceScatterOptions:
     reduceOp = ReduceOp.SUM
     timeout_ms = unset_timeout_ms
+
+
+@dataclass
+class SendOptions:
+    dst_rank = 0
+    dst_gpu_index = 0
+    timeout_ms = unset_timeout_ms
+
+
+@dataclass
+class RecvOptions:
+    src_rank = 0
+    src_gpu_index = 0
+    unset_timeout_ms = unset_timeout_ms

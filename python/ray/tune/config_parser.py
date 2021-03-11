@@ -3,11 +3,13 @@ import json
 import os
 
 # For compatibility under py2 to consider unicode as str
+from ray.tune.utils.serialization import TuneFunctionEncoder
 from six import string_types
 
 from ray.tune import TuneError
 from ray.tune.trial import Trial
 from ray.tune.resources import json_to_resources
+from ray.tune.utils.placement_groups import PlacementGroupFactory
 from ray.tune.utils.util import SafeFallbackEncoder
 
 
@@ -142,9 +144,14 @@ def to_argv(config):
             argv.append(v)
         elif isinstance(v, bool):
             pass
+        elif callable(v):
+            argv.append(json.dumps(v, cls=TuneFunctionEncoder))
         else:
             argv.append(json.dumps(v, cls=SafeFallbackEncoder))
     return argv
+
+
+_cached_pgf = {}
 
 
 def create_trial_from_spec(spec, output_path, parser, **trial_kwargs):
@@ -163,13 +170,28 @@ def create_trial_from_spec(spec, output_path, parser, **trial_kwargs):
     Returns:
         A trial object with corresponding parameters to the specification.
     """
+    global _cached_pgf
+
+    spec = spec.copy()
+    resources = spec.pop("resources_per_trial", None)
+
     try:
         args, _ = parser.parse_known_args(to_argv(spec))
     except SystemExit:
         raise TuneError("Error parsing args, see above message", spec)
-    if "resources_per_trial" in spec:
-        trial_kwargs["resources"] = json_to_resources(
-            spec["resources_per_trial"])
+
+    if resources:
+        if isinstance(resources, PlacementGroupFactory):
+            trial_kwargs["placement_group_factory"] = resources
+        else:
+            # This will be converted to a placement group factory in the
+            # Trial object constructor
+            try:
+                trial_kwargs["resources"] = json_to_resources(resources)
+            except (TuneError, ValueError) as exc:
+                raise TuneError("Error parsing resources_per_trial",
+                                resources) from exc
+
     return Trial(
         # Submitting trial via server in py2.7 creates Unicode, which does not
         # convert to string in a straightforward manner.

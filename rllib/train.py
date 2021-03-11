@@ -6,7 +6,7 @@ from pathlib import Path
 import yaml
 
 import ray
-from ray.cluster_utils import Cluster
+from ray._private.cluster_utils import Cluster
 from ray.tune.config_parser import make_parser
 from ray.tune.progress_reporter import CLIReporter, JupyterNotebookReporter
 from ray.tune.result import DEFAULT_RESULTS_DIR
@@ -60,8 +60,7 @@ def create_parser(parser_creator=None):
     parser.add_argument(
         "--local-mode",
         action="store_true",
-        help="Whether to run ray with `local_mode=True`. "
-        "Only if --ray-num-nodes is not used.")
+        help="Run ray in local mode for easier debugging.")
     parser.add_argument(
         "--ray-num-cpus",
         default=None,

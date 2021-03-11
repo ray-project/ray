@@ -16,7 +16,7 @@ pytestmark = pytest.mark.asyncio
 
 
 def setup_worker(name,
-                 func_or_class,
+                 backend_def,
                  init_args=None,
                  backend_config=BackendConfig(),
                  controller_name=""):
@@ -26,7 +26,7 @@ def setup_worker(name,
     @ray.remote
     class WorkerActor:
         def __init__(self):
-            self.worker = create_backend_replica(func_or_class)(
+            self.worker = create_backend_replica(backend_def)(
                 name, name + ":tag", init_args, backend_config,
                 controller_name)
 
@@ -78,7 +78,7 @@ async def router(serve_instance):
 
 
 async def test_runner_wraps_error():
-    wrapped = wrap_to_ray_error(Exception())
+    wrapped = wrap_to_ray_error("test_function", Exception())
     assert isinstance(wrapped, ray.exceptions.RayTaskError)
 
 

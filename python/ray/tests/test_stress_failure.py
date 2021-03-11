@@ -4,7 +4,7 @@ import sys
 import time
 
 import ray
-from ray.cluster_utils import Cluster
+from ray._private.cluster_utils import Cluster
 import ray.ray_constants as ray_constants
 from ray.test_utils import get_error_message
 
@@ -20,7 +20,7 @@ def ray_start_reconstruction(request):
         head_node_args={
             "num_cpus": 1,
             "object_store_memory": plasma_store_memory // num_nodes,
-            "redis_max_memory": 10**7,
+            "redis_max_memory": 10**8,
             "_system_config": {
                 "object_timeout_milliseconds": 200
             }

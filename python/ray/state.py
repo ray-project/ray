@@ -10,7 +10,7 @@ from ray import gcs_utils
 from google.protobuf.json_format import MessageToDict
 from ray._private import services
 from ray._private.client_mode_hook import client_mode_hook
-from ray.utils import (decode, binary_to_hex, hex_to_binary)
+from ray._private.utils import (decode, binary_to_hex, hex_to_binary)
 
 from ray._raylet import GlobalStateAccessor
 
@@ -203,10 +203,11 @@ class GlobalState:
         """
         locations = []
         for location in object_location_info.locations:
-            locations.append(ray.utils.binary_to_hex(location.manager))
+            locations.append(
+                ray._private.utils.binary_to_hex(location.manager))
 
         object_info = {
-            "ObjectRef": ray.utils.binary_to_hex(
+            "ObjectRef": ray._private.utils.binary_to_hex(
                 object_location_info.object_id),
             "Locations": locations,
         }
@@ -309,7 +310,7 @@ class GlobalState:
         for node_info_item in node_table:
             item = gcs_utils.GcsNodeInfo.FromString(node_info_item)
             node_info = {
-                "NodeID": ray.utils.binary_to_hex(item.node_id),
+                "NodeID": ray._private.utils.binary_to_hex(item.node_id),
                 "Alive": item.state ==
                 gcs_utils.GcsNodeInfo.GcsNodeState.Value("ALIVE"),
                 "NodeManagerAddress": item.node_manager_address,
@@ -387,6 +388,20 @@ class GlobalState:
                 result[component_id].append(profile_event)
 
         return dict(result)
+
+    def get_placement_group_by_name(self, placement_group_name):
+        self._check_connected()
+
+        placement_group_info = (
+            self.global_state_accessor.get_placement_group_by_name(
+                placement_group_name))
+        if placement_group_info is None:
+            return None
+        else:
+            placement_group_table_data = \
+                gcs_utils.PlacementGroupTableData.FromString(
+                    placement_group_info)
+            return self._gen_placement_group_info(placement_group_table_data)
 
     def placement_group_table(self, placement_group_id=None):
         self._check_connected()
@@ -627,7 +642,7 @@ class GlobalState:
                     object_ref, remote_node_id, _, _ = event["extra_data"]
 
                 elif event["event_type"] == "transfer_receive":
-                    object_ref, remote_node_id, _, _ = event["extra_data"]
+                    object_ref, remote_node_id, _ = event["extra_data"]
 
                 elif event["event_type"] == "receive_pull_request":
                     object_ref, remote_node_id = event["extra_data"]
@@ -797,7 +812,7 @@ class GlobalState:
                     message.resources_available.items():
                 dynamic_resources[resource_id] = capacity
             # Update available resources for this node.
-            node_id = ray.utils.binary_to_hex(message.node_id)
+            node_id = ray._private.utils.binary_to_hex(message.node_id)
             available_resources_by_id[node_id] = dynamic_resources
 
         # Update nodes in cluster.

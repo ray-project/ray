@@ -5,7 +5,7 @@ import _thread
 
 import ray.ray_constants as ray_constants
 import ray._raylet
-import ray.signature as signature
+import ray._private.signature as signature
 import ray.worker
 from ray.util.placement_group import (
     PlacementGroup, check_placement_group_index, get_current_placement_group)
@@ -13,6 +13,8 @@ from ray.util.placement_group import (
 from ray import ActorClassID, Language
 from ray._raylet import PythonFunctionDescriptor
 from ray._private.client_mode_hook import client_mode_hook
+from ray._private.client_mode_hook import client_mode_should_convert
+from ray._private.client_mode_hook import client_mode_convert_actor
 from ray import cross_language
 from ray.util.inspect import (
     is_function_or_method,
@@ -553,6 +555,29 @@ class ActorClass:
         if max_concurrency < 1:
             raise ValueError("max_concurrency must be >= 1")
 
+        if client_mode_should_convert():
+            return client_mode_convert_actor(
+                self,
+                args,
+                kwargs,
+                num_cpus=num_cpus,
+                num_gpus=num_gpus,
+                memory=memory,
+                object_store_memory=object_store_memory,
+                resources=resources,
+                accelerator_type=accelerator_type,
+                max_concurrency=max_concurrency,
+                max_restarts=max_restarts,
+                max_task_retries=max_task_retries,
+                name=name,
+                lifetime=lifetime,
+                placement_group=placement_group,
+                placement_group_bundle_index=placement_group_bundle_index,
+                placement_group_capture_child_tasks=(
+                    placement_group_capture_child_tasks),
+                override_environment_variables=(
+                    override_environment_variables))
+
         worker = ray.worker.global_worker
         worker.check_connected()
 
@@ -584,7 +609,9 @@ class ActorClass:
         elif lifetime == "detached":
             detached = True
         else:
-            raise ValueError("lifetime must be either `None` or 'detached'")
+            raise ValueError(
+                "actor `lifetime` argument must be either `None` or 'detached'"
+            )
 
         if placement_group_capture_child_tasks is None:
             placement_group_capture_child_tasks = (
@@ -640,7 +667,7 @@ class ActorClass:
                 meta.modified_class, meta.actor_creation_function_descriptor,
                 meta.method_meta.methods.keys())
 
-        resources = ray.utils.resources_from_resource_arguments(
+        resources = ray._private.utils.resources_from_resource_arguments(
             cpus_to_use, meta.num_gpus, meta.memory, meta.object_store_memory,
             meta.resources, meta.accelerator_type, num_cpus, num_gpus, memory,
             object_store_memory, resources, accelerator_type)
@@ -935,7 +962,7 @@ class ActorHandle:
     def __reduce__(self):
         """This code path is used by pickling but not by Ray forking."""
         state = self._serialization_helper()
-        return ActorHandle._deserialization_helper, (state)
+        return ActorHandle._deserialization_helper, state
 
 
 def modify_class(cls):

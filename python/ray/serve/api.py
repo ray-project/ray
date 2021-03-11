@@ -29,11 +29,11 @@ global_async_loop = None
 
 
 @dataclass
-class InternalReplicaContext:
+class ReplicaContext:
     """Stores data for Serve API calls from within the user's backend code."""
     backend_tag: BackendTag
     replica_tag: ReplicaTag
-    controller_name: str
+    _internal_controller_name: str
 
 
 def create_or_get_async_loop_in_thread():
@@ -50,8 +50,8 @@ def create_or_get_async_loop_in_thread():
 
 def _set_internal_replica_context(backend_tag, replica_tag, controller_name):
     global _INTERNAL_REPLICA_CONTEXT
-    _INTERNAL_REPLICA_CONTEXT = InternalReplicaContext(
-        backend_tag, replica_tag, controller_name)
+    _INTERNAL_REPLICA_CONTEXT = ReplicaContext(backend_tag, replica_tag,
+                                               controller_name)
 
 
 def _ensure_connected(f: Callable) -> Callable:
@@ -66,6 +66,8 @@ def _ensure_connected(f: Callable) -> Callable:
 
 class ThreadProxiedRouter:
     def __init__(self, controller_handle, sync: bool):
+        self.controller_handle = controller_handle
+        self.sync = sync
         self.router = Router(controller_handle)
 
         if sync:
@@ -91,6 +93,11 @@ class ThreadProxiedRouter:
         coro = self.router.assign_request(request_metadata, request_data,
                                           **kwargs)
         return coro
+
+    def __reduce__(self):
+        deserializer = ThreadProxiedRouter
+        serialized_data = (self.controller_handle, self.sync)
+        return deserializer, serialized_data
 
 
 class Client:
@@ -323,22 +330,23 @@ class Client:
     def create_backend(
             self,
             backend_tag: str,
-            func_or_class: Union[Callable, Type[Callable]],
-            *actor_init_args: Any,
+            backend_def: Union[Callable, Type[Callable], str],
+            *init_args: Any,
             ray_actor_options: Optional[Dict] = None,
             config: Optional[Union[BackendConfig, Dict[str, Any]]] = None,
             env: Optional[CondaEnv] = None) -> None:
         """Create a backend with the provided tag.
 
-        The backend will serve requests with func_or_class.
-
         Args:
             backend_tag (str): a unique tag assign to identify this backend.
-            func_or_class (callable, class): a function or a class implementing
-                __call__, returning a JSON-serializable object or a
-                Starlette Response object.
-            *actor_init_args (optional): the arguments to pass to the class
-                initialization method.
+            backend_def (callable, class, str): a function or class
+                implementing __call__ and returning a JSON-serializable object
+                or a Starlette Response object. A string import path can also
+                be provided (e.g., "my_module.MyClass"), in which case the
+                underlying function or class will be imported dynamically in
+                the worker replicas.
+            *init_args (optional): the arguments to pass to the class
+                initialization method. Not valid if backend_def is a function.
             ray_actor_options (optional): options to be passed into the
                 @ray.remote decorator for the backend actor.
             config (dict, serve.BackendConfig, optional): configuration options
@@ -386,9 +394,7 @@ class Client:
             ray_actor_options.update(
                 override_environment_variables={"PYTHONHOME": conda_env_dir})
         replica_config = ReplicaConfig(
-            func_or_class,
-            *actor_init_args,
-            ray_actor_options=ray_actor_options)
+            backend_def, *init_args, ray_actor_options=ray_actor_options)
         metadata = BackendMetadata(
             accepts_batches=replica_config.accepts_batches,
             is_blocking=replica_config.is_blocking)
@@ -652,7 +658,7 @@ def connect() -> Client:
     if _INTERNAL_REPLICA_CONTEXT is None:
         controller_name = SERVE_CONTROLLER_NAME
     else:
-        controller_name = _INTERNAL_REPLICA_CONTEXT.controller_name
+        controller_name = _INTERNAL_REPLICA_CONTEXT._internal_controller_name
 
     # Try to get serve controller if it exists
     try:
@@ -666,35 +672,26 @@ def connect() -> Client:
     return Client(controller, controller_name, detached=True)
 
 
-def get_current_backend_tag() -> BackendTag:
-    """When called from within a backend, return its backend tag.
+def get_replica_context() -> ReplicaContext:
+    """When called from a backend, returns the backend tag and replica tag.
+
+    When not called from a backend, returns None.
+
+    A replica tag uniquely identifies a single replica for a Ray Serve
+    backend at runtime.  Replica tags are of the form
+    `<backend tag>#<random letters>`.
 
     Raises:
-        RayServeException if not called from within a Ray Serve backend.
+        RayServeException: if not called from within a Ray Serve backend
+    Example:
+        >>> serve.get_replica_context().backend_tag # my_backend
+        >>> serve.get_replica_context().replica_tag # my_backend#krcwoa
     """
     if _INTERNAL_REPLICA_CONTEXT is None:
-        raise RayServeException("`serve.get_current_backend_tag()`"
-                                "may only be called from within a"
+        raise RayServeException("`serve.get_replica_context()` "
+                                "may only be called from within a "
                                 "Ray Serve backend.")
-    else:
-        return _INTERNAL_REPLICA_CONTEXT.backend_tag
-
-
-def get_current_replica_tag() -> ReplicaTag:
-    """When called from within a backend, return its replica tag.
-
-    A replica tag uniquely identifies a single replica (a process)
-    for a Ray Serve backend.
-
-    Raises:
-        RayServeException if not called from within a Ray Serve backend.
-    """
-    if _INTERNAL_REPLICA_CONTEXT is None:
-        raise RayServeException("`serve.get_current_replica_tag()`"
-                                "may only be called from within a"
-                                "Ray Serve backend.")
-    else:
-        return _INTERNAL_REPLICA_CONTEXT.replica_tag
+    return _INTERNAL_REPLICA_CONTEXT
 
 
 def accept_batch(f: Callable) -> Callable:

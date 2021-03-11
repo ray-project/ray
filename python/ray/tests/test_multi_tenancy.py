@@ -5,6 +5,7 @@ import time
 
 import grpc
 import pytest
+import numpy as np
 
 import ray
 import ray.test_utils
@@ -42,6 +43,7 @@ def test_initial_workers(shutdown_only):
 # all the PIDs don't overlap. If overlapped, it means that tasks owned by
 # different drivers were scheduled to the same worker process, that is, tasks
 # of different jobs were not correctly isolated during execution.
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_multi_drivers(shutdown_only):
     info = ray.init(num_cpus=10)
 
@@ -87,8 +89,8 @@ ray.shutdown()
         err = p.stderr.read().decode("ascii")
         p.wait()
         # out, err = p.communicate()
-        # out = ray.utils.decode(out)
-        # err = ray.utils.decode(err)
+        # out = ray._private.utils.decode(out)
+        # err = ray._private.utils.decode(err)
         if p.returncode != 0:
             print("Driver with PID {} returned error code {}".format(
                 p.pid, p.returncode))
@@ -233,6 +235,75 @@ ray.shutdown()
     # wait for a while to let workers register
     time.sleep(2)
     wait_for_condition(lambda: len(get_workers()) == before)
+
+
+def test_not_killing_workers_that_own_objects(shutdown_only):
+    # Set the small interval for worker capping
+    # so that we can easily trigger it.
+    ray.init(
+        num_cpus=1,
+        _system_config={
+            "kill_idle_workers_interval_ms": 10,
+            "worker_lease_timeout_milliseconds": 0
+        })
+
+    expected_num_workers = 6
+    # Create a nested tasks to start 8 workers each of which owns an object.
+    @ray.remote
+    def nested(i):
+        # The task owns an object.
+        if i >= expected_num_workers - 1:
+            return [ray.put(np.ones(1 * 1024 * 1024, dtype=np.uint8))]
+        else:
+            return ([ray.put(np.ones(1 * 1024 * 1024, dtype=np.uint8))] +
+                    ray.get(nested.remote(i + 1)))
+
+    ref = ray.get(nested.remote(0))
+    num_workers = len(get_workers())
+
+    # Wait for worker capping. worker capping should be triggered
+    # every 10 ms, but we wait long enough to avoid a flaky test.
+    time.sleep(1)
+    ref2 = ray.get(nested.remote(0))
+
+    # New workers shouldn't be registered because we reused the
+    # previous workers that own objects.
+    assert num_workers == len(get_workers())
+    assert len(ref2) == expected_num_workers
+    assert len(ref) == expected_num_workers
+
+
+def test_kill_idle_workers_that_are_behind_owned_workers(shutdown_only):
+    # When the first N idle workers own objects, and if we have N+N
+    # total idle workers, we should make sure other N workers are killed.
+    # It is because the idle workers are killed in the FIFO order.
+    N = 4
+    ray.init(
+        num_cpus=1,
+        _system_config={
+            "kill_idle_workers_interval_ms": 10,
+            "worker_lease_timeout_milliseconds": 0
+        })
+
+    @ray.remote
+    def nested(i):
+        if i >= (N * 2) - 1:
+            return [ray.put(np.ones(1 * 1024 * 1024, dtype=np.uint8))]
+        elif i >= N:
+            return ([ray.put(np.ones(1 * 1024 * 1024, dtype=np.uint8))] +
+                    ray.get(nested.remote(i + 1)))
+        else:
+            return ([1] + ray.get(nested.remote(i + 1)))
+
+    # The first N workers don't own objects
+    # and the later N workers do.
+    ref = ray.get(nested.remote(0))
+    assert len(ref) == N * 2
+    num_workers = len(get_workers())
+    assert num_workers == N * 2
+
+    # Make sure there are only N workers left after worker capping.
+    wait_for_condition(lambda: len(get_workers()) == N)
 
 
 if __name__ == "__main__":

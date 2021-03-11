@@ -1,17 +1,25 @@
 package io.ray.test;
 
+import com.google.common.collect.ImmutableList;
 import io.ray.api.ActorHandle;
+import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
+import io.ray.api.WaitResult;
 import io.ray.api.id.ActorId;
 import io.ray.api.placementgroup.PlacementGroup;
 import io.ray.api.placementgroup.PlacementGroupState;
 import io.ray.api.placementgroup.PlacementStrategy;
 import io.ray.runtime.exception.RayException;
-import io.ray.runtime.placementgroup.PlacementGroupImpl;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
+/**
+ * TODO: Currently, Java doesn't support multi-node tests so we can't test all strategy temporarily.
+ */
 @Test
 public class PlacementGroupTest extends BaseTest {
 
@@ -26,20 +34,25 @@ public class PlacementGroupTest extends BaseTest {
     public int getValue() {
       return value;
     }
+
+    public static String ping() {
+      return "pong";
+    }
   }
 
-  // TODO(ffbin): Currently Java doesn't support multi-node tests.
   // This test just creates a placement group with one bundle.
   // It's not comprehensive to test all placement group test cases.
   public void testCreateAndCallActor() {
-    PlacementGroupImpl placementGroup =
-        (PlacementGroupImpl) PlacementGroupTestUtils.createSimpleGroup();
-    Assert.assertTrue(placementGroup.wait(10));
+    PlacementGroup placementGroup = PlacementGroupTestUtils.createSimpleGroup();
+    Assert.assertTrue(placementGroup.wait(60));
     Assert.assertEquals(placementGroup.getName(), "unnamed_group");
 
     // Test creating an actor from a constructor.
     ActorHandle<Counter> actor =
-        Ray.actor(Counter::new, 1).setPlacementGroup(placementGroup, 0).remote();
+        Ray.actor(Counter::new, 1)
+            .setResource("CPU", 1.0)
+            .setPlacementGroup(placementGroup, 0)
+            .remote();
     Assert.assertNotEquals(actor.getId(), ActorId.NIL);
 
     // Test calling an actor.
@@ -48,42 +61,36 @@ public class PlacementGroupTest extends BaseTest {
 
   @Test(groups = {"cluster"})
   public void testGetPlacementGroup() {
-    PlacementGroupImpl firstPlacementGroup =
-        (PlacementGroupImpl)
-            PlacementGroupTestUtils.createNameSpecifiedSimpleGroup(
-                "CPU", 1, PlacementStrategy.PACK, 1.0, "first_placement_group");
+    PlacementGroup firstPlacementGroup =
+        PlacementGroupTestUtils.createNameSpecifiedSimpleGroup(
+            "CPU", 1, PlacementStrategy.PACK, 1.0, "first_placement_group", false);
 
-    PlacementGroupImpl secondPlacementGroup =
-        (PlacementGroupImpl)
-            PlacementGroupTestUtils.createNameSpecifiedSimpleGroup(
-                "CPU", 1, PlacementStrategy.PACK, 1.0, "second_placement_group");
-    Assert.assertTrue(firstPlacementGroup.wait(10));
-    Assert.assertTrue(secondPlacementGroup.wait(10));
+    PlacementGroup secondPlacementGroup =
+        PlacementGroupTestUtils.createNameSpecifiedSimpleGroup(
+            "CPU", 1, PlacementStrategy.PACK, 1.0, "second_placement_group", false);
+    Assert.assertTrue(firstPlacementGroup.wait(60));
+    Assert.assertTrue(secondPlacementGroup.wait(60));
 
-    PlacementGroupImpl firstPlacementGroupRes =
-        (PlacementGroupImpl) Ray.getPlacementGroup((firstPlacementGroup).getId());
-    PlacementGroupImpl secondPlacementGroupRes =
-        (PlacementGroupImpl) Ray.getPlacementGroup((secondPlacementGroup).getId());
+    PlacementGroup firstPlacementGroupRes = Ray.getPlacementGroup((firstPlacementGroup).getId());
+    PlacementGroup secondPlacementGroupRes = Ray.getPlacementGroup((secondPlacementGroup).getId());
 
     Assert.assertNotNull(firstPlacementGroupRes);
     Assert.assertNotNull(secondPlacementGroupRes);
 
     Assert.assertEquals(firstPlacementGroup.getId(), firstPlacementGroupRes.getId());
-    Assert.assertEquals(firstPlacementGroup.getName(), firstPlacementGroupRes.getName());
     Assert.assertEquals(firstPlacementGroupRes.getBundles().size(), 1);
     Assert.assertEquals(firstPlacementGroupRes.getStrategy(), PlacementStrategy.PACK);
 
     List<PlacementGroup> allPlacementGroup = Ray.getAllPlacementGroups();
     Assert.assertEquals(allPlacementGroup.size(), 2);
 
-    PlacementGroupImpl placementGroupRes = (PlacementGroupImpl) allPlacementGroup.get(0);
+    PlacementGroup placementGroupRes = allPlacementGroup.get(0);
     Assert.assertNotNull(placementGroupRes.getId());
-    PlacementGroupImpl expectPlacementGroup =
+    PlacementGroup expectPlacementGroup =
         placementGroupRes.getId().equals(firstPlacementGroup.getId())
             ? firstPlacementGroup
             : secondPlacementGroup;
 
-    Assert.assertEquals(placementGroupRes.getName(), expectPlacementGroup.getName());
     Assert.assertEquals(
         placementGroupRes.getBundles().size(), expectPlacementGroup.getBundles().size());
     Assert.assertEquals(placementGroupRes.getStrategy(), expectPlacementGroup.getStrategy());
@@ -91,21 +98,22 @@ public class PlacementGroupTest extends BaseTest {
 
   @Test(groups = {"cluster"})
   public void testRemovePlacementGroup() {
-    PlacementGroupTestUtils.createNameSpecifiedSimpleGroup(
-        "CPU", 1, PlacementStrategy.PACK, 1.0, "first_placement_group");
+    PlacementGroup firstPlacementGroup =
+        PlacementGroupTestUtils.createNameSpecifiedSimpleGroup(
+            "CPU", 1, PlacementStrategy.PACK, 1.0, "first_placement_group", false);
 
-    PlacementGroupImpl secondPlacementGroup =
-        (PlacementGroupImpl)
-            PlacementGroupTestUtils.createNameSpecifiedSimpleGroup(
-                "CPU", 1, PlacementStrategy.PACK, 1.0, "second_placement_group");
+    PlacementGroup secondPlacementGroup =
+        PlacementGroupTestUtils.createNameSpecifiedSimpleGroup(
+            "CPU", 1, PlacementStrategy.PACK, 1.0, "second_placement_group", false);
+    Assert.assertTrue(firstPlacementGroup.wait(60));
+    Assert.assertTrue(secondPlacementGroup.wait(60));
 
     List<PlacementGroup> allPlacementGroup = Ray.getAllPlacementGroups();
     Assert.assertEquals(allPlacementGroup.size(), 2);
 
     Ray.removePlacementGroup(secondPlacementGroup.getId());
 
-    PlacementGroupImpl removedPlacementGroup =
-        (PlacementGroupImpl) Ray.getPlacementGroup((secondPlacementGroup).getId());
+    PlacementGroup removedPlacementGroup = Ray.getPlacementGroup((secondPlacementGroup).getId());
     Assert.assertEquals(removedPlacementGroup.getState(), PlacementGroupState.REMOVED);
 
     // Wait for placement group after it is removed.
@@ -118,8 +126,10 @@ public class PlacementGroupTest extends BaseTest {
     Assert.assertEquals(exceptionCount, 1);
   }
 
+  @Test(groups = {"cluster"})
   public void testCheckBundleIndex() {
     PlacementGroup placementGroup = PlacementGroupTestUtils.createSimpleGroup();
+    Assert.assertTrue(placementGroup.wait(60));
 
     int exceptionCount = 0;
     try {
@@ -145,5 +155,123 @@ public class PlacementGroupTest extends BaseTest {
   @Test(expectedExceptions = {IllegalArgumentException.class})
   public void testBundleResourceValidCheckWhenCreate() {
     PlacementGroupTestUtils.createBundleResourceInvalidGroup();
+  }
+
+  @Test(groups = {"cluster"})
+  public void testNamedPlacementGroup() {
+    // Test Non-Global placement group.
+    String pgName = "named_placement_group";
+    PlacementGroup firstPlacementGroup =
+        PlacementGroupTestUtils.createNameSpecifiedSimpleGroup(
+            "CPU", 1, PlacementStrategy.PACK, 1.0, pgName, false);
+    Assert.assertTrue(firstPlacementGroup.wait(60));
+    // Make sure we can get it by name successfully.
+    PlacementGroup placementGroup = Ray.getPlacementGroup(pgName);
+    Assert.assertNotNull(placementGroup);
+    Assert.assertEquals(placementGroup.getBundles().size(), 1);
+
+    // Test global placement group.
+    String pgGlobalName = "global_placement_group";
+    PlacementGroup secondPlacementGroup =
+        PlacementGroupTestUtils.createNameSpecifiedSimpleGroup(
+            "CPU", 1, PlacementStrategy.PACK, 1.0, pgGlobalName, true);
+    Assert.assertTrue(secondPlacementGroup.wait(60));
+    // Make sure we can get it by name successfully.
+    placementGroup = Ray.getGlobalPlacementGroup(pgGlobalName);
+    Assert.assertNotNull(placementGroup);
+    Assert.assertEquals(placementGroup.getBundles().size(), 1);
+  }
+
+  @Test(groups = {"cluster"})
+  public void testCreatePlacementGroupWithSameName() {
+    String pgName = "named_placement_group";
+    PlacementGroup firstPlacementGroup =
+        PlacementGroupTestUtils.createNameSpecifiedSimpleGroup(
+            "CPU", 1, PlacementStrategy.PACK, 1.0, pgName, false);
+    Assert.assertTrue(firstPlacementGroup.wait(60));
+    int exceptionCount = 0;
+    try {
+      PlacementGroupTestUtils.createNameSpecifiedSimpleGroup(
+          "CPU", 1, PlacementStrategy.PACK, 1.0, pgName, false);
+    } catch (IllegalArgumentException e) {
+      ++exceptionCount;
+    }
+    Assert.assertEquals(exceptionCount, 1);
+  }
+
+  @Test(groups = {"cluster"})
+  public void testCreateGlobalPlacementGroupWithSameName() {
+    String pgGlobalName = "global_placement_group";
+    PlacementGroup firstPlacementGroup =
+        PlacementGroupTestUtils.createNameSpecifiedSimpleGroup(
+            "CPU", 1, PlacementStrategy.PACK, 1.0, pgGlobalName, true);
+    Assert.assertTrue(firstPlacementGroup.wait(60));
+    int exceptionCount = 0;
+    try {
+      PlacementGroupTestUtils.createNameSpecifiedSimpleGroup(
+          "CPU", 1, PlacementStrategy.PACK, 1.0, pgGlobalName, true);
+    } catch (IllegalArgumentException e) {
+      ++exceptionCount;
+    }
+    Assert.assertEquals(exceptionCount, 1);
+  }
+
+  @Test(groups = {"cluster"})
+  public void testCompatibleForPreviousApi() {
+    String pgName = "named_placement_group";
+    List<Map<String, Double>> bundles = new ArrayList<>();
+    for (int i = 0; i < 1; i++) {
+      Map<String, Double> bundle = new HashMap<>();
+      bundle.put("CPU", 1.0);
+      bundles.add(bundle);
+    }
+    PlacementGroup placementGroup =
+        Ray.createPlacementGroup(pgName, bundles, PlacementStrategy.PACK);
+    Assert.assertTrue(placementGroup.wait(60));
+    // Make sure we can get it by name successfully.
+    PlacementGroup resPlacementGroup = Ray.getPlacementGroup(pgName);
+    Assert.assertNotNull(resPlacementGroup);
+    Assert.assertEquals(resPlacementGroup.getBundles().size(), 1);
+  }
+
+  @Test(groups = {"cluster"})
+  public void testPlacementGroupForNormalTask() {
+    // Create a placement group with non-exist resources.
+    String pgName = "named_placement_group";
+    PlacementGroup nonExistPlacementGroup =
+        PlacementGroupTestUtils.createNameSpecifiedSimpleGroup(
+            "non-exist-resource", 1, PlacementStrategy.PACK, 1.0, pgName, false);
+
+    // Make sure its creation will failed.
+    Assert.assertFalse(nonExistPlacementGroup.wait(60));
+
+    // Submit a normal task that required a non-exist placement group resources and make sure its
+    // scheduling will timeout.
+    ObjectRef<String> obj =
+        Ray.task(Counter::ping)
+            .setPlacementGroup(nonExistPlacementGroup, 0)
+            .setResource("CPU", 1.0)
+            .remote();
+
+    List<ObjectRef<String>> waitList = ImmutableList.of(obj);
+    WaitResult<String> waitResult = Ray.wait(waitList, 1, 30 * 1000);
+    Assert.assertEquals(1, waitResult.getUnready().size());
+
+    // Create a placement group and make sure its creation will successful.
+    PlacementGroup placementGroup = PlacementGroupTestUtils.createSimpleGroup();
+    Assert.assertTrue(placementGroup.wait(60));
+
+    // Submit a normal task that required a exist placement group resources and make sure its
+    // scheduling will successful.
+    Assert.assertEquals(
+        Ray.task(Counter::ping)
+            .setPlacementGroup(placementGroup, 0)
+            .setResource("CPU", 1.0)
+            .remote()
+            .get(),
+        "pong");
+
+    // Make sure it will not affect the previous normal task.
+    Assert.assertEquals(Ray.task(Counter::ping).remote().get(), "pong");
   }
 }

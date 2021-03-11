@@ -24,7 +24,7 @@
             "type": "string"
         },
         "min_workers": {
-            "description": "The minimum number of workers nodes to launch in addition to the head node. This number should be >= 0",
+            "description": "DEPRECATED. Use the per node_type min_workers field instead.",
             "type": "integer",
             "minimum": 0
         },
@@ -34,17 +34,17 @@
             "minimum": 0
         },
         "initial_workers": {
-            "description": "The number of workers to launch initially, in addition to the head node.",
+            "description": "DEPRECATED.",
             "type": "integer",
             "minimum": 0
         },
         "autoscaling_mode": {
-            "description": "The mode of the autoscaler e.g. default, aggressive",
+            "description": "DEPRECATED. Use upscaling_speed instead.",
             "type": "string",
             "enum": [ "default", "aggressive" ]
         },
         "target_utilization_fraction": {
-            "description": "The autoscaler will scale up the cluster to this target fraction of resources usage. For example, if a cluster of 8 nodes is 100% busy # and target_utilization was 0.8, it would resize the cluster to 10.",
+            "description": "DEPRECATED. Use upscaling_speed instead.",
             "type": "number",
             "minimum": 0,
             "maximum": 1
@@ -247,6 +247,11 @@
                     "type": "boolean",
                     "description": "disable Ray from automatically detecting /dev/shm size for the container",
                     "default": false
+                },
+              "use_podman"  :  {
+                "type": "boolean",
+                "description": "Use 'podman' command in place of 'docker'",
+                "default": false
                 }
             }
         },
@@ -256,7 +261,7 @@
         },
         "worker_default_node_type": {
             "type": "string",
-            "description": "If using multiple node types, specifies the default worker node type."
+            "description": "DEPRECATED."
         },
         "head_node": {
             "type": "object",
@@ -332,8 +337,12 @@
                        "min_workers": {"type": "integer"},
                        "max_workers": {"type": "integer"},
                        "resources": {
-                           "type": "object",
-                           ".*": {"type": "number"}
+						   "patternProperties": {
+							   ".*":{
+								   "type": "integer",
+								   "minimum": 0
+							   }
+						   }
                        },
                        "initialization_commands": {
                            "$ref": "#/definitions/commands",
@@ -359,7 +368,8 @@
                                 "type": "array",
                                 "description": "analogous to head_run_options, merged with the global docker run_options."
                             }
-                        }
+                        },
+                        "additionalProperties": false
                     }
                     },
                     "additionalProperties": false

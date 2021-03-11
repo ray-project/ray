@@ -117,14 +117,28 @@ Ray provides Python, Java, and *EXPERIMENTAL* C++ API. And Ray uses Tasks (funct
     | The C++ Ray API is currently experimental with limited support. You can track its development `here <https://github.com/ray-project/ray/milestone/17>`__ and report issues on GitHub.
     | Run the following commands to get started:
     | - Build ray from source with *bazel* as shown `here <https://docs.ray.io/en/master/development.html#building-ray-full>`__.
-    | - Run `"cd ray/cpp"`.
-    | - Run `"cp dev_BUILD.bazel BUILD.bazel"`.
-    | - Modify `src/ray/example/example.cc`.
-    | - Run `"ray stop"`.
-    | - Run `"bazel build //cpp:all"`.
-    | - Run `"bazel run //cpp:example"`.
+    | - Modify and build `cpp/example/example.cc`.
 
-    .. literalinclude:: ../../cpp/src/ray/example/example.cc
+    .. code-block:: shell
+
+      bazel build //cpp/example:example
+
+    | Option 1: run the example directly with a dynamic library path. It will start a Ray cluster automatically.
+
+    .. code-block:: shell
+
+      ray stop
+      ./bazel-bin/cpp/example/example --dynamic-library-path=bazel-bin/cpp/example/example.so
+
+    | Option 2: connect to an existing Ray cluster with a known redis address (e.g. `127.0.0.1:6379`).
+
+    .. code-block:: shell
+
+      ray stop
+      ray start --head --port 6379 --redis-password 5241590000000000 --node-manager-port 62665
+      ./bazel-bin/cpp/example/example --dynamic-library-path=bazel-bin/cpp/example/example.so --redis-address=127.0.0.1:6379
+
+    .. literalinclude:: ../../cpp/example/example.cc
        :language: cpp
 
 You can also get started by visiting our `Tutorials <https://github.com/ray-project/tutorial>`_. For the latest wheels (nightlies), see the `installation page <installation.html>`__.
@@ -190,6 +204,7 @@ Papers
 - `Ray 1.0 Architecture whitepaper`_ **(new)**
 - `Ray Design Patterns`_ **(new)**
 - `RLlib paper`_
+- `RLlib flow paper`_
 - `Tune paper`_
 
 *Older papers:*
@@ -202,6 +217,7 @@ Papers
 .. _`Ray paper`: https://arxiv.org/abs/1712.05889
 .. _`Ray HotOS paper`: https://arxiv.org/abs/1703.03924
 .. _`RLlib paper`: https://arxiv.org/abs/1712.09381
+.. _`RLlib flow paper`: https://arxiv.org/abs/2011.12719
 .. _`Tune paper`: https://arxiv.org/abs/1807.05118
 
 .. toctree::
@@ -228,11 +244,12 @@ Papers
 .. toctree::
    :hidden:
    :maxdepth: -1
-   :caption: Ray Cluster
+   :caption: Ray Clusters/Autoscaler
 
    cluster/index.rst
-   cluster/launcher.rst
-   cluster/autoscaling.rst
+   cluster/quickstart.rst
+   cluster/reference.rst
+   cluster/cloud.rst
    cluster/deploy.rst
 
 .. toctree::
@@ -241,11 +258,15 @@ Papers
    :caption: Ray Serve
 
    serve/index.rst
-   serve/key-concepts.rst
-   serve/tutorials/index.rst
+   serve/tutorial.rst
+   serve/core-apis.rst
    serve/deployment.rst
+   serve/ml-models.rst
+   serve/advanced-traffic.rst
    serve/advanced.rst
+   serve/performance.rst
    serve/architecture.rst
+   serve/tutorials/index.rst
    serve/faq.rst
    serve/package-ref.rst
 
@@ -296,14 +317,22 @@ Papers
 .. toctree::
    :hidden:
    :maxdepth: -1
+   :caption: Data Processing
+
+   modin/index.rst
+   dask-on-ray.rst
+   mars-on-ray.rst
+   raydp.rst
+
+.. toctree::
+   :hidden:
+   :maxdepth: -1
    :caption: More Libraries
 
    multiprocessing.rst
    joblib.rst
    iter.rst
    xgboost-ray.rst
-   dask-on-ray.rst
-   mars-on-ray.rst
    ray-client.rst
 
 .. toctree::
@@ -313,6 +342,7 @@ Papers
 
    ray-metrics.rst
    ray-debugging.rst
+   ray-logging.rst
 
 .. toctree::
    :hidden:

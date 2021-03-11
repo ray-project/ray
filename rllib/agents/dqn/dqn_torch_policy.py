@@ -4,7 +4,6 @@ from typing import Dict, List, Tuple
 
 import gym
 import ray
-from ray.rllib.agents.a3c.a3c_torch_policy import apply_grad_clipping
 from ray.rllib.agents.dqn.dqn_tf_policy import (
     PRIO_WEIGHTS, Q_SCOPE, Q_TARGET_SCOPE, postprocess_nstep_and_prio)
 from ray.rllib.agents.dqn.dqn_torch_model import DQNTorchModel
@@ -20,9 +19,8 @@ from ray.rllib.policy.torch_policy import LearningRateSchedule
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.exploration.parameter_noise import ParameterNoise
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.torch_ops import (FLOAT_MIN, huber_loss,
-                                       reduce_mean_ignore_inf,
-                                       softmax_cross_entropy_with_logits)
+from ray.rllib.utils.torch_ops import apply_grad_clipping, FLOAT_MIN, \
+    huber_loss, reduce_mean_ignore_inf, softmax_cross_entropy_with_logits
 from ray.rllib.utils.typing import TensorType, TrainerConfigDict
 
 torch, nn = try_import_torch()
@@ -152,7 +150,7 @@ def build_q_model_and_distribution(
 
     if config["hiddens"]:
         # try to infer the last layer size, otherwise fall back to 256
-        num_outputs = ([256] + config["model"]["fcnet_hiddens"])[-1]
+        num_outputs = ([256] + list(config["model"]["fcnet_hiddens"]))[-1]
         config["model"]["no_final_linear"] = True
     else:
         num_outputs = action_space.n
@@ -163,7 +161,7 @@ def build_q_model_and_distribution(
         isinstance(getattr(policy, "exploration", None), ParameterNoise)
         or config["exploration_config"]["type"] == "ParameterNoise")
 
-    policy.q_model = ModelCatalog.get_model_v2(
+    model = ModelCatalog.get_model_v2(
         obs_space=obs_space,
         action_space=action_space,
         num_outputs=num_outputs,
@@ -182,7 +180,7 @@ def build_q_model_and_distribution(
         #  generically into ModelCatalog.
         add_layer_norm=add_layer_norm)
 
-    policy.q_func_vars = policy.q_model.variables()
+    policy.q_func_vars = model.variables()
 
     policy.target_q_model = ModelCatalog.get_model_v2(
         obs_space=obs_space,
@@ -205,7 +203,7 @@ def build_q_model_and_distribution(
 
     policy.target_q_func_vars = policy.target_q_model.variables()
 
-    return policy.q_model, TorchCategorical
+    return model, TorchCategorical
 
 
 def get_distribution_inputs_and_class(
@@ -216,7 +214,11 @@ def get_distribution_inputs_and_class(
         explore: bool = True,
         is_training: bool = False,
         **kwargs) -> Tuple[TensorType, type, List[TensorType]]:
-    q_vals = compute_q_values(policy, model, obs_batch, explore, is_training)
+    q_vals = compute_q_values(
+        policy,
+        model, {"obs": obs_batch},
+        explore=explore,
+        is_training=is_training)
     q_vals = q_vals[0] if isinstance(q_vals, tuple) else q_vals
 
     policy.q_values = q_vals
@@ -237,18 +239,16 @@ def build_q_losses(policy: Policy, model, _,
     """
     config = policy.config
     # Q-network evaluation.
-    q_t, q_logits_t, q_probs_t = compute_q_values(
+    q_t, q_logits_t, q_probs_t, _ = compute_q_values(
         policy,
-        policy.q_model,
-        train_batch[SampleBatch.CUR_OBS],
+        model, {"obs": train_batch[SampleBatch.CUR_OBS]},
         explore=False,
         is_training=True)
 
     # Target Q-network evaluation.
-    q_tp1, q_logits_tp1, q_probs_tp1 = compute_q_values(
+    q_tp1, q_logits_tp1, q_probs_tp1, _ = compute_q_values(
         policy,
-        policy.target_q_model,
-        train_batch[SampleBatch.NEXT_OBS],
+        policy.target_q_model, {"obs": train_batch[SampleBatch.NEXT_OBS]},
         explore=False,
         is_training=True)
 
@@ -265,10 +265,10 @@ def build_q_losses(policy: Policy, model, _,
     # compute estimate of best possible value starting from state at t + 1
     if config["double_q"]:
         q_tp1_using_online_net, q_logits_tp1_using_online_net, \
-            q_dist_tp1_using_online_net = compute_q_values(
+            q_dist_tp1_using_online_net, _ = compute_q_values(
                 policy,
-                policy.q_model,
-                train_batch[SampleBatch.NEXT_OBS],
+                model,
+                {"obs": train_batch[SampleBatch.NEXT_OBS]},
                 explore=False,
                 is_training=True)
         q_tp1_best_using_online_net = torch.argmax(q_tp1_using_online_net, 1)
@@ -329,15 +329,15 @@ def before_loss_init(policy: Policy, obs_space: gym.spaces.Space,
 
 def compute_q_values(policy: Policy,
                      model: ModelV2,
-                     obs: TensorType,
-                     explore,
+                     input_dict,
+                     state_batches=None,
+                     seq_lens=None,
+                     explore=None,
                      is_training: bool = False):
     config = policy.config
 
-    model_out, state = model({
-        SampleBatch.CUR_OBS: obs,
-        "is_training": is_training,
-    }, [], None)
+    input_dict["is_training"] = is_training
+    model_out, state = model(input_dict, state_batches or [], seq_lens)
 
     if config["num_atoms"] > 1:
         (action_scores, z, support_logits_per_action, logits,
@@ -369,7 +369,7 @@ def compute_q_values(policy: Policy,
     else:
         value = action_scores
 
-    return value, logits, probs_or_logits
+    return value, logits, probs_or_logits, state
 
 
 def grad_process_and_td_error_fn(policy: Policy,

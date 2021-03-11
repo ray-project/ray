@@ -134,7 +134,6 @@ void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(
   if (!lease_entry.lease_client) {
     return;
   }
-  RAY_CHECK(lease_entry.lease_client);
 
   auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
   auto &current_queue = scheduling_key_entry.task_queue;
