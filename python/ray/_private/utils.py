@@ -843,9 +843,8 @@ def get_conda_env_dir(env_name):
         # support this case.
         conda_exe = os.environ.get("CONDA_EXE")
         if conda_exe is None:
-            raise ValueError(
-                "Cannot find environment variables set by conda. "
-                "Please verify conda is installed.")
+            raise ValueError("Cannot find environment variables set by conda. "
+                             "Please verify conda is installed.")
         # Example: CONDA_EXE=$HOME/anaconda3/bin/python
         # Strip out /bin/python by going up two parent directories.
         conda_prefix = str(Path(conda_exe).parent.parent)
