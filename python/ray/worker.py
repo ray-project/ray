@@ -1844,6 +1844,10 @@ def remote(*args, **kwargs):
             crashes unexpectedly. The minimum valid value is 0,
             the default is 4 (default), and a value of -1 indicates
             infinite retries.
+        runtime_env (Dict[str, Any]): Specifies the runtime environment for
+            this actor or task and its children.  Currently supports the
+            key "conda_env", whose value should be a string which is the
+            name of the desired conda environment.
         override_environment_variables (Dict[str, str]): This specifies
             environment variables to override for the actor or task.  The
             overrides are propagated to all child actors and tasks.  This

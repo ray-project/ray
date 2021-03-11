@@ -1,5 +1,4 @@
 import asyncio
-import os
 import json
 
 import numpy as np
@@ -7,7 +6,7 @@ import pytest
 
 import ray
 from ray.serve.utils import (ServeEncoder, chain_future, unpack_future,
-                             get_conda_env_dir, import_attr)
+                             import_attr)
 
 
 def test_bytes_encoder():
@@ -67,20 +66,6 @@ async def test_future_chaining():
     for future in single_futures:
         with pytest.raises(ValueError):
             await future
-
-
-def test_get_conda_env_dir(tmp_path):
-    d = tmp_path / "tf1"
-    d.mkdir()
-    os.environ["CONDA_PREFIX"] = str(d)
-    with pytest.raises(ValueError):
-        # env does not exist
-        env_dir = get_conda_env_dir("tf2")
-    tf2_dir = tmp_path / "tf2"
-    tf2_dir.mkdir()
-    env_dir = get_conda_env_dir("tf2")
-    assert (env_dir == str(tmp_path / "tf2"))
-    os.environ["CONDA_PREFIX"] = ""
 
 
 def test_import_attr():
