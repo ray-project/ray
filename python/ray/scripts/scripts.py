@@ -18,7 +18,7 @@ import ray
 import psutil
 import ray._private.services as services
 import ray.ray_constants as ray_constants
-import ray.utils
+import ray._private.utils
 from ray.autoscaler._private.commands import (
     attach_cluster, exec_cluster, create_or_update_cluster, monitor_cluster,
     rsync, teardown_cluster, get_head_node_ip, kill_node, get_worker_node_ips,
@@ -53,7 +53,8 @@ def check_no_existing_redis_clients(node_ip_address, redis_client):
         if deleted:
             continue
 
-        if ray.utils.decode(info[b"node_ip_address"]) == node_ip_address:
+        if ray._private.utils.decode(
+                info[b"node_ip_address"]) == node_ip_address:
             raise Exception("This Redis instance is already connected to "
                             "clients with this IP address.")
 
@@ -104,7 +105,7 @@ def add_click_options(options):
 @click.version_option()
 def cli(logging_level, logging_format):
     level = logging.getLevelName(logging_level.upper())
-    ray.ray_logging.setup_logger(level, logging_format)
+    ray._private.ray_logging.setup_logger(level, logging_format)
     cli_logger.set_format(format_tmpl=logging_format)
 
 
@@ -470,7 +471,7 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
 
     redirect_worker_output = None if not no_redirect_worker_output else True
     redirect_output = None if not no_redirect_output else True
-    ray_params = ray.parameter.RayParams(
+    ray_params = ray._private.parameter.RayParams(
         node_ip_address=node_ip_address,
         min_worker_port=min_worker_port,
         max_worker_port=max_worker_port,
@@ -1324,7 +1325,7 @@ def timeline(address):
     logger.info(f"Connecting to Ray instance at {address}.")
     ray.init(address=address)
     time = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
-    filename = os.path.join(ray.utils.get_user_temp_dir(),
+    filename = os.path.join(ray._private.utils.get_user_temp_dir(),
                             f"ray-timeline-{time}.json")
     ray.timeline(filename=filename)
     size = os.path.getsize(filename)

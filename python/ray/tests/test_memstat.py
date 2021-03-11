@@ -2,7 +2,7 @@ import numpy as np
 import time
 
 import ray
-from ray.cluster_utils import Cluster
+from ray._private.cluster_utils import Cluster
 from ray.internal.internal_api import memory_summary
 
 # Unique strings.
