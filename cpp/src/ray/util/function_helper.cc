@@ -26,8 +26,9 @@ std::shared_ptr<boost::dll::shared_library> FunctionHelper::LoadDll(
   }
 
   auto absolute_path = boost::filesystem::absolute(lib_name);
-  if (boost::filesystem::exists(absolute_path)) {
-    RAY_LOG(WARNING) << "File not found, absolute_path: " << absolute_path;
+  if (!boost::filesystem::exists(absolute_path)) {
+    RAY_LOG(WARNING) << lib_name << " dll not found, absolute_path: " << absolute_path
+                     << ", current path" << boost::filesystem::current_path();
     return nullptr;
   }
 
