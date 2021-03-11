@@ -1,6 +1,5 @@
 import re
 import sys
-from unittest import mock
 import tempfile
 import time
 
@@ -53,12 +52,6 @@ CPUACCTUSAGE1 = "2268980984108"
 
 CPUACCTUSAGE2 = "2270120061999"
 
-CPU_QUOTA = "-1"
-
-CPU_PERIOD = "1000"
-
-CPUSETS = "0-7"
-
 CPUSHARES = "2048"
 
 
@@ -96,59 +89,38 @@ def test_dashboard(shutdown_only):
 @pytest.mark.skipif(
     sys.platform.startswith("win"), reason="No need to test on Windows.")
 def test_k8s_cpu():
-    """Test all the functions in k8s_utils.py.
-    Also test ray.utils.get_num_cpus in the context of a docker container with
-    cpu quota unset.
-
-    Files were obtained from within a K8s pod with 2 CPU request, limit unset
-    with 1 CPU of stress applied.
-    """
-    (shares_file, cpuset_file, cpu_period_file, cpu_quota_file, cpuacct_file,
-     proc_stat_file) = [tempfile.NamedTemporaryFile("w+") for _ in range(6)]
+    shares_file, cpu_file, proc_stat_file = [tempfile.NamedTemporaryFile("w+")
+                                             for _ in range(3)]
     shares_file.write(CPUSHARES)
-    cpuset_file.write(CPUSETS)
-    cpu_period_file.write(CPU_PERIOD)
-    cpu_quota_file.write(CPU_QUOTA)
-
-    cpuacct_file.write(CPUACCTUSAGE1)
+    cpu_file.write(CPUACCTUSAGE1)
     proc_stat_file.write(PROCSTAT1)
-
-    for file in shares_file, cpuacct_file, proc_stat_file:
+    for file in shares_file, cpu_file, proc_stat_file:
         file.flush()
 
-    patch_defaults = (cpu_quota_file.name, cpu_period_file.name,
-                      cpuset_file.name, shares_file.name)
+    k8s_utils.CPU_SHARES_PATH = shares_file.name
+    k8s_utils.CPU_USAGE_PATH = cpu_file.name
+    k8s_utils.PROC_STAT_PATH = proc_stat_file.name
 
-    with mock.patch("ray.new_dashboard.k8s_utils.CPU_USAGE_PATH",
-                    cpuacct_file.name),\
-            mock.patch("ray.new_dashboard.k8s_utils.CPU_USAGE_PATH",
-                       cpuacct_file.name),\
-            mock.patch("ray.new_dashboard.k8s_utils.PROC_STAT_PATH",
-                       proc_stat_file.name),\
-            mock.patch("ray.new_dashboard.k8s_utils.ray.utils."
-                       "_get_docker_cpus.__defaults__", patch_defaults):
+    # Test helpers
+    assert k8s_utils.container_cpu_count() == 2.0
+    assert k8s_utils._cpu_usage() == 2268980984108
+    assert k8s_utils._system_usage() == 1551775030000000
+    assert k8s_utils._host_num_cpus() == 8
 
-        # Test helpers
-        assert k8s_utils.ray.utils.get_num_cpus() == 2
-        assert k8s_utils._cpu_usage() == 2268980984108
-        assert k8s_utils._system_usage() == 1551775030000000
-        assert k8s_utils._host_num_cpus() == 8
+    # No delta for first computation, return 0.
+    assert k8s_utils.cpu_percent() == 0.0
 
-        # No delta for first computation, return 0.
-        assert k8s_utils.cpu_percent() == 0.0
+    # Write new usage info obtained after 1 sec wait.
+    for file in cpu_file, proc_stat_file:
+        file.truncate(0)
+        file.seek(0)
+    cpu_file.write(CPUACCTUSAGE2)
+    proc_stat_file.write(PROCSTAT2)
+    for file in cpu_file, proc_stat_file:
+        file.flush()
 
-        # Write new usage info obtained after 1 sec wait.
-        for file in cpuacct_file, proc_stat_file:
-            # Delete file and reset pointer
-            file.truncate(0)
-            file.seek(0)
-        cpuacct_file.write(CPUACCTUSAGE2)
-        proc_stat_file.write(PROCSTAT2)
-        for file in cpuacct_file, proc_stat_file:
-            file.flush()
-
-        # Files were extracted under 1 CPU of load on a 2 CPU pod
-        assert 50 < k8s_utils.cpu_percent() < 60
+    # Files were extracted under 1 CPU of load on a 2 CPU pod
+    assert 50 < k8s_utils.cpu_percent() < 60
 
 
 if __name__ == "__main__":

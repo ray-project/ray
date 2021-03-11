@@ -2,6 +2,7 @@ import asyncio
 import datetime
 import json
 import logging
+import math
 import os
 import socket
 import subprocess
@@ -118,9 +119,8 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
         """Initialize the reporter object."""
         super().__init__(dashboard_agent)
         if IN_KUBERNETES_POD:
-            # psutil does not give an accurate reading in this case.
-            # Use ray.utils instead.
-            cpu_count = ray.utils.get_num_cpus()
+            # Round up
+            cpu_count = int(math.ceil(k8s_utils.container_cpu_count()))
             self._cpu_counts = (cpu_count, cpu_count)
         else:
             self._cpu_counts = (psutil.cpu_count(),
