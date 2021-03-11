@@ -46,8 +46,8 @@ TEST(RayClusterModeTest, TestDll) {
   std::function<msgpack::sbuffer(const std::vector<std::shared_ptr<::ray::RayObject>> &)>
       execute_func = boost::dll::import_alias<msgpack::sbuffer(
           const std::vector<std::shared_ptr<::ray::RayObject>> &)>(*lib, "CallInDll");
-  // auto result = execute_func(std::vector<std::shared_ptr<::ray::RayObject>>{});
-  EXPECT_TRUE(execute_func);
+  auto result = execute_func(std::vector<std::shared_ptr<::ray::RayObject>>{});
+  EXPECT_TRUE(Serializer::HasError(result.data(), result.size()));
 }
 
 TEST(RayClusterModeTest, FullTest) {

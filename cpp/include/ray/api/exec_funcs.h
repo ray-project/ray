@@ -28,6 +28,9 @@ namespace internal {
 /// Execute remote functions by networking stream.
 inline static msgpack::sbuffer TaskExecutionHandler(
     const std::vector<std::shared_ptr<RayObject>> &args_buffer) {
+  if (args_buffer.empty()) {
+    return PackError("lack of required arguments");
+  }
   auto &memory_buffer = args_buffer.at(0)->GetData();
   msgpack::sbuffer result;
   do {

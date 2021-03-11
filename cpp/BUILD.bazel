@@ -118,6 +118,7 @@ cc_binary(
     ]),
     copts = COPTS,
     linkstatic = True,
+    linkopts = ["-shared"],
     deps = [
         "ray_api",
         "@com_github_gflags_gflags//:gflags",
