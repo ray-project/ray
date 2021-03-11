@@ -2,6 +2,7 @@ package io.ray.runtime.object;
 
 import com.google.common.primitives.Bytes;
 import com.google.protobuf.InvalidProtocolBufferException;
+import io.ray.api.id.ActorId;
 import io.ray.api.id.ObjectId;
 import io.ray.runtime.actor.NativeActorHandle;
 import io.ray.runtime.exception.RayActorException;
@@ -77,11 +78,14 @@ public class ObjectSerializer {
       } else if (Bytes.indexOf(meta, WORKER_EXCEPTION_META) == 0) {
         return new RayWorkerException();
       } else if (Bytes.indexOf(meta, ACTOR_EXCEPTION_META) == 0) {
+        ActorId actorId = IdUtil.getActorIdFromObjectId(objectId);
         if (data != null && data.length > 0) {
-          // should be a RayActorCreationTaskException
-          return deserializeRayException(data, objectId);
+          RayException exception = deserializeRayException(data, objectId);
+          if (exception != null) {
+            return exception;
+          }
         }
-        return new RayActorException(IdUtil.getActorIdFromObjectId(objectId));
+        return new RayActorException(actorId);
       } else if (Bytes.indexOf(meta, UNRECONSTRUCTABLE_EXCEPTION_META) == 0) {
         return new UnreconstructableException(objectId);
       } else if (Bytes.indexOf(meta, TASK_EXECUTION_EXCEPTION_META) == 0) {
@@ -189,6 +193,12 @@ public class ObjectSerializer {
     // So here the `data` variable is MessagePack-serialized bytes, and the `serialized`
     // variable is protobuf-serialized bytes. They are not the same.
     byte[] pbData = Serializer.decode(msgPackData, byte[].class);
+
+    if (pbData == null || pbData.length == 0) {
+      // No RayException provided
+      return null;
+    }
+
     try {
       return RayException.fromBytes(pbData);
     } catch (InvalidProtocolBufferException e) {
