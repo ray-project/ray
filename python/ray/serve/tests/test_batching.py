@@ -300,7 +300,7 @@ async def test_batch_size_multiple_long_timeout(use_class):
     assert len(done) == 0
     t3 = asyncio.get_event_loop().create_task(call("hi3"))
     done, pending = await asyncio.wait([t1, t2, t3], timeout=100)
-    assert set(done) == set([t1, t2, t3])
+    assert set(done) == {t1, t2, t3}
     assert [t1.result(), t2.result(), t3.result()] == ["hi1", "hi2", "hi3"]
 
     t1 = asyncio.get_event_loop().create_task(call("hi1"))
@@ -309,8 +309,8 @@ async def test_batch_size_multiple_long_timeout(use_class):
     assert len(done) == 0
     t3 = asyncio.get_event_loop().create_task(call("hi3"))
     done, pending = await asyncio.wait([t1, t2, t3], timeout=100)
-    assert set(done) == set([t1, t2, t3])
-    assert all([isinstance(t.exception(), ZeroDivisionError) for t in done])
+    assert set(done) == {t1, t2, t3}
+    assert all(isinstance(t.exception(), ZeroDivisionError) for t in done)
     with pytest.raises(ZeroDivisionError):
         t1.result()
     with pytest.raises(ZeroDivisionError):
