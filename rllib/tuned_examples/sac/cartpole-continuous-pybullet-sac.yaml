@@ -12,5 +12,6 @@ cartpole-sac:
         horizon: 200
         n_step: 3
         prioritized_replay: true
+        initial_alpha: 0.1
         learning_starts: 256
         clip_actions: false
