@@ -117,7 +117,8 @@ def test_two_node_uri(two_node_cluster, working_dir):
 @pytest.fixture(scope="session")
 def conda_envs():
     """Creates two copies of current conda env with different tf versions."""
-
+    print("RUNTIME ENVIRONMENT VARIABLES")
+    print(os.environ)
     ray.init()
     conda_path = get_conda_bin_executable("conda")
     init_cmd = (f". {os.path.dirname(conda_path)}"
@@ -159,9 +160,9 @@ def conda_envs():
     ray.shutdown()
 
 
-@pytest.mark.skipif(
-    os.environ.get("CONDA_DEFAULT_ENV") is None,
-    reason="must be run from within a conda environment")
+# @pytest.mark.skipif(
+#     os.environ.get("CONDA_DEFAULT_ENV") is None,
+#     reason="must be run from within a conda environment")
 def test_task_conda_env(conda_envs, shutdown_only):
     import tensorflow as tf
     ray.init()
@@ -177,9 +178,9 @@ def test_task_conda_env(conda_envs, shutdown_only):
         assert ray.get(task.remote()) == tf_version
 
 
-@pytest.mark.skipif(
-    os.environ.get("CONDA_DEFAULT_ENV") is None,
-    reason="must be run from within a conda environment")
+# @pytest.mark.skipif(
+#     os.environ.get("CONDA_DEFAULT_ENV") is None,
+#     reason="must be run from within a conda environment")
 def test_actor_conda_env(conda_envs, shutdown_only):
     import tensorflow as tf
     ray.init()
@@ -196,9 +197,9 @@ def test_actor_conda_env(conda_envs, shutdown_only):
         assert ray.get(actor.get_tf_version.remote()) == tf_version
 
 
-@pytest.mark.skipif(
-    os.environ.get("CONDA_DEFAULT_ENV") is None,
-    reason="must be run from within a conda environment")
+# @pytest.mark.skipif(
+#     os.environ.get("CONDA_DEFAULT_ENV") is None,
+#     reason="must be run from within a conda environment")
 def test_inheritance_conda_env(conda_envs, shutdown_only):
     import tensorflow as tf
     ray.init()
@@ -225,9 +226,9 @@ def test_inheritance_conda_env(conda_envs, shutdown_only):
         assert ray.get(actor.get_tf_version.remote()) == tf_version
 
 
-@pytest.mark.skipif(
-    os.environ.get("CONDA_DEFAULT_ENV") is None,
-    reason="must be run from within a conda environment")
+# @pytest.mark.skipif(
+#     os.environ.get("CONDA_DEFAULT_ENV") is None,
+#     reason="must be run from within a conda environment")
 def test_job_config_conda_env(conda_envs):
     import tensorflow as tf
 
