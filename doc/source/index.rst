@@ -117,15 +117,26 @@ Ray provides Python, Java, and *EXPERIMENTAL* C++ API. And Ray uses Tasks (funct
     | The C++ Ray API is currently experimental with limited support. You can track its development `here <https://github.com/ray-project/ray/milestone/17>`__ and report issues on GitHub.
     | Run the following commands to get started:
     | - Build ray from source with *bazel* as shown `here <https://docs.ray.io/en/master/development.html#building-ray-full>`__.
-    | - Modify `cpp/example/example.cc`.
-    | - Run `"bazel build //cpp:example"`.
+    | - Modify and build `cpp/example/example.cc`.
+
+    .. code-block:: shell
+
+      bazel build //cpp/example:example
+
     | Option 1: run the example directly with a dynamic library path. It will start a Ray cluster automatically.
-    | - Run `"ray stop"`.
-    | - Run `"./bazel-bin/cpp/example/example --dynamic-library-path=bazel-bin/cpp/example/example.so"`
+
+    .. code-block:: shell
+
+      ray stop
+      ./bazel-bin/cpp/example/example --dynamic-library-path=bazel-bin/cpp/example/example.so
+
     | Option 2: connect to an existing Ray cluster with a known redis address (e.g. `127.0.0.1:6379`).
-    | - Run `"ray stop"`.
-    | - Run `"ray start --head --port 6379 --redis-password 5241590000000000 --node-manager-port 62665"`.
-    | - Run `"./bazel-bin/cpp/example/example --dynamic-library-path=bazel-bin/cpp/example/example.so --redis-address=127.0.0.1:6379"`.
+
+    .. code-block:: shell
+
+      ray stop
+      ray start --head --port 6379 --redis-password 5241590000000000 --node-manager-port 62665
+      ./bazel-bin/cpp/example/example --dynamic-library-path=bazel-bin/cpp/example/example.so --redis-address=127.0.0.1:6379
 
     .. literalinclude:: ../../cpp/example/example.cc
        :language: cpp

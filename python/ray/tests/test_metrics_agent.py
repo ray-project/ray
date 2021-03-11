@@ -10,7 +10,7 @@ import pytest
 
 import ray
 from ray.ray_constants import PROMETHEUS_SERVICE_DISCOVERY_FILE
-from ray.metrics_agent import PrometheusServiceDiscoveryWriter
+from ray._private.metrics_agent import PrometheusServiceDiscoveryWriter
 from ray.util.metrics import Count, Histogram, Gauge
 from ray.test_utils import wait_for_condition, SignalActor, fetch_prometheus
 
@@ -30,15 +30,15 @@ def _setup_cluster_for_test(ray_start_cluster):
 
     # Generate a metric in the driver.
     counter = Count("test_driver_counter", description="desc")
-    counter.record(1)
+    counter.inc()
 
     # Generate some metrics from actor & tasks.
     @ray.remote
     def f():
         counter = Count("test_counter", description="desc")
-        counter.record(1)
+        counter.inc()
         counter = ray.get(ray.put(counter))  # Test serialization.
-        counter.record(1)
+        counter.inc()
         ray.get(worker_should_exit.wait.remote())
 
     @ray.remote
@@ -211,6 +211,11 @@ def test_basic_custom_metrics(metric_mock):
     # Make sure each of metric works as expected.
     # -- Count --
     count = Count("count", tag_keys=("a", ))
+    with pytest.raises(TypeError):
+        count.inc("hi")
+    with pytest.raises(ValueError):
+        count.inc(0)
+        count.inc(-1)
     count._metric = metric_mock
     count.record(1, {"a": "1"})
     metric_mock.record.assert_called_with(1, tags={"a": "1"})
@@ -300,7 +305,7 @@ def test_metrics_override_shouldnt_warn(ray_start_regular, log_pubsub):
             time.sleep(0.01)
             continue
 
-        log_lines = json.loads(ray.utils.decode(msg["data"]))["lines"]
+        log_lines = json.loads(ray._private.utils.decode(msg["data"]))["lines"]
         for line in log_lines:
             assert "Attempt to register measure" not in line
 

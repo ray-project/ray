@@ -64,6 +64,16 @@ class ActorInfoAccessor {
   virtual Status AsyncRegisterActor(const TaskSpecification &task_spec,
                                     const StatusCallback &callback) = 0;
 
+  /// Kill actor via GCS asynchronously.
+  ///
+  /// \param actor_id The ID of actor to destroy.
+  /// \param force_kill Whether to force kill an actor by killing the worker.
+  /// \param no_restart If set to true, the killed actor will not be restarted anymore.
+  /// \param callback Callback that will be called after the actor is destroyed.
+  /// \return Status
+  virtual Status AsyncKillActor(const ActorID &actor_id, bool force_kill, bool no_restart,
+                                const StatusCallback &callback) = 0;
+
   /// Asynchronously request GCS to create the actor.
   ///
   /// This should be called after the worker has resolved the actor dependencies.

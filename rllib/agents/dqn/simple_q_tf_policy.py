@@ -79,7 +79,7 @@ def build_q_models(policy: Policy, obs_space: gym.spaces.Space,
         raise UnsupportedSpaceException(
             "Action space {} is not supported for DQN.".format(action_space))
 
-    policy.q_model = ModelCatalog.get_model_v2(
+    model = ModelCatalog.get_model_v2(
         obs_space=obs_space,
         action_space=action_space,
         num_outputs=action_space.n,
@@ -95,10 +95,10 @@ def build_q_models(policy: Policy, obs_space: gym.spaces.Space,
         framework=config["framework"],
         name=Q_TARGET_SCOPE)
 
-    policy.q_func_vars = policy.q_model.variables()
+    policy.q_func_vars = model.variables()
     policy.target_q_func_vars = policy.target_q_model.variables()
 
-    return policy.q_model
+    return model
 
 
 def get_distribution_inputs_and_class(
@@ -114,6 +114,7 @@ def get_distribution_inputs_and_class(
     q_vals = q_vals[0] if isinstance(q_vals, tuple) else q_vals
 
     policy.q_values = q_vals
+    policy.q_func_vars = q_model.variables()
     return policy.q_values, (TorchCategorical
                              if policy.config["framework"] == "torch" else
                              Categorical), []  # state-outs
@@ -135,10 +136,7 @@ def build_q_losses(policy: Policy, model: ModelV2,
     """
     # q network evaluation
     q_t = compute_q_values(
-        policy,
-        policy.q_model,
-        train_batch[SampleBatch.CUR_OBS],
-        explore=False)
+        policy, policy.model, train_batch[SampleBatch.CUR_OBS], explore=False)
 
     # target q network evalution
     q_tp1 = compute_q_values(

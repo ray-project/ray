@@ -14,11 +14,10 @@ import pytest
 import ray
 import ray.ray_constants as ray_constants
 import ray.util.accelerators
-import ray.cluster_utils
+import ray._private.cluster_utils
 import ray.test_utils
 from ray import resource_spec
 import setproctitle
-import subprocess
 
 from ray.test_utils import (check_call_ray, wait_for_condition,
                             wait_for_num_actors)
@@ -43,7 +42,7 @@ def test_global_state_api(shutdown_only):
     # make sure `ray.objects()` succeeds.
     assert len(ray.objects()) >= 0
 
-    job_id = ray.utils.compute_job_id_from_driver(
+    job_id = ray._private.utils.compute_job_id_from_driver(
         ray.WorkerID(ray.worker.global_worker.worker_id))
 
     client_table = ray.nodes()
@@ -194,26 +193,6 @@ def test_object_ref_properties():
     assert id_from_dumps == object_ref
 
 
-@pytest.fixture
-def shutdown_only_with_initialization_check():
-    yield None
-    # The code after the yield will run as teardown code.
-    ray.shutdown()
-    assert not ray.is_initialized()
-
-
-def test_initialized(shutdown_only_with_initialization_check):
-    assert not ray.is_initialized()
-    ray.init(num_cpus=0)
-    assert ray.is_initialized()
-
-
-def test_initialized_local_mode(shutdown_only_with_initialization_check):
-    assert not ray.is_initialized()
-    ray.init(num_cpus=0, local_mode=True)
-    assert ray.is_initialized()
-
-
 def test_wait_reconstruction(shutdown_only):
     ray.init(num_cpus=1, object_store_memory=int(10**8))
 
@@ -291,7 +270,7 @@ def test_ray_stack(ray_start_2_cpus):
     start_time = time.time()
     while time.time() - start_time < 30:
         # Attempt to parse the "ray stack" call.
-        output = ray.utils.decode(
+        output = ray._private.utils.decode(
             check_call_ray(["stack"], capture_stdout=True))
         if ("unique_name_1" in output and "unique_name_2" in output
                 and "unique_name_3" in output):
@@ -412,12 +391,6 @@ def test_export_after_shutdown(ray_start_regular):
         ray.get(actor_handle.method.remote())
 
     ray.get(export_definitions_from_worker.remote(f, Actor))
-
-
-def test_ray_start_and_stop():
-    for i in range(10):
-        subprocess.check_call(["ray", "start", "--head"])
-        subprocess.check_call(["ray", "stop"])
 
 
 def test_invalid_unicode_in_worker_log(shutdown_only):
@@ -626,7 +599,7 @@ def test_detect_docker_cpus():
         quota_file.flush()
         period_file.flush()
         cpuset_file.flush()
-        assert ray.utils._get_docker_cpus(
+        assert ray._private.utils._get_docker_cpus(
             cpu_quota_file_name=quota_file.name,
             cpu_share_file_name=period_file.name,
             cpuset_file_name=cpuset_file.name) == 64
@@ -642,7 +615,7 @@ def test_detect_docker_cpus():
         quota_file.flush()
         period_file.flush()
         cpuset_file.flush()
-        assert ray.utils._get_docker_cpus(
+        assert ray._private.utils._get_docker_cpus(
             cpu_quota_file_name=quota_file.name,
             cpu_share_file_name=period_file.name,
             cpuset_file_name=cpuset_file.name) == 26
@@ -658,7 +631,7 @@ def test_detect_docker_cpus():
         quota_file.flush()
         period_file.flush()
         cpuset_file.flush()
-        assert ray.utils._get_docker_cpus(
+        assert ray._private.utils._get_docker_cpus(
             cpu_quota_file_name=quota_file.name,
             cpu_share_file_name=period_file.name,
             cpuset_file_name=cpuset_file.name) == 0.42

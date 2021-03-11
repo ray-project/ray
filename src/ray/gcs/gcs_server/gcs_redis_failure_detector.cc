@@ -20,7 +20,7 @@ namespace ray {
 namespace gcs {
 
 GcsRedisFailureDetector::GcsRedisFailureDetector(
-    boost::asio::io_service &io_service, std::shared_ptr<RedisContext> redis_context,
+    instrumented_io_context &io_service, std::shared_ptr<RedisContext> redis_context,
     std::function<void()> callback)
     : redis_context_(redis_context),
       periodical_runner_(io_service),

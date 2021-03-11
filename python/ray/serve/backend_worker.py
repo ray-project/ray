@@ -11,7 +11,7 @@ import starlette.responses
 
 import ray
 from ray.actor import ActorHandle
-from ray.async_compat import sync_to_async
+from ray._private.async_compat import sync_to_async
 
 from ray.serve.utils import (parse_request_item, _get_logger, chain_future,
                              unpack_future, import_attr)
@@ -161,15 +161,17 @@ def create_backend_replica(backend_def: Union[Callable, Type[Callable], str]):
     return RayServeWrappedReplica
 
 
-def wrap_to_ray_error(exception: Exception) -> RayTaskError:
+def wrap_to_ray_error(function_name: str,
+                      exception: Exception) -> RayTaskError:
     """Utility method to wrap exceptions in user code."""
 
     try:
         # Raise and catch so we can access traceback.format_exc()
         raise exception
     except Exception as e:
-        traceback_str = ray.utils.format_error_message(traceback.format_exc())
-        return ray.exceptions.RayTaskError(str(e), traceback_str, e.__class__)
+        traceback_str = ray._private.utils.format_error_message(
+            traceback.format_exc())
+        return ray.exceptions.RayTaskError(function_name, traceback_str, e)
 
 
 class RayServeReplica:
@@ -189,7 +191,7 @@ class RayServeReplica:
 
         self.num_ongoing_requests = 0
 
-        self.request_counter = metrics.Count(
+        self.request_counter = metrics.Counter(
             "serve_backend_request_counter",
             description=("The number of queries that have been "
                          "processed in this replica."),
@@ -200,14 +202,14 @@ class RayServeReplica:
             LongPollKey.BACKEND_CONFIGS: self._update_backend_configs,
         })
 
-        self.error_counter = metrics.Count(
+        self.error_counter = metrics.Counter(
             "serve_backend_error_counter",
             description=("The number of exceptions that have "
                          "occurred in the backend."),
             tag_keys=("backend", ))
         self.error_counter.set_default_tags({"backend": self.backend_tag})
 
-        self.restart_counter = metrics.Count(
+        self.restart_counter = metrics.Counter(
             "serve_backend_replica_starts",
             description=("The number of times this replica "
                          "has been restarted due to failure."),
@@ -320,12 +322,12 @@ class RayServeReplica:
         try:
             result = await method_to_call(arg)
             result = await self.ensure_serializable_response(result)
-            self.request_counter.record(1)
+            self.request_counter.inc()
         except Exception as e:
             import os
             if "RAY_PDB" in os.environ:
                 ray.util.pdb.post_mortem()
-            result = wrap_to_ray_error(e)
+            result = wrap_to_ray_error(method_to_call.__name__, e)
             self.error_counter.record(1)
 
         latency_ms = (time.time() - start) * 1000
@@ -354,7 +356,7 @@ class RayServeReplica:
                     "Please only send the same type of requests in batching "
                     "mode.")
 
-            self.request_counter.record(batch_size)
+            self.request_counter.inc(batch_size)
 
             call_method = sync_to_async(call_methods.pop())
             result_list = await call_method(args)
@@ -381,7 +383,7 @@ class RayServeReplica:
                 result_list[i] = (await
                                   self.ensure_serializable_response(result))
         except Exception as e:
-            wrapped_exception = wrap_to_ray_error(e)
+            wrapped_exception = wrap_to_ray_error(call_method.__name__, e)
             self.error_counter.record(1)
             result_list = [wrapped_exception for _ in range(batch_size)]
 

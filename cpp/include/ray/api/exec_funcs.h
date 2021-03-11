@@ -14,6 +14,11 @@
 
 #pragma once
 
+#include <ray/api/arguments.h>
+#include <ray/api/serializer.h>
+
+namespace ray {
+namespace api {
 /// The following execution functions are wrappers of remote functions.
 /// Execution functions make remote functions executable in distributed system.
 /// NormalExecFunction the wrapper of normal remote function.
@@ -89,3 +94,5 @@ std::shared_ptr<msgpack::sbuffer> ActorExecFunction(
   return ExecuteActorFunction<ReturnType, ActorType>(
       base_addr, func_offset, args_buffer, actor_buffer, std::shared_ptr<Args>{}...);
 }
+}  // namespace api
+}  // namespace ray
