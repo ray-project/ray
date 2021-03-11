@@ -535,7 +535,7 @@ cdef execute_task(
             if "RAY_PDB" in os.environ:
                 ray.util.pdb.post_mortem()
 
-            backtrace = ray.utils.format_error_message(
+            backtrace = ray._private.utils.format_error_message(
                 traceback.format_exc(), task_exception=task_exception)
             if isinstance(error, RayTaskError):
                 # Avoid recursive nesting of RayTaskError.

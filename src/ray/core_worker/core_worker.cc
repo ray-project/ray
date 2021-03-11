@@ -872,7 +872,9 @@ void CoreWorker::InternalHeartbeat() {
     to_resubmit_.pop_front();
   }
   // check timeout tasks that are waiting for Death info
-  direct_actor_submitter_->CheckTimeoutTasks();
+  if (direct_actor_submitter_ != nullptr) {
+    direct_actor_submitter_->CheckTimeoutTasks();
+  }
 }
 
 std::unordered_map<ObjectID, std::pair<size_t, size_t>>

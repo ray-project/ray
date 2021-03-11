@@ -162,7 +162,7 @@ class RayActorError(RayError):
     def __init__(self,
                  function_name=None,
                  traceback_str=None,
-                 cause_cls=None,
+                 cause=None,
                  proctitle=None,
                  pid=None,
                  ip=None):
@@ -171,9 +171,9 @@ class RayActorError(RayError):
         # But we don't want RayActorError to inherit from RayTaskError, since
         # they have different meanings.
         self.creation_task_error = None
-        if function_name and traceback_str and cause_cls:
+        if function_name and traceback_str and cause:
             self.creation_task_error = RayTaskError(
-                function_name, traceback_str, cause_cls, proctitle, pid, ip)
+                function_name, traceback_str, cause, proctitle, pid, ip)
 
     def has_creation_task_error(self):
         return self.creation_task_error is not None
@@ -186,7 +186,7 @@ class RayActorError(RayError):
     @staticmethod
     def from_task_error(task_error):
         return RayActorError(task_error.function_name,
-                             task_error.traceback_str, task_error.cause_cls,
+                             task_error.traceback_str, task_error.cause,
                              task_error.proctitle, task_error.pid,
                              task_error.ip)
 
