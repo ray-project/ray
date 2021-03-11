@@ -3,6 +3,7 @@
 #include <dlfcn.h>
 #include <stdio.h>
 #include <string.h>
+#include <boost/filesystem.hpp>
 #include <memory>
 #include "address_helper.h"
 #include "ray/core.h"
@@ -22,6 +23,12 @@ std::shared_ptr<boost::dll::shared_library> FunctionHelper::LoadDll(
   auto it = libraries_.find(lib_name);
   if (it != libraries_.end()) {
     return it->second;
+  }
+
+  auto absolute_path = boost::filesystem::absolute(lib_name);
+  if (boost::filesystem::exists(absolute_path)) {
+    RAY_LOG(WARNING) << "File not found, absolute_path: " << absolute_path;
+    return nullptr;
   }
 
   std::shared_ptr<boost::dll::shared_library> lib = nullptr;
