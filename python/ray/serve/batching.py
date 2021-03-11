@@ -134,6 +134,31 @@ class _BatchQueue:
         self._handle_batch_task.cancel()
 
 
+def extract_self_if_method_call(args: List[Any],
+                                func: Callable) -> Optional[object]:
+    """Check if this is a method rather than a function.
+
+    Does this by checking to see if `func` is the attribute of the first
+    (`self`) argument under `func.__name__`. Unfortunately, this is the most
+    robust solution to this I was able to find. It would also be preferable
+    to do this check when the decorator runs, rather than when the method is.
+
+    Returns the `self` object if it's a method call, else None.
+
+    Arguments:
+        args (List[Any]): arguments to the function/method call.
+        func (Callable): the unbound function that was called.
+    """
+    if len(args) > 0:
+        method = getattr(args[0], func.__name__, False)
+        if method:
+            wrapped = getattr(method, "__wrapped__", False)
+            if wrapped and wrapped == func:
+                return args.pop(0)
+
+    return None
+
+
 T = TypeVar("T")
 R = TypeVar("R")
 F = TypeVar("F", bound=Callable[[List[T]], List[R]])
@@ -208,20 +233,8 @@ def batch(_func=None, max_batch_size=10, batch_wait_timeout_s=0.1):
     def _batch_decorator(_func):
         @wraps(_func)
         async def batch_wrapper(*args, **kwargs):
-            # Check if this is a method rather than a function by checking
-            # to see if `_func` is the attribute of the first (`self`) argument
-            # under `_func.__name__`. Unfortunately, this is the most robust
-            # solution to this I was able to find. It would also be preferable
-            # to do this check when the decorator runs, rather than when the
-            # method is called.
             args = list(args)
-            self = None
-            if len(args) > 0:
-                method = getattr(args[0], _func.__name__, False)
-                if method:
-                    wrapped = getattr(method, "__wrapped__", False)
-                    if wrapped and wrapped == _func:
-                        self = args.pop(0)
+            self = extract_self_if_method_call(args, _func)
 
             if len(args) != 1:
                 raise ValueError("@serve.batch functions can only take a "
@@ -231,14 +244,14 @@ def batch(_func=None, max_batch_size=10, batch_wait_timeout_s=0.1):
                 raise ValueError(
                     "@serve.batch functions do not support kwargs")
 
-            if self is not None:
-                # For methods, inject the batch queue as an
-                # attribute of the object.
-                batch_queue_object = self
-            else:
+            if self is None:
                 # For functions, inject the batch queue as an
                 # attribute of the function.
                 batch_queue_object = _func
+            else:
+                # For methods, inject the batch queue as an
+                # attribute of the object.
+                batch_queue_object = self
 
             # The first time the function runs, we lazily construct the batch
             # queue and inject it under a custom attribute name. On subsequent
