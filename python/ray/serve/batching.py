@@ -144,11 +144,13 @@ F = TypeVar("F", bound=Callable[[List[T]], List[R]])
 G = TypeVar("G", bound=Callable[[T], R])
 
 
+# Normal decorator use case (called with no arguments).
 @overload
 def batch(func: F) -> G:
     pass
 
 
+# "Decorator factory" use case (called with arguments).
 @overload
 def batch(max_batch_size: int = 10,
           batch_wait_timeout_s: float = 0.1) -> Callable[[F], G]:
