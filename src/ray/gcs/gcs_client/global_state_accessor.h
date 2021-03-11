@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/gcs/gcs_client/service_based_gcs_client.h"
 #include "ray/rpc/server_call.h"
 
@@ -92,12 +93,6 @@ class GlobalStateAccessor {
   /// each AvailableResources and return the serialized string. Where used, it needs to be
   /// deserialized with protobuf function.
   std::vector<std::string> GetAllAvailableResources();
-
-  /// Get internal config from GCS Service.
-  ///
-  /// \return map of internal config keys and values. It is stored as a StoredConfig proto
-  /// and serialized as a string to allow multi-language support.
-  std::string GetInternalConfig();
 
   /// Get newest resource usage of all nodes from GCS Service. Only used when light
   /// rerouce usage report enabled.
@@ -217,7 +212,7 @@ class GlobalStateAccessor {
   std::unique_ptr<ServiceBasedGcsClient> gcs_client_;
 
   std::unique_ptr<std::thread> thread_io_service_;
-  std::unique_ptr<boost::asio::io_service> io_service_;
+  std::unique_ptr<instrumented_io_context> io_service_;
 };
 
 }  // namespace gcs

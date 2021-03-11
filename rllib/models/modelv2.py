@@ -218,13 +218,14 @@ class ModelV2:
             raise ValueError(
                 "forward() must return a tuple of (output, state) tensors, "
                 "got {}".format(res))
-        outputs, state = res
+        outputs, state_out = res
 
-        if not isinstance(state, list):
-            raise ValueError("State output is not a list: {}".format(state))
+        if not isinstance(state_out, list):
+            raise ValueError(
+                "State output is not a list: {}".format(state_out))
 
         self._last_output = outputs
-        return outputs, state
+        return outputs, state_out if len(state_out) > 0 else (state or [])
 
     @PublicAPI
     def from_batch(self, train_batch: SampleBatch,

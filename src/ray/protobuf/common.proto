@@ -133,6 +133,10 @@ message RayException {
   string formatted_exception_string = 3;
 }
 
+message RuntimeEnv {
+  string working_dir_uri = 1;
+}
+
 /// The task specification encapsulates all immutable information about the
 /// task. These fields are determined at submission time, converse to the
 /// `TaskExecutionSpec` may change at execution time.

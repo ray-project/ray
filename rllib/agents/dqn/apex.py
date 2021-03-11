@@ -17,8 +17,8 @@ import copy
 from typing import Tuple
 
 import ray
-from ray.rllib.agents.dqn.dqn import DEFAULT_CONFIG as DQN_CONFIG
-from ray.rllib.agents.dqn.dqn import DQNTrainer, calculate_rr_weights
+from ray.rllib.agents.dqn.dqn import calculate_rr_weights, \
+    DEFAULT_CONFIG as DQN_CONFIG, DQNTrainer, validate_config
 from ray.rllib.agents.dqn.learner_thread import LearnerThread
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.common import (STEPS_TRAINED_COUNTER,
@@ -107,7 +107,7 @@ def apex_execution_plan(workers: WorkerSet,
         config["prioritized_replay_beta"],
         config["prioritized_replay_eps"],
         config["multiagent"]["replay_mode"],
-        config["replay_sequence_length"],
+        config.get("replay_sequence_length", 1),
     ], num_replay_buffer_shards)
 
     # Start the learner thread.
@@ -195,7 +195,14 @@ def apex_execution_plan(workers: WorkerSet,
         selected_workers=selected_workers).for_each(add_apex_metrics)
 
 
+def apex_validate_config(config):
+    if config["num_gpus"] > 1:
+        raise ValueError("`num_gpus` > 1 not yet supported for APEX-DQN!")
+    validate_config(config)
+
+
 ApexTrainer = DQNTrainer.with_updates(
     name="APEX",
     default_config=APEX_DEFAULT_CONFIG,
+    validate_config=apex_validate_config,
     execution_plan=apex_execution_plan)

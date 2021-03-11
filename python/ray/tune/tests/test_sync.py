@@ -19,6 +19,11 @@ from ray.tune.syncer import CommandBasedClient, detect_sync_to_driver
 
 class TestSyncFunctionality(unittest.TestCase):
     def setUp(self):
+        # Wait up to 1.5 seconds for placement groups when starting a trial
+        os.environ["TUNE_PLACEMENT_GROUP_WAIT_S"] = "1.5"
+        # Block for results even when placement groups are pending
+        os.environ["TUNE_TRIAL_STARTUP_GRACE_PERIOD"] = "0"
+
         ray.init(num_cpus=2)
 
     def tearDown(self):
