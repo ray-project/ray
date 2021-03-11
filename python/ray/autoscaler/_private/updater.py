@@ -239,7 +239,9 @@ class NodeUpdater:
                     if time.time() < deadline:
                         raise Exception("wait_ready timeout exceeded.")
                     if self.provider.is_terminated(self.node_id):
-                        raise Exception("wait_ready aborting because node detected as terminated.")
+                        raise Exception(
+                            "wait_ready aborting because node detected as terminated."
+                        )
 
                     try:
                         # Run outside of the container
@@ -280,7 +282,6 @@ class NodeUpdater:
                             cf.bold(str(READY_CHECK_INTERVAL)))
 
                         time.sleep(READY_CHECK_INTERVAL)
-
 
     def do_update(self):
         self.provider.set_node_tags(
