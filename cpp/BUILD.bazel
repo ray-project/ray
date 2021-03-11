@@ -85,7 +85,6 @@ cc_test(
     linkstatic = False,
     deps = [
         "ray_api",
-        "cluster_mode_test.so",
         "@com_google_googletest//:gtest_main",
     ],
 )
