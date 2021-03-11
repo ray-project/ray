@@ -123,6 +123,18 @@ def test_experimental_package(shutdown_only):
 
 
 @unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
+def test_experimental_package_lazy(shutdown_only):
+    pkg = ray.experimental.load_package(
+        os.path.join(
+            os.path.dirname(__file__),
+            "../experimental/packaging/example_pkg/ray_pkg.yaml"))
+    ray.init(num_cpus=2)
+    a = pkg.MyActor.remote()
+    assert ray.get(a.f.remote()) == "hello world"
+    assert ray.get(pkg.my_func.remote()) == "hello world"
+
+
+@unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
 def test_experimental_package_github(shutdown_only):
     ray.init(num_cpus=2)
     pkg = ray.experimental.load_package(

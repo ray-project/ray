@@ -56,11 +56,6 @@ def load_package(config_path: str) -> "_RuntimePackage":
         >>> def f(): ...
     """
 
-    if not ray.is_initialized():
-        # TODO(ekl) we can lift this requirement if we defer uploading the
-        # package to GCS until ray is initialized.
-        raise RuntimeError("Ray must be initialized first to load packages.")
-
     config_path = _download_from_github_if_needed(config_path)
 
     if not os.path.exists(config_path):
@@ -76,16 +71,23 @@ def load_package(config_path: str) -> "_RuntimePackage":
         pkg_name = runtime_support.get_project_package_name(
             working_dir=base_dir, modules=[])
         pkg_uri = runtime_support.Protocol.GCS.value + "://" + pkg_name
-        if not runtime_support.package_exists(pkg_uri):
-            tmp_path = os.path.join(_pkg_tmp(), "_tmp{}".format(pkg_name))
-            runtime_support.create_project_package(
-                working_dir=base_dir, modules=[], output_path=tmp_path)
-            # TODO(ekl) does this get garbage collected correctly with the
-            # current job id?
-            runtime_support.push_package(pkg_uri, tmp_path)
+
+        def do_register_package():
             if not runtime_support.package_exists(pkg_uri):
-                raise RuntimeError(
-                    "Failed to upload package {}".format(pkg_uri))
+                tmp_path = os.path.join(_pkg_tmp(), "_tmp{}".format(pkg_name))
+                runtime_support.create_project_package(
+                    working_dir=base_dir, modules=[], output_path=tmp_path)
+                # TODO(ekl) does this get garbage collected correctly with the
+                # current job id?
+                runtime_support.push_package(pkg_uri, tmp_path)
+                if not runtime_support.package_exists(pkg_uri):
+                    raise RuntimeError(
+                        "Failed to upload package {}".format(pkg_uri))
+
+        if ray.is_initialized():
+            do_register_package()
+        else:
+            ray.worker._post_init_hooks.append(do_register_package)
         runtime_env["files"] = pkg_uri
 
     # Autofill conda config.
