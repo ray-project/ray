@@ -36,7 +36,7 @@ DEFAULT_REDIS_MAX_MEMORY_BYTES = 10**10
 REDIS_MINIMUM_MEMORY_BYTES = 10**7
 # Above this number of bytes, raise an error by default unless the user sets
 # RAY_ALLOW_SLOW_STORAGE=1. This avoids swapping with large object stores.
-REQUIRE_SHM_SIZE_THRESHOLD = 10e9
+REQUIRE_SHM_SIZE_THRESHOLD = 10**10
 # If a user does not specify a port for the primary Ray service,
 # we attempt to start the service running at this port.
 DEFAULT_PORT = 6379
