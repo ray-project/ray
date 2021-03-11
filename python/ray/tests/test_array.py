@@ -7,7 +7,7 @@ import sys
 import ray
 import ray.experimental.array.remote as ra
 import ray.experimental.array.distributed as da
-import ray.cluster_utils
+import ray._private.cluster_utils
 
 
 @pytest.fixture
