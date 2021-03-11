@@ -106,7 +106,7 @@ METRICS_GAUGES = {
                         "mb", ["ip", "pid"]),
     "cluster_active_nodes": Gauge("cluster_active_nodes",
                                   "Active nodes on the cluster", "count",
-                                  ["ip", "node_type"]),
+                                  ["node_type"]),
     "cluster_failed_nodes": Gauge("cluster_failed_nodes",
                                   "Failed nodes on the cluster", "count",
                                   ["ip"]),
@@ -330,10 +330,7 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
                     Record(
                         gauge=METRICS_GAUGES["cluster_active_nodes"],
                         value=active_node_count,
-                        tags={
-                            "ip": ip,
-                            "node_type": node_type
-                        })
+                        tags={"node_type": node_type})
                 ])
 
             failed_nodes = len(
