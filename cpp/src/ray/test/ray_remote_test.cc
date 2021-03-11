@@ -143,19 +143,3 @@ TEST(RayApiTest, ArgumentsNotMatch) {
 
   ray::api::RayConfig::GetInstance()->use_ray_remote = false;
 }
-
-TEST(RayApiTest, TestDll) {
-  ray::api::RayConfig::GetInstance()->use_ray_remote = true;
-
-  auto lib = FunctionHelper::GetInstance().LoadDll("bazel-bin/cpp/cluster_mode_test.so");
-  if (lib == nullptr) {
-    return;
-  }
-
-  auto execute_func = boost::dll::import_alias<msgpack::sbuffer(
-      const std::vector<std::shared_ptr<::ray::RayObject>> &)>(*lib, "CallInDll");
-  auto result = execute_func(std::vector<std::shared_ptr<::ray::RayObject>>{});
-  EXPECT_TRUE(ray::api::Serializer::HasError(result.data(), result.size()));
-
-  ray::api::RayConfig::GetInstance()->use_ray_remote = false;
-}
