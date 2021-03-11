@@ -471,7 +471,7 @@ def get_k8s_cpus(cpu_share_file_name="/sys/fs/cgroup/cpu/cpu.shares") -> float:
     This is the number of CPUs K8s has assigned to the container based
     on pod spec requests and limits.
 
-    Note: using cpu_quota as in ray.utils._get_docker_cpus() works
+    Note: using cpu_quota as in _get_docker_cpus() works
     only if the user set CPU limit in their pod spec (in addition to CPU
     request). Otherwise, the quota is unset.
     """
@@ -486,6 +486,7 @@ def get_k8s_cpus(cpu_share_file_name="/sys/fs/cgroup/cpu/cpu.shares") -> float:
 
 def get_num_cpus() -> int:
     if "KUBERNETES_SERVICE_HOST" in os.environ:
+        # If in a K8S pod, use cgroup cpu shares and round up.
         return int(math.ceil(get_k8s_cpus()))
     cpu_count = multiprocessing.cpu_count()
     if os.environ.get("RAY_USE_MULTIPROCESSING_CPU_COUNT"):
