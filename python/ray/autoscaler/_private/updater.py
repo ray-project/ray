@@ -236,7 +236,7 @@ class NodeUpdater:
                 cli_logger.print("Running `{}` as a test.", cf.bold("uptime"))
                 first_conn_refused_time = None
                 while True:
-                    if time.time() < deadline:
+                    if time.time() > deadline:
                         raise Exception("wait_ready timeout exceeded.")
                     if self.provider.is_terminated(self.node_id):
                         raise Exception(
