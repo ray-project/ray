@@ -27,9 +27,10 @@ public class RayActorException extends RayException {
   }
 
   public RayActorException(ActorId actorId, Throwable cause) {
-    super(String.format(
-              "(pid=%d, ip=%s) The actor %s died because of it's creation task failed",
-              SystemUtil.pid(), NetworkUtil.getIpAddress(null), actorId.toString()),
+    super(
+        String.format(
+            "(pid=%d, ip=%s) The actor %s died because of it's creation task failed",
+            SystemUtil.pid(), NetworkUtil.getIpAddress(null), actorId.toString()),
         cause);
     this.actorId = actorId;
   }
