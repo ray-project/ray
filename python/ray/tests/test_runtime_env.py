@@ -46,7 +46,7 @@ sleep(5)
 """
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def working_dir():
     import tempfile
     with tempfile.TemporaryDirectory() as tmp_dir:
@@ -78,7 +78,7 @@ def test_single_node(ray_start_cluster_head, working_dir):
     out = run_string_as_driver(script)
     assert out.strip().split()[-1] == "1000"
     from ray._private.runtime_env import PKG_DIR
-    assert len(list(Path(PKG_DIR).glob("*.zip"))) == 0
+    assert len(list(Path(PKG_DIR).iterdir())) == 1
 
 
 @unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
@@ -91,7 +91,7 @@ def test_two_node(two_node_cluster, working_dir):
     out = run_string_as_driver(script)
     assert out.strip().split()[-1] == "1000"
     from ray._private.runtime_env import PKG_DIR
-    assert len(list(Path(PKG_DIR).glob("*.zip"))) == 0
+    assert len(list(Path(PKG_DIR).iterdir())) == 1
 
 
 @unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
@@ -105,7 +105,7 @@ def test_two_node_module(two_node_cluster, working_dir):
     out = run_string_as_driver(script)
     assert out.strip().split()[-1] == "1000"
     from ray._private.runtime_env import PKG_DIR
-    assert len(list(Path(PKG_DIR).glob("*.zip"))) == 0
+    assert len(list(Path(PKG_DIR).iterdir())) == 1
 
 
 @unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
@@ -125,7 +125,7 @@ def test_two_node_uri(two_node_cluster, working_dir):
     out = run_string_as_driver(script)
     assert out.strip().split()[-1] == "1000"
     from ray._private.runtime_env import PKG_DIR
-    assert len(list(Path(PKG_DIR).glob("*.zip"))) == 0
+    assert len(list(Path(PKG_DIR).iterdir())) == 1
 
 
 @unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
@@ -141,7 +141,7 @@ print(sum(ray.get([test_actor.one.remote()] * 1000)))
     out = run_string_as_driver(script)
     assert out.strip().split()[-1] == "1000"
     from ray._private.runtime_env import PKG_DIR
-    assert len(list(Path(PKG_DIR).glob("*.zip"))) == 0
+    assert len(list(Path(PKG_DIR).iterdir())) == 1
 
 
 @unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
@@ -158,7 +158,7 @@ print(sum(ray.get([test_actor.one.remote()] * 1000)))
     assert out.strip().split()[-1] == "1000"
     from ray._private.runtime_env import PKG_DIR
     # It's a detached actors, so it should still be there
-    assert len(list(Path(PKG_DIR).glob("*.zip"))) == 1
+    assert len(list(Path(PKG_DIR).iterdir())) == 2
     pkg = list(Path(PKG_DIR).glob("*.zip"))[0]
     import sys
     sys.path.insert(0, str(pkg))
@@ -167,7 +167,7 @@ print(sum(ray.get([test_actor.one.remote()] * 1000)))
     ray.kill(test_actor)
     from time import sleep
     sleep(5)
-    assert len(list(Path(PKG_DIR).glob("*.zip"))) == 0
+    assert len(list(Path(PKG_DIR).iterdir())) == 1
 
 
 @pytest.fixture(scope="session")

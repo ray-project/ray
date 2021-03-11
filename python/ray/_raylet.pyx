@@ -644,10 +644,10 @@ cdef void gc_collect() nogil:
 
 
 cdef void run_on_io_worker_handler(
-        const c_string& req,
-        const c_vector[c_string]& args) nogil:
+        c_string req,
+        c_vector[c_string] args) nogil:
     with gil:
-        io_worker_func.dispatch(req, args)
+        io_worker_func.dispatch(req.decode(), [arg.decode() for arg in args])
 
 cdef c_vector[c_string] spill_objects_handler(
         const c_vector[CObjectID]& object_ids_to_spill,

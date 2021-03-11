@@ -152,7 +152,6 @@ struct CoreWorkerOptions {
   std::function<void(const RayObject &error)> unhandled_exception_handler;
   std::function<void(const std::string &, const std::vector<std::string> &)>
       run_on_io_worker_handler;
-  std::function<void(const std::string &)> runtime_env_cleanup;
   /// Language worker callback to get the current call stack.
   std::function<void(std::string *)> get_lang_stack;
   // Function that tries to interrupt the currently running Python thread.

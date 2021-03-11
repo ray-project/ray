@@ -2570,14 +2570,14 @@ void CoreWorker::HandleLocalGC(const rpc::LocalGCRequest &request,
 void CoreWorker::HandleRunOnIOWorker(const rpc::RunOnIOWorkerRequest &request,
                                      rpc::RunOnIOWorkerReply *reply,
                                      rpc::SendReplyCallback send_reply_callback) {
-  if (options_.runtime_env_cleanup) {
+  if (options_.run_on_io_worker_handler) {
     std::vector<std::string> args(request.args().begin(), request.args().end());
 
     options_.run_on_io_worker_handler(request.request(), args);
     send_reply_callback(Status::OK(), nullptr, nullptr);
   } else {
-    send_reply_callback(Status::NotImplemented("RuntimeEnv cleanup not supported"),
-                        nullptr, nullptr);
+    send_reply_callback(Status::NotImplemented("RunOnIOWorker is not supported"), nullptr,
+                        nullptr);
   }
 }
 
