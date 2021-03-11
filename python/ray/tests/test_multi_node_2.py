@@ -6,8 +6,8 @@ import ray
 import ray.ray_constants as ray_constants
 from ray.util.placement_group import placement_group, remove_placement_group
 from ray.autoscaler.sdk import request_resources
-from ray.monitor import Monitor
-from ray.cluster_utils import Cluster
+from ray._private.monitor import Monitor
+from ray._private.cluster_utils import Cluster
 from ray.test_utils import generate_system_config_map, SignalActor
 
 logger = logging.getLogger(__name__)

@@ -22,7 +22,7 @@ from opencensus.tags import tag_value as tag_value_module
 
 import ray
 
-from ray import prometheus_exporter
+import ray._private.prometheus_exporter as prometheus_exporter
 from ray.core.generated.metrics_pb2 import Metric
 
 logger = logging.getLogger(__name__)

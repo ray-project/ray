@@ -15,6 +15,7 @@
 #include <iostream>
 
 #include "gflags/gflags.h"
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/status.h"
@@ -97,7 +98,7 @@ int main(int argc, char *argv[]) {
   std::unordered_map<std::string, double> static_resource_conf;
 
   // IO Service for node manager.
-  boost::asio::io_service main_service;
+  instrumented_io_context main_service;
 
   // Ensure that the IO service keeps running. Without this, the service will exit as soon
   // as there is no more work to be processed.
