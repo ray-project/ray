@@ -11,7 +11,7 @@ from ray.util.placement_group import (
     check_placement_group_index,
     get_current_placement_group,
 )
-from ray.utils import get_conda_env_dir
+from ray._private.utils import get_conda_env_dir
 import ray._private.signature
 
 # Default parameters for remote functions.

@@ -7,7 +7,7 @@ import subprocess
 from unittest import mock
 import ray
 from ray.test_utils import run_string_as_driver
-from ray.utils import get_conda_env_dir, get_conda_bin_executable
+from ray._private.utils import get_conda_env_dir, get_conda_bin_executable
 from ray.job_config import JobConfig
 
 driver_script = """

@@ -1,5 +1,5 @@
 import ray
-from ray.utils import get_conda_env_dir
+from ray._private.utils import get_conda_env_dir
 
 
 class JobConfig:

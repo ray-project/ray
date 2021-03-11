@@ -21,7 +21,7 @@ from ray.util.inspect import (
     is_class_method,
     is_static_method,
 )
-from ray.utils import get_conda_env_dir
+from ray._private.utils import get_conda_env_dir
 
 logger = logging.getLogger(__name__)
 
