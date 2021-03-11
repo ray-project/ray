@@ -34,11 +34,12 @@ class RuntimeEnvDict:
             self.conda = runtime_env_json["conda"]
         else:
             self.conda = None
-        if "files" in runtime_env_json:
-            self.files = runtime_env_json["files"]
+        if "working_dir" in runtime_env_json:
+            self.working_dir = runtime_env_json["working_dir"]
         else:
-            self.files = None
+            self.working_dir = None
         # TODO(ekl) we should have better schema validation here.
+        # TODO(ekl) support env_vars, docker, py_modules
 
     def to_worker_env_vars(self, override_environment_variables: dict) -> dict:
         """Given existing worker env vars, return an updated dict.
@@ -53,11 +54,11 @@ class RuntimeEnvDict:
             if override_environment_variables is None:
                 override_environment_variables = {}
             override_environment_variables.update(PYTHONHOME=conda_env_dir)
-        if self.files:
+        if self.working_dir:
             if override_environment_variables is None:
                 override_environment_variables = {}
             override_environment_variables.update(
-                RAY_RUNTIME_ENV_FILES=self.files)
+                RAY_RUNTIME_ENV_FILES=self.working_dir)
         return override_environment_variables
 
 
