@@ -118,8 +118,15 @@ def test_prometheus_physical_stats_record(enable_test_module, shutdown_only):
             "ray_node_network_sent" in metric_names,
             "ray_node_network_received" in metric_names,
             "ray_node_network_send_speed" in metric_names,
-            "ray_node_network_receive_speed" in metric_names
+            "ray_node_network_receive_speed" in metric_names,
+            "ray_cluster_active_nodes" in metric_names
         ])
+
+    # TODO: finish this unit test
+    def test_case_cluster_stats_exist():
+        autoscaler_report = 
+        ReporterAgent._record_stats(_, autoscaler_report)
+
 
     def test_case_ip_correct():
         components_dict, metric_names, metric_samples = fetch_prometheus(
