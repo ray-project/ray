@@ -34,6 +34,15 @@ class StoreClient {
  public:
   virtual ~StoreClient() = default;
 
+  /// Check whether a key existed in the given table asynchronously.
+  ///
+  /// \param table_name The name of the table to be written.
+  /// \param key The key that will be checked.
+  /// \param callback Callback that will be called after checking.
+  /// \return Status
+  virtual Status AsyncExists(const std::string &table_name, const std::string &key,
+                             const OptionalItemCallback<bool> &callback) = 0;
+
   /// Write data to the given table asynchronously.
   ///
   /// \param table_name The name of the table to be written.

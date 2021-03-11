@@ -44,6 +44,7 @@ enum TablePrefix {
   TABLE_PREFIX_MAX = 20;
   PLACEMENT_GROUP_SCHEDULE = 21;
   PLACEMENT_GROUP = 22;
+  KV = 23;
 }
 
 // The channel that Add operations to the Table should be published on, if any.

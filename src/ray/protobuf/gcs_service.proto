@@ -513,6 +513,50 @@ service PlacementGroupInfoGcsService {
   rpc WaitPlacementGroupUntilReady(WaitPlacementGroupUntilReadyRequest)
       returns (WaitPlacementGroupUntilReadyReply);
 }
+
+message GetRequest {
+  bytes key = 1;
+}
+
+message GetReply {
+  GcsStatus status = 1;
+  bytes value = 2;
+}
+
+message PutRequest {
+  bytes key = 1;
+  bytes value = 2;
+}
+
+message PutReply {
+  GcsStatus status = 1;
+}
+
+message DelRequest {
+  bytes key = 1;
+}
+
+message DelReply {
+  GcsStatus status = 1;
+}
+
+message ExistsRequest {
+  bytes key = 1;
+}
+
+message ExistsReply {
+  GcsStatus status = 1;
+  bool exists = 2;
+}
+
+// Service for KV storage
+service KVGcsService {
+  rpc Get(GetRequest) returns (GetReply);
+  rpc Put(PutRequest) returns (PutReply);
+  rpc Del(DelRequest) returns (DelReply);
+  rpc Exists(ExistsRequest) returns (ExistsReply);
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 /* Please do not modify/remove/change the following messages to maintain
 backwards compatibility in autoscaler. This is necessary to make sure we can

@@ -100,6 +100,9 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   // Init stats handler.
   InitStatsHandler();
 
+  // Init KV Manager
+  InitKVManager();
+
   // Install event listeners.
   InstallEventListeners();
 
@@ -289,6 +292,13 @@ void GcsServer::InitStatsHandler() {
   // Register service.
   stats_service_.reset(new rpc::StatsGrpcService(main_service_, *stats_handler_));
   rpc_server_.RegisterService(*stats_service_);
+}
+
+void GcsServer::InitKVManager() {
+  kv_manager_ = std::make_unique<GcsKVManager>(redis_client_);
+  kv_service_ = std::make_unique<rpc::KVGrpcService>(main_service_, *kv_manager_);
+  // Register service.
+  rpc_server_.RegisterService(*kv_service_);
 }
 
 void GcsServer::InitGcsWorkerManager() {

@@ -15,6 +15,7 @@
 #pragma once
 
 #include "ray/common/asio/instrumented_io_context.h"
+#include "ray/common/id.h"
 #include "ray/rpc/grpc_server.h"
 #include "ray/rpc/server_call.h"
 #include "src/ray/protobuf/gcs_service.grpc.pb.h"
@@ -50,6 +51,9 @@ namespace rpc {
 
 #define PLACEMENT_GROUP_INFO_SERVICE_RPC_HANDLER(HANDLER) \
   RPC_SERVICE_HANDLER(PlacementGroupInfoGcsService, HANDLER)
+
+#define KV_SERVICE_RPC_HANDLER(HANDLER) \
+  RPC_SERVICE_HANDLER(KVGcsService, HANDLER)
 
 #define GCS_RPC_SEND_REPLY(send_reply_callback, reply, status) \
   reply->mutable_status()->set_code((int)status.code());       \
@@ -537,7 +541,7 @@ class PlacementGroupInfoGrpcService : public GrpcService {
   /// \param[in] handler The service handler that actually handle the requests.
   explicit PlacementGroupInfoGrpcService(instrumented_io_context &io_service,
                                          PlacementGroupInfoGcsServiceHandler &handler)
-      : GrpcService(io_service), service_handler_(handler){};
+      : GrpcService(io_service), service_handler_(handler){}
 
  protected:
   grpc::Service &GetGrpcService() override { return service_; }
@@ -560,6 +564,49 @@ class PlacementGroupInfoGrpcService : public GrpcService {
   PlacementGroupInfoGcsServiceHandler &service_handler_;
 };
 
+
+class KVGcsServiceHandler {
+ public:
+  virtual ~KVGcsServiceHandler() = default;
+  virtual void HandleGet(const GetRequest &request,
+                         GetReply *reply,
+                         SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandlePut(const PutRequest &request,
+                         PutReply *reply,
+                         SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleDel(const DelRequest &request,
+                         DelReply *reply,
+                         SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleExists(const ExistsRequest &request,
+                            ExistsReply *reply,
+                            SendReplyCallback send_reply_callback) = 0;
+};
+
+class KVGrpcService : public GrpcService {
+ public:
+  explicit KVGrpcService(instrumented_io_context &io_service,
+                         KVGcsServiceHandler &handler)
+      : GrpcService(io_service),
+        service_handler_(handler) {}
+ protected:
+  grpc::Service &GetGrpcService() override { return service_; }
+  void InitServerCallFactories(
+      const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
+      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories) override {
+    KV_SERVICE_RPC_HANDLER(Get);
+    KV_SERVICE_RPC_HANDLER(Put);
+    KV_SERVICE_RPC_HANDLER(Del);
+    KV_SERVICE_RPC_HANDLER(Exists);
+  }
+
+ private:
+  KVGcsService::AsyncService service_;
+  KVGcsServiceHandler &service_handler_;
+};
+
 using JobInfoHandler = JobInfoGcsServiceHandler;
 using ActorInfoHandler = ActorInfoGcsServiceHandler;
 using NodeInfoHandler = NodeInfoGcsServiceHandler;
@@ -570,6 +617,7 @@ using TaskInfoHandler = TaskInfoGcsServiceHandler;
 using StatsHandler = StatsGcsServiceHandler;
 using WorkerInfoHandler = WorkerInfoGcsServiceHandler;
 using PlacementGroupInfoHandler = PlacementGroupInfoGcsServiceHandler;
+using KVHandler = KVGcsServiceHandler;
 
 }  // namespace rpc
 }  // namespace ray

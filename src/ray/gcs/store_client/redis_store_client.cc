@@ -217,6 +217,22 @@ Status RedisStoreClient::DoPut(const std::string &key, const std::string &data,
   return shard_context->RunArgvAsync(args, write_callback);
 }
 
+Status RedisStoreClient::AsyncExists(
+    const std::string &table_name, const std::string &key,
+    const OptionalItemCallback<bool> &callback) {
+  auto redis_callback = [callback](const std::shared_ptr<CallbackReply> &reply) {
+    if(reply->ReadAsInteger() == 1) {
+      callback(reply->ReadAsStatus(), true);
+    } else {
+      callback(reply->ReadAsStatus(), false);
+    }
+  };
+  auto redis_key = GenRedisKey(table_name, key);
+  std::vector<std::string> args = {"EXISTS", redis_key};
+  auto shard_context = redis_client_->GetShardContext(redis_key);
+  return shard_context->RunArgvAsync(args, redis_callback);
+}
+
 Status RedisStoreClient::DeleteByKeys(const std::vector<std::string> &keys,
                                       const StatusCallback &callback) {
   // Delete for each shard.

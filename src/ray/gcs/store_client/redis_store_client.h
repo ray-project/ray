@@ -29,6 +29,9 @@ class RedisStoreClient : public StoreClient {
   explicit RedisStoreClient(std::shared_ptr<RedisClient> redis_client)
       : redis_client_(std::move(redis_client)) {}
 
+  Status AsyncExists(const std::string &table_name, const std::string &key,
+                     const OptionalItemCallback<bool> &callback) override;
+
   Status AsyncPut(const std::string &table_name, const std::string &key,
                   const std::string &data, const StatusCallback &callback) override;
 
