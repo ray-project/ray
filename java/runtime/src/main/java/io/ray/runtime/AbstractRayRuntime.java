@@ -38,7 +38,6 @@ import io.ray.runtime.task.FunctionArg;
 import io.ray.runtime.task.TaskExecutor;
 import io.ray.runtime.task.TaskSubmitter;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.Callable;
@@ -95,9 +94,7 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
       objectIds.add(objectRefImpl.getId());
       objectType = objectRefImpl.getType();
     }
-    if (LOGGER.isDebugEnabled()) {
-      LOGGER.debug("Getting Objects {}.", Arrays.toString(objectIds.toArray()));
-    }
+    LOGGER.debug("Getting Objects {}.", objectIds);
     return objectStore.get(objectIds, objectType);
   }
 
@@ -107,10 +104,7 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
         objectRefs.stream()
             .map(ref -> ((ObjectRefImpl<?>) ref).getId())
             .collect(Collectors.toList());
-    if (LOGGER.isDebugEnabled()) {
-      LOGGER.debug(
-          "Freeing Objects {}, localOnly = {}.", Arrays.toString(objectIds.toArray()), localOnly);
-    }
+    LOGGER.debug("Freeing Objects {}, localOnly = {}.", objectIds, localOnly);
     objectStore.delete(objectIds, localOnly);
   }
 
@@ -120,7 +114,7 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
     if (LOGGER.isDebugEnabled()) {
       LOGGER.debug(
           "Waiting Objects {} with minimum number {} within {} ms.",
-          Arrays.toString(waitList.toArray()),
+          waitList,
           numReturns,
           timeoutMs);
     }
