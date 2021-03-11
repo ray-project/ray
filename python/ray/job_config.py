@@ -13,21 +13,8 @@ class JobConfig:
         code_search_path (list): A list of directories or jar files that
             specify the search path for user code. This will be used as
             `CLASSPATH` in Java and `PYTHONPATH` in Python.
-        runtime_env (dict): A path to a local directory that will be zipped
-            up and unpackaged in the working directory of the task/actor.
-            There are four important fields.
-            # TODO(ekl) clean this up to files, conda, docker.
-            - `working_dir (str)`: A path to a local directory that will be
-                zipped up and unpackaged in the working directory of the
-                task/actor.
-            - `working_dir_uri (str)`: Same as `working_dir` but a URI
-                referencing a stored archive instead of a local path.
-                Takes precedence over working_dir.
-            - `local_modules (list[module])`: A list of local Python modules
-                that will be zipped up and unpacked in a directory prepended
-                to the sys.path of tasks/actors.
-            - `conda (str)`: The name of an existing conda environment
-                that worker processes should start in.
+        runtime_env (dict): A runtime environment dictionary (see
+            ``runtime_env.py`` for detailed documentation).
     """
 
     def __init__(self,
