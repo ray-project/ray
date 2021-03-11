@@ -80,9 +80,8 @@ class IOWorkerPoolInterface {
   virtual void PopDeleteWorker(
       std::function<void(std::shared_ptr<WorkerInterface>)> callback) = 0;
 
-  virtual void PushRuntimeEnvWorker(const std::shared_ptr<WorkerInterface> &worker) = 0;
-
-  virtual void PopRuntimeEnvWorker(
+  virtual void PushIOWorker(const std::shared_ptr<WorkerInterface> &worker) = 0;
+  virtual void PopIOWorker(
       std::function<void(std::shared_ptr<WorkerInterface>)> callback) = 0;
 
   virtual ~IOWorkerPoolInterface(){};
@@ -258,10 +257,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// and pop them out.
   void PopDeleteWorker(std::function<void(std::shared_ptr<WorkerInterface>)> callback);
 
-  void PushRuntimeEnvWorker(const std::shared_ptr<WorkerInterface> &worker);
-
-  void PopRuntimeEnvWorker(
-      std::function<void(std::shared_ptr<WorkerInterface>)> callback);
+  void PushIOWorker(const std::shared_ptr<WorkerInterface> &worker);
+  void PopIOWorker(std::function<void(std::shared_ptr<WorkerInterface>)> callback);
 
   /// Add an idle worker to the pool.
   ///

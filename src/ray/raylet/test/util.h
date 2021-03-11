@@ -12,13 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "gmock/gmock.h"
 #include "ray/raylet/worker.h"
+#include "ray/raylet/worker_pool.h"
 
 namespace ray {
 
 namespace raylet {
-
-class MockWorker : public WorkerInterface {
+class MockWorkerPool : public class MockWorker : public WorkerInterface {
  public:
   MockWorker(WorkerID worker_id, int port)
       : worker_id_(worker_id), port_(port), is_detached_actor_(false) {}

@@ -189,9 +189,8 @@ class CoreWorkerClientInterface {
   virtual void AddSpilledUrl(const AddSpilledUrlRequest &request,
                              const ClientCallback<AddSpilledUrlReply> &callback) {}
 
-  virtual void RuntimeEnvCleanup(const RuntimeEnvCleanupRequest &request,
-                                 const ClientCallback<RuntimeEnvCleanupReply> &callback) {
-  }
+  virtual void RunOnIOWorker(const RunOnIOWorkerRequest &request,
+                             const ClientCallback<RunOnIOWorkerReply> &callback) {}
 
   virtual void PlasmaObjectReady(const PlasmaObjectReadyRequest &request,
                                  const ClientCallback<PlasmaObjectReadyReply> &callback) {
@@ -260,7 +259,7 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
 
   VOID_RPC_CLIENT_METHOD(CoreWorkerService, AddSpilledUrl, grpc_client_, override)
 
-  VOID_RPC_CLIENT_METHOD(CoreWorkerService, RuntimeEnvCleanup, grpc_client_, override)
+  VOID_RPC_CLIENT_METHOD(CoreWorkerService, RunOnIOWorker, grpc_client_, override)
 
   VOID_RPC_CLIENT_METHOD(CoreWorkerService, PlasmaObjectReady, grpc_client_, override)
 

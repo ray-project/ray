@@ -565,6 +565,15 @@ void WorkerPool::PopRestoreWorker(
   PopIOWorkerInternal(rpc::WorkerType::RESTORE_WORKER, callback);
 }
 
+void WorkerPool::PushIOWorker(const std::shared_ptr<WorkerInterface> &worker) {
+  PushIOWorkerInternal(worker, rpc::WorkerType::GENERAL_IO_WORKER);
+}
+
+void WorkerPool::PopIOWorker(
+    std::function<void(std::shared_ptr<WorkerInterface>)> callback) {
+  PopIOWorkerInternal(rpc::WorkerType::RESTORE_WORKER, callback);
+}
+
 void WorkerPool::PushIOWorkerInternal(const std::shared_ptr<WorkerInterface> &worker,
                                       const rpc::WorkerType &worker_type) {
   RAY_CHECK(IsIOWorkerType(worker->GetWorkerType()));
@@ -620,15 +629,6 @@ void WorkerPool::PopDeleteWorker(
   } else {
     PopRestoreWorker(callback);
   }
-}
-
-void WorkerPool::PushRuntimeEnvWorker(const std::shared_ptr<WorkerInterface> &worker) {
-  PushIOWorkerInternal(worker, rpc::WorkerType::RUNTIME_ENV_WORKER);
-}
-
-void WorkerPool::PopRuntimeEnvWorker(
-    std::function<void(std::shared_ptr<WorkerInterface>)> callback) {
-  PopIOWorkerInternal(rpc::WorkerType::RUNTIME_ENV_WORKER, callback);
 }
 
 void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
@@ -954,7 +954,7 @@ inline WorkerPool::State &WorkerPool::GetStateForLanguage(const Language &langua
 inline bool WorkerPool::IsIOWorkerType(const rpc::WorkerType &worker_type) {
   return worker_type == rpc::WorkerType::SPILL_WORKER ||
          worker_type == rpc::WorkerType::RESTORE_WORKER ||
-         worker_type == rpc::WorkerType::RUNTIME_ENV_WORKER;
+         worker_type == rpc::WorkerType::GENERAL_IO_WORKER;
 }
 
 std::vector<std::shared_ptr<WorkerInterface>> WorkerPool::GetWorkersRunningTasksForJob(
@@ -1054,7 +1054,7 @@ bool WorkerPool::HasPendingWorkerForTask(const Language &language,
 void WorkerPool::TryStartIOWorkers(const Language &language) {
   TryStartIOWorkers(language, rpc::WorkerType::RESTORE_WORKER);
   TryStartIOWorkers(language, rpc::WorkerType::SPILL_WORKER);
-  TryStartIOWorkers(language, rpc::WorkerType::RUNTIME_ENV_WORKER);
+  TryStartIOWorkers(language, rpc::WorkerType::GENERAL_IO_WORKER);
 }
 
 void WorkerPool::TryStartIOWorkers(const Language &language,

@@ -17,7 +17,8 @@
 #include <cctype>
 #include <fstream>
 #include <memory>
-
+#include "boost/filesystem.hpp"
+#include "boost/system/error_code.hpp"
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/buffer.h"
@@ -224,7 +225,9 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
       local_gc_interval_ns_(RayConfig::instance().local_gc_interval_s() * 1e9),
       local_gc_min_interval_ns_(RayConfig::instance().local_gc_min_interval_s() * 1e9),
       record_metrics_period_ms_(config.record_metrics_period_ms),
-      runtime_env_manager_(worker_pool_) {
+      runtime_env_manager_([this](const std::string &uri, std::function<void(bool)> cb) {
+        return DeleteLocalURI(uri, cb);
+      }) {
   RAY_LOG(INFO) << "Initializing NodeManager with ID " << self_node_id_;
   RAY_CHECK(RayConfig::instance().raylet_heartbeat_period_milliseconds() > 0);
 
@@ -1063,12 +1066,6 @@ void NodeManager::HandleWorkerAvailable(const std::shared_ptr<WorkerInterface> &
     return;
   }
 
-  if (worker->GetWorkerType() == rpc::WorkerType::RUNTIME_ENV_WORKER) {
-    // Return the worker to the idle pool.
-    worker_pool_.PushRuntimeEnvWorker(worker);
-    return;
-  }
-
   bool worker_idle = true;
 
   // If the worker was assigned a task, mark it as finished.
@@ -1183,6 +1180,49 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
   // TODO(rkn): Tell the object manager that this client has disconnected so
   // that it can clean up the wait requests for this client. Currently I think
   // these can be leaked.
+}
+
+void NodeManager::DeleteLocalURI(const std::string &uri, std::function<void(bool)> cb) {
+  auto random_id = UniqueID::FromRandom();
+  auto resource_path = boost::filesystem::path(initial_config_.resource_dir);
+  std::string sep = "://";
+  auto pos = uri.find(sep);
+  if (pos == std::string::npos || pos + sep.size() == uri.size()) {
+    RAY_LOG(ERROR) << "Invalid uri: " << uri;
+    cb(true);
+  }
+
+  auto from_path = resource_path / boost::filesystem::path(uri.substr(pos + sep.size()));
+  if (!boost::filesystem::exists(from_path)) {
+    RAY_LOG(ERROR) << uri << " doesn't exist locally: " << from_path;
+    cb(true);
+  }
+  auto to_path = resource_path / boost::filesystem::path(random_id.Hex());
+  boost::system::error_code ec;
+  boost::filesystem::rename(from_path, to_path, ec);
+  if (ec.value() != 0) {
+    RAY_LOG(ERROR) << "Failed to move file from " << from_path << " to " << to_path
+                   << " because of error " << ec.message();
+    cb(false);
+  }
+
+  std::string to_path_str = to_path.string();
+  worker_pool_.PopIOWorker(
+      [this, to_path_str, cb](std::shared_ptr<WorkerInterface> io_worker) {
+        rpc::RunOnIOWorkerRequest req;
+        // TODO(yic): Move this to another file to make it formal
+        req.set_request("DEL_FILE");
+        *req.add_args() = to_path_str;
+        io_worker->rpc_client()->RunOnIOWorker(
+            req, [this, io_worker, cb](const ray::Status &status,
+                                       const rpc::RunOnIOWorkerReply &) {
+              worker_pool_.PushIOWorker(io_worker);
+              if (!status.ok()) {
+                RAY_LOG(ERROR) << "Failed to execute job in io_worker " << status;
+              }
+              cb(status.ok());
+            });
+      });
 }
 
 void NodeManager::ProcessDisconnectClientMessage(

@@ -32,7 +32,7 @@ enum WorkerType {
   // IO worker types.
   SPILL_WORKER = 2;
   RESTORE_WORKER = 3;
-  RUNTIME_ENV_WORKER = 4;
+  GENERAL_IO_WORKER = 4;
 }
 
 // Type of a task.
@@ -137,7 +137,7 @@ message RayException {
 /// The runtime environment descrive all the runtime pacakges needed to
 /// run some task or actor.
 message RuntimeEnv {
-  string working_dir_uri = 1;
+  repeated string uris = 1;
 }
 
 /// The task specification encapsulates all immutable information about the

@@ -2,16 +2,19 @@
 #include "ray/util/logging.h"
 namespace ray {
 
-void RuntimeEnvManagerBase::AddUriReference(const std::string &hex_id,
-                                            const rpc::RuntimeEnv &runtime_env) {
-  if (!runtime_env.working_dir_uri().empty()) {
-    const auto &uri = runtime_env.working_dir_uri();
+void RuntimeEnvManager::AddUriReference(const std::string &hex_id,
+                                        const rpc::RuntimeEnv &runtime_env) {
+  const auto &uris = runtime_env.uris();
+  for (const auto &uri : uris) {
+    if (unused_uris_.count(uri)) {
+      unused_uris_.erase(uri);
+    }
     uri_reference_[uri]++;
     id_to_uris_[hex_id].push_back(uri);
   }
 }
 
-void RuntimeEnvManagerBase::RemoveUriReference(const std::string &hex_id) {
+void RuntimeEnvManager::RemoveUriReference(const std::string &hex_id) {
   for (const auto &uri : id_to_uris_[hex_id]) {
     --uri_reference_[uri];
     auto ref_count = uri_reference_[uri];
@@ -19,7 +22,11 @@ void RuntimeEnvManagerBase::RemoveUriReference(const std::string &hex_id) {
     if (ref_count == 0) {
       uri_reference_.erase(uri);
       RAY_LOG(INFO) << "Deleting uri: " << uri;
-      DeleteURI(uri);
+      deleter_(uri, [this, uri](bool success) {
+        if (!success) {
+          unused_uris_.insert(uri);
+        }
+      });
     }
   }
   id_to_uris_.erase(hex_id);

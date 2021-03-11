@@ -27,7 +27,7 @@
 #include "ray/object_manager/object_manager.h"
 #include "ray/raylet/agent_manager.h"
 #include "ray/raylet_client/raylet_client.h"
-#include "ray/raylet/runtime_env_manager.h"
+#include "ray/common/runtime_env_manager.h"
 #include "ray/raylet/local_object_manager.h"
 #include "ray/raylet/scheduling/scheduling_ids.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
@@ -93,6 +93,8 @@ struct NodeManagerConfig {
   std::string temp_dir;
   /// The path of this ray session dir.
   std::string session_dir;
+  /// The path of this ray resource dir.
+  std::string resource_dir;
   /// The raylet config list of this node.
   std::string raylet_config;
   // The time between record metrics in milliseconds, or 0 to disable.
@@ -608,6 +610,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   void DisconnectClient(
       const std::shared_ptr<ClientConnection> &client,
       rpc::WorkerExitType disconnect_type = rpc::WorkerExitType::SYSTEM_ERROR_EXIT);
+
+  /// Delete URI in local node.
+  ///
+  /// \param uri The URI of the resource.
+  void DeleteLocalURI(const std::string &uri, std::function<void(bool)> cb);
 
   /// ID of this node.
   NodeID self_node_id_;

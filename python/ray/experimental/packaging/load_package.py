@@ -17,6 +17,7 @@ import hashlib
 import subprocess
 import tempfile
 import yaml
+import json
 
 import ray
 import ray._private.runtime_env as runtime_support
@@ -85,7 +86,7 @@ def load_package(config_path: str) -> "_RuntimePackage":
             if not runtime_support.package_exists(pkg_uri):
                 raise RuntimeError(
                     "Failed to upload package {}".format(pkg_uri))
-        runtime_env["files"] = pkg_uri
+        runtime_env["files"] = [pkg_uri]
 
     # Autofill conda config.
     conda_yaml = os.path.join(base_dir, "conda.yaml")
@@ -187,9 +188,11 @@ class _RuntimePackage:
                     setattr(
                         self,
                         symbol,
-                        value.options(override_environment_variables={
-                            "RAY_RUNTIME_ENV_FILES": runtime_env["files"]
-                        }))
+                        value.options(
+                            override_environment_variables={
+                                "RAY_RUNTIME_ENV_FILES": json.dumps(
+                                    runtime_env["files"])
+                            }))
 
     def __repr__(self):
         return "ray._RuntimePackage(module={}, runtime_env={})".format(

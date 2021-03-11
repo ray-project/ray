@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 #pragma once
-
+#include <functional>
 #include "ray/common/id.h"
 #include "src/ray/protobuf/common.pb.h"
 
@@ -24,10 +24,12 @@ namespace ray {
 ///    2) local node, where runtime env is fetched
 /// We only track the job and detached actor for runtime env. In summary,
 /// runtime env will be cleaned up when there is no job or detached actor is
-/// using it. The resouce is tracked in uri level.
-class RuntimeEnvManagerBase {
+/// using it. The resouce is tracked in uri level. User need to provider
+/// a delete handler.
+class RuntimeEnvManager {
  public:
-  RuntimeEnvManagerBase() {}
+  using DeleteFunc = std::function<void(const std::string &, std::function<void(bool)>)>;
+  explicit RuntimeEnvManager(DeleteFunc deleter) : deleter_(deleter) {}
 
   /// Increase the reference of uri by job_id and runtime_env.
   ///
@@ -39,18 +41,13 @@ class RuntimeEnvManagerBase {
   /// \param[in] hex_id The id of the runtime env.
   void RemoveUriReference(const std::string &hex_id);
 
-  virtual ~RuntimeEnvManagerBase() {}
-
- protected:
-  /// The handler of deleting a uri.
-  ///
-  /// \param[in] uri The uri to be deleted.
-  virtual void DeleteURI(const std::string &uri) = 0;
-
  private:
+  DeleteFunc deleter_;
   /// Reference counting of a uri.
   std::unordered_map<std::string, int64_t> uri_reference_;
   /// A map between hex_id and uri.
   std::unordered_map<std::string, std::vector<std::string>> id_to_uris_;
+  /// A set of unused uris
+  std::unordered_set<std::string> unused_uris_;
 };
 }  // namespace ray
