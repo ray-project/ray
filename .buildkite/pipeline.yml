@@ -86,16 +86,15 @@
   commands:
     - bazel test --config=ci $(./scripts/bazel_export_options)
       --test_tag_filters=-kubernetes,-jenkins_only,-medium_size_python_tests_a_to_j,-medium_size_python_tests_k_to_z
-      python/ray/tests/...
-    - bazel test --config=ci $(./scripts/bazel_export_options)
-      --test_tag_filters=-kubernetes,-jenkins_only,client_tests
-      --test_env=RAY_CLIENT_MODE=1
       --test_env=CONDA_EXE
       --test_env=CONDA_PYTHON_EXE
       --test_env=CONDA_SHLVL
       --test_env=CONDA_PREFIX
       --test_env=CONDA_DEFAULT_ENV
-      --test_env=CONDA_PROMPT_MODIFIER
+      python/ray/tests/...
+    - bazel test --config=ci $(./scripts/bazel_export_options)
+      --test_tag_filters=-kubernetes,-jenkins_only,client_tests
+      --test_env=RAY_CLIENT_MODE=1
       python/ray/tests/...
 - label: ":python: (Medium A-J)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
