@@ -21,6 +21,7 @@
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
 #include "ray/gcs/gcs_client.h"
@@ -39,7 +40,7 @@ class OwnershipBasedObjectDirectory : public ObjectDirectory {
   /// usually be the same event loop that the given gcs_client runs on.
   /// \param gcs_client A Ray GCS client to request object and node
   /// information from.
-  OwnershipBasedObjectDirectory(boost::asio::io_service &io_service,
+  OwnershipBasedObjectDirectory(instrumented_io_context &io_service,
                                 std::shared_ptr<gcs::GcsClient> &gcs_client,
                                 std::function<void(const ObjectID &)> mark_as_failed);
 

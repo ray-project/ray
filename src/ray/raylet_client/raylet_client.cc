@@ -47,7 +47,7 @@ AddressesToFlatbuffer(flatbuffers::FlatBufferBuilder &fbb,
 
 namespace ray {
 
-raylet::RayletConnection::RayletConnection(boost::asio::io_service &io_service,
+raylet::RayletConnection::RayletConnection(instrumented_io_context &io_service,
                                            const std::string &raylet_socket,
                                            int num_retries, int64_t timeout) {
   local_stream_socket socket(io_service);
@@ -81,7 +81,7 @@ raylet::RayletClient::RayletClient(
     : grpc_client_(std::move(grpc_client)) {}
 
 raylet::RayletClient::RayletClient(
-    boost::asio::io_service &io_service,
+    instrumented_io_context &io_service,
     std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client,
     const std::string &raylet_socket, const WorkerID &worker_id,
     rpc::WorkerType worker_type, const JobID &job_id, const Language &language,

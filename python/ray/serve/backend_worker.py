@@ -11,7 +11,7 @@ import starlette.responses
 
 import ray
 from ray.actor import ActorHandle
-from ray.async_compat import sync_to_async
+from ray._private.async_compat import sync_to_async
 
 from ray.serve.batching import _BatchQueue
 from ray.serve.utils import (parse_request_item, _get_logger, chain_future,
@@ -105,7 +105,8 @@ def wrap_to_ray_error(function_name: str,
         # Raise and catch so we can access traceback.format_exc()
         raise exception
     except Exception as e:
-        traceback_str = ray.utils.format_error_message(traceback.format_exc())
+        traceback_str = ray._private.utils.format_error_message(
+            traceback.format_exc())
         return ray.exceptions.RayTaskError(function_name, traceback_str, e)
 
 

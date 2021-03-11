@@ -8,7 +8,6 @@ import ray
 from ray import ray_constants
 from ray import cloudpickle as pickle
 from ray import profiling
-from ray import utils
 
 import logging
 
@@ -96,12 +95,14 @@ class ImportThread:
         if key.startswith(b"RemoteFunction"):
             collision_identifier, function_name = (self.redis_client.hmget(
                 key, ["collision_identifier", "function_name"]))
-            return (collision_identifier, ray.utils.decode(function_name),
+            return (collision_identifier,
+                    ray._private.utils.decode(function_name),
                     "remote function")
         elif key.startswith(b"ActorClass"):
             collision_identifier, class_name = self.redis_client.hmget(
                 key, ["collision_identifier", "class_name"])
-            return collision_identifier, ray.utils.decode(class_name), "actor"
+            return collision_identifier, ray._private.utils.decode(
+                class_name), "actor"
 
     def _process_key(self, key):
         """Process the given export key from redis."""
@@ -158,7 +159,7 @@ class ImportThread:
          run_on_other_drivers) = self.redis_client.hmget(
              key, ["job_id", "function", "run_on_other_drivers"])
 
-        if (utils.decode(run_on_other_drivers) == "False"
+        if (ray._private.utils.decode(run_on_other_drivers) == "False"
                 and self.worker.mode == ray.SCRIPT_MODE
                 and job_id != self.worker.current_job_id.binary()):
             return
@@ -176,7 +177,7 @@ class ImportThread:
             # the traceback and notify the scheduler of the failure.
             traceback_str = traceback.format_exc()
             # Log the error message.
-            utils.push_error_to_driver(
+            ray._private.utils.push_error_to_driver(
                 self.worker,
                 ray_constants.FUNCTION_TO_RUN_PUSH_ERROR,
                 traceback_str,

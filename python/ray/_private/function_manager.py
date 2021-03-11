@@ -18,7 +18,7 @@ from ray import profiling
 from ray import ray_constants
 from ray import cloudpickle as pickle
 from ray._raylet import PythonFunctionDescriptor
-from ray.utils import (
+from ray._private.utils import (
     check_oversized_pickle,
     decode,
     ensure_str,
@@ -315,7 +315,7 @@ class FunctionActorManager:
                                    "registered. You may have to restart "
                                    "Ray.")
                 if not warning_sent:
-                    ray.utils.push_error_to_driver(
+                    ray._private.utils.push_error_to_driver(
                         self._worker,
                         ray_constants.WAIT_FOR_FUNCTION_PUSH_ERROR,
                         warning_message,
@@ -503,7 +503,7 @@ class FunctionActorManager:
                 class_name, actor_method_names)
             # If an exception was thrown when the actor was imported, we record
             # the traceback and notify the scheduler of the failure.
-            traceback_str = ray.utils.format_error_message(
+            traceback_str = ray._private.utils.format_error_message(
                 traceback.format_exc())
             # Log the error message.
             push_error_to_driver(

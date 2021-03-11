@@ -11,7 +11,7 @@ from ray.util.placement_group import (
     check_placement_group_index,
     get_current_placement_group,
 )
-import ray.signature
+import ray._private.signature
 
 # Default parameters for remote functions.
 DEFAULT_REMOTE_FUNCTION_CPUS = 1
@@ -92,7 +92,7 @@ class RemoteFunction:
                              if max_retries is None else max_retries)
         self._decorator = getattr(function, "__ray_invocation_decorator__",
                                   None)
-        self._function_signature = ray.signature.extract_signature(
+        self._function_signature = ray._private.signature.extract_signature(
             self._function)
 
         self._last_export_session_and_job = None
@@ -250,7 +250,7 @@ class RemoteFunction:
         check_placement_group_index(placement_group,
                                     placement_group_bundle_index)
 
-        resources = ray.utils.resources_from_resource_arguments(
+        resources = ray._private.utils.resources_from_resource_arguments(
             self._num_cpus, self._num_gpus, self._memory,
             self._object_store_memory, self._resources, self._accelerator_type,
             num_cpus, num_gpus, memory, object_store_memory, resources,
@@ -262,7 +262,7 @@ class RemoteFunction:
             elif not args and not kwargs and not self._function_signature:
                 list_args = []
             else:
-                list_args = ray.signature.flatten_args(
+                list_args = ray._private.signature.flatten_args(
                     self._function_signature, args, kwargs)
 
             if worker.mode == ray.worker.LOCAL_MODE:

@@ -5,7 +5,7 @@ import shutil
 import unittest
 from unittest.mock import patch
 
-import ray.utils
+import ray._private.utils
 import ray.cloudpickle as cloudpickle
 from ray.tune.utils.util import wait_for_gpu
 from ray.tune.utils.util import unflatten_dict
@@ -14,8 +14,8 @@ from ray.tune.utils.trainable import TrainableUtil
 
 class TrainableUtilTest(unittest.TestCase):
     def setUp(self):
-        self.checkpoint_dir = os.path.join(ray.utils.get_user_temp_dir(),
-                                           "tune", "MyTrainable123")
+        self.checkpoint_dir = os.path.join(
+            ray._private.utils.get_user_temp_dir(), "tune", "MyTrainable123")
         self.checkpoint_dir = TrainableUtil.make_checkpoint_dir(
             self.checkpoint_dir, "0")
 
