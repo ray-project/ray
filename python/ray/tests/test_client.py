@@ -35,6 +35,8 @@ def test_client_thread_safe(call_ray_stop_only):
         b = Blocker()
         b.start()
         time.sleep(1)
+
+        # Can concurrently execute the get.
         assert ray.get(fast.remote(), timeout=5) == "ok"
 
 
