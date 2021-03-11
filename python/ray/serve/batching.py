@@ -2,24 +2,9 @@ import asyncio
 from functools import wraps
 from inspect import iscoroutinefunction
 import time
-from typing import Any, Callable, List, Optional, overload, TypeVar
+from typing import Any, Callable, List, Optional, overload, Tuple, TypeVar
 
 from ray.serve.exceptions import RayServeException
-
-
-class _RaisedExceptionWrapper:
-    """Wraps an underlying exception to be raised later.
-
-    This is used to distinguish between the case when user code *raises*
-    an exception and *returns* an exception.
-    """
-
-    def __init__(self, underlying):
-        assert isinstance(underlying, Exception)
-        self._underlying = underlying
-
-    def raise_underlying(self):
-        raise self._underlying
 
 
 class _BatchQueue:
@@ -27,6 +12,22 @@ class _BatchQueue:
                  max_batch_size: int,
                  timeout_s: float,
                  handle_batch_func: Optional[Callable] = None) -> None:
+        """Async queue that accepts individual items and returns batches.
+
+        Respects max_batch_size and timeout_s; a batch will be returned when
+        max_batch_size elements are available or the timeout has passed since
+        the previous get.
+
+        If handle_batch_func is passed in, a background coroutine will run to
+        poll from the queue and call handle_batch_func on the results.
+
+        Arguments:
+            max_batch_size (int): max number of elements to return in a batch.
+            timeout_s (float): time to wait before returning an incomplete
+                batch.
+            handle_batch_func(Optional[Callable]): callback to run in the
+                background to handle batches if provided.
+        """
         self.queue = asyncio.Queue()
         self.full_batch_event = asyncio.Event()
         self.max_batch_size = max_batch_size
@@ -41,7 +42,7 @@ class _BatchQueue:
         self.max_batch_size = max_batch_size
         self.timeout_s = timeout_s
 
-    def put(self, request: Any) -> None:
+    def put(self, request: Tuple[Any, asyncio.Future]) -> None:
         self.queue.put_nowait(request)
         # Signal when the full batch is ready. The event will be reset
         # in wait_for_batch.
@@ -115,27 +116,22 @@ class _BatchQueue:
                         "Batched function doesn't preserve batch size. "
                         f"The input list has length {len(batch)} but the "
                         f"returned list has length {len(results)}.")
-            except Exception as e:
-                results = [_RaisedExceptionWrapper(e)] * len(batch)
 
-            for i, result in enumerate(results):
-                futures[i].set_result(result)
+                for i, result in enumerate(results):
+                    futures[i].set_result(result)
+            except Exception as e:
+                for future in futures:
+                    future.set_exception(e)
 
     def __del__(self):
-        if self._handle_batch_task is None:
+        if (self._handle_batch_task is None
+                or not asyncio.get_event_loop().is_running()):
             return
-
-        async def await_task():
-            try:
-                await self._handle_batch_task
-            except asyncio.CancelledError:
-                pass
 
         # TODO(edoakes): although we try to gracefully shutdown here, it still
         # causes some errors when the process exits due to the asyncio loop
         # already being destroyed.
         self._handle_batch_task.cancel()
-        asyncio.get_event_loop.run_until_complete(await_task())
 
 
 T = TypeVar("T")
@@ -257,11 +253,9 @@ def batch(_func=None, max_batch_size=10, batch_wait_timeout_s=0.1):
 
             future = asyncio.get_event_loop().create_future()
             batch_queue.put((self, args[0], future))
-            result = await future
-            if isinstance(result, _RaisedExceptionWrapper):
-                result.raise_underlying()
 
-            return result
+            # This will raise if the underlying call raised an exception.
+            return await future
 
         return batch_wrapper
 
