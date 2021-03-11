@@ -117,8 +117,8 @@ cc_binary(
         "src/ray/test/cluster/*.cc",
     ]),
     copts = COPTS,
-    linkstatic = True,
     linkopts = ["-shared"],
+    linkstatic = True,
     deps = [
         "ray_api",
         "@com_github_gflags_gflags//:gflags",
