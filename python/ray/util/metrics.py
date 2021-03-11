@@ -1,6 +1,6 @@
 import logging
 
-from typing import Dict, Any, List, Optional, Tuple
+from typing import Dict, Any, List, Optional, Tuple, Union
 
 from ray._raylet import (
     Count as CythonCount,
@@ -70,7 +70,7 @@ class Metric:
         return self
 
     def record(self,
-               value: float,
+               value: Union[int, float],
                tags: Dict[str, str] = None,
                _internal=False) -> None:
         """Record the metric point of the metric.
@@ -85,6 +85,11 @@ class Metric:
             logger.warning("Counter.record() is deprecated in favor of "
                            "Counter.inc() and will be removed in a future "
                            "release. Please use Counter.inc() instead.")
+
+        if isinstance(self._metric, CythonGauge) and not _internal:
+            logger.warning("Gauge.record() is deprecated in favor of "
+                           "Gauge.set() and will be removed in a future "
+                           "release. Please use Gauge.set() instead.")
 
         if tags is not None:
             for val in tags.values():
@@ -158,7 +163,7 @@ class Counter(Metric):
         serialized_data = (self._name, self._description, self._tag_keys)
         return deserializer, serialized_data
 
-    def inc(self, value: float = 1.0, tags: Dict[str, str] = None):
+    def inc(self, value: Union[int, float] = 1.0, tags: Dict[str, str] = None):
         """Increment the counter by `value` (defaults to 1).
 
         Args:
@@ -239,9 +244,12 @@ class Histogram(Metric):
 
 
 class Gauge(Metric):
-    """Gauge Keeps the last recorded value, drops everything before.
+    """Gauges keep the last recorded value and drop everything before.
 
-    This is corresponding to Prometheus' Gauge metric.
+    Unlike counters, gauges can go up or down over time.
+
+    This corresponds to Prometheus' gauge metric:
+    https://prometheus.io/docs/concepts/metric_types/#gauge
 
     Args:
         name(str): Name of the metric.
@@ -256,6 +264,18 @@ class Gauge(Metric):
         super().__init__(name, description, tag_keys)
         self._metric = CythonGauge(self._name, self._description,
                                    self._tag_keys)
+
+    def set(self, value: Union[int, float], tags: Dict[str, str] = None):
+        """Set the gauge to the given `value`.
+
+        Args:
+            value(int, float): Value to set the gauge to.
+            tags(Dict[str, str]): Tags to set or override for this gauge.
+        """
+        if not isinstance(value, (int, float)):
+            raise TypeError(f"value must be int or float, got {type(value)}.")
+
+        self.record(value, tags, _internal=True)
 
     def __reduce__(self):
         deserializer = Gauge
