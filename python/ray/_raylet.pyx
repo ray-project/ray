@@ -556,7 +556,7 @@ cdef execute_task(
                 job_id=worker.current_job_id)
 
             if (<int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK):
-                raise RayActorError.from_task_error(failure_object) from error
+                raise RayActorError.from_task_error(failure_object)
 
     if execution_info.max_calls != 0:
         # Reset the state of the worker for the next task to execute.
