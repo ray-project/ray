@@ -53,9 +53,8 @@ inline static msgpack::sbuffer CallInDll(
     const std::vector<std::shared_ptr<RayObject>> &args_buffer) {
   return TaskExecutionHandler(args_buffer);
 }
+BOOST_DLL_ALIAS(internal::CallInDll, CallInDll);
 }  // namespace internal
-
-BOOST_DLL_ALIAS(ray::internal::CallInDll, CallInDll);
 
 namespace api {
 /// The following execution functions are wrappers of remote functions.
