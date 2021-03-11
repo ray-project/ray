@@ -259,7 +259,7 @@ class RayServeReplica:
             "replica": self.replica_tag
         })
 
-        self.restart_counter.record(1)
+        self.restart_counter.inc()
 
         ray_logger = logging.getLogger("ray")
         for handler in ray_logger.handlers:
@@ -328,7 +328,7 @@ class RayServeReplica:
             if "RAY_PDB" in os.environ:
                 ray.util.pdb.post_mortem()
             result = wrap_to_ray_error(method_to_call.__name__, e)
-            self.error_counter.record(1)
+            self.error_counter.inc()
 
         latency_ms = (time.time() - start) * 1000
         self.processing_latency_tracker.record(
@@ -384,7 +384,7 @@ class RayServeReplica:
                                   self.ensure_serializable_response(result))
         except Exception as e:
             wrapped_exception = wrap_to_ray_error(call_method.__name__, e)
-            self.error_counter.record(1)
+            self.error_counter.inc()
             result_list = [wrapped_exception for _ in range(batch_size)]
 
         latency_ms = (time.time() - timing_start) * 1000
