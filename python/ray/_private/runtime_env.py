@@ -27,7 +27,7 @@ FILE_SIZE_LIMIT = 50 * 1024 * 1024  # 50MB
 
 
 class RuntimeEnvDict:
-    """Parses a validated runtime env dictionary from the user."""
+    """Parses and validates runtime env dictionary from the user."""
 
     def __init__(self, runtime_env_json: dict):
         if "conda" in runtime_env_json:
