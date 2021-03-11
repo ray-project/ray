@@ -6,7 +6,7 @@ from pathlib import Path
 import yaml
 
 import ray
-from ray.cluster_utils import Cluster
+from ray._private.cluster_utils import Cluster
 from ray.tune.config_parser import make_parser
 from ray.tune.progress_reporter import CLIReporter, JupyterNotebookReporter
 from ray.tune.result import DEFAULT_RESULTS_DIR

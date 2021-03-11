@@ -13,6 +13,7 @@ import time
 import uuid
 
 from inspect import signature
+from pathlib import Path
 import numpy as np
 import psutil
 import ray
@@ -812,3 +813,61 @@ def get_user():
 def get_function_args(callable):
     all_parameters = frozenset(signature(callable).parameters)
     return list(all_parameters)
+
+
+def get_conda_bin_executable(executable_name):
+    """
+    Return path to the specified executable, assumed to be discoverable within
+    the 'bin' subdirectory of a conda installation.  Adapted from
+    https://github.com/mlflow/mlflow.
+    """
+
+    # Use CONDA_EXE as per https://github.com/conda/conda/issues/7126
+    if "CONDA_EXE" in os.environ:
+        conda_bin_dir = os.path.dirname(os.environ["CONDA_EXE"])
+        return os.path.join(conda_bin_dir, executable_name)
+    return executable_name
+
+
+def get_conda_env_dir(env_name):
+    """Find and validate the conda directory for a given conda environment.
+
+    For example, given the environment name `tf1`, this function checks
+    the existence of the corresponding conda directory, e.g.
+    `/Users/scaly/anaconda3/envs/tf1`, and returns it.
+    """
+    conda_prefix = os.environ.get("CONDA_PREFIX")
+    if conda_prefix is None:
+        # The caller is neither in a conda env or in (base) env.  This is rare
+        # because by default, new terminals start in (base), but we can still
+        # support this case.
+        conda_exe = os.environ.get("CONDA_EXE")
+        if conda_exe is None:
+            raise ValueError(
+                "Ray Serve cannot find environment variables set by conda. "
+                "Please verify conda is installed.")
+        # Example: CONDA_EXE=$HOME/anaconda3/bin/python
+        # Strip out /bin/python by going up two parent directories.
+        conda_prefix = str(Path(conda_exe).parent.parent)
+
+    # There are two cases:
+    # 1. We are in a conda (base) env: CONDA_DEFAULT_ENV=base and
+    #    CONDA_PREFIX=$HOME/anaconda3
+    # 2. We are in a user-created conda env: CONDA_DEFAULT_ENV=$env_name and
+    #    CONDA_PREFIX=$HOME/anaconda3/envs/$env_name
+    if os.environ.get("CONDA_DEFAULT_ENV") == "base":
+        # Caller is running in base conda env.
+        # Not recommended by conda, but we can still support it.
+        env_dir = os.path.join(conda_prefix, "envs", env_name)
+    else:
+        # Now `conda_prefix` should be something like
+        # $HOME/anaconda3/envs/$env_name
+        # We want to strip the $env_name component.
+        conda_envs_dir = os.path.split(conda_prefix)[0]
+        env_dir = os.path.join(conda_envs_dir, env_name)
+    if not os.path.isdir(env_dir):
+        raise ValueError(
+            "conda env " + env_name +
+            " not found in conda envs directory. Run `conda env list` to " +
+            "verify the name is correct.")
+    return env_dir

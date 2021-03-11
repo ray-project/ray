@@ -11,7 +11,7 @@ import starlette.responses
 
 import ray
 from ray.actor import ActorHandle
-from ray.async_compat import sync_to_async
+from ray._private.async_compat import sync_to_async
 
 from ray.serve.utils import (parse_request_item, _get_logger, chain_future,
                              unpack_future, import_attr)
@@ -169,7 +169,8 @@ def wrap_to_ray_error(function_name: str,
         # Raise and catch so we can access traceback.format_exc()
         raise exception
     except Exception as e:
-        traceback_str = ray.utils.format_error_message(traceback.format_exc())
+        traceback_str = ray._private.utils.format_error_message(
+            traceback.format_exc())
         return ray.exceptions.RayTaskError(function_name, traceback_str, e)
 
 
@@ -258,7 +259,7 @@ class RayServeReplica:
             "replica": self.replica_tag
         })
 
-        self.restart_counter.record(1)
+        self.restart_counter.inc()
 
         ray_logger = logging.getLogger("ray")
         for handler in ray_logger.handlers:
@@ -327,7 +328,7 @@ class RayServeReplica:
             if "RAY_PDB" in os.environ:
                 ray.util.pdb.post_mortem()
             result = wrap_to_ray_error(method_to_call.__name__, e)
-            self.error_counter.record(1)
+            self.error_counter.inc()
 
         latency_ms = (time.time() - start) * 1000
         self.processing_latency_tracker.record(
@@ -383,7 +384,7 @@ class RayServeReplica:
                                   self.ensure_serializable_response(result))
         except Exception as e:
             wrapped_exception = wrap_to_ray_error(call_method.__name__, e)
-            self.error_counter.record(1)
+            self.error_counter.inc()
             result_list = [wrapped_exception for _ in range(batch_size)]
 
         latency_ms = (time.time() - timing_start) * 1000

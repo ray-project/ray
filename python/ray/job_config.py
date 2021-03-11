@@ -1,4 +1,5 @@
 import ray
+from ray._private.utils import get_conda_env_dir
 
 
 class JobConfig:
@@ -15,7 +16,7 @@ class JobConfig:
             `CLASSPATH` in Java and `PYTHONPATH` in Python.
         runtime_env (dict): A path to a local directory that will be zipped
             up and unpackaged in the working directory of the task/actor.
-            There are three important fields.
+            There are four important fields.
             - `working_dir (str)`: A path to a local directory that will be
                 zipped up and unpackaged in the working directory of the
                 task/actor.
@@ -25,6 +26,8 @@ class JobConfig:
             - `local_modules (list[module])`: A list of local Python modules
                 that will be zipped up and unpacked in a directory prepended
                 to the sys.path of tasks/actors.
+            - `conda_env (str)`: The name of an existing conda environment
+                that worker processes should start in.
     """
 
     def __init__(self,
@@ -33,7 +36,22 @@ class JobConfig:
                  jvm_options=None,
                  code_search_path=None,
                  runtime_env=None):
-        self.worker_env = worker_env or dict()
+        if worker_env is None:
+            self.worker_env = dict()
+        else:
+            self.worker_env = worker_env
+        if runtime_env:
+            conda_env = runtime_env.get("conda_env")
+            if conda_env is not None:
+                conda_env_dir = get_conda_env_dir(conda_env)
+                if self.worker_env.get("PYTHONHOME") is not None:
+                    raise ValueError(
+                        f"worker_env specifies PYTHONHOME="
+                        f"{self.worker_env['PYTHONHOME']} which "
+                        f"conflicts with PYTHONHOME={conda_env_dir} "
+                        f"required by the specified conda env "
+                        f"{runtime_env['conda_env']}.")
+                self.worker_env.update(PYTHONHOME=conda_env_dir)
         self.num_java_workers_per_process = num_java_workers_per_process
         self.jvm_options = jvm_options or []
         self.code_search_path = code_search_path or []
