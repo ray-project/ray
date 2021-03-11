@@ -60,8 +60,7 @@ Status TaskExecutor::ExecuteTask(
                             args_buffer, current_actor_);
   } else {  // NORMAL_TASK
     if (ray::api::RayConfig::GetInstance()->use_ray_remote) {
-      auto lib =
-          FunctionHelper::GetInstance().LoadDll(lib_name);
+      auto lib = FunctionHelper::GetInstance().LoadDll(lib_name);
       RAY_CHECK(lib);
 
       auto execute_func = boost::dll::import_alias<msgpack::sbuffer(
