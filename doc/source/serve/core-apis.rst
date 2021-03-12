@@ -102,7 +102,7 @@ Configuring a Backend
 =====================
 
 There are a number of things you'll likely want to do with your serving application including
-scaling out, splitting traffic, or configuring the number of in-flight requests for a backend.
+scaling out, splitting traffic, or configuring the maximum number of in-flight requests for a backend.
 All of these options are encapsulated in a ``BackendConfig`` object for each backend.
 
 The ``BackendConfig`` for a running backend can be updated using
