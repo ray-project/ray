@@ -5,10 +5,11 @@ import time
 
 import numpy as np
 import requests
-import starlette
+from starlette.requests import Request
 
 import ray
 from ray import serve
+from serve import ServeRequest
 # __doc_import_end__
 # yapf: enable
 
@@ -16,9 +17,7 @@ from ray import serve
 # __doc_define_servable_begin__
 class BatchAdder:
     @serve.batch(max_batch_size=4)
-    async def handle_batch(
-            self,
-            requests: List[Union[starlette.Request, serve.ServeRequest]]):
+    async def handle_batch(self, requests: List[Union[Request, ServeRequest]]):
         numbers = [int(request.query_params["number"]) for request in requests]
 
         input_array = np.array(numbers)
@@ -29,8 +28,7 @@ class BatchAdder:
         output_array = input_array + 1
         return output_array.astype(int).tolist()
 
-    async def __call__(self,
-                       request: Union[starlette.Request, serve.ServeRequest]):
+    async def __call__(self, request: Union[Request, ServeRequest]):
         return await self.handle_batch(request)
 
 
