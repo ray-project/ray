@@ -70,7 +70,7 @@ the maximum possible batch size that will be executed at once.
     soon as the batch handler is called, the method will be executed without
     waiting for a full batch. If there are more queries available after this call
     finishes, a larger batch may be executed. This behavior can be tuned using the
-    batch_wait_timout_s option to ``@serve.batch`` (defaults to 0). Increasing this
+    ``batch_wait_timeout_s`` option to ``@serve.batch`` (defaults to 0). Increasing this
     timeout may improve throughput at the cost of latency under low load.
 
 .. literalinclude:: ../../../../python/ray/serve/examples/doc/tutorial_batch.py
