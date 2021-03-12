@@ -35,6 +35,7 @@ RUN_PLASMA_STORE_PROFILER = False
 # Location of the redis server and module.
 RAY_HOME = os.path.join(os.path.dirname(os.path.dirname(__file__)), "../..")
 RAY_PATH = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
+RAY_PRIVATE_DIR = "_private"
 REDIS_EXECUTABLE = os.path.join(
     RAY_PATH, "core/src/ray/thirdparty/redis/src/redis-server" + EXE_SUFFIX)
 REDIS_MODULE = os.path.join(
@@ -102,7 +103,7 @@ class ConsolePopen(subprocess.Popen):
             # https://docs.python.org/3/library/subprocess.html#subprocess.Popen.send_signal
             new_pgroup = subprocess.CREATE_NEW_PROCESS_GROUP
             flags_to_add = 0
-            if ray.utils.detect_fate_sharing_support():
+            if ray._private.utils.detect_fate_sharing_support():
                 # If we don't have kernel-mode fate-sharing, then don't do this
                 # because our children need to be in out process group for
                 # the process reaper to properly terminate them.
@@ -318,7 +319,8 @@ def get_address_info_from_redis(redis_address,
 
 def get_webui_url_from_redis(redis_client):
     webui_url = redis_client.hmget("webui", "url")[0]
-    return ray.utils.decode(webui_url) if webui_url is not None else None
+    return ray._private.utils.decode(
+        webui_url) if webui_url is not None else None
 
 
 def remaining_processes_alive():
@@ -543,7 +545,7 @@ def start_ray_process(command,
                 "If 'use_gdb' is true, then 'use_tmux' must be true as well.")
 
         # TODO(suquark): Any better temp file creation here?
-        gdb_init_path = os.path.join(ray.utils.get_ray_temp_dir(),
+        gdb_init_path = os.path.join(ray._private.utils.get_ray_temp_dir(),
                                      f"gdb_init_{process_type}_{time.time()}")
         ray_process_path = command[0]
         ray_process_args = command[1:]
@@ -576,7 +578,7 @@ def start_ray_process(command,
         command = ["tmux", "new-session", "-d", f"{' '.join(command)}"]
 
     if fate_share:
-        assert ray.utils.detect_fate_sharing_support(), (
+        assert ray._private.utils.detect_fate_sharing_support(), (
             "kernel-level fate-sharing must only be specified if "
             "detect_fate_sharing_support() has returned True")
 
@@ -584,7 +586,7 @@ def start_ray_process(command,
         import signal
         signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGINT})
         if fate_share and sys.platform.startswith("linux"):
-            ray.utils.set_kill_on_parent_death_linux()
+            ray._private.utils.set_kill_on_parent_death_linux()
 
     win32_fate_sharing = fate_share and sys.platform == "win32"
     # With Windows fate-sharing, we need special care:
@@ -606,7 +608,7 @@ def start_ray_process(command,
 
     if win32_fate_sharing:
         try:
-            ray.utils.set_kill_child_on_death_win32(process)
+            ray._private.utils.set_kill_child_on_death_win32(process)
             psutil.Process(process.pid).resume()
         except (psutil.Error, OSError):
             process.kill()
@@ -737,7 +739,8 @@ def check_version_info(redis_client):
     if redis_reply is None:
         return
 
-    true_version_info = tuple(json.loads(ray.utils.decode(redis_reply)))
+    true_version_info = tuple(
+        json.loads(ray._private.utils.decode(redis_reply)))
     version_info = _compute_version_info()
     if version_info != true_version_info:
         node_ip_address = get_node_ip_address()
@@ -783,7 +786,8 @@ def start_reaper(fate_share=None):
             # other user processes.
             return None
 
-    reaper_filepath = os.path.join(RAY_PATH, "ray_process_reaper.py")
+    reaper_filepath = os.path.join(RAY_PATH, RAY_PRIVATE_DIR,
+                                   "ray_process_reaper.py")
     command = [sys.executable, "-u", reaper_filepath]
     process_info = start_ray_process(
         command,
@@ -1105,7 +1109,8 @@ def start_log_monitor(redis_address,
     Returns:
         ProcessInfo for the process that was started.
     """
-    log_monitor_filepath = os.path.join(RAY_PATH, "log_monitor.py")
+    log_monitor_filepath = os.path.join(RAY_PATH, RAY_PRIVATE_DIR,
+                                        "log_monitor.py")
     command = [
         sys.executable, "-u", log_monitor_filepath,
         f"--redis-address={redis_address}", f"--logs-dir={logs_dir}",
@@ -1330,7 +1335,6 @@ def start_raylet(redis_address,
                  stdout_file=None,
                  stderr_file=None,
                  config=None,
-                 java_worker_options=None,
                  huge_pages=False,
                  fate_share=None,
                  socket_to_use=None,
@@ -1373,7 +1377,6 @@ def start_raylet(redis_address,
             no redirection should happen, then this should be None.
         config (dict|None): Optional Raylet configuration that will
             override defaults in RayConfig.
-        java_worker_options (list): The command options for Java worker.
         max_bytes (int): Log rotation parameter. Corresponding to
             RotatingFileHandler's maxBytes.
         backup_count (int): Log rotation parameter. Corresponding to
@@ -1416,7 +1419,6 @@ def start_raylet(redis_address,
     include_java = has_java_command and ray_java_installed
     if include_java is True:
         java_worker_command = build_java_worker_command(
-            json.loads(java_worker_options) if java_worker_options else [],
             redis_address,
             plasma_store_name,
             raylet_name,
@@ -1555,7 +1557,6 @@ def get_ray_jars_dir():
 
 
 def build_java_worker_command(
-        java_worker_options,
         redis_address,
         plasma_store_name,
         raylet_name,
@@ -1566,7 +1567,6 @@ def build_java_worker_command(
     """This method assembles the command used to start a Java worker.
 
     Args:
-        java_worker_options (list): The command options for Java worker.
         redis_address (str): Redis address of GCS.
         plasma_store_name (str): The name of the plasma store socket to connect
            to.
@@ -1602,24 +1602,7 @@ def build_java_worker_command(
 
     # Add ray jars path to java classpath
     ray_jars = os.path.join(get_ray_jars_dir(), "*")
-    if java_worker_options is None:
-        options = []
-    else:
-        assert isinstance(java_worker_options, (tuple, list))
-        options = list(java_worker_options)
-    cp_index = -1
-    for i in range(len(options)):
-        option = options[i]
-        if option == "-cp" or option == "-classpath":
-            cp_index = i + 1
-            break
-    if cp_index != -1:
-        options[cp_index] = options[cp_index] + os.pathsep + ray_jars
-    else:
-        options = ["-cp", ray_jars] + options
-    # Put `java_worker_options` in the last, so it can overwrite the
-    # above options.
-    command += options
+    command += ["-cp", ray_jars]
 
     command += ["RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER"]
     command += ["io.ray.runtime.runner.worker.DefaultWorker"]
@@ -1686,28 +1669,31 @@ def determine_plasma_store_config(object_store_memory,
         raise ValueError("The huge_pages argument is only supported on "
                          "Linux.")
 
-    system_memory = ray.utils.get_system_memory()
+    system_memory = ray._private.utils.get_system_memory()
 
     # Determine which directory to use. By default, use /tmp on MacOS and
     # /dev/shm on Linux, unless the shared-memory file system is too small,
     # in which case we default to /tmp on Linux.
     if plasma_directory is None:
         if sys.platform == "linux" or sys.platform == "linux2":
-            shm_avail = ray.utils.get_shared_memory_bytes()
+            shm_avail = ray._private.utils.get_shared_memory_bytes()
             # Compare the requested memory size to the memory available in
             # /dev/shm.
             if shm_avail > object_store_memory:
                 plasma_directory = "/dev/shm"
-            elif not os.environ.get("RAY_OBJECT_STORE_ALLOW_SLOW_STORAGE"):
+            elif (not os.environ.get("RAY_OBJECT_STORE_ALLOW_SLOW_STORAGE")
+                  and object_store_memory >
+                  ray_constants.REQUIRE_SHM_SIZE_THRESHOLD):
                 raise ValueError(
-                    "The configured object store size exceeds the capacity of "
-                    "/dev/shm. This will harm performance. To proceed "
-                    "regardless of this warning, you can set "
-                    "RAY_OBJECT_STORE_ALLOW_SLOW_STORAGE=1. Consider deleting "
-                    "files in /dev/shm or increasing its size with "
-                    "--shm-size in Docker.")
+                    "The configured object store size ({} GB) exceeds "
+                    "/dev/shm size ({} GB). This will harm performance. "
+                    "Consider deleting files in /dev/shm or increasing its "
+                    "size with "
+                    "--shm-size in Docker. To ignore this warning, "
+                    "set RAY_OBJECT_STORE_ALLOW_SLOW_STORAGE=1.".format(
+                        object_store_memory / 1e9, shm_avail / 1e9))
             else:
-                plasma_directory = ray.utils.get_user_temp_dir()
+                plasma_directory = ray._private.utils.get_user_temp_dir()
                 logger.warning(
                     "WARNING: The object store is using {} instead of "
                     "/dev/shm because /dev/shm has only {} bytes available. "
@@ -1717,10 +1703,10 @@ def determine_plasma_store_config(object_store_memory,
                     "passing '--shm-size={:.2f}gb' to 'docker run' (or add it "
                     "to the run_options list in a Ray cluster config). Make "
                     "sure to set this to more than 30% of available RAM.".
-                    format(ray.utils.get_user_temp_dir(), shm_avail,
+                    format(ray._private.utils.get_user_temp_dir(), shm_avail,
                            object_store_memory * (1.1) / (2**30)))
         else:
-            plasma_directory = ray.utils.get_user_temp_dir()
+            plasma_directory = ray._private.utils.get_user_temp_dir()
 
         # Do some sanity checks.
         if object_store_memory > system_memory:
@@ -1894,7 +1880,7 @@ def start_monitor(redis_address,
     Returns:
         ProcessInfo for the process that was started.
     """
-    monitor_path = os.path.join(RAY_PATH, "monitor.py")
+    monitor_path = os.path.join(RAY_PATH, RAY_PRIVATE_DIR, "monitor.py")
     command = [
         sys.executable, "-u", monitor_path, f"--logs-dir={logs_dir}",
         f"--redis-address={redis_address}",

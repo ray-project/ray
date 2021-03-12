@@ -15,6 +15,7 @@
 #include <memory>
 
 #include "gtest/gtest.h"
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/test_util.h"
 #include "ray/gcs/gcs_server/test/gcs_server_test_util.h"
 #include "ray/gcs/test/gcs_test_util.h"
@@ -43,7 +44,7 @@ class MockActorScheduler : public gcs::GcsActorSchedulerInterface {
 
 class MockWorkerClient : public rpc::CoreWorkerClientInterface {
  public:
-  MockWorkerClient(boost::asio::io_service &io_service) : io_service_(io_service) {}
+  MockWorkerClient(instrumented_io_context &io_service) : io_service_(io_service) {}
 
   void WaitForActorOutOfScope(
       const rpc::WaitForActorOutOfScopeRequest &request,
@@ -79,7 +80,7 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
 
   std::list<rpc::ClientCallback<rpc::WaitForActorOutOfScopeReply>> callbacks_;
   std::vector<ActorID> killed_actors_;
-  boost::asio::io_service &io_service_;
+  instrumented_io_context &io_service_;
 };
 
 class GcsActorManagerTest : public ::testing::Test {
@@ -175,7 +176,7 @@ class GcsActorManagerTest : public ::testing::Test {
     promise.get_future().get();
   }
 
-  boost::asio::io_service io_service_;
+  instrumented_io_context io_service_;
   std::unique_ptr<std::thread> thread_io_service_;
   std::shared_ptr<gcs::StoreClient> store_client_;
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;

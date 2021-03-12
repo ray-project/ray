@@ -8,7 +8,7 @@ import time
 import numpy as np
 import pytest
 
-import ray.cluster_utils
+import ray._private.cluster_utils
 from ray.test_utils import (client_test_enabled, get_error_message)
 
 import ray

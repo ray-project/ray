@@ -29,7 +29,7 @@ ServiceBasedGcsClient::ServiceBasedGcsClient(const GcsClientOptions &options)
       last_reconnect_timestamp_ms_(0),
       last_reconnect_address_(std::make_pair("", -1)) {}
 
-Status ServiceBasedGcsClient::Connect(boost::asio::io_service &io_service) {
+Status ServiceBasedGcsClient::Connect(instrumented_io_context &io_service) {
   RAY_CHECK(!is_connected_);
 
   if (options_.server_ip_.empty()) {

@@ -5,7 +5,7 @@ import pytest
 import ray
 from ray.util.collective.collective_group.nccl_collective_group \
     import _get_comm_key_from_devices, _get_comm_key_send_recv
-from ray.util.collective.const import get_nccl_store_name
+from ray.util.collective.const import get_store_name
 
 logger = logging.getLogger(__name__)
 logger.setLevel("INFO")
@@ -28,7 +28,7 @@ def clean_up():
                     p2p_communicator_key = _get_comm_key_send_recv(i, 0, j, 0)
                     all_keys.append(p2p_communicator_key + "@" + name)
     for group_key in all_keys:
-        store_name = get_nccl_store_name(group_key)
+        store_name = get_store_name(group_key)
         try:
             actor = ray.get_actor(store_name)
         except ValueError:
@@ -67,4 +67,12 @@ def ray_start_distributed_multigpu_2_nodes_4_gpus():
     ray.init("auto")
     yield
     clean_up()
+    ray.shutdown()
+
+
+@pytest.fixture
+def ray_start_single_node():
+    # Please start this fixture in a cluster with 2 cpus.
+    address_info = ray.init(num_cpus=8)
+    yield address_info
     ray.shutdown()

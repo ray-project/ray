@@ -95,9 +95,9 @@ from ray.includes.global_state_accessor cimport CGlobalStateAccessor
 
 import ray
 from ray import external_storage
-from ray.async_compat import (
+from ray._private.async_compat import (
     sync_to_async, get_new_event_loop)
-import ray.memory_monitor as memory_monitor
+import ray._private.memory_monitor as memory_monitor
 import ray.ray_constants as ray_constants
 from ray import profiling
 from ray.exceptions import (
@@ -108,7 +108,7 @@ from ray.exceptions import (
     GetTimeoutError,
     TaskCancelledError
 )
-from ray.utils import decode
+from ray._private.utils import decode
 from ray._private.client_mode_hook import (
     _enable_client_hook,
     _disable_client_hook,
@@ -366,7 +366,7 @@ cdef execute_task(
         CFiberEvent task_done_event
 
     # Automatically restrict the GPUs available to this task.
-    ray.utils.set_cuda_visible_devices(ray.get_gpu_ids())
+    ray._private.utils.set_cuda_visible_devices(ray.get_gpu_ids())
 
     # Helper method used to exit current asyncio actor.
     # This is called when a KeyboardInterrupt is received by the main thread.
@@ -473,7 +473,7 @@ cdef execute_task(
 
                     for arg in args:
                         raise_if_dependency_failed(arg)
-                    args, kwargs = ray.signature.recover_args(args)
+                    args, kwargs = ray._private.signature.recover_args(args)
 
             if (<int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK):
                 actor = worker.actors[core_worker.get_actor_id()]
@@ -538,7 +538,7 @@ cdef execute_task(
             if (<int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK):
                 worker.mark_actor_init_failed(error)
 
-            backtrace = ray.utils.format_error_message(
+            backtrace = ray._private.utils.format_error_message(
                 traceback.format_exc(), task_exception=task_exception)
             if isinstance(error, RayTaskError):
                 # Avoid recursive nesting of RayTaskError.
@@ -552,7 +552,7 @@ cdef execute_task(
                 errors.append(failure_object)
             core_worker.store_task_outputs(
                 worker, errors, c_return_ids, returns)
-            ray.utils.push_error_to_driver(
+            ray._private.utils.push_error_to_driver(
                 worker,
                 ray_constants.TASK_PUSH_ERROR,
                 str(failure_object),
@@ -595,7 +595,7 @@ cdef CRayStatus task_execution_handler(
                 traceback_str = traceback.format_exc() + (
                     "An unexpected internal error occurred while the worker "
                     "was executing a task.")
-                ray.utils.push_error_to_driver(
+                ray._private.utils.push_error_to_driver(
                     ray.worker.global_worker,
                     "worker_crash",
                     traceback_str,
@@ -661,7 +661,7 @@ cdef c_vector[c_string] spill_objects_handler(
                 "An unexpected internal error occurred while the IO worker "
                 "was spilling objects.")
             logger.exception(exception_str)
-            ray.utils.push_error_to_driver(
+            ray._private.utils.push_error_to_driver(
                 ray.worker.global_worker,
                 "spill_objects_error",
                 traceback.format_exc() + exception_str,
@@ -691,7 +691,7 @@ cdef int64_t restore_spilled_objects_handler(
                 "An unexpected internal error occurred while the IO worker "
                 "was restoring spilled objects.")
             logger.exception(exception_str)
-            ray.utils.push_error_to_driver(
+            ray._private.utils.push_error_to_driver(
                 ray.worker.global_worker,
                 "restore_spilled_objects_error",
                 traceback.format_exc() + exception_str,
@@ -732,7 +732,7 @@ cdef void delete_spilled_objects_handler(
                 "An unexpected internal error occurred while the IO worker "
                 "was deleting spilled objects.")
             logger.exception(exception_str)
-            ray.utils.push_error_to_driver(
+            ray._private.utils.push_error_to_driver(
                 ray.worker.global_worker,
                 "delete_spilled_objects_error",
                 traceback.format_exc() + exception_str,
@@ -1525,27 +1525,23 @@ cdef class CoreWorker:
         serialized_objects = []
         for i in range(len(outputs)):
             return_id, output = return_ids[i], outputs[i]
-            if isinstance(output, ray.actor.ActorHandle):
-                raise Exception("Returning an actor handle from a remote "
-                                "function is not allowed).")
-            else:
-                context = worker.get_serialization_context()
-                serialized_object = context.serialize(output)
-                data_sizes.push_back(serialized_object.total_bytes)
-                metadata = serialized_object.metadata
-                if ray.worker.global_worker.debugger_get_breakpoint:
-                    breakpoint = (
-                        ray.worker.global_worker.debugger_get_breakpoint)
-                    metadata += (
-                        b"," + ray_constants.OBJECT_METADATA_DEBUG_PREFIX +
-                        breakpoint.encode())
-                    # Reset debugging context of this worker.
-                    ray.worker.global_worker.debugger_get_breakpoint = b""
-                metadatas.push_back(string_to_buffer(metadata))
-                serialized_objects.append(serialized_object)
-                contained_ids.push_back(
-                    ObjectRefsToVector(serialized_object.contained_object_refs)
-                )
+            context = worker.get_serialization_context()
+            serialized_object = context.serialize(output)
+            data_sizes.push_back(serialized_object.total_bytes)
+            metadata = serialized_object.metadata
+            if ray.worker.global_worker.debugger_get_breakpoint:
+                breakpoint = (
+                    ray.worker.global_worker.debugger_get_breakpoint)
+                metadata += (
+                    b"," + ray_constants.OBJECT_METADATA_DEBUG_PREFIX +
+                    breakpoint.encode())
+                # Reset debugging context of this worker.
+                ray.worker.global_worker.debugger_get_breakpoint = b""
+            metadatas.push_back(string_to_buffer(metadata))
+            serialized_objects.append(serialized_object)
+            contained_ids.push_back(
+                ObjectRefsToVector(serialized_object.contained_object_refs)
+            )
 
         with nogil:
             check_status(CCoreWorkerProcess.GetCoreWorker()

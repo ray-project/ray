@@ -8,7 +8,6 @@ from zipfile import ZipFile
 from ray.job_config import JobConfig
 from enum import Enum
 from ray.experimental import internal_kv
-from ray.core.generated.common_pb2 import RuntimeEnv
 from typing import List, Tuple
 from types import ModuleType
 from urllib.parse import urlparse
@@ -275,16 +274,15 @@ def upload_runtime_env_package_if_needed(job_config: JobConfig) -> None:
         logger.info(f"{pkg_uri} has been pushed with {pkg_size} bytes")
 
 
-def ensure_runtime_env_setup(runtime_env: RuntimeEnv) -> None:
+def ensure_runtime_env_setup(pkg_uri: str) -> None:
     """Make sure all required packages are downloaded it local.
 
     Necessary packages required to run the job will be downloaded
     into local file system if it doesn't exist.
 
     Args:
-        runtime_env (RuntimeEnv): Runtime environment of the job
+        pkg_uri (str): Package of the working dir for the runtime env.
     """
-    pkg_uri = runtime_env.working_dir_uri
     if not pkg_uri:
         return
     pkg_file = Path(_get_local_path(pkg_uri))
@@ -294,8 +292,8 @@ def ensure_runtime_env_setup(runtime_env: RuntimeEnv) -> None:
     with lock:
         # TODO(yic): checksum calculation is required
         if pkg_file.exists():
-            logger.info(f"{pkg_uri} has existed locally, skip downloading")
+            logger.debug(f"{pkg_uri} has existed locally, skip downloading")
         else:
             pkg_size = fetch_package(pkg_uri, pkg_file)
-            logger.info(f"Downloaded {pkg_size} bytes into {pkg_file}")
+            logger.debug(f"Downloaded {pkg_size} bytes into {pkg_file}")
     sys.path.insert(0, str(pkg_file))

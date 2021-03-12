@@ -14,7 +14,7 @@ import ray.new_dashboard.modules.stats_collector.stats_collector_consts \
 import ray.new_dashboard.utils as dashboard_utils
 import ray.ray_constants as ray_constants
 from datetime import datetime, timedelta
-from ray.cluster_utils import Cluster
+from ray._private.cluster_utils import Cluster
 from ray.new_dashboard.tests.conftest import *  # noqa
 from ray.test_utils import (format_web_url, wait_until_server_available,
                             wait_for_condition,

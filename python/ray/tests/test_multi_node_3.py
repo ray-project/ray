@@ -258,7 +258,7 @@ ray.init(address="{}")
 @ray.remote
 def g(x):
     return
-g.remote(ray.ObjectRef(ray.utils.hex_to_binary("{}")))
+g.remote(ray.ObjectRef(ray._private.utils.hex_to_binary("{}")))
 time.sleep(1)
 print("success")
 """
@@ -282,7 +282,7 @@ import ray
 ray.init(address="{}")
 @ray.remote
 def g():
-    ray.wait(ray.ObjectRef(ray.utils.hex_to_binary("{}")))
+    ray.wait(ray.ObjectRef(ray._private.utils.hex_to_binary("{}")))
 g.remote()
 time.sleep(1)
 print("success")
