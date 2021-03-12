@@ -1525,27 +1525,23 @@ cdef class CoreWorker:
         serialized_objects = []
         for i in range(len(outputs)):
             return_id, output = return_ids[i], outputs[i]
-            if isinstance(output, ray.actor.ActorHandle):
-                raise Exception("Returning an actor handle from a remote "
-                                "function is not allowed).")
-            else:
-                context = worker.get_serialization_context()
-                serialized_object = context.serialize(output)
-                data_sizes.push_back(serialized_object.total_bytes)
-                metadata = serialized_object.metadata
-                if ray.worker.global_worker.debugger_get_breakpoint:
-                    breakpoint = (
-                        ray.worker.global_worker.debugger_get_breakpoint)
-                    metadata += (
-                        b"," + ray_constants.OBJECT_METADATA_DEBUG_PREFIX +
-                        breakpoint.encode())
-                    # Reset debugging context of this worker.
-                    ray.worker.global_worker.debugger_get_breakpoint = b""
-                metadatas.push_back(string_to_buffer(metadata))
-                serialized_objects.append(serialized_object)
-                contained_ids.push_back(
-                    ObjectRefsToVector(serialized_object.contained_object_refs)
-                )
+            context = worker.get_serialization_context()
+            serialized_object = context.serialize(output)
+            data_sizes.push_back(serialized_object.total_bytes)
+            metadata = serialized_object.metadata
+            if ray.worker.global_worker.debugger_get_breakpoint:
+                breakpoint = (
+                    ray.worker.global_worker.debugger_get_breakpoint)
+                metadata += (
+                    b"," + ray_constants.OBJECT_METADATA_DEBUG_PREFIX +
+                    breakpoint.encode())
+                # Reset debugging context of this worker.
+                ray.worker.global_worker.debugger_get_breakpoint = b""
+            metadatas.push_back(string_to_buffer(metadata))
+            serialized_objects.append(serialized_object)
+            contained_ids.push_back(
+                ObjectRefsToVector(serialized_object.contained_object_refs)
+            )
 
         with nogil:
             check_status(CCoreWorkerProcess.GetCoreWorker()
