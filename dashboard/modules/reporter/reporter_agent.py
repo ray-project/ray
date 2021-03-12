@@ -335,6 +335,7 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
 
             failed_nodes = len(
                 cluster_stats["autoscaler_report"]["failed_nodes"])
+            logger.info("~~~~~ failed nodes" + str(failed_nodes))
             cluster_failed_nodes_record = Record(
                 gauge=METRICS_GAUGES["cluster_failed_nodes"],
                 value=failed_nodes,
