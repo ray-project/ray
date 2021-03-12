@@ -10,8 +10,8 @@ parser.add_argument("--num-workers", type=int, default=0)
 parser.add_argument("--use-prev-action", action="store_true")
 parser.add_argument("--use-prev-reward", action="store_true")
 parser.add_argument("--stop-iters", type=int, default=9999)
-parser.add_argument("--stop-timesteps", type=int, default=100000)
-parser.add_argument("--stop-reward", type=float, default=150.0)
+parser.add_argument("--stop-timesteps", type=int, default=100000000)
+parser.add_argument("--stop-reward", type=float, default=1000.0)
 
 if __name__ == "__main__":
     import ray
