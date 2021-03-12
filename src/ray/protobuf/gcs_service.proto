@@ -520,7 +520,9 @@ message GetRequest {
 
 message GetReply {
   GcsStatus status = 1;
-  bytes value = 2;
+  oneof optional_value {
+    bytes value = 2;
+  }
 }
 
 message PutRequest {

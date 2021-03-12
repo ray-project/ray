@@ -1540,7 +1540,11 @@ Status ServiceBasedKVAccessor::AsyncGet(
       req,
       [callback](const Status &status,
                  const rpc::GetReply &reply) {
-        callback(status, reply.value());
+        if(reply.optional_value_case() == rpc::GetReply::kValue) {
+          callback(status, reply.value());
+        } else {
+          callback(status, boost::none);
+        }
       });
   return Status::OK();
 }
