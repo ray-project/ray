@@ -54,6 +54,14 @@ they were a normal function call:
         async def __call__(self, request):
             await self.my_batch_handler(request)
 
+.. note::
+    By default, Ray Serve performs *opportunistic batching*. This means that as
+    soon as the batch handler is called, the method will be executed without
+    waiting for a full batch. If there are more queries available after this call
+    finishes, a larger batch may be executed. This behavior can be tuned using the
+    ``batch_wait_timeout_s`` option to ``@serve.batch`` (defaults to 0). Increasing this
+    timeout may improve throughput at the cost of latency under low load.
+
 Let's define a backend that takes in a list of requests, extracts the input value,
 converts them into an array, and uses NumPy to add 1 to each element.
 
@@ -64,14 +72,6 @@ converts them into an array, and uses NumPy to add 1 to each element.
 Let's deploy it. Note that in the ``@serve.batch`` decorator, we are specifying
 specifying the maximum batch size via ``max_batch_size=4``. This option limits
 the maximum possible batch size that will be executed at once.
-
-.. note::
-    By default, Ray Serve performs *opportunistic batching*. This means that as
-    soon as the batch handler is called, the method will be executed without
-    waiting for a full batch. If there are more queries available after this call
-    finishes, a larger batch may be executed. This behavior can be tuned using the
-    ``batch_wait_timeout_s`` option to ``@serve.batch`` (defaults to 0). Increasing this
-    timeout may improve throughput at the cost of latency under low load.
 
 .. literalinclude:: ../../../../python/ray/serve/examples/doc/tutorial_batch.py
     :start-after: __doc_deploy_begin__
