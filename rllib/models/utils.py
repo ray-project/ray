@@ -72,8 +72,8 @@ def get_filter_config(shape):
     shape = list(shape)
     # VizdoomGym.
     filters_240x320x = [
-        [16, [12, 16], [9, 12]],
-        [32, [6, 6], 3],
+        [16, [12, 16], [7, 9]],
+        [32, [6, 6], 4],
         [256, [9, 9], 1],
     ]
     # Atari.
