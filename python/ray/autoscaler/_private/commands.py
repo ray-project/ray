@@ -870,7 +870,7 @@ def exec_cluster(config_file: str,
         config["cluster_name"] = override_cluster_name
     config = _bootstrap_config(config, no_config_cache=no_config_cache)
 
-    head_node = _get_head_node(
+    head_node = _get_running_head_node(
         config, config_file, override_cluster_name, create_if_needed=start)
 
     provider = _get_node_provider(config["provider"], config["cluster_name"])
@@ -1040,7 +1040,7 @@ def rsync(config_file: str,
             updater.sync_file_mounts(rsync)
 
     nodes = []
-    head_node = _get_head_node(
+    head_node = _get_running_head_node(
         config, config_file, override_cluster_name, create_if_needed=False)
     if ip_address:
         nodes = [
@@ -1064,7 +1064,8 @@ def get_head_node_ip(config_file: str,
         config["cluster_name"] = override_cluster_name
 
     provider = _get_node_provider(config["provider"], config["cluster_name"])
-    head_node = _get_head_node(config, config_file, override_cluster_name)
+    head_node = _get_running_head_node(config, config_file,
+                                       override_cluster_name)
     if config.get("provider", {}).get("use_internal_ips", False):
         head_node_ip = provider.internal_ip(head_node)
     else:
@@ -1104,10 +1105,11 @@ def _get_worker_nodes(config: Dict[str, Any],
     return provider.non_terminated_nodes({TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
 
 
-def _get_head_node(config: Dict[str, Any],
-                   printable_config_file: str,
-                   override_cluster_name: Optional[str],
-                   create_if_needed: bool = False) -> str:
+def _get_running_head_node(config: Dict[str, Any],
+                           printable_config_file: str,
+                           override_cluster_name: Optional[str],
+                           create_if_needed: bool = False) -> str:
+    """Get a valid, running head node"""
     provider = _get_node_provider(config["provider"], config["cluster_name"])
     head_node_tags = {
         TAG_RAY_NODE_KIND: NODE_KIND_HEAD,
@@ -1126,7 +1128,7 @@ def _get_head_node(config: Dict[str, Any],
             no_restart=False,
             yes=True,
             override_cluster_name=override_cluster_name)
-        return _get_head_node(
+        return _get_running_head_node(
             config,
             printable_config_file,
             override_cluster_name,
