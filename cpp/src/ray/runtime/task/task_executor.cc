@@ -39,7 +39,11 @@ Status TaskExecutor::ExecuteTask(
   std::string lib_name = typed_descriptor->LibName();
   std::string func_offset = typed_descriptor->FunctionOffset();
   std::string exec_func_offset = typed_descriptor->ExecFunctionOffset();
-  auto base_addr = FunctionHelper::GetInstance().GetBaseAddress(lib_name);
+  uintptr_t base_addr = 0;
+  if (func_offset.empty()) {
+    base_addr = FunctionHelper::GetInstance().GetBaseAddress(lib_name);
+  }
+
   std::shared_ptr<msgpack::sbuffer> data = nullptr;
   if (task_type == TaskType::ACTOR_CREATION_TASK) {
     typedef std::shared_ptr<msgpack::sbuffer> (*ExecFunction)(
@@ -59,13 +63,18 @@ Status TaskExecutor::ExecuteTask(
     data = (*exec_function)(base_addr, std::stoul(typed_descriptor->FunctionOffset()),
                             args_buffer, current_actor_);
   } else {  // NORMAL_TASK
-    if (ray::api::RayConfig::GetInstance()->use_ray_remote) {
+    if (func_offset.empty()) {
       auto lib = FunctionHelper::GetInstance().LoadDll(lib_name);
-      RAY_CHECK(lib);
-
+      if (lib == nullptr) {
+        RAY_LOG(WARNING) << "Load library " << lib_name << " failed.";
+        return ray::Status::NotFound(lib_name + " not found");
+      }
+      RAY_LOG(INFO) << "begin to execute function with ray remote";
       auto execute_func = boost::dll::import_alias<msgpack::sbuffer(
           const std::vector<std::shared_ptr<::ray::RayObject>> &)>(*lib, "CallInDll");
-      auto result = execute_func(std::vector<std::shared_ptr<::ray::RayObject>>{});
+      RAY_LOG(INFO) << "get function ok";
+      auto result = execute_func(args_buffer);
+      RAY_LOG(INFO) << "end execute function";
       data = std::make_shared<msgpack::sbuffer>(std::move(result));
     } else {
       typedef std::shared_ptr<msgpack::sbuffer> (*ExecFunction)(

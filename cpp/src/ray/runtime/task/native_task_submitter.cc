@@ -9,6 +9,12 @@ namespace ray {
 namespace api {
 
 RayFunction BuildRayFunction(InvocationSpec &invocation) {
+  if (ray::api::RayConfig::GetInstance()->use_ray_remote) {
+    auto function_descriptor =
+        FunctionDescriptorBuilder::BuildCpp(invocation.lib_name, "", "");
+    return RayFunction(Language::CPP, function_descriptor);
+  }
+
   auto base_addr =
       GetBaseAddressOfLibraryFromAddr((void *)invocation.fptr.function_pointer);
   auto func_offset = (size_t)(invocation.fptr.function_pointer - base_addr);

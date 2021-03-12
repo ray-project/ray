@@ -29,7 +29,7 @@ class TaskCaller {
 
  private:
   RayRuntime *runtime_;
-  RemoteFunctionPtrHolder ptr_;
+  RemoteFunctionPtrHolder ptr_{};
   std::string function_name_;
   std::vector<std::unique_ptr<::ray::TaskArg>> args_;
 };
