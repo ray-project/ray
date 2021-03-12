@@ -66,7 +66,7 @@ make your backend accept batches (especially for GPU-based ML inference). You mi
   a batch should be processed, even if it’s not full.  It should be set according 
   to `batch-wait-timeout + full batch processing time ~= expected latency`. The idea 
   here is to have the first query wait for the longest possible time to achieve high throughput.  
-  This means you should set batch-wait-timeout as large as possible without exceeding your desired expected latency in the equation above.
+  This means you should set ``batch_wait_timeout`` as large as possible without exceeding your desired expected latency in the equation above.
 
 Scaling HTTP servers
 ^^^^^^^^^^^^^^^^^^^^
