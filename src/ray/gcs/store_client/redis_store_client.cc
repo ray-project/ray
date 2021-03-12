@@ -222,9 +222,9 @@ Status RedisStoreClient::AsyncExists(
     const OptionalItemCallback<bool> &callback) {
   auto redis_callback = [callback](const std::shared_ptr<CallbackReply> &reply) {
     if(reply->ReadAsInteger() == 1) {
-      callback(reply->ReadAsStatus(), true);
+      callback(Status::OK(), true);
     } else {
-      callback(reply->ReadAsStatus(), false);
+      callback(Status::OK(), false);
     }
   };
   auto redis_key = GenRedisKey(table_name, key);

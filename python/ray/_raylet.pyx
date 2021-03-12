@@ -946,9 +946,14 @@ cdef class CoreWorker:
     def kv_get(self, c_string key):
         cdef:
             c_string value
+            c_bool exists = True
         with nogil:
-            check_status(CCoreWorkerProcess.GetCoreWorker().KVGet(key, value))
-        return value
+            status = CCoreWorkerProcess.GetCoreWorker().KVGet(key, value)
+            if status.IsNotFound():
+                exists = False
+            else:
+                check_status(status)
+        return value if exists else None
 
 
     def kv_exists(self, c_string key):

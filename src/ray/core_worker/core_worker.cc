@@ -1585,7 +1585,16 @@ Status CoreWorker::KVGet(const std::string& key, std::string& value) {
   std::promise<std::pair<Status, std::string>> ret_promise;
   gcs_client_->KV().AsyncGet(key, [&ret_promise](
       Status status, const boost::optional<std::string>& value) {
-    ret_promise.set_value(std::make_pair(status, value.value_or(std::string())));
+    if(!status.ok()) {
+      ret_promise.set_value(std::make_pair(status, ""));
+    } else {
+      if(value) {
+        ret_promise.set_value(std::make_pair(status, *value));
+      } else {
+        ret_promise.set_value(
+            std::make_pair(Status::NotFound("Failed to find the key."), ""));
+      }
+    }
   });
   auto ret = ret_promise.get_future().get();
   value = std::move(ret.second);
