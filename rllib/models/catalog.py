@@ -115,10 +115,10 @@ MODEL_DEFAULTS: ModelConfigDict = {
     "attention_position_wise_mlp_dim": 32,
     # The initial bias values for the 2 GRU gates within a transformer unit.
     "attention_init_gru_gate_bias": 2.0,
-    # TODO: Whether to feed a_{t-n:t-1} to GTrXL (one-hot encoded if discrete).
-    # "attention_use_n_prev_actions": 0,
+    # Whether to feed a_{t-n:t-1} to GTrXL (one-hot encoded if discrete).
+    "attention_use_n_prev_actions": 0,
     # Whether to feed r_{t-n:t-1} to GTrXL.
-    # "attention_use_n_prev_rewards": 0,
+    "attention_use_n_prev_rewards": 0,
 
     # == Atari ==
     # Which framestacking size to use for Atari envs.
