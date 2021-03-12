@@ -750,8 +750,14 @@ class AutoscalingTest(unittest.TestCase):
         assert SMALL_CLUSTER["docker"]["container_name"]
         config_path = self.write_config(SMALL_CLUSTER)
         self.provider = MockProvider(unique_ips=True)
-        self.provider.create_node({}, {TAG_RAY_NODE_KIND: "head"}, 1)
-        self.provider.create_node({}, {TAG_RAY_NODE_KIND: "worker"}, 10)
+        self.provider.create_node({}, {
+            TAG_RAY_NODE_KIND: "head",
+            TAG_RAY_NODE_STATUS: "up-to-date"
+        }, 1)
+        self.provider.create_node({}, {
+            TAG_RAY_NODE_KIND: "worker",
+            TAG_RAY_NODE_STATUS: "up-to-date"
+        }, 10)
         self.provider.finish_starting_nodes()
         ray.autoscaler.node_provider._get_node_provider = Mock(
             return_value=self.provider)
@@ -799,8 +805,14 @@ class AutoscalingTest(unittest.TestCase):
         cluster_cfg["docker"] = {}
         config_path = self.write_config(cluster_cfg)
         self.provider = MockProvider(unique_ips=True)
-        self.provider.create_node({}, {TAG_RAY_NODE_KIND: "head"}, 1)
-        self.provider.create_node({}, {TAG_RAY_NODE_KIND: "worker"}, 10)
+        self.provider.create_node({}, {
+            TAG_RAY_NODE_KIND: "head",
+            TAG_RAY_NODE_STATUS: "up-to-date"
+        }, 1)
+        self.provider.create_node({}, {
+            TAG_RAY_NODE_KIND: "worker",
+            TAG_RAY_NODE_STATUS: "up-to-date"
+        }, 10)
         self.provider.finish_starting_nodes()
         runner = MockProcessRunner()
         ray.autoscaler.node_provider._get_node_provider = Mock(
