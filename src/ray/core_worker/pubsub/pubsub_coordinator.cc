@@ -16,97 +16,140 @@
 
 namespace ray {
 
+void SubscriptionIndex::AddEntry(const ObjectID &object_id, const NodeID &subscriber_id) {
+  auto &subscribing_objects = subscribers_to_objects_[subscriber_id];
+  RAY_CHECK(subscribing_objects.emplace(object_id).second);
+  auto &subscriber_map = objects_to_subscribers_[object_id];
+  RAY_CHECK(subscriber_map.emplace(subscriber_id).second);
+}
+
+absl::flat_hash_set<NodeID> &SubscriptionIndex::GetSubscriberIdsByObjectId(
+    const ObjectID &object_id) {
+  RAY_CHECK(objects_to_subscribers_.count(object_id) > 0);
+  return objects_to_subscribers_[object_id];
+}
+
+int SubscriptionIndex::EraseSubscriber(const NodeID &subscriber_id) {
+  auto subscribing_objects_it = subscribers_to_objects_.find(subscriber_id);
+  if (subscribing_objects_it == subscribers_to_objects_.end()) {
+    return 0;
+  }
+
+  auto &subscribing_objects = subscribing_objects_it->second;
+  for (auto object_id_it = subscribing_objects.begin();
+       object_id_it != subscribing_objects.end();) {
+    auto current = object_id_it++;
+    const auto &object_id = *current;
+    // Erase the subscriber from the object map.
+    auto subscribers_it = objects_to_subscribers_.find(object_id);
+    if (subscribers_it == objects_to_subscribers_.end()) {
+      continue;
+    }
+    auto &subscribers = subscribers_it->second;
+    subscribers.erase(subscriber_id);
+    if (subscribers.size() == 0) {
+      objects_to_subscribers_.erase(subscribers_it);
+    }
+  }
+  subscribers_to_objects_.erase(subscribing_objects_it);
+  return 1;
+}
+
+int SubscriptionIndex::EraseEntry(const ObjectID &object_id,
+                                  const NodeID &subscriber_id) {
+  auto objects_it = subscribers_to_objects_.find(subscriber_id);
+  if (objects_it == subscribers_to_objects_.end()) {
+    return 0;
+  }
+
+  objects_it->second.erase(object_id);
+  auto subscribers_it = objects_to_subscribers_.find(object_id);
+  RAY_CHECK(subscribers_it != objects_to_subscribers_.end());
+  objects_to_subscribers_.erase(subscribers_it);
+  return 1;
+}
+
+bool Subscriber::Connect(LongPollConnectCallback &long_polling_reply_callback) {
+  if (!long_polling_reply_callback_) {
+    long_polling_reply_callback_ = long_polling_reply_callback;
+    return true;
+  }
+  return false;
+}
+
+void Subscriber::QueueMessage(const ObjectID &object_id) {
+  mailbox_.push_back(object_id);
+  PublishIfPossible();
+}
+
+bool Subscriber::PublishIfPossible() {
+  if (long_polling_reply_callback_ && mailbox_.size() > 0) {
+    long_polling_reply_callback_(mailbox_);
+    long_polling_reply_callback_ = nullptr;
+    mailbox_.clear();
+    return true;
+  }
+  return false;
+}
+
 void PubsubCoordinator::Connect(const NodeID &subscriber_node_id,
                                 LongPollConnectCallback long_poll_connect_callback) {
   RAY_LOG(DEBUG) << "Long polling connection is initiated by " << subscriber_node_id;
-  if (connection_pool_.count(subscriber_node_id) == 0) {
-    RAY_CHECK(
-        connection_pool_.emplace(subscriber_node_id, long_poll_connect_callback).second);
+  RAY_CHECK(long_poll_connect_callback != nullptr);
+
+  if (is_node_dead_(subscriber_node_id)) {
+    return;
   }
+
+  if (subscribers_.count(subscriber_node_id) == 0) {
+    subscribers_.emplace(subscriber_node_id, std::make_shared<Subscriber>());
+  }
+  auto subscriber = subscribers_[subscriber_node_id];
+
+  // Since the long polling connection is synchronous between the client and coordinator,
+  // when it connects, the connection shouldn't have existed.
+  RAY_CHECK(subscriber->Connect(long_poll_connect_callback));
+  subscriber->PublishIfPossible();
 }
 
-void PubsubCoordinator::RegisterSubscriber(const NodeID &subscriber_node_id,
-                                           const ObjectID &object_id) {
+void PubsubCoordinator::RegisterSubscription(const NodeID &subscriber_node_id,
+                                             const ObjectID &object_id) {
   RAY_LOG(DEBUG) << "object id " << object_id << " is subscribed by "
                  << subscriber_node_id;
-  auto &subscribers = objects_to_subscribers_[object_id];
-  subscribers.emplace(subscriber_node_id);
+  if (is_node_dead_(subscriber_node_id)) {
+    return;
+  }
+
+  if (subscribers_.count(subscriber_node_id) == 0) {
+    subscribers_.emplace(subscriber_node_id, std::make_shared<Subscriber>());
+  }
+  subscription_index_.AddEntry(object_id, subscriber_node_id);
 }
 
-void PubsubCoordinator::Publish(const ObjectID &object_id,
-                                bool publish_message_if_possible) {
-  objects_to_publish_.emplace(object_id);
-  if (publish_message_if_possible) {
-    PublishAllMessages();
+void PubsubCoordinator::Publish(const ObjectID &object_id) {
+  for (const auto &subscriber_id :
+       subscription_index_.GetSubscriberIdsByObjectId(object_id)) {
+    RAY_CHECK(subscribers_.count(subscriber_id) > 0);
+    auto subscriber = subscribers_[subscriber_id];
+    subscriber->QueueMessage(object_id);
   }
 }
 
-void PubsubCoordinator::PublishAllMessages() {
-  absl::flat_hash_map<NodeID, std::vector<ObjectID>> subscriber_to_objects_to_free;
-  // We are not iterating the loop if we are waiting for any connection.
-  // Without this, we will keep iterating the same loop if some of connections are not
-  // initialized yet. This can cause problems because core worker can own millions of
-  // objects with the object spilling.
-  bool waiting_for_connection = false;
-  for (auto it = objects_to_publish_.begin(); it != objects_to_publish_.end();) {
-    // First, get all subscribers ids of the object to free.
-    auto current_object_id_it = it++;
-    const auto &object_id = *current_object_id_it;
-    const auto &subscribers_it = objects_to_subscribers_.find(object_id);
-    RAY_CHECK(subscribers_it != objects_to_subscribers_.end());
-    absl::flat_hash_set<NodeID> &node_ids = subscribers_it->second;
-
-    // Choose which subscribers are going to be notified.
-    for (auto node_it = node_ids.begin(); node_it != node_ids.end();) {
-      auto current_node_it = node_it++;
-      const auto &node_id = *current_node_it;
-      if (is_node_dead_(node_id)) {
-        // If the subscriber node is dead, remove the connection.
-        connection_pool_.erase(node_id);
-        node_ids.erase(current_node_it);
-      } else if (connection_pool_.find(node_id) == connection_pool_.end()) {
-        ;  // If the connection is not initiated yet, do nothing.
-        waiting_for_connection = true;
-        break;
-      } else {
-        // Otherwise, update the objects to free so that it can reply to the subscribers.
-        RAY_LOG(DEBUG) << "object id " << object_id
-                       << " free information will be published to " << node_id;
-        auto &objects_to_free = subscriber_to_objects_to_free[node_id];
-        objects_to_free.push_back(object_id);
-        node_ids.erase(current_node_it);
-      }
-    }
-    if (waiting_for_connection) {
-      break;
-    }
-
-    // Clean up metadata.
-    if (node_ids.size() == 0) {
-      objects_to_publish_.erase(current_object_id_it);
-      objects_to_subscribers_.erase(subscribers_it);
-    } else {
-      current_object_id_it++;
-    }
+void PubsubCoordinator::UnregisterSubscriber(const NodeID &subscriber_node_id) {
+  subscription_index_.EraseSubscriber(subscriber_node_id);
+  // Publish messages before removing the entry. Otherwise, it can have memory leak.
+  auto it = subscribers_.find(subscriber_node_id);
+  if (it == subscribers_.end()) {
+    return;
   }
-
-  // Publish the result.
-  for (auto it : subscriber_to_objects_to_free) {
-    PublishObjects(it.first, it.second);
-  }
+  auto subscriber = subscribers_[subscriber_node_id];
+  subscriber->PublishIfPossible();
+  subscribers_.erase(it);
 }
 
-void PubsubCoordinator::PublishObjects(const NodeID node_id,
-                                       std::vector<ObjectID> &object_ids) {
-  // We don't care if the node is dead or not here. If the node is dead, the reply will
-  // just fail.
-  const auto &connection_it = connection_pool_.find(node_id);
-  RAY_CHECK(connection_it != connection_pool_.end());
-  const auto &long_poll_connect_callback = connection_it->second;
-  long_poll_connect_callback(object_ids);
-  // We always erase the connection after publishing entries. The client should reinitiate
-  // the connection if needed.
-  connection_pool_.erase(connection_it);
+void PubsubCoordinator::UnregisterSubscription(const NodeID &subscriber_node_id,
+                                               const ObjectID &object_id) {
+  subscription_index_.EraseEntry(object_id, subscriber_node_id);
 }
 
 }  // namespace ray

@@ -775,6 +775,7 @@ void CoreWorker::RunIOService() {
 void CoreWorker::OnNodeRemoved(const NodeID &node_id) {
   RAY_LOG(INFO) << "Node failure " << node_id;
   const auto lost_objects = reference_counter_->ResetObjectsOnRemovedNode(node_id);
+  pubsub_coordinator_->UnregisterSubscriber(node_id);
   // Delete the objects from the in-memory store to indicate that they are not
   // available. The object recovery manager will guarantee that a new value
   // will eventually be stored for the objects (either an
@@ -2318,10 +2319,13 @@ void CoreWorker::HandleWaitForObjectEviction(
     return;
   }
 
+  const auto subscriber_node_id =
+      NodeID::FromBinary(request.subscriber_address().raylet_id());
   // Send a response to trigger unpinning the object when it is no longer in scope.
-  auto respond = [this](const ObjectID &object_id) {
+  auto respond = [this, subscriber_node_id](const ObjectID &object_id) {
     RAY_LOG(DEBUG) << "Publish object info: " << object_id;
     pubsub_coordinator_->Publish(object_id);
+    pubsub_coordinator_->UnregisterSubscription(subscriber_node_id, object_id);
   };
 
   ObjectID object_id = ObjectID::FromBinary(request.object_id());
@@ -2334,8 +2338,7 @@ void CoreWorker::HandleWaitForObjectEviction(
     send_reply_callback(Status::NotFound("Object ID reference already gone."), nullptr,
                         nullptr);
   } else {
-    pubsub_coordinator_->RegisterSubscriber(
-        NodeID::FromBinary(request.subscriber_address().raylet_id()), object_id);
+    pubsub_coordinator_->RegisterSubscription(subscriber_node_id, object_id);
     send_reply_callback(Status::OK(), nullptr, nullptr);
   }
 }

@@ -39,6 +39,10 @@ class PubsubCoordinatorTest : public ::testing::Test {
   std::shared_ptr<PubsubCoordinator> pubsub_coordinator_;
 };
 
+TEST_F(PubsubCoordinatorTest, TestSubscriptionIndex) {}
+
+TEST_F(PubsubCoordinatorTest, TestSubscriber) {}
+
 TEST_F(PubsubCoordinatorTest, TestBasicSingleSubscriber) {
   std::vector<ObjectID> batched_ids;
   auto long_polling_connect = [&batched_ids](std::vector<ObjectID> &object_ids) {
@@ -48,13 +52,23 @@ TEST_F(PubsubCoordinatorTest, TestBasicSingleSubscriber) {
 
   const auto subscriber_node_id = NodeID::FromRandom();
   const auto oid = ObjectID::FromRandom();
-  // Connect
+
   pubsub_coordinator_->Connect(subscriber_node_id, long_polling_connect);
-  // Register
-  pubsub_coordinator_->RegisterSubscriber(subscriber_node_id, oid);
+  pubsub_coordinator_->RegisterSubscription(subscriber_node_id, oid);
   pubsub_coordinator_->Publish(oid);
+  RAY_LOG(ERROR) << "abc";
   ASSERT_EQ(batched_ids[0], oid);
 }
+
+// No connection after registration.
+// Multi object subscription from a single node.
+// Single object subscription from multi nodes.
+// Multi object subscription from multi nodes.
+// Node failure from multi nodes.
+// Node failure when connection initiated.
+// Node failure when not connected.
+// Unregistration an entry.
+// Unregistration a subscriber.
 
 }  // namespace ray
 

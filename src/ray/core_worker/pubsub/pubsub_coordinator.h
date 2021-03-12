@@ -24,6 +24,36 @@ namespace ray {
 
 using LongPollConnectCallback = std::function<void(std::vector<ObjectID> &)>;
 
+class SubscriptionIndex {
+ public:
+  explicit SubscriptionIndex() {}
+  ~SubscriptionIndex() = default;
+
+  void AddEntry(const ObjectID &object_id, const NodeID &subscriber_id);
+  absl::flat_hash_set<NodeID> &GetSubscriberIdsByObjectId(const ObjectID &object_id);
+  int EraseSubscriber(const NodeID &subscriber_id);
+  int EraseEntry(const ObjectID &object_id, const NodeID &subscriber_id);
+
+ private:
+  absl::flat_hash_map<ObjectID, absl::flat_hash_set<NodeID>> objects_to_subscribers_;
+  // Reverse index of objects_to_subscribers_.
+  absl::flat_hash_map<NodeID, absl::flat_hash_set<ObjectID>> subscribers_to_objects_;
+};
+
+class Subscriber {
+ public:
+  explicit Subscriber() {}
+  ~Subscriber() = default;
+
+  bool Connect(LongPollConnectCallback &long_polling_reply_callback);
+  void QueueMessage(const ObjectID &object_id);
+  bool PublishIfPossible();
+
+ private:
+  LongPollConnectCallback long_polling_reply_callback_ = nullptr;
+  std::vector<ObjectID> mailbox_;
+};
+
 class PubsubCoordinator {
  public:
   explicit PubsubCoordinator(std::function<bool(const NodeID &)> is_node_dead)
@@ -31,27 +61,27 @@ class PubsubCoordinator {
   ~PubsubCoordinator() = default;
 
   // TODO(sang): Currently, we need to pass the callback for connection because we are
-  // using long polling internally. This should be changed once the Grpc streaming is
-  // supported.
+  // using long polling internally. This should be changed once the bidirectional grpc
+  // streaming is supported.
   void Connect(const NodeID &subscriber_node_id,
                LongPollConnectCallback long_poll_connect_callback);
-  void RegisterSubscriber(const NodeID &subscriber_node_id, const ObjectID &object_id);
-  void Publish(const ObjectID &object_id, bool publish_message_if_possible = true);
-
- protected:
-  void PublishAllMessages();
+  void RegisterSubscription(const NodeID &subscriber_node_id, const ObjectID &object_id);
+  void Publish(const ObjectID &object_id);
+  void UnregisterSubscriber(const NodeID &subscriber_node_id);
+  void UnregisterSubscription(const NodeID &subscriber_node_id,
+                              const ObjectID &object_id);
 
  private:
-  void PublishObjects(const NodeID node_id, std::vector<ObjectID> &object_ids);
+  ///
+  /// Private attributes
+  ///
 
   /// Protects below fields.
   mutable absl::Mutex mu_;
   std::function<bool(const NodeID &)> is_node_dead_;
 
-  absl::flat_hash_map<NodeID, LongPollConnectCallback> connection_pool_;
-  /// Object ID -> subscriber IDs.
-  absl::flat_hash_map<ObjectID, absl::flat_hash_set<NodeID>> objects_to_subscribers_;
-  absl::flat_hash_set<ObjectID> objects_to_publish_;
+  absl::flat_hash_map<NodeID, std::shared_ptr<Subscriber>> subscribers_;
+  SubscriptionIndex subscription_index_;
 };
 
 }  // namespace ray
