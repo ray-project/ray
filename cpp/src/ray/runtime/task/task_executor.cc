@@ -69,12 +69,12 @@ Status TaskExecutor::ExecuteTask(
         RAY_LOG(WARNING) << "Load library " << lib_name << " failed.";
         return ray::Status::NotFound(lib_name + " not found");
       }
-      RAY_LOG(INFO) << "begin to execute function with ray remote";
+      RAY_LOG(DEBUG) << "Begin to get execute function with ray remote";
       auto execute_func = boost::dll::import_alias<msgpack::sbuffer(
           const std::vector<std::shared_ptr<::ray::RayObject>> &)>(*lib, "CallInDll");
-      RAY_LOG(INFO) << "get function ok";
+      RAY_LOG(DEBUG) << "Get execute function ok";
       auto result = execute_func(args_buffer);
-      RAY_LOG(INFO) << "end execute function";
+      RAY_LOG(DEBUG) << "Execute function ok";
       data = std::make_shared<msgpack::sbuffer>(std::move(result));
     } else {
       typedef std::shared_ptr<msgpack::sbuffer> (*ExecFunction)(
