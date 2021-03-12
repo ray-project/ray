@@ -9,7 +9,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--train-iterations", type=int, default=10)
 
 
-def trainable(config):
+def experiment(config):
     iterations = config.pop("train-iterations")
     train_agent = ppo.PPOTrainer(config=config, env="CartPole-v0")
     checkpoint = None
@@ -51,6 +51,6 @@ if __name__ == "__main__":
     config["env"] = "CartPole-v0"
 
     tune.run(
-        trainable,
+        experiment,
         config=config,
         resources_per_trial=ppo.PPOTrainer.default_resource_request(config))
