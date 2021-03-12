@@ -119,8 +119,8 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
         super().__init__(dashboard_agent)
         if IN_KUBERNETES_POD:
             # psutil does not compute this correctly when in a K8s pod.
-            # Use ray.utils instead.
-            cpu_count = ray.utils.get_num_cpus()
+            # Use ray._private.utils instead.
+            cpu_count = ray._private.utils.get_num_cpus()
             self._cpu_counts = (cpu_count, cpu_count)
         else:
             self._cpu_counts = (psutil.cpu_count(),

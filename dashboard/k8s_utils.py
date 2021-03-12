@@ -1,6 +1,6 @@
 import logging
 
-import ray.utils
+import ray._private.utils
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +47,8 @@ def cpu_percent():
                 (system_usage - last_system_usage) / _host_num_cpus())
 
             quotient = cpu_delta / system_delta
-            cpu_percent = round(quotient * 100 / ray.utils.get_k8s_cpus(), 1)
+            cpu_percent = round(
+                quotient * 100 / ray._private.utils.get_k8s_cpus(), 1)
         last_system_usage = system_usage
         last_cpu_usage = cpu_usage
         # Computed percentage might be slightly above 100%.

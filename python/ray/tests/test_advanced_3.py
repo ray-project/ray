@@ -16,6 +16,7 @@ import ray
 from ray.new_dashboard import k8s_utils
 import ray.ray_constants as ray_constants
 import ray.util.accelerators
+import ray._private.utils
 import ray._private.cluster_utils
 import ray.test_utils
 from ray import resource_spec
@@ -643,7 +644,7 @@ def test_detect_docker_cpus():
     sys.platform.startswith("win"), reason="No need to test on Windows.")
 def test_k8s_cpu():
     """Test all the functions in dashboard/k8s_utils.py.
-    Also test ray.utils.get_num_cpus when running in a container in K8s.
+    Also test ray._private.utils.get_num_cpus when running in a  K8s pod.
     Files were obtained from within a K8s pod with 2 CPU request, CPU limit
     unset, with 1 CPU of stress applied.
     """
@@ -701,17 +702,17 @@ def test_k8s_cpu():
     proc_stat_file.write(PROCSTAT1)
     for file in shares_file, cpu_file, proc_stat_file:
         file.flush()
-    with mock.patch("ray.utils.os.environ",
+    with mock.patch("ray._private.utils.os.environ",
                     {"KUBERNETES_SERVICE_HOST"}),\
             mock.patch("ray.new_dashboard.k8s_utils.CPU_USAGE_PATH",
                        cpu_file.name),\
             mock.patch("ray.new_dashboard.k8s_utils.PROC_STAT_PATH",
                        proc_stat_file.name),\
-            mock.patch("ray.utils.get_k8s_cpus.__defaults__",
+            mock.patch("ray._private.utils.get_k8s_cpus.__defaults__",
                        (shares_file.name,)):
 
         # Test helpers
-        assert ray.utils.get_num_cpus() == 2
+        assert ray._private.utils.get_num_cpus() == 2
         assert k8s_utils._cpu_usage() == 2268980984108
         assert k8s_utils._system_usage() == 1551775030000000
         assert k8s_utils._host_num_cpus() == 8
