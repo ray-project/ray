@@ -34,8 +34,14 @@ parser.add_argument(
     type=str,
     default="3DBall",
     choices=[
-        "3DBall", "3DBallHard", "GridFoodCollector", "Pyramids",
-        "SoccerStrikersVsGoalie", "Sorter", "Tennis", "VisualHallway",
+        "3DBall",
+        "3DBallHard",
+        "GridFoodCollector",
+        "Pyramids",
+        "SoccerStrikersVsGoalie",
+        "Sorter",
+        "Tennis",
+        "VisualHallway",
         "Walker",
     ],
     help="The name of the Env to run in the Unity3D editor: `3DBall(Hard)?|"
@@ -68,7 +74,7 @@ parser.add_argument(
 parser.add_argument("--torch", action="store_true")
 
 if __name__ == "__main__":
-    ray.init(local_mode=True)#TODO
+    ray.init()
 
     args = parser.parse_args()
 
@@ -142,9 +148,7 @@ if __name__ == "__main__":
                              [256, [10, 10], 1]],
         }
     elif args.env == "Sorter":
-        config["model"] = {
-            "use_attention": True,
-        }
+        config["model"]["use_attention"] = True
 
     stop = {
         "training_iteration": args.stop_iters,

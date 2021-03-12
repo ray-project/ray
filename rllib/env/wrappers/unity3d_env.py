@@ -259,7 +259,10 @@ class Unity3DEnv(MultiAgentEnv):
             ]),
             # Sorter.
             "Sorter": TupleSpace([
-                Box(float("-inf"), float("inf"), (20, 23, )),
+                Box(float("-inf"), float("inf"), (
+                    20,
+                    23,
+                )),
                 Box(float("-inf"), float("inf"), (10, )),
                 Box(float("-inf"), float("inf"), (8, )),
             ]),
