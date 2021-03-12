@@ -136,8 +136,8 @@ cc_test(
     ],
     copts = COPTS,
     data = [
-        "ray_remote_cluster_test.so",
         "ray_cpp_pkg",
+        "ray_remote_cluster_test.so",
     ],
     linkstatic = True,
     deps = [
