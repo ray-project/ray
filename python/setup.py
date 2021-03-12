@@ -95,14 +95,8 @@ ray_files += [
 # also update the matching section of requirements/requirements.txt
 # in this directory
 extras = {
-    "serve": [
-        "uvicorn", "flask", "requests", "pydantic<1.7",
-        "starlette"
-    ],
-    "tune": [
-        "pandas", "tabulate",
-        "tensorboardX"
-    ],
+    "serve": ["uvicorn", "flask", "requests", "pydantic<1.7", "starlette"],
+    "tune": ["pandas", "tabulate", "tensorboardX"],
     "k8s": ["kubernetes"]
 }
 
