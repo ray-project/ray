@@ -247,7 +247,7 @@ def test_get_conda_env_dir(tmp_path):
     from pathlib import Path
     """
     Typical output of `conda env list`, for context:
-    
+
     base                 /Users/scaly/anaconda3
     my_env_1             /Users/scaly/anaconda3/envs/my_env_1
 
