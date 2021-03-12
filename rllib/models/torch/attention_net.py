@@ -23,6 +23,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.torch_ops import one_hot
 from ray.rllib.utils.typing import ModelConfigDict, TensorType, List
 
 torch, nn = try_import_torch()
@@ -250,6 +251,9 @@ class AttentionWrapper(TorchModelV2, nn.Module):
         nn.Module.__init__(self)
         super().__init__(obs_space, action_space, None, model_config, name)
 
+        self.use_n_prev_actions = model_config["attention_use_n_prev_actions"]
+        self.use_n_prev_rewards = model_config["attention_use_n_prev_rewards"]
+
         if isinstance(action_space, Discrete):
             self.action_dim = action_space.n
         elif isinstance(action_space, MultiDiscrete):
@@ -258,6 +262,12 @@ class AttentionWrapper(TorchModelV2, nn.Module):
             self.action_dim = int(np.product(action_space.shape))
         else:
             self.action_dim = int(len(action_space))
+
+        # Add prev-action/reward nodes to input to LSTM.
+        if self.use_n_prev_actions:
+            self.num_outputs += self.use_n_prev_actions * self.action_dim
+        if self.use_n_prev_rewards:
+            self.num_outputs += self.use_n_prev_rewards
 
         cfg = model_config
 
@@ -310,6 +320,19 @@ class AttentionWrapper(TorchModelV2, nn.Module):
         self.view_requirements = self.gtrxl.view_requirements
         self.view_requirements["obs"].space = self.obs_space
 
+        # Add prev-a/r to this model's view, if required.
+        if self.use_n_prev_actions:
+            self.view_requirements[SampleBatch.PREV_ACTIONS] = \
+                ViewRequirement(
+                    SampleBatch.ACTIONS,
+                    space=self.action_space,
+                    shift="-{}:-1".format(self.use_n_prev_actions))
+        if self.use_n_prev_rewards:
+            self.view_requirements[SampleBatch.PREV_REWARDS] = \
+                ViewRequirement(
+                    SampleBatch.REWARDS,
+                    shift="-{}:-1".format(self.use_n_prev_rewards))
+
     @override(RecurrentNetwork)
     def forward(self, input_dict: Dict[str, TensorType],
                 state: List[TensorType],
@@ -317,6 +340,37 @@ class AttentionWrapper(TorchModelV2, nn.Module):
         assert seq_lens is not None
         # Push obs through "unwrapped" net's `forward()` first.
         wrapped_out, _ = self._wrapped_forward(input_dict, [], None)
+
+        # Concat. prev-action/reward if required.
+        prev_a_r = []
+        if self.use_n_prev_actions:
+            if isinstance(self.action_space, Discrete):
+                for i in range(self.use_n_prev_actions):
+                    prev_a_r.append(
+                        one_hot(
+                            input_dict[SampleBatch.PREV_ACTIONS][:, i].float(),
+                            self.action_space))
+            elif isinstance(self.action_space, MultiDiscrete):
+                for i in range(
+                        self.use_n_prev_actions,
+                        step=self.action_space.shape[0]):
+                    prev_a_r.append(
+                        one_hot(
+                            input_dict[SampleBatch.PREV_ACTIONS]
+                            [:, i:i + self.action_space.shape[0]].float(),
+                            self.action_space))
+            else:
+                prev_a_r.append(
+                    torch.reshape(
+                        input_dict[SampleBatch.PREV_ACTIONS].float(),
+                        [-1, self.use_n_prev_actions * self.action_dim]))
+        if self.use_n_prev_rewards:
+            prev_a_r.append(
+                torch.reshape(input_dict[SampleBatch.PREV_REWARDS].float(),
+                              [-1, self.use_n_prev_rewards]))
+
+        if prev_a_r:
+            wrapped_out = torch.cat([wrapped_out] + prev_a_r, dim=1)
 
         # Then through our GTrXL.
         input_dict["obs_flat"] = input_dict["obs"] = wrapped_out

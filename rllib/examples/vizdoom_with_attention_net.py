@@ -6,9 +6,23 @@ parser.add_argument("--run", type=str, default="PPO")
 parser.add_argument("--num-cpus", type=int, default=0)
 parser.add_argument(
     "--framework", choices=["tf2", "tf", "tfe", "torch"], default="tf")
+parser.add_argument(
+    "--from-checkpoint",
+    type=str,
+    default=None,
+    help="Full path to a checkpoint file for restoring a previously saved "
+    "Trainer state.")
 parser.add_argument("--num-workers", type=int, default=0)
-parser.add_argument("--use-prev-action", action="store_true")
-parser.add_argument("--use-prev-reward", action="store_true")
+parser.add_argument(
+    "--use-n-prev-actions",
+    type=int,
+    default=0,
+    help="How many of the previous actions to use as attention input.")
+parser.add_argument(
+    "--use-n-prev-rewards",
+    type=int,
+    default=0,
+    help="How many of the previous rewards to use as attention input.")
 parser.add_argument("--stop-iters", type=int, default=9999)
 parser.add_argument("--stop-timesteps", type=int, default=100000000)
 parser.add_argument("--stop-reward", type=float, default=1000.0)
@@ -34,6 +48,8 @@ if __name__ == "__main__":
             "attention_memory_inference": 100,
             "attention_memory_training": 50,
             "vf_share_layers": True,
+            "attention_use_n_prev_actions": args.use_n_prev_actions,
+            "attention_use_n_prev_rewards": args.use_n_prev_rewards,
         },
         "framework": args.framework,
         # Run with tracing enabled for tfe/tf2.
@@ -48,6 +64,14 @@ if __name__ == "__main__":
         "episode_reward_mean": args.stop_reward,
     }
 
-    results = tune.run(args.run, config=config, stop=stop, verbose=2)
+    results = tune.run(
+        args.run,
+        config=config,
+        stop=stop,
+        verbose=2,
+        checkpoint_freq=5,
+        checkpoint_at_end=True,
+        restore=args.from_checkpoint,
+    )
     print(results)
     ray.shutdown()
