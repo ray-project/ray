@@ -467,5 +467,27 @@ class ServiceBasedPlacementGroupInfoAccessor : public PlacementGroupInfoAccessor
   ServiceBasedGcsClient *client_impl_;
 };
 
+class ServiceBasedKVAccessor : public KVAccessor {
+ public:
+  explicit ServiceBasedKVAccessor(ServiceBasedGcsClient *client_impl);
+  ~ServiceBasedKVAccessor() override = default;
+
+  Status AsyncGet(
+      const std::string& key,
+      const OptionalItemCallback<std::string>& callback) override;
+  Status AsyncPut(
+      const std::string& key,
+      const std::string& value,
+      const StatusCallback &callback) override;
+  Status AsyncExists(
+      const std::string& key,
+      const OptionalItemCallback<bool>& callback) override;
+  Status AsyncDel(
+      const std::string& key,
+      const StatusCallback &callback) override;
+ private:
+  ServiceBasedGcsClient *client_impl_;
+};
+
 }  // namespace gcs
 }  // namespace ray

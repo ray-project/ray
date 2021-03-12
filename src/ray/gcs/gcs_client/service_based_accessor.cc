@@ -1527,5 +1527,68 @@ Status ServiceBasedPlacementGroupInfoAccessor::AsyncWaitUntilReady(
   return Status::OK();
 }
 
+ServiceBasedKVAccessor::ServiceBasedKVAccessor(ServiceBasedGcsClient *client_impl)
+    : client_impl_(client_impl) {
+}
+
+Status ServiceBasedKVAccessor::AsyncGet(
+      const std::string& key,
+      const OptionalItemCallback<std::string>& callback) {
+  rpc::GetRequest req;
+  req.set_key(key);
+  client_impl_->GetGcsRpcClient().Get(
+      req,
+      [callback](const Status &status,
+                 const rpc::GetReply &reply) {
+        callback(status, reply.value());
+      });
+  return Status::OK();
+}
+
+Status ServiceBasedKVAccessor::AsyncPut(
+    const std::string& key,
+    const std::string& value,
+    const StatusCallback &callback) {
+  rpc::PutRequest req;
+  req.set_key(key);
+  req.set_value(value);
+  client_impl_->GetGcsRpcClient().Put(
+      req,
+      [callback](const Status &status,
+                 const rpc::PutReply &reply) {
+        callback(status);
+      });
+  return Status::OK();
+}
+
+Status ServiceBasedKVAccessor::AsyncExists(
+    const std::string& key,
+    const OptionalItemCallback<bool>& callback) {
+  rpc::ExistsRequest req;
+  req.set_key(key);
+  client_impl_->GetGcsRpcClient().Exists(
+      req,
+      [callback](const Status &status,
+                 const rpc::ExistsReply &reply) {
+        callback(status, reply.exists());
+      });
+  return Status::OK();
+}
+
+Status ServiceBasedKVAccessor::AsyncDel(
+    const std::string& key,
+    const StatusCallback &callback) {
+  rpc::DelRequest req;
+  req.set_key(key);
+  client_impl_->GetGcsRpcClient().Del(
+      req,
+      [callback](const Status &status,
+                 const rpc::DelReply &reply) {
+        callback(status);
+      });
+  return Status::OK();
+}
+
+
 }  // namespace gcs
 }  // namespace ray

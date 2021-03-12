@@ -383,6 +383,34 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   void SetCallerCreationTimestamp();
 
+  /// API for GCS based KeyValue store
+  /// Put request to put a pair of <key, value> into the store
+  ///
+  /// \param[in] key The key of the pair
+  /// \param[in] value The data will be stored
+  /// \return Status
+  Status KVPut(const std::string& key, const std::string& value);
+
+  /// Get request to get the value of a key in the store.
+  ///
+  /// \param[in] key The key to fetch
+  /// \param[out] value The data of the key. It will not be set if it doesn't exist
+  /// \return Status
+  Status KVGet(const std::string& key, std::string& value);
+
+  /// Delete the key in the store
+  ///
+  /// \param[in] key The key to delete
+  /// \return Status
+  Status KVDel(const std::string& key);
+
+  /// Check the existence of a key
+  ///
+  /// \param[in] key The key to check
+  /// \param[out] exist Existence of the key.
+  /// \return Status
+  Status KVExists(const std::string& key, bool& exist);
+
   /// Increase the reference count for this object ID.
   /// Increase the local reference count for this object ID. Should be called
   /// by the language frontend when a new reference is created.

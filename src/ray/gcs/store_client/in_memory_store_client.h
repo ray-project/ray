@@ -32,6 +32,9 @@ class InMemoryStoreClient : public StoreClient {
   explicit InMemoryStoreClient(instrumented_io_context &main_io_service)
       : main_io_service_(main_io_service) {}
 
+  Status AsyncExists(const std::string &table_name, const std::string &key,
+                             const OptionalItemCallback<bool> &callback) override;
+
   Status AsyncPut(const std::string &table_name, const std::string &key,
                   const std::string &data, const StatusCallback &callback) override;
 
