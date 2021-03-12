@@ -27,7 +27,7 @@ FILE_SIZE_LIMIT = 50 * 1024 * 1024  # 50MB
 
 
 class RuntimeEnvDict:
-    """Parses and validates runtime env dictionary from the user.
+    """Parses and validates the runtime env dictionary from the user.
 
     Attributes:
         working_dir (Path): Specifies the working directory of the worker.
