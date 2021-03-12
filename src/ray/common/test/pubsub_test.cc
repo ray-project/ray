@@ -30,10 +30,9 @@ namespace ray {
 //   ClientConnectionTest()
 //       : io_service_(), in_(io_service_), out_(io_service_), error_message_type_(1) {
 // #if defined(BOOST_ASIO_HAS_LOCAL_SOCKETS)
-//     boost::asio::local::stream_protocol::socket input(io_service_), output(io_service_);
-//     boost::asio::local::connect_pair(input, output);
-//     in_ = std::move(input);
-//     out_ = std::move(output);
+//     boost::asio::local::stream_protocol::socket input(io_service_),
+//     output(io_service_); boost::asio::local::connect_pair(input, output); in_ =
+//     std::move(input); out_ = std::move(output);
 // #else
 //     // Choose a free port.
 //     auto endpoint = ParseUrlEndpoint("tcp://127.0.0.1:65437");
@@ -44,14 +43,15 @@ namespace ray {
 // #endif
 //   }
 
-//   ray::Status WriteBadMessage(std::shared_ptr<ray::ClientConnection> conn, int64_t type,
+//   ray::Status WriteBadMessage(std::shared_ptr<ray::ClientConnection> conn, int64_t
+//   type,
 //                               int64_t length, const uint8_t *message) {
 //     std::vector<boost::asio::const_buffer> message_buffers;
 //     auto write_cookie = 123456;  // incorrect version.
-//     message_buffers.push_back(boost::asio::buffer(&write_cookie, sizeof(write_cookie)));
-//     message_buffers.push_back(boost::asio::buffer(&type, sizeof(type)));
-//     message_buffers.push_back(boost::asio::buffer(&length, sizeof(length)));
-//     message_buffers.push_back(boost::asio::buffer(message, length));
+//     message_buffers.push_back(boost::asio::buffer(&write_cookie,
+//     sizeof(write_cookie))); message_buffers.push_back(boost::asio::buffer(&type,
+//     sizeof(type))); message_buffers.push_back(boost::asio::buffer(&length,
+//     sizeof(length))); message_buffers.push_back(boost::asio::buffer(message, length));
 //     return conn->WriteBuffer(message_buffers);
 //   }
 
@@ -70,15 +70,18 @@ namespace ray {
 
 //   MessageHandler message_handler =
 //       [&arr, &num_messages](std::shared_ptr<ClientConnection> client,
-//                             int64_t message_type, const std::vector<uint8_t> &message) {
+//                             int64_t message_type, const std::vector<uint8_t> &message)
+//                             {
 //         ASSERT_TRUE(!std::memcmp(arr, message.data(), 5));
 //         num_messages += 1;
 //       };
 
-//   auto conn1 = ClientConnection::Create(client_handler, message_handler, std::move(in_),
+//   auto conn1 = ClientConnection::Create(client_handler, message_handler,
+//   std::move(in_),
 //                                         "conn1", {}, error_message_type_);
 
-//   auto conn2 = ClientConnection::Create(client_handler, message_handler, std::move(out_),
+//   auto conn2 = ClientConnection::Create(client_handler, message_handler,
+//   std::move(out_),
 //                                         "conn2", {}, error_message_type_);
 
 //   RAY_CHECK_OK(conn1->WriteMessage(0, 5, arr));
@@ -218,15 +221,18 @@ namespace ray {
 
 //   MessageHandler message_handler =
 //       [&arr, &num_messages](std::shared_ptr<ClientConnection> client,
-//                             int64_t message_type, const std::vector<uint8_t> &message) {
+//                             int64_t message_type, const std::vector<uint8_t> &message)
+//                             {
 //         ASSERT_TRUE(!std::memcmp(arr, message.data(), 5));
 //         num_messages += 1;
 //       };
 
-//   auto writer = ClientConnection::Create(client_handler, message_handler, std::move(in_),
+//   auto writer = ClientConnection::Create(client_handler, message_handler,
+//   std::move(in_),
 //                                          "writer", {}, error_message_type_);
 
-//   auto reader = ClientConnection::Create(client_handler, message_handler, std::move(out_),
+//   auto reader = ClientConnection::Create(client_handler, message_handler,
+//   std::move(out_),
 //                                          "reader", {}, error_message_type_);
 
 //   // If client ID is set, bad message would crash the test.
