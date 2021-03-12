@@ -27,15 +27,18 @@ using LongPollConnectCallback = std::function<void(std::vector<ObjectID> &)>;
 class PubsubCoordinator {
  public:
   explicit PubsubCoordinator(std::function<bool(const NodeID &)> is_node_dead)
-    : is_node_dead_(is_node_dead) {}
+      : is_node_dead_(is_node_dead) {}
   ~PubsubCoordinator() = default;
 
-  // TODO(sang): Currently, we need to pass the callback for connection because we are using long polling internally. This should be changed once the Grpc streaming is supported.
-  void Connect(const NodeID &subscriber_node_id, LongPollConnectCallback long_poll_connect_callback);
+  // TODO(sang): Currently, we need to pass the callback for connection because we are
+  // using long polling internally. This should be changed once the Grpc streaming is
+  // supported.
+  void Connect(const NodeID &subscriber_node_id,
+               LongPollConnectCallback long_poll_connect_callback);
   void RegisterSubscriber(const NodeID &subscriber_node_id, const ObjectID &object_id);
   void Publish(const ObjectID &object_id, bool publish_message_if_possible = true);
 
-protected:
+ protected:
   void PublishAllMessages();
 
  private:
@@ -51,4 +54,4 @@ protected:
   absl::flat_hash_set<ObjectID> objects_to_publish_;
 };
 
-} // namespace ray
+}  // namespace ray

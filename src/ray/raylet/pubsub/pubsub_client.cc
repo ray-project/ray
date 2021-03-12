@@ -14,23 +14,26 @@
 
 namespace ray {
 
-// bool PubsubClient::ConnectIfNeeded(const Channel &channel, const EmptyCallback &connect_callback) {
+// bool PubsubClient::ConnectIfNeeded(const Channel &channel, const EmptyCallback
+// &connect_callback) {
 //   // Needs asio
 //   // If no connection yet:
 //   //     Create a long polling connection.
 //   //     Callback:
 //   //         if status == false: release all objects subscribed.
-//   //         Reply contains a list of objects. Obtain subscription callbacks and call the callback with -> post.
-//   //         If disconnect = false: re-create a connection. 
+//   //         Reply contains a list of objects. Obtain subscription callbacks and call
+//   the callback with -> post.
+//   //         If disconnect = false: re-create a connection.
 //   //     connections.emplace(worker_id);
 // }
 
-// void PubsubClient::Subscribe(const Channel &channel, const ObjectID &object_id, const ObjectIdSubscriptionCallback &subscription_callback, const StatusCallback &callback) {
+// void PubsubClient::Subscribe(const Channel &channel, const ObjectID &object_id, const
+// ObjectIdSubscriptionCallback &subscription_callback, const StatusCallback &callback) {
 //   // Needs asio
 //   // Send a RPC to the core worker with channel & object id.
-//   // Callback: 
+//   // Callback:
 //   //     If status not okay, do nothing.
 //   // channel_id -> object_id -> subscription_callback
 // }
 
-} // namespace ray
+}  // namespace ray

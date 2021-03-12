@@ -21,19 +21,19 @@
 namespace ray {
 
 using EmptyCallback = std::function<void()>;
-using ObjectIdSubscriptionCallback = std::function<void(const ObjectID &)>
-using StatusCallback = std::function<void(const Status &)>
+using ObjectIdSubscriptionCallback =
+    std::function<void(const ObjectID &)> using StatusCallback =
+        std::function<void(const Status &)>
 
-enum class ChannelName : uint32_t {
-  OBJECT_EVICTION = 0
-  // TODO(sang): Add the object directory channel.
-};
+    enum class ChannelName : uint32_t {
+      OBJECT_EVICTION = 0
+      // TODO(sang): Add the object directory channel.
+    };
 
 // TODO(sang): Add a mechanism for ordering if needed.
 struct Channel {
   Channel(const ChannelName &channel_name, const rpc::Address address)
-    : channel_name_(channel_name),
-      address_(address) {}
+      : channel_name_(channel_name), address_(address) {}
 
   const ChannelName channel_name_;
   const rpc::Address address_;
@@ -43,7 +43,8 @@ struct Channel {
 //  public:
 //   bool ConnectIfNeeded(const Channel &channel, const EmptyCallback &connect_callback);
 //   // Subscribe
-//   void Subscribe(const Channel &channel, const ObjectID &object_id, const ObjectIdSubscriptionCallback &subscription_callback, const StatusCallback &callback);
+//   void Subscribe(const Channel &channel, const ObjectID &object_id, const
+//   ObjectIdSubscriptionCallback &subscription_callback, const StatusCallback &callback);
 // };
 
-} // namespace ray
+}  // namespace ray

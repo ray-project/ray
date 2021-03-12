@@ -29,17 +29,13 @@ class PubsubCoordinatorTest : public ::testing::Test {
 
   void SetUp() {
     dead_nodes_.clear();
-    pubsub_coordinator_ = std::shared_ptr<PubsubCoordinator>(
-      new PubsubCoordinator([this](const NodeID &node_id) {
-        return dead_nodes_.count(node_id) == 1;
-      }));
+    pubsub_coordinator_ = std::shared_ptr<PubsubCoordinator>(new PubsubCoordinator(
+        [this](const NodeID &node_id) { return dead_nodes_.count(node_id) == 1; }));
   }
 
-  void RegisterDeadNode(const NodeID &node_id) {
-    dead_nodes_.emplace(node_id);
-  }
+  void RegisterDeadNode(const NodeID &node_id) { dead_nodes_.emplace(node_id); }
 
-  std::unordered_set<NodeID> dead_nodes_; 
+  std::unordered_set<NodeID> dead_nodes_;
   std::shared_ptr<PubsubCoordinator> pubsub_coordinator_;
 };
 

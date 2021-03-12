@@ -16,20 +16,25 @@
 
 namespace ray {
 
-void PubsubCoordinator::Connect(const NodeID &subscriber_node_id, LongPollConnectCallback long_poll_connect_callback) {
+void PubsubCoordinator::Connect(const NodeID &subscriber_node_id,
+                                LongPollConnectCallback long_poll_connect_callback) {
   RAY_LOG(DEBUG) << "Long polling connection is initiated by " << subscriber_node_id;
   if (connection_pool_.count(subscriber_node_id) == 0) {
-    RAY_CHECK(connection_pool_.emplace(subscriber_node_id, long_poll_connect_callback).second);
+    RAY_CHECK(
+        connection_pool_.emplace(subscriber_node_id, long_poll_connect_callback).second);
   }
 }
 
-void PubsubCoordinator::RegisterSubscriber(const NodeID &subscriber_node_id, const ObjectID &object_id) {
-  RAY_LOG(DEBUG) << "object id " << object_id << " is subscribed by " << subscriber_node_id;
+void PubsubCoordinator::RegisterSubscriber(const NodeID &subscriber_node_id,
+                                           const ObjectID &object_id) {
+  RAY_LOG(DEBUG) << "object id " << object_id << " is subscribed by "
+                 << subscriber_node_id;
   auto &subscribers = objects_to_subscribers_[object_id];
   subscribers.emplace(subscriber_node_id);
 }
 
-void PubsubCoordinator::Publish(const ObjectID &object_id, bool publish_message_if_possible) {
+void PubsubCoordinator::Publish(const ObjectID &object_id,
+                                bool publish_message_if_possible) {
   objects_to_publish_.emplace(object_id);
   if (publish_message_if_possible) {
     PublishAllMessages();
@@ -39,8 +44,9 @@ void PubsubCoordinator::Publish(const ObjectID &object_id, bool publish_message_
 void PubsubCoordinator::PublishAllMessages() {
   absl::flat_hash_map<NodeID, std::vector<ObjectID>> subscriber_to_objects_to_free;
   // We are not iterating the loop if we are waiting for any connection.
-  // Without this, we will keep iterating the same loop if some of connections are not initialized yet.
-  // This can cause problems because core worker can own millions of objects with the object spilling.
+  // Without this, we will keep iterating the same loop if some of connections are not
+  // initialized yet. This can cause problems because core worker can own millions of
+  // objects with the object spilling.
   bool waiting_for_connection = false;
   for (auto it = objects_to_publish_.begin(); it != objects_to_publish_.end();) {
     // First, get all subscribers ids of the object to free.
@@ -59,12 +65,13 @@ void PubsubCoordinator::PublishAllMessages() {
         connection_pool_.erase(node_id);
         node_ids.erase(current_node_it);
       } else if (connection_pool_.find(node_id) == connection_pool_.end()) {
-;        // If the connection is not initiated yet, do nothing.
+        ;  // If the connection is not initiated yet, do nothing.
         waiting_for_connection = true;
         break;
       } else {
         // Otherwise, update the objects to free so that it can reply to the subscribers.
-        RAY_LOG(DEBUG) << "object id " << object_id << " free information will be published to " << node_id;
+        RAY_LOG(DEBUG) << "object id " << object_id
+                       << " free information will be published to " << node_id;
         auto &objects_to_free = subscriber_to_objects_to_free[node_id];
         objects_to_free.push_back(object_id);
         node_ids.erase(current_node_it);
@@ -89,14 +96,17 @@ void PubsubCoordinator::PublishAllMessages() {
   }
 }
 
-void PubsubCoordinator::PublishObjects(const NodeID node_id, std::vector<ObjectID> &object_ids) {
-  // We don't care if the node is dead or not here. If the node is dead, the reply will just fail.
+void PubsubCoordinator::PublishObjects(const NodeID node_id,
+                                       std::vector<ObjectID> &object_ids) {
+  // We don't care if the node is dead or not here. If the node is dead, the reply will
+  // just fail.
   const auto &connection_it = connection_pool_.find(node_id);
-  RAY_CHECK(connection_it != connection_pool_.end()); 
+  RAY_CHECK(connection_it != connection_pool_.end());
   const auto &long_poll_connect_callback = connection_it->second;
   long_poll_connect_callback(object_ids);
-  // We always erase the connection after publishing entries. The client should reinitiate the connection if needed.
+  // We always erase the connection after publishing entries. The client should reinitiate
+  // the connection if needed.
   connection_pool_.erase(connection_it);
 }
 
-} // namespace ray
+}  // namespace ray
