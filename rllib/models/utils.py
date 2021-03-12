@@ -70,18 +70,29 @@ def get_filter_config(shape):
             inside a model config dict.
     """
     shape = list(shape)
+    # VizdoomGym.
+    filters_240x320x = [
+        [16, [12, 16], [7, 9]],
+        [32, [6, 6], 4],
+        [256, [9, 9], 1],
+    ]
+    # Atari.
     filters_84x84 = [
         [16, [8, 8], 4],
         [32, [4, 4], 2],
         [256, [11, 11], 1],
     ]
+    # Small (1/2) Atari.
     filters_42x42 = [
         [16, [4, 4], 2],
         [32, [4, 4], 2],
         [256, [11, 11], 1],
     ]
-    if len(shape) in [2, 3] and (shape[:2] == [84, 84]
-                                 or shape[1:] == [84, 84]):
+    if len(shape) in [2, 3] and (shape[:2] == [240, 320]
+                                 or shape[1:] == [240, 320]):
+        return filters_240x320x
+    elif len(shape) in [2, 3] and (shape[:2] == [84, 84]
+                                   or shape[1:] == [84, 84]):
         return filters_84x84
     elif len(shape) in [2, 3] and (shape[:2] == [42, 42]
                                    or shape[1:] == [42, 42]):
