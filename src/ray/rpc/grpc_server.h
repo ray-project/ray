@@ -33,7 +33,7 @@ namespace rpc {
                                 HANDLER##Reply>(                                \
           service_, &SERVICE::AsyncService::Request##HANDLER, service_handler_, \
           &SERVICE##Handler::Handle##HANDLER, cq, main_service_,                \
-          #SERVICE "." #HANDLER));                                              \
+          #SERVICE ".grpc_server." #HANDLER));                                        \
   server_call_factories->emplace_back(std::move(HANDLER##_call_factory));
 
 // Define a void RPC client method.
