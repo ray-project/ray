@@ -197,10 +197,10 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CRayStatus TriggerGlobalGC()
         c_string MemoryUsageString()
 
-        CRayStatus KVPut(const c_string& key, const c_string& value);
-        CRayStatus KVGet(const c_string& key, c_string& value);
-        CRayStatus KVDel(const c_string& key);
-        CRayStatus KVExists(const c_string& key, c_bool& exist);
+        CRayStatus KVPut(const c_string& key, const c_string& value)
+        CRayStatus KVGet(const c_string& key, c_string& value)
+        CRayStatus KVDel(const c_string& key)
+        CRayStatus KVExists(const c_string& key, c_bool& exist)
 
         CWorkerContext &GetWorkerContext()
         void YieldCurrentFiber(CFiberEvent &coroutine_done)

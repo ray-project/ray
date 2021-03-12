@@ -775,10 +775,14 @@ class PlacementGroupInfoAccessor {
 class KVAccessor {
  public:
   virtual ~KVAccessor() = default;
-  virtual Status AsyncGet(const std::string& key, const OptionalItemCallback<std::string>& callback) = 0;
-  virtual Status AsyncPut(const std::string& key, const std::string& value, const StatusCallback &callback) = 0;
-  virtual Status AsyncExists(const std::string& key, const OptionalItemCallback<bool>& callback) = 0;
-  virtual Status AsyncDel(const std::string& key, const StatusCallback &callback) = 0;
+  virtual Status AsyncGet(const std::string &key,
+                          const OptionalItemCallback<std::string> &callback) = 0;
+  virtual Status AsyncPut(const std::string &key, const std::string &value,
+                          const StatusCallback &callback) = 0;
+  virtual Status AsyncExists(const std::string &key,
+                             const OptionalItemCallback<bool> &callback) = 0;
+  virtual Status AsyncDel(const std::string &key, const StatusCallback &callback) = 0;
+
  protected:
   KVAccessor() = default;
 };

@@ -52,8 +52,7 @@ namespace rpc {
 #define PLACEMENT_GROUP_INFO_SERVICE_RPC_HANDLER(HANDLER) \
   RPC_SERVICE_HANDLER(PlacementGroupInfoGcsService, HANDLER)
 
-#define KV_SERVICE_RPC_HANDLER(HANDLER) \
-  RPC_SERVICE_HANDLER(KVGcsService, HANDLER)
+#define KV_SERVICE_RPC_HANDLER(HANDLER) RPC_SERVICE_HANDLER(KVGcsService, HANDLER)
 
 #define GCS_RPC_SEND_REPLY(send_reply_callback, reply, status) \
   reply->mutable_status()->set_code((int)status.code());       \
@@ -541,7 +540,7 @@ class PlacementGroupInfoGrpcService : public GrpcService {
   /// \param[in] handler The service handler that actually handle the requests.
   explicit PlacementGroupInfoGrpcService(instrumented_io_context &io_service,
                                          PlacementGroupInfoGcsServiceHandler &handler)
-      : GrpcService(io_service), service_handler_(handler){}
+      : GrpcService(io_service), service_handler_(handler) {}
 
  protected:
   grpc::Service &GetGrpcService() override { return service_; }
@@ -564,24 +563,19 @@ class PlacementGroupInfoGrpcService : public GrpcService {
   PlacementGroupInfoGcsServiceHandler &service_handler_;
 };
 
-
 class KVGcsServiceHandler {
  public:
   virtual ~KVGcsServiceHandler() = default;
-  virtual void HandleGet(const GetRequest &request,
-                         GetReply *reply,
+  virtual void HandleGet(const GetRequest &request, GetReply *reply,
                          SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandlePut(const PutRequest &request,
-                         PutReply *reply,
+  virtual void HandlePut(const PutRequest &request, PutReply *reply,
                          SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleDel(const DelRequest &request,
-                         DelReply *reply,
+  virtual void HandleDel(const DelRequest &request, DelReply *reply,
                          SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleExists(const ExistsRequest &request,
-                            ExistsReply *reply,
+  virtual void HandleExists(const ExistsRequest &request, ExistsReply *reply,
                             SendReplyCallback send_reply_callback) = 0;
 };
 
@@ -589,8 +583,8 @@ class KVGrpcService : public GrpcService {
  public:
   explicit KVGrpcService(instrumented_io_context &io_service,
                          KVGcsServiceHandler &handler)
-      : GrpcService(io_service),
-        service_handler_(handler) {}
+      : GrpcService(io_service), service_handler_(handler) {}
+
  protected:
   grpc::Service &GetGrpcService() override { return service_; }
   void InitServerCallFactories(

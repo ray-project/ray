@@ -955,14 +955,13 @@ cdef class CoreWorker:
                 check_status(status)
         return value if exists else None
 
-
     def kv_exists(self, c_string key):
         cdef:
             c_bool exist
         with nogil:
-            check_status(CCoreWorkerProcess.GetCoreWorker().KVExists(key, exist))
+            check_status(
+                CCoreWorkerProcess.GetCoreWorker().KVExists(key, exist))
         return exist
-
 
     def get_if_local(self, object_refs):
         """Get objects from local plasma store directly

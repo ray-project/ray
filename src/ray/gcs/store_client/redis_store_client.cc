@@ -217,11 +217,11 @@ Status RedisStoreClient::DoPut(const std::string &key, const std::string &data,
   return shard_context->RunArgvAsync(args, write_callback);
 }
 
-Status RedisStoreClient::AsyncExists(
-    const std::string &table_name, const std::string &key,
-    const OptionalItemCallback<bool> &callback) {
+Status RedisStoreClient::AsyncExists(const std::string &table_name,
+                                     const std::string &key,
+                                     const OptionalItemCallback<bool> &callback) {
   auto redis_callback = [callback](const std::shared_ptr<CallbackReply> &reply) {
-    if(reply->ReadAsInteger() == 1) {
+    if (reply->ReadAsInteger() == 1) {
       callback(Status::OK(), true);
     } else {
       callback(Status::OK(), false);

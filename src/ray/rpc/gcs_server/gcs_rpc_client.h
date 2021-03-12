@@ -115,8 +115,8 @@ class GcsRpcClient {
         std::unique_ptr<GrpcClient<PlacementGroupInfoGcsService>>(
             new GrpcClient<PlacementGroupInfoGcsService>(address, port,
                                                          client_call_manager));
-    kv_grpc_client_ = std::make_unique<GrpcClient<KVGcsService>>(
-        address, port, client_call_manager);
+    kv_grpc_client_ =
+        std::make_unique<GrpcClient<KVGcsService>>(address, port, client_call_manager);
   }
 
   /// Add job info to gcs server.

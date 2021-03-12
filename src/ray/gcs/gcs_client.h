@@ -152,9 +152,7 @@ class GcsClient : public std::enable_shared_from_this<GcsClient> {
 
   /// Get the sub-interface for accessing worker information in GCS.
   /// This function is thread safe.
-  KVAccessor &KV() {
-    return *kv_accessor_;
-  }
+  KVAccessor &KV() { return *kv_accessor_; }
 
  protected:
   /// Constructor of GcsClient.

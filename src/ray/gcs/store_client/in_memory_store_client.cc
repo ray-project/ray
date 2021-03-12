@@ -18,12 +18,14 @@ namespace ray {
 
 namespace gcs {
 
-Status InMemoryStoreClient::AsyncExists(const std::string &table_name, const std::string &key,
+Status InMemoryStoreClient::AsyncExists(const std::string &table_name,
+                                        const std::string &key,
                                         const OptionalItemCallback<bool> &callback) {
   auto table = GetOrCreateTable(table_name);
   absl::MutexLock lock(&(table->mutex_));
   bool exists = table->records_.count(key);
-  main_io_service_.post([callback, exists]() { callback(Status::OK(), exists); }, "GcsInMemoryStore.Exists");
+  main_io_service_.post([callback, exists]() { callback(Status::OK(), exists); },
+                        "GcsInMemoryStore.Exists");
   return Status::OK();
 }
 
