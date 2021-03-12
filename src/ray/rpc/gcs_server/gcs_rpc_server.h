@@ -98,7 +98,7 @@ class JobInfoGrpcService : public GrpcService {
     JOB_INFO_SERVICE_RPC_HANDLER(AddJob);
     JOB_INFO_SERVICE_RPC_HANDLER(MarkJobFinished);
     JOB_INFO_SERVICE_RPC_HANDLER(GetAllJobInfo);
-    JOB_INFO_SERVICE_RPC_HANDLER(HandleReportJobError);
+    JOB_INFO_SERVICE_RPC_HANDLER(ReportJobError);
   }
 
  private:
