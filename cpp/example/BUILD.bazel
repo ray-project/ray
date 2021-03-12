@@ -29,7 +29,6 @@ cc_binary(
         "*.cc",
     ]),
     copts = COPTS,
-    linkopts = ["-shared"],
     linkstatic = True,
     deps = [
         "//cpp:ray_api",
