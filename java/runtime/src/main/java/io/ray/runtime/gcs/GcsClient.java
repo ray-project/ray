@@ -10,13 +10,11 @@ import io.ray.api.placementgroup.PlacementGroup;
 import io.ray.api.runtimecontext.NodeInfo;
 import io.ray.runtime.generated.Gcs;
 import io.ray.runtime.generated.Gcs.GcsNodeInfo;
-import io.ray.runtime.generated.Gcs.TablePrefix;
 import io.ray.runtime.placementgroup.PlacementGroupUtils;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import org.apache.commons.lang3.ArrayUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -132,8 +130,6 @@ public class GcsClient {
   }
 
   public boolean wasCurrentActorRestarted(ActorId actorId) {
-    byte[] key = ArrayUtils.addAll(TablePrefix.ACTOR.toString().getBytes(), actorId.getBytes());
-
     // TODO(ZhuSenlin): Get the actor table data from CoreWorker later.
     byte[] value = globalStateAccessor.getActorInfo(actorId);
     if (value == null) {
