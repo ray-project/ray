@@ -1,14 +1,14 @@
 # yapf: disable
 # __doc_import_begin__
-import ray
-from ray import serve
-
 from typing import List, Union
 import time
 
 import numpy as np
 import requests
 import starlette
+
+import ray
+from ray import serve
 # __doc_import_end__
 # yapf: enable
 
