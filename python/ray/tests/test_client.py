@@ -28,9 +28,12 @@ def test_client_thread_safe(call_ray_stop_only):
             return "ok"
 
         class Blocker(threading.Thread):
+            def __init__(self):
+                threading.Thread.__init__(self)
+                self.daemon = True
+
             def run(self):
                 ray.get(block.remote())
-                _thread.interrupt_main()
 
         b = Blocker()
         b.start()
