@@ -198,7 +198,8 @@ NodeManager::NodeManager(boost::asio::io_service &io_service, const NodeID &self
       client_call_manager_(io_service),
       worker_rpc_pool_(client_call_manager_),
       local_object_manager_(
-          self_node_id_, RayConfig::instance().free_objects_batch_size(),
+          self_node_id_, config.node_manager_address, config.node_manager_port,
+          RayConfig::instance().free_objects_batch_size(),
           RayConfig::instance().free_objects_period_milliseconds(), worker_pool_,
           gcs_client_->Objects(), worker_rpc_pool_,
           /* automatic_object_deletion_enabled */

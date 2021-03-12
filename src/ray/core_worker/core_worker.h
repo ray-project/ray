@@ -26,6 +26,7 @@
 #include "ray/core_worker/lease_policy.h"
 #include "ray/core_worker/object_recovery_manager.h"
 #include "ray/core_worker/profiling.h"
+#include "ray/core_worker/pubsub/pubsub_coordinator.h"
 #include "ray/core_worker/reference_count.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/store_provider/plasma_store_provider.h"
@@ -867,6 +868,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                                    rpc::WaitForObjectEvictionReply *reply,
                                    rpc::SendReplyCallback send_reply_callback) override;
 
+  // Implements gRPC server handler.
+  void HandlePubsubLongPolling(const rpc::PubsubLongPollingRequest &request,
+                               rpc::PubsubLongPollingReply *reply,
+                               rpc::SendReplyCallback send_reply_callback) override;
+
   /// Implements gRPC server handler.
   void HandleWaitForRefRemoved(const rpc::WaitForRefRemovedRequest &request,
                                rpc::WaitForRefRemovedReply *reply,
@@ -1188,6 +1194,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   // Interface to submit tasks directly to other actors.
   std::shared_ptr<CoreWorkerDirectActorTaskSubmitter> direct_actor_submitter_;
+
+  // SANG-TODO Description.
+  std::shared_ptr<PubsubCoordinator> pubsub_coordinator_;
 
   // Interface to submit non-actor tasks directly to leased workers.
   std::unique_ptr<CoreWorkerDirectTaskSubmitter> direct_task_submitter_;

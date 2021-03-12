@@ -16,8 +16,6 @@
 
 #include <google/protobuf/repeated_field.h>
 
-#include <boost/property_tree/json_parser.hpp>
-#include <boost/property_tree/ptree.hpp>
 #include <functional>
 
 #include "ray/common/id.h"
@@ -38,8 +36,9 @@ namespace raylet {
 class LocalObjectManager {
  public:
   LocalObjectManager(
-      const NodeID &node_id, size_t free_objects_batch_size,
-      int64_t free_objects_period_ms, IOWorkerPoolInterface &io_worker_pool,
+      const NodeID &node_id, std::string self_node_address, int self_node_port,
+      size_t free_objects_batch_size, int64_t free_objects_period_ms,
+      IOWorkerPoolInterface &io_worker_pool,
       gcs::ObjectInfoAccessor &object_info_accessor,
       rpc::CoreWorkerClientPool &owner_client_pool,
       bool automatic_object_deletion_enabled, int max_io_workers,
@@ -49,6 +48,8 @@ class LocalObjectManager {
       std::function<void(const ObjectID &, const std::string &, const NodeID &)>
           restore_object_from_remote_node)
       : self_node_id_(node_id),
+        self_node_address_(self_node_address),
+        self_node_port_(self_node_port),
         free_objects_period_ms_(free_objects_period_ms),
         free_objects_batch_size_(free_objects_batch_size),
         io_worker_pool_(io_worker_pool),
@@ -152,6 +153,19 @@ class LocalObjectManager {
               TestSpillObjectsOfSizeNumBytesToSpillHigherThanMinBytesToSpill);
   FRIEND_TEST(LocalObjectManagerTest, TestSpillObjectNotEvictable);
 
+  // SANG-TODO Add description
+  // TODO(sang): Use a channel abstraction instead of owner address once OBOD uses the
+  // pubsub.
+  struct SubscriptionInfo {
+    SubscriptionInfo(const rpc::Address &pubsub_server_address)
+        : pubsub_server_address_(pubsub_server_address) {}
+
+    const rpc::Address pubsub_server_address_;
+    // Object ID -> subscription_callback
+    absl::flat_hash_map<const ObjectID, std::function<void(const ObjectID &)>>
+        subscription_callback_map_;
+  };
+
   /// Asynchronously spill objects when space is needed.
   /// The callback tries to spill objects as much as num_bytes_to_spill and returns
   /// true if we could spill the corresponding bytes.
@@ -187,7 +201,20 @@ class LocalObjectManager {
   /// \param urls_to_delete List of urls to delete from external storages.
   void DeleteSpilledObjects(std::vector<std::string> &urls_to_delete);
 
+  // SANG-TODO Fill up the description.
+  void SubcribeObjectFree(const rpc::Address &owner_address, const ObjectID &object_id);
+
+  // SANG-TODO Fill up the description
+  void UnsubscribeObjectsFree(const rpc::Address &owner_address,
+                              const std::vector<ObjectID> &object_ids);
+
+  // SANG-TODO Fill up the description.
+  void MakeLongPollingPubsubConnection(const rpc::Address &owner_address,
+                                       const rpc::Address &subscriber_address);
+
   const NodeID self_node_id_;
+  const std::string self_node_address_;
+  const int self_node_port_;
 
   /// The period between attempts to eagerly evict objects from plasma.
   const int64_t free_objects_period_ms_;
@@ -287,6 +314,10 @@ class LocalObjectManager {
   /// If it is not (meaning it is distributed backend), it always restores objects
   /// directly from the external storage.
   bool is_external_storage_type_fs_;
+
+  // SANG-TODO Add description.
+  // TODO(sang): Use a channel instead of the pubsub server address.
+  absl::flat_hash_map<WorkerID, SubscriptionInfo> subscription_map_;
 
   ///
   /// Stats

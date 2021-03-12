@@ -142,6 +142,11 @@ class CoreWorkerClientInterface {
       const WaitForObjectEvictionRequest &request,
       const ClientCallback<WaitForObjectEvictionReply> &callback) {}
 
+  // SANG-TODO
+  virtual void PubsubLongPolling(const PubsubLongPollingRequest &request,
+                                 const ClientCallback<PubsubLongPollingReply> &callback) {
+  }
+
   virtual void AddObjectLocationOwner(
       const AddObjectLocationOwnerRequest &request,
       const ClientCallback<AddObjectLocationOwnerReply> &callback) {}
@@ -232,6 +237,8 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
                          override)
 
   VOID_RPC_CLIENT_METHOD(CoreWorkerService, WaitForObjectEviction, grpc_client_, override)
+
+  VOID_RPC_CLIENT_METHOD(CoreWorkerService, PubsubLongPolling, grpc_client_, override)
 
   VOID_RPC_CLIENT_METHOD(CoreWorkerService, AddObjectLocationOwner, grpc_client_,
                          override)

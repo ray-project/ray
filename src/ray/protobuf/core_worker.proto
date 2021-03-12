@@ -172,9 +172,21 @@ message WaitForObjectEvictionRequest {
   bytes intended_worker_id = 1;
   // ObjectID of the pinned object.
   bytes object_id = 2;
+  // Address of the subscriber.
+  Address subscriber_address = 3;
 }
 
 message WaitForObjectEvictionReply {
+}
+
+// SANG-TODO
+message PubsubLongPollingRequest {
+  Address subscriber_address = 1;
+}
+
+// SANG-TODO
+message PubsubLongPollingReply {
+  repeated bytes object_ids = 1;
 }
 
 message AddObjectLocationOwnerRequest {
@@ -401,6 +413,9 @@ service CoreWorkerService {
   // to this message indicates that the raylet should unpin the object.
   rpc WaitForObjectEviction(WaitForObjectEvictionRequest)
       returns (WaitForObjectEvictionReply);
+  // SANG-TODO
+  rpc PubsubLongPolling(PubsubLongPollingRequest)
+      returns (PubsubLongPollingReply);
   // Add object location to the ownership-based object directory.
   rpc AddObjectLocationOwner(AddObjectLocationOwnerRequest)
       returns (AddObjectLocationOwnerReply);

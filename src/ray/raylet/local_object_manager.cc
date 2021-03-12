@@ -41,33 +41,121 @@ void LocalObjectManager::PinObjects(const std::vector<ObjectID> &object_ids,
 void LocalObjectManager::WaitForObjectFree(const rpc::Address &owner_address,
                                            const std::vector<ObjectID> &object_ids) {
   for (const auto &object_id : object_ids) {
-    // SANG-TODO
-    // consumer should call object_info_consumer->ConnectIfNeeded(owner_address, connect_callback)
-    // auto callback = [this](ObjectId &object_id) {
-    //   if (!status.ok()) {...}
-    //   ReleaseFreedObject(object_id);
-    //   object_info_consumer->Unsubscribe()
-    // }
-    // object_info_consumer->Subscribe(object_id, callback);
-
-    // Send a long-running RPC request to the owner for each object. When we get a
-    // response or the RPC fails (due to the owner crashing), unpin the object.
-    // TODO(edoakes): we should be batching these requests instead of sending one per
-    // pinned object.
-    rpc::WaitForObjectEvictionRequest wait_request;
-    wait_request.set_object_id(object_id.Binary());
-    wait_request.set_intended_worker_id(owner_address.worker_id());
-    // TODO-SANG Subscribe instead.
-    auto owner_client = owner_client_pool_.GetOrConnect(owner_address);
-    owner_client->WaitForObjectEviction(
-        wait_request,
-        [this, object_id](Status status, const rpc::WaitForObjectEvictionReply &reply) {
-          if (!status.ok()) {
-            RAY_LOG(DEBUG) << "Worker failed. Unpinning object " << object_id;
-          }
-          ReleaseFreedObject(object_id);
-        });
+    SubcribeObjectFree(owner_address, object_id);
   }
+}
+
+void LocalObjectManager::SubcribeObjectFree(const rpc::Address &owner_address,
+                                            const ObjectID &object_id) {
+  // Send a long-running RPC request to the owner for each object. When we get a
+  // response or the RPC fails (due to the owner crashing), unpin the object.
+  // Each owner will have a single long polling connection that returns a list of object
+  // ids.
+  rpc::Address subscriber_address;
+  subscriber_address.set_raylet_id(self_node_id_.Binary());
+  subscriber_address.set_ip_address(self_node_address_);
+  subscriber_address.set_port(self_node_port_);
+  // Make a long polling connection if we never made the one with this owner.
+  if (!subscription_map_.count(WorkerID::FromBinary(owner_address.worker_id()))) {
+    subscription_map_.emplace(WorkerID::FromBinary(owner_address.worker_id()),
+                              SubscriptionInfo(owner_address));
+    MakeLongPollingPubsubConnection(owner_address, subscriber_address);
+  }
+  // Register subscription.
+  auto subscription_callback = [this](const ObjectID &object_id) {
+    ReleaseFreedObject(object_id);
+  };
+  auto subscription_it =
+      subscription_map_.find(WorkerID::FromBinary(owner_address.worker_id()));
+  subscription_it->second.subscription_callback_map_.emplace(object_id,
+                                                             subscription_callback);
+
+  // Send a subscription message.
+  auto owner_client = owner_client_pool_.GetOrConnect(owner_address);
+  rpc::WaitForObjectEvictionRequest wait_request;
+  wait_request.set_object_id(object_id.Binary());
+  wait_request.set_intended_worker_id(owner_address.worker_id());
+  wait_request.mutable_subscriber_address()->CopyFrom(subscriber_address);
+  owner_client->WaitForObjectEviction(
+      wait_request, [this, owner_address, object_id](
+                        Status status, const rpc::WaitForObjectEvictionReply &reply) {
+        RAY_LOG(DEBUG) << "Subscribing an object " << object_id;
+        if (!status.ok()) {
+          RAY_LOG(DEBUG) << "Worker subscription failed because the owner of the object "
+                            "is dead. Unpinning object "
+                         << object_id;
+          ReleaseFreedObject(object_id);
+          std::vector<ObjectID> objects_to_unsubscribe = {object_id};
+          UnsubscribeObjectsFree(owner_address, objects_to_unsubscribe);
+        }
+      });
+}
+
+void LocalObjectManager::UnsubscribeObjectsFree(const rpc::Address &owner_address,
+                                                const std::vector<ObjectID> &object_ids) {
+  auto subscription_it =
+      subscription_map_.find(WorkerID::FromBinary(owner_address.worker_id()));
+  RAY_CHECK(subscription_it != subscription_map_.end());
+  auto &subscription_callback_map = subscription_it->second.subscription_callback_map_;
+
+  for (const auto &object_id : object_ids) {
+    RAY_CHECK(subscription_callback_map.erase(object_id));
+  }
+  if (subscription_callback_map.size() == 0) {
+    subscription_map_.erase(subscription_it);
+  }
+}
+
+void LocalObjectManager::MakeLongPollingPubsubConnection(
+    const rpc::Address &owner_address, const rpc::Address &subscriber_address) {
+  auto owner_client = owner_client_pool_.GetOrConnect(owner_address);
+  rpc::PubsubLongPollingRequest long_polling_request;
+  long_polling_request.mutable_subscriber_address()->CopyFrom(subscriber_address);
+  owner_client->PubsubLongPolling(
+      long_polling_request, [this, owner_address, subscriber_address](
+                                Status status, const rpc::PubsubLongPollingReply &reply) {
+        RAY_LOG(DEBUG) << "Long polling request has replied from "
+                       << NodeID::FromBinary(owner_address.raylet_id());
+        auto subscription_it =
+            subscription_map_.find(WorkerID::FromBinary(owner_address.worker_id()));
+        RAY_CHECK(subscription_it != subscription_map_.end());
+        auto &subscription_callback_map =
+            subscription_it->second.subscription_callback_map_;
+
+        if (!status.ok()) {
+          // If status is not okay, we treat that the owner is dead. Release all objects
+          // that are subscribed by this owner.
+          RAY_LOG(DEBUG) << "A worker is dead. Release all objects from the owner: "
+                         << NodeID::FromBinary(owner_address.raylet_id());
+          std::vector<ObjectID> objects_to_unsubscribe;
+          for (const auto &object_id_it : subscription_callback_map) {
+            const auto &object_id = object_id_it.first;
+            objects_to_unsubscribe.push_back(object_id);
+            ReleaseFreedObject(object_id);
+          }
+          UnsubscribeObjectsFree(owner_address, objects_to_unsubscribe);
+          return;
+        }
+
+        // Otherwise, release objects that are reported from the long polling connection.
+        std::vector<ObjectID> objects_to_unsubscribe;
+        for (const auto &object_id_binary : reply.object_ids()) {
+          const auto object_id = ObjectID::FromBinary(object_id_binary);
+          RAY_LOG(DEBUG) << "Object id " << object_id
+                         << " information was published. Releasing the object.";
+          auto subscription_callback_it = subscription_callback_map.find(object_id);
+          RAY_CHECK(subscription_callback_it != subscription_callback_map.end());
+          subscription_callback_it->second(object_id);
+          objects_to_unsubscribe.push_back(object_id);
+        }
+        UnsubscribeObjectsFree(owner_address, objects_to_unsubscribe);
+
+        // If there is still a list of objects to subscribe from this owner, make a long
+        // polling connection again.
+        if (subscription_map_.count(WorkerID::FromBinary(owner_address.worker_id()))) {
+          MakeLongPollingPubsubConnection(owner_address, subscriber_address);
+        }
+      });
 }
 
 void LocalObjectManager::ReleaseFreedObject(const ObjectID &object_id) {

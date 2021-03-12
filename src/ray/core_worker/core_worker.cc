@@ -551,6 +551,18 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       new CoreWorkerDirectActorTaskSubmitter(core_worker_client_pool_, memory_store_,
                                              task_manager_));
 
+  pubsub_coordinator_ = std::shared_ptr<PubsubCoordinator>(
+      new PubsubCoordinator([this](const NodeID &node_id) {
+        if (auto node_info =
+                gcs_client_->Nodes().Get(node_id, /*filter_dead_nodes=*/false)) {
+          return node_info->state() ==
+                 rpc::GcsNodeInfo_GcsNodeState::GcsNodeInfo_GcsNodeState_DEAD;
+        }
+        // If the node info is not available yet, node information is probably not
+        // subscribed yet. Just mark that the node is alive.
+        return true;
+      }));
+
   auto node_addr_factory = [this](const NodeID &node_id) {
     absl::optional<rpc::Address> addr;
     if (auto node_info = gcs_client_->Nodes().Get(node_id)) {
@@ -2288,26 +2300,39 @@ void CoreWorker::HandleWaitForObjectEviction(
     return;
   }
 
-  // SANG-TODO
-  // object_info_publisher->ConnectIfNeeded(consumer_address, connect_callback)
-  // object_info_publisher->RegisterSubscriber(object_id);
-  // object_info_publisher->Publish(object_id); // should invoke send_reply_callback
-  // object_info_publisher->UnRegisterSubscriber(object_id);
-
   // Send a response to trigger unpinning the object when it is no longer in scope.
-  auto respond = [send_reply_callback](const ObjectID &object_id) {
-    RAY_LOG(DEBUG) << "Replying to HandleWaitForObjectEviction for " << object_id;
-    send_reply_callback(Status::OK(), nullptr, nullptr);
+  auto respond = [this](const ObjectID &object_id) {
+    RAY_LOG(DEBUG) << "Publish object info: " << object_id;
+    pubsub_coordinator_->Publish(object_id);
   };
 
   ObjectID object_id = ObjectID::FromBinary(request.object_id());
+  RAY_LOG(DEBUG) << "Object id " << object_id << " is subscribed";
   // Returns true if the object was present and the callback was added. It might have
   // already been evicted by the time we get this request, in which case we should
   // respond immediately so the raylet unpins the object.
   if (!reference_counter_->SetDeleteCallback(object_id, respond)) {
     RAY_LOG(DEBUG) << "ObjectID reference already gone for " << object_id;
-    respond(object_id);
+    send_reply_callback(Status::NotFound("Object ID reference already gone."), nullptr,
+                        nullptr);
+  } else {
+    pubsub_coordinator_->RegisterSubscriber(
+        NodeID::FromBinary(request.subscriber_address().raylet_id()), object_id);
+    send_reply_callback(Status::OK(), nullptr, nullptr);
   }
+}
+
+void CoreWorker::HandlePubsubLongPolling(const rpc::PubsubLongPollingRequest &request,
+                                         rpc::PubsubLongPollingReply *reply,
+                                         rpc::SendReplyCallback send_reply_callback) {
+  auto reply_callback = [reply, send_reply_callback](std::vector<ObjectID> &object_ids) {
+    for (const auto &object_id : object_ids) {
+      reply->add_object_ids(object_id.Binary());
+    }
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+  };
+  pubsub_coordinator_->Connect(
+      NodeID::FromBinary(request.subscriber_address().raylet_id()), reply_callback);
 }
 
 void CoreWorker::HandleAddObjectLocationOwner(
