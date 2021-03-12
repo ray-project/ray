@@ -43,6 +43,13 @@ message GetAllJobInfoReply {
   repeated JobTableData job_info_list = 2;
 }
 
+message ReportJobErrorRequest {
+  ErrorTableData job_error = 1;
+}
+message ReportJobErrorReply {
+  GcsStatus status = 1;
+}
+
 // Service for job info access.
 service JobInfoGcsService {
   // Add job to GCS Service.
@@ -51,6 +58,8 @@ service JobInfoGcsService {
   rpc MarkJobFinished(MarkJobFinishedRequest) returns (MarkJobFinishedReply);
   // Get information of all jobs from GCS Service.
   rpc GetAllJobInfo(GetAllJobInfoRequest) returns (GetAllJobInfoReply);
+  // Report job error.
+  rpc ReportJobError(ReportJobErrorRequest) returns (ReportJobErrorReply);
 }
 
 message GetActorInfoRequest {
