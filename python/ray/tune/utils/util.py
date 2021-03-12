@@ -308,7 +308,9 @@ def unflatten_list_dict(dt, delimiter="/"):
         AssertionError.
     (3) The unflattened dt (the result) shouldn't contain dict with number
         keys.
-    Be careful to use this function. More details see #14487.
+
+    Be careful to use this function. If you want to improve this function,
+    please also improve the unit test. See #14487 for more details.
 
     Args:
         dt (dict): Flattened dictionary that is originally nested by multiple
@@ -320,7 +322,8 @@ def unflatten_list_dict(dt, delimiter="/"):
         >>> unflatten_list_dict(dt)
         {'aaa': [{'bb': 12}, {'cc': 56, 'dd': 92}]}
     """
-    out_type = list if list(dt)[0].split(delimiter, 1)[0].isdigit() else dict
+    out_type = list if list(dt)[0].split(delimiter, 1)[0].isdigit() \
+        else type(dt)
     out = out_type()
     for key, val in dt.items():
         path = key.split(delimiter)
