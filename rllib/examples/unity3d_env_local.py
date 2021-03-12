@@ -35,10 +35,11 @@ parser.add_argument(
     default="3DBall",
     choices=[
         "3DBall", "3DBallHard", "GridFoodCollector", "Pyramids",
-        "SoccerStrikersVsGoalie", "Tennis", "VisualHallway", "Walker"
+        "SoccerStrikersVsGoalie", "Sorter", "Tennis", "VisualHallway",
+        "Walker",
     ],
     help="The name of the Env to run in the Unity3D editor: `3DBall(Hard)?|"
-    "Pyramids|GridFoodCollector|SoccerStrikersVsGoalie|Tennis|"
+    "Pyramids|GridFoodCollector|SoccerStrikersVsGoalie|Sorter|Tennis|"
     "VisualHallway|Walker` (feel free to add more and PR!)")
 parser.add_argument(
     "--file-name",
@@ -67,7 +68,7 @@ parser.add_argument(
 parser.add_argument("--torch", action="store_true")
 
 if __name__ == "__main__":
-    ray.init()
+    ray.init(local_mode=True)#TODO
 
     args = parser.parse_args()
 
@@ -139,6 +140,10 @@ if __name__ == "__main__":
         config["model"] = {
             "conv_filters": [[16, [4, 4], 2], [32, [4, 4], 2],
                              [256, [10, 10], 1]],
+        }
+    elif args.env == "Sorter":
+        config["model"] = {
+            "use_attention": True,
         }
 
     stop = {

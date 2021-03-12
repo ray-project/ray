@@ -257,6 +257,12 @@ class Unity3DEnv(MultiAgentEnv):
                 Box(float("-inf"), float("inf"), (231, )),
                 Box(float("-inf"), float("inf"), (63, )),
             ]),
+            # Sorter.
+            "Sorter": TupleSpace([
+                Box(float("-inf"), float("inf"), (20, 23, )),
+                Box(float("-inf"), float("inf"), (10, )),
+                Box(float("-inf"), float("inf"), (8, )),
+            ]),
             # Tennis.
             "Tennis": Box(float("-inf"), float("inf"), (27, )),
             # VisualHallway.
@@ -283,6 +289,8 @@ class Unity3DEnv(MultiAgentEnv):
             # SoccerStrikersVsGoalie.
             "Goalie": MultiDiscrete([3, 3, 3]),
             "Striker": MultiDiscrete([3, 3, 3]),
+            # Sorter.
+            "Sorter": MultiDiscrete([3, 3, 3]),
             # Tennis.
             "Tennis": Box(float("-inf"), float("inf"), (3, )),
             # VisualHallway.

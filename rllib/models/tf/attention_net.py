@@ -411,7 +411,7 @@ class AttentionWrapper(TFModelV2):
         wrapped_out, _ = self._wrapped_forward(input_dict, [], None)
 
         # Then through our GTrXL.
-        input_dict["obs_flat"] = wrapped_out
+        input_dict["obs_flat"] = input_dict["obs"] = wrapped_out
 
         self._features, memory_outs = self.gtrxl(input_dict, state, seq_lens)
         model_out = self._logits_branch(self._features)
