@@ -34,21 +34,24 @@ This function must also be ``async def`` so that you can handle multiple queries
 .. code-block:: python
 
     @serve.batch
-    async def my_batch_handler(self, requests):
+    async def my_batch_handler(self, requests: List):
         pass
 
-This batch handler can then be called from another ``async def`` method in your backend:
+This batch handler can then be called from another ``async def`` method in your backend.
+These calls will be batched and executed together, but return an individual result as if
+they were a normal function call:
 
 .. code-block:: python
 
     class MyBackend:
-        async def my_batch_handler(self, requests: List[Union[starlette.Request, serve.ServeRequest]]):
+        @serve.batch
+        async def my_batch_handler(self, requests: List):
             results = []
             for request in requests:
                 results.append(request.json())
             return results
 
-        async def __call__(self, request: Union[starlette.Request, serve.ServeRequest]):
+        async def __call__(self, request):
             await self.my_batch_handler(request)
 
 Let's define a backend that takes in a list of requests, extracts the input value,

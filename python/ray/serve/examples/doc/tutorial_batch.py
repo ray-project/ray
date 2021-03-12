@@ -17,7 +17,8 @@ import starlette
 class BatchAdder:
     @serve.batch(max_batch_size=4)
     async def handle_batch(
-            self, requests: List[Union[starlette.Request, serve.Request]]):
+            self,
+            requests: List[Union[starlette.Request, serve.ServeRequest]]):
         numbers = [int(request.query_params["number"]) for request in requests]
 
         input_array = np.array(numbers)
@@ -28,7 +29,8 @@ class BatchAdder:
         output_array = input_array + 1
         return output_array.astype(int).tolist()
 
-    async def __call__(self, request: starlette.Request):
+    async def __call__(self,
+                       request: Union[starlette.Request, serve.ServeRequest]):
         return await self.handle_batch(request)
 
 
@@ -66,7 +68,7 @@ print(handle)
 # Output
 # RayServeHandle(
 #    Endpoint="adder",
-#    Traffic={'adder:v1': 1}
+#    Traffic={'adder:v0': 1}
 # )
 
 input_batch = list(range(9))

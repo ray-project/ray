@@ -10,6 +10,7 @@ Request Batching
 ================
 
 You can also have Ray Serve batch requests for performance, which is especially important for some ML models that run on GPUs. In order to do use this feature, you need to:
+
 1. Use ``async def`` for your request handling logic to process queries concurrently.
 2. Use the ``@serve.batch`` decorator to batch individual queries that come into the replica. The method/function that's decorated should handle a list of requests and return a list of the same length.
 
