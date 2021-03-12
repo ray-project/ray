@@ -44,13 +44,13 @@ Note that a backend cannot be deleted while it is in use by an endpoint because 
 
   >> client.list_backends()
   {
-      'simple_backend': {'accepts_batches': False, 'num_replicas': 1, 'max_batch_size': None},
-      'simple_backend_class': {'accepts_batches': False, 'num_replicas': 1, 'max_batch_size': None},
+      'simple_backend': {'num_replicas': 1},
+      'simple_backend_class': {'num_replicas': 1},
   }
   >> client.delete_backend("simple_backend")
   >> client.list_backends()
   {
-      'simple_backend_class': {'accepts_batches': False, 'num_replicas': 1, 'max_batch_size': None},
+      'simple_backend_class': {'num_replicas': 1},
   }
 
 Exposing a Backend
@@ -102,9 +102,8 @@ Configuring a Backend
 =====================
 
 There are a number of things you'll likely want to do with your serving application including
-scaling out, splitting traffic, or batching input for better performance. To do all of this,
-you will create a ``BackendConfig``, a configuration object that you'll use to set
-the properties of a particular backend.
+scaling out, splitting traffic, or configuring the number of in-flight requests for a backend.
+All of these options are encapsulated in a ``BackendConfig`` object for each backend.
 
 The ``BackendConfig`` for a running backend can be updated using
 :mod:`client.update_backend_config <ray.serve.api.Client.update_backend_config>`.
@@ -184,37 +183,6 @@ If you *do* want to enable this parallelism in your Serve backend, just set OMP_
   Some other libraries may not respect ``OMP_NUM_THREADS`` and have their own way to configure parallelism.
   For example, if you're using OpenCV, you'll need to manually set the number of threads using ``cv2.setNumThreads(num_threads)`` (set to 0 to disable multi-threading).
   You can check the configuration using ``cv2.getNumThreads()`` and ``cv2.getNumberOfCPUs()``.
-
-.. _serve-batching:
-
-
-Batching to Improve Performance
--------------------------------
-
-You can also have Ray Serve batch requests for performance. In order to do use this feature, you need to:
-1. Set the ``max_batch_size`` in the ``config`` dictionary.
-2. Modify your backend implementation to accept a list of requests and return a list of responses instead of handling a single request.
-
-
-.. code-block:: python
-
-  class BatchingExample:
-      def __init__(self):
-          self.count = 0
-
-      @serve.accept_batch
-      def __call__(self, requests):
-          responses = []
-              for request in requests:
-                  responses.append(request.json())
-          return responses
-
-  config = {"max_batch_size": 5}
-  client.create_backend("counter1", BatchingExample, config=config)
-  client.create_endpoint("counter1", backend="counter1", route="/increment")
-
-Please take a look at :ref:`Batching Tutorial<serve-batch-tutorial>` for a deep
-dive.
 
 User Configuration (Experimental)
 ---------------------------------
