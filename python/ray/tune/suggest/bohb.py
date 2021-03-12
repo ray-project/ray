@@ -15,7 +15,7 @@ from ray.tune.suggest import Searcher
 from ray.tune.suggest.suggestion import UNRESOLVED_SEARCH_SPACE, \
     UNDEFINED_METRIC_MODE, UNDEFINED_SEARCH_SPACE
 from ray.tune.suggest.variant_generator import parse_spec_vars
-from ray.tune.utils.util import flatten_dict, unflatten_dict
+from ray.tune.utils.util import flatten_dict, unflatten_list_dict
 
 logger = logging.getLogger(__name__)
 
@@ -199,7 +199,7 @@ class TuneBOHB(Searcher):
                 config, info = self.bohber.get_config(None)
             self.trial_to_params[trial_id] = copy.deepcopy(config)
             self.running.add(trial_id)
-            return unflatten_dict(config)
+            return unflatten_list_dict(config)
         return None
 
     def on_trial_result(self, trial_id: str, result: Dict):
@@ -312,7 +312,7 @@ class TuneBOHB(Searcher):
 
         cs = ConfigSpace.ConfigurationSpace()
         for path, domain in domain_vars:
-            par = "/".join(path)
+            par = "/".join(str(p) for p in path)
             value = resolve_value(par, domain)
             cs.add_hyperparameter(value)
 

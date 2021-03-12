@@ -1,7 +1,6 @@
 package io.ray.runtime.gcs;
 
 import com.google.common.base.Strings;
-import java.util.List;
 import java.util.Map;
 import redis.clients.jedis.Jedis;
 import redis.clients.jedis.JedisPool;
@@ -55,12 +54,6 @@ public class RedisClient {
     }
   }
 
-  public Map<byte[], byte[]> hgetAll(byte[] key) {
-    try (Jedis jedis = jedisPool.getResource()) {
-      return jedis.hgetAll(key);
-    }
-  }
-
   public String get(final String key, final String field) {
     try (Jedis jedis = jedisPool.getResource()) {
       if (field == null) {
@@ -82,17 +75,6 @@ public class RedisClient {
       } else {
         return jedis.hget(key, field);
       }
-    }
-  }
-
-  /**
-   * Return the specified elements of the list stored at the specified key.
-   *
-   * @return Multi bulk reply, specifically a list of elements in the specified range.
-   */
-  public List<byte[]> lrange(byte[] key, long start, long end) {
-    try (Jedis jedis = jedisPool.getResource()) {
-      return jedis.lrange(key, start, end);
     }
   }
 
