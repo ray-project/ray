@@ -319,13 +319,13 @@ py_test(
 )
 
 # Todo: Ensure MPLBACKEND=Agg
-# py_test(
-#     name = "tutorial",
-#     size = "medium",
-#     srcs = ["tests/tutorial.py"],
-#     deps = [":tune_lib"],
-#     tags = ["exclusive", "example"],
-# )
+py_test(
+    name = "tutorial",
+    size = "medium",
+    srcs = ["tests/tutorial.py"],
+    deps = [":tune_lib"],
+    tags = ["exclusive", "example"],
+)
 
 # --------------------------------------------------------------------
 # Examples from the python/ray/tune/examples directory.
@@ -399,14 +399,14 @@ py_test(
     deps = [":tune_lib"],
 )
 
-# py_test(
-#     name = "ddp_mnist_torch",
-#     size = "small",
-#     srcs = ["examples/ddp_mnist_torch.py"],
-#     deps = [":tune_lib"],
-#     tags = ["exclusive", "example", "pytorch"],
-#     args = ["--num-workers=2"]
-# )
+py_test(
+    name = "ddp_mnist_torch",
+    size = "small",
+    srcs = ["examples/ddp_mnist_torch.py"],
+    deps = [":tune_lib"],
+    tags = ["exclusive", "example", "pytorch"],
+    args = ["--num-workers=2"]
+)
 
 py_test(
     name = "tf_distributed_keras_example",
@@ -515,50 +515,50 @@ py_test(
  tags = ["exclusive", "example"]
 )
 
-# py_test(
-#     name = "mlflow_ptl",
-#     size = "medium",
-#     srcs = ["examples/mlflow_ptl.py"],
-#     deps = [":tune_lib"],
-#     tags = ["exclusive", "example", "py37", "pytorch"],
-#     args = ["--smoke-test"]
-# )
+py_test(
+    name = "mlflow_ptl",
+    size = "medium",
+    srcs = ["examples/mlflow_ptl.py"],
+    deps = [":tune_lib"],
+    tags = ["exclusive", "example", "py37", "pytorch"],
+    args = ["--smoke-test"]
+)
 
-# py_test(
-#     name = "mnist_pytorch",
-#     size = "small",
-#     srcs = ["examples/mnist_pytorch.py"],
-#     deps = [":tune_lib"],
-#     tags = ["exclusive", "example", "pytorch"],
-#     args = ["--smoke-test"]
-# )
+py_test(
+    name = "mnist_pytorch",
+    size = "small",
+    srcs = ["examples/mnist_pytorch.py"],
+    deps = [":tune_lib"],
+    tags = ["exclusive", "example", "pytorch"],
+    args = ["--smoke-test"]
+)
 
-# py_test(
-#     name = "mnist_pytorch_lightning",
-#     size = "medium",
-#     srcs = ["examples/mnist_pytorch_lightning.py"],
-#     deps = [":tune_lib"],
-#     tags = ["exclusive", "example", "pytorch"],
-#     args = ["--smoke-test"]
-# )
+py_test(
+    name = "mnist_pytorch_lightning",
+    size = "medium",
+    srcs = ["examples/mnist_pytorch_lightning.py"],
+    deps = [":tune_lib"],
+    tags = ["exclusive", "example", "pytorch"],
+    args = ["--smoke-test"]
+)
 
-# py_test(
-#     name = "mnist_ptl_mini",
-#     size = "medium",
-#     srcs = ["examples/mnist_ptl_mini.py"],
-#     deps = [":tune_lib"],
-#     tags = ["exclusive", "example", "pytorch"],
-#     args = ["--smoke-test"]
-# )
+py_test(
+    name = "mnist_ptl_mini",
+    size = "medium",
+    srcs = ["examples/mnist_ptl_mini.py"],
+    deps = [":tune_lib"],
+    tags = ["exclusive", "example", "pytorch"],
+    args = ["--smoke-test"]
+)
 
-# py_test(
-#     name = "mnist_pytorch_trainable",
-#     size = "small",
-#     srcs = ["examples/mnist_pytorch_trainable.py"],
-#     deps = [":tune_lib"],
-#     tags = ["exclusive", "example", "pytorch"],
-#     args = ["--smoke-test"]
-# )
+py_test(
+    name = "mnist_pytorch_trainable",
+    size = "small",
+    srcs = ["examples/mnist_pytorch_trainable.py"],
+    deps = [":tune_lib"],
+    tags = ["exclusive", "example", "pytorch"],
+    args = ["--smoke-test"]
+)
 
 py_test(
     name = "mxnet_example",
@@ -596,41 +596,41 @@ py_test(
     args = ["--smoke-test"]
 )
 
-# py_test(
-#     name = "pbt_convnet_example",
-#     size = "small",
-#     srcs = ["examples/pbt_convnet_example.py"],
-#     deps = [":tune_lib"],
-#     tags = ["exclusive", "example"],
-#     args = ["--smoke-test"]
-# )
+py_test(
+    name = "pbt_convnet_example",
+    size = "small",
+    srcs = ["examples/pbt_convnet_example.py"],
+    deps = [":tune_lib"],
+    tags = ["exclusive", "example"],
+    args = ["--smoke-test"]
+)
 
-# py_test(
-#     name = "pbt_convnet_function_example",
-#     size = "small",
-#     srcs = ["examples/pbt_convnet_function_example.py"],
-#     deps = [":tune_lib"],
-#     tags = ["exclusive", "example"],
-#     args = ["--smoke-test"]
-# )
+py_test(
+    name = "pbt_convnet_function_example",
+    size = "small",
+    srcs = ["examples/pbt_convnet_function_example.py"],
+    deps = [":tune_lib"],
+    tags = ["exclusive", "example"],
+    args = ["--smoke-test"]
+)
 
-# py_test(
-#     name = "pbt_dcgan_mnist_func",
-#     size = "medium",
-#     srcs = ["examples/pbt_dcgan_mnist/pbt_dcgan_mnist_func.py"],
-#     deps = [":tune_lib"],
-#     tags = ["exclusive", "example"],
-#     args = ["--smoke-test"]
-# )
+py_test(
+    name = "pbt_dcgan_mnist_func",
+    size = "medium",
+    srcs = ["examples/pbt_dcgan_mnist/pbt_dcgan_mnist_func.py"],
+    deps = [":tune_lib"],
+    tags = ["exclusive", "example"],
+    args = ["--smoke-test"]
+)
 
-# py_test(
-#     name = "pbt_dcgan_mnist_trainable",
-#     size = "medium",
-#     srcs = ["examples/pbt_dcgan_mnist/pbt_dcgan_mnist_trainable.py"],
-#     deps = [":tune_lib"],
-#     tags = ["exclusive", "example"],
-#     args = ["--smoke-test"]
-# )
+py_test(
+    name = "pbt_dcgan_mnist_trainable",
+    size = "medium",
+    srcs = ["examples/pbt_dcgan_mnist/pbt_dcgan_mnist_trainable.py"],
+    deps = [":tune_lib"],
+    tags = ["exclusive", "example"],
+    args = ["--smoke-test"]
+)
 
 py_test(
     name = "pbt_example",

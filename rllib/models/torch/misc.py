@@ -39,7 +39,10 @@ def same_padding(in_size: Tuple[int, int], filter_size: Tuple[int, int],
         filter_height, filter_width = filter_size, filter_size
     else:
         filter_height, filter_width = filter_size
-    stride_height, stride_width = stride_size
+    if isinstance(stride_size, (int, float)):
+        stride_height, stride_width = int(stride_size), int(stride_size)
+    else:
+        stride_height, stride_width = int(stride_size[0]), int(stride_size[1])
 
     out_height = np.ceil(float(in_height) / float(stride_height))
     out_width = np.ceil(float(in_width) / float(stride_width))
