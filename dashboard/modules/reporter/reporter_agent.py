@@ -197,7 +197,8 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
         if IN_KUBERNETES_POD:
             # Return start time of container entrypoint
             return psutil.Process(pid=1).create_time()
-        return psutil.boot_time()
+        else:
+            return psutil.boot_time()
 
     @staticmethod
     def _get_network_stats():
