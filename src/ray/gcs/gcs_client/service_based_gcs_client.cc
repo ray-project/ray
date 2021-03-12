@@ -82,7 +82,7 @@ Status ServiceBasedGcsClient::Connect(instrumented_io_context &io_service) {
   error_accessor_.reset(new ServiceBasedErrorInfoAccessor(this));
   worker_accessor_.reset(new ServiceBasedWorkerInfoAccessor(this));
   placement_group_accessor_.reset(new ServiceBasedPlacementGroupInfoAccessor(this));
-
+  kv_accessor_ = std::make_unique<ServiceBasedKVAccessor>(this);
   // Init gcs service address check timer.
   periodical_runner_.reset(new PeriodicalRunner(io_service));
   periodical_runner_->RunFnPeriodically(

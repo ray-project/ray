@@ -935,6 +935,30 @@ cdef class CoreWorker:
 
         return RayObjectsToDataMetadataPairs(results)
 
+    def kv_put(self, c_string key, c_string value):
+        with nogil:
+            check_status(CCoreWorkerProcess.GetCoreWorker().KVPut(key, value))
+
+    def kv_del(self, c_string key):
+        with nogil:
+            check_status(CCoreWorkerProcess.GetCoreWorker().KVDel(key))
+
+    def kv_get(self, c_string key):
+        cdef:
+            c_string value
+        with nogil:
+            check_status(CCoreWorkerProcess.GetCoreWorker().KVGet(key, value))
+        return value
+
+
+    def kv_exists(self, c_string key):
+        cdef:
+            c_bool exist
+        with nogil:
+            check_status(CCoreWorkerProcess.GetCoreWorker().KVExists(key, exist))
+        return exist
+
+
     def get_if_local(self, object_refs):
         """Get objects from local plasma store directly
         without a fetch request to raylet."""
