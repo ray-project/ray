@@ -6,9 +6,10 @@ parser.add_argument("--run", type=str, default="PPO")
 parser.add_argument("--num-cpus", type=int, default=0)
 parser.add_argument(
     "--framework", choices=["tf2", "tf", "tfe", "torch"], default="tf")
+parser.add_argument("--num-workers", type=int, default=0)
 parser.add_argument("--use-prev-action", action="store_true")
 parser.add_argument("--use-prev-reward", action="store_true")
-parser.add_argument("--stop-iters", type=int, default=200)
+parser.add_argument("--stop-iters", type=int, default=9999)
 parser.add_argument("--stop-timesteps", type=int, default=100000)
 parser.add_argument("--stop-reward", type=float, default=150.0)
 
@@ -37,7 +38,7 @@ if __name__ == "__main__":
         "framework": args.framework,
         # Run with tracing enabled for tfe/tf2.
         "eager_tracing": args.framework in ["tfe", "tf2"],
-        "num_workers": 6,
+        "num_workers": args.num_workers,
         "vf_loss_coeff": 0.01,
     }
 
