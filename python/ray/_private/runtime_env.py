@@ -80,12 +80,8 @@ class RuntimeEnvDict:
             override_environment_variables = {}
         if self.conda:
             conda_env_dir = get_conda_env_dir(self.conda)
-            if override_environment_variables is None:
-                override_environment_variables = {}
             override_environment_variables.update(PYTHONHOME=conda_env_dir)
         if self.working_dir:
-            if override_environment_variables is None:
-                override_environment_variables = {}
             override_environment_variables.update(
                 RAY_RUNTIME_ENV_FILES=self.working_dir)
         return override_environment_variables
