@@ -6,7 +6,7 @@ Batching Tutorial
 In this guide, we will deploy a simple vectorized adder that takes
 a batch of queries and adds them at once. In particular, we show:
 
-- How to implement and deploy Ray Serve model that accepts batches.
+- How to implement and deploy a Ray Serve backend that accepts batches.
 - How to configure the batch size.
 - How to query the model in Python.
 
