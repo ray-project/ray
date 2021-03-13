@@ -17,7 +17,6 @@ from ray.rllib.utils import add_mixins, force_list
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.tf_ops import convert_to_non_tf_type
 from ray.rllib.utils.threading import with_lock
 from ray.rllib.utils.typing import TensorType
 

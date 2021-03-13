@@ -2,20 +2,19 @@ import collections
 import numpy as np
 import sys
 import itertools
-from typing import Dict, Iterable, List, Optional, Set, Union
+from typing import Dict, List, Set, Union
 
 from ray.rllib.utils.annotations import PublicAPI, DeveloperAPI
 from ray.rllib.utils.compression import pack, unpack, is_compressed
 from ray.rllib.utils.memory import concat_aligned
-from ray.rllib.utils.typing import ModelInputDict, PolicyID, TensorType, \
-    ViewRequirementsDict
+from ray.rllib.utils.typing import PolicyID, TensorType
 
 # Default policy id for single agent environments
 DEFAULT_POLICY_ID = "default_policy"
 
 
 @PublicAPI
-class SampleBatch:#(dict):
+class SampleBatch(dict):
     """Wrapper around a dictionary with string keys and array-like values.
 
     For example, {"obs": [1, 2, 3], "reward": [0, -1, 1]} is a batch of three
@@ -67,7 +66,7 @@ class SampleBatch:#(dict):
         self.zero_padded = kwargs.pop("_zero_padded", False)
 
         # The actual data, accessible by column name (str).
-        self.data = dict(*args, **kwargs)
+        dict.__init__(self, *args, **kwargs)
 
         self.accessed_keys = set()
         self.added_keys = set()
@@ -76,12 +75,13 @@ class SampleBatch:#(dict):
         self.get_interceptor = None
 
         lengths = []
-        for k, v in self.data.copy().items():
+        copy_ = {k: v for k, v in self.items()}
+        for k, v in copy_.items():
             assert isinstance(k, str), self
             len_ = len(v) if isinstance(v, (list, np.ndarray)) else None
             lengths.append(len_)
             if isinstance(v, list):
-                self.data[k] = np.array(v)
+                self[k] = np.array(v)
 
         if not lengths:
             raise ValueError("Empty sample batch")
@@ -181,7 +181,7 @@ class SampleBatch:#(dict):
         copy_ = SampleBatch(
             {
                 k: np.array(v, copy=True) if isinstance(v, np.ndarray) else v
-                for (k, v) in self.data.items()
+                for (k, v) in self.items()
             },
             _seq_lens=self.seq_lens,
             _dont_check_lens=self.dont_check_lens)
@@ -251,17 +251,17 @@ class SampleBatch:#(dict):
 
         # No eps_id in data -> Make sure there are no "dones" in the middle
         # and add eps_id automatically.
-        if SampleBatch.EPS_ID not in self.data:
-            if SampleBatch.DONES in self.data:
-                assert not any(self.data[SampleBatch.DONES][:-1])
-            self.data[SampleBatch.EPS_ID] = np.repeat(0, self.count)
+        if SampleBatch.EPS_ID not in self:
+            if SampleBatch.DONES in self:
+                assert not any(self[SampleBatch.DONES][:-1])
+            self[SampleBatch.EPS_ID] = np.repeat(0, self.count)
             return [self]
 
         slices = []
-        cur_eps_id = self.data[SampleBatch.EPS_ID][0]
+        cur_eps_id = self[SampleBatch.EPS_ID][0]
         offset = 0
         for i in range(self.count):
-            next_eps_id = self.data[SampleBatch.EPS_ID][i]
+            next_eps_id = self[SampleBatch.EPS_ID][i]
             if next_eps_id != cur_eps_id:
                 slices.append(self.slice(offset, i))
                 offset = i
@@ -293,10 +293,10 @@ class SampleBatch:#(dict):
                             shape=(-start, ) + v.shape[1:], dtype=v.dtype),
                         v[0:end]
                     ])
-                    for k, v in self.data.items()
+                    for k, v in self.items()
                 }
             else:
-                data = {k: v[start:end] for k, v in self.data.items()}
+                data = {k: v[start:end] for k, v in self.items()}
             # Fix state_in_x data.
             count = 0
             state_start = None
@@ -308,9 +308,8 @@ class SampleBatch:#(dict):
                     state_key = "state_in_{}".format(state_idx)
                     if state_start is None:
                         state_start = i
-                    while state_key in self.data:
-                        data[state_key] = self.data[state_key][state_start:i +
-                                                               1]
+                    while state_key in self:
+                        data[state_key] = self[state_key][state_start:i + 1]
                         state_idx += 1
                         state_key = "state_in_{}".format(state_idx)
                     seq_lens = list(self.seq_lens[state_start:i]) + [
@@ -331,7 +330,7 @@ class SampleBatch:#(dict):
         else:
             return SampleBatch(
                 {k: v[start:end]
-                 for k, v in self.data.items()},
+                 for k, v in self.items()},
                 _seq_lens=None,
                 _time_major=self.time_major)
 
@@ -363,12 +362,12 @@ class SampleBatch:#(dict):
             exclude_states (bool): If False, also zero-pad all `state_in_x`
                 data. If False, leave `state_in_x` keys as-is.
         """
-        for col in self.data.keys():
+        for col in self.keys():
             # Skip state in columns.
             if exclude_states is True and col.startswith("state_in_"):
                 continue
 
-            f = self.data[col]
+            f = self[col]
             # Save unnecessary copy.
             if not isinstance(f, np.ndarray):
                 f = np.array(f)
@@ -390,40 +389,11 @@ class SampleBatch:#(dict):
                 f_base += len_
             assert f_base == len(f), f
             # Update our data.
-            self.data[col] = f_pad
+            self[col] = f_pad
 
         # Set flags to indicate, we are now zero-padded (and to what extend).
         self.zero_padded = True
         self.max_seq_len = max_seq_len
-
-    @PublicAPI
-    def keys(self) -> Iterable[str]:
-        """
-        Returns:
-            Iterable[str]: The keys() iterable over `self.data`.
-        """
-        return self.data.keys()
-
-    @PublicAPI
-    def items(self) -> Iterable[TensorType]:
-        """
-        Returns:
-            Iterable[TensorType]: The values() iterable over `self.data`.
-        """
-        return self.data.items()
-
-    @PublicAPI
-    def get(self, key: str) -> Optional[TensorType]:
-        """Returns one column (by key) from the data or None if key not found.
-
-        Args:
-            key (str): The key (column name) to return.
-
-        Returns:
-            Optional[TensorType]: The data under the given key. None if key
-                not found in data.
-        """
-        return self.data.get(key)
 
     @PublicAPI
     def size_bytes(self) -> int:
@@ -431,7 +401,7 @@ class SampleBatch:#(dict):
         Returns:
             int: The overall size in bytes of the data buffer (all columns).
         """
-        return sum(sys.getsizeof(d) for d in self.data.values())
+        return sum(sys.getsizeof(d) for d in self.values())
 
     @PublicAPI
     def __getitem__(self, key: str) -> TensorType:
@@ -444,7 +414,7 @@ class SampleBatch:#(dict):
             TensorType: The data under the given key.
         """
         self.accessed_keys.add(key)
-        value = self.data[key]
+        value = dict.__getitem__(self, key)
         if self.get_interceptor is not None:
             if key not in self.intercepted_values:
                 self.intercepted_values[key] = self.get_interceptor(value)
@@ -462,14 +432,14 @@ class SampleBatch:#(dict):
         if key not in self:
             self.added_keys.add(key)
 
-        self.data[key] = item
+        dict.__setitem__(self, key, item)
         if key in self.intercepted_values:
             self.intercepted_values[key] = item
 
     @PublicAPI
     def __delitem__(self, key):
         self.deleted_keys.add(key)
-        del self.data[key]
+        dict.__delitem__(self, key)
 
     @DeveloperAPI
     def compress(self,
@@ -485,12 +455,11 @@ class SampleBatch:#(dict):
                 compress the obs and new_obs columns.
         """
         for key in columns:
-            if key in self.data:
+            if key in self.keys():
                 if bulk:
-                    self.data[key] = pack(self.data[key])
+                    self[key] = pack(self[key])
                 else:
-                    self.data[key] = np.array(
-                        [pack(o) for o in self.data[key]])
+                    self[key] = np.array([pack(o) for o in self[key]])
 
     @DeveloperAPI
     def decompress_if_needed(self,
@@ -506,13 +475,12 @@ class SampleBatch:#(dict):
             SampleBatch: This very SampleBatch.
         """
         for key in columns:
-            if key in self.data:
-                arr = self.data[key]
+            if key in self.keys():
+                arr = self[key]
                 if is_compressed(arr):
-                    self.data[key] = unpack(arr)
+                    self[key] = unpack(arr)
                 elif len(arr) > 0 and is_compressed(arr[0]):
-                    self.data[key] = np.array(
-                        [unpack(o) for o in self.data[key]])
+                    self[key] = np.array([unpack(o) for o in self[key]])
         return self
 
     @DeveloperAPI
@@ -583,16 +551,10 @@ class SampleBatch:#(dict):
     """
 
     def __str__(self):
-        return "SampleBatch({})".format(str(self.data))
+        return "SampleBatch({})".format(str(self))
 
     def __repr__(self):
-        return "SampleBatch({})".format(str(self.data))
-
-    def __iter__(self):
-        return self.data.__iter__()
-
-    def __contains__(self, x):
-        return x in self.data
+        return "SampleBatch({})".format(str(self))
 
     def _get_slice_indices(self, slice_size):
         i = 0
