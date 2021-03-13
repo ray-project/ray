@@ -10,6 +10,7 @@ import os
 import re
 import select
 import socket
+import subprocess
 import sys
 import uuid
 from pdb import Pdb
@@ -237,19 +238,14 @@ def post_mortem():
     rdb.post_mortem()
 
 
-def connect_pdb_client(host, port):
-    print("connecting to", port)
-    import subprocess
-    # cmd = f"ssh -f -o StrictHostKeyChecking=no ExitOnForwardFailure=yes -i ~/.ssh/anyscale/prj_3B4dB7DqmWF1BYAGkBTnHU/ses_1tlEHfn0HIhQ1KpHFjVMpV.pem -L {port}:localhost:{port} ubuntu@52.37.158.21"
-    cmd = f"ssh -o BatchMode=yes -o ServerAliveInterval=1 -o ServerAliveCountMax=5 -f -o ExitOnForwardFailure=yes -i ~/.ssh/anyscale/prj_3B4dB7DqmWF1BYAGkBTnHU/ses_6lXaGmf6UGzf5FNMoaN8fj.pem -N -L {port}:localhost:{port} ubuntu@52.12.127.187"
-    print("running", cmd)
+def connect_pdb_client(host, port, key=None):
+    cmd = f"ssh -o BatchMode=yes -o ServerAliveInterval=1 -o ServerAliveCountMax=5 -f -o ExitOnForwardFailure=yes -i {key} -N -L {port}:localhost:{port} ubuntu@{host}"
     p = subprocess.Popen(
         cmd,
         universal_newlines=True, shell=True, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     stat = p.poll()
     while stat == None:
         stat = p.poll()
-    print("connected to", port)
 
     while True:
         try:
@@ -259,7 +255,6 @@ def connect_pdb_client(host, port):
         except ConnectionRefusedError:
             import time
             time.sleep(0.1)
-            print("sleeping")
 
 
     while True:
@@ -282,7 +277,7 @@ def connect_pdb_client(host, port):
                 s.send(msg.encode())
 
 
-def continue_debug_session():
+def continue_debug_session(key=None):
     """Continue active debugging session.
 
     This function will connect 'ray debug' to the right debugger
@@ -303,7 +298,7 @@ def continue_debug_session():
                         ray.experimental.internal_kv._internal_kv_del(key)
                         return
                     host, port = session["pdb_address"].split(":")
-                    ray.util.rpdb.connect_pdb_client(host, int(port))
+                    ray.util.rpdb.connect_pdb_client(host, int(port), key)
                     ray.experimental.internal_kv._internal_kv_del(key)
                     continue_debug_session()
                     return
