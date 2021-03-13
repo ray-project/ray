@@ -178,7 +178,9 @@ class ModelV2:
             self,
             input_dict: Dict[str, TensorType],
             state: List[Any] = None,
-            seq_lens: TensorType = None) -> (TensorType, List[TensorType]):
+            seq_lens: TensorType = None,
+            is_training: bool = False,
+    ) -> (TensorType, List[TensorType]):
         """Call the model with the given input tensors and state.
 
         This is the method used by RLlib to execute the forward pass. It calls
@@ -191,7 +193,9 @@ class ModelV2:
                 "prev_action", "prev_reward", "is_training"
             state (list): list of state tensors with sizes matching those
                 returned by get_initial_state + the batch dimension
-            seq_lens (Tensor): 1d tensor holding input sequence lengths
+            seq_lens (Tensor): 1d tensor holding input sequence lengths.
+            is_training (bool): Whether this call is for training
+                (loss calculation or not).
 
         Returns:
             (outputs, state): The model output tensor of size
@@ -211,8 +215,22 @@ class ModelV2:
                 restored["obs_flat"] = input_dict["obs"]
         except AttributeError:
             restored["obs_flat"] = input_dict["obs"]
+
+        # Set is_training flag.
+        restored["is_training"] = is_training
+
+        # Handle states in input-dict (if not given separately).
+        if state is None:
+            state = []
+            i = 0
+            while "state_in_{}".format(i) in input_dict:
+                state.append(input_dict["state_in_{}".format(i)])
+                i += 1
+            seq_lens = input_dict.get("seq_lens")
+
         with self.context():
-            res = self.forward(restored, state or [], seq_lens)
+            res = self.forward(restored, state, seq_lens)
+
         if ((not isinstance(res, list) and not isinstance(res, tuple))
                 or len(res) != 2):
             raise ValueError(
@@ -227,6 +245,8 @@ class ModelV2:
         self._last_output = outputs
         return outputs, state_out if len(state_out) > 0 else (state or [])
 
+    # TODO: (sven) Deprecate this method entirely (can all be handled by
+    #  __call__).
     @PublicAPI
     def from_batch(self, train_batch: SampleBatch,
                    is_training: bool = True) -> (TensorType, List[TensorType]):

@@ -24,7 +24,7 @@ from ray.rllib.utils.tracking_dict import UsageTrackingDict
 from ray.rllib.utils.typing import ModelGradients, ModelWeights, TensorType, \
     TrainerConfigDict
 
-torch, _ = try_import_torch()
+torch, nn = try_import_torch()
 
 logger = logging.getLogger(__name__)
 
@@ -106,11 +106,24 @@ class TorchPolicy(Policy):
         """
         self.framework = "torch"
         super().__init__(observation_space, action_space, config)
-        if torch.cuda.is_available():
-            logger.info("TorchPolicy running on GPU.")
-            self.device = torch.device("cuda")
+        if config["num_gpus"] > 0:
+            if config["_fake_gpus"]:
+                logger.info("TorchPolicy running on {} fake-GPU(s).".format(
+                    config["num_gpus"]))
+                self.device = torch.device("cpu")
+                self.device_shards = [self.device for _ in range(config["num_gpus"])]
+                self.model_shards = [model.to(self.device_shards[i]) for i in range(config["num_gpus"])]
+            else:
+                assert torch.cuda.is_available()
+                logger.info("TorchPolicy running on {} GPU(s).".format(
+                    config["num_gpus"]))
+                self.device = torch.device("cuda")
+                self.device_shards = [torch.device("cuda:{}".format(id_)) for i, id_ in enumerate(ray.get_gpu_ids()) if i < config["num_gpus"]]
+                self.model_shards = nn.parallel.replicate.replicate(
+                    model, [id_ for i, id_ in enumerate(ray.get_gpu_ids()) if i < config["num_gpus"]])
         else:
             logger.info("TorchPolicy running on CPU.")
+            self.device_shards = [torch.device("cpu")]
             self.device = torch.device("cpu")
         self.model = model.to(self.device)
 
@@ -403,6 +416,10 @@ class TorchPolicy(Policy):
             )
         else:
             postprocessed_batch["seq_lens"] = postprocessed_batch.seq_lens
+
+        from torch.nn.parallel.scatter_gather import scatter_kwargs
+        n = scatter_kwargs(None, postprocessed_batch,
+                           self.device_shards)
 
         # Mark the batch as "is_training" so the Model can use this
         # information.

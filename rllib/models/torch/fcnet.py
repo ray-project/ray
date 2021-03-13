@@ -121,6 +121,7 @@ class FullyConnectedNetwork(TorchModelV2, nn.Module):
                 state: List[TensorType],
                 seq_lens: TensorType) -> (TensorType, List[TensorType]):
         obs = input_dict["obs_flat"].float()
+        print(f"In forward: obs-shape={obs.shape}")#TODO
         self._last_flat_in = obs.reshape(obs.shape[0], -1)
         self._features = self._hidden_layers(self._last_flat_in)
         logits = self._logits(self._features) if self._logits else \
