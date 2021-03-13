@@ -69,7 +69,10 @@ class Metric:
         self._default_tags = default_tags
         return self
 
-    def record(self, value: float, tags: Dict[str, str] = None) -> None:
+    def record(self,
+               value: float,
+               tags: Dict[str, str] = None,
+               _internal=False) -> None:
         """Record the metric point of the metric.
 
         Tags passed in will take precedence over the metric's default tags.
@@ -78,6 +81,11 @@ class Metric:
             value(float): The value to be recorded as a metric point.
         """
         assert self._metric is not None
+        if isinstance(self._metric, CythonCount) and not _internal:
+            logger.warning("Counter.record() is deprecated in favor of "
+                           "Counter.inc() and will be removed in a future "
+                           "release. Please use Counter.inc() instead.")
+
         if tags is not None:
             for val in tags.values():
                 if not isinstance(val, str):
@@ -162,7 +170,7 @@ class Counter(Metric):
         if value <= 0:
             raise ValueError(f"value must be >0, got {value}")
 
-        self.record(value, tags)
+        self.record(value, tags=tags, _internal=True)
 
 
 class Count(Counter):
@@ -256,7 +264,7 @@ class Gauge(Metric):
 
 
 __all__ = [
-    "Count",
+    "Counter",
     "Histogram",
     "Gauge",
 ]
