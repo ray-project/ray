@@ -198,30 +198,7 @@ def debug(address):
         address = services.get_ray_address_to_use_or_die()
     logger.info(f"Connecting to Ray instance at {address}.")
     ray.init(address=address, log_to_driver=False)
-    while True:
-        continue_debug_session()
-
-        active_sessions = ray.experimental.internal_kv._internal_kv_list(
-            "RAY_PDB_")
-        print("Active breakpoints:")
-        for i, active_session in enumerate(active_sessions):
-            data = json.loads(
-                ray.experimental.internal_kv._internal_kv_get(active_session))
-            print(
-                str(i) + ": " + data["proctitle"] + " | " + data["filename"] +
-                ":" + str(data["lineno"]))
-            print(data["traceback"])
-        inp = input("Enter breakpoint index or press enter to refresh: ")
-        if inp == "":
-            print()
-            continue
-        else:
-            index = int(inp)
-            session = json.loads(
-                ray.experimental.internal_kv._internal_kv_get(
-                    active_sessions[index]))
-            host, port = session["pdb_address"].split(":")
-            ray.util.rpdb.connect_pdb_client(host, int(port))
+    ray.util.rpdb.run_debug_loop()
 
 
 @cli.command()
