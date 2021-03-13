@@ -24,7 +24,6 @@
 #include "ray/common/buffer.h"
 #include "ray/common/common_protocol.h"
 #include "ray/common/constants.h"
-#include "ray/common/id.h"
 #include "ray/common/status.h"
 #include "ray/gcs/pb_util.h"
 #include "ray/raylet/format/node_manager_generated.h"
@@ -1183,8 +1182,8 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
 }
 
 void NodeManager::DeleteLocalURI(const std::string &uri, std::function<void(bool)> cb) {
-  auto random_id = UniqueID::FromRandom();
   auto resource_path = boost::filesystem::path(initial_config_.resource_dir);
+  // Format of URI must be: scheme://path
   std::string sep = "://";
   auto pos = uri.find(sep);
   if (pos == std::string::npos || pos + sep.size() == uri.size()) {
@@ -1197,7 +1196,18 @@ void NodeManager::DeleteLocalURI(const std::string &uri, std::function<void(bool
     RAY_LOG(ERROR) << uri << " doesn't exist locally: " << from_path;
     cb(true);
   }
-  auto to_path = resource_path / boost::filesystem::path(random_id.Hex());
+  std::string deleting_suffix(".deleting");
+  auto to_path = from_path;
+  to_path += deleting_suffix;
+  int suffix_num = 0;
+  // This is for a rare case, where one request is under processing,
+  // but get a new one here.
+  while(boost::filesystem::exists(to_path)) {
+    to_path = from_path;
+    to_path += deleting_suffix;
+    to_path += std::to_string(suffix_num);
+    ++suffix_num;
+  }
   boost::system::error_code ec;
   boost::filesystem::rename(from_path, to_path, ec);
   if (ec.value() != 0) {
@@ -1207,6 +1217,8 @@ void NodeManager::DeleteLocalURI(const std::string &uri, std::function<void(bool
   }
 
   std::string to_path_str = to_path.string();
+  // We put actual deleting job in a worker is because deleting big file
+  // will block the thread for a while.
   worker_pool_.PopIOWorker(
       [this, to_path_str, cb](std::shared_ptr<WorkerInterface> io_worker) {
         rpc::RunOnIOWorkerRequest req;

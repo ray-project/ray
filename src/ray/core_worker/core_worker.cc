@@ -2567,13 +2567,13 @@ void CoreWorker::HandleLocalGC(const rpc::LocalGCRequest &request,
   }
 }
 
-void CoreWorker::HandleRunOnIOWorker(const rpc::RunOnIOWorkerRequest &request,
-                                     rpc::RunOnIOWorkerReply *reply,
+void CoreWorker::HandleRunOnUtilWorker(const rpc::RunOnUtilWorkerRequest &request,
+                                     rpc::RunOnUtilWorkerReply *reply,
                                      rpc::SendReplyCallback send_reply_callback) {
-  if (options_.run_on_io_worker_handler) {
+  if (options_.run_on_util_worker_handler) {
     std::vector<std::string> args(request.args().begin(), request.args().end());
 
-    options_.run_on_io_worker_handler(request.request(), args);
+    options_.run_on_util_worker_handler(request.request(), args);
     send_reply_callback(Status::OK(), nullptr, nullptr);
   } else {
     send_reply_callback(Status::NotImplemented("RunOnIOWorker is not supported"), nullptr,

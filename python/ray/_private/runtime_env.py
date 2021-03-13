@@ -161,12 +161,6 @@ def create_project_package(working_dir: str, modules: List[ModuleType],
             _zip_module(module_path, module_path.parent, zip_handler)
 
 
-def _delete_package_local(pkg_uri: str):
-    local_path = Path(_get_local_path(pkg_uri))
-    logger.info(f"try to delete {pkg_uri} locally ({local_path})")
-    local_path.unlink(missing_ok=True)
-
-
 def fetch_package(pkg_uri: str, pkg_file: Path) -> int:
     """Fetch a package from a given uri.
 

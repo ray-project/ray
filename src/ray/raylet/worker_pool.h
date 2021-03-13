@@ -80,8 +80,8 @@ class IOWorkerPoolInterface {
   virtual void PopDeleteWorker(
       std::function<void(std::shared_ptr<WorkerInterface>)> callback) = 0;
 
-  virtual void PushIOWorker(const std::shared_ptr<WorkerInterface> &worker) = 0;
-  virtual void PopIOWorker(
+  virtual void PushUtilWorker(const std::shared_ptr<WorkerInterface> &worker) = 0;
+  virtual void PopUtilWorker(
       std::function<void(std::shared_ptr<WorkerInterface>)> callback) = 0;
 
   virtual ~IOWorkerPoolInterface(){};
