@@ -613,11 +613,11 @@ cdef CRayStatus task_execution_handler(
                         "An unexpected internal error "
                         "occurred while the worker "
                         "was executing a task.")
-                ray._private.utils.push_error_to_driver(
-                    ray.worker.global_worker,
-                    "worker_crash",
-                    traceback_str,
-                    job_id=None)
+                    ray._private.utils.push_error_to_driver(
+                        ray.worker.global_worker,
+                        "worker_crash",
+                        traceback_str,
+                        job_id=None)
                 raise sys_exit
         except SystemExit as e:
             # Tell the core worker to exit as soon as the result objects
