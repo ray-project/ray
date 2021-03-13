@@ -306,12 +306,13 @@ class ResourceDemandScheduler:
                 self.node_types[node_type]["resources"] = resources
 
                 node_kind = tags[TAG_RAY_NODE_KIND]
-                if node_kind != NODE_KIND_HEAD:
-                    # Here, we do not record the resources have been updated,
-                    # because it need be updated by worker kind runtime
-                    # resource. The most difference between head and worker is
-                    # the memory resources. The head node needs to configure
-                    # redis memory which is not needed for worker nodes.
+                if node_kind == NODE_KIND_WORKER:
+                    # Here, we do not record the resources have been updated
+                    # if it is the head node kind. Because it need be updated
+                    # by worker kind runtime resource. The most difference
+                    # between head and worker is the memory resources. The head
+                    # node needs to configure redis memory which is not needed
+                    # for worker nodes.
                     self.node_resource_updated.add(node_type)
 
     def _infer_legacy_node_resources_if_needed(
