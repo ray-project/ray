@@ -104,6 +104,12 @@ Placement groups are atomically created - meaning that if there exists a bundle 
       // Wait for the placement group to be ready within the specified time(unit is seconds).
       boolean ready = pg.wait(60);
 
+      // You can look at placement group states using this API.
+      List<PlacementGroup> allPlacementGroup = Ray.getAllPlacementGroups();
+      for (PlacementGroup group: allPlacementGroup) {
+        System.out.println(group);
+      }
+
 Infeasible placement groups will be pending until resources are available. The Ray Autoscaler will be aware of placement groups, and auto-scale the cluster to ensure pending groups can be placed as needed.
 
 .. _pgroup-strategy:
@@ -189,13 +195,19 @@ Let's create a placement group. Recall that each bundle is a collection of resou
 
       .. code-block:: java
 
+        public static class Counter {
+          public static String ping() {
+            return "pong";
+          }
+        }
+
         // Construct a list of bundles.
         List<Map<String, Double>> bundles = new ArrayList<>();
         Map<String, Double> bundle = new HashMap<>();
         bundle.put("CPU", 2.0);
         bundles.add(bundle);
 
-        // Make a creation option with bundles and strategy.
+        // Create a placement group and make sure its creation is successful.
         PlacementGroupCreationOptions options =
           new PlacementGroupCreationOptions.Builder()
             .setBundles(bundles)
@@ -203,7 +215,19 @@ Let's create a placement group. Recall that each bundle is a collection of resou
             .build();
 
         PlacementGroup pg = Ray.createPlacementGroup(options);
+        boolean isCreated = pg.wait(60)
+        Assert.assertTrue(isCreated);
 
+        # Won't be scheduled because there are no 2 cpus.
+        Ray.task(Counter::ping)
+          .setResource("CPU", 2.0)
+          .remote();
+
+        # Will be scheduled because 2 cpus are reserved by the placement group.
+        Ray.task(Counter::ping)
+          .setPlacementGroup(placementGroup, 0)
+          .setResource("CPU", 2.0)
+          .remote();
 
 .. code-block:: python
 
