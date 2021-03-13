@@ -237,13 +237,6 @@ def temporary_helper_function():
     with pytest.raises(Exception, match="failed to be imported"):
         ray.get(foo.get_val.remote(1, arg2=2))
 
-    # Wait for the error from when the call to get_val.
-    errors = get_error_message(p, 1, ray_constants.WORKER_CRASH_PUSH_ERROR)
-    assert len(errors) == 1
-    assert errors[0].type == ray_constants.WORKER_CRASH_PUSH_ERROR
-    assert ("failed to be imported, and so cannot execute this method" in
-            errors[0].error_message)
-
     f.close()
 
     # Clean up the junk we added to sys.path.
@@ -265,16 +258,10 @@ def test_failed_actor_init(ray_start_regular, error_pubsub):
 
     a = FailedActor.remote()
 
-    # A exception in creation task will cause both a TASK_PUSH_ERROR
-    # and a WORKER_CRASH_PUSH_ERROR
+    # Make sure that we get errors from a failed constructor.
     errors = get_error_message(p, 1, ray_constants.TASK_PUSH_ERROR)
     assert len(errors) == 1
     assert errors[0].type == ray_constants.TASK_PUSH_ERROR
-    assert error_message1 in errors[0].error_message
-
-    errors = get_error_message(p, 1, ray_constants.WORKER_CRASH_PUSH_ERROR)
-    assert len(errors) == 1
-    assert errors[0].type == ray_constants.WORKER_CRASH_PUSH_ERROR
     assert error_message1 in errors[0].error_message
 
     # Incoming methods will get the exception in creation task
