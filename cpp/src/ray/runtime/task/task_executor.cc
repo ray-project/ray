@@ -64,14 +64,11 @@ Status TaskExecutor::ExecuteTask(
                             args_buffer, current_actor_);
   } else {  // NORMAL_TASK
     if (func_offset.empty()) {
-      auto lib = FunctionHelper::GetInstance().LoadDll(lib_name);
-      if (lib == nullptr) {
-        RAY_LOG(WARNING) << "Load library " << lib_name << " failed.";
+      auto execute_func = FunctionHelper::GetInstance().GetExecuteFunction(lib_name);
+      if (execute_func == nullptr) {
         return ray::Status::NotFound(lib_name + " not found");
       }
-      RAY_LOG(DEBUG) << "Begin to get execute function with ray remote";
-      auto execute_func = boost::dll::import_alias<msgpack::sbuffer(
-          const std::vector<std::shared_ptr<::ray::RayObject>> &)>(*lib, "CallInDll");
+
       RAY_LOG(DEBUG) << "Get execute function ok";
       auto result = execute_func(args_buffer);
       RAY_LOG(DEBUG) << "Execute function ok";

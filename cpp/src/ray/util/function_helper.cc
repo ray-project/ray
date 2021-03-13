@@ -53,6 +53,35 @@ std::shared_ptr<boost::dll::shared_library> FunctionHelper::LoadDll(
   return lib;
 }
 
+std::function<msgpack::sbuffer(const std::vector<std::shared_ptr<::ray::RayObject>> &)>
+FunctionHelper::GetExecuteFunction(const std::string &lib_name) {
+  auto it = funcs_.find(lib_name);
+  if (it != funcs_.end()) {
+    return it->second;
+  }
+
+  auto lib = LoadDll(lib_name);
+  if (lib == nullptr) {
+    return nullptr;
+  }
+
+  try {
+    auto execute_func = boost::dll::import_alias<msgpack::sbuffer(
+        const std::vector<std::shared_ptr<::ray::RayObject>> &)>(*lib, "CallInDll");
+    funcs_.emplace(lib_name, execute_func);
+    return execute_func;
+  } catch (std::exception &e) {
+    RAY_LOG(WARNING) << "Get execute function failed, lib_name: " << lib_name
+                     << ", failed reason: " << e.what();
+  } catch (...) {
+    RAY_LOG(WARNING) << "Get execute function, lib_name: " << lib_name
+                     << ", unknown failed reason.";
+  }
+
+  RAY_LOG(WARNING) << "Can't get execute function, lib_name: " << lib_name;
+  return nullptr;
+}
+
 uintptr_t FunctionHelper::LoadLibrary(std::string lib_name) {
   /// Generate base address from library.
   RAY_LOG(INFO) << "Start load library " << lib_name;
