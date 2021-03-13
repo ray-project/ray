@@ -1113,12 +1113,17 @@ def _get_running_head_node(config: Dict[str, Any],
     provider = _get_node_provider(config["provider"], config["cluster_name"])
     head_node_tags = {
         TAG_RAY_NODE_KIND: NODE_KIND_HEAD,
-        TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
     }
     nodes = provider.non_terminated_nodes(head_node_tags)
+    head_node = None
+    for node in nodes:
+        node_state = provider.node_tags(TAG_RAY_NODE_STATUS)
+        if node_state == STATUS_UP_TO_DATE:
+            head_node = node
+        else:
+            cli_logger.warning(f"Head node ({node}) is in state {node_state}.")
 
-    if len(nodes) > 0:
-        head_node = nodes[0]
+    if head_node:
         return head_node
     elif create_if_needed:
         get_or_create_head_node(
