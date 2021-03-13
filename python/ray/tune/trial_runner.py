@@ -297,6 +297,8 @@ class TrialRunner:
 
         self._callbacks = CallbackList(callbacks or [])
 
+        self._callbacks.setup()
+
         if checkpoint_period is None:
             checkpoint_period = os.getenv("TUNE_GLOBAL_CHECKPOINT_S", "auto")
 
@@ -737,10 +739,11 @@ class TrialRunner:
             result = trial.last_result
             result.update(done=True)
 
-        self._validate_result_metrics(result)
         self._total_time += result.get(TIME_THIS_ITER_S, 0)
 
         flat_result = flatten_dict(result)
+        self._validate_result_metrics(flat_result)
+
         if self._stopper(trial.trial_id,
                          result) or trial.should_stop(flat_result):
             result.update(done=True)

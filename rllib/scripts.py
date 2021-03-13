@@ -10,7 +10,7 @@ Example usage for training:
     rllib train --run DQN --env CartPole-v0
 
 Example usage for rollout:
-    rllib rollout /trial_dir/checkpoint_1/checkpoint-1 --run DQN
+    rllib rollout /trial_dir/checkpoint_000001/checkpoint-1 --run DQN
 """
 
 

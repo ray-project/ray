@@ -25,6 +25,7 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/synchronization/mutex.h"
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_object.h"
 #include "ray/core_worker/context.h"
@@ -362,7 +363,7 @@ class SchedulingQueue {
 /// See direct_actor.proto for a description of the ordering protocol.
 class ActorSchedulingQueue : public SchedulingQueue {
  public:
-  ActorSchedulingQueue(boost::asio::io_service &main_io_service, DependencyWaiter &waiter,
+  ActorSchedulingQueue(instrumented_io_context &main_io_service, DependencyWaiter &waiter,
                        WorkerContext &worker_context,
                        int64_t reorder_wait_seconds = kMaxReorderWaitSeconds)
       : worker_context_(worker_context),
@@ -596,7 +597,7 @@ class CoreWorkerDirectTaskReceiver {
   using OnTaskDone = std::function<ray::Status()>;
 
   CoreWorkerDirectTaskReceiver(WorkerContext &worker_context,
-                               boost::asio::io_service &main_io_service,
+                               instrumented_io_context &main_io_service,
                                const TaskHandler &task_handler,
                                const OnTaskDone &task_done)
       : worker_context_(worker_context),
@@ -629,7 +630,7 @@ class CoreWorkerDirectTaskReceiver {
   /// The callback function to process a task.
   TaskHandler task_handler_;
   /// The IO event loop for running tasks on.
-  boost::asio::io_service &task_main_io_service_;
+  instrumented_io_context &task_main_io_service_;
   /// The callback function to be invoked when finishing a task.
   OnTaskDone task_done_;
   /// Shared pool for producing new core worker clients.

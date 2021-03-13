@@ -4,7 +4,7 @@ import sys
 import time
 
 import ray
-from ray.cluster_utils import Cluster
+from ray._private.cluster_utils import Cluster
 import ray.ray_constants as ray_constants
 from ray.test_utils import get_error_message
 

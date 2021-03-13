@@ -27,9 +27,6 @@ class Metric:
                              "Please provide a metric name.")
         self._name = name
         self._description = description
-        # We don't specify unit because it won't be
-        # exported to Prometheus anyway.
-        self._unit = ""
         # The default tags key-value pair.
         self._default_tags = {}
         # Keys of tags.
@@ -72,7 +69,10 @@ class Metric:
         self._default_tags = default_tags
         return self
 
-    def record(self, value: float, tags: dict = None) -> None:
+    def record(self,
+               value: float,
+               tags: Dict[str, str] = None,
+               _internal=False) -> None:
         """Record the metric point of the metric.
 
         Tags passed in will take precedence over the metric's default tags.
@@ -81,6 +81,11 @@ class Metric:
             value(float): The value to be recorded as a metric point.
         """
         assert self._metric is not None
+        if isinstance(self._metric, CythonCount) and not _internal:
+            logger.warning("Counter.record() is deprecated in favor of "
+                           "Counter.inc() and will be removed in a future "
+                           "release. Please use Counter.inc() instead.")
+
         if tags is not None:
             for val in tags.values():
                 if not isinstance(val, str):
@@ -128,10 +133,11 @@ class Metric:
         }
 
 
-class Count(Metric):
-    """The count of the number of metric points.
+class Counter(Metric):
+    """A cumulative metric that is monotonically increasing.
 
-    This is corresponding to Prometheus' Count metric.
+    This corresponds to Prometheus' counter metric:
+    https://prometheus.io/docs/concepts/metric_types/#counter
 
     Args:
         name(str): Name of the metric.
@@ -144,13 +150,50 @@ class Count(Metric):
                  description: str = "",
                  tag_keys: Optional[Tuple[str]] = None):
         super().__init__(name, description, tag_keys)
-        self._metric = CythonCount(self._name, self._description, self._unit,
+        self._metric = CythonCount(self._name, self._description,
                                    self._tag_keys)
 
     def __reduce__(self):
         deserializer = Count
         serialized_data = (self._name, self._description, self._tag_keys)
         return deserializer, serialized_data
+
+    def inc(self, value: float = 1.0, tags: Dict[str, str] = None):
+        """Increment the counter by `value` (defaults to 1).
+
+        Args:
+            value(int, float): Value to increment the counter by (default=1).
+            tags(Dict[str, str]): Tags to set or override for this counter.
+        """
+        if not isinstance(value, (int, float)):
+            raise TypeError(f"value must be int or float, got {type(value)}.")
+        if value <= 0:
+            raise ValueError(f"value must be >0, got {value}")
+
+        self.record(value, tags=tags, _internal=True)
+
+
+class Count(Counter):
+    """The count of the number of metric points.
+
+    This corresponds to Prometheus' 'Count' metric.
+
+    This class is DEPRECATED, please use ray.util.metrics.Counter instead.
+
+    Args:
+        name(str): Name of the metric.
+        description(str): Description of the metric.
+        tag_keys(tuple): Tag keys of the metric.
+    """
+
+    def __init__(self,
+                 name: str,
+                 description: str = "",
+                 tag_keys: Optional[Tuple[str]] = None):
+        logger.warning(
+            "`metrics.Count` has been renamed to `metrics.Counter`. "
+            "`metrics.Count` will be removed in a future release.")
+        super().__init__(name, description, tag_keys)
 
 
 class Histogram(Metric):
@@ -179,8 +222,7 @@ class Histogram(Metric):
                 "Histogram class. e.g., Histogram(boundaries=[1.0, 2.0])")
         self.boundaries = boundaries
         self._metric = CythonHistogram(self._name, self._description,
-                                       self._unit, self.boundaries,
-                                       self._tag_keys)
+                                       self.boundaries, self._tag_keys)
 
     def __reduce__(self):
         deserializer = Histogram
@@ -212,7 +254,7 @@ class Gauge(Metric):
                  description: str = "",
                  tag_keys: Optional[Tuple[str]] = None):
         super().__init__(name, description, tag_keys)
-        self._metric = CythonGauge(self._name, self._description, self._unit,
+        self._metric = CythonGauge(self._name, self._description,
                                    self._tag_keys)
 
     def __reduce__(self):
@@ -222,7 +264,7 @@ class Gauge(Metric):
 
 
 __all__ = [
-    "Count",
+    "Counter",
     "Histogram",
     "Gauge",
 ]

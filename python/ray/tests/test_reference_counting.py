@@ -2,6 +2,7 @@
 import copy
 import logging
 import os
+import sys
 import time
 
 import numpy as np
@@ -9,8 +10,9 @@ import numpy as np
 import pytest
 
 import ray
-import ray.cluster_utils
-from ray.test_utils import (SignalActor, put_object, wait_for_condition,
+import ray._private.cluster_utils
+from ray.test_utils import (SignalActor, kill_actor_and_wait_for_failure,
+                            put_object, wait_for_condition,
                             new_scheduler_enabled)
 
 logger = logging.getLogger(__name__)
@@ -466,8 +468,8 @@ def test_actor_holding_serialized_reference(one_worker_100MiB, use_ray_put,
 
     if failure:
         # Test that the actor exiting stops the reference from being pinned.
-        ray.kill(actor)
-        # Wait for the actor to exit.
+        # Kill the actor and wait for the actor to exit.
+        kill_actor_and_wait_for_failure(actor)
         with pytest.raises(ray.exceptions.RayActorError):
             ray.get(actor.delete_ref1.remote())
     else:
@@ -479,6 +481,7 @@ def test_actor_holding_serialized_reference(one_worker_100MiB, use_ray_put,
 # Test that a passed reference held by an actor after a task finishes
 # is kept until the reference is removed from the worker. Also tests giving
 # the worker a duplicate reference to the same object ref.
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 @pytest.mark.parametrize("use_ray_put,failure", [(False, False), (False, True),
                                                  (True, False), (True, True)])
 def test_worker_holding_serialized_reference(one_worker_100MiB, use_ray_put,

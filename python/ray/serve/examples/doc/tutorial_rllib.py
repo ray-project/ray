@@ -45,7 +45,7 @@ def train_ppo_model():
     # Train for one iteration
     trainer.train()
     trainer.save("/tmp/rllib_checkpoint")
-    return "/tmp/rllib_checkpoint/checkpoint_1/checkpoint-1"
+    return "/tmp/rllib_checkpoint/checkpoint_000001/checkpoint-1"
 
 
 checkpoint_path = train_ppo_model()

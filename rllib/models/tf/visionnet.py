@@ -70,7 +70,8 @@ class VisionNetwork(TFModelV2):
             last_layer = tf.keras.layers.Conv2D(
                 out_size,
                 kernel,
-                strides=(stride, stride),
+                strides=stride
+                if isinstance(stride, (list, tuple)) else (stride, stride),
                 activation=activation,
                 padding="same",
                 data_format="channels_last",
@@ -85,7 +86,8 @@ class VisionNetwork(TFModelV2):
             last_layer = tf.keras.layers.Conv2D(
                 out_size if post_fcnet_hiddens else num_outputs,
                 kernel,
-                strides=(stride, stride),
+                strides=stride
+                if isinstance(stride, (list, tuple)) else (stride, stride),
                 activation=activation,
                 padding="valid",
                 data_format="channels_last",
@@ -107,7 +109,8 @@ class VisionNetwork(TFModelV2):
             last_layer = tf.keras.layers.Conv2D(
                 out_size,
                 kernel,
-                strides=(stride, stride),
+                strides=stride
+                if isinstance(stride, (list, tuple)) else (stride, stride),
                 activation=activation,
                 padding="valid",
                 data_format="channels_last",
@@ -169,8 +172,9 @@ class VisionNetwork(TFModelV2):
 
         # Build the value layers
         if vf_share_layers:
-            last_layer = tf.keras.layers.Lambda(
-                lambda x: tf.squeeze(x, axis=[1, 2]))(last_layer)
+            if not self.last_layer_is_flattened:
+                last_layer = tf.keras.layers.Lambda(
+                    lambda x: tf.squeeze(x, axis=[1, 2]))(last_layer)
             value_out = tf.keras.layers.Dense(
                 1,
                 name="value_out",
@@ -183,7 +187,8 @@ class VisionNetwork(TFModelV2):
                 last_layer = tf.keras.layers.Conv2D(
                     out_size,
                     kernel,
-                    strides=(stride, stride),
+                    strides=stride
+                    if isinstance(stride, (list, tuple)) else (stride, stride),
                     activation=activation,
                     padding="same",
                     data_format="channels_last",
@@ -192,7 +197,8 @@ class VisionNetwork(TFModelV2):
             last_layer = tf.keras.layers.Conv2D(
                 out_size,
                 kernel,
-                strides=(stride, stride),
+                strides=stride
+                if isinstance(stride, (list, tuple)) else (stride, stride),
                 activation=activation,
                 padding="valid",
                 data_format="channels_last",

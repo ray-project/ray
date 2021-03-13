@@ -43,12 +43,13 @@
 #include <utility>
 #include <vector>
 
+#include "ray/common/asio/asio_util.h"
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/object_manager/format/object_manager_generated.h"
 #include "ray/object_manager/plasma/common.h"
 #include "ray/object_manager/plasma/malloc.h"
 #include "ray/object_manager/plasma/plasma_allocator.h"
 #include "ray/object_manager/plasma/protocol.h"
-#include "ray/util/asio_util.h"
 #include "ray/util/util.h"
 
 namespace fb = plasma::flatbuf;
@@ -68,7 +69,7 @@ ray::ObjectID GetCreateRequestObjectId(const std::vector<uint8_t> &message) {
 namespace plasma {
 
 struct GetRequest {
-  GetRequest(boost::asio::io_service &io_context, const std::shared_ptr<Client> &client,
+  GetRequest(instrumented_io_context &io_context, const std::shared_ptr<Client> &client,
              const std::vector<ObjectID> &object_ids, bool is_from_worker);
   /// The client that called get.
   std::shared_ptr<Client> client;
@@ -101,7 +102,7 @@ struct GetRequest {
   boost::asio::steady_timer timer_;
 };
 
-GetRequest::GetRequest(boost::asio::io_service &io_context,
+GetRequest::GetRequest(instrumented_io_context &io_context,
                        const std::shared_ptr<Client> &client,
                        const std::vector<ObjectID> &object_ids, bool is_from_worker)
     : client(client),
@@ -114,7 +115,7 @@ GetRequest::GetRequest(boost::asio::io_service &io_context,
   num_objects_to_wait_for = unique_ids.size();
 }
 
-PlasmaStore::PlasmaStore(boost::asio::io_service &main_service, std::string directory,
+PlasmaStore::PlasmaStore(instrumented_io_context &main_service, std::string directory,
                          bool hugepages_enabled, const std::string &socket_name,
                          uint32_t delay_on_oom_ms,
                          ray::SpillObjectsCallback spill_objects_callback,

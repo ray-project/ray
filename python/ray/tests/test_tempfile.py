@@ -10,7 +10,8 @@ from ray.test_utils import check_call_ray, wait_for_condition
 
 def unix_socket_create_path(name):
     unix = sys.platform != "win32"
-    return os.path.join(ray.utils.get_user_temp_dir(), name) if unix else None
+    return os.path.join(ray._private.utils.get_user_temp_dir(),
+                        name) if unix else None
 
 
 def unix_socket_verify(unix_socket):
@@ -24,34 +25,37 @@ def unix_socket_delete(unix_socket):
 
 
 def test_tempdir(shutdown_only):
-    shutil.rmtree(ray.utils.get_ray_temp_dir(), ignore_errors=True)
+    shutil.rmtree(ray._private.utils.get_ray_temp_dir(), ignore_errors=True)
     ray.init(
-        _temp_dir=os.path.join(ray.utils.get_user_temp_dir(),
+        _temp_dir=os.path.join(ray._private.utils.get_user_temp_dir(),
                                "i_am_a_temp_dir"))
     assert os.path.exists(
-        os.path.join(ray.utils.get_user_temp_dir(),
+        os.path.join(ray._private.utils.get_user_temp_dir(),
                      "i_am_a_temp_dir")), "Specified temp dir not found."
-    assert not os.path.exists(
-        ray.utils.get_ray_temp_dir()), ("Default temp dir should not exist.")
+    assert not os.path.exists(ray._private.utils.get_ray_temp_dir()), (
+        "Default temp dir should not exist.")
     shutil.rmtree(
-        os.path.join(ray.utils.get_user_temp_dir(), "i_am_a_temp_dir"),
+        os.path.join(ray._private.utils.get_user_temp_dir(),
+                     "i_am_a_temp_dir"),
         ignore_errors=True)
 
 
 def test_tempdir_commandline():
-    shutil.rmtree(ray.utils.get_ray_temp_dir(), ignore_errors=True)
+    shutil.rmtree(ray._private.utils.get_ray_temp_dir(), ignore_errors=True)
     check_call_ray([
         "start", "--head", "--temp-dir=" + os.path.join(
-            ray.utils.get_user_temp_dir(), "i_am_a_temp_dir2"), "--port", "0"
+            ray._private.utils.get_user_temp_dir(), "i_am_a_temp_dir2"),
+        "--port", "0"
     ])
     assert os.path.exists(
-        os.path.join(ray.utils.get_user_temp_dir(),
+        os.path.join(ray._private.utils.get_user_temp_dir(),
                      "i_am_a_temp_dir2")), "Specified temp dir not found."
-    assert not os.path.exists(
-        ray.utils.get_ray_temp_dir()), "Default temp dir should not exist."
+    assert not os.path.exists(ray._private.utils.get_ray_temp_dir()
+                              ), "Default temp dir should not exist."
     check_call_ray(["stop"])
     shutil.rmtree(
-        os.path.join(ray.utils.get_user_temp_dir(), "i_am_a_temp_dir2"),
+        os.path.join(ray._private.utils.get_user_temp_dir(),
+                     "i_am_a_temp_dir2"),
         ignore_errors=True)
 
 
@@ -59,7 +63,8 @@ def test_tempdir_long_path():
     if sys.platform != "win32":
         # Test AF_UNIX limits for sockaddr_un->sun_path on POSIX OSes
         maxlen = 104 if sys.platform.startswith("darwin") else 108
-        temp_dir = os.path.join(ray.utils.get_user_temp_dir(), "z" * maxlen)
+        temp_dir = os.path.join(ray._private.utils.get_user_temp_dir(),
+                                "z" * maxlen)
         with pytest.raises(OSError):
             ray.init(_temp_dir=temp_dir)  # path should be too long
 
@@ -116,7 +121,7 @@ def test_raylet_tempfiles(shutdown_only):
 
 
 def test_tempdir_privilege(shutdown_only):
-    os.chmod(ray.utils.get_ray_temp_dir(), 0o000)
+    os.chmod(ray._private.utils.get_ray_temp_dir(), 0o000)
     ray.init(num_cpus=1)
     session_dir = ray.worker._global_node.get_session_dir_path()
     assert os.path.exists(session_dir), "Specified socket path not found."

@@ -1,3 +1,5 @@
+.. _serve-architecture:
+
 Serve Architecture
 ==================
 This document provides an overview of how each component in Serve works.

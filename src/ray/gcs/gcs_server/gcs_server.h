@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/gcs/gcs_server/gcs_heartbeat_manager.h"
 #include "ray/gcs/gcs_server/gcs_init_data.h"
 #include "ray/gcs/gcs_server/gcs_object_manager.h"
@@ -57,7 +58,7 @@ class GcsPlacementGroupManager;
 class GcsServer {
  public:
   explicit GcsServer(const GcsServerConfig &config,
-                     boost::asio::io_service &main_service);
+                     instrumented_io_context &main_service);
   virtual ~GcsServer();
 
   /// Start gcs server.
@@ -131,10 +132,10 @@ class GcsServer {
   /// Gcs server configuration.
   GcsServerConfig config_;
   /// The main io service to drive event posted from grpc threads.
-  boost::asio::io_context &main_service_;
+  instrumented_io_context &main_service_;
   /// The io service used by heartbeat manager in case of node failure detector being
   /// blocked by main thread.
-  boost::asio::io_service heartbeat_manager_io_service_;
+  instrumented_io_context heartbeat_manager_io_service_;
   /// The grpc server
   rpc::GrpcServer rpc_server_;
   /// The `ClientCallManager` object that is shared by all `NodeManagerWorkerClient`s.

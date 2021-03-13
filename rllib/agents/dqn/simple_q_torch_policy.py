@@ -38,7 +38,7 @@ class TargetNetworkMixin:
             # target Q network.
             assert len(self.q_func_vars) == len(self.target_q_func_vars), \
                 (self.q_func_vars, self.target_q_func_vars)
-            self.target_q_model.load_state_dict(self.q_model.state_dict())
+            self.target_q_model.load_state_dict(self.model.state_dict())
 
         self.update_target = do_update
 
@@ -67,7 +67,7 @@ def build_q_losses(policy: Policy, model, dist_class,
     # q network evaluation
     q_t = compute_q_values(
         policy,
-        policy.q_model,
+        policy.model,
         train_batch[SampleBatch.CUR_OBS],
         explore=False,
         is_training=True)

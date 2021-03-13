@@ -41,6 +41,10 @@ class GcsJobManager : public rpc::JobInfoHandler {
                            rpc::GetAllJobInfoReply *reply,
                            rpc::SendReplyCallback send_reply_callback) override;
 
+  void HandleReportJobError(const rpc::ReportJobErrorRequest &request,
+                            rpc::ReportJobErrorReply *reply,
+                            rpc::SendReplyCallback send_reply_callback) override;
+
   void AddJobFinishedListener(
       std::function<void(std::shared_ptr<JobID>)> listener) override;
 
