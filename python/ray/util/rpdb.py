@@ -238,8 +238,8 @@ def post_mortem():
     rdb.post_mortem()
 
 
-def connect_pdb_client(host, port, key=None):
-    cmd = f"ssh -o BatchMode=yes -o ServerAliveInterval=1 -o ServerAliveCountMax=5 -f -o ExitOnForwardFailure=yes -i {key} -N -L {port}:localhost:{port} ubuntu@{host}"
+def connect_pdb_client(host, port, ssh_key=None):
+    cmd = f"ssh -o BatchMode=yes -o ServerAliveInterval=1 -o ServerAliveCountMax=5 -f -o ExitOnForwardFailure=yes -i {ssh_key} -N -L {port}:localhost:{port} ubuntu@{host}"
     p = subprocess.Popen(
         cmd,
         universal_newlines=True, shell=True, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
@@ -277,7 +277,7 @@ def connect_pdb_client(host, port, key=None):
                 s.send(msg.encode())
 
 
-def continue_debug_session(key=None):
+def continue_debug_session(ssh_key=None):
     """Continue active debugging session.
 
     This function will connect 'ray debug' to the right debugger
@@ -300,15 +300,15 @@ def continue_debug_session(key=None):
                     host, port = session["pdb_address"].split(":")
                     ray.util.rpdb.connect_pdb_client(host, int(port), key)
                     ray.experimental.internal_kv._internal_kv_del(key)
-                    continue_debug_session()
+                    continue_debug_session(ssh_key)
                     return
                 time.sleep(1.0)
 
 
-def run_debug_loop():
+def run_debug_loop(ssh_key=None):
 
     while True:
-        continue_debug_session()
+        continue_debug_session(ssh_key)
 
         active_sessions = ray.experimental.internal_kv._internal_kv_list(
             "RAY_PDB_")
@@ -330,4 +330,4 @@ def run_debug_loop():
                 ray.experimental.internal_kv._internal_kv_get(
                     active_sessions[index]))
             host, port = session["pdb_address"].split(":")
-            ray.util.rpdb.connect_pdb_client(host, int(port))
+            ray.util.rpdb.connect_pdb_client(host, int(port), ssh_key)
