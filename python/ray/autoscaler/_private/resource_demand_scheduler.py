@@ -300,7 +300,9 @@ class ResourceDemandScheduler:
             if runtime_resources:
                 runtime_resources = copy.deepcopy(runtime_resources)
                 resources = self.node_types[node_type].get("resources", {})
-                resources.update(runtime_resources)
+                for key in ["CPU", "GPU", "memory", "object_store_memory"]:
+                    if key in runtime_resources:
+                        resources[key] = runtime_resources[key]
                 self.node_types[node_type]["resources"] = resources
 
                 node_kind = tags[TAG_RAY_NODE_KIND]
