@@ -52,21 +52,7 @@ class ResourceDemandScheduler:
                  head_node_type: NodeType,
                  upscaling_speed: float = 1) -> None:
         self.provider = provider
-
-        node_types = copy.deepcopy(node_types)
-        # convert memory and object_store_memory to memory unit
-        for node_type in node_types:
-            res = node_types[node_type].get("resources", {})
-            if "memory" in res:
-                size = float(res["memory"])
-                res["memory"] = ray_constants.to_memory_units(size, False)
-            if "object_store_memory" in res:
-                size = float(res["object_store_memory"])
-                res["object_store_memory"] = ray_constants.to_memory_units(
-                    size, False)
-            if res:
-                node_types[node_type]["resources"] = res
-        self.node_types = node_types
+        self.node_types = _convert_memory_unit(node_types)
         self.node_resource_updated = set()
         self.max_workers = max_workers
         self.head_node_type = head_node_type
@@ -84,7 +70,7 @@ class ResourceDemandScheduler:
         inferered resources are not lost.
         """
         new_node_types = copy.deepcopy(node_types)
-        final_node_types = new_node_types
+        final_node_types = _convert_memory_unit(new_node_types)
         if self.is_legacy_yaml(new_node_types):  # If new configs are legacy.
             if self.is_legacy_yaml():  # If old configs were legacy.
 
@@ -108,6 +94,7 @@ class ResourceDemandScheduler:
 
         self.provider = provider
         self.node_types = copy.deepcopy(final_node_types)
+        self.node_resource_updated = set()
         self.max_workers = max_workers
         self.head_node_type = head_node_type
         self.upscaling_speed = upscaling_speed
@@ -315,7 +302,15 @@ class ResourceDemandScheduler:
                 resources = self.node_types[node_type].get("resources", {})
                 resources.update(runtime_resources)
                 self.node_types[node_type]["resources"] = resources
-                self.node_resource_updated.add(node_type)
+
+                node_kind = tags[TAG_RAY_NODE_KIND]
+                if node_kind != NODE_KIND_HEAD:
+                    # Here, we do not record the resources have been updated,
+                    # because it need be updated by worker kind runtime
+                    # resource. The most difference between head and worker is
+                    # the memory resources. The head node needs to configure
+                    # redis memory which is not needed for worker nodes.
+                    self.node_resource_updated.add(node_type)
 
     def _infer_legacy_node_resources_if_needed(
             self, max_resources_by_ip: Dict[NodeIP, ResourceDict]
@@ -553,6 +548,24 @@ class ResourceDemandScheduler:
                 out += " ({} pending)".format(pending_nodes[node_type])
 
         return out
+
+
+def _convert_memory_unit(node_types: Dict[NodeType, NodeTypeConfigDict]
+                         ) -> Dict[NodeType, NodeTypeConfigDict]:
+    """Convert memory and object_store_memory to memory unit"""
+    node_types = copy.deepcopy(node_types)
+    for node_type in node_types:
+        res = node_types[node_type].get("resources", {})
+        if "memory" in res:
+            size = float(res["memory"])
+            res["memory"] = ray_constants.to_memory_units(size, False)
+        if "object_store_memory" in res:
+            size = float(res["object_store_memory"])
+            res["object_store_memory"] = ray_constants.to_memory_units(
+                size, False)
+        if res:
+            node_types[node_type]["resources"] = res
+    return node_types
 
 
 def _node_type_counts_to_node_resources(

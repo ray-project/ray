@@ -7,6 +7,7 @@ from kubernetes import client
 from kubernetes.client.rest import ApiException
 
 from ray.autoscaler._private.kubernetes import auth_api, core_api, log_prefix
+import ray.ray_constants as ray_constants
 
 logger = logging.getLogger(__name__)
 
@@ -79,6 +80,7 @@ def fillout_resources_kubernetes(config):
     if "available_node_types" not in config:
         return config
     node_types = copy.deepcopy(config["available_node_types"])
+    head_node_type = config["head_node_type"]
     for node_type in node_types:
 
         node_config = node_types[node_type]["node_config"]
@@ -89,6 +91,9 @@ def fillout_resources_kubernetes(config):
         container_data = pod["spec"]["containers"][0]
 
         autodetected_resources = get_autodetected_resources(container_data)
+        if node_types == head_node_type:
+            # we only autodetect worker type node memory resource
+            autodetected_resources.pop("memory")
         if "resources" not in config["available_node_types"][node_type]:
             config["available_node_types"][node_type]["resources"] = {}
         autodetected_resources.update(
@@ -117,7 +122,9 @@ def get_autodetected_resources(container_data):
             del node_type_resources[key]
 
     memory_limits = _get_resource(container_resources, "memory", "limits")
-    node_type_resources["memory"] = int(memory_limits * 0.6)
+    node_type_resources["memory"] = int(
+        memory_limits *
+        (1 - ray_constants.DEFAULT_OBJECT_STORE_MEMORY_PROPORTION))
 
     return node_type_resources
 
@@ -185,7 +192,7 @@ def _parse_memory_resource(resource):
         pass
     memory_size = re.sub(r"([KMGTP]+)", r" \1", resource_str)
     number, unit_index = [item.strip() for item in memory_size.split()]
-    unit_index = unit_index[0:1]
+    unit_index = unit_index[0]
     return float(number) * MEMORY_SIZE_UNITS[unit_index]
 
 
