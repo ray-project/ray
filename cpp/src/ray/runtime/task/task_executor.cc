@@ -40,7 +40,7 @@ Status TaskExecutor::ExecuteTask(
   std::string func_offset = typed_descriptor->FunctionOffset();
   std::string exec_func_offset = typed_descriptor->ExecFunctionOffset();
   uintptr_t base_addr = 0;
-  if (func_offset.empty()) {
+  if (!func_offset.empty()) {
     base_addr = FunctionHelper::GetInstance().GetBaseAddress(lib_name);
   }
 
