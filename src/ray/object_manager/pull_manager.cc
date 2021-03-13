@@ -326,6 +326,11 @@ void PullManager::TryToMakeObjectLocal(const ObjectID &object_id) {
   if (request.next_pull_time > get_time_()) {
     return;
   }
+  if (request.is_being_restored) {
+    // If the object is in the middle of being restored, wait to pull the object until
+    // the restoration is done.
+    return;
+  }
 
   // We always pull objects from a remote node before
   // restoring it because of two reasons.
@@ -350,24 +355,37 @@ void PullManager::TryToMakeObjectLocal(const ObjectID &object_id) {
   // sending RPCs.
   if (!request.spilled_url.empty()) {
     const auto spilled_node_id = request.spilled_node_id;
+    // Set a flag on the request so we don't send duplicate restoration requests.
+    request.is_being_restored = true;
     restore_spilled_object_(
         object_id, request.spilled_url, spilled_node_id,
-        [this, object_id, spilled_node_id](const ray::Status &status) {
+        [this, object_id, &request, spilled_node_id](const ray::Status &status) {
+          request.is_being_restored = false;
           if (!status.ok()) {
             const auto node_id_with_issue =
                 spilled_node_id.IsNil() ? self_node_id_ : spilled_node_id;
-            RAY_LOG(WARNING)
-                << "Object restoration failed and the object could "
-                   "not be "
-                   "found on any other nodes. This can happen if the location where the "
-                   "object was spilled is unreachable. This job may hang if the object "
-                   "is permanently unreachable. "
-                   "Please check the log of node of id: "
-                << node_id_with_issue << " Object id: " << object_id;
+            if (status.IsPendingRequiredData()) {
+              RAY_LOG(DEBUG) << "Object restoration failed for object " << object_id
+                             << " on node " << node_id_with_issue
+                             << " because we're waiting on pending data: "
+                             << status.ToString();
+            } else {
+              RAY_LOG(WARNING)
+                  << "Object restoration failed and the object " << object_id
+                  << " could not be found on any other nodes. This can happen "
+                     "if the location where the object was spilled is "
+                     "unreachable. This job may hang if the object is "
+                     "permanently unreachable. Please check the logs of node "
+                  << node_id_with_issue
+                  << " and the following status: " << status.ToString();
+            }
+            // Object restoration failed; we'll retry at a later time.
+            UpdateRetryTimer(request);
           }
+          // If object restoration succeeded, we don't update the retry timer since the
+          // object should be ready for pulling, which we want to do as soon as
+          // possible.
         });
-    // We shouldn't update the timer here because restoration takes some time, and since
-    // we retry pull requests with exponential backoff, the delay could be large.
   }
 }
 

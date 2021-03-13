@@ -128,6 +128,8 @@ class PullManager {
     double next_pull_time;
     uint8_t num_retries;
     bool object_size_set = false;
+    // Whether the object is currently being restored.
+    bool is_being_restored = false;
     size_t object_size = 0;
     // All bundle requests that haven't been canceled yet that require this
     // object. This includes bundle requests whose objects are not actively

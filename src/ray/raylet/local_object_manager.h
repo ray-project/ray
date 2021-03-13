@@ -46,7 +46,8 @@ class LocalObjectManager {
       int64_t min_spilling_size, bool is_external_storage_type_fs,
       std::function<void(const std::vector<ObjectID> &)> on_objects_freed,
       std::function<bool(const ray::ObjectID &)> is_plasma_object_spillable,
-      std::function<void(const ObjectID &, const std::string &, const NodeID &)>
+      std::function<void(const ObjectID &, const std::string &, const NodeID &,
+                         std::function<void(const ray::Status &)>)>
           restore_object_from_remote_node)
       : self_node_id_(node_id),
         free_objects_period_ms_(free_objects_period_ms),
@@ -279,7 +280,8 @@ class LocalObjectManager {
   std::function<bool(const ray::ObjectID &)> is_plasma_object_spillable_;
 
   /// Callback to restore object of object id from a remote node of node id.
-  std::function<void(const ObjectID &, const std::string &, const NodeID &)>
+  std::function<void(const ObjectID &, const std::string &, const NodeID &,
+                     std::function<void(const ray::Status &)>)>
       restore_object_from_remote_node_;
 
   /// Used to decide spilling protocol.
