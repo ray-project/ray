@@ -158,34 +158,6 @@ def dashboard(cluster_config_file, cluster_name, port, remote_port):
                 from None
 
 
-def continue_debug_session():
-    """Continue active debugging session.
-
-    This function will connect 'ray debug' to the right debugger
-    when a user is stepping between Ray tasks.
-    """
-    active_sessions = ray.experimental.internal_kv._internal_kv_list(
-        "RAY_PDB_")
-
-    for active_session in active_sessions:
-        if active_session.startswith(b"RAY_PDB_CONTINUE"):
-            print("Continuing pdb session in different process...")
-            key = b"RAY_PDB_" + active_session[len("RAY_PDB_CONTINUE_"):]
-            while True:
-                data = ray.experimental.internal_kv._internal_kv_get(key)
-                if data:
-                    session = json.loads(data)
-                    if "exit_debugger" in session:
-                        ray.experimental.internal_kv._internal_kv_del(key)
-                        return
-                    host, port = session["pdb_address"].split(":")
-                    ray.util.rpdb.connect_pdb_client(host, int(port))
-                    ray.experimental.internal_kv._internal_kv_del(key)
-                    continue_debug_session()
-                    return
-                time.sleep(1.0)
-
-
 @cli.command()
 @click.option(
     "--address",
