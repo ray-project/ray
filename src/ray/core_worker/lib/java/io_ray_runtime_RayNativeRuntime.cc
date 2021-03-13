@@ -93,17 +93,7 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(
     JNIEnv *env, jclass, jint workerMode, jstring nodeIpAddress, jint nodeManagerPort,
     jstring driverName, jstring storeSocket, jstring rayletSocket, jbyteArray jobId,
     jobject gcsClientOptions, jint numWorkersPerProcess, jstring logDir,
-    jobject rayletConfigParameters, jbyteArray jobConfig) {
-  auto raylet_config = JavaMapToNativeMap<std::string, std::string>(
-      env, rayletConfigParameters,
-      [](JNIEnv *env, jobject java_key) {
-        return JavaStringToNativeString(env, (jstring)java_key);
-      },
-      [](JNIEnv *env, jobject java_value) {
-        return JavaStringToNativeString(env, (jstring)java_value);
-      });
-  RayConfig::instance().initialize(raylet_config);
-
+    jbyteArray jobConfig) {
   auto task_execution_callback =
       [](ray::TaskType task_type, const std::string task_name,
          const ray::RayFunction &ray_function,
@@ -204,11 +194,11 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(
     int64_t start = current_time_ms();
     if (last_gc_time_ms + 1000 < start) {
       JNIEnv *env = GetJNIEnv();
-      RAY_LOG(INFO) << "Calling System.gc() ...";
+      RAY_LOG(DEBUG) << "Calling System.gc() ...";
       env->CallStaticObjectMethod(java_system_class, java_system_gc);
       last_gc_time_ms = current_time_ms();
-      RAY_LOG(INFO) << "GC finished in " << (double)(last_gc_time_ms - start) / 1000
-                    << " seconds.";
+      RAY_LOG(DEBUG) << "GC finished in " << (double)(last_gc_time_ms - start) / 1000
+                     << " seconds.";
     }
   };
 
@@ -255,6 +245,14 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeRunTaskExecuto
   java_task_executor = javaTaskExecutor;
   ray::CoreWorkerProcess::RunTaskExecutionLoop();
   java_task_executor = nullptr;
+
+  // NOTE(kfstorm): It's possible that users spawn non-daemon Java threads. If these
+  // threads are not stopped before exiting `RunTaskExecutionLoop`, the JVM won't exit but
+  // Raylet has unregistered this worker. In this case, even if the job has finished, the
+  // worker process won't be killed by Raylet and it results in an orphan worker.
+  // TO fix this, we explicitly quit the process here. This only affects worker processes,
+  // not driver processes because only worker processes call `RunTaskExecutionLoop`.
+  _Exit(0);
 }
 
 JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeShutdown(JNIEnv *env,
@@ -278,9 +276,9 @@ Java_io_ray_runtime_RayNativeRuntime_nativeGetActorIdOfNamedActor(JNIEnv *env, j
                                                                   jstring actor_name,
                                                                   jboolean global) {
   const char *native_actor_name = env->GetStringUTFChars(actor_name, JNI_FALSE);
-  auto full_name = GetActorFullName(global, native_actor_name);
+  auto full_name = GetFullName(global, native_actor_name);
 
-  const auto *actor_handle =
+  const auto actor_handle =
       ray::CoreWorkerProcess::GetCoreWorker().GetNamedActorHandle(full_name).first;
   ray::ActorID actor_id;
   if (actor_handle) {

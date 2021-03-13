@@ -45,8 +45,7 @@ public class HybridStreamTest {
   @Test(timeOut = 60000)
   public void testHybridDataStream() throws Exception {
     Ray.shutdown();
-    Preconditions.checkArgument(
-        EnvUtil.executeCommand(ImmutableList.of("ray", "stop"), 5));
+    Preconditions.checkArgument(EnvUtil.executeCommand(ImmutableList.of("ray", "stop"), 5));
     String sinkFileName = "/tmp/testHybridDataStream.txt";
     Files.deleteIfExists(Paths.get(sinkFileName));
 
@@ -59,18 +58,22 @@ public class HybridStreamTest {
         .map("ray.streaming.tests.test_hybrid_stream", "map_func1")
         .filter("ray.streaming.tests.test_hybrid_stream", "filter_func1")
         .asJavaStream()
-        .sink((SinkFunction<Object>) value -> {
-          LOG.info("HybridStreamTest: {}", value);
-          try {
-            if (!Files.exists(Paths.get(sinkFileName))) {
-              Files.createFile(Paths.get(sinkFileName));
-            }
-            Files.write(Paths.get(sinkFileName), value.toString().getBytes(),
-                StandardOpenOption.APPEND);
-          } catch (IOException e) {
-            throw new RuntimeException(e);
-          }
-        });
+        .sink(
+            (SinkFunction<Object>)
+                value -> {
+                  LOG.info("HybridStreamTest: {}", value);
+                  try {
+                    if (!Files.exists(Paths.get(sinkFileName))) {
+                      Files.createFile(Paths.get(sinkFileName));
+                    }
+                    Files.write(
+                        Paths.get(sinkFileName),
+                        value.toString().getBytes(),
+                        StandardOpenOption.APPEND);
+                  } catch (IOException e) {
+                    throw new RuntimeException(e);
+                  }
+                });
     context.execute("HybridStreamTestJob");
     int sleptTime = 0;
     TimeUnit.SECONDS.sleep(3);
@@ -94,5 +97,4 @@ public class HybridStreamTest {
     context.stop();
     LOG.info("HybridStreamTest succeed");
   }
-
 }

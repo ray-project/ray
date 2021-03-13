@@ -15,7 +15,13 @@ if os.environ.get("RAY_SERVE_INTENTIONALLY_CRASH", False) == 1:
 
 @pytest.fixture(scope="session")
 def _shared_serve_instance():
-    os.environ["SERVE_LOG_DEBUG"] = "1"  # Turns on debug log for tests
+    # Note(simon):
+    # This line should be not turned on on master because it leads to very
+    # spammy and not useful log in case of a failure in CI.
+    # To run locally, please use this instead.
+    # SERVE_LOG_DEBUG=1 pytest -v -s test_api.py
+    # os.environ["SERVE_LOG_DEBUG"] = "1" <- Do not uncomment this.
+
     # Overriding task_retry_delay_ms to relaunch actors more quickly
     ray.init(
         num_cpus=36,
@@ -35,7 +41,7 @@ def serve_instance(_shared_serve_instance):
     for endpoint in ray.get(controller.get_all_endpoints.remote()):
         _shared_serve_instance.delete_endpoint(endpoint)
     for backend in ray.get(controller.get_all_backends.remote()).keys():
-        _shared_serve_instance.delete_backend(backend)
+        _shared_serve_instance.delete_backend(backend, force=True)
 
 
 @pytest.fixture

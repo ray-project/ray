@@ -15,19 +15,14 @@ import io.ray.streaming.state.keystate.state.MapState;
 import io.ray.streaming.state.keystate.state.ValueState;
 import java.util.Map;
 
-/**
- * Use Ray to implement RuntimeContext.
- */
+/** Use Ray to implement RuntimeContext. */
 public class StreamingRuntimeContext implements RuntimeContext {
 
-  /**
-   * Backend for keyed state. This might be empty if we're not on a keyed stream.
-   */
+  /** Backend for keyed state. This might be empty if we're not on a keyed stream. */
   protected transient KeyStateBackend keyStateBackend;
-  /**
-   * Backend for operator state. This might be empty
-   */
+  /** Backend for operator state. This might be empty */
   protected transient OperatorStateBackend operatorStateBackend;
+
   private int taskId;
   private int taskIndex;
   private int parallelism;
@@ -35,8 +30,7 @@ public class StreamingRuntimeContext implements RuntimeContext {
   private Map<String, String> config;
 
   public StreamingRuntimeContext(
-      ExecutionVertex executionVertex, Map<String, String> config,
-      int parallelism) {
+      ExecutionVertex executionVertex, Map<String, String> config, int parallelism) {
     this.taskId = executionVertex.getExecutionVertexId();
     this.config = config;
     this.taskIndex = executionVertex.getExecutionVertexIndex();
@@ -118,8 +112,7 @@ public class StreamingRuntimeContext implements RuntimeContext {
   }
 
   protected void stateSanityCheck(
-      AbstractStateDescriptor stateDescriptor,
-      AbstractKeyStateBackend backend) {
+      AbstractStateDescriptor stateDescriptor, AbstractKeyStateBackend backend) {
     Preconditions.checkNotNull(stateDescriptor, "The state properties must not be null");
     Preconditions.checkNotNull(backend, "backend must not be null");
   }

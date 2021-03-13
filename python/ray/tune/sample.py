@@ -1,5 +1,4 @@
 import logging
-import random
 from copy import copy
 from inspect import signature
 from math import isclose
@@ -295,7 +294,7 @@ class Categorical(Domain):
                    spec: Optional[Union[List[Dict], Dict]] = None,
                    size: int = 1):
 
-            items = random.choices(domain.categories, k=size)
+            items = np.random.choice(domain.categories, size=size).tolist()
             return items if len(items) > 1 else domain.cast(items[0])
 
     default_sampler_cls = _Uniform
@@ -333,8 +332,7 @@ class Function(Domain):
                    domain: "Function",
                    spec: Optional[Union[List[Dict], Dict]] = None,
                    size: int = 1):
-            pass_spec = len(signature(domain.func).parameters) > 0
-            if pass_spec:
+            if domain.pass_spec:
                 items = [
                     domain.func(spec[i] if isinstance(spec, list) else spec)
                     for i in range(size)
@@ -347,11 +345,23 @@ class Function(Domain):
     default_sampler_cls = _CallSampler
 
     def __init__(self, func: Callable):
-        if len(signature(func).parameters) > 1:
-            raise ValueError(
-                "The function passed to a `Function` parameter must accept "
-                "either 0 or 1 parameters.")
+        sig = signature(func)
 
+        pass_spec = True  # whether we should pass `spec` when calling `func`
+        try:
+            sig.bind({})
+        except TypeError:
+            pass_spec = False
+
+        if not pass_spec:
+            try:
+                sig.bind()
+            except TypeError as exc:
+                raise ValueError(
+                    "The function passed to a `Function` parameter must be "
+                    "callable with either 0 or 1 parameters.") from exc
+
+        self.pass_spec = pass_spec
         self.func = func
 
     def is_function(self):
@@ -460,7 +470,7 @@ def choice(categories: List):
     """Sample a categorical value.
 
     Sampling from ``tune.choice([1, 2])`` is equivalent to sampling from
-    ``random.choice([1, 2])``
+    ``np.random.choice([1, 2])``
 
     """
     return Categorical(categories).uniform()

@@ -18,9 +18,10 @@ public class WorkerJvmOptionsTest extends BaseTest {
   public void testJvmOptions() {
     // The whitespaces in following argument are intentionally added to test
     // that raylet can correctly handle dynamic options with whitespaces.
-    ActorHandle<Echo> actor = Ray.actor(Echo::new)
-        .setJvmOptions(" -Dtest.suffix=suffix -Dtest.suffix1=suffix1 ")
-        .remote();
+    ActorHandle<Echo> actor =
+        Ray.actor(Echo::new)
+            .setJvmOptions(" -Dtest.suffix=suffix -Dtest.suffix1=suffix1 ")
+            .remote();
     ObjectRef<String> obj = actor.task(Echo::getOptions).remote();
     Assert.assertEquals(obj.get(), "suffix");
   }

@@ -116,7 +116,8 @@ class LSTMWrapper(RecurrentNetwork, nn.Module):
                  model_config: ModelConfigDict, name: str):
 
         nn.Module.__init__(self)
-        super().__init__(obs_space, action_space, None, model_config, name)
+        super(LSTMWrapper, self).__init__(obs_space, action_space, None,
+                                          model_config, name)
 
         # At this point, self.num_outputs is the number of nodes coming
         # from the wrapped (underlying) model. In other words, self.num_outputs
@@ -166,14 +167,16 @@ class LSTMWrapper(RecurrentNetwork, nn.Module):
             activation_fn=None,
             initializer=torch.nn.init.xavier_uniform_)
 
+        # __sphinx_doc_begin__
         # Add prev-a/r to this model's view, if required.
         if model_config["lstm_use_prev_action"]:
-            self.inference_view_requirements[SampleBatch.PREV_ACTIONS] = \
+            self.view_requirements[SampleBatch.PREV_ACTIONS] = \
                 ViewRequirement(SampleBatch.ACTIONS, space=self.action_space,
                                 shift=-1)
         if model_config["lstm_use_prev_reward"]:
-            self.inference_view_requirements[SampleBatch.PREV_REWARDS] = \
+            self.view_requirements[SampleBatch.PREV_REWARDS] = \
                 ViewRequirement(SampleBatch.REWARDS, shift=-1)
+        # __sphinx_doc_end__
 
     @override(RecurrentNetwork)
     def forward(self, input_dict: Dict[str, TensorType],

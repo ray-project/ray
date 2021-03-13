@@ -40,3 +40,28 @@ class NCCLUniqueIDStore:
             logger.warning("The NCCL ID has not been "
                            "set yet for store {}.".format(self.name))
         return self.nccl_id
+
+
+@ray.remote
+class Info:
+    """Store the group information created via `create_collective_group`.
+
+    Note: Should be used as a NamedActor.
+    """
+
+    def __init__(self):
+        self.ids = None
+        self.world_size = -1
+        self.rank = -1
+        self.backend = None
+
+    def set_info(self, ids, world_size, rank, backend):
+        """Store collective information."""
+        self.ids = ids
+        self.world_size = world_size
+        self.rank = rank
+        self.backend = backend
+
+    def get_info(self):
+        """Get previously stored collective information."""
+        return self.ids, self.world_size, self.rank, self.backend

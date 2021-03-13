@@ -25,18 +25,14 @@ public class ActorId extends BaseId implements Serializable {
     return new ActorId(bytes);
   }
 
-  /**
-   * Generate a nil ActorId.
-   */
+  /** Generate a nil ActorId. */
   private static ActorId nil() {
     byte[] b = new byte[LENGTH];
     Arrays.fill(b, (byte) 0xFF);
     return new ActorId(b);
   }
 
-  /**
-   * Generate an ActorId with random value. Used for local mode and test only.
-   */
+  /** Generate an ActorId with random value. Used for local mode and test only. */
   public static ActorId fromRandom() {
     byte[] b = new byte[LENGTH];
     new Random().nextBytes(b);

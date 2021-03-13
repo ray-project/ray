@@ -1,5 +1,6 @@
 import os
 import pickle
+from collections.abc import Iterable
 from multiprocessing import Process, Queue
 from numbers import Number
 from typing import Any, Callable, Dict, List, Optional, Tuple
@@ -22,13 +23,17 @@ except ImportError:
 
 WANDB_ENV_VAR = "WANDB_API_KEY"
 _WANDB_QUEUE_END = (None, )
+_VALID_TYPES = (Number, wandb.data_types.Video)
+_VALID_ITERABLE_TYPES = (wandb.data_types.Video)
 
 
 def _is_allowed_type(obj):
     """Return True if type is allowed for logging to wandb"""
     if isinstance(obj, np.ndarray) and obj.size == 1:
         return isinstance(obj.item(), Number)
-    return isinstance(obj, Number)
+    if isinstance(obj, Iterable) and len(obj) > 0:
+        return isinstance(obj[0], _VALID_ITERABLE_TYPES)
+    return isinstance(obj, _VALID_TYPES)
 
 
 def _clean_log(obj: Any):
@@ -75,7 +80,7 @@ def _clean_log(obj: Any):
 def wandb_mixin(func: Callable):
     """wandb_mixin
 
-    Weights and biases (https://www.wandb.com/) is a tool for experiment
+    Weights and biases (https://www.wandb.ai/) is a tool for experiment
     tracking, model optimization, and dataset versioning. This Ray Tune
     Trainable mixin helps initializing the Wandb API for use with the
     ``Trainable`` class or with `@wandb_mixin` for the function API.
@@ -109,7 +114,7 @@ def wandb_mixin(func: Callable):
     values.
 
     Please see here for all other valid configuration settings:
-    https://docs.wandb.com/library/init
+    https://docs.wandb.ai/library/init
 
     Example:
 
@@ -225,7 +230,7 @@ class _WandbLoggingProcess(Process):
 class WandbLoggerCallback(LoggerCallback):
     """WandbLoggerCallback
 
-    Weights and biases (https://www.wandb.com/) is a tool for experiment
+    Weights and biases (https://www.wandb.ai/) is a tool for experiment
     tracking, model optimization, and dataset versioning. This Ray Tune
     ``LoggerCallback`` sends metrics to Wandb for automatic tracking and
     visualization.
@@ -251,7 +256,7 @@ class WandbLoggerCallback(LoggerCallback):
     values.
 
     Please see here for all other valid configuration settings:
-    https://docs.wandb.com/library/init
+    https://docs.wandb.ai/library/init
 
     Example:
 
@@ -304,6 +309,7 @@ class WandbLoggerCallback(LoggerCallback):
         self._trial_processes: Dict["Trial", _WandbLoggingProcess] = {}
         self._trial_queues: Dict["Trial", Queue] = {}
 
+    def setup(self):
         _set_api_key(self.api_key_file, self.api_key)
 
     def log_trial_start(self, trial: "Trial"):
@@ -382,7 +388,7 @@ class WandbLogger(Logger):
         This `Logger` class is deprecated. Use the `WandbLoggerCallback`
         callback instead.
 
-    Weights and biases (https://www.wandb.com/) is a tool for experiment
+    Weights and biases (https://www.wandb.ai/) is a tool for experiment
     tracking, model optimization, and dataset versioning. This Ray Tune
     ``Logger`` sends metrics to Wandb for automatic tracking and
     visualization.
@@ -415,7 +421,7 @@ class WandbLogger(Logger):
     values.
 
     Please see here for all other valid configuration settings:
-    https://docs.wandb.com/library/init
+    https://docs.wandb.ai/library/init
 
     Example:
 
@@ -480,7 +486,7 @@ class WandbLogger(Logger):
 
         self._trial_experiment_logger = self._experiment_logger_cls(
             **wandb_config)
-
+        self._trial_experiment_logger.setup()
         self._trial_experiment_logger.log_trial_start(self.trial)
 
     def on_result(self, result: Dict):

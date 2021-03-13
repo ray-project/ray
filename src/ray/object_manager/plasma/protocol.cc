@@ -19,7 +19,6 @@
 
 #include <utility>
 
-#include "arrow/util/ubsan.h"
 #include "flatbuffers/flatbuffers.h"
 #include "ray/object_manager/plasma/common.h"
 #include "ray/object_manager/plasma/connection.h"
@@ -35,8 +34,28 @@ using fb::PlasmaObjectSpec;
 
 using flatbuffers::uoffset_t;
 
-#define PLASMA_CHECK_ENUM(x, y) \
-  static_assert(static_cast<int>(x) == static_cast<int>(y), "protocol mismatch")
+namespace internal {
+
+static uint8_t non_null_filler;
+
+}  // namespace internal
+
+/// \brief Returns maybe_null if not null or a non-null pointer to an arbitrary memory
+/// that shouldn't be dereferenced.
+///
+/// Memset/Memcpy are undefined when a nullptr is passed as an argument use this utility
+/// method to wrap locations where this could happen.
+///
+/// Note: Flatbuffers has UBSan warnings if a zero length vector is passed.
+/// https://github.com/google/flatbuffers/pull/5355 is trying to resolve
+/// them.
+template <typename T>
+inline T *MakeNonNull(T *maybe_null) {
+  if (RAY_PREDICT_TRUE(maybe_null != nullptr)) {
+    return maybe_null;
+  }
+  return reinterpret_cast<T *>(&internal::non_null_filler);
+}
 
 flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>>
 ToFlatbuffer(flatbuffers::FlatBufferBuilder *fbb, const ObjectID *object_ids,
@@ -45,7 +64,7 @@ ToFlatbuffer(flatbuffers::FlatBufferBuilder *fbb, const ObjectID *object_ids,
   for (int64_t i = 0; i < num_objects; i++) {
     results.push_back(fbb->CreateString(object_ids[i].Binary()));
   }
-  return fbb->CreateVector(arrow::util::MakeNonNull(results.data()), results.size());
+  return fbb->CreateVector(MakeNonNull(results.data()), results.size());
 }
 
 flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>>
@@ -56,12 +75,12 @@ ToFlatbuffer(flatbuffers::FlatBufferBuilder *fbb,
     results.push_back(fbb->CreateString(strings[i]));
   }
 
-  return fbb->CreateVector(arrow::util::MakeNonNull(results.data()), results.size());
+  return fbb->CreateVector(MakeNonNull(results.data()), results.size());
 }
 
 flatbuffers::Offset<flatbuffers::Vector<int64_t>> ToFlatbuffer(
     flatbuffers::FlatBufferBuilder *fbb, const std::vector<int64_t> &data) {
-  return fbb->CreateVector(arrow::util::MakeNonNull(data.data()), data.size());
+  return fbb->CreateVector(MakeNonNull(data.data()), data.size());
 }
 
 Status PlasmaReceive(const std::shared_ptr<StoreConn> &store_conn,
@@ -418,9 +437,8 @@ Status SendDeleteReply(const std::shared_ptr<Client> &client,
   auto message = fb::CreatePlasmaDeleteReply(
       fbb, static_cast<int32_t>(object_ids.size()),
       ToFlatbuffer(&fbb, &object_ids[0], object_ids.size()),
-      fbb.CreateVector(
-          arrow::util::MakeNonNull(reinterpret_cast<const int32_t *>(errors.data())),
-          object_ids.size()));
+      fbb.CreateVector(MakeNonNull(reinterpret_cast<const int32_t *>(errors.data())),
+                       object_ids.size()));
   return PlasmaSend(client, MessageType::PlasmaDeleteReply, &fbb, message);
 }
 
@@ -535,16 +553,16 @@ Status ReadEvictReply(uint8_t *data, size_t size, int64_t &num_bytes) {
 // Get messages.
 
 Status SendGetRequest(const std::shared_ptr<StoreConn> &store_conn,
-                      const ObjectID *object_ids, int64_t num_objects,
-                      int64_t timeout_ms) {
+                      const ObjectID *object_ids, int64_t num_objects, int64_t timeout_ms,
+                      bool is_from_worker) {
   flatbuffers::FlatBufferBuilder fbb;
   auto message = fb::CreatePlasmaGetRequest(
-      fbb, ToFlatbuffer(&fbb, object_ids, num_objects), timeout_ms);
+      fbb, ToFlatbuffer(&fbb, object_ids, num_objects), timeout_ms, is_from_worker);
   return PlasmaSend(store_conn, MessageType::PlasmaGetRequest, &fbb, message);
 }
 
 Status ReadGetRequest(uint8_t *data, size_t size, std::vector<ObjectID> &object_ids,
-                      int64_t *timeout_ms) {
+                      int64_t *timeout_ms, bool *is_from_worker) {
   RAY_DCHECK(data);
   auto message = flatbuffers::GetRoot<fb::PlasmaGetRequest>(data);
   RAY_DCHECK(VerifyFlatbuffer(message, data, size));
@@ -553,6 +571,7 @@ Status ReadGetRequest(uint8_t *data, size_t size, std::vector<ObjectID> &object_
     object_ids.push_back(ObjectID::FromBinary(object_id));
   }
   *timeout_ms = message->timeout_ms();
+  *is_from_worker = message->is_from_worker();
   return Status::OK();
 }
 
@@ -576,11 +595,10 @@ Status SendGetReply(const std::shared_ptr<Client> &client, ObjectID object_ids[]
   }
   auto message = fb::CreatePlasmaGetReply(
       fbb, ToFlatbuffer(&fbb, object_ids, num_objects),
-      fbb.CreateVectorOfStructs(arrow::util::MakeNonNull(objects.data()), num_objects),
-      fbb.CreateVector(arrow::util::MakeNonNull(store_fds_as_int.data()),
-                       store_fds_as_int.size()),
-      fbb.CreateVector(arrow::util::MakeNonNull(mmap_sizes.data()), mmap_sizes.size()),
-      fbb.CreateVector(arrow::util::MakeNonNull(handles.data()), handles.size()));
+      fbb.CreateVectorOfStructs(MakeNonNull(objects.data()), num_objects),
+      fbb.CreateVector(MakeNonNull(store_fds_as_int.data()), store_fds_as_int.size()),
+      fbb.CreateVector(MakeNonNull(mmap_sizes.data()), mmap_sizes.size()),
+      fbb.CreateVector(MakeNonNull(handles.data()), handles.size()));
   return PlasmaSend(client, MessageType::PlasmaGetReply, &fbb, message);
 }
 

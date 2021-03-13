@@ -14,7 +14,8 @@ from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI
 from ray.rllib.utils.framework import try_import_tf, try_import_torch, \
     TensorType
 from ray.rllib.utils.spaces.repeated import Repeated
-from ray.rllib.utils.typing import ModelConfigDict, TensorStructType
+from ray.rllib.utils.typing import ModelConfigDict, ModelInputDict, \
+    TensorStructType
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
@@ -61,7 +62,7 @@ class ModelV2:
         self._last_output = None
         self.time_major = self.model_config.get("_time_major")
         # Basic view requirement for all models: Use the observation as input.
-        self.inference_view_requirements = {
+        self.view_requirements = {
             SampleBatch.OBS: ViewRequirement(shift=0, space=self.obs_space),
         }
 
@@ -202,9 +203,13 @@ class ModelV2:
         restored = input_dict.copy()
         restored["obs"] = restore_original_dimensions(
             input_dict["obs"], self.obs_space, self.framework)
-        if len(input_dict["obs"].shape) > 2:
-            restored["obs_flat"] = flatten(input_dict["obs"], self.framework)
-        else:
+        try:
+            if len(input_dict["obs"].shape) > 2:
+                restored["obs_flat"] = flatten(input_dict["obs"],
+                                               self.framework)
+            else:
+                restored["obs_flat"] = input_dict["obs"]
+        except AttributeError:
             restored["obs_flat"] = input_dict["obs"]
         with self.context():
             res = self.forward(restored, state or [], seq_lens)
@@ -213,22 +218,14 @@ class ModelV2:
             raise ValueError(
                 "forward() must return a tuple of (output, state) tensors, "
                 "got {}".format(res))
-        outputs, state = res
+        outputs, state_out = res
 
-        try:
-            shape = outputs.shape
-        except AttributeError:
-            raise ValueError("Output is not a tensor: {}".format(outputs))
-        else:
-            if len(shape) != 2 or int(shape[1]) != self.num_outputs:
-                raise ValueError(
-                    "Expected output shape of [None, {}], got {}".format(
-                        self.num_outputs, shape))
-        if not isinstance(state, list):
-            raise ValueError("State output is not a list: {}".format(state))
+        if not isinstance(state_out, list):
+            raise ValueError(
+                "State output is not a list: {}".format(state_out))
 
         self._last_output = outputs
-        return outputs, state
+        return outputs, state_out if len(state_out) > 0 else (state or [])
 
     @PublicAPI
     def from_batch(self, train_batch: SampleBatch,
@@ -315,6 +312,73 @@ class ModelV2:
         """
         return self.time_major is True
 
+    # TODO: (sven) Experimental method.
+    def get_input_dict(self, sample_batch,
+                       index: Union[int, str] = "last") -> ModelInputDict:
+        """Creates single ts input-dict at given index from a SampleBatch.
+
+        Args:
+            sample_batch (SampleBatch): A single-trajectory SampleBatch object
+                to generate the compute_actions input dict from.
+            index (Union[int, str]): An integer index value indicating the
+                position in the trajectory for which to generate the
+                compute_actions input dict. Set to "last" to generate the dict
+                at the very end of the trajectory (e.g. for value estimation).
+                Note that "last" is different from -1, as "last" will use the
+                final NEXT_OBS as observation input.
+
+        Returns:
+            ModelInputDict: The (single-timestep) input dict for ModelV2 calls.
+        """
+        last_mappings = {
+            SampleBatch.OBS: SampleBatch.NEXT_OBS,
+            SampleBatch.PREV_ACTIONS: SampleBatch.ACTIONS,
+            SampleBatch.PREV_REWARDS: SampleBatch.REWARDS,
+        }
+
+        input_dict = {}
+        for view_col, view_req in self.view_requirements.items():
+            # Create batches of size 1 (single-agent input-dict).
+            data_col = view_req.data_col or view_col
+            if index == "last":
+                data_col = last_mappings.get(data_col, data_col)
+                # Range needed.
+                if view_req.shift_from is not None:
+                    data = sample_batch[view_col][-1]
+                    traj_len = len(sample_batch[data_col])
+                    missing_at_end = traj_len % view_req.batch_repeat_value
+                    obs_shift = -1 if data_col in [
+                        SampleBatch.OBS, SampleBatch.NEXT_OBS
+                    ] else 0
+                    from_ = view_req.shift_from + obs_shift
+                    to_ = view_req.shift_to + obs_shift + 1
+                    if to_ == 0:
+                        to_ = None
+                    input_dict[view_col] = np.array([
+                        np.concatenate([
+                            data, sample_batch[data_col][-missing_at_end:]
+                        ])[from_:to_]
+                    ])
+                # Single index.
+                else:
+                    data = sample_batch[data_col][-1]
+                    input_dict[view_col] = np.array([data])
+            else:
+                # Index range.
+                if isinstance(index, tuple):
+                    data = sample_batch[data_col][index[0]:index[1] + 1
+                                                  if index[1] != -1 else None]
+                    input_dict[view_col] = np.array([data])
+                # Single index.
+                else:
+                    input_dict[view_col] = sample_batch[data_col][
+                        index:index + 1 if index != -1 else None]
+
+        # Add valid `seq_lens`, just in case RNNs need it.
+        input_dict["seq_lens"] = np.array([1], dtype=np.int32)
+
+        return input_dict
+
 
 @DeveloperAPI
 def flatten(obs: TensorType, framework: str) -> TensorType:
@@ -350,15 +414,14 @@ def restore_original_dimensions(obs: TensorType,
         observation space.
     """
 
-    if hasattr(obs_space, "original_space"):
-        if tensorlib == "tf":
-            tensorlib = tf
-        elif tensorlib == "torch":
-            assert torch is not None
-            tensorlib = torch
-        return _unpack_obs(obs, obs_space.original_space, tensorlib=tensorlib)
-    else:
-        return obs
+    if tensorlib in ["tf", "tfe", "tf2"]:
+        assert tf is not None
+        tensorlib = tf
+    elif tensorlib == "torch":
+        assert torch is not None
+        tensorlib = torch
+    original_space = getattr(obs_space, "original_space", obs_space)
+    return _unpack_obs(obs, original_space, tensorlib=tensorlib)
 
 
 # Cache of preprocessors, for if the user is calling unpack obs often.
@@ -386,7 +449,12 @@ def _unpack_obs(obs: TensorType, space: gym.Space,
             # Make an attempt to cache the result, if enough space left.
             if len(_cache) < 999:
                 _cache[id(space)] = prep
-        if len(obs.shape) < 2 or obs.shape[-1] != prep.shape[0]:
+        # Already unpacked?
+        if (isinstance(space, gym.spaces.Tuple) and
+                isinstance(obs, (list, tuple))) or \
+                (isinstance(space, gym.spaces.Dict) and isinstance(obs, dict)):
+            return obs
+        elif len(obs.shape) < 2 or obs.shape[-1] != prep.shape[0]:
             raise ValueError(
                 "Expected flattened obs shape of [..., {}], got {}".format(
                     prep.shape[0], obs.shape))
@@ -422,7 +490,8 @@ def _unpack_obs(obs: TensorType, space: gym.Space,
                     tensorlib.reshape(obs_slice, batch_dims + list(p.shape)),
                     v,
                     tensorlib=tensorlib)
-        elif isinstance(space, Repeated):
+        # Repeated space.
+        else:
             assert isinstance(prep, RepeatedValuesPreprocessor), prep
             child_size = prep.child_preprocessor.size
             # The list lengths are stored in the first slot of the flat obs.
@@ -435,8 +504,6 @@ def _unpack_obs(obs: TensorType, space: gym.Space,
                 with_repeat_dim, space.child_space, tensorlib=tensorlib)
             return RepeatedValues(
                 u, lengths=lengths, max_len=prep._obs_space.max_len)
-        else:
-            assert False, space
         return u
     else:
         return obs

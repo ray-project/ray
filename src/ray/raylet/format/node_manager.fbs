@@ -35,12 +35,9 @@ enum MessageType:int {
   RegisterClientReply,
   // Send the worker's gRPC port to the raylet.
   AnnounceWorkerPort,
-  // Notify the raylet that this client is disconnecting unexpectedly.
+  // Notify the raylet that this client is disconnecting.
   // This is sent from a worker to a raylet.
   DisconnectClient,
-  // Notify the raylet that this client is disconnecting gracefully.
-  // This is sent from a worker to a raylet.
-  IntentionalDisconnectClient,
   // Tell a worker to execute a task. This is sent from a raylet to a
   // worker.
   ExecuteTask,
@@ -111,6 +108,7 @@ table ResourceIdSetInfo {
 
 // This message is sent from a worker to the node manager.
 table DisconnectClient {
+  disconnect_type: int;
 }
 
 table ResourceIdSetInfos {
@@ -149,10 +147,8 @@ table RegisterClientReply {
   raylet_id: string;
   // Port that this worker should listen on.
   port: int;
-  // Keys for internal config options.
-  system_config_keys: [string];
-  // Values for internal config options corresponding to keys above.
-  system_config_values: [string];
+  // The config bytes of this job serialized with protobuf.
+  serialized_job_config: string;
 }
 
 table AnnounceWorkerPort {

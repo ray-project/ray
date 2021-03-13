@@ -9,8 +9,6 @@ RLlib is an open-source library for reinforcement learning that offers both high
 
 To get started, take a look over the `custom env example <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_env.py>`__ and the `API documentation <rllib-toc.html>`__. If you're looking to develop custom algorithms with RLlib, also check out `concepts and custom algorithms <rllib-concepts.html>`__.
 
-.. tip:: Join our `community slack <https://forms.gle/9TSdDYUgxYs8SA9e8>`_ to discuss Ray/RLlib!
-
 RLlib in 60 seconds
 -------------------
 
@@ -110,7 +108,12 @@ Beyond environments defined in Python, RLlib supports batch training on `offline
 Customization
 ~~~~~~~~~~~~~
 
-RLlib provides ways to customize almost all aspects of training, including the `environment <rllib-env.html#configuring-environments>`__, `neural network model <rllib-models.html#tensorflow-models>`__, `action distribution <rllib-models.html#custom-action-distributions>`__, and `policy definitions <rllib-concepts.html#policies>`__:
+RLlib provides ways to customize almost all aspects of training, including
+`neural network models <rllib-models.html#tensorflow-models>`__,
+`action distributions <rllib-models.html#custom-action-distributions>`__,
+`policy definitions <rllib-concepts.html#policies>`__:
+the `environment <rllib-env.html#configuring-environments>`__,
+and the `sample collection process <rllib-sample-collection.html>`__
 
 .. image:: rllib-components.svg
 

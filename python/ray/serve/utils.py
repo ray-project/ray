@@ -7,20 +7,18 @@ import logging
 import random
 import string
 import time
-from typing import List, Dict
+from typing import Iterable, List, Tuple
 import os
 from ray.serve.exceptions import RayServeException
 from collections import UserDict
 
+import starlette.requests
 import requests
 import numpy as np
 import pydantic
-import starlette.requests
 
 import ray
 from ray.serve.constants import HTTP_PROXY_TIMEOUT
-from ray.serve.context import TaskContext
-from ray.serve.http_util import build_starlette_request
 
 ACTOR_FAILURE_RETRY_TIMEOUT_S = 60
 
@@ -85,29 +83,26 @@ class ServeRequest:
 
 
 def parse_request_item(request_item):
-    if request_item.metadata.request_context == TaskContext.Web:
-        asgi_scope, body_bytes = request_item.args
-        return build_starlette_request(asgi_scope, body_bytes)
-    else:
-        arg = request_item.args[0] if len(request_item.args) == 1 else None
+    arg = request_item.args[0] if len(request_item.args) == 1 else None
 
-        # If the input data from handle is web request, we don't need to wrap
-        # it in ServeRequest.
-        if isinstance(arg, starlette.requests.Request):
-            return arg
+    # If the input data from handle is web request, we don't need to wrap
+    # it in ServeRequest.
+    if isinstance(arg, starlette.requests.Request):
+        return arg
 
-        return ServeRequest(
-            arg,
-            request_item.kwargs,
-            headers=request_item.metadata.http_headers,
-            method=request_item.metadata.http_method,
-        )
+    return ServeRequest(
+        arg,
+        request_item.kwargs,
+        headers=request_item.metadata.http_headers,
+        method=request_item.metadata.http_method,
+    )
 
 
 def _get_logger():
     logger = logging.getLogger("ray.serve")
     # TODO(simon): Make logging level configurable.
-    if os.environ.get("SERVE_LOG_DEBUG"):
+    log_level = os.environ.get("SERVE_LOG_DEBUG")
+    if log_level and int(log_level):
         logger.setLevel(logging.DEBUG)
     else:
         logger.setLevel(logging.INFO)
@@ -183,39 +178,6 @@ def format_actor_name(actor_name, controller_name=None, *modifiers):
     return name
 
 
-def get_conda_env_dir(env_name):
-    """Given a environment name like `tf1`, find and validate the
-    corresponding conda directory.
-    """
-    conda_prefix = os.environ.get("CONDA_PREFIX")
-    if conda_prefix is None:
-        raise ValueError(
-            "Serve cannot find environment variables installed by conda. " +
-            "Are you sure you are in a conda env?")
-
-    # There are two cases:
-    # 1. We are in conda base env: CONDA_DEFAULT_ENV=base and
-    #    CONDA_PREFIX=$HOME/anaconda3
-    # 2. We are in user created conda env: CONDA_DEFAULT_ENV=$env_name and
-    #    CONDA_PREFIX=$HOME/anaconda3/envs/$env_name
-    if os.environ.get("CONDA_DEFAULT_ENV") == "base":
-        # Caller is running in base conda env.
-        # Not recommended by conda, but we can still try to support it.
-        env_dir = os.path.join(conda_prefix, "envs", env_name)
-    else:
-        # Now `conda_prefix` should be something like
-        # $HOME/anaconda3/envs/$env_name
-        # We want to strip the $env_name component.
-        conda_envs_dir = os.path.split(conda_prefix)[0]
-        env_dir = os.path.join(conda_envs_dir, env_name)
-    if not os.path.isdir(env_dir):
-        raise ValueError(
-            "conda env " + env_name +
-            " not found in conda envs directory. Run `conda env list` to " +
-            "verify the name is correct.")
-    return env_dir
-
-
 @singledispatch
 def chain_future(src, dst):
     """Base method for chaining futures together.
@@ -272,52 +234,6 @@ def unpack_future(src: asyncio.Future, num_items: int) -> List[asyncio.Future]:
     return dest_futures
 
 
-def try_schedule_resources_on_nodes(
-        requirements: List[dict],
-        ray_resource: Dict[str, Dict] = None,
-) -> List[bool]:
-    """Test given resource requirements can be scheduled on ray nodes.
-
-    Args:
-        requirements(List[dict]): The list of resource requirements.
-        ray_nodes(Optional[Dict[str, Dict]]): The resource dictionary keyed by
-            node id. By default it reads from
-            ``ray.state.state._available_resources_per_node()``.
-    Returns:
-        successfully_scheduled(List[bool]): A list with the same length as
-            requirements. Each element indicates whether or not the requirement
-            can be satisied.
-    """
-
-    if ray_resource is None:
-        ray_resource = ray.state.state._available_resources_per_node()
-
-    successfully_scheduled = []
-
-    for resource_dict in requirements:
-        # Filter out zero value
-        resource_dict = {k: v for k, v in resource_dict.items() if v > 0}
-
-        for node_id, node_resource in ray_resource.items():
-            # Check if we can schedule on this node
-            feasible = True
-            for key, count in resource_dict.items():
-                if node_resource.get(key, 0) - count < 0:
-                    feasible = False
-
-            # If we can, schedule it on this node
-            if feasible:
-                for key, count in resource_dict.items():
-                    node_resource[key] -= count
-
-                successfully_scheduled.append(True)
-                break
-        else:
-            successfully_scheduled.append(False)
-
-    return successfully_scheduled
-
-
 def get_all_node_ids():
     """Get IDs for all nodes in the cluster.
 
@@ -344,22 +260,29 @@ def get_node_id_for_actor(actor_handle):
     return ray.actors()[actor_handle._actor_id.hex()]["Address"]["NodeID"]
 
 
-def import_class(full_path: str):
-    """Given a full import path to a class name, return the imported class.
+def import_attr(full_path: str):
+    """Given a full import path to a module attr, return the imported attr.
 
     For example, the following are equivalent:
-        MyClass = import_class("module.submodule.MyClass")
+        MyClass = import_attr("module.submodule.MyClass")
         from module.submodule import MyClass
 
     Returns:
-        Imported class
+        Imported attr
     """
 
     last_period_idx = full_path.rfind(".")
-    class_name = full_path[last_period_idx + 1:]
+    attr_name = full_path[last_period_idx + 1:]
     module_name = full_path[:last_period_idx]
     module = importlib.import_module(module_name)
-    return getattr(module, class_name)
+    return getattr(module, attr_name)
+
+
+async def mock_imported_function(batch):
+    result = []
+    for request in batch:
+        result.append(await request.body())
+    return result
 
 
 class MockImportedBackend:
@@ -377,8 +300,68 @@ class MockImportedBackend:
     def reconfigure(self, config):
         self.config = config
 
-    def __call__(self, *args):
-        return {"arg": self.arg, "config": self.config}
+    def __call__(self, batch):
+        return [{
+            "arg": self.arg,
+            "config": self.config
+        } for _ in range(len(batch))]
 
-    def other_method(self, request):
-        return request.data
+    async def other_method(self, batch):
+        responses = []
+        for request in batch:
+            responses.append(await request.body())
+        return responses
+
+
+def compute_iterable_delta(old: Iterable,
+                           new: Iterable) -> Tuple[set, set, set]:
+    """Given two iterables, return the entries that's (added, removed, updated).
+
+    Usage:
+        >>> old = {"a", "b"}
+        >>> new = {"a", "d"}
+        >>> compute_iterable_delta(old, new)
+        ({"d"}, {"b"}, {"a"})
+    """
+    old_keys, new_keys = set(old), set(new)
+    added_keys = new_keys - old_keys
+    removed_keys = old_keys - new_keys
+    updated_keys = old_keys.intersection(new_keys)
+    return added_keys, removed_keys, updated_keys
+
+
+def compute_dict_delta(old_dict, new_dict) -> Tuple[dict, dict, dict]:
+    """Given two dicts, return the entries that's (added, removed, updated).
+
+    Usage:
+        >>> old = {"a": 1, "b": 2}
+        >>> new = {"a": 3, "d": 4}
+        >>> compute_dict_delta(old, new)
+        ({"d": 4}, {"b": 2}, {"a": 3})
+    """
+    added_keys, removed_keys, updated_keys = compute_iterable_delta(
+        old_dict.keys(), new_dict.keys())
+    return (
+        {k: new_dict[k]
+         for k in added_keys},
+        {k: old_dict[k]
+         for k in removed_keys},
+        {k: new_dict[k]
+         for k in updated_keys},
+    )
+
+
+def get_current_node_resource_key() -> str:
+    """Get the Ray resource key for current node.
+
+    It can be used for actor placement.
+    """
+    current_node_id = ray.get_runtime_context().node_id.hex()
+    for node in ray.nodes():
+        if node["NodeID"] == current_node_id:
+            # Found the node.
+            for key in node["Resources"].keys():
+                if key.startswith("node:"):
+                    return key
+    else:
+        raise ValueError("Cannot found the node dictionary for current node.")

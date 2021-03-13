@@ -9,9 +9,10 @@ import ray
 import ray.actor
 import ray.node
 import ray.ray_constants as ray_constants
-import ray.utils
-from ray.parameter import RayParams
-from ray.ray_logging import get_worker_log_file_name, configure_log_file
+import ray._private.utils
+from ray._private.parameter import RayParams
+from ray._private.ray_logging import (get_worker_log_file_name,
+                                      configure_log_file)
 
 parser = argparse.ArgumentParser(
     description=("Parse addresses for the worker "
@@ -64,12 +65,6 @@ parser.add_argument(
     default=ray_constants.LOGGER_FORMAT,
     help=ray_constants.LOGGER_FORMAT_HELP)
 parser.add_argument(
-    "--config-list",
-    required=False,
-    type=str,
-    default=None,
-    help="Override internal config options for the worker process.")
-parser.add_argument(
     "--temp-dir",
     required=False,
     type=str,
@@ -109,13 +104,29 @@ parser.add_argument(
     help="A list of directories or jar files separated by colon that specify "
     "the search path for user code. This will be used as `CLASSPATH` in "
     "Java and `PYTHONPATH` in Python.")
+parser.add_argument(
+    "--logging-rotate-bytes",
+    required=False,
+    type=int,
+    default=ray_constants.LOGGING_ROTATE_BYTES,
+    help="Specify the max bytes for rotating "
+    "log file, default is "
+    f"{ray_constants.LOGGING_ROTATE_BYTES} bytes.")
+parser.add_argument(
+    "--logging-rotate-backup-count",
+    required=False,
+    type=int,
+    default=ray_constants.LOGGING_ROTATE_BACKUP_COUNT,
+    help="Specify the backup count of rotated log file, default is "
+    f"{ray_constants.LOGGING_ROTATE_BACKUP_COUNT}.")
 if __name__ == "__main__":
     # NOTE(sang): For some reason, if we move the code below
     # to a separate function, tensorflow will capture that method
     # as a step function. For more details, check out
     # https://github.com/ray-project/ray/pull/12225#issue-525059663.
     args = parser.parse_args()
-    ray.ray_logging.setup_logger(args.logging_level, args.logging_format)
+    ray._private.ray_logging.setup_logger(args.logging_level,
+                                          args.logging_format)
 
     if args.worker_type == "WORKER":
         mode = ray.WORKER_MODE

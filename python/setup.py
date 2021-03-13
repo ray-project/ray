@@ -92,17 +92,11 @@ ray_files += [
 ]
 
 # If you're adding dependencies for ray extras, please
-# also update the matching section of requirements.txt
+# also update the matching section of requirements/requirements.txt
 # in this directory
 extras = {
-    "serve": [
-        "uvicorn", "flask", "requests", "pydantic<1.7",
-        "dataclasses; python_version < '3.7'", "starlette"
-    ],
-    "tune": [
-        "dataclasses; python_version < '3.7'", "pandas", "tabulate",
-        "tensorboardX"
-    ],
+    "serve": ["uvicorn", "flask", "requests", "pydantic<1.7", "starlette"],
+    "tune": ["pandas", "tabulate", "tensorboardX"],
     "k8s": ["kubernetes"]
 }
 
@@ -116,13 +110,11 @@ extras["rllib"] = extras["tune"] + [
     "scipy",
 ]
 
-extras["streaming"] = []
-
 extras["all"] = list(set(chain.from_iterable(extras.values())))
 
 # These are the main dependencies for users of ray. This list
 # should be carefully curated. If you change it, please reflect
-# the change in the matching section of requirements.txt
+# the change in the matching section of requirements/requirements.txt
 install_requires = [
     # TODO(alex) Pin the version once this PR is
     # included in the stable release.
@@ -133,13 +125,14 @@ install_requires = [
     "click >= 7.0",
     "colorama",
     "colorful",
+    "dataclasses; python_version < '3.7'",
     "filelock",
     "gpustat",
     "grpcio >= 1.28.1",
     "jsonschema",
     "msgpack >= 1.0.0, < 2.0.0",
     "numpy >= 1.16",
-    "protobuf >= 3.8.0",
+    "protobuf >= 3.15.3",
     "py-spy >= 0.2.0",
     "pyyaml",
     "requests",
@@ -430,15 +423,15 @@ setuptools.setup(
     version=find_version("ray", "__init__.py"),
     author="Ray Team",
     author_email="ray-dev@googlegroups.com",
-    description=("A system for parallel and distributed Python that "
-                 "unifies the ML ecosystem."),
+    description=("Ray provides a simple, universal API for building "
+                 "distributed applications."),
     long_description=io.open(
         os.path.join(ROOT_DIR, os.path.pardir, "README.rst"),
         "r",
         encoding="utf-8").read(),
     url="https://github.com/ray-project/ray",
-    keywords=("ray distributed parallel machine-learning "
-              "reinforcement-learning deep-learning python"),
+    keywords=("ray distributed parallel machine-learning hyperparameter-tuning"
+              "reinforcement-learning deep-learning serving python"),
     packages=setuptools.find_packages(),
     cmdclass={"build_ext": build_ext},
     # The BinaryDistribution argument triggers build_ext.
@@ -451,7 +444,7 @@ setuptools.setup(
             "ray=ray.scripts.scripts:main",
             "rllib=ray.rllib.scripts:cli [rllib]",
             "tune=ray.tune.scripts:cli",
-            "ray-operator=ray.operator.operator:main",
+            "ray-operator=ray.ray_operator.operator:main",
             "serve=ray.serve.scripts:cli",
         ]
     },

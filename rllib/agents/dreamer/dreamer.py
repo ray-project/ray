@@ -31,6 +31,8 @@ DEFAULT_CONFIG = with_common_config({
     "discount": 0.99,
     # Lambda
     "lambda": 0.95,
+    # Clipping is done inherently via policy tanh.
+    "clip_actions": False,
     # Training iterations per data collection from real env
     "dreamer_train_iters": 100,
     # Horizon for Enviornment (1000 for Mujoco/DMC)
@@ -245,6 +247,8 @@ def get_policy_class(config):
 
 def validate_config(config):
     config["action_repeat"] = config["env_config"]["frame_skip"]
+    if config["num_gpus"] > 1:
+        raise ValueError("`num_gpus` > 1 not yet supported for Dreamer!")
     if config["framework"] != "torch":
         raise ValueError("Dreamer not supported in Tensorflow yet!")
     if config["batch_mode"] != "complete_episodes":

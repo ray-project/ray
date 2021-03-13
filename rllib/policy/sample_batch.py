@@ -15,7 +15,7 @@ DEFAULT_POLICY_ID = "default_policy"
 
 
 @PublicAPI
-class SampleBatch:
+class SampleBatch:#(dict):
     """Wrapper around a dictionary with string keys and array-like values.
 
     For example, {"obs": [1, 2, 3], "reward": [0, -1, 1]} is a batch of three
@@ -60,9 +60,11 @@ class SampleBatch:
         self.time_major = kwargs.pop("_time_major", None)
         self.seq_lens = kwargs.pop("_seq_lens", None)
         self.dont_check_lens = kwargs.pop("_dont_check_lens", False)
-        self.max_seq_len = None
-        if self.seq_lens is not None and len(self.seq_lens) > 0:
+        self.max_seq_len = kwargs.pop("_max_seq_len", None)
+        if self.max_seq_len is None and self.seq_lens is not None and \
+                len(self.seq_lens) > 0:
             self.max_seq_len = max(self.seq_lens)
+        self.zero_padded = kwargs.pop("_zero_padded", False)
 
         # The actual data, accessible by column name (str).
         self.data = dict(*args, **kwargs)
@@ -94,6 +96,11 @@ class SampleBatch:
         else:
             self.count = lengths[0]
 
+    @PublicAPI
+    def __len__(self):
+        """Returns the amount of samples in the sample batch."""
+        return self.count
+
     @staticmethod
     @PublicAPI
     def concat_samples(samples: List["SampleBatch"]) -> \
@@ -111,8 +118,13 @@ class SampleBatch:
             return MultiAgentBatch.concat_samples(samples)
         seq_lens = []
         concat_samples = []
+        zero_padded = samples[0].zero_padded
+        max_seq_len = samples[0].max_seq_len
         for s in samples:
             if s.count > 0:
+                assert s.zero_padded == zero_padded
+                if zero_padded:
+                    assert s.max_seq_len == max_seq_len
                 concat_samples.append(s)
                 if s.seq_lens is not None:
                     seq_lens.extend(s.seq_lens)
@@ -126,7 +138,10 @@ class SampleBatch:
             out,
             _seq_lens=np.array(seq_lens, dtype=np.int32),
             _time_major=concat_samples[0].time_major,
-            _dont_check_lens=True)
+            _dont_check_lens=True,
+            _zero_padded=zero_padded,
+            _max_seq_len=max_seq_len,
+        )
 
     @PublicAPI
     def concat(self, other: "SampleBatch") -> "SampleBatch":
@@ -263,7 +278,7 @@ class SampleBatch:
         """Returns a slice of the row data of this batch (w/o copying).
 
         Args:
-            start (int): Starting index.
+            start (int): Starting index. If < 0, will zero-pad.
             end (int): Ending index.
 
         Returns:
@@ -271,7 +286,17 @@ class SampleBatch:
                 data.
         """
         if self.seq_lens is not None and len(self.seq_lens) > 0:
-            data = {k: v[start:end] for k, v in self.data.items()}
+            if start < 0:
+                data = {
+                    k: np.concatenate([
+                        np.zeros(
+                            shape=(-start, ) + v.shape[1:], dtype=v.dtype),
+                        v[0:end]
+                    ])
+                    for k, v in self.data.items()
+                }
+            else:
+                data = {k: v[start:end] for k, v in self.data.items()}
             # Fix state_in_x data.
             count = 0
             state_start = None
@@ -281,6 +306,8 @@ class SampleBatch:
                 if count >= end:
                     state_idx = 0
                     state_key = "state_in_{}".format(state_idx)
+                    if state_start is None:
+                        state_start = i
                     while state_key in self.data:
                         data[state_key] = self.data[state_key][state_start:i +
                                                                1]
@@ -289,6 +316,8 @@ class SampleBatch:
                     seq_lens = list(self.seq_lens[state_start:i]) + [
                         seq_len - (count - end)
                     ]
+                    if start < 0:
+                        seq_lens[0] += -start
                     assert sum(seq_lens) == (end - start)
                     break
                 elif state_start is None and count > start:
@@ -319,12 +348,53 @@ class SampleBatch:
             List[SampleBatch]: The list of (new) SampleBatches (each one of
                 size k).
         """
-        out = []
-        i = 0
-        while i < self.count:
-            out.append(self.slice(i, i + k))
-            i += k
-        return out
+        slices = self._get_slice_indices(k)
+        timeslices = [self.slice(i, j) for i, j in slices]
+        return timeslices
+
+    def zero_pad(self, max_seq_len: int, exclude_states: bool = True):
+        """Left zero-pad the data in this SampleBatch in place.
+
+        This will set the `self.zero_padded` flag to True and
+        `self.max_seq_len` to the given `max_seq_len` value.
+
+        Args:
+            max_len (int): The max (total) length to zero pad to.
+            exclude_states (bool): If False, also zero-pad all `state_in_x`
+                data. If False, leave `state_in_x` keys as-is.
+        """
+        for col in self.data.keys():
+            # Skip state in columns.
+            if exclude_states is True and col.startswith("state_in_"):
+                continue
+
+            f = self.data[col]
+            # Save unnecessary copy.
+            if not isinstance(f, np.ndarray):
+                f = np.array(f)
+            # Already good length, can skip.
+            if f.shape[0] == max_seq_len:
+                continue
+            # Generate zero-filled primer of len=max_seq_len.
+            length = len(self.seq_lens) * max_seq_len
+            if f.dtype == np.object or f.dtype.type is np.str_:
+                f_pad = [None] * length
+            else:
+                # Make sure type doesn't change.
+                f_pad = np.zeros((length, ) + np.shape(f)[1:], dtype=f.dtype)
+            # Fill primer with data.
+            f_pad_base = f_base = 0
+            for len_ in self.seq_lens:
+                f_pad[f_pad_base:f_pad_base + len_] = f[f_base:f_base + len_]
+                f_pad_base += max_seq_len
+                f_base += len_
+            assert f_base == len(f), f
+            # Update our data.
+            self.data[col] = f_pad
+
+        # Set flags to indicate, we are now zero-padded (and to what extend).
+        self.zero_padded = True
+        self.max_seq_len = max_seq_len
 
     @PublicAPI
     def keys(self) -> Iterable[str]:
@@ -449,13 +519,13 @@ class SampleBatch:
     def set_get_interceptor(self, fn):
         self.get_interceptor = fn
 
-    # Experimental method.
+    """# Experimental method.
     @DeveloperAPI
     def get_single_timestep_input_dict(
             self,
             view_requirements: ViewRequirementsDict,
             index: Union[int, str] = "last") -> ModelInputDict:
-        """Creates single ts input-dict at given index from a SampleBatch.
+        ""Creates single ts input-dict at given index from a SampleBatch.
 
         Args:
             view_requirements (ViewRequirementsDict): The view requirements
@@ -469,7 +539,7 @@ class SampleBatch:
 
         Returns:
             ModelInputDict: The (single-timestep) input dict for ModelV2 calls.
-        """
+        ""
         last_mappings = {
             SampleBatch.OBS: SampleBatch.NEXT_OBS,
             SampleBatch.PREV_ACTIONS: SampleBatch.ACTIONS,
@@ -510,6 +580,7 @@ class SampleBatch:
         input_dict["seq_lens"] = np.array([1], dtype=np.int32)
 
         return input_dict
+    """
 
     def __str__(self):
         return "SampleBatch({})".format(str(self.data))
@@ -522,6 +593,32 @@ class SampleBatch:
 
     def __contains__(self, x):
         return x in self.data
+
+    def _get_slice_indices(self, slice_size):
+        i = 0
+        slices = []
+        if self.seq_lens is not None and len(self.seq_lens) > 0:
+            start_pos = 0
+            current_slize_size = 0
+            idx = 0
+            while idx < len(self.seq_lens):
+                seq_len = self.seq_lens[idx]
+                current_slize_size += seq_len
+                # Complete minibatch -> Append to slices.
+                if current_slize_size >= slice_size:
+                    slices.append((start_pos, start_pos + slice_size))
+                    start_pos += slice_size
+                    if current_slize_size > slice_size:
+                        overhead = current_slize_size - slice_size
+                        start_pos -= (seq_len - overhead)
+                        idx -= 1
+                    current_slize_size = 0
+                idx += 1
+        else:
+            while i < self.count:
+                slices.append((i, i + slice_size))
+                i += slice_size
+        return slices
 
 
 @PublicAPI

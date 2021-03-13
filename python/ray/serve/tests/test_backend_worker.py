@@ -5,7 +5,6 @@ import numpy as np
 
 import ray
 from ray import serve
-import ray.serve.context as context
 from ray.serve.backend_worker import create_backend_replica, wrap_to_ray_error
 from ray.serve.controller import TrafficPolicy
 from ray.serve.router import Router, RequestMetadata
@@ -17,7 +16,7 @@ pytestmark = pytest.mark.asyncio
 
 
 def setup_worker(name,
-                 func_or_class,
+                 backend_def,
                  init_args=None,
                  backend_config=BackendConfig(),
                  controller_name=""):
@@ -27,18 +26,22 @@ def setup_worker(name,
     @ray.remote
     class WorkerActor:
         def __init__(self):
-            self.worker = create_backend_replica(func_or_class)(
+            self.worker = create_backend_replica(backend_def)(
                 name, name + ":tag", init_args, backend_config,
                 controller_name)
 
         def ready(self):
             pass
 
+        @ray.method(num_returns=2)
         async def handle_request(self, *args, **kwargs):
             return await self.worker.handle_request(*args, **kwargs)
 
         def update_config(self, new_config):
             return self.worker.update_config(new_config)
+
+        async def drain_pending_queries(self):
+            return await self.worker.drain_pending_queries()
 
     worker = WorkerActor.remote()
     ray.get(worker.ready.remote())
@@ -64,10 +67,7 @@ async def add_servable_to_router(servable, router, controller_name, **kwargs):
 
 def make_request_param(call_method="__call__"):
     return RequestMetadata(
-        get_random_letters(10),
-        "endpoint",
-        context.TaskContext.Python,
-        call_method=call_method)
+        get_random_letters(10), "endpoint", call_method=call_method)
 
 
 @pytest.fixture
@@ -78,7 +78,7 @@ async def router(serve_instance):
 
 
 async def test_runner_wraps_error():
-    wrapped = wrap_to_ray_error(Exception())
+    wrapped = wrap_to_ray_error("test_function", Exception())
     assert isinstance(wrapped, ray.exceptions.RayTaskError)
 
 
@@ -310,6 +310,51 @@ async def test_user_config_update(serve_instance, router,
 
     for i in done:
         assert await i == "new_val"
+
+
+async def test_graceful_shutdown(serve_instance, router,
+                                 mock_controller_with_name):
+    class KeepInflight:
+        def __init__(self):
+            self.events = []
+
+        def reconfigure(self, config):
+            if config["release"]:
+                [event.set() for event in self.events]
+
+        async def __call__(self, _):
+            e = asyncio.Event()
+            self.events.append(e)
+            await e.wait()
+
+    backend_worker = await add_servable_to_router(
+        KeepInflight,
+        router,
+        mock_controller_with_name[0],
+        backend_config=BackendConfig(
+            num_replicas=1,
+            internal_metadata=BackendMetadata(is_blocking=False),
+            user_config={"release": False}))
+
+    query_param = make_request_param()
+
+    refs = [(await router.assign_request.remote(query_param))
+            for _ in range(6)]
+
+    shutdown_ref = backend_worker.drain_pending_queries.remote()
+
+    with pytest.raises(ray.exceptions.GetTimeoutError):
+        # Shutdown should block because there are still inflight queries.
+        ray.get(shutdown_ref, timeout=2)
+
+    config = BackendConfig()
+    config.user_config = {"release": True}
+    await mock_controller_with_name[1].update_backend.remote("backend", config)
+
+    # All queries should complete successfully
+    ray.get(refs)
+    # The draining operation should be completed.
+    ray.get(shutdown_ref)
 
 
 if __name__ == "__main__":

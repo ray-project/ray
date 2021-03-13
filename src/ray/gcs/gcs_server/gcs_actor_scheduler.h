@@ -18,10 +18,12 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/common/task/task_execution_spec.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/gcs/accessor.h"
+#include "ray/gcs/gcs_server/gcs_actor_schedule_strategy.h"
 #include "ray/gcs/gcs_server/gcs_node_manager.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/raylet_client/raylet_client.h"
@@ -58,7 +60,8 @@ class GcsActorSchedulerInterface {
   ///
   /// \param node_id ID of the node where the actor leasing request has been sent.
   /// \param actor_id ID of an actor.
-  virtual void CancelOnLeasing(const NodeID &node_id, const ActorID &actor_id) = 0;
+  virtual void CancelOnLeasing(const NodeID &node_id, const ActorID &actor_id,
+                               const TaskID &task_id) = 0;
 
   /// Cancel the actor that is being scheduled to the specified worker.
   ///
@@ -90,14 +93,16 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   /// \param schedule_success_handler Invoked when actors are created on the worker
   /// successfully.
   /// \param raylet_client_pool Raylet client pool to construct connections to raylets.
+  /// \param actor_schedule_strategy Actor schedule strategy.
   /// \param client_factory Factory to create remote core worker client, default factor
   /// will be used if not set.
   explicit GcsActorScheduler(
-      boost::asio::io_context &io_context, gcs::GcsActorTable &gcs_actor_table,
+      instrumented_io_context &io_context, gcs::GcsActorTable &gcs_actor_table,
       const GcsNodeManager &gcs_node_manager, std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
       std::function<void(std::shared_ptr<GcsActor>)> schedule_failure_handler,
       std::function<void(std::shared_ptr<GcsActor>)> schedule_success_handler,
       std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool,
+      std::shared_ptr<GcsActorScheduleStrategyInterface> actor_schedule_strategy,
       rpc::ClientFactoryFn client_factory = nullptr);
   virtual ~GcsActorScheduler() = default;
 
@@ -127,7 +132,8 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   ///
   /// \param node_id ID of the node where the actor leasing request has been sent.
   /// \param actor_id ID of an actor.
-  void CancelOnLeasing(const NodeID &node_id, const ActorID &actor_id) override;
+  void CancelOnLeasing(const NodeID &node_id, const ActorID &actor_id,
+                       const TaskID &task_id) override;
 
   /// Cancel the actor that is being scheduled to the specified worker.
   ///
@@ -260,7 +266,7 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
  protected:
   /// The io loop that is used to delay execution of tasks (e.g.,
   /// execute_after).
-  boost::asio::io_context &io_context_;
+  instrumented_io_context &io_context_;
   /// The actor info accessor.
   gcs::GcsActorTable &gcs_actor_table_;
   /// Map from node ID to the set of actors for whom we are trying to acquire a lease from
@@ -286,6 +292,8 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   absl::flat_hash_set<NodeID> nodes_of_releasing_unused_workers_;
   /// The cached raylet clients used to communicate with raylet.
   std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool_;
+  /// The actor schedule strategy.
+  std::shared_ptr<GcsActorScheduleStrategyInterface> actor_schedule_strategy_;
   /// The cached core worker clients which are used to communicate with leased worker.
   rpc::CoreWorkerClientPool core_worker_clients_;
 };

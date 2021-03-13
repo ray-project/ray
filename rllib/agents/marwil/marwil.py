@@ -21,6 +21,8 @@ DEFAULT_CONFIG = with_common_config({
     "beta": 1.0,
     # Balancing value estimation loss and policy optimization loss.
     "vf_coeff": 1.0,
+    # If specified, clip the global norm of gradients by this amount.
+    "grad_clip": None,
     # Whether to calculate cumulative rewards.
     "postprocess_inputs": True,
     # Whether to rollout "complete_episodes" or "truncate_episodes".
@@ -68,9 +70,15 @@ def execution_plan(workers, config):
     return StandardMetricsReporting(train_op, workers, config)
 
 
+def validate_config(config):
+    if config["num_gpus"] > 1:
+        raise ValueError("`num_gpus` > 1 not yet supported for MARWIL!")
+
+
 MARWILTrainer = build_trainer(
     name="MARWIL",
     default_config=DEFAULT_CONFIG,
     default_policy=MARWILTFPolicy,
     get_policy_class=get_policy_class,
+    validate_config=validate_config,
     execution_plan=execution_plan)

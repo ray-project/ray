@@ -25,7 +25,7 @@ from ray.rllib.utils.test_utils import framework_iterator, check
 
 class MyCallbacks(DefaultCallbacks):
     @override(DefaultCallbacks)
-    def on_learn_on_batch(self, *, policy, train_batch, **kwargs):
+    def on_learn_on_batch(self, *, policy, train_batch, result, **kwargs):
         assert train_batch.count == 201
         assert sum(train_batch.seq_lens) == 201
         for k, v in train_batch.data.items():
@@ -63,7 +63,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
                 config,
                 env="ray.rllib.examples.env.debug_counter_env.DebugCounterEnv")
             policy = trainer.get_policy()
-            view_req_model = policy.model.inference_view_requirements
+            view_req_model = policy.model.view_requirements
             view_req_policy = policy.view_requirements
             assert len(view_req_model) == 1, view_req_model
             assert len(view_req_policy) == 8, view_req_policy
@@ -108,7 +108,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         for _ in framework_iterator(config):
             trainer = ppo.PPOTrainer(config, env="CartPole-v0")
             policy = trainer.get_policy()
-            view_req_model = policy.model.inference_view_requirements
+            view_req_model = policy.model.view_requirements
             view_req_policy = policy.view_requirements
             # 7=obs, prev-a + r, 2x state-in, 2x state-out.
             assert len(view_req_model) == 7, view_req_model
@@ -146,7 +146,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         config["model"]["custom_model"] = GTrXLNet
         config["model"]["custom_model_config"] = {
             "num_transformer_units": 1,
-            "attn_dim": 64,
+            "attention_dim": 64,
             "num_heads": 2,
             "memory_inference": 50,
             "memory_training": 50,

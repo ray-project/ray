@@ -1,3 +1,5 @@
+import json
+import jsonschema
 import os
 import shutil
 from subprocess import CalledProcessError
@@ -22,7 +24,7 @@ from ray.autoscaler._private.providers import (
 from ray.autoscaler.tags import TAG_RAY_NODE_KIND, TAG_RAY_NODE_STATUS, \
     STATUS_UP_TO_DATE, STATUS_UPDATE_FAILED, TAG_RAY_USER_NODE_TYPE, \
     NODE_TYPE_LEGACY_HEAD, NODE_TYPE_LEGACY_WORKER, NODE_KIND_HEAD, \
-    NODE_KIND_WORKER
+    NODE_KIND_WORKER, STATUS_UNINITIALIZED
 from ray.autoscaler.node_provider import NodeProvider
 from ray.test_utils import RayTestTimeoutException
 import pytest
@@ -263,6 +265,55 @@ SMALL_CLUSTER = {
     "worker_start_ray_commands": ["start_ray_worker"],
 }
 
+MOCK_DEFAULT_CONFIG = {
+    "cluster_name": "default",
+    "max_workers": 2,
+    "upscaling_speed": 1.0,
+    "idle_timeout_minutes": 5,
+    "provider": {
+        "type": "mock",
+        "region": "us-east-1",
+        "availability_zone": "us-east-1a",
+    },
+    "docker": {
+        "image": "example",
+        "container_name": "mock",
+    },
+    "auth": {
+        "ssh_user": "ubuntu",
+        "ssh_private_key": os.devnull,
+    },
+    "available_node_types": {
+        "ray.head.default": {
+            "min_workers": 0,
+            "max_workers": 0,
+            "resources": {},
+            "node_config": {
+                "head_default_prop": 4
+            }
+        },
+        "ray.worker.default": {
+            "min_workers": 0,
+            "max_workers": 2,
+            "resources": {},
+            "node_config": {
+                "worker_default_prop": 7
+            }
+        }
+    },
+    "head_node_type": "ray.head.default",
+    "head_node": {},
+    "worker_nodes": {},
+    "file_mounts": {},
+    "cluster_synced_files": [],
+    "initialization_commands": [],
+    "setup_commands": [],
+    "head_setup_commands": [],
+    "worker_setup_commands": [],
+    "head_start_ray_commands": [],
+    "worker_start_ray_commands": [],
+}
+
 
 class LoadMetricsTest(unittest.TestCase):
     def testHeartbeat(self):
@@ -277,13 +328,14 @@ class LoadMetricsTest(unittest.TestCase):
         lm = LoadMetrics()
         lm.update("1.1.1.1", {"CPU": 2}, {"CPU": 0}, {})
         lm.update("2.2.2.2", {"CPU": 2, "GPU": 16}, {"CPU": 2, "GPU": 2}, {})
-        lm.update("3.3.3.3", {
-            "memory": 20,
-            "object_store_memory": 40
-        }, {
-            "memory": 0,
-            "object_store_memory": 20
-        }, {})
+        lm.update(
+            "3.3.3.3", {
+                "memory": 1.05 * 1024 * 1024 * 1024,
+                "object_store_memory": 2.1 * 1024 * 1024 * 1024,
+            }, {
+                "memory": 0,
+                "object_store_memory": 1.05 * 1024 * 1024 * 1024,
+            }, {})
         debug = lm.info_string()
         assert ("ResourceUsage: 2.0/4.0 CPU, 14.0/16.0 GPU, "
                 "1.05 GiB/1.05 GiB memory, "
@@ -396,10 +448,34 @@ class AutoscalingTest(unittest.TestCase):
         self.provider = MockProvider()
         runner = MockProcessRunner()
         runner.respond_to_call("json .Mounts", ["[]"])
-        # Two initial calls to docker cp, one before run, two final calls to cp
+        # Two initial calls to docker cp, + 2 more calls during run_init
         runner.respond_to_call(".State.Running",
-                               ["false", "false", "false", "true", "true"])
+                               ["false", "false", "false", "false"])
         runner.respond_to_call("json .Config.Env", ["[]"])
+
+        def _create_node(node_config, tags, count, _skip_wait=False):
+            assert tags[TAG_RAY_NODE_STATUS] == STATUS_UNINITIALIZED
+            if not _skip_wait:
+                self.provider.ready_to_create.wait()
+            if self.provider.fail_creates:
+                return
+            with self.provider.lock:
+                if self.provider.cache_stopped:
+                    for node in self.provider.mock_nodes.values():
+                        if node.state == "stopped" and count > 0:
+                            count -= 1
+                            node.state = "pending"
+                            node.tags.update(tags)
+                for _ in range(count):
+                    self.provider.mock_nodes[self.provider.next_id] = MockNode(
+                        self.provider.next_id,
+                        tags.copy(),
+                        node_config,
+                        tags.get(TAG_RAY_USER_NODE_TYPE),
+                        unique_ips=self.provider.unique_ips)
+                    self.provider.next_id += 1
+
+        self.provider.create_node = _create_node
         commands.get_or_create_head_node(
             SMALL_CLUSTER,
             printable_config_file=config_path,
@@ -415,6 +491,247 @@ class AutoscalingTest(unittest.TestCase):
         runner.assert_has_call("1.2.3.4", "start_ray_head")
         self.assertEqual(self.provider.mock_nodes[0].node_type, None)
         runner.assert_has_call("1.2.3.4", pattern="docker run")
+
+        docker_mount_prefix = get_docker_host_mount_location(
+            SMALL_CLUSTER["cluster_name"])
+        runner.assert_not_has_call(
+            "1.2.3.4",
+            pattern=f"-v {docker_mount_prefix}/~/ray_bootstrap_config")
+        runner.assert_has_call(
+            "1.2.3.4",
+            pattern=f"docker cp {docker_mount_prefix}/~/ray_bootstrap_key.pem")
+        pattern_to_assert = \
+            f"docker cp {docker_mount_prefix}/~/ray_bootstrap_config.yaml"
+        runner.assert_has_call("1.2.3.4", pattern=pattern_to_assert)
+
+    @unittest.skipIf(sys.platform == "win32", "Failing on Windows.")
+    def testGetOrCreateHeadNodePodman(self):
+        config = copy.deepcopy(SMALL_CLUSTER)
+        config["docker"]["use_podman"] = True
+        config_path = self.write_config(config)
+        self.provider = MockProvider()
+        runner = MockProcessRunner()
+        runner.respond_to_call("json .Mounts", ["[]"])
+        # Two initial calls to docker cp, + 2 more calls during run_init
+        runner.respond_to_call(".State.Running",
+                               ["false", "false", "false", "false"])
+        runner.respond_to_call("json .Config.Env", ["[]"])
+        commands.get_or_create_head_node(
+            config,
+            printable_config_file=config_path,
+            no_restart=False,
+            restart_only=False,
+            yes=True,
+            override_cluster_name=None,
+            _provider=self.provider,
+            _runner=runner)
+        self.waitForNodes(1)
+        runner.assert_has_call("1.2.3.4", "init_cmd")
+        runner.assert_has_call("1.2.3.4", "head_setup_cmd")
+        runner.assert_has_call("1.2.3.4", "start_ray_head")
+        self.assertEqual(self.provider.mock_nodes[0].node_type, None)
+        runner.assert_has_call("1.2.3.4", pattern="podman run")
+
+        docker_mount_prefix = get_docker_host_mount_location(
+            SMALL_CLUSTER["cluster_name"])
+        runner.assert_not_has_call(
+            "1.2.3.4",
+            pattern=f"-v {docker_mount_prefix}/~/ray_bootstrap_config")
+        runner.assert_has_call(
+            "1.2.3.4",
+            pattern=f"podman cp {docker_mount_prefix}/~/ray_bootstrap_key.pem")
+        pattern_to_assert = \
+            f"podman cp {docker_mount_prefix}/~/ray_bootstrap_config.yaml"
+        runner.assert_has_call("1.2.3.4", pattern=pattern_to_assert)
+
+        for cmd in runner.command_history():
+            assert "docker" not in cmd, ("Docker (not podman) found in call: "
+                                         f"{cmd}")
+
+        runner.assert_has_call("1.2.3.4", "podman inspect")
+        runner.assert_has_call("1.2.3.4", "podman exec")
+
+    @unittest.skipIf(sys.platform == "win32", "Failing on Windows.")
+    def testGetOrCreateHeadNodeFromStopped(self):
+        self.testGetOrCreateHeadNode()
+        self.provider.cache_stopped = True
+        existing_nodes = self.provider.non_terminated_nodes({})
+        assert len(existing_nodes) == 1
+        self.provider.terminate_node(existing_nodes[0])
+        config_path = self.write_config(SMALL_CLUSTER)
+        runner = MockProcessRunner()
+        runner.respond_to_call("json .Mounts", ["[]"])
+        # Two initial calls to docker cp, + 2 more calls during run_init
+        runner.respond_to_call(".State.Running",
+                               ["false", "false", "false", "false"])
+        runner.respond_to_call("json .Config.Env", ["[]"])
+        commands.get_or_create_head_node(
+            SMALL_CLUSTER,
+            printable_config_file=config_path,
+            no_restart=False,
+            restart_only=False,
+            yes=True,
+            override_cluster_name=None,
+            _provider=self.provider,
+            _runner=runner)
+        self.waitForNodes(1)
+        # Init & Setup commands must be run for Docker!
+        runner.assert_has_call("1.2.3.4", "init_cmd")
+        runner.assert_has_call("1.2.3.4", "head_setup_cmd")
+        runner.assert_has_call("1.2.3.4", "start_ray_head")
+        self.assertEqual(self.provider.mock_nodes[0].node_type, None)
+        runner.assert_has_call("1.2.3.4", pattern="docker run")
+
+        docker_mount_prefix = get_docker_host_mount_location(
+            SMALL_CLUSTER["cluster_name"])
+        runner.assert_not_has_call(
+            "1.2.3.4",
+            pattern=f"-v {docker_mount_prefix}/~/ray_bootstrap_config")
+        runner.assert_has_call(
+            "1.2.3.4",
+            pattern=f"docker cp {docker_mount_prefix}/~/ray_bootstrap_key.pem")
+        pattern_to_assert = \
+            f"docker cp {docker_mount_prefix}/~/ray_bootstrap_config.yaml"
+        runner.assert_has_call("1.2.3.4", pattern=pattern_to_assert)
+
+        # This next section of code ensures that the following order of
+        # commands are executed:
+        # 1. mkdir -p {docker_mount_prefix}
+        # 2. rsync bootstrap files
+        # 3. docker cp bootstrap files into container
+        commands_with_mount = [
+            (i, cmd) for i, cmd in enumerate(runner.command_history())
+            if docker_mount_prefix in cmd
+        ]
+        rsync_commands = [x for x in commands_with_mount if "rsync" in x[1]]
+        docker_cp_commands = [
+            x for x in commands_with_mount if "docker cp" in x[1]
+        ]
+        first_mkdir = min(x[0] for x in commands_with_mount if "mkdir" in x[1])
+        for file_to_check in [
+                "ray_bootstrap_config.yaml", "ray_bootstrap_key.pem"
+        ]:
+            first_rsync = min(x[0] for x in rsync_commands
+                              if "ray_bootstrap_config.yaml" in x[1])
+            first_cp = min(
+                x[0] for x in docker_cp_commands if file_to_check in x[1])
+            assert first_mkdir < first_rsync
+            assert first_rsync < first_cp
+
+    def testGetOrCreateHeadNodeFromStoppedRestartOnly(self):
+        self.testGetOrCreateHeadNode()
+        self.provider.cache_stopped = True
+        existing_nodes = self.provider.non_terminated_nodes({})
+        assert len(existing_nodes) == 1
+        self.provider.terminate_node(existing_nodes[0])
+        config_path = self.write_config(SMALL_CLUSTER)
+        runner = MockProcessRunner()
+        runner.respond_to_call("json .Mounts", ["[]"])
+        # Two initial calls to docker cp, + 2 more calls during run_init
+        runner.respond_to_call(".State.Running",
+                               ["false", "false", "false", "false"])
+        runner.respond_to_call("json .Config.Env", ["[]"])
+        commands.get_or_create_head_node(
+            SMALL_CLUSTER,
+            printable_config_file=config_path,
+            no_restart=False,
+            restart_only=True,
+            yes=True,
+            override_cluster_name=None,
+            _provider=self.provider,
+            _runner=runner)
+        self.waitForNodes(1)
+        # Init & Setup commands must be run for Docker!
+        runner.assert_has_call("1.2.3.4", "init_cmd")
+        runner.assert_has_call("1.2.3.4", "head_setup_cmd")
+        runner.assert_has_call("1.2.3.4", "start_ray_head")
+
+    @unittest.skipIf(sys.platform == "win32", "Failing on Windows.")
+    def testDockerFileMountsAdded(self):
+        config = copy.deepcopy(SMALL_CLUSTER)
+        config["file_mounts"] = {"source": "/dev/null"}
+        config_path = self.write_config(config)
+        self.provider = MockProvider()
+        runner = MockProcessRunner()
+        mounts = [{
+            "Type": "bind",
+            "Source": "/sys",
+            "Destination": "/sys",
+            "Mode": "ro",
+            "RW": False,
+            "Propagation": "rprivate"
+        }]
+        runner.respond_to_call("json .Mounts", [json.dumps(mounts)])
+        # Two initial calls to docker cp, +1 more call during run_init
+        runner.respond_to_call(".State.Running",
+                               ["false", "false", "true", "true"])
+        runner.respond_to_call("json .Config.Env", ["[]"])
+        commands.get_or_create_head_node(
+            config,
+            printable_config_file=config_path,
+            no_restart=False,
+            restart_only=False,
+            yes=True,
+            override_cluster_name=None,
+            _provider=self.provider,
+            _runner=runner)
+        self.waitForNodes(1)
+        runner.assert_has_call("1.2.3.4", "init_cmd")
+        runner.assert_has_call("1.2.3.4", "head_setup_cmd")
+        runner.assert_has_call("1.2.3.4", "start_ray_head")
+        self.assertEqual(self.provider.mock_nodes[0].node_type, None)
+        runner.assert_has_call("1.2.3.4", pattern="docker stop")
+        runner.assert_has_call("1.2.3.4", pattern="docker run")
+
+        docker_mount_prefix = get_docker_host_mount_location(
+            SMALL_CLUSTER["cluster_name"])
+        runner.assert_not_has_call(
+            "1.2.3.4",
+            pattern=f"-v {docker_mount_prefix}/~/ray_bootstrap_config")
+        runner.assert_has_call(
+            "1.2.3.4",
+            pattern=f"docker cp {docker_mount_prefix}/~/ray_bootstrap_key.pem")
+        pattern_to_assert = \
+            f"docker cp {docker_mount_prefix}/~/ray_bootstrap_config.yaml"
+        runner.assert_has_call("1.2.3.4", pattern=pattern_to_assert)
+
+    @unittest.skipIf(sys.platform == "win32", "Failing on Windows.")
+    def testDockerFileMountsRemoved(self):
+        config = copy.deepcopy(SMALL_CLUSTER)
+        config["file_mounts"] = {}
+        config_path = self.write_config(config)
+        self.provider = MockProvider()
+        runner = MockProcessRunner()
+        mounts = [{
+            "Type": "bind",
+            "Source": "/sys",
+            "Destination": "/sys",
+            "Mode": "ro",
+            "RW": False,
+            "Propagation": "rprivate"
+        }]
+        runner.respond_to_call("json .Mounts", [json.dumps(mounts)])
+        # Two initial calls to docker cp, +1 more call during run_init
+        runner.respond_to_call(".State.Running",
+                               ["false", "false", "true", "true"])
+        runner.respond_to_call("json .Config.Env", ["[]"])
+        commands.get_or_create_head_node(
+            config,
+            printable_config_file=config_path,
+            no_restart=False,
+            restart_only=False,
+            yes=True,
+            override_cluster_name=None,
+            _provider=self.provider,
+            _runner=runner)
+        self.waitForNodes(1)
+        runner.assert_has_call("1.2.3.4", "init_cmd")
+        runner.assert_has_call("1.2.3.4", "head_setup_cmd")
+        runner.assert_has_call("1.2.3.4", "start_ray_head")
+        self.assertEqual(self.provider.mock_nodes[0].node_type, None)
+        # We only removed amount from the YAML, no changes should happen.
+        runner.assert_not_has_call("1.2.3.4", pattern="docker stop")
+        runner.assert_not_has_call("1.2.3.4", pattern="docker run")
 
         docker_mount_prefix = get_docker_host_mount_location(
             SMALL_CLUSTER["cluster_name"])
@@ -568,6 +885,12 @@ class AutoscalingTest(unittest.TestCase):
         # Eventually reaches steady state
         self.waitForNodes(5)
 
+        # Check the outdated node removal event is generated.
+        autoscaler.update()
+        events = autoscaler.event_summarizer.summary()
+        assert ("Removing 10 nodes of type "
+                "ray-legacy-worker-node-type (outdated)." in events), events
+
     def testDynamicScaling(self):
         config_path = self.write_config(SMALL_CLUSTER)
         self.provider = MockProvider()
@@ -613,6 +936,12 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
         self.waitForNodes(
             10, tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
+
+        # Check the launch failure event is generated.
+        autoscaler.update()
+        events = autoscaler.event_summarizer.summary()
+        assert ("Removing 1 nodes of type "
+                "ray-legacy-worker-node-type (max workers)." in events), events
 
     def testInitialWorkers(self):
         """initial_workers is deprecated, this tests that it is ignored."""
@@ -1120,6 +1449,13 @@ class AutoscalingTest(unittest.TestCase):
             # The failed nodes might have been already terminated by autoscaler
             assert len(self.provider.non_terminated_nodes({})) < 2
 
+        # Check the launch failure event is generated.
+        autoscaler.update()
+        events = autoscaler.event_summarizer.summary()
+        assert (
+            "Removing 2 nodes of type "
+            "ray-legacy-worker-node-type (launch failed)." in events), events
+
     def testConfiguresOutdatedNodes(self):
         from ray.autoscaler._private.cli_logger import cli_logger
 
@@ -1241,6 +1577,13 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
         self.waitForNodes(1, tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
 
+        # Check add/remove events.
+        events = autoscaler.event_summarizer.summary()
+        assert ("Adding 5 nodes of type "
+                "ray-legacy-worker-node-type." in events), events
+        assert ("Removing 4 nodes of type "
+                "ray-legacy-worker-node-type (idle)." in events), events
+
     def testTargetUtilizationFraction(self):
         config = SMALL_CLUSTER.copy()
         config["min_workers"] = 0
@@ -1335,6 +1678,13 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
         self.waitFor(lambda: len(runner.calls) > num_calls, num_retries=150)
 
+        # Check the node removal event is generated.
+        autoscaler.update()
+        events = autoscaler.event_summarizer.summary()
+        assert ("Restarting 1 nodes of type "
+                "ray-legacy-worker-node-type (lost contact with raylet)." in
+                events), events
+
     def testExternalNodeScaler(self):
         config = SMALL_CLUSTER.copy()
         config["provider"] = {
@@ -1345,6 +1695,28 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler = StandardAutoscaler(
             config_path, LoadMetrics(), max_failures=0, update_interval_s=0)
         assert isinstance(autoscaler.provider, NodeProvider)
+
+    def testLegacyExternalNodeScalerMissingFields(self):
+        """Should fail to validate legacy external config with missing
+        head_node, worker_nodes, or both."""
+        external_config = copy.deepcopy(SMALL_CLUSTER)
+        external_config["provider"] = {
+            "type": "external",
+            "module": "ray.autoscaler.node_provider.NodeProvider",
+        }
+
+        missing_workers, missing_head, missing_both = [
+            copy.deepcopy(external_config) for _ in range(3)
+        ]
+        del missing_workers["worker_nodes"]
+        del missing_head["head_node"]
+        del missing_both["worker_nodes"]
+        del missing_both["head_node"]
+
+        for faulty_config in missing_workers, missing_head, missing_both:
+            faulty_config = prepare_config(faulty_config)
+            with pytest.raises(jsonschema.ValidationError):
+                validate_config(faulty_config)
 
     def testExternalNodeScalerWrongImport(self):
         config = SMALL_CLUSTER.copy()
@@ -1408,7 +1780,77 @@ class AutoscalingTest(unittest.TestCase):
         runner.assert_has_call("172.0.0.1", "worker_setup_cmd")
         runner.assert_has_call("172.0.0.1", "start_ray_worker")
 
-    def testSetupCommandsWithStoppedNodeCaching(self):
+    def testSetupCommandsWithStoppedNodeCachingNoDocker(self):
+        file_mount_dir = tempfile.mkdtemp()
+        config = SMALL_CLUSTER.copy()
+        del config["docker"]
+        config["file_mounts"] = {"/root/test-folder": file_mount_dir}
+        config["file_mounts_sync_continuously"] = True
+        config["min_workers"] = 1
+        config["max_workers"] = 1
+        config_path = self.write_config(config)
+        self.provider = MockProvider(cache_stopped=True)
+        runner = MockProcessRunner()
+        runner.respond_to_call("json .Config.Env", ["[]" for i in range(3)])
+        lm = LoadMetrics()
+        autoscaler = StandardAutoscaler(
+            config_path,
+            lm,
+            max_failures=0,
+            process_runner=runner,
+            update_interval_s=0)
+        autoscaler.update()
+        self.waitForNodes(1)
+        self.provider.finish_starting_nodes()
+        autoscaler.update()
+        self.waitForNodes(
+            1, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE})
+        runner.assert_has_call("172.0.0.0", "init_cmd")
+        runner.assert_has_call("172.0.0.0", "setup_cmd")
+        runner.assert_has_call("172.0.0.0", "worker_setup_cmd")
+        runner.assert_has_call("172.0.0.0", "start_ray_worker")
+
+        # Check the node was indeed reused
+        self.provider.terminate_node(0)
+        autoscaler.update()
+        self.waitForNodes(1)
+        runner.clear_history()
+        self.provider.finish_starting_nodes()
+        autoscaler.update()
+        self.waitForNodes(
+            1, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE})
+        runner.assert_not_has_call("172.0.0.0", "init_cmd")
+        runner.assert_not_has_call("172.0.0.0", "setup_cmd")
+        runner.assert_not_has_call("172.0.0.0", "worker_setup_cmd")
+        runner.assert_has_call("172.0.0.0", "start_ray_worker")
+
+        with open(f"{file_mount_dir}/new_file", "w") as f:
+            f.write("abcdefgh")
+
+        # Check that run_init happens when file_mounts have updated
+        self.provider.terminate_node(0)
+        autoscaler.update()
+        self.waitForNodes(1)
+        runner.clear_history()
+        self.provider.finish_starting_nodes()
+        autoscaler.update()
+        self.waitForNodes(
+            1, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE})
+        runner.assert_not_has_call("172.0.0.0", "init_cmd")
+        runner.assert_not_has_call("172.0.0.0", "setup_cmd")
+        runner.assert_not_has_call("172.0.0.0", "worker_setup_cmd")
+        runner.assert_has_call("172.0.0.0", "start_ray_worker")
+
+        runner.clear_history()
+        autoscaler.update()
+        runner.assert_not_has_call("172.0.0.0", "setup_cmd")
+
+        # We did not start any other nodes
+        runner.assert_not_has_call("172.0.0.1", " ")
+
+    def testSetupCommandsWithStoppedNodeCachingDocker(self):
+        # NOTE(ilr) Setup & Init commands **should** run with stopped nodes
+        # when Docker is in use.
         file_mount_dir = tempfile.mkdtemp()
         config = SMALL_CLUSTER.copy()
         config["file_mounts"] = {"/root/test-folder": file_mount_dir}
@@ -1447,9 +1889,10 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
         self.waitForNodes(
             1, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE})
-        runner.assert_not_has_call("172.0.0.0", "init_cmd")
-        runner.assert_not_has_call("172.0.0.0", "setup_cmd")
-        runner.assert_not_has_call("172.0.0.0", "worker_setup_cmd")
+        # These all must happen when the node is stopped and resued
+        runner.assert_has_call("172.0.0.0", "init_cmd")
+        runner.assert_has_call("172.0.0.0", "setup_cmd")
+        runner.assert_has_call("172.0.0.0", "worker_setup_cmd")
         runner.assert_has_call("172.0.0.0", "start_ray_worker")
         runner.assert_has_call("172.0.0.0", "docker run")
 
@@ -1465,9 +1908,9 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
         self.waitForNodes(
             1, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE})
-        runner.assert_not_has_call("172.0.0.0", "init_cmd")
-        runner.assert_not_has_call("172.0.0.0", "setup_cmd")
-        runner.assert_not_has_call("172.0.0.0", "worker_setup_cmd")
+        runner.assert_has_call("172.0.0.0", "init_cmd")
+        runner.assert_has_call("172.0.0.0", "setup_cmd")
+        runner.assert_has_call("172.0.0.0", "worker_setup_cmd")
         runner.assert_has_call("172.0.0.0", "start_ray_worker")
         runner.assert_has_call("172.0.0.0", "docker run")
 
@@ -1480,12 +1923,13 @@ class AutoscalingTest(unittest.TestCase):
 
     def testMultiNodeReuse(self):
         config = SMALL_CLUSTER.copy()
+        # Docker re-runs setup commands when nodes are reused.
+        del config["docker"]
         config["min_workers"] = 3
         config["max_workers"] = 3
         config_path = self.write_config(config)
         self.provider = MockProvider(cache_stopped=True)
         runner = MockProcessRunner()
-        runner.respond_to_call("json .Config.Env", ["[]" for i in range(13)])
         lm = LoadMetrics()
         autoscaler = StandardAutoscaler(
             config_path,
@@ -1537,6 +1981,8 @@ class AutoscalingTest(unittest.TestCase):
         config_path = self.write_config(config)
         runner = MockProcessRunner()
         runner.respond_to_call("json .Config.Env", ["[]" for i in range(4)])
+        runner.respond_to_call("command -v docker",
+                               ["docker" for _ in range(4)])
         lm = LoadMetrics()
         autoscaler = StandardAutoscaler(
             config_path,
@@ -1565,6 +2011,8 @@ class AutoscalingTest(unittest.TestCase):
         with open(os.path.join(file_mount_dir, "test.txt"), "wb") as temp_file:
             temp_file.write("hello".encode())
 
+        runner.respond_to_call(".Config.Image", ["example" for _ in range(4)])
+        runner.respond_to_call(".State.Running", ["true" for _ in range(4)])
         autoscaler.update()
         self.waitForNodes(2)
         self.provider.finish_starting_nodes()
@@ -1691,6 +2139,42 @@ MemAvailable:   33000000 kB
         autoscaler.update()
         runner.assert_has_call("172.0.0.0", pattern="--shm-size")
         runner.assert_has_call("172.0.0.0", pattern="--runtime=nvidia")
+
+    def testDockerImageExistsBeforeInspect(self):
+        config = copy.deepcopy(SMALL_CLUSTER)
+        config["min_workers"] = 1
+        config["max_workers"] = 1
+        config["docker"]["pull_before_run"] = False
+        config_path = self.write_config(config)
+        self.provider = MockProvider()
+        runner = MockProcessRunner()
+        runner.respond_to_call("json .Config.Env", ["[]" for i in range(1)])
+        autoscaler = StandardAutoscaler(
+            config_path,
+            LoadMetrics(),
+            max_failures=0,
+            process_runner=runner,
+            update_interval_s=0)
+        autoscaler.update()
+        autoscaler.update()
+        self.waitForNodes(1)
+        self.provider.finish_starting_nodes()
+        autoscaler.update()
+        self.waitForNodes(
+            1, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE})
+        first_pull = [(i, cmd)
+                      for i, cmd in enumerate(runner.command_history())
+                      if "docker pull" in cmd]
+        first_targeted_inspect = [
+            (i, cmd) for i, cmd in enumerate(runner.command_history())
+            if "docker inspect -f" in cmd
+        ]
+
+        # This checks for the bug mentioned #13128 where the image is inspected
+        # before the image is present.
+        assert min(x[0]
+                   for x in first_pull) < min(x[0]
+                                              for x in first_targeted_inspect)
 
 
 if __name__ == "__main__":

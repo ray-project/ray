@@ -1,18 +1,12 @@
 package io.ray.streaming.runtime.config.types;
 
-/**
- * Data transfer channel type.
- */
+/** Data transfer channel type. */
 public enum TransferChannelType {
 
-  /**
-   * Memory queue.
-   */
+  /** Memory queue. */
   MEMORY_CHANNEL("memory_channel", 0),
 
-  /**
-   * Native queue.
-   */
+  /** Native queue. */
   NATIVE_CHANNEL("native_channel", 1);
 
   private String value;

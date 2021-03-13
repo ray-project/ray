@@ -8,48 +8,84 @@ set -x
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
 java -version
 
+pushd "$ROOT_DIR"
+  echo "Check java code format."
+  # check google java style
+  mvn -T16 spotless:check
+  # check naming and others
+  mvn -T16 checkstyle:check
+popd
+
 run_testng() {
+    local pid
     local exit_code
-    if "$@"; then
+    "$@" &
+    pid=$!
+    if wait $pid; then
         exit_code=0
     else
         exit_code=$?
     fi
     # exit_code == 2 means there are skipped tests.
     if [ $exit_code -ne 2 ] && [ $exit_code -ne 0 ] ; then
-        if [ $exit_code -gt 128 ] ; then
-            # Test crashed. Print the driver log for diagnosis.
-            cat /tmp/ray/session_latest/logs/java-core-driver-*
+        # Only print log files if it ran in cluster mode
+        if [[ ! "$*" =~ SINGLE_PROCESS ]]; then
+          if [ $exit_code -gt 128 ] ; then
+              # Test crashed. Print the driver log for diagnosis.
+              cat /tmp/ray/session_latest/logs/java-core-driver-*$pid*
+          fi
         fi
-        find . -name "hs_err_*log" -exec cat {} +
+        # Only print the hs_err_pid file of TestNG process
+        find . -name "hs_err_pid$pid.log" -exec cat {} +
         exit $exit_code
     fi
 }
 
 pushd "$ROOT_DIR"/..
-echo "Linting Java code with checkstyle."
-# NOTE(hchen): The `test_tag_filters` option causes bazel to ignore caches.
-# Thus, we add the `build_tests_only` option to avoid re-building everything.
-bazel test //java:all --test_tag_filters="checkstyle" --build_tests_only
-
 echo "Build java maven deps."
 bazel build //java:gen_maven_deps
 
 echo "Build test jar."
 bazel build //java:all_tests_deploy.jar
 
-# Enable multi-worker feature in Java test
-TEST_ARGS=(-Dray.job.num-java-workers-per-process=10)
+java/generate_jni_header_files.sh
 
-echo "Running tests under cluster mode."
-# TODO(hchen): Ideally, we should use the following bazel command to run Java tests. However, if there're skipped tests,
-# TestNG will exit with code 2. And bazel treats it as test failure.
-# bazel test //java:all_tests --config=ci || cluster_exit_code=$?
-run_testng java -cp "$ROOT_DIR"/../bazel-bin/java/all_tests_deploy.jar "${TEST_ARGS[@]}" org.testng.TestNG -d /tmp/ray_java_test_output "$ROOT_DIR"/testng.xml
+if ! git diff --exit-code -- java src/ray/core_worker/lib/java; then
+  echo "Files are changed after build. Common cases are:"
+  echo "    * Java native methods doesn't match JNI files. You need to either update Java code or JNI code."
+  echo "    * pom_template.xml and pom.xml doesn't match. You need to either update pom_template.xml or pom.xml."
+  exit 1
+fi
+
+# NOTE(kfstrom): Java test troubleshooting only.
+# Set MAX_ROUNDS to a big number (e.g. 1000) to run Java tests repeatedly.
+# You may also want to modify java/testng.xml to run only a subset of test cases.
+MAX_ROUNDS=1
+if [ $MAX_ROUNDS -gt 1 ]; then
+  export RAY_BACKEND_LOG_LEVEL=debug
+fi
+
+round=1
+while true; do
+  echo Starting cluster mode test round $round
+
+  echo "Running tests under cluster mode."
+  # TODO(hchen): Ideally, we should use the following bazel command to run Java tests. However, if there're skipped tests,
+  # TestNG will exit with code 2. And bazel treats it as test failure.
+  # bazel test //java:all_tests --config=ci || cluster_exit_code=$?
+  run_testng java -cp "$ROOT_DIR"/../bazel-bin/java/all_tests_deploy.jar org.testng.TestNG -d /tmp/ray_java_test_output "$ROOT_DIR"/testng.xml
+
+  echo Finished cluster mode test round $round
+  date
+  round=$((round+1))
+  if (( round > MAX_ROUNDS )); then
+    break
+  fi
+done
 
 echo "Running tests under single-process mode."
 # bazel test //java:all_tests --jvmopt="-Dray.run-mode=SINGLE_PROCESS" --config=ci || single_exit_code=$?
-run_testng java -Dray.run-mode="SINGLE_PROCESS" -cp "$ROOT_DIR"/../bazel-bin/java/all_tests_deploy.jar "${TEST_ARGS[@]}" org.testng.TestNG -d /tmp/ray_java_test_output "$ROOT_DIR"/testng.xml
+run_testng java -Dray.run-mode="SINGLE_PROCESS" -cp "$ROOT_DIR"/../bazel-bin/java/all_tests_deploy.jar org.testng.TestNG -d /tmp/ray_java_test_output "$ROOT_DIR"/testng.xml
 
 echo "Running connecting existing cluster tests."
 case "${OSTYPE}" in
@@ -68,15 +104,13 @@ for file in "$docdemo_path"*.java; do
   file=${file#"$docdemo_path"}
   class=${file%".java"}
   echo "Running $class"
-  java -cp bazel-bin/java/all_tests_deploy.jar "io.ray.docdemo.$class"
+  java -cp bazel-bin/java/all_tests_deploy.jar -Dray.job.num-java-workers-per-process=1 "io.ray.docdemo.$class"
 done
-
 popd
-
 
 pushd "$ROOT_DIR"
 echo "Testing maven install."
-mvn -Dorg.slf4j.simpleLogger.defaultLogLevel=WARN clean install -DskipTests
+mvn -Dorg.slf4j.simpleLogger.defaultLogLevel=WARN clean install -DskipTests -Dcheckstyle.skip
 # Ensure mvn test works
 mvn test -pl test -Dtest="io.ray.test.HelloWorldTest"
 popd

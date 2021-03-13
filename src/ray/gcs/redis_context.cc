@@ -208,7 +208,7 @@ int64_t RedisCallbackManager::AllocateCallbackIndex() {
 
 int64_t RedisCallbackManager::AddCallback(const RedisCallback &function,
                                           bool is_subscription,
-                                          boost::asio::io_service &io_service,
+                                          instrumented_io_context &io_service,
                                           int64_t callback_index) {
   auto start_time = absl::GetCurrentTimeNanos() / 1000;
 
@@ -332,17 +332,9 @@ Status ConnectWithRetries(const std::string &address, int port,
                      << errorMessage;
       break;
     }
-    if (*context == nullptr) {
-      RAY_LOG(WARNING) << errorMessage << " Will retry in "
-                       << RayConfig::instance().redis_db_connect_wait_milliseconds()
-                       << " milliseconds.";
-    } else if ((*context)->err) {
-      RAY_LOG(WARNING) << "Could not establish connection to Redis " << address << ":"
-                       << port << " (context.err = " << (*context)->err
-                       << "), will retry in "
-                       << RayConfig::instance().redis_db_connect_wait_milliseconds()
-                       << " milliseconds.";
-    }
+    RAY_LOG(WARNING) << errorMessage << " Will retry in "
+                     << RayConfig::instance().redis_db_connect_wait_milliseconds()
+                     << " milliseconds. Each retry takes about two minutes.";
     // Sleep for a little.
     std::this_thread::sleep_for(std::chrono::milliseconds(
         RayConfig::instance().redis_db_connect_wait_milliseconds()));

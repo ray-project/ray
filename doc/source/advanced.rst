@@ -190,36 +190,6 @@ appear as the task name in the logs.
 .. image:: images/task_name_dashboard.png
 
 
-Dynamic Custom Resources
-------------------------
-
-Ray enables explicit developer control with respect to the task and actor placement by using custom resources. Further, users are able to dynamically adjust custom resources programmatically with ``ray.experimental.set_resource``. This allows the Ray application to implement virtually any scheduling policy, including task affinity, data locality, anti-affinity,
-load balancing, gang scheduling, and priority-based scheduling.
-
-
-.. code-block:: python
-
-    ray.init()
-    resource_name = "test_resource"
-    resource_capacity = 1.0
-
-    @ray.remote
-    def set_resource(resource_name, resource_capacity):
-        ray.experimental.set_resource(resource_name, resource_capacity)
-
-    ray.get(set_resource.remote(resource_name, resource_capacity))
-
-    available_resources = ray.available_resources()
-    cluster_resources = ray.cluster_resources()
-
-    assert available_resources[resource_name] == resource_capacity
-    assert cluster_resources[resource_name] == resource_capacity
-
-
-.. autofunction:: ray.experimental.set_resource
-    :noindex:
-
-
 Accelerator Types
 ------------------
 
@@ -234,6 +204,66 @@ Ray supports resource specific accelerator types. The `accelerator_type` field c
         return "This function was run on a node with a Tesla V100 GPU"
 
 See `ray.util.accelerators` to see available accelerator types. Current automatically detected accelerator types include Nvidia GPUs.
+
+
+Overloaded Functions
+--------------------
+Ray Java API supports calling overloaded java functions remotely. However, due to the limitation of Java compiler type inference, one must explicitly cast the method reference to the correct function type. For example, consider the following.
+
+Overloaded normal task call:
+
+.. code:: java
+
+    public static class MyRayApp {
+
+      public static int overloadFunction() {
+        return 1;
+      }
+
+      public static int overloadFunction(int x) {
+        return x;
+      }
+    }
+
+    // Invoke overloaded functions.
+    Assert.assertEquals((int) Ray.task((RayFunc0<Integer>) MyRayApp::overloadFunction).remote().get(), 1);
+    Assert.assertEquals((int) Ray.task((RayFunc1<Integer, Integer>) MyRayApp::overloadFunction, 2).remote().get(), 2);
+
+Overloaded actor task call:
+
+.. code:: java
+
+    public static class Counter {
+      protected int value = 0;
+
+      public int increment() {
+        this.value += 1;
+        return this.value;
+      }
+    }
+
+    public static class CounterOverloaded extends Counter {
+      public int increment(int diff) {
+        super.value += diff;
+        return super.value;
+      }
+
+      public int increment(int diff1, int diff2) {
+        super.value += diff1 + diff2;
+        return super.value;
+      }
+    }
+
+.. code:: java
+
+    ActorHandle<CounterOverloaded> a = Ray.actor(CounterOverloaded::new).remote();
+    // Call an overloaded actor method by super class method reference.
+    Assert.assertEquals((int) a.task(Counter::increment).remote().get(), 1);
+    // Call an overloaded actor method, cast method reference first.
+    a.task((RayFunc1<CounterOverloaded, Integer>) CounterOverloaded::increment).remote();
+    a.task((RayFunc2<CounterOverloaded, Integer, Integer>) CounterOverloaded::increment, 10).remote();
+    a.task((RayFunc3<CounterOverloaded, Integer, Integer, Integer>) CounterOverloaded::increment, 10, 10).remote();
+    Assert.assertEquals((int) a.task(Counter::increment).remote().get(), 33);
 
 
 Nested Remote Functions
@@ -393,38 +423,33 @@ To get information about the current available resource capacity of your cluster
 .. autofunction:: ray.available_resources
     :noindex:
 
-Object Spilling
----------------
+.. _conda-environments-for-tasks-and-actors:
 
-Ray 1.2.0+ has *beta* support for spilling objects to external storage once the capacity
-of the object store is used up. Please file a `GitHub issue <https://github.com/ray-project/ray/issues/>`__
-if you encounter any problems with this new feature. Eventually, object spilling will be
-enabled by default, but for now you need to enable it manually:
+Conda Environments for Tasks and Actors
+-----------------------------------------
 
-To enable object spilling to the local filesystem (single node clusters only):
+Starting with Ray 1.3.0, Ray supports starting tasks and actors in `conda environments <https://docs.conda.io/en/latest/>`_.
+This allows you to use tasks and actors with different (possibly conflicting) package dependencies within a single Ray runtime.
+You will need to have the desired conda environments installed beforehand on all nodes in your Ray cluster, and they
+must all use the same Python minor version (e.g., Python 3.8).
 
-.. code-block:: python
-
-    ray.init(
-        _system_config={
-            "automatic_object_spilling_enabled": True,
-            "object_spilling_config": json.dumps(
-                {"type": "filesystem", "params": {"directory_path": "/tmp/spill"}},
-            )
-        },
-    )
-
-To enable object spilling to remote storage (any URI supported by `smart_open <https://pypi.org/project/smart-open/>`__):
+To start a specific task or an actor in an existing conda environment, pass in the environment name to your task or 
+actor via the ``runtime_env`` parameter as follows:
 
 .. code-block:: python
 
-    ray.init(
-        _system_config={
-            "automatic_object_spilling_enabled": True,
-            "max_io_workers": 4,  # More IO workers for remote storage.
-            "min_spilling_size": 100 * 1024 * 1024,  # Spill at least 100MB at a time.
-            "object_spilling_config": json.dumps(
-                {"type": "smart_open", "params": {"uri": "s3:///bucket/path"}},
-            )
-        },
-    )
+    result = ray.get(my_task.options(runtime_env={"conda_env": "my_env"}).remote())
+
+.. code-block:: python
+
+    my_actor = MyActor.options(runtime_env={"conda_env": "my_env"}).remote()
+
+Nested tasks and actors will inherit the conda environment of their parent by default.
+
+To have Ray start all tasks and actors in a specific conda environment by default, you may
+pass in the desired conda environment name into ``ray.init()``:
+
+.. code-block:: python
+
+    from ray.job_config import JobConfig
+    ray.init(job_config=JobConfig(runtime_env={"conda_env": "my_env"}))

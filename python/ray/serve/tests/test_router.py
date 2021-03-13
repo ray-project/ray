@@ -7,7 +7,6 @@ from collections import defaultdict
 import os
 
 import pytest
-from ray.serve.context import TaskContext
 
 import ray
 from ray.serve.controller import TrafficPolicy
@@ -33,12 +32,11 @@ def mock_task_runner():
             self.query = None
             self.queries = []
 
-        async def handle_request(self, request):
-            if isinstance(request, bytes):
-                request = Query.ray_deserialize(request)
-            self.query = request
-            self.queries.append(request)
-            return "DONE"
+        @ray.method(num_returns=2)
+        async def handle_request(self, request_metadata, *args, **kwargs):
+            self.query = Query(args, kwargs, request_metadata)
+            self.queries.append(self.query)
+            return b"", "DONE"
 
         def get_recent_call(self):
             return self.query
@@ -75,7 +73,7 @@ async def test_simple_endpoint_backend_pair(ray_instance, mock_controller,
 
     # Make sure we get the request result back
     ref = await q.assign_request.remote(
-        RequestMetadata(get_random_letters(10), "svc", None), 1)
+        RequestMetadata(get_random_letters(10), "svc"), 1)
     result = await ref
     assert result == "DONE"
 
@@ -98,7 +96,7 @@ async def test_changing_backend(ray_instance, mock_controller,
                                                  task_runner_mock_actor)
 
     await (await q.assign_request.remote(
-        RequestMetadata(get_random_letters(10), "svc", None), 1))
+        RequestMetadata(get_random_letters(10), "svc"), 1))
     got_work = await task_runner_mock_actor.get_recent_call.remote()
     assert got_work.args[0] == 1
 
@@ -109,7 +107,7 @@ async def test_changing_backend(ray_instance, mock_controller,
     await mock_controller.add_new_replica.remote("backend-alter-2",
                                                  task_runner_mock_actor)
     await (await q.assign_request.remote(
-        RequestMetadata(get_random_letters(10), "svc", None), 2))
+        RequestMetadata(get_random_letters(10), "svc"), 2))
     got_work = await task_runner_mock_actor.get_recent_call.remote()
     assert got_work.args[0] == 2
 
@@ -133,7 +131,7 @@ async def test_split_traffic_random(ray_instance, mock_controller,
     object_refs = []
     for _ in range(20):
         ref = await q.assign_request.remote(
-            RequestMetadata(get_random_letters(10), "svc", None), 1)
+            RequestMetadata(get_random_letters(10), "svc"), 1)
         object_refs.append(ref)
     ray.get(object_refs)
 
@@ -164,7 +162,7 @@ async def test_shard_key(ray_instance, mock_controller,
     for shard_key in shard_keys:
         await (await q.assign_request.remote(
             RequestMetadata(
-                get_random_letters(10), "svc", None, shard_key=shard_key),
+                get_random_letters(10), "svc", shard_key=shard_key),
             shard_key))
 
     # Log the shard keys that were assigned to each backend.
@@ -179,7 +177,7 @@ async def test_shard_key(ray_instance, mock_controller,
     for shard_key in shard_keys:
         await (await q.assign_request.remote(
             RequestMetadata(
-                get_random_letters(10), "svc", None, shard_key=shard_key),
+                get_random_letters(10), "svc", shard_key=shard_key),
             shard_key))
 
     # Check that the requests were all mapped to the same backends.
@@ -196,25 +194,24 @@ async def test_replica_set(ray_instance):
     class MockWorker:
         _num_queries = 0
 
+        @ray.method(num_returns=2)
         async def handle_request(self, request):
             self._num_queries += 1
             await signal.wait.remote()
-            return "DONE"
+            return b"", "DONE"
 
         async def num_queries(self):
             return self._num_queries
 
     # We will test a scenario with two replicas in the replica set.
-    rs = ReplicaSet()
+    rs = ReplicaSet("my_backend")
     workers = [MockWorker.remote() for _ in range(2)]
     rs.set_max_concurrent_queries(1)
     rs.update_worker_replicas(workers)
 
     # Send two queries. They should go through the router but blocked by signal
     # actors.
-    query = Query([], {}, TaskContext.Python,
-                  RequestMetadata("request-id", "endpoint",
-                                  TaskContext.Python))
+    query = Query([], {}, RequestMetadata("request-id", "endpoint"))
     first_ref = await rs.assign_replica(query)
     second_ref = await rs.assign_replica(query)
 

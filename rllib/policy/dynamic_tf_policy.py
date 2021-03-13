@@ -159,7 +159,11 @@ class DynamicTFPolicy(TFPolicy):
 
         # Setup self.model.
         if existing_model:
-            self.model = existing_model
+            if isinstance(existing_model, list):
+                self.model = existing_model[0]
+                # TODO: (sven) hack, but works for `target_[q_]?model`.
+                for i in range(1, len(existing_model)):
+                    setattr(self, existing_model[i][0], existing_model[i][1])
         elif make_model:
             self.model = make_model(self, obs_space, action_space, config)
         else:
@@ -170,7 +174,7 @@ class DynamicTFPolicy(TFPolicy):
                 model_config=self.config["model"],
                 framework="tf")
         # Auto-update model's inference view requirements, if recurrent.
-        self._update_model_inference_view_requirements_from_init_state()
+        self._update_model_view_requirements_from_init_state()
 
         if existing_inputs:
             self._state_inputs = [
@@ -185,8 +189,7 @@ class DynamicTFPolicy(TFPolicy):
                     get_placeholder(
                         space=vr.space,
                         time_axis=not isinstance(vr.shift, int),
-                    ) for k, vr in
-                    self.model.inference_view_requirements.items()
+                    ) for k, vr in self.model.view_requirements.items()
                     if k.startswith("state_in_")
                 ]
             else:
@@ -199,7 +202,7 @@ class DynamicTFPolicy(TFPolicy):
         # Add NEXT_OBS, STATE_IN_0.., and others.
         self.view_requirements = self._get_default_view_requirements()
         # Combine view_requirements for Model and Policy.
-        self.view_requirements.update(self.model.inference_view_requirements)
+        self.view_requirements.update(self.model.view_requirements)
 
         # Setup standard placeholders.
         if existing_inputs is not None:
@@ -210,15 +213,21 @@ class DynamicTFPolicy(TFPolicy):
                     self.view_requirements, existing_inputs)
         else:
             action_ph = ModelCatalog.get_action_placeholder(action_space)
-            prev_action_ph = ModelCatalog.get_action_placeholder(
-                action_space, "prev_action")
             if self.config["_use_trajectory_view_api"]:
+                prev_action_ph = {}
+                if SampleBatch.PREV_ACTIONS not in self.view_requirements:
+                    prev_action_ph = {
+                        SampleBatch.PREV_ACTIONS: ModelCatalog.
+                        get_action_placeholder(action_space, "prev_action")
+                    }
                 self._input_dict, self._dummy_batch = \
                     self._get_input_dict_and_dummy_batch(
                         self.view_requirements,
-                        {SampleBatch.ACTIONS: action_ph,
-                         SampleBatch.PREV_ACTIONS: prev_action_ph})
+                        dict({SampleBatch.ACTIONS: action_ph},
+                             **prev_action_ph))
             else:
+                prev_action_ph = ModelCatalog.get_action_placeholder(
+                    action_space, "prev_action")
                 self._input_dict = {
                     SampleBatch.CUR_OBS: tf1.placeholder(
                         tf.float32,
@@ -262,21 +271,44 @@ class DynamicTFPolicy(TFPolicy):
                     SampleBatch.PREV_REWARDS),
                 explore=explore,
                 is_training=self._input_dict["is_training"])
+        # Distribution generation is customized, e.g., DQN, DDPG.
         else:
-            # Distribution generation is customized, e.g., DQN, DDPG.
             if action_distribution_fn:
-                dist_inputs, dist_class, self._state_out = \
-                    action_distribution_fn(
-                        self, self.model,
-                        obs_batch=self._input_dict[SampleBatch.CUR_OBS],
-                        state_batches=self._state_inputs,
-                        seq_lens=self._seq_lens,
-                        prev_action_batch=self._input_dict.get(
-                            SampleBatch.PREV_ACTIONS),
-                        prev_reward_batch=self._input_dict.get(
-                            SampleBatch.PREV_REWARDS),
-                        explore=explore,
-                        is_training=self._input_dict["is_training"])
+
+                # Try new action_distribution_fn signature, supporting
+                # state_batches and seq_lens.
+                in_dict = self._input_dict
+                try:
+                    dist_inputs, dist_class, self._state_out = \
+                        action_distribution_fn(
+                            self,
+                            self.model,
+                            input_dict=in_dict,
+                            state_batches=self._state_inputs,
+                            seq_lens=self._seq_lens,
+                            explore=explore,
+                            timestep=timestep,
+                            is_training=in_dict["is_training"])
+                # Trying the old way (to stay backward compatible).
+                # TODO: Remove in future.
+                except TypeError as e:
+                    if "positional argument" in e.args[0] or \
+                            "unexpected keyword argument" in e.args[0]:
+                        dist_inputs, dist_class, self._state_out = \
+                            action_distribution_fn(
+                                self, self.model,
+                                obs_batch=in_dict[SampleBatch.CUR_OBS],
+                                state_batches=self._state_inputs,
+                                seq_lens=self._seq_lens,
+                                prev_action_batch=in_dict.get(
+                                    SampleBatch.PREV_ACTIONS),
+                                prev_reward_batch=in_dict.get(
+                                    SampleBatch.PREV_REWARDS),
+                                explore=explore,
+                                is_training=in_dict["is_training"])
+                    else:
+                        raise e
+
             # Default distribution generation behavior:
             # Pass through model. E.g., PG, PPO.
             else:
@@ -366,7 +398,11 @@ class DynamicTFPolicy(TFPolicy):
             self.action_space,
             self.config,
             existing_inputs=input_dict,
-            existing_model=self.model)
+            existing_model=[
+                self.model,
+                ("target_q_model", getattr(self, "target_q_model", None)),
+                ("target_model", getattr(self, "target_model", None)),
+            ])
 
         instance._loss_input_dict = input_dict
         loss = instance._do_loss_init(input_dict)
@@ -556,7 +592,7 @@ class DynamicTFPolicy(TFPolicy):
         all_accessed_keys = \
             train_batch.accessed_keys | dummy_batch.accessed_keys | \
             dummy_batch.added_keys | set(
-                self.model.inference_view_requirements.keys())
+                self.model.view_requirements.keys())
 
         TFPolicy._initialize_loss(self, loss, [(k, v)
                                                for k, v in train_batch.items()
@@ -577,23 +613,27 @@ class DynamicTFPolicy(TFPolicy):
             # Add those needed for postprocessing and training.
             all_accessed_keys = train_batch.accessed_keys | \
                                 dummy_batch.accessed_keys
-            # Tag those only needed for post-processing.
+            # Tag those only needed for post-processing (with some exceptions).
             for key in dummy_batch.accessed_keys:
                 if key not in train_batch.accessed_keys and \
-                        key not in self.model.inference_view_requirements:
+                        key not in self.model.view_requirements and \
+                        key not in [
+                            SampleBatch.EPS_ID, SampleBatch.AGENT_INDEX,
+                            SampleBatch.UNROLL_ID, SampleBatch.DONES,
+                            SampleBatch.REWARDS, SampleBatch.INFOS]:
                     if key in self.view_requirements:
                         self.view_requirements[key].used_for_training = False
                     if key in self._loss_input_dict:
                         del self._loss_input_dict[key]
             # Remove those not needed at all (leave those that are needed
             # by Sampler to properly execute sample collection).
-            # Also always leave DONES and REWARDS, no matter what.
+            # Also always leave DONES, REWARDS, and INFOS, no matter what.
             for key in list(self.view_requirements.keys()):
                 if key not in all_accessed_keys and key not in [
                     SampleBatch.EPS_ID, SampleBatch.AGENT_INDEX,
                     SampleBatch.UNROLL_ID, SampleBatch.DONES,
-                    SampleBatch.REWARDS] and \
-                        key not in self.model.inference_view_requirements:
+                    SampleBatch.REWARDS, SampleBatch.INFOS] and \
+                        key not in self.model.view_requirements:
                     # If user deleted this key manually in postprocessing
                     # fn, warn about it and do not remove from
                     # view-requirements.

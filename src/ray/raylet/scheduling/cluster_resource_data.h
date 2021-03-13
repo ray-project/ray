@@ -26,7 +26,7 @@
 #include "ray/util/logging.h"
 
 /// List of predefined resources.
-enum PredefinedResources { CPU, MEM, GPU, TPU, PredefinedResources_MAX };
+enum PredefinedResources { CPU, MEM, GPU, OBJECT_STORE_MEM, PredefinedResources_MAX };
 
 const std::string ResourceEnumToString(PredefinedResources resource);
 

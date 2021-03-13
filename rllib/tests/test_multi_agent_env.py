@@ -11,7 +11,8 @@ from ray.rllib.evaluation.episode import MultiAgentEpisode
 from ray.rllib.evaluation.rollout_worker import get_global_worker
 from ray.rllib.examples.policy.random_policy import RandomPolicy
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole, \
-    BasicMultiAgent, EarlyDoneMultiAgent, RoundRobinMultiAgent
+    BasicMultiAgent, EarlyDoneMultiAgent, FlexAgentsMultiAgent, \
+    RoundRobinMultiAgent
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.tests.test_rollout_worker import MockPolicy
 from ray.rllib.env.base_env import _MultiAgentEnvToBaseEnv
@@ -254,6 +255,20 @@ class TestMultiAgentEnv(unittest.TestCase):
                                 ".*don't have a last observation.*",
                                 lambda: ev.sample())
 
+    def test_multi_agent_with_flex_agents(self):
+        register_env("flex_agents_multi_agent_cartpole",
+                     lambda _: FlexAgentsMultiAgent())
+        pg = PGTrainer(
+            env="flex_agents_multi_agent_cartpole",
+            config={
+                "num_workers": 0,
+                "framework": "tf",
+            })
+        for i in range(10):
+            result = pg.train()
+            print("Iteration {}, reward {}, timesteps {}".format(
+                i, result["episode_reward_mean"], result["timesteps_total"]))
+
     def test_multi_agent_sample_round_robin(self):
         act_space = gym.spaces.Discrete(2)
         obs_space = gym.spaces.Discrete(10)
@@ -311,13 +326,13 @@ class TestMultiAgentEnv(unittest.TestCase):
 
     def test_returning_model_based_rollouts_data(self):
         class ModelBasedPolicy(DQNTFPolicy):
-            def compute_actions(self,
-                                obs_batch,
-                                state_batches,
-                                prev_action_batch=None,
-                                prev_reward_batch=None,
-                                episodes=None,
-                                **kwargs):
+            def compute_actions_from_input_dict(self,
+                                                input_dict,
+                                                explore=None,
+                                                timestep=None,
+                                                episodes=None,
+                                                **kwargs):
+                obs_batch = input_dict["obs"]
                 # In policy loss initialization phase, no episodes are passed
                 # in.
                 if episodes is not None:

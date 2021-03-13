@@ -70,6 +70,9 @@ class NodeManagerWorkerClient
     return std::shared_ptr<NodeManagerWorkerClient>(instance);
   }
 
+  /// Request a resource report.
+  VOID_RPC_CLIENT_METHOD(NodeManagerService, RequestResourceReport, grpc_client_, )
+
   /// Request a worker lease.
   VOID_RPC_CLIENT_METHOD(NodeManagerService, RequestWorkerLease, grpc_client_, )
 
@@ -100,8 +103,14 @@ class NodeManagerWorkerClient
   /// Ask the raylet to spill an object to external storage.
   VOID_RPC_CLIENT_METHOD(NodeManagerService, RequestObjectSpillage, grpc_client_, )
 
+  /// Ask the raylet to restore an object from external storage.
+  VOID_RPC_CLIENT_METHOD(NodeManagerService, RestoreSpilledObject, grpc_client_, )
+
   /// Release unused bundles.
   VOID_RPC_CLIENT_METHOD(NodeManagerService, ReleaseUnusedBundles, grpc_client_, )
+
+  /// Get the system config from Raylet.
+  VOID_RPC_CLIENT_METHOD(NodeManagerService, GetSystemConfig, grpc_client_, )
 
  private:
   /// Constructor.

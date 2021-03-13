@@ -16,14 +16,9 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import org.apache.commons.lang3.BooleanUtils;
 import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.math.NumberUtils;
 
-/**
- * Configurations of Ray runtime.
- * See `ray.default.conf` for the meaning of each field.
- */
+/** Configurations of Ray runtime. See `ray.default.conf` for the meaning of each field. */
 public class RayConfig {
 
   public static final String DEFAULT_CONFIG_FILE = "ray.default.conf";
@@ -31,10 +26,9 @@ public class RayConfig {
 
   private Config config;
 
-  /**
-   * IP of this node. if not provided, IP will be automatically detected.
-   */
+  /** IP of this node. if not provided, IP will be automatically detected. */
   public final String nodeIp;
+
   public final WorkerType workerMode;
   public final RunMode runMode;
   private JobId jobId;
@@ -51,7 +45,6 @@ public class RayConfig {
   public String rayletSocketName;
   // Listening port for node manager.
   public int nodeManagerPort;
-  public final Map<String, Object> rayletConfigParameters;
 
   public final List<String> codeSearchPath;
 
@@ -64,8 +57,8 @@ public class RayConfig {
 
   private void validate() {
     if (workerMode == WorkerType.WORKER) {
-      Preconditions.checkArgument(redisAddress != null,
-          "Redis address must be set in worker mode.");
+      Preconditions.checkArgument(
+          redisAddress != null, "Redis address must be set in worker mode.");
     }
   }
 
@@ -145,27 +138,9 @@ public class RayConfig {
     if (config.hasPath("ray.raylet.node-manager-port")) {
       nodeManagerPort = config.getInt("ray.raylet.node-manager-port");
     } else {
-      Preconditions.checkState(workerMode != WorkerType.WORKER,
+      Preconditions.checkState(
+          workerMode != WorkerType.WORKER,
           "Worker started by raylet should accept the node manager port from raylet.");
-    }
-
-    // Raylet parameters.
-    rayletConfigParameters = new HashMap<>();
-    Config rayletConfig = config.getConfig("ray.raylet.config");
-    for (Map.Entry<String, ConfigValue> entry : rayletConfig.entrySet()) {
-      Object value = entry.getValue().unwrapped();
-      if (value != null) {
-        if (value instanceof String) {
-          String valueString = (String) value;
-          Boolean booleanValue = BooleanUtils.toBooleanObject(valueString);
-          if (booleanValue != null) {
-            value = booleanValue;
-          } else if (NumberUtils.isParsable(valueString)) {
-            value = NumberUtils.createNumber(valueString);
-          }
-        }
-        rayletConfigParameters.put(entry.getKey(), value);
-      }
     }
 
     // Job code search path.
@@ -217,9 +192,7 @@ public class RayConfig {
     return config;
   }
 
-  /**
-   * Renders the config value as a HOCON string.
-   */
+  /** Renders the config value as a HOCON string. */
   @Override
   public String toString() {
     // These items might be dynamically generated or mutated at runtime.
@@ -257,10 +230,8 @@ public class RayConfig {
   }
 
   /**
-   * Create a RayConfig by reading configuration in the following order:
-   * 1. System properties.
-   * 2. `ray.conf` file.
-   * 3. `ray.default.conf` file.
+   * Create a RayConfig by reading configuration in the following order: 1. System properties. 2.
+   * `ray.conf` file. 3. `ray.default.conf` file.
    */
   public static RayConfig create() {
     ConfigFactory.invalidateCaches();
@@ -274,5 +245,4 @@ public class RayConfig {
     config = config.withFallback(ConfigFactory.load(DEFAULT_CONFIG_FILE));
     return new RayConfig(config.withOnlyPath("ray"));
   }
-
 }

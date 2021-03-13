@@ -15,6 +15,7 @@
 #include "ray/gcs/gcs_client/global_state_accessor.h"
 
 #include "gtest/gtest.h"
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/test_util.h"
 #include "ray/gcs/gcs_server/gcs_server.h"
 #include "ray/gcs/test/gcs_test_util.h"
@@ -37,7 +38,7 @@ class GlobalStateAccessorTest : public ::testing::Test {
     config.is_test = true;
     config.redis_port = TEST_REDIS_SERVER_PORTS.front();
 
-    io_service_.reset(new boost::asio::io_service());
+    io_service_.reset(new instrumented_io_context());
     gcs_server_.reset(new gcs::GcsServer(config, *io_service_));
     gcs_server_->Start();
 
@@ -81,7 +82,7 @@ class GlobalStateAccessorTest : public ::testing::Test {
   gcs::GcsServerConfig config;
   std::unique_ptr<gcs::GcsServer> gcs_server_;
   std::unique_ptr<std::thread> thread_io_service_;
-  std::unique_ptr<boost::asio::io_service> io_service_;
+  std::unique_ptr<instrumented_io_context> io_service_;
 
   // GCS client.
   std::unique_ptr<gcs::GcsClient> gcs_client_;
@@ -161,28 +162,6 @@ TEST_F(GlobalStateAccessorTest, TestNodeResourceTable) {
             (*resource_map.mutable_items())[std::to_string(node_data.node_manager_port())]
                 .resource_capacity()),
         node_data.node_manager_port() + 1);
-  }
-}
-
-TEST_F(GlobalStateAccessorTest, TestInternalConfig) {
-  rpc::StoredConfig initial_proto;
-  initial_proto.ParseFromString(global_state_->GetInternalConfig());
-  ASSERT_EQ(initial_proto.config().size(), 0);
-  std::promise<bool> promise;
-  std::unordered_map<std::string, std::string> begin_config;
-  begin_config["key1"] = "value1";
-  begin_config["key2"] = "value2";
-  RAY_CHECK_OK(gcs_client_->Nodes().AsyncSetInternalConfig(begin_config));
-  std::string returned;
-  rpc::StoredConfig new_proto;
-  auto end = std::chrono::system_clock::now() + timeout_ms_;
-  while (std::chrono::system_clock::now() < end && new_proto.config().size() == 0) {
-    returned = global_state_->GetInternalConfig();
-    new_proto.ParseFromString(returned);
-  }
-  ASSERT_EQ(new_proto.config().size(), begin_config.size());
-  for (auto pair : new_proto.config()) {
-    ASSERT_EQ(pair.second, begin_config[pair.first]);
   }
 }
 
@@ -283,7 +262,7 @@ TEST_F(GlobalStateAccessorTest, TestObjectTable) {
     NodeID node_id = NodeID::FromRandom();
     std::promise<bool> promise;
     RAY_CHECK_OK(gcs_client_->Objects().AsyncAddLocation(
-        object_id, node_id,
+        object_id, node_id, 0,
         [&promise](Status status) { promise.set_value(status.ok()); }));
     WaitReady(promise.get_future(), timeout_ms_);
   }

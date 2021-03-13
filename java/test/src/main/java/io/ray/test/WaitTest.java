@@ -70,5 +70,4 @@ public class WaitTest extends BaseTest {
       Assert.assertTrue(true);
     }
   }
-
 }

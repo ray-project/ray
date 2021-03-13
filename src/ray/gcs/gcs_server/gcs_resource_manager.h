@@ -15,6 +15,8 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/common/asio/periodical_runner.h"
 #include "ray/common/id.h"
 #include "ray/common/task/scheduling_resources.h"
 #include "ray/gcs/accessor.h"
@@ -40,7 +42,7 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
   /// \param main_io_service The main event loop.
   /// \param gcs_pub_sub GCS message publisher.
   /// \param gcs_table_storage GCS table external storage accessor.
-  explicit GcsResourceManager(boost::asio::io_service &main_io_service,
+  explicit GcsResourceManager(instrumented_io_context &main_io_service,
                               std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
                               std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage);
 
@@ -155,10 +157,8 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
   /// Send any buffered resource usage as a single publish.
   void SendBatchedResourceUsage();
 
-  /// A timer that ticks every raylet_report_resources_period_milliseconds.
-  boost::asio::deadline_timer resource_timer_;
-  // Only the changed part will be reported if this is true.
-  const bool light_report_resource_usage_enabled_;
+  /// The runner to run function periodically.
+  PeriodicalRunner periodical_runner_;
   /// Newest resource usage of all nodes.
   absl::flat_hash_map<NodeID, rpc::ResourcesData> node_resource_usages_;
   /// A buffer containing resource usage received from node managers in the last tick.

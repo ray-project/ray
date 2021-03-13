@@ -17,12 +17,11 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
+import org.apache.commons.lang3.exception.ExceptionUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/**
- * The task executor, which executes tasks assigned by raylet continuously.
- */
+/** The task executor, which executes tasks assigned by raylet continuously. */
 public abstract class TaskExecutor<T extends TaskExecutor.ActorContext> {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(TaskExecutor.class);
@@ -35,14 +34,10 @@ public abstract class TaskExecutor<T extends TaskExecutor.ActorContext> {
 
   static class ActorContext {
 
-    /**
-     * The current actor object, if this worker is an actor, otherwise null.
-     */
+    /** The current actor object, if this worker is an actor, otherwise null. */
     Object currentActor = null;
 
-    /**
-     * The exception that failed the actor creation task, if any.
-     */
+    /** The exception that failed the actor creation task, if any. */
     Throwable actorCreationException = null;
   }
 
@@ -74,9 +69,7 @@ public abstract class TaskExecutor<T extends TaskExecutor.ActorContext> {
     return runtime.getFunctionManager().getFunction(jobId, functionDescriptor);
   }
 
-  /**
-   * The return value indicates which parameters are ByteBuffer.
-   */
+  /** The return value indicates which parameters are ByteBuffer. */
   protected boolean[] checkByteBufferArguments(List<String> rayFunctionInfo) {
     localRayFunction.set(null);
     try {
@@ -93,12 +86,11 @@ public abstract class TaskExecutor<T extends TaskExecutor.ActorContext> {
     return results;
   }
 
-  protected List<NativeRayObject> execute(List<String> rayFunctionInfo,
-                                          List<Object> argsBytes) {
+  protected List<NativeRayObject> execute(List<String> rayFunctionInfo, List<Object> argsBytes) {
     runtime.setIsContextSet(true);
     TaskType taskType = runtime.getWorkerContext().getCurrentTaskType();
     TaskId taskId = runtime.getWorkerContext().getCurrentTaskId();
-    LOGGER.debug("Executing task {}", taskId);
+    LOGGER.debug("Executing task {} {}", taskId, rayFunctionInfo);
 
     T actorContext = null;
     if (taskType == TaskType.ACTOR_CREATION_TASK) {
@@ -111,6 +103,8 @@ public abstract class TaskExecutor<T extends TaskExecutor.ActorContext> {
 
     List<NativeRayObject> returnObjects = new ArrayList<>();
     ClassLoader oldLoader = Thread.currentThread().getContextClassLoader();
+    // Find the executable object.
+
     RayFunction rayFunction = localRayFunction.get();
     try {
       // Find the executable object.
@@ -130,8 +124,8 @@ public abstract class TaskExecutor<T extends TaskExecutor.ActorContext> {
         }
         actor = actorContext.currentActor;
       }
-      Object[] args = ArgumentsBuilder
-          .unwrap(argsBytes, rayFunction.executable.getParameterTypes());
+      Object[] args =
+          ArgumentsBuilder.unwrap(argsBytes, rayFunction.executable.getParameterTypes());
       // Execute the task.
       Object result;
       try {
@@ -141,6 +135,7 @@ public abstract class TaskExecutor<T extends TaskExecutor.ActorContext> {
           result = rayFunction.getConstructor().newInstance(args);
         }
       } catch (InvocationTargetException e) {
+        LOGGER.error("Execute rayFunction {} failed. actor {}, args {}", rayFunction, actor, args);
         if (e.getCause() != null) {
           throw e.getCause();
         } else {
@@ -164,12 +159,41 @@ public abstract class TaskExecutor<T extends TaskExecutor.ActorContext> {
         throw (RayIntentionalSystemExitException) e;
       }
       LOGGER.error("Error executing task " + taskId, e);
+
       if (taskType != TaskType.ACTOR_CREATION_TASK) {
-        boolean hasReturn = rayFunction != null && rayFunction.hasReturn();
-        boolean isCrossLanguage = parseFunctionDescriptor(rayFunctionInfo).signature.equals("");
-        if (hasReturn || isCrossLanguage) {
-          returnObjects.add(ObjectSerializer
-              .serialize(new RayTaskException("Error executing task " + taskId, e)));
+        if (rayFunction != null) {
+          boolean hasReturn = rayFunction != null && rayFunction.hasReturn();
+          boolean isCrossLanguage = parseFunctionDescriptor(rayFunctionInfo).signature.equals("");
+          if (hasReturn || isCrossLanguage) {
+            NativeRayObject serializedException;
+            try {
+              serializedException =
+                  ObjectSerializer.serialize(
+                      new RayTaskException("Error executing task " + taskId, e));
+            } catch (Exception unserializable) {
+              // We should try-catch `ObjectSerializer.serialize` here. Because otherwise if the
+              // application-level exception is not serializable. `ObjectSerializer.serialize`
+              // will throw an exception and crash the worker.
+              // Refer to the case `TaskExceptionTest.java` for more details.
+              LOGGER.warn("Failed to serialize the exception to a RayObject.", unserializable);
+              serializedException =
+                  ObjectSerializer.serialize(
+                      new RayTaskException(
+                          String.format(
+                              "Error executing task %s with the exception: %s",
+                              taskId, ExceptionUtils.getStackTrace(e))));
+            }
+            Preconditions.checkNotNull(serializedException);
+            returnObjects.add(serializedException);
+          }
+        } else {
+          returnObjects.add(
+              ObjectSerializer.serialize(
+                  new RayTaskException(
+                      String.format(
+                          "Function %s of task %s doesn't exist",
+                          String.join(".", rayFunctionInfo), taskId),
+                      e)));
         }
       } else {
         actorContext.actorCreationException = e;
@@ -184,8 +208,7 @@ public abstract class TaskExecutor<T extends TaskExecutor.ActorContext> {
 
   private JavaFunctionDescriptor parseFunctionDescriptor(List<String> rayFunctionInfo) {
     Preconditions.checkState(rayFunctionInfo != null && rayFunctionInfo.size() == 3);
-    return new JavaFunctionDescriptor(rayFunctionInfo.get(0), rayFunctionInfo.get(1),
-        rayFunctionInfo.get(2));
+    return new JavaFunctionDescriptor(
+        rayFunctionInfo.get(0), rayFunctionInfo.get(1), rayFunctionInfo.get(2));
   }
-
 }

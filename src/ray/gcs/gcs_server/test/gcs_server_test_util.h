@@ -17,16 +17,17 @@
 #include <memory>
 #include <utility>
 
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/task/task.h"
 #include "ray/common/task/task_util.h"
 #include "ray/common/test_util.h"
 #include "ray/gcs/gcs_server/gcs_actor_manager.h"
+#include "ray/gcs/gcs_server/gcs_actor_schedule_strategy.h"
 #include "ray/gcs/gcs_server/gcs_actor_scheduler.h"
 #include "ray/gcs/gcs_server/gcs_node_manager.h"
 #include "ray/gcs/gcs_server/gcs_placement_group_manager.h"
 #include "ray/gcs/gcs_server/gcs_placement_group_scheduler.h"
 #include "ray/gcs/gcs_server/gcs_resource_manager.h"
-#include "ray/util/asio_util.h"
 
 namespace ray {
 
@@ -236,6 +237,15 @@ struct GcsServerMocker {
       return ray::Status::OK();
     }
 
+    void GetSystemConfig(const ray::rpc::ClientCallback<ray::rpc::GetSystemConfigReply>
+                             &callback) override {}
+
+    /// ResourceRequestInterface
+    void RequestResourceReport(
+        const rpc::ClientCallback<rpc::RequestResourceReportReply> &callback) override {
+      RAY_CHECK(false) << "Unused";
+    };
+
     ~MockRayletClient() {}
 
     int num_workers_requested = 0;
@@ -303,7 +313,7 @@ struct GcsServerMocker {
     }
 
    private:
-    boost::asio::io_service main_io_service_;
+    instrumented_io_context main_io_service_;
     std::shared_ptr<gcs::StoreClient> store_client_ =
         std::make_shared<gcs::InMemoryStoreClient>(main_io_service_);
   };

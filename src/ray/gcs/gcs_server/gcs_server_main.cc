@@ -17,8 +17,10 @@
 #include "gflags/gflags.h"
 #include "ray/common/ray_config.h"
 #include "ray/gcs/gcs_server/gcs_server.h"
+#include "ray/gcs/store_client/redis_store_client.h"
 #include "ray/stats/stats.h"
 #include "ray/util/util.h"
+#include "src/ray/protobuf/gcs_service.pb.h"
 
 DEFINE_string(redis_address, "", "The ip address of redis.");
 DEFINE_int32(redis_port, -1, "The port of redis.");
@@ -46,27 +48,45 @@ int main(int argc, char *argv[]) {
   const std::string node_ip_address = FLAGS_node_ip_address;
   gflags::ShutDownCommandLineFlags();
 
-  std::unordered_map<std::string, std::string> config_map;
+  RayConfig::instance().initialize(config_list);
 
-  // Parse the configuration list.
-  std::istringstream config_string(config_list);
-  std::string config_name;
-  std::string config_value;
+  auto promise = std::make_shared<std::promise<void>>();
+  std::thread([=] {
+    instrumented_io_context service;
 
-  while (std::getline(config_string, config_name, ',')) {
-    RAY_CHECK(std::getline(config_string, config_value, ';'));
-    config_map[config_name] = config_value;
-  }
+    // Init backend client.
+    ray::gcs::RedisClientOptions redis_client_options(redis_address, redis_port,
+                                                      redis_password);
+    auto redis_client = std::make_shared<ray::gcs::RedisClient>(redis_client_options);
+    auto status = redis_client->Connect(service);
+    RAY_CHECK(status.ok()) << "Failed to init redis gcs client as " << status;
 
-  RayConfig::instance().initialize(config_map);
+    // Init storage.
+    auto storage = std::make_shared<ray::gcs::RedisGcsTableStorage>(redis_client);
+
+    // The internal_config is only set on the gcs--other nodes get it from GCS.
+    auto on_done = [promise, &service](const ray::Status &status) {
+      promise->set_value();
+      service.stop();
+    };
+    ray::rpc::StoredConfig config;
+    config.set_config(config_list);
+    RAY_CHECK_OK(
+        storage->InternalConfigTable().Put(ray::UniqueID::Nil(), config, on_done));
+    boost::asio::io_service::work work(service);
+    service.run();
+  })
+      .detach();
+  promise->get_future().get();
+
   const ray::stats::TagsType global_tags = {
       {ray::stats::ComponentKey, "gcs_server"},
-      {ray::stats::VersionKey, "1.2.0.dev0"},
+      {ray::stats::VersionKey, "2.0.0.dev0"},
       {ray::stats::NodeAddressKey, node_ip_address}};
   ray::stats::Init(global_tags, metrics_agent_port);
 
   // IO Service for main loop.
-  boost::asio::io_service main_service;
+  instrumented_io_context main_service;
   // Ensure that the IO service keeps running. Without this, the main_service will exit
   // as soon as there is no more work to be processed.
   boost::asio::io_service::work work(main_service);

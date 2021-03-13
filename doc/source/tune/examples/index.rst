@@ -43,6 +43,7 @@ Search Algorithm Examples
 - :doc:`/tune/examples/optuna_example`: Example script showing usage of :ref:`OptunaSearch <tune-optuna>` [`Optuna website <https://optuna.org/>`__]
 - :doc:`/tune/examples/zoopt_example`: Example script showing usage of :ref:`ZOOptSearch <zoopt>` [`ZOOpt website <https://github.com/polixir/ZOOpt>`__]
 - :doc:`/tune/examples/sigopt_example`: Example script showing usage of :ref:`SigOptSearch <sigopt>` [`SigOpt website <https://sigopt.com/>`__]
+- :doc:`/tune/examples/hebo_example`: Example script showing usage of :ref:`HEBOSearch <tune-hebo>` [`HEBO website <https://github.com/huawei-noah/noah-research/tree/master/HEBO>`__]
 
 
 **Sigopt (Contributed)**
@@ -82,13 +83,13 @@ Pytorch Lightning
 - :doc:`/tune/examples/mnist_pytorch_lightning`: A comprehensive example using `Pytorch Lightning <https://github.com/PyTorchLightning/pytorch-lightning>`_ to train a MNIST model. This example showcases how to use various search optimization techniques. It utilizes the Ray Tune-provided :ref:`PyTorch Lightning callbacks <tune-integration-pytorch-lightning>`.
 - :ref:`A walkthrough tutorial for using Ray Tune with Pytorch-Lightning <tune-pytorch-lightning>`.
 
-Wandb, MLFlow
+Wandb, MLflow
 ~~~~~~~~~~~~~
 
-- :ref:`Tutorial <tune-wandb>` for using `wandb <https://www.wandb.com/>`__ with Ray Tune
-- :doc:`/tune/examples/wandb_example`: Example for using `Weights and Biases <https://www.wandb.com/>`__ with Ray Tune.
-- :doc:`/tune/examples/mlflow_example`: Example for using `MLFlow <https://github.com/mlflow/mlflow/>`__ with Ray Tune.
-- :doc:`/tune/examples/mlflow_ptl_example`: Example for using `MLFlow <https://github.com/mlflow/mlflow/>`__ and `Pytorch Lightning <https://github.com/PyTorchLightning/pytorch-lightning>`_ with Ray Tune.
+- :ref:`Tutorial <tune-wandb>` for using `wandb <https://www.wandb.ai/>`__ with Ray Tune
+- :doc:`/tune/examples/wandb_example`: Example for using `Weights and Biases <https://www.wandb.ai/>`__ with Ray Tune.
+- :doc:`/tune/examples/mlflow_example`: Example for using `MLflow <https://github.com/mlflow/mlflow/>`__ with Ray Tune.
+- :doc:`/tune/examples/mlflow_ptl_example`: Example for using `MLflow <https://github.com/mlflow/mlflow/>`__ and `Pytorch Lightning <https://github.com/PyTorchLightning/pytorch-lightning>`_ with Ray Tune.
 
 Tensorflow/Keras
 ~~~~~~~~~~~~~~~~

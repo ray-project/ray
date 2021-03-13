@@ -1,3 +1,4 @@
+import time
 from collections import Counter
 import os
 import pickle
@@ -5,11 +6,13 @@ import shutil
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 import ray
 from ray.rllib import _register_all
 
 from ray.tune import TuneError
+from ray.tune.result import TRAINING_ITERATION
 from ray.tune.schedulers import TrialScheduler, FIFOScheduler
 from ray.tune.experiment import Experiment
 from ray.tune.trial import Trial
@@ -23,6 +26,11 @@ from ray.tune.suggest.search_generator import SearchGenerator
 
 class TrialRunnerTest3(unittest.TestCase):
     def setUp(self):
+        # Wait up to five seconds for placement groups when starting a trial
+        os.environ["TUNE_PLACEMENT_GROUP_WAIT_S"] = "5"
+        # Block for results even when placement groups are pending
+        os.environ["TUNE_TRIAL_STARTUP_GRACE_PERIOD"] = "0"
+
         self.tmpdir = tempfile.mkdtemp()
 
     def tearDown(self):
@@ -99,14 +107,19 @@ class TrialRunnerTest3(unittest.TestCase):
         self.assertEqual(trials[1].status, Trial.RUNNING)
         self.assertEqual(trials[-1].status, Trial.TERMINATED)
 
+        time.sleep(2)  # Wait for stopped placement group to free resources
         runner.step()
         self.assertEqual(trials[0].status, Trial.TERMINATED)
         self.assertEqual(trials[1].status, Trial.RUNNING)
         self.assertEqual(trials[2].status, Trial.RUNNING)
         self.assertEqual(trials[-1].status, Trial.TERMINATED)
 
+    @patch("ray.tune.trial_runner.TUNE_MAX_PENDING_TRIALS_PG", 1)
+    @patch("ray.tune.utils.placement_groups.TUNE_MAX_PENDING_TRIALS_PG", 1)
     def testSearchAlgNotification(self):
         """Checks notification of trial to the Search Algorithm."""
+        os.environ["TUNE_RESULT_BUFFER_LENGTH"] = "1"  # Don't finish early
+
         ray.init(num_cpus=4, num_gpus=2)
         experiment_spec = {"run": "__fake", "stop": {"training_iteration": 2}}
         experiments = [Experiment.from_json("test", experiment_spec)]
@@ -222,6 +235,8 @@ class TrialRunnerTest3(unittest.TestCase):
         self.assertTrue(search_alg.is_finished())
         self.assertTrue(runner.is_finished())
 
+    @patch("ray.tune.trial_runner.TUNE_MAX_PENDING_TRIALS_PG", 1)
+    @patch("ray.tune.utils.placement_groups.TUNE_MAX_PENDING_TRIALS_PG", 1)
     def testSearchAlgFinishes(self):
         """Empty SearchAlg changing state in `next_trials` does not crash."""
 
@@ -491,6 +506,8 @@ class TrialRunnerTest3(unittest.TestCase):
         runner2.step()  # Process save
         self.assertRaises(TuneError, runner2.step)
 
+    @patch("ray.tune.trial_runner.TUNE_MAX_PENDING_TRIALS_PG", 1)
+    @patch("ray.tune.utils.placement_groups.TUNE_MAX_PENDING_TRIALS_PG", 1)
     def testTrialNoSave(self):
         """Check that non-checkpointing trials are not saved."""
         ray.init(num_cpus=3)
@@ -586,10 +603,46 @@ class TrialRunnerTest3(unittest.TestCase):
         self.assertEqual(count_checkpoints(tmpdir), 2)
         shutil.rmtree(tmpdir)
 
+    def testCheckpointFreqBuffered(self):
+        os.environ["TUNE_RESULT_BUFFER_LENGTH"] = "7"
+        os.environ["TUNE_RESULT_BUFFER_MIN_TIME_S"] = "1"
+
+        def num_checkpoints(trial):
+            return sum(
+                item.startswith("checkpoint_")
+                for item in os.listdir(trial.logdir))
+
+        ray.init(num_cpus=2)
+
+        trial = Trial("__fake", checkpoint_freq=3)
+        runner = TrialRunner(
+            local_checkpoint_dir=self.tmpdir, checkpoint_period=0)
+        runner.add_trial(trial)
+
+        runner.step()  # start trial
+        runner.step()  # run iteration 1-3
+        runner.step()  # process save
+        self.assertEqual(trial.last_result[TRAINING_ITERATION], 3)
+        self.assertEqual(num_checkpoints(trial), 1)
+
+        runner.step()  # run iteration 4-6
+        runner.step()  # process save
+        self.assertEqual(trial.last_result[TRAINING_ITERATION], 6)
+        self.assertEqual(num_checkpoints(trial), 2)
+
+        runner.step()  # run iteration 7-9
+        runner.step()  # process save
+        self.assertEqual(trial.last_result[TRAINING_ITERATION], 9)
+        self.assertEqual(num_checkpoints(trial), 3)
+
+    @patch("ray.tune.trial_runner.TUNE_MAX_PENDING_TRIALS_PG", 1)
+    @patch("ray.tune.utils.placement_groups.TUNE_MAX_PENDING_TRIALS_PG", 1)
     def testUserCheckpoint(self):
+        os.environ["TUNE_RESULT_BUFFER_LENGTH"] = "1"  # Don't finish early
+
         ray.init(num_cpus=3)
-        tmpdir = tempfile.mkdtemp()
-        runner = TrialRunner(local_checkpoint_dir=tmpdir, checkpoint_period=0)
+        runner = TrialRunner(
+            local_checkpoint_dir=self.tmpdir, checkpoint_period=0)
         runner.add_trial(Trial("__fake", config={"user_checkpoint_freq": 2}))
         trials = runner.get_trials()
 
@@ -604,11 +657,79 @@ class TrialRunnerTest3(unittest.TestCase):
         runner.step()  # Process save
         self.assertTrue(trials[0].has_checkpoint())
 
-        runner2 = TrialRunner(resume="LOCAL", local_checkpoint_dir=tmpdir)
+        runner2 = TrialRunner(resume="LOCAL", local_checkpoint_dir=self.tmpdir)
         runner2.step()  # 5: Start trial and dispatch restore
         trials2 = runner2.get_trials()
         self.assertEqual(ray.get(trials2[0].runner.get_info.remote()), 1)
-        shutil.rmtree(tmpdir)
+
+    def testUserCheckpointBuffered(self):
+        os.environ["TUNE_RESULT_BUFFER_LENGTH"] = "8"
+        os.environ["TUNE_RESULT_BUFFER_MIN_TIME_S"] = "1"
+
+        def num_checkpoints(trial):
+            return sum(
+                item.startswith("checkpoint_")
+                for item in os.listdir(trial.logdir))
+
+        ray.init(num_cpus=3)
+        runner = TrialRunner(
+            local_checkpoint_dir=self.tmpdir, checkpoint_period=0)
+        runner.add_trial(Trial("__fake", config={"user_checkpoint_freq": 10}))
+        trials = runner.get_trials()
+
+        runner.step()  # Start trial, schedule 1-8
+        self.assertEqual(trials[0].status, Trial.RUNNING)
+        self.assertEqual(ray.get(trials[0].runner.set_info.remote(1)), 1)
+        self.assertEqual(num_checkpoints(trials[0]), 0)
+
+        runner.step()  # Process results 0-8, schedule 9-11 (CP)
+        self.assertEqual(trials[0].last_result.get(TRAINING_ITERATION), 8)
+        self.assertFalse(trials[0].has_checkpoint())
+        self.assertEqual(num_checkpoints(trials[0]), 0)
+
+        runner.step()  # Process results 9-11
+        runner.step()  # handle CP, schedule 12-19
+        self.assertEqual(trials[0].last_result.get(TRAINING_ITERATION), 11)
+        self.assertTrue(trials[0].has_checkpoint())
+        self.assertEqual(num_checkpoints(trials[0]), 1)
+
+        runner.step()  # Process results 12-19, schedule 20-21
+        self.assertEqual(trials[0].last_result.get(TRAINING_ITERATION), 19)
+        self.assertTrue(trials[0].has_checkpoint())
+        self.assertEqual(num_checkpoints(trials[0]), 1)
+
+        runner.step()  # Process results 20-21
+        runner.step()  # handle CP, schedule 21-29
+        self.assertEqual(trials[0].last_result.get(TRAINING_ITERATION), 21)
+        self.assertTrue(trials[0].has_checkpoint())
+        self.assertEqual(num_checkpoints(trials[0]), 2)
+
+        runner.step()  # Process results 21-29, schedule 30-31
+        self.assertEqual(trials[0].last_result.get(TRAINING_ITERATION), 29)
+        self.assertTrue(trials[0].has_checkpoint())
+        self.assertTrue(trials[0].has_checkpoint())
+        self.assertEqual(num_checkpoints(trials[0]), 2)
+
+    @patch("ray.tune.syncer.CLOUD_SYNC_PERIOD", 0)
+    def testCheckpointAutoPeriod(self):
+        ray.init(num_cpus=3)
+
+        # This makes checkpointing take 2 seconds.
+        def sync_up(source, target):
+            time.sleep(2)
+            return True
+
+        runner = TrialRunner(
+            local_checkpoint_dir=self.tmpdir,
+            checkpoint_period="auto",
+            sync_to_cloud=sync_up,
+            remote_checkpoint_dir="fake")
+        runner.add_trial(Trial("__fake", config={"user_checkpoint_freq": 1}))
+
+        runner.step()  # Run one step, this will trigger checkpointing
+
+        self.assertGreaterEqual(runner._checkpoint_manager._checkpoint_period,
+                                38.)
 
 
 class SearchAlgorithmTest(unittest.TestCase):

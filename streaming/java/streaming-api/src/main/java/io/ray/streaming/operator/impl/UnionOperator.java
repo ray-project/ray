@@ -6,8 +6,7 @@ import io.ray.streaming.message.Record;
 import io.ray.streaming.operator.OneInputOperator;
 import io.ray.streaming.operator.StreamOperator;
 
-public class UnionOperator<T> extends StreamOperator<Function> implements
-    OneInputOperator<T> {
+public class UnionOperator<T> extends StreamOperator<Function> implements OneInputOperator<T> {
 
   public UnionOperator() {
     super(Functions.emptyFunction());
@@ -17,5 +16,4 @@ public class UnionOperator<T> extends StreamOperator<Function> implements
   public void processElement(Record<T> record) {
     collect(record);
   }
-
 }

@@ -45,8 +45,9 @@ public class NativeObjectStore extends ObjectStore {
   }
 
   @Override
-  public List<Boolean> wait(List<ObjectId> objectIds, int numObjects, long timeoutMs) {
-    return nativeWait(toBinaryList(objectIds), numObjects, timeoutMs);
+  public List<Boolean> wait(
+      List<ObjectId> objectIds, int numObjects, long timeoutMs, boolean fetchLocal) {
+    return nativeWait(toBinaryList(objectIds), numObjects, timeoutMs, fetchLocal);
   }
 
   @Override
@@ -76,8 +77,8 @@ public class NativeObjectStore extends ObjectStore {
   }
 
   @Override
-  public void registerOwnershipInfoAndResolveFuture(ObjectId objectId, ObjectId outerObjectId,
-      byte[] ownerAddress) {
+  public void registerOwnershipInfoAndResolveFuture(
+      ObjectId objectId, ObjectId outerObjectId, byte[] ownerAddress) {
     byte[] outer = null;
     if (outerObjectId != null) {
       outer = outerObjectId.getBytes();
@@ -87,8 +88,7 @@ public class NativeObjectStore extends ObjectStore {
 
   public Map<ObjectId, long[]> getAllReferenceCounts() {
     Map<ObjectId, long[]> referenceCounts = new HashMap<>();
-    for (Map.Entry<byte[], long[]> entry :
-        nativeGetAllReferenceCounts().entrySet()) {
+    for (Map.Entry<byte[], long[]> entry : nativeGetAllReferenceCounts().entrySet()) {
       referenceCounts.put(new ObjectId(entry.getKey()), entry.getValue());
     }
     return referenceCounts;
@@ -113,8 +113,8 @@ public class NativeObjectStore extends ObjectStore {
 
   private static native List<NativeRayObject> nativeGet(List<byte[]> ids, long timeoutMs);
 
-  private static native List<Boolean> nativeWait(List<byte[]> objectIds, int numObjects,
-      long timeoutMs);
+  private static native List<Boolean> nativeWait(
+      List<byte[]> objectIds, int numObjects, long timeoutMs, boolean fetchLocal);
 
   private static native void nativeDelete(List<byte[]> objectIds, boolean localOnly);
 
@@ -128,6 +128,6 @@ public class NativeObjectStore extends ObjectStore {
 
   private static native byte[] nativePromoteAndGetOwnershipInfo(byte[] objectId);
 
-  private static native void nativeRegisterOwnershipInfoAndResolveFuture(byte[] objectId,
-      byte[] outerObjectId, byte[] ownerAddress);
+  private static native void nativeRegisterOwnershipInfoAndResolveFuture(
+      byte[] objectId, byte[] outerObjectId, byte[] ownerAddress);
 }

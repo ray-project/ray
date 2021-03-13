@@ -15,10 +15,10 @@ Backend Configuration
 ---------------------
 .. autoclass:: ray.serve.BackendConfig
 
-.. autoclass:: ray.serve.CondaEnv
+.. _`servehandle-api`:
 
-Handle API
-----------
+ServeHandle API
+---------------
 .. autoclass:: ray.serve.handle.RayServeHandle
     :members: remote, options
 
@@ -31,6 +31,3 @@ objects instead of Starlette requests.
 Batching Requests
 -----------------
 .. autofunction:: ray.serve.accept_batch
-
-Built-in Backends
-.. autoclass:: ray.serve.backends.ImportedBackend

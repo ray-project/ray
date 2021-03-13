@@ -2,7 +2,7 @@ import pytest
 import sys
 
 import ray
-import ray.cluster_utils
+import ray._private.cluster_utils
 import ray.test_utils
 
 
@@ -24,3 +24,7 @@ def test_cross_language_raise_exception(shutdown_only):
 
     with pytest.raises(Exception, match="transfer"):
         ray.java_function("a", "b").remote(PythonObject())
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))

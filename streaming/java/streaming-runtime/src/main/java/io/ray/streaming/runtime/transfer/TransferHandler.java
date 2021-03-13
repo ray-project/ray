@@ -42,7 +42,6 @@ public class TransferHandler {
 
   private native long createReaderClientNative();
 
-
   private native void handleWriterMessageNative(long handler, byte[] buffer);
 
   private native byte[] handleWriterMessageSyncNative(long handler, byte[] buffer);

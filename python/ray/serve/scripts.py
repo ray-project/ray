@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import click
+from ray.serve.config import DeploymentMode
 
 import ray
 from ray import serve
@@ -36,8 +37,20 @@ def cli(address):
     type=int,
     help="Port for HTTP servers to listen on. "
     f"Defaults to {DEFAULT_HTTP_PORT}.")
-def start(http_host, http_port):
-    serve.start(detached=True, http_host=http_host, http_port=http_port)
+@click.option(
+    "--http-location",
+    default=DeploymentMode.HeadOnly,
+    required=False,
+    type=click.Choice(list(DeploymentMode)),
+    help="Location of the HTTP servers. Defaults to HeadOnly.")
+def start(http_host, http_port, http_location):
+    serve.start(
+        detached=True,
+        http_options=dict(
+            host=http_host,
+            port=http_port,
+            location=http_location,
+        ))
 
 
 @cli.command(help="Shutdown the running Serve instance on the Ray cluster.")

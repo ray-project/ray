@@ -9,7 +9,7 @@ import time
 
 import ray
 import ray.test_utils
-import ray.cluster_utils
+import ray._private.cluster_utils
 from ray.test_utils import (
     wait_for_condition,
     wait_for_pid_to_exit,
@@ -32,10 +32,9 @@ def ray_init_with_task_retry_delay():
 @pytest.mark.parametrize(
     "ray_start_regular", [{
         "object_store_memory": 150 * 1024 * 1024,
-        "_lru_evict": True,
     }],
     indirect=True)
-def test_actor_eviction(ray_start_regular):
+def test_actor_spilled(ray_start_regular):
     object_store_memory = 150 * 1024 * 1024
 
     @ray.remote
@@ -58,21 +57,17 @@ def test_actor_eviction(ray_start_regular):
         ray.get(obj)
 
     # Get each object again. At this point, the earlier objects should have
-    # been evicted.
-    num_evicted, num_success = 0, 0
+    # been spilled.
+    num_success = 0
     for obj in objects:
-        try:
-            val = ray.get(obj)
-            assert isinstance(val, np.ndarray), val
-            num_success += 1
-        except ray.exceptions.ObjectLostError:
-            num_evicted += 1
-    # Some objects should have been evicted, and some should still be in the
-    # object store.
-    assert num_evicted > 0
-    assert num_success > 0
+        val = ray.get(obj)
+        assert isinstance(val, np.ndarray), val
+        num_success += 1
+    # All of objects should've been spilled, so all of them should succeed.
+    assert num_success == len(objects)
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Very flaky on Windows.")
 def test_actor_restart(ray_init_with_task_retry_delay):
     """Test actor restart when actor process is killed."""
 
@@ -115,6 +110,8 @@ def test_actor_restart(ray_init_with_task_retry_delay):
             ray.get(results[0])
         except ray.exceptions.RayActorError:
             results.pop(0)
+        else:
+            break
     # Check all tasks that executed after the restart.
     if results:
         # The actor executed some tasks after the restart.
@@ -275,7 +272,7 @@ def test_named_actor_max_task_retries(ray_init_with_task_retry_delay):
 def test_actor_restart_on_node_failure(ray_start_cluster):
     config = {
         "num_heartbeats_timeout": 10,
-        "raylet_heartbeat_timeout_milliseconds": 100,
+        "raylet_heartbeat_period_milliseconds": 100,
         "object_timeout_milliseconds": 1000,
         "task_retry_delay_ms": 100,
     }
@@ -431,6 +428,7 @@ def test_caller_task_reconstruction(ray_start_regular):
     assert ray.get(RetryableTask.remote(remote_actor)) == 3
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Very flaky on Windows.")
 # NOTE(hchen): we set object_timeout_milliseconds to 1s for
 # this test. Because if this value is too small, suprious task reconstruction
 # may happen and cause the test fauilure. If the value is too large, this test
@@ -742,6 +740,33 @@ def test_actor_owner_node_dies_before_dependency_ready(ray_start_cluster):
 
     # It will hang here if location is not properly resolved.
     wait_for_condition(lambda: ray.get(caller.hang.remote()))
+
+
+def test_recreate_child_actor(ray_start_cluster):
+    @ray.remote
+    class Actor:
+        def __init__(self):
+            pass
+
+        def ready(self):
+            return
+
+    @ray.remote(max_restarts=-1, max_task_retries=-1)
+    class Parent:
+        def __init__(self):
+            self.child = Actor.remote()
+
+        def ready(self):
+            return ray.get(self.child.ready.remote())
+
+        def pid(self):
+            return os.getpid()
+
+    ray.init(address=ray_start_cluster.address)
+    p = Parent.remote()
+    pid = ray.get(p.pid.remote())
+    os.kill(pid, 9)
+    ray.get(p.ready.remote())
 
 
 if __name__ == "__main__":

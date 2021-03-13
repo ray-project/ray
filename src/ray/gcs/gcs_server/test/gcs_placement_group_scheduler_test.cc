@@ -15,6 +15,7 @@
 #include <memory>
 
 #include "gtest/gtest.h"
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/gcs/gcs_server/test/gcs_server_test_util.h"
 #include "ray/gcs/test/gcs_test_util.h"
 
@@ -41,6 +42,8 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
     gcs_pub_sub_ = std::make_shared<GcsServerMocker::MockGcsPubSub>(redis_client_);
     gcs_resource_manager_ =
         std::make_shared<gcs::GcsResourceManager>(io_service_, nullptr, nullptr);
+    gcs_resource_scheduler_ =
+        std::make_shared<gcs::GcsResourceScheduler>(*gcs_resource_manager_);
     gcs_node_manager_ =
         std::make_shared<gcs::GcsNodeManager>(gcs_pub_sub_, gcs_table_storage_);
     gcs_table_storage_ = std::make_shared<gcs::InMemoryGcsTableStorage>(io_service_);
@@ -49,7 +52,7 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
         [this](const rpc::Address &addr) { return raylet_clients_[addr.port()]; });
     scheduler_ = std::make_shared<GcsServerMocker::MockedGcsPlacementGroupScheduler>(
         io_service_, gcs_table_storage_, *gcs_node_manager_, *gcs_resource_manager_,
-        raylet_client_pool_);
+        *gcs_resource_scheduler_, raylet_client_pool_);
   }
 
   void TearDown() override {
@@ -203,11 +206,12 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
   const std::chrono::milliseconds timeout_ms_{6000};
   absl::Mutex placement_group_requests_mutex_;
   std::unique_ptr<std::thread> thread_io_service_;
-  boost::asio::io_service io_service_;
+  instrumented_io_context io_service_;
   std::shared_ptr<gcs::StoreClient> store_client_;
 
   std::vector<std::shared_ptr<GcsServerMocker::MockRayletClient>> raylet_clients_;
   std::shared_ptr<gcs::GcsResourceManager> gcs_resource_manager_;
+  std::shared_ptr<gcs::GcsResourceScheduler> gcs_resource_scheduler_;
   std::shared_ptr<gcs::GcsNodeManager> gcs_node_manager_;
   std::shared_ptr<GcsServerMocker::MockedGcsPlacementGroupScheduler> scheduler_;
   std::vector<std::shared_ptr<gcs::GcsPlacementGroup>> success_placement_groups_
