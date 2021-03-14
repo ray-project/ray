@@ -87,6 +87,7 @@ Placement groups are atomically created - meaning that if there exists a bundle 
 
 .. tabs::
   .. group-tab:: Python
+
     .. code-block:: python
 
       # Wait until placement group is created.
@@ -101,6 +102,7 @@ Placement groups are atomically created - meaning that if there exists a bundle 
   .. group-tab:: Java
 
     .. code-block:: java
+
       // Wait for the placement group to be ready within the specified time(unit is seconds).
       boolean ready = pg.wait(60);
 
@@ -229,50 +231,125 @@ Let's create a placement group. Recall that each bundle is a collection of resou
           .setResource("CPU", 2.0)
           .remote();
 
-.. code-block:: python
+.. tabs::
+  .. group-tab:: Python
 
-  gpu_bundle = {"GPU": 2}
-  extra_resource_bundle = {"extra_resource": 2}
+    .. code-block:: python
 
-  # Reserve bundles with strict pack strategy.
-  # It means Ray will reserve 2 "GPU" and 2 "extra_resource" on the same node (strict pack) within a Ray cluster.
-  # Using this placement group for scheduling actors or tasks will guarantee that they will
-  # be colocated on the same node.
-  pg = placement_group([gpu_bundle, extra_resource_bundle], strategy="STRICT_PACK")
+      gpu_bundle = {"GPU": 2}
+      extra_resource_bundle = {"extra_resource": 2}
 
-  # Wait until placement group is created.
-  ray.get(pg.ready())
+      # Reserve bundles with strict pack strategy.
+      # It means Ray will reserve 2 "GPU" and 2 "extra_resource" on the same node (strict pack) within a Ray cluster.
+      # Using this placement group for scheduling actors or tasks will guarantee that they will
+      # be colocated on the same node.
+      pg = placement_group([gpu_bundle, extra_resource_bundle], strategy="STRICT_PACK")
+
+      # Wait until placement group is created.
+      ray.get(pg.ready())
+
+  .. group-tab:: Java
+
+    .. code-block:: java
+
+      List<Map<String, Double>> bundles = new ArrayList<>();
+      Map<String, Double> bundle1 = new HashMap<>();
+      Map<String, Double> bundle2 = new HashMap<>();
+      bundle1.put("GPU", 2.0);
+      bundle2.put("extra_resource", 2.0);
+
+      bundles.add(bundle1);
+      bundles.add(bundle2);
+
+      /**
+       * Reserve bundles with strict pack strategy.
+       * It means Ray will reserve 2 "GPU" and 2 "extra_resource" on the same node (strict pack) within a Ray cluster.
+       * Using this placement group for scheduling actors or tasks will guarantee that they will
+       * be colocated on the same node.
+       */
+      PlacementGroupCreationOptions options =
+        new PlacementGroupCreationOptions.Builder()
+          .setBundles(bundles)
+          .setStrategy(PlacementStrategy.STRICT_PACK)
+          .build();
+
+      PlacementGroup pg = Ray.createPlacementGroup(options);
+      boolean isCreated = pg.wait(60)
+      Assert.assertTrue(isCreated);
 
 Now let's define an actor that uses GPU. We'll also define a task that use ``extra_resources``.
 
-.. code-block:: python
+.. tabs::
+  .. group-tab:: Python
 
-  @ray.remote(num_gpus=1)
-  class GPUActor:
-      def __init__(self):
+    .. code-block:: python
+
+      @ray.remote(num_gpus=1)
+      class GPUActor:
+        def __init__(self):
           pass
 
-  @ray.remote(resources={"extra_resource": 1})
-  def extra_resource_task():
-      import time
-      # simulate long-running task.
-      time.sleep(10)
+      @ray.remote(resources={"extra_resource": 1})
+      def extra_resource_task():
+        import time
+        # simulate long-running task.
+        time.sleep(10)
 
-  # Create GPU actors on a gpu bundle.
-  gpu_actors = [GPUActor.options(
+      # Create GPU actors on a gpu bundle.
+      gpu_actors = [GPUActor.options(
           placement_group=pg,
           # This is the index from the original list.
           # This index is set to -1 by default, which means any available bundle.
           placement_group_bundle_index=0) # Index of gpu_bundle is 0.
       .remote() for _ in range(2)]
 
-  # Create extra_resource actors on a extra_resource bundle.
-  extra_resource_actors = [extra_resource_task.options(
+      # Create extra_resource actors on a extra_resource bundle.
+      extra_resource_actors = [extra_resource_task.options(
           placement_group=pg,
           # This is the index from the original list.
           # This index is set to -1 by default, which means any available bundle.
           placement_group_bundle_index=1) # Index of extra_resource_bundle is 1.
       .remote() for _ in range(2)]
+
+  .. group-tab:: Java
+
+    .. code-block:: java
+
+      public static class Counter {
+        private int value;
+
+        public Counter(int initValue) {
+          this.value = initValue;
+        }
+
+        public int getValue() {
+          return value;
+        }
+      }
+
+      public static class NormalTask {
+        public static String ping() {
+          return "pong";
+        }
+      }
+
+      // Create GPU actors on a gpu bundle.
+      for (int index = 0; index < 2; index ++) {
+        ActorHandle<Counter> actor =
+          Ray.actor(Counter::new, 1)
+            .setResource("CPU", 1.0)
+            .setPlacementGroup(placementGroup, 0)
+            .remote();
+      }
+
+      // Create extra_resource actors on a extra_resource bundle.
+      for(int index = 0; index < 2; index++) {
+        Ray.task(NormalTask::ping)
+          .setPlacementGroup(placementGroup, 0)
+          .setResource("extra_resource", 1.0)
+          .remote();
+      }
+
 
 Now, you can guarantee all gpu actors and extra_resource tasks are located on the same node
 because they are scheduled on a placement group with the STRICT_PACK strategy.
@@ -282,56 +359,76 @@ because they are scheduled on a placement group with the STRICT_PACK strategy.
   In order to fully utilize resources pre-reserved by the placement group,
   Ray automatically schedules children tasks/actors to the same placement group as its parent.
 
-  .. code-block:: python
+  .. tabs::
+    .. group-tab:: Python
 
-    # Create a placement group with the STRICT_SPREAD strategy.
-    pg = placement_group([{"CPU": 2}, {"CPU": 2}], strategy="STRICT_SPREAD")
-    ray.get(pg.ready())
+      .. code-block:: python
 
-    @ray.remote
-    def child():
-        pass
+        # Create a placement group with the STRICT_SPREAD strategy.
+        pg = placement_group([{"CPU": 2}, {"CPU": 2}], strategy="STRICT_SPREAD")
+        ray.get(pg.ready())
 
-    @ray.remote
-    def parent():
-        # The child task is scheduled with the same placement group as its parent
-        # although child.options(placement_group=pg).remote() wasn't called.
-        ray.get(child.remote())
+        @ray.remote
+        def child():
+            pass
 
-    ray.get(parent.options(placement_group=pg).remote())
+        @ray.remote
+        def parent():
+            # The child task is scheduled with the same placement group as its parent
+            # although child.options(placement_group=pg).remote() wasn't called.
+            ray.get(child.remote())
+
+        ray.get(parent.options(placement_group=pg).remote())
 
   To avoid it, you should specify `options(placement_group=None)` in a child task/actor remote call.
 
-  .. code-block:: python
+      .. code-block:: python
 
-    @ray.remote
-    def parent():
-        # In this case, the child task won't be
-        # scheduled with the parent's placement group.
-        ray.get(child.options(placement_group=None).remote())
+        @ray.remote
+        def parent():
+            # In this case, the child task won't be
+            # scheduled with the parent's placement group.
+            ray.get(child.options(placement_group=None).remote())
+
+    .. group-tab:: Java
+
+      Not implemented for Java APIs yet.
 
 Note that you can anytime remove the placement group to clean up resources.
 
-.. code-block:: python
+.. tabs::
+  .. group-tab:: Python
 
-  # This API is asynchronous.
-  remove_placement_group(pg)
+    .. code-block:: python
 
-  # Wait until placement group is killed.
-  import time
-  time.sleep(1)
-  # Check the placement group has died.
-  pprint(placement_group_table(pg))
+      # This API is asynchronous.
+      remove_placement_group(pg)
 
-  """
-  {'bundles': {0: {'GPU': 2.0}, 1: {'extra_resource': 2.0}},
-  'name': 'unnamed_group',
-  'placement_group_id': '40816b6ad474a6942b0edb45809b39c3',
-  'state': 'REMOVED',
-  'strategy': 'STRICT_PACK'}
-  """
+      # Wait until placement group is killed.
+      import time
+      time.sleep(1)
+      # Check the placement group has died.
+      pprint(placement_group_table(pg))
 
-  ray.shutdown()
+      """
+      {'bundles': {0: {'GPU': 2.0}, 1: {'extra_resource': 2.0}},
+      'name': 'unnamed_group',
+      'placement_group_id': '40816b6ad474a6942b0edb45809b39c3',
+      'state': 'REMOVED',
+      'strategy': 'STRICT_PACK'}
+      """
+
+      ray.shutdown()
+
+  .. group-tab:: Java
+
+    .. code-block:: java
+
+      Ray.removePlacementGroup(placementGroup.getId());
+
+      PlacementGroup removedPlacementGroup = Ray.getPlacementGroup(placementGroup.getId());
+      Assert.assertEquals(removedPlacementGroup.getState(), PlacementGroupState.REMOVED);
+
 
 Named Placement Groups
 ----------------------
@@ -363,6 +460,51 @@ See :ref:`placement-group-lifetimes` for more details.
       pg = ray.util.get_placement_group("global_name")
 
   .. group-tab:: Java
+
+    .. code-block:: java
+
+      // Create a placement group with a globally unique name.
+      List<Map<String, Double>> bundles = new ArrayList<>();
+      Map<String, Double> bundle1 = new HashMap<>();
+      bundle1.put("CPU", 2.0);
+      bundles.add(bundle1);
+
+      PlacementGroupCreationOptions options =
+        new PlacementGroupCreationOptions.Builder()
+          .setBundles(bundles)
+          .setStrategy(PlacementStrategy.STRICT_SPREAD)
+          .setGlobalName("global_name")
+          .build();
+
+      PlacementGroup group = Ray.createPlacementGroup(options);
+      group.wait(60);
+
+      ...
+
+      // Retrieve the placement group later somewhere.
+      PlacementGroup group = Ray.getGlobalPlacementGroup("global_name");
+      Assert.assertNotNull(group);
+
+    We also support non-global named placement group in Java, which means that the placement group name is only valid within the job and cannot be accessed from another job.
+
+    .. code-block:: java
+
+      // Create a placement group with a job-scope-unique name.
+      PlacementGroupCreationOptions options =
+      new PlacementGroupCreationOptions.Builder()
+        .setBundles(bundles)
+        .setStrategy(PlacementStrategy.STRICT_SPREAD)
+        .setName("non_global_name")
+        .build();
+
+      PlacementGroup group = Ray.createPlacementGroup(options);
+      group.wait(60);
+
+      ...
+
+      // Retrieve the placement group later somewhere in the same job.
+      PlacementGroup group = Ray.getPlacementGroup("non_global_name");
+      Assert.assertNotNull(group);
 
 
 .. _placement-group-lifetimes:
