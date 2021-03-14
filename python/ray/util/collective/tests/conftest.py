@@ -81,7 +81,7 @@ def ray_start_single_node():
 @pytest.fixture
 def ray_start_distributed_2_nodes():
     # The cluster has a setup of 2 nodes.
-
+    # no GPUs!
     ray.init("auto")
     yield
     ray.shutdown()
