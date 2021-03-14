@@ -162,6 +162,12 @@ Let's create a placement group. Recall that each bundle is a collection of resou
   # Wait until placement group is created.
   ray.get(pg.ready())
 
+ .. note::
+
+    When using placement groups, users should ensure that their placement groups are ready (by calling ``ray.get(pg.ready())``)
+    and have the proper resources. Ray assumes that the placement group will be properly created and does *not*
+    print a warning about infeasible tasks.
+
 Now let's define an actor that uses GPU. We'll also define a task that use ``extra_resources``.
 
 .. code-block:: python
@@ -229,7 +235,7 @@ because they are scheduled on a placement group with the STRICT_PACK strategy.
         # scheduled with the parent's placement group.
         ray.get(child.options(placement_group=None).remote())
 
-Note that you can anytime remove the placement group to clean up resources.
+You can remove a placement group at any time to free its allocated resources.
 
 .. code-block:: python
 

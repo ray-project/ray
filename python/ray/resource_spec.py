@@ -133,10 +133,10 @@ class ResourceSpec(
 
         num_cpus = self.num_cpus
         if num_cpus is None:
-            num_cpus = ray.utils.get_num_cpus()
+            num_cpus = ray._private.utils.get_num_cpus()
 
         num_gpus = self.num_gpus
-        gpu_ids = ray.utils.get_cuda_visible_devices()
+        gpu_ids = ray._private.utils.get_cuda_visible_devices()
         # Check that the number of GPUs that the raylet wants doesn't
         # excede the amount allowed by CUDA_VISIBLE_DEVICES.
         if (num_gpus is not None and gpu_ids is not None
@@ -159,24 +159,29 @@ class ResourceSpec(
             logger.exception("Could not parse gpu information.")
 
         # Choose a default object store size.
-        system_memory = ray.utils.get_system_memory()
-        avail_memory = ray.utils.estimate_available_memory()
+        system_memory = ray._private.utils.get_system_memory()
+        avail_memory = ray._private.utils.estimate_available_memory()
         object_store_memory = self.object_store_memory
         if object_store_memory is None:
             object_store_memory = int(
                 avail_memory *
                 ray_constants.DEFAULT_OBJECT_STORE_MEMORY_PROPORTION)
+            max_cap = ray_constants.DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES
+            # Cap by shm size by default to avoid low performance, but don't
+            # go lower than REQUIRE_SHM_SIZE_THRESHOLD.
+            if sys.platform == "linux" or sys.platform == "linux2":
+                shm_avail = ray._private.utils.get_shared_memory_bytes()
+                max_cap = min(
+                    max(ray_constants.REQUIRE_SHM_SIZE_THRESHOLD, shm_avail),
+                    max_cap)
             # Cap memory to avoid memory waste and perf issues on large nodes
-            if (object_store_memory >
-                    ray_constants.DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES):
+            if object_store_memory > max_cap:
                 logger.debug(
                     "Warning: Capping object memory store to {}GB. ".format(
-                        ray_constants.DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES //
-                        1e9) +
+                        max_cap // 1e9) +
                     "To increase this further, specify `object_store_memory` "
                     "when calling ray.init() or ray start.")
-                object_store_memory = (
-                    ray_constants.DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES)
+                object_store_memory = max_cap
 
         redis_max_memory = self.redis_max_memory
         if redis_max_memory is None:

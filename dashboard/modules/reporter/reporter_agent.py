@@ -13,15 +13,19 @@ import aioredis
 import ray
 import ray.gcs_utils
 import ray.new_dashboard.modules.reporter.reporter_consts as reporter_consts
+from ray.new_dashboard import k8s_utils
 import ray.new_dashboard.utils as dashboard_utils
 import ray._private.services
-import ray.utils
+import ray._private.utils
 from ray.core.generated import reporter_pb2
 from ray.core.generated import reporter_pb2_grpc
-from ray.metrics_agent import MetricsAgent, Gauge, Record
+from ray._private.metrics_agent import MetricsAgent, Gauge, Record
 import psutil
 
 logger = logging.getLogger(__name__)
+
+# Are we in a K8s pod?
+IN_KUBERNETES_POD = "KUBERNETES_SERVICE_HOST" in os.environ
 
 try:
     import gpustat.core as gpustat
@@ -52,6 +56,56 @@ def jsonify_asdict(o):
     return json.dumps(dashboard_utils.to_google_style(recursive_asdict(o)))
 
 
+# A list of gauges to record and export metrics.
+METRICS_GAUGES = {
+    "node_cpu_utilization": Gauge("node_cpu_utilization",
+                                  "Total CPU usage on a ray node",
+                                  "percentage", ["ip"]),
+    "node_cpu_count": Gauge("node_cpu_count",
+                            "Total CPUs available on a ray node", "cores",
+                            ["ip"]),
+    "node_mem_used": Gauge("node_mem_used", "Memory usage on a ray node",
+                           "bytes", ["ip"]),
+    "node_mem_available": Gauge("node_mem_available",
+                                "Memory available on a ray node", "bytes",
+                                ["ip"]),
+    "node_mem_total": Gauge("node_mem_total", "Total memory on a ray node",
+                            "bytes", ["ip"]),
+    "node_gpus_available": Gauge("node_gpus_available",
+                                 "Total GPUs available on a ray node",
+                                 "percentage", ["ip"]),
+    "node_gpus_utilization": Gauge("node_gpus_utilization",
+                                   "Total GPUs usage on a ray node",
+                                   "percentage", ["ip"]),
+    "node_gram_used": Gauge("node_gram_used",
+                            "Total GPU RAM usage on a ray node", "bytes",
+                            ["ip"]),
+    "node_gram_available": Gauge("node_gram_available",
+                                 "Total GPU RAM available on a ray node",
+                                 "bytes", ["ip"]),
+    "node_disk_usage": Gauge("node_disk_usage",
+                             "Total disk usage (bytes) on a ray node", "bytes",
+                             ["ip"]),
+    "node_disk_utilization_percentage": Gauge(
+        "node_disk_utilization_percentage",
+        "Total disk utilization (percentage) on a ray node", "percentage",
+        ["ip"]),
+    "node_network_sent": Gauge("node_network_sent", "Total network sent",
+                               "bytes", ["ip"]),
+    "node_network_received": Gauge("node_network_received",
+                                   "Total network received", "bytes", ["ip"]),
+    "node_network_send_speed": Gauge(
+        "node_network_send_speed", "Network send speed", "bytes/sec", ["ip"]),
+    "node_network_receive_speed": Gauge("node_network_receive_speed",
+                                        "Network receive speed", "bytes/sec",
+                                        ["ip"]),
+    "raylet_cpu": Gauge("raylet_cpu", "CPU usage of the raylet on a node.",
+                        "percentage", ["ip", "pid"]),
+    "raylet_mem": Gauge("raylet_mem", "Memory usage of the raylet on a node",
+                        "mb", ["ip", "pid"])
+}
+
+
 class ReporterAgent(dashboard_utils.DashboardAgentModule,
                     reporter_pb2_grpc.ReporterServiceServicer):
     """A monitor process for monitoring Ray nodes.
@@ -63,8 +117,15 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
     def __init__(self, dashboard_agent):
         """Initialize the reporter object."""
         super().__init__(dashboard_agent)
-        self._cpu_counts = (psutil.cpu_count(),
-                            psutil.cpu_count(logical=False))
+        if IN_KUBERNETES_POD:
+            # psutil does not compute this correctly when in a K8s pod.
+            # Use ray._private.utils instead.
+            cpu_count = ray._private.utils.get_num_cpus()
+            self._cpu_counts = (cpu_count, cpu_count)
+        else:
+            self._cpu_counts = (psutil.cpu_count(),
+                                psutil.cpu_count(logical=False))
+
         self._ip = ray._private.services.get_node_ip_address()
         self._hostname = socket.gethostname()
         self._workers = set()
@@ -72,67 +133,13 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
         self._metrics_agent = MetricsAgent(dashboard_agent.metrics_export_port)
         self._key = f"{reporter_consts.REPORTER_PREFIX}" \
                     f"{self._dashboard_agent.node_id}"
-        # A list of gauges to record and export metrics.
-        self._gauges = {
-            "node_cpu_utilization": Gauge("node_cpu_utilization",
-                                          "Total CPU usage on a ray node",
-                                          "percentage", ["ip"]),
-            "node_cpu_count": Gauge("node_cpu_count",
-                                    "Total CPUs available on a ray node",
-                                    "cores", ["ip"]),
-            "node_mem_used": Gauge("node_mem_used",
-                                   "Memory usage on a ray node", "bytes",
-                                   ["ip"]),
-            "node_mem_available": Gauge("node_mem_available",
-                                        "Memory available on a ray node",
-                                        "bytes", ["ip"]),
-            "node_mem_total": Gauge("node_mem_total",
-                                    "Total memory on a ray node", "bytes",
-                                    ["ip"]),
-            "node_gpus_available": Gauge("node_gpus_available",
-                                         "Total GPUs available on a ray node",
-                                         "percentage", ["ip"]),
-            "node_gpus_utilization": Gauge("node_gpus_utilization",
-                                           "Total GPUs usage on a ray node",
-                                           "percentage", ["ip"]),
-            "node_gram_used": Gauge("node_gram_used",
-                                    "Total GPU RAM usage on a ray node",
-                                    "bytes", ["ip"]),
-            "node_gram_available": Gauge(
-                "node_gram_available", "Total GPU RAM available on a ray node",
-                "bytes", ["ip"]),
-            "node_disk_usage": Gauge("node_disk_usage",
-                                     "Total disk usage (bytes) on a ray node",
-                                     "bytes", ["ip"]),
-            "node_disk_utilization_percentage": Gauge(
-                "node_disk_utilization_percentage",
-                "Total disk utilization (percentage) on a ray node",
-                "percentage", ["ip"]),
-            "node_network_sent": Gauge("node_network_sent",
-                                       "Total network sent", "bytes", ["ip"]),
-            "node_network_received": Gauge("node_network_received",
-                                           "Total network received", "bytes",
-                                           ["ip"]),
-            "node_network_send_speed": Gauge("node_network_send_speed",
-                                             "Network send speed", "bytes/sec",
-                                             ["ip"]),
-            "node_network_receive_speed": Gauge("node_network_receive_speed",
-                                                "Network receive speed",
-                                                "bytes/sec", ["ip"]),
-            "raylet_cpu": Gauge("raylet_cpu",
-                                "CPU usage of the raylet on a node.",
-                                "percentage", ["ip", "pid"]),
-            "raylet_mem": Gauge("raylet_mem",
-                                "Memory usage of the raylet on a node", "mb",
-                                ["ip", "pid"])
-        }
 
     async def GetProfilingStats(self, request, context):
         pid = request.pid
         duration = request.duration
-        profiling_file_path = os.path.join(ray.utils.get_ray_temp_dir(),
-                                           f"{pid}_profiling.txt")
-        sudo = "sudo" if ray.utils.get_user() != "root" else ""
+        profiling_file_path = os.path.join(
+            ray._private.utils.get_ray_temp_dir(), f"{pid}_profiling.txt")
+        sudo = "sudo" if ray._private.utils.get_user() != "root" else ""
         process = await asyncio.create_subprocess_shell(
             f"{sudo} $(which py-spy) record "
             f"-o {profiling_file_path} -p {pid} -d {duration} -f speedscope",
@@ -160,7 +167,10 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
 
     @staticmethod
     def _get_cpu_percent():
-        return psutil.cpu_percent()
+        if IN_KUBERNETES_POD:
+            return k8s_utils.cpu_percent()
+        else:
+            return psutil.cpu_percent()
 
     @staticmethod
     def _get_gpu_usage():
@@ -184,7 +194,11 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
 
     @staticmethod
     def _get_boot_time():
-        return psutil.boot_time()
+        if IN_KUBERNETES_POD:
+            # Return start time of container entrypoint
+            return psutil.Process(pid=1).create_time()
+        else:
+            return psutil.boot_time()
 
     @staticmethod
     def _get_network_stats():
@@ -199,27 +213,29 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
 
     @staticmethod
     def _get_mem_usage():
-        vm = psutil.virtual_memory()
-        return vm.total, vm.available, vm.percent, vm.used
+        total = ray._private.utils.get_system_memory()
+        used = ray._private.utils.get_used_memory()
+        available = total - used
+        percent = round(used / total, 3) * 100
+        return total, available, percent, used
 
     @staticmethod
     def _get_disk_usage():
         dirs = [
             os.environ["USERPROFILE"] if sys.platform == "win32" else os.sep,
-            ray.utils.get_user_temp_dir(),
+            ray._private.utils.get_user_temp_dir(),
         ]
         return {x: psutil.disk_usage(x) for x in dirs}
 
     def _get_workers(self):
-        curr_proc = psutil.Process()
-        parent = curr_proc.parent()
-        if parent is None or parent.pid == 1:
+        raylet_proc = self._get_raylet_proc()
+        if raylet_proc is None:
             return []
         else:
-            workers = set(parent.children())
+            workers = set(raylet_proc.children())
             self._workers.intersection_update(workers)
             self._workers.update(workers)
-            self._workers.discard(curr_proc)
+            self._workers.discard(psutil.Process())
             return [
                 w.as_dict(attrs=[
                     "pid",
@@ -231,36 +247,36 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
                 ]) for w in self._workers if w.status() != psutil.STATUS_ZOMBIE
             ]
 
-    def _get_raylet_stats(self):
-        curr_proc = psutil.Process()
-        # Here, parent is always raylet because the
-        # dashboard agent is a child of the raylet process.
-        parent = curr_proc.parent()
-        if parent is None or parent.pid == 1:
-            return []
-        if parent.status() == psutil.STATUS_ZOMBIE:
-            return []
-
-        return parent.as_dict(attrs=[
-            "pid",
-            "create_time",
-            "cpu_percent",
-            "cpu_times",
-            "cmdline",
-            "memory_info",
-        ])
-
     @staticmethod
-    def _get_raylet_cmdline():
+    def _get_raylet_proc():
         try:
             curr_proc = psutil.Process()
+            # Here, parent is always raylet because the
+            # dashboard agent is a child of the raylet process.
             parent = curr_proc.parent()
-            if parent.pid == 1:
-                return []
-            else:
-                return parent.cmdline()
+            if parent is not None:
+                if parent.pid == 1:
+                    return None
+                if parent.status() == psutil.STATUS_ZOMBIE:
+                    return None
+            return parent
         except (psutil.AccessDenied, ProcessLookupError):
-            return []
+            pass
+        return None
+
+    def _get_raylet(self):
+        raylet_proc = self._get_raylet_proc()
+        if raylet_proc is None:
+            return {}
+        else:
+            return raylet_proc.as_dict(attrs=[
+                "pid",
+                "create_time",
+                "cpu_percent",
+                "cpu_times",
+                "cmdline",
+                "memory_info",
+            ])
 
     def _get_load_avg(self):
         if sys.platform == "win32":
@@ -290,42 +306,47 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
             "cpus": self._cpu_counts,
             "mem": self._get_mem_usage(),
             "workers": self._get_workers(),
+            "raylet": self._get_raylet(),
             "bootTime": self._get_boot_time(),
             "loadAvg": self._get_load_avg(),
             "disk": self._get_disk_usage(),
             "gpus": self._get_gpu_usage(),
             "network": network_stats,
             "network_speed": network_speed_stats,
-            "cmdline": self._get_raylet_cmdline(),
+            # Deprecated field, should be removed with frontend.
+            "cmdline": self._get_raylet().get("cmdline", []),
         }
 
-    def _record_stats(self, stats):
+    @staticmethod
+    def _record_stats(stats):
+        records_reported = []
+
         ip = stats["ip"]
         # -- CPU per node --
         cpu_usage = float(stats["cpu"])
         cpu_record = Record(
-            gauge=self._gauges["node_cpu_utilization"],
+            gauge=METRICS_GAUGES["node_cpu_utilization"],
             value=cpu_usage,
             tags={"ip": ip})
 
         cpu_count, _ = stats["cpus"]
         cpu_count_record = Record(
-            gauge=self._gauges["node_cpu_count"],
+            gauge=METRICS_GAUGES["node_cpu_count"],
             value=cpu_count,
             tags={"ip": ip})
 
         # -- Mem per node --
         mem_total, mem_available, _, mem_used = stats["mem"]
         mem_used_record = Record(
-            gauge=self._gauges["node_mem_used"],
+            gauge=METRICS_GAUGES["node_mem_used"],
             value=mem_used,
             tags={"ip": ip})
         mem_available_record = Record(
-            gauge=self._gauges["node_mem_available"],
+            gauge=METRICS_GAUGES["node_mem_available"],
             value=mem_available,
             tags={"ip": ip})
         mem_total_record = Record(
-            gauge=self._gauges["node_mem_total"],
+            gauge=METRICS_GAUGES["node_mem_total"],
             value=mem_total,
             tags={"ip": ip})
 
@@ -343,21 +364,25 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
             gram_available = gram_total - gram_used
 
             gpus_available_record = Record(
-                gauge=self._gauges["node_gpus_available"],
+                gauge=METRICS_GAUGES["node_gpus_available"],
                 value=gpus_available,
                 tags={"ip": ip})
             gpus_utilization_record = Record(
-                gauge=self._gauges["node_gpus_utilization"],
+                gauge=METRICS_GAUGES["node_gpus_utilization"],
                 value=gpus_utilization,
                 tags={"ip": ip})
             gram_used_record = Record(
-                gauge=self._gauges["node_gram_used"],
+                gauge=METRICS_GAUGES["node_gram_used"],
                 value=gram_used,
                 tags={"ip": ip})
             gram_available_record = Record(
-                gauge=self._gauges["node_gram_available"],
+                gauge=METRICS_GAUGES["node_gram_available"],
                 value=gram_available,
                 tags={"ip": ip})
+            records_reported.extend([
+                gpus_available_record, gpus_utilization_record,
+                gram_used_record, gram_available_record
+            ])
 
         # -- Disk per node --
         used, free = 0, 0
@@ -366,81 +391,76 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
             free += entry.free
         disk_utilization = float(used / (used + free)) * 100
         disk_usage_record = Record(
-            gauge=self._gauges["node_disk_usage"], value=used, tags={"ip": ip})
+            gauge=METRICS_GAUGES["node_disk_usage"],
+            value=used,
+            tags={"ip": ip})
         disk_utilization_percentage_record = Record(
-            gauge=self._gauges["node_disk_utilization_percentage"],
+            gauge=METRICS_GAUGES["node_disk_utilization_percentage"],
             value=disk_utilization,
             tags={"ip": ip})
 
         # -- Network speed (send/receive) stats per node --
         network_stats = stats["network"]
         network_sent_record = Record(
-            gauge=self._gauges["node_network_sent"],
+            gauge=METRICS_GAUGES["node_network_sent"],
             value=network_stats[0],
             tags={"ip": ip})
         network_received_record = Record(
-            gauge=self._gauges["node_network_received"],
+            gauge=METRICS_GAUGES["node_network_received"],
             value=network_stats[1],
             tags={"ip": ip})
 
         # -- Network speed (send/receive) per node --
         network_speed_stats = stats["network_speed"]
         network_send_speed_record = Record(
-            gauge=self._gauges["node_network_send_speed"],
+            gauge=METRICS_GAUGES["node_network_send_speed"],
             value=network_speed_stats[0],
             tags={"ip": ip})
         network_receive_speed_record = Record(
-            gauge=self._gauges["node_network_receive_speed"],
+            gauge=METRICS_GAUGES["node_network_receive_speed"],
             value=network_speed_stats[1],
             tags={"ip": ip})
 
-        raylet_stats = self._get_raylet_stats()
-        raylet_pid = str(raylet_stats["pid"])
-        # -- raylet CPU --
-        raylet_cpu_usage = float(raylet_stats["cpu_percent"]) * 100
-        raylet_cpu_record = Record(
-            gauge=self._gauges["raylet_cpu"],
-            value=raylet_cpu_usage,
-            tags={
-                "ip": ip,
-                "pid": raylet_pid
-            })
+        raylet_stats = stats["raylet"]
+        if raylet_stats:
+            raylet_pid = str(raylet_stats["pid"])
+            # -- raylet CPU --
+            raylet_cpu_usage = float(raylet_stats["cpu_percent"]) * 100
+            raylet_cpu_record = Record(
+                gauge=METRICS_GAUGES["raylet_cpu"],
+                value=raylet_cpu_usage,
+                tags={
+                    "ip": ip,
+                    "pid": raylet_pid
+                })
 
-        # -- raylet mem --
-        raylet_mem_usage = float(raylet_stats["memory_info"].rss) / 1e6
-        raylet_mem_record = Record(
-            gauge=self._gauges["raylet_mem"],
-            value=raylet_mem_usage,
-            tags={
-                "ip": ip,
-                "pid": raylet_pid
-            })
+            # -- raylet mem --
+            raylet_mem_usage = float(raylet_stats["memory_info"].rss) / 1e6
+            raylet_mem_record = Record(
+                gauge=METRICS_GAUGES["raylet_mem"],
+                value=raylet_mem_usage,
+                tags={
+                    "ip": ip,
+                    "pid": raylet_pid
+                })
+            records_reported.extend([raylet_cpu_record, raylet_mem_record])
 
-        records_reported = [
+        records_reported.extend([
             cpu_record, cpu_count_record, mem_used_record,
             mem_available_record, mem_total_record, disk_usage_record,
             disk_utilization_percentage_record, network_sent_record,
             network_received_record, network_send_speed_record,
             network_receive_speed_record
-        ]
-
-        if gpus_available:
-            records_reported.extend([
-                gpus_available_record, gpus_utilization_record,
-                gram_used_record, gram_available_record
-            ])
-
-        raylet_records = [raylet_cpu_record, raylet_mem_record]
-        records_reported.extend(raylet_records)
-
-        self._metrics_agent.record_reporter_stats(records_reported)
+        ])
+        return records_reported
 
     async def _perform_iteration(self, aioredis_client):
         """Get any changes to the log files and push updates to Redis."""
         while True:
             try:
                 stats = self._get_all_stats()
-                self._record_stats(stats)
+                records_reported = self._record_stats(stats)
+                self._metrics_agent.record_reporter_stats(records_reported)
                 await aioredis_client.publish(self._key, jsonify_asdict(stats))
             except Exception:
                 logger.exception("Error publishing node physical stats.")
