@@ -405,7 +405,7 @@ class TorchPolicy(Policy):
 
         # Mark the batch as "is_training" so the Model can use this
         # information.
-        postprocessed_batch["is_training"] = True
+        postprocessed_batch.is_training = True
         train_batch = self._lazy_tensor_dict(postprocessed_batch)
 
         # Calculate the actual policy loss.

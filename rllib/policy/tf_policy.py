@@ -874,7 +874,7 @@ class TFPolicy(Policy):
                                               **fetches[LEARNER_STATS_KEY])
         return fetches
 
-    def _get_loss_inputs_dict(self, train_batch, shuffle):
+    def _get_loss_inputs_dict(self, train_batch: SampleBatch, shuffle: bool):
         """Return a feed dict from a batch.
 
         Args:
@@ -884,7 +884,7 @@ class TFPolicy(Policy):
                 applying minibatch SGD after getting the outputs.
 
         Returns:
-            feed dict of data
+            Feed dict of data.
         """
 
         if not isinstance(train_batch,
@@ -904,7 +904,7 @@ class TFPolicy(Policy):
 
         # Mark the batch as "is_training" so the Model can use this
         # information.
-        train_batch["is_training"] = True
+        train_batch.is_training = True
 
         # Build the feed dict from the batch.
         feed_dict = {}
