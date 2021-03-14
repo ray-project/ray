@@ -53,9 +53,6 @@ class SampleBatch(dict):
     # Value function predictions emitted by the behaviour policy.
     VF_PREDS = "vf_preds"
 
-    def __new__(cls, *args, **kwargs):
-        return super(SampleBatch, cls).__new__(cls, *args, **kwargs)
-
     @PublicAPI
     def __init__(self, *args, **kwargs):
         """Constructs a sample batch (same params as dict constructor)."""

@@ -200,7 +200,10 @@ class ModelV2:
                 [BATCH, state_size_i].
         """
 
-        restored = input_dict.copy()
+        # Create a shallow copy to adjust observations:
+        # Original observations will be stored in "obs".
+        # Flattened (preprocessed) obs will be stored in "obs_flat".
+        restored = {k: v for k, v in input_dict.items()}
         restored["obs"] = restore_original_dimensions(
             input_dict["obs"], self.obs_space, self.framework)
         try:

@@ -904,7 +904,7 @@ class TFPolicy(Policy):
 
         # Mark the batch as "is_training" so the Model can use this
         # information.
-        train_batch.is_training = True
+        train_batch["is_training"] = True
 
         # Build the feed dict from the batch.
         feed_dict = {}
