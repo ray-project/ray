@@ -47,7 +47,11 @@ class HEBOSearch(Searcher):
 
     Please note that the first few trials will be random and used
     to kickstart the search process. In order to achieve good results,
-    we recommend setting the number of trials to at least 15.
+    we recommend setting the number of trials to at least 16.
+
+    Maximum number of concurrent trials is determined by `max_concurrent`
+    argument. Trials will be done in batches of `max_concurrent` trials.
+    It is not recommended to use this Searcher in a `ConcurrencyLimiter`.
 
     Args:
         space (dict|hebo.design_space.design_space.DesignSpace):
@@ -69,10 +73,12 @@ class HEBOSearch(Searcher):
             as a list so the optimiser can be told the results without
             needing to re-compute the trial. Must be the same length as
             points_to_evaluate. (See tune/examples/hebo_example.py)
-        random_state_seed (int, None): seed for reproducible
+        random_state_seed (int, None): Seed for reproducible
             results. Defaults to None. Please note that setting this to a value
             will change global random states for `numpy` and `torch`
             on initalization and loading from checkpoint.
+        max_concurrent (int, 8): Number of maximum concurrent trials.
+        **kwargs: The keyword arguments will be passed to `HEBO()``.
 
     Tune automatically converts search spaces to HEBO's format:
 
@@ -118,12 +124,15 @@ class HEBOSearch(Searcher):
             points_to_evaluate: Optional[List[Dict]] = None,
             evaluated_rewards: Optional[List] = None,
             random_state_seed: Optional[int] = None,
+            max_concurrent: int = 8,
             **kwargs):
         assert hebo is not None, (
             "HEBO must be installed!. You can install HEBO with"
             " the command: `pip install HEBO`.")
         if mode:
             assert mode in ["min", "max"], "`mode` must be 'min' or 'max'."
+        assert isinstance(max_concurrent, int) and max_concurrent >= 1, (
+            "`max_concurrent` must be an integer and at least 1.")
         if random_state_seed is not None:
             assert isinstance(
                 random_state_seed, int
@@ -152,6 +161,10 @@ class HEBOSearch(Searcher):
         self._evaluated_rewards = evaluated_rewards
         self._initial_points = []
         self._live_trial_mapping = {}
+
+        self._max_concurrent = max_concurrent
+        self._suggestions_cache = []
+        self._batch_filled = False
 
         self._opt = None
         if space:
@@ -195,7 +208,7 @@ class HEBOSearch(Searcher):
             if self._evaluated_rewards:
                 self._opt.observe(
                     pd.DataFrame(self._points_to_evaluate),
-                    np.array(self._evaluated_rewards))
+                    np.array(self._evaluated_rewards) * self._metric_op)
             else:
                 self._initial_points = self._points_to_evaluate
 
@@ -226,13 +239,25 @@ class HEBOSearch(Searcher):
                     metric=self._metric,
                     mode=self._mode))
 
+        if not self._live_trial_mapping:
+            self._batch_filled = False
+
         if self._initial_points:
             params = self._initial_points.pop(0)
             suggestion = pd.DataFrame(params, index=[0])
         else:
-            suggestion = self._opt.suggest()
-            params = suggestion.iloc[0].to_dict()
+            if self._batch_filled or len(
+                    self._live_trial_mapping) >= self._max_concurrent:
+                return None
+            if not self._suggestions_cache:
+                suggestion = self._opt.suggest(
+                    n_suggestions=self._max_concurrent)
+                self._suggestions_cache = suggestion.to_dict("records")
+            params = self._suggestions_cache.pop(0)
+            suggestion = pd.DataFrame(params, index=[0])
         self._live_trial_mapping[trial_id] = suggestion
+        if len(self._live_trial_mapping) >= self._max_concurrent:
+            self._batch_filled = True
         return unflatten_dict(params)
 
     def on_trial_complete(self,
@@ -262,14 +287,19 @@ class HEBOSearch(Searcher):
             numpy_random_state = None
             torch_random_state = None
         with open(checkpoint_path, "wb") as f:
-            pickle.dump((self._opt, self._points_to_evaluate,
-                         numpy_random_state, torch_random_state), f)
+            pickle.dump((self._opt, self._initial_points, numpy_random_state,
+                         torch_random_state, self._live_trial_mapping,
+                         self._max_concurrent, self._suggestions_cache,
+                         self._space, self._hebo_config, self._batch_filled),
+                        f)
 
     def restore(self, checkpoint_path: str):
         """Restoring current optimizer state."""
         with open(checkpoint_path, "rb") as f:
-            (self._opt, self._points_to_evaluate, numpy_random_state,
-             torch_random_state) = pickle.load(f)
+            (self._opt, self._initial_points, numpy_random_state,
+             torch_random_state, self._live_trial_mapping,
+             self._max_concurrent, self._suggestions_cache, self._space,
+             self._hebo_config, self._batch_filled) = pickle.load(f)
         if numpy_random_state is not None:
             np.random.set_state(numpy_random_state)
         if torch_random_state is not None:

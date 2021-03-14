@@ -32,12 +32,22 @@ class RayServeHandle:
     Example:
        >>> handle = serve_client.get_handle("my_endpoint")
        >>> handle
-       RayServeHandle(endpoint="my_endpoint")
-       >>> await handle.remote(my_request_content)
+       RayServeSyncHandle(endpoint="my_endpoint")
+       >>> handle.remote(my_request_content)
        ObjectRef(...)
-       >>> ray.get(await handle.remote(...))
+       >>> ray.get(handle.remote(...))
        # result
-       >>> ray.get(await handle.remote(let_it_crash_request))
+       >>> ray.get(handle.remote(let_it_crash_request))
+       # raises RayTaskError Exception
+
+       >>> async_handle = serve_client.get_handle("my_endpoint", sync=False)
+       >>> async_handle
+       RayServeHandle(endpoint="my_endpoint")
+       >>> await async_handle.remote(my_request_content)
+       ObjectRef(...)
+       >>> ray.get(await async_handle.remote(...))
+       # result
+       >>> ray.get(await async_handle.remote(let_it_crash_request))
        # raises RayTaskError Exception
     """
 
@@ -51,7 +61,7 @@ class RayServeHandle:
         self.handle_options = handle_options or HandleOptions()
         self.handle_tag = f"{self.endpoint_name}#{get_random_letters()}"
 
-        self.request_counter = metrics.Count(
+        self.request_counter = metrics.Counter(
             "serve_handle_request_counter",
             description=("The number of handle.remote() calls that have been "
                          "made on this handle."),
@@ -105,7 +115,7 @@ class RayServeHandle:
             ``**kwargs``: All keyword arguments will be available in
                 ``request.query_params``.
         """
-        self.request_counter.record(1)
+        self.request_counter.inc()
         return await self.router._remote(
             self.endpoint_name, self.handle_options, request_data, kwargs)
 
@@ -138,7 +148,7 @@ class RayServeSyncHandle(RayServeHandle):
             ``**kwargs``: All keyword arguments will be available in
                 ``request.args``.
         """
-        self.request_counter.record(1)
+        self.request_counter.inc()
         coro = self.router._remote(self.endpoint_name, self.handle_options,
                                    request_data, kwargs)
         future: concurrent.futures.Future = asyncio.run_coroutine_threadsafe(

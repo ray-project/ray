@@ -2,6 +2,7 @@ import functools
 import gym
 import logging
 import numpy as np
+import os
 import time
 import threading
 from typing import Callable, Dict, List, Optional, Tuple, Type, Union
@@ -20,8 +21,8 @@ from ray.rllib.utils.threading import with_lock
 from ray.rllib.utils.torch_ops import convert_to_non_torch_type, \
     convert_to_torch_tensor
 from ray.rllib.utils.tracking_dict import UsageTrackingDict
-from ray.rllib.utils.typing import ModelGradients, ModelWeights, \
-    TensorType, TrainerConfigDict
+from ray.rllib.utils.typing import ModelGradients, ModelWeights, TensorType, \
+    TrainerConfigDict
 
 torch, _ = try_import_torch()
 
@@ -86,7 +87,7 @@ class TorchPolicy(Policy):
                 sampled action and its log-likelihood given Policy, ModelV2,
                 input_dict, explore, timestep, and is_training.
             action_distribution_fn (Optional[Callable[[Policy, ModelV2,
-                Dict[str, TensorType], TensorType, TensorType],
+                ModelInputDict, TensorType, TensorType],
                 Tuple[TensorType, type, List[TensorType]]]]): A callable
                 returning distribution inputs (parameters), a dist-class to
                 generate an action distribution object from, and
@@ -96,7 +97,7 @@ class TorchPolicy(Policy):
                 forward pass through some model.
                 If None, pass inputs through `self.model()` to get distribution
                 inputs.
-                The callable takes as inputs: Policy, ModelV2, input_dict,
+                The callable takes as inputs: Policy, ModelV2, ModelInputDict,
                 explore, timestep, is_training.
             max_seq_len (int): Max sequence length for LSTM training.
             get_batch_divisibility_req (Optional[Callable[[Policy], int]]]):
@@ -232,14 +233,34 @@ class TorchPolicy(Policy):
             self.exploration.before_compute_actions(
                 explore=explore, timestep=timestep)
             if self.action_distribution_fn:
-                dist_inputs, dist_class, state_out = \
-                    self.action_distribution_fn(
-                        self,
-                        self.model,
-                        input_dict[SampleBatch.CUR_OBS],
-                        explore=explore,
-                        timestep=timestep,
-                        is_training=False)
+                # Try new action_distribution_fn signature, supporting
+                # state_batches and seq_lens.
+                try:
+                    dist_inputs, dist_class, state_out = \
+                        self.action_distribution_fn(
+                            self,
+                            self.model,
+                            input_dict=input_dict,
+                            state_batches=state_batches,
+                            seq_lens=seq_lens,
+                            explore=explore,
+                            timestep=timestep,
+                            is_training=False)
+                # Trying the old way (to stay backward compatible).
+                # TODO: Remove in future.
+                except TypeError as e:
+                    if "positional argument" in e.args[0] or \
+                            "unexpected keyword argument" in e.args[0]:
+                        dist_inputs, dist_class, state_out = \
+                            self.action_distribution_fn(
+                                self,
+                                self.model,
+                                input_dict[SampleBatch.CUR_OBS],
+                                explore=explore,
+                                timestep=timestep,
+                                is_training=False)
+                    else:
+                        raise e
             else:
                 dist_class = self.dist_class
                 dist_inputs, state_out = self.model(input_dict, state_batches,
@@ -371,13 +392,17 @@ class TorchPolicy(Policy):
     def compute_gradients(self,
                           postprocessed_batch: SampleBatch) -> ModelGradients:
 
-        pad_batch_to_sequences_of_same_size(
-            postprocessed_batch,
-            max_seq_len=self.max_seq_len,
-            shuffle=False,
-            batch_divisibility_req=self.batch_divisibility_req,
-            view_requirements=self.view_requirements,
-        )
+        if not isinstance(postprocessed_batch, SampleBatch) or \
+                not postprocessed_batch.zero_padded:
+            pad_batch_to_sequences_of_same_size(
+                postprocessed_batch,
+                max_seq_len=self.max_seq_len,
+                shuffle=False,
+                batch_divisibility_req=self.batch_divisibility_req,
+                view_requirements=self.view_requirements,
+            )
+        else:
+            postprocessed_batch["seq_lens"] = postprocessed_batch.seq_lens
 
         # Mark the batch as "is_training" so the Model can use this
         # information.
@@ -598,9 +623,32 @@ class TorchPolicy(Policy):
     @override(Policy)
     @DeveloperAPI
     def export_model(self, export_dir: str) -> None:
-        """TODO(sven): implement for torch.
+        """Exports the Policy's Model to local directory for serving.
+
+        Creates a TorchScript model and saves it.
+
+        Args:
+            export_dir (str): Local writable directory or filename.
         """
-        raise NotImplementedError
+        dummy_inputs = self._lazy_tensor_dict(self._dummy_batch.data)
+        # Provide dummy state inputs if not an RNN (torch cannot jit with
+        # returned empty internal states list).
+        if "state_in_0" not in dummy_inputs:
+            dummy_inputs["state_in_0"] = dummy_inputs["seq_lens"] = np.array(
+                [1.0])
+        state_ins = []
+        i = 0
+        while "state_in_{}".format(i) in dummy_inputs:
+            state_ins.append(dummy_inputs["state_in_{}".format(i)])
+            i += 1
+        seq_lens = dummy_inputs["seq_lens"]
+        dummy_inputs = {k: dummy_inputs[k] for k in dummy_inputs.keys()}
+        traced = torch.jit.trace(self.model,
+                                 (dummy_inputs, state_ins, seq_lens))
+        if not os.path.exists(export_dir):
+            os.makedirs(export_dir)
+        file_name = os.path.join(export_dir, "model.pt")
+        traced.save(file_name)
 
     @override(Policy)
     @DeveloperAPI
@@ -615,11 +663,12 @@ class TorchPolicy(Policy):
         """Imports weights into torch model."""
         return self.model.import_from_h5(import_file)
 
-    def _lazy_tensor_dict(self, postprocessed_batch):
-        train_batch = UsageTrackingDict(postprocessed_batch)
-        train_batch.set_get_interceptor(
+    def _lazy_tensor_dict(self, batch):
+        if not isinstance(batch, UsageTrackingDict):
+            batch = UsageTrackingDict(batch)
+        batch.set_get_interceptor(
             functools.partial(convert_to_torch_tensor, device=self.device))
-        return train_batch
+        return batch
 
     def _lazy_numpy_dict(self, postprocessed_batch):
         train_batch = UsageTrackingDict(postprocessed_batch)

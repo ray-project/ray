@@ -796,18 +796,19 @@ Approach 1: Use the Trainer API and update the environment between calls to ``tr
                 lambda ev: ev.foreach_env(
                     lambda env: env.set_phase(phase)))
 
+    num_gpus = 0
+    num_workers = 2
+
     ray.init()
     tune.run(
         train,
         config={
-            "num_gpus": 0,
-            "num_workers": 2,
+            "num_gpus": num_gpus,
+            "num_workers": num_workers,
         },
-        resources_per_trial={
-            "cpu": 1,
-            "gpu": lambda spec: spec.config.num_gpus,
-            "extra_cpu": lambda spec: spec.config.num_workers,
-        },
+        resources_per_trial=tune.PlacementGroupFactory(
+            [{"CPU": 1}, {"GPU": num_gpus}] + [{"CPU": 1}] * num_workers
+        ),
     )
 
 Approach 2: Use the callbacks API to update the environment on new training results:

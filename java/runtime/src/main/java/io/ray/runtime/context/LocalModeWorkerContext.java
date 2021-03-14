@@ -1,6 +1,7 @@
 package io.ray.runtime.context;
 
 import com.google.common.base.Preconditions;
+import com.google.protobuf.ByteString;
 import io.ray.api.id.ActorId;
 import io.ray.api.id.JobId;
 import io.ray.api.id.TaskId;
@@ -9,6 +10,7 @@ import io.ray.runtime.generated.Common.Address;
 import io.ray.runtime.generated.Common.TaskSpec;
 import io.ray.runtime.generated.Common.TaskType;
 import io.ray.runtime.task.LocalModeTaskSubmitter;
+import java.util.Random;
 
 /** Worker context for local mode. */
 public class LocalModeWorkerContext implements WorkerContext {
@@ -19,6 +21,14 @@ public class LocalModeWorkerContext implements WorkerContext {
 
   public LocalModeWorkerContext(JobId jobId) {
     this.jobId = jobId;
+
+    // Create a dummy driver task with a random task id, so that we can call
+    // `getCurrentTaskId` from a driver.
+    byte[] driverTaskId = new byte[TaskId.LENGTH];
+    new Random().nextBytes(driverTaskId);
+    TaskSpec dummyDriverTask =
+        TaskSpec.newBuilder().setTaskId(ByteString.copyFrom(driverTaskId)).build();
+    currentTask.set(dummyDriverTask);
   }
 
   @Override

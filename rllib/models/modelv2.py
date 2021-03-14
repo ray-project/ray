@@ -218,13 +218,14 @@ class ModelV2:
             raise ValueError(
                 "forward() must return a tuple of (output, state) tensors, "
                 "got {}".format(res))
-        outputs, state = res
+        outputs, state_out = res
 
-        if not isinstance(state, list):
-            raise ValueError("State output is not a list: {}".format(state))
+        if not isinstance(state_out, list):
+            raise ValueError(
+                "State output is not a list: {}".format(state_out))
 
         self._last_output = outputs
-        return outputs, state
+        return outputs, state_out if len(state_out) > 0 else (state or [])
 
     @PublicAPI
     def from_batch(self, train_batch: SampleBatch,
@@ -413,14 +414,13 @@ def restore_original_dimensions(obs: TensorType,
         observation space.
     """
 
-    if tensorlib == "tf":
+    if tensorlib in ["tf", "tfe", "tf2"]:
+        assert tf is not None
         tensorlib = tf
     elif tensorlib == "torch":
         assert torch is not None
         tensorlib = torch
     original_space = getattr(obs_space, "original_space", obs_space)
-    if original_space is obs_space:
-        return obs
     return _unpack_obs(obs, original_space, tensorlib=tensorlib)
 
 
@@ -449,7 +449,12 @@ def _unpack_obs(obs: TensorType, space: gym.Space,
             # Make an attempt to cache the result, if enough space left.
             if len(_cache) < 999:
                 _cache[id(space)] = prep
-        if len(obs.shape) < 2 or obs.shape[-1] != prep.shape[0]:
+        # Already unpacked?
+        if (isinstance(space, gym.spaces.Tuple) and
+                isinstance(obs, (list, tuple))) or \
+                (isinstance(space, gym.spaces.Dict) and isinstance(obs, dict)):
+            return obs
+        elif len(obs.shape) < 2 or obs.shape[-1] != prep.shape[0]:
             raise ValueError(
                 "Expected flattened obs shape of [..., {}], got {}".format(
                     prep.shape[0], obs.shape))
