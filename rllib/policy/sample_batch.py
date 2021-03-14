@@ -69,16 +69,17 @@ class SampleBatch(dict):
                 len(self.seq_lens) > 0:
             self.max_seq_len = max(self.seq_lens)
         self.zero_padded = kwargs.pop("_zero_padded", False)
-        self.is_training = kwargs.pop("is_training", False)
+
+        # Call super constructor. This will make the actual data accessible
+        # by column name (str) via e.g. self["some-col"].
+        dict.__init__(self, *args, **kwargs)
+
+        self.is_training = self.pop("is_training", False)
 
         self.accessed_keys = set()
         self.added_keys = set()
         self.deleted_keys = set()
         self.intercepted_values = {}
-
-        # Call super constructor. This will make the actual data accessible
-        # by column name (str) via e.g. self["some-col"].
-        dict.__init__(self, *args, **kwargs)
 
         self.get_interceptor = None
 
@@ -421,6 +422,15 @@ class SampleBatch(dict):
         Returns:
             TensorType: The data under the given key.
         """
+        # Backward compatibility for when "input-dicts" were used.
+        if key == "is_training":
+            if log_once("SampleBatch['is_training']"):
+                deprecation_warning(
+                    old="SampleBatch['is_training']",
+                    new="SampleBatch.is_training",
+                    error=False)
+            return self.is_training
+
         self.accessed_keys.add(key)
         value = dict.__getitem__(self, key)
         if self.get_interceptor is not None:
@@ -437,6 +447,8 @@ class SampleBatch(dict):
             key (str): The column name to set a value for.
             item (TensorType): The data to insert.
         """
+        # Defend against creating SampleBatch via pickle (no property
+        # `added_keys` and first item is already set).
         if not hasattr(self, "added_keys"):
             dict.__setitem__(self, key, item)
             return
