@@ -53,6 +53,9 @@ class SampleBatch(dict):
     # Value function predictions emitted by the behaviour policy.
     VF_PREDS = "vf_preds"
 
+    def __new__(cls, *args, **kwargs):
+        return super(SampleBatch, cls).__new__(cls, *args, **kwargs)
+
     @PublicAPI
     def __init__(self, *args, **kwargs):
         """Constructs a sample batch (same params as dict constructor)."""
@@ -68,14 +71,15 @@ class SampleBatch(dict):
         self.zero_padded = kwargs.pop("_zero_padded", False)
         self.is_training = kwargs.pop("is_training", False)
 
-        # Call super constructor. This will make the actual data accessible
-        # by column name (str) via e.g. self["some-col"].
-        dict.__init__(self, *args, **kwargs)
-
         self.accessed_keys = set()
         self.added_keys = set()
         self.deleted_keys = set()
         self.intercepted_values = {}
+
+        # Call super constructor. This will make the actual data accessible
+        # by column name (str) via e.g. self["some-col"].
+        dict.__init__(self, *args, **kwargs)
+
         self.get_interceptor = None
 
         lengths = []
@@ -433,6 +437,10 @@ class SampleBatch(dict):
             key (str): The column name to set a value for.
             item (TensorType): The data to insert.
         """
+        if not hasattr(self, "added_keys"):
+            dict.__setitem__(self, key, item)
+            return
+
         if key not in self:
             self.added_keys.add(key)
 
