@@ -242,7 +242,7 @@ python dependencies.  For example, you can simultaneously serve one backend
 that uses legacy Tensorflow 1 and another backend that uses Tensorflow 2.
 
 Currently this is supported using `conda <https://docs.conda.io/en/latest/>`_
-via Ray's built-in `runtime_env` option for actors.
+via Ray's built-in ``runtime_env`` option for actors.
 As with all other actor options, pass these in via ``ray_actor_options`` in
 your call to
 :mod:`client.create_backend <ray.serve.api.Client.create_backend>`.
@@ -262,7 +262,7 @@ Python versions must be the same in both environments.
   If a conda environment is not specified, your backend will be started in the
   same conda environment as the client (the process calling
   :mod:`client.create_backend <ray.serve.api.Client.create_backend>`) by
-  default.
+  default.  This convenience feature is disabled when using :ref:`ray-client`.
 
 The dependencies required in the backend may be different than
 the dependencies installed in the driver program (the one running Serve API
