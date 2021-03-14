@@ -620,7 +620,9 @@ class Policy(metaclass=ABCMeta):
         sample_batch_size = max(self.batch_divisibility_req * 4, 32)
         self._dummy_batch = self._get_dummy_batch_from_view_requirements(
             sample_batch_size)
-        input_dict = self._lazy_tensor_dict(self._dummy_batch)
+        input_dict = self._lazy_tensor_dict(
+            {k: v
+             for k, v in self._dummy_batch.items()})
         actions, state_outs, extra_outs = \
             self.compute_actions_from_input_dict(input_dict, explore=False)
         # Add all extra action outputs to view reqirements (these may be
@@ -630,7 +632,8 @@ class Policy(metaclass=ABCMeta):
             if key not in self.view_requirements:
                 self.view_requirements[key] = \
                     ViewRequirement(space=gym.spaces.Box(
-                        -1.0, 1.0, shape=value.shape[1:], dtype=value.dtype))
+                        -1.0, 1.0, shape=value.shape[1:], dtype=value.dtype),
+                    used_for_compute_actions=False)
         self._dummy_batch.set_get_interceptor(None)
         self.exploration.postprocess_trajectory(self, self._dummy_batch)
         postprocessed_batch = self.postprocess_trajectory(self._dummy_batch)

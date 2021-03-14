@@ -178,15 +178,19 @@ class SampleBatch(dict):
         return SampleBatch(out)
 
     @PublicAPI
-    def copy(self) -> "SampleBatch":
+    def copy(self, shallow: bool = False) -> "SampleBatch":
         """Creates a (deep) copy of this SampleBatch and returns it.
+
+        Args:
+            shallow (bool): Whether the copying should be done shallowly.
 
         Returns:
             SampleBatch: A (deep) copy of this SampleBatch object.
         """
         copy_ = SampleBatch(
             {
-                k: np.array(v, copy=True) if isinstance(v, np.ndarray) else v
+                k: np.array(v, copy=not shallow)
+                if isinstance(v, np.ndarray) else v
                 for (k, v) in self.items()
             },
             _seq_lens=self.seq_lens,

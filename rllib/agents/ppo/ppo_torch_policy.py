@@ -216,10 +216,10 @@ class ValueNetworkMixin:
             # input_dict.
             if config["_use_trajectory_view_api"]:
 
-                def value(**input_dict):
-                    model_out, _ = self.model.from_batch(
-                        convert_to_torch_tensor(input_dict, self.device),
-                        is_training=False)
+                def value(input_dict):
+                    input_dict.is_training = False
+                    input_dict = self._lazy_tensor_dict(input_dict)
+                    model_out, _ = self.model(input_dict)
                     # [0] = remove the batch dim.
                     return self.model.value_function()[0]
 

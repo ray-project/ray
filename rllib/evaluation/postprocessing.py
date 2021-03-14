@@ -122,7 +122,7 @@ def compute_gae_for_sample_batch(
             # Create an input dict according to the Model's requirements.
             input_dict = policy.model.get_input_dict(
                 sample_batch, index="last")
-            last_r = policy._value(**input_dict)
+            last_r = policy._value(input_dict)
         # TODO: (sven) Remove once trajectory view API is all-algo default.
         else:
             next_state = []
