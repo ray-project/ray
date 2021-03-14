@@ -5,6 +5,7 @@ import pytest
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pandas as pd
+import numpy as np
 import os
 
 
@@ -119,6 +120,20 @@ def test_union(ray_start_regular_shared):
     ds = ds1.union(ds2)
     # batch_size 0 means batch_size unknown
     assert ds.batch_size == 0
+
+
+def test_from_modin(ray_start_regular_shared):
+    try:
+        import modin.pandas as pd
+    except ImportError:
+        pytest.mark.skip(reason="Modin is not installed")
+        return
+
+    df = pd.DataFrame(np.random.randint(0, 100,
+                                        size=(2**8, 2**4))).add_prefix("col")
+    ds = ml_data.MLDataset.from_modin(df, 2)
+    # Not guaranteed to maintain order, so sort to ensure equality
+    assert df._to_pandas().sort_index().equals(ds.gather_sync().sort_index())
 
 
 if __name__ == "__main__":
