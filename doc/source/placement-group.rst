@@ -380,7 +380,7 @@ because they are scheduled on a placement group with the STRICT_PACK strategy.
 
         ray.get(parent.options(placement_group=pg).remote())
 
-  To avoid it, you should specify `options(placement_group=None)` in a child task/actor remote call.
+      To avoid it, you should specify `options(placement_group=None)` in a child task/actor remote call.
 
       .. code-block:: python
 
@@ -392,7 +392,7 @@ because they are scheduled on a placement group with the STRICT_PACK strategy.
 
     .. group-tab:: Java
 
-      Not implemented for Java APIs yet.
+      It's not implemented for Java APIs yet.
 
 Note that you can anytime remove the placement group to clean up resources.
 
