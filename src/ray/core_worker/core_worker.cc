@@ -2576,7 +2576,7 @@ void CoreWorker::HandleRunOnUtilWorker(const rpc::RunOnUtilWorkerRequest &reques
     options_.run_on_util_worker_handler(request.request(), args);
     send_reply_callback(Status::OK(), nullptr, nullptr);
   } else {
-    send_reply_callback(Status::NotImplemented("RunOnIOWorker is not supported"), nullptr,
+    send_reply_callback(Status::NotImplemented("RunOnUtilWorker is not supported"), nullptr,
                         nullptr);
   }
 }

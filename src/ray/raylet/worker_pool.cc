@@ -565,11 +565,11 @@ void WorkerPool::PopRestoreWorker(
   PopIOWorkerInternal(rpc::WorkerType::RESTORE_WORKER, callback);
 }
 
-void WorkerPool::PushIOWorker(const std::shared_ptr<WorkerInterface> &worker) {
-  PushIOWorkerInternal(worker, rpc::WorkerType::GENERAL_IO_WORKER);
+void WorkerPool::PushUtilWorker(const std::shared_ptr<WorkerInterface> &worker) {
+  PushIOWorkerInternal(worker, rpc::WorkerType::UTIL_WORKER);
 }
 
-void WorkerPool::PopIOWorker(
+void WorkerPool::PopUtilWorker(
     std::function<void(std::shared_ptr<WorkerInterface>)> callback) {
   PopIOWorkerInternal(rpc::WorkerType::RESTORE_WORKER, callback);
 }
@@ -954,7 +954,7 @@ inline WorkerPool::State &WorkerPool::GetStateForLanguage(const Language &langua
 inline bool WorkerPool::IsIOWorkerType(const rpc::WorkerType &worker_type) {
   return worker_type == rpc::WorkerType::SPILL_WORKER ||
          worker_type == rpc::WorkerType::RESTORE_WORKER ||
-         worker_type == rpc::WorkerType::GENERAL_IO_WORKER;
+         worker_type == rpc::WorkerType::UTIL_WORKER;
 }
 
 std::vector<std::shared_ptr<WorkerInterface>> WorkerPool::GetWorkersRunningTasksForJob(
@@ -1054,7 +1054,7 @@ bool WorkerPool::HasPendingWorkerForTask(const Language &language,
 void WorkerPool::TryStartIOWorkers(const Language &language) {
   TryStartIOWorkers(language, rpc::WorkerType::RESTORE_WORKER);
   TryStartIOWorkers(language, rpc::WorkerType::SPILL_WORKER);
-  TryStartIOWorkers(language, rpc::WorkerType::GENERAL_IO_WORKER);
+  TryStartIOWorkers(language, rpc::WorkerType::UTIL_WORKER);
 }
 
 void WorkerPool::TryStartIOWorkers(const Language &language,

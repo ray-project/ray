@@ -1219,16 +1219,16 @@ void NodeManager::DeleteLocalURI(const std::string &uri, std::function<void(bool
   std::string to_path_str = to_path.string();
   // We put actual deleting job in a worker is because deleting big file
   // will block the thread for a while.
-  worker_pool_.PopIOWorker(
+  worker_pool_.PopUtilWorker(
       [this, to_path_str, cb](std::shared_ptr<WorkerInterface> io_worker) {
-        rpc::RunOnIOWorkerRequest req;
+        rpc::RunOnUtilWorkerRequest req;
         // TODO(yic): Move this to another file to make it formal
         req.set_request("DEL_FILE");
         *req.add_args() = to_path_str;
-        io_worker->rpc_client()->RunOnIOWorker(
+        io_worker->rpc_client()->RunOnUtilWorker(
             req, [this, io_worker, cb](const ray::Status &status,
-                                       const rpc::RunOnIOWorkerReply &) {
-              worker_pool_.PushIOWorker(io_worker);
+                                       const rpc::RunOnUtilWorkerReply &) {
+              worker_pool_.PushUtilWorker(io_worker);
               if (!status.ok()) {
                 RAY_LOG(ERROR) << "Failed to execute job in io_worker " << status;
               }

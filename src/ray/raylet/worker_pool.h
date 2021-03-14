@@ -257,8 +257,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// and pop them out.
   void PopDeleteWorker(std::function<void(std::shared_ptr<WorkerInterface>)> callback);
 
-  void PushIOWorker(const std::shared_ptr<WorkerInterface> &worker);
-  void PopIOWorker(std::function<void(std::shared_ptr<WorkerInterface>)> callback);
+  void PushUtilWorker(const std::shared_ptr<WorkerInterface> &worker);
+  void PopUtilWorker(std::function<void(std::shared_ptr<WorkerInterface>)> callback);
 
   /// Add an idle worker to the pool.
   ///

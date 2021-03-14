@@ -919,8 +919,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                      rpc::SendReplyCallback send_reply_callback) override;
 
   // Run request on an python-based IO worker
-  void HandleRunOnIOWorker(const rpc::RunOnIOWorkerRequest &request,
-                           rpc::RunOnIOWorkerReply *reply,
+  void HandleRunOnUtilWorker(const rpc::RunOnUtilWorkerRequest &request,
+                           rpc::RunOnUtilWorkerReply *reply,
                            rpc::SendReplyCallback send_reply_callback) override;
 
   // Spill objects to external storage.

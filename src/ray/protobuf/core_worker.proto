@@ -385,12 +385,12 @@ message ExitReply {
 }
 
 
-message RunOnIOWorkerRequest {
+message RunOnUtilWorkerRequest {
   string request = 1;
   repeated string args = 2;
 }
 
-message RunOnIOWorkerReply {
+message RunOnUtilWorkerReply {
 }
 
 service CoreWorkerService {
@@ -445,8 +445,8 @@ service CoreWorkerService {
   // Notification from raylet that an object ID is available in local plasma.
   rpc PlasmaObjectReady(PlasmaObjectReadyRequest) returns (PlasmaObjectReadyReply);
   // Run a request on io worker
-  rpc RunOnIOWorker(RunOnIOWorkerRequest)
-      returns (RunOnIOWorkerReply);
+  rpc RunOnUtilWorker(RunOnUtilWorkerRequest)
+      returns (RunOnUtilWorkerReply);
   // Request for a worker to exit.
   rpc Exit(ExitRequest) returns (ExitReply);
 }
