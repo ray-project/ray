@@ -400,7 +400,7 @@ def timeslice_along_seq_lens_with_overlap(
             i = 0
             key = "state_in_{}".format(i)
             while key in data:
-                data[key] = np.zeros_like(sample_batch.data[key][0:1])
+                data[key] = np.zeros_like(sample_batch[key][0:1])
                 del data["state_out_{}".format(i)]
                 i += 1
                 key = "state_in_{}".format(i)
@@ -410,8 +410,8 @@ def timeslice_along_seq_lens_with_overlap(
             i = 0
             key = "state_in_{}".format(i)
             while key in data:
-                data[key] = sample_batch.data["state_out_{}".format(i)][
-                    begin - 1:begin]
+                data[key] = sample_batch["state_out_{}".format(i)][begin -
+                                                                   1:begin]
                 del data["state_out_{}".format(i)]
                 i += 1
                 key = "state_in_{}".format(i)

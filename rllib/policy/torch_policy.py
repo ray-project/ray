@@ -161,10 +161,10 @@ class TorchPolicy(Policy):
 
         with torch.no_grad():
             seq_lens = torch.ones(len(obs_batch), dtype=torch.int32)
-            input_dict = self._lazy_tensor_dict({
-                SampleBatch.CUR_OBS: np.asarray(obs_batch),
-                "is_training": False,
-            })
+            input_dict = self._lazy_tensor_dict(
+                SampleBatch({
+                    SampleBatch.CUR_OBS: np.asarray(obs_batch),
+                }))
             if prev_action_batch is not None:
                 input_dict[SampleBatch.PREV_ACTIONS] = \
                     np.asarray(prev_action_batch)
@@ -662,9 +662,7 @@ class TorchPolicy(Policy):
         """Imports weights into torch model."""
         return self.model.import_from_h5(import_file)
 
-    def _lazy_tensor_dict(self, postprocessed_batch):
-        if not isinstance(postprocessed_batch, SampleBatch):
-            postprocessed_batch = SampleBatch(postprocessed_batch)
+    def _lazy_tensor_dict(self, postprocessed_batch: SampleBatch):
         postprocessed_batch.set_get_interceptor(
             functools.partial(convert_to_torch_tensor, device=self.device))
         return postprocessed_batch

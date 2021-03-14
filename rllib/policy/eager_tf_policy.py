@@ -731,7 +731,9 @@ def build_eager_tf_policy(
                 })
             return fetches
 
-        def _lazy_tensor_dict(self, postprocessed_batch):
+        def _lazy_tensor_dict(self, postprocessed_batch: SampleBatch):
+            if not isinstance(postprocessed_batch, SampleBatch):
+                postprocessed_batch = SampleBatch(postprocessed_batch)
             postprocessed_batch.set_get_interceptor(_convert_to_tf)
             return postprocessed_batch
 

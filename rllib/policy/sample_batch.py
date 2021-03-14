@@ -4,8 +4,10 @@ import sys
 import itertools
 from typing import Dict, List, Set, Union
 
+from ray.util import log_once
 from ray.rllib.utils.annotations import PublicAPI, DeveloperAPI
 from ray.rllib.utils.compression import pack, unpack, is_compressed
+from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.memory import concat_aligned
 from ray.rllib.utils.typing import PolicyID, TensorType
 
@@ -64,8 +66,10 @@ class SampleBatch(dict):
                 len(self.seq_lens) > 0:
             self.max_seq_len = max(self.seq_lens)
         self.zero_padded = kwargs.pop("_zero_padded", False)
+        self.is_training = kwargs.pop("is_training", False)
 
-        # The actual data, accessible by column name (str).
+        # Call super constructor. This will make the actual data accessible
+        # by column name (str) via e.g. self["some-col"].
         dict.__init__(self, *args, **kwargs)
 
         self.accessed_keys = set()
@@ -487,74 +491,8 @@ class SampleBatch(dict):
     def set_get_interceptor(self, fn):
         self.get_interceptor = fn
 
-    """# Experimental method.
-    @DeveloperAPI
-    def get_single_timestep_input_dict(
-            self,
-            view_requirements: ViewRequirementsDict,
-            index: Union[int, str] = "last") -> ModelInputDict:
-        ""Creates single ts input-dict at given index from a SampleBatch.
-
-        Args:
-            view_requirements (ViewRequirementsDict): The view requirements
-                according to which to build the single-timestep input_dict.
-            index (Union[int, str]): An integer index value indicating the
-                position in the trajectory for which to generate the
-                compute_actions input dict. Set to "last" to generate the dict
-                at the very end of the trajectory (e.g. for value estimation).
-                Note that "last" is different from -1, as "last" will use the
-                final NEXT_OBS as observation input.
-
-        Returns:
-            ModelInputDict: The (single-timestep) input dict for ModelV2 calls.
-        ""
-        last_mappings = {
-            SampleBatch.OBS: SampleBatch.NEXT_OBS,
-            SampleBatch.PREV_ACTIONS: SampleBatch.ACTIONS,
-            SampleBatch.PREV_REWARDS: SampleBatch.REWARDS,
-        }
-
-        input_dict = {}
-        for view_col, view_req in view_requirements.items():
-            # Create batches of size 1 (single-agent input-dict).
-            data_col = view_req.data_col or view_col
-            if index == "last":
-                data_col = last_mappings.get(data_col, data_col)
-                if view_req.shift_from is not None:
-                    data = self.data[view_col][-1]
-                    traj_len = len(self.data[data_col])
-                    missing_at_end = traj_len % view_req.batch_repeat_value
-                    input_dict[view_col] = np.array([
-                        np.concatenate([
-                            data, self.data[data_col][-missing_at_end:]
-                        ])[view_req.shift_from:view_req.shift_to +
-                           1 if view_req.shift_to != -1 else None]
-                    ])
-                else:
-                    data = self.data[data_col][-1]
-                    input_dict[view_col] = np.array([data])
-            else:
-                # Index range.
-                if isinstance(index, tuple):
-                    data = self.data[data_col][index[0]:index[1] +
-                                               1 if index[1] != -1 else None]
-                    input_dict[view_col] = np.array([data])
-                # Single index.
-                else:
-                    input_dict[view_col] = self.data[data_col][
-                        index:index + 1 if index != -1 else None]
-
-        # Add valid `seq_lens`, just in case RNNs need it.
-        input_dict["seq_lens"] = np.array([1], dtype=np.int32)
-
-        return input_dict
-    """
-
-    def __str__(self):
-        return "SampleBatch({})".format(str(self))
-
     def __repr__(self):
-        return "SampleBatch({})".format(str(self))
+        return "SampleBatch({})".format(list(self.keys()))
 
     def _get_slice_indices(self, slice_size):
         i = 0
@@ -581,6 +519,14 @@ class SampleBatch(dict):
                 slices.append((i, i + slice_size))
                 i += slice_size
         return slices
+
+    # TODO: deprecate
+    @property
+    def data(self):
+        if log_once("SampleBatch.data"):
+            deprecation_warning(
+                old="SampleBatch.data[..]", new="SampleBatch[..]", error=False)
+        return self
 
 
 @PublicAPI
