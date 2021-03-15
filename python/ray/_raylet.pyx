@@ -1655,6 +1655,8 @@ cdef class CoreWorker:
 
     def get_job_config(self):
         cdef CJobConfig c_job_config
+        # We can cache the deserialized job config object here because
+        # the job config will not change after a job is submitted.
         if self.job_config is None:
             c_job_config = CCoreWorkerProcess.GetCoreWorker().GetJobConfig()
             self.job_config = ray.gcs_utils.JobConfig()
