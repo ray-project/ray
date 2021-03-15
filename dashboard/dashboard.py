@@ -88,9 +88,8 @@ class Dashboard:
 
         # Setup Dashboard Routes
         try:
-            pass
-            # build_dir = setup_static_dir()
-            # logger.info("Setup static dir for dashboard: %s", build_dir)
+            build_dir = setup_static_dir()
+            logger.info("Setup static dir for dashboard: %s", build_dir)
         except FrontendNotFoundError as ex:
             # Not to raise FrontendNotFoundError due to NPM incompatibilities
             # with Windows.
