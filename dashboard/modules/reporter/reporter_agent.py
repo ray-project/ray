@@ -346,18 +346,19 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
                     tags={"node_type": node_type}))
 
             pending_nodes = cluster_stats["autoscaler_report"]["pending_nodes"]
-            pending_nodes_dict = {}
-            for node_ip, node_type in pending_nodes:
-                if node_type in pending_nodes_dict:
-                    pending_nodes_dict[node_type] += 1
-                else:
-                    pending_nodes_dict[node_type] = 1
+            logger.info("~~~~ pending nodes" + str(pending_nodes))
+            # pending_nodes_dict = {}
+            # for node_ip, node_type in pending_nodes:
+            #     if node_type in pending_nodes_dict:
+            #         pending_nodes_dict[node_type] += 1
+            #     else:
+            #         pending_nodes_dict[node_type] = 1
             
-            for node_type, pending_node_count in pending_nodes_dict.items():
-                records_reported.extend(Record(
-                    gauge=METRICS_GAUGES["cluster_pending_nodes"],
-                    value=pending_nodes,
-                    tags={"node_type": node_type}))
+            # for node_type, pending_node_count in pending_nodes_dict.items():
+            #     records_reported.extend(Record(
+            #         gauge=METRICS_GAUGES["cluster_pending_nodes"],
+            #         value=pending_nodes,
+            #         tags={"node_type": node_type}))
 
         # -- CPU per node --
         cpu_usage = float(stats["cpu"])
