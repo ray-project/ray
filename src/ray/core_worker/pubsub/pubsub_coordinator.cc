@@ -25,8 +25,9 @@ void SubscriptionIndex::AddEntry(const ObjectID &object_id, const NodeID &subscr
 
 const absl::flat_hash_set<NodeID> &SubscriptionIndex::GetSubscriberIdsByObjectId(
     const ObjectID &object_id) {
-  RAY_CHECK(objects_to_subscribers_.count(object_id) > 0);
-  return objects_to_subscribers_[object_id];
+  auto it = objects_to_subscribers_.find(object_id);
+  RAY_CHECK(it != objects_to_subscribers_.end());
+  return it->second;
 }
 
 bool SubscriptionIndex::IsObjectIdExist(const ObjectID &object_id) const {
@@ -65,33 +66,57 @@ int SubscriptionIndex::EraseSubscriber(const NodeID &subscriber_id) {
 
 int SubscriptionIndex::EraseEntry(const ObjectID &object_id,
                                   const NodeID &subscriber_id) {
-  auto objects_it = subscribers_to_objects_.find(subscriber_id);
-  if (objects_it == subscribers_to_objects_.end()) {
+  // Erase from subscribers_to_objects_;
+  auto subscribers_to_objects_it = subscribers_to_objects_.find(subscriber_id);
+  if (subscribers_to_objects_it == subscribers_to_objects_.end()) {
     return 0;
   }
+  auto &objects = subscribers_to_objects_it->second;
+  auto object_it = objects.find(object_id);
+  if (object_it == objects.end()) {
+    RAY_CHECK(objects_to_subscribers_.count(object_id) == 0);
+    return 0;
+  }
+  objects.erase(object_it);
+  if (objects.size() == 0) {
+    subscribers_to_objects_.erase(subscribers_to_objects_it);
+  }
 
-  objects_it->second.erase(object_id);
-  auto subscribers_it = objects_to_subscribers_.find(object_id);
-  RAY_CHECK(subscribers_it != objects_to_subscribers_.end());
-  objects_to_subscribers_.erase(subscribers_it);
+  // Erase from objects_to_subscribers_.
+  auto objects_to_subscribers_it = objects_to_subscribers_.find(object_id);
+  // If code reaches this line, that means the object id was in the index.
+  RAY_CHECK(objects_to_subscribers_it != objects_to_subscribers_.end());
+  auto &subscribers = objects_to_subscribers_it->second;
+  auto subscriber_it = subscribers.find(subscriber_id);
+  // If code reaches this line, that means the subscriber id was in the index.
+  RAY_CHECK(subscriber_it != subscribers.end());
+  subscribers.erase(subscriber_it);
+  if (subscribers.size() == 0) {
+    objects_to_subscribers_.erase(objects_to_subscribers_it);
+  }
   return 1;
 }
 
-bool Subscriber::Connect(LongPollConnectCallback &long_polling_reply_callback) {
-  if (!long_polling_reply_callback_) {
+bool Subscriber::Connect(LongPollConnectCallback long_polling_reply_callback) {
+  if (long_polling_reply_callback_ == nullptr) {
     long_polling_reply_callback_ = long_polling_reply_callback;
     return true;
   }
   return false;
 }
 
-void Subscriber::QueueMessage(const ObjectID &object_id) {
+void Subscriber::QueueMessage(const ObjectID &object_id, bool try_publish) {
   mailbox_.push_back(object_id);
-  PublishIfPossible();
+  if (try_publish) {
+    PublishIfPossible();
+  }
 }
 
-bool Subscriber::PublishIfPossible() {
-  if (long_polling_reply_callback_ && mailbox_.size() > 0) {
+bool Subscriber::PublishIfPossible(bool force) {
+  if (long_polling_reply_callback_ == nullptr) {
+    return false;
+  }
+  if (force || mailbox_.size() > 0) {
     long_polling_reply_callback_(mailbox_);
     long_polling_reply_callback_ = nullptr;
     mailbox_.clear();
@@ -102,10 +127,14 @@ bool Subscriber::PublishIfPossible() {
 
 void PubsubCoordinator::Connect(const NodeID &subscriber_node_id,
                                 LongPollConnectCallback long_poll_connect_callback) {
+  absl::MutexLock lock(&mutex_);
   RAY_LOG(DEBUG) << "Long polling connection is initiated by " << subscriber_node_id;
   RAY_CHECK(long_poll_connect_callback != nullptr);
 
   if (is_node_dead_(subscriber_node_id)) {
+    std::vector<ObjectID> empty_ids;
+    // Reply to the request so that it is properly GC'ed.
+    long_poll_connect_callback(empty_ids);
     return;
   }
 
@@ -116,12 +145,13 @@ void PubsubCoordinator::Connect(const NodeID &subscriber_node_id,
 
   // Since the long polling connection is synchronous between the client and coordinator,
   // when it connects, the connection shouldn't have existed.
-  RAY_CHECK(subscriber->Connect(long_poll_connect_callback));
+  RAY_CHECK(subscriber->Connect(std::move(long_poll_connect_callback)));
   subscriber->PublishIfPossible();
 }
 
 void PubsubCoordinator::RegisterSubscription(const NodeID &subscriber_node_id,
                                              const ObjectID &object_id) {
+  absl::MutexLock lock(&mutex_);
   RAY_LOG(DEBUG) << "object id " << object_id << " is subscribed by "
                  << subscriber_node_id;
   if (is_node_dead_(subscriber_node_id)) {
@@ -135,29 +165,34 @@ void PubsubCoordinator::RegisterSubscription(const NodeID &subscriber_node_id,
 }
 
 void PubsubCoordinator::Publish(const ObjectID &object_id) {
+  absl::MutexLock lock(&mutex_);
   for (const auto &subscriber_id :
        subscription_index_.GetSubscriberIdsByObjectId(object_id)) {
-    RAY_CHECK(subscribers_.count(subscriber_id) > 0);
-    auto subscriber = subscribers_[subscriber_id];
+    auto it = subscribers_.find(subscriber_id);
+    RAY_CHECK(it != subscribers_.end());
+    auto subscriber = it->second;
     subscriber->QueueMessage(object_id);
   }
 }
 
-void PubsubCoordinator::UnregisterSubscriber(const NodeID &subscriber_node_id) {
-  subscription_index_.EraseSubscriber(subscriber_node_id);
+int PubsubCoordinator::UnregisterSubscriber(const NodeID &subscriber_node_id) {
+  absl::MutexLock lock(&mutex_);
+  int erased = subscription_index_.EraseSubscriber(subscriber_node_id);
   // Publish messages before removing the entry. Otherwise, it can have memory leak.
   auto it = subscribers_.find(subscriber_node_id);
   if (it == subscribers_.end()) {
-    return;
+    return erased;
   }
-  auto subscriber = subscribers_[subscriber_node_id];
-  subscriber->PublishIfPossible();
+  auto subscriber = it->second;
+  subscriber->PublishIfPossible(/*force=*/true);
   subscribers_.erase(it);
+  return erased;
 }
 
-void PubsubCoordinator::UnregisterSubscription(const NodeID &subscriber_node_id,
-                                               const ObjectID &object_id) {
-  subscription_index_.EraseEntry(object_id, subscriber_node_id);
+int PubsubCoordinator::UnregisterSubscription(const NodeID &subscriber_node_id,
+                                              const ObjectID &object_id) {
+  absl::MutexLock lock(&mutex_);
+  return subscription_index_.EraseEntry(object_id, subscriber_node_id);
 }
 
 }  // namespace ray

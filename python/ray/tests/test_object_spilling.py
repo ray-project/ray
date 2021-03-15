@@ -316,7 +316,7 @@ def test_spill_objects_automatically(object_spilling_config, shutdown_only):
 
 
 @pytest.mark.skipif(
-    platform.system() in ["Windows", "Darwin"], reason="Failing on Windows.")
+    platform.system() in ["Windows"], reason="Failing on Windows.")
 def test_spill_stats(object_spilling_config, shutdown_only):
     # Limit our object store to 75 MiB of memory.
     object_spilling_config, _ = object_spilling_config
@@ -463,7 +463,7 @@ def test_delete_objects(object_spilling_config, shutdown_only):
 
 
 @pytest.mark.skipif(
-    platform.system() in ["Windows", "Darwin"], reason="Failing on Windows.")
+    platform.system() in ["Windows"], reason="Failing on Windows.")
 def test_delete_objects_delete_while_creating(object_spilling_config,
                                               shutdown_only):
     # Limit our object store to 75 MiB of memory.
@@ -504,7 +504,7 @@ def test_delete_objects_delete_while_creating(object_spilling_config,
 
 
 @pytest.mark.skipif(
-    platform.system() in ["Windows", "Darwin"], reason="Failing on Windows.")
+    platform.system() in ["Windows"], reason="Failing on Windows.")
 def test_delete_objects_on_worker_failure(object_spilling_config,
                                           shutdown_only):
     # Limit our object store to 75 MiB of memory.
@@ -566,8 +566,7 @@ def test_delete_objects_on_worker_failure(object_spilling_config,
 
 
 @pytest.mark.skipif(
-    platform.system() in ["Windows", "Darwin"],
-    reason="Failing on Windows and MacOS.")
+    platform.system() in ["Windows"], reason="Failing on Windows.")
 def test_delete_objects_multi_node(multi_node_object_spilling_config,
                                    ray_start_cluster):
     # Limit our object store to 75 MiB of memory.

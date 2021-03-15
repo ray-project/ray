@@ -1,6 +1,8 @@
 # coding: utf-8
 import logging
 import os
+import platform
+import random
 import signal
 import sys
 
@@ -9,6 +11,7 @@ import numpy as np
 import pytest
 
 import ray
+from ray.internal.internal_api import memory_summary
 import ray._private.cluster_utils
 from ray.test_utils import SignalActor, put_object, wait_for_condition
 
@@ -336,6 +339,185 @@ def test_borrowed_id_failure(one_worker_100MiB, failure):
     _fill_object_store_and_get(obj_bytes, succeed=not failure)
     # The borrower should not hang when trying to get the object's value.
     ray.get(borrower.resolve_ref.remote())
+
+
+@pytest.mark.skipif(
+    platform.system() in ["Windows"], reason="Failing on Windows.")
+def test_object_unpin(ray_start_cluster):
+    nodes = []
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=0, object_store_memory=100 * 1024 * 1024)
+    ray.init(address=cluster.address)
+
+    # Add worker nodes.
+    for i in range(2):
+        nodes.append(
+            cluster.add_node(
+                num_cpus=1,
+                resources={f"node_{i}": 1},
+                object_store_memory=100 * 1024 * 1024))
+    cluster.wait_for_nodes()
+
+    one_mb_array = np.ones(1 * 1024 * 1024, dtype=np.uint8)
+    ten_mb_array = np.ones(10 * 1024 * 1024, dtype=np.uint8)
+
+    @ray.remote
+    class ObjectsHolder:
+        def __init__(self):
+            self.ten_mb_objs = []
+            self.one_mb_objs = []
+
+        def put_10_mb(self):
+            self.ten_mb_objs.append(ray.put(ten_mb_array))
+
+        def put_1_mb(self):
+            self.one_mb_objs.append(ray.put(one_mb_array))
+
+        def pop_10_mb(self):
+            if len(self.ten_mb_objs) == 0:
+                return False
+            self.ten_mb_objs.pop()
+            return True
+
+        def pop_1_mb(self):
+            if len(self.one_mb_objs) == 0:
+                return False
+            self.one_mb_objs.pop()
+            return True
+
+    # Head node contains 11MB of data.
+    one_mb_arrays = []
+    ten_mb_arrays = []
+
+    one_mb_arrays.append(ray.put(one_mb_array))
+    ten_mb_arrays.append(ray.put(ten_mb_array))
+
+    def check_memory(mb):
+        return ((f"Plasma memory usage {mb} "
+                 "MiB" in memory_summary(stats_only=True)))
+
+    wait_for_condition(lambda: check_memory(11))
+
+    # Pop one mb array and see if it works.
+    one_mb_arrays.pop()
+    wait_for_condition(lambda: check_memory(10))
+
+    # Pop 10 MB.
+    ten_mb_arrays.pop()
+    wait_for_condition(lambda: check_memory(0))
+
+    # Put 11 MB for each actor.
+    # actor 1: 1MB + 10MB
+    # actor 2: 1MB + 10MB
+    actor_on_node_1 = ObjectsHolder.options(resources={"node_0": 1}).remote()
+    actor_on_node_2 = ObjectsHolder.options(resources={"node_1": 1}).remote()
+    ray.get(actor_on_node_1.put_1_mb.remote())
+    ray.get(actor_on_node_1.put_10_mb.remote())
+    ray.get(actor_on_node_2.put_1_mb.remote())
+    ray.get(actor_on_node_2.put_10_mb.remote())
+    wait_for_condition(lambda: check_memory(22))
+
+    # actor 1: 10MB
+    # actor 2: 1MB
+    ray.get(actor_on_node_1.pop_1_mb.remote())
+    ray.get(actor_on_node_2.pop_10_mb.remote())
+    wait_for_condition(lambda: check_memory(11))
+
+    # The second node is dead, and the actor 2 is dead.
+    cluster.remove_node(nodes[1], allow_graceful=False)
+    wait_for_condition(lambda: check_memory(10))
+
+    # The first actor is dead, so object should be GC'ed.
+    ray.kill(actor_on_node_1)
+    wait_for_condition(lambda: check_memory(0))
+
+
+@pytest.mark.skipif(
+    platform.system() in ["Windows"], reason="Failing on Windows.")
+def test_object_unpin_stress(ray_start_cluster):
+    nodes = []
+    cluster = ray_start_cluster
+    cluster.add_node(
+        num_cpus=1,
+        resources={"head": 1},
+        object_store_memory=1000 * 1024 * 1024)
+    ray.init(address=cluster.address)
+
+    # Add worker nodes.
+    for i in range(2):
+        nodes.append(
+            cluster.add_node(
+                num_cpus=1,
+                resources={f"node_{i}": 1},
+                object_store_memory=1000 * 1024 * 1024))
+    cluster.wait_for_nodes()
+
+    one_mb_array = np.ones(1 * 1024 * 1024, dtype=np.uint8)
+    ten_mb_array = np.ones(10 * 1024 * 1024, dtype=np.uint8)
+
+    @ray.remote
+    class ObjectsHolder:
+        def __init__(self):
+            self.ten_mb_objs = []
+            self.one_mb_objs = []
+
+        def put_10_mb(self):
+            self.ten_mb_objs.append(ray.put(ten_mb_array))
+
+        def put_1_mb(self):
+            self.one_mb_objs.append(ray.put(one_mb_array))
+
+        def pop_10_mb(self):
+            if len(self.ten_mb_objs) == 0:
+                return False
+            self.ten_mb_objs.pop()
+            return True
+
+        def pop_1_mb(self):
+            if len(self.one_mb_objs) == 0:
+                return False
+            self.one_mb_objs.pop()
+            return True
+
+        def get_obj_size(self):
+            return len(self.ten_mb_objs) * 10 + len(self.one_mb_objs)
+
+    actor_on_node_1 = ObjectsHolder.options(resources={"node_0": 1}).remote()
+    actor_on_node_2 = ObjectsHolder.options(resources={"node_1": 1}).remote()
+    actor_on_head_node = ObjectsHolder.options(resources={"head": 1}).remote()
+
+    ray.get(actor_on_node_1.get_obj_size.remote())
+    ray.get(actor_on_node_2.get_obj_size.remote())
+    ray.get(actor_on_head_node.get_obj_size.remote())
+
+    def random_ops(actors):
+        r = random.random()
+        for actor in actors:
+            if r <= .25:
+                actor.put_10_mb.remote()
+            elif r <= .5:
+                actor.put_1_mb.remote()
+            elif r <= .75:
+                actor.pop_10_mb.remote()
+            else:
+                actor.pop_1_mb.remote()
+
+    total_iter = 15
+    for _ in range(total_iter):
+        random_ops([actor_on_node_1, actor_on_node_2, actor_on_head_node])
+
+    # Simulate node dead.
+    cluster.remove_node(nodes[1])
+    for _ in range(total_iter):
+        random_ops([actor_on_node_1, actor_on_head_node])
+
+    total_size = sum([
+        ray.get(actor_on_node_1.get_obj_size.remote()),
+        ray.get(actor_on_head_node.get_obj_size.remote())
+    ])
+
+    wait_for_condition(lambda: ((f"Plasma memory usage {total_size}"
+                                 " MiB") in memory_summary(stats_only=True)))
 
 
 if __name__ == "__main__":

@@ -33,18 +33,19 @@ class PubsubCoordinatorTest : public ::testing::Test {
         [this](const NodeID &node_id) { return dead_nodes_.count(node_id) == 1; }));
   }
 
+  void TearDown() { subscribers_map_.clear(); }
+
   void RegisterDeadNode(const NodeID &node_id) { dead_nodes_.emplace(node_id); }
 
   std::unordered_set<NodeID> dead_nodes_;
   std::shared_ptr<PubsubCoordinator> pubsub_coordinator_;
+  std::unordered_map<ObjectID, std::unordered_set<NodeID>> subscribers_map_;
 };
 
 TEST_F(PubsubCoordinatorTest, TestSubscriptionIndexSingeNodeSingleObject) {
-  std::unordred_map<ObjectID, std::unordered_set<NodeID>> subscribers_map;
-
   auto node_id = NodeID::FromRandom();
   auto oid = ObjectID::FromRandom();
-  auto &subscribers = subscribers_map[oid];
+  auto &subscribers = subscribers_map_[oid];
   subscribers.emplace(node_id);
 
   ///
@@ -54,8 +55,7 @@ TEST_F(PubsubCoordinatorTest, TestSubscriptionIndexSingeNodeSingleObject) {
   SubscriptionIndex subscription_index;
   subscription_index.AddEntry(oid, node_id);
   const auto &subscribers_from_index = subscription_index.GetSubscriberIdsByObjectId(oid);
-  for (const auto &it : subscribers) {
-    const auto node_id = *it;
+  for (const auto &node_id : subscribers) {
     ASSERT_TRUE(subscribers_from_index.count(node_id) > 0);
   }
 }
@@ -65,17 +65,18 @@ TEST_F(PubsubCoordinatorTest, TestSubscriptionIndexMultiNodeSingleObject) {
   /// Test single object id & multi nodes
   ///
   /// oid1 -> [nid1~nid5]
-  auto oid = ObjectID::FromRandom();
-  auto &subscribers = subscribers_map[oid];
+  SubscriptionIndex subscription_index;
+  const auto oid = ObjectID::FromRandom();
+  std::unordered_set<NodeID> empty_set;
+  subscribers_map_.emplace(oid, empty_set);
 
   for (int i = 0; i < 5; i++) {
-    node_id = NodeID::FromRandom();
-    subscribers.emplace(node_id);
+    auto node_id = NodeID::FromRandom();
+    subscribers_map_.at(oid).emplace(node_id);
     subscription_index.AddEntry(oid, node_id);
   }
   const auto &subscribers_from_index = subscription_index.GetSubscriberIdsByObjectId(oid);
-  for (const auto &it : subscribers) {
-    const auto node_id = *it;
+  for (const auto &node_id : subscribers_map_.at(oid)) {
     ASSERT_TRUE(subscribers_from_index.count(node_id) > 0);
   }
 
@@ -84,24 +85,24 @@ TEST_F(PubsubCoordinatorTest, TestSubscriptionIndexMultiNodeSingleObject) {
   ///
   /// oid1 -> [nid1~nid5]
   /// oid2 -> [nid1~nid5]
-  auto oid2 = ObjectID::FromRandom()
-  subscribers = object_ids_map[oid2];
+  const auto oid2 = ObjectID::FromRandom();
+  subscribers_map_.emplace(oid2, empty_set);
   for (int i = 0; i < 5; i++) {
-    node_id = NodeID::FromRandom();
-    subscribers.emplace(node_id);
+    auto node_id = NodeID::FromRandom();
+    subscribers_map_.at(oid2).emplace(node_id);
     subscription_index.AddEntry(oid2, node_id);
   }
-  const auto &subscribers_from_index3 = subscription_index.GetSubscriberIdsByObjectId(oid2);
-  for (const auto &it : subscribers) {
-    const auto node_id = *it;
-    ASSERT_TRUE(subscribers_from_index3.count(node_id) > 0);
+  const auto &subscribers_from_index2 =
+      subscription_index.GetSubscriberIdsByObjectId(oid2);
+  for (const auto &node_id : subscribers_map_.at(oid2)) {
+    ASSERT_TRUE(subscribers_from_index2.count(node_id) > 0);
   }
+
   // Make sure oid1 entries are not corrupted.
-  const auto &subscribers_from_index4 = subscription_index.GetSubscriberIdsByObjectId(oid);
-  subscribers = object_ids_map[oid];
-  for (const auto &it : subscribers) {
-    const auto node_id = *it;
-    ASSERT_TRUE(subscribers_from_index4.count(node_id) > 0);
+  const auto &subscribers_from_index3 =
+      subscription_index.GetSubscriberIdsByObjectId(oid);
+  for (const auto &node_id : subscribers_map_.at(oid)) {
+    ASSERT_TRUE(subscribers_from_index3.count(node_id) > 0);
   }
 }
 
@@ -111,61 +112,43 @@ TEST_F(PubsubCoordinatorTest, TestSubscriptionIndexErase) {
   ///
   /// oid1 -> [nid1~nid5]
   /// oid2 -> [nid1~nid5]
+  SubscriptionIndex subscription_index;
+  int total_entries = 6;
+  int entries_to_delete_at_each_time = 3;
   auto oid = ObjectID::FromRandom();
-  auto &subscribers = subscribers_map[oid];
+  std::unordered_set<NodeID> empty_set;
+  subscribers_map_.emplace(oid, empty_set);
 
   // Add entries.
-  for (int i = 0; i < 6; i++) {
-    node_id = NodeID::FromRandom();
-    subscribers.emplace(node_id);
+  for (int i = 0; i < total_entries; i++) {
+    auto node_id = NodeID::FromRandom();
+    subscribers_map_.at(oid).emplace(node_id);
     subscription_index.AddEntry(oid, node_id);
   }
-  auto oid2 = ObjectID::FromRandom()
-  subscribers = object_ids_map[oid2];
-  for (int i = 0; i < 6; i++) {
-    node_id = NodeID::FromRandom();
-    subscribers.emplace(node_id);
-    subscription_index.AddEntry(oid2, node_id);
-  }
 
-  // Verify.
-  subscribers = object_ids_map[oid];
-  std::vector<NodeID> subscribers_to_delete;
+  // Verify that the first 3 entries are deleted properly.
   int i = 0;
-  int entries_to_delete = 3;
-  for (auto it : subscribers) {
-    if (i == entries_to_delete) {
+  auto &oid_subscribers = subscribers_map_[oid];
+  for (auto it = oid_subscribers.begin(); it != oid_subscribers.end();) {
+    if (i == entries_to_delete_at_each_time) {
       break;
     }
-    subscribers_to_delete.push_back(*it);
+    auto current = it++;
+    auto node_id = *current;
+    oid_subscribers.erase(current);
+    ASSERT_EQ(subscription_index.EraseEntry(oid, node_id), 1);
     i++;
   }
-  for (auto it : subscribers_to_delete) {
-    auto &node_id = *it;
-    subscribers.erase(node_id);
-    subscription_index.EraseEntry(oid, node_id);
-  }
-  // Verify.
   const auto &subscribers_from_index = subscription_index.GetSubscriberIdsByObjectId(oid);
-  subscribers = object_ids_map[oid];
-  for (const auto &it : subscribers) {
-    const auto node_id = *it;
+  for (const auto &node_id : subscribers_map_.at(oid)) {
     ASSERT_TRUE(subscribers_from_index.count(node_id) > 0);
   }
 
   // Delete all entries and make sure the oid is removed from the index.
-  int i = 0;
-  int entries_to_delete = 3;
-  for (auto it : subscribers) {
-    if (i == entries_to_delete) {
-      break;
-    }
-    subscribers_to_delete.push_back(*it);
-    i++;
-  }
-  for (auto it : subscribers_to_delete) {
-    auto &node_id = *it;
-    subscribers.erase(node_id);
+  for (auto it = oid_subscribers.begin(); it != oid_subscribers.end();) {
+    auto current = it++;
+    auto node_id = *current;
+    oid_subscribers.erase(current);
     subscription_index.EraseEntry(oid, node_id);
   }
   ASSERT_FALSE(subscription_index.IsObjectIdExist(oid));
@@ -175,41 +158,47 @@ TEST_F(PubsubCoordinatorTest, TestSubscriptionIndexEraseSubscriber) {
   ///
   /// Test erase subscriber.
   ///
+  SubscriptionIndex subscription_index;
   auto oid = ObjectID::FromRandom();
-  auto &subscribers = subscribers_map[oid];
-  std::vector<NodeID> nodes_ids;
+  auto &subscribers = subscribers_map_[oid];
+  std::vector<NodeID> node_ids;
 
   // Add entries.
   for (int i = 0; i < 6; i++) {
-    node_id = NodeID::FromRandom();
-    nodes_ids.emplace(node_id);
+    auto node_id = NodeID::FromRandom();
+    node_ids.push_back(node_id);
     subscribers.emplace(node_id);
     subscription_index.AddEntry(oid, node_id);
   }
-  subscription_index.EraseSubscriber(nodes_ids[0]);
-  ASSERT_FALSE(subscription_index.IsSubscriberExist(nodes_ids[0]));
+  subscription_index.EraseSubscriber(node_ids[0]);
+  ASSERT_FALSE(subscription_index.IsSubscriberExist(node_ids[0]));
   const auto &subscribers_from_index = subscription_index.GetSubscriberIdsByObjectId(oid);
   ASSERT_TRUE(subscribers_from_index.count(node_ids[0]) == 0);
 }
 
 TEST_F(PubsubCoordinatorTest, TestSubscriber) {
-  std::vector<ObjectID> object_ids_published;
-  auto reply = [&object_ids_published](std::vector<ObjectID> &object_ids) {
-    object_ids_published.insert(object_ids_published.end(), object_ids.begin(), object_ids.end());
-  }
+  std::unordered_set<ObjectID> object_ids_published;
+  LongPollConnectCallback reply =
+      [&object_ids_published](std::vector<ObjectID> &object_ids) {
+        for (auto &oid : object_ids) {
+          object_ids_published.emplace(oid);
+        }
+      };
 
   Subscriber subscriber;
   // If there's no connection, it will return false.
   ASSERT_FALSE(subscriber.PublishIfPossible());
+  // Try connecting it. Should return true.
   ASSERT_TRUE(subscriber.Connect(reply));
+  // If connecting it again, it should fail the request.
   ASSERT_FALSE(subscriber.Connect(reply));
   // Since there's no published objects, it should return false.
   ASSERT_FALSE(subscriber.PublishIfPossible());
 
-  unordered_map<ObjectID> published_objects;
+  std::unordered_set<ObjectID> published_objects;
   // Make sure publishing one object works as expected.
   auto oid = ObjectID::FromRandom();
-  subscriber.QueueMessage(oid);
+  subscriber.QueueMessage(oid, /*try_publish=*/false);
   published_objects.emplace(oid);
   ASSERT_TRUE(subscriber.PublishIfPossible());
   ASSERT_TRUE(object_ids_published.count(oid) > 0);
@@ -219,15 +208,14 @@ TEST_F(PubsubCoordinatorTest, TestSubscriber) {
   // Add 3 oids and see if it works properly.
   for (int i = 0; i < 3; i++) {
     oid = ObjectID::FromRandom();
-    subscriber.QueueMessage(oid);
+    subscriber.QueueMessage(oid, /*try_publish=*/false);
     published_objects.emplace(oid);
   }
   // Since there's no connection, objects won't be published.
   ASSERT_FALSE(subscriber.PublishIfPossible());
   ASSERT_TRUE(subscriber.Connect(reply));
   ASSERT_TRUE(subscriber.PublishIfPossible());
-  for (auto it : published_objects) {
-    oid = *it;
+  for (auto oid : published_objects) {
     ASSERT_TRUE(object_ids_published.count(oid) > 0);
   }
 }
@@ -245,19 +233,262 @@ TEST_F(PubsubCoordinatorTest, TestBasicSingleSubscriber) {
   pubsub_coordinator_->Connect(subscriber_node_id, long_polling_connect);
   pubsub_coordinator_->RegisterSubscription(subscriber_node_id, oid);
   pubsub_coordinator_->Publish(oid);
-  RAY_LOG(ERROR) << "abc";
   ASSERT_EQ(batched_ids[0], oid);
 }
 
-// No connection after registration.
-// Multi object subscription from a single node.
-// Single object subscription from multi nodes.
-// Multi object subscription from multi nodes.
-// Node failure from multi nodes.
-// Node failure when connection initiated.
-// Node failure when not connected.
+TEST_F(PubsubCoordinatorTest, TestNoConnectionWhenRegistered) {
+  std::vector<ObjectID> batched_ids;
+  auto long_polling_connect = [&batched_ids](std::vector<ObjectID> &object_ids) {
+    auto it = batched_ids.begin();
+    batched_ids.insert(it, object_ids.begin(), object_ids.end());
+  };
+
+  const auto subscriber_node_id = NodeID::FromRandom();
+  const auto oid = ObjectID::FromRandom();
+
+  pubsub_coordinator_->RegisterSubscription(subscriber_node_id, oid);
+  pubsub_coordinator_->Publish(oid);
+  // Nothing has been published because there's no connection.
+  ASSERT_EQ(batched_ids.size(), 0);
+  pubsub_coordinator_->Connect(subscriber_node_id, long_polling_connect);
+  // When the connection is coming, it should be published.
+  ASSERT_EQ(batched_ids[0], oid);
+}
+
+TEST_F(PubsubCoordinatorTest, TestMultiObjectsFromSingleNode) {
+  std::vector<ObjectID> batched_ids;
+  auto long_polling_connect = [&batched_ids](std::vector<ObjectID> &object_ids) {
+    auto it = batched_ids.begin();
+    batched_ids.insert(it, object_ids.begin(), object_ids.end());
+  };
+
+  const auto subscriber_node_id = NodeID::FromRandom();
+  std::vector<ObjectID> oids;
+  int num_oids = 5;
+  for (int i = 0; i < num_oids; i++) {
+    const auto oid = ObjectID::FromRandom();
+    oids.push_back(oid);
+    pubsub_coordinator_->RegisterSubscription(subscriber_node_id, oid);
+    pubsub_coordinator_->Publish(oid);
+  }
+  ASSERT_EQ(batched_ids.size(), 0);
+
+  // Now connection is initiated, and all oids are published.
+  pubsub_coordinator_->Connect(subscriber_node_id, long_polling_connect);
+  for (int i = 0; i < num_oids; i++) {
+    const auto oid_test = oids[i];
+    const auto published_oid = batched_ids[i];
+    ASSERT_EQ(oid_test, published_oid);
+  }
+}
+
+TEST_F(PubsubCoordinatorTest, TestMultiObjectsFromMultiNodes) {
+  std::vector<ObjectID> batched_ids;
+  auto long_polling_connect = [&batched_ids](std::vector<ObjectID> &object_ids) {
+    auto it = batched_ids.end();
+    batched_ids.insert(it, object_ids.begin(), object_ids.end());
+  };
+
+  std::vector<NodeID> subscribers;
+  std::vector<ObjectID> oids;
+  int num_nodes = 5;
+  for (int i = 0; i < num_nodes; i++) {
+    oids.push_back(ObjectID::FromRandom());
+    subscribers.push_back(NodeID::FromRandom());
+  }
+
+  // There will be one object per node.
+  for (int i = 0; i < num_nodes; i++) {
+    const auto oid = oids[i];
+    const auto subscriber_node_id = subscribers[i];
+    pubsub_coordinator_->RegisterSubscription(subscriber_node_id, oid);
+    pubsub_coordinator_->Publish(oid);
+  }
+  ASSERT_EQ(batched_ids.size(), 0);
+
+  // Check all of nodes are publishing objects properly.
+  for (int i = 0; i < num_nodes; i++) {
+    const auto subscriber_node_id = subscribers[i];
+    pubsub_coordinator_->Connect(subscriber_node_id, long_polling_connect);
+    const auto oid_test = oids[i];
+    const auto published_oid = batched_ids[i];
+    ASSERT_EQ(oid_test, published_oid);
+  }
+}
+
+TEST_F(PubsubCoordinatorTest, TestBatch) {
+  // Test if published objects are batched properly.
+  std::vector<ObjectID> batched_ids;
+  auto long_polling_connect = [&batched_ids](std::vector<ObjectID> &object_ids) {
+    auto it = batched_ids.begin();
+    batched_ids.insert(it, object_ids.begin(), object_ids.end());
+  };
+
+  const auto subscriber_node_id = NodeID::FromRandom();
+  std::vector<ObjectID> oids;
+  int num_oids = 5;
+  for (int i = 0; i < num_oids; i++) {
+    const auto oid = ObjectID::FromRandom();
+    oids.push_back(oid);
+    pubsub_coordinator_->RegisterSubscription(subscriber_node_id, oid);
+    pubsub_coordinator_->Publish(oid);
+  }
+  ASSERT_EQ(batched_ids.size(), 0);
+
+  // Now connection is initiated, and all oids are published.
+  pubsub_coordinator_->Connect(subscriber_node_id, long_polling_connect);
+  for (int i = 0; i < num_oids; i++) {
+    const auto oid_test = oids[i];
+    const auto published_oid = batched_ids[i];
+    ASSERT_EQ(oid_test, published_oid);
+  }
+
+  batched_ids.clear();
+  oids.clear();
+
+  for (int i = 0; i < num_oids; i++) {
+    const auto oid = ObjectID::FromRandom();
+    oids.push_back(oid);
+    pubsub_coordinator_->RegisterSubscription(subscriber_node_id, oid);
+    pubsub_coordinator_->Publish(oid);
+  }
+  pubsub_coordinator_->Connect(subscriber_node_id, long_polling_connect);
+  for (int i = 0; i < num_oids; i++) {
+    const auto oid_test = oids[i];
+    const auto published_oid = batched_ids[i];
+    ASSERT_EQ(oid_test, published_oid);
+  }
+}
+
+TEST_F(PubsubCoordinatorTest, TestNodeFailureWhenConnectionExisted) {
+  bool long_polling_connection_replied = false;
+  auto long_polling_connect =
+      [&long_polling_connection_replied](std::vector<ObjectID> &object_ids) {
+        long_polling_connection_replied = true;
+      };
+
+  const auto subscriber_node_id = NodeID::FromRandom();
+  const auto oid = ObjectID::FromRandom();
+  pubsub_coordinator_->Connect(subscriber_node_id, long_polling_connect);
+  dead_nodes_.emplace(subscriber_node_id);
+  // All these ops should be no-op.
+  pubsub_coordinator_->RegisterSubscription(subscriber_node_id, oid);
+  // Note if the Publish function is called here, it will cause check failure. Application
+  // code must ensure publish won't be called without registration.
+  ASSERT_EQ(long_polling_connection_replied, false);
+
+  // Connection should be replied (removed) when the subscriber is unregistered.
+  int erased = pubsub_coordinator_->UnregisterSubscriber(subscriber_node_id);
+  ASSERT_EQ(erased, 0);
+  ASSERT_EQ(long_polling_connection_replied, true);
+}
+
+TEST_F(PubsubCoordinatorTest, TestNodeFailureWhenConnectionDoesntExist) {
+  bool long_polling_connection_replied = false;
+  auto long_polling_connect =
+      [&long_polling_connection_replied](std::vector<ObjectID> &object_ids) {
+        long_polling_connection_replied = true;
+      };
+
+  ///
+  /// Test the case where there was a registration, but no connection.
+  ///
+  auto subscriber_node_id = NodeID::FromRandom();
+  auto oid = ObjectID::FromRandom();
+  pubsub_coordinator_->RegisterSubscription(subscriber_node_id, oid);
+  pubsub_coordinator_->Publish(oid);
+
+  // Node is dead before connection is made.
+  dead_nodes_.emplace(subscriber_node_id);
+  ASSERT_EQ(long_polling_connection_replied, false);
+
+  // Connect should reply right away to avoid memory leak.
+  pubsub_coordinator_->Connect(subscriber_node_id, long_polling_connect);
+  ASSERT_EQ(long_polling_connection_replied, true);
+  long_polling_connection_replied = false;
+
+  // Connection should be replied (removed) when the subscriber is unregistered.
+  auto erased = pubsub_coordinator_->UnregisterSubscriber(subscriber_node_id);
+  // Since there was no connection, long polling shouldn't have been replied.
+  ASSERT_EQ(long_polling_connection_replied, false);
+  ASSERT_EQ(erased, 1);
+
+  ///
+  /// Test the case where there was a connection, but no registration.
+  ///
+  subscriber_node_id = NodeID::FromRandom();
+  oid = ObjectID::FromRandom();
+  pubsub_coordinator_->Connect(subscriber_node_id, long_polling_connect);
+  dead_nodes_.emplace(subscriber_node_id);
+  erased = pubsub_coordinator_->UnregisterSubscriber(subscriber_node_id);
+  ASSERT_EQ(long_polling_connection_replied, true);
+  // Since there was no registration, nothing was erased.
+  ASSERT_EQ(erased, 0);
+}
+
 // Unregistration an entry.
+TEST_F(PubsubCoordinatorTest, TestUnregisterSubscription) {
+  bool long_polling_connection_replied = false;
+  auto long_polling_connect =
+      [&long_polling_connection_replied](std::vector<ObjectID> &object_ids) {
+        long_polling_connection_replied = true;
+      };
+
+  const auto subscriber_node_id = NodeID::FromRandom();
+  const auto oid = ObjectID::FromRandom();
+  pubsub_coordinator_->Connect(subscriber_node_id, long_polling_connect);
+  pubsub_coordinator_->RegisterSubscription(subscriber_node_id, oid);
+  ASSERT_EQ(long_polling_connection_replied, false);
+
+  // Connection should be replied (removed) when the subscriber is unregistered.
+  int erased = pubsub_coordinator_->UnregisterSubscription(subscriber_node_id, oid);
+  ASSERT_EQ(erased, 1);
+  ASSERT_EQ(long_polling_connection_replied, false);
+
+  // Make sure when the entries don't exist, it doesn't delete anything.
+  ASSERT_EQ(pubsub_coordinator_->UnregisterSubscription(subscriber_node_id,
+                                                        ObjectID::FromRandom()),
+            0);
+  ASSERT_EQ(pubsub_coordinator_->UnregisterSubscription(NodeID::FromRandom(), oid), 0);
+  ASSERT_EQ(pubsub_coordinator_->UnregisterSubscription(NodeID::FromRandom(),
+                                                        ObjectID::FromRandom()),
+            0);
+  ASSERT_EQ(long_polling_connection_replied, false);
+}
+
 // Unregistration a subscriber.
+TEST_F(PubsubCoordinatorTest, TestUnregisterSubscriber) {
+  bool long_polling_connection_replied = false;
+  auto long_polling_connect =
+      [&long_polling_connection_replied](std::vector<ObjectID> &object_ids) {
+        long_polling_connection_replied = true;
+      };
+
+  // Test basic.
+  const auto subscriber_node_id = NodeID::FromRandom();
+  const auto oid = ObjectID::FromRandom();
+  pubsub_coordinator_->Connect(subscriber_node_id, long_polling_connect);
+  pubsub_coordinator_->RegisterSubscription(subscriber_node_id, oid);
+  ASSERT_EQ(long_polling_connection_replied, false);
+  int erased = pubsub_coordinator_->UnregisterSubscriber(subscriber_node_id);
+  ASSERT_EQ(erased, 1);
+  // Make sure the long polling request is replied to avoid memory leak.
+  ASSERT_EQ(long_polling_connection_replied, true);
+
+  // Test when registration wasn't done.
+  long_polling_connection_replied = false;
+  pubsub_coordinator_->Connect(subscriber_node_id, long_polling_connect);
+  erased = pubsub_coordinator_->UnregisterSubscriber(subscriber_node_id);
+  ASSERT_EQ(erased, 0);
+  ASSERT_EQ(long_polling_connection_replied, true);
+
+  // Test when connect wasn't done.
+  long_polling_connection_replied = false;
+  pubsub_coordinator_->RegisterSubscription(subscriber_node_id, oid);
+  erased = pubsub_coordinator_->UnregisterSubscriber(subscriber_node_id);
+  ASSERT_EQ(erased, 1);
+  ASSERT_EQ(long_polling_connection_replied, false);
+}
 
 }  // namespace ray
 

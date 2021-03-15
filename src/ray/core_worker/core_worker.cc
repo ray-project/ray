@@ -2323,7 +2323,7 @@ void CoreWorker::HandleWaitForObjectEviction(
       NodeID::FromBinary(request.subscriber_address().raylet_id());
   // Send a response to trigger unpinning the object when it is no longer in scope.
   auto respond = [this, subscriber_node_id](const ObjectID &object_id) {
-    RAY_LOG(DEBUG) << "Publish object info: " << object_id;
+    RAY_LOG(ERROR) << "Object id: " << object_id << " is deleted. Unpinning the object.";
     pubsub_coordinator_->Publish(object_id);
     pubsub_coordinator_->UnregisterSubscription(subscriber_node_id, object_id);
   };
@@ -2346,14 +2346,22 @@ void CoreWorker::HandleWaitForObjectEviction(
 void CoreWorker::HandlePubsubLongPolling(const rpc::PubsubLongPollingRequest &request,
                                          rpc::PubsubLongPollingReply *reply,
                                          rpc::SendReplyCallback send_reply_callback) {
-  auto reply_callback = [reply, send_reply_callback](std::vector<ObjectID> &object_ids) {
-    for (const auto &object_id : object_ids) {
-      reply->add_object_ids(object_id.Binary());
-    }
-    send_reply_callback(Status::OK(), nullptr, nullptr);
-  };
-  pubsub_coordinator_->Connect(
-      NodeID::FromBinary(request.subscriber_address().raylet_id()), reply_callback);
+  const auto subscriber_id = NodeID::FromBinary(request.subscriber_address().raylet_id());
+  auto long_polling_reply_callback =
+      [subscriber_id, reply = std::move(reply),
+       send_reply_callback =
+           std::move(send_reply_callback)](std::vector<ObjectID> &object_ids) {
+        RAY_LOG(DEBUG) << "Long polling replied to " << subscriber_id;
+        // TODO(sang): The max grpc message size is 100 MB, meaning this operation can
+        // fail if the number of batched objects are more than 50K. Though it is very
+        // rare, we should probably handle it.
+        for (const auto &object_id : object_ids) {
+          reply->add_object_ids(object_id.Binary());
+        }
+        send_reply_callback(Status::OK(), nullptr, nullptr);
+      };
+  RAY_LOG(DEBUG) << "Get long polling request from a node: " << subscriber_id;
+  pubsub_coordinator_->Connect(subscriber_id, std::move(long_polling_reply_callback));
 }
 
 void CoreWorker::HandleAddObjectLocationOwner(

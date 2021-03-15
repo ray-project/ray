@@ -30,7 +30,8 @@ class SubscriptionIndex {
   ~SubscriptionIndex() = default;
 
   void AddEntry(const ObjectID &object_id, const NodeID &subscriber_id);
-  const absl::flat_hash_set<NodeID> &GetSubscriberIdsByObjectId(const ObjectID &object_id);
+  const absl::flat_hash_set<NodeID> &GetSubscriberIdsByObjectId(
+      const ObjectID &object_id);
   int EraseSubscriber(const NodeID &subscriber_id);
   int EraseEntry(const ObjectID &object_id, const NodeID &subscriber_id);
   // Test only.
@@ -48,9 +49,9 @@ class Subscriber {
   explicit Subscriber() {}
   ~Subscriber() = default;
 
-  bool Connect(LongPollConnectCallback &long_polling_reply_callback);
-  void QueueMessage(const ObjectID &object_id);
-  bool PublishIfPossible();
+  bool Connect(LongPollConnectCallback long_polling_reply_callback);
+  void QueueMessage(const ObjectID &object_id, bool try_publish = true);
+  bool PublishIfPossible(bool force = false);
 
  private:
   LongPollConnectCallback long_polling_reply_callback_ = nullptr;
@@ -70,9 +71,8 @@ class PubsubCoordinator {
                LongPollConnectCallback long_poll_connect_callback);
   void RegisterSubscription(const NodeID &subscriber_node_id, const ObjectID &object_id);
   void Publish(const ObjectID &object_id);
-  void UnregisterSubscriber(const NodeID &subscriber_node_id);
-  void UnregisterSubscription(const NodeID &subscriber_node_id,
-                              const ObjectID &object_id);
+  int UnregisterSubscriber(const NodeID &subscriber_node_id);
+  int UnregisterSubscription(const NodeID &subscriber_node_id, const ObjectID &object_id);
 
  private:
   ///
@@ -80,11 +80,12 @@ class PubsubCoordinator {
   ///
 
   /// Protects below fields.
-  mutable absl::Mutex mu_;
+  mutable absl::Mutex mutex_;
   std::function<bool(const NodeID &)> is_node_dead_;
 
-  absl::flat_hash_map<NodeID, std::shared_ptr<Subscriber>> subscribers_;
-  SubscriptionIndex subscription_index_;
+  absl::flat_hash_map<NodeID, std::shared_ptr<Subscriber>> subscribers_
+      GUARDED_BY(mutex_);
+  SubscriptionIndex subscription_index_ GUARDED_BY(mutex_);
 };
 
 }  // namespace ray
