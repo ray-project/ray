@@ -262,7 +262,9 @@ Python versions must be the same in both environments.
   If a conda environment is not specified, your backend will be started in the
   same conda environment as the client (the process calling
   :mod:`client.create_backend <ray.serve.api.Client.create_backend>`) by
-  default.  This convenience feature is disabled when using :ref:`ray-client`.
+  default.  (When using :ref:`ray-client`, your backend will be started in the
+  conda environment that the Serve controller is running in, which by default is the
+  conda environment the remote Ray cluster was started in.)
 
 The dependencies required in the backend may be different than
 the dependencies installed in the driver program (the one running Serve API
