@@ -357,6 +357,7 @@ class SampleBatch(dict):
                 {k: v[start:end]
                  for k, v in self.items()},
                 _seq_lens=None,
+                _is_training=self.is_training,
                 _time_major=self.time_major)
 
     @PublicAPI

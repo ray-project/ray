@@ -450,14 +450,28 @@ class TorchPolicy(Policy):
         else:
             postprocessed_batch["seq_lens"] = postprocessed_batch.seq_lens
 
-        from torch.nn.parallel.scatter_gather import scatter_kwargs
-        n = scatter_kwargs(None, postprocessed_batch, self.device_shards)
+        #from torch.nn.parallel.scatter_gather import scatter_kwargs
+        #n = scatter_kwargs(None, postprocessed_batch, self.device_shards)
 
         # Mark the batch as "is_training" so the Model can use this
         # information.
         postprocessed_batch.is_training = True
-        train_batch = self._lazy_tensor_dict(postprocessed_batch)
 
+        # Multi-GPU case: Slice inputs into n equal batches.
+        len_ = len(postprocessed_batch)
+        batches = []
+        start = 0
+        for i, device in enumerate(self.device_shards):
+            shard_len = len_ // (len(self.device_shards) - i)
+            batch = self._lazy_tensor_dict(
+                postprocessed_batch.slice(start, start + shard_len),
+                device=device)
+            batches.append(batch)
+            len_ -= shard_len
+            start += shard_len
+
+        #train_batch = self._lazy_tensor_dict(postprocessed_batch)
+        TODO: continue
         # Calculate the actual policy loss.
         loss_out = force_list(
             self._loss(self, self.model, self.dist_class, train_batch))
@@ -712,12 +726,12 @@ class TorchPolicy(Policy):
         """Imports weights into torch model."""
         return self.model.import_from_h5(import_file)
 
-    def _lazy_tensor_dict(self, postprocessed_batch: SampleBatch):
+    def _lazy_tensor_dict(self, postprocessed_batch: SampleBatch, device=None):
         # TODO: (sven): Keep for a while to ensure backward compatibility.
         if not isinstance(postprocessed_batch, SampleBatch):
             postprocessed_batch = SampleBatch(postprocessed_batch)
         postprocessed_batch.set_get_interceptor(
-            functools.partial(convert_to_torch_tensor, device=self.device))
+            functools.partial(convert_to_torch_tensor, device=device or self.device))
         return postprocessed_batch
 
 
@@ -775,3 +789,45 @@ class EntropyCoeffSchedule:
         super(EntropyCoeffSchedule, self).on_global_var_update(global_vars)
         self.entropy_coeff = self.entropy_coeff_schedule.value(
             global_vars["timestep"])
+
+
+def parallel_apply(models, sample_batches, devices):
+    assert len(models) == len(sample_batches)
+    assert len(models) == len(devices)
+    devices = list(map(lambda x: _get_device_index(x, True), devices))
+    lock = threading.Lock()
+    results = {}
+    grad_enabled = torch.is_grad_enabled()
+
+    def _worker(i, model, sample_batch, device=None):
+        torch.set_grad_enabled(grad_enabled)
+        try:
+            with torch.cuda.device(device):
+                output = model(sample_batch)
+            with lock:
+                results[i] = output
+        except Exception:
+            with lock:
+                results[i] = ExceptionWrapper(
+                    where="in replica {} on device {}".format(i, device))
+
+    if len(modules) > 1:
+        threads = [threading.Thread(target=_worker,
+                                    args=(i, model, sample_batch, device))
+                   for i, (model, sample_batch, device) in
+                   enumerate(zip(models, sample_batches, devices))]
+
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+    else:
+        _worker(0, modules[0], sample_batches[0], devices[0])
+
+    outputs = []
+    for i in range(len(sample_batches)):
+        output = results[i]
+        if isinstance(output, ExceptionWrapper):
+            output.reraise()
+        outputs.append(output)
+    return outputs
