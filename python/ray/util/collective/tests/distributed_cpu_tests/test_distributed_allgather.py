@@ -16,7 +16,7 @@ from ray.util.collective.tests.cpu_util import create_collective_workers, \
                          [2, 2**5, 2**10, 2**15, 2**20, [2, 2], [5, 5, 5]])
 def test_allgather_different_array_size(ray_start_distributed_2_nodes,
                                         array_size, tensor_backend, backend):
-    world_size = 4
+    world_size = 8
     actors, _ = create_collective_workers(world_size, backend=backend)
     init_tensors_for_gather_scatter(
         actors, array_size=array_size, tensor_backend=tensor_backend)
@@ -36,7 +36,7 @@ def test_allgather_different_array_size(ray_start_distributed_2_nodes,
                          [np.uint8, np.float16, np.float32, np.float64])
 def test_allgather_different_dtype(ray_start_distributed_2_nodes, dtype,
                                    backend):
-    world_size = 4
+    world_size = 8
     actors, _ = create_collective_workers(world_size, backend=backend)
     init_tensors_for_gather_scatter(actors, dtype=dtype)
     results = ray.get([a.do_allgather.remote() for a in actors])
@@ -49,7 +49,7 @@ def test_allgather_different_dtype(ray_start_distributed_2_nodes, dtype,
 @pytest.mark.parametrize("length", [0, 1, 3, 4, 7, 8])
 def test_unmatched_tensor_list_length(ray_start_distributed_2_nodes, length,
                                       backend):
-    world_size = 4
+    world_size = 8
     actors, _ = create_collective_workers(world_size, backend=backend)
     list_buffer = [np.ones(10, dtype=np.float32) for _ in range(length)]
     ray.wait(
@@ -64,7 +64,7 @@ def test_unmatched_tensor_list_length(ray_start_distributed_2_nodes, length,
 @pytest.mark.parametrize("backend", [Backend.GLOO])
 @pytest.mark.parametrize("shape", [10, 20, [4, 5], [1, 3, 5, 7]])
 def test_unmatched_tensor_shape(ray_start_distributed_2_nodes, shape, backend):
-    world_size = 4
+    world_size = 8
     actors, _ = create_collective_workers(world_size, backend=backend)
     init_tensors_for_gather_scatter(actors, array_size=10)
     list_buffer = [np.ones(shape, dtype=np.float32) for _ in range(world_size)]
@@ -78,7 +78,7 @@ def test_unmatched_tensor_shape(ray_start_distributed_2_nodes, shape, backend):
 
 @pytest.mark.parametrize("backend", [Backend.GLOO])
 def test_allgather_torch_numpy(ray_start_distributed_2_nodes, backend):
-    world_size = 4
+    world_size = 8
     shape = [10, 10]
     actors, _ = create_collective_workers(world_size, backend=backend)
 

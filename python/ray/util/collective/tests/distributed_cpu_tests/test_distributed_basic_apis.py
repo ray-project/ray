@@ -37,7 +37,7 @@ def test_init_multiple_groups(ray_start_distributed_2_nodes, world_size,
 
 
 @pytest.mark.parametrize("backend", [Backend.GLOO])
-@pytest.mark.parametrize("world_size", [2, 3, 4])
+@pytest.mark.parametrize("world_size", [5, 6, 7, 8])
 def test_get_rank(ray_start_distributed_2_nodes, world_size, backend):
     actors, _ = create_collective_workers(world_size, backend=backend)
     actor0_rank = ray.get(actors[0].report_rank.remote())
@@ -62,7 +62,7 @@ def test_get_rank(ray_start_distributed_2_nodes, world_size, backend):
 
 
 @pytest.mark.parametrize("backend", [Backend.GLOO])
-@pytest.mark.parametrize("world_size", [2, 3, 4])
+@pytest.mark.parametrize("world_size", [5, 6, 7, 8])
 def test_get_world_size(ray_start_distributed_2_nodes, world_size, backend):
     actors, _ = create_collective_workers(world_size, backend=backend)
     actor0_world_size = ray.get(actors[0].report_world_size.remote())
@@ -71,20 +71,8 @@ def test_get_world_size(ray_start_distributed_2_nodes, world_size, backend):
 
 
 @pytest.mark.parametrize("backend", [Backend.GLOO])
-def test_availability(ray_start_distributed_2_nodes, backend):
-    world_size = 4
-    actors, _ = create_collective_workers(world_size, backend=backend)
-    actor0_nccl_availability = ray.get(
-        actors[0].report_nccl_availability.remote())
-    assert actor0_nccl_availability
-    actor0_gloo_availability = ray.get(
-        actors[0].report_gloo_availability.remote())
-    assert actor0_gloo_availability
-
-
-@pytest.mark.parametrize("backend", [Backend.GLOO])
 def test_is_group_initialized(ray_start_distributed_2_nodes, backend):
-    world_size = 4
+    world_size = 8
     actors, _ = create_collective_workers(world_size, backend=backend)
     # check group is_init
     actor0_is_init = ray.get(actors[0].report_is_group_initialized.remote())
@@ -104,7 +92,7 @@ def test_is_group_initialized(ray_start_distributed_2_nodes, backend):
 
 @pytest.mark.parametrize("backend", [Backend.GLOO])
 def test_destroy_group(ray_start_distributed_2_nodes, backend):
-    world_size = 4
+    world_size = 8
     actors, _ = create_collective_workers(world_size, backend=backend)
     # Now destroy the group at actor0
     ray.wait([actors[0].destroy_group.remote()])
@@ -122,7 +110,7 @@ def test_destroy_group(ray_start_distributed_2_nodes, backend):
     ray.wait([actors[1].destroy_group.remote("default")])
     actor1_is_init = ray.get(actors[1].report_is_group_initialized.remote())
     assert not actor1_is_init
-    for i in [2, 3]:
+    for i in range(2, world_size):
         ray.wait([actors[i].destroy_group.remote("default")])
 
     # Now reconstruct the group using the same name
