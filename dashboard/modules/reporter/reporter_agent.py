@@ -112,7 +112,7 @@ METRICS_GAUGES = {
                                   ["node_type"]),
     "cluster_pending_nodes": Gauge("cluster_pending_nodes",
                                    "Pending nodes on the cluster", "count",
-                                   []),
+                                   ["node_type"]),
 }
 
 
@@ -317,10 +317,12 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
 
     @staticmethod
     def _record_stats(stats, cluster_stats, _is_head_node):
+        logger.info("~~~~~ hostname" + stats["hostname"])
         records_reported = []
         ip = stats["ip"]
 
         # -- Instance count of cluster --
+        # Only report cluster stats on head node
         if "autoscaler_report" in cluster_stats and _is_head_node:
             active_nodes = cluster_stats["autoscaler_report"]["active_nodes"]
             for node_type, active_node_count in active_nodes.items():
@@ -346,7 +348,6 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
                     tags={"node_type": node_type}))
 
             pending_nodes = cluster_stats["autoscaler_report"]["pending_nodes"]
-            logger.info("~~~~ pending nodes" + str(pending_nodes))
             pending_nodes_dict = {}
             for node_ip, node_type, status_message in pending_nodes:
                 if node_type in pending_nodes_dict:
