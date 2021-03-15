@@ -45,6 +45,19 @@ class ActorHandle {
       ActorFunc<ActorType, ReturnType, typename FilterArgType<Args>::type...> actor_func,
       Args... args);
 
+  template <typename F>
+  ActorTaskCaller<boost::callable_traits::return_type_t<F>> Task(F f) {
+    std::string function_name =
+        ray::internal::FunctionManager::Instance().GetFunctionName(f);
+    if (function_name.empty()) {
+      throw RayException(function_name + " not exsit!");
+    }
+
+    using ReturnType = boost::callable_traits::return_type_t<F>;
+    return ActorTaskCaller<ReturnType>(internal::RayRuntime().get(), id_,
+                                       std::move(function_name));
+  }
+
   /// Make ActorHandle serializable
   MSGPACK_DEFINE(id_);
 

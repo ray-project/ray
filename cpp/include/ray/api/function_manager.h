@@ -184,7 +184,7 @@ class FunctionManager {
   bool RegisterRemoteFunction(std::string const &name, const Function &f) {
     /// Now it is just support free function, it will be
     /// improved to support member function later.
-    auto pair = func_ptr_to_key_map_.emplace((uint64_t)f, name);
+    auto pair = func_ptr_to_key_map_.emplace(GetAddress(f), name);
     if (!pair.second) {
       return false;
     }
@@ -194,7 +194,7 @@ class FunctionManager {
 
   template <typename Function>
   std::string GetFunctionName(const Function &f) {
-    auto it = func_ptr_to_key_map_.find((uint64_t)f);
+    auto it = func_ptr_to_key_map_.find(GetAddress(f));
     if (it == func_ptr_to_key_map_.end()) {
       return "";
     }
@@ -216,10 +216,26 @@ class FunctionManager {
         .second;
   }
 
+  template <class Dest, class Source>
+  Dest BitCast(const Source &source) {
+    static_assert(sizeof(Dest) == sizeof(Source),
+                  "BitCast requires source and destination to be the same size");
+
+    Dest dest;
+    memcpy(&dest, &source, sizeof(dest));
+    return dest;
+  }
+
+  template <typename F>
+  std::string GetAddress(F f) {
+    auto arr = BitCast<std::array<char, sizeof(F)>>(f);
+    return std::string(arr.data(), arr.size());
+  }
+
   std::unordered_map<std::string, std::function<msgpack::sbuffer(
                                       const std::vector<std::shared_ptr<RayObject>> &)>>
       map_invokers_;
-  std::unordered_map<uintptr_t, std::string> func_ptr_to_key_map_;
+  std::unordered_map<std::string, std::string> func_ptr_to_key_map_;
 };
 }  // namespace internal
 }  // namespace ray
