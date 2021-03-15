@@ -505,7 +505,7 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
                 )) if formatted_status_string else {}
 
                 stats = self._get_all_stats()
-                records_reported = self._record_stats(stats, formatted_status, self._is_head_node)
+                records_reported = self._record_stats(stats, formatted_status)
                 self._metrics_agent.record_reporter_stats(records_reported)
                 await aioredis_client.publish(self._key, jsonify_asdict(stats))
 
