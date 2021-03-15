@@ -155,7 +155,7 @@ Prometheus will automatically detect that the file contents are changing and upd
 
 Application-level Metrics
 -------------------------
-Ray provides a convenient API in :ref:`ray.util.metrics <custom-metric-api-ref` for defining and exporting custom metrics for visibility into your applications.
+Ray provides a convenient API in :ref:`ray.util.metrics <custom-metric-api-ref>` for defining and exporting custom metrics for visibility into your applications.
 There are currently three metrics supported: Counter, Gauge, and Histogram.
 These metrics correspond to the same `Prometheus metric types <https://prometheus.io/docs/concepts/metric_types/>`_.
 Below is a simple example of an actor that exports metrics using these APIs:
