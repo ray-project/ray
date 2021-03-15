@@ -12,8 +12,8 @@ from jax import jit, grad, random, dlpack
 from jax.tree_util import tree_flatten
 from jax.experimental import optimizers
 import jax.numpy as jnp
-import datasets
-from resnet import ResNet18
+import ray.util.distml.scratch.examples.datasets as datasets
+from ray.util.distml.scratch.examples.resnet import ResNet18
 
 import ray
 import ray.util.collective as col
