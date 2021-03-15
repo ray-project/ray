@@ -337,9 +337,9 @@ class RayServeReplica:
             batch = await self.batch_queue.wait_for_batch()
 
             # Record metrics
-            self.num_queued_items.record(self.batch_queue.qsize())
-            self.num_processing_items.record(self.num_ongoing_requests -
-                                             self.batch_queue.qsize())
+            self.num_queued_items.set(self.batch_queue.qsize())
+            self.num_processing_items.set(self.num_ongoing_requests -
+                                          self.batch_queue.qsize())
             for query in batch:
                 queuing_time = (time.time() - query.tick_enter_replica) * 1000
                 self.queuing_latency_tracker.record(queuing_time)
