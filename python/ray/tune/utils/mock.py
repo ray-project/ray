@@ -6,7 +6,7 @@ import json
 import random
 import uuid
 
-import ray.utils
+import ray._private.utils
 
 from ray.rllib.agents.mock import _MockTrainer
 from ray.tune import DurableTrainable, Trainable
@@ -14,7 +14,7 @@ from ray.tune.sync_client import get_sync_client
 from ray.tune.syncer import NodeSyncer
 from ray.tune.callback import Callback
 
-MOCK_REMOTE_DIR = os.path.join(ray.utils.get_user_temp_dir(),
+MOCK_REMOTE_DIR = os.path.join(ray._private.utils.get_user_temp_dir(),
                                "mock-tune-remote") + os.sep
 # Sync and delete templates that operate on local directories.
 LOCAL_SYNC_TEMPLATE = "mkdir -p {target} && rsync -avz {source}/ {target}/"
@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 def mock_storage_client():
     """Mocks storage client that treats a local dir as durable storage."""
     client = get_sync_client(LOCAL_SYNC_TEMPLATE, LOCAL_DELETE_TEMPLATE)
-    path = os.path.join(ray.utils.get_user_temp_dir(),
+    path = os.path.join(ray._private.utils.get_user_temp_dir(),
                         f"mock-client-{uuid.uuid4().hex[:4]}")
     os.makedirs(path, exist_ok=True)
     client.set_logdir(path)

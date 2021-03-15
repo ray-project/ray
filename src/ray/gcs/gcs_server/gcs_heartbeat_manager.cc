@@ -21,7 +21,7 @@ namespace ray {
 namespace gcs {
 
 GcsHeartbeatManager::GcsHeartbeatManager(
-    boost::asio::io_service &io_service,
+    instrumented_io_context &io_service,
     std::function<void(const NodeID &)> on_node_death_callback)
     : io_service_(io_service),
       on_node_death_callback_(std::move(on_node_death_callback)),
@@ -44,14 +44,16 @@ void GcsHeartbeatManager::Initialize(const GcsInitData &gcs_init_data) {
 }
 
 void GcsHeartbeatManager::Start() {
-  io_service_.post([this] {
-    if (!is_started_) {
-      periodical_runner_.RunFnPeriodically(
-          [this] { DetectDeadNodes(); },
-          RayConfig::instance().raylet_heartbeat_period_milliseconds());
-      is_started_ = true;
-    }
-  });
+  io_service_.post(
+      [this] {
+        if (!is_started_) {
+          periodical_runner_.RunFnPeriodically(
+              [this] { DetectDeadNodes(); },
+              RayConfig::instance().raylet_heartbeat_period_milliseconds());
+          is_started_ = true;
+        }
+      },
+      "GcsHeartbeatManager.Start");
 }
 
 void GcsHeartbeatManager::Stop() {
@@ -63,7 +65,8 @@ void GcsHeartbeatManager::Stop() {
 
 void GcsHeartbeatManager::AddNode(const NodeID &node_id) {
   io_service_.post(
-      [this, node_id] { heartbeats_.emplace(node_id, num_heartbeats_timeout_); });
+      [this, node_id] { heartbeats_.emplace(node_id, num_heartbeats_timeout_); },
+      "GcsHeartbeatManager.AddNode");
 }
 
 void GcsHeartbeatManager::HandleReportHeartbeat(

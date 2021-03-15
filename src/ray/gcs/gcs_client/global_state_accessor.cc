@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "ray/gcs/gcs_client/global_state_accessor.h"
+#include "ray/common/asio/instrumented_io_context.h"
 
 #include <boost/algorithm/string.hpp>
 
@@ -20,10 +21,8 @@ namespace ray {
 namespace gcs {
 
 GlobalStateAccessor::GlobalStateAccessor(const std::string &redis_address,
-                                         const std::string &redis_password,
-                                         bool is_test) {
-  RAY_LOG(DEBUG) << "Redis server address = " << redis_address
-                 << ", is test flag = " << is_test;
+                                         const std::string &redis_password) {
+  RAY_LOG(DEBUG) << "Redis server address = " << redis_address;
   std::vector<std::string> address;
   boost::split(address, redis_address, boost::is_any_of(":"));
   RAY_CHECK(address.size() == 2);
@@ -31,10 +30,9 @@ GlobalStateAccessor::GlobalStateAccessor(const std::string &redis_address,
   options.server_ip_ = address[0];
   options.server_port_ = std::stoi(address[1]);
   options.password_ = redis_password;
-  options.is_test_client_ = is_test;
   gcs_client_.reset(new ServiceBasedGcsClient(options));
 
-  io_service_.reset(new boost::asio::io_service());
+  io_service_.reset(new instrumented_io_context());
 
   std::promise<bool> promise;
   thread_io_service_.reset(new std::thread([this, &promise] {

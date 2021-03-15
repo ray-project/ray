@@ -19,6 +19,7 @@
 #include <string>
 #include <vector>
 
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/status.h"
 #include "ray/gcs/accessor.h"
 #include "ray/util/logging.h"
@@ -38,12 +39,8 @@ class GcsClientOptions {
   /// \param port GCS service port.
   /// \param password GCS service password.
   /// \param is_test_client Whether this client is used for tests.
-  GcsClientOptions(const std::string &ip, int port, const std::string &password,
-                   bool is_test_client = false)
-      : server_ip_(ip),
-        server_port_(port),
-        password_(password),
-        is_test_client_(is_test_client) {}
+  GcsClientOptions(const std::string &ip, int port, const std::string &password)
+      : server_ip_(ip), server_port_(port), password_(password) {}
 
   GcsClientOptions() {}
 
@@ -53,9 +50,6 @@ class GcsClientOptions {
 
   // Password of GCS server.
   std::string password_;
-
-  // Whether this client is used for tests.
-  bool is_test_client_{false};
 };
 
 /// \class GcsClient
@@ -71,7 +65,7 @@ class GcsClient : public std::enable_shared_from_this<GcsClient> {
   /// This function must be called before calling other functions.
   ///
   /// \return Status
-  virtual Status Connect(boost::asio::io_service &io_service) = 0;
+  virtual Status Connect(instrumented_io_context &io_service) = 0;
 
   /// Disconnect with GCS Service. Non-thread safe.
   virtual void Disconnect() = 0;

@@ -187,7 +187,7 @@ matrix:
         - brew install --cask adoptopenjdk8
         - export JAVA_HOME=/Library/Java/JavaVirtualMachines/adoptopenjdk-8.jdk/Contents/Home
         - java -version
-        - . ./ci/travis/ci.sh build
+        - ./ci/keep_alive bash ./ci/travis/ci.sh build
       script:
         - . ./ci/travis/ci.sh test_wheels
         - bash ./java/build-jar-multiplatform.sh darwin
@@ -473,7 +473,7 @@ script:
   - if [ "$RAY_CI_DASHBOARD_AFFECTED" == "1" ]; then ./ci/keep_alive bazel test python/ray/new_dashboard/...; fi
 
   # bazel python tests. This should be run last to keep its logs at the end of travis logs.
-  - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then ./ci/keep_alive bazel test --config=ci $(./scripts/bazel_export_options) --test_tag_filters=-kubernetes,-jenkins_only,-medium_size_python_tests_a_to_j,-medium_size_python_tests_k_to_z python/ray/tests/...; fi
+  - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then ./ci/keep_alive bazel test --test_env=CONDA_EXE --test_env=CONDA_PYTHON_EXE --test_env=CONDA_SHLVL --test_env=CONDA_PREFIX --test_env=CONDA_DEFAULT_ENV --test_env=CONDA_PROMPT_MODIFIER --config=ci $(./scripts/bazel_export_options) --test_tag_filters=-kubernetes,-jenkins_only,-medium_size_python_tests_a_to_j,-medium_size_python_tests_k_to_z python/ray/tests/...; fi
   # NO MORE TESTS BELOW, keep them above.
 
 after_script:

@@ -17,6 +17,7 @@
 #include <map>
 #include <string>
 
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/status.h"
 #include "ray/gcs/asio.h"
 #include "ray/util/logging.h"
@@ -30,11 +31,11 @@ class RedisContext;
 class RedisClientOptions {
  public:
   RedisClientOptions(const std::string &ip, int port, const std::string &password,
-                     bool is_test_client = false)
+                     bool enable_sharding_conn = true)
       : server_ip_(ip),
         server_port_(port),
         password_(password),
-        is_test_client_(is_test_client) {}
+        enable_sharding_conn_(enable_sharding_conn) {}
 
   // Redis server address
   std::string server_ip_;
@@ -43,8 +44,8 @@ class RedisClientOptions {
   // Password of Redis.
   std::string password_;
 
-  // Whether this client is used for tests.
-  bool is_test_client_{false};
+  // Whether we enable sharding for accessing data.
+  bool enable_sharding_conn_{true};
 };
 
 /// \class RedisClient
@@ -60,7 +61,7 @@ class RedisClient {
   /// This io_service must be single-threaded. Because `RedisAsioClient` is
   /// non-thread safe.
   /// \return Status
-  Status Connect(boost::asio::io_service &io_service);
+  Status Connect(instrumented_io_context &io_service);
 
   // TODO(micafan) Maybe it's not necessary to use multi threads.
   /// Connect to Redis. Non-thread safe.
@@ -70,7 +71,7 @@ class RedisClient {
   /// an event loop. Each io_service must be single-threaded. Because `RedisAsioClient`
   /// is non-thread safe.
   /// \return Status
-  Status Connect(std::vector<boost::asio::io_service *> io_services);
+  Status Connect(std::vector<instrumented_io_context *> io_services);
 
   /// Disconnect with Redis. Non-thread safe.
   void Disconnect();

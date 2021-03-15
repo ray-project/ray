@@ -11,8 +11,9 @@ import starlette.responses
 
 import ray
 from ray.actor import ActorHandle
-from ray.async_compat import sync_to_async
+from ray._private.async_compat import sync_to_async
 
+from ray.serve.batching import _BatchQueue
 from ray.serve.utils import (parse_request_item, _get_logger, chain_future,
                              unpack_future, import_attr)
 from ray.serve.exceptions import RayServeException
@@ -28,71 +29,6 @@ from ray.serve.constants import (
 from ray.exceptions import RayTaskError
 
 logger = _get_logger()
-
-
-class BatchQueue:
-    def __init__(self, max_batch_size: int, timeout_s: float) -> None:
-        self.queue = asyncio.Queue()
-        self.full_batch_event = asyncio.Event()
-        self.max_batch_size = max_batch_size
-        self.timeout_s = timeout_s
-
-    def set_config(self, max_batch_size: int, timeout_s: float) -> None:
-        self.max_batch_size = max_batch_size
-        self.timeout_s = timeout_s
-
-    def put(self, request: Query) -> None:
-        self.queue.put_nowait(request)
-        # Signal when the full batch is ready. The event will be reset
-        # in wait_for_batch.
-        if self.queue.qsize() == self.max_batch_size:
-            self.full_batch_event.set()
-
-    def qsize(self) -> int:
-        return self.queue.qsize()
-
-    async def wait_for_batch(self) -> List[Query]:
-        """Wait for batch respecting self.max_batch_size and self.timeout_s.
-
-        Returns a batch of up to self.max_batch_size items, waiting for up
-        to self.timeout_s for a full batch. After the timeout, returns as many
-        items as are ready.
-
-        Always returns a batch with at least one item - will block
-        indefinitely until an item comes in.
-        """
-        curr_timeout = self.timeout_s
-        batch = []
-        while len(batch) == 0:
-            loop_start = time.time()
-
-            # If the timeout is 0, wait for any item to be available on the
-            # queue.
-            if curr_timeout == 0:
-                batch.append(await self.queue.get())
-            # If the timeout is nonzero, wait for either the timeout to occur
-            # or the max batch size to be ready.
-            else:
-                try:
-                    await asyncio.wait_for(self.full_batch_event.wait(),
-                                           curr_timeout)
-                except asyncio.TimeoutError:
-                    pass
-
-            # Pull up to the max_batch_size requests off the queue.
-            while len(batch) < self.max_batch_size and not self.queue.empty():
-                batch.append(self.queue.get_nowait())
-
-            # Reset the event if there are fewer than max_batch_size requests
-            # in the queue.
-            if (self.queue.qsize() < self.max_batch_size
-                    and self.full_batch_event.is_set()):
-                self.full_batch_event.clear()
-
-            # Adjust the timeout based on the time spent in this iteration.
-            curr_timeout = max(0, curr_timeout - (time.time() - loop_start))
-
-        return batch
 
 
 def create_backend_replica(backend_def: Union[Callable, Type[Callable], str]):
@@ -161,15 +97,17 @@ def create_backend_replica(backend_def: Union[Callable, Type[Callable], str]):
     return RayServeWrappedReplica
 
 
-def wrap_to_ray_error(exception: Exception) -> RayTaskError:
+def wrap_to_ray_error(function_name: str,
+                      exception: Exception) -> RayTaskError:
     """Utility method to wrap exceptions in user code."""
 
     try:
         # Raise and catch so we can access traceback.format_exc()
         raise exception
     except Exception as e:
-        traceback_str = ray.utils.format_error_message(traceback.format_exc())
-        return ray.exceptions.RayTaskError(str(e), traceback_str, e.__class__)
+        traceback_str = ray._private.utils.format_error_message(
+            traceback.format_exc())
+        return ray.exceptions.RayTaskError(function_name, traceback_str, e)
 
 
 class RayServeReplica:
@@ -183,13 +121,13 @@ class RayServeReplica:
         self.is_function = is_function
 
         self.config = backend_config
-        self.batch_queue = BatchQueue(self.config.max_batch_size or 1,
-                                      self.config.batch_wait_timeout)
+        self.batch_queue = _BatchQueue(self.config.max_batch_size or 1,
+                                       self.config.batch_wait_timeout)
         self.reconfigure(self.config.user_config)
 
         self.num_ongoing_requests = 0
 
-        self.request_counter = metrics.Count(
+        self.request_counter = metrics.Counter(
             "serve_backend_request_counter",
             description=("The number of queries that have been "
                          "processed in this replica."),
@@ -200,14 +138,14 @@ class RayServeReplica:
             LongPollKey.BACKEND_CONFIGS: self._update_backend_configs,
         })
 
-        self.error_counter = metrics.Count(
+        self.error_counter = metrics.Counter(
             "serve_backend_error_counter",
             description=("The number of exceptions that have "
                          "occurred in the backend."),
             tag_keys=("backend", ))
         self.error_counter.set_default_tags({"backend": self.backend_tag})
 
-        self.restart_counter = metrics.Count(
+        self.restart_counter = metrics.Counter(
             "serve_backend_replica_starts",
             description=("The number of times this replica "
                          "has been restarted due to failure."),
@@ -257,7 +195,7 @@ class RayServeReplica:
             "replica": self.replica_tag
         })
 
-        self.restart_counter.record(1)
+        self.restart_counter.inc()
 
         ray_logger = logging.getLogger("ray")
         for handler in ray_logger.handlers:
@@ -320,13 +258,13 @@ class RayServeReplica:
         try:
             result = await method_to_call(arg)
             result = await self.ensure_serializable_response(result)
-            self.request_counter.record(1)
+            self.request_counter.inc()
         except Exception as e:
             import os
             if "RAY_PDB" in os.environ:
                 ray.util.pdb.post_mortem()
-            result = wrap_to_ray_error(e)
-            self.error_counter.record(1)
+            result = wrap_to_ray_error(method_to_call.__name__, e)
+            self.error_counter.inc()
 
         latency_ms = (time.time() - start) * 1000
         self.processing_latency_tracker.record(
@@ -354,7 +292,7 @@ class RayServeReplica:
                     "Please only send the same type of requests in batching "
                     "mode.")
 
-            self.request_counter.record(batch_size)
+            self.request_counter.inc(batch_size)
 
             call_method = sync_to_async(call_methods.pop())
             result_list = await call_method(args)
@@ -381,8 +319,8 @@ class RayServeReplica:
                 result_list[i] = (await
                                   self.ensure_serializable_response(result))
         except Exception as e:
-            wrapped_exception = wrap_to_ray_error(e)
-            self.error_counter.record(1)
+            wrapped_exception = wrap_to_ray_error(call_method.__name__, e)
+            self.error_counter.inc()
             result_list = [wrapped_exception for _ in range(batch_size)]
 
         latency_ms = (time.time() - timing_start) * 1000
@@ -399,9 +337,9 @@ class RayServeReplica:
             batch = await self.batch_queue.wait_for_batch()
 
             # Record metrics
-            self.num_queued_items.record(self.batch_queue.qsize())
-            self.num_processing_items.record(self.num_ongoing_requests -
-                                             self.batch_queue.qsize())
+            self.num_queued_items.set(self.batch_queue.qsize())
+            self.num_processing_items.set(self.num_ongoing_requests -
+                                          self.batch_queue.qsize())
             for query in batch:
                 queuing_time = (time.time() - query.tick_enter_replica) * 1000
                 self.queuing_latency_tracker.record(queuing_time)

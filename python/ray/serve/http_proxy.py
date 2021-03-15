@@ -106,7 +106,7 @@ class HTTPProxy:
             LongPollKey.ROUTE_TABLE: self._update_route_table,
         })
 
-        self.request_counter = metrics.Count(
+        self.request_counter = metrics.Counter(
             "serve_num_http_requests",
             description="The number of HTTP requests processed.",
             tag_keys=("route", ))
@@ -156,7 +156,7 @@ class HTTPProxy:
         assert scope["type"] == "http"
         current_path = scope["path"]
 
-        self.request_counter.record(1, tags={"route": current_path})
+        self.request_counter.inc(tags={"route": current_path})
 
         await self.router(scope, receive, send)
 
@@ -211,7 +211,14 @@ class HTTPProxyActor:
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         if hasattr(socket, "SO_REUSEPORT"):
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
-        sock.bind((self.host, self.port))
+
+        try:
+            sock.bind((self.host, self.port))
+        except OSError:
+            # The OS failed to bind a socket to the given host and port.
+            raise ValueError(
+                f"""Failed to bind Ray Serve HTTP proxy to '{self.host}:{self.port}'.
+Please make sure your http-host and http-port are specified correctly.""")
 
         # Note(simon): we have to use lower level uvicorn Config and Server
         # class because we want to run the server as a coroutine. The only

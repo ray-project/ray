@@ -172,16 +172,10 @@ get_current_placement_group
 Custom Metrics APIs
 -------------------
 
-Metric
-~~~~~~
+Counter
+~~~~~~~
 
-.. autoclass:: ray.util.metrics.Metric
-   :members:
-
-Count
-~~~~~
-
-.. autoclass:: ray.util.metrics.Count
+.. autoclass:: ray.util.metrics.Counter
    :members:
 
 Gauge

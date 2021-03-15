@@ -94,13 +94,13 @@ static void GetRedisShards(redisContext *context, std::vector<std::string> *addr
 
 RedisClient::RedisClient(const RedisClientOptions &options) : options_(options) {}
 
-Status RedisClient::Connect(boost::asio::io_service &io_service) {
-  std::vector<boost::asio::io_service *> io_services;
+Status RedisClient::Connect(instrumented_io_context &io_service) {
+  std::vector<instrumented_io_context *> io_services;
   io_services.emplace_back(&io_service);
   return Connect(io_services);
 }
 
-Status RedisClient::Connect(std::vector<boost::asio::io_service *> io_services) {
+Status RedisClient::Connect(std::vector<instrumented_io_context *> io_services) {
   RAY_CHECK(!is_connected_);
   RAY_CHECK(!io_services.empty());
 
@@ -115,7 +115,7 @@ Status RedisClient::Connect(std::vector<boost::asio::io_service *> io_services) 
                                          /*sharding=*/true,
                                          /*password=*/options_.password_));
 
-  if (!options_.is_test_client_) {
+  if (options_.enable_sharding_conn_) {
     // Moving sharding into constructor defaultly means that sharding = true.
     // This design decision may worth a look.
     std::vector<std::string> addresses;
@@ -129,7 +129,7 @@ Status RedisClient::Connect(std::vector<boost::asio::io_service *> io_services) 
 
     for (size_t i = 0; i < addresses.size(); ++i) {
       size_t io_service_index = (i + 1) % io_services.size();
-      boost::asio::io_service &io_service = *io_services[io_service_index];
+      instrumented_io_context &io_service = *io_services[io_service_index];
       // Populate shard_contexts.
       shard_contexts_.push_back(std::make_shared<RedisContext>(io_service));
       RAY_CHECK_OK(shard_contexts_[i]->Connect(addresses[i], ports[i], /*sharding=*/true,
@@ -154,14 +154,14 @@ void RedisClient::Attach() {
   // Take care of sharding contexts.
   RAY_CHECK(shard_asio_async_clients_.empty()) << "Attach shall be called only once";
   for (std::shared_ptr<RedisContext> context : shard_contexts_) {
-    boost::asio::io_service &io_service = context->io_service();
+    instrumented_io_context &io_service = context->io_service();
     shard_asio_async_clients_.emplace_back(
         new RedisAsioClient(io_service, context->async_context()));
     shard_asio_subscribe_clients_.emplace_back(
         new RedisAsioClient(io_service, context->subscribe_context()));
   }
 
-  boost::asio::io_service &io_service = primary_context_->io_service();
+  instrumented_io_context &io_service = primary_context_->io_service();
   asio_async_auxiliary_client_.reset(
       new RedisAsioClient(io_service, primary_context_->async_context()));
   asio_subscribe_auxiliary_client_.reset(
@@ -175,6 +175,7 @@ void RedisClient::Disconnect() {
 }
 
 std::shared_ptr<RedisContext> RedisClient::GetShardContext(const std::string &shard_key) {
+  RAY_CHECK(!shard_contexts_.empty());
   static std::hash<std::string> hash;
   size_t index = hash(shard_key) % shard_contexts_.size();
   return shard_contexts_[index];

@@ -4,7 +4,7 @@ import time
 import numpy as np
 import ray
 
-from ray.cluster_utils import Cluster
+from ray._private.cluster_utils import Cluster
 
 
 def main():

@@ -20,14 +20,11 @@ from ray.serve.config import BackendConfig, ReplicaConfig
 from ray.serve.constants import LongPollKey
 from ray.serve.kv_store import RayInternalKVStore
 from ray.serve.long_poll import LongPollHost
-from ray.serve.utils import (format_actor_name, get_random_letters, logger,
-                             try_schedule_resources_on_nodes)
+from ray.serve.utils import format_actor_name, get_random_letters, logger
 
 CHECKPOINT_KEY = "serve-backend-state-checkpoint"
-
-# Feature flag for controller resource checking. If true, controller will
-# error if the desired replicas exceed current resource availability.
-_RESOURCE_CHECK_ENABLED = True
+SLOW_STARTUP_WARNING_S = 30
+SLOW_STARTUP_WARNING_PERIOD_S = 30
 
 
 class ReplicaState(Enum):
@@ -43,17 +40,22 @@ class BackendReplica:
     def __init__(self, controller_name: str, detached: bool,
                  replica_tag: ReplicaTag, backend_tag: BackendTag):
         self._actor_name = format_actor_name(replica_tag, controller_name)
+        self._placement_group_name = self._actor_name + "_placement_group"
         self._controller_name = controller_name
         self._detached = detached
         self._replica_tag = replica_tag
         self._backend_tag = backend_tag
         self._actor_handle = None
+        self._placement_group = None
+        self._start_time = None
+        self._prev_slow_startup_warning_time = None
         self._startup_obj_ref = None
         self._drain_obj_ref = None
         self._state = ReplicaState.SHOULD_START
 
     def __get_state__(self):
         clean_dict = self.__dict__.copy()
+        del clean_dict["_placement_group"]
         del clean_dict["_actor_handle"]
         del clean_dict["_startup_obj_ref"]
         del clean_dict["_drain_obj_ref"]
@@ -76,6 +78,8 @@ class BackendReplica:
             # Fetch actor handles for all backend replicas in the system.
             # The actors must exist if this class was checkpointed in the
             # RUNNING state.
+            self._placement_group = ray.util.get_placement_group(
+                self._placement_group_name)
             self._actor_handle = ray.get_actor(self._actor_name)
         elif self._state == ReplicaState.STOPPING:
             self.stop()
@@ -85,6 +89,19 @@ class BackendReplica:
             ReplicaState.SHOULD_START, ReplicaState.STARTING
         }, (f"State must be {ReplicaState.SHOULD_START} or "
             f"{ReplicaState.STARTING}, *not* {self._state}")
+
+        try:
+            self._placement_group = ray.util.get_placement_group(
+                self._placement_group_name)
+        except ValueError:
+            logger.debug(
+                "Creating placement group '{}' for backend '{}'".format(
+                    self._placement_group_name, self._backend_tag))
+            self._placement_group = ray.util.placement_group(
+                [backend_info.replica_config.resource_dict],
+                lifetime="detached",
+                name=self._placement_group_name)
+
         try:
             self._actor_handle = ray.get_actor(self._actor_name)
         except ValueError:
@@ -95,10 +112,13 @@ class BackendReplica:
                 lifetime="detached" if self._detached else None,
                 max_restarts=-1,
                 max_task_retries=-1,
+                placement_group=self._placement_group,
                 **backend_info.replica_config.ray_actor_options).remote(
                     self._backend_tag, self._replica_tag,
                     backend_info.replica_config.init_args,
                     backend_info.backend_config, self._controller_name)
+        self._start_time = time.time()
+        self._prev_slow_startup_warning_time = time.time()
         self._startup_obj_ref = self._actor_handle.ready.remote()
         self._state = ReplicaState.STARTING
 
@@ -111,6 +131,19 @@ class BackendReplica:
         if len(ready) == 1:
             self._state = ReplicaState.RUNNING
             return True
+
+        time_since_start = time.time() - self._start_time
+        if (time_since_start > SLOW_STARTUP_WARNING_S
+                and time.time() - self._prev_slow_startup_warning_time >
+                SLOW_STARTUP_WARNING_PERIOD_S):
+            logger.warning(
+                f"Replica '{self._replica_tag}' for backend "
+                f"'{self._backend_tag}' has taken more than "
+                f"{time_since_start:.0f}s to start up. This may be "
+                "caused by waiting for the cluster to auto-scale or "
+                "because the backend constructor is slow.")
+            self._prev_slow_startup_warning_time = time.time()
+
         return False
 
     def set_should_stop(self, graceful_shutdown_timeout_s: Duration):
@@ -164,6 +197,7 @@ class BackendReplica:
                     f"{self._graceful_shutdown_timeout_s}s, force-killing.")
 
             ray.kill(replica, no_restart=True)
+            ray.util.remove_placement_group(self._placement_group)
             self._state = ReplicaState.STOPPED
             return True
         return False
@@ -196,7 +230,7 @@ class BackendState:
         self._target_replicas: Dict[BackendTag, int] = defaultdict(int)
         self.backend_goals: Dict[BackendTag, GoalId] = dict()
 
-        # Un-Checkpointed state.
+        # Un-checkpointed state.
         self.pending_goals: Dict[GoalId, asyncio.Event] = dict()
 
         checkpoint = self._kv_store.get(CHECKPOINT_KEY)
@@ -381,23 +415,6 @@ class BackendState:
             return False
 
         elif delta_num_replicas > 0:
-            can_schedule = try_schedule_resources_on_nodes(requirements=[
-                backend_info.replica_config.resource_dict
-                for _ in range(delta_num_replicas)
-            ])
-
-            if _RESOURCE_CHECK_ENABLED and not all(can_schedule):
-                num_possible = sum(can_schedule)
-                logger.error(
-                    "Cannot scale backend {} to {} replicas. Ray Serve tried "
-                    "to add {} replicas but the resources only allows {} "
-                    "to be added. This is not a problem if the cluster is "
-                    "autoscaling. To fix this, consider scaling to replica to "
-                    "{} or add more resources to the cluster. You can check "
-                    "avaiable resources with ray.nodes().".format(
-                        backend_tag, num_replicas, delta_num_replicas,
-                        num_possible, current_num_replicas + num_possible))
-
             logger.debug("Adding {} replicas to backend {}".format(
                 delta_num_replicas, backend_tag))
             for _ in range(delta_num_replicas):

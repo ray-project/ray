@@ -62,8 +62,6 @@ std::vector<double> VectorFixedPointToVectorDouble(
 TaskRequest ResourceMapToTaskRequest(
     StringIdMap &string_to_int_map,
     const std::unordered_map<std::string, double> &resource_map) {
-  size_t i = 0;
-
   TaskRequest task_request;
 
   task_request.predefined_resources.resize(PredefinedResources_MAX);
@@ -73,6 +71,7 @@ TaskRequest ResourceMapToTaskRequest(
     task_request.predefined_resources[0].soft = false;
   }
 
+  size_t i = 0;
   for (auto const &resource : resource_map) {
     if (resource.first == ray::kCPU_ResourceLabel) {
       task_request.predefined_resources[CPU].demand = resource.second;
@@ -234,8 +233,7 @@ std::string NodeResources::DebugString(StringIdMap string_to_in_map) const {
 
 const std::string format_resource(std::string resource_name, double quantity) {
   if (resource_name == "object_store_memory" || resource_name == "memory") {
-    // Convert to 50MiB chunks and then to GiB
-    return std::to_string(quantity * (50 * 1024 * 1024) / (1024 * 1024 * 1024)) + " GiB";
+    return std::to_string(quantity / (1024 * 1024 * 1024)) + " GiB";
   }
   return std::to_string(quantity);
 }

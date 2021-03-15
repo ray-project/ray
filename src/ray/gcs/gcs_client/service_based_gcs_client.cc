@@ -29,7 +29,7 @@ ServiceBasedGcsClient::ServiceBasedGcsClient(const GcsClientOptions &options)
       last_reconnect_timestamp_ms_(0),
       last_reconnect_address_(std::make_pair("", -1)) {}
 
-Status ServiceBasedGcsClient::Connect(boost::asio::io_service &io_service) {
+Status ServiceBasedGcsClient::Connect(instrumented_io_context &io_service) {
   RAY_CHECK(!is_connected_);
 
   if (options_.server_ip_.empty()) {
@@ -38,8 +38,11 @@ Status ServiceBasedGcsClient::Connect(boost::asio::io_service &io_service) {
   }
 
   // Connect to redis.
+  // We don't access redis shardings in GCS client, so we set `enable_sharding_conn` to
+  // false.
   RedisClientOptions redis_client_options(options_.server_ip_, options_.server_port_,
-                                          options_.password_, options_.is_test_client_);
+                                          options_.password_,
+                                          /*enable_sharding_conn=*/false);
   redis_client_.reset(new RedisClient(redis_client_options));
   RAY_CHECK_OK(redis_client_->Connect(io_service));
 

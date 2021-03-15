@@ -1,7 +1,7 @@
-from collections import defaultdict
 import logging
 import numpy as np
 import math
+import tree
 from typing import List, Tuple, Any
 
 import ray
@@ -18,7 +18,7 @@ from ray.rllib.execution.multi_gpu_impl import LocalSyncParallelOptimizer
 from ray.rllib.policy.sample_batch import SampleBatch, DEFAULT_POLICY_ID, \
     MultiAgentBatch
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.sgd import do_minibatch_sgd, averaged
+from ray.rllib.utils.sgd import do_minibatch_sgd
 from ray.rllib.utils.typing import PolicyID, SampleBatchType, ModelGradients
 
 tf1, tf, tfv = try_import_tf()
@@ -106,13 +106,11 @@ class TrainTFMultiGPU:
     """
 
     def __init__(self,
+                 *,
                  workers: WorkerSet,
                  sgd_minibatch_size: int,
                  num_sgd_iter: int,
                  num_gpus: int,
-                 rollout_fragment_length: int,
-                 num_envs_per_worker: int,
-                 train_batch_size: int,
                  shuffle_sequences: bool,
                  policies: List[PolicyID] = frozenset([]),
                  _fake_gpus: bool = False,
@@ -124,7 +122,7 @@ class TrainTFMultiGPU:
         self.shuffle_sequences = shuffle_sequences
         self.framework = framework
 
-        # Collect actual devices to use.
+        # Collect actual GPU devices to use.
         if not num_gpus:
             _fake_gpus = True
             num_gpus = 1
@@ -133,10 +131,13 @@ class TrainTFMultiGPU:
             "/{}:{}".format(type_, i) for i in range(int(math.ceil(num_gpus)))
         ]
 
+        # Total batch size (all towers). Make sure it is dividable by
+        # num towers.
         self.batch_size = int(sgd_minibatch_size / len(self.devices)) * len(
             self.devices)
         assert self.batch_size % len(self.devices) == 0
         assert self.batch_size >= len(self.devices), "batch size too small"
+        # Batch size per tower.
         self.per_device_batch_size = int(self.batch_size / len(self.devices))
 
         # per-GPU graph copies created below must share vars with the policy
@@ -177,8 +178,8 @@ class TrainTFMultiGPU:
         metrics = _get_shared_metrics()
         load_timer = metrics.timers[LOAD_BATCH_TIMER]
         learn_timer = metrics.timers[LEARN_ON_BATCH_TIMER]
+        # Load data into GPUs.
         with load_timer:
-            # (1) Load data into GPUs.
             num_loaded_tuples = {}
             for policy_id, batch in samples.policy_batches.items():
                 # Not a policy-to-train.
@@ -202,8 +203,8 @@ class TrainTFMultiGPU:
                         self.sess, [tuples[k] for k in data_keys],
                         [tuples[k] for k in state_keys]))
 
+        # Execute minibatch SGD on loaded data.
         with learn_timer:
-            # (2) Execute minibatch SGD on loaded data.
             fetches = {}
             for policy_id, tuples_per_device in num_loaded_tuples.items():
                 optimizer = self.optimizers[policy_id]
@@ -211,19 +212,25 @@ class TrainTFMultiGPU:
                     1,
                     int(tuples_per_device) // int(self.per_device_batch_size))
                 logger.debug("== sgd epochs for {} ==".format(policy_id))
-                for i in range(self.num_sgd_iter):
-                    iter_extra_fetches = defaultdict(list)
+                for _ in range(self.num_sgd_iter):
                     permutation = np.random.permutation(num_batches)
+                    batch_fetches_all_towers = []
                     for batch_index in range(num_batches):
                         batch_fetches = optimizer.optimize(
                             self.sess, permutation[batch_index] *
                             self.per_device_batch_size)
-                        for k, v in batch_fetches[LEARNER_STATS_KEY].items():
-                            iter_extra_fetches[k].append(v)
-                    if logger.getEffectiveLevel() <= logging.DEBUG:
-                        avg = averaged(iter_extra_fetches)
-                        logger.debug("{} {}".format(i, avg))
-                fetches[policy_id] = averaged(iter_extra_fetches, axis=0)
+
+                        batch_fetches_all_towers.append(
+                            tree.map_structure_with_path(
+                                lambda p, *s: self._all_tower_reduce(p, *s),
+                                *(batch_fetches["tower_{}".format(tower_num)]
+                                  for tower_num in range(len(self.devices)))))
+
+                # Reduce mean across all minibatch SGD steps (axis=0 to keep
+                # all shapes as-is).
+                fetches[policy_id] = tree.map_structure(
+                    lambda *s: np.nanmean(s, axis=0),
+                    *batch_fetches_all_towers)
 
         load_timer.push_units_processed(samples.count)
         learn_timer.push_units_processed(samples.count)
@@ -239,6 +246,16 @@ class TrainTFMultiGPU:
         # Also update global vars of the local worker.
         self.workers.local_worker().set_global_vars(_get_global_vars())
         return samples, fetches
+
+    def _all_tower_reduce(self, path, *tower_data):
+        """Reduces stats across towers based on their stats-dict paths."""
+        if len(path) == 1 and path[0] == "td_error":
+            return np.concatenate(tower_data, axis=0)
+        elif path[-1].startswith("min_"):
+            return np.nanmin(tower_data)
+        elif path[-1].startswith("max_"):
+            return np.nanmax(tower_data)
+        return np.nanmean(tower_data)
 
 
 class ComputeGradients:
