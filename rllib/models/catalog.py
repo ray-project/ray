@@ -379,10 +379,13 @@ class ModelCatalog:
                 model_cls = _global_registry.get(RLLIB_MODEL,
                                                  model_config["custom_model"])
 
+            # Only allow ModelV2 or native keras Models.
             if not issubclass(model_cls, ModelV2):
-                raise ValueError(
-                    "`model_cls` must be a ModelV2 sub-class, but is"
-                    " {}!".format(model_cls))
+                if framework not in ["tf", "tf2", "tfe"] or \
+                        not issubclass(model_cls, tf.keras.Model):
+                    raise ValueError(
+                        "`model_cls` must be a ModelV2 sub-class, but is"
+                        " {}!".format(model_cls))
 
             logger.info("Wrapping {} as {}".format(model_cls, model_interface))
             model_cls = ModelCatalog._wrap_if_needed(model_cls,
@@ -437,7 +440,9 @@ class ModelCatalog:
 
                 # User still registered TFModelV2's variables: Check, whether
                 # ok.
-                registered = set(instance.var_list)
+                registered = []
+                if not isinstance(instance, tf.keras.Model):
+                    registered = set(instance.var_list)
                 if len(registered) > 0:
                     not_registered = set()
                     for var in created:
@@ -680,10 +685,10 @@ class ModelCatalog:
 
     @staticmethod
     def _wrap_if_needed(model_cls: type, model_interface: type) -> type:
-        assert issubclass(model_cls, ModelV2), model_cls
-
         if not model_interface or issubclass(model_cls, model_interface):
             return model_cls
+
+        assert issubclass(model_cls, ModelV2), model_cls
 
         class wrapper(model_interface, model_cls):
             pass

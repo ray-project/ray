@@ -43,7 +43,7 @@ def ppo_surrogate_loss(
         Union[TensorType, List[TensorType]]: A single loss tensor or a list
             of loss tensors.
     """
-    logits, state = model.from_batch(train_batch)
+    logits, state = model(train_batch)
     curr_action_dist = dist_class(logits, model)
 
     # RNN case: Mask away 0-padded chunks at end of time axis.
@@ -177,7 +177,9 @@ def compute_and_clip_gradients(policy: Policy, optimizer: LocalOptimizer,
             tuples.
     """
     # Compute the gradients.
-    variables = policy.model.trainable_variables()
+    variables = policy.model.trainable_variables
+    if isinstance(policy.model, ModelV2):
+        variables = variables()
     grads_and_vars = optimizer.compute_gradients(loss, variables)
 
     # Clip by global norm, if necessary.

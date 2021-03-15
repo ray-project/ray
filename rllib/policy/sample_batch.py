@@ -65,7 +65,7 @@ class SampleBatch(dict):
         self.time_major = kwargs.pop("_time_major", None)
         self.seq_lens = kwargs.pop("_seq_lens", None)
         if isinstance(self.seq_lens, list):
-            self.seq_lens = np.array(self.seq_lens)
+            self.seq_lens = np.array(self.seq_lens, dtype=np.int32)
         self.dont_check_lens = kwargs.pop("_dont_check_lens", False)
         self.max_seq_len = kwargs.pop("_max_seq_len", None)
         if self.max_seq_len is None and self.seq_lens is not None and \
@@ -446,6 +446,13 @@ class SampleBatch(dict):
                     new="SampleBatch.is_training",
                     error=False)
             return self.is_training
+        elif key == "seq_lens":
+            if log_once("SampleBatch['seq_lens']"):
+                deprecation_warning(
+                    old="SampleBatch['iseq_lens']",
+                    new="SampleBatch.seq_lens",
+                    error=False)
+            return self.seq_lens
 
         self.accessed_keys.add(key)
         value = dict.__getitem__(self, key)
@@ -563,6 +570,71 @@ class SampleBatch(dict):
             deprecation_warning(
                 old="SampleBatch.data[..]", new="SampleBatch[..]", error=False)
         return self
+
+    # TODO: (sven) Experimental method.
+    def get_single_step_input_dict(self, view_requirements, index="last"):
+        """Creates single ts SampleBatch at given index from `self`.
+
+        For usage as input-dict for model calls.
+
+        Args:
+            sample_batch (SampleBatch): A single-trajectory SampleBatch object
+                to generate the compute_actions input dict from.
+            index (Union[int, str]): An integer index value indicating the
+                position in the trajectory for which to generate the
+                compute_actions input dict. Set to "last" to generate the dict
+                at the very end of the trajectory (e.g. for value estimation).
+                Note that "last" is different from -1, as "last" will use the
+                final NEXT_OBS as observation input.
+
+        Returns:
+            SampleBatch: The (single-timestep) input dict for ModelV2 calls.
+        """
+        last_mappings = {
+            SampleBatch.OBS: SampleBatch.NEXT_OBS,
+            SampleBatch.PREV_ACTIONS: SampleBatch.ACTIONS,
+            SampleBatch.PREV_REWARDS: SampleBatch.REWARDS,
+        }
+
+        input_dict = {}
+        for view_col, view_req in view_requirements.items():
+            # Create batches of size 1 (single-agent input-dict).
+            data_col = view_req.data_col or view_col
+            if index == "last":
+                data_col = last_mappings.get(data_col, data_col)
+                # Range needed.
+                if view_req.shift_from is not None:
+                    data = self[view_col][-1]
+                    traj_len = len(self[data_col])
+                    missing_at_end = traj_len % view_req.batch_repeat_value
+                    obs_shift = -1 if data_col in [
+                        SampleBatch.OBS, SampleBatch.NEXT_OBS
+                    ] else 0
+                    from_ = view_req.shift_from + obs_shift
+                    to_ = view_req.shift_to + obs_shift + 1
+                    if to_ == 0:
+                        to_ = None
+                    input_dict[view_col] = np.array([
+                        np.concatenate(
+                            [data,
+                             self[data_col][-missing_at_end:]])[from_:to_]
+                    ])
+                # Single index.
+                else:
+                    data = self[data_col][-1]
+                    input_dict[view_col] = np.array([data])
+            else:
+                # Index range.
+                if isinstance(index, tuple):
+                    data = self[data_col][index[0]:index[1] +
+                                          1 if index[1] != -1 else None]
+                    input_dict[view_col] = np.array([data])
+                # Single index.
+                else:
+                    input_dict[view_col] = self[data_col][
+                        index:index + 1 if index != -1 else None]
+
+        return SampleBatch(input_dict, _seq_lens=[1])
 
 
 @PublicAPI
