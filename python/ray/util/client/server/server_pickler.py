@@ -18,7 +18,6 @@ import ray
 from typing import Any
 from typing import TYPE_CHECKING
 
-from ray import cloudpickle
 from ray._private.client_mode_hook import disable_client_hook
 import ray.cloudpickle as cloudpickle
 from ray.util.client.client_pickler import PickleStub
