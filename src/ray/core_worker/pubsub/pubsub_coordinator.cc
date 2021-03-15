@@ -23,10 +23,18 @@ void SubscriptionIndex::AddEntry(const ObjectID &object_id, const NodeID &subscr
   RAY_CHECK(subscriber_map.emplace(subscriber_id).second);
 }
 
-absl::flat_hash_set<NodeID> &SubscriptionIndex::GetSubscriberIdsByObjectId(
+const absl::flat_hash_set<NodeID> &SubscriptionIndex::GetSubscriberIdsByObjectId(
     const ObjectID &object_id) {
   RAY_CHECK(objects_to_subscribers_.count(object_id) > 0);
   return objects_to_subscribers_[object_id];
+}
+
+bool SubscriptionIndex::IsObjectIdExist(const ObjectID &object_id) const {
+  return objects_to_subscribers_.count(object_id) > 0;
+}
+
+bool SubscriptionIndex::IsSubscriberExist(const NodeID &subscriber_id) const {
+  return subscribers_to_objects_.count(subscriber_id) > 0;
 }
 
 int SubscriptionIndex::EraseSubscriber(const NodeID &subscriber_id) {

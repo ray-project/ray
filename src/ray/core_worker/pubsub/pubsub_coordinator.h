@@ -30,9 +30,12 @@ class SubscriptionIndex {
   ~SubscriptionIndex() = default;
 
   void AddEntry(const ObjectID &object_id, const NodeID &subscriber_id);
-  absl::flat_hash_set<NodeID> &GetSubscriberIdsByObjectId(const ObjectID &object_id);
+  const absl::flat_hash_set<NodeID> &GetSubscriberIdsByObjectId(const ObjectID &object_id);
   int EraseSubscriber(const NodeID &subscriber_id);
   int EraseEntry(const ObjectID &object_id, const NodeID &subscriber_id);
+  // Test only.
+  bool IsObjectIdExist(const ObjectID &object_id) const;
+  bool IsSubscriberExist(const NodeID &subscriber_id) const;
 
  private:
   absl::flat_hash_map<ObjectID, absl::flat_hash_set<NodeID>> objects_to_subscribers_;
