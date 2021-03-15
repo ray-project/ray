@@ -15,7 +15,6 @@
 #pragma once
 
 #include <ray/api/serializer.h>
-#include "absl/utility/utility.h"
 
 #include <boost/callable_traits.hpp>
 #include <functional>
@@ -24,14 +23,39 @@
 #include <tuple>
 #include <unordered_map>
 
+#include "absl/utility/utility.h"
 #include "ray/core.h"
 
 namespace ray {
 namespace internal {
 
 template <typename T>
-inline static msgpack::sbuffer PackReturnValue(T result) {
-  return ray::api::Serializer::Serialize(std::move(result));
+struct is_smart_pointer : std::false_type {};
+template <typename T>
+struct is_smart_pointer<std::shared_ptr<T>> : std::true_type {};
+template <typename T>
+struct is_smart_pointer<std::unique_ptr<T>> : std::true_type {};
+
+template <typename T>
+inline static absl::enable_if_t<!std::is_pointer<T>::value && !is_smart_pointer<T>::value,
+                                msgpack::sbuffer>
+PackReturnValue(const T &result) {
+  msgpack::sbuffer buffer;
+  msgpack::pack(buffer, result);
+  return buffer;
+}
+
+template <typename T>
+inline static absl::enable_if_t<is_smart_pointer<T>::value, msgpack::sbuffer>
+PackReturnValue(const T &result) {
+  return ray::api::Serializer::Serialize(*result);
+}
+
+template <typename T>
+inline static absl::enable_if_t<std::is_pointer<T>::value, msgpack::sbuffer>
+PackReturnValue(const T &result) {
+  std::unique_ptr<absl::remove_pointer_t<T>> scope_ptr(result);
+  return ray::api::Serializer::Serialize(*result);
 }
 
 inline static msgpack::sbuffer PackVoid() {

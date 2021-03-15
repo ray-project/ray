@@ -143,3 +143,30 @@ TEST(RayApiTest, ArgumentsNotMatch) {
 
   ray::api::RayConfig::GetInstance()->use_ray_remote = false;
 }
+
+class DummyObject {
+ public:
+  int count;
+
+  MSGPACK_DEFINE(count);
+
+  DummyObject(int init) {
+    std::cout << "construct DummyObject\n";
+    count = init;
+  }
+
+  ~DummyObject() { std::cout << "destruct DummyObject\n"; }
+
+  static DummyObject *FactoryCreate() { return new DummyObject(0); }
+};
+RAY_REMOTE(DummyObject::FactoryCreate);
+
+TEST(RayApiTest, CreateActor) {
+  ray::api::RayConfig::GetInstance()->use_ray_remote = true;
+
+  ActorHandle<DummyObject> actor = Ray::Actor(DummyObject::FactoryCreate).Remote();
+  auto s = actor.ID().Hex();
+  EXPECT_FALSE(s.empty());
+
+  ray::api::RayConfig::GetInstance()->use_ray_remote = false;
+}

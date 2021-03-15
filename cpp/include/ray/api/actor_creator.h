@@ -12,14 +12,26 @@ class ActorCreator {
  public:
   ActorCreator();
 
+  ActorCreator(RayRuntime *runtime, std::string create_func_name)
+      : runtime_(runtime), create_func_name_(std::move(create_func_name)) {}
+
   ActorCreator(RayRuntime *runtime, RemoteFunctionPtrHolder ptr,
                std::vector<std::unique_ptr<::ray::TaskArg>> &&args);
 
-  ActorHandle<ActorType> Remote();
+  template <typename... Args>
+  ActorHandle<ActorType> Remote(Args... args) {
+    if (ray::api::RayConfig::GetInstance()->use_ray_remote) {
+      Arguments::WrapArgs(&args_, create_func_name_, args...);
+    }
+
+    auto returned_actor_id = runtime_->CreateActor(ptr_, args_);
+    return ActorHandle<ActorType>(returned_actor_id);
+  }
 
  private:
   RayRuntime *runtime_;
-  RemoteFunctionPtrHolder ptr_;
+  RemoteFunctionPtrHolder ptr_{};
+  std::string create_func_name_;
   std::vector<std::unique_ptr<::ray::TaskArg>> args_;
 };
 
@@ -32,11 +44,5 @@ template <typename ActorType>
 ActorCreator<ActorType>::ActorCreator(RayRuntime *runtime, RemoteFunctionPtrHolder ptr,
                                       std::vector<std::unique_ptr<::ray::TaskArg>> &&args)
     : runtime_(runtime), ptr_(ptr), args_(std::move(args)) {}
-
-template <typename ActorType>
-ActorHandle<ActorType> ActorCreator<ActorType>::Remote() {
-  auto returned_actor_id = runtime_->CreateActor(ptr_, args_);
-  return ActorHandle<ActorType>(returned_actor_id);
-}
 }  // namespace api
 }  // namespace ray

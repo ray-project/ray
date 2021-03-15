@@ -190,6 +190,17 @@ template <typename ActorType, typename FuncType, typename ExecFuncType,
 inline ActorCreator<ActorType> Ray::CreateActorInternal(FuncType &create_func,
                                                         ExecFuncType &exec_func,
                                                         ArgTypes &... args) {
+  if (ray::api::RayConfig::GetInstance()->use_ray_remote) {
+    auto function_name =
+        ray::internal::FunctionManager::Instance().GetFunctionName(create_func);
+    if (function_name.empty()) {
+      throw RayException(function_name + " not exsit!");
+    }
+
+    return ActorCreator<ActorType>(ray::internal::RayRuntime().get(),
+                                   std::move(function_name));
+  }
+
   std::vector<std::unique_ptr<::ray::TaskArg>> task_args;
   Arguments::WrapArgs(&task_args, args...);
   RemoteFunctionPtrHolder ptr;
@@ -208,7 +219,7 @@ TaskCaller<boost::callable_traits::return_type_t<F>> Ray::Task(F func, Args... a
     if (function_name.empty()) {
       throw RayException(function_name + " not exsit!");
     }
-    /// TODO if function_name is empty, throw exception
+
     return TaskCaller<ReturnType>(ray::internal::RayRuntime().get(),
                                   std::move(function_name));
   }
