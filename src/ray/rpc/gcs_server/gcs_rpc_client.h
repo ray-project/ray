@@ -91,40 +91,41 @@ class GcsRpcClient {
 
   void Reset(const std::string &address, const int port,
              ClientCallManager &client_call_manager) {
-    job_info_grpc_client_ = std::unique_ptr<GrpcClient<JobInfoGcsService>>(
-        new GrpcClient<JobInfoGcsService>(address, port, client_call_manager));
-    actor_info_grpc_client_ = std::unique_ptr<GrpcClient<ActorInfoGcsService>>(
-        new GrpcClient<ActorInfoGcsService>(address, port, client_call_manager));
-    node_info_grpc_client_ = std::unique_ptr<GrpcClient<NodeInfoGcsService>>(
-        new GrpcClient<NodeInfoGcsService>(address, port, client_call_manager));
+    job_info_grpc_client_ = std::make_unique<GrpcClient<JobInfoGcsService>>(
+        address, port, client_call_manager);
+    actor_info_grpc_client_ = std::make_unique<GrpcClient<ActorInfoGcsService>>(
+        address, port, client_call_manager);
+    node_info_grpc_client_ = std::make_unique<GrpcClient<NodeInfoGcsService>>(
+        address, port, client_call_manager);
     node_resource_info_grpc_client_ =
-        std::unique_ptr<GrpcClient<NodeResourceInfoGcsService>>(
-            new GrpcClient<NodeResourceInfoGcsService>(address, port,
-                                                       client_call_manager));
-    heartbeat_info_grpc_client_ = std::unique_ptr<GrpcClient<HeartbeatInfoGcsService>>(
-        new GrpcClient<HeartbeatInfoGcsService>(address, port, client_call_manager));
-    object_info_grpc_client_ = std::unique_ptr<GrpcClient<ObjectInfoGcsService>>(
-        new GrpcClient<ObjectInfoGcsService>(address, port, client_call_manager));
-    task_info_grpc_client_ = std::unique_ptr<GrpcClient<TaskInfoGcsService>>(
-        new GrpcClient<TaskInfoGcsService>(address, port, client_call_manager));
-    stats_grpc_client_ = std::unique_ptr<GrpcClient<StatsGcsService>>(
-        new GrpcClient<StatsGcsService>(address, port, client_call_manager));
-    worker_info_grpc_client_ = std::unique_ptr<GrpcClient<WorkerInfoGcsService>>(
-        new GrpcClient<WorkerInfoGcsService>(address, port, client_call_manager));
+        std::make_unique<GrpcClient<NodeResourceInfoGcsService>>(address, port,
+                                                                 client_call_manager);
+    heartbeat_info_grpc_client_ = std::make_unique<GrpcClient<HeartbeatInfoGcsService>>(
+        address, port, client_call_manager);
+    object_info_grpc_client_ = std::make_unique<GrpcClient<ObjectInfoGcsService>>(
+        address, port, client_call_manager);
+    task_info_grpc_client_ = std::make_unique<GrpcClient<TaskInfoGcsService>>(
+        address, port, client_call_manager);
+    stats_grpc_client_ =
+        std::make_unique<GrpcClient<StatsGcsService>>(address, port, client_call_manager);
+    worker_info_grpc_client_ = std::make_unique<GrpcClient<WorkerInfoGcsService>>(
+        address, port, client_call_manager);
     placement_group_info_grpc_client_ =
-        std::unique_ptr<GrpcClient<PlacementGroupInfoGcsService>>(
-            new GrpcClient<PlacementGroupInfoGcsService>(address, port,
-                                                         client_call_manager));
+        std::make_unique<GrpcClient<PlacementGroupInfoGcsService>>(address, port,
+                                                                   client_call_manager);
   }
 
-  /// Add job info to gcs server.
+  /// Add job info to GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(JobInfoGcsService, AddJob, job_info_grpc_client_, )
 
-  /// Mark job as finished to gcs server.
+  /// Mark job as finished to GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(JobInfoGcsService, MarkJobFinished, job_info_grpc_client_, )
 
   /// Get information of all jobs from GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(JobInfoGcsService, GetAllJobInfo, job_info_grpc_client_, )
+
+  /// Report job error to GCS Service.
+  VOID_GCS_RPC_CLIENT_METHOD(JobInfoGcsService, ReportJobError, job_info_grpc_client_, )
 
   /// Register actor via GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(ActorInfoGcsService, RegisterActor,

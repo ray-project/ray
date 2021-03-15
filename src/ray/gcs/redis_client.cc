@@ -115,7 +115,7 @@ Status RedisClient::Connect(std::vector<instrumented_io_context *> io_services) 
                                          /*sharding=*/true,
                                          /*password=*/options_.password_));
 
-  if (!options_.is_test_client_) {
+  if (options_.enable_sharding_conn_) {
     // Moving sharding into constructor defaultly means that sharding = true.
     // This design decision may worth a look.
     std::vector<std::string> addresses;
@@ -175,6 +175,7 @@ void RedisClient::Disconnect() {
 }
 
 std::shared_ptr<RedisContext> RedisClient::GetShardContext(const std::string &shard_key) {
+  RAY_CHECK(!shard_contexts_.empty());
   static std::hash<std::string> hash;
   size_t index = hash(shard_key) % shard_contexts_.size();
   return shard_contexts_[index];
