@@ -109,7 +109,7 @@ METRICS_GAUGES = {
                                   ["node_type"]),
     "cluster_failed_nodes": Gauge("cluster_failed_nodes",
                                   "Failed nodes on the cluster", "count",
-                                  []),
+                                  ["node_type"]),
     "cluster_pending_nodes": Gauge("cluster_pending_nodes",
                                    "Pending nodes on the cluster", "count",
                                    []),
@@ -333,22 +333,33 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
                         tags={"node_type": node_type})
                 ])
 
-            failed_nodes = len(
-                cluster_stats["autoscaler_report"]["failed_nodes"])
-            logger.info("~~~~~ failed nodes" + str(cluster_stats["autoscaler_report"]["failed_nodes"]))
-            cluster_failed_nodes_record = Record(
-                gauge=METRICS_GAUGES["cluster_failed_nodes"],
-                value=failed_nodes,
-                tags={})
+            failed_nodes = cluster_stats["autoscaler_report"]["failed_nodes"]
+            failed_nodes_dict = {}
+            for node_ip, node_type in failed_nodes:
+                if node_type in failed_nodes_dict:
+                    failed_nodes_dict[node_type] += 1
+                else:
+                    failed_nodes_dict[node_type] = 1
+            
+            for node_type, failed_node_count in failed_nodes_dict.items():
+                records_reported.extend(Record(
+                    gauge=METRICS_GAUGES["cluster_failed_nodes"],
+                    value=failed_node_count,
+                    tags={"node_type": node_type}))
 
-            pending_nodes = len(
-                cluster_stats["autoscaler_report"]["pending_nodes"])
-            cluster_pending_nodes_record = Record(
-                gauge=METRICS_GAUGES["cluster_pending_nodes"],
-                value=pending_nodes,
-                tags={})
-            records_reported.extend(
-                [cluster_failed_nodes_record, cluster_pending_nodes_record])
+            pending_nodes = cluster_stats["autoscaler_report"]["pending_nodes"]
+            pending_nodes_dict = {}
+            for node_ip, node_type in pending_nodes:
+                if node_type in pending_nodes_dict:
+                    pending_nodes_dict[node_type] += 1
+                else:
+                    pending_nodes_dict[node_type] = 1
+            
+            for node_type, pending_node_count in pending_nodes_dict.items():
+                records_reported.extend(Record(
+                    gauge=METRICS_GAUGES["cluster_pending_nodes"],
+                    value=pending_nodes,
+                    tags={"node_type": node_type}))
 
         # -- CPU per node --
         cpu_usage = float(stats["cpu"])
