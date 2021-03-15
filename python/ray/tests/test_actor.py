@@ -22,259 +22,259 @@ import ray
 import setproctitle  # noqa
 
 
-def test_caching_actors(shutdown_only):
-    # Test defining actors before ray.init() has been called.
+# def test_caching_actors(shutdown_only):
+#     # Test defining actors before ray.init() has been called.
 
-    @ray.remote
-    class Foo:
-        def __init__(self):
-            pass
+#     @ray.remote
+#     class Foo:
+#         def __init__(self):
+#             pass
 
-        def get_val(self):
-            return 3
+#         def get_val(self):
+#             return 3
 
-    # Check that we can't actually create actors before ray.init() has been
-    # called.
-    with pytest.raises(Exception):
-        f = Foo.remote()
+#     # Check that we can't actually create actors before ray.init() has been
+#     # called.
+#     with pytest.raises(Exception):
+#         f = Foo.remote()
 
-    ray.init(num_cpus=1)
+#     ray.init(num_cpus=1)
 
-    f = Foo.remote()
+#     f = Foo.remote()
 
-    assert ray.get(f.get_val.remote()) == 3
+#     assert ray.get(f.get_val.remote()) == 3
 
 
-def test_remote_function_within_actor(ray_start_10_cpus):
-    # Make sure we can use remote funtions within actors.
+# def test_remote_function_within_actor(ray_start_10_cpus):
+#     # Make sure we can use remote funtions within actors.
 
-    # Create some values to close over.
-    val1 = 1
-    val2 = 2
+#     # Create some values to close over.
+#     val1 = 1
+#     val2 = 2
 
-    @ray.remote
-    def f(x):
-        return val1 + x
+#     @ray.remote
+#     def f(x):
+#         return val1 + x
 
-    @ray.remote
-    def g(x):
-        return ray.get(f.remote(x))
+#     @ray.remote
+#     def g(x):
+#         return ray.get(f.remote(x))
 
-    @ray.remote
-    class Actor:
-        def __init__(self, x):
-            self.x = x
-            self.y = val2
-            self.object_refs = [f.remote(i) for i in range(5)]
-            self.values2 = ray.get([f.remote(i) for i in range(5)])
+#     @ray.remote
+#     class Actor:
+#         def __init__(self, x):
+#             self.x = x
+#             self.y = val2
+#             self.object_refs = [f.remote(i) for i in range(5)]
+#             self.values2 = ray.get([f.remote(i) for i in range(5)])
 
-        def get_values(self):
-            return self.x, self.y, self.object_refs, self.values2
+#         def get_values(self):
+#             return self.x, self.y, self.object_refs, self.values2
 
-        def f(self):
-            return [f.remote(i) for i in range(5)]
+#         def f(self):
+#             return [f.remote(i) for i in range(5)]
 
-        def g(self):
-            return ray.get([g.remote(i) for i in range(5)])
+#         def g(self):
+#             return ray.get([g.remote(i) for i in range(5)])
 
-        def h(self, object_refs):
-            return ray.get(object_refs)
+#         def h(self, object_refs):
+#             return ray.get(object_refs)
 
-    actor = Actor.remote(1)
-    values = ray.get(actor.get_values.remote())
-    assert values[0] == 1
-    assert values[1] == val2
-    assert ray.get(values[2]) == list(range(1, 6))
-    assert values[3] == list(range(1, 6))
+#     actor = Actor.remote(1)
+#     values = ray.get(actor.get_values.remote())
+#     assert values[0] == 1
+#     assert values[1] == val2
+#     assert ray.get(values[2]) == list(range(1, 6))
+#     assert values[3] == list(range(1, 6))
 
-    assert ray.get(ray.get(actor.f.remote())) == list(range(1, 6))
-    assert ray.get(actor.g.remote()) == list(range(1, 6))
-    assert ray.get(actor.h.remote([f.remote(i) for i in range(5)])) == list(
-        range(1, 6))
+#     assert ray.get(ray.get(actor.f.remote())) == list(range(1, 6))
+#     assert ray.get(actor.g.remote()) == list(range(1, 6))
+#     assert ray.get(actor.h.remote([f.remote(i) for i in range(5)])) == list(
+#         range(1, 6))
 
 
-def test_define_actor_within_actor(ray_start_10_cpus):
-    # Make sure we can use remote funtions within actors.
+# def test_define_actor_within_actor(ray_start_10_cpus):
+#     # Make sure we can use remote funtions within actors.
 
-    @ray.remote
-    class Actor1:
-        def __init__(self, x):
-            self.x = x
+#     @ray.remote
+#     class Actor1:
+#         def __init__(self, x):
+#             self.x = x
 
-        def new_actor(self, z):
-            @ray.remote
-            class Actor2:
-                def __init__(self, x):
-                    self.x = x
+#         def new_actor(self, z):
+#             @ray.remote
+#             class Actor2:
+#                 def __init__(self, x):
+#                     self.x = x
 
-                def get_value(self):
-                    return self.x
+#                 def get_value(self):
+#                     return self.x
 
-            self.actor2 = Actor2.remote(z)
+#             self.actor2 = Actor2.remote(z)
 
-        def get_values(self, z):
-            self.new_actor(z)
-            return self.x, ray.get(self.actor2.get_value.remote())
+#         def get_values(self, z):
+#             self.new_actor(z)
+#             return self.x, ray.get(self.actor2.get_value.remote())
 
-    actor1 = Actor1.remote(3)
-    assert ray.get(actor1.get_values.remote(5)) == (3, 5)
+#     actor1 = Actor1.remote(3)
+#     assert ray.get(actor1.get_values.remote(5)) == (3, 5)
 
 
-def test_use_actor_within_actor(ray_start_10_cpus):
-    # Make sure we can use actors within actors.
+# def test_use_actor_within_actor(ray_start_10_cpus):
+#     # Make sure we can use actors within actors.
 
-    @ray.remote
-    class Actor1:
-        def __init__(self, x):
-            self.x = x
+#     @ray.remote
+#     class Actor1:
+#         def __init__(self, x):
+#             self.x = x
 
-        def get_val(self):
-            return self.x
+#         def get_val(self):
+#             return self.x
 
-    @ray.remote
-    class Actor2:
-        def __init__(self, x, y):
-            self.x = x
-            self.actor1 = Actor1.remote(y)
+#     @ray.remote
+#     class Actor2:
+#         def __init__(self, x, y):
+#             self.x = x
+#             self.actor1 = Actor1.remote(y)
 
-        def get_values(self, z):
-            return self.x, ray.get(self.actor1.get_val.remote())
+#         def get_values(self, z):
+#             return self.x, ray.get(self.actor1.get_val.remote())
 
-    actor2 = Actor2.remote(3, 4)
-    assert ray.get(actor2.get_values.remote(5)) == (3, 4)
+#     actor2 = Actor2.remote(3, 4)
+#     assert ray.get(actor2.get_values.remote(5)) == (3, 4)
 
 
-def test_use_actor_twice(ray_start_10_cpus):
-    # Make sure we can call the same actor using different refs.
+# def test_use_actor_twice(ray_start_10_cpus):
+#     # Make sure we can call the same actor using different refs.
 
-    @ray.remote
-    class Actor1:
-        def __init__(self):
-            self.count = 0
+#     @ray.remote
+#     class Actor1:
+#         def __init__(self):
+#             self.count = 0
 
-        def inc(self):
-            self.count += 1
-            return self.count
+#         def inc(self):
+#             self.count += 1
+#             return self.count
 
-    @ray.remote
-    class Actor2:
-        def __init__(self):
-            pass
+#     @ray.remote
+#     class Actor2:
+#         def __init__(self):
+#             pass
 
-        def inc(self, handle):
-            return ray.get(handle.inc.remote())
+#         def inc(self, handle):
+#             return ray.get(handle.inc.remote())
 
-    a = Actor1.remote()
-    a2 = Actor2.remote()
-    assert ray.get(a2.inc.remote(a)) == 1
-    assert ray.get(a2.inc.remote(a)) == 2
+#     a = Actor1.remote()
+#     a2 = Actor2.remote()
+#     assert ray.get(a2.inc.remote(a)) == 1
+#     assert ray.get(a2.inc.remote(a)) == 2
 
 
-def test_define_actor_within_remote_function(ray_start_10_cpus):
-    # Make sure we can define and actors within remote funtions.
+# def test_define_actor_within_remote_function(ray_start_10_cpus):
+#     # Make sure we can define and actors within remote funtions.
 
-    @ray.remote
-    def f(x, n):
-        @ray.remote
-        class Actor1:
-            def __init__(self, x):
-                self.x = x
+#     @ray.remote
+#     def f(x, n):
+#         @ray.remote
+#         class Actor1:
+#             def __init__(self, x):
+#                 self.x = x
 
-            def get_value(self):
-                return self.x
+#             def get_value(self):
+#                 return self.x
 
-        actor = Actor1.remote(x)
-        return ray.get([actor.get_value.remote() for _ in range(n)])
+#         actor = Actor1.remote(x)
+#         return ray.get([actor.get_value.remote() for _ in range(n)])
 
-    assert ray.get(f.remote(3, 1)) == [3]
-    assert ray.get(
-        [f.remote(i, 20) for i in range(10)]) == [20 * [i] for i in range(10)]
+#     assert ray.get(f.remote(3, 1)) == [3]
+#     assert ray.get(
+#         [f.remote(i, 20) for i in range(10)]) == [20 * [i] for i in range(10)]
 
 
-def test_use_actor_within_remote_function(ray_start_10_cpus):
-    # Make sure we can create and use actors within remote funtions.
+# def test_use_actor_within_remote_function(ray_start_10_cpus):
+#     # Make sure we can create and use actors within remote funtions.
 
-    @ray.remote
-    class Actor1:
-        def __init__(self, x):
-            self.x = x
+#     @ray.remote
+#     class Actor1:
+#         def __init__(self, x):
+#             self.x = x
 
-        def get_values(self):
-            return self.x
+#         def get_values(self):
+#             return self.x
 
-    @ray.remote
-    def f(x):
-        actor = Actor1.remote(x)
-        return ray.get(actor.get_values.remote())
+#     @ray.remote
+#     def f(x):
+#         actor = Actor1.remote(x)
+#         return ray.get(actor.get_values.remote())
 
-    assert ray.get(f.remote(3)) == 3
+#     assert ray.get(f.remote(3)) == 3
 
 
-def test_actor_import_counter(ray_start_10_cpus):
-    # This is mostly a test of the export counters to make sure that when
-    # an actor is imported, all of the necessary remote functions have been
-    # imported.
+# def test_actor_import_counter(ray_start_10_cpus):
+#     # This is mostly a test of the export counters to make sure that when
+#     # an actor is imported, all of the necessary remote functions have been
+#     # imported.
 
-    # Export a bunch of remote functions.
-    num_remote_functions = 50
-    for i in range(num_remote_functions):
+#     # Export a bunch of remote functions.
+#     num_remote_functions = 50
+#     for i in range(num_remote_functions):
 
-        @ray.remote
-        def f():
-            return i
+#         @ray.remote
+#         def f():
+#             return i
 
-    @ray.remote
-    def g():
-        @ray.remote
-        class Actor:
-            def __init__(self):
-                # This should use the last version of f.
-                self.x = ray.get(f.remote())
+#     @ray.remote
+#     def g():
+#         @ray.remote
+#         class Actor:
+#             def __init__(self):
+#                 # This should use the last version of f.
+#                 self.x = ray.get(f.remote())
 
-            def get_val(self):
-                return self.x
+#             def get_val(self):
+#                 return self.x
 
-        actor = Actor.remote()
-        return ray.get(actor.get_val.remote())
+#         actor = Actor.remote()
+#         return ray.get(actor.get_val.remote())
 
-    assert ray.get(g.remote()) == num_remote_functions - 1
+#     assert ray.get(g.remote()) == num_remote_functions - 1
 
 
-@pytest.mark.skipif(client_test_enabled(), reason="internal api")
-def test_actor_method_metadata_cache(ray_start_regular):
-    class Actor(object):
-        pass
+# @pytest.mark.skipif(client_test_enabled(), reason="internal api")
+# def test_actor_method_metadata_cache(ray_start_regular):
+#     class Actor(object):
+#         pass
 
-    # The cache of ActorClassMethodMetadata.
-    cache = ray.actor.ActorClassMethodMetadata._cache
-    cache.clear()
+#     # The cache of ActorClassMethodMetadata.
+#     cache = ray.actor.ActorClassMethodMetadata._cache
+#     cache.clear()
 
-    # Check cache hit during ActorHandle deserialization.
-    A1 = ray.remote(Actor)
-    a = A1.remote()
-    assert len(cache) == 1
-    cached_data_id = [id(x) for x in list(cache.items())[0]]
-    for x in range(10):
-        a = pickle.loads(pickle.dumps(a))
-    assert len(ray.actor.ActorClassMethodMetadata._cache) == 1
-    assert [id(x) for x in list(cache.items())[0]] == cached_data_id
+#     # Check cache hit during ActorHandle deserialization.
+#     A1 = ray.remote(Actor)
+#     a = A1.remote()
+#     assert len(cache) == 1
+#     cached_data_id = [id(x) for x in list(cache.items())[0]]
+#     for x in range(10):
+#         a = pickle.loads(pickle.dumps(a))
+#     assert len(ray.actor.ActorClassMethodMetadata._cache) == 1
+#     assert [id(x) for x in list(cache.items())[0]] == cached_data_id
 
 
-@pytest.mark.skipif(client_test_enabled(), reason="internal api")
-def test_actor_class_name(ray_start_regular):
-    @ray.remote
-    class Foo:
-        def __init__(self):
-            pass
+# @pytest.mark.skipif(client_test_enabled(), reason="internal api")
+# def test_actor_class_name(ray_start_regular):
+#     @ray.remote
+#     class Foo:
+#         def __init__(self):
+#             pass
 
-    Foo.remote()
+#     Foo.remote()
 
-    r = ray.worker.global_worker.redis_client
-    actor_keys = r.keys("ActorClass*")
-    assert len(actor_keys) == 1
-    actor_class_info = r.hgetall(actor_keys[0])
-    assert actor_class_info[b"class_name"] == b"Foo"
-    assert b"test_actor" in actor_class_info[b"module"]
+#     r = ray.worker.global_worker.redis_client
+#     actor_keys = r.keys("ActorClass*")
+#     assert len(actor_keys) == 1
+#     actor_class_info = r.hgetall(actor_keys[0])
+#     assert actor_class_info[b"class_name"] == b"Foo"
+#     assert b"test_actor" in actor_class_info[b"module"]
 
 
 def test_actor_exit_from_task(ray_start_regular_shared):
@@ -294,6 +294,8 @@ def test_actor_exit_from_task(ray_start_regular_shared):
 
     x_id = ray.get(f.remote())[0]
     print(ray.get(x_id))  # This should not hang.
+    import time
+    time.sleep(5)
 
 
 def test_actor_init_error_propagated(ray_start_regular_shared):
