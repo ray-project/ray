@@ -239,7 +239,7 @@ bool WorkerContext::CurrentActorDetached() const { return is_detached_actor_; }
 
 WorkerThreadContext &WorkerContext::GetThreadContext() {
   if (thread_context_ == nullptr) {
-    thread_context_ = std::unique_ptr<WorkerThreadContext>(new WorkerThreadContext());
+    thread_context_ = std::make_unique<WorkerThreadContext>();
   }
 
   return *thread_context_;

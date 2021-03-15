@@ -13,6 +13,7 @@ import aioredis
 import ray
 import ray.gcs_utils
 import ray.new_dashboard.modules.reporter.reporter_consts as reporter_consts
+from ray.new_dashboard import k8s_utils
 import ray.new_dashboard.utils as dashboard_utils
 import ray._private.services
 import ray._private.utils
@@ -22,6 +23,9 @@ from ray._private.metrics_agent import MetricsAgent, Gauge, Record
 import psutil
 
 logger = logging.getLogger(__name__)
+
+# Are we in a K8s pod?
+IN_KUBERNETES_POD = "KUBERNETES_SERVICE_HOST" in os.environ
 
 try:
     import gpustat.core as gpustat
@@ -113,8 +117,15 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
     def __init__(self, dashboard_agent):
         """Initialize the reporter object."""
         super().__init__(dashboard_agent)
-        self._cpu_counts = (psutil.cpu_count(),
-                            psutil.cpu_count(logical=False))
+        if IN_KUBERNETES_POD:
+            # psutil does not compute this correctly when in a K8s pod.
+            # Use ray._private.utils instead.
+            cpu_count = ray._private.utils.get_num_cpus()
+            self._cpu_counts = (cpu_count, cpu_count)
+        else:
+            self._cpu_counts = (psutil.cpu_count(),
+                                psutil.cpu_count(logical=False))
+
         self._ip = ray._private.services.get_node_ip_address()
         self._hostname = socket.gethostname()
         self._workers = set()
@@ -156,7 +167,10 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
 
     @staticmethod
     def _get_cpu_percent():
-        return psutil.cpu_percent()
+        if IN_KUBERNETES_POD:
+            return k8s_utils.cpu_percent()
+        else:
+            return psutil.cpu_percent()
 
     @staticmethod
     def _get_gpu_usage():
@@ -180,7 +194,11 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
 
     @staticmethod
     def _get_boot_time():
-        return psutil.boot_time()
+        if IN_KUBERNETES_POD:
+            # Return start time of container entrypoint
+            return psutil.Process(pid=1).create_time()
+        else:
+            return psutil.boot_time()
 
     @staticmethod
     def _get_network_stats():

@@ -39,12 +39,8 @@ class GcsClientOptions {
   /// \param port GCS service port.
   /// \param password GCS service password.
   /// \param is_test_client Whether this client is used for tests.
-  GcsClientOptions(const std::string &ip, int port, const std::string &password,
-                   bool is_test_client = false)
-      : server_ip_(ip),
-        server_port_(port),
-        password_(password),
-        is_test_client_(is_test_client) {}
+  GcsClientOptions(const std::string &ip, int port, const std::string &password)
+      : server_ip_(ip), server_port_(port), password_(password) {}
 
   GcsClientOptions() {}
 
@@ -54,9 +50,6 @@ class GcsClientOptions {
 
   // Password of GCS server.
   std::string password_;
-
-  // Whether this client is used for tests.
-  bool is_test_client_{false};
 };
 
 /// \class GcsClient

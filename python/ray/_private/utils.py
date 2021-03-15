@@ -2,6 +2,7 @@ import binascii
 import errno
 import hashlib
 import logging
+import math
 import multiprocessing
 import os
 import signal
@@ -10,6 +11,7 @@ import sys
 import tempfile
 import threading
 import time
+from typing import Optional
 import uuid
 
 from inspect import signature
@@ -412,8 +414,9 @@ def get_system_memory():
 
 def _get_docker_cpus(
         cpu_quota_file_name="/sys/fs/cgroup/cpu/cpu.cfs_quota_us",
-        cpu_share_file_name="/sys/fs/cgroup/cpu/cpu.cfs_period_us",
-        cpuset_file_name="/sys/fs/cgroup/cpuset/cpuset.cpus"):
+        cpu_period_file_name="/sys/fs/cgroup/cpu/cpu.cfs_period_us",
+        cpuset_file_name="/sys/fs/cgroup/cpuset/cpuset.cpus"
+) -> Optional[float]:
     # TODO (Alex): Don't implement this logic oursleves.
     # Docker has 2 underyling ways of implementing CPU limits:
     # https://docs.docker.com/config/containers/resource_constraints/#configure-the-default-cfs-scheduler
@@ -428,13 +431,13 @@ def _get_docker_cpus(
             cpu_quota_file_name):
         try:
             with open(cpu_quota_file_name, "r") as quota_file, open(
-                    cpu_share_file_name, "r") as period_file:
+                    cpu_period_file_name, "r") as period_file:
                 cpu_quota = float(quota_file.read()) / float(
                     period_file.read())
         except Exception as e:
             logger.exception("Unexpected error calculating docker cpu quota.",
                              e)
-    if cpu_quota < 0:
+    if (cpu_quota is not None) and (cpu_quota < 0):
         cpu_quota = None
 
     cpuset_num = None
@@ -461,7 +464,30 @@ def _get_docker_cpus(
         return cpu_quota or cpuset_num
 
 
-def get_num_cpus():
+def get_k8s_cpus(cpu_share_file_name="/sys/fs/cgroup/cpu/cpu.shares") -> float:
+    """Get number of CPUs available for use by this container, in terms of
+    cgroup cpu shares.
+
+    This is the number of CPUs K8s has assigned to the container based
+    on pod spec requests and limits.
+
+    Note: using cpu_quota as in _get_docker_cpus() works
+    only if the user set CPU limit in their pod spec (in addition to CPU
+    request). Otherwise, the quota is unset.
+    """
+    try:
+        cpu_shares = int(open(cpu_share_file_name).read())
+        container_num_cpus = cpu_shares / 1024
+        return container_num_cpus
+    except Exception as e:
+        logger.exception("Error computing CPU limit of Ray Kubernetes pod.", e)
+        return 1.0
+
+
+def get_num_cpus() -> int:
+    if "KUBERNETES_SERVICE_HOST" in os.environ:
+        # If in a K8S pod, use cgroup cpu shares and round up.
+        return int(math.ceil(get_k8s_cpus()))
     cpu_count = multiprocessing.cpu_count()
     if os.environ.get("RAY_USE_MULTIPROCESSING_CPU_COUNT"):
         logger.info(
@@ -853,15 +879,21 @@ def get_conda_env_dir(env_name):
     # 1. We are in a conda (base) env: CONDA_DEFAULT_ENV=base and
     #    CONDA_PREFIX=$HOME/anaconda3
     # 2. We are in a user-created conda env: CONDA_DEFAULT_ENV=$env_name and
-    #    CONDA_PREFIX=$HOME/anaconda3/envs/$env_name
+    #    CONDA_PREFIX=$HOME/anaconda3/envs/$current_env_name
     if os.environ.get("CONDA_DEFAULT_ENV") == "base":
-        # Caller is running in base conda env.
+        # Caller's curent environment is (base).
         # Not recommended by conda, but we can still support it.
-        env_dir = os.path.join(conda_prefix, "envs", env_name)
+        if (env_name == "base"):
+            # Desired environment is (base), located at e.g. $HOME/anaconda3
+            env_dir = conda_prefix
+        else:
+            # Desired environment is user-created, e.g.
+            # $HOME/anaconda3/envs/$env_name
+            env_dir = os.path.join(conda_prefix, "envs", env_name)
     else:
         # Now `conda_prefix` should be something like
-        # $HOME/anaconda3/envs/$env_name
-        # We want to strip the $env_name component.
+        # $HOME/anaconda3/envs/$current_env_name
+        # We want to replace the last component with the desired env name.
         conda_envs_dir = os.path.split(conda_prefix)[0]
         env_dir = os.path.join(conda_envs_dir, env_name)
     if not os.path.isdir(env_dir):
