@@ -176,11 +176,9 @@ class ModelV2:
 
     def __call__(
             self,
-            input_dict: Dict[str, TensorType],
+            input_dict: Union[SampleBatch, ModelInputDict],
             state: List[Any] = None,
-            seq_lens: TensorType = None,
-            is_training: bool = False,
-    ) -> (TensorType, List[TensorType]):
+            seq_lens: TensorType = None) -> (TensorType, List[TensorType]):
         """Call the model with the given input tensors and state.
 
         This is the method used by RLlib to execute the forward pass. It calls
@@ -189,13 +187,11 @@ class ModelV2:
         Custom models should override forward() instead of __call__.
 
         Args:
-            input_dict (dict): dictionary of input tensors, including "obs",
-                "prev_action", "prev_reward", "is_training"
+            input_dict (Union[SampleBatch, ModelInputDict]): Dictionary of
+                input tensors.
             state (list): list of state tensors with sizes matching those
                 returned by get_initial_state + the batch dimension
-            seq_lens (Tensor): 1d tensor holding input sequence lengths.
-            is_training (bool): Whether this call is for training
-                (loss calculation or not).
+            seq_lens (Tensor): 1D tensor holding input sequence lengths.
 
         Returns:
             (outputs, state): The model output tensor of size
@@ -204,7 +200,26 @@ class ModelV2:
                 [BATCH, state_size_i].
         """
 
-        restored = input_dict.copy()
+        # Original observations will be stored in "obs".
+        # Flattened (preprocessed) obs will be stored in "obs_flat".
+
+        # SampleBatch case: Models can now be called directly with a
+        # SampleBatch (which also includes tracking-dict case (deprecated now),
+        # where tensors get automatically converted).
+        if isinstance(input_dict, SampleBatch):
+            restored = input_dict.copy(shallow=True)
+            # Backward compatibility.
+            if seq_lens is None:
+                seq_lens = input_dict.seq_lens
+            if not state:
+                state = []
+                i = 0
+                while "state_in_{}".format(i) in input_dict:
+                    state.append(input_dict["state_in_{}".format(i)])
+                    i += 1
+            input_dict["is_training"] = input_dict.is_training
+        else:
+            restored = input_dict.copy()
         restored["obs"] = restore_original_dimensions(
             input_dict["obs"], self.obs_space, self.framework)
         try:
@@ -215,22 +230,8 @@ class ModelV2:
                 restored["obs_flat"] = input_dict["obs"]
         except AttributeError:
             restored["obs_flat"] = input_dict["obs"]
-
-        # Set is_training flag.
-        restored["is_training"] = is_training
-
-        # Handle states in input-dict (if not given separately).
-        if state is None:
-            state = []
-            i = 0
-            while "state_in_{}".format(i) in input_dict:
-                state.append(input_dict["state_in_{}".format(i)])
-                i += 1
-            seq_lens = input_dict.get("seq_lens")
-
         with self.context():
-            res = self.forward(restored, state, seq_lens)
-
+            res = self.forward(restored, state or [], seq_lens)
         if ((not isinstance(res, list) and not isinstance(res, tuple))
                 or len(res) != 2):
             raise ValueError(
@@ -245,8 +246,8 @@ class ModelV2:
         self._last_output = outputs
         return outputs, state_out if len(state_out) > 0 else (state or [])
 
-    # TODO: (sven) Deprecate this method entirely (can all be handled by
-    #  __call__).
+    # TODO: (sven) obsolete this method at some point (replace by
+    #  simply calling model directly with a sample_batch as only input).
     @PublicAPI
     def from_batch(self, train_batch: SampleBatch,
                    is_training: bool = True) -> (TensorType, List[TensorType]):
@@ -333,8 +334,9 @@ class ModelV2:
         return self.time_major is True
 
     # TODO: (sven) Experimental method.
-    def get_input_dict(self, sample_batch,
-                       index: Union[int, str] = "last") -> ModelInputDict:
+    def get_input_dict(self,
+                       sample_batch: SampleBatch,
+                       index: Union[int, str] = "last") -> SampleBatch:
         """Creates single ts input-dict at given index from a SampleBatch.
 
         Args:
@@ -348,7 +350,7 @@ class ModelV2:
                 final NEXT_OBS as observation input.
 
         Returns:
-            ModelInputDict: The (single-timestep) input dict for ModelV2 calls.
+            SampleBatch: The (single-timestep) input dict for ModelV2 calls.
         """
         last_mappings = {
             SampleBatch.OBS: SampleBatch.NEXT_OBS,
@@ -394,10 +396,7 @@ class ModelV2:
                     input_dict[view_col] = sample_batch[data_col][
                         index:index + 1 if index != -1 else None]
 
-        # Add valid `seq_lens`, just in case RNNs need it.
-        input_dict["seq_lens"] = np.array([1], dtype=np.int32)
-
-        return input_dict
+        return SampleBatch(input_dict, _seq_lens=np.array([1], dtype=np.int32))
 
 
 @DeveloperAPI
