@@ -24,7 +24,7 @@ from ray.autoscaler._private.providers import (
 from ray.autoscaler.tags import TAG_RAY_NODE_KIND, TAG_RAY_NODE_STATUS, \
     STATUS_UP_TO_DATE, STATUS_UPDATE_FAILED, TAG_RAY_USER_NODE_TYPE, \
     NODE_TYPE_LEGACY_HEAD, NODE_TYPE_LEGACY_WORKER, NODE_KIND_HEAD, \
-    NODE_KIND_WORKER, STATUS_UNINITIALIZED
+    NODE_KIND_WORKER, STATUS_UNINITIALIZED, TAG_RAY_CLUSTER_NAME
 from ray.autoscaler.node_provider import NodeProvider
 from ray.test_utils import RayTestTimeoutException
 import pytest
@@ -2187,6 +2187,22 @@ MemAvailable:   33000000 kB
         assert min(x[0]
                    for x in first_pull) < min(x[0]
                                               for x in first_targeted_inspect)
+
+    def testGetRunningHeadNode(self):
+        config = copy.deepcopy(SMALL_CLUSTER)
+        self.provider = MockProvider()
+        self.provider.create_node({}, {
+            TAG_RAY_CLUSTER_NAME: "default",
+            TAG_RAY_NODE_KIND: "head",
+            TAG_RAY_NODE_STATUS: "up-to-date"
+        }, 1)
+
+        commands._get_running_head_node(
+            config,
+            "/fake/path",
+            override_cluster_name=None,
+            create_if_needed=False,
+            _provider=self.provider)
 
 
 if __name__ == "__main__":

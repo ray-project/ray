@@ -1108,22 +1108,24 @@ def _get_worker_nodes(config: Dict[str, Any],
 def _get_running_head_node(config: Dict[str, Any],
                            printable_config_file: str,
                            override_cluster_name: Optional[str],
-                           create_if_needed: bool = False) -> str:
+                           create_if_needed: bool = False,
+                           _provider: Optional[NodeProvider] = None) -> str:
     """Get a valid, running head node"""
-    provider = _get_node_provider(config["provider"], config["cluster_name"])
+    provider = _provider or _get_node_provider(config["provider"],
+                                               config["cluster_name"])
     head_node_tags = {
         TAG_RAY_NODE_KIND: NODE_KIND_HEAD,
     }
     nodes = provider.non_terminated_nodes(head_node_tags)
     head_node = None
     for node in nodes:
-        node_state = provider.node_tags(TAG_RAY_NODE_STATUS)
+        node_state = provider.node_tags(node).get(TAG_RAY_NODE_STATUS)
         if node_state == STATUS_UP_TO_DATE:
             head_node = node
         else:
             cli_logger.warning(f"Head node ({node}) is in state {node_state}.")
 
-    if head_node:
+    if head_node is not None:
         return head_node
     elif create_if_needed:
         get_or_create_head_node(
