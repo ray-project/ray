@@ -11,8 +11,10 @@ from ray import serve
 @pytest.fixture
 def ray_client_instance():
     port = random.randint(60000, 70000)
-    subprocess.check_output(
-        ["ray", "start", "--head", "--ray-client-server-port", f"{port}"])
+    subprocess.check_output([
+        "ray", "start", "--head", "--num-cpus", "8",
+        "--ray-client-server-port", f"{port}"
+    ])
     try:
         yield f"localhost:{port}"
     finally:
