@@ -42,8 +42,8 @@ class Rendezvous:
         self._process_ip_address = \
             ray._private.services.get_node_ip_address()
         logger.debug("Redis address: {}, port: {}, this actor address: {}."
-                    .format(self._redis_ip_address, self._redis_port,
-                            self._process_ip_address))
+                     .format(self._redis_ip_address, self._redis_port,
+                             self._process_ip_address))
         self._store_type = store_type
         self._device_type = device_type
         self._store = None

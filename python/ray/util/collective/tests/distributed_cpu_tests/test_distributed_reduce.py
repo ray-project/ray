@@ -97,7 +97,8 @@ def test_reduce_different_op(ray_start_distributed_2_nodes, backend, dst_rank):
     ])
     for i in range(world_size):
         if i == dst_rank:
-            assert (results[i] == np.ones((10, ), dtype=np.float32) * (world_size + 1)).all()
+            assert (results[i] == np.ones(
+                (10, ), dtype=np.float32) * (world_size + 1)).all()
         else:
             assert (results[i] == np.ones(
                 (10, ), dtype=np.float32) * (i + 2)).all()
