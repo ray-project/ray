@@ -44,10 +44,12 @@ Setup: MNIST Without collective communication, Adam(lr=0.01)
 - Step 1800 31.51 data/sec
 - Epoch 3 in 1852.36 sec, test time 14.47 sec. test accuracy 0.9792
 
-# MNIST With collective communication, Adam(lr=0.01)
-
 ## ResNet18-2x2080ti-128batch_size
 - Step200: 193.42 data/sec
 - Step400: 201.38 data/sec
 - Epoch 0 in 603.3 sec, test time 15.42 sec, test accuracy:0.9152
 - Step600: 197.82 data/sec
+
+
+
+# Distributed, 16 nodes
