@@ -315,7 +315,6 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
             "cmdline": self._get_raylet().get("cmdline", []),
         }
 
-    @staticmethod
     def _record_stats(self, stats, cluster_stats):
         records_reported = []
         ip = stats["ip"]
