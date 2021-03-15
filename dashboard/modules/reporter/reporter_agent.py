@@ -315,13 +315,13 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
             "cmdline": self._get_raylet().get("cmdline", []),
         }
 
-    # @staticmethod
-    def _record_stats(self, stats, cluster_stats):
+    @staticmethod
+    def _record_stats(stats, cluster_stats, _is_head_node):
         records_reported = []
         ip = stats["ip"]
 
         # -- Instance count of cluster --
-        if "autoscaler_report" in cluster_stats and self._is_head_node:
+        if "autoscaler_report" in cluster_stats and _is_head_node:
             active_nodes = cluster_stats["autoscaler_report"]["active_nodes"]
             for node_type, active_node_count in active_nodes.items():
                 records_reported.extend([
@@ -505,7 +505,7 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
                 )) if formatted_status_string else {}
 
                 stats = self._get_all_stats()
-                records_reported = self._record_stats(stats, formatted_status)
+                records_reported = self._record_stats(stats, formatted_status, self._is_head_node)
                 self._metrics_agent.record_reporter_stats(records_reported)
                 await aioredis_client.publish(self._key, jsonify_asdict(stats))
 
