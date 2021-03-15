@@ -4,8 +4,10 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import io.ray.api.Ray;
 import io.ray.api.id.ObjectId;
+import io.ray.runtime.task.ArgumentsBuilder;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import org.testng.Assert;
@@ -14,11 +16,18 @@ import org.testng.annotations.Test;
 /** Test Ray.call API */
 public class RayCallTest extends BaseTest {
 
+  private static final byte[] LARGE_RAW_DATA =
+      new byte[ArgumentsBuilder.LARGEST_SIZE_PASS_BY_VALUE + 100];
+
   private static int testInt(int val) {
     return val;
   }
 
   private static byte testByte(byte val) {
+    return val;
+  }
+
+  private static byte[] testBytes(byte[] val) {
     return val;
   }
 
@@ -98,6 +107,12 @@ public class RayCallTest extends BaseTest {
     // Assert.assertEquals(((int) Ray.get(randomObjectId, Integer.class)), 1);
   }
 
+  @Test
+  public void testBytesType() {
+    Assert.assertEquals(
+        "123".getBytes(), Ray.task(RayCallTest::testBytes, "123".getBytes()).remote().get());
+  }
+
   private static int testNoParam() {
     return 0;
   }
@@ -137,5 +152,14 @@ public class RayCallTest extends BaseTest {
         5, (int) Ray.task(RayCallTest::testFiveParams, 1, 1, 1, 1, 1).remote().get());
     Assert.assertEquals(
         6, (int) Ray.task(RayCallTest::testSixParams, 1, 1, 1, 1, 1, 1).remote().get());
+  }
+
+  private static Boolean testLargeRawData(byte[] data) {
+    return Arrays.equals(data, LARGE_RAW_DATA);
+  }
+
+  @Test
+  public void testLargeRawDataArgument() {
+    Assert.assertTrue(Ray.task(RayCallTest::testLargeRawData, LARGE_RAW_DATA).remote().get());
   }
 }
