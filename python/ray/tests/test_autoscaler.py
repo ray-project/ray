@@ -2191,18 +2191,29 @@ MemAvailable:   33000000 kB
     def testGetRunningHeadNode(self):
         config = copy.deepcopy(SMALL_CLUSTER)
         self.provider = MockProvider()
+
+        # Node 0 is failed.
+        self.provider.create_node({}, {
+            TAG_RAY_CLUSTER_NAME: "default",
+            TAG_RAY_NODE_KIND: "head",
+            TAG_RAY_NODE_STATUS: "update-failed"
+        }, 1)
+
+        # Node 1 is okay.
         self.provider.create_node({}, {
             TAG_RAY_CLUSTER_NAME: "default",
             TAG_RAY_NODE_KIND: "head",
             TAG_RAY_NODE_STATUS: "up-to-date"
         }, 1)
 
-        commands._get_running_head_node(
+        node = commands._get_running_head_node(
             config,
             "/fake/path",
             override_cluster_name=None,
             create_if_needed=False,
             _provider=self.provider)
+
+        assert node == 1
 
 
 if __name__ == "__main__":
