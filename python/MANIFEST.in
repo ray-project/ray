@@ -1,1 +1,2 @@
 include ray/python/ray/autoscaler/ray-schema.json
+include ray/python/ray/py.typed
