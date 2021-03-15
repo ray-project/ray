@@ -334,7 +334,8 @@ class ModelV2:
         return self.time_major is True
 
     # TODO: (sven) Experimental method.
-    def get_input_dict(self, sample_batch,
+    def get_input_dict(self,
+                       sample_batch: SampleBatch,
                        index: Union[int, str] = "last") -> SampleBatch:
         """Creates single ts input-dict at given index from a SampleBatch.
 
@@ -395,7 +396,7 @@ class ModelV2:
                     input_dict[view_col] = sample_batch[data_col][
                         index:index + 1 if index != -1 else None]
 
-        return SampleBatch(input_dict, _seq_lens=[1])
+        return SampleBatch(input_dict, _seq_lens=np.array([1], dtype=np.int32))
 
 
 @DeveloperAPI

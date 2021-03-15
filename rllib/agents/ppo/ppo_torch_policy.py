@@ -216,8 +216,9 @@ class ValueNetworkMixin:
             # input_dict.
             if config["_use_trajectory_view_api"]:
 
-                def value(input_dict):
-                    input_dict.is_training = False
+                def value(**input_dict):
+                    input_dict = SampleBatch(
+                        input_dict, _dont_check_lens=False)
                     input_dict = self._lazy_tensor_dict(input_dict)
                     model_out, _ = self.model(input_dict)
                     # [0] = remove the batch dim.

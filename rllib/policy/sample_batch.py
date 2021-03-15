@@ -8,8 +8,12 @@ from ray.util import log_once
 from ray.rllib.utils.annotations import PublicAPI, DeveloperAPI
 from ray.rllib.utils.compression import pack, unpack, is_compressed
 from ray.rllib.utils.deprecation import deprecation_warning
+from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.memory import concat_aligned
 from ray.rllib.utils.typing import PolicyID, TensorType
+
+tf1, tf, tfv = try_import_tf()
+torch, _ = try_import_torch()
 
 # Default policy id for single agent environments
 DEFAULT_POLICY_ID = "default_policy"
@@ -60,18 +64,25 @@ class SampleBatch(dict):
         # Possible seq_lens (TxB or BxT) setup.
         self.time_major = kwargs.pop("_time_major", None)
         self.seq_lens = kwargs.pop("_seq_lens", None)
+        if isinstance(self.seq_lens, list):
+            self.seq_lens = np.array(self.seq_lens)
         self.dont_check_lens = kwargs.pop("_dont_check_lens", False)
         self.max_seq_len = kwargs.pop("_max_seq_len", None)
         if self.max_seq_len is None and self.seq_lens is not None and \
+                not (tf and tf.is_tensor(self.seq_lens)) and \
                 len(self.seq_lens) > 0:
             self.max_seq_len = max(self.seq_lens)
         self.zero_padded = kwargs.pop("_zero_padded", False)
+        self.is_training = kwargs.pop("_is_training", None)
 
         # Call super constructor. This will make the actual data accessible
         # by column name (str) via e.g. self["some-col"].
         dict.__init__(self, *args, **kwargs)
 
-        self.is_training = self.pop("is_training", False)
+        if self.is_training is None:
+            self.is_training = self.pop("is_training", False)
+        if self.seq_lens is None:
+            self.seq_lens = self.get("seq_lens", None)
 
         self.accessed_keys = set()
         self.added_keys = set()
@@ -84,7 +95,9 @@ class SampleBatch(dict):
         copy_ = {k: v for k, v in self.items()}
         for k, v in copy_.items():
             assert isinstance(k, str), self
-            len_ = len(v) if isinstance(v, (list, np.ndarray)) else None
+            len_ = len(v) if isinstance(
+                v,
+                (list, np.ndarray)) or (torch and torch.is_tensor(v)) else None
             lengths.append(len_)
             if isinstance(v, list):
                 self[k] = np.array(v)
@@ -97,7 +110,9 @@ class SampleBatch(dict):
                 "Data columns must be same length, but lens are " \
                 "{}".format(lengths)
 
-        if self.seq_lens is not None and len(self.seq_lens) > 0:
+        if self.seq_lens is not None and \
+                not (tf and tf.is_tensor(self.seq_lens)) and \
+                len(self.seq_lens) > 0:
             self.count = sum(self.seq_lens)
         else:
             self.count = lengths[0]
