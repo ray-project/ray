@@ -18,8 +18,7 @@ import ray._private.services
 import ray._private.utils
 from ray.core.generated import reporter_pb2
 from ray.core.generated import reporter_pb2_grpc
-from ray.autoscaler._private.util import (
-    DEBUG_AUTOSCALING_STATUS)
+from ray.autoscaler._private.util import (DEBUG_AUTOSCALING_STATUS)
 from ray._private.metrics_agent import MetricsAgent, Gauge, Record
 import psutil
 
@@ -328,8 +327,7 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
                     Record(
                         gauge=METRICS_GAUGES["cluster_active_nodes"],
                         value=active_node_count,
-                        tags={"node_type": node_type})
-                )
+                        tags={"node_type": node_type}))
 
             failed_nodes = cluster_stats["autoscaler_report"]["failed_nodes"]
             failed_nodes_dict = {}
@@ -338,12 +336,13 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
                     failed_nodes_dict[node_type] += 1
                 else:
                     failed_nodes_dict[node_type] = 1
-            
+
             for node_type, failed_node_count in failed_nodes_dict.items():
-                records_reported.append(Record(
-                    gauge=METRICS_GAUGES["cluster_failed_nodes"],
-                    value=failed_node_count,
-                    tags={"node_type": node_type}))
+                records_reported.append(
+                    Record(
+                        gauge=METRICS_GAUGES["cluster_failed_nodes"],
+                        value=failed_node_count,
+                        tags={"node_type": node_type}))
 
             pending_nodes = cluster_stats["autoscaler_report"]["pending_nodes"]
             pending_nodes_dict = {}
@@ -352,12 +351,13 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
                     pending_nodes_dict[node_type] += 1
                 else:
                     pending_nodes_dict[node_type] = 1
-            
+
             for node_type, pending_node_count in pending_nodes_dict.items():
-                records_reported.append(Record(
-                    gauge=METRICS_GAUGES["cluster_pending_nodes"],
-                    value=pending_node_count,
-                    tags={"node_type": node_type}))
+                records_reported.append(
+                    Record(
+                        gauge=METRICS_GAUGES["cluster_pending_nodes"],
+                        value=pending_node_count,
+                        tags={"node_type": node_type}))
 
         # -- CPU per node --
         cpu_usage = float(stats["cpu"])
