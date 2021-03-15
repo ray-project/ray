@@ -292,8 +292,8 @@ void GcsServer::InitStatsHandler() {
 }
 
 void GcsServer::InitGcsWorkerManager() {
-  gcs_worker_manager_ = std::unique_ptr<GcsWorkerManager>(
-      new GcsWorkerManager(gcs_table_storage_, gcs_pub_sub_));
+  gcs_worker_manager_ =
+      std::make_unique<GcsWorkerManager>(gcs_table_storage_, gcs_pub_sub_);
   // Register service.
   worker_info_service_.reset(
       new rpc::WorkerInfoGrpcService(main_service_, *gcs_worker_manager_));
