@@ -294,7 +294,7 @@ PlasmaError PlasmaStore::CreateObject(const ObjectID &object_id,
     return PlasmaError::OutOfMemory;
   }
 
-  auto ptr = std::make_unique<ObjectTableEntry>();
+  auto ptr = std::unique_ptr<ObjectTableEntry>(new ObjectTableEntry());
   entry = store_info_.objects.emplace(object_id, std::move(ptr)).first->second.get();
   entry->data_size = data_size;
   entry->metadata_size = metadata_size;

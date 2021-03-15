@@ -88,7 +88,9 @@ raylet::RayletClient::RayletClient(
     const std::string &ip_address, Status *status, NodeID *raylet_id, int *port,
     std::string *serialized_job_config)
     : grpc_client_(std::move(grpc_client)), worker_id_(worker_id), job_id_(job_id) {
-  conn_ = std::make_unique<raylet::RayletConnection>(io_service, raylet_socket, -1, -1);
+  // For C++14, we could use std::make_unique
+  conn_ = std::unique_ptr<raylet::RayletConnection>(
+      new raylet::RayletConnection(io_service, raylet_socket, -1, -1));
 
   flatbuffers::FlatBufferBuilder fbb;
   // TODO(suquark): Use `WorkerType` in `common.proto` without converting to int.

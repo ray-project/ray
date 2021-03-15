@@ -327,8 +327,9 @@ class ObjectManager : public ObjectManagerInterface,
     WaitState(instrumented_io_context &service, int64_t timeout_ms,
               const WaitCallback &callback)
         : timeout_ms(timeout_ms),
-          timeout_timer(std::make_unique<boost::asio::deadline_timer>(
-              service, boost::posix_time::milliseconds(timeout_ms))),
+          timeout_timer(std::unique_ptr<boost::asio::deadline_timer>(
+              new boost::asio::deadline_timer(
+                  service, boost::posix_time::milliseconds(timeout_ms)))),
           callback(callback) {}
     /// The period of time to wait before invoking the callback.
     int64_t timeout_ms;

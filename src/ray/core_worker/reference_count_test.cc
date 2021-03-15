@@ -30,7 +30,7 @@ class ReferenceCountTest : public ::testing::Test {
   std::unique_ptr<ReferenceCounter> rc;
   virtual void SetUp() {
     rpc::Address addr;
-    rc = std::make_unique<ReferenceCounter>(addr);
+    rc = std::unique_ptr<ReferenceCounter>(new ReferenceCounter(addr));
   }
 
   virtual void TearDown() {}
@@ -41,9 +41,10 @@ class ReferenceCountLineageEnabledTest : public ::testing::Test {
   std::unique_ptr<ReferenceCounter> rc;
   virtual void SetUp() {
     rpc::Address addr;
-    rc = std::make_unique<ReferenceCounter>(addr,
-                                            /*distributed_ref_counting_enabled=*/true,
-                                            /*lineage_pinning_enabled=*/true);
+    rc = std::unique_ptr<ReferenceCounter>(
+        new ReferenceCounter(addr,
+                             /*distributed_ref_counting_enabled=*/true,
+                             /*lineage_pinning_enabled=*/true));
   }
 
   virtual void TearDown() {}

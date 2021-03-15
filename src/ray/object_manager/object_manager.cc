@@ -344,7 +344,7 @@ void ObjectManager::Push(const ObjectID &object_id, const NodeID &node_id) {
     if (nodes.count(node_id) == 0) {
       // If config_.push_timeout_ms < 0, we give an empty timer
       // and the task will be kept infinitely.
-      std::unique_ptr<boost::asio::deadline_timer> timer;
+      auto timer = std::unique_ptr<boost::asio::deadline_timer>();
       if (config_.push_timeout_ms == 0) {
         // The Push request fails directly when config_.push_timeout_ms == 0.
         RAY_LOG(WARNING) << "Invalid Push request ObjectID " << object_id

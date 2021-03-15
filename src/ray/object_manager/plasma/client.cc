@@ -218,7 +218,8 @@ uint8_t *PlasmaClient::Impl::GetStoreFdAndMmap(MEMFD_TYPE store_fd_val,
   } else {
     MEMFD_TYPE fd;
     RAY_CHECK_OK(store_conn_->RecvFd(&fd));
-    mmap_table_[store_fd_val] = std::make_unique<ClientMmapTableEntry>(fd, map_size);
+    mmap_table_[store_fd_val] =
+        std::unique_ptr<ClientMmapTableEntry>(new ClientMmapTableEntry(fd, map_size));
     return mmap_table_[store_fd_val]->pointer();
   }
 }
@@ -247,7 +248,8 @@ void PlasmaClient::Impl::IncrementObjectCount(const ObjectID &object_id,
   if (elem == objects_in_use_.end()) {
     // Add this object ID to the hash table of object IDs in use. The
     // corresponding call to free happens in PlasmaClient::Release.
-    objects_in_use_[object_id] = std::make_unique<ObjectInUseEntry>();
+    objects_in_use_[object_id] =
+        std::unique_ptr<ObjectInUseEntry>(new ObjectInUseEntry());
     objects_in_use_[object_id]->object = *object;
     objects_in_use_[object_id]->count = 0;
     objects_in_use_[object_id]->is_sealed = is_sealed;
