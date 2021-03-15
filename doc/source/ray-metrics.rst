@@ -1,4 +1,4 @@
-Metrics Exporting
+Exporting Metrics
 =================
 To help monitoring Ray applications, Ray
 
@@ -160,7 +160,7 @@ There are currently three metrics supported: Counter, Gauge, and Histogram.
 These metrics correspond to the same `Prometheus metric types <https://prometheus.io/docs/concepts/metric_types/>`_.
 Below is a simple example of an actor that exports metrics using these APIs:
 
-.. literalinclude:: ../examples/doc_code/torch_example.py
+.. literalinclude:: ../examples/doc_code/metrics_example.py
    :language: python
 
 If you run this script, then go to ``localhost:8080`` in the browser, you should see the following output:
