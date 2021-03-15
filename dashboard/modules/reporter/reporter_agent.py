@@ -324,12 +324,12 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
         if "autoscaler_report" in cluster_stats and _is_head_node:
             active_nodes = cluster_stats["autoscaler_report"]["active_nodes"]
             for node_type, active_node_count in active_nodes.items():
-                records_reported.extend([
+                records_reported.append(
                     Record(
                         gauge=METRICS_GAUGES["cluster_active_nodes"],
                         value=active_node_count,
                         tags={"node_type": node_type})
-                ])
+                )
 
             failed_nodes = cluster_stats["autoscaler_report"]["failed_nodes"]
             failed_nodes_dict = {}
@@ -340,7 +340,7 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
                     failed_nodes_dict[node_type] = 1
             
             for node_type, failed_node_count in failed_nodes_dict.items():
-                records_reported.extend(Record(
+                records_reported.append(Record(
                     gauge=METRICS_GAUGES["cluster_failed_nodes"],
                     value=failed_node_count,
                     tags={"node_type": node_type}))
@@ -355,7 +355,7 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
                     pending_nodes_dict[node_type] = 1
             
             for node_type, pending_node_count in pending_nodes_dict.items():
-                records_reported.extend(Record(
+                records_reported.append(Record(
                     gauge=METRICS_GAUGES["cluster_pending_nodes"],
                     value=pending_nodes,
                     tags={"node_type": node_type}))
