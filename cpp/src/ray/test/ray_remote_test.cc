@@ -157,16 +157,21 @@ class DummyObject {
 
   ~DummyObject() { std::cout << "destruct DummyObject\n"; }
 
-  static DummyObject *FactoryCreate() { return new DummyObject(0); }
+  static DummyObject *FactoryCreate(int init) { return new DummyObject(init); }
 };
 RAY_REMOTE(DummyObject::FactoryCreate);
 
 TEST(RayApiTest, CreateActor) {
   ray::api::RayConfig::GetInstance()->use_ray_remote = true;
 
-  ActorHandle<DummyObject> actor = Ray::Actor(DummyObject::FactoryCreate).Remote();
+  ActorHandle<DummyObject> actor = Ray::Actor(DummyObject::FactoryCreate).Remote(1);
   auto s = actor.ID().Hex();
   EXPECT_FALSE(s.empty());
+
+  auto r = Ray::Task(Return).Remote();
+  ActorHandle<DummyObject> actor1 = Ray::Actor(DummyObject::FactoryCreate).Remote(r);
+  auto s1 = actor1.ID().Hex();
+  EXPECT_FALSE(s1.empty());
 
   ray::api::RayConfig::GetInstance()->use_ray_remote = false;
 }

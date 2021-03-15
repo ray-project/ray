@@ -84,10 +84,9 @@ class Ray {
   /// Generic version of creating an actor
   /// It is used for creating an actor, such as: ActorCreator<Counter> creator =
   /// Ray::Actor(Counter::FactoryCreate, 1).
-  template <typename ActorType, typename... Args>
-  static ActorCreator<ActorType> Actor(
-      CreateActorFunc<ActorType, typename FilterArgType<Args>::type...> create_func,
-      Args... args);
+  template <typename F>
+  static ActorCreator<absl::remove_pointer_t<boost::callable_traits::return_type_t<F>>>
+  Actor(F f);
 
 /// TODO: The bellow specific version of creating an actor will be replaced with generic
 /// version later.
@@ -230,14 +229,18 @@ TaskCaller<boost::callable_traits::return_type_t<F>> Ray::Task(F func, Args... a
 }
 
 /// Generic version of creating an actor.
-template <typename ActorType, typename... Args>
-ActorCreator<ActorType> Ray::Actor(
-    CreateActorFunc<ActorType, typename FilterArgType<Args>::type...> create_func,
-    Args... args) {
-  return CreateActorInternal<ActorType>(
-      create_func,
-      CreateActorExecFunction<ActorType *, typename FilterArgType<Args>::type...>,
-      args...);
+template <typename F>
+ActorCreator<absl::remove_pointer_t<boost::callable_traits::return_type_t<F>>> Ray::Actor(
+    F create_func) {
+  auto function_name =
+      ray::internal::FunctionManager::Instance().GetFunctionName(create_func);
+  if (function_name.empty()) {
+    throw RayException(function_name + " not exsit!");
+  }
+
+  using ActorType = absl::remove_pointer_t<boost::callable_traits::return_type_t<F>>;
+  return ActorCreator<ActorType>(ray::internal::RayRuntime().get(),
+                                 std::move(function_name));
 }
 
 /// TODO: The bellow specific version of creating an actor will be replaced with generic
