@@ -251,7 +251,7 @@ def _store_package_in_gcs(gcs_key: str, data: bytes) -> int:
     return len(data)
 
 
-def push_package(pkg_uri: str, pkg_path: str) -> None:
+def push_package(pkg_uri: str, pkg_path: str) -> int:
     """Push a package to uri.
 
     This function is to push a local file to remote uri. Right now, only GCS
@@ -267,7 +267,7 @@ def push_package(pkg_uri: str, pkg_path: str) -> None:
     (protocol, pkg_name) = _parse_uri(pkg_uri)
     data = Path(pkg_path).read_bytes()
     if protocol in (Protocol.GCS, Protocol.PIN_GCS):
-        _store_package_in_gcs(pkg_uri, data)
+        return _store_package_in_gcs(pkg_uri, data)
     else:
         raise NotImplementedError(f"Protocol {protocol} is not supported")
 
