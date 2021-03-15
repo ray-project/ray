@@ -173,7 +173,7 @@ Custom Metrics APIs
 -------------------
 
 Counter
-~~~~~
+~~~~~~~
 
 .. autoclass:: ray.util.metrics.Counter
    :members:
