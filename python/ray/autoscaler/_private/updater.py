@@ -50,7 +50,6 @@ class NodeUpdater:
         docker_config: Docker section of autoscaler yaml
         restart_only: Whether to skip setup commands & just restart ray
     """
-
     def __init__(self,
                  node_id,
                  provider_config,
@@ -194,11 +193,12 @@ class NodeUpdater:
                              and self.docker_config["container_name"] != "")
                 if not is_docker:
                     # The DockerCommandRunner handles this internally.
-                    self.cmd_runner.run(
-                        "mkdir -p {}".format(os.path.dirname(remote_path)),
-                        run_env="host")
-                sync_cmd(
-                    local_path, remote_path, docker_mount_if_possible=True)
+                    self.cmd_runner.run("mkdir -p {}".format(
+                        os.path.dirname(remote_path)),
+                                        run_env="host")
+                sync_cmd(local_path,
+                         remote_path,
+                         docker_mount_if_possible=True)
 
                 if remote_path not in nolog_paths:
                     # todo: timed here?
@@ -206,31 +206,29 @@ class NodeUpdater:
                                      cf.bold(local_path))
 
         # Rsync file mounts
-        with cli_logger.group(
-                "Processing file mounts",
-                _numbered=("[]", previous_steps + 1, total_steps)):
+        with cli_logger.group("Processing file mounts",
+                              _numbered=("[]", previous_steps + 1,
+                                         total_steps)):
             for remote_path, local_path in self.file_mounts.items():
                 do_sync(remote_path, local_path)
             previous_steps += 1
 
         if self.cluster_synced_files:
-            with cli_logger.group(
-                    "Processing worker file mounts",
-                    _numbered=("[]", previous_steps + 1, total_steps)):
+            with cli_logger.group("Processing worker file mounts",
+                                  _numbered=("[]", previous_steps + 1,
+                                             total_steps)):
                 cli_logger.print("synced files: {}",
                                  str(self.cluster_synced_files))
                 for path in self.cluster_synced_files:
                     do_sync(path, path, allow_non_existing_paths=True)
                 previous_steps += 1
         else:
-            cli_logger.print(
-                "No worker file mounts to sync",
-                _numbered=("[]", previous_steps + 1, total_steps))
+            cli_logger.print("No worker file mounts to sync",
+                             _numbered=("[]", previous_steps + 1, total_steps))
 
     def wait_ready(self, deadline):
-        with cli_logger.group(
-                "Waiting for SSH to become available",
-                _numbered=("[]", 1, NUM_SETUP_STEPS)):
+        with cli_logger.group("Waiting for SSH to become available",
+                              _numbered=("[]", 1, NUM_SETUP_STEPS)):
             with LogTimer(self.log_prefix + "Got remote shell"):
 
                 cli_logger.print("Running `{}` as a test.", cf.bold("uptime"))
@@ -239,14 +237,14 @@ class NodeUpdater:
                     if time.time() > deadline:
                         raise Exception("wait_ready timeout exceeded.")
                     if self.provider.is_terminated(self.node_id):
-                        raise Exception(
-                            "wait_ready aborting because node detected as terminated."
-                        )
+                        raise Exception("wait_ready aborting because node "
+                                        "detected as terminated.")
 
                     try:
                         # Run outside of the container
-                        self.cmd_runner.run(
-                            "uptime", timeout=5, run_env="host")
+                        self.cmd_runner.run("uptime",
+                                            timeout=5,
+                                            run_env="host")
                         cli_logger.success("Success.")
                         return True
                     except ProcessRunnerError as e:
@@ -315,8 +313,8 @@ class NodeUpdater:
         # or updates their cluster with `get_or_create_head_node`
         if node_tags.get(TAG_RAY_RUNTIME_CONFIG) == self.runtime_hash and (
                 not self.file_mounts_contents_hash
-                or node_tags.get(TAG_RAY_FILE_MOUNTS_CONTENTS) ==
-                self.file_mounts_contents_hash):
+                or node_tags.get(TAG_RAY_FILE_MOUNTS_CONTENTS)
+                == self.file_mounts_contents_hash):
             # todo: we lie in the confirmation message since
             # full setup might be cancelled here
             cli_logger.print(
@@ -325,15 +323,14 @@ class NodeUpdater:
                 _numbered=("[]", "2-6", NUM_SETUP_STEPS))
 
         else:
-            cli_logger.print(
-                "Updating cluster configuration.",
-                _tags=dict(hash=self.runtime_hash))
+            cli_logger.print("Updating cluster configuration.",
+                             _tags=dict(hash=self.runtime_hash))
 
             self.provider.set_node_tags(
                 self.node_id, {TAG_RAY_NODE_STATUS: STATUS_SYNCING_FILES})
             cli_logger.labeled_value("New status", STATUS_SYNCING_FILES)
-            self.sync_file_mounts(
-                self.rsync_up, step_numbers=(1, NUM_SETUP_STEPS))
+            self.sync_file_mounts(self.rsync_up,
+                                  step_numbers=(1, NUM_SETUP_STEPS))
 
             # Only run setup commands if runtime_hash has changed because
             # we don't want to run setup_commands every time the head node
@@ -345,14 +342,14 @@ class NodeUpdater:
                 cli_logger.labeled_value("New status", STATUS_SETTING_UP)
 
                 if self.initialization_commands:
-                    with cli_logger.group(
-                            "Running initialization commands",
-                            _numbered=("[]", 4, NUM_SETUP_STEPS)):
+                    with cli_logger.group("Running initialization commands",
+                                          _numbered=("[]", 4,
+                                                     NUM_SETUP_STEPS)):
                         global_event_system.execute_callback(
                             CreateClusterEvent.run_initialization_cmd)
-                        with LogTimer(
-                                self.log_prefix + "Initialization commands",
-                                show_status=True):
+                        with LogTimer(self.log_prefix +
+                                      "Initialization commands",
+                                      show_status=True):
                             for cmd in self.initialization_commands:
                                 global_event_system.execute_callback(
                                     CreateClusterEvent.run_initialization_cmd,
@@ -378,17 +375,15 @@ class NodeUpdater:
                                         "Initialization command failed."
                                     ) from None
                 else:
-                    cli_logger.print(
-                        "No initialization commands to run.",
-                        _numbered=("[]", 4, NUM_SETUP_STEPS))
+                    cli_logger.print("No initialization commands to run.",
+                                     _numbered=("[]", 4, NUM_SETUP_STEPS))
                 with cli_logger.group(
                         "Initalizing command runner",
                         # todo: fix command numbering
                         _numbered=("[]", 5, NUM_SETUP_STEPS)):
-                    self.cmd_runner.run_init(
-                        as_head=self.is_head_node,
-                        file_mounts=self.file_mounts,
-                        sync_run_yet=True)
+                    self.cmd_runner.run_init(as_head=self.is_head_node,
+                                             file_mounts=self.file_mounts,
+                                             sync_run_yet=True)
                 if self.setup_commands:
                     with cli_logger.group(
                             "Running setup commands",
@@ -396,9 +391,8 @@ class NodeUpdater:
                             _numbered=("[]", 6, NUM_SETUP_STEPS)):
                         global_event_system.execute_callback(
                             CreateClusterEvent.run_setup_cmd)
-                        with LogTimer(
-                                self.log_prefix + "Setup commands",
-                                show_status=True):
+                        with LogTimer(self.log_prefix + "Setup commands",
+                                      show_status=True):
 
                             total = len(self.setup_commands)
                             for i, cmd in enumerate(self.setup_commands):
@@ -410,10 +404,9 @@ class NodeUpdater:
                                 else:
                                     cmd_to_print = cf.bold(cmd)
 
-                                cli_logger.print(
-                                    "{}",
-                                    cmd_to_print,
-                                    _numbered=("()", i, total))
+                                cli_logger.print("{}",
+                                                 cmd_to_print,
+                                                 _numbered=("()", i, total))
 
                                 try:
                                     # Runs in the container if docker is in use
@@ -427,17 +420,15 @@ class NodeUpdater:
                                     raise click.ClickException(
                                         "Setup command failed.")
                 else:
-                    cli_logger.print(
-                        "No setup commands to run.",
-                        _numbered=("[]", 6, NUM_SETUP_STEPS))
+                    cli_logger.print("No setup commands to run.",
+                                     _numbered=("[]", 6, NUM_SETUP_STEPS))
 
-        with cli_logger.group(
-                "Starting the Ray runtime", _numbered=("[]", 7,
-                                                       NUM_SETUP_STEPS)):
+        with cli_logger.group("Starting the Ray runtime",
+                              _numbered=("[]", 7, NUM_SETUP_STEPS)):
             global_event_system.execute_callback(
                 CreateClusterEvent.start_ray_runtime)
-            with LogTimer(
-                    self.log_prefix + "Ray start commands", show_status=True):
+            with LogTimer(self.log_prefix + "Ray start commands",
+                          show_status=True):
                 for cmd in self.ray_start_commands:
                     if self.node_resources:
                         env_vars = {
@@ -449,10 +440,9 @@ class NodeUpdater:
                         old_redirected = cmd_output_util.is_output_redirected()
                         cmd_output_util.set_output_redirected(False)
                         # Runs in the container if docker is in use
-                        self.cmd_runner.run(
-                            cmd,
-                            environment_variables=env_vars,
-                            run_env="auto")
+                        self.cmd_runner.run(cmd,
+                                            environment_variables=env_vars,
+                                            run_env="auto")
                         cmd_output_util.set_output_redirected(old_redirected)
                     except ProcessRunnerError as e:
                         if e.msg_type == "ssh_command_failed":
