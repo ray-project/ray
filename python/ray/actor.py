@@ -67,7 +67,7 @@ class ActorMethod:
     passed to a remote function. This avoids delays in GC of the actor.
 
     Attributes:
-        _actor: A handle to the actor.
+        _actor_ref: A weakref handle to the actor.
         _method_name: The name of the actor method.
         _num_returns: The default number of return values that the method
             invocation should return.

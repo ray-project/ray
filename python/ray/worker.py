@@ -85,7 +85,6 @@ class Worker:
         functions outside of this class are considered exposed.
 
     Attributes:
-        connected (bool): True if Ray has been started and False otherwise.
         node (ray.node.Node): The node this worker is attached to.
         mode: The mode of the worker. One of SCRIPT_MODE, LOCAL_MODE, and
             WORKER_MODE.
@@ -125,6 +124,7 @@ class Worker:
 
     @property
     def connected(self):
+        """bool: True if Ray has been started and False otherwise."""
         return self.node is not None
 
     @property
@@ -604,6 +604,7 @@ def init(
         _temp_dir (str): If provided, specifies the root temporary
             directory for the Ray process. Defaults to an OS-specific
             conventional location, e.g., "/tmp/ray".
+        _lru_evict (bool): If True, LRU evict will be used for this cluster.
         _metrics_export_port(int): Port number Ray exposes system metrics
             through a Prometheus endpoint. It is currently under active
             development, and the API is subject to change.
