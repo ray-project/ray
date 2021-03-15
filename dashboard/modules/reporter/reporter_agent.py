@@ -315,13 +315,13 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
             "cmdline": self._get_raylet().get("cmdline", []),
         }
 
-    @staticmethod
-    def _record_stats(stats, cluster_stats):
+    # @staticmethod
+    def _record_stats(self, stats, cluster_stats):
         records_reported = []
         ip = stats["ip"]
 
         # -- Instance count of cluster --
-        if "autoscaler_report" in cluster_stats and ReporterAgent._is_head_node:
+        if "autoscaler_report" in cluster_stats and self._is_head_node:
             active_nodes = cluster_stats["autoscaler_report"]["active_nodes"]
             for node_type, active_node_count in active_nodes.items():
                 records_reported.extend([
