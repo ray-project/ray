@@ -357,7 +357,7 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
             for node_type, pending_node_count in pending_nodes_dict.items():
                 records_reported.append(Record(
                     gauge=METRICS_GAUGES["cluster_pending_nodes"],
-                    value=pending_nodes,
+                    value=pending_node_count,
                     tags={"node_type": node_type}))
 
         # -- CPU per node --
