@@ -9,7 +9,7 @@ from starlette.requests import Request
 
 import ray
 from ray import serve
-from serve import ServeRequest
+from ray.serve import ServeRequest
 # __doc_import_end__
 # yapf: enable
 
