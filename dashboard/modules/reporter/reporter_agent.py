@@ -316,14 +316,13 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
         }
 
     @staticmethod
-    def _record_stats(stats, cluster_stats, _is_head_node):
-        logger.info("~~~~~ hostname" + stats["hostname"])
+    def _record_stats(self, stats, cluster_stats):
         records_reported = []
         ip = stats["ip"]
 
         # -- Instance count of cluster --
         # Only report cluster stats on head node
-        if "autoscaler_report" in cluster_stats and _is_head_node:
+        if "autoscaler_report" in cluster_stats and self._is_head_node:
             active_nodes = cluster_stats["autoscaler_report"]["active_nodes"]
             for node_type, active_node_count in active_nodes.items():
                 records_reported.append(
