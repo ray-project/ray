@@ -22,10 +22,10 @@ import ray.new_dashboard.consts as dashboard_consts
 import ray.new_dashboard.utils as dashboard_utils
 import ray.ray_constants as ray_constants
 import ray._private.services
-import ray.utils
+import ray._private.utils
 from ray.core.generated import agent_manager_pb2
 from ray.core.generated import agent_manager_pb2_grpc
-from ray.ray_logging import setup_component_logger
+from ray._private.ray_logging import setup_component_logger
 
 try:
     create_task = asyncio.create_task
@@ -328,10 +328,11 @@ if __name__ == "__main__":
         # Something went wrong, so push an error to all drivers.
         redis_client = ray._private.services.create_redis_client(
             args.redis_address, password=args.redis_password)
-        traceback_str = ray.utils.format_error_message(traceback.format_exc())
+        traceback_str = ray._private.utils.format_error_message(
+            traceback.format_exc())
         message = ("The agent on node {} failed with the following "
                    "error:\n{}".format(platform.uname()[1], traceback_str))
-        ray.utils.push_error_to_driver_through_redis(
+        ray._private.utils.push_error_to_driver_through_redis(
             redis_client, ray_constants.DASHBOARD_AGENT_DIED_ERROR, message)
         logger.exception(message)
         raise e

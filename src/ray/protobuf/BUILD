@@ -40,7 +40,10 @@ python_grpc_compile(
 proto_library(
     name = "node_manager_proto",
     srcs = ["node_manager.proto"],
-    deps = [":common_proto"],
+    deps = [
+      ":common_proto",
+      ":gcs_proto",
+    ],
 )
 
 cc_proto_library(

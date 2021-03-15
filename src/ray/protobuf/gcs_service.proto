@@ -80,6 +80,13 @@ message DropJobReply {
   GcsStatus status = 1;
 }
 
+message ReportJobErrorRequest {
+  ErrorTableData job_error = 1;
+}
+message ReportJobErrorReply {
+  GcsStatus status = 1;
+}
+
 // Service for job info access.
 service JobInfoGcsService {
   // Add job to GCS Service.
@@ -94,6 +101,8 @@ service JobInfoGcsService {
   rpc SubmitJob(SubmitJobRequest) returns (SubmitJobReply);
   // Drop job.
   rpc DropJob(DropJobRequest) returns (DropJobReply);
+  // Report job error.
+  rpc ReportJobError(ReportJobErrorRequest) returns (ReportJobErrorReply);
 }
 
 message GetActorInfoRequest {

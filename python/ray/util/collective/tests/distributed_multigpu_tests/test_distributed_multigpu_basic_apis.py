@@ -36,7 +36,7 @@ def test_get_rank(ray_start_distributed_multigpu_2_nodes_4_gpus):
     new_group_name = "default2"
     ranks = list(range(world_size))
     shuffle(ranks)
-    _ = ray.get([
+    ray.get([
         actor.init_group.remote(
             world_size, ranks[i], group_name=new_group_name)
         for i, actor in enumerate(actors)
@@ -45,17 +45,6 @@ def test_get_rank(ray_start_distributed_multigpu_2_nodes_4_gpus):
     assert actor0_rank == ranks[0]
     actor1_rank = ray.get(actors[1].report_rank.remote(new_group_name))
     assert actor1_rank == ranks[1]
-
-
-def test_availability(ray_start_distributed_multigpu_2_nodes_4_gpus):
-    world_size = 2
-    actors, _ = create_collective_multigpu_workers(world_size)
-    actor0_nccl_availability = ray.get(
-        actors[0].report_nccl_availability.remote())
-    assert actor0_nccl_availability
-    actor0_gloo_availability = ray.get(
-        actors[0].report_gloo_availability.remote())
-    assert not actor0_gloo_availability
 
 
 def test_is_group_initialized(ray_start_distributed_multigpu_2_nodes_4_gpus):

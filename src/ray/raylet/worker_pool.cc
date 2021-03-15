@@ -54,7 +54,7 @@ namespace ray {
 
 namespace raylet {
 
-WorkerPool::WorkerPool(boost::asio::io_service &io_service, const NodeID node_id,
+WorkerPool::WorkerPool(instrumented_io_context &io_service, const NodeID node_id,
                        const std::string node_address, int num_workers_soft_limit,
                        int num_initial_python_workers_for_first_job,
                        int maximum_startup_concurrency, int min_worker_port,
@@ -661,12 +661,13 @@ void WorkerPool::TryKillingIdleWorkers() {
   int64_t now = get_time_();
   size_t running_size = 0;
   for (const auto &worker : GetAllRegisteredWorkers()) {
-    if (!worker->IsDead()) {
+    if (!worker->IsDead() && worker->GetWorkerType() == rpc::WorkerType::WORKER) {
       running_size++;
     }
   }
   // Subtract the number of pending exit workers first. This will help us killing more
   // idle workers that it needs to.
+  RAY_CHECK(running_size >= pending_exit_idle_workers_.size());
   running_size -= pending_exit_idle_workers_.size();
   // Kill idle workers in FIFO order.
   for (const auto &idle_pair : idle_of_all_languages_) {
@@ -718,6 +719,7 @@ void WorkerPool::TryKillingIdleWorkers() {
       continue;
     }
 
+    RAY_CHECK(running_size >= workers_in_the_same_process.size());
     if (running_size - workers_in_the_same_process.size() <
         static_cast<size_t>(num_workers_soft_limit_)) {
       // A Java worker process may contain multiple workers. Killing more workers than we
@@ -771,6 +773,7 @@ void WorkerPool::TryKillingIdleWorkers() {
         // Register the worker to pending exit so that we can correctly calculate the
         // running_size.
         pending_exit_idle_workers_.emplace(worker->WorkerId(), worker);
+        RAY_CHECK(running_size > 0);
         running_size--;
       }
     }

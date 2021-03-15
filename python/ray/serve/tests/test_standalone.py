@@ -10,7 +10,7 @@ import requests
 
 import ray
 from ray import serve
-from ray.cluster_utils import Cluster
+from ray._private.cluster_utils import Cluster
 from ray.serve.constants import SERVE_PROXY_NAME
 from ray.serve.utils import (block_until_http_ready, get_all_node_ids,
                              format_actor_name)

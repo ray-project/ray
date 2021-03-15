@@ -149,6 +149,9 @@ CoreWorkerProcess::CoreWorkerProcess(const CoreWorkerOptions &options)
 
   RAY_LOG(INFO) << "Constructing CoreWorkerProcess. pid: " << getpid();
 
+  // NOTE(kfstorm): any initialization depending on RayConfig must happen after this line.
+  InitializeSystemConfig();
+
   if (options_.num_workers == 1) {
     // We need to create the worker instance here if:
     // 1. This is a driver process. In this case, the driver is ready to use right after
@@ -204,6 +207,49 @@ void CoreWorkerProcess::EnsureInitialized() {
 }
 
 void CoreWorkerProcess::HandleAtExit() { instance_.reset(); }
+
+void CoreWorkerProcess::InitializeSystemConfig() {
+  // We have to create a short-time thread here because the RPC request to get the system
+  // config from Raylet is asynchronous, and we need to synchronously initialize the
+  // system config in the constructor of `CoreWorkerProcess`.
+  std::promise<std::string> promise;
+  std::thread thread([&] {
+    instrumented_io_context io_service;
+    boost::asio::io_service::work work(io_service);
+    rpc::ClientCallManager client_call_manager(io_service);
+    auto grpc_client = rpc::NodeManagerWorkerClient::make(
+        options_.raylet_ip_address, options_.node_manager_port, client_call_manager);
+    raylet::RayletClient raylet_client(grpc_client);
+
+    std::function<void(int64_t)> get_once = [&get_once, &raylet_client, &promise,
+                                             &io_service](int64_t num_attempts) {
+      raylet_client.GetSystemConfig([num_attempts, &get_once, &promise, &io_service](
+                                        const Status &status,
+                                        const rpc::GetSystemConfigReply &reply) {
+        RAY_LOG(DEBUG) << "Getting system config from raylet, remaining retries = "
+                       << num_attempts;
+        if (!status.ok()) {
+          if (num_attempts <= 1) {
+            RAY_LOG(FATAL) << "Failed to get the system config from Raylet: " << status;
+          } else {
+            std::this_thread::sleep_for(std::chrono::milliseconds(
+                RayConfig::instance().raylet_client_connect_timeout_milliseconds()));
+            get_once(num_attempts - 1);
+          }
+        } else {
+          promise.set_value(reply.system_config());
+          io_service.stop();
+        }
+      });
+    };
+
+    get_once(RayConfig::instance().raylet_client_num_connect_attempts());
+    io_service.run();
+  });
+  thread.join();
+
+  RayConfig::instance().initialize(promise.get_future().get());
+}
 
 std::shared_ptr<CoreWorker> CoreWorkerProcess::TryGetWorker(const WorkerID &worker_id) {
   if (!instance_) {
@@ -348,12 +394,11 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   NodeID local_raylet_id;
   int assigned_port;
   std::string serialized_job_config = options_.serialized_job_config;
-  std::string system_config;
   local_raylet_client_ = std::shared_ptr<raylet::RayletClient>(new raylet::RayletClient(
       io_service_, std::move(grpc_client), options_.raylet_socket, GetWorkerID(),
       options_.worker_type, worker_context_.GetCurrentJobID(), options_.language,
       options_.node_ip_address, &raylet_client_status, &local_raylet_id, &assigned_port,
-      &system_config, &serialized_job_config));
+      &serialized_job_config));
 
   if (!raylet_client_status.ok()) {
     // Avoid using FATAL log or RAY_CHECK here because they may create a core dump file.
@@ -369,9 +414,6 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   connected_ = true;
 
   RAY_CHECK(assigned_port >= 0);
-
-  // NOTE(edoakes): any initialization depending on RayConfig must happen after this line.
-  RayConfig::instance().initialize(system_config);
 
   // Parse job config from serialized string.
   job_config_.reset(new rpc::JobConfig());
@@ -445,11 +487,13 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       [this](const RayObject &obj) {
         // Run this on the event loop to avoid calling back into the language runtime
         // from the middle of user operations.
-        io_service_.post([this, obj]() {
-          if (options_.unhandled_exception_handler != nullptr) {
-            options_.unhandled_exception_handler(obj);
-          }
-        });
+        io_service_.post(
+            [this, obj]() {
+              if (options_.unhandled_exception_handler != nullptr) {
+                options_.unhandled_exception_handler(obj);
+              }
+            },
+            "CoreWorker.HandleException");
       }));
 
   auto check_node_alive_fn = [this](const NodeID &node_id) {
@@ -457,9 +501,11 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
     return node.has_value();
   };
   auto reconstruct_object_callback = [this](const ObjectID &object_id) {
-    io_service_.post([this, object_id]() {
-      RAY_CHECK(object_recovery_manager_->RecoverObject(object_id));
-    });
+    io_service_.post(
+        [this, object_id]() {
+          RAY_CHECK(object_recovery_manager_->RecoverObject(object_id));
+        },
+        "CoreWorker.ReconstructObject");
   };
   task_manager_.reset(new TaskManager(
       memory_store_, reference_counter_,
@@ -673,12 +719,14 @@ void CoreWorker::Exit(bool intentional) {
   auto shutdown = [this, intentional]() {
     // To avoid problems, make sure shutdown is always called from the same
     // event loop each time.
-    task_execution_service_.post([this, intentional]() {
-      if (intentional) {
-        Disconnect();  // Notify the raylet this is an intentional exit.
-      }
-      Shutdown();
-    });
+    task_execution_service_.post(
+        [this, intentional]() {
+          if (intentional) {
+            Disconnect();  // Notify the raylet this is an intentional exit.
+          }
+          Shutdown();
+        },
+        "CoreWorker.Shutdown");
   };
 
   // Callback to drain objects once all pending tasks have been drained.
@@ -688,27 +736,29 @@ void CoreWorker::Exit(bool intentional) {
     // get called by the TaskManager while the ReferenceCounter's lock is held,
     // but the callback itself must acquire the ReferenceCounter's lock to
     // drain the object references.
-    task_execution_service_.post([this, shutdown]() {
-      bool not_actor_task = false;
-      {
-        absl::MutexLock lock(&mutex_);
-        not_actor_task = actor_id_.IsNil();
-      }
-      if (not_actor_task) {
-        // If we are a task, then we cannot hold any object references in the
-        // heap. Therefore, any active object references are being held by other
-        // processes. Wait for these processes to release their references before
-        // we shutdown.
-        // NOTE(swang): This could still cause this worker process to stay alive
-        // forever if another process holds a reference forever.
-        reference_counter_->DrainAndShutdown(shutdown);
-      } else {
-        // If we are an actor, then we may be holding object references in the
-        // heap. Then, we should not wait to drain the object references before
-        // shutdown since this could hang.
-        shutdown();
-      }
-    });
+    task_execution_service_.post(
+        [this, shutdown]() {
+          bool not_actor_task = false;
+          {
+            absl::MutexLock lock(&mutex_);
+            not_actor_task = actor_id_.IsNil();
+          }
+          if (not_actor_task) {
+            // If we are a task, then we cannot hold any object references in the
+            // heap. Therefore, any active object references are being held by other
+            // processes. Wait for these processes to release their references before
+            // we shutdown.
+            // NOTE(swang): This could still cause this worker process to stay alive
+            // forever if another process holds a reference forever.
+            reference_counter_->DrainAndShutdown(shutdown);
+          } else {
+            // If we are an actor, then we may be holding object references in the
+            // heap. Then, we should not wait to drain the object references before
+            // shutdown since this could hang.
+            shutdown();
+          }
+        },
+        "CoreWorker.DrainAndShutdown");
   };
 
   task_manager_->DrainAndShutdown(drain_references_callback);
@@ -1444,9 +1494,11 @@ void CoreWorker::SubmitTask(const RayFunction &function,
   } else {
     task_manager_->AddPendingTask(task_spec.CallerAddress(), task_spec, CurrentCallSite(),
                                   max_retries);
-    io_service_.post([this, task_spec]() {
-      RAY_UNUSED(direct_task_submitter_->SubmitTask(task_spec));
-    });
+    io_service_.post(
+        [this, task_spec]() {
+          RAY_UNUSED(direct_task_submitter_->SubmitTask(task_spec));
+        },
+        "CoreWorker.SubmitTask");
   }
 }
 
@@ -1509,10 +1561,10 @@ Status CoreWorker::CreateActor(const RayFunction &function,
   // Add the actor handle before we submit the actor creation task, since the
   // actor handle must be in scope by the time the GCS sends the
   // WaitForActorOutOfScopeRequest.
-  std::unique_ptr<ActorHandle> actor_handle(new ActorHandle(
+  auto actor_handle = std::make_unique<ActorHandle>(
       actor_id, GetCallerId(), rpc_address_, job_id, /*actor_cursor=*/return_ids[0],
       function.GetLanguage(), function.GetFunctionDescriptor(), extension_data,
-      actor_creation_options.max_task_retries));
+      actor_creation_options.max_task_retries);
   RAY_CHECK(actor_manager_->AddNewActorHandle(std::move(actor_handle), GetCallerId(),
                                               CurrentCallSite(), rpc_address_,
                                               actor_creation_options.is_detached))
@@ -1657,9 +1709,11 @@ void CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &fun
   } else {
     task_manager_->AddPendingTask(rpc_address_, task_spec, CurrentCallSite(),
                                   actor_handle->MaxTaskRetries());
-    io_service_.post([this, task_spec]() {
-      RAY_UNUSED(direct_actor_submitter_->SubmitTask(task_spec));
-    });
+    io_service_.post(
+        [this, task_spec]() {
+          RAY_UNUSED(direct_actor_submitter_->SubmitTask(task_spec));
+        },
+        "CoreWorker.SubmitActorTask");
   }
 }
 
@@ -2131,22 +2185,26 @@ void CoreWorker::HandlePushTask(const rpc::PushTaskRequest &request,
   // For actor tasks, we just need to post a HandleActorTask instance to the task
   // execution service.
   if (request.task_spec().type() == TaskType::ACTOR_TASK) {
-    task_execution_service_.post([=] {
-      // We have posted an exit task onto the main event loop,
-      // so shouldn't bother executing any further work.
-      if (exiting_) return;
-      direct_task_receiver_->HandleTask(request, reply, send_reply_callback);
-    });
+    task_execution_service_.post(
+        [=] {
+          // We have posted an exit task onto the main event loop,
+          // so shouldn't bother executing any further work.
+          if (exiting_) return;
+          direct_task_receiver_->HandleTask(request, reply, send_reply_callback);
+        },
+        "CoreWorker.HandlePushTaskActor");
   } else {
     // Normal tasks are enqueued here, and we post a RunNormalTasksFromQueue instance to
     // the task execution service.
     direct_task_receiver_->HandleTask(request, reply, send_reply_callback);
-    task_execution_service_.post([=] {
-      // We have posted an exit task onto the main event loop,
-      // so shouldn't bother executing any further work.
-      if (exiting_) return;
-      direct_task_receiver_->RunNormalTasksFromQueue();
-    });
+    task_execution_service_.post(
+        [=] {
+          // We have posted an exit task onto the main event loop,
+          // so shouldn't bother executing any further work.
+          if (exiting_) return;
+          direct_task_receiver_->RunNormalTasksFromQueue();
+        },
+        "CoreWorker.HandlePushTask");
   }
 }
 
@@ -2161,10 +2219,12 @@ void CoreWorker::HandleDirectActorCallArgWaitComplete(
 
   // Post on the task execution event loop since this may trigger the
   // execution of a task that is now ready to run.
-  task_execution_service_.post([=] {
-    RAY_LOG(DEBUG) << "Arg wait complete for tag " << request.tag();
-    task_argument_waiter_->OnWaitComplete(request.tag());
-  });
+  task_execution_service_.post(
+      [=] {
+        RAY_LOG(DEBUG) << "Arg wait complete for tag " << request.tag();
+        task_argument_waiter_->OnWaitComplete(request.tag());
+      },
+      "CoreWorker.ArgWaitComplete");
 
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }

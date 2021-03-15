@@ -198,6 +198,15 @@ void GcsJobManager::HandleGetAllJobInfo(const rpc::GetAllJobInfoRequest &request
   }
 }
 
+void GcsJobManager::HandleReportJobError(const rpc::ReportJobErrorRequest &request,
+                                         rpc::ReportJobErrorReply *reply,
+                                         rpc::SendReplyCallback send_reply_callback) {
+  auto job_id = JobID::FromBinary(request.job_error().job_id());
+  RAY_CHECK_OK(gcs_pub_sub_->Publish(ERROR_INFO_CHANNEL, job_id.Hex(),
+                                     request.job_error().SerializeAsString(), nullptr));
+  GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+}
+
 void GcsJobManager::HandleSubmitJob(const rpc::SubmitJobRequest &request,
                                     rpc::SubmitJobReply *reply,
                                     rpc::SendReplyCallback send_reply_callback) {

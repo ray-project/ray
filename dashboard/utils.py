@@ -29,7 +29,7 @@ from google.protobuf.json_format import MessageToDict
 
 import ray.new_dashboard.consts as dashboard_consts
 from ray.ray_constants import env_bool
-from ray.utils import binary_to_hex
+from ray._private.utils import binary_to_hex
 
 try:
     # This function has been added in Python 3.7. Prior to Python 3.7,

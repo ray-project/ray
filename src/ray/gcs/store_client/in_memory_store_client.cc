@@ -24,7 +24,7 @@ Status InMemoryStoreClient::AsyncPut(const std::string &table_name,
   auto table = GetOrCreateTable(table_name);
   absl::MutexLock lock(&(table->mutex_));
   table->records_[key] = data;
-  main_io_service_.post([callback]() { callback(Status::OK()); });
+  main_io_service_.post([callback]() { callback(Status::OK()); }, "GcsInMemoryStore.Put");
   return Status::OK();
 }
 
@@ -37,7 +37,8 @@ Status InMemoryStoreClient::AsyncPutWithIndex(const std::string &table_name,
   absl::MutexLock lock(&(table->mutex_));
   table->records_[key] = data;
   table->index_keys_[index_key].emplace_back(key);
-  main_io_service_.post([callback]() { callback(Status::OK()); });
+  main_io_service_.post([callback]() { callback(Status::OK()); },
+                        "GcsInMemoryStore.PutWithIndex");
   return Status::OK();
 }
 
@@ -49,9 +50,11 @@ Status InMemoryStoreClient::AsyncGet(const std::string &table_name,
   auto iter = table->records_.find(key);
   if (iter != table->records_.end()) {
     auto data = iter->second;
-    main_io_service_.post([callback, data]() { callback(Status::OK(), data); });
+    main_io_service_.post([callback, data]() { callback(Status::OK(), data); },
+                          "GcsInMemoryStore.Get");
   } else {
-    main_io_service_.post([callback]() { callback(Status::OK(), boost::none); });
+    main_io_service_.post([callback]() { callback(Status::OK(), boost::none); },
+                          "GcsInMemoryStore.GetNone");
   }
   return Status::OK();
 }
@@ -63,7 +66,8 @@ Status InMemoryStoreClient::AsyncGetAll(
   absl::MutexLock lock(&(table->mutex_));
   std::unordered_map<std::string, std::string> result;
   result.insert(table->records_.begin(), table->records_.end());
-  main_io_service_.post([result, callback]() { callback(result); });
+  main_io_service_.post([result, callback]() { callback(result); },
+                        "GcsInMemoryStore.GetAll");
   return Status::OK();
 }
 
@@ -73,7 +77,8 @@ Status InMemoryStoreClient::AsyncDelete(const std::string &table_name,
   auto table = GetOrCreateTable(table_name);
   absl::MutexLock lock(&(table->mutex_));
   table->records_.erase(key);
-  main_io_service_.post([callback]() { callback(Status::OK()); });
+  main_io_service_.post([callback]() { callback(Status::OK()); },
+                        "GcsInMemoryStore.Delete");
   return Status::OK();
 }
 
@@ -98,11 +103,13 @@ Status InMemoryStoreClient::AsyncDeleteWithIndex(const std::string &table_name,
     }
   }
 
-  main_io_service_.post([callback]() {
-    if (callback) {
-      callback(Status::OK());
-    }
-  });
+  main_io_service_.post(
+      [callback]() {
+        if (callback) {
+          callback(Status::OK());
+        }
+      },
+      "GcsInMemoryStore.DeleteWithIndex");
 
   return Status::OK();
 }
@@ -115,7 +122,8 @@ Status InMemoryStoreClient::AsyncBatchDelete(const std::string &table_name,
   for (auto &key : keys) {
     table->records_.erase(key);
   }
-  main_io_service_.post([callback]() { callback(Status::OK()); });
+  main_io_service_.post([callback]() { callback(Status::OK()); },
+                        "GcsInMemoryStore.BatchDelete");
   return Status::OK();
 }
 
@@ -144,11 +152,13 @@ Status InMemoryStoreClient::AsyncBatchDeleteWithIndex(
     }
   }
 
-  main_io_service_.post([callback]() {
-    if (callback) {
-      callback(Status::OK());
-    }
-  });
+  main_io_service_.post(
+      [callback]() {
+        if (callback) {
+          callback(Status::OK());
+        }
+      },
+      "GcsInMemoryStore.BatchDeleteWithIndex");
 
   return Status::OK();
 }
@@ -168,7 +178,8 @@ Status InMemoryStoreClient::AsyncGetByIndex(
       }
     }
   }
-  main_io_service_.post([result, callback]() { callback(result); });
+  main_io_service_.post([result, callback]() { callback(result); },
+                        "GcsInMemoryStore.GetByIndex");
 
   return Status::OK();
 }
@@ -185,11 +196,13 @@ Status InMemoryStoreClient::AsyncDeleteByIndex(const std::string &table_name,
     }
     table->index_keys_.erase(iter);
   }
-  main_io_service_.post([callback]() {
-    if (callback) {
-      callback(Status::OK());
-    }
-  });
+  main_io_service_.post(
+      [callback]() {
+        if (callback) {
+          callback(Status::OK());
+        }
+      },
+      "GcsInMemoryStore.DeleteByIndex");
   return Status::OK();
 }
 

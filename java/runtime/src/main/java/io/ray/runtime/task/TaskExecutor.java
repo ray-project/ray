@@ -90,7 +90,7 @@ public abstract class TaskExecutor<T extends TaskExecutor.ActorContext> {
     runtime.setIsContextSet(true);
     TaskType taskType = runtime.getWorkerContext().getCurrentTaskType();
     TaskId taskId = runtime.getWorkerContext().getCurrentTaskId();
-    LOGGER.debug("Executing task {}", taskId);
+    LOGGER.debug("Executing task {} {}", taskId, rayFunctionInfo);
 
     T actorContext = null;
     if (taskType == TaskType.ACTOR_CREATION_TASK) {
@@ -103,6 +103,8 @@ public abstract class TaskExecutor<T extends TaskExecutor.ActorContext> {
 
     List<NativeRayObject> returnObjects = new ArrayList<>();
     ClassLoader oldLoader = Thread.currentThread().getContextClassLoader();
+    // Find the executable object.
+
     RayFunction rayFunction = localRayFunction.get();
     try {
       // Find the executable object.
@@ -133,6 +135,7 @@ public abstract class TaskExecutor<T extends TaskExecutor.ActorContext> {
           result = rayFunction.getConstructor().newInstance(args);
         }
       } catch (InvocationTargetException e) {
+        LOGGER.error("Execute rayFunction {} failed. actor {}, args {}", rayFunction, actor, args);
         if (e.getCause() != null) {
           throw e.getCause();
         } else {
@@ -156,30 +159,41 @@ public abstract class TaskExecutor<T extends TaskExecutor.ActorContext> {
         throw (RayIntentionalSystemExitException) e;
       }
       LOGGER.error("Error executing task " + taskId, e);
+
       if (taskType != TaskType.ACTOR_CREATION_TASK) {
-        boolean hasReturn = rayFunction != null && rayFunction.hasReturn();
-        boolean isCrossLanguage = parseFunctionDescriptor(rayFunctionInfo).signature.equals("");
-        if (hasReturn || isCrossLanguage) {
-          NativeRayObject serializedException;
-          try {
-            serializedException =
-                ObjectSerializer.serialize(
-                    new RayTaskException("Error executing task " + taskId, e));
-          } catch (Exception unserializable) {
-            // We should try-catch `ObjectSerializer.serialize` here. Because otherwise if the
-            // application-level exception is not serializable. `ObjectSerializer.serialize`
-            // will throw an exception and crash the worker.
-            // Refer to the case `TaskExceptionTest.java` for more details.
-            LOGGER.warn("Failed to serialize the exception to a RayObject.", unserializable);
-            serializedException =
-                ObjectSerializer.serialize(
-                    new RayTaskException(
-                        String.format(
-                            "Error executing task %s with the exception: %s",
-                            taskId, ExceptionUtils.getStackTrace(e))));
+        if (rayFunction != null) {
+          boolean hasReturn = rayFunction != null && rayFunction.hasReturn();
+          boolean isCrossLanguage = parseFunctionDescriptor(rayFunctionInfo).signature.equals("");
+          if (hasReturn || isCrossLanguage) {
+            NativeRayObject serializedException;
+            try {
+              serializedException =
+                  ObjectSerializer.serialize(
+                      new RayTaskException("Error executing task " + taskId, e));
+            } catch (Exception unserializable) {
+              // We should try-catch `ObjectSerializer.serialize` here. Because otherwise if the
+              // application-level exception is not serializable. `ObjectSerializer.serialize`
+              // will throw an exception and crash the worker.
+              // Refer to the case `TaskExceptionTest.java` for more details.
+              LOGGER.warn("Failed to serialize the exception to a RayObject.", unserializable);
+              serializedException =
+                  ObjectSerializer.serialize(
+                      new RayTaskException(
+                          String.format(
+                              "Error executing task %s with the exception: %s",
+                              taskId, ExceptionUtils.getStackTrace(e))));
+            }
+            Preconditions.checkNotNull(serializedException);
+            returnObjects.add(serializedException);
           }
-          Preconditions.checkNotNull(serializedException);
-          returnObjects.add(serializedException);
+        } else {
+          returnObjects.add(
+              ObjectSerializer.serialize(
+                  new RayTaskException(
+                      String.format(
+                          "Function %s of task %s doesn't exist",
+                          String.join(".", rayFunctionInfo), taskId),
+                      e)));
         }
       } else {
         actorContext.actorCreationException = e;

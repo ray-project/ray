@@ -12,7 +12,7 @@ from ray.tune.result import TRAINING_ITERATION
 from ray.tune.suggest import BasicVariantGenerator
 from ray.tune.trial import Trial, Checkpoint
 from ray.tune.resources import Resources
-from ray.cluster_utils import Cluster
+from ray._private.cluster_utils import Cluster
 from ray.tune.utils.placement_groups import PlacementGroupFactory
 
 
@@ -258,7 +258,7 @@ class RayExecutorQueueTest(unittest.TestCase):
         self.trial_executor.start_trial(gpu_trial)
 
         # TODO(rliaw): This behavior is probably undesirable, but right now
-        # trials with different resource requirements is not often used.
+        #  trials with different resource requirements is not often used.
         cpu_only_trial = create_trial(1, 0)
         self.assertFalse(
             self.trial_executor.has_resources_for_trial(cpu_only_trial))

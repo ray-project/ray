@@ -12,7 +12,7 @@ import traceback
 import subprocess
 
 import ray
-from ray.utils import hex_to_binary
+from ray._private.utils import hex_to_binary
 from ray.new_dashboard.tests.conftest import *  # noqa
 from ray.test_utils import (
     format_web_url,

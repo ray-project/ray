@@ -173,7 +173,6 @@ py_test(
         "tuned_examples/dqn/cartpole-dqn.yaml",
         "tuned_examples/dqn/cartpole-dqn-softq.yaml",
         "tuned_examples/dqn/cartpole-dqn-param-noise.yaml",
-        "tuned_examples/dqn/cartpole-r2d2.yaml",
     ],
     args = ["--yaml-dir=tuned_examples/dqn"]
 )
@@ -188,7 +187,6 @@ py_test(
         "tuned_examples/dqn/cartpole-dqn.yaml",
         "tuned_examples/dqn/cartpole-dqn-softq.yaml",
         "tuned_examples/dqn/cartpole-dqn-param-noise.yaml",
-        "tuned_examples/dqn/cartpole-r2d2.yaml",
     ],
     args = ["--yaml-dir=tuned_examples/dqn", "--framework=torch"]
 )
@@ -510,6 +508,14 @@ py_test(
     srcs = ["agents/ars/tests/test_ars.py"]
 )
 
+# CQLTrainer
+py_test(
+    name = "test_cql",
+    tags = ["agents_dir"],
+    size = "medium",
+    srcs = ["agents/cql/tests/test_cql.py"]
+)
+
 # DDPGTrainer
 py_test(
     name = "test_ddpg",
@@ -603,7 +609,7 @@ py_test(
 py_test(
     name = "test_pg",
     tags = ["agents_dir"],
-    size = "small",
+    size = "medium",
     srcs = ["agents/pg/tests/test_pg.py"]
 )
 
@@ -1475,6 +1481,13 @@ py_test(
     tags = ["tests_dir", "tests_dir_P"],
     size = "medium",
     srcs = ["tests/test_pettingzoo_env.py"]
+)
+
+py_test(
+    name = "tests/test_placement_groups",
+    tags = ["tests_dir", "tests_dir_P"],
+    size = "medium",
+    srcs = ["tests/test_placement_groups.py"]
 )
 
 py_test(

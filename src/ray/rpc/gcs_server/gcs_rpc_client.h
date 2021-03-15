@@ -117,10 +117,10 @@ class GcsRpcClient {
                                                          client_call_manager));
   }
 
-  /// Add job info to gcs server.
+  /// Add job info to GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(JobInfoGcsService, AddJob, job_info_grpc_client_, )
 
-  /// Mark job as finished to gcs server.
+  /// Mark job as finished to GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(JobInfoGcsService, MarkJobFinished, job_info_grpc_client_, )
 
   /// Mark job as failed to gcs server.
@@ -134,6 +134,9 @@ class GcsRpcClient {
 
   /// Drop a job from GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(JobInfoGcsService, DropJob, job_info_grpc_client_, )
+
+  /// Report job error to GCS Service.
+  VOID_GCS_RPC_CLIENT_METHOD(JobInfoGcsService, ReportJobError, job_info_grpc_client_, )
 
   /// Register actor via GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(ActorInfoGcsService, RegisterActor,

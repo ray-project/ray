@@ -18,6 +18,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/bundle_spec.h"
 #include "ray/common/client_connection.h"
 #include "ray/common/status.h"
@@ -139,12 +140,27 @@ class DependencyWaiterInterface {
   virtual ~DependencyWaiterInterface(){};
 };
 
+/// Inteface for getting resource reports.
+class ResourceRequestInterface {
+ public:
+  virtual void RequestResourceReport(
+      const rpc::ClientCallback<rpc::RequestResourceReportReply> &callback) = 0;
+
+  virtual ~ResourceRequestInterface(){};
+};
+
 class RayletClientInterface : public PinObjectsInterface,
                               public WorkerLeaseInterface,
                               public DependencyWaiterInterface,
-                              public ResourceReserveInterface {
+                              public ResourceReserveInterface,
+                              public ResourceRequestInterface {
  public:
   virtual ~RayletClientInterface(){};
+
+  /// Get the system config from Raylet.
+  /// \param callback Callback that will be called after raylet replied the system config.
+  virtual void GetSystemConfig(
+      const rpc::ClientCallback<rpc::GetSystemConfigReply> &callback) = 0;
 };
 
 namespace raylet {
@@ -160,7 +176,7 @@ class RayletConnection {
   /// \param job_id The ID of the driver. This is non-nil if the client is a
   ///        driver.
   /// \return The connection information.
-  RayletConnection(boost::asio::io_service &io_service, const std::string &raylet_socket,
+  RayletConnection(instrumented_io_context &io_service, const std::string &raylet_socket,
                    int num_retries, int64_t timeout);
 
   ray::Status WriteMessage(MessageType type,
@@ -200,12 +216,12 @@ class RayletClient : public RayletClientInterface {
   /// \param serialized_job_config If this is a driver connection, the job config
   /// provided by driver will be passed to Raylet. If this is a worker connection,
   /// this will be populated with the current job config.
-  RayletClient(boost::asio::io_service &io_service,
+  RayletClient(instrumented_io_context &io_service,
                std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client,
                const std::string &raylet_socket, const WorkerID &worker_id,
                rpc::WorkerType worker_type, const JobID &job_id, const Language &language,
                const std::string &ip_address, Status *status, NodeID *raylet_id,
-               int *port, std::string *system_config, std::string *serialized_job_config);
+               int *port, std::string *serialized_job_config);
 
   /// Connect to the raylet via grpc only.
   ///
@@ -389,7 +405,13 @@ class RayletClient : public RayletClientInterface {
       const rpc::Address &caller_address, const std::vector<ObjectID> &object_ids,
       const ray::rpc::ClientCallback<ray::rpc::PinObjectIDsReply> &callback) override;
 
+  void GetSystemConfig(
+      const rpc::ClientCallback<rpc::GetSystemConfigReply> &callback) override;
+
   void GlobalGC(const rpc::ClientCallback<rpc::GlobalGCReply> &callback);
+
+  void RequestResourceReport(
+      const rpc::ClientCallback<rpc::RequestResourceReportReply> &callback) override;
 
   // Subscribe to receive notification on plasma object
   void SubscribeToPlasma(const ObjectID &object_id, const rpc::Address &owner_address);

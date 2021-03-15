@@ -13,7 +13,7 @@ from typing import Callable, Union
 import ray
 from ray import tune
 from ray.rllib import _register_all
-from ray.cluster_utils import Cluster
+from ray._private.cluster_utils import Cluster
 from ray.test_utils import run_string_as_driver_nonblocking
 from ray.tune import register_trainable
 from ray.tune.experiment import Experiment
@@ -782,6 +782,7 @@ def test_cluster_interrupt_searcher(start_connected_cluster, tmpdir):
     # Wait until the right checkpoint is saved.
     # The trainable returns every 0.5 seconds, so this should not miss
     # the checkpoint.
+    trials = []
     for i in range(50):
         if TrialRunner.checkpoint_exists(local_checkpoint_dir):
             # Inspect the internal trialrunner
