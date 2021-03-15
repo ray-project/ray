@@ -38,7 +38,6 @@ class GcsClientOptions {
   /// \param ip GCS service ip.
   /// \param port GCS service port.
   /// \param password GCS service password.
-  /// \param is_test_client Whether this client is used for tests.
   GcsClientOptions(const std::string &ip, int port, const std::string &password,
                    bool enable_sync_conn = true, bool enable_async_conn = true,
                    bool enable_subscribe_conn = true)

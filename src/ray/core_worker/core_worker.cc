@@ -426,7 +426,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   // open connection for it by setting `enable_async_conn` as false.
   gcs::GcsClientOptions gcs_options = gcs::GcsClientOptions(
       options_.gcs_options.server_ip_, options_.gcs_options.server_port_,
-      options_.gcs_options.password_, options_.gcs_options.is_test_client_,
+      options_.gcs_options.password_,
       /*enable_sync_conn=*/true, /*enable_async_conn=*/false,
       /*enable_subscribe_conn=*/true);
   gcs_client_ = std::make_shared<ray::gcs::ServiceBasedGcsClient>(options_.gcs_options);
