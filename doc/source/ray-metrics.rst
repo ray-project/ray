@@ -163,7 +163,8 @@ Below is a simple example of an actor that exports metrics using these APIs:
 .. literalinclude:: ../examples/doc_code/metrics_example.py
    :language: python
 
-If you run this script, then go to ``localhost:8080`` in the browser, you should see the following output:
+While the script is running, the metrics will be exported to ``localhost:8080`` (this is the endpoint that Prometheus would be configured to scrape).
+If you open this in the browser, you should see the following output:
 
 .. code-block:: none
 
