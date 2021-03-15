@@ -4,7 +4,7 @@ import redis
 
 import ray
 import ray._private.services
-from ray.cluster_utils import Cluster
+from ray._private.cluster_utils import Cluster
 
 
 @pytest.fixture

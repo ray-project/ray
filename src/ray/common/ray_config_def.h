@@ -18,11 +18,6 @@
 // Macro definition format: RAY_CONFIG(type, name, default_value).
 // NOTE: This file should NOT be included in any file other than ray_config.h.
 
-// IF YOU MODIFY THIS FILE and add a configuration parameter, you must change
-// at least two additional things:
-//     1. You must update the file "ray/python/ray/includes/ray_config.pxd".
-//     2. You must update the file "ray/python/ray/includes/ray_config.pxi".
-
 /// In theory, this is used to detect Ray cookie mismatches.
 /// This magic number (hex for "RAY") is used instead of zero, rationale is
 /// that it could still be possible that some random program sends an int64_t
@@ -47,9 +42,15 @@ RAY_CONFIG(uint64_t, num_heartbeats_warning, 5)
 
 /// The duration between reporting resources sent by the raylets.
 RAY_CONFIG(uint64_t, raylet_report_resources_period_milliseconds, 100)
+/// For a raylet, if the last resource report was sent more than this many
+/// report periods ago, then a warning will be logged that the report
+/// handler is drifting.
+RAY_CONFIG(uint64_t, num_resource_report_periods_warning, 5)
 
 /// The duration between dumping debug info to logs, or 0 to disable.
 RAY_CONFIG(uint64_t, debug_dump_period_milliseconds, 10000)
+
+RAY_CONFIG(bool, asio_event_loop_stats_collection_enabled, true)
 
 /// Whether to enable fair queueing between task classes in raylet. When
 /// fair queueing is enabled, the raylet will try to balance the number
@@ -99,6 +100,13 @@ RAY_CONFIG(int64_t, free_objects_period_milliseconds, 1000)
 RAY_CONFIG(size_t, free_objects_batch_size, 100)
 
 RAY_CONFIG(bool, lineage_pinning_enabled, false)
+
+/// Pick between 2 scheduling spillback strategies. Load balancing mode picks the node at
+/// uniform random from the valid options. The other mode is more likely to spill back
+/// many tasks to the same node.
+RAY_CONFIG(bool, scheduler_loadbalance_spillback,
+           getenv("RAY_SCHEDULER_LOADBALANCE_SPILLBACK") != nullptr &&
+               getenv("RAY_SCHEDULER_LOADBALANCE_SPILLBACK") != std::string("1"))
 
 // The max allowed size in bytes of a return object from direct actor calls.
 // Objects larger than this size will be spilled/promoted to plasma.

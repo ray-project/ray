@@ -3,7 +3,7 @@ import pytest
 import time
 
 import ray
-from ray.cluster_utils import Cluster
+from ray._private.cluster_utils import Cluster
 
 
 @pytest.fixture(params=[(1, 4), (4, 4)])

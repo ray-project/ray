@@ -14,7 +14,8 @@ import yaml
 
 IMAGE_ENV = "KUBERNETES_OPERATOR_TEST_IMAGE"
 IMAGE = os.getenv(IMAGE_ENV, "rayproject/ray:nightly")
-NAMESPACE = "test-k8s-operator-examples"
+NAMESPACE_ENV = "KUBERNETES_OPERATOR_TEST_NAMESPACE"
+NAMESPACE = os.getenv(NAMESPACE_ENV, "test-k8s-operator")
 
 RAY_PATH = os.path.abspath(
     os.path.dirname(
@@ -57,7 +58,11 @@ def wait_for_logs():
 @retry_until_true
 def wait_for_job(job_pod):
     cmd = f"kubectl -n {NAMESPACE} logs {job_pod}"
-    out = subprocess.check_output(cmd, shell=True).decode()
+    try:
+        out = subprocess.check_output(cmd, shell=True).decode()
+    except subprocess.CalledProcessError as e:
+        print(e.output.decode())
+        raise (e)
     return ("success" in out.lower())
 
 
@@ -92,7 +97,6 @@ class KubernetesOperatorTest(unittest.TestCase):
             operator_config_path = get_operator_config_path("operator.yaml")
             job_path = os.path.join(RAY_PATH,
                                     "doc/kubernetes/job-example.yaml")
-            self.crd_path = get_operator_config_path("cluster_crd.yaml")
 
             # Load operator configs
             example_cluster_config = yaml.safe_load(
@@ -124,14 +128,6 @@ class KubernetesOperatorTest(unittest.TestCase):
             ]
             for file in files:
                 file.flush()
-
-            # Apply CR
-            cmd = f"kubectl apply -f {self.crd_path}"
-            subprocess.check_call(cmd, shell=True)
-
-            # Create namespace
-            cmd = f"kubectl create namespace {NAMESPACE}"
-            subprocess.check_call(cmd, shell=True)
 
             # Start operator and two clusters
             for file in files:
@@ -185,12 +181,6 @@ class KubernetesOperatorTest(unittest.TestCase):
 
             # Only operator pod remains.
             wait_for_pods(1)
-
-    def __del__(self):
-        cmd = f"kubectl delete -f {self.crd_path}"
-        subprocess.check_call(cmd, shell=True)
-        cmd = f"kubectl delete namespace {NAMESPACE}"
-        subprocess.check_call(cmd, shell=True)
 
 
 if __name__ == "__main__":

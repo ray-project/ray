@@ -17,7 +17,7 @@
 namespace ray {
 
 OwnershipBasedObjectDirectory::OwnershipBasedObjectDirectory(
-    boost::asio::io_service &io_service, std::shared_ptr<gcs::GcsClient> &gcs_client,
+    instrumented_io_context &io_service, std::shared_ptr<gcs::GcsClient> &gcs_client,
     std::function<void(const ObjectID &)> mark_as_failed)
     : ObjectDirectory(io_service, gcs_client),
       client_call_manager_(io_service),
@@ -287,7 +287,8 @@ ray::Status OwnershipBasedObjectDirectory::SubscribeObjectLocations(
     io_service_.post(
         [callback, locations, spilled_url, spilled_node_id, object_size, object_id]() {
           callback(object_id, locations, spilled_url, spilled_node_id, object_size);
-        });
+        },
+        "ObjectDirectory.SubscribeObjectLocations");
   }
   return Status::OK();
 }
@@ -324,19 +325,22 @@ ray::Status OwnershipBasedObjectDirectory::LookupLocations(
     io_service_.post(
         [callback, object_id, locations, spilled_url, spilled_node_id, object_size]() {
           callback(object_id, locations, spilled_url, spilled_node_id, object_size);
-        });
+        },
+        "ObjectDirectory.LookupLocations");
   } else {
     WorkerID worker_id = WorkerID::FromBinary(owner_address.worker_id());
     std::shared_ptr<rpc::CoreWorkerClient> rpc_client = GetClient(owner_address);
     if (rpc_client == nullptr) {
       RAY_LOG(WARNING) << "Object " << object_id << " does not have owner. "
                        << "LookupLocations returns an empty list of locations.";
-      // We post the callback to the event loop in order to avoid mutating data
-      // structures shared with the caller and potentially invalidating caller
-      // iterators. See https://github.com/ray-project/ray/issues/2959.
-      io_service_.post([callback, object_id]() {
-        callback(object_id, std::unordered_set<NodeID>(), "", NodeID::Nil(), 0);
-      });
+      // We post the callback to the event loop in order to avoid mutating data structures
+      // shared with the caller and potentially invalidating caller iterators.
+      // See https://github.com/ray-project/ray/issues/2959.
+      io_service_.post(
+          [callback, object_id]() {
+            callback(object_id, std::unordered_set<NodeID>(), "", NodeID::Nil(), 0);
+          },
+          "ObjectDirectory.LookupLocations");
       return Status::OK();
     }
 

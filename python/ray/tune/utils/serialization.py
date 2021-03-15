@@ -3,7 +3,7 @@ import logging
 import types
 
 from ray import cloudpickle as cloudpickle
-from ray.utils import binary_to_hex, hex_to_binary
+from ray._private.utils import binary_to_hex, hex_to_binary
 from ray.util.debug import log_once
 
 logger = logging.getLogger(__name__)

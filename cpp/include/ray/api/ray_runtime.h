@@ -43,5 +43,6 @@ class RayRuntime {
   virtual ObjectID CallActor(const RemoteFunctionPtrHolder &fptr, const ActorID &actor,
                              std::vector<std::unique_ptr<::ray::TaskArg>> &args) = 0;
 };
+
 }  // namespace api
 }  // namespace ray

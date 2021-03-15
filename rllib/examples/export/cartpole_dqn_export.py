@@ -54,8 +54,10 @@ def restore_checkpoint(export_dir, prefix):
 
 if __name__ == "__main__":
     algo = "DQN"
-    model_dir = os.path.join(ray.utils.get_user_temp_dir(), "model_export_dir")
-    ckpt_dir = os.path.join(ray.utils.get_user_temp_dir(), "ckpt_export_dir")
+    model_dir = os.path.join(ray._private.utils.get_user_temp_dir(),
+                             "model_export_dir")
+    ckpt_dir = os.path.join(ray._private.utils.get_user_temp_dir(),
+                            "ckpt_export_dir")
     prefix = "model.ckpt"
     num_steps = 3
     train_and_export(algo, num_steps, model_dir, ckpt_dir, prefix)
