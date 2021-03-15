@@ -9,7 +9,7 @@ import grpc
 import uuid
 
 from ray.worker import print_worker_logs
-from ray.ray_logging import global_worker_stdstream_dispatcher
+from ray._private.ray_logging import global_worker_stdstream_dispatcher
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 

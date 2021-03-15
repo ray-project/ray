@@ -2,9 +2,6 @@ import asyncio
 from collections import defaultdict
 import time
 import os
-import io
-import logging
-from contextlib import redirect_stderr
 
 import requests
 import pytest
@@ -12,12 +9,11 @@ import starlette.responses
 
 import ray
 from ray import serve
-from ray.test_utils import SignalActor, wait_for_condition
+from ray.test_utils import wait_for_condition
 from ray.serve.constants import SERVE_PROXY_NAME
 from ray.serve.exceptions import RayServeException
 from ray.serve.config import BackendConfig
-from ray.serve.utils import (block_until_http_ready, format_actor_name,
-                             get_random_letters)
+from ray.serve.utils import (format_actor_name, get_random_letters)
 
 
 def test_e2e(serve_instance):
@@ -307,59 +303,6 @@ def test_scaling_replicas(serve_instance):
     assert max(counter_result) - min(counter_result) > 6
 
 
-def test_batching(serve_instance):
-    client = serve_instance
-
-    class BatchingExample:
-        def __init__(self):
-            self.count = 0
-
-        @serve.accept_batch
-        def __call__(self, requests):
-            self.count += 1
-            batch_size = len(requests)
-            return [self.count] * batch_size
-
-    # set the max batch size
-    config = BackendConfig(max_batch_size=5, batch_wait_timeout=1)
-    client.create_backend("counter:v11", BatchingExample, config=config)
-    client.create_endpoint(
-        "counter1", backend="counter:v11", route="/increment2")
-
-    future_list = []
-    handle = client.get_handle("counter1")
-    for _ in range(20):
-        f = handle.remote(temp=1)
-        future_list.append(f)
-
-    counter_result = ray.get(future_list)
-    # since count is only updated per batch of queries
-    # If there atleast one __call__ fn call with batch size greater than 1
-    # counter result will always be less than 20
-    assert max(counter_result) < 20
-
-
-def test_batching_exception(serve_instance):
-    client = serve_instance
-
-    class NoListReturned:
-        def __init__(self):
-            self.count = 0
-
-        @serve.accept_batch
-        def __call__(self, requests):
-            return len(requests)
-
-    # Set the max batch size.
-    config = BackendConfig(max_batch_size=5)
-    client.create_backend("exception:v1", NoListReturned, config=config)
-    client.create_endpoint("exception-test", backend="exception:v1")
-
-    handle = client.get_handle("exception-test")
-    with pytest.raises(ray.exceptions.RayTaskError):
-        assert ray.get(handle.remote(temp=1))
-
-
 def test_updating_config(serve_instance):
     client = serve_instance
 
@@ -520,83 +463,6 @@ def test_shard_key(serve_instance, route):
         assert do_request(shard_key) == results[shard_key]
 
 
-def test_multiple_instances():
-    route = "/api"
-    backend = "backend"
-    endpoint = "endpoint"
-
-    client1 = serve.start(http_port=8001)
-
-    def function(_):
-        return "hello1"
-
-    client1.create_backend(backend, function)
-    client1.create_endpoint(endpoint, backend=backend, route=route)
-
-    assert requests.get("http://127.0.0.1:8001" + route).text == "hello1"
-
-    # Create a second cluster on port 8002. Create an endpoint and backend with
-    # the same names and check that they don't collide.
-    client2 = serve.start(http_port=8002)
-
-    def function(_):
-        return "hello2"
-
-    client2.create_backend(backend, function)
-    client2.create_endpoint(endpoint, backend=backend, route=route)
-
-    assert requests.get("http://127.0.0.1:8001" + route).text == "hello1"
-    assert requests.get("http://127.0.0.1:8002" + route).text == "hello2"
-
-    # Check that deleting the backend in the current cluster doesn't.
-    client2.delete_endpoint(endpoint)
-    client2.delete_backend(backend)
-    assert requests.get("http://127.0.0.1:8001" + route).text == "hello1"
-
-    # Check that the first client still works.
-    client1.delete_endpoint(endpoint)
-    client1.delete_backend(backend)
-
-
-def test_parallel_start(serve_instance):
-    client = serve_instance
-
-    # Test the ability to start multiple replicas in parallel.
-    # In the past, when Serve scale up a backend, it does so one by one and
-    # wait for each replica to initialize. This test avoid this by preventing
-    # the first replica to finish initialization unless the second replica is
-    # also started.
-    @ray.remote
-    class Barrier:
-        def __init__(self, release_on):
-            self.release_on = release_on
-            self.current_waiters = 0
-            self.event = asyncio.Event()
-
-        async def wait(self):
-            self.current_waiters += 1
-            if self.current_waiters == self.release_on:
-                self.event.set()
-            else:
-                await self.event.wait()
-
-    barrier = Barrier.remote(release_on=2)
-
-    class LongStartingServable:
-        def __init__(self):
-            ray.get(barrier.wait.remote(), timeout=10)
-
-        def __call__(self, _):
-            return "Ready"
-
-    config = BackendConfig(num_replicas=2)
-    client.create_backend("p:v0", LongStartingServable, config=config)
-    client.create_endpoint("test-parallel", backend="p:v0")
-    handle = client.get_handle("test-parallel")
-
-    ray.get(handle.remote(), timeout=10)
-
-
 def test_list_endpoints(serve_instance):
     client = serve_instance
 
@@ -684,38 +550,6 @@ def test_endpoint_input_validation(serve_instance):
     with pytest.raises(TypeError):
         client.create_endpoint("endpoint", backend=2)
     client.create_endpoint("endpoint", backend="backend")
-
-
-# This error is only printed because creation is run in the control loop, not
-# in the API path.
-@pytest.mark.skip()
-def test_create_infeasible_error(serve_instance):
-    client = serve_instance
-
-    def f():
-        pass
-
-    # Non existent resource should be infeasible.
-    with pytest.raises(RayServeException, match="Cannot scale backend"):
-        client.create_backend(
-            "f:1",
-            f,
-            ray_actor_options={"resources": {
-                "MagicMLResource": 100
-            }})
-
-    # Even though each replica might be feasible, the total might not be.
-    current_cpus = int(ray.nodes()[0]["Resources"]["CPU"])
-    num_replicas = current_cpus + 20
-    config = BackendConfig(num_replicas=num_replicas)
-    with pytest.raises(RayServeException, match="Cannot scale backend"):
-        client.create_backend(
-            "f:1",
-            f,
-            ray_actor_options={"resources": {
-                "CPU": 1,
-            }},
-            config=config)
 
 
 def test_shutdown():
@@ -840,138 +674,6 @@ def test_connect(serve_instance):
     assert "backend-ception" in client3.list_backends().keys()
 
 
-def test_serve_metrics(serve_instance):
-    client = serve_instance
-
-    @serve.accept_batch
-    def batcher(starlette_requests):
-        return ["hello"] * len(starlette_requests)
-
-    client.create_backend("metrics", batcher)
-    client.create_endpoint("metrics", backend="metrics", route="/metrics")
-
-    # send 10 concurrent requests
-    url = "http://127.0.0.1:8000/metrics"
-    ray.get([block_until_http_ready.remote(url) for _ in range(10)])
-
-    def verify_metrics(do_assert=False):
-        try:
-            resp = requests.get("http://127.0.0.1:9999").text
-        # Requests will fail if we are crashing the controller
-        except requests.ConnectionError:
-            return False
-
-        expected_metrics = [
-            # counter
-            "num_router_requests_total",
-            "num_http_requests_total",
-            "backend_queued_queries_total",
-            "backend_request_counter_requests_total",
-            "backend_worker_starts_restarts_total",
-            # histogram
-            "backend_processing_latency_ms_bucket",
-            "backend_processing_latency_ms_count",
-            "backend_processing_latency_ms_sum",
-            "backend_queuing_latency_ms_bucket",
-            "backend_queuing_latency_ms_count",
-            "backend_queuing_latency_ms_sum",
-            # gauge
-            "replica_processing_queries",
-            "replica_queued_queries",
-            # handle
-            "serve_handle_request_counter",
-            # ReplicaSet
-            "backend_queued_queries"
-        ]
-        for metric in expected_metrics:
-            # For the final error round
-            if do_assert:
-                assert metric in resp
-            # For the wait_for_condition
-            else:
-                if metric not in resp:
-                    return False
-        return True
-
-    try:
-        wait_for_condition(verify_metrics, retry_interval_ms=500)
-    except RuntimeError:
-        verify_metrics()
-
-
-def test_serve_graceful_shutdown(serve_instance):
-    client = serve_instance
-
-    signal = SignalActor.remote()
-
-    class WaitBackend:
-        @serve.accept_batch
-        async def __call__(self, requests):
-            signal_actor = await requests[0].body()
-            await signal_actor.wait.remote()
-            return ["" for _ in range(len(requests))]
-
-    client.create_backend(
-        "wait",
-        WaitBackend,
-        config=BackendConfig(
-            # Make sure we can queue up queries in the replica side.
-            max_concurrent_queries=10,
-            max_batch_size=1,
-            experimental_graceful_shutdown_wait_loop_s=0.5,
-            experimental_graceful_shutdown_timeout_s=1000,
-        ))
-    client.create_endpoint("wait", backend="wait")
-    handle = client.get_handle("wait")
-    refs = [handle.remote(signal) for _ in range(10)]
-
-    # Wait for all the queries to be enqueued
-    with pytest.raises(ray.exceptions.GetTimeoutError):
-        ray.get(refs, timeout=1)
-
-    @ray.remote(num_cpus=0)
-    def do_blocking_delete():
-        client = serve.connect()
-        client.delete_endpoint("wait")
-        client.delete_backend("wait")
-
-    # Now delete the backend. This should trigger the shutdown sequence.
-    delete_ref = do_blocking_delete.remote()
-
-    # The queries should be enqueued but not executed becuase they are blocked
-    # by signal actor.
-    with pytest.raises(ray.exceptions.GetTimeoutError):
-        ray.get(refs, timeout=1)
-
-    signal.send.remote()
-
-    # All the queries should be drained and executed without error.
-    ray.get(refs)
-    # Blocking delete should complete.
-    ray.get(delete_ref)
-
-
-def test_serve_forceful_shutdown(serve_instance):
-    client = serve_instance
-
-    def sleeper(_):
-        while True:
-            time.sleep(1000)
-
-    client.create_backend(
-        "sleeper",
-        sleeper,
-        config=BackendConfig(experimental_graceful_shutdown_timeout_s=1))
-    client.create_endpoint("sleeper", backend="sleeper")
-    handle = client.get_handle("sleeper")
-    ref = handle.remote()
-    client.delete_endpoint("sleeper")
-    client.delete_backend("sleeper")
-
-    with pytest.raises(ray.exceptions.RayActorError):
-        ray.get(ref)
-
-
 def test_starlette_request(serve_instance):
     client = serve_instance
 
@@ -1013,35 +715,6 @@ def test_variable_routes(serve_instance):
         "user_id": 23,
         "number": 12.345
     }
-
-
-def test_backend_logger(serve_instance):
-    # Tests that backend tag and replica tag appear in Serve log output.
-
-    client = serve_instance
-
-    logger = logging.getLogger("ray")
-
-    class Counter:
-        def __init__(self):
-            self.count = 0
-
-        def __call__(self, request):
-            self.count += 1
-            logger.info(f"count: {self.count}")
-
-    client.create_backend("my_backend", Counter)
-    client.create_endpoint(
-        "my_endpoint", backend="my_backend", route="/counter")
-    f = io.StringIO()
-    with redirect_stderr(f):
-        requests.get("http://127.0.0.1:8000/counter")
-
-        def counter_log_success():
-            s = f.getvalue()
-            return "backend" in s and "replica" in s and "count" in s
-
-        wait_for_condition(counter_log_success)
 
 
 if __name__ == "__main__":

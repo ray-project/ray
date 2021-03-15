@@ -20,18 +20,18 @@ from ray.autoscaler._private.constants import AUTOSCALER_EVENTS
 from ray.autoscaler._private.util import DEBUG_AUTOSCALING_ERROR
 import ray.cloudpickle as pickle
 import ray.gcs_utils
-import ray.memory_monitor as memory_monitor
+import ray._private.memory_monitor as memory_monitor
 import ray.node
 import ray.job_config
-import ray.parameter
+import ray._private.parameter
 import ray.ray_constants as ray_constants
 import ray.remote_function
 import ray.serialization as serialization
 import ray._private.services as services
 import ray._private.runtime_env as runtime_env
+import ray._private.import_thread as import_thread
 import ray
 import setproctitle
-import ray.signature
 import ray.state
 
 from ray import (
@@ -40,7 +40,6 @@ from ray import (
     ObjectRef,
     Language,
 )
-from ray import import_thread
 from ray import profiling
 
 from ray.exceptions import (
@@ -49,10 +48,10 @@ from ray.exceptions import (
     RayTaskError,
     ObjectStoreFullError,
 )
-from ray.function_manager import FunctionActorManager
-from ray.ray_logging import setup_logger
-from ray.ray_logging import global_worker_stdstream_dispatcher
-from ray.utils import _random_string, check_oversized_pickle
+from ray._private.function_manager import FunctionActorManager
+from ray._private.ray_logging import setup_logger
+from ray._private.ray_logging import global_worker_stdstream_dispatcher
+from ray._private.utils import _random_string, check_oversized_pickle
 from ray.util.inspect import is_cython
 from ray.experimental.internal_kv import _internal_kv_get, \
     _internal_kv_initialized
@@ -103,7 +102,7 @@ class Worker:
         self.actors = {}
         # When the worker is constructed. Record the original value of the
         # CUDA_VISIBLE_DEVICES environment variable.
-        self.original_gpu_ids = ray.utils.get_cuda_visible_devices()
+        self.original_gpu_ids = ray._private.utils.get_cuda_visible_devices()
         self.memory_monitor = memory_monitor.MemoryMonitor()
         # A dictionary that maps from driver id to SerializationContext
         # TODO: clean up the SerializationContext once the job finished.
@@ -403,7 +402,7 @@ class Worker:
             shutdown(True)
             sys.exit(1)
 
-        ray.utils.set_sigterm_handler(sigterm_handler)
+        ray._private.utils.set_sigterm_handler(sigterm_handler)
         self.core_worker.run_task_loop()
         sys.exit(0)
 
@@ -687,7 +686,7 @@ def init(
     global _global_node
     if redis_address is None:
         # In this case, we need to start a new cluster.
-        ray_params = ray.parameter.RayParams(
+        ray_params = ray._private.parameter.RayParams(
             redis_address=redis_address,
             node_ip_address=node_ip_address,
             raylet_ip_address=raylet_ip_address,
@@ -746,7 +745,7 @@ def init(
                 "_enable_object_reconstruction must not be provided.")
 
         # In this case, we only need to connect the node.
-        ray_params = ray.parameter.RayParams(
+        ray_params = ray._private.parameter.RayParams(
             node_ip_address=node_ip_address,
             raylet_ip_address=raylet_ip_address,
             redis_address=redis_address,
@@ -859,7 +858,7 @@ def sigterm_handler(signum, frame):
 
 
 try:
-    ray.utils.set_sigterm_handler(sigterm_handler)
+    ray._private.utils.set_sigterm_handler(sigterm_handler)
 except ValueError:
     logger.warning("Failed to set SIGTERM handler, processes might"
                    "not be cleaned up properly on exit.")
@@ -924,10 +923,10 @@ def print_logs(redis_client, threads_stopped, job_id):
                     "stdout/stderr of the workers. To avoid forwarding logs "
                     "to the driver, use 'ray.init(log_to_driver=False)'.")
 
-            data = json.loads(ray.utils.decode(msg["data"]))
+            data = json.loads(ray._private.utils.decode(msg["data"]))
 
             # Don't show logs from other drivers.
-            if data["job"] and ray.utils.binary_to_hex(
+            if data["job"] and ray._private.utils.binary_to_hex(
                     job_id.binary()) != data["job"]:
                 continue
             data["localhost"] = localhost
@@ -1165,7 +1164,7 @@ def connect(node,
         # drivers, the current job ID is used to keep track of which job is
         # responsible for the task so that error messages will be propagated to
         # the correct driver.
-        worker.worker_id = ray.utils.compute_driver_id_from_job(
+        worker.worker_id = ray._private.utils.compute_driver_id_from_job(
             job_id).binary()
 
     if mode is not SCRIPT_MODE and mode is not LOCAL_MODE and setproctitle:
@@ -1195,7 +1194,7 @@ def connect(node,
             raise e
         elif mode == WORKER_MODE:
             traceback_str = traceback.format_exc()
-            ray.utils.push_error_to_driver_through_redis(
+            ray._private.utils.push_error_to_driver_through_redis(
                 worker.redis_client,
                 ray_constants.VERSION_MISMATCH_PUSH_ERROR,
                 traceback_str,
@@ -1240,7 +1239,10 @@ def connect(node,
         runtime_env.upload_runtime_env_package_if_needed(job_config)
     elif mode == WORKER_MODE:
         runtime_env.ensure_runtime_env_setup(
-            worker.core_worker.get_job_config().runtime_env)
+            os.environ.get(
+                "RAY_RUNTIME_ENV_FILES",
+                worker.core_worker.get_job_config()
+                .runtime_env.working_dir_uri))
 
     if driver_object_store_memory is not None:
         worker.core_worker.set_object_store_client_options(
@@ -1842,6 +1844,10 @@ def remote(*args, **kwargs):
             crashes unexpectedly. The minimum valid value is 0,
             the default is 4 (default), and a value of -1 indicates
             infinite retries.
+        runtime_env (Dict[str, Any]): Specifies the runtime environment for
+            this actor or task and its children.  Currently supports the
+            key "conda_env", whose value should be a string which is the
+            name of the desired conda environment.
         override_environment_variables (Dict[str, str]): This specifies
             environment variables to override for the actor or task.  The
             overrides are propagated to all child actors and tasks.  This

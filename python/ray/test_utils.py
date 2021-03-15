@@ -14,7 +14,7 @@ import yaml
 
 import ray
 import ray._private.services
-import ray.utils
+import ray._private.utils
 import requests
 from prometheus_client.parser import text_string_to_metric_families
 from ray.scripts.scripts import main as ray_main
@@ -195,10 +195,10 @@ def run_string_as_driver(driver_script):
     with proc:
         output = proc.communicate(driver_script.encode("ascii"))[0]
         if proc.returncode:
-            print(ray.utils.decode(output))
+            print(ray._private.utils.decode(output))
             raise subprocess.CalledProcessError(proc.returncode, proc.args,
                                                 output, proc.stderr)
-        out = ray.utils.decode(output)
+        out = ray._private.utils.decode(output)
     return out
 
 

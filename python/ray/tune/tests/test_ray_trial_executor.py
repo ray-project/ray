@@ -12,7 +12,7 @@ from ray.tune.result import TRAINING_ITERATION
 from ray.tune.suggest import BasicVariantGenerator
 from ray.tune.trial import Trial, Checkpoint
 from ray.tune.resources import Resources
-from ray.cluster_utils import Cluster
+from ray._private.cluster_utils import Cluster
 from ray.tune.utils.placement_groups import PlacementGroupFactory
 
 

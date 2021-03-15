@@ -54,7 +54,7 @@ namespace ray {
 
 namespace raylet {
 
-Raylet::Raylet(boost::asio::io_service &main_service, const std::string &socket_name,
+Raylet::Raylet(instrumented_io_context &main_service, const std::string &socket_name,
                const std::string &node_ip_address, const std::string &redis_address,
                int redis_port, const std::string &redis_password,
                const NodeManagerConfig &node_manager_config,
@@ -90,16 +90,19 @@ Raylet::Raylet(boost::asio::io_service &main_service, const std::string &socket_
           [this]() {
             // This callback is called from the plasma store thread.
             // NOTE: It means the local object manager should be thread-safe.
-            main_service_.post([this]() {
-              node_manager_.GetLocalObjectManager().SpillObjectUptoMaxThroughput();
-            });
+            main_service_.post(
+                [this]() {
+                  node_manager_.GetLocalObjectManager().SpillObjectUptoMaxThroughput();
+                },
+                "NodeManager.SpillObjects");
             return node_manager_.GetLocalObjectManager().IsSpillingInProgress();
           },
           [this]() {
             // Post on the node manager's event loop since this
             // callback is called from the plasma store thread.
             // This will help keep node manager lock-less.
-            main_service_.post([this]() { node_manager_.TriggerGlobalGC(); });
+            main_service_.post([this]() { node_manager_.TriggerGlobalGC(); },
+                               "NodeManager.GlobalGC");
           }),
       node_manager_(main_service, self_node_id_, node_manager_config, object_manager_,
                     gcs_client_, object_directory_,

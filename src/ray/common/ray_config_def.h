@@ -42,9 +42,15 @@ RAY_CONFIG(uint64_t, num_heartbeats_warning, 5)
 
 /// The duration between reporting resources sent by the raylets.
 RAY_CONFIG(uint64_t, raylet_report_resources_period_milliseconds, 100)
+/// For a raylet, if the last resource report was sent more than this many
+/// report periods ago, then a warning will be logged that the report
+/// handler is drifting.
+RAY_CONFIG(uint64_t, num_resource_report_periods_warning, 5)
 
 /// The duration between dumping debug info to logs, or 0 to disable.
 RAY_CONFIG(uint64_t, debug_dump_period_milliseconds, 10000)
+
+RAY_CONFIG(bool, asio_event_loop_stats_collection_enabled, true)
 
 /// Whether to enable fair queueing between task classes in raylet. When
 /// fair queueing is enabled, the raylet will try to balance the number

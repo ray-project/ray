@@ -155,6 +155,10 @@ class ReplicaConfig:
                 "Backend must be a function or class, it is {}.".format(
                     type(self.backend_def)))
 
+        if "placement_group" in self.ray_actor_options:
+            raise ValueError("Providing placement_group for backend actors "
+                             "is not currently supported.")
+
         if not isinstance(self.ray_actor_options, dict):
             raise TypeError("ray_actor_options must be a dictionary.")
         elif "lifetime" in self.ray_actor_options:

@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/util/io_service_pool.h"
+#include "ray/common/asio/io_service_pool.h"
 
 #include "ray/util/logging.h"
 
@@ -24,9 +24,8 @@ IOServicePool::~IOServicePool() {}
 
 void IOServicePool::Run() {
   for (size_t i = 0; i < io_service_num_; ++i) {
-    io_services_.emplace_back(
-        std::unique_ptr<boost::asio::io_service>(new boost::asio::io_service));
-    boost::asio::io_service &io_service = *io_services_[i];
+    io_services_.emplace_back(std::make_unique<instrumented_io_context>());
+    instrumented_io_context &io_service = *io_services_[i];
     threads_.emplace_back([&io_service] {
       boost::asio::io_service::work work(io_service);
       io_service.run();

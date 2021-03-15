@@ -13,15 +13,19 @@ import aioredis
 import ray
 import ray.gcs_utils
 import ray.new_dashboard.modules.reporter.reporter_consts as reporter_consts
+from ray.new_dashboard import k8s_utils
 import ray.new_dashboard.utils as dashboard_utils
 import ray._private.services
-import ray.utils
+import ray._private.utils
 from ray.core.generated import reporter_pb2
 from ray.core.generated import reporter_pb2_grpc
-from ray.metrics_agent import MetricsAgent, Gauge, Record
+from ray._private.metrics_agent import MetricsAgent, Gauge, Record
 import psutil
 
 logger = logging.getLogger(__name__)
+
+# Are we in a K8s pod?
+IN_KUBERNETES_POD = "KUBERNETES_SERVICE_HOST" in os.environ
 
 try:
     import gpustat.core as gpustat
@@ -113,8 +117,15 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
     def __init__(self, dashboard_agent):
         """Initialize the reporter object."""
         super().__init__(dashboard_agent)
-        self._cpu_counts = (psutil.cpu_count(),
-                            psutil.cpu_count(logical=False))
+        if IN_KUBERNETES_POD:
+            # psutil does not compute this correctly when in a K8s pod.
+            # Use ray._private.utils instead.
+            cpu_count = ray._private.utils.get_num_cpus()
+            self._cpu_counts = (cpu_count, cpu_count)
+        else:
+            self._cpu_counts = (psutil.cpu_count(),
+                                psutil.cpu_count(logical=False))
+
         self._ip = ray._private.services.get_node_ip_address()
         self._hostname = socket.gethostname()
         self._workers = set()
@@ -126,9 +137,9 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
     async def GetProfilingStats(self, request, context):
         pid = request.pid
         duration = request.duration
-        profiling_file_path = os.path.join(ray.utils.get_ray_temp_dir(),
-                                           f"{pid}_profiling.txt")
-        sudo = "sudo" if ray.utils.get_user() != "root" else ""
+        profiling_file_path = os.path.join(
+            ray._private.utils.get_ray_temp_dir(), f"{pid}_profiling.txt")
+        sudo = "sudo" if ray._private.utils.get_user() != "root" else ""
         process = await asyncio.create_subprocess_shell(
             f"{sudo} $(which py-spy) record "
             f"-o {profiling_file_path} -p {pid} -d {duration} -f speedscope",
@@ -156,7 +167,10 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
 
     @staticmethod
     def _get_cpu_percent():
-        return psutil.cpu_percent()
+        if IN_KUBERNETES_POD:
+            return k8s_utils.cpu_percent()
+        else:
+            return psutil.cpu_percent()
 
     @staticmethod
     def _get_gpu_usage():
@@ -180,7 +194,11 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
 
     @staticmethod
     def _get_boot_time():
-        return psutil.boot_time()
+        if IN_KUBERNETES_POD:
+            # Return start time of container entrypoint
+            return psutil.Process(pid=1).create_time()
+        else:
+            return psutil.boot_time()
 
     @staticmethod
     def _get_network_stats():
@@ -195,8 +213,8 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
 
     @staticmethod
     def _get_mem_usage():
-        total = ray.utils.get_system_memory()
-        used = ray.utils.get_used_memory()
+        total = ray._private.utils.get_system_memory()
+        used = ray._private.utils.get_used_memory()
         available = total - used
         percent = round(used / total, 3) * 100
         return total, available, percent, used
@@ -205,7 +223,7 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
     def _get_disk_usage():
         dirs = [
             os.environ["USERPROFILE"] if sys.platform == "win32" else os.sep,
-            ray.utils.get_user_temp_dir(),
+            ray._private.utils.get_user_temp_dir(),
         ]
         return {x: psutil.disk_usage(x) for x in dirs}
 
