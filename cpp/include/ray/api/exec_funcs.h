@@ -66,6 +66,14 @@ namespace api {
 /// CreateActorExecFunction the wrapper of actor creation function.
 /// ActorExecFunction the wrapper of actor member function.
 
+template <typename T>
+absl::enable_if_t<std::is_pointer<T>::value> HandleActorResult(const T &t) {
+  delete t;
+}
+
+template <typename T>
+absl::enable_if_t<!std::is_pointer<T>::value> HandleActorResult(const T &) {}
+
 template <typename ReturnType, typename CastReturnType, typename... OtherArgTypes>
 absl::enable_if_t<!std::is_void<ReturnType>::value, std::shared_ptr<msgpack::sbuffer>>
 ExecuteNormalFunction(uintptr_t base_addr, size_t func_offset,
@@ -80,8 +88,13 @@ ExecuteNormalFunction(uintptr_t base_addr, size_t func_offset,
   return_value = (*func)(*args...);
 
   // TODO: No need use shared_ptr here, refactor later.
-  return std::make_shared<msgpack::sbuffer>(
+  auto buf = std::make_shared<msgpack::sbuffer>(
       Serializer::Serialize((CastReturnType)(return_value)));
+  if (task_type == TaskType::ACTOR_CREATION_TASK) {
+    /// Delete raw pointer when creating actor.
+    HandleActorResult(return_value);
+  }
+  return buf;
 }
 
 template <typename ReturnType, typename CastReturnType, typename... OtherArgTypes>

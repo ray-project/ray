@@ -22,6 +22,8 @@ class Counter {
 
   Counter() { count = 0; }
 
+  ~Counter() { std::cout << "destruct Counter\n"; }
+
   static Counter *FactoryCreate() {
     Counter *counter = new Counter();
     return counter;
