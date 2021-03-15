@@ -27,24 +27,24 @@ def test_detached_deployment():
     # Create first job, check we can run a simple serve endpoint
     ray.init(head_node.address)
     first_job_id = ray.get_runtime_context().job_id
-    client = serve.start(detached=True)
-    client.create_backend("f", lambda _: "hello")
-    client.create_endpoint("f", backend="f")
-    assert ray.get(client.get_handle("f").remote()) == "hello"
+    serve.start(detached=True)
+    serve.create_backend("f", lambda _: "hello")
+    serve.create_endpoint("f", backend="f")
+    assert ray.get(serve.get_handle("f").remote()) == "hello"
 
+    serve.api._global_client = None
     ray.shutdown()
 
     # Create the second job, make sure we can still create new backends.
     ray.init(head_node.address)
     assert ray.get_runtime_context().job_id != first_job_id
 
-    client = serve.connect()
-    client.create_backend("g", lambda _: "world")
-    client.create_endpoint("g", backend="g")
-    assert ray.get(client.get_handle("g").remote()) == "world"
+    serve.create_backend("g", lambda _: "world")
+    serve.create_endpoint("g", backend="g")
+    assert ray.get(serve.get_handle("g").remote()) == "world"
 
     # Test passed, clean up.
-    client.shutdown()
+    serve.shutdown()
     ray.shutdown()
     cluster.shutdown()
 
@@ -61,13 +61,14 @@ def test_multiple_routers():
     ray.init(head_node.address)
     node_ids = ray.state.node_ids()
     assert len(node_ids) == 2
-    client = serve.start(http_options=dict(port=8005, location="EveryNode"))
+    serve.start(http_options=dict(port=8005, location="EveryNode"))
 
     def get_proxy_names():
         proxy_names = []
         for node_id, _ in get_all_node_ids():
             proxy_names.append(
-                format_actor_name(SERVE_PROXY_NAME, client._controller_name,
+                format_actor_name(SERVE_PROXY_NAME,
+                                  serve.api._global_client._controller_name,
                                   node_id))
         return proxy_names
 
@@ -193,7 +194,7 @@ def test_no_http():
 
     ray.init()
     for option in options:
-        client = serve.start(**option)
+        serve.start(**option)
 
         # Only controller actor should exist
         live_actors = [
@@ -202,7 +203,7 @@ def test_no_http():
         ]
         assert len(live_actors) == 1
 
-        client.shutdown()
+        serve.shutdown()
     ray.shutdown()
 
 
@@ -215,10 +216,7 @@ def test_http_head_only():
     node_ids = ray.state.node_ids()
     assert len(node_ids) == 2
 
-    client = serve.start(http_options={
-        "port": new_port(),
-        "location": "HeadOnly"
-    })
+    serve.start(http_options={"port": new_port(), "location": "HeadOnly"})
 
     # Only the controller and head node actor should be started
     assert len(ray.actors()) == 2
@@ -230,7 +228,7 @@ def test_http_head_only():
     }
     assert cpu_per_nodes == {2, 4}
 
-    client.shutdown()
+    serve.shutdown()
     ray.shutdown()
     cluster.shutdown()
 
