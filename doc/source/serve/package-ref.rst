@@ -5,18 +5,18 @@ Core APIs
 ---------
 .. autofunction:: ray.serve.start
 .. autofunction:: ray.serve.connect
-.. autofunction:: create_backend
-.. autofunction:: list_backends
-.. autofunction:: delete_backend
-.. autofunction:: get_backend_config
-.. autofunction:: update_backend_config
-.. autofunction:: create_endpoint
-.. autofunction:: list_endpoints
-.. autofunction:: delete_endpoint
-.. autofunction:: set_traffic
-.. autofunction:: shadow_traffic
-.. autofunction:: get_handle
-.. autofunction:: shutdown
+.. autofunction:: ray.serve.create_backend
+.. autofunction:: ray.serve.list_backends
+.. autofunction:: ray.serve.delete_backend
+.. autofunction:: ray.serve.get_backend_config
+.. autofunction:: ray.serve.update_backend_config
+.. autofunction:: ray.serve.create_endpoint
+.. autofunction:: ray.serve.list_endpoints
+.. autofunction:: ray.serve.delete_endpoint
+.. autofunction:: ray.serve.set_traffic
+.. autofunction:: ray.serve.shadow_traffic
+.. autofunction:: ray.serve.get_handle
+.. autofunction:: ray.serve.shutdown
 
 Backend Configuration
 ---------------------
