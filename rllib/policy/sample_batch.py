@@ -65,7 +65,7 @@ class SampleBatch(dict):
         self.time_major = kwargs.pop("_time_major", None)
         self.seq_lens = kwargs.pop("_seq_lens", None)
         if isinstance(self.seq_lens, list):
-            self.seq_lens = np.array(self.seq_lens)
+            self.seq_lens = np.array(self.seq_lens, dtype=np.int32)
         self.dont_check_lens = kwargs.pop("_dont_check_lens", False)
         self.max_seq_len = kwargs.pop("_max_seq_len", None)
         if self.max_seq_len is None and self.seq_lens is not None and \
@@ -447,6 +447,18 @@ class SampleBatch(dict):
                     new="SampleBatch.is_training",
                     error=False)
             return self.is_training
+        elif key == "seq_lens":
+            if log_once("SampleBatch['seq_lens']"):
+                deprecation_warning(
+                    old="SampleBatch['seq_lens']",
+                    new="SampleBatch.seq_lens",
+                    error=False)
+            if self.get_interceptor is not None and self.seq_lens is not None:
+                if "seq_lens" not in self.intercepted_values:
+                    self.intercepted_values["seq_lens"] = self.get_interceptor(
+                        self.seq_lens)
+                return self.intercepted_values["seq_lens"]
+            return self.seq_lens
 
         self.accessed_keys.add(key)
         value = dict.__getitem__(self, key)
