@@ -7,12 +7,13 @@ GcsResourceReportPoller::GcsResourceReportPoller(
     uint64_t max_concurrent_pulls,
     std::shared_ptr<GcsResourceManager> gcs_resource_manager,
     std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool)
-    : max_concurrent_pulls_(max_concurrent_pulls),
+    :
+      ticker_(polling_service_),
+      max_concurrent_pulls_(max_concurrent_pulls),
       inflight_pulls_(0),
       gcs_resource_manager_(gcs_resource_manager),
       raylet_client_pool_(raylet_client_pool),
-      poll_period_ms_(boost::posix_time::milliseconds(
-          RayConfig::instance().gcs_resource_report_poll_period_ms())) {}
+      poll_period_ms_(RayConfig::instance().gcs_resource_report_poll_period_ms()) {}
 
 GcsResourceReportPoller::~GcsResourceReportPoller() { Stop(); }
 
@@ -25,6 +26,7 @@ void GcsResourceReportPoller::Start() {
     RAY_LOG(DEBUG) << "GCSResourceReportPoller has stopped. This should only happen if "
                       "the cluster has stopped";
   }});
+  ticker_.RunFnPeriodically([this]{ Tick();}, 100);
 }
 
 void GcsResourceReportPoller::Stop() {
@@ -41,19 +43,20 @@ void GcsResourceReportPoller::HandleNodeAdded(
 
   RAY_CHECK(!nodes_.count(node_id)) << "Node with id: " << node_id << " was added twice!";
 
-  auto &state = nodes_[node_id];
-  state.node_id = node_id;
+  auto state = std::make_shared<PullState>();
+  state->node_id = node_id;
 
-  state.address.set_raylet_id(node_info->node_id());
-  state.address.set_ip_address(node_info->node_manager_address());
-  state.address.set_port(node_info->node_manager_port());
+  state->address.set_raylet_id(node_info->node_id());
+  state->address.set_ip_address(node_info->node_manager_address());
+  state->address.set_port(node_info->node_manager_port());
 
-  state.last_pull_time = absl::GetCurrentTimeNanos();
+  state->last_pull_time = -1;
+  state->next_pull_time = absl::GetCurrentTimeNanos();
 
-  state.next_pull_timer = std::unique_ptr<boost::asio::deadline_timer>(
-      new boost::asio::deadline_timer(polling_service_));
+  nodes_.emplace(node_id, state);
+  to_pull_queue_.push_front(state);
 
-  polling_service_.post([this, node_id]() { TryPullResourceReport(node_id); });
+  polling_service_.post([this]() { TryPullResourceReport(); });
 }
 
 void GcsResourceReportPoller::HandleNodeRemoved(
@@ -66,64 +69,64 @@ void GcsResourceReportPoller::HandleNodeRemoved(
   }
 }
 
-void GcsResourceReportPoller::TryPullResourceReport(const NodeID &node_id) {
+void GcsResourceReportPoller::Tick() {
+  TryPullResourceReport();
+}
+
+void GcsResourceReportPoller::TryPullResourceReport() {
   absl::MutexLock guard(&mutex_);
 
-  to_pull_queue_.push_back(node_id);
+  int64_t cur_time = absl::GetCurrentTimeNanos();
 
   while (inflight_pulls_ < max_concurrent_pulls_ && !to_pull_queue_.empty()) {
-    const NodeID &to_pull = to_pull_queue_.front();
+    auto &to_pull = to_pull_queue_.front();
+    if (cur_time > to_pull->next_pull_time) {
+      break;
+    }
+
     to_pull_queue_.pop_front();
 
-    auto it = nodes_.find(to_pull);
-    if (it == nodes_.end()) {
+    if (!nodes_.count(to_pull->node_id)) {
       RAY_LOG(DEBUG)
           << "Update finished, but node was already removed from the cluster. Ignoring.";
       continue;
     }
-    auto &state = it->second;
-    PullResourceReport(state);
+
+    PullResourceReport(to_pull);
   }
 }
 
-void GcsResourceReportPoller::PullResourceReport(PullState &state) {
+void GcsResourceReportPoller::PullResourceReport(
+    const std::shared_ptr<PullState> &state) {
   inflight_pulls_++;
-  const auto &node_id = state.node_id;
-  auto raylet_client = raylet_client_pool_->GetOrConnectByAddress(state.address);
+  auto raylet_client = raylet_client_pool_->GetOrConnectByAddress(state->address);
   raylet_client->RequestResourceReport(
-      [&, node_id](const Status &status, const rpc::RequestResourceReportReply &reply) {
+      [this, state](const Status &status, const rpc::RequestResourceReportReply &reply) {
         if (status.ok()) {
           // TODO (Alex): This callback is always posted onto the main thread. Since most
           // of the work is in the callback we should move this callback's execution to
           // the polling thread. We will need to implement locking once we switch threads.
           gcs_resource_manager_->UpdateFromResourceReport(reply.resources());
-          polling_service_.post([this, node_id] { NodeResourceReportReceived(node_id); });
+          polling_service_.post([&] { NodeResourceReportReceived(state); });
         } else {
-          RAY_LOG(INFO) << "Couldn't get resource request from raylet " << node_id << ": "
-                        << status.ToString();
+          RAY_LOG(INFO) << "Couldn't get resource request from raylet " << state->node_id
+                        << ": " << status.ToString();
         }
       });
 }
 
-void GcsResourceReportPoller::NodeResourceReportReceived(const NodeID &node_id) {
+void GcsResourceReportPoller::NodeResourceReportReceived(
+    const std::shared_ptr<PullState> &state) {
   absl::MutexLock guard(&mutex_);
   inflight_pulls_--;
-  auto it = nodes_.find(node_id);
-  if (it == nodes_.end()) {
+  if (!nodes_.count(state->node_id)) {
     RAY_LOG(DEBUG)
         << "Update finished, but node was already removed from the cluster. Ignoring.";
     return;
   }
 
-  auto &state = it->second;
-  state.next_pull_timer->expires_from_now(poll_period_ms_);
-  state.next_pull_timer->async_wait([&, node_id](const boost::system::error_code &error) {
-    if (!error) {
-      TryPullResourceReport(node_id);
-    } else {
-      RAY_LOG(INFO) << "GcsResourceReportPoller timer failed: " << error.message() << ".";
-    }
-  });
+  state->next_pull_time = absl::GetCurrentTimeNanos() + poll_period_ms_;
+  to_pull_queue_.push_back(state);
 }
 
 }  // namespace gcs

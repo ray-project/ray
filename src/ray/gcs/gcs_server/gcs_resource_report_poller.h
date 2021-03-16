@@ -56,6 +56,8 @@ class GcsResourceReportPoller {
   boost::asio::io_context polling_service_;
   // The associated thread it runs on.
   std::unique_ptr<std::thread> polling_thread_;
+  // Timer tick to check when we should do another poll.
+  PeriodicalRunner ticker_;
 
   // The maximum number of pulls that can occur at once.
   const uint64_t max_concurrent_pulls_;
@@ -67,32 +69,35 @@ class GcsResourceReportPoller {
   // The shared, thread safe pool of raylet clients, which we use to minimize connections.
   std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool_;
   // The minimum delay between two pull requests to the same thread.
-  const boost::posix_time::milliseconds poll_period_ms_;
+  int64_t poll_period_ms_;
 
   struct PullState {
     NodeID node_id;
     rpc::Address address;
     int64_t last_pull_time;
-    std::unique_ptr<boost::asio::deadline_timer> next_pull_timer;
+    int64_t next_pull_time;
+    /* std::unique_ptr<boost::asio::deadline_timer> next_pull_timer; */
   };
 
   // A global lock for internal operations. This lock is shared between the main thread
   // and polling thread, so we should be mindful about how long we hold it.
   absl::Mutex mutex_;
   // All the state regarding how to and when to send a new pull request to a raylet.
-  std::unordered_map<NodeID, PullState> nodes_;
+  std::unordered_map<NodeID, std::shared_ptr<PullState>> nodes_;
   // The set of all nodes which we are allowed to pull from. We can't necessarily pull
   // from this list immediately because we limit the number of concurrent pulls.
-  std::deque<NodeID> to_pull_queue_;
+  std::deque<std::shared_ptr<PullState>> to_pull_queue_;
 
+  void Tick();
   /// Try to pull from the node. We may not be able to if it violates max concurrent
   /// pulls. This method is thread safe.
-  void TryPullResourceReport(const NodeID &node_id) LOCKS_EXCLUDED(mutex_);
-  /// Pull resource report without validation. This method is NOT thread safe.
-  void PullResourceReport(PullState &state) LOCKS_EXCLUDED(mutex_);
+  void TryPullResourceReport() LOCKS_EXCLUDED(mutex_);
+  /// Pull resource report without validation.
+  void PullResourceReport(const std::shared_ptr<PullState> &state);
   /// A resource report was successfully pulled (and the resource manager was already
   /// updated). This method is thread safe.
-  void NodeResourceReportReceived(const NodeID &node_id) LOCKS_EXCLUDED(mutex_);
+  void NodeResourceReportReceived(const std::shared_ptr<PullState> &state)
+      LOCKS_EXCLUDED(mutex_);
 };
 
 }  // namespace gcs
