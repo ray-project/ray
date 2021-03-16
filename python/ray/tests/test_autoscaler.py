@@ -510,6 +510,7 @@ class AutoscalingTest(unittest.TestCase):
         pattern_to_assert = \
             f"docker cp {docker_mount_prefix}/~/ray_bootstrap_config.yaml"
         runner.assert_has_call("1.2.3.4", pattern=pattern_to_assert)
+        return config
 
     @unittest.skipIf(sys.platform == "win32", "Failing on Windows.")
     def testGetOrCreateHeadNodePodman(self):
@@ -560,12 +561,12 @@ class AutoscalingTest(unittest.TestCase):
 
     @unittest.skipIf(sys.platform == "win32", "Failing on Windows.")
     def testGetOrCreateHeadNodeFromStopped(self):
-        self.testGetOrCreateHeadNode()
+        config = self.testGetOrCreateHeadNode()
         self.provider.cache_stopped = True
         existing_nodes = self.provider.non_terminated_nodes({})
         assert len(existing_nodes) == 1
         self.provider.terminate_node(existing_nodes[0])
-        config_path = self.write_config(SMALL_CLUSTER)
+        config_path = self.write_config(config)
         runner = MockProcessRunner()
         runner.respond_to_call("json .Mounts", ["[]"])
         # Two initial calls to docker cp, + 2 more calls during run_init
@@ -573,7 +574,7 @@ class AutoscalingTest(unittest.TestCase):
                                ["false", "false", "false", "false"])
         runner.respond_to_call("json .Config.Env", ["[]"])
         commands.get_or_create_head_node(
-            SMALL_CLUSTER,
+            config,
             printable_config_file=config_path,
             no_restart=False,
             restart_only=False,
@@ -626,12 +627,12 @@ class AutoscalingTest(unittest.TestCase):
             assert first_rsync < first_cp
 
     def testGetOrCreateHeadNodeFromStoppedRestartOnly(self):
-        self.testGetOrCreateHeadNode()
+        config = self.testGetOrCreateHeadNode()
         self.provider.cache_stopped = True
         existing_nodes = self.provider.non_terminated_nodes({})
         assert len(existing_nodes) == 1
         self.provider.terminate_node(existing_nodes[0])
-        config_path = self.write_config(SMALL_CLUSTER)
+        config_path = self.write_config(config)
         runner = MockProcessRunner()
         runner.respond_to_call("json .Mounts", ["[]"])
         # Two initial calls to docker cp, + 2 more calls during run_init
@@ -639,7 +640,7 @@ class AutoscalingTest(unittest.TestCase):
                                ["false", "false", "false", "false"])
         runner.respond_to_call("json .Config.Env", ["[]"])
         commands.get_or_create_head_node(
-            SMALL_CLUSTER,
+            config,
             printable_config_file=config_path,
             no_restart=False,
             restart_only=True,
