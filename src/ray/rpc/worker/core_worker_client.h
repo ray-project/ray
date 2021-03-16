@@ -190,7 +190,7 @@ class CoreWorkerClientInterface {
                              const ClientCallback<AddSpilledUrlReply> &callback) {}
 
   virtual void RunOnUtilWorker(const RunOnUtilWorkerRequest &request,
-                             const ClientCallback<RunOnUtilWorkerReply> &callback) {}
+                               const ClientCallback<RunOnUtilWorkerReply> &callback) {}
 
   virtual void PlasmaObjectReady(const PlasmaObjectReadyRequest &request,
                                  const ClientCallback<PlasmaObjectReadyReply> &callback) {

@@ -1202,7 +1202,7 @@ void NodeManager::DeleteLocalURI(const std::string &uri, std::function<void(bool
   int suffix_num = 0;
   // This is for a rare case, where one request is under processing,
   // but get a new one here.
-  while(boost::filesystem::exists(to_path)) {
+  while (boost::filesystem::exists(to_path)) {
     to_path = from_path;
     to_path += deleting_suffix;
     to_path += std::to_string(suffix_num);
