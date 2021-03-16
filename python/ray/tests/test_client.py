@@ -415,6 +415,20 @@ def test_basic_named_actor(ray_start_regular_shared):
         assert ray.get(detatched_actor.get.remote()) == 6
 
 
+def test_error_serialization(ray_start_regular_shared):
+    """Test that errors will be serialized properly."""
+    with pytest.raises(PermissionError):
+        with ray_start_client_server() as ray:
+
+            @ray.remote
+            def g():
+                with open("/dev/asdf", "w") as f:
+                    f.write("HI")
+
+            # grpc error
+            ray.get(g.remote())
+
+
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_internal_kv(ray_start_regular_shared):
     with ray_start_client_server() as ray:
