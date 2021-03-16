@@ -31,7 +31,8 @@ class PubsubClientInterface {
   /// \param owner_address Address of the owner to subscribe the object.
   /// \param object_id The object id to subscribe from the owner.
   /// \param subscription_callback A callback that is invoked whenever the given object
-  /// information is published. \param subscription_failure_callback A callback that is
+  /// information is published.
+  /// \param subscription_failure_callback A callback that is
   /// invoked whenever the owner is dead (or failed).
   virtual void SubcribeObject(
       const rpc::Address &owner_address, const ObjectID &object_id,
@@ -93,8 +94,10 @@ class PubsubClient : public PubsubClientInterface {
   /// Create a long polling connection to the owner for receiving the published messages.
   /// TODO(sang): Currently, we assume that unregistered objects will never be published
   /// from the pubsub server. We may want to loose the restriction once OBOD is supported
-  /// by this function. \param owner_address The address of the owner that publishes
-  /// objects. \param subscriber_address The address of the subscriber.
+  /// by this function.
+  /// \param owner_address The address of the owner that publishes
+  /// objects.
+  /// \param subscriber_address The address of the subscriber.
   void MakeLongPollingPubsubConnection(const rpc::Address &owner_address,
                                        const rpc::Address &subscriber_address);
 

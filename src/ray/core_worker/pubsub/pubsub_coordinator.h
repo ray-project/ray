@@ -80,7 +80,8 @@ class Subscriber {
   /// Publish all queued messages if possible.
   ///
   /// \param force If true, we publish to the subscriber although there's no queued
-  /// message. \return True if it publishes. False otherwise.
+  /// message.
+  /// \return True if it publishes. False otherwise.
   bool PublishIfPossible(bool force = false);
 
  private:
@@ -133,10 +134,6 @@ class PubsubCoordinator {
   int UnregisterSubscription(const NodeID &subscriber_node_id, const ObjectID &object_id);
 
  private:
-  ///
-  /// Private attributes
-  ///
-
   /// Protects below fields. Since the coordinator runs in a core worker, it should be
   /// thread safe.
   mutable absl::Mutex mutex_;

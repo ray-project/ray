@@ -61,7 +61,8 @@ void PubsubClient::SubcribeObject(
 bool PubsubClient::UnsubscribeObject(const rpc::Address &owner_address,
                                      const ObjectID &object_id) {
   const auto owner_worker_id = WorkerID::FromBinary(owner_address.worker_id());
-  RAY_LOG(DEBUG) << "Unsubscribing an object " << object_id < " from " << owner_worker_id;
+  RAY_LOG(DEBUG) << "Unsubscribing an object " << object_id << " from "
+                 << owner_worker_id;
   auto subscription_it = subscription_map_.find(owner_worker_id);
   if (subscription_it == subscription_map_.end()) {
     return false;
