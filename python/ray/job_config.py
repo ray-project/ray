@@ -29,7 +29,12 @@ class JobConfig:
             self.worker_env = worker_env
         if runtime_env:
             import ray._private.runtime_env as runtime_support
-            parsed = runtime_support.RuntimeEnvDict(runtime_env)
+            # Remove working_dir rom the dict here, since that needs to be
+            # uploaded to the GCS after the job starts.
+            without_dir = dict(runtime_env)
+            if "working_dir" in without_dir:
+                del without_dir["working_dir"]
+            parsed = runtime_support.RuntimeEnvDict(without_dir)
             self.worker_env = parsed.to_worker_env_vars(self.worker_env)
         self.num_java_workers_per_process = num_java_workers_per_process
         self.jvm_options = jvm_options or []
