@@ -267,7 +267,7 @@ class RayServeReplica:
             self.error_counter.inc()
 
         latency_ms = (time.time() - start) * 1000
-        self.processing_latency_tracker.record(
+        self.processing_latency_tracker.observe(
             latency_ms, tags={"batch_size": "1"})
 
         return result
@@ -324,7 +324,7 @@ class RayServeReplica:
             result_list = [wrapped_exception for _ in range(batch_size)]
 
         latency_ms = (time.time() - timing_start) * 1000
-        self.processing_latency_tracker.record(
+        self.processing_latency_tracker.observe(
             latency_ms, tags={"batch_size": str(batch_size)})
 
         return result_list
@@ -342,7 +342,7 @@ class RayServeReplica:
                                           self.batch_queue.qsize())
             for query in batch:
                 queuing_time = (time.time() - query.tick_enter_replica) * 1000
-                self.queuing_latency_tracker.record(queuing_time)
+                self.queuing_latency_tracker.observe(queuing_time)
 
             all_evaluated_futures = []
 

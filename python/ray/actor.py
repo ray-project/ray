@@ -533,9 +533,8 @@ class ActorClass:
                 of this actor should implicitly use the same placement group
                 as its parent. It is True by default.
             runtime_env (Dict[str, Any]): Specifies the runtime environment for
-                this actor or task and its children.  Currently supports the
-                key "conda_env", whose value should be a string which is the
-                name of the desired conda environment.
+                this actor or task and its children (see ``runtime_env.py`` for
+                more details).
             override_environment_variables: Environment variables to override
                 and/or introduce for this actor.  This is a dictionary mapping
                 variable names to their values.
