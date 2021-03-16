@@ -8,7 +8,8 @@ from zipfile import ZipFile
 from ray.job_config import JobConfig
 from enum import Enum
 
-import ray.experimental as exp
+from ray.experimental.internal_kv import (_internal_kv_put, _internal_kv_get,
+                                          _internal_kv_exists)
 
 from typing import List, Tuple
 from types import ModuleType
@@ -177,7 +178,7 @@ def fetch_package(pkg_uri: str, pkg_file: Path) -> int:
     """
     (protocol, pkg_name) = _parse_uri(pkg_uri)
     if protocol in (Protocol.GCS, Protocol.PIN_GCS):
-        code = exp.internal_kv._internal_kv_get(pkg_uri)
+        code = _internal_kv_get(pkg_uri)
         code = code or b""
         pkg_file.write_bytes(code)
         return len(code)
@@ -186,7 +187,7 @@ def fetch_package(pkg_uri: str, pkg_file: Path) -> int:
 
 
 def _store_package_in_gcs(gcs_key: str, data: bytes) -> int:
-    exp.internal_kv._internal_kv_put(gcs_key, data)
+    _internal_kv_put(gcs_key, data)
     return len(data)
 
 
@@ -222,7 +223,7 @@ def package_exists(pkg_uri: str) -> bool:
     """
     (protocol, pkg_name) = _parse_uri(pkg_uri)
     if protocol in (Protocol.GCS, Protocol.PIN_GCS):
-        return exp.internal_kv._internal_kv_exists(pkg_uri)
+        return _internal_kv_exists(pkg_uri)
     else:
         raise NotImplementedError(f"Protocol {protocol} is not supported")
 
