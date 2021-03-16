@@ -656,10 +656,10 @@ cdef c_vector[c_string] spill_objects_handler(
                     object_refs, owner_addresses)
             for url in urls:
                 return_urls.push_back(url)
-        except Exception:
+        except Exception as err:
             exception_str = (
                 "An unexpected internal error occurred while the IO worker "
-                "was spilling objects.")
+                "was spilling objects: {}".format(err))
             logger.exception(exception_str)
             ray._private.utils.push_error_to_driver(
                 ray.worker.global_worker,

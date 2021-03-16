@@ -83,6 +83,7 @@ class ExternalStorage(metaclass=abc.ABCMeta):
 
     HEADER_LENGTH = 24
 
+
     def _get_objects_from_store(self, object_refs):
         worker = ray.worker.global_worker
         # Since the object should always exist in the plasma store before
@@ -231,11 +232,11 @@ class FileSystemStorage(ExternalStorage):
 
     def __init__(self, directory_path):
         # -- sub directory name --
-        self.spill_dir_name = DEFAULT_OBJECT_PREFIX
+        self._spill_dir_name = DEFAULT_OBJECT_PREFIX
         # -- A list of directory paths to spill objects --
-        self.directory_paths = []
+        self._directory_paths = []
         # -- Current directory to spill objects --
-        self.current_directory_index = 0
+        self._current_directory_index = 0
 
         # Validation.
         assert directory_path is not None, (
@@ -248,27 +249,26 @@ class FileSystemStorage(ExternalStorage):
 
         # Create directories.
         for path in directory_path:
-            full_dir_path = os.path.join(path, self.spill_dir_name)
+            full_dir_path = os.path.join(path, self._spill_dir_name)
             os.makedirs(full_dir_path, exist_ok=True)
             if not os.path.exists(full_dir_path):
                 raise ValueError("The given directory path to store objects, "
                                  f"{full_dir_path}, could not be created.")
-            self.directory_paths.append(full_dir_path)
-        assert len(self.directory_paths) == len(directory_path)
-
+            self._directory_paths.append(full_dir_path)
+        assert len(self._directory_paths) == len(directory_path)
         # Choose the current directory.
         # It chooses a random index to maximize multiple directories that are
         # mounted at different point.
-        self.current_directory_index = random.randrange(
-            0, len(self.directory_paths))
+        self._current_directory_index = random.randrange(
+            0, len(self._directory_paths))
 
     def spill_objects(self, object_refs, owner_addresses) -> List[str]:
         if len(object_refs) == 0:
             return []
         # Choose the current directory path by round robin order.
-        self.current_directory_index = (
-            (self.current_directory_index + 1) % len(self.directory_paths))
-        directory_path = self.directory_paths[self.current_directory_index]
+        self._current_directory_index = (
+            (self._current_directory_index + 1) % len(self._directory_paths))
+        directory_path = self._directory_paths[self._current_directory_index]
 
         # Always use the first object ref as a key when fusioning objects.
         first_ref = object_refs[0]
@@ -310,7 +310,7 @@ class FileSystemStorage(ExternalStorage):
             os.remove(path)
 
     def destroy_external_storage(self):
-        for directory_path in self.directory_paths:
+        for directory_path in self._directory_paths:
             self._destroy_external_storage(directory_path)
 
     def _destroy_external_storage(self, directory_path):
@@ -437,6 +437,20 @@ class ExternalStorageSmartOpenImpl(ExternalStorage):
 _external_storage = NullStorage()
 
 
+class UnstableFileStorage(FileSystemStorage):
+    """This class is for testing with writing failure."""
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self._failure_rate = 0.1
+
+    def spill_objects(self, object_refs, owner_addresses) -> List[str]:
+        failed = random.random() < self._failure_rate
+        if failed:
+            raise IOError("Spilling object failed")
+        logger.info(self._failure_rate)
+        return super().spill_objects(object_refs, owner_addresses)
+
+
 def setup_external_storage(config):
     """Setup the external storage according to the config."""
     global _external_storage
@@ -450,7 +464,11 @@ def setup_external_storage(config):
         elif storage_type == "mock_distributed_fs":
             # This storage is used to unit test distributed external storages.
             # TODO(sang): Delete it after introducing the mock S3 test.
-            _external_storage = FileSystemStorage(**config["params"])
+            _external_storage = MockDistributedFileStorage(**config["params"])
+        elif storage_type == "unstable_fs":
+            # This storage is used to unit test unstable file system for fault
+            # tolerance
+            _external_storage = UnstableFileStorage(**config["params"])
         else:
             raise ValueError(f"Unknown external storage type: {storage_type}")
     else:

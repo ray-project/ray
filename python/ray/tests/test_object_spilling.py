@@ -27,6 +27,14 @@ file_system_object_spilling_config = {
         "directory_path": spill_local_path
     }
 }
+
+unstable_object_spilling_config = {
+    "type": "unstable_fs",
+    "params": {
+        "directory_path": spill_local_path,
+    }
+}
+
 # Since we have differet protocol for a local external storage (e.g., fs)
 # and distributed external storage (e.g., S3), we need to test both cases.
 # This mocks the distributed fs with cluster utils.
@@ -36,6 +44,7 @@ mock_distributed_fs_object_spilling_config = {
         "directory_path": spill_local_path
     }
 }
+
 smart_open_object_spilling_config = {
     "type": "smart_open",
     "params": {
@@ -61,6 +70,24 @@ def create_object_spilling_config(request, tmp_path):
         # smart_open_object_spilling_config,
     ])
 def object_spilling_config(request, tmp_path):
+    yield create_object_spilling_config(request, tmp_path)
+
+
+@pytest.fixture(
+    scope="function",
+    params=[
+        unstable_object_spilling_config,
+    ])
+def unstable_spilling_config(request, tmp_path):
+    yield create_object_spilling_config(request, tmp_path)
+
+
+@pytest.fixture(
+    scope="function",
+    params=[
+        unstable_object_spilling_config
+    ])
+def unstable_object_spilling_config(request, tmp_path):
     yield create_object_spilling_config(request, tmp_path)
 
 
@@ -315,31 +342,43 @@ def test_spill_objects_automatically(object_spilling_config, shutdown_only):
     assert_no_thrashing(address["redis_address"])
 
 
-# @pytest.mark.skipif(
-#     platform.system() == "Windows", reason="Failing on Windows.")
-# def test_spill_objects_failure(object_spilling_config, shutdown_only, fs):
-#     # Limit our object store to 75 MiB of memory.
-#     object_spilling_config, _ = object_spilling_config
-#     address = ray.init(
-#         num_cpus=1,
-#         object_store_memory=75 * 1024 * 1024,
-#         _system_config={
-#             "max_io_workers": 4,
-#             "automatic_object_spilling_enabled": True,
-#             "object_store_full_delay_ms": 100,
-#             "object_spilling_config": object_spilling_config,
-#             "min_spilling_size": 0
-#         })
-#     replay_buffer = []
-#     solution_buffer = []
+@pytest.mark.skipif(
+    platform.system() == "Windows", reason="Failing on Windows.")
+def test_unstable_spill_objects_automatically(unstable_spilling_config, shutdown_only):
+    # Limit our object store to 75 MiB of memory.
+    object_spilling_config, _ = unstable_spilling_config
+    address = ray.init(
+        num_cpus=1,
+        object_store_memory=75 * 1024 * 1024,
+        _system_config={
+            "max_io_workers": 4,
+            "automatic_object_spilling_enabled": True,
+            "object_store_full_delay_ms": 100,
+            "object_spilling_config": object_spilling_config,
+            "min_spilling_size": 0
+        })
+    replay_buffer = []
+    solution_buffer = []
+    buffer_length = 100
 
-#     arr_1 = np.random.rand(5 * 1024 * 1024)
-#     ref_1 = ray.put(arr_1)
-
-#     with pytest.raises(ray.exceptions.ObjectStoreFullError):
-#         arr_2 = np.random.rand(5 * 1024 * 1024)
-#         ref_2 = ray.put(arr_2)
-#     assert (arr_1 == ray.get([ref_1])[0]).all()
+    # Create objects of more than 800 MiB.
+    for _ in range(buffer_length):
+        ref = None
+        while ref is None:
+            multiplier = random.choice([1, 2, 3])
+            arr = np.random.rand(multiplier * 1024 * 1024)
+            ref = ray.put(arr)
+            replay_buffer.append(ref)
+            solution_buffer.append(arr)
+    print("spill done.")
+    # randomly sample objects
+    for _ in range(1000):
+        index = random.choice(list(range(buffer_length)))
+        ref = replay_buffer[index]
+        solution = solution_buffer[index]
+        sample = ray.get(ref, timeout=0)
+        assert np.array_equal(sample, solution)
+    assert_no_thrashing(address["redis_address"])
 
 
 @pytest.mark.skipif(
