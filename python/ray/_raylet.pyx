@@ -600,8 +600,6 @@ cdef CRayStatus task_execution_handler(
                 if isinstance(e, RayActorError) and \
                    e.has_creation_task_error():
                     traceback_str = str(e)
-                    logger.error(
-                        f"Error raised in creation task:\n{traceback_str}")
                     # Cython's bug that doesn't allow reference assignment,
                     # this is a workaroud.
                     # See https://github.com/cython/cython/issues/1863
