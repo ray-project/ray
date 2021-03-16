@@ -152,8 +152,16 @@ TEST_F(PullManagerTest, TestRestoreSpilledObject) {
   ASSERT_EQ(num_send_pull_request_calls_, 0);
   ASSERT_EQ(num_restore_spilled_object_calls_, 1);
 
+  // If object restoration is ongoing, we should wait to pull until it's done, and we
+  // shouldn't issue duplicate restoration requests.
+  pull_manager_.OnLocationChange(obj1, client_ids, "remote_url/foo/bar",
+                                 node_that_object_spilled, 0);
+  ASSERT_EQ(num_send_pull_request_calls_, 0);
+  ASSERT_EQ(num_restore_spilled_object_calls_, 1);
+
   // The restore object call will ask the remote node to restore the object, and the
   // client location is updated accordingly.
+  restore_object_callback_(ray::Status::OK());
   client_ids.insert(node_that_object_spilled);
   fake_time_ += 10.;
   pull_manager_.OnLocationChange(obj1, client_ids, "remote_url/foo/bar",
