@@ -1,3 +1,4 @@
+import copy
 from gym import Env
 from gym.spaces import Box, Discrete, Tuple
 import numpy as np
@@ -111,6 +112,36 @@ class TestSAC(unittest.TestCase):
                     print(results)
                 check_compute_single_action(trainer)
                 trainer.stop()
+
+    def test_sac_fake_multi_gpu_learning(self):
+        """Test whether SACTrainer can learn CartPole w/ faked multi-GPU."""
+        config = copy.deepcopy(sac.DEFAULT_CONFIG)
+        # Fake GPU setup.
+        config["num_gpus"] = 2
+        config["_fake_gpus"] = True
+        # Mimic tuned_example for SAC Pendulum.
+        config["horizon"] = 200
+        config["soft_horizon"] = True
+        config["no_done_at_end"] = True
+        config["n_step"] = 3
+        config["prioritized_replay"] = True
+        config["timesteps_per_iteration"] = 1000
+        config["learning_starts"] = 256
+        config["clip_actions"] = False
+
+        for _ in framework_iterator(config, frameworks="torch"):
+            trainer = sac.SACTrainer(config=config, env="Pendulum-v0")
+            num_iterations = 200
+            learnt = False
+            for i in range(num_iterations):
+                results = trainer.train()
+                print(results)
+                if results["episode_reward_mean"] > -700.0:
+                    learnt = True
+                    break
+            assert learnt, \
+                "SAC multi-GPU (with fake-GPUs) did not learn CartPole!"
+            trainer.stop()
 
     def test_sac_loss_function(self):
         """Tests SAC loss function results across all frameworks."""

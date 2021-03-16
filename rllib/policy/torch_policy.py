@@ -500,18 +500,24 @@ class TorchPolicy(Policy):
 
         # Multi device (GPU) case.
         if len(self.devices) > 1:
-            # Reduce over GPU-towers.
-            all_grads = [
-                torch.mean(
-                    torch.stack([t[0][i] for t in tower_outputs]), dim=0)
-                for i in range(len(tower_outputs[0][0]))
-            ]
+            # Mean-reduce over GPU-towers.
+            all_grads = []
+            for i in range(len(tower_outputs[0][0])):
+                if tower_outputs[0][0][i] is not None:
+                    all_grads.append(
+                        torch.mean(
+                            torch.stack([t[0][i] for t in tower_outputs]),
+                            dim=0))
+                else:
+                    all_grads.append(None)
             # Set main model's grads to mean-reduced values.
             for i, p in enumerate(self.model.parameters()):
                 p.grad = all_grads[i]
             # Reduce stats over towers as well.
-            grad_info = tree.map_structure(lambda *t: np.nanmean(t, axis=0),
-                                           *[t[1] for t in tower_outputs])
+            from ray.rllib.execution.train_ops import all_tower_reduce
+            grad_info = tree.map_structure_with_path(
+                lambda p, *t: all_tower_reduce(p, *t),
+                *[t[1] for t in tower_outputs])
         # Single device case.
         else:
             all_grads, grad_info = tower_outputs[0]
@@ -760,12 +766,13 @@ class TorchPolicy(Policy):
                     # Loop through all optimizers.
                     grad_info = {"allreduce_latency": 0.0}
 
-                    all_grads = []
+                    parameters = list(model.parameters())
+                    all_grads = [None for _ in range(len(parameters))]
                     for opt_idx, opt in enumerate(self._optimizers):
                         # Erase gradients in all vars of the tower that this
                         # optimizer would affect.
                         param_indices = self.multi_gpu_param_groups[opt_idx]
-                        for param_idx, param in enumerate(model.parameters()):
+                        for param_idx, param in enumerate(parameters):
                             if param_idx in param_indices and \
                                     param.grad is not None:
                                 param.grad.data.zero_()
@@ -778,11 +785,11 @@ class TorchPolicy(Policy):
                         grads = []
                         # Note that return values are just references;
                         # Calling zero_grad would modify the values.
-                        for param_idx, param in enumerate(model.parameters()):
+                        for param_idx, param in enumerate(parameters):
                             if param_idx in param_indices:
                                 if param.grad is not None:
                                     grads.append(param.grad)
-                                all_grads.append(param.grad)
+                                all_grads[param_idx] = param.grad
 
                         if self.distributed_world_size:
                             start = time.time()

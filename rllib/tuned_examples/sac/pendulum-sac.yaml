@@ -11,29 +11,9 @@ pendulum-sac:
         framework: tf
         horizon: 200
         soft_horizon: true
-        Q_model:
-          fcnet_activation: relu
-          fcnet_hiddens: [256, 256]
-        policy_model:
-          fcnet_activation: relu
-          fcnet_hiddens: [256, 256]
-        tau: 0.005
-        target_entropy: auto
         no_done_at_end: true
         n_step: 3
-        rollout_fragment_length: 1
         prioritized_replay: true
-        train_batch_size: 256
-        target_network_update_freq: 1
         timesteps_per_iteration: 1000
         learning_starts: 256
-        optimization:
-          actor_learning_rate: 0.0003
-          critic_learning_rate: 0.0003
-          entropy_learning_rate: 0.0003
-        num_workers: 0
-        num_gpus: 0
         clip_actions: False
-        normalize_actions: true
-        evaluation_interval: 1
-        metrics_smoothing_episodes: 5
