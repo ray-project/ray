@@ -111,6 +111,7 @@ class Worker:
                 # RayletDriverStub, allowing for unary requests.
                 self.server = ray_client_pb2_grpc.RayletDriverStub(
                     self.channel)
+                logger.info("Waiting for GRPC to ping a response.")
                 service_ready = bool(self.ping_server())
                 if service_ready:
                     break
@@ -155,7 +156,7 @@ class Worker:
         try:
             data = self.data_client.ConnectionInfo()
         except grpc.RpcError as e:
-            raise e.details()
+            raise e.details() from e
         return {
             "num_clients": data.num_clients,
             "python_version": data.python_version,
@@ -209,7 +210,7 @@ class Worker:
         try:
             data = self.data_client.GetObject(req)
         except grpc.RpcError as e:
-            raise e.details()
+            raise e
         if not data.valid:
             try:
                 err = cloudpickle.loads(data.error)
@@ -299,7 +300,7 @@ class Worker:
         try:
             ticket = self.server.Schedule(task, metadata=self.metadata)
         except grpc.RpcError as e:
-            raise decode_exception(e.details)
+            raise # decode_exception(e.details())
         if not ticket.valid:
             try:
                 raise cloudpickle.loads(ticket.error)
@@ -357,7 +358,8 @@ class Worker:
             term.client_id = self._client_id
             self.server.Terminate(term)
         except grpc.RpcError as e:
-            raise decode_exception(e.details())
+            print("DETAILS OF EXCEPTION", e.details())
+            raise # decode_exception(e.details())
 
     def terminate_task(self, obj: ClientObjectRef, force: bool,
                        recursive: bool) -> None:
@@ -374,12 +376,12 @@ class Worker:
             term.client_id = self._client_id
             self.server.Terminate(term)
         except grpc.RpcError as e:
-            raise decode_exception(e.details())
+            raise # decode_exception(e.details())
 
     def get_cluster_info(self, type: ray_client_pb2.ClusterInfoType.TypeEnum):
         req = ray_client_pb2.ClusterInfoRequest()
         req.type = type
-        resp = self.server.ClusterInfo(req, metadata=self.metadata)
+        resp = self.server.ClusterInfo(req, metadata=self.metadata, timeout=5)
         if resp.WhichOneof("response_type") == "resource_table":
             # translate from a proto map to a python dict
             output_dict = {k: v for k, v in resp.resource_table.table.items()}

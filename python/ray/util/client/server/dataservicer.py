@@ -8,6 +8,7 @@ from threading import Lock
 
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
+from ray.util.client.common import CLIENT_SERVER_MAX_THREADS
 from ray.util.client import CURRENT_PROTOCOL_VERSION
 from ray._private.client_mode_hook import disable_client_hook
 
@@ -22,22 +23,37 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                  ray_connect_handler: Callable):
         self.basic_service = basic_service
         self._clients_lock = Lock()
+        self._rejected = set()
         self._num_clients = 0  # guarded by self._clients_lock
         self.ray_connect_handler = ray_connect_handler
 
     def Datapath(self, request_iterator, context):
         metadata = {k: v for k, v in context.invocation_metadata()}
         client_id = metadata["client_id"]
+        accepted_connection = False
         if client_id == "":
             logger.error("Client connecting with no client_id")
-            return
-        logger.info(f"New data connection from client {client_id}")
+            raise StopIteration
+        logger.info(f"New data connection from client {client_id}: numclients: {self._num_clients}")
+
         try:
             with self._clients_lock:
+                logger.info(f"Acquired lock: {client_id}")
                 with disable_client_hook():
+                    logger.info("starting ray")
                     if self._num_clients == 0 and not ray.is_initialized():
                         self.ray_connect_handler()
+
+                if self._num_clients >= CLIENT_SERVER_MAX_THREADS / 2:
+                    context.set_code(grpc.StatusCode.RESOURCE_EXHAUSTED)
+                    logger.warning(
+                        f"Datapath: Num clients {self._num_clients} has reached "
+                        f"the threshold. Rejection {metadata['client_id']}")
+                    raise StopIteration
                 self._num_clients += 1
+                logger.info(f"Accepted data connection from {client_id}: numclients: {self._num_clients}")
+                accepted_connection = True
+            logger.info(f"Released lock: {client_id}")
             for req in request_iterator:
                 resp = None
                 req_type = req.WhichOneof("type")
@@ -71,10 +87,14 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
             self.basic_service.release_all(client_id)
 
             with self._clients_lock:
-                self._num_clients -= 1
+                if accepted_connection:
+                    self._num_clients -= 1
+                    accepted_connection = False
+                logger.info(f"Removed clients. {self._num_clients}")
 
             with disable_client_hook():
                 if self._num_clients == 0:
+                    logger.info("Shutting down ray!")
                     ray.shutdown()
 
     def _build_connection_response(self):
