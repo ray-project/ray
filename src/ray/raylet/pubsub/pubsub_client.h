@@ -23,20 +23,38 @@ namespace ray {
 using SubscriptionCallback = std::function<void(const ObjectID &)>;
 using SubscriptionFailureCallback = std::function<void(const ObjectID &)>;
 
-/// Interface for unit tests.
+/// Interface for pubsub client.
 class PubsubClientInterface {
  public:
+  /// Subscribe the object.
+  ///
+  /// \param owner_address Address of the owner to subscribe the object.
+  /// \param object_id The object id to subscribe from the owner.
+  /// \param subscription_callback A callback that is invoked whenever the given object
+  /// information is published. \param subscription_failure_callback A callback that is
+  /// invoked whenever the owner is dead (or failed).
   virtual void SubcribeObject(
       const rpc::Address &owner_address, const ObjectID &object_id,
       SubscriptionCallback subscription_callback,
       SubscriptionFailureCallback subscription_failure_callback) = 0;
 
-  /// NOTE(sang): Calling this method inside subscription_failure_callback is not allowed.
+  /// Unsubscribe the object.
+  /// NOTE: Calling this method inside subscription_failure_callback is not allowed.
+  /// NOTE: Currently, this method doesn't send a RPC to the pubsub server. It is because
+  /// the client is currently used for WaitForObjectFree, and the coordinator will
+  /// automatically unregister the subscriber after publishing the object. But if we use
+  /// this method for OBOD, we should send an explicit RPC to unregister the subscriber
+  /// from the server.
+  ///
+  /// \param owner_address The owner address that it will unsubscribe to.
+  /// \param object_id The object id to unsubscribe.
   virtual bool UnsubscribeObject(const rpc::Address &owner_address,
                                  const ObjectID &object_id) = 0;
+
   virtual ~PubsubClientInterface() {}
 };
 
+/// The pubsub client implementation.
 class PubsubClient : public PubsubClientInterface {
  public:
   explicit PubsubClient(const NodeID self_node_id, const std::string self_node_address,
@@ -52,17 +70,19 @@ class PubsubClient : public PubsubClientInterface {
                       SubscriptionCallback subscription_callback,
                       SubscriptionFailureCallback subscription_failure_callback) override;
 
-  /// NOTE(sang): Calling this method inside subscription_failure_callback is not allowed.
   bool UnsubscribeObject(const rpc::Address &owner_address,
                          const ObjectID &object_id) override;
 
  private:
+  /// Encapsulates the subscription information such as subscribed object ids ->
+  /// callbacks.
   /// TODO(sang): Use a channel abstraction instead of owner address once OBOD uses the
   /// pubsub.
   struct SubscriptionInfo {
     SubscriptionInfo(const rpc::Address &pubsub_server_address)
         : pubsub_server_address_(pubsub_server_address) {}
 
+    /// Address of the pubsub server.
     const rpc::Address pubsub_server_address_;
     // Object ID -> subscription_callback
     absl::flat_hash_map<const ObjectID,
@@ -70,16 +90,25 @@ class PubsubClient : public PubsubClientInterface {
         subscription_callback_map_;
   };
 
-  /// Note(sang): Currently, we assume that only registered objects are published. We may
-  /// want to loose the restriction once OBOD is supported by this function.
+  /// Create a long polling connection to the owner for receiving the published messages.
+  /// TODO(sang): Currently, we assume that unregistered objects will never be published
+  /// from the pubsub server. We may want to loose the restriction once OBOD is supported
+  /// by this function. \param owner_address The address of the owner that publishes
+  /// objects. \param subscriber_address The address of the subscriber.
   void MakeLongPollingPubsubConnection(const rpc::Address &owner_address,
                                        const rpc::Address &subscriber_address);
 
+  /// Private method to handle long polling responses. Long polling responses contain the
+  /// published messages.
   void HandleLongPollingResponse(const rpc::Address &owner_address,
                                  const rpc::Address &subscriber_address, Status &status,
                                  const rpc::PubsubLongPollingReply &reply);
+
+  /// Private method to handle pubsub server failures.
   void HandleCoordinatorFailure(const rpc::Address &owner_address);
 
+  /// Returns a subscription callback; The first entry indicates if the subscription
+  /// callback exists. The second entry is the callback itself.
   inline std::pair<bool, SubscriptionCallback> GetSubscriptionCallback(
       const rpc::Address &owner_address, const ObjectID &object_id) {
     const auto owner_worker_id = WorkerID::FromBinary(owner_address.worker_id());
@@ -96,6 +125,8 @@ class PubsubClient : public PubsubClientInterface {
     return std::make_pair(true, subscription_callback);
   }
 
+  /// Returns a owner failure callback; The first entry indicates if the subscription
+  /// callback exists. The second entry is the callback itself.
   inline std::pair<bool, SubscriptionCallback> GetFailureCallback(
       const rpc::Address &owner_address, const ObjectID &object_id) {
     const auto owner_worker_id = WorkerID::FromBinary(owner_address.worker_id());

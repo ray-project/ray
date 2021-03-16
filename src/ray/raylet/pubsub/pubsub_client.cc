@@ -20,15 +20,12 @@ void PubsubClient::SubcribeObject(
     const rpc::Address &owner_address, const ObjectID &object_id,
     SubscriptionCallback subscription_callback,
     SubscriptionFailureCallback subscription_failure_callback) {
-  // Send a long-running RPC request to the owner for each object. When we get a
-  // response or the RPC fails (due to the owner crashing), unpin the object.
-  // Each owner will have a single long polling connection that returns a list of object
-  // ids.
   rpc::Address subscriber_address;
   subscriber_address.set_raylet_id(self_node_id_.Binary());
   subscriber_address.set_ip_address(self_node_address_);
   subscriber_address.set_port(self_node_port_);
-  // Make a long polling connection if we never made the one with this owner.
+  // Make a long polling connection if we never made the one with this owner for pubsub
+  // operations.
   const auto owner_worker_id = WorkerID::FromBinary(owner_address.worker_id());
   if (subscription_map_.count(owner_worker_id) == 0) {
     subscription_map_.emplace(owner_worker_id, SubscriptionInfo(owner_address));
@@ -64,7 +61,7 @@ void PubsubClient::SubcribeObject(
 bool PubsubClient::UnsubscribeObject(const rpc::Address &owner_address,
                                      const ObjectID &object_id) {
   const auto owner_worker_id = WorkerID::FromBinary(owner_address.worker_id());
-  RAY_LOG(DEBUG) << "Unsubscribing objects from " << owner_worker_id;
+  RAY_LOG(DEBUG) << "Unsubscribing an object " << object_id < " from " << owner_worker_id;
   auto subscription_it = subscription_map_.find(owner_worker_id);
   if (subscription_it == subscription_map_.end()) {
     return false;
@@ -82,9 +79,11 @@ void PubsubClient::MakeLongPollingPubsubConnection(
     const rpc::Address &owner_address, const rpc::Address &subscriber_address) {
   const auto owner_worker_id = WorkerID::FromBinary(owner_address.worker_id());
   RAY_LOG(DEBUG) << "Make a long polling request to " << owner_worker_id;
+
   auto owner_client = owner_client_pool_.GetOrConnect(owner_address);
   rpc::PubsubLongPollingRequest long_polling_request;
   long_polling_request.mutable_subscriber_address()->CopyFrom(subscriber_address);
+
   owner_client->PubsubLongPolling(
       long_polling_request, [this, owner_address, subscriber_address](
                                 Status status, const rpc::PubsubLongPollingReply &reply) {
@@ -120,6 +119,8 @@ void PubsubClient::HandleLongPollingResponse(const rpc::Address &owner_address,
     }
 
     for (const auto &object_id_to_unsubscrbie : objects_to_unsubscribe) {
+      // If the owner is failed, we automatically unsubscribe objects from this owner.
+      // If the failure callback called UnsubscribeObject, this will raise check failures.
       RAY_CHECK(UnsubscribeObject(owner_address, object_id_to_unsubscrbie))
           << "Calling UnsubscribeObject inside a failure callback is not allowed.";
     }
@@ -139,12 +140,13 @@ void PubsubClient::HandleLongPollingResponse(const rpc::Address &owner_address,
     }
   }
 
-  // Check if the subscription is still alive.
   subscription_it = subscription_map_.find(owner_worker_id);
   if (subscription_it->second.subscription_callback_map_.size() == 0) {
     // If there's no more subscription, Erase the entry. We erase the connection entry
     // here instead of Unsubscribe method because there could be in-flight long polling
-    // request when all of objects are unsubscribed.
+    // request when all of objects are unsubscribed. Since the long polling request should
+    // be sent in flight if there are still subscriptions, we can guarantee it will
+    // properly clean up metadata.
     subscription_map_.erase(subscription_it);
   } else {
     // If there are still subscriptions, make another long polling request.

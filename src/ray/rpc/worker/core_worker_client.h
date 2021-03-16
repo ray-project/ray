@@ -142,7 +142,7 @@ class CoreWorkerClientInterface {
       const SubscribeForObjectEvictionRequest &request,
       const ClientCallback<SubscribeForObjectEvictionReply> &callback) {}
 
-  // SANG-TODO
+  /// Send a long polling request to a core worker for pubsub operations.
   virtual void PubsubLongPolling(const PubsubLongPollingRequest &request,
                                  const ClientCallback<PubsubLongPollingReply> &callback) {
   }

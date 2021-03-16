@@ -184,6 +184,7 @@ int PubsubCoordinator::UnregisterSubscriber(const NodeID &subscriber_node_id) {
     return erased;
   }
   auto subscriber = it->second;
+  // Remove the long polling connection because otherwise, there's memory leak.
   subscriber->PublishIfPossible(/*force=*/true);
   subscribers_.erase(it);
   return erased;
@@ -192,7 +193,13 @@ int PubsubCoordinator::UnregisterSubscriber(const NodeID &subscriber_node_id) {
 int PubsubCoordinator::UnregisterSubscription(const NodeID &subscriber_node_id,
                                               const ObjectID &object_id) {
   absl::MutexLock lock(&mutex_);
-  return subscription_index_.EraseEntry(object_id, subscriber_node_id);
+  int erased = subscription_index_.EraseEntry(object_id, subscriber_node_id);
+  if (!subscription_index_.IsSubscriberExist(subscriber_node_id)) {
+    auto it = subscribers_.find(subscriber_node_id);
+    RAY_CHECK(it != subscribers_.end());
+    subscribers_.erase(it);
+  }
+  return erased;
 }
 
 }  // namespace ray

@@ -207,7 +207,6 @@ def test_basic_pinning(one_worker_100MiB):
             # the object is pinned by the raylet.
             self.large_object = ray.put(
                 np.zeros(25 * 1024 * 1024, dtype=np.uint8))
-            print(self.large_object)
 
         def get_large_object(self):
             return ray.get(self.large_object)
@@ -218,15 +217,9 @@ def test_basic_pinning(one_worker_100MiB):
     # evicted before the long-lived object whose reference is held by
     # the actor.
     for batch in range(10):
-        try:
-            intermediate_result = f.remote(
-                np.zeros(10 * 1024 * 1024, dtype=np.uint8))
-            print(intermediate_result)
-            ray.get(intermediate_result)
-        except Exception:
-            while True:
-                import time
-                time.sleep(1)
+        intermediate_result = f.remote(
+            np.zeros(10 * 1024 * 1024, dtype=np.uint8))
+        ray.get(intermediate_result)
 
     # The ray.get below would fail with only LRU eviction, as the object
     # that was ray.put by the actor would have been evicted.

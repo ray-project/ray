@@ -179,13 +179,13 @@ message SubscribeForObjectEvictionRequest {
 message SubscribeForObjectEvictionReply {
 }
 
-// SANG-TODO
 message PubsubLongPollingRequest {
+  /// The address of the subscriber that sends a long polling request.
   Address subscriber_address = 1;
 }
 
-// SANG-TODO
 message PubsubLongPollingReply {
+  /// The object ids that are published.
   repeated bytes object_ids = 1;
 }
 
@@ -413,7 +413,9 @@ service CoreWorkerService {
   // to this message indicates that the raylet should unpin the object.
   rpc SubscribeForObjectEviction(SubscribeForObjectEvictionRequest)
       returns (SubscribeForObjectEvictionReply);
-  // SANG-TODO
+  /// The long polling request sent to the core worker for pubsub operations.
+  /// It is replied once there are batch of objects that need to be published to
+  /// the caller (subscriber).
   rpc PubsubLongPolling(PubsubLongPollingRequest) returns (PubsubLongPollingReply);
   // Add object location to the ownership-based object directory.
   rpc AddObjectLocationOwner(AddObjectLocationOwnerRequest)

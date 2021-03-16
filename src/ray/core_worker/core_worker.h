@@ -1196,7 +1196,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   // Interface to submit tasks directly to other actors.
   std::shared_ptr<CoreWorkerDirectActorTaskSubmitter> direct_actor_submitter_;
 
-  // SANG-TODO Description.
+  // Server that handles pubsub operations of raylets / core workers.
   std::shared_ptr<PubsubCoordinator> pubsub_coordinator_;
 
   // Interface to submit non-actor tasks directly to leased workers.

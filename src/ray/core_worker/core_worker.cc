@@ -557,8 +557,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       new CoreWorkerDirectActorTaskSubmitter(core_worker_client_pool_, memory_store_,
                                              task_manager_));
 
-  pubsub_coordinator_ = std::shared_ptr<PubsubCoordinator>(
-      new PubsubCoordinator([this](const NodeID &node_id) {
+  pubsub_coordinator_ = std::shared_ptr<PubsubCoordinator>(new PubsubCoordinator(
+      /*is_node_dead=*/[this](const NodeID &node_id) {
         if (auto node_info =
                 gcs_client_->Nodes().Get(node_id, /*filter_dead_nodes=*/false)) {
           return node_info->state() ==
@@ -2322,19 +2322,18 @@ void CoreWorker::HandleSubscribeForObjectEviction(
       NodeID::FromBinary(request.subscriber_address().raylet_id());
   // Send a response to trigger unpinning the object when it is no longer in scope.
   auto respond = [this, subscriber_node_id](const ObjectID &object_id) {
-    RAY_LOG(ERROR) << "Object id: " << object_id << " is deleted. Unpinning the object.";
+    RAY_LOG(DEBUG) << "Object id: " << object_id << " is deleted. Unpinning the object.";
     pubsub_coordinator_->Publish(object_id);
     pubsub_coordinator_->UnregisterSubscription(subscriber_node_id, object_id);
   };
 
   ObjectID object_id = ObjectID::FromBinary(request.object_id());
-  RAY_LOG(DEBUG) << "Object id " << object_id << " is subscribed";
   // Returns true if the object was present and the callback was added. It might have
   // already been evicted by the time we get this request, in which case we should
   // respond immediately so the raylet unpins the object.
   if (!reference_counter_->SetDeleteCallback(object_id, respond)) {
     RAY_LOG(DEBUG) << "ObjectID reference already gone for " << object_id;
-    send_reply_callback(Status::NotFound("Object ID reference already gone."), nullptr,
+    send_reply_callback(Status::NotFound("Object ID reference is already gone."), nullptr,
                         nullptr);
   } else {
     pubsub_coordinator_->RegisterSubscription(subscriber_node_id, object_id);
@@ -2347,9 +2346,8 @@ void CoreWorker::HandlePubsubLongPolling(const rpc::PubsubLongPollingRequest &re
                                          rpc::SendReplyCallback send_reply_callback) {
   const auto subscriber_id = NodeID::FromBinary(request.subscriber_address().raylet_id());
   auto long_polling_reply_callback =
-      [subscriber_id, reply = std::move(reply),
-       send_reply_callback =
-           std::move(send_reply_callback)](std::vector<ObjectID> &object_ids) {
+      [reply = std::move(reply), send_reply_callback = std::move(send_reply_callback),
+       subscriber_id](std::vector<ObjectID> &object_ids) {
         RAY_LOG(DEBUG) << "Long polling replied to " << subscriber_id;
         // TODO(sang): The max grpc message size is 100 MB, meaning this operation can
         // fail if the number of batched objects are more than 50K. Though it is very
