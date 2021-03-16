@@ -74,19 +74,14 @@ def object_spilling_config(request, tmp_path):
 
 
 @pytest.fixture(
-    scope="function",
-    params=[
+    scope="function", params=[
         unstable_object_spilling_config,
     ])
 def unstable_spilling_config(request, tmp_path):
     yield create_object_spilling_config(request, tmp_path)
 
 
-@pytest.fixture(
-    scope="function",
-    params=[
-        unstable_object_spilling_config
-    ])
+@pytest.fixture(scope="function", params=[unstable_object_spilling_config])
 def unstable_object_spilling_config(request, tmp_path):
     yield create_object_spilling_config(request, tmp_path)
 
@@ -344,7 +339,8 @@ def test_spill_objects_automatically(object_spilling_config, shutdown_only):
 
 @pytest.mark.skipif(
     platform.system() == "Windows", reason="Failing on Windows.")
-def test_unstable_spill_objects_automatically(unstable_spilling_config, shutdown_only):
+def test_unstable_spill_objects_automatically(unstable_spilling_config,
+                                              shutdown_only):
     # Limit our object store to 75 MiB of memory.
     object_spilling_config, _ = unstable_spilling_config
     address = ray.init(

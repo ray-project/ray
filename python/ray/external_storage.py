@@ -83,7 +83,6 @@ class ExternalStorage(metaclass=abc.ABCMeta):
 
     HEADER_LENGTH = 24
 
-
     def _get_objects_from_store(self, object_refs):
         worker = ray.worker.global_worker
         # Since the object should always exist in the plasma store before
@@ -439,6 +438,7 @@ _external_storage = NullStorage()
 
 class UnstableFileStorage(FileSystemStorage):
     """This class is for testing with writing failure."""
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self._failure_rate = 0.1
@@ -464,7 +464,7 @@ def setup_external_storage(config):
         elif storage_type == "mock_distributed_fs":
             # This storage is used to unit test distributed external storages.
             # TODO(sang): Delete it after introducing the mock S3 test.
-            _external_storage = MockDistributedFileStorage(**config["params"])
+            _external_storage = FileSystemStorage(**config["params"])
         elif storage_type == "unstable_fs":
             # This storage is used to unit test unstable file system for fault
             # tolerance
