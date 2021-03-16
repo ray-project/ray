@@ -124,12 +124,12 @@ class ExternalStorage(metaclass=abc.ABCMeta):
             metadata_len = len(metadata)
             buf_len = len(buf)
             payload = address_len.to_bytes(8, byteorder="little") + \
-              metadata_len.to_bytes(8, byteorder="little") + \
-              buf_len.to_bytes(8, byteorder="little") + \
-              owner_address + metadata + memoryview(buf)
+                metadata_len.to_bytes(8, byteorder="little") + \
+                buf_len.to_bytes(8, byteorder="little") + \
+                owner_address + metadata + memoryview(buf)
             # 24 bytes to store owner address, metadata, and buffer lengths.
             assert self.HEADER_LENGTH + address_len + metadata_len + buf_len \
-              == len(payload)
+                == len(payload)
             # TODO (yic): Considering add retry here to avoid transistent issue
             try:
                 written_bytes = f.write(payload)

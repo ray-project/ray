@@ -341,6 +341,7 @@ def test_spill_objects_automatically(object_spilling_config, shutdown_only):
 #         ref_2 = ray.put(arr_2)
 #     assert (arr_1 == ray.get([ref_1])[0]).all()
 
+
 @pytest.mark.skipif(
     platform.system() in ["Windows", "Darwin"], reason="Failing on Windows.")
 def test_spill_stats(object_spilling_config, shutdown_only):
