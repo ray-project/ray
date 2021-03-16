@@ -143,7 +143,7 @@ void PubsubClient::HandleLongPollingResponse(const rpc::Address &owner_address,
   if (subscription_it->second.subscription_callback_map_.size() == 0) {
     // If there's no more subscription, Erase the entry. We erase the connection entry
     // here instead of Unsubscribe method because there could be in-flight long polling
-    // request when all of objects are unsubsribed.
+    // request when all of objects are unsubscribed.
     subscription_map_.erase(subscription_it);
   } else {
     // If there are still subscriptions, make another long polling request.
