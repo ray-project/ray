@@ -12,7 +12,7 @@ from ray.new_dashboard.utils import Bunch
 from ray.new_dashboard.modules.reporter.reporter_agent import ReporterAgent
 from ray.test_utils import (format_web_url, RayTestTimeoutException,
                             wait_until_server_available, wait_for_condition,
-                            fetch_prometheus, ReporterAgentDummy)
+                            fetch_prometheus)
 
 logger = logging.getLogger(__name__)
 
@@ -139,6 +139,12 @@ def test_prometheus_physical_stats_record(enable_test_module, shutdown_only):
 
 
 def test_report_stats():
+    class ReporterAgentDummy(object):
+        pass
+
+    obj = ReporterAgentDummy()
+    obj._is_head_node = True
+
     test_stats = {
         "now": 1614826393.975763,
         "hostname": "fake_hostname.local",
@@ -205,9 +211,6 @@ def test_report_stats():
             "pending_nodes": []
         }
     }
-
-    obj = ReporterAgentDummy()
-    obj._is_head_node = True
 
     records = ReporterAgent._record_stats(obj, test_stats, cluster_stats)
     assert len(records) == 16
