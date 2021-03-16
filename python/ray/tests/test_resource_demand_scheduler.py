@@ -530,6 +530,7 @@ def test_request_resources_existing_usage():
     # 5 nodes with 32 CPU and 8 GPU each
     provider.create_node({}, {
         TAG_RAY_USER_NODE_TYPE: "p2.8xlarge",
+        TAG_RAY_NODE_KIND: NODE_KIND_WORKER,
         TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE
     }, 2)
     all_nodes = provider.non_terminated_nodes({})
@@ -1164,14 +1165,14 @@ def test_handle_legacy_cluster_config_yaml():
             lm.get_static_node_resources_by_ip())
         # 4 nodes are necessary to meet resource demand.
         assert to_launch == {NODE_TYPE_LEGACY_WORKER: 4}
-        to_launch = scheduler.get_nodes_to_launch(nodes, pending_launches,
-                                                  demands, utilizations, [],
-                                                  lm.get_node_resources())
+        to_launch = scheduler.get_nodes_to_launch(
+            nodes, pending_launches, demands, utilizations, [],
+            lm.get_static_node_resources_by_ip())
         # 0 because there are 4 pending launches and we only need 4.
         assert to_launch == {}
         to_launch = scheduler.get_nodes_to_launch(
             nodes, pending_launches, demands * 2, utilizations, [],
-            lm.get_node_resources())
+            lm.get_static_node_resources_by_ip())
         # 1 because there are 4 pending launches and we only allow a max of 5.
         assert to_launch == {NODE_TYPE_LEGACY_WORKER: 1}
 

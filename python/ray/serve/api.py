@@ -403,10 +403,10 @@ class Client:
         if not ray.util.client.ray.is_connected():
             if ray_actor_options.get("runtime_env") is None:
                 ray_actor_options["runtime_env"] = {}
-            if ray_actor_options["runtime_env"].get("conda_env") is None:
+            if ray_actor_options["runtime_env"].get("conda") is None:
                 current_env = os.environ.get("CONDA_DEFAULT_ENV")
                 if current_env is not None and current_env != "":
-                    ray_actor_options["runtime_env"]["conda_env"] = current_env
+                    ray_actor_options["runtime_env"]["conda"] = current_env
 
         replica_config = ReplicaConfig(
             backend_def, *init_args, ray_actor_options=ray_actor_options)

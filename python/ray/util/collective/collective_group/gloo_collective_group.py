@@ -37,21 +37,23 @@ class Rendezvous:
     def __init__(self, group_name, context, store_type, device_type):
         self._group_name = group_name
         self._context = context
-        self._ip_address, self._redis_port = \
+        self._redis_ip_address, self._redis_port = \
             ray.worker._global_node.redis_address.split(":")
-
-        ray._private.services.get_node_ip_address()
+        self._process_ip_address = \
+            ray._private.services.get_node_ip_address()
+        logger.debug("Redis address: {}, port: {}, this actor address: {}."
+                     .format(self._redis_ip_address, self._redis_port,
+                             self._process_ip_address))
         self._store_type = store_type
         self._device_type = device_type
         self._store = None
         self._device = None
-
         self.create_store(store_type)
         self.create_device(device_type)
 
     def create_store(self, store_type):
         if store_type == "redis":
-            redisStore = pygloo.rendezvous.RedisStore(self._ip_address,
+            redisStore = pygloo.rendezvous.RedisStore(self._redis_ip_address,
                                                       int(self._redis_port))
             redis_password = ray_constants.REDIS_DEFAULT_PASSWORD
             redisStore.authorize(redis_password)
@@ -80,7 +82,7 @@ class Rendezvous:
 
     def create_device(self, device_type):
         if device_type == "tcp":
-            attr = pygloo.transport.tcp.attr(self._ip_address)
+            attr = pygloo.transport.tcp.attr(self._process_ip_address)
             self._device = pygloo.transport.tcp.CreateDevice(attr)
         elif device_type == "uv":
             raise NotImplementedError("No implementation for uv.")
@@ -156,6 +158,10 @@ class Rendezvous:
     def device(self):
         return self._device
 
+    def destroy(self):
+        """GC the store and device used by this rendevzous."""
+        self._device = None
+
 
 class GLOOGroup(BaseGroup):
     def __init__(self,
@@ -184,6 +190,8 @@ class GLOOGroup(BaseGroup):
 
     def destroy_group(self):
         """Destroy the group and release GLOO communicators."""
+        self._rendezvous.destroy()
+
         if self._gloo_context is not None:
             pygloo.barrier(self._gloo_context)
             # destroy the communicator

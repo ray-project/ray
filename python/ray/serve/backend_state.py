@@ -52,6 +52,7 @@ class BackendReplica:
         self._startup_obj_ref = None
         self._drain_obj_ref = None
         self._state = ReplicaState.SHOULD_START
+        self._actor_resources = None
 
     def __get_state__(self):
         clean_dict = self.__dict__.copy()
@@ -90,6 +91,9 @@ class BackendReplica:
         }, (f"State must be {ReplicaState.SHOULD_START} or "
             f"{ReplicaState.STARTING}, *not* {self._state}")
 
+        if self._actor_resources is None:
+            self._actor_resources = backend_info.replica_config.resource_dict
+
         try:
             self._placement_group = ray.util.get_placement_group(
                 self._placement_group_name)
@@ -98,7 +102,7 @@ class BackendReplica:
                 "Creating placement group '{}' for backend '{}'".format(
                     self._placement_group_name, self._backend_tag))
             self._placement_group = ray.util.placement_group(
-                [backend_info.replica_config.resource_dict],
+                [self._actor_resources],
                 lifetime="detached",
                 name=self._placement_group_name)
 
@@ -136,12 +140,22 @@ class BackendReplica:
         if (time_since_start > SLOW_STARTUP_WARNING_S
                 and time.time() - self._prev_slow_startup_warning_time >
                 SLOW_STARTUP_WARNING_PERIOD_S):
+            # Filter to relevant resources.
+            required = {
+                k: v
+                for k, v in self._actor_resources.items() if v > 0
+            }
+            available = {
+                k: v
+                for k, v in ray.available_resources().items() if k in required
+            }
             logger.warning(
                 f"Replica '{self._replica_tag}' for backend "
                 f"'{self._backend_tag}' has taken more than "
                 f"{time_since_start:.0f}s to start up. This may be "
                 "caused by waiting for the cluster to auto-scale or "
-                "because the backend constructor is slow.")
+                "because the backend constructor is slow. Resources required: "
+                f"{required}, resources available: {available}.")
             self._prev_slow_startup_warning_time = time.time()
 
         return False
