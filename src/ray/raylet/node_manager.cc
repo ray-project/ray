@@ -2238,14 +2238,8 @@ void NodeManager::SendSpilledObjectRestorationRequestToRemoteNode(
           entry->second.first, entry->second.second, client_call_manager_));
   raylet_client->RestoreSpilledObject(
       object_id, spilled_url, node_id,
-      [object_id, node_id, callback = std::move(callback)](
-          const ray::Status &status, const rpc::RestoreSpilledObjectReply &r) {
-        if (!status.ok()) {
-          RAY_LOG(WARNING) << "Failed to send a spilled object restoration request for "
-                           << object_id << " to a remote node " << node_id
-                           << ". This request will be retried. Error message: "
-                           << status.ToString();
-        }
+      [callback = std::move(callback)](const ray::Status &status,
+                                       const rpc::RestoreSpilledObjectReply &r) {
         if (callback) {
           callback(status);
         }
