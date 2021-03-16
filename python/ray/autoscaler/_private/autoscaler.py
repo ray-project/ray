@@ -218,6 +218,8 @@ class StandardAutoscaler:
 
         if nodes_to_terminate:
             self.provider.terminate_nodes(nodes_to_terminate)
+            for node in nodes_to_terminate:
+                self.node_tracker.untrack(node)
             nodes = self.workers()
 
         # Terminate nodes if there are too many
@@ -236,6 +238,8 @@ class StandardAutoscaler:
 
         if nodes_to_terminate:
             self.provider.terminate_nodes(nodes_to_terminate)
+            for node in nodes_to_terminate:
+                self.node_tracker.untrack(node)
             nodes = self.workers()
 
         to_launch = self.resource_demand_scheduler.get_nodes_to_launch(
@@ -731,6 +735,8 @@ class StandardAutoscaler:
         nodes = self.workers()
         if nodes:
             self.provider.terminate_nodes(nodes)
+            for node in nodes:
+                self.node_tracker.untrack(node)
         logger.error("StandardAutoscaler: terminated {} node(s)".format(
             len(nodes)))
 

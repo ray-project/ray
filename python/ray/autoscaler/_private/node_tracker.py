@@ -43,6 +43,18 @@ class NodeTracker:
         if node_id not in self.node_mapping:
             self._add_node_mapping(node_id, (ip, node_type))
 
+    def untrack(self, node_id: str):
+        """Gracefully stop tracking a node. If a node is intentionally removed from
+        the cluster, we should stop tracking it so we don't mistakenly mark it
+        as failed.
+
+        Args:
+            node_id (str): The node id which failed.
+        """
+        if node_id in self.node_mapping:
+            self.lru_order.remove(node_id)
+            del self.node_mapping[node_id]
+
     def get_all_failed_node_info(
             self, non_failed_ids: Set[str]) -> List[Tuple[str, str]]:
         """Get the information about all failed nodes. A failed node is any node which
