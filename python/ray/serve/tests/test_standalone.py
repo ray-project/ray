@@ -212,7 +212,8 @@ def test_no_http(ray_shutdown):
     ]
 
     ray.init(num_cpus=8)
-    for option in options:
+    for i, option in enumerate(options):
+        print(f"[{i+1}/{len(options)}] Running with {option}")
         serve.start(**option)
 
         # Only controller actor should exist
