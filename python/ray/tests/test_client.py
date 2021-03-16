@@ -425,7 +425,7 @@ def test_error_serialization(ray_start_regular_shared):
                 with open("/dev/asdf", "w") as f:
                     f.write("HI")
 
-            # grpc error
+            # Raises a PermissionError
             ray.get(g.remote())
 
 
