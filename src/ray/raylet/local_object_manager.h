@@ -22,6 +22,7 @@
 #include "ray/common/ray_object.h"
 #include "ray/gcs/accessor.h"
 #include "ray/object_manager/common.h"
+#include "ray/raylet/pubsub/pubsub_client.h"
 #include "ray/raylet/worker_pool.h"
 #include "ray/rpc/worker/core_worker_client_pool.h"
 #include "ray/util/util.h"
@@ -63,7 +64,9 @@ class LocalObjectManager {
         max_active_workers_(max_io_workers),
         is_plasma_object_spillable_(is_plasma_object_spillable),
         restore_object_from_remote_node_(restore_object_from_remote_node),
-        is_external_storage_type_fs_(is_external_storage_type_fs) {}
+        is_external_storage_type_fs_(is_external_storage_type_fs),
+        core_worker_pubsub_client_(PubsubClient(self_node_id_, self_node_address_,
+                                                self_node_port_, owner_client_pool_)) {}
 
   /// Pin objects.
   ///
@@ -153,19 +156,6 @@ class LocalObjectManager {
               TestSpillObjectsOfSizeNumBytesToSpillHigherThanMinBytesToSpill);
   FRIEND_TEST(LocalObjectManagerTest, TestSpillObjectNotEvictable);
 
-  // SANG-TODO Add description
-  // TODO(sang): Use a channel abstraction instead of owner address once OBOD uses the
-  // pubsub.
-  struct SubscriptionInfo {
-    SubscriptionInfo(const rpc::Address &pubsub_server_address)
-        : pubsub_server_address_(pubsub_server_address) {}
-
-    const rpc::Address pubsub_server_address_;
-    // Object ID -> subscription_callback
-    absl::flat_hash_map<const ObjectID, std::function<void(const ObjectID &)>>
-        subscription_callback_map_;
-  };
-
   /// Asynchronously spill objects when space is needed.
   /// The callback tries to spill objects as much as num_bytes_to_spill and returns
   /// true if we could spill the corresponding bytes.
@@ -200,17 +190,6 @@ class LocalObjectManager {
   ///
   /// \param urls_to_delete List of urls to delete from external storages.
   void DeleteSpilledObjects(std::vector<std::string> &urls_to_delete);
-
-  // SANG-TODO Fill up the description.
-  void SubcribeObjectFree(const rpc::Address &owner_address, const ObjectID &object_id);
-
-  // SANG-TODO Fill up the description
-  void UnsubscribeObjectsFree(const rpc::Address &owner_address,
-                              const std::vector<ObjectID> &object_ids);
-
-  // SANG-TODO Fill up the description.
-  void MakeLongPollingPubsubConnection(const rpc::Address &owner_address,
-                                       const rpc::Address &subscriber_address);
 
   const NodeID self_node_id_;
   const std::string self_node_address_;
@@ -270,14 +249,6 @@ class LocalObjectManager {
   /// spilled from this node, in bytes.
   size_t num_bytes_pending_spill_;
 
-  /// This class is accessed by both the raylet and plasma store threads. The
-  /// mutex protects private members that relate to object spilling.
-  mutable absl::Mutex mutex_;
-
-  ///
-  /// Fields below are used to delete spilled objects.
-  ///
-
   /// A list of object id and url pairs that need to be deleted.
   /// We don't instantly delete objects when it goes out of scope from external storages
   /// because those objects could be still in progress of spilling.
@@ -294,6 +265,10 @@ class LocalObjectManager {
 
   /// Minimum bytes to spill to a single IO spill worker.
   int64_t min_spilling_size_;
+
+  /// This class is accessed by both the raylet and plasma store threads. The
+  /// mutex protects private members that relate to object spilling.
+  mutable absl::Mutex mutex_;
 
   /// The current number of active spill workers.
   int64_t num_active_workers_ GUARDED_BY(mutex_);
@@ -315,9 +290,9 @@ class LocalObjectManager {
   /// directly from the external storage.
   bool is_external_storage_type_fs_;
 
-  // SANG-TODO Add description.
-  // TODO(sang): Use a channel instead of the pubsub server address.
-  absl::flat_hash_map<WorkerID, SubscriptionInfo> subscription_map_;
+  /// The raylet client to initiate the pubsub to core workers (owners).
+  /// It is used to subscribe objects to evict.
+  PubsubClient core_worker_pubsub_client_;
 
   ///
   /// Stats

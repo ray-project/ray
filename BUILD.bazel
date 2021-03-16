@@ -843,6 +843,18 @@ cc_test(
 )
 
 cc_test(
+    name = "pubsub_client_test",
+    srcs = [
+        "src/ray/raylet/test/pubsub_client_test.cc",
+    ],
+    copts = COPTS,
+    deps = [
+        ":raylet_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "pull_manager_test",
     srcs = [
         "src/ray/object_manager/test/pull_manager_test.cc",
