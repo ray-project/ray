@@ -141,11 +141,9 @@ Status RedisClient::Connect(std::vector<instrumented_io_context *> io_services) 
     }
   } else {
     shard_contexts_.push_back(std::make_shared<RedisContext>(*io_services[0]));
-    RAY_CHECK_OK(shard_contexts_[0]->Connect(
-        options_.server_ip_, options_.server_port_,
-        /*sharding=*/true,
-        /*password=*/options_.password_, options_.enable_sync_conn_,
-        options_.enable_async_conn_, options_.enable_subscribe_conn_));
+    RAY_CHECK_OK(shard_contexts_[0]->Connect(options_.server_ip_, options_.server_port_,
+                                             /*sharding=*/true,
+                                             /*password=*/options_.password_));
   }
 
   Attach();
@@ -161,14 +159,8 @@ void RedisClient::Attach() {
   RAY_CHECK(shard_asio_async_clients_.empty()) << "Attach shall be called only once";
   for (std::shared_ptr<RedisContext> context : shard_contexts_) {
     instrumented_io_context &io_service = context->io_service();
-    if (options_.enable_async_conn_) {
-      shard_asio_async_clients_.emplace_back(
-          new RedisAsioClient(io_service, context->async_context()));
-    }
-    if (options_.enable_subscribe_conn_) {
-      shard_asio_subscribe_clients_.emplace_back(
-          new RedisAsioClient(io_service, context->subscribe_context()));
-    }
+    shard_asio_async_clients_.emplace_back(
+        new RedisAsioClient(io_service, context->async_context()));
   }
 
   instrumented_io_context &io_service = primary_context_->io_service();
