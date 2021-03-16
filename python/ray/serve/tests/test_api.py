@@ -13,7 +13,8 @@ from ray.test_utils import wait_for_condition
 from ray.serve.constants import SERVE_PROXY_NAME
 from ray.serve.exceptions import RayServeException
 from ray.serve.config import BackendConfig
-from ray.serve.utils import (format_actor_name, get_random_letters)
+from ray.serve.utils import (format_actor_name, get_all_node_ids,
+                             get_random_letters)
 
 
 def test_e2e(serve_instance):
@@ -510,16 +511,30 @@ def test_shutdown():
     serve.create_backend("backend", f)
     serve.create_endpoint("endpoint", backend="backend")
 
+    actor_names = [
+        serve.api._global_client._controller_name,
+        format_actor_name(SERVE_PROXY_NAME,
+                          serve.api._global_client._controller_name,
+                          get_all_node_ids()[0][0])
+    ]
+
+    def check_alive():
+        alive = True
+        for actor_name in actor_names:
+            try:
+                ray.get_actor(actor_name)
+            except ValueError:
+                alive = False
+        return alive
+
+    wait_for_condition(check_alive)
+
     serve.shutdown()
     with pytest.raises(RayServeException):
         serve.list_backends()
 
     def check_dead():
-        for actor_name in [
-                serve.api._global_client._controller_name,
-                format_actor_name(SERVE_PROXY_NAME,
-                                  serve.api._global_client._controller_name)
-        ]:
+        for actor_name in actor_names:
             try:
                 ray.get_actor(actor_name)
                 return False
