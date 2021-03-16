@@ -234,15 +234,19 @@ void LocalObjectManager::SpillObjectsInternal(
               io_worker_pool_.PushSpillWorker(io_worker);
               if (!status.ok()) {
                 for (const auto &object_id : objects_to_spill) {
-                  RAY_LOG(ERROR) << "Failed to send object spilling request for object "
-                                 << object_id << " to IO worker " << io_worker->WorkerId()
-                                 << ": " << status.ToString();
                   auto it = objects_pending_spill_.find(object_id);
                   RAY_CHECK(it != objects_pending_spill_.end());
                   pinned_objects_size_ += it->second.first->GetSize();
                   pinned_objects_.emplace(object_id, std::move(it->second));
                   objects_pending_spill_.erase(it);
                 }
+                std::ostringstream object_id_stream;
+                std::copy(objects_to_spill.begin(), objects_to_spill.end() - 1,
+                          std::ostream_iterator<ObjectID>(object_id_stream, ", "));
+                object_id_stream << objects_to_spill.back();
+                RAY_LOG(ERROR) << "Failed to send object spilling request for objects "
+                               << object_id_stream.str() << " to IO worker "
+                               << io_worker->WorkerId() << ": " << status.ToString();
                 if (callback) {
                   callback(status);
                 }
