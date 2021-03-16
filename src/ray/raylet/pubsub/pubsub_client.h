@@ -23,7 +23,21 @@ namespace ray {
 using SubscriptionCallback = std::function<void(const ObjectID &)>;
 using SubscriptionFailureCallback = std::function<void(const ObjectID &)>;
 
-class PubsubClient {
+/// Interface for unit tests.
+class PubsubClientInterface {
+ public:
+  virtual void SubcribeObject(
+      const rpc::Address &owner_address, const ObjectID &object_id,
+      SubscriptionCallback subscription_callback,
+      SubscriptionFailureCallback subscription_failure_callback) = 0;
+
+  /// NOTE(sang): Calling this method inside subscription_failure_callback is not allowed.
+  virtual bool UnsubscribeObject(const rpc::Address &owner_address,
+                                 const ObjectID &object_id) = 0;
+  virtual ~PubsubClientInterface() {}
+};
+
+class PubsubClient : public PubsubClientInterface {
  public:
   explicit PubsubClient(const NodeID self_node_id, const std::string self_node_address,
                         const int self_node_port,
@@ -36,10 +50,11 @@ class PubsubClient {
 
   void SubcribeObject(const rpc::Address &owner_address, const ObjectID &object_id,
                       SubscriptionCallback subscription_callback,
-                      SubscriptionFailureCallback subscription_failure_callback);
+                      SubscriptionFailureCallback subscription_failure_callback) override;
 
   /// NOTE(sang): Calling this method inside subscription_failure_callback is not allowed.
-  bool UnsubscribeObject(const rpc::Address &owner_address, const ObjectID &object_id);
+  bool UnsubscribeObject(const rpc::Address &owner_address,
+                         const ObjectID &object_id) override;
 
  private:
   /// TODO(sang): Use a channel abstraction instead of owner address once OBOD uses the

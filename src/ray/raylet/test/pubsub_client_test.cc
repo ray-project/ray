@@ -23,9 +23,10 @@ using ::testing::_;
 
 class MockWorkerClient : public rpc::CoreWorkerClientInterface {
  public:
-  void WaitForObjectEviction(
-      const rpc::WaitForObjectEvictionRequest &request,
-      const rpc::ClientCallback<rpc::WaitForObjectEvictionReply> &callback) override {
+  void SubscribeForObjectEviction(
+      const rpc::SubscribeForObjectEvictionRequest &request,
+      const rpc::ClientCallback<rpc::SubscribeForObjectEvictionReply> &callback)
+      override {
     eviction_callbacks.push_back(callback);
   }
 
@@ -40,7 +41,7 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
       return false;
     }
     auto callback = eviction_callbacks.front();
-    auto reply = rpc::WaitForObjectEvictionReply();
+    auto reply = rpc::SubscribeForObjectEvictionReply();
     callback(status, reply);
     eviction_callbacks.pop_front();
     return true;
@@ -62,7 +63,8 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
 
   int GetNumberOfInFlightLongPollingRequests() { return long_polling_callbacks.size(); }
 
-  std::deque<rpc::ClientCallback<rpc::WaitForObjectEvictionReply>> eviction_callbacks;
+  std::deque<rpc::ClientCallback<rpc::SubscribeForObjectEvictionReply>>
+      eviction_callbacks;
   std::deque<rpc::ClientCallback<rpc::PubsubLongPollingReply>> long_polling_callbacks;
 };
 

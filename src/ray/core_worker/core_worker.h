@@ -864,9 +864,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                                     rpc::SendReplyCallback send_reply_callback) override;
 
   /// Implements gRPC server handler.
-  void HandleWaitForObjectEviction(const rpc::WaitForObjectEvictionRequest &request,
-                                   rpc::WaitForObjectEvictionReply *reply,
-                                   rpc::SendReplyCallback send_reply_callback) override;
+  void HandleSubscribeForObjectEviction(
+      const rpc::SubscribeForObjectEvictionRequest &request,
+      rpc::SubscribeForObjectEvictionReply *reply,
+      rpc::SendReplyCallback send_reply_callback) override;
 
   // Implements gRPC server handler.
   void HandlePubsubLongPolling(const rpc::PubsubLongPollingRequest &request,

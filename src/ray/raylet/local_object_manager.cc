@@ -44,14 +44,14 @@ void LocalObjectManager::WaitForObjectFree(const rpc::Address &owner_address,
     // Callback that is invoked when the owner publishes the object to evict.
     auto subscription_callback = [this, owner_address](const ObjectID &object_id) {
       ReleaseFreedObject(object_id);
-      core_worker_pubsub_client_.UnsubscribeObject(owner_address, object_id);
+      core_worker_pubsub_client_->UnsubscribeObject(owner_address, object_id);
     };
     // Callback that is invoked when the owner of the object id is dead.
     auto owner_dead_callback = [this](const ObjectID &object_id) {
       ReleaseFreedObject(object_id);
     };
-    core_worker_pubsub_client_.SubcribeObject(owner_address, object_id,
-                                              subscription_callback, owner_dead_callback);
+    core_worker_pubsub_client_->SubcribeObject(
+        owner_address, object_id, subscription_callback, owner_dead_callback);
   }
 }
 

@@ -47,7 +47,8 @@ class LocalObjectManager {
       std::function<void(const std::vector<ObjectID> &)> on_objects_freed,
       std::function<bool(const ray::ObjectID &)> is_plasma_object_spillable,
       std::function<void(const ObjectID &, const std::string &, const NodeID &)>
-          restore_object_from_remote_node)
+          restore_object_from_remote_node,
+      std::shared_ptr<PubsubClientInterface> core_worker_pubsub_client)
       : self_node_id_(node_id),
         self_node_address_(self_node_address),
         self_node_port_(self_node_port),
@@ -65,8 +66,7 @@ class LocalObjectManager {
         is_plasma_object_spillable_(is_plasma_object_spillable),
         restore_object_from_remote_node_(restore_object_from_remote_node),
         is_external_storage_type_fs_(is_external_storage_type_fs),
-        core_worker_pubsub_client_(PubsubClient(self_node_id_, self_node_address_,
-                                                self_node_port_, owner_client_pool_)) {}
+        core_worker_pubsub_client_(core_worker_pubsub_client) {}
 
   /// Pin objects.
   ///
@@ -292,7 +292,7 @@ class LocalObjectManager {
 
   /// The raylet client to initiate the pubsub to core workers (owners).
   /// It is used to subscribe objects to evict.
-  PubsubClient core_worker_pubsub_client_;
+  std::shared_ptr<PubsubClientInterface> core_worker_pubsub_client_;
 
   ///
   /// Stats

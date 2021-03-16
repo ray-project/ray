@@ -167,7 +167,7 @@ message WaitForActorOutOfScopeRequest {
 message WaitForActorOutOfScopeReply {
 }
 
-message WaitForObjectEvictionRequest {
+message SubscribeForObjectEvictionRequest {
   // The ID of the worker this message is intended for.
   bytes intended_worker_id = 1;
   // ObjectID of the pinned object.
@@ -176,7 +176,7 @@ message WaitForObjectEvictionRequest {
   Address subscriber_address = 3;
 }
 
-message WaitForObjectEvictionReply {
+message SubscribeForObjectEvictionReply {
 }
 
 // SANG-TODO
@@ -411,11 +411,10 @@ service CoreWorkerService {
       returns (WaitForActorOutOfScopeReply);
   // Notify the object's owner that it has been pinned by a raylet. Replying
   // to this message indicates that the raylet should unpin the object.
-  rpc WaitForObjectEviction(WaitForObjectEvictionRequest)
-      returns (WaitForObjectEvictionReply);
+  rpc SubscribeForObjectEviction(SubscribeForObjectEvictionRequest)
+      returns (SubscribeForObjectEvictionReply);
   // SANG-TODO
-  rpc PubsubLongPolling(PubsubLongPollingRequest)
-      returns (PubsubLongPollingReply);
+  rpc PubsubLongPolling(PubsubLongPollingRequest) returns (PubsubLongPollingReply);
   // Add object location to the ownership-based object directory.
   rpc AddObjectLocationOwner(AddObjectLocationOwnerRequest)
       returns (AddObjectLocationOwnerReply);

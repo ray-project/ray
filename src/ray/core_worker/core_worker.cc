@@ -534,6 +534,9 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
 
     std::shared_ptr<rpc::TaskTableData> data = std::make_shared<rpc::TaskTableData>();
     data->mutable_task()->mutable_task_spec()->CopyFrom(builder.Build().GetMessage());
+    if (!options_.is_local_mode) {
+      RAY_CHECK_OK(gcs_client_->Tasks().AsyncAdd(data, nullptr));
+    }
     SetCurrentTaskId(task_id);
   }
 
@@ -2304,9 +2307,10 @@ void CoreWorker::HandleWaitForActorOutOfScope(
   actor_manager_->WaitForActorOutOfScope(actor_id, std::move(respond));
 }
 
-void CoreWorker::HandleWaitForObjectEviction(
-    const rpc::WaitForObjectEvictionRequest &request,
-    rpc::WaitForObjectEvictionReply *reply, rpc::SendReplyCallback send_reply_callback) {
+void CoreWorker::HandleSubscribeForObjectEviction(
+    const rpc::SubscribeForObjectEvictionRequest &request,
+    rpc::SubscribeForObjectEvictionReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
   // TODO(swang): Drop requests from raylets that executed an older version of
   // the task.
   if (HandleWrongRecipient(WorkerID::FromBinary(request.intended_worker_id()),

@@ -220,7 +220,10 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
                  const NodeID &node_id) {
             SendSpilledObjectRestorationRequestToRemoteNode(object_id, spilled_url,
                                                             node_id);
-          }),
+          },
+          /*core_worker_pubsub_client=*/
+          std::make_shared<PubsubClient>(self_node_id_, config.node_manager_address,
+                                         config.node_manager_port, worker_rpc_pool_)),
       last_local_gc_ns_(absl::GetCurrentTimeNanos()),
       local_gc_interval_ns_(RayConfig::instance().local_gc_interval_s() * 1e9),
       local_gc_min_interval_ns_(RayConfig::instance().local_gc_min_interval_s() * 1e9),

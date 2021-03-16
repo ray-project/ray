@@ -42,13 +42,14 @@ void PubsubClient::SubcribeObject(
 
   // Send a subscription message.
   auto owner_client = owner_client_pool_.GetOrConnect(owner_address);
-  rpc::WaitForObjectEvictionRequest wait_request;
+  rpc::SubscribeForObjectEvictionRequest wait_request;
   wait_request.set_object_id(object_id.Binary());
   wait_request.set_intended_worker_id(owner_address.worker_id());
   wait_request.mutable_subscriber_address()->CopyFrom(subscriber_address);
-  owner_client->WaitForObjectEviction(
-      wait_request, [this, owner_address, object_id](
-                        Status status, const rpc::WaitForObjectEvictionReply &reply) {
+  owner_client->SubscribeForObjectEviction(
+      wait_request,
+      [this, owner_address, object_id](
+          Status status, const rpc::SubscribeForObjectEvictionReply &reply) {
         if (!status.ok()) {
           auto failure_callback_result = GetFailureCallback(owner_address, object_id);
           auto still_subscribed = failure_callback_result.first;
