@@ -43,7 +43,7 @@ def load_package(config_path: str) -> "_RuntimePackage":
         >>> print(my_pkg._runtime_env)
         ... {"conda": {...},
         ...  "docker": "anyscale-ml/ray-ml:nightly-py38-cpu",
-        ...  "files": "https://github.com/demo/foo/blob/v3.0/project/"}
+        ...  "working_dir": "https://github.com/demo/foo/blob/v3.0/project/"}
 
         >>> # Run remote functions from the package.
         >>> my_pkg.my_func.remote(1, 2)
@@ -67,7 +67,7 @@ def load_package(config_path: str) -> "_RuntimePackage":
     runtime_env = config["runtime_env"]
 
     # Autofill working directory by uploading to GCS storage.
-    if "files" not in runtime_env:
+    if "working_dir" not in runtime_env:
         pkg_name = runtime_support.get_project_package_name(
             working_dir=base_dir, modules=[])
         pkg_uri = runtime_support.Protocol.GCS.value + "://" + pkg_name
@@ -88,7 +88,7 @@ def load_package(config_path: str) -> "_RuntimePackage":
             do_register_package()
         else:
             ray.worker._post_init_hooks.append(do_register_package)
-        runtime_env["files"] = pkg_uri
+        runtime_env["working_dir"] = pkg_uri
 
     # Autofill conda config.
     conda_yaml = os.path.join(base_dir, "conda.yaml")
@@ -183,15 +183,8 @@ class _RuntimePackage:
                 value = getattr(self._module, symbol)
                 if (isinstance(value, ray.remote_function.RemoteFunction)
                         or isinstance(value, ray.actor.ActorClass)):
-                    # TODO(ekl) use the runtime_env option here instead of
-                    # the override env vars. Currently this doesn't work since
-                    # there is no way to define per-task job config.
                     setattr(
-                        self,
-                        symbol,
-                        value.options(override_environment_variables={
-                            "RAY_RUNTIME_ENV_FILES": runtime_env["files"]
-                        }))
+                        self, symbol, value.options(runtime_env=runtime_env))
 
     def __repr__(self):
         return "ray._RuntimePackage(module={}, runtime_env={})".format(
