@@ -579,7 +579,7 @@ class DynamicTFPolicy(TFPolicy):
                 dict(self._input_dict, **self._loss_input_dict))
 
         if self._state_inputs:
-            train_batch["seq_lens"] = self._seq_lens
+            train_batch.seq_lens = self._seq_lens
 
         if log_once("loss_init"):
             logger.debug(
