@@ -444,7 +444,12 @@ class AutoscalingTest(unittest.TestCase):
 
     @unittest.skipIf(sys.platform == "win32", "Failing on Windows.")
     def testGetOrCreateHeadNode(self):
-        config_path = self.write_config(SMALL_CLUSTER)
+        config = copy.deepcopy(SMALL_CLUSTER)
+        head_run_option = "--kernel-memory=10g"
+        standard_run_option = "--memory-swap=5g"
+        config["docker"]["head_run_options"] = [head_run_option]
+        config["docker"]["run_options"] = [standard_run_option]
+        config_path = self.write_config(config)
         self.provider = MockProvider()
         runner = MockProcessRunner()
         runner.respond_to_call("json .Mounts", ["[]"])
@@ -477,7 +482,7 @@ class AutoscalingTest(unittest.TestCase):
 
         self.provider.create_node = _create_node
         commands.get_or_create_head_node(
-            SMALL_CLUSTER,
+            config,
             printable_config_file=config_path,
             no_restart=False,
             restart_only=False,
@@ -491,6 +496,8 @@ class AutoscalingTest(unittest.TestCase):
         runner.assert_has_call("1.2.3.4", "start_ray_head")
         self.assertEqual(self.provider.mock_nodes[0].node_type, None)
         runner.assert_has_call("1.2.3.4", pattern="docker run")
+        runner.assert_has_call("1.2.3.4", pattern=head_run_option)
+        runner.assert_has_call("1.2.3.4", pattern=standard_run_option)
 
         docker_mount_prefix = get_docker_host_mount_location(
             SMALL_CLUSTER["cluster_name"])
