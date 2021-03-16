@@ -360,7 +360,7 @@ The following metrics are exposed by Ray Serve:
    * - ``serve_backend_replica_starts``
      - The number of times this replica has been restarted due to failure.
    * - ``serve_backend_queuing_latency_ms``
-     - The latency for queries in the replica's queue waiting to be processed or batched.
+     - The latency for queries in the replica's queue waiting to be processed.
    * - ``serve_backend_processing_latency_ms``
      - The latency for queries to be processed.
    * - ``serve_replica_queued_queries``

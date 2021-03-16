@@ -116,8 +116,10 @@ def log_to_cli(config):
                        key,
                        head_src_key,
                        workers_src_key,
-                       allowed_tags=["default"],
+                       allowed_tags=None,
                        list_value=False):
+            if allowed_tags is None:
+                allowed_tags = ["default"]
 
             head_tags = {}
             workers_tags = {}
@@ -634,7 +636,9 @@ def _update_inbound_rules(target_security_group, sgids, config):
     target_security_group.authorize_ingress(IpPermissions=ip_permissions)
 
 
-def _create_default_inbound_rules(sgids, extended_rules=[]):
+def _create_default_inbound_rules(sgids, extended_rules=None):
+    if extended_rules is None:
+        extended_rules = []
     intracluster_rules = _create_default_intracluster_inbound_rules(sgids)
     ssh_rules = _create_default_ssh_inbound_rules()
     merged_rules = itertools.chain(
