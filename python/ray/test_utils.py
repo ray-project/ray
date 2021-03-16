@@ -327,6 +327,10 @@ def generate_system_config_map(**kwargs):
     return ray_kwargs
 
 
+class ReporterAgentDummy(object):
+    pass
+
+
 @ray.remote(num_cpus=0)
 class SignalActor:
     def __init__(self):

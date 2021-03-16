@@ -12,7 +12,7 @@ from ray.new_dashboard.utils import Bunch
 from ray.new_dashboard.modules.reporter.reporter_agent import ReporterAgent
 from ray.test_utils import (format_web_url, RayTestTimeoutException,
                             wait_until_server_available, wait_for_condition,
-                            fetch_prometheus)
+                            fetch_prometheus, ReporterAgentDummy)
 
 logger = logging.getLogger(__name__)
 
@@ -205,22 +205,28 @@ def test_report_stats():
             "pending_nodes": []
         }
     }
-    records = ReporterAgent._record_stats(test_stats, cluster_stats)
-    assert len(records) == 13
+
+    obj = ReporterAgentDummy()
+    obj._is_head_node = True
+
+    records = ReporterAgent._record_stats(obj, test_stats, cluster_stats)
+    assert len(records) == 16
     # Test stats without raylets
     test_stats["raylet"] = {}
-    records = ReporterAgent._record_stats(test_stats, cluster_stats)
-    assert len(records) == 11
-    # Test stats without autoscaler report
-    cluster_stats = {}
+    records = ReporterAgent._record_stats(obj, test_stats, cluster_stats)
+    assert len(records) == 14
     # Test stats with gpus
     test_stats["gpus"] = [{
         "utilization_gpu": 1,
         "memory_used": 100,
         "memory_total": 1000
     }]
-    records = ReporterAgent._record_stats(test_stats, cluster_stats)
-    assert len(records) == 15
+    records = ReporterAgent._record_stats(obj, test_stats, cluster_stats)
+    assert len(records) == 18
+    # Test stats without autoscaler report
+    cluster_stats = {}
+    records = ReporterAgent._record_stats(obj, test_stats, cluster_stats)
+    assert len(records) == 16
 
 
 if __name__ == "__main__":
