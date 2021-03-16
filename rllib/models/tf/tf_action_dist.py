@@ -1,8 +1,8 @@
 from math import log
 import numpy as np
 import functools
-import tree
 import gym
+import tree  # pip install dm_tree
 
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.modelv2 import ModelV2

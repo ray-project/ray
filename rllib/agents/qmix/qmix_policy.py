@@ -1,7 +1,7 @@
 from gym.spaces import Tuple, Discrete, Dict
 import logging
 import numpy as np
-import tree
+import tree  # pip install dm_tree
 
 import ray
 from ray.rllib.agents.qmix.mixers import VDNMixer, QMixer

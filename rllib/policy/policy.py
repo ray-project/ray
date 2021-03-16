@@ -3,7 +3,7 @@ import gym
 from gym.spaces import Box
 import logging
 import numpy as np
-import tree
+import tree  # pip install dm_tree
 from typing import Dict, List, Optional
 
 from ray.rllib.models.catalog import ModelCatalog
@@ -654,7 +654,6 @@ class Policy(metaclass=ABCMeta):
         train_batch = self._lazy_tensor_dict(postprocessed_batch)
         if seq_lens is not None:
             train_batch["seq_lens"] = seq_lens
-        #train_batch.count = self._dummy_batch.count
         train_batch.is_training = True
         # Call the loss function, if it exists.
         if self._loss is not None:

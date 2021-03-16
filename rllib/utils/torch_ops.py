@@ -1,6 +1,6 @@
 from gym.spaces import Discrete, MultiDiscrete
 import numpy as np
-import tree
+import tree  # pip install dm_tree
 import warnings
 
 from ray.rllib.models.repeated_values import RepeatedValues

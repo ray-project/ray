@@ -1,6 +1,6 @@
 from gym.spaces import Discrete, Box, MultiDiscrete, Space
 import numpy as np
-import tree
+import tree  # pip install dm_tree
 from typing import Union, Optional
 
 from ray.rllib.models.action_dist import ActionDistribution

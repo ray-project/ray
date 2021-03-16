@@ -1,3 +1,4 @@
+import copy
 import functools
 import gym
 import logging
@@ -5,15 +6,17 @@ import numpy as np
 import os
 import time
 import threading
+import tree  # pip install dm_tree
 from typing import Callable, Dict, List, Optional, Tuple, Type, Union
 
+import ray
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
 from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
-from ray.rllib.utils import force_list
+from ray.rllib.utils import force_list, NullContextManager
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.schedules import ConstantSchedule, PiecewiseSchedule
@@ -105,37 +108,45 @@ class TorchPolicy(Policy):
         """
         self.framework = "torch"
         super().__init__(observation_space, action_space, config)
-        if config["num_gpus"] > 0:
-            if config["_fake_gpus"]:
-                logger.info("TorchPolicy running on {} fake-GPU(s).".format(
-                    config["num_gpus"]))
-                self.device = torch.device("cpu")
-                self.device_shards = [
-                    self.device for _ in range(config["num_gpus"])
-                ]
-                self.model_shards = [
-                    model.to(self.device_shards[i])
-                    for i in range(config["num_gpus"])
-                ]
-            else:
-                assert torch.cuda.is_available()
-                logger.info("TorchPolicy running on {} GPU(s).".format(
-                    config["num_gpus"]))
-                self.device = torch.device("cuda")
-                self.device_shards = [
-                    torch.device("cuda:{}".format(id_))
-                    for i, id_ in enumerate(ray.get_gpu_ids())
-                    if i < config["num_gpus"]
-                ]
-                self.model_shards = nn.parallel.replicate.replicate(
-                    model, [
-                        id_ for i, id_ in enumerate(ray.get_gpu_ids())
-                        if i < config["num_gpus"]
-                    ])
-        else:
-            logger.info("TorchPolicy running on CPU.")
-            self.device_shards = [torch.device("cpu")]
+
+        # Create multi-GPU model towers, if necessary.
+        # - The central main model will be stored under self.model, residing on
+        #   self.device.
+        # - Each GPU will have a copy of that model under
+        #   self.model_gpu_towers, matching the devices in self.devices.
+        # - Parallelization is done by splitting the train batch and passing
+        #   it through the model shards in parallel, then averaging over the
+        #   resulting gradients, applying these averages on the main model and
+        #   updating all towers' weights from the main model.
+        # - In case of just one device (1 (fake) GPU or 1 CPU), no
+        #   parallelization will be done.
+        if config["_fake_gpus"] or config["num_gpus"] == 0:
+            logger.info(
+                "TorchPolicy running on {}.".format("{} fake-GPUs".format(
+                    config["num_gpus"]) if config["_fake_gpus"] else "CPU"))
             self.device = torch.device("cpu")
+            self.devices = [
+                self.device for _ in range(config["num_gpus"] or 1)
+            ]
+            self.model_gpu_towers = [
+                model if config["num_gpus"] == 0 else copy.deepcopy(model)
+                for i in range(config["num_gpus"] or 1)
+            ]
+        else:
+            assert torch.cuda.is_available()
+            logger.info("TorchPolicy running on {} GPU(s).".format(
+                config["num_gpus"]))
+            self.device = torch.device("cuda")
+            self.devices = [
+                torch.device("cuda:{}".format(id_))
+                for i, id_ in enumerate(ray.get_gpu_ids())
+                if i < config["num_gpus"]
+            ]
+            self.model_gpu_towers = nn.parallel.replicate.replicate(
+                model, [
+                    id_ for i, id_ in enumerate(ray.get_gpu_ids())
+                    if i < config["num_gpus"]
+                ])
         self.model = model.to(self.device)
 
         # Lock used for locking some methods on the object-level.
@@ -156,6 +167,14 @@ class TorchPolicy(Policy):
         self.unwrapped_model = model  # used to support DistributedDataParallel
         self._loss = loss
         self._optimizers = force_list(self.optimizer())
+        self.multi_gpu_param_groups = []
+        main_params = {p: i for i, p in enumerate(self.model.parameters())}
+        for o in self._optimizers:
+            param_indices = []
+            for pg_idx, pg in enumerate(o.param_groups):
+                for p in pg["params"]:
+                    param_indices.append(main_params[p])
+            self.multi_gpu_param_groups.append(set(param_indices))
 
         self.dist_class = action_distribution_class
         self.action_sampler_fn = action_sampler_fn
@@ -450,89 +469,57 @@ class TorchPolicy(Policy):
         else:
             postprocessed_batch["seq_lens"] = postprocessed_batch.seq_lens
 
-        #from torch.nn.parallel.scatter_gather import scatter_kwargs
-        #n = scatter_kwargs(None, postprocessed_batch, self.device_shards)
-
         # Mark the batch as "is_training" so the Model can use this
         # information.
         postprocessed_batch.is_training = True
 
-        # Multi-GPU case: Slice inputs into n equal batches.
-        len_ = len(postprocessed_batch)
-        batches = []
-        start = 0
-        for i, device in enumerate(self.device_shards):
-            shard_len = len_ // (len(self.device_shards) - i)
-            batch = self._lazy_tensor_dict(
-                postprocessed_batch.slice(start, start + shard_len),
-                device=device)
-            batches.append(batch)
-            len_ -= shard_len
-            start += shard_len
+        # Single device case: Use batch as-is (no slicing).
+        if len(self.devices) == 1:
+            batches = [self._lazy_tensor_dict(postprocessed_batch)]
+        # Multi-GPU case: Slice inputs into n (roughly) equal batches.
+        else:
+            len_ = len(postprocessed_batch)
+            batches = []
+            start = 0
+            for i, device in enumerate(self.devices):
+                shard_len = len_ // (len(self.devices) - i)
+                batch = self._lazy_tensor_dict(
+                    postprocessed_batch.slice(start, start + shard_len),
+                    device=device)
+                batches.append(batch)
+                len_ -= shard_len
+                start += shard_len
 
-        #train_batch = self._lazy_tensor_dict(postprocessed_batch)
-        TODO: continue
-        # Calculate the actual policy loss.
-        loss_out = force_list(
-            self._loss(self, self.model, self.dist_class, train_batch))
+        # Copy weights of main model to all towers.
+            state_dict = self.model.state_dict()
+            for tower in self.model_gpu_towers:
+                tower.load_state_dict(state_dict)
 
-        # Call Model's custom-loss with Policy loss outputs and train_batch.
-        if self.model:
-            loss_out = self.model.custom_loss(loss_out, train_batch)
+        # Do the (maybe parallelized) gradient calculation step.
+        tower_outputs = self._multi_gpu_parallel_grad_calc(batches)
 
-        # Give Exploration component that chance to modify the loss (or add
-        # its own terms).
-        if hasattr(self, "exploration"):
-            loss_out = self.exploration.get_exploration_loss(
-                loss_out, train_batch)
-
-        assert len(loss_out) == len(self._optimizers)
-
-        # assert not any(torch.isnan(l) for l in loss_out)
-        fetches = self.extra_compute_grad_fetches()
-
-        # Loop through all optimizers.
-        grad_info = {"allreduce_latency": 0.0}
-
-        all_grads = []
-        for i, opt in enumerate(self._optimizers):
-            # Erase gradients in all vars of this optimizer.
-            opt.zero_grad()
-            # Recompute gradients of loss over all variables.
-            loss_out[i].backward(retain_graph=(i < len(self._optimizers) - 1))
-            grad_info.update(self.extra_grad_process(opt, loss_out[i]))
-
-            grads = []
-            # Note that return values are just references;
-            # Calling zero_grad would modify the values.
-            for param_group in opt.param_groups:
-                for p in param_group["params"]:
-                    if p.grad is not None:
-                        grads.append(p.grad)
-                        all_grads.append(p.grad.data.cpu().numpy())
-                    else:
-                        all_grads.append(None)
-
-            if self.distributed_world_size:
-                start = time.time()
-                if torch.cuda.is_available():
-                    # Sadly, allreduce_coalesced does not work with CUDA yet.
-                    for g in grads:
-                        torch.distributed.all_reduce(
-                            g, op=torch.distributed.ReduceOp.SUM)
-                else:
-                    torch.distributed.all_reduce_coalesced(
-                        grads, op=torch.distributed.ReduceOp.SUM)
-
-                for param_group in opt.param_groups:
-                    for p in param_group["params"]:
-                        if p.grad is not None:
-                            p.grad /= self.distributed_world_size
-
-                grad_info["allreduce_latency"] += time.time() - start
+        # Multi device (GPU) case.
+        if len(self.devices) > 1:
+            # Reduce over GPU-towers.
+            all_grads = [
+                torch.mean(
+                    torch.stack([t[0][i] for t in tower_outputs]), dim=0)
+                for i in range(len(tower_outputs[0][0]))
+            ]
+            # Set main model's grads to mean-reduced values.
+            for i, p in enumerate(self.model.parameters()):
+                p.grad = all_grads[i]
+            # Reduce stats over towers as well.
+            grad_info = tree.map_structure(lambda *t: np.nanmean(t, axis=0),
+                                           *[t[1] for t in tower_outputs])
+        # Single device case.
+        else:
+            all_grads, grad_info = tower_outputs[0]
 
         grad_info["allreduce_latency"] /= len(self._optimizers)
-        grad_info.update(self.extra_grad_info(train_batch))
+        grad_info.update(self.extra_grad_info(postprocessed_batch))
+
+        fetches = self.extra_compute_grad_fetches()
 
         return all_grads, dict(fetches, **{LEARNER_STATS_KEY: grad_info})
 
@@ -731,8 +718,129 @@ class TorchPolicy(Policy):
         if not isinstance(postprocessed_batch, SampleBatch):
             postprocessed_batch = SampleBatch(postprocessed_batch)
         postprocessed_batch.set_get_interceptor(
-            functools.partial(convert_to_torch_tensor, device=device or self.device))
+            functools.partial(
+                convert_to_torch_tensor, device=device or self.device))
         return postprocessed_batch
+
+    def _multi_gpu_parallel_grad_calc(self, sample_batches):
+        """Performs a parallelized loss and gradient calculation over the batch.
+
+        Splits up the given train batch into n shards (n=number of this
+        Policy's devices) and passes each data shard (in parallel) through
+        the loss function using the individual devices' models
+        (self.model_gpu_towers). Then returns each tower's outputs.
+
+        Args:
+            sample_batches (List[SampleBatch]): A list of SampleBatch shards to
+                calculate loss and gradients for.
+
+        Returns:
+            List[Tuple[List[TensorType], StatsDict]]: A list (one item per
+                device) of 2-tuples with 1) gradient list and 2) stats dict.
+        """
+        assert len(self.model_gpu_towers) == len(sample_batches)
+        lock = threading.Lock()
+        results = {}
+        grad_enabled = torch.is_grad_enabled()
+
+        def _worker(shard_idx, model, sample_batch, device):
+            torch.set_grad_enabled(grad_enabled)
+            try:
+                with NullContextManager(
+                ) if device.type == "cpu" else torch.cuda.device(device):
+                    loss_out = force_list(
+                        self._loss(self, model, self.dist_class, sample_batch))
+
+                    # Call Model's custom-loss with Policy loss outputs and
+                    # train_batch.
+                    loss_out = model.custom_loss(loss_out, sample_batch)
+
+                    assert len(loss_out) == len(self._optimizers)
+
+                    # Loop through all optimizers.
+                    grad_info = {"allreduce_latency": 0.0}
+
+                    all_grads = []
+                    for opt_idx, opt in enumerate(self._optimizers):
+                        # Erase gradients in all vars of the tower that this
+                        # optimizer would affect.
+                        param_indices = self.multi_gpu_param_groups[opt_idx]
+                        for param_idx, param in enumerate(model.parameters()):
+                            if param_idx in param_indices and \
+                                    param.grad is not None:
+                                param.grad.data.zero_()
+                        # Recompute gradients of loss over all variables.
+                        loss_out[opt_idx].backward(
+                            retain_graph=(opt_idx < len(self._optimizers) - 1))
+                        grad_info.update(
+                            self.extra_grad_process(opt, loss_out[opt_idx]))
+
+                        grads = []
+                        # Note that return values are just references;
+                        # Calling zero_grad would modify the values.
+                        for param_idx, param in enumerate(model.parameters()):
+                            if param_idx in param_indices:
+                                if param.grad is not None:
+                                    grads.append(param.grad)
+                                all_grads.append(param.grad)
+
+                        if self.distributed_world_size:
+                            start = time.time()
+                            if torch.cuda.is_available():
+                                # Sadly, allreduce_coalesced does not work with
+                                # CUDA yet.
+                                for g in grads:
+                                    torch.distributed.all_reduce(
+                                        g, op=torch.distributed.ReduceOp.SUM)
+                            else:
+                                torch.distributed.all_reduce_coalesced(
+                                    grads, op=torch.distributed.ReduceOp.SUM)
+
+                            for param_group in opt.param_groups:
+                                for p in param_group["params"]:
+                                    if p.grad is not None:
+                                        p.grad /= self.distributed_world_size
+
+                            grad_info[
+                                "allreduce_latency"] += time.time() - start
+
+                with lock:
+                    results[shard_idx] = (all_grads, grad_info)
+            except Exception as e:
+                with lock:
+                    results[shard_idx] = ValueError(
+                        e.args[0] + "\n" +
+                        "In tower {} on device {}".format(shard_idx, device))
+
+        # Single device (GPU) case.
+        if len(self.devices) == 1:
+            _worker(0, self.model, sample_batches[0], self.device)
+            if isinstance(results[0], ValueError):
+                raise (results[0])
+            return [results[0]]
+        # Multi device (GPU) case: Parallelize via threads.
+        else:
+            threads = [
+                threading.Thread(
+                    target=_worker,
+                    args=(shard_idx, model, sample_batch, device))
+                for shard_idx, (model, sample_batch, device) in enumerate(
+                    zip(self.model_gpu_towers, sample_batches, self.devices))
+            ]
+
+            for thread in threads:
+                thread.start()
+            for thread in threads:
+                thread.join()
+
+        # Gather all threads' outputs and return.
+        outputs = []
+        for shard_idx in range(len(sample_batches)):
+            output = results[shard_idx]
+            if isinstance(output, Exception):
+                output.reraise()
+            outputs.append(results[shard_idx])
+        return outputs
 
 
 # TODO: (sven) Unify hyperparam annealing procedures across RLlib (tf/torch)
@@ -789,45 +897,3 @@ class EntropyCoeffSchedule:
         super(EntropyCoeffSchedule, self).on_global_var_update(global_vars)
         self.entropy_coeff = self.entropy_coeff_schedule.value(
             global_vars["timestep"])
-
-
-def parallel_apply(models, sample_batches, devices):
-    assert len(models) == len(sample_batches)
-    assert len(models) == len(devices)
-    devices = list(map(lambda x: _get_device_index(x, True), devices))
-    lock = threading.Lock()
-    results = {}
-    grad_enabled = torch.is_grad_enabled()
-
-    def _worker(i, model, sample_batch, device=None):
-        torch.set_grad_enabled(grad_enabled)
-        try:
-            with torch.cuda.device(device):
-                output = model(sample_batch)
-            with lock:
-                results[i] = output
-        except Exception:
-            with lock:
-                results[i] = ExceptionWrapper(
-                    where="in replica {} on device {}".format(i, device))
-
-    if len(modules) > 1:
-        threads = [threading.Thread(target=_worker,
-                                    args=(i, model, sample_batch, device))
-                   for i, (model, sample_batch, device) in
-                   enumerate(zip(models, sample_batches, devices))]
-
-        for thread in threads:
-            thread.start()
-        for thread in threads:
-            thread.join()
-    else:
-        _worker(0, modules[0], sample_batches[0], devices[0])
-
-    outputs = []
-    for i in range(len(sample_batches)):
-        output = results[i]
-        if isinstance(output, ExceptionWrapper):
-            output.reraise()
-        outputs.append(output)
-    return outputs
