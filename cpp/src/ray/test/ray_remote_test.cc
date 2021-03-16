@@ -149,17 +149,20 @@ class DummyObject {
   int count;
 
   MSGPACK_DEFINE(count);
-
+  DummyObject() = default;
   DummyObject(int init) {
     std::cout << "construct DummyObject\n";
     count = init;
   }
+
+  int Add(int x, int y) { return x + y; }
 
   ~DummyObject() { std::cout << "destruct DummyObject\n"; }
 
   static DummyObject *FactoryCreate(int init) { return new DummyObject(init); }
 };
 RAY_REMOTE(DummyObject::FactoryCreate);
+RAY_REMOTE(&DummyObject::Add);
 
 TEST(RayApiTest, CreateActor) {
   ray::api::RayConfig::GetInstance()->use_ray_remote = true;
@@ -172,6 +175,19 @@ TEST(RayApiTest, CreateActor) {
   ActorHandle<DummyObject> actor1 = Ray::Actor(DummyObject::FactoryCreate).Remote(r);
   auto s1 = actor1.ID().Hex();
   EXPECT_FALSE(s1.empty());
+
+  ray::api::RayConfig::GetInstance()->use_ray_remote = false;
+}
+
+TEST(RayApiTest, ActorTask) {
+  ray::api::RayConfig::GetInstance()->use_ray_remote = true;
+
+  ActorHandle<DummyObject> actor = Ray::Actor(DummyObject::FactoryCreate).Remote(1);
+  auto r = actor.Task(&DummyObject::Add).Remote(1, 2);
+  EXPECT_EQ(3, *(r.Get()));
+
+  auto r1 = actor.Task(&DummyObject::Add).Remote(2, 3);
+  EXPECT_EQ(5, *(r1.Get()));
 
   ray::api::RayConfig::GetInstance()->use_ray_remote = false;
 }

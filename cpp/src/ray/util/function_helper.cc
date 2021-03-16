@@ -53,7 +53,8 @@ std::shared_ptr<boost::dll::shared_library> FunctionHelper::LoadDll(
   return lib;
 }
 
-std::function<msgpack::sbuffer(const std::vector<std::shared_ptr<::ray::RayObject>> &)>
+std::function<msgpack::sbuffer(const std::vector<std::shared_ptr<::ray::RayObject>> &,
+                               msgpack::sbuffer *)>
 FunctionHelper::GetExecuteFunction(const std::string &lib_name) {
   auto it = funcs_.find(lib_name);
   if (it != funcs_.end()) {
@@ -67,7 +68,8 @@ FunctionHelper::GetExecuteFunction(const std::string &lib_name) {
 
   try {
     auto execute_func = boost::dll::import_alias<msgpack::sbuffer(
-        const std::vector<std::shared_ptr<::ray::RayObject>> &)>(*lib, "CallInDll");
+        const std::vector<std::shared_ptr<::ray::RayObject>> &, msgpack::sbuffer *)>(
+        *lib, "CallInDll");
     funcs_.emplace(lib_name, execute_func);
     return execute_func;
   } catch (std::exception &e) {

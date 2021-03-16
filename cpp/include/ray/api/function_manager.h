@@ -71,6 +71,17 @@ inline static msgpack::sbuffer PackError(std::string error_msg) {
   return sbuffer;
 }
 
+template <typename>
+struct RemoveFirst;
+
+template <class First, class... Second>
+struct RemoveFirst<std::tuple<First, Second...>> {
+  using type = std::tuple<Second...>;
+};
+
+template <class Tuple>
+using RemoveFirst_t = typename RemoveFirst<Tuple>::type;
+
 /// It's help to invoke functions and member functions, the class Invoker<Function> help
 /// do type erase.
 template <typename Function>
@@ -99,6 +110,44 @@ struct Invoker {
         return PackError("arguments error");
       }
       result = Invoker<Function>::Call(func, std::move(tp));
+    } catch (msgpack::type_error &e) {
+      result = PackError(std::string("invalid arguments: ") + e.what());
+    } catch (const std::exception &e) {
+      result = PackError(std::string("function execute exception: ") + e.what());
+    } catch (...) {
+      result = PackError("unknown exception");
+    }
+
+    return result;
+  }
+
+  static inline msgpack::sbuffer ApplyMember(
+      const Function &func, msgpack::sbuffer *ptr,
+      const std::vector<std::shared_ptr<RayObject>> &args_buffer) {
+    using ArgsTuple = RemoveFirst_t<boost::callable_traits::args_t<Function>>;
+    if (std::tuple_size<ArgsTuple>::value != args_buffer.size() - 1) {
+      return PackError("Arguments number not match");
+    }
+
+    if (ptr == nullptr) {
+      return PackError("Arguments not match, actor buffer is null");
+    }
+
+    std::vector<std::shared_ptr<RayObject>> new_vector;
+    if (args_buffer.size() > 1) {
+      auto first = args_buffer.begin() + 1;
+      new_vector = std::vector<std::shared_ptr<RayObject>>(first, args_buffer.end());
+    }
+
+    msgpack::sbuffer result;
+    ArgsTuple tp{};
+    try {
+      bool is_ok = GetArgsTuple(
+          tp, new_vector, absl::make_index_sequence<std::tuple_size<ArgsTuple>::value>{});
+      if (!is_ok) {
+        return PackError("arguments error");
+      }
+      result = Invoker<Function>::CallMember(func, ptr, std::move(tp));
     } catch (msgpack::type_error &e) {
       result = PackError(std::string("invalid arguments: ") + e.what());
     } catch (const std::exception &e) {
@@ -159,6 +208,34 @@ struct Invoker {
     (void)tup;
     return f(std::move(std::get<I>(tup))...);
   }
+
+  template <typename F, typename... Args>
+  static absl::enable_if_t<std::is_void<boost::callable_traits::return_type_t<F>>::value,
+                           msgpack::sbuffer>
+  CallMember(const F &f, msgpack::sbuffer *ptr, std::tuple<Args...> tp) {
+    CallMemberInternal(f, ptr, absl::make_index_sequence<sizeof...(Args)>{},
+                       std::move(tp));
+    return PackVoid();
+  }
+
+  template <typename F, typename... Args>
+  static absl::enable_if_t<!std::is_void<boost::callable_traits::return_type_t<F>>::value,
+                           msgpack::sbuffer>
+  CallMember(const F &f, msgpack::sbuffer *ptr, std::tuple<Args...> tp) {
+    auto r = CallMemberInternal(f, ptr, absl::make_index_sequence<sizeof...(Args)>{},
+                                std::move(tp));
+    return PackReturnValue(r);
+  }
+
+  template <typename F, size_t... I, typename... Args>
+  static boost::callable_traits::return_type_t<F> CallMemberInternal(
+      const F &f, msgpack::sbuffer *ptr, const absl::index_sequence<I...> &,
+      std::tuple<Args...> tup) {
+    (void)tup;
+    using Self = boost::callable_traits::class_of_t<F>;
+    auto self = ray::api::Serializer::Deserialize<Self>(ptr->data(), ptr->size());
+    return (self.*f)(std::move(std::get<I>(tup))...);
+  }
 };
 
 /// Manage all ray remote functions, add remote functions by RAY_REMOTE, get functions by
@@ -180,16 +257,37 @@ class FunctionManager {
     return &it->second;
   }
 
+  std::function<msgpack::sbuffer(msgpack::sbuffer *,
+                                 const std::vector<std::shared_ptr<RayObject>> &)>
+      *GetMemberFunction(const std::string &func_name) {
+    auto it = map_mem_func_invokers_.find(func_name);
+    if (it == map_mem_func_invokers_.end()) {
+      return nullptr;
+    }
+
+    return &it->second;
+  }
+
   template <typename Function>
-  bool RegisterRemoteFunction(std::string const &name, const Function &f) {
-    /// Now it is just support free function, it will be
-    /// improved to support member function later.
+  absl::enable_if_t<!std::is_member_function_pointer<Function>::value, bool>
+  RegisterRemoteFunction(std::string const &name, const Function &f) {
     auto pair = func_ptr_to_key_map_.emplace(GetAddress(f), name);
     if (!pair.second) {
       return false;
     }
 
     return RegisterNonMemberFunc(name, f);
+  }
+
+  template <typename Function>
+  absl::enable_if_t<std::is_member_function_pointer<Function>::value, bool>
+  RegisterRemoteFunction(std::string const &name, const Function &f) {
+    auto pair = func_ptr_to_key_map_.emplace(GetAddress(f), name);
+    if (!pair.second) {
+      return false;
+    }
+
+    return RegisterMemberFunc(name, f);
   }
 
   template <typename Function>
@@ -216,6 +314,14 @@ class FunctionManager {
         .second;
   }
 
+  template <typename Function>
+  bool RegisterMemberFunc(std::string const &name, Function f) {
+    return map_mem_func_invokers_
+        .emplace(name, std::bind(&Invoker<Function>::ApplyMember, std::move(f),
+                                 std::placeholders::_1, std::placeholders::_2))
+        .second;
+  }
+
   template <class Dest, class Source>
   Dest BitCast(const Source &source) {
     static_assert(sizeof(Dest) == sizeof(Source),
@@ -235,6 +341,10 @@ class FunctionManager {
   std::unordered_map<std::string, std::function<msgpack::sbuffer(
                                       const std::vector<std::shared_ptr<RayObject>> &)>>
       map_invokers_;
+  std::unordered_map<std::string, std::function<msgpack::sbuffer(
+                                      msgpack::sbuffer *,
+                                      const std::vector<std::shared_ptr<RayObject>> &)>>
+      map_mem_func_invokers_;
   std::unordered_map<std::string, std::string> func_ptr_to_key_map_;
 };
 }  // namespace internal

@@ -27,7 +27,8 @@ namespace ray {
 namespace internal {
 /// Execute remote functions by networking stream.
 inline static msgpack::sbuffer TaskExecutionHandler(
-    const std::vector<std::shared_ptr<RayObject>> &args_buffer) {
+    const std::vector<std::shared_ptr<RayObject>> &args_buffer,
+    msgpack::sbuffer *actor_buffer) {
   if (args_buffer.empty()) {
     return PackError("lack of required arguments");
   }
@@ -37,13 +38,23 @@ inline static msgpack::sbuffer TaskExecutionHandler(
     try {
       auto func_name = ray::api::Serializer::Deserialize<std::string>(
           (char *)memory_buffer->Data(), memory_buffer->Size());
-      auto func_ptr = FunctionManager::Instance().GetFunction(func_name);
-      if (func_ptr == nullptr) {
-        result = PackError("unknown function: " + func_name);
-        break;
-      }
+      if (actor_buffer) {
+        auto func_ptr = FunctionManager::Instance().GetMemberFunction(func_name);
+        if (func_ptr == nullptr) {
+          result = PackError("unknown actor task: " + func_name);
+          break;
+        }
 
-      result = (*func_ptr)(args_buffer);
+        result = (*func_ptr)(actor_buffer, args_buffer);
+      } else {
+        auto func_ptr = FunctionManager::Instance().GetFunction(func_name);
+        if (func_ptr == nullptr) {
+          result = PackError("unknown normal task: " + func_name);
+          break;
+        }
+
+        result = (*func_ptr)(args_buffer);
+      }
     } catch (const std::exception &ex) {
       result = PackError(ex.what());
     }
@@ -53,8 +64,9 @@ inline static msgpack::sbuffer TaskExecutionHandler(
 }
 
 inline static msgpack::sbuffer CallInDll(
-    const std::vector<std::shared_ptr<RayObject>> &args_buffer) {
-  return TaskExecutionHandler(args_buffer);
+    const std::vector<std::shared_ptr<RayObject>> &args_buffer,
+    msgpack::sbuffer *actor_buffer) {
+  return TaskExecutionHandler(args_buffer, actor_buffer);
 }
 BOOST_DLL_ALIAS(internal::CallInDll, CallInDll);
 }  // namespace internal
