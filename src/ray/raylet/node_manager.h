@@ -634,6 +634,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   PeriodicalRunner periodical_runner_;
   /// The period used for the resources report timer.
   uint64_t report_resources_period_ms_;
+  /// The time that the last resource report was sent at. Used to make sure we are
+  /// keeping up with resource reports.
+  uint64_t last_resource_report_at_ms_;
   /// Whether to enable fair queueing between task classes in raylet.
   bool fair_queueing_enabled_;
   /// Incremented each time we encounter a potential resource deadlock condition.

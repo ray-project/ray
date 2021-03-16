@@ -1239,9 +1239,12 @@ def connect(node,
     if mode == SCRIPT_MODE:
         runtime_env.upload_runtime_env_package_if_needed(job_config)
     elif mode == WORKER_MODE:
-        runtime_env.ensure_runtime_env_setup(
-            json.loads(os.environ.get("RAY_RUNTIME_ENV_FILES", "[]"))
-            or worker.core_worker.get_job_config().runtime_env.uris)
+        # TODO(ekl) get rid of the env var hack and get runtime env from the
+        # task spec and/or job config only.
+        job_config = os.environ.get("RAY_RUNTIME_ENV_FILES")
+        job_config = [job_config] if job_config else \
+          worker.core_worker.get_job_config().runtime_env.uris
+        runtime_env.ensure_runtime_env_setup(job_config)
 
     if driver_object_store_memory is not None:
         worker.core_worker.set_object_store_client_options(
@@ -1639,8 +1642,8 @@ def cancel(object_ref, *, force=False, recursive=True):
     If the specified task is pending execution, it will not be executed. If
     the task is currently executing, the behavior depends on the ``force``
     flag. When ``force=False``, a KeyboardInterrupt will be raised in Python
-    and when ``force=True``, the executing the task will immediately exit. If
-    the task is already finished, nothing will happen.
+    and when ``force=True``, the executing task will immediately exit.
+    If the task is already finished, nothing will happen.
 
     Only non-actor tasks can be canceled. Canceled tasks will not be
     retried (max_retries will not be respected).
@@ -1844,9 +1847,8 @@ def remote(*args, **kwargs):
             the default is 4 (default), and a value of -1 indicates
             infinite retries.
         runtime_env (Dict[str, Any]): Specifies the runtime environment for
-            this actor or task and its children.  Currently supports the
-            key "conda_env", whose value should be a string which is the
-            name of the desired conda environment.
+            this actor or task and its children. See``runtime_env.py`` for
+            detailed documentation.
         override_environment_variables (Dict[str, str]): This specifies
             environment variables to override for the actor or task.  The
             overrides are propagated to all child actors and tasks.  This

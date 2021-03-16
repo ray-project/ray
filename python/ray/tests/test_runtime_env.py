@@ -227,7 +227,7 @@ def test_task_conda_env(conda_envs, shutdown_only):
 
     tf_versions = ["2.2.0", "2.3.0"]
     for tf_version in tf_versions:
-        runtime_env = {"conda_env": f"tf-{tf_version}"}
+        runtime_env = {"conda": f"tf-{tf_version}"}
         task = get_tf_version.options(runtime_env=runtime_env)
         assert ray.get(task.remote()) == tf_version
 
@@ -246,7 +246,7 @@ def test_actor_conda_env(conda_envs, shutdown_only):
 
     tf_versions = ["2.2.0", "2.3.0"]
     for tf_version in tf_versions:
-        runtime_env = {"conda_env": f"tf-{tf_version}"}
+        runtime_env = {"conda": f"tf-{tf_version}"}
         actor = TfVersionActor.options(runtime_env=runtime_env).remote()
         assert ray.get(actor.get_tf_version.remote()) == tf_version
 
@@ -273,7 +273,7 @@ def test_inheritance_conda_env(conda_envs, shutdown_only):
 
     tf_versions = ["2.2.0", "2.3.0"]
     for tf_version in tf_versions:
-        runtime_env = {"conda_env": f"tf-{tf_version}"}
+        runtime_env = {"conda": f"tf-{tf_version}"}
         task = wrapped_tf_version.options(runtime_env=runtime_env)
         assert ray.get(task.remote()) == tf_version
         actor = TfVersionActor.options(runtime_env=runtime_env).remote()
@@ -293,16 +293,26 @@ def test_job_config_conda_env(conda_envs):
         return tf.__version__
 
     for tf_version in ["2.2.0", "2.3.0"]:
-        runtime_env = {"conda_env": f"tf-{tf_version}"}
+        runtime_env = {"conda": f"tf-{tf_version}"}
         ray.init(job_config=JobConfig(runtime_env=runtime_env))
         assert ray.get(get_conda_env.remote()) == tf_version
         ray.shutdown()
 
 
 def test_get_conda_env_dir(tmp_path):
+    from pathlib import Path
+    """
+    Typical output of `conda env list`, for context:
+
+    base                 /Users/scaly/anaconda3
+    my_env_1             /Users/scaly/anaconda3/envs/my_env_1
+
+    For this test, `tmp_path` is a stand-in for `Users/scaly/anaconda3`.
+    """
+
     # Simulate starting in an env named tf1.
-    d = tmp_path / "tf1"
-    d.mkdir()
+    d = tmp_path / "envs" / "tf1"
+    Path.mkdir(d, parents=True)
     with mock.patch.dict(os.environ, {
             "CONDA_PREFIX": str(d),
             "CONDA_DEFAULT_ENV": "tf1"
@@ -310,10 +320,22 @@ def test_get_conda_env_dir(tmp_path):
         with pytest.raises(ValueError):
             # Env tf2 should not exist.
             env_dir = get_conda_env_dir("tf2")
-        tf2_dir = tmp_path / "tf2"
-        tf2_dir.mkdir()
+        tf2_dir = tmp_path / "envs" / "tf2"
+        Path.mkdir(tf2_dir, parents=True)
         env_dir = get_conda_env_dir("tf2")
-        assert (env_dir == str(tmp_path / "tf2"))
+        assert (env_dir == str(tmp_path / "envs" / "tf2"))
+
+    # Simulate starting in (base) conda env.
+    with mock.patch.dict(os.environ, {
+            "CONDA_PREFIX": str(tmp_path),
+            "CONDA_DEFAULT_ENV": "base"
+    }):
+        with pytest.raises(ValueError):
+            # Env tf3 should not exist.
+            env_dir = get_conda_env_dir("tf3")
+        # Env tf2 still should exist.
+        env_dir = get_conda_env_dir("tf2")
+        assert (env_dir == str(tmp_path / "envs" / "tf2"))
 
 
 @unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")

@@ -17,6 +17,8 @@ from urllib.parse import urlparse
 import os
 import sys
 
+from ray._private.utils import get_conda_env_dir
+
 # We need to setup this variable before
 # using this module
 PKG_DIR = None
@@ -25,6 +27,67 @@ logger = logging.getLogger(__name__)
 
 FILE_SIZE_WARNING = 10 * 1024 * 1024  # 10MB
 FILE_SIZE_LIMIT = 50 * 1024 * 1024  # 50MB
+
+
+class RuntimeEnvDict:
+    """Parses and validates the runtime env dictionary from the user.
+
+    Attributes:
+        working_dir (Path): Specifies the working directory of the worker.
+            This can either be a local directory or zip file.
+            Examples:
+                "."  # cwd
+                "local_project.zip"  # archive is unpacked into directory
+        py_modules (List[Path]): Similar to working_dir, but specifies python
+            modules to add to the `sys.path`.
+            Examples:
+                ["/path/to/other_module", "/other_path/local_project.zip"]
+        conda (dict | str): Either the conda YAML config or the name of a
+            local conda env (e.g., "pytorch_p36"). The Ray dependency will be
+            automatically injected into the conda env to ensure compatibility
+            with the cluster Ray. The conda name may be mangled automatically
+            to avoid conflicts between runtime envs.
+            Examples:
+                {"channels": ["defaults"], "dependencies": ["codecov"]}
+                "pytorch_p36"   # Found on DLAMIs
+        docker (dict): Require a given (Docker) container image. The Ray
+            dependency will be automatically installed into the docker image
+            to ensure compatibility with the cluster Ray. The `run_options`
+            dict spec is here: https://docs.docker.com/engine/reference/run/
+            Examples:
+                {"image": "anyscale/ray-ml:nightly-py38-cpu", **run_options}
+        env_vars (dict): Environment variables to set.
+            Examples:
+                {"OMP_NUM_THREADS": "32", "TF_WARNINGS": "none"}
+    """
+
+    def __init__(self, runtime_env_json: dict):
+        if "conda" in runtime_env_json:
+            self.conda = runtime_env_json["conda"]
+        else:
+            self.conda = None
+        if "working_dir" in runtime_env_json:
+            self.working_dir = runtime_env_json["working_dir"]
+        else:
+            self.working_dir = None
+        # TODO(ekl) we should have better schema validation here.
+        # TODO(ekl) support env_vars, docker, py_modules
+
+    def to_worker_env_vars(self, override_environment_variables: dict) -> dict:
+        """Given existing worker env vars, return an updated dict.
+
+        This sets any necessary env vars to setup the runtime env.
+        TODO(ekl): env vars is probably not the right long term impl.
+        """
+        if override_environment_variables is None:
+            override_environment_variables = {}
+        if self.conda:
+            conda_env_dir = get_conda_env_dir(self.conda)
+            override_environment_variables.update(PYTHONHOME=conda_env_dir)
+        if self.working_dir:
+            override_environment_variables.update(
+                RAY_RUNTIME_ENV_FILES=self.working_dir)
+        return override_environment_variables
 
 
 class Protocol(Enum):
@@ -191,7 +254,7 @@ def _store_package_in_gcs(gcs_key: str, data: bytes) -> int:
     return len(data)
 
 
-def push_package(pkg_uri: str, pkg_path: str) -> None:
+def push_package(pkg_uri: str, pkg_path: str) -> int:
     """Push a package to uri.
 
     This function is to push a local file to remote uri. Right now, only GCS
@@ -207,7 +270,7 @@ def push_package(pkg_uri: str, pkg_path: str) -> None:
     (protocol, pkg_name) = _parse_uri(pkg_uri)
     data = Path(pkg_path).read_bytes()
     if protocol in (Protocol.GCS, Protocol.PIN_GCS):
-        _store_package_in_gcs(pkg_uri, data)
+        return _store_package_in_gcs(pkg_uri, data)
     else:
         raise NotImplementedError(f"Protocol {protocol} is not supported")
 

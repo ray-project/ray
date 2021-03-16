@@ -378,6 +378,7 @@ ray::Status NodeManager::RegisterGcs() {
         [this] { local_object_manager_.FlushFreeObjects(); },
         RayConfig::instance().free_objects_period_milliseconds());
   }
+  last_resource_report_at_ms_ = current_time_ms();
   periodical_runner_.RunFnPeriodically([this] { ReportResourceUsage(); },
                                        report_resources_period_ms_);
   // Start the timer that gets object manager profiling information and sends it
@@ -473,6 +474,18 @@ void NodeManager::FillResourceReport(rpc::ResourcesData &resources_data) {
 }
 
 void NodeManager::ReportResourceUsage() {
+  uint64_t now_ms = current_time_ms();
+  uint64_t interval = now_ms - last_resource_report_at_ms_;
+  if (interval >
+      RayConfig::instance().num_resource_report_periods_warning() *
+          RayConfig::instance().raylet_report_resources_period_milliseconds()) {
+    RAY_LOG(WARNING)
+        << "Last resource report was sent " << interval
+        << " ms ago. There might be resource pressure on this node. If "
+           "resource reports keep lagging, scheduling decisions of other nodes "
+           "may become stale";
+  }
+  last_resource_report_at_ms_ = now_ms;
   auto resources_data = std::make_shared<rpc::ResourcesData>();
   FillResourceReport(*resources_data);
 
@@ -2166,8 +2179,8 @@ void NodeManager::HandleFormatGlobalMemoryInfo(
 
   // Fetch from remote nodes.
   for (const auto &entry : remote_node_manager_addresses_) {
-    std::unique_ptr<rpc::NodeManagerClient> client(new rpc::NodeManagerClient(
-        entry.second.first, entry.second.second, client_call_manager_));
+    auto client = std::make_unique<rpc::NodeManagerClient>(
+        entry.second.first, entry.second.second, client_call_manager_);
     client->GetNodeStats(
         stats_req, [replies, store_reply](const ray::Status &status,
                                           const rpc::GetNodeStatsReply &r) {
