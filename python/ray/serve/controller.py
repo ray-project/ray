@@ -19,7 +19,7 @@ from ray.serve.endpoint_state import EndpointState
 from ray.serve.http_state import HTTPState
 from ray.serve.kv_store import RayInternalKVStore
 from ray.serve.long_poll import LongPollHost
-from ray.serve.utils import logger
+from ray.serve.utils import logger, get_random_letters
 
 # Used for testing purposes only. If this is set, the controller will crash
 # after writing each checkpoint with the specified probability.
@@ -243,3 +243,14 @@ class ServeController:
                 for replica in replica_dict.values():
                     ray.kill(replica, no_restart=True)
             self.kv_store.delete(CHECKPOINT_KEY)
+
+    async def deploy(
+            self, name: str, backend_config: BackendConfig,
+        replica_config: ReplicaConfig, version: Optional[str]) -> Optional[GoalId]:
+        """TODO."""
+        async with self.write_lock:
+            goal_id = self.backend_state.create_backend(
+                name, backend_config, replica_config, version)
+
+            self.endpoint_state.create_endpoint(name, f"/{name}", ["GET", "POST"], TrafficPolicy({name: 1.0}))
+            return goal_id
