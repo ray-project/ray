@@ -359,8 +359,12 @@ void PullManager::TryToMakeObjectLocal(const ObjectID &object_id) {
     request.is_being_restored = true;
     restore_spilled_object_(
         object_id, request.spilled_url, spilled_node_id,
-        [this, object_id, &request, spilled_node_id](const ray::Status &status) {
-          request.is_being_restored = false;
+        [this, object_id, spilled_node_id](const ray::Status &status) {
+          auto it = object_pull_requests_.find(object_id);
+          if (it != object_pull_requests_.end()) {
+            // The pull request may no longer exist, e.g. it could have been cancelled.
+            it->second.is_being_restored = false;
+          }
           if (!status.ok()) {
             const auto node_id_with_issue =
                 spilled_node_id.IsNil() ? self_node_id_ : spilled_node_id;
@@ -379,12 +383,15 @@ void PullManager::TryToMakeObjectLocal(const ObjectID &object_id) {
                   << node_id_with_issue
                   << " and the following status: " << status.ToString();
             }
-            // Object restoration failed; we'll retry at a later time.
-            UpdateRetryTimer(request);
+            if (it != object_pull_requests_.end()) {
+              // The pull request still exists and object restoration failed; we'll
+              // retry at a later time.
+              UpdateRetryTimer(it->second);
+            }
+            // If object restoration succeeded, we don't update the retry timer since the
+            // object should be ready for pulling, which we want to do as soon as
+            // possible.
           }
-          // If object restoration succeeded, we don't update the retry timer since the
-          // object should be ready for pulling, which we want to do as soon as
-          // possible.
         });
   }
 }
