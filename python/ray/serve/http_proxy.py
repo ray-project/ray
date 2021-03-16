@@ -11,12 +11,10 @@ from ray.exceptions import RayTaskError
 from ray.serve.common import EndpointTag
 from ray.serve.constants import LongPollKey
 from ray.util import metrics
-from ray.serve.utils import _get_logger
+from ray.serve.utils import logger
 from ray.serve.http_util import Response, build_starlette_request
 from ray.serve.long_poll import LongPollAsyncClient
 from ray.serve.handle import DEFAULT
-
-logger = _get_logger()
 
 
 class ServeStarletteEndpoint:

@@ -113,6 +113,7 @@ def test_prometheus_physical_stats_record(enable_test_module, shutdown_only):
             "ray_node_mem_total" in metric_names,
             "ray_raylet_cpu" in metric_names, "ray_raylet_mem" in metric_names,
             "ray_node_disk_usage" in metric_names,
+            "ray_node_disk_free" in metric_names,
             "ray_node_disk_utilization_percentage" in metric_names,
             "ray_node_network_sent" in metric_names,
             "ray_node_network_received" in metric_names,
@@ -138,6 +139,12 @@ def test_prometheus_physical_stats_record(enable_test_module, shutdown_only):
 
 
 def test_report_stats():
+    class ReporterAgentDummy(object):
+        pass
+
+    obj = ReporterAgentDummy()
+    obj._is_head_node = True
+
     test_stats = {
         "now": 1614826393.975763,
         "hostname": "fake_hostname.local",
@@ -192,20 +199,37 @@ def test_report_stats():
         "network": (13621160960, 11914936320),
         "network_speed": (8.435062128545095, 7.378462703142336),
     }
-    records = ReporterAgent._record_stats(test_stats)
-    assert len(records) == 13
-    # Test stats without raylet
+
+    cluster_stats = {
+        "autoscaler_report": {
+            "active_nodes": {
+                "head_node": 1,
+                "worker-node-0": 2
+            },
+            "failed_nodes": [],
+            "pending_launches": {},
+            "pending_nodes": []
+        }
+    }
+
+    records = ReporterAgent._record_stats(obj, test_stats, cluster_stats)
+    assert len(records) == 16
+    # Test stats without raylets
     test_stats["raylet"] = {}
-    records = ReporterAgent._record_stats(test_stats)
-    assert len(records) == 11
+    records = ReporterAgent._record_stats(obj, test_stats, cluster_stats)
+    assert len(records) == 14
     # Test stats with gpus
     test_stats["gpus"] = [{
         "utilization_gpu": 1,
         "memory_used": 100,
         "memory_total": 1000
     }]
-    records = ReporterAgent._record_stats(test_stats)
-    assert len(records) == 15
+    records = ReporterAgent._record_stats(obj, test_stats, cluster_stats)
+    assert len(records) == 18
+    # Test stats without autoscaler report
+    cluster_stats = {}
+    records = ReporterAgent._record_stats(obj, test_stats, cluster_stats)
+    assert len(records) == 16
 
 
 if __name__ == "__main__":

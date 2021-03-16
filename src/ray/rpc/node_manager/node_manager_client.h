@@ -37,8 +37,8 @@ class NodeManagerClient {
   /// \param[in] client_call_manager The `ClientCallManager` used for managing requests.
   NodeManagerClient(const std::string &address, const int port,
                     ClientCallManager &client_call_manager) {
-    grpc_client_ = std::unique_ptr<GrpcClient<NodeManagerService>>(
-        new GrpcClient<NodeManagerService>(address, port, client_call_manager));
+    grpc_client_ = std::make_unique<GrpcClient<NodeManagerService>>(address, port,
+                                                                    client_call_manager);
   };
 
   /// Get current node stats.
@@ -120,8 +120,8 @@ class NodeManagerWorkerClient
   /// \param[in] client_call_manager The `ClientCallManager` used for managing requests.
   NodeManagerWorkerClient(const std::string &address, const int port,
                           ClientCallManager &client_call_manager) {
-    grpc_client_ = std::unique_ptr<GrpcClient<NodeManagerService>>(
-        new GrpcClient<NodeManagerService>(address, port, client_call_manager));
+    grpc_client_ = std::make_unique<GrpcClient<NodeManagerService>>(address, port,
+                                                                    client_call_manager);
   };
 
   /// The RPC client.

@@ -1029,8 +1029,7 @@ TEST_F(ClusterTaskManagerTest, TestSpillWaitingTasks) {
   for (int i = 0; i < 5; i++) {
     Task task = CreateTask({{ray::kCPU_ResourceLabel, 8}}, /*num_args=*/1);
     tasks.push_back(task);
-    replies.push_back(std::unique_ptr<rpc::RequestWorkerLeaseReply>(
-        new rpc::RequestWorkerLeaseReply()));
+    replies.push_back(std::make_unique<rpc::RequestWorkerLeaseReply>());
     // All tasks except the last one added are waiting for dependencies.
     if (i < 4) {
       auto missing_arg = task.GetTaskSpecification().GetDependencyIds()[0];
