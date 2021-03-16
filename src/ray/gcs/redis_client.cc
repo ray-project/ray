@@ -111,9 +111,11 @@ Status RedisClient::Connect(std::vector<instrumented_io_context *> io_services) 
 
   primary_context_ = std::make_shared<RedisContext>(*io_services[0]);
 
-  RAY_CHECK_OK(primary_context_->Connect(options_.server_ip_, options_.server_port_,
-                                         /*sharding=*/true,
-                                         /*password=*/options_.password_));
+  RAY_CHECK_OK(primary_context_->Connect(
+      options_.server_ip_, options_.server_port_,
+      /*sharding=*/true,
+      /*password=*/options_.password_, options_.enable_sync_conn_,
+      options_.enable_async_conn_, options_.enable_subscribe_conn_));
 
   if (options_.enable_sharding_conn_) {
     // Moving sharding into constructor defaultly means that sharding = true.
@@ -132,14 +134,18 @@ Status RedisClient::Connect(std::vector<instrumented_io_context *> io_services) 
       instrumented_io_context &io_service = *io_services[io_service_index];
       // Populate shard_contexts.
       shard_contexts_.push_back(std::make_shared<RedisContext>(io_service));
-      RAY_CHECK_OK(shard_contexts_[i]->Connect(addresses[i], ports[i], /*sharding=*/true,
-                                               /*password=*/options_.password_));
+      RAY_CHECK_OK(shard_contexts_[i]->Connect(
+          addresses[i], ports[i], /*sharding=*/true,
+          /*password=*/options_.password_, options_.enable_sync_conn_,
+          options_.enable_async_conn_, options_.enable_subscribe_conn_));
     }
   } else {
     shard_contexts_.push_back(std::make_shared<RedisContext>(*io_services[0]));
-    RAY_CHECK_OK(shard_contexts_[0]->Connect(options_.server_ip_, options_.server_port_,
-                                             /*sharding=*/true,
-                                             /*password=*/options_.password_));
+    RAY_CHECK_OK(shard_contexts_[0]->Connect(
+        options_.server_ip_, options_.server_port_,
+        /*sharding=*/true,
+        /*password=*/options_.password_, options_.enable_sync_conn_,
+        options_.enable_async_conn_, options_.enable_subscribe_conn_));
   }
 
   Attach();

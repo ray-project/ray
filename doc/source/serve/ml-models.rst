@@ -4,15 +4,15 @@ Serving Machine Learning Models
 
 .. contents::
 
-.. _serve-ml-batching:
+.. _serve-batching:
 
 Request Batching
 ================
 
-You can also have Ray Serve batch requests for performance, which is especially important for some ML models that run on GPUs.
-In order to do use this feature, you need to:
-1. Set the ``max_batch_size`` in the ``config`` dictionary.
-2. Modify your backend implementation to accept a list of requests and return a list of responses instead of handling a single request.
+You can also have Ray Serve batch requests for performance, which is especially important for some ML models that run on GPUs. In order to use this feature, you need to do the following two things:
+
+1. Use ``async def`` for your request handling logic to process queries concurrently.
+2. Use the ``@serve.batch`` decorator to batch individual queries that come into the replica. The method/function that's decorated should handle a list of requests and return a list of the same length.
 
 
 .. code-block:: python
@@ -21,15 +21,18 @@ In order to do use this feature, you need to:
       def __init__(self):
           self.count = 0
 
-      @serve.accept_batch
-      def __call__(self, requests):
+      @serve.batch
+      async def handle_batch(self, requests):
           responses = []
-              for request in requests:
-                  responses.append(request.json())
+          for request in requests:
+              responses.append(request.json())
+
           return responses
 
-  config = {"max_batch_size": 5}
-  client.create_backend("counter1", BatchingExample, config=config)
+      async def __call__(self, request):
+          return await self.handle_batch(request)
+
+  client.create_backend("counter1", BatchingExample)
   client.create_endpoint("counter1", backend="counter1", route="/increment")
 
 Please take a look at :ref:`Batching Tutorial<serve-batch-tutorial>` for a deep
