@@ -209,9 +209,11 @@ const NodeInfo: React.FC<{}> = () => {
   // Show GPU features only if there is at least one GPU in cluster.
   const showGPUs =
     nodes.map((n) => n.gpus).filter((gpus) => gpus.length !== 0).length !== 0;
+  // Don't show disk on K8s. K8s node disk usage should be monitored elsewhere.
+  const showDisk = !("KUBERNETES_SERVICE_HOST" in process.env);
   const filterPredicate = (
     feature: NodeInfoFeature | HeaderInfo<nodeInfoColumnId>,
-  ) => showGPUs || (feature.id !== "gpu" && feature.id !== "gram");
+  ) => (showGPUs || (feature.id !== "gpu" && feature.id !== "gram")) && (showDisk || (feature.id !== "disk"));
   const filteredFeatures = nodeInfoFeatures.filter(filterPredicate);
   const filteredHeaders = nodeInfoHeaders.filter(filterPredicate);
 
