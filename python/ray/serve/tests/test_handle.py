@@ -125,7 +125,7 @@ def test_handle_inject_starlette_request(serve_instance):
     serve.create_endpoint("echo", backend="echo:v0", route="/echo")
 
     def wrapper_model(web_request):
-        handle = serve.connect().get_handle("echo")
+        handle = serve.get_handle("echo")
         return ray.get(handle.remote(web_request))
 
     serve.create_backend("wrapper:v0", wrapper_model)

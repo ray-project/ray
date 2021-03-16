@@ -78,7 +78,7 @@ def test_controller_failure(serve_instance):
         assert response.text == "hello3"
 
 
-def _kill_http_proxies(client):
+def _kill_http_proxies():
     http_proxies = ray.get(
         serve.api._global_client._controller.get_http_proxies.remote())
     for http_proxy in http_proxies.values():

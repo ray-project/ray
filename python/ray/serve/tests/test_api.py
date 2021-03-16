@@ -222,23 +222,6 @@ def test_reject_duplicate_endpoint_and_route(serve_instance):
         serve.create_endpoint("test", backend="backend2", route="/test")
 
 
-def test_no_http():
-    ray.init(num_cpus=16)
-    serve.start(http_host=None)
-
-    assert len(
-        ray.get(serve.api._global_client._controller.get_http_proxies.remote())
-    ) == 0
-
-    def hello(*args):
-        return "hello"
-
-    serve.create_backend("backend", hello)
-    serve.create_endpoint("endpoint", backend="backend")
-
-    assert ray.get(serve.get_handle("endpoint").remote()) == "hello"
-
-
 def test_set_traffic_missing_data(serve_instance):
     endpoint_name = "foobar"
     backend_name = "foo_backend"
@@ -606,22 +589,6 @@ def test_shadow_traffic(serve_instance):
         ])
 
     wait_for_condition(check_requests)
-
-
-@pytest.mark.parametrize("detached", [True, False])
-def test_connect(detached):
-    # Check that you can call serve.connect() from within a backend for both
-    # detached and non-detached instances.
-    ray.init(num_cpus=16)
-    serve.start(detached=detached)
-
-    def connect_in_backend(_):
-        serve.create_backend("backend-ception", connect_in_backend)
-
-    serve.create_backend("connect_in_backend", connect_in_backend)
-    serve.create_endpoint("endpoint", backend="connect_in_backend")
-    ray.get(serve.get_handle("endpoint").remote())
-    assert "backend-ception" in serve.list_backends().keys()
 
 
 def test_starlette_request(serve_instance):

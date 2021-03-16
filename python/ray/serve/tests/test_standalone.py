@@ -18,10 +18,26 @@ from ray.test_utils import wait_for_condition
 from ray._private.services import new_port
 
 
-def test_detached_deployment():
+@pytest.fixture
+def ray_shutdown():
+    yield
+    serve.shutdown()
+    ray.shutdown()
+
+
+@pytest.fixture
+def ray_cluster():
+    cluster = Cluster()
+    yield Cluster()
+    serve.shutdown()
+    ray.shutdown()
+    cluster.shutdown()
+
+
+def test_detached_deployment(ray_cluster):
     # https://github.com/ray-project/ray/issues/11437
 
-    cluster = Cluster()
+    cluster = ray_cluster
     head_node = cluster.add_node(node_ip_address="127.0.0.1", num_cpus=6)
 
     # Create first job, check we can run a simple serve endpoint
@@ -43,18 +59,29 @@ def test_detached_deployment():
     serve.create_endpoint("g", backend="g")
     assert ray.get(serve.get_handle("g").remote()) == "world"
 
-    # Test passed, clean up.
-    serve.shutdown()
-    ray.shutdown()
-    cluster.shutdown()
+
+@pytest.mark.parametrize("detached", [True, False])
+def test_connect(detached, ray_shutdown):
+    # Check that you can call serve.connect() from within a backend for both
+    # detached and non-detached instances.
+    ray.init(num_cpus=16)
+    serve.start(detached=detached)
+
+    def connect_in_backend(_):
+        serve.create_backend("backend-ception", connect_in_backend)
+
+    serve.create_backend("connect_in_backend", connect_in_backend)
+    serve.create_endpoint("endpoint", backend="connect_in_backend")
+    ray.get(serve.get_handle("endpoint").remote())
+    assert "backend-ception" in serve.list_backends().keys()
 
 
 @pytest.mark.skipif(
     not hasattr(socket, "SO_REUSEPORT"),
     reason=("Port sharing only works on newer verion of Linux. "
             "This test can only be ran when port sharing is supported."))
-def test_multiple_routers():
-    cluster = Cluster()
+def test_multiple_routers(ray_cluster):
+    cluster = ray_cluster
     head_node = cluster.add_node(num_cpus=4)
     cluster.add_node(num_cpus=4)
 
@@ -125,12 +152,8 @@ def test_multiple_routers():
     wait_for_condition(third_actor_removed)
     ray.get(block_until_http_ready.remote("http://127.0.0.1:8005/-/routes"))
 
-    # Clean up the nodes (otherwise Ray will segfault).
-    ray.shutdown()
-    cluster.shutdown()
 
-
-def test_middleware():
+def test_middleware(ray_shutdown):
     from starlette.middleware import Middleware
     from starlette.middleware.cors import CORSMiddleware
 
@@ -158,18 +181,14 @@ def test_middleware():
     resp = requests.get(f"{root}/-/routes", headers=headers)
     assert resp.headers["access-control-allow-origin"] == "*"
 
-    ray.shutdown()
 
-
-def test_http_proxy_fail_loudly():
+def test_http_proxy_fail_loudly(ray_shutdown):
     # Test that if the http server fail to start, serve.start should fail.
     with pytest.raises(ValueError):
         serve.start(http_options={"host": "bad.ip.address"})
 
-    ray.shutdown()
 
-
-def test_no_http():
+def test_no_http(ray_shutdown):
     # The following should have the same effect.
     options = [
         {
@@ -192,7 +211,7 @@ def test_no_http():
         },
     ]
 
-    ray.init()
+    ray.init(num_cpus=8)
     for option in options:
         serve.start(**option)
 
@@ -202,13 +221,22 @@ def test_no_http():
             if actor["State"] == ray.gcs_utils.ActorTableData.ALIVE
         ]
         assert len(live_actors) == 1
+        controller = serve.api._global_client._controller
+        assert len(ray.get(controller.get_http_proxies.remote())) == 0
 
+        # Test that the handle still works.
+        def hello(*args):
+            return "hello"
+
+        serve.create_backend("backend", hello)
+        serve.create_endpoint("endpoint", backend="backend")
+
+        assert ray.get(serve.get_handle("endpoint").remote()) == "hello"
         serve.shutdown()
-    ray.shutdown()
 
 
-def test_http_head_only():
-    cluster = Cluster()
+def test_http_head_only(ray_cluster):
+    cluster = ray_cluster
     head_node = cluster.add_node(num_cpus=4)
     cluster.add_node(num_cpus=4)
 
@@ -227,10 +255,6 @@ def test_http_head_only():
         for r in ray.state.state._available_resources_per_node().values()
     }
     assert cpu_per_nodes == {2, 4}
-
-    serve.shutdown()
-    ray.shutdown()
-    cluster.shutdown()
 
 
 if __name__ == "__main__":

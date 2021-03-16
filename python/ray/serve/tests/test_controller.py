@@ -5,7 +5,7 @@ from ray import serve
 
 
 def test_controller_inflight_requests_clear(serve_instance):
-    controller = serve._global_serve._controller
+    controller = serve.api._global_client._controller
     initial_number_reqs = ray.get(controller._num_pending_goals.remote())
 
     def function(_):

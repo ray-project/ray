@@ -72,7 +72,6 @@ def _ensure_connected(f: Callable) -> Callable:
         if self._shutdown:
             raise RayServeException("Client has already been shut down.")
         if not _internal:
-            raise Exception()
             logger.warning(
                 "The client-based API is being deprecated in favor of global "
                 "API calls (e.g., `serve.create_backend()`). Please replace "
@@ -698,7 +697,10 @@ def shutdown() -> None:
     Shuts down all processes and deletes all state associated with the
     instance.
     """
-    _get_global_client().shutdown(_internal=True)
+    if _global_client is None:
+        return
+
+    _get_global_client().shutdown()
     _set_global_client(None)
 
 
