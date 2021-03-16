@@ -254,23 +254,25 @@ class CoreWorkerDirectActorTaskSubmitter
 class InboundRequest {
  public:
   InboundRequest(){};
-  InboundRequest(std::function<void()> accept_callback,
-                 std::function<void()> reject_callback, TaskID task_id,
+  InboundRequest(std::function<void(rpc::SendReplyCallback)> accept_callback,
+                 std::function<void(rpc::SendReplyCallback)> reject_callback,
+                 rpc::SendReplyCallback send_reply_callback, TaskID task_id,
                  bool has_dependencies)
       : accept_callback_(accept_callback),
         reject_callback_(reject_callback),
         task_id(task_id),
         has_pending_dependencies_(has_dependencies) {}
 
-  void Accept() { accept_callback_(); }
-  void Cancel() { reject_callback_(); }
+  void Accept() { accept_callback_(std::move(send_reply_callback_)); }
+  void Cancel() { reject_callback_(std::move(send_reply_callback_)); }
   bool CanExecute() const { return !has_pending_dependencies_; }
   ray::TaskID TaskID() const { return task_id; }
   void MarkDependenciesSatisfied() { has_pending_dependencies_ = false; }
 
  private:
-  std::function<void()> accept_callback_;
-  std::function<void()> reject_callback_;
+  std::function<void(rpc::SendReplyCallback)> accept_callback_;
+  std::function<void(rpc::SendReplyCallback)> reject_callback_;
+  rpc::SendReplyCallback send_reply_callback_;
   ray::TaskID task_id;
   bool has_pending_dependencies_;
 };
@@ -350,8 +352,10 @@ class BoundedExecutor {
 class SchedulingQueue {
  public:
   virtual void Add(int64_t seq_no, int64_t client_processed_up_to,
-                   std::function<void()> accept_request,
-                   std::function<void()> reject_request, TaskID task_id = TaskID::Nil(),
+                   std::function<void(rpc::SendReplyCallback)> accept_request,
+                   std::function<void(rpc::SendReplyCallback)> reject_request,
+                   rpc::SendReplyCallback send_reply_callback,
+                   TaskID task_id = TaskID::Nil(),
                    const std::vector<rpc::ObjectReference> &dependencies = {}) = 0;
   virtual void ScheduleRequests() = 0;
   virtual bool TaskQueueEmpty() const = 0;
@@ -376,8 +380,9 @@ class ActorSchedulingQueue : public SchedulingQueue {
 
   /// Add a new actor task's callbacks to the worker queue.
   void Add(int64_t seq_no, int64_t client_processed_up_to,
-           std::function<void()> accept_request, std::function<void()> reject_request,
-           TaskID task_id = TaskID::Nil(),
+           std::function<void(rpc::SendReplyCallback)> accept_request,
+           std::function<void(rpc::SendReplyCallback)> reject_request,
+           rpc::SendReplyCallback send_reply_callback, TaskID task_id = TaskID::Nil(),
            const std::vector<rpc::ObjectReference> &dependencies = {}) {
     // A seq_no of -1 means no ordering constraint. Actor tasks must be executed in order.
     RAY_CHECK(seq_no != -1);
@@ -390,7 +395,8 @@ class ActorSchedulingQueue : public SchedulingQueue {
     }
     RAY_LOG(DEBUG) << "Enqueue " << seq_no << " cur seqno " << next_seq_no_;
     pending_actor_tasks_[seq_no] =
-        InboundRequest(accept_request, reject_request, task_id, dependencies.size() > 0);
+        InboundRequest(std::move(accept_request), std::move(reject_request),
+                       std::move(send_reply_callback), task_id, dependencies.size() > 0);
     if (dependencies.size() > 0) {
       waiter_.Wait(dependencies, [seq_no, this]() {
         RAY_CHECK(boost::this_thread::get_id() == main_thread_id_);
@@ -535,15 +541,17 @@ class NormalSchedulingQueue : public SchedulingQueue {
 
   /// Add a new task's callbacks to the worker queue.
   void Add(int64_t seq_no, int64_t client_processed_up_to,
-           std::function<void()> accept_request, std::function<void()> reject_request,
-           TaskID task_id = TaskID::Nil(),
+           std::function<void(rpc::SendReplyCallback)> accept_request,
+           std::function<void(rpc::SendReplyCallback)> reject_request,
+           rpc::SendReplyCallback send_reply_callback, TaskID task_id = TaskID::Nil(),
            const std::vector<rpc::ObjectReference> &dependencies = {}) {
     absl::MutexLock lock(&mu_);
     // Normal tasks should not have ordering constraints.
     RAY_CHECK(seq_no == -1);
     // Create a InboundRequest object for the new task, and add it to the queue.
     pending_normal_tasks_.push_back(
-        InboundRequest(accept_request, reject_request, task_id, dependencies.size() > 0));
+        InboundRequest(std::move(accept_request), std::move(reject_request),
+                       std::move(send_reply_callback), task_id, dependencies.size() > 0));
   }
 
   // Search for an InboundRequest associated with the task that we are trying to cancel.

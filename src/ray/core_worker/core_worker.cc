@@ -353,7 +353,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       task_execution_service_work_(task_execution_service_),
       resource_ids_(new ResourceMappingType()),
       grpc_service_(io_service_, *this) {
-  RAY_LOG(INFO) << "Constructing CoreWorker, worker_id: " << worker_id;
+  RAY_LOG(INFO) << "Constructing CoreWorker 0, worker_id: " << worker_id;
 
   // Initialize task receivers.
   if (options_.worker_type == WorkerType::WORKER || options_.is_local_mode) {
@@ -380,11 +380,13 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   NodeID local_raylet_id;
   int assigned_port;
   std::string serialized_job_config = options_.serialized_job_config;
-  local_raylet_client_ = std::shared_ptr<raylet::RayletClient>(new raylet::RayletClient(
-      io_service_, std::move(grpc_client), options_.raylet_socket, GetWorkerID(),
-      options_.worker_type, worker_context_.GetCurrentJobID(), options_.language,
-      options_.node_ip_address, &raylet_client_status, &local_raylet_id, &assigned_port,
-      &serialized_job_config));
+  RAY_LOG(INFO) << "Constructing CoreWorker 1";
+      local_raylet_client_ =
+      std::shared_ptr<raylet::RayletClient>(new raylet::RayletClient(
+          io_service_, std::move(grpc_client), options_.raylet_socket, GetWorkerID(),
+          options_.worker_type, worker_context_.GetCurrentJobID(), options_.language,
+          options_.node_ip_address, &raylet_client_status, &local_raylet_id,
+          &assigned_port, &serialized_job_config));
 
   if (!raylet_client_status.ok()) {
     // Avoid using FATAL log or RAY_CHECK here because they may create a core dump file.
@@ -2164,11 +2166,11 @@ void CoreWorker::HandlePushTask(const rpc::PushTaskRequest &request,
   // execution service.
   if (request.task_spec().type() == TaskType::ACTOR_TASK) {
     task_execution_service_.post(
-        [=] {
+        [this, request, reply, callback = std::move(send_reply_callback)] {
           // We have posted an exit task onto the main event loop,
           // so shouldn't bother executing any further work.
           if (exiting_) return;
-          direct_task_receiver_->HandleTask(request, reply, send_reply_callback);
+          direct_task_receiver_->HandleTask(request, reply, callback);
         },
         "CoreWorker.HandlePushTaskActor");
   } else {

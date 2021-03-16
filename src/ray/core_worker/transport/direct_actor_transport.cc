@@ -59,14 +59,16 @@ void CoreWorkerDirectActorTaskSubmitter::KillActor(const ActorID &actor_id,
 }
 
 Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
-  RAY_LOG(DEBUG) << "Submitting task " << task_spec.TaskId();
+  auto task_id = task_spec.TaskId();
+  auto actor_id = task_spec.ActorId();
+  RAY_LOG(DEBUG) << "Submitting task " << task_id;
   RAY_CHECK(task_spec.IsActorTask());
 
   bool task_queued = false;
   uint64_t send_pos = 0;
   {
     absl::MutexLock lock(&mu_);
-    auto queue = client_queues_.find(task_spec.ActorId());
+    auto queue = client_queues_.find(actor_id);
     RAY_CHECK(queue != client_queues_.end());
     if (queue->second.state != rpc::ActorTableData::DEAD) {
       // We must fix the send order prior to resolving dependencies, which may
@@ -82,7 +84,6 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spe
   }
 
   if (task_queued) {
-    const auto actor_id = task_spec.ActorId();
     // We must release the lock before resolving the task dependencies since
     // the callback may get called in the same call stack.
     resolver_.ResolveDependencies(task_spec, [this, send_pos, actor_id]() {
@@ -99,12 +100,12 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spe
     });
   } else {
     // Do not hold the lock while calling into task_finisher_.
-    task_finisher_->MarkTaskCanceled(task_spec.TaskId());
+    task_finisher_->MarkTaskCanceled(task_id);
     auto status = Status::IOError("cancelling all pending tasks of dead actor");
     // No need to increment the number of completed tasks since the actor is
     // dead.
-    RAY_UNUSED(!task_finisher_->PendingTaskFailed(task_spec.TaskId(),
-                                                  rpc::ErrorType::ACTOR_DIED, &status));
+    RAY_UNUSED(
+        !task_finisher_->PendingTaskFailed(task_id, rpc::ErrorType::ACTOR_DIED, &status));
   }
 
   // If the task submission subsequently fails, then the client will receive
@@ -398,7 +399,8 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
     }
   }
 
-  auto accept_callback = [this, reply, send_reply_callback, task_spec, resource_ids]() {
+  auto accept_callback = [this, reply, task_spec,
+                          resource_ids](rpc::SendReplyCallback send_reply_callback) {
     if (task_spec.GetMessage().skip_execution()) {
       send_reply_callback(Status::OK(), nullptr, nullptr);
       return;
@@ -465,7 +467,7 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
     }
   };
 
-  auto reject_callback = [send_reply_callback]() {
+  auto reject_callback = [](rpc::SendReplyCallback send_reply_callback) {
     send_reply_callback(Status::Invalid("client cancelled stale rpc"), nullptr, nullptr);
   };
 
@@ -482,12 +484,14 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
     }
 
     it->second->Add(request.sequence_number(), request.client_processed_up_to(),
-                    accept_callback, reject_callback, task_spec.TaskId(), dependencies);
+                    std::move(accept_callback), std::move(reject_callback),
+                    std::move(send_reply_callback), task_spec.TaskId(), dependencies);
   } else {
     // Add the normal task's callbacks to the non-actor scheduling queue.
-    normal_scheduling_queue_->Add(request.sequence_number(),
-                                  request.client_processed_up_to(), accept_callback,
-                                  reject_callback, task_spec.TaskId(), dependencies);
+    normal_scheduling_queue_->Add(
+        request.sequence_number(), request.client_processed_up_to(),
+        std::move(accept_callback), std::move(reject_callback),
+        std::move(send_reply_callback), task_spec.TaskId(), dependencies);
   }
 }
 

@@ -88,10 +88,11 @@ raylet::RayletClient::RayletClient(
     const std::string &ip_address, Status *status, NodeID *raylet_id, int *port,
     std::string *serialized_job_config)
     : grpc_client_(std::move(grpc_client)), worker_id_(worker_id), job_id_(job_id) {
+  RAY_LOG(INFO) << "RayletClient::RayletClient";
   // For C++14, we could use std::make_unique
   conn_ = std::unique_ptr<raylet::RayletConnection>(
       new raylet::RayletConnection(io_service, raylet_socket, -1, -1));
-
+  RAY_LOG(INFO) << "RayletClient::RayletClient 1";
   flatbuffers::FlatBufferBuilder fbb;
   // TODO(suquark): Use `WorkerType` in `common.proto` without converting to int.
   auto message = protocol::CreateRegisterClientRequest(
@@ -101,9 +102,11 @@ raylet::RayletClient::RayletClient(
   fbb.Finish(message);
   // Register the process ID with the raylet.
   // NOTE(swang): If raylet exits and we are registered as a worker, we will get killed.
+  RAY_LOG(INFO) << "RayletClient::RayletClient 2";
   std::vector<uint8_t> reply;
   auto request_status = conn_->AtomicRequestReply(
       MessageType::RegisterClientRequest, MessageType::RegisterClientReply, &reply, &fbb);
+  RAY_LOG(INFO) << "RayletClient::RayletClient 3";
   if (!request_status.ok()) {
     *status =
         Status(request_status.code(),
@@ -119,10 +122,12 @@ raylet::RayletClient::RayletClient(
     *status = Status::Invalid(string_from_flatbuf(*reply_message->failure_reason()));
     return;
   }
+  RAY_LOG(INFO) << "RayletClient::RayletClient 4";
   *raylet_id = NodeID::FromBinary(reply_message->raylet_id()->str());
   *port = reply_message->port();
 
   *serialized_job_config = reply_message->serialized_job_config()->str();
+  RAY_LOG(INFO) << "RayletClient::RayletClient 5";
 }
 
 Status raylet::RayletClient::Disconnect() {

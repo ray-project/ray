@@ -26,11 +26,15 @@ public class RunManager {
   public static void startRayHead(RayConfig rayConfig) {
     LOGGER.debug("Starting ray runtime @ {}.", rayConfig.nodeIp);
     List<String> command = new ArrayList<>();
-    command.add("ray");
+    command.add("/home/admin/venv-ant-ray/bin/ray");
     command.add("start");
     command.add("--head");
     command.add("--redis-password");
     command.add(rayConfig.redisPassword);
+    command.add("--include-dashboard");
+    command.add("False");
+    command.add("--object-store-memory");
+    command.add("80000000");
     command.addAll(rayConfig.headArgs);
     String output;
     try {

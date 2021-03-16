@@ -273,7 +273,7 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
 
     {
       absl::MutexLock lock(&mutex_);
-      send_queue_.push_back(std::make_pair(std::move(request), callback));
+      send_queue_.push_back(std::make_pair(std::move(request), std::move(callback)));
     }
     SendRequests();
   }
