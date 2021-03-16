@@ -231,15 +231,24 @@ void LocalObjectManager::SpillObjectsInternal(
                 num_active_workers_ -= 1;
               }
               io_worker_pool_.PushSpillWorker(io_worker);
-              if (!status.ok()) {
-                for (const auto &object_id : objects_to_spill) {
+              size_t num_objects_spilled = r.spilled_objects_url_size();
+              RAY_CHECK(num_objects_spilled <= objects_to_spill.size());
+              if (!status.ok() || num_objects_spilled < objects_to_spill.size()) {
+                auto failed_num = objects_to_spill.size() - num_objects_spilled;
+                RAY_LOG(ERROR) << "Fail to spill " << failed_num << " objects.";
+                for (size_t i = !status.ok() ? 0 : num_objects_spilled;
+                     i != objects_to_spill.size();
+                     ++i) {
+                  const auto& object_id = objects_to_spill[i];
                   auto it = objects_pending_spill_.find(object_id);
                   RAY_CHECK(it != objects_pending_spill_.end());
                   pinned_objects_size_ += it->second.first->GetSize();
                   pinned_objects_.emplace(object_id, std::move(it->second));
                   objects_pending_spill_.erase(it);
                 }
+              }
 
+              if (!status.ok()) {
                 RAY_LOG(ERROR) << "Failed to send object spilling request: "
                                << status.ToString();
                 if (callback) {
@@ -295,7 +304,7 @@ void LocalObjectManager::AddSpilledUrls(
     const std::vector<ObjectID> &object_ids, const rpc::SpillObjectsReply &worker_reply,
     std::function<void(const ray::Status &)> callback) {
   auto num_remaining = std::make_shared<size_t>(object_ids.size());
-  for (size_t i = 0; i < object_ids.size(); ++i) {
+  for (size_t i = 0; i < static_cast<size_t>(worker_reply.spilled_objects_url_size()); ++i) {
     const ObjectID &object_id = object_ids[i];
     const std::string &object_url = worker_reply.spilled_objects_url(i);
     RAY_LOG(DEBUG) << "Object " << object_id << " spilled at " << object_url;

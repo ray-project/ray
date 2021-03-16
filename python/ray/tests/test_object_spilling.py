@@ -6,7 +6,6 @@ import platform
 import subprocess
 import sys
 from collections import defaultdict
-
 import numpy as np
 import pytest
 import ray
@@ -315,6 +314,32 @@ def test_spill_objects_automatically(object_spilling_config, shutdown_only):
         assert np.array_equal(sample, solution)
     assert_no_thrashing(address["redis_address"])
 
+
+# @pytest.mark.skipif(
+#     platform.system() == "Windows", reason="Failing on Windows.")
+# def test_spill_objects_failure(object_spilling_config, shutdown_only, fs):
+#     # Limit our object store to 75 MiB of memory.
+#     object_spilling_config, _ = object_spilling_config
+#     address = ray.init(
+#         num_cpus=1,
+#         object_store_memory=75 * 1024 * 1024,
+#         _system_config={
+#             "max_io_workers": 4,
+#             "automatic_object_spilling_enabled": True,
+#             "object_store_full_delay_ms": 100,
+#             "object_spilling_config": object_spilling_config,
+#             "min_spilling_size": 0
+#         })
+#     replay_buffer = []
+#     solution_buffer = []
+
+#     arr_1 = np.random.rand(5 * 1024 * 1024)
+#     ref_1 = ray.put(arr_1)
+
+#     with pytest.raises(ray.exceptions.ObjectStoreFullError):
+#         arr_2 = np.random.rand(5 * 1024 * 1024)
+#         ref_2 = ray.put(arr_2)
+#     assert (arr_1 == ray.get([ref_1])[0]).all()
 
 @pytest.mark.skipif(
     platform.system() in ["Windows", "Darwin"], reason="Failing on Windows.")

@@ -123,19 +123,22 @@ class ExternalStorage(metaclass=abc.ABCMeta):
             address_len = len(owner_address)
             metadata_len = len(metadata)
             buf_len = len(buf)
+            payload = address_len.to_bytes(8, byteorder="little") + \
+              metadata_len.to_bytes(8, byteorder="little") + \
+              buf_len.to_bytes(8, byteorder="little") + \
+              owner_address + metadata + memoryview(buf)
             # 24 bytes to store owner address, metadata, and buffer lengths.
-            data_size_in_bytes = (
-                address_len + metadata_len + buf_len + self.HEADER_LENGTH)
-            f.write(address_len.to_bytes(8, byteorder="little"))
-            f.write(metadata_len.to_bytes(8, byteorder="little"))
-            f.write(buf_len.to_bytes(8, byteorder="little"))
-            f.write(owner_address)
-            f.write(metadata)
-            f.write(memoryview(buf))
-            url_with_offset = create_url_with_offset(
-                url=url, offset=offset, size=data_size_in_bytes)
-            keys.append(url_with_offset.encode())
-            offset += data_size_in_bytes
+            assert self.HEADER_LENGTH + address_len + metadata_len + buf_len \
+              == len(payload)
+            # TODO (yic): Considering add retry here to avoid transistent issue
+            try:
+                written_bytes = f.write(payload)
+                url_with_offset = create_url_with_offset(
+                    url=url, offset=offset, size=written_bytes)
+                keys.append(url_with_offset.encode())
+                offset = f.tell()
+            except IOError:
+                return keys
         return keys
 
     def _size_check(self, address_len, metadata_len, buffer_len,
