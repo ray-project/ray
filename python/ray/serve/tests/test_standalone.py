@@ -12,6 +12,7 @@ import ray
 from ray import serve
 from ray._private.cluster_utils import Cluster
 from ray.serve.constants import SERVE_PROXY_NAME
+from ray.serve.exceptions import RayServeException
 from ray.serve.utils import (block_until_http_ready, get_all_node_ids,
                              format_actor_name)
 from ray.test_utils import wait_for_condition
@@ -32,6 +33,48 @@ def ray_cluster():
     serve.shutdown()
     ray.shutdown()
     cluster.shutdown()
+
+
+def test_shutdown(ray_shutdown):
+    def f():
+        pass
+
+    serve.start(http_port=8003)
+    serve.create_backend("backend", f)
+    serve.create_endpoint("endpoint", backend="backend")
+
+    actor_names = [
+        serve.api._global_client._controller_name,
+        format_actor_name(SERVE_PROXY_NAME,
+                          serve.api._global_client._controller_name,
+                          get_all_node_ids()[0][0])
+    ]
+
+    def check_alive():
+        alive = True
+        for actor_name in actor_names:
+            try:
+                ray.get_actor(actor_name)
+            except ValueError:
+                alive = False
+        return alive
+
+    wait_for_condition(check_alive)
+
+    serve.shutdown()
+    with pytest.raises(RayServeException):
+        serve.list_backends()
+
+    def check_dead():
+        for actor_name in actor_names:
+            try:
+                ray.get_actor(actor_name)
+                return False
+            except ValueError:
+                pass
+        return True
+
+    wait_for_condition(check_dead)
 
 
 def test_detached_deployment(ray_cluster):
