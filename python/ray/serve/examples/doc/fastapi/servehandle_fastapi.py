@@ -12,7 +12,7 @@ serve_handle = None
 @app.on_event("startup")  # Code to be run when the server starts.
 async def startup_event():
     ray.init(address="auto")  # Connect to the running Ray cluster.
-    serve.start(http_host=None)  # Start the Ray Serve serve.
+    serve.start(http_host=None)  # Start the Ray Serve instance.
 
     # Define a callable class to use for our Ray Serve backend.
     class GPT2:
