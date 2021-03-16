@@ -161,17 +161,25 @@ void RedisClient::Attach() {
   RAY_CHECK(shard_asio_async_clients_.empty()) << "Attach shall be called only once";
   for (std::shared_ptr<RedisContext> context : shard_contexts_) {
     instrumented_io_context &io_service = context->io_service();
-    shard_asio_async_clients_.emplace_back(
-        new RedisAsioClient(io_service, context->async_context()));
-    shard_asio_subscribe_clients_.emplace_back(
-        new RedisAsioClient(io_service, context->subscribe_context()));
+    if (options_.enable_async_conn_) {
+      shard_asio_async_clients_.emplace_back(
+          new RedisAsioClient(io_service, context->async_context()));
+    }
+    if (options_.enable_subscribe_conn_) {
+      shard_asio_subscribe_clients_.emplace_back(
+          new RedisAsioClient(io_service, context->subscribe_context()));
+    }
   }
 
   instrumented_io_context &io_service = primary_context_->io_service();
-  asio_async_auxiliary_client_.reset(
-      new RedisAsioClient(io_service, primary_context_->async_context()));
-  asio_subscribe_auxiliary_client_.reset(
-      new RedisAsioClient(io_service, primary_context_->subscribe_context()));
+  if (options_.enable_async_conn_) {
+    asio_async_auxiliary_client_.reset(
+        new RedisAsioClient(io_service, primary_context_->async_context()));
+  }
+  if (options_.enable_subscribe_conn_) {
+    asio_subscribe_auxiliary_client_.reset(
+        new RedisAsioClient(io_service, primary_context_->subscribe_context()));
+  }
 }
 
 void RedisClient::Disconnect() {
