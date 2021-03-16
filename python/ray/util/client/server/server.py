@@ -122,8 +122,11 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         if client_id in self.actor_owners:
             if id in self.actor_owners[client_id]:
                 logger.debug(f"Releasing actor {id.hex()} for {client_id}")
-                del self.actor_refs[id]
                 self.actor_owners[client_id].remove(id)
+                if not any(id in actor_list
+                           for actor_list in self.actor_owners.values()):
+                    logger.debug(f"Deleting reference to actor {id.hex()}")
+                    del self.actor_refs[id]
                 return True
 
         return False
@@ -145,11 +148,15 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
     def _release_actors(self, client_id):
         if client_id not in self.actor_owners:
             logger.debug(f"Releasing client with no actors: {client_id}")
+
+        del self.actor_owners[client_id]
         count = 0
         for id_bytes in self.actor_owners[client_id]:
             count += 1
-            del self.actor_refs[id_bytes]
-        del self.actor_owners[client_id]
+            if not any(id_bytes in actor_list
+                       for actor_list in self.actor_owners.values()):
+                logger.debug(f"Deleting reference to actor {id_bytes.hex()}")
+                del self.actor_refs[id_bytes]
         logger.debug(f"Released all {count} actors for client: {client_id}")
 
     def Terminate(self, req, context=None):
@@ -439,7 +446,7 @@ def serve(connection_str, ray_connect_handler=None):
 
     ray_connect_handler = ray_connect_handler or default_connect_handler
     server = grpc.server(
-        futures.ThreadPoolExecutor(max_workers=10),
+        futures.ThreadPoolExecutor(max_workers=30),
         options=[
             ("grpc.max_send_message_length", GRPC_MAX_MESSAGE_SIZE),
             ("grpc.max_receive_message_length", GRPC_MAX_MESSAGE_SIZE),
