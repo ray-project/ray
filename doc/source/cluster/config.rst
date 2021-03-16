@@ -182,7 +182,7 @@ Node Docker
 
     :ref:`image <cluster-configuration-image>`: str
     :ref:`pull_before_run <cluster-configuration-pull-before-run>`: bool
-    :ref:`run_options <cluster-configuration-run-options>`:
+    :ref:`worker_run_options <cluster-configuration-run-options>`:
         - str
     :ref:`disable_automatic_runtime_detection <cluster-configuration-disable-automatic-runtime-detection>`: bool
     :ref:`disable_shm_size_detection <cluster-configuration-disable-shm-size-detection>`: bool
