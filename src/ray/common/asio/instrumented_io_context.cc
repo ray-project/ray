@@ -19,6 +19,42 @@
 #include <iostream>
 #include <utility>
 
+namespace {
+
+/// A helper for creating a snapshot view of the global stats.
+/// This acquires a reader lock on the provided global stats, and creates a
+/// lockless copy of the stats.
+GlobalStats to_global_stats_view(std::shared_ptr<GuardedGlobalStats> stats) {
+  absl::MutexLock lock(&(stats->mutex));
+  return GlobalStats(stats->stats);
+}
+
+/// A helper for creating a snapshot view of the stats for a handler.
+/// This acquires a lock on the provided guarded handler stats, and creates a
+/// lockless copy of the stats.
+HandlerStats to_handler_stats_view(std::shared_ptr<GuardedHandlerStats> stats) {
+  absl::MutexLock lock(&(stats->mutex));
+  return HandlerStats(stats->stats);
+}
+
+/// A helper for converting a duration into a human readable string, such as "5.346 ms".
+std::string to_human_readable(double duration) {
+  static const std::array<std::string, 4> to_unit{{"ns", "us", "ms", "s"}};
+  size_t idx = std::min(to_unit.size() - 1,
+                        static_cast<size_t>(std::log(duration) / std::log(1000)));
+  double new_duration = duration / std::pow(1000, idx);
+  std::stringstream result;
+  result << std::fixed << std::setprecision(3) << new_duration << " " << to_unit[idx];
+  return result.str();
+}
+
+/// A helper for converting a duration into a human readable string, such as "5.346 ms".
+std::string to_human_readable(int64_t duration) {
+  return to_human_readable(static_cast<double>(duration));
+}
+
+}  // namespace
+
 void instrumented_io_context::post(std::function<void()> handler,
                                    const std::string &name) {
   if (!RayConfig::instance().asio_event_loop_stats_collection_enabled()) {
@@ -96,24 +132,8 @@ void instrumented_io_context::post(std::function<void()> handler,
   });
 }
 
-/// A helper for creating a snapshot view of the global stats.
-/// This acquires a reader lock on the provided global stats, and creates a
-/// lockless copy of the stats.
-inline GlobalStats to_global_stats_view(std::shared_ptr<GuardedGlobalStats> stats) {
-  absl::MutexLock lock(&(stats->mutex));
-  return GlobalStats(stats->stats);
-}
-
 GlobalStats instrumented_io_context::get_global_stats() const {
   return to_global_stats_view(global_stats_);
-}
-
-/// A helper for creating a snapshot view of the stats for a handler.
-/// This acquires a lock on the provided guarded handler stats, and creates a
-/// lockless copy of the stats.
-inline HandlerStats to_handler_stats_view(std::shared_ptr<GuardedHandlerStats> stats) {
-  absl::MutexLock lock(&(stats->mutex));
-  return HandlerStats(stats->stats);
 }
 
 absl::optional<HandlerStats> instrumented_io_context::get_handler_stats(
@@ -138,20 +158,6 @@ instrumented_io_context::get_handler_stats() const {
         return std::make_pair(p.first, to_handler_stats_view(p.second));
       });
   return stats;
-}
-
-inline std::string to_human_readable(double duration) {
-  static const std::array<std::string, 4> to_unit{{"ns", "us", "ms", "s"}};
-  size_t idx = std::min(to_unit.size() - 1,
-                        static_cast<size_t>(std::log(duration) / std::log(1000)));
-  double new_duration = duration / std::pow(1000, idx);
-  std::stringstream result;
-  result << std::fixed << std::setprecision(3) << new_duration << " " << to_unit[idx];
-  return result.str();
-}
-
-inline std::string to_human_readable(int64_t duration) {
-  return to_human_readable(static_cast<double>(duration));
 }
 
 std::string instrumented_io_context::StatsString() const {
