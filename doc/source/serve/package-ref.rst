@@ -1,15 +1,22 @@
 Serve API Reference
 ===================
 
-Start or Connect to a Cluster
------------------------------
+Core APIs
+---------
 .. autofunction:: ray.serve.start
 .. autofunction:: ray.serve.connect
-
-Client API
-----------
-.. autoclass:: ray.serve.api.Client
-    :members: create_backend, list_backends, delete_backend, get_backend_config, update_backend_config, create_endpoint, list_endpoints, delete_endpoint, set_traffic, shadow_traffic, get_handle, shutdown
+.. autofunction:: create_backend
+.. autofunction:: list_backends
+.. autofunction:: delete_backend
+.. autofunction:: get_backend_config
+.. autofunction:: update_backend_config
+.. autofunction:: create_endpoint
+.. autofunction:: list_endpoints
+.. autofunction:: delete_endpoint
+.. autofunction:: set_traffic
+.. autofunction:: shadow_traffic
+.. autofunction:: get_handle
+.. autofunction:: shutdown
 
 Backend Configuration
 ---------------------
