@@ -39,6 +39,7 @@ def test_shutdown(ray_shutdown):
     def f():
         pass
 
+    ray.init(num_cpus=16)
     serve.start(http_port=8003)
     serve.create_backend("backend", f)
     serve.create_endpoint("endpoint", backend="backend")
@@ -254,7 +255,7 @@ def test_no_http(ray_shutdown):
         },
     ]
 
-    ray.init(num_cpus=8)
+    ray.init(num_cpus=16)
     for i, option in enumerate(options):
         print(f"[{i+1}/{len(options)}] Running with {option}")
         serve.start(**option)
