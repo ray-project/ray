@@ -419,7 +419,8 @@ class Client:
             *init_args: Any,
             ray_actor_options: Optional[Dict] = None,
             config: Optional[Union[BackendConfig, Dict[str, Any]]] = None,
-            version: str = "v0" # TODO(edoakes): distinguish between this and None.
+            version:
+            str = "v0"  # TODO(edoakes): distinguish between this and None.
     ) -> None:
         if config is None:
             config = {}

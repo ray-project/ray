@@ -38,7 +38,8 @@ class ReplicaState(Enum):
 
 class BackendReplica:
     def __init__(self, controller_name: str, detached: bool,
-                 replica_tag: ReplicaTag, backend_tag: BackendTag, version: str):
+                 replica_tag: ReplicaTag, backend_tag: BackendTag,
+                 version: str):
         self._actor_name = format_actor_name(replica_tag, controller_name)
         self._placement_group_name = self._actor_name + "_placement_group"
         self._controller_name = controller_name
@@ -324,7 +325,8 @@ class BackendState:
 
         return new_goal_id, existing_goal_id
 
-    def create_backend(self, backend_tag: BackendTag,
+    def create_backend(self,
+                       backend_tag: BackendTag,
                        backend_config: BackendConfig,
                        replica_config: ReplicaConfig,
                        version: Optional[str] = None) -> Optional[GoalId]:
@@ -334,12 +336,12 @@ class BackendState:
             # Old codepath.
             if version is None:
                 if (backend_info.backend_config == backend_config
-                    and backend_info.replica_config == replica_config):
+                        and backend_info.replica_config == replica_config):
                     return None
             # New codepath: treat version as ground truth for implementation.
             else:
                 if (backend_info.backend_config == backend_config
-                    and self._target_versions[backend_tag] == version):
+                        and self._target_versions[backend_tag] == version):
                     return None
 
         backend_replica_class = create_backend_replica(
@@ -397,7 +399,8 @@ class BackendState:
         self._backend_metadata[backend_tag].backend_config = updated_config
 
         new_goal_id, existing_goal_id = self._set_backend_goal(
-            backend_tag, self._backend_metadata[backend_tag], self._target_versions[backend_tag])
+            backend_tag, self._backend_metadata[backend_tag],
+            self._target_versions[backend_tag])
 
         # NOTE(edoakes): we must write a checkpoint before pushing the
         # update to avoid inconsistent state if we crash after pushing the
@@ -412,12 +415,17 @@ class BackendState:
         self._notify_backend_configs_changed()
 
         return new_goal_id
-    
-    def _stop_wrong_version_replicas(self, backend_tag: BackendTag, version: str, graceful_shutdown_timeout_s: float) -> int:
-        # TODO(edoakes): to implement rolling upgrade, all we should need to 
+
+    def _stop_wrong_version_replicas(
+            self, backend_tag: BackendTag, version: str,
+            graceful_shutdown_timeout_s: float) -> int:
+        # TODO(edoakes): to implement rolling upgrade, all we should need to
         # do is cap the number of old version replicas that are stopped here.
         num_stopped = 0
-        for target_state in [ReplicaState.SHOULD_START, ReplicaState.STARTING, ReplicaState.RUNNING]:
+        for target_state in [
+                ReplicaState.SHOULD_START, ReplicaState.STARTING,
+                ReplicaState.RUNNING
+        ]:
             target_version = []
             wrong_version = []
             for replica in self._replicas[backend_tag][target_state]:
@@ -434,7 +442,8 @@ class BackendState:
                 num_stopped += 1
 
         if num_stopped > 0:
-            logger.info(f"Stopping {num_stopped} replicas of backend '{backend_tag}' with outdated versions.")
+            logger.info(f"Stopping {num_stopped} replicas of backend "
+                        f"'{backend_tag}' with outdated versions.")
 
     def _scale_backend_replicas(
             self,
@@ -459,10 +468,12 @@ class BackendState:
                                    " greater than or equal to 0.")
 
         backend_info: BackendInfo = self._backend_metadata[backend_tag]
-        graceful_shutdown_timeout_s = (backend_info.backend_config.
-                              experimental_graceful_shutdown_timeout_s)
+        graceful_shutdown_timeout_s = (
+            backend_info.backend_config.
+            experimental_graceful_shutdown_timeout_s)
 
-        self._stop_wrong_version_replicas(backend_tag, version, graceful_shutdown_timeout_s)
+        self._stop_wrong_version_replicas(backend_tag, version,
+                                          graceful_shutdown_timeout_s)
 
         current_num_replicas = sum([
             len(self._replicas[backend_tag][ReplicaState.SHOULD_START]),
