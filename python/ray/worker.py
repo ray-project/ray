@@ -122,6 +122,8 @@ class Worker:
         # breakpoint ID.
         self.debugger_get_breakpoint = b""
         self._load_code_from_local = False
+        self.core_worker_connection_initiated = False
+        self.core_worker_connected = False
 
     @property
     def connected(self):
@@ -1229,6 +1231,7 @@ def connect(node,
         node.node_manager_port, node.raylet_ip_address, (mode == LOCAL_MODE),
         driver_name, log_stdout_file_path, log_stderr_file_path,
         serialized_job_config, node.metrics_agent_port)
+    worker.core_worker_connection_initiated = True
     worker.core_worker_connected = True
 
     # Create an object for interfacing with the global state.
