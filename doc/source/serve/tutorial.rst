@@ -33,13 +33,11 @@ Next, start the Ray Serve runtime:
 
 .. code-block:: python
 
-  client = serve.start()
-
-Here ``client`` is a Ray Serve Client object.  You will access most of the Ray Serve API via methods of this object.
+  serve.start()
 
 .. warning::
 
-  When ``client`` goes out of scope, for example when you exit the interactive terminal or when you exit a Python script, Ray Serve will shut down.  
+  When the Python script exits, Ray Serve will shut down.  
   If you would rather keep Ray Serve running in the background, see :doc:`deployment`.
 
 Now we will define a simple Counter class. The goal is to serve this class behind an HTTP endpoint using Ray Serve.  
@@ -64,7 +62,7 @@ Now we are ready to deploy our class using Ray Serve.  First, create a Ray Serve
 
 .. code-block:: python
 
-  client.create_backend("my_backend", Counter)
+  serve.create_backend("my_backend", Counter)
 
 Here we have assigned the tag ``"my_backend"`` to this backend, which we can use to identify this backend in the future.   
 
@@ -76,7 +74,7 @@ To complete the deployment, we will expose this backend over HTTP by creating a 
 
 .. code-block:: python
 
-  client.create_endpoint("my_endpoint", backend="my_backend", route="/counter")
+  serve.create_endpoint("my_endpoint", backend="my_backend", route="/counter")
 
 Here ``"my_endpoint"`` is a tag used to identify this endpoint, and we have specified the backend to place behind the endpoint via the `backend` parameter.  
 The last parameter, ``route``, is the path at which our endpoint will be available over HTTP.  
