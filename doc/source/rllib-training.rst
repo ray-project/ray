@@ -240,7 +240,17 @@ Loading and restoring a trained agent from a checkpoint is simple:
 
 .. code-block:: python
 
+    from ray.tune.trainable import Trainable
+
     agent = ppo.PPOTrainer(config=config, env=env_class)
+    # path to specific checkpoint
+    checkpoint_path = '<path-to-checkpoint>'
+    # alternatively: load last checkpoint in a given directory
+    checkpoint_path = Trainable.get_last_checkpoint(dir_path)
+    # or the best checkpoint according to a given metric
+    checkpoint_path = Trainable.get_best_checkpoint(dir_path, metric='episode_reward_mean', mode='max')
+
+    # load agent from checkpoint
     agent.restore(checkpoint_path)
 
 
