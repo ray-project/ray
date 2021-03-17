@@ -86,7 +86,7 @@ TEST(RayClusterModeTest, FullTest) {
   EXPECT_EQ(2, *(r7.Get()));
 
   auto r8 = actor.Task(&Counter::Add).Remote(2);
-  EXPECT_EQ(3, *(r8.Get()));
+  EXPECT_EQ(4, *(r8.Get()));
 
   ray::api::RayConfig::GetInstance()->use_ray_remote = false;
   Ray::Shutdown();

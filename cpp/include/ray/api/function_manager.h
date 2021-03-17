@@ -54,8 +54,7 @@ PackReturnValue(const T &result) {
 template <typename T>
 inline static absl::enable_if_t<std::is_pointer<T>::value, msgpack::sbuffer>
 PackReturnValue(const T &result) {
-  std::unique_ptr<absl::remove_pointer_t<T>> scope_ptr(result);
-  return ray::api::Serializer::Serialize(*result);
+  return ray::api::Serializer::Serialize((uint64_t)result);
 }
 
 inline static msgpack::sbuffer PackVoid() {
@@ -232,10 +231,11 @@ struct Invoker {
       const F &f, msgpack::sbuffer *ptr, const absl::index_sequence<I...> &,
       std::tuple<Args...> tup) {
     (void)tup;
+    uint64_t actor_ptr =
+        ray::api::Serializer::Deserialize<uint64_t>(ptr->data(), ptr->size());
     using Self = boost::callable_traits::class_of_t<F>;
-    Self self{};
-    self = ray::api::Serializer::Deserialize<Self>(ptr->data(), ptr->size());
-    return (self.*f)(std::move(std::get<I>(tup))...);
+    Self *self = (Self *)actor_ptr;
+    return (self->*f)(std::move(std::get<I>(tup))...);
   }
 };
 
