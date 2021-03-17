@@ -12,6 +12,7 @@ def object_store_memory(a, delta=MB):
     if object_store_memory is None:
         return False
     b = ray.available_resources()["object_store_memory"]
+    print(b)
     return abs(a - b) < delta
 
 

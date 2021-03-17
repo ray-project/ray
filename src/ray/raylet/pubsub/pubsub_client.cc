@@ -148,6 +148,7 @@ void PubsubClient::HandleLongPollingResponse(const rpc::Address &owner_address,
     // request when all of objects are unsubscribed. Since the long polling request should
     // be sent in flight if there are still subscriptions, we can guarantee it will
     // properly clean up metadata.
+    // TODO(sang): Send a RPC to unregister the subscriber.
     subscription_map_.erase(subscription_it);
   } else {
     // If there are still subscriptions, make another long polling request.

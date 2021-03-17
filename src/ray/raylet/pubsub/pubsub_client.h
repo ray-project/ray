@@ -23,7 +23,7 @@ namespace ray {
 using SubscriptionCallback = std::function<void(const ObjectID &)>;
 using SubscriptionFailureCallback = std::function<void(const ObjectID &)>;
 
-/// Interface for pubsub client.
+/// Interface for the pubsub client.
 class PubsubClientInterface {
  public:
   /// Subscribe the object.
@@ -47,8 +47,9 @@ class PubsubClientInterface {
   /// this method for OBOD, we should send an explicit RPC to unregister the subscriber
   /// from the server.
   ///
-  /// \param owner_address The owner address that it will unsubscribe to.
-  /// \param object_id The object id to unsubscribe.
+  /// TODO(sang): Once it starts sending RPCs to unsubscribe, we should start handling
+  /// message ordering. \param owner_address The owner address that it will unsubscribe
+  /// to. \param object_id The object id to unsubscribe.
   virtual bool UnsubscribeObject(const rpc::Address &owner_address,
                                  const ObjectID &object_id) = 0;
 

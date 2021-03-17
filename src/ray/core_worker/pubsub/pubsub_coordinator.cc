@@ -193,13 +193,7 @@ int PubsubCoordinator::UnregisterSubscriber(const NodeID &subscriber_node_id) {
 int PubsubCoordinator::UnregisterSubscription(const NodeID &subscriber_node_id,
                                               const ObjectID &object_id) {
   absl::MutexLock lock(&mutex_);
-  int erased = subscription_index_.EraseEntry(object_id, subscriber_node_id);
-  if (!subscription_index_.IsSubscriberExist(subscriber_node_id)) {
-    auto it = subscribers_.find(subscriber_node_id);
-    RAY_CHECK(it != subscribers_.end());
-    subscribers_.erase(it);
-  }
-  return erased;
+  return subscription_index_.EraseEntry(object_id, subscriber_node_id);
 }
 
 }  // namespace ray

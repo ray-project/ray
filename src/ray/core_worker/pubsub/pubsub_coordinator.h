@@ -120,6 +120,7 @@ class PubsubCoordinator {
 
   /// Remove the subscriber. Once the subscriber is removed, messages won't be published
   /// to it anymore.
+  /// TODO(sang): Currently, clients don't send a RPC to unregister themselves.
   ///
   /// \param subscriber_node_id The node id of the subscriber to unsubscribe.
   /// \return Number of subscribers unregistered.
