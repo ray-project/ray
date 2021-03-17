@@ -31,6 +31,7 @@ from ray.tune.suggest.optuna import OptunaSearch, param as ot_param
 from ray.tune.suggest.sigopt import SigOptSearch
 from ray.tune.suggest.zoopt import ZOOptSearch
 from ray.tune.suggest.hebo import HEBOSearch
+from ray.tune.trainable import Trainable
 from ray.tune.utils import validate_save_restore
 from ray.tune.utils._mock_trainable import MyTrainableClass
 
@@ -69,6 +70,42 @@ class TuneRestoreTest(unittest.TestCase):
             stop={"training_iteration": 2},  # train one more iteration.
             checkpoint_freq=1,
             restore=self.checkpoint_path,  # Restore the checkpoint
+            config={
+                "env": "CartPole-v0",
+                "framework": "tf",
+            },
+        )
+
+    def testTuneRestoreLastCheckpoint(self):
+        """Tests that the last checkpoint in the log dir is restored."""
+        self.assertTrue(os.path.isfile(self.checkpoint_path))
+        self.assertTrue(os.path.isdir(self.logdir))
+        last_checkpoint = Trainable.get_last_checkpoint(self.logdir)
+        tune.run(
+            "PG",
+            name="TuneRestoreTest",
+            stop={"training_iteration": 2},  # train one more iteration.
+            checkpoint_freq=1,
+            restore=last_checkpoint,  # Restore the checkpoint
+            config={
+                "env": "CartPole-v0",
+                "framework": "tf",
+            },
+        )
+
+    def testTuneRestoreBestCheckpoint(self):
+        """Tests that the best checkpoint in the log dir is restored."""
+        self.assertTrue(os.path.isfile(self.checkpoint_path))
+        self.assertTrue(os.path.isdir(self.logdir))
+        best_checkpoint = \
+            Trainable.get_best_checkpoint(self.logdir,
+                                          metric='episode_reward_mean')
+        tune.run(
+            "PG",
+            name="TuneRestoreTest",
+            stop={"training_iteration": 2},  # train one more iteration.
+            checkpoint_freq=1,
+            restore=best_checkpoint,  # Restore the checkpoint
             config={
                 "env": "CartPole-v0",
                 "framework": "tf",
