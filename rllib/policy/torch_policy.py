@@ -539,7 +539,10 @@ class TorchPolicy(Policy):
         assert len(self._optimizers) == 1
         for g, p in zip(gradients, self.model.parameters()):
             if g is not None:
-                p.grad = torch.from_numpy(g).to(self.device)
+                if torch.is_tensor(g):
+                    p.grad = g.to(self.device)
+                else:
+                    p.grad = torch.from_numpy(g).to(self.device)
 
         self._optimizers[0].step()
 
