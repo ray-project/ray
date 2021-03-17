@@ -55,8 +55,7 @@ class ComplexInputNetwork(TorchModelV2, nn.Module):
             # Image space.
             if len(component.shape) == 3:
                 config = {
-                    "conv_filters": model_config.get(
-                        "conv_filters", get_filter_config(component.shape)),
+                    "conv_filters": model_config.get("conv_filters") if "conv_filters" in model_config else get_filter_config(obs_space.shape),
                     "conv_activation": model_config.get("conv_activation"),
                     "post_fcnet_hiddens": [],
                 }
