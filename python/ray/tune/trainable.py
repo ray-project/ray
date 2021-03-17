@@ -394,6 +394,83 @@ class Trainable:
         self.restore(checkpoint_path)
         shutil.rmtree(tmpdir)
 
+    @staticmethod
+    def get_checkpoint_path(checkpoint_dir):
+        """Given a directory of a specific checkpoint, returns the full
+        checkpoint path.
+
+        Args:
+            checkpoint_dir (str): Path pointing to a checkpoint directory.
+        Returns:
+            A string with the full path to the checkpoint within the directory.
+        """
+        if 'checkpoint' not in checkpoint_dir:
+            raise ValueError("The given path does not point to a specific "
+                             f"checkpoint: {checkpoint_dir}")
+        # if it directly points to the checkpoint file, just return it
+        if os.path.isfile(checkpoint_dir):
+            return checkpoint_dir
+        # if it only points to the checkpoint folder, derive the checkpoint file
+        # and return it
+        checkpoint_number = checkpoint_dir.split('_')[-1]
+        return os.path.join(checkpoint_dir, f'checkpoint-{checkpoint_number}')
+
+    def restore_last_checkpoint(self, dir_path):
+        """Finds and restores last checkpoint from given directory.
+
+        Args:
+            dir_path (str): Path pointing to a directory with checkpoints.
+        """
+        # if dir_path already points to a specific checkpoint load it
+        if 'checkpoint' in dir_path:
+            self.restore(self.get_checkpoint_path(dir_path))
+            return
+
+        # else load the last checkpoint from all available checkpoints
+        abs_dir_path = os.path.abspath(dir_path)
+        checkpoints = [f for f in os.listdir(abs_dir_path)
+                       if f.startswith('checkpoint')]
+        if len(checkpoints) == 0:
+            raise ValueError(f"No checkpoints in directory: {dir_path}")
+
+        # sort according to checkpoint number after '_'
+        sorted_checkpoints = sorted(checkpoints,
+                                    key=lambda cp: int(cp.split('_')[-1]))
+        last_checkpoint_dir = os.path.join(abs_dir_path, sorted_checkpoints[-1])
+        # retrieve checkpoint number for filename and construct full path
+        last_checkpoint_no = last_checkpoint_dir.split('_')[-1]
+        last_checkpoint_path = os.path.join(last_checkpoint_dir,
+                                            f'checkpoint-{last_checkpoint_no}')
+
+        # restore checkpoint
+        self.restore(last_checkpoint_path)
+
+    def restore_best_checkpoint(self, dir_path, metric, mode='max'):
+        """Finds and restores best checkpoint from given directory according to
+        the given metric.
+
+        Args:
+            dir_path (str): Path pointing to a directory with checkpoints.
+            metric (str): Metric to use for selecting the best checkpoint.
+            mode (str): Whether to maximize or minimize the given metric.
+        """
+        # if dir_path already points to a specific checkpoint load it
+        if 'checkpoint' in dir_path:
+            self.restore(self.get_checkpoint_path(dir_path))
+            return
+
+        # else load the best checkpoint from all available checkpoints
+        abs_dir_path = os.path.abspath(dir_path)
+        analysis = ray.tune.Analysis(abs_dir_path)
+        analysis.default_metric = metric
+        analysis.default_mode = mode
+        best_checkpoint = analysis.get_best_checkpoint(
+            analysis._get_trial_paths()[0])
+        best_checkpoint_path = os.path.abspath(best_checkpoint)
+
+        # restore checkpoint
+        self.restore(best_checkpoint_path)
+
     def delete_checkpoint(self, checkpoint_path):
         """Deletes local copy of checkpoint.
 
