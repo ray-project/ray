@@ -25,7 +25,7 @@ class TestA2C(unittest.TestCase):
         num_iterations = 1
 
         # Test against all frameworks.
-        for fw in framework_iterator(config):
+        for _ in framework_iterator(config):
             for env in ["PongDeterministic-v0"]:
                 trainer = a3c.A2CTrainer(config=config, env=env)
                 for i in range(num_iterations):

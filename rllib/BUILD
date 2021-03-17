@@ -1246,6 +1246,13 @@ py_test(
     srcs = ["policy/tests/test_compute_log_likelihoods.py"]
 )
 
+py_test(
+    name = "policy/tests/test_sample_batch",
+    tags = ["policy"],
+    size = "small",
+    srcs = ["policy/tests/test_sample_batch.py"]
+)
+
 # --------------------------------------------------------------------
 # Utils:
 # rllib/utils/
