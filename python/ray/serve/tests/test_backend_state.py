@@ -38,6 +38,8 @@ def mock_replica_factory(mock_replicas):
             self.done_stopping = False
             # Will be set when `force_stop()` is called.
             self.force_stopped_counter = 0
+            # Will be cleaned up when `cleanup()` is called.
+            self.cleaned_up = False
 
         def __del__(self):
             mock_replicas.remove(self)
@@ -73,6 +75,9 @@ def mock_replica_factory(mock_replicas):
 
         def force_stop(self):
             self.force_stopped_counter += 1
+
+        def cleanup(self):
+            self.cleaned_up = True
 
     return MockReplicaActorWrapper
 
@@ -188,11 +193,14 @@ def test_create_delete_single_replica(mock_backend_state):
     assert replica_count(backend_state) == 1
     assert replica_count(backend_state, states=[ReplicaState.STOPPING]) == 1
     assert mock_replicas[0].stopped
+    assert not mock_replicas[0].cleaned_up
     assert not goal_manager.check_complete(delete_goal)
 
     # Once it's done stopping, replica should be removed.
     mock_replicas[0].set_done_stopping()
+    replica = mock_replicas[0]
     backend_state.update()
+    assert replica.cleaned_up
     assert replica_count(backend_state) == 0
 
     # TODO(edoakes): can we remove this extra update period for completing it?
@@ -227,6 +235,7 @@ def test_force_kill(mock_backend_state):
 
     # force_stop shouldn't be called until after the timer.
     assert not mock_replicas[0].force_stopped_counter
+    assert not mock_replicas[0].cleaned_up
     assert replica_count(backend_state) == 1
     assert replica_count(backend_state, states=[ReplicaState.STOPPING]) == 1
 
@@ -234,6 +243,7 @@ def test_force_kill(mock_backend_state):
     timer.advance(grace_period_s + 0.1)
     backend_state.update()
     assert mock_replicas[0].force_stopped_counter == 1
+    assert not mock_replicas[0].cleaned_up
     assert replica_count(backend_state) == 1
     assert replica_count(backend_state, states=[ReplicaState.STOPPING]) == 1
     assert not goal_manager.check_complete(delete_goal)
@@ -241,16 +251,19 @@ def test_force_kill(mock_backend_state):
     # Force stop should be called repeatedly until the replica stops.
     backend_state.update()
     assert mock_replicas[0].force_stopped_counter == 2
+    assert not mock_replicas[0].cleaned_up
     assert replica_count(backend_state) == 1
     assert replica_count(backend_state, states=[ReplicaState.STOPPING]) == 1
     assert not goal_manager.check_complete(delete_goal)
 
     # Once the replica is done stopping, it should be removed.
     mock_replicas[0].set_done_stopping()
+    replica = mock_replicas[0]
     backend_state.update()
     assert replica_count(backend_state) == 0
 
     # TODO(edoakes): can we remove this extra update period for completing it?
+    assert replica.cleaned_up
     backend_state.update()
     assert goal_manager.check_complete(delete_goal)
 

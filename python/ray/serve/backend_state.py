@@ -130,6 +130,7 @@ class ActorReplicaWrapper:
         return required, available
 
     def graceful_stop(self) -> None:
+        """Request the actor to exit gracefully."""
         # NOTE: the replicas may already be stopped if we failed
         # after stopping them but before writing a checkpoint.
         if self._stopped:
@@ -142,6 +143,7 @@ class ActorReplicaWrapper:
             self._stopped = True
 
     def check_stopped(self) -> bool:
+        """Check if the actor has exited."""
         if self._stopped:
             return True
 
@@ -155,10 +157,17 @@ class ActorReplicaWrapper:
         return self._stopped
 
     def force_stop(self):
+        """Force the actor to exit without shutting down gracefully."""
         try:
             ray.kill(ray.get_actor(self._actor_name))
         except ValueError:
             pass
+
+    def cleanup(self):
+        """Clean up any remaining resources after the actor has exited.
+
+        Currently, this just removes the placement group.
+        """
         try:
             ray.util.remove_placement_group(
                 ray.util.get_placement_group(self._placement_group_name))
@@ -302,6 +311,8 @@ class BackendReplica:
         stopped = self._actor.check_stopped()
         if stopped:
             self._state = ReplicaState.STOPPED
+            # Clean up any associated resources (e.g., placement group).
+            self._actor.cleanup()
             return True
 
         timeout_passed = time.time() > self._shutdown_deadline
