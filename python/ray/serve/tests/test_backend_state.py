@@ -259,55 +259,136 @@ def test_force_kill(mock_backend_state):
     assert replica._actor.cleaned_up
 
 
-def test_versioning(mock_backend_state):
+def test_redeploy_same_version(mock_backend_state):
+    # Redeploying with the same version and code should do nothing.
     backend_state, timer, goal_manager = mock_backend_state
 
     assert len(replicas(backend_state)) == 0
 
     b_config_1, r_config_1 = generate_configs()
-    create_goal = backend_state.create_backend(
+    goal_1 = backend_state.create_backend(
         "tag1", b_config_1, r_config_1, version="1")
 
-    # Single replica should be created.
     backend_state.update()
     assert len(replicas(backend_state)) == 1
     assert len(replicas(backend_state, states=[ReplicaState.STARTING])) == 1
-    assert replicas(backend_state)[0]._actor.started
+    assert replicas(backend_state)[0].version == "1"
+    assert not goal_manager.check_complete(goal_1)
 
-    # update() should not transition the state if the replica isn't ready.
+    # Test redeploying while the initial deployment is still pending.
+    _, r_config_2 = generate_configs()
+    goal_2 = backend_state.create_backend(
+        "tag1", b_config_1, r_config_2, version="1")
+    assert goal_1 == goal_2
+    assert not goal_manager.check_complete(goal_1)
+
     backend_state.update()
     assert len(replicas(backend_state)) == 1
     assert len(replicas(backend_state, states=[ReplicaState.STARTING])) == 1
+    assert replicas(backend_state)[0].version == "1"
+
+    # Mark the replica ready. After this, the initial goal should be complete.
     replicas(backend_state)[0]._actor.set_ready()
-    assert not goal_manager.check_complete(create_goal)
-
-    # Now the replica should be marked running.
     backend_state.update()
     assert len(replicas(backend_state)) == 1
     assert len(replicas(backend_state, states=[ReplicaState.RUNNING])) == 1
+    assert replicas(backend_state)[0].version == "1"
 
-    # TODO(edoakes): can we remove this extra update period for completing it?
     backend_state.update()
-    assert goal_manager.check_complete(create_goal)
+    assert goal_manager.check_complete(goal_1)
 
-    # Removing the replica should transition it to stopping.
-    delete_goal = backend_state.delete_backend("tag1")
-    backend_state.update()
+    # Test redeploying after the initial deployment has finished.
+    same_version_goal = backend_state.create_backend(
+        "tag1", b_config_1, r_config_1, version="1")
+    assert goal_manager.check_complete(same_version_goal)
     assert len(replicas(backend_state)) == 1
-    assert len(replicas(backend_state, states=[ReplicaState.STOPPING])) == 1
-    assert replicas(backend_state)[0]._actor.stopped
-    assert not goal_manager.check_complete(delete_goal)
+    assert len(replicas(backend_state, states=[ReplicaState.RUNNING])) == 1
+    assert replicas(backend_state)[0].version == "1"
+    assert goal_manager.check_complete(goal_2)
 
-    # Once it's done stopping, replica should be removed.
-    replica = replicas(backend_state)[0]
-    replica._actor.set_done_stopping()
-    backend_state.update()
+
+def test_redeploy_new_version(mock_backend_state):
+    # Redeploying with a new version should start a new replica.
+    backend_state, timer, goal_manager = mock_backend_state
+
     assert len(replicas(backend_state)) == 0
 
-    # TODO(edoakes): can we remove this extra update period for completing it?
-    assert replica._actor.cleaned_up
+    b_config_1, r_config_1 = generate_configs()
+    goal_1 = backend_state.create_backend(
+        "tag1", b_config_1, r_config_1, version="1")
+
     backend_state.update()
-    assert goal_manager.check_complete(delete_goal)
+    assert len(replicas(backend_state)) == 1
+    assert len(replicas(backend_state, states=[ReplicaState.STARTING])) == 1
+    assert replicas(backend_state)[0].version == "1"
+    assert not goal_manager.check_complete(goal_1)
+
+    # Test redeploying while the initial deployment is still pending.
+    _, r_config_2 = generate_configs()
+    goal_2 = backend_state.create_backend(
+        "tag1", b_config_1, r_config_2, version="2")
+    assert goal_1 != goal_2
+    assert goal_manager.check_complete(goal_1)
+    assert not goal_manager.check_complete(goal_2)
+
+    # The initial replica should be stopping and the new replica starting.
+    backend_state.update()
+    assert len(replicas(backend_state)) == 2
+    assert len(replicas(backend_state, states=[ReplicaState.STARTING])) == 1
+    assert len(replicas(backend_state, states=[ReplicaState.STOPPING])) == 1
+    assert replicas(
+        backend_state, states=[ReplicaState.STOPPING])[0].version == "1"
+    assert replicas(
+        backend_state, states=[ReplicaState.STARTING])[0].version == "2"
+
+    # The initial replica should be gone and the new replica running.
+    replicas(
+        backend_state,
+        states=[ReplicaState.STOPPING])[0]._actor.set_done_stopping()
+    replicas(
+        backend_state, states=[ReplicaState.STARTING])[0]._actor.set_ready()
+    backend_state.update()
+    assert len(replicas(backend_state)) == 1
+    assert len(replicas(backend_state, states=[ReplicaState.RUNNING])) == 1
+    assert replicas(
+        backend_state, states=[ReplicaState.RUNNING])[0].version == "2"
+
+    backend_state.update()
+    assert goal_manager.check_complete(goal_2)
+
+    # Now deploy a third version after the transition has finished.
+    _, r_config_3 = generate_configs()
+    goal_3 = backend_state.create_backend(
+        "tag1", b_config_1, r_config_3, version="3")
+    assert not goal_manager.check_complete(goal_3)
+
+    backend_state.update()
+    assert len(replicas(backend_state)) == 2
+    assert len(replicas(backend_state, states=[ReplicaState.STOPPING])) == 1
+    assert len(replicas(backend_state, states=[ReplicaState.STARTING])) == 1
+    assert replicas(
+        backend_state, states=[ReplicaState.STOPPING])[0].version == "2"
+    assert replicas(
+        backend_state, states=[ReplicaState.STARTING])[0].version == "3"
+
+    replicas(
+        backend_state,
+        states=[ReplicaState.STOPPING])[0]._actor.set_done_stopping()
+    replicas(
+        backend_state, states=[ReplicaState.STARTING])[0]._actor.set_ready()
+    backend_state.update()
+    assert len(replicas(backend_state)) == 1
+    assert len(replicas(backend_state, states=[ReplicaState.RUNNING])) == 1
+    assert replicas(
+        backend_state, states=[ReplicaState.RUNNING])[0].version == "3"
+
+    backend_state.update()
+    assert goal_manager.check_complete(goal_3)
+
+
+def test_redeploy_new_config():
+    # TODO(edoakes): we should test the behavior when only the config changes.
+    pass
 
 
 if __name__ == "__main__":
