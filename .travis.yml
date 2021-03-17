@@ -184,7 +184,7 @@ matrix:
         - . ./ci/travis/ci.sh init RAY_CI_MACOS_WHEELS_AFFECTED,RAY_CI_JAVA_AFFECTED,RAY_CI_STREAMING_JAVA_AFFECTED
       before_script:
         - brew tap homebrew/cask-versions
-        - brew install --cask adoptopenjdk8
+        - brew install --cask adoptopenjdk/openjdk/adoptopenjdk8
         - export JAVA_HOME=/Library/Java/JavaVirtualMachines/adoptopenjdk-8.jdk/Contents/Home
         - java -version
         - ./ci/keep_alive bash ./ci/travis/ci.sh build
