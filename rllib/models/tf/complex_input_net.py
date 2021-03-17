@@ -83,7 +83,7 @@ class ComplexInputNetwork(TFModelV2):
         self.post_fc_stack = ModelCatalog.get_model_v2(
             Box(float("-inf"),
                 float("inf"),
-                shape=(concat_size,),
+                shape=(concat_size, ),
                 dtype=np.float32),
             self.action_space,
             None,
@@ -97,7 +97,7 @@ class ComplexInputNetwork(TFModelV2):
         if num_outputs:
             # Action-distribution head.
             concat_layer = tf.keras.layers.Input(
-                (self.post_fc_stack.num_outputs,))
+                (self.post_fc_stack.num_outputs, ))
             logits_layer = tf.keras.layers.Dense(
                 num_outputs,
                 activation=tf.keras.activations.linear,
@@ -152,5 +152,6 @@ class ComplexInputNetwork(TFModelV2):
     @override(ModelV2)
     def value_function(self):
         return self._value_out
+
 
 # __sphinx_doc_end__
