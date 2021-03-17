@@ -8,6 +8,7 @@ import io.ray.api.WaitResult;
 import io.ray.api.id.ActorId;
 import io.ray.api.placementgroup.PlacementGroup;
 import io.ray.api.placementgroup.PlacementGroupState;
+import io.ray.api.placementgroup.PlacementGroups;
 import io.ray.api.placementgroup.PlacementStrategy;
 import io.ray.runtime.exception.RayException;
 import java.util.ArrayList;
@@ -71,8 +72,8 @@ public class PlacementGroupTest extends BaseTest {
     Assert.assertTrue(firstPlacementGroup.wait(60));
     Assert.assertTrue(secondPlacementGroup.wait(60));
 
-    PlacementGroup firstPlacementGroupRes = Ray.getPlacementGroup((firstPlacementGroup).getId());
-    PlacementGroup secondPlacementGroupRes = Ray.getPlacementGroup((secondPlacementGroup).getId());
+    PlacementGroup firstPlacementGroupRes = PlacementGroups.getPlacementGroup((firstPlacementGroup).getId());
+    PlacementGroup secondPlacementGroupRes = PlacementGroups.getPlacementGroup((secondPlacementGroup).getId());
 
     Assert.assertNotNull(firstPlacementGroupRes);
     Assert.assertNotNull(secondPlacementGroupRes);
@@ -81,7 +82,7 @@ public class PlacementGroupTest extends BaseTest {
     Assert.assertEquals(firstPlacementGroupRes.getBundles().size(), 1);
     Assert.assertEquals(firstPlacementGroupRes.getStrategy(), PlacementStrategy.PACK);
 
-    List<PlacementGroup> allPlacementGroup = Ray.getAllPlacementGroups();
+    List<PlacementGroup> allPlacementGroup = PlacementGroups.getAllPlacementGroups();
     Assert.assertEquals(allPlacementGroup.size(), 2);
 
     PlacementGroup placementGroupRes = allPlacementGroup.get(0);
@@ -108,12 +109,12 @@ public class PlacementGroupTest extends BaseTest {
     Assert.assertTrue(firstPlacementGroup.wait(60));
     Assert.assertTrue(secondPlacementGroup.wait(60));
 
-    List<PlacementGroup> allPlacementGroup = Ray.getAllPlacementGroups();
+    List<PlacementGroup> allPlacementGroup = PlacementGroups.getAllPlacementGroups();
     Assert.assertEquals(allPlacementGroup.size(), 2);
 
-    Ray.removePlacementGroup(secondPlacementGroup.getId());
+    PlacementGroups.removePlacementGroup(secondPlacementGroup.getId());
 
-    PlacementGroup removedPlacementGroup = Ray.getPlacementGroup((secondPlacementGroup).getId());
+    PlacementGroup removedPlacementGroup = PlacementGroups.getPlacementGroup((secondPlacementGroup).getId());
     Assert.assertEquals(removedPlacementGroup.getState(), PlacementGroupState.REMOVED);
 
     // Wait for placement group after it is removed.
@@ -166,7 +167,7 @@ public class PlacementGroupTest extends BaseTest {
             "CPU", 1, PlacementStrategy.PACK, 1.0, pgName, false);
     Assert.assertTrue(firstPlacementGroup.wait(60));
     // Make sure we can get it by name successfully.
-    PlacementGroup placementGroup = Ray.getPlacementGroup(pgName);
+    PlacementGroup placementGroup = PlacementGroups.getPlacementGroup(pgName);
     Assert.assertNotNull(placementGroup);
     Assert.assertEquals(placementGroup.getBundles().size(), 1);
 
@@ -177,7 +178,7 @@ public class PlacementGroupTest extends BaseTest {
             "CPU", 1, PlacementStrategy.PACK, 1.0, pgGlobalName, true);
     Assert.assertTrue(secondPlacementGroup.wait(60));
     // Make sure we can get it by name successfully.
-    placementGroup = Ray.getGlobalPlacementGroup(pgGlobalName);
+    placementGroup = PlacementGroups.getGlobalPlacementGroup(pgGlobalName);
     Assert.assertNotNull(placementGroup);
     Assert.assertEquals(placementGroup.getBundles().size(), 1);
   }
