@@ -143,7 +143,7 @@ class Trainable:
         return ""
 
     def get_current_ip(self):
-        self._local_ip = ray.services.get_node_ip_address()
+        self._local_ip = ray._private.services.get_node_ip_address()
         return self._local_ip
 
     def train_buffered(self,
