@@ -79,13 +79,14 @@ class Ray {
   /// \param[in] args The function arguments passed by a value or ObjectRef.
   /// \return TaskCaller.
   template <typename F, typename... Args>
-  static TaskCaller<boost::callable_traits::return_type_t<F>> Task(F func, Args... args);
+  static TaskCaller<boost::callable_traits::return_type_t<F>, F> Task(F func,
+                                                                      Args... args);
 
   /// Generic version of creating an actor
   /// It is used for creating an actor, such as: ActorCreator<Counter> creator =
   /// Ray::Actor(Counter::FactoryCreate, 1).
   template <typename F>
-  static ActorCreator<absl::remove_pointer_t<boost::callable_traits::return_type_t<F>>>
+  static ActorCreator<absl::remove_pointer_t<boost::callable_traits::return_type_t<F>>, F>
   Actor(F f);
 
 /// TODO: The bellow specific version of creating an actor will be replaced with generic
@@ -99,8 +100,9 @@ class Ray {
 
   template <typename ReturnType, typename FuncType, typename ExecFuncType,
             typename... ArgTypes>
-  static TaskCaller<ReturnType> TaskInternal(FuncType &func, ExecFuncType &exec_func,
-                                             ArgTypes &... args);
+  static TaskCaller<ReturnType, FuncType> TaskInternal(FuncType &func,
+                                                       ExecFuncType &exec_func,
+                                                       ArgTypes &... args);
 
   template <typename ActorType, typename FuncType, typename ExecFuncType,
             typename... ArgTypes>
@@ -173,15 +175,16 @@ inline WaitResult Ray::Wait(const std::vector<ObjectID> &ids, int num_objects,
 
 template <typename ReturnType, typename FuncType, typename ExecFuncType,
           typename... ArgTypes>
-inline TaskCaller<ReturnType> Ray::TaskInternal(FuncType &func, ExecFuncType &exec_func,
-                                                ArgTypes &... args) {
+inline TaskCaller<ReturnType, FuncType> Ray::TaskInternal(FuncType &func,
+                                                          ExecFuncType &exec_func,
+                                                          ArgTypes &... args) {
   std::vector<std::unique_ptr<::ray::TaskArg>> task_args;
   Arguments::WrapArgs(&task_args, args...);
   RemoteFunctionPtrHolder ptr;
   ptr.function_pointer = reinterpret_cast<uintptr_t>(func);
   ptr.exec_function_pointer = reinterpret_cast<uintptr_t>(exec_func);
-  return TaskCaller<ReturnType>(ray::internal::RayRuntime().get(), ptr,
-                                std::move(task_args));
+  return TaskCaller<ReturnType, FuncType>(ray::internal::RayRuntime().get(), ptr,
+                                          std::move(task_args));
 }
 
 template <typename ActorType, typename FuncType, typename ExecFuncType,
@@ -211,7 +214,7 @@ inline ActorCreator<ActorType> Ray::CreateActorInternal(FuncType &create_func,
 
 /// Normal task.
 template <typename F, typename... Args>
-TaskCaller<boost::callable_traits::return_type_t<F>> Ray::Task(F func, Args... args) {
+TaskCaller<boost::callable_traits::return_type_t<F>, F> Ray::Task(F func, Args... args) {
   using ReturnType = boost::callable_traits::return_type_t<F>;
   if (ray::api::RayConfig::GetInstance()->use_ray_remote) {
     auto function_name = ray::internal::FunctionManager::Instance().GetFunctionName(func);
@@ -219,8 +222,8 @@ TaskCaller<boost::callable_traits::return_type_t<F>> Ray::Task(F func, Args... a
       throw RayException(function_name + " not exsit!");
     }
 
-    return TaskCaller<ReturnType>(ray::internal::RayRuntime().get(),
-                                  std::move(function_name));
+    return TaskCaller<ReturnType, F>(ray::internal::RayRuntime().get(),
+                                     std::move(function_name));
   }
 
   return TaskInternal<ReturnType>(
@@ -230,8 +233,8 @@ TaskCaller<boost::callable_traits::return_type_t<F>> Ray::Task(F func, Args... a
 
 /// Generic version of creating an actor.
 template <typename F>
-ActorCreator<absl::remove_pointer_t<boost::callable_traits::return_type_t<F>>> Ray::Actor(
-    F create_func) {
+ActorCreator<absl::remove_pointer_t<boost::callable_traits::return_type_t<F>>, F>
+Ray::Actor(F create_func) {
   auto function_name =
       ray::internal::FunctionManager::Instance().GetFunctionName(create_func);
   if (function_name.empty()) {
@@ -239,8 +242,8 @@ ActorCreator<absl::remove_pointer_t<boost::callable_traits::return_type_t<F>>> R
   }
 
   using ActorType = absl::remove_pointer_t<boost::callable_traits::return_type_t<F>>;
-  return ActorCreator<ActorType>(ray::internal::RayRuntime().get(),
-                                 std::move(function_name));
+  return ActorCreator<ActorType, F>(ray::internal::RayRuntime().get(),
+                                    std::move(function_name));
 }
 
 /// TODO: The bellow specific version of creating an actor will be replaced with generic

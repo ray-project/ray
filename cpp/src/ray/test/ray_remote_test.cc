@@ -121,21 +121,8 @@ TEST(RayApiTest, ArgumentsNotMatch) {
   auto r = Ray::Task(PlusOne).Remote();
   EXPECT_THROW(r.Get(), RayException);
 
-  auto r1 = Ray::Task(PlusOne).Remote(1, 2);
-  EXPECT_THROW(r1.Get(), RayException);
-
   auto r2 = Ray::Task(ExceptionFunc).Remote();
   EXPECT_THROW(r2.Get(), RayException);
-
-  auto r3 = Ray::Task(ExceptionFunc).Remote(1, 2);
-  EXPECT_THROW(r3.Get(), RayException);
-
-  /// Arguments not match.
-  auto r4 = Ray::Task(PlusOne).Remote("invalid argument");
-  EXPECT_THROW(r4.Get(), RayException);
-
-  auto r5 = Ray::Task(ExceptionFunc).Remote("invalid argument");
-  EXPECT_THROW(r5.Get(), RayException);
 
   /// Normal task Exception.
   auto r6 = Ray::Task(ExceptionFunc).Remote(2);

@@ -5,21 +5,12 @@
 #include <ray/api/arguments.h>
 #include <ray/api/exec_funcs.h>
 #include <ray/api/ray_runtime_holder.h>
+#include <ray/api/util.h>
 
 #include "ray/core.h"
 
 namespace ray {
 namespace api {
-
-template <typename T>
-struct FilterArgType {
-  using type = T;
-};
-
-template <typename T>
-struct FilterArgType<ObjectRef<T>> {
-  using type = T;
-};
 
 template <typename ActorType, typename ReturnType, typename... Args>
 using ActorFunc = ReturnType (ActorType::*)(Args...);
@@ -46,7 +37,7 @@ class ActorHandle {
       Args... args);
 
   template <typename F>
-  ActorTaskCaller<boost::callable_traits::return_type_t<F>> Task(F f) {
+  ActorTaskCaller<boost::callable_traits::return_type_t<F>, F> Task(F f) {
     std::string function_name =
         ray::internal::FunctionManager::Instance().GetFunctionName(f);
     if (function_name.empty()) {
@@ -54,8 +45,8 @@ class ActorHandle {
     }
 
     using ReturnType = boost::callable_traits::return_type_t<F>;
-    return ActorTaskCaller<ReturnType>(internal::RayRuntime().get(), id_,
-                                       std::move(function_name));
+    return ActorTaskCaller<ReturnType, F>(internal::RayRuntime().get(), id_,
+                                          std::move(function_name));
   }
 
   /// Make ActorHandle serializable

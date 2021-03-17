@@ -3,12 +3,13 @@
 
 #include <ray/api/arguments.h>
 #include <ray/api/object_ref.h>
+#include <ray/api/util.h>
 #include "ray/core.h"
 
 namespace ray {
 namespace api {
 
-template <typename ReturnType>
+template <typename ReturnType, typename F = void>
 class ActorTaskCaller {
  public:
   ActorTaskCaller();
@@ -22,6 +23,7 @@ class ActorTaskCaller {
   template <typename... Args>
   ObjectRef<ReturnType> Remote(Args... args) {
     if (ray::api::RayConfig::GetInstance()->use_ray_remote) {
+      StaticCheck<F, Args...>();
       Arguments::WrapArgs(&args_, func_name_, args...);
     }
     auto returned_object_id = runtime_->CallActor(ptr_, id_, args_);
@@ -38,11 +40,11 @@ class ActorTaskCaller {
 
 // ---------- implementation ----------
 
-template <typename ReturnType>
-ActorTaskCaller<ReturnType>::ActorTaskCaller() {}
+template <typename ReturnType, typename F>
+ActorTaskCaller<ReturnType, F>::ActorTaskCaller() {}
 
-template <typename ReturnType>
-ActorTaskCaller<ReturnType>::ActorTaskCaller(
+template <typename ReturnType, typename F>
+ActorTaskCaller<ReturnType, F>::ActorTaskCaller(
     RayRuntime *runtime, ActorID id, RemoteFunctionPtrHolder ptr,
     std::vector<std::unique_ptr<::ray::TaskArg>> &&args)
     : runtime_(runtime), id_(id), ptr_(ptr), args_(std::move(args)) {}

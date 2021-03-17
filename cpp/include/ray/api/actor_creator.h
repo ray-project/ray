@@ -7,7 +7,7 @@
 namespace ray {
 namespace api {
 
-template <typename ActorType>
+template <typename ActorType, typename F = void>
 class ActorCreator {
  public:
   ActorCreator();
@@ -21,6 +21,7 @@ class ActorCreator {
   template <typename... Args>
   ActorHandle<ActorType> Remote(Args... args) {
     if (ray::api::RayConfig::GetInstance()->use_ray_remote) {
+      StaticCheck<F, Args...>();
       Arguments::WrapArgs(&args_, create_func_name_, args...);
     }
 
@@ -37,12 +38,13 @@ class ActorCreator {
 
 // ---------- implementation ----------
 
-template <typename ActorType>
-ActorCreator<ActorType>::ActorCreator() {}
+template <typename ActorType, typename F>
+ActorCreator<ActorType, F>::ActorCreator() {}
 
-template <typename ActorType>
-ActorCreator<ActorType>::ActorCreator(RayRuntime *runtime, RemoteFunctionPtrHolder ptr,
-                                      std::vector<std::unique_ptr<::ray::TaskArg>> &&args)
+template <typename ActorType, typename F>
+ActorCreator<ActorType, F>::ActorCreator(
+    RayRuntime *runtime, RemoteFunctionPtrHolder ptr,
+    std::vector<std::unique_ptr<::ray::TaskArg>> &&args)
     : runtime_(runtime), ptr_(ptr), args_(std::move(args)) {}
 }  // namespace api
 }  // namespace ray
