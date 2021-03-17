@@ -155,6 +155,7 @@ def test_return_existing_goal(mock_backend_state):
 
     new_goal = backend_state.create_backend("tag1", b_config_1, r_config_1)
     assert initial_goal == new_goal
+    assert not goal_manager.check_complete(initial_goal)
 
 
 def test_create_delete_single_replica(mock_backend_state):
