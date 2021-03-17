@@ -45,8 +45,7 @@ class ActorReplicaWrapper:
     """
 
     def __init__(self, actor_name: str, detached: bool, controller_name: str,
-                 replica_tag: ReplicaTag, backend_tag: BackendTag,
-                 version: str):
+                 replica_tag: ReplicaTag, backend_tag: BackendTag):
         self._actor_name = actor_name
         self._placement_group_name = self._actor_name + "_placement_group"
         self._detached = detached
@@ -58,7 +57,6 @@ class ActorReplicaWrapper:
         self._drain_obj_ref = None
         self._stopped = False
         self._actor_resources = None
-        self._version = version
 
         # Storing the handles is necessary to keep the actor and PG alive in
         # the non-detached case.
@@ -79,10 +77,6 @@ class ActorReplicaWrapper:
     @property
     def actor_handle(self) -> ActorHandle:
         return ray.get_actor(self._actor_name)
-
-    @property
-    def version(self):
-        return self._version
 
     def start(self, backend_info: BackendInfo):
         self._actor_resources = backend_info.replica_config.resource_dict
@@ -179,13 +173,15 @@ class BackendReplica:
     """
 
     def __init__(self, controller_name: str, detached: bool,
-                 replica_tag: ReplicaTag, backend_tag: BackendTag):
+                 replica_tag: ReplicaTag, backend_tag: BackendTag,
+                 version: str):
         self._actor = ActorReplicaWrapper(
             format_actor_name(replica_tag, controller_name), detached,
             controller_name, replica_tag, backend_tag)
         self._controller_name = controller_name
         self._replica_tag = replica_tag
         self._backend_tag = backend_tag
+        self._version = version
         self._start_time = None
         self._prev_slow_startup_warning_time = None
         self._state = ReplicaState.SHOULD_START
@@ -209,6 +205,10 @@ class BackendReplica:
     @property
     def replica_tag(self) -> ReplicaTag:
         return self._replica_tag
+
+    @property
+    def version(self):
+        return self._version
 
     @property
     def actor_handle(self) -> ActorHandle:
