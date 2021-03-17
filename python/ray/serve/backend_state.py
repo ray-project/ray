@@ -568,7 +568,7 @@ class BackendState:
                     and desired_num_replicas == len(existing_info):
                 # Check that all running replicas are the target version.
                 target_version = self._target_versions[backend_tag]
-                if all([r.version == target_version for r in existing_info]):
+                if all(r.version == target_version for r in existing_info):
                     completed_goals.append(
                         self.backend_goals.pop(backend_tag, None))
         return [goal for goal in completed_goals if goal]
