@@ -44,13 +44,13 @@ Note that a backend cannot be deleted while it is in use by an endpoint because 
 
   >> client.list_backends()
   {
-      'simple_backend': {'accepts_batches': False, 'num_replicas': 1, 'max_batch_size': None},
-      'simple_backend_class': {'accepts_batches': False, 'num_replicas': 1, 'max_batch_size': None},
+      'simple_backend': {'num_replicas': 1},
+      'simple_backend_class': {'num_replicas': 1},
   }
   >> client.delete_backend("simple_backend")
   >> client.list_backends()
   {
-      'simple_backend_class': {'accepts_batches': False, 'num_replicas': 1, 'max_batch_size': None},
+      'simple_backend_class': {'num_replicas': 1},
   }
 
 Exposing a Backend
@@ -102,9 +102,8 @@ Configuring a Backend
 =====================
 
 There are a number of things you'll likely want to do with your serving application including
-scaling out, splitting traffic, or batching input for better performance. To do all of this,
-you will create a ``BackendConfig``, a configuration object that you'll use to set
-the properties of a particular backend.
+scaling out, splitting traffic, or configuring the maximum number of in-flight requests for a backend.
+All of these options are encapsulated in a ``BackendConfig`` object for each backend.
 
 The ``BackendConfig`` for a running backend can be updated using
 :mod:`client.update_backend_config <ray.serve.api.Client.update_backend_config>`.
@@ -185,37 +184,6 @@ If you *do* want to enable this parallelism in your Serve backend, just set OMP_
   For example, if you're using OpenCV, you'll need to manually set the number of threads using ``cv2.setNumThreads(num_threads)`` (set to 0 to disable multi-threading).
   You can check the configuration using ``cv2.getNumThreads()`` and ``cv2.getNumberOfCPUs()``.
 
-.. _serve-batching:
-
-
-Batching to Improve Performance
--------------------------------
-
-You can also have Ray Serve batch requests for performance. In order to do use this feature, you need to:
-1. Set the ``max_batch_size`` in the ``config`` dictionary.
-2. Modify your backend implementation to accept a list of requests and return a list of responses instead of handling a single request.
-
-
-.. code-block:: python
-
-  class BatchingExample:
-      def __init__(self):
-          self.count = 0
-
-      @serve.accept_batch
-      def __call__(self, requests):
-          responses = []
-              for request in requests:
-                  responses.append(request.json())
-          return responses
-
-  config = {"max_batch_size": 5}
-  client.create_backend("counter1", BatchingExample, config=config)
-  client.create_endpoint("counter1", backend="counter1", route="/increment")
-
-Please take a look at :ref:`Batching Tutorial<serve-batch-tutorial>` for a deep
-dive.
-
 User Configuration (Experimental)
 ---------------------------------
 
@@ -241,26 +209,30 @@ Ray Serve supports serving backends with different (possibly conflicting)
 python dependencies.  For example, you can simultaneously serve one backend
 that uses legacy Tensorflow 1 and another backend that uses Tensorflow 2.
 
-Currently this is supported using `conda <https://docs.conda.io/en/latest/>`_.
+Currently this is supported using `conda <https://docs.conda.io/en/latest/>`_
+via Ray's built-in ``runtime_env`` option for actors.
+As with all other actor options, pass these in via ``ray_actor_options`` in
+your call to
+:mod:`client.create_backend <ray.serve.api.Client.create_backend>`.
 You must have a conda environment set up for each set of
 dependencies you want to isolate.  If using a multi-node cluster, the
-conda configuration must be identical across all nodes.
+desired conda environment must be present on all nodes.  
+See :ref:`conda-environments-for-tasks-and-actors` for details.
 
 Here's an example script.  For it to work, first create a conda
 environment named ``ray-tf1`` with Ray Serve and Tensorflow 1 installed,
 and another named ``ray-tf2`` with Ray Serve and Tensorflow 2.  The Ray and
-python versions must be the same in both environments.  To specify
-an environment for a backend to use, simply pass the environment name in to
-:mod:`client.create_backend <ray.serve.api.Client.create_backend>`
-as shown below.
+Python versions must be the same in both environments.
 
 .. literalinclude:: ../../../python/ray/serve/examples/doc/conda_env.py
 
 .. note::
-  If the argument ``env`` is omitted, backends will be started in the same
-  conda environment as the caller of
-  :mod:`client.create_backend <ray.serve.api.Client.create_backend>` by
-  default.
+  If a conda environment is not specified, your backend will be started in the
+  same conda environment as the client (the process calling
+  :mod:`client.create_backend <ray.serve.api.Client.create_backend>`) by
+  default.  (When using :ref:`ray-client`, your backend will be started in the
+  conda environment that the Serve controller is running in, which by default is the
+  conda environment the remote Ray cluster was started in.)
 
 The dependencies required in the backend may be different than
 the dependencies installed in the driver program (the one running Serve API

@@ -7,7 +7,7 @@ import ray
 from ray import gcs_utils
 from google.protobuf.json_format import MessageToDict
 from ray._private.client_mode_hook import client_mode_hook
-from ray.utils import (decode, binary_to_hex, hex_to_binary)
+from ray._private.utils import (decode, binary_to_hex, hex_to_binary)
 
 from ray._raylet import GlobalStateAccessor
 
@@ -76,7 +76,7 @@ class GlobalState:
 
     def _really_init_global_state(self, timeout=20):
         self.global_state_accessor = GlobalStateAccessor(
-            self.redis_address, self.redis_password, False)
+            self.redis_address, self.redis_password)
         self.global_state_accessor.connect()
 
     def object_table(self, object_ref=None):
@@ -118,10 +118,11 @@ class GlobalState:
         """
         locations = []
         for location in object_location_info.locations:
-            locations.append(ray.utils.binary_to_hex(location.manager))
+            locations.append(
+                ray._private.utils.binary_to_hex(location.manager))
 
         object_info = {
-            "ObjectRef": ray.utils.binary_to_hex(
+            "ObjectRef": ray._private.utils.binary_to_hex(
                 object_location_info.object_id),
             "Locations": locations,
         }
@@ -224,7 +225,7 @@ class GlobalState:
         for node_info_item in node_table:
             item = gcs_utils.GcsNodeInfo.FromString(node_info_item)
             node_info = {
-                "NodeID": ray.utils.binary_to_hex(item.node_id),
+                "NodeID": ray._private.utils.binary_to_hex(item.node_id),
                 "Alive": item.state ==
                 gcs_utils.GcsNodeInfo.GcsNodeState.Value("ALIVE"),
                 "NodeManagerAddress": item.node_manager_address,
@@ -706,7 +707,7 @@ class GlobalState:
                     message.resources_available.items():
                 dynamic_resources[resource_id] = capacity
             # Update available resources for this node.
-            node_id = ray.utils.binary_to_hex(message.node_id)
+            node_id = ray._private.utils.binary_to_hex(message.node_id)
             available_resources_by_id[node_id] = dynamic_resources
 
         # Update nodes in cluster.

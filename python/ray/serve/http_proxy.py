@@ -11,12 +11,10 @@ from ray.exceptions import RayTaskError
 from ray.serve.common import EndpointTag
 from ray.serve.constants import LongPollKey
 from ray.util import metrics
-from ray.serve.utils import _get_logger
+from ray.serve.utils import logger
 from ray.serve.http_util import Response, build_starlette_request
 from ray.serve.long_poll import LongPollAsyncClient
 from ray.serve.handle import DEFAULT
-
-logger = _get_logger()
 
 
 class ServeStarletteEndpoint:
@@ -106,7 +104,7 @@ class HTTPProxy:
             LongPollKey.ROUTE_TABLE: self._update_route_table,
         })
 
-        self.request_counter = metrics.Count(
+        self.request_counter = metrics.Counter(
             "serve_num_http_requests",
             description="The number of HTTP requests processed.",
             tag_keys=("route", ))
@@ -156,7 +154,7 @@ class HTTPProxy:
         assert scope["type"] == "http"
         current_path = scope["path"]
 
-        self.request_counter.record(1, tags={"route": current_path})
+        self.request_counter.inc(tags={"route": current_path})
 
         await self.router(scope, receive, send)
 

@@ -18,6 +18,8 @@
 #include <fstream>
 #include <memory>
 
+#include "ray/common/asio/asio_util.h"
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/buffer.h"
 #include "ray/common/common_protocol.h"
 #include "ray/common/constants.h"
@@ -26,7 +28,6 @@
 #include "ray/gcs/pb_util.h"
 #include "ray/raylet/format/node_manager_generated.h"
 #include "ray/stats/stats.h"
-#include "ray/util/asio_util.h"
 #include "ray/util/sample.h"
 #include "ray/util/util.h"
 
@@ -165,7 +166,7 @@ void HeartbeatSender::Heartbeat() {
       }));
 }
 
-NodeManager::NodeManager(boost::asio::io_service &io_service, const NodeID &self_node_id,
+NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self_node_id,
                          const NodeManagerConfig &config, ObjectManager &object_manager,
                          std::shared_ptr<gcs::GcsClient> gcs_client,
                          std::shared_ptr<ObjectDirectoryInterface> object_directory,
@@ -374,6 +375,7 @@ ray::Status NodeManager::RegisterGcs() {
         [this] { local_object_manager_.FlushFreeObjects(); },
         RayConfig::instance().free_objects_period_milliseconds());
   }
+  last_resource_report_at_ms_ = current_time_ms();
   periodical_runner_.RunFnPeriodically([this] { ReportResourceUsage(); },
                                        report_resources_period_ms_);
   // Start the timer that gets object manager profiling information and sends it
@@ -448,11 +450,10 @@ void NodeManager::HandleJobFinished(const JobID &job_id, const JobTableData &job
   }
 }
 
-void NodeManager::ReportResourceUsage() {
-  auto resources_data = std::make_shared<rpc::ResourcesData>();
-  resources_data->set_node_id(self_node_id_.Binary());
-  resources_data->set_node_manager_address(initial_config_.node_manager_address);
-  // Update local chche from gcs remote cache, this is needed when gcs restart.
+void NodeManager::FillResourceReport(rpc::ResourcesData &resources_data) {
+  resources_data.set_node_id(self_node_id_.Binary());
+  resources_data.set_node_manager_address(initial_config_.node_manager_address);
+  // Update local cache from gcs remote cache, this is needed when gcs restart.
   // We should always keep the cache view consistent.
   cluster_resource_scheduler_->UpdateLastResourceUsage(
       gcs_client_->NodeResources().GetLastResourceUsage());
@@ -461,9 +462,27 @@ void NodeManager::ReportResourceUsage() {
 
   // Set the global gc bit on the outgoing heartbeat message.
   if (should_global_gc_) {
-    resources_data->set_should_global_gc(true);
+    resources_data.set_should_global_gc(true);
+    resources_data.set_should_global_gc(true);
     should_global_gc_ = false;
   }
+}
+
+void NodeManager::ReportResourceUsage() {
+  uint64_t now_ms = current_time_ms();
+  uint64_t interval = now_ms - last_resource_report_at_ms_;
+  if (interval >
+      RayConfig::instance().num_resource_report_periods_warning() *
+          RayConfig::instance().raylet_report_resources_period_milliseconds()) {
+    RAY_LOG(WARNING)
+        << "Last resource report was sent " << interval
+        << " ms ago. There might be resource pressure on this node. If "
+           "resource reports keep lagging, scheduling decisions of other nodes "
+           "may become stale";
+  }
+  last_resource_report_at_ms_ = now_ms;
+  auto resources_data = std::make_shared<rpc::ResourcesData>();
+  FillResourceReport(*resources_data);
 
   // Trigger local GC if needed. This throttles the frequency of local GC calls
   // to at most once per heartbeat interval.
@@ -1314,6 +1333,15 @@ void NodeManager::ProcessPushErrorRequestMessage(const uint8_t *message_data) {
   RAY_CHECK_OK(gcs_client_->Errors().AsyncReportJobError(error_data_ptr, nullptr));
 }
 
+void NodeManager::HandleRequestResourceReport(
+    const rpc::RequestResourceReportRequest &request,
+    rpc::RequestResourceReportReply *reply, rpc::SendReplyCallback send_reply_callback) {
+  auto resources_data = reply->mutable_resources();
+  FillResourceReport(*resources_data);
+
+  send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
 void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest &request,
                                            rpc::RequestWorkerLeaseReply *reply,
                                            rpc::SendReplyCallback send_reply_callback) {
@@ -1780,6 +1808,9 @@ std::string NodeManager::DebugString() const {
     result << "\n" << entry.first;
   }
 
+  // Event loop stats.
+  result << "\nEvent loop stats:" << io_service_.StatsString();
+
   result << "\nDebugString() time ms: " << (current_time_ms() - now_ms);
   return result.str();
 }
@@ -2078,8 +2109,8 @@ void NodeManager::HandleFormatGlobalMemoryInfo(
 
   // Fetch from remote nodes.
   for (const auto &entry : remote_node_manager_addresses_) {
-    std::unique_ptr<rpc::NodeManagerClient> client(new rpc::NodeManagerClient(
-        entry.second.first, entry.second.second, client_call_manager_));
+    auto client = std::make_unique<rpc::NodeManagerClient>(
+        entry.second.first, entry.second.second, client_call_manager_);
     client->GetNodeStats(
         stats_req, [replies, store_reply](const ray::Status &status,
                                           const rpc::GetNodeStatsReply &r) {
@@ -2142,18 +2173,11 @@ void NodeManager::RecordMetrics() {
 }
 
 void NodeManager::PublishInfeasibleTaskError(const Task &task) const {
-  // This block is used to suppress infeasible task warning.
   bool suppress_warning = false;
-  const auto &required_resources = task.GetTaskSpecification().GetRequiredResources();
-  const auto &resources_map = required_resources.GetResourceMap();
-  const auto &it = resources_map.begin();
-  // It is a hack to suppress infeasible task warning.
-  // If the first resource of a task requires this magic number, infeasible warning is
-  // suppressed. It is currently only used by placement group ready API. We don't want
-  // to have this in ray_config_def.h because the use case is very narrow, and we don't
-  // want to expose this anywhere.
-  double INFEASIBLE_TASK_SUPPRESS_MAGIC_NUMBER = 0.0101;
-  if (it != resources_map.end() && it->second == INFEASIBLE_TASK_SUPPRESS_MAGIC_NUMBER) {
+
+  if (!task.GetTaskSpecification().PlacementGroupBundleId().first.IsNil()) {
+    // If the task is part of a placement group, do nothing. If necessary, the infeasible
+    // warning should come from the placement group scheduling, not the task scheduling.
     suppress_warning = true;
   }
 

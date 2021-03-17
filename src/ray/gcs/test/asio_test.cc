@@ -17,6 +17,7 @@
 #include <iostream>
 
 #include "gtest/gtest.h"
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/test_util.h"
 #include "ray/gcs/redis_context.h"
 #include "ray/util/logging.h"
@@ -30,7 +31,7 @@ namespace ray {
 
 namespace gcs {
 
-boost::asio::io_service io_service;
+instrumented_io_context io_service;
 
 void ConnectCallback(const redisAsyncContext *c, int status) {
   ASSERT_EQ(status, REDIS_OK);

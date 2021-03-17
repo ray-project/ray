@@ -48,7 +48,7 @@ def init_and_serve():
 
 @pytest.fixture
 def init_and_serve_lazy():
-    cluster = ray.cluster_utils.Cluster()
+    cluster = ray._private.cluster_utils.Cluster()
     cluster.add_node(num_cpus=1, num_gpus=0)
     address = cluster.address
 

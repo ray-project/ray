@@ -979,8 +979,7 @@ void ClusterResourceScheduler::UpdateLastResourceUsage(
   last_report_resources_.reset(new NodeResources(node_resources));
 }
 
-void ClusterResourceScheduler::FillResourceUsage(
-    std::shared_ptr<rpc::ResourcesData> resources_data) {
+void ClusterResourceScheduler::FillResourceUsage(rpc::ResourcesData &resources_data) {
   NodeResources resources;
 
   RAY_CHECK(GetNodeResources(local_node_id_, &resources))
@@ -1009,8 +1008,7 @@ void ClusterResourceScheduler::FillResourceUsage(
   // it in last_report_resources_.
   if (get_used_object_store_memory_ != nullptr) {
     auto &capacity = resources.predefined_resources[OBJECT_STORE_MEM];
-    // Convert to 50MiB memory units.
-    double used = get_used_object_store_memory_() / (50. * 1024 * 1024);
+    double used = get_used_object_store_memory_();
     capacity.available = FixedPoint(capacity.total.Double() - used);
   }
 
@@ -1020,12 +1018,12 @@ void ClusterResourceScheduler::FillResourceUsage(
     const auto &last_capacity = last_report_resources_->predefined_resources[i];
     // Note: available may be negative, but only report positive to GCS.
     if (capacity.available != last_capacity.available && capacity.available > 0) {
-      resources_data->set_resources_available_changed(true);
-      (*resources_data->mutable_resources_available())[label] =
+      resources_data.set_resources_available_changed(true);
+      (*resources_data.mutable_resources_available())[label] =
           capacity.available.Double();
     }
     if (capacity.total != last_capacity.total) {
-      (*resources_data->mutable_resources_total())[label] = capacity.total.Double();
+      (*resources_data.mutable_resources_total())[label] = capacity.total.Double();
     }
   }
   for (const auto &it : resources.custom_resources) {
@@ -1035,12 +1033,12 @@ void ClusterResourceScheduler::FillResourceUsage(
     const auto &label = string_to_int_map_.Get(custom_id);
     // Note: available may be negative, but only report positive to GCS.
     if (capacity.available != last_capacity.available && capacity.available > 0) {
-      resources_data->set_resources_available_changed(true);
-      (*resources_data->mutable_resources_available())[label] =
+      resources_data.set_resources_available_changed(true);
+      (*resources_data.mutable_resources_available())[label] =
           capacity.available.Double();
     }
     if (capacity.total != last_capacity.total) {
-      (*resources_data->mutable_resources_total())[label] = capacity.total.Double();
+      (*resources_data.mutable_resources_total())[label] = capacity.total.Double();
     }
   }
   if (resources != *last_report_resources_.get()) {

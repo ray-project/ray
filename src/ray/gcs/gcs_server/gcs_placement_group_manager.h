@@ -17,6 +17,7 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/common/task/task_execution_spec.h"
 #include "ray/common/task/task_spec.h"
@@ -136,7 +137,7 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   /// \param gcs_table_storage Used to flush placement group data to storage.
   /// \param gcs_resource_manager Reference of GcsResourceManager.
   explicit GcsPlacementGroupManager(
-      boost::asio::io_context &io_context,
+      instrumented_io_context &io_context,
       std::shared_ptr<GcsPlacementGroupSchedulerInterface> scheduler,
       std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
       GcsResourceManager &gcs_resource_manager);
@@ -290,7 +291,7 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
 
   /// The io loop that is used to delay execution of tasks (e.g.,
   /// execute_after).
-  boost::asio::io_context &io_context_;
+  instrumented_io_context &io_context_;
 
   /// Callbacks of pending `RegisterPlacementGroup` requests.
   /// Maps placement group ID to placement group registration callbacks, which is used to

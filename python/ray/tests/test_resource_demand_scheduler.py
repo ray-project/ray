@@ -530,6 +530,7 @@ def test_request_resources_existing_usage():
     # 5 nodes with 32 CPU and 8 GPU each
     provider.create_node({}, {
         TAG_RAY_USER_NODE_TYPE: "p2.8xlarge",
+        TAG_RAY_NODE_KIND: NODE_KIND_WORKER,
         TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE
     }, 2)
     all_nodes = provider.non_terminated_nodes({})
@@ -1164,14 +1165,14 @@ def test_handle_legacy_cluster_config_yaml():
             lm.get_static_node_resources_by_ip())
         # 4 nodes are necessary to meet resource demand.
         assert to_launch == {NODE_TYPE_LEGACY_WORKER: 4}
-        to_launch = scheduler.get_nodes_to_launch(nodes, pending_launches,
-                                                  demands, utilizations, [],
-                                                  lm.get_node_resources())
+        to_launch = scheduler.get_nodes_to_launch(
+            nodes, pending_launches, demands, utilizations, [],
+            lm.get_static_node_resources_by_ip())
         # 0 because there are 4 pending launches and we only need 4.
         assert to_launch == {}
         to_launch = scheduler.get_nodes_to_launch(
             nodes, pending_launches, demands * 2, utilizations, [],
-            lm.get_node_resources())
+            lm.get_static_node_resources_by_ip())
         # 1 because there are 4 pending launches and we only allow a max of 5.
         assert to_launch == {NODE_TYPE_LEGACY_WORKER: 1}
 
@@ -1227,13 +1228,13 @@ class LoadMetricsTest(unittest.TestCase):
             "1.1.1.1",
             {
                 "CPU": 64,
-                "memory": 20,  # 1000 MiB
-                "object_store_memory": 40  # 2000 MiB
+                "memory": 1000 * 1024 * 1024,
+                "object_store_memory": 2000 * 1024 * 1024,
             },
             {
                 "CPU": 2,
-                "memory": 10,  # 500 MiB
-                "object_store_memory": 20  # 1000 MiB
+                "memory": 500 * 1024 * 1024,  # 500 MiB
+                "object_store_memory": 1000 * 1024 * 1024,
             },
             {})
         lm.update("1.1.1.2", {
