@@ -26,7 +26,8 @@ There are three kinds of actors that are created to make up a Serve instance:
   responds once they are completed.
 - Worker Replica: Worker replicas actually execute the code in response to a
   request. For example, they may contain an instantiation of an ML model. Each
-  replica processes individual requests or batches of requests from the routers.
+  replica processes individual requests from the routers (they may be batched
+  by the replica using ``@serve.batch``, see the :ref:`batching<serve-batching>` docs).
 
 
 Lifetime of a Request
@@ -43,11 +44,10 @@ When an HTTP request is sent to the router, the follow things happen:
   are more than ``max_concurrent_queries`` requests outstanding), the request
   is left in the queue until an outstanding request is finished.
 
-Each replica maintains a queue of requests and processes one batch of requests at
-a time. By default the batch size is 1, you can increase the batch size <ref> to
-increase throughput. If the handler (the function for the backend or
-``__call__``) is ``async``, the replica will not wait for the handler to run;
-otherwise, the replica will block until the handler returns.
+Each replica maintains a queue of requests and executes one at a time, possibly
+using asyncio to process them concurrently. If the handler (the function for the
+backend or ``__call__``) is ``async``, the replica will not wait for the
+handler to run; otherwise, the replica will block until the handler returns.
 
 FAQ
 ---

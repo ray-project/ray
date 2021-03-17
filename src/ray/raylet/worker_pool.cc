@@ -92,7 +92,7 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service, const NodeID node_id
   }
   // Initialize free ports list with all ports in the specified range.
   if (!worker_ports.empty()) {
-    free_ports_ = std::unique_ptr<std::queue<int>>(new std::queue<int>());
+    free_ports_ = std::make_unique<std::queue<int>>();
     for (int port : worker_ports) {
       free_ports_->push(port);
     }
@@ -102,7 +102,7 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service, const NodeID node_id
     }
     RAY_CHECK(min_worker_port > 0 && min_worker_port <= 65535);
     RAY_CHECK(max_worker_port >= min_worker_port && max_worker_port <= 65535);
-    free_ports_ = std::unique_ptr<std::queue<int>>(new std::queue<int>());
+    free_ports_ = std::make_unique<std::queue<int>>();
     for (int port = min_worker_port; port <= max_worker_port; port++) {
       free_ports_->push(port);
     }

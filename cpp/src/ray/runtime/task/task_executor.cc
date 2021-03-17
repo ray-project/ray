@@ -19,7 +19,7 @@ TaskExecutor::TaskExecutor(AbstractRayRuntime &abstract_ray_tuntime_)
 // cluster mode.
 std::unique_ptr<ObjectID> TaskExecutor::Execute(InvocationSpec &invocation) {
   abstract_ray_tuntime_.GetWorkerContext();
-  return std::unique_ptr<ObjectID>(new ObjectID());
+  return std::make_unique<ObjectID>();
 };
 
 Status TaskExecutor::ExecuteTask(

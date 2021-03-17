@@ -43,7 +43,7 @@ def load_package(config_path: str) -> "_RuntimePackage":
         >>> print(my_pkg._runtime_env)
         ... {"conda": {...},
         ...  "docker": "anyscale-ml/ray-ml:nightly-py38-cpu",
-        ...  "files": "https://github.com/demo/foo/blob/v3.0/project/"}
+        ...  "working_dir": "https://github.com/demo/foo/blob/v3.0/project/"}
 
         >>> # Run remote functions from the package.
         >>> my_pkg.my_func.remote(1, 2)
@@ -56,10 +56,6 @@ def load_package(config_path: str) -> "_RuntimePackage":
         >>> def f(): ...
     """
 
-    if not ray.is_initialized():
-        # TODO(ekl) lift this requirement?
-        raise RuntimeError("Ray must be initialized first to load packages.")
-
     config_path = _download_from_github_if_needed(config_path)
 
     if not os.path.exists(config_path):
@@ -71,21 +67,28 @@ def load_package(config_path: str) -> "_RuntimePackage":
     runtime_env = config["runtime_env"]
 
     # Autofill working directory by uploading to GCS storage.
-    if "files" not in runtime_env:
+    if "working_dir" not in runtime_env:
         pkg_name = runtime_support.get_project_package_name(
             working_dir=base_dir, modules=[])
         pkg_uri = runtime_support.Protocol.GCS.value + "://" + pkg_name
-        if not runtime_support.package_exists(pkg_uri):
-            tmp_path = os.path.join(_pkg_tmp(), "_tmp{}".format(pkg_name))
-            runtime_support.create_project_package(
-                working_dir=base_dir, modules=[], output_path=tmp_path)
-            # TODO(ekl) does this get garbage collected correctly with the
-            # current job id?
-            runtime_support.push_package(pkg_uri, tmp_path)
+
+        def do_register_package():
             if not runtime_support.package_exists(pkg_uri):
-                raise RuntimeError(
-                    "Failed to upload package {}".format(pkg_uri))
-        runtime_env["files"] = pkg_uri
+                tmp_path = os.path.join(_pkg_tmp(), "_tmp{}".format(pkg_name))
+                runtime_support.create_project_package(
+                    working_dir=base_dir, modules=[], output_path=tmp_path)
+                # TODO(ekl) does this get garbage collected correctly with the
+                # current job id?
+                runtime_support.push_package(pkg_uri, tmp_path)
+                if not runtime_support.package_exists(pkg_uri):
+                    raise RuntimeError(
+                        "Failed to upload package {}".format(pkg_uri))
+
+        if ray.is_initialized():
+            do_register_package()
+        else:
+            ray.worker._post_init_hooks.append(do_register_package)
+        runtime_env["working_dir"] = pkg_uri
 
     # Autofill conda config.
     conda_yaml = os.path.join(base_dir, "conda.yaml")
@@ -139,7 +142,8 @@ def _download_from_github_if_needed(config_path: str) -> str:
             tmp = tempfile.mkdtemp(
                 prefix="github_{}".format(gh_repo), dir=_pkg_tmp())
             subprocess.check_call([
-                "curl", "-L", "https://github.com/{}/{}/tarball/{}".format(
+                "curl", "--fail", "-L",
+                "https://github.com/{}/{}/tarball/{}".format(
                     gh_user, gh_repo, gh_branch), "--output", tmp + ".tar.gz"
             ])
             subprocess.check_call([
@@ -166,9 +170,7 @@ class _RuntimePackage:
         self._description = desc
         self._stub_file = stub_file
         self._runtime_env = runtime_env
-
-        if not os.path.exists(stub_file):
-            raise ValueError("Stub file does not exist: {}".format(stub_file))
+        _validate_stub_file(self._stub_file)
 
         spec = importlib.util.spec_from_file_location(self._name,
                                                       self._stub_file)
@@ -181,19 +183,27 @@ class _RuntimePackage:
                 value = getattr(self._module, symbol)
                 if (isinstance(value, ray.remote_function.RemoteFunction)
                         or isinstance(value, ray.actor.ActorClass)):
-                    # TODO(ekl) use the runtime_env option here instead of
-                    # the override env vars. Currently this doesn't work since
-                    # there is no way to define per-task job config.
                     setattr(
-                        self,
-                        symbol,
-                        value.options(override_environment_variables={
-                            "RAY_RUNTIME_ENV_FILES": runtime_env["files"]
-                        }))
+                        self, symbol, value.options(runtime_env=runtime_env))
 
     def __repr__(self):
         return "ray._RuntimePackage(module={}, runtime_env={})".format(
             self._module, self._runtime_env)
+
+
+def _validate_stub_file(stub_file: str):
+    if not os.path.exists(stub_file):
+        raise ValueError("Stub file does not exist: {}".format(stub_file))
+    for line in open(stub_file):
+        line = line.replace("\n", "")
+        if line.startswith("import ") or line.startswith("from "):
+            if line != "import ray" and "noqa" not in line:
+                raise ValueError(
+                    "Stub files are only allowed to import `ray` "
+                    "at top-level, found `{}`. Please either remove or "
+                    "change this into a lazy import. To unsafely allow "
+                    "this import, add `# noqa` to the line "
+                    "in question.".format(line))
 
 
 def _pkg_tmp():
@@ -217,7 +227,7 @@ if __name__ == "__main__":
 
     print("-> Testing load from github")
     pkg2 = load_package(
-        "http://raw.githubusercontent.com/ericl/ray/packaging/"
+        "http://raw.githubusercontent.com/ray-project/ray/master/"
         "python/ray/experimental/packaging/example_pkg/ray_pkg.yaml")
     print("-> Loaded package", pkg2)
     print("-> Testing method call")

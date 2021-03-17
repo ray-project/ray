@@ -40,7 +40,7 @@ inline ray::gcs::GcsClientOptions ToGcsClientOptions(JNIEnv *env,
   std::string password = JavaStringToNativeString(
       env,
       (jstring)env->GetObjectField(gcs_client_options, java_gcs_client_options_password));
-  return ray::gcs::GcsClientOptions(ip, port, password, /*is_test_client=*/false);
+  return ray::gcs::GcsClientOptions(ip, port, password);
 }
 
 jobject ToJavaArgs(JNIEnv *env, jbooleanArray java_check_results,

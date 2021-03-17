@@ -45,7 +45,8 @@ GcsServer::~GcsServer() { Stop(); }
 void GcsServer::Start() {
   // Init backend client.
   RedisClientOptions redis_client_options(config_.redis_address, config_.redis_port,
-                                          config_.redis_password, config_.is_test);
+                                          config_.redis_password,
+                                          config_.enable_sharding_conn);
   redis_client_ = std::make_shared<RedisClient>(redis_client_options);
   auto status = redis_client_->Connect(main_service_);
   RAY_CHECK(status.ok()) << "Failed to init redis gcs client as " << status;
@@ -292,8 +293,8 @@ void GcsServer::InitStatsHandler() {
 }
 
 void GcsServer::InitGcsWorkerManager() {
-  gcs_worker_manager_ = std::unique_ptr<GcsWorkerManager>(
-      new GcsWorkerManager(gcs_table_storage_, gcs_pub_sub_));
+  gcs_worker_manager_ =
+      std::make_unique<GcsWorkerManager>(gcs_table_storage_, gcs_pub_sub_);
   // Register service.
   worker_info_service_.reset(
       new rpc::WorkerInfoGrpcService(main_service_, *gcs_worker_manager_));

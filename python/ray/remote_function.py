@@ -12,6 +12,7 @@ from ray.util.placement_group import (
     get_current_placement_group,
 )
 import ray._private.signature
+import ray._private.runtime_env as runtime_support
 
 # Default parameters for remote functions.
 DEFAULT_REMOTE_FUNCTION_CPUS = 1
@@ -123,6 +124,7 @@ class RemoteFunction:
                 placement_group=None,
                 placement_group_bundle_index=-1,
                 placement_group_capture_child_tasks=None,
+                runtime_env=None,
                 override_environment_variables=None,
                 name=""):
         """Configures and overrides the task invocation parameters.
@@ -160,6 +162,7 @@ class RemoteFunction:
                     placement_group_bundle_index=placement_group_bundle_index,
                     placement_group_capture_child_tasks=(
                         placement_group_capture_child_tasks),
+                    runtime_env=runtime_env,
                     override_environment_variables=(
                         override_environment_variables),
                     name=name)
@@ -180,6 +183,7 @@ class RemoteFunction:
                 placement_group=None,
                 placement_group_bundle_index=-1,
                 placement_group_capture_child_tasks=None,
+                runtime_env=None,
                 override_environment_variables=None,
                 name=""):
         """Submit the remote function for execution."""
@@ -200,6 +204,7 @@ class RemoteFunction:
                 placement_group_bundle_index=placement_group_bundle_index,
                 placement_group_capture_child_tasks=(
                     placement_group_capture_child_tasks),
+                runtime_env=runtime_env,
                 override_environment_variables=override_environment_variables,
                 name=name)
 
@@ -255,6 +260,11 @@ class RemoteFunction:
             self._object_store_memory, self._resources, self._accelerator_type,
             num_cpus, num_gpus, memory, object_store_memory, resources,
             accelerator_type)
+
+        if runtime_env:
+            parsed = runtime_support.RuntimeEnvDict(runtime_env)
+            override_environment_variables = parsed.to_worker_env_vars(
+                override_environment_variables)
 
         def invocation(args, kwargs):
             if self._is_cross_language:

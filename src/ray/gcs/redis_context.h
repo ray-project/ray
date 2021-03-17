@@ -180,7 +180,8 @@ class RedisContext {
   Status PingPort(const std::string &address, int port);
 
   Status Connect(const std::string &address, int port, bool sharding,
-                 const std::string &password);
+                 const std::string &password, bool enable_sync_conn = true,
+                 bool enable_async_conn = true, bool enable_subscribe_conn = true);
 
   /// Run an operation on some table key synchronously.
   ///

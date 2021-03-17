@@ -85,7 +85,7 @@ thread_local std::weak_ptr<CoreWorker> CoreWorkerProcess::current_core_worker_;
 
 void CoreWorkerProcess::Initialize(const CoreWorkerOptions &options) {
   RAY_CHECK(!instance_) << "The process is already initialized for core worker.";
-  instance_ = std::unique_ptr<CoreWorkerProcess>(new CoreWorkerProcess(options));
+  instance_.reset(new CoreWorkerProcess(options));
 }
 
 void CoreWorkerProcess::Shutdown() {
@@ -361,10 +361,9 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
     auto execute_task =
         std::bind(&CoreWorker::ExecuteTask, this, std::placeholders::_1,
                   std::placeholders::_2, std::placeholders::_3, std::placeholders::_4);
-    direct_task_receiver_ =
-        std::unique_ptr<CoreWorkerDirectTaskReceiver>(new CoreWorkerDirectTaskReceiver(
-            worker_context_, task_execution_service_, execute_task,
-            [this] { return local_raylet_client_->TaskDone(); }));
+    direct_task_receiver_ = std::make_unique<CoreWorkerDirectTaskReceiver>(
+        worker_context_, task_execution_service_, execute_task,
+        [this] { return local_raylet_client_->TaskDone(); });
   }
 
   // Initialize raylet client.
@@ -380,11 +379,11 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   NodeID local_raylet_id;
   int assigned_port;
   std::string serialized_job_config = options_.serialized_job_config;
-  local_raylet_client_ = std::shared_ptr<raylet::RayletClient>(new raylet::RayletClient(
+  local_raylet_client_ = std::make_shared<raylet::RayletClient>(
       io_service_, std::move(grpc_client), options_.raylet_socket, GetWorkerID(),
       options_.worker_type, worker_context_.GetCurrentJobID(), options_.language,
       options_.node_ip_address, &raylet_client_status, &local_raylet_id, &assigned_port,
-      &serialized_job_config));
+      &serialized_job_config);
 
   if (!raylet_client_status.ok()) {
     // Avoid using FATAL log or RAY_CHECK here because they may create a core dump file.
@@ -407,8 +406,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
 
   // Start RPC server after all the task receivers are properly initialized and we have
   // our assigned port from the raylet.
-  core_worker_server_ = std::unique_ptr<rpc::GrpcServer>(
-      new rpc::GrpcServer(WorkerTypeString(options_.worker_type), assigned_port));
+  core_worker_server_ = std::make_unique<rpc::GrpcServer>(
+      WorkerTypeString(options_.worker_type), assigned_port);
   core_worker_server_->RegisterService(grpc_service_);
   core_worker_server_->Run();
 
@@ -423,6 +422,13 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
                 << ", raylet " << local_raylet_id;
 
   // Initialize gcs client.
+  // As asynchronous context of redis client is not used in this gcs client. We would not
+  // open connection for it by setting `enable_async_conn` as false.
+  gcs::GcsClientOptions gcs_options = gcs::GcsClientOptions(
+      options_.gcs_options.server_ip_, options_.gcs_options.server_port_,
+      options_.gcs_options.password_,
+      /*enable_sync_conn=*/true, /*enable_async_conn=*/false,
+      /*enable_subscribe_conn=*/true);
   gcs_client_ = std::make_shared<ray::gcs::ServiceBasedGcsClient>(options_.gcs_options);
 
   RAY_CHECK_OK(gcs_client_->Connect(io_service_));
@@ -575,14 +581,12 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
                                     reference_counter_, node_addr_factory, rpc_address_))
                           : std::shared_ptr<LeasePolicyInterface>(
                                 std::make_shared<LocalLeasePolicy>(rpc_address_));
-  direct_task_submitter_ =
-      std::unique_ptr<CoreWorkerDirectTaskSubmitter>(new CoreWorkerDirectTaskSubmitter(
-          rpc_address_, local_raylet_client_, core_worker_client_pool_,
-          raylet_client_factory, std::move(lease_policy), memory_store_, task_manager_,
-          local_raylet_id, RayConfig::instance().worker_lease_timeout_milliseconds(),
-          std::move(actor_creator),
-          RayConfig::instance().max_tasks_in_flight_per_worker(),
-          boost::asio::steady_timer(io_service_)));
+  direct_task_submitter_ = std::make_unique<CoreWorkerDirectTaskSubmitter>(
+      rpc_address_, local_raylet_client_, core_worker_client_pool_, raylet_client_factory,
+      std::move(lease_policy), memory_store_, task_manager_, local_raylet_id,
+      RayConfig::instance().worker_lease_timeout_milliseconds(), std::move(actor_creator),
+      RayConfig::instance().max_tasks_in_flight_per_worker(),
+      boost::asio::steady_timer(io_service_));
   auto report_locality_data_callback =
       [this](const ObjectID &object_id, const absl::flat_hash_set<NodeID> &locations,
              uint64_t object_size) {
@@ -598,8 +602,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
                                 task_argument_waiter_);
   }
 
-  actor_manager_ = std::unique_ptr<ActorManager>(
-      new ActorManager(gcs_client_, direct_actor_submitter_, reference_counter_));
+  actor_manager_ = std::make_unique<ActorManager>(gcs_client_, direct_actor_submitter_,
+                                                  reference_counter_);
 
   std::function<Status(const ObjectID &object_id, const ObjectLookupCallback &callback)>
       object_lookup_fn;
@@ -651,16 +655,15 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
           });
     };
   }
-  object_recovery_manager_ =
-      std::unique_ptr<ObjectRecoveryManager>(new ObjectRecoveryManager(
-          rpc_address_, raylet_client_factory, local_raylet_client_, object_lookup_fn,
-          task_manager_, reference_counter_, memory_store_,
-          [this](const ObjectID &object_id, bool pin_object) {
-            RAY_CHECK_OK(Put(RayObject(rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE),
-                             /*contained_object_ids=*/{}, object_id,
-                             /*pin_object=*/pin_object));
-          },
-          RayConfig::instance().lineage_pinning_enabled()));
+  object_recovery_manager_ = std::make_unique<ObjectRecoveryManager>(
+      rpc_address_, raylet_client_factory, local_raylet_client_, object_lookup_fn,
+      task_manager_, reference_counter_, memory_store_,
+      [this](const ObjectID &object_id, bool pin_object) {
+        RAY_CHECK_OK(Put(RayObject(rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE),
+                         /*contained_object_ids=*/{}, object_id,
+                         /*pin_object=*/pin_object));
+      },
+      RayConfig::instance().lineage_pinning_enabled());
 
   // Start the IO thread after all other members have been initialized, in case
   // the thread calls back into any of our members.
@@ -1822,7 +1825,7 @@ std::pair<std::shared_ptr<const ActorHandle>, Status> CoreWorker::GetNamedActorH
       name, [this, &actor_id, name, ready_promise](
                 Status status, const boost::optional<rpc::ActorTableData> &result) {
         if (status.ok() && result) {
-          auto actor_handle = std::unique_ptr<ActorHandle>(new ActorHandle(*result));
+          auto actor_handle = std::make_unique<ActorHandle>(*result);
           actor_id = actor_handle->GetActorID();
           actor_manager_->AddNewActorHandle(std::move(actor_handle), GetCallerId(),
                                             CurrentCallSite(), rpc_address_,
@@ -1876,8 +1879,7 @@ const ResourceMappingType CoreWorker::GetResourceIDs() const {
 
 std::unique_ptr<worker::ProfileEvent> CoreWorker::CreateProfileEvent(
     const std::string &event_type) {
-  return std::unique_ptr<worker::ProfileEvent>(
-      new worker::ProfileEvent(profiler_, event_type));
+  return std::make_unique<worker::ProfileEvent>(profiler_, event_type);
 }
 
 void CoreWorker::RunTaskExecutionLoop() { task_execution_service_.run(); }

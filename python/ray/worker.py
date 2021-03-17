@@ -1226,6 +1226,8 @@ def connect(node,
     if mode == SCRIPT_MODE:
         runtime_env.upload_runtime_env_package_if_needed(job_config)
     elif mode == WORKER_MODE:
+        # TODO(ekl) get rid of the env var hack and get runtime env from the
+        # task spec and/or job config only.
         runtime_env.ensure_runtime_env_setup(
             os.environ.get(
                 "RAY_RUNTIME_ENV_FILES",
@@ -1628,8 +1630,8 @@ def cancel(object_ref, *, force=False, recursive=True):
     If the specified task is pending execution, it will not be executed. If
     the task is currently executing, the behavior depends on the ``force``
     flag. When ``force=False``, a KeyboardInterrupt will be raised in Python
-    and when ``force=True``, the executing the task will immediately exit. If
-    the task is already finished, nothing will happen.
+    and when ``force=True``, the executing task will immediately exit.
+    If the task is already finished, nothing will happen.
 
     Only non-actor tasks can be canceled. Canceled tasks will not be
     retried (max_retries will not be respected).
@@ -1832,6 +1834,9 @@ def remote(*args, **kwargs):
             crashes unexpectedly. The minimum valid value is 0,
             the default is 4 (default), and a value of -1 indicates
             infinite retries.
+        runtime_env (Dict[str, Any]): Specifies the runtime environment for
+            this actor or task and its children. See``runtime_env.py`` for
+            detailed documentation.
         override_environment_variables (Dict[str, str]): This specifies
             environment variables to override for the actor or task.  The
             overrides are propagated to all child actors and tasks.  This

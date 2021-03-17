@@ -492,9 +492,8 @@ class DirectActorReceiverTest : public ::testing::Test {
     auto execute_task =
         std::bind(&DirectActorReceiverTest::MockExecuteTask, this, std::placeholders::_1,
                   std::placeholders::_2, std::placeholders::_3, std::placeholders::_4);
-    receiver_ = std::unique_ptr<CoreWorkerDirectTaskReceiver>(
-        new CoreWorkerDirectTaskReceiver(worker_context_, main_io_service_, execute_task,
-                                         [] { return Status::OK(); }));
+    receiver_ = std::make_unique<CoreWorkerDirectTaskReceiver>(
+        worker_context_, main_io_service_, execute_task, [] { return Status::OK(); });
     receiver_->Init(std::make_shared<rpc::CoreWorkerClientPool>(
                         [&](const rpc::Address &addr) { return worker_client_; }),
                     rpc_address_, dependency_waiter_);
