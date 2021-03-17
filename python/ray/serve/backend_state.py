@@ -257,7 +257,8 @@ class BackendState:
         checkpoint = self._kv_store.get(CHECKPOINT_KEY)
         if checkpoint is not None:
             (self._replicas, self._backend_metadata, self._target_replicas,
-             self.backend_goals, pending_goal_ids) = pickle.loads(checkpoint)
+             self._target_versions, self.backend_goals,
+             pending_goal_ids) = pickle.loads(checkpoint)
 
             for goal_id in pending_goal_ids:
                 self._goal_manager.create_goal(goal_id)
@@ -268,9 +269,10 @@ class BackendState:
     def _checkpoint(self) -> None:
         self._kv_store.put(
             CHECKPOINT_KEY,
-            pickle.dumps((self._replicas, self._backend_metadata,
-                          self._target_replicas, self.backend_goals,
-                          self._goal_manager.get_pending_goal_ids())))
+            pickle.dumps(
+                (self._replicas, self._backend_metadata, self._target_replicas,
+                 self._target_versions, self.backend_goals,
+                 self._goal_manager.get_pending_goal_ids())))
 
     def _notify_backend_configs_changed(self) -> None:
         self._long_poll_host.notify_changed(LongPollKey.BACKEND_CONFIGS,
