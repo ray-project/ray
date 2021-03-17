@@ -1,6 +1,6 @@
 import logging
 import pickle
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from ray.tune.result import DEFAULT_METRIC, TRAINING_ITERATION
 from ray.tune.sample import Categorical, Domain, Float, Integer, LogUniform, \
@@ -22,6 +22,7 @@ from ray.tune.suggest import Searcher
 logger = logging.getLogger(__name__)
 
 
+# Deprecate: 1.5
 class _Param:
     def __getattr__(self, item):
         def _inner(*args, **kwargs):
@@ -77,7 +78,7 @@ class OptunaSearch(Searcher):
 
         config = {
             "a": tune.uniform(6, 8)
-            "b": tune.uniform(10, 20)
+            "b": tune.loguniform(1e-4, 1e-2)
         }
 
         optuna_search = OptunaSearch(
@@ -91,12 +92,13 @@ class OptunaSearch(Searcher):
 
     .. code-block:: python
 
-        from ray.tune.suggest.optuna import OptunaSearch, param
+        from ray.tune.suggest.optuna import OptunaSearch
+        import optuna
 
-        space = [
-            param.suggest_uniform("a", 6, 8),
-            param.suggest_uniform("b", 10, 20)
-        ]
+        config = {
+            "a": optuna.distributions.UniformDistribution(6, 8),
+            "b": optuna.distributions.LogUniformDistribution(1e-4, 1e-2),
+        }
 
         optuna_search = OptunaSearch(
             space,
@@ -128,8 +130,19 @@ class OptunaSearch(Searcher):
             if domain_vars or grid_vars:
                 logger.warning(
                     UNRESOLVED_SEARCH_SPACE.format(
-                        par="space", cls=type(self)))
+                        par="space", cls=type(self).__name__))
                 space = self.convert_search_space(space)
+            else:
+                # Flatten to support nested dicts
+                space = flatten_dict(space, "/")
+
+        # Deprecate: 1.5
+        if isinstance(space, list):
+            logger.warning(
+                "Passing lists of `param.suggest_*()` calls to Optuna "
+                "as a search space is deprecated and will be removed in "
+                "a future release of Ray. Please pass a dict mapping "
+                "to `optuna.distributions` objects instead.")
 
         self._space = space
 
@@ -191,17 +204,27 @@ class OptunaSearch(Searcher):
                     metric=self._metric,
                     mode=self._mode))
 
-        if trial_id not in self._ot_trials:
-            self._ot_trials[trial_id] = self._ot_study.ask()
+        if isinstance(self._space, list):
+            # Keep for backwards compatibility
+            # Deprecate: 1.5
+            if trial_id not in self._ot_trials:
+                self._ot_trials[trial_id] = self._ot_study.ask()
 
-        ot_trial = self._ot_trials[trial_id]
+            ot_trial = self._ot_trials[trial_id]
 
-        # getattr will fetch the trial.suggest_ function on Optuna trials
-        params = {
-            args[0] if len(args) > 0 else kwargs["name"]: getattr(
-                ot_trial, fn)(*args, **kwargs)
-            for (fn, args, kwargs) in self._space
-        }
+            # getattr will fetch the trial.suggest_ function on Optuna trials
+            params = {
+                args[0] if len(args) > 0 else kwargs["name"]: getattr(
+                    ot_trial, fn)(*args, **kwargs)
+                for (fn, args, kwargs) in self._space
+            }
+        else:
+            # Use Optuna ask interface (since version 2.6.0)
+            if trial_id not in self._ot_trials:
+                self._ot_trials[trial_id] = self._ot_study.ask(
+                    fixed_distributions=self._space)
+            ot_trial = self._ot_trials[trial_id]
+            params = ot_trial.params
 
         return unflatten_dict(params)
 
@@ -236,11 +259,11 @@ class OptunaSearch(Searcher):
             self._points_to_evaluate = save_object
 
     @staticmethod
-    def convert_search_space(spec: Dict) -> List[Tuple]:
+    def convert_search_space(spec: Dict) -> Dict[str, Any]:
         resolved_vars, domain_vars, grid_vars = parse_spec_vars(spec)
 
         if not domain_vars and not grid_vars:
-            return []
+            return {}
 
         if grid_vars:
             raise ValueError(
@@ -251,7 +274,7 @@ class OptunaSearch(Searcher):
         spec = flatten_dict(spec, prevent_delimiter=True)
         resolved_vars, domain_vars, grid_vars = parse_spec_vars(spec)
 
-        def resolve_value(par: str, domain: Domain) -> Tuple:
+        def resolve_value(domain: Domain) -> ot.distributions.BaseDistribution:
             quantize = None
 
             sampler = domain.get_sampler()
@@ -265,28 +288,31 @@ class OptunaSearch(Searcher):
                         logger.warning(
                             "Optuna does not support both quantization and "
                             "sampling from LogUniform. Dropped quantization.")
-                    return param.suggest_loguniform(par, domain.lower,
-                                                    domain.upper)
+                    return ot.distributions.LogUniformDistribution(
+                        domain.lower, domain.upper)
+
                 elif isinstance(sampler, Uniform):
                     if quantize:
-                        return param.suggest_discrete_uniform(
-                            par, domain.lower, domain.upper, quantize)
-                    return param.suggest_uniform(par, domain.lower,
-                                                 domain.upper)
+                        return ot.distributions.DiscreteUniformDistribution(
+                            domain.lower, domain.upper, quantize)
+                    return ot.distributions.UniformDistribution(
+                        domain.lower, domain.upper)
+
             elif isinstance(domain, Integer):
                 if isinstance(sampler, LogUniform):
                     if quantize:
                         logger.warning(
                             "Optuna does not support both quantization and "
                             "sampling from LogUniform. Dropped quantization.")
-                    return param.suggest_int(
-                        par, domain.lower, domain.upper, log=True)
+                    return ot.distributions.IntLogUniformDistribution(
+                        domain.lower, domain.upper)
                 elif isinstance(sampler, Uniform):
-                    return param.suggest_int(
-                        par, domain.lower, domain.upper, step=quantize or 1)
+                    return ot.distributions.IntUniformDistribution(
+                        domain.lower, domain.upper, step=quantize or 1)
             elif isinstance(domain, Categorical):
                 if isinstance(sampler, Uniform):
-                    return param.suggest_categorical(par, domain.categories)
+                    return ot.distributions.CategoricalDistribution(
+                        domain.categories)
 
             raise ValueError(
                 "Optuna search does not support parameters of type "
@@ -295,9 +321,9 @@ class OptunaSearch(Searcher):
                     type(domain.sampler).__name__))
 
         # Parameter name is e.g. "a/b/c" for nested dicts
-        values = [
-            resolve_value("/".join(path), domain)
+        values = {
+            "/".join(path): resolve_value(domain)
             for path, domain in domain_vars
-        ]
+        }
 
         return values
