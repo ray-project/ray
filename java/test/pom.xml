@@ -44,7 +44,7 @@
 <dependency>
   <groupId>com.google.protobuf</groupId>
   <artifactId>protobuf-java</artifactId>
-  <version>3.8.0</version>
+  <version>3.10.0</version>
 </dependency>
 <dependency>
   <groupId>com.sun.xml.bind</groupId>
