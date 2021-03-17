@@ -69,3 +69,9 @@ def test_broadcast_invalid_rank(ray_start_single_node, backend, src_rank=3):
     actors, _ = create_collective_workers(world_size, backend=backend)
     with pytest.raises(ValueError):
         ray.get([a.do_broadcast.remote(src_rank=src_rank) for a in actors])
+
+
+if __name__ == "__main__":
+    import pytest
+    import sys
+    sys.exit(pytest.main(["-v", "-x", __file__]))

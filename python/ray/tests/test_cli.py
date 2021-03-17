@@ -43,21 +43,33 @@ boto3_list = [{
     "InstanceType": "t1.micro",
     "VCpuInfo": {
         "DefaultVCpus": 1
+    },
+    "MemoryInfo": {
+        "SizeInMiB": 627
     }
 }, {
     "InstanceType": "t3a.small",
     "VCpuInfo": {
         "DefaultVCpus": 2
+    },
+    "MemoryInfo": {
+        "SizeInMiB": 2048
     }
 }, {
     "InstanceType": "m4.4xlarge",
     "VCpuInfo": {
         "DefaultVCpus": 16
+    },
+    "MemoryInfo": {
+        "SizeInMiB": 65536
     }
 }, {
     "InstanceType": "p3.8xlarge",
     "VCpuInfo": {
         "DefaultVCpus": 32
+    },
+    "MemoryInfo": {
+        "SizeInMiB": 249856
     },
     "GpuInfo": {
         "Gpus": [{

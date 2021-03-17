@@ -42,7 +42,7 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
     config_.grpc_server_name = "MockedGcsServer";
     config_.grpc_server_thread_num = 1;
     config_.redis_address = "127.0.0.1";
-    config_.is_test = true;
+    config_.enable_sharding_conn = false;
     config_.redis_port = TEST_REDIS_SERVER_PORTS.front();
 
     client_io_service_.reset(new instrumented_io_context());
@@ -68,7 +68,7 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
 
     // Create GCS client.
     gcs::GcsClientOptions options(config_.redis_address, config_.redis_port,
-                                  config_.redis_password, config_.is_test);
+                                  config_.redis_password);
     gcs_client_.reset(new gcs::ServiceBasedGcsClient(options));
     RAY_CHECK_OK(gcs_client_->Connect(*client_io_service_));
   }

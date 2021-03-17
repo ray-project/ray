@@ -379,12 +379,16 @@ class Client:
         # in ray_actor_options, default to conda env of this process (client).
         # Without this code, the backend would run in the controller's conda
         # env, which is likely different from that of the client.
-        if ray_actor_options.get("runtime_env") is None:
-            ray_actor_options["runtime_env"] = {}
-        if ray_actor_options["runtime_env"].get("conda_env") is None:
-            current_env = os.environ.get("CONDA_DEFAULT_ENV")
-            if current_env is not None and current_env != "":
-                ray_actor_options["runtime_env"]["conda_env"] = current_env
+        # If using Ray client, skip this convenience feature because the local
+        # client env doesn't create the Ray cluster (so the client env is
+        # likely not present on the cluster.)
+        if not ray.util.client.ray.is_connected():
+            if ray_actor_options.get("runtime_env") is None:
+                ray_actor_options["runtime_env"] = {}
+            if ray_actor_options["runtime_env"].get("conda") is None:
+                current_env = os.environ.get("CONDA_DEFAULT_ENV")
+                if current_env is not None and current_env != "":
+                    ray_actor_options["runtime_env"]["conda"] = current_env
 
         replica_config = ReplicaConfig(
             backend_def, *init_args, ray_actor_options=ray_actor_options)

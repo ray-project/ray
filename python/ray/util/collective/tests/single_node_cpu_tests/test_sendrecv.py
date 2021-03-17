@@ -66,3 +66,9 @@ def test_sendrecv_invalid_rank(ray_start_single_node, backend, dst_rank=3):
     actors, _ = create_collective_workers(world_size, backend=backend)
     with pytest.raises(ValueError):
         ray.get([a.do_send.remote(dst_rank=dst_rank) for a in actors])
+
+
+if __name__ == "__main__":
+    import pytest
+    import sys
+    sys.exit(pytest.main(["-v", "-x", __file__]))
