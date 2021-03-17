@@ -1245,7 +1245,6 @@ def test_fate_sharing(ray_start_cluster, use_actors, node_failure):
         test_process_failure(use_actors)
 
     ray.state.state._check_connected()
-    dead_workers = ray.state.state.dead_workers()
     if node_failure:
         wait_for_condition(lambda: len(ray.state.state.dead_workers()) == 1)
     else:
