@@ -134,6 +134,7 @@ void GcsServer::Stop() {
     gcs_heartbeat_manager_->Stop();
 
     if (config_.pull_based_resource_reporting) {
+      RAY_LOG(ERROR) << "Stopping resource report poller";
       gcs_resource_report_poller_->Stop();
     }
 
@@ -289,9 +290,9 @@ void GcsServer::InitTaskInfoHandler() {
 }
 
 void GcsServer::InitResourceReportPolling() {
-  gcs_resource_report_poller_ = std::unique_ptr<GcsResourceReportPoller>(
-      new GcsResourceReportPoller(100, gcs_resource_manager_, raylet_client_pool_));
   if (config_.pull_based_resource_reporting) {
+    gcs_resource_report_poller_.reset(
+                                      new GcsResourceReportPoller(100, gcs_resource_manager_, raylet_client_pool_));
     gcs_resource_report_poller_->Start();
   }
 }
