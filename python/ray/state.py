@@ -643,6 +643,20 @@ class GlobalState:
                         worker_info[b"stdout_file"])
         return workers_data
 
+    def dead_workers(self):
+        """Return the number of dead workers. Testing only."""
+        self._check_connected()
+
+        # Get all data in worker table
+        worker_table = self.global_state_accessor.get_worker_table()
+        failed_workers = []
+        for i in range(len(worker_table)):
+            worker_table_data = gcs_utils.WorkerTableData.FromString(
+                worker_table[i])
+            if not worker_table_data.is_alive:
+                failed_workers.append(worker_table_data)
+        return failed_workers
+
     def add_worker(self, worker_id, worker_type, worker_info):
         """ Add a worker to the cluster.
 

@@ -1245,14 +1245,11 @@ def test_fate_sharing(ray_start_cluster, use_actors, node_failure):
         test_process_failure(use_actors)
 
     ray.state.state._check_connected()
-    keys = [
-        key for r in ray.state.state.redis_clients
-        for key in r.keys("WORKER_FAILURE*")
-    ]
+    dead_workers = ray.state.state.dead_workers()
     if node_failure:
-        assert len(keys) <= 1, len(keys)
+        assert len(dead_workers) <= 1, len(dead_workers)
     else:
-        assert len(keys) <= 2, len(keys)
+        assert len(dead_workers) <= 2, len(dead_workers)
 
 
 @pytest.mark.parametrize(
