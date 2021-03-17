@@ -4,6 +4,7 @@ import grpc
 import sys
 
 from typing import TYPE_CHECKING, Callable
+import threading
 from threading import Lock
 
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
@@ -33,14 +34,14 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
         accepted_connection = False
         if client_id == "":
             logger.error("Client connecting with no client_id")
-            raise StopIteration
-        logger.info(f"New data connection from client {client_id}: numclients: {self._num_clients}")
-
+            return
+        logger.debug(
+            f"New data connection from client {client_id}: ")
         try:
             with self._clients_lock:
-                logger.info(f"Acquired lock: {client_id}")
                 with disable_client_hook():
-                    logger.info("starting ray")
+                    # It's important to keep the ray initialization call
+                    # within this locked context or else Ray could hang.
                     if self._num_clients == 0 and not ray.is_initialized():
                         self.ray_connect_handler()
 
@@ -48,12 +49,15 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                     context.set_code(grpc.StatusCode.RESOURCE_EXHAUSTED)
                     logger.warning(
                         f"Datapath: Num clients {self._num_clients} has reached "
-                        f"the threshold. Rejection {metadata['client_id']}")
-                    raise StopIteration
+                        f"the threshold. Rejecting client: {metadata['client_id']}")
+                    return
+
                 self._num_clients += 1
-                logger.info(f"Accepted data connection from {client_id}: numclients: {self._num_clients}")
+                logger.debug(
+                    f"Accepted data connection from {client_id}. "
+                    f"Total clients: {self._num_clients}"
+                )
                 accepted_connection = True
-            logger.info(f"Released lock: {client_id}")
             for req in request_iterator:
                 resp = None
                 req_type = req.WhichOneof("type")
@@ -83,18 +87,20 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
         except grpc.RpcError as e:
             logger.debug(f"Closing data channel: {e}")
         finally:
-            logger.info(f"Lost data connection from client {client_id}")
+            logger.debug(f"Lost data connection from client {client_id}")
             self.basic_service.release_all(client_id)
 
             with self._clients_lock:
                 if accepted_connection:
+                    # Could fail before client accounting happens
                     self._num_clients -= 1
-                    accepted_connection = False
-                logger.info(f"Removed clients. {self._num_clients}")
+                    logger.debug(f"Removed clients. {self._num_clients}")
 
+                # It's important to keep the Ray shutdown
+                # within this locked context or else Ray could hang.
                 with disable_client_hook():
                     if self._num_clients == 0:
-                        logger.info("Shutting down ray!")
+                        logger.debug("Shutting down ray.")
                         ray.shutdown()
 
     def _build_connection_response(self):

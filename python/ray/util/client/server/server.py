@@ -19,8 +19,8 @@ import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 import time
 import inspect
 import json
-from ray.util.client.common import (
-    GRPC_MAX_MESSAGE_SIZE, CLIENT_SERVER_MAX_THREADS)
+from ray.util.client.common import (GRPC_MAX_MESSAGE_SIZE,
+                                    CLIENT_SERVER_MAX_THREADS)
 from ray.util.client.server.server_pickler import convert_from_arg
 from ray.util.client.server.server_pickler import dumps_from_server
 from ray.util.client.server.server_pickler import loads_from_client
@@ -120,7 +120,8 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         with self.state_lock:
             if client_id in self.object_refs:
                 if id in self.object_refs[client_id]:
-                    logger.debug(f"Releasing object {id.hex()} for {client_id}")
+                    logger.debug(
+                        f"Releasing object {id.hex()} for {client_id}")
                     del self.object_refs[client_id][id]
                     return True
 
@@ -141,9 +142,8 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             self._release_actors(client_id)
 
     def _can_remove_actor_ref(self, actor_id_bytes):
-        no_owner = not any(
-            actor_id_bytes in actor_list
-            for actor_list in self.actor_owners.values())
+        no_owner = not any(actor_id_bytes in actor_list
+                           for actor_list in self.actor_owners.values())
         return no_owner and actor_id_bytes not in self.named_actors
 
     def _release_objects(self, client_id):
@@ -168,7 +168,6 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             if self._can_remove_actor_ref(id_bytes):
                 logger.debug(f"Deleting reference to actor {id_bytes.hex()}")
                 del self.actor_refs[id_bytes]
-
 
         logger.debug(f"Released all {count} actors for client: {client_id}")
 
