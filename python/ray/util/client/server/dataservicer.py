@@ -92,10 +92,10 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                     accepted_connection = False
                 logger.info(f"Removed clients. {self._num_clients}")
 
-            with disable_client_hook():
-                if self._num_clients == 0:
-                    logger.info("Shutting down ray!")
-                    ray.shutdown()
+                with disable_client_hook():
+                    if self._num_clients == 0:
+                        logger.info("Shutting down ray!")
+                        ray.shutdown()
 
     def _build_connection_response(self):
         with self._clients_lock:

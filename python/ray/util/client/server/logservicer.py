@@ -88,15 +88,19 @@ class LogstreamServicer(ray_client_pb2_grpc.RayletLogStreamerServicer):
         self._client_lock = threading.Lock()
 
     def Logstream(self, request_iterator, context):
+        thread_id = threading.get_ident()
+        initialized = False
+        logger.info(f"{thread_id}] Starting logstream.")
         with self._client_lock:
             if self._num_clients + 1 >= CLIENT_SERVER_MAX_THREADS / 2:
                 context.set_code(grpc.StatusCode.RESOURCE_EXHAUSTED)
                 logger.info(
-                    f"Logstream: Num clients {self._num_clients} has reached "
+                    f"[{thread_id}] Logstream: Num clients {self._num_clients} has reached "
                     "the threshold.")
                 return StopIteration
             self._num_clients += 1
-        logger.info(f"New logs connection {self._num_clients}")
+            initialized = True
+        logger.info(f"[{thread_id}] New logs connection {self._num_clients}")
         log_queue = queue.Queue()
         thread = threading.Thread(
             target=log_status_change_thread,
@@ -114,4 +118,5 @@ class LogstreamServicer(ray_client_pb2_grpc.RayletLogStreamerServicer):
         finally:
             thread.join()
             with self._client_lock:
-                self._num_clients -= 1
+                if initialized:
+                    self._num_clients -= 1
