@@ -85,6 +85,7 @@ class ExternalStorage(metaclass=abc.ABCMeta):
 
     def _get_objects_from_store(self, object_refs):
         worker = ray.worker.global_worker
+        assert worker.core_worker_connected, "No core worker is connected."
         # Since the object should always exist in the plasma store before
         # spilling, it can directly get the object from the local plasma
         # store.
