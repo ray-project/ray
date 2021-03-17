@@ -33,9 +33,11 @@ void PubsubClient::SubcribeObject(
   }
   auto subscription_it = subscription_map_.find(owner_worker_id);
   RAY_CHECK(subscription_it != subscription_map_.end());
-  subscription_it->second.subscription_callback_map_.emplace(
-      object_id, std::make_pair(std::move(subscription_callback),
-                                std::move(subscription_failure_callback)));
+  RAY_CHECK(
+      subscription_it->second.subscription_callback_map_
+          .emplace(object_id, std::make_pair(std::move(subscription_callback),
+                                             std::move(subscription_failure_callback)))
+          .second);
 
   // Send a subscription message.
   auto owner_client = owner_client_pool_.GetOrConnect(owner_address);
