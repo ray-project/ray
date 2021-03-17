@@ -99,9 +99,8 @@ class LogstreamServicer(ray_client_pb2_grpc.RayletLogStreamerServicer):
                 return StopIteration
             self._num_clients += 1
             initialized = True
-            logger.info(
-                "New logs connection established. "
-                f"Total clients: {self._num_clients}")
+            logger.info("New logs connection established. "
+                        f"Total clients: {self._num_clients}")
         log_queue = queue.Queue()
         thread = threading.Thread(
             target=log_status_change_thread,

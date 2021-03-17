@@ -76,9 +76,8 @@ class RayAPIStub:
                 raise e
             else:
                 msg = str(e)
-                msg += (
-                    "Set the Ray logging level to DEBUG to see "
-                    "a full stack trace.")
+                msg += ("Set the Ray logging level to DEBUG to see "
+                        "a full stack trace.")
                 raise type(e)(msg) from None
 
     def _check_versions(self, conn_info: Dict[str, Any],

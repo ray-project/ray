@@ -4,7 +4,6 @@ import grpc
 import sys
 
 from typing import TYPE_CHECKING, Callable
-import threading
 from threading import Lock
 
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
@@ -23,9 +22,8 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
     def __init__(self, basic_service: "RayletServicer",
                  ray_connect_handler: Callable):
         self.basic_service = basic_service
-        self._clients_lock = Lock()
-        self._rejected = set()
-        self._num_clients = 0  # guarded by self._clients_lock
+        self.clients_lock = Lock()
+        self.num_clients = 0  # guarded by self.clients_lock
         self.ray_connect_handler = ray_connect_handler
 
     def Datapath(self, request_iterator, context):
@@ -35,30 +33,27 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
         if client_id == "":
             logger.error("Client connecting with no client_id")
             return
-        logger.debug(
-            f"New data connection from client {client_id}: ")
+        logger.debug(f"New data connection from client {client_id}: ")
         try:
-            with self._clients_lock:
+            with self.clients_lock:
                 with disable_client_hook():
                     # It's important to keep the ray initialization call
                     # within this locked context or else Ray could hang.
-                    if self._num_clients == 0 and not ray.is_initialized():
+                    if self.num_clients == 0 and not ray.is_initialized():
                         self.ray_connect_handler()
 
                 threshold = int(CLIENT_SERVER_MAX_THREADS / 2)
-                if self._num_clients >= threshold:
+                if self.num_clients >= threshold:
                     context.set_code(grpc.StatusCode.RESOURCE_EXHAUSTED)
                     logger.warning(
-                        f"[Data Servicer]: Num clients {self._num_clients} "
+                        f"[Data Servicer]: Num clients {self.num_clients} "
                         f"has reached the threshold {threshold}. "
                         f"Rejecting client: {metadata['client_id']}")
                     return
 
-                self._num_clients += 1
-                logger.debug(
-                    f"Accepted data connection from {client_id}. "
-                    f"Total clients: {self._num_clients}"
-                )
+                self.num_clients += 1
+                logger.debug(f"Accepted data connection from {client_id}. "
+                             f"Total clients: {self.num_clients}")
                 accepted_connection = True
             for req in request_iterator:
                 resp = None
@@ -92,22 +87,22 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
             logger.debug(f"Lost data connection from client {client_id}")
             self.basic_service.release_all(client_id)
 
-            with self._clients_lock:
+            with self.clients_lock:
                 if accepted_connection:
                     # Could fail before client accounting happens
-                    self._num_clients -= 1
-                    logger.debug(f"Removed clients. {self._num_clients}")
+                    self.num_clients -= 1
+                    logger.debug(f"Removed clients. {self.num_clients}")
 
                 # It's important to keep the Ray shutdown
                 # within this locked context or else Ray could hang.
                 with disable_client_hook():
-                    if self._num_clients == 0:
+                    if self.num_clients == 0:
                         logger.debug("Shutting down ray.")
                         ray.shutdown()
 
     def _build_connection_response(self):
-        with self._clients_lock:
-            cur_num_clients = self._num_clients
+        with self.clients_lock:
+            cur_num_clients = self.num_clients
         return ray_client_pb2.ConnectionInfoResponse(
             num_clients=cur_num_clients,
             python_version="{}.{}.{}".format(

@@ -104,7 +104,8 @@ class DataClient:
                 lambda: req_id in self.ready_data or self._in_shutdown)
             if self._in_shutdown:
                 raise ConnectionError(
-                    f"Cannot send request due to data channel shutting down. Request: {req}")
+                    "Cannot send request due to data channel "
+                    f"shutting down. Request: {req}")
             data = self.ready_data[req_id]
             del self.ready_data[req_id]
         return data
