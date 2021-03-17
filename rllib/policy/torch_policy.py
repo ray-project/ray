@@ -7,7 +7,7 @@ import os
 import time
 import threading
 import tree  # pip install dm_tree
-from typing import Callable, Dict, List, Optional, Tuple, Type, Union
+from typing import Callable, Dict, List, Optional, Set, Tuple, Type, Union
 
 import ray
 from ray.rllib.models.modelv2 import ModelV2
@@ -115,7 +115,7 @@ class TorchPolicy(Policy):
         # - Each GPU will have a copy of that model under
         #   self.model_gpu_towers, matching the devices in self.devices.
         # - Parallelization is done by splitting the train batch and passing
-        #   it through the model shards in parallel, then averaging over the
+        #   it through the model copies in parallel, then averaging over the
         #   resulting gradients, applying these averages on the main model and
         #   updating all towers' weights from the main model.
         # - In case of just one device (1 (fake) GPU or 1 CPU), no
@@ -167,7 +167,10 @@ class TorchPolicy(Policy):
         self.unwrapped_model = model  # used to support DistributedDataParallel
         self._loss = loss
         self._optimizers = force_list(self.optimizer())
-        self.multi_gpu_param_groups = []
+        # Store, which params (by index within the model's list of
+        # parameters) should be updated per optimizer.
+        # Maps optimizer idx to set or param indices.
+        self.multi_gpu_param_groups: List[Set[int]] = []
         main_params = {p: i for i, p in enumerate(self.model.parameters())}
         for o in self._optimizers:
             param_indices = []
