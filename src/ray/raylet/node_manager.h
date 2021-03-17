@@ -609,10 +609,12 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   ///
   /// \param client The client that sent the message.
   /// \param disconnect_type The reason to disconnect the specified client.
+  /// \param client_error_message Extra error messages about this disconnection
   /// \return Void.
   void DisconnectClient(
       const std::shared_ptr<ClientConnection> &client,
-      rpc::WorkerExitType disconnect_type = rpc::WorkerExitType::SYSTEM_ERROR_EXIT);
+      rpc::WorkerExitType disconnect_type = rpc::WorkerExitType::SYSTEM_ERROR_EXIT,
+      const std::shared_ptr<rpc::RayException> &creation_task_exception = nullptr);
 
   /// ID of this node.
   NodeID self_node_id_;
