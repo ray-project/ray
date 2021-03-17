@@ -470,7 +470,7 @@ class LocalWorkerGroup(WorkerGroupInterface):
                 timeout=timedelta(seconds=self._timeout_s))
             ray.get(remote_pgs)
 
-            local_node_ip = ray._private.services.get_node_ip_address()
+            local_node_ip = ray.util.get_node_ip_address()
             rank_dict = defaultdict(int)
             self.local_worker.set_local_rank(local_rank=0)
             rank_dict[local_node_ip] += 1

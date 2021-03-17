@@ -9,7 +9,7 @@ import time
 import traceback
 import warnings
 
-from ray._private.services import get_node_ip_address
+from ray.util import get_node_ip_address
 from ray.tune import TuneError
 from ray.tune.callback import CallbackList
 from ray.tune.stopper import NoopStopper

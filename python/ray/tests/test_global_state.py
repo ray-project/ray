@@ -341,7 +341,7 @@ def test_heartbeat_ip(shutdown_only):
         cluster["redis_address"], ray.ray_constants.REDIS_DEFAULT_PASSWORD)
     global_state_accessor.connect()
 
-    self_ip = ray._private.services.get_node_ip_address()
+    self_ip = ray.util.get_node_ip_address()
 
     def self_ip_is_set():
         message = global_state_accessor.get_all_resource_usage()
