@@ -104,6 +104,7 @@ def test_detached_deployment(ray_cluster):
     assert ray.get(serve.get_handle("g").remote()) == "world"
 
 
+@pytest.mark.skipif(sys.platform == "win32")
 @pytest.mark.parametrize("detached", [True, False])
 def test_connect(detached, ray_shutdown):
     # Check that you can call serve.connect() from within a backend for both

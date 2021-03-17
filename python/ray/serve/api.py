@@ -430,6 +430,55 @@ class Client:
                                                    replica_config))
 
     @_ensure_connected
+    def deploy(self,
+               name: str,
+               backend_def: Union[Callable, Type[Callable], str],
+               *init_args: Any,
+               ray_actor_options: Optional[Dict] = None,
+               config: Optional[Union[BackendConfig, Dict[str, Any]]] = None,
+               version: Optional[str] = None) -> None:
+        if config is None:
+            config = {}
+        if ray_actor_options is None:
+            ray_actor_options = {}
+
+        # If conda is activated and a conda env is not specified in runtime_env
+        # in ray_actor_options, default to conda env of this process (client).
+        # Without this code, the backend would run in the controller's conda
+        # env, which is likely different from that of the client.
+        # If using Ray client, skip this convenience feature because the local
+        # client env doesn't create the Ray cluster (so the client env is
+        # likely not present on the cluster.)
+        if not ray.util.client.ray.is_connected():
+            if ray_actor_options.get("runtime_env") is None:
+                ray_actor_options["runtime_env"] = {}
+            if ray_actor_options["runtime_env"].get("conda") is None:
+                current_env = os.environ.get("CONDA_DEFAULT_ENV")
+                if current_env is not None and current_env != "":
+                    ray_actor_options["runtime_env"]["conda"] = current_env
+
+        replica_config = ReplicaConfig(
+            backend_def, *init_args, ray_actor_options=ray_actor_options)
+        metadata = BackendMetadata(
+            accepts_batches=replica_config.accepts_batches,
+            is_blocking=replica_config.is_blocking)
+
+        if isinstance(config, dict):
+            backend_config = BackendConfig.parse_obj({
+                **config, "internal_metadata": metadata
+            })
+        elif isinstance(config, BackendConfig):
+            backend_config = config.copy(
+                update={"internal_metadata": metadata})
+        else:
+            raise TypeError("config must be a BackendConfig or a dictionary.")
+
+        backend_config._validate_complete()
+        self._wait_for_goal(
+            self._controller.deploy.remote(name, backend_config,
+                                           replica_config, version))
+
+    @_ensure_connected
     def list_backends(self) -> Dict[str, BackendConfig]:
         """Returns a dictionary of all registered backends.
 
