@@ -384,7 +384,6 @@ message ExitReply {
   bool success = 1;
 }
 
-
 message RunOnUtilWorkerRequest {
   string request = 1;
   repeated string args = 2;
