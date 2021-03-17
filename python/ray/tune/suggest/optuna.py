@@ -139,7 +139,7 @@ class OptunaSearch(Searcher):
         # Deprecate: 1.5
         if isinstance(space, list):
             logger.warning(
-                "Passing lists of `param.suggest_*()` calls to Optuna "
+                "Passing lists of `param.suggest_*()` calls to OptunaSearch "
                 "as a search space is deprecated and will be removed in "
                 "a future release of Ray. Please pass a dict mapping "
                 "to `optuna.distributions` objects instead.")
@@ -300,12 +300,8 @@ class OptunaSearch(Searcher):
 
             elif isinstance(domain, Integer):
                 if isinstance(sampler, LogUniform):
-                    if quantize:
-                        logger.warning(
-                            "Optuna does not support both quantization and "
-                            "sampling from LogUniform. Dropped quantization.")
                     return ot.distributions.IntLogUniformDistribution(
-                        domain.lower, domain.upper)
+                        domain.lower, domain.upper, step=quantize or 1)
                 elif isinstance(sampler, Uniform):
                     return ot.distributions.IntUniformDistribution(
                         domain.lower, domain.upper, step=quantize or 1)
