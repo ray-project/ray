@@ -11,6 +11,39 @@ from ray.util.client.ray_client_helpers import ray_start_client_server
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+def test_client_thread_safe(call_ray_stop_only):
+    import ray
+    ray.init(num_cpus=2)
+
+    with ray_start_client_server() as ray:
+
+        @ray.remote
+        def block():
+            print("blocking run")
+            time.sleep(99)
+
+        @ray.remote
+        def fast():
+            print("fast run")
+            return "ok"
+
+        class Blocker(threading.Thread):
+            def __init__(self):
+                threading.Thread.__init__(self)
+                self.daemon = True
+
+            def run(self):
+                ray.get(block.remote())
+
+        b = Blocker()
+        b.start()
+        time.sleep(1)
+
+        # Can concurrently execute the get.
+        assert ray.get(fast.remote(), timeout=5) == "ok"
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_interrupt_ray_get(call_ray_stop_only):
     import ray
     ray.init(num_cpus=2)
