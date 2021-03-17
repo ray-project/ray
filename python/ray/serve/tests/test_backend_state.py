@@ -5,6 +5,7 @@ from unittest.mock import patch, Mock
 import pytest
 
 from ray.actor import ActorHandle
+from ray.serve.async_goal_manager import AsyncGoalManager
 from ray.serve.common import (
     BackendConfig,
     BackendInfo,
@@ -100,19 +101,20 @@ def mock_backend_state() -> Tuple[BackendState, Mock, Mock]:
     mock_replicas = []
     with patch(
             "ray.serve.backend_state.ActorReplicaWrapper",
-            new=mock_replica_factory(mock_replicas)
-    ), patch(
-            "time.time", new=timer.time
-    ), patch("ray.serve.kv_store.RayInternalKVStore") as mock_kv_store, patch(
-            "ray.serve.long_poll.LongPollHost") as mock_long_poll, patch(
-                "ray.serve.async_goal_manager.AsyncGoalManager"
-            ) as mock_goal_manager, patch.object(
-                BackendState, "_checkpoint") as mock_checkpoint:
+            new=mock_replica_factory(mock_replicas)), patch(
+                "time.time",
+                new=timer.time), patch("ray.serve.kv_store.RayInternalKVStore"
+                                       ) as mock_kv_store, patch(
+                                           "ray.serve.long_poll.LongPollHost"
+                                       ) as mock_long_poll, patch.object(
+                                           BackendState,
+                                           "_checkpoint") as mock_checkpoint:
         mock_kv_store.get = Mock(return_value=None)
+        goal_manager = AsyncGoalManager()
         backend_state = BackendState("name", True, mock_kv_store,
-                                     mock_long_poll, mock_goal_manager)
+                                     mock_long_poll, goal_manager)
         mock_checkpoint.return_value = None
-        yield backend_state, timer, mock_replicas
+        yield backend_state, timer, mock_replicas, goal_manager
 
 
 def replica_count(backend_state, backend=None, states=None):
@@ -126,13 +128,13 @@ def replica_count(backend_state, backend=None, states=None):
     return total
 
 
-def test_create_single_replica(mock_backend_state):
-    backend_state, timer, mock_replicas = mock_backend_state
+def test_create_delete_single_replica(mock_backend_state):
+    backend_state, timer, mock_replicas, goal_manager = mock_backend_state
 
     assert replica_count(backend_state) == 0
 
     b_config_1, r_config_1 = generate_configs()
-    backend_state.create_backend("tag1", b_config_1, r_config_1)
+    create_goal = backend_state.create_backend("tag1", b_config_1, r_config_1)
 
     # Single replica should be created.
     backend_state.update()
@@ -145,27 +147,37 @@ def test_create_single_replica(mock_backend_state):
     assert replica_count(backend_state) == 1
     assert replica_count(backend_state, states=[ReplicaState.STARTING]) == 1
     mock_replicas[0].set_ready()
+    assert not goal_manager.check_complete(create_goal)
 
     # Now the replica should be marked running.
     backend_state.update()
     assert replica_count(backend_state) == 1
     assert replica_count(backend_state, states=[ReplicaState.RUNNING]) == 1
 
+    # TODO(edoakes): can we remove this extra update period for completing it?
+    backend_state.update()
+    assert goal_manager.check_complete(create_goal)
+
     # Removing the replica should transition it to stopping.
-    backend_state.delete_backend("tag1")
+    delete_goal = backend_state.delete_backend("tag1")
     backend_state.update()
     assert replica_count(backend_state) == 1
     assert replica_count(backend_state, states=[ReplicaState.STOPPING]) == 1
     assert mock_replicas[0].stopped
+    assert not goal_manager.check_complete(delete_goal)
 
     # Once it's done stopping, replica should be removed.
     mock_replicas[0].set_done_stopping()
     backend_state.update()
     assert replica_count(backend_state) == 0
 
+    # TODO(edoakes): can we remove this extra update period for completing it?
+    backend_state.update()
+    assert goal_manager.check_complete(delete_goal)
+
 
 def test_force_kill(mock_backend_state):
-    backend_state, timer, mock_replicas = mock_backend_state
+    backend_state, timer, mock_replicas, goal_manager = mock_backend_state
 
     assert replica_count(backend_state) == 0
 
@@ -178,7 +190,7 @@ def test_force_kill(mock_backend_state):
     backend_state.update()
     mock_replicas[0].set_ready()
     backend_state.update()
-    backend_state.delete_backend("tag1")
+    delete_goal = backend_state.delete_backend("tag1")
     backend_state.update()
 
     # Replica should remain in STOPPING until it finishes.
@@ -200,17 +212,23 @@ def test_force_kill(mock_backend_state):
     assert mock_replicas[0].force_stopped_counter == 1
     assert replica_count(backend_state) == 1
     assert replica_count(backend_state, states=[ReplicaState.STOPPING]) == 1
+    assert not goal_manager.check_complete(delete_goal)
 
     # Force stop should be called repeatedly until the replica stops.
     backend_state.update()
     assert mock_replicas[0].force_stopped_counter == 2
     assert replica_count(backend_state) == 1
     assert replica_count(backend_state, states=[ReplicaState.STOPPING]) == 1
+    assert not goal_manager.check_complete(delete_goal)
 
     # Once the replica is done stopping, it should be removed.
     mock_replicas[0].set_done_stopping()
     backend_state.update()
     assert replica_count(backend_state) == 0
+
+    # TODO(edoakes): can we remove this extra update period for completing it?
+    backend_state.update()
+    assert goal_manager.check_complete(delete_goal)
 
 
 if __name__ == "__main__":

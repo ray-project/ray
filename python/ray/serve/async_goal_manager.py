@@ -29,6 +29,9 @@ class AsyncGoalManager:
         if event:
             event.set()
 
+    def check_complete(self, goal_id: GoalId) -> bool:
+        return goal_id not in self._pending_goals
+
     async def wait_for_goal(self, goal_id: GoalId) -> None:
         start = time.time()
         if goal_id not in self._pending_goals:

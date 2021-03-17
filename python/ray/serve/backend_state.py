@@ -576,7 +576,7 @@ class BackendState:
             state_dict = self._replicas.get(backend_tag, {})
             existing_info = state_dict.get(ReplicaState.RUNNING, [])
 
-            # If we have pending ops, the current goal is *not* ready
+            # If we have pending ops, the current goal is *not* ready.
             if (state_dict.get(ReplicaState.SHOULD_START)
                     or state_dict.get(ReplicaState.STARTING)
                     or state_dict.get(ReplicaState.SHOULD_STOP)
@@ -587,6 +587,7 @@ class BackendState:
             if (not desired_num_replicas or
                     desired_num_replicas == 0) and \
                     (not existing_info or len(existing_info) == 0):
+                print("CASE 1")
                 completed_goals.append(
                     self.backend_goals.pop(backend_tag, None))
 
