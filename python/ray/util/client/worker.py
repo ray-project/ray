@@ -111,7 +111,6 @@ class Worker:
                 # RayletDriverStub, allowing for unary requests.
                 self.server = ray_client_pb2_grpc.RayletDriverStub(
                     self.channel)
-                logger.info("Waiting for GRPC to ping a response.")
                 service_ready = bool(self.ping_server())
                 if service_ready:
                     break
@@ -381,7 +380,7 @@ class Worker:
     def get_cluster_info(self, type: ray_client_pb2.ClusterInfoType.TypeEnum):
         req = ray_client_pb2.ClusterInfoRequest()
         req.type = type
-        resp = self.server.ClusterInfo(req, metadata=self.metadata, timeout=5)
+        resp = self.server.ClusterInfo(req, metadata=self.metadata)
         if resp.WhichOneof("response_type") == "resource_table":
             # translate from a proto map to a python dict
             output_dict = {k: v for k, v in resp.resource_table.table.items()}
@@ -423,6 +422,7 @@ class Worker:
         an actual response.
         """
         if self.server is not None:
+            logger.debug("Pinging server.")
             result = self.get_cluster_info(
                 ray_client_pb2.ClusterInfoType.IS_INITIALIZED)
             return result is not None
