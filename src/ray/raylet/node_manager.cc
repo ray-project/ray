@@ -1218,7 +1218,7 @@ void NodeManager::DeleteLocalURI(const std::string &uri, std::function<void(bool
   while (boost::filesystem::exists(to_path)) {
     to_path = from_path;
     to_path += deleting_suffix;
-    to_path += std::to_string(suffix_num);
+    to_path += "." + std::to_string(suffix_num);
     ++suffix_num;
   }
   boost::system::error_code ec;

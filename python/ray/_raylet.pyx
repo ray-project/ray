@@ -650,6 +650,7 @@ cdef void run_on_util_worker_handler(
         util_worker_handlers.dispatch(
             req.decode(), [arg.decode() for arg in args])
 
+
 cdef c_vector[c_string] spill_objects_handler(
         const c_vector[CObjectID]& object_ids_to_spill,
         const c_vector[c_string]& owner_addresses) nogil:

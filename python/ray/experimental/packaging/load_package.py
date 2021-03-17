@@ -17,7 +17,6 @@ import hashlib
 import subprocess
 import tempfile
 import yaml
-import json
 
 import ray
 import ray._private.runtime_env as runtime_support
