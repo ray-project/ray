@@ -71,6 +71,8 @@ def load_package(package_def: Union[str, Dict[str, str]]) -> "_RuntimePackage":
     """
 
     if isinstance(package_def, dict):
+        # TODO(edoakes): when loading the package natively in Python, we should
+        # support passing in the stub module directly instead of a file.
         config = package_def
         base_dir = os.path.abspath(os.path.dirname(__file__))
     elif isinstance(package_def, str):
