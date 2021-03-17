@@ -257,3 +257,17 @@ if __name__ == "__main__":
     print("-> Loaded package", pkg2)
     print("-> Testing method call")
     print(ray.get(pkg2.my_func.remote()))
+
+    print("-> Testing load from Python dict")
+    os.chdir("example_pkg")
+    pkg3 = load_package({
+        "name": "example_package",
+        "description": "This is the example config for my package.",
+        "stub_file": "my_pkg/stubs.py",
+        "runtime_env": {
+            "docker": "anyscale-ml/ray-ml:nightly-py38-cpu"
+        }
+    })
+    print("-> Loaded package", pkg3)
+    print("-> Testing method call")
+    print(ray.get(pkg3.my_func.remote()))
