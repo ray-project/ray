@@ -212,6 +212,11 @@ class SerializationContext:
             elif error_type == ErrorType.Value("WORKER_DIED"):
                 return WorkerCrashedError()
             elif error_type == ErrorType.Value("ACTOR_DIED"):
+                if data:
+                    pb_bytes = self._deserialize_msgpack_data(
+                        data, metadata_fields)
+                    if pb_bytes:
+                        return RayError.from_bytes(pb_bytes)
                 return RayActorError()
             elif error_type == ErrorType.Value("TASK_CANCELLED"):
                 return TaskCancelledError()
