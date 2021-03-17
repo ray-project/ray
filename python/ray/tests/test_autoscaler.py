@@ -1604,6 +1604,10 @@ class AutoscalingTest(unittest.TestCase):
         assert ("Removing 4 nodes of type "
                 "ray-legacy-worker-node-type (idle)." in events), events
 
+        summary = autoscaler.summary()
+        assert len(summary.failed_nodes) == 0, \
+            "Autoscaling policy decisions shouldn't result in failed nodes"
+
     def testTargetUtilizationFraction(self):
         config = SMALL_CLUSTER.copy()
         config["min_workers"] = 0
